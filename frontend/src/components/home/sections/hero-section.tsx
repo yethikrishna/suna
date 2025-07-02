@@ -292,8 +292,8 @@ export function HeroSection() {
           <div className="flex flex-col items-center justify-center gap-5">
             <h1 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-medium tracking-tighter text-balance text-center">
               <span className="text-secondary">Suna</span>
-              <span className="text-primary">, your AI Employee.</span>
-            </h1>
+              <span className="text-primary">, your AI Employee developed by Yethikrishna R.</span>
+</h1>
             <p className="text-base md:text-lg text-center text-muted-foreground font-medium text-balance leading-relaxed tracking-tight">
               {hero.description}
             </p>

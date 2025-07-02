@@ -1,6 +1,6 @@
 export const siteConfig = {
-  name: 'Kortix Suna',
-  url: 'https://suna.so/',
+  name: 'Yeti AI developed by Yethikrishna R.',
+  url: 'https://yetihub.vercel.app/',
   description: 'Kortix AI',
   links: {
     twitter: 'https://x.com/kortixai',

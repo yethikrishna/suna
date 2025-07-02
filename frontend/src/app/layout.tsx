@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     template: `%s - ${siteConfig.name}`,
   },
   description:
-    'Suna is a fully open source AI assistant that helps you accomplish real-world tasks with ease. Through natural conversation, Suna becomes your digital companion for research, data analysis, and everyday challenges.',
+    'Yeti AI developed by Yethikrishna R. is a fully open source AI assistant that helps you accomplish real-world tasks with ease. Through natural conversation, Yeti AI developed by Yethikrishna R. becomes your digital companion for research, data analysis, and everyday challenges.',
   keywords: [
     'AI',
     'artificial intelligence',
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
   authors: [{ name: 'Kortix Team', url: 'https://suna.so' }],
   creator:
     'Kortix Team - Adam Cohen Hillel, Marko Kraemer, Domenico Gagliardi, and Quoc Dat Le',
-  publisher:
+  publisher: 
     'Kortix Team - Adam Cohen Hillel, Marko Kraemer, Domenico Gagliardi, and Quoc Dat Le',
   category: 'Technology',
   applicationName: 'Suna',
@@ -64,9 +64,9 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'Suna - Open Source Generalist AI Agent',
+    title: 'Yeti AI developed by Yethikrishna R. - Open Source Generalist AI Agent',
     description:
-      'Suna is a fully open source AI assistant that helps you accomplish real-world tasks with ease through natural conversation.',
+      'Yeti AI developed by Yethikrishna R. is a fully open source AI assistant that helps you accomplish real-world tasks with ease through natural conversation.',
     url: siteConfig.url,
     siteName: 'Suna',
     images: [
@@ -77,15 +77,15 @@ export const metadata: Metadata = {
         alt: 'Suna - Open Source Generalist AI Agent',
         type: 'image/png',
       },
-    ],
+    ], 
     locale: 'en_US',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Suna - Open Source Generalist AI Agent',
+    title: 'Yeti AI developed by Yethikrishna R. - Open Source Generalist AI Agent',
     description:
-      'Suna is a fully open source AI assistant that helps you accomplish real-world tasks with ease through natural conversation.',
+      'Yeti AI developed by Yethikrishna R. is a fully open source AI assistant that helps you accomplish real-world tasks with ease through natural conversation.',
     creator: '@kortixai',
     site: '@kortixai',
     images: [

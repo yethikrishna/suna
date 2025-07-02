@@ -246,7 +246,7 @@ export default function AgentsPage() {
               <div className='flex items-center justify-center gap-2'>
                 <Bot className='h-6 w-6 text-primary' />
                 <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                  Agents
+ Yeti AI Agents
                 </h1>
               </div>
               <p className="text-md text-muted-foreground max-w-2xl">

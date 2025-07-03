@@ -11,13 +11,34 @@ https://docs.amplication.com/how-to/custom-code
   */
 import { InputType, Field } from "@nestjs/graphql";
 import { ApiProperty } from "@nestjs/swagger";
-import { IsString, IsOptional, MaxLength } from "class-validator";
+import { AgentCreateNestedManyWithoutUsersInput } from "./AgentCreateNestedManyWithoutUsersInput";
+import {
+  ValidateNested,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from "class-validator";
+import { Type } from "class-transformer";
+import { IntegrationCreateNestedManyWithoutUsersInput } from "./IntegrationCreateNestedManyWithoutUsersInput";
 import { IsJSONValue } from "../../validators";
 import { GraphQLJSON } from "graphql-type-json";
 import { InputJsonValue } from "../../types";
+import { SessionCreateNestedManyWithoutUsersInput } from "./SessionCreateNestedManyWithoutUsersInput";
 
 @InputType()
 class UserCreateInput {
+  @ApiProperty({
+    required: false,
+    type: () => AgentCreateNestedManyWithoutUsersInput,
+  })
+  @ValidateNested()
+  @Type(() => AgentCreateNestedManyWithoutUsersInput)
+  @IsOptional()
+  @Field(() => AgentCreateNestedManyWithoutUsersInput, {
+    nullable: true,
+  })
+  agents?: AgentCreateNestedManyWithoutUsersInput;
+
   @ApiProperty({
     required: false,
     type: String,
@@ -43,6 +64,18 @@ class UserCreateInput {
 
   @ApiProperty({
     required: false,
+    type: () => IntegrationCreateNestedManyWithoutUsersInput,
+  })
+  @ValidateNested()
+  @Type(() => IntegrationCreateNestedManyWithoutUsersInput)
+  @IsOptional()
+  @Field(() => IntegrationCreateNestedManyWithoutUsersInput, {
+    nullable: true,
+  })
+  integrations?: IntegrationCreateNestedManyWithoutUsersInput;
+
+  @ApiProperty({
+    required: false,
     type: String,
   })
   @IsString()
@@ -62,11 +95,33 @@ class UserCreateInput {
   password!: string;
 
   @ApiProperty({
+    required: false,
+  })
+  @IsJSONValue()
+  @IsOptional()
+  @Field(() => GraphQLJSON, {
+    nullable: true,
+  })
+  preferences?: InputJsonValue;
+
+  @ApiProperty({
     required: true,
   })
   @IsJSONValue()
   @Field(() => GraphQLJSON)
   roles!: InputJsonValue;
+
+  @ApiProperty({
+    required: false,
+    type: () => SessionCreateNestedManyWithoutUsersInput,
+  })
+  @ValidateNested()
+  @Type(() => SessionCreateNestedManyWithoutUsersInput)
+  @IsOptional()
+  @Field(() => SessionCreateNestedManyWithoutUsersInput, {
+    nullable: true,
+  })
+  sessions?: SessionCreateNestedManyWithoutUsersInput;
 
   @ApiProperty({
     required: true,

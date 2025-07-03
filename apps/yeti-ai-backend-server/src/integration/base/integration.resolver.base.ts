@@ -17,7 +17,10 @@ import { Integration } from "./Integration";
 import { IntegrationCountArgs } from "./IntegrationCountArgs";
 import { IntegrationFindManyArgs } from "./IntegrationFindManyArgs";
 import { IntegrationFindUniqueArgs } from "./IntegrationFindUniqueArgs";
+import { CreateIntegrationArgs } from "./CreateIntegrationArgs";
+import { UpdateIntegrationArgs } from "./UpdateIntegrationArgs";
 import { DeleteIntegrationArgs } from "./DeleteIntegrationArgs";
+import { User } from "../../user/base/User";
 import { IntegrationService } from "../integration.service";
 @graphql.Resolver(() => Integration)
 export class IntegrationResolverBase {
@@ -51,6 +54,51 @@ export class IntegrationResolverBase {
   }
 
   @graphql.Mutation(() => Integration)
+  async createIntegration(
+    @graphql.Args() args: CreateIntegrationArgs
+  ): Promise<Integration> {
+    return await this.service.createIntegration({
+      ...args,
+      data: {
+        ...args.data,
+
+        user: args.data.user
+          ? {
+              connect: args.data.user,
+            }
+          : undefined,
+      },
+    });
+  }
+
+  @graphql.Mutation(() => Integration)
+  async updateIntegration(
+    @graphql.Args() args: UpdateIntegrationArgs
+  ): Promise<Integration | null> {
+    try {
+      return await this.service.updateIntegration({
+        ...args,
+        data: {
+          ...args.data,
+
+          user: args.data.user
+            ? {
+                connect: args.data.user,
+              }
+            : undefined,
+        },
+      });
+    } catch (error) {
+      if (isRecordNotFoundError(error)) {
+        throw new GraphQLError(
+          `No resource was found for ${JSON.stringify(args.where)}`
+        );
+      }
+      throw error;
+    }
+  }
+
+  @graphql.Mutation(() => Integration)
   async deleteIntegration(
     @graphql.Args() args: DeleteIntegrationArgs
   ): Promise<Integration | null> {
@@ -64,5 +112,18 @@ export class IntegrationResolverBase {
       }
       throw error;
     }
+  }
+
+  @graphql.ResolveField(() => User, {
+    nullable: true,
+    name: "user",
+  })
+  async getUser(@graphql.Parent() parent: Integration): Promise<User | null> {
+    const result = await this.service.getUser(parent.id);
+
+    if (!result) {
+      return null;
+    }
+    return result;
   }
 }

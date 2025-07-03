@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
+import { AgentModule } from "./agent/agent.module";
 import { TaskModule } from "./task/task.module";
 import { MemoryLogModule } from "./memoryLog/memoryLog.module";
-import { AgentModule } from "./agent/agent.module";
 import { PluginModule } from "./plugin/plugin.module";
 import { IntegrationModule } from "./integration/integration.module";
 import { SessionModule } from "./session/session.module";
@@ -18,9 +18,9 @@ import { ApolloDriver, ApolloDriverConfig } from "@nestjs/apollo";
 @Module({
   controllers: [],
   imports: [
+    AgentModule,
     TaskModule,
     MemoryLogModule,
-    AgentModule,
     PluginModule,
     IntegrationModule,
     SessionModule,

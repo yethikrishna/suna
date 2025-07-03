@@ -9,5 +9,92 @@ https://docs.amplication.com/how-to/custom-code
 
 ------------------------------------------------------------------------------
   */
-class MemoryLogCreateInput {}
+import { InputType, Field } from "@nestjs/graphql";
+import { ApiProperty } from "@nestjs/swagger";
+import { AgentWhereUniqueInput } from "../../agent/base/AgentWhereUniqueInput";
+import {
+  ValidateNested,
+  IsOptional,
+  IsString,
+  MaxLength,
+  IsDate,
+  IsEnum,
+} from "class-validator";
+import { Type } from "class-transformer";
+import { SessionWhereUniqueInput } from "../../session/base/SessionWhereUniqueInput";
+import { EnumMemoryLogTypeField } from "./EnumMemoryLogTypeField";
+
+@InputType()
+class MemoryLogCreateInput {
+  @ApiProperty({
+    required: false,
+    type: () => AgentWhereUniqueInput,
+  })
+  @ValidateNested()
+  @Type(() => AgentWhereUniqueInput)
+  @IsOptional()
+  @Field(() => AgentWhereUniqueInput, {
+    nullable: true,
+  })
+  agent?: AgentWhereUniqueInput | null;
+
+  @ApiProperty({
+    required: false,
+    type: String,
+  })
+  @IsString()
+  @MaxLength(1000)
+  @IsOptional()
+  @Field(() => String, {
+    nullable: true,
+  })
+  content?: string | null;
+
+  @ApiProperty({
+    required: false,
+    type: String,
+  })
+  @IsString()
+  @MaxLength(1000)
+  @IsOptional()
+  @Field(() => String, {
+    nullable: true,
+  })
+  relatedTask?: string | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => SessionWhereUniqueInput,
+  })
+  @ValidateNested()
+  @Type(() => SessionWhereUniqueInput)
+  @IsOptional()
+  @Field(() => SessionWhereUniqueInput, {
+    nullable: true,
+  })
+  session?: SessionWhereUniqueInput | null;
+
+  @ApiProperty({
+    required: false,
+  })
+  @IsDate()
+  @Type(() => Date)
+  @IsOptional()
+  @Field(() => Date, {
+    nullable: true,
+  })
+  timestamp?: Date | null;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumMemoryLogTypeField,
+  })
+  @IsEnum(EnumMemoryLogTypeField)
+  @IsOptional()
+  @Field(() => EnumMemoryLogTypeField, {
+    nullable: true,
+  })
+  typeField?: "Option1" | null;
+}
+
 export { MemoryLogCreateInput as MemoryLogCreateInput };

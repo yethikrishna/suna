@@ -19,25 +19,41 @@ const nonExistingId = "nonExistingId";
 const existingId = "existingId";
 const CREATE_INPUT = {
   createdAt: new Date(),
+  description: "exampleDescription",
   id: "exampleId",
+  name: "exampleName",
+  permissionRequired: "true",
   updatedAt: new Date(),
+  version: "exampleVersion",
 };
 const CREATE_RESULT = {
   createdAt: new Date(),
+  description: "exampleDescription",
   id: "exampleId",
+  name: "exampleName",
+  permissionRequired: "true",
   updatedAt: new Date(),
+  version: "exampleVersion",
 };
 const FIND_MANY_RESULT = [
   {
     createdAt: new Date(),
+    description: "exampleDescription",
     id: "exampleId",
+    name: "exampleName",
+    permissionRequired: "true",
     updatedAt: new Date(),
+    version: "exampleVersion",
   },
 ];
 const FIND_ONE_RESULT = {
   createdAt: new Date(),
+  description: "exampleDescription",
   id: "exampleId",
+  name: "exampleName",
+  permissionRequired: "true",
   updatedAt: new Date(),
+  version: "exampleVersion",
 };
 
 const service = {

@@ -31,10 +31,41 @@ export class MemoryLogControllerBase {
     @common.Body() data: MemoryLogCreateInput
   ): Promise<MemoryLog> {
     return await this.service.createMemoryLog({
-      data: data,
+      data: {
+        ...data,
+
+        agent: data.agent
+          ? {
+              connect: data.agent,
+            }
+          : undefined,
+
+        session: data.session
+          ? {
+              connect: data.session,
+            }
+          : undefined,
+      },
       select: {
+        agent: {
+          select: {
+            id: true,
+          },
+        },
+
+        content: true,
         createdAt: true,
         id: true,
+        relatedTask: true,
+
+        session: {
+          select: {
+            id: true,
+          },
+        },
+
+        timestamp: true,
+        typeField: true,
         updatedAt: true,
       },
     });
@@ -48,8 +79,25 @@ export class MemoryLogControllerBase {
     return this.service.memoryLogs({
       ...args,
       select: {
+        agent: {
+          select: {
+            id: true,
+          },
+        },
+
+        content: true,
         createdAt: true,
         id: true,
+        relatedTask: true,
+
+        session: {
+          select: {
+            id: true,
+          },
+        },
+
+        timestamp: true,
+        typeField: true,
         updatedAt: true,
       },
     });
@@ -64,8 +112,25 @@ export class MemoryLogControllerBase {
     const result = await this.service.memoryLog({
       where: params,
       select: {
+        agent: {
+          select: {
+            id: true,
+          },
+        },
+
+        content: true,
         createdAt: true,
         id: true,
+        relatedTask: true,
+
+        session: {
+          select: {
+            id: true,
+          },
+        },
+
+        timestamp: true,
+        typeField: true,
         updatedAt: true,
       },
     });
@@ -87,10 +152,41 @@ export class MemoryLogControllerBase {
     try {
       return await this.service.updateMemoryLog({
         where: params,
-        data: data,
+        data: {
+          ...data,
+
+          agent: data.agent
+            ? {
+                connect: data.agent,
+              }
+            : undefined,
+
+          session: data.session
+            ? {
+                connect: data.session,
+              }
+            : undefined,
+        },
         select: {
+          agent: {
+            select: {
+              id: true,
+            },
+          },
+
+          content: true,
           createdAt: true,
           id: true,
+          relatedTask: true,
+
+          session: {
+            select: {
+              id: true,
+            },
+          },
+
+          timestamp: true,
+          typeField: true,
           updatedAt: true,
         },
       });
@@ -114,8 +210,25 @@ export class MemoryLogControllerBase {
       return await this.service.deleteMemoryLog({
         where: params,
         select: {
+          agent: {
+            select: {
+              id: true,
+            },
+          },
+
+          content: true,
           createdAt: true,
           id: true,
+          relatedTask: true,
+
+          session: {
+            select: {
+              id: true,
+            },
+          },
+
+          timestamp: true,
+          typeField: true,
           updatedAt: true,
         },
       });

@@ -31,9 +31,15 @@ export class PluginControllerBase {
     return await this.service.createPlugin({
       data: data,
       select: {
+        configField: true,
         createdAt: true,
+        description: true,
         id: true,
+        name: true,
+        permissionRequired: true,
+        status: true,
         updatedAt: true,
+        version: true,
       },
     });
   }
@@ -46,9 +52,15 @@ export class PluginControllerBase {
     return this.service.plugins({
       ...args,
       select: {
+        configField: true,
         createdAt: true,
+        description: true,
         id: true,
+        name: true,
+        permissionRequired: true,
+        status: true,
         updatedAt: true,
+        version: true,
       },
     });
   }
@@ -62,9 +74,15 @@ export class PluginControllerBase {
     const result = await this.service.plugin({
       where: params,
       select: {
+        configField: true,
         createdAt: true,
+        description: true,
         id: true,
+        name: true,
+        permissionRequired: true,
+        status: true,
         updatedAt: true,
+        version: true,
       },
     });
     if (result === null) {
@@ -87,9 +105,15 @@ export class PluginControllerBase {
         where: params,
         data: data,
         select: {
+          configField: true,
           createdAt: true,
+          description: true,
           id: true,
+          name: true,
+          permissionRequired: true,
+          status: true,
           updatedAt: true,
+          version: true,
         },
       });
     } catch (error) {
@@ -112,9 +136,15 @@ export class PluginControllerBase {
       return await this.service.deletePlugin({
         where: params,
         select: {
+          configField: true,
           createdAt: true,
+          description: true,
           id: true,
+          name: true,
+          permissionRequired: true,
+          status: true,
           updatedAt: true,
+          version: true,
         },
       });
     } catch (error) {

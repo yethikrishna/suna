@@ -17,6 +17,8 @@ import { Plugin } from "./Plugin";
 import { PluginCountArgs } from "./PluginCountArgs";
 import { PluginFindManyArgs } from "./PluginFindManyArgs";
 import { PluginFindUniqueArgs } from "./PluginFindUniqueArgs";
+import { CreatePluginArgs } from "./CreatePluginArgs";
+import { UpdatePluginArgs } from "./UpdatePluginArgs";
 import { DeletePluginArgs } from "./DeletePluginArgs";
 import { PluginService } from "../plugin.service";
 @graphql.Resolver(() => Plugin)
@@ -46,6 +48,33 @@ export class PluginResolverBase {
       return null;
     }
     return result;
+  }
+
+  @graphql.Mutation(() => Plugin)
+  async createPlugin(@graphql.Args() args: CreatePluginArgs): Promise<Plugin> {
+    return await this.service.createPlugin({
+      ...args,
+      data: args.data,
+    });
+  }
+
+  @graphql.Mutation(() => Plugin)
+  async updatePlugin(
+    @graphql.Args() args: UpdatePluginArgs
+  ): Promise<Plugin | null> {
+    try {
+      return await this.service.updatePlugin({
+        ...args,
+        data: args.data,
+      });
+    } catch (error) {
+      if (isRecordNotFoundError(error)) {
+        throw new GraphQLError(
+          `No resource was found for ${JSON.stringify(args.where)}`
+        );
+      }
+      throw error;
+    }
   }
 
   @graphql.Mutation(() => Plugin)

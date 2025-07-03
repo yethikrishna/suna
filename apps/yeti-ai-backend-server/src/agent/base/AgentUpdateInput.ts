@@ -9,5 +9,117 @@ https://docs.amplication.com/how-to/custom-code
 
 ------------------------------------------------------------------------------
   */
-class AgentUpdateInput {}
+import { InputType, Field } from "@nestjs/graphql";
+import { ApiProperty } from "@nestjs/swagger";
+import {
+  IsString,
+  MaxLength,
+  IsOptional,
+  ValidateNested,
+  IsEnum,
+} from "class-validator";
+import { MemoryLogUpdateManyWithoutAgentsInput } from "./MemoryLogUpdateManyWithoutAgentsInput";
+import { Type } from "class-transformer";
+import { EnumAgentStatus } from "./EnumAgentStatus";
+import { TaskUpdateManyWithoutAgentsInput } from "./TaskUpdateManyWithoutAgentsInput";
+import { EnumAgentTypeField } from "./EnumAgentTypeField";
+import { UserWhereUniqueInput } from "../../user/base/UserWhereUniqueInput";
+
+@InputType()
+class AgentUpdateInput {
+  @ApiProperty({
+    required: false,
+    type: String,
+  })
+  @IsString()
+  @MaxLength(1000)
+  @IsOptional()
+  @Field(() => String, {
+    nullable: true,
+  })
+  activeSession?: string | null;
+
+  @ApiProperty({
+    required: false,
+    type: String,
+  })
+  @IsString()
+  @MaxLength(1000)
+  @IsOptional()
+  @Field(() => String, {
+    nullable: true,
+  })
+  description?: string | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => MemoryLogUpdateManyWithoutAgentsInput,
+  })
+  @ValidateNested()
+  @Type(() => MemoryLogUpdateManyWithoutAgentsInput)
+  @IsOptional()
+  @Field(() => MemoryLogUpdateManyWithoutAgentsInput, {
+    nullable: true,
+  })
+  memoryLogs?: MemoryLogUpdateManyWithoutAgentsInput;
+
+  @ApiProperty({
+    required: false,
+    type: String,
+  })
+  @IsString()
+  @MaxLength(1000)
+  @IsOptional()
+  @Field(() => String, {
+    nullable: true,
+  })
+  name?: string | null;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumAgentStatus,
+  })
+  @IsEnum(EnumAgentStatus)
+  @IsOptional()
+  @Field(() => EnumAgentStatus, {
+    nullable: true,
+  })
+  status?: "Option1" | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => TaskUpdateManyWithoutAgentsInput,
+  })
+  @ValidateNested()
+  @Type(() => TaskUpdateManyWithoutAgentsInput)
+  @IsOptional()
+  @Field(() => TaskUpdateManyWithoutAgentsInput, {
+    nullable: true,
+  })
+  tasks?: TaskUpdateManyWithoutAgentsInput;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumAgentTypeField,
+  })
+  @IsEnum(EnumAgentTypeField)
+  @IsOptional()
+  @Field(() => EnumAgentTypeField, {
+    nullable: true,
+  })
+  typeField?: "Option1" | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => UserWhereUniqueInput,
+  })
+  @ValidateNested()
+  @Type(() => UserWhereUniqueInput)
+  @IsOptional()
+  @Field(() => UserWhereUniqueInput, {
+    nullable: true,
+  })
+  user?: UserWhereUniqueInput | null;
+}
+
 export { AgentUpdateInput as AgentUpdateInput };

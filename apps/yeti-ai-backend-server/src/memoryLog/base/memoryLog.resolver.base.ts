@@ -17,7 +17,11 @@ import { MemoryLog } from "./MemoryLog";
 import { MemoryLogCountArgs } from "./MemoryLogCountArgs";
 import { MemoryLogFindManyArgs } from "./MemoryLogFindManyArgs";
 import { MemoryLogFindUniqueArgs } from "./MemoryLogFindUniqueArgs";
+import { CreateMemoryLogArgs } from "./CreateMemoryLogArgs";
+import { UpdateMemoryLogArgs } from "./UpdateMemoryLogArgs";
 import { DeleteMemoryLogArgs } from "./DeleteMemoryLogArgs";
+import { Agent } from "../../agent/base/Agent";
+import { Session } from "../../session/base/Session";
 import { MemoryLogService } from "../memoryLog.service";
 @graphql.Resolver(() => MemoryLog)
 export class MemoryLogResolverBase {
@@ -51,6 +55,63 @@ export class MemoryLogResolverBase {
   }
 
   @graphql.Mutation(() => MemoryLog)
+  async createMemoryLog(
+    @graphql.Args() args: CreateMemoryLogArgs
+  ): Promise<MemoryLog> {
+    return await this.service.createMemoryLog({
+      ...args,
+      data: {
+        ...args.data,
+
+        agent: args.data.agent
+          ? {
+              connect: args.data.agent,
+            }
+          : undefined,
+
+        session: args.data.session
+          ? {
+              connect: args.data.session,
+            }
+          : undefined,
+      },
+    });
+  }
+
+  @graphql.Mutation(() => MemoryLog)
+  async updateMemoryLog(
+    @graphql.Args() args: UpdateMemoryLogArgs
+  ): Promise<MemoryLog | null> {
+    try {
+      return await this.service.updateMemoryLog({
+        ...args,
+        data: {
+          ...args.data,
+
+          agent: args.data.agent
+            ? {
+                connect: args.data.agent,
+              }
+            : undefined,
+
+          session: args.data.session
+            ? {
+                connect: args.data.session,
+              }
+            : undefined,
+        },
+      });
+    } catch (error) {
+      if (isRecordNotFoundError(error)) {
+        throw new GraphQLError(
+          `No resource was found for ${JSON.stringify(args.where)}`
+        );
+      }
+      throw error;
+    }
+  }
+
+  @graphql.Mutation(() => MemoryLog)
   async deleteMemoryLog(
     @graphql.Args() args: DeleteMemoryLogArgs
   ): Promise<MemoryLog | null> {
@@ -64,5 +125,33 @@ export class MemoryLogResolverBase {
       }
       throw error;
     }
+  }
+
+  @graphql.ResolveField(() => Agent, {
+    nullable: true,
+    name: "agent",
+  })
+  async getAgent(@graphql.Parent() parent: MemoryLog): Promise<Agent | null> {
+    const result = await this.service.getAgent(parent.id);
+
+    if (!result) {
+      return null;
+    }
+    return result;
+  }
+
+  @graphql.ResolveField(() => Session, {
+    nullable: true,
+    name: "session",
+  })
+  async getSession(
+    @graphql.Parent() parent: MemoryLog
+  ): Promise<Session | null> {
+    const result = await this.service.getSession(parent.id);
+
+    if (!result) {
+      return null;
+    }
+    return result;
   }
 }

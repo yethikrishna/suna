@@ -20,6 +20,12 @@ import { UserFindUniqueArgs } from "./UserFindUniqueArgs";
 import { CreateUserArgs } from "./CreateUserArgs";
 import { UpdateUserArgs } from "./UpdateUserArgs";
 import { DeleteUserArgs } from "./DeleteUserArgs";
+import { AgentFindManyArgs } from "../../agent/base/AgentFindManyArgs";
+import { Agent } from "../../agent/base/Agent";
+import { IntegrationFindManyArgs } from "../../integration/base/IntegrationFindManyArgs";
+import { Integration } from "../../integration/base/Integration";
+import { SessionFindManyArgs } from "../../session/base/SessionFindManyArgs";
+import { Session } from "../../session/base/Session";
 import { UserService } from "../user.service";
 @graphql.Resolver(() => User)
 export class UserResolverBase {
@@ -85,5 +91,47 @@ export class UserResolverBase {
       }
       throw error;
     }
+  }
+
+  @graphql.ResolveField(() => [Agent], { name: "agents" })
+  async findAgents(
+    @graphql.Parent() parent: User,
+    @graphql.Args() args: AgentFindManyArgs
+  ): Promise<Agent[]> {
+    const results = await this.service.findAgents(parent.id, args);
+
+    if (!results) {
+      return [];
+    }
+
+    return results;
+  }
+
+  @graphql.ResolveField(() => [Integration], { name: "integrations" })
+  async findIntegrations(
+    @graphql.Parent() parent: User,
+    @graphql.Args() args: IntegrationFindManyArgs
+  ): Promise<Integration[]> {
+    const results = await this.service.findIntegrations(parent.id, args);
+
+    if (!results) {
+      return [];
+    }
+
+    return results;
+  }
+
+  @graphql.ResolveField(() => [Session], { name: "sessions" })
+  async findSessions(
+    @graphql.Parent() parent: User,
+    @graphql.Args() args: SessionFindManyArgs
+  ): Promise<Session[]> {
+    const results = await this.service.findSessions(parent.id, args);
+
+    if (!results) {
+      return [];
+    }
+
+    return results;
   }
 }

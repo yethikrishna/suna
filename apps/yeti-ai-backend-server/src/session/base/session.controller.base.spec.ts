@@ -19,24 +19,32 @@ const nonExistingId = "nonExistingId";
 const existingId = "existingId";
 const CREATE_INPUT = {
   createdAt: new Date(),
+  endTime: new Date(),
   id: "exampleId",
+  startTime: new Date(),
   updatedAt: new Date(),
 };
 const CREATE_RESULT = {
   createdAt: new Date(),
+  endTime: new Date(),
   id: "exampleId",
+  startTime: new Date(),
   updatedAt: new Date(),
 };
 const FIND_MANY_RESULT = [
   {
     createdAt: new Date(),
+    endTime: new Date(),
     id: "exampleId",
+    startTime: new Date(),
     updatedAt: new Date(),
   },
 ];
 const FIND_ONE_RESULT = {
   createdAt: new Date(),
+  endTime: new Date(),
   id: "exampleId",
+  startTime: new Date(),
   updatedAt: new Date(),
 };
 
@@ -123,6 +131,8 @@ describe("Session", () => {
       .expect({
         ...CREATE_RESULT,
         createdAt: CREATE_RESULT.createdAt.toISOString(),
+        endTime: CREATE_RESULT.endTime.toISOString(),
+        startTime: CREATE_RESULT.startTime.toISOString(),
         updatedAt: CREATE_RESULT.updatedAt.toISOString(),
       });
   });
@@ -135,6 +145,8 @@ describe("Session", () => {
         {
           ...FIND_MANY_RESULT[0],
           createdAt: FIND_MANY_RESULT[0].createdAt.toISOString(),
+          endTime: FIND_MANY_RESULT[0].endTime.toISOString(),
+          startTime: FIND_MANY_RESULT[0].startTime.toISOString(),
           updatedAt: FIND_MANY_RESULT[0].updatedAt.toISOString(),
         },
       ]);
@@ -158,6 +170,8 @@ describe("Session", () => {
       .expect({
         ...FIND_ONE_RESULT,
         createdAt: FIND_ONE_RESULT.createdAt.toISOString(),
+        endTime: FIND_ONE_RESULT.endTime.toISOString(),
+        startTime: FIND_ONE_RESULT.startTime.toISOString(),
         updatedAt: FIND_ONE_RESULT.updatedAt.toISOString(),
       });
   });
@@ -171,6 +185,8 @@ describe("Session", () => {
       .expect({
         ...CREATE_RESULT,
         createdAt: CREATE_RESULT.createdAt.toISOString(),
+        endTime: CREATE_RESULT.endTime.toISOString(),
+        startTime: CREATE_RESULT.startTime.toISOString(),
         updatedAt: CREATE_RESULT.updatedAt.toISOString(),
       })
       .then(function () {

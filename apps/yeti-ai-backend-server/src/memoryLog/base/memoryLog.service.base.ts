@@ -10,7 +10,13 @@ https://docs.amplication.com/how-to/custom-code
 ------------------------------------------------------------------------------
   */
 import { PrismaService } from "../../prisma/prisma.service";
-import { Prisma, MemoryLog as PrismaMemoryLog } from "@prisma/client";
+
+import {
+  Prisma,
+  MemoryLog as PrismaMemoryLog,
+  Agent as PrismaAgent,
+  Session as PrismaSession,
+} from "@prisma/client";
 
 export class MemoryLogServiceBase {
   constructor(protected readonly prisma: PrismaService) {}
@@ -45,5 +51,21 @@ export class MemoryLogServiceBase {
     args: Prisma.MemoryLogDeleteArgs
   ): Promise<PrismaMemoryLog> {
     return this.prisma.memoryLog.delete(args);
+  }
+
+  async getAgent(parentId: string): Promise<PrismaAgent | null> {
+    return this.prisma.memoryLog
+      .findUnique({
+        where: { id: parentId },
+      })
+      .agent();
+  }
+
+  async getSession(parentId: string): Promise<PrismaSession | null> {
+    return this.prisma.memoryLog
+      .findUnique({
+        where: { id: parentId },
+      })
+      .session();
   }
 }

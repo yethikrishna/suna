@@ -1,7 +1,7 @@
 import { Plugin as TPlugin } from "../api/plugin/Plugin";
 
-export const PLUGIN_TITLE_FIELD = "id";
+export const PLUGIN_TITLE_FIELD = "name";
 
 export const PluginTitle = (record: TPlugin): string => {
-  return record.id?.toString() || String(record.id);
+  return record.name?.toString() || String(record.id);
 };

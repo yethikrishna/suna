@@ -17,7 +17,14 @@ import { Agent } from "./Agent";
 import { AgentCountArgs } from "./AgentCountArgs";
 import { AgentFindManyArgs } from "./AgentFindManyArgs";
 import { AgentFindUniqueArgs } from "./AgentFindUniqueArgs";
+import { CreateAgentArgs } from "./CreateAgentArgs";
+import { UpdateAgentArgs } from "./UpdateAgentArgs";
 import { DeleteAgentArgs } from "./DeleteAgentArgs";
+import { MemoryLogFindManyArgs } from "../../memoryLog/base/MemoryLogFindManyArgs";
+import { MemoryLog } from "../../memoryLog/base/MemoryLog";
+import { TaskFindManyArgs } from "../../task/base/TaskFindManyArgs";
+import { Task } from "../../task/base/Task";
+import { User } from "../../user/base/User";
 import { AgentService } from "../agent.service";
 @graphql.Resolver(() => Agent)
 export class AgentResolverBase {
@@ -49,6 +56,49 @@ export class AgentResolverBase {
   }
 
   @graphql.Mutation(() => Agent)
+  async createAgent(@graphql.Args() args: CreateAgentArgs): Promise<Agent> {
+    return await this.service.createAgent({
+      ...args,
+      data: {
+        ...args.data,
+
+        user: args.data.user
+          ? {
+              connect: args.data.user,
+            }
+          : undefined,
+      },
+    });
+  }
+
+  @graphql.Mutation(() => Agent)
+  async updateAgent(
+    @graphql.Args() args: UpdateAgentArgs
+  ): Promise<Agent | null> {
+    try {
+      return await this.service.updateAgent({
+        ...args,
+        data: {
+          ...args.data,
+
+          user: args.data.user
+            ? {
+                connect: args.data.user,
+              }
+            : undefined,
+        },
+      });
+    } catch (error) {
+      if (isRecordNotFoundError(error)) {
+        throw new GraphQLError(
+          `No resource was found for ${JSON.stringify(args.where)}`
+        );
+      }
+      throw error;
+    }
+  }
+
+  @graphql.Mutation(() => Agent)
   async deleteAgent(
     @graphql.Args() args: DeleteAgentArgs
   ): Promise<Agent | null> {
@@ -62,5 +112,46 @@ export class AgentResolverBase {
       }
       throw error;
     }
+  }
+
+  @graphql.ResolveField(() => [MemoryLog], { name: "memoryLogs" })
+  async findMemoryLogs(
+    @graphql.Parent() parent: Agent,
+    @graphql.Args() args: MemoryLogFindManyArgs
+  ): Promise<MemoryLog[]> {
+    const results = await this.service.findMemoryLogs(parent.id, args);
+
+    if (!results) {
+      return [];
+    }
+
+    return results;
+  }
+
+  @graphql.ResolveField(() => [Task], { name: "tasks" })
+  async findTasks(
+    @graphql.Parent() parent: Agent,
+    @graphql.Args() args: TaskFindManyArgs
+  ): Promise<Task[]> {
+    const results = await this.service.findTasks(parent.id, args);
+
+    if (!results) {
+      return [];
+    }
+
+    return results;
+  }
+
+  @graphql.ResolveField(() => User, {
+    nullable: true,
+    name: "user",
+  })
+  async getUser(@graphql.Parent() parent: Agent): Promise<User | null> {
+    const result = await this.service.getUser(parent.id);
+
+    if (!result) {
+      return null;
+    }
+    return result;
   }
 }

@@ -19,24 +19,48 @@ const nonExistingId = "nonExistingId";
 const existingId = "existingId";
 const CREATE_INPUT = {
   createdAt: new Date(),
+  description: "exampleDescription",
   id: "exampleId",
+  output: "exampleOutput",
+  parentTask: "exampleParentTask",
+  relatedSession: "exampleRelatedSession",
+  scheduledTime: new Date(),
+  title: "exampleTitle",
   updatedAt: new Date(),
 };
 const CREATE_RESULT = {
   createdAt: new Date(),
+  description: "exampleDescription",
   id: "exampleId",
+  output: "exampleOutput",
+  parentTask: "exampleParentTask",
+  relatedSession: "exampleRelatedSession",
+  scheduledTime: new Date(),
+  title: "exampleTitle",
   updatedAt: new Date(),
 };
 const FIND_MANY_RESULT = [
   {
     createdAt: new Date(),
+    description: "exampleDescription",
     id: "exampleId",
+    output: "exampleOutput",
+    parentTask: "exampleParentTask",
+    relatedSession: "exampleRelatedSession",
+    scheduledTime: new Date(),
+    title: "exampleTitle",
     updatedAt: new Date(),
   },
 ];
 const FIND_ONE_RESULT = {
   createdAt: new Date(),
+  description: "exampleDescription",
   id: "exampleId",
+  output: "exampleOutput",
+  parentTask: "exampleParentTask",
+  relatedSession: "exampleRelatedSession",
+  scheduledTime: new Date(),
+  title: "exampleTitle",
   updatedAt: new Date(),
 };
 
@@ -123,6 +147,7 @@ describe("Task", () => {
       .expect({
         ...CREATE_RESULT,
         createdAt: CREATE_RESULT.createdAt.toISOString(),
+        scheduledTime: CREATE_RESULT.scheduledTime.toISOString(),
         updatedAt: CREATE_RESULT.updatedAt.toISOString(),
       });
   });
@@ -135,6 +160,7 @@ describe("Task", () => {
         {
           ...FIND_MANY_RESULT[0],
           createdAt: FIND_MANY_RESULT[0].createdAt.toISOString(),
+          scheduledTime: FIND_MANY_RESULT[0].scheduledTime.toISOString(),
           updatedAt: FIND_MANY_RESULT[0].updatedAt.toISOString(),
         },
       ]);
@@ -158,6 +184,7 @@ describe("Task", () => {
       .expect({
         ...FIND_ONE_RESULT,
         createdAt: FIND_ONE_RESULT.createdAt.toISOString(),
+        scheduledTime: FIND_ONE_RESULT.scheduledTime.toISOString(),
         updatedAt: FIND_ONE_RESULT.updatedAt.toISOString(),
       });
   });
@@ -171,6 +198,7 @@ describe("Task", () => {
       .expect({
         ...CREATE_RESULT,
         createdAt: CREATE_RESULT.createdAt.toISOString(),
+        scheduledTime: CREATE_RESULT.scheduledTime.toISOString(),
         updatedAt: CREATE_RESULT.updatedAt.toISOString(),
       })
       .then(function () {

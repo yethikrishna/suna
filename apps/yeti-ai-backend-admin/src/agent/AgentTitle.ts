@@ -1,7 +1,7 @@
 import { Agent as TAgent } from "../api/agent/Agent";
 
-export const AGENT_TITLE_FIELD = "id";
+export const AGENT_TITLE_FIELD = "name";
 
 export const AgentTitle = (record: TAgent): string => {
-  return record.id?.toString() || String(record.id);
+  return record.name?.toString() || String(record.id);
 };

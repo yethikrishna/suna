@@ -31,11 +31,29 @@ export class IntegrationControllerBase {
     @common.Body() data: IntegrationCreateInput
   ): Promise<Integration> {
     return await this.service.createIntegration({
-      data: data,
+      data: {
+        ...data,
+
+        user: data.user
+          ? {
+              connect: data.user,
+            }
+          : undefined,
+      },
       select: {
+        configField: true,
         createdAt: true,
         id: true,
+        lastSync: true,
+        status: true,
+        typeField: true,
         updatedAt: true,
+
+        user: {
+          select: {
+            id: true,
+          },
+        },
       },
     });
   }
@@ -48,9 +66,19 @@ export class IntegrationControllerBase {
     return this.service.integrations({
       ...args,
       select: {
+        configField: true,
         createdAt: true,
         id: true,
+        lastSync: true,
+        status: true,
+        typeField: true,
         updatedAt: true,
+
+        user: {
+          select: {
+            id: true,
+          },
+        },
       },
     });
   }
@@ -64,9 +92,19 @@ export class IntegrationControllerBase {
     const result = await this.service.integration({
       where: params,
       select: {
+        configField: true,
         createdAt: true,
         id: true,
+        lastSync: true,
+        status: true,
+        typeField: true,
         updatedAt: true,
+
+        user: {
+          select: {
+            id: true,
+          },
+        },
       },
     });
     if (result === null) {
@@ -87,11 +125,29 @@ export class IntegrationControllerBase {
     try {
       return await this.service.updateIntegration({
         where: params,
-        data: data,
+        data: {
+          ...data,
+
+          user: data.user
+            ? {
+                connect: data.user,
+              }
+            : undefined,
+        },
         select: {
+          configField: true,
           createdAt: true,
           id: true,
+          lastSync: true,
+          status: true,
+          typeField: true,
           updatedAt: true,
+
+          user: {
+            select: {
+              id: true,
+            },
+          },
         },
       });
     } catch (error) {
@@ -114,9 +170,19 @@ export class IntegrationControllerBase {
       return await this.service.deleteIntegration({
         where: params,
         select: {
+          configField: true,
           createdAt: true,
           id: true,
+          lastSync: true,
+          status: true,
+          typeField: true,
           updatedAt: true,
+
+          user: {
+            select: {
+              id: true,
+            },
+          },
         },
       });
     } catch (error) {

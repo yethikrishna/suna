@@ -22,6 +22,12 @@ import { Agent } from "./Agent";
 import { AgentFindManyArgs } from "./AgentFindManyArgs";
 import { AgentWhereUniqueInput } from "./AgentWhereUniqueInput";
 import { AgentUpdateInput } from "./AgentUpdateInput";
+import { MemoryLogFindManyArgs } from "../../memoryLog/base/MemoryLogFindManyArgs";
+import { MemoryLog } from "../../memoryLog/base/MemoryLog";
+import { MemoryLogWhereUniqueInput } from "../../memoryLog/base/MemoryLogWhereUniqueInput";
+import { TaskFindManyArgs } from "../../task/base/TaskFindManyArgs";
+import { Task } from "../../task/base/Task";
+import { TaskWhereUniqueInput } from "../../task/base/TaskWhereUniqueInput";
 
 export class AgentControllerBase {
   constructor(protected readonly service: AgentService) {}
@@ -29,11 +35,30 @@ export class AgentControllerBase {
   @swagger.ApiCreatedResponse({ type: Agent })
   async createAgent(@common.Body() data: AgentCreateInput): Promise<Agent> {
     return await this.service.createAgent({
-      data: data,
+      data: {
+        ...data,
+
+        user: data.user
+          ? {
+              connect: data.user,
+            }
+          : undefined,
+      },
       select: {
+        activeSession: true,
         createdAt: true,
+        description: true,
         id: true,
+        name: true,
+        status: true,
+        typeField: true,
         updatedAt: true,
+
+        user: {
+          select: {
+            id: true,
+          },
+        },
       },
     });
   }
@@ -46,9 +71,20 @@ export class AgentControllerBase {
     return this.service.agents({
       ...args,
       select: {
+        activeSession: true,
         createdAt: true,
+        description: true,
         id: true,
+        name: true,
+        status: true,
+        typeField: true,
         updatedAt: true,
+
+        user: {
+          select: {
+            id: true,
+          },
+        },
       },
     });
   }
@@ -62,9 +98,20 @@ export class AgentControllerBase {
     const result = await this.service.agent({
       where: params,
       select: {
+        activeSession: true,
         createdAt: true,
+        description: true,
         id: true,
+        name: true,
+        status: true,
+        typeField: true,
         updatedAt: true,
+
+        user: {
+          select: {
+            id: true,
+          },
+        },
       },
     });
     if (result === null) {
@@ -85,11 +132,30 @@ export class AgentControllerBase {
     try {
       return await this.service.updateAgent({
         where: params,
-        data: data,
+        data: {
+          ...data,
+
+          user: data.user
+            ? {
+                connect: data.user,
+              }
+            : undefined,
+        },
         select: {
+          activeSession: true,
           createdAt: true,
+          description: true,
           id: true,
+          name: true,
+          status: true,
+          typeField: true,
           updatedAt: true,
+
+          user: {
+            select: {
+              id: true,
+            },
+          },
         },
       });
     } catch (error) {
@@ -112,9 +178,20 @@ export class AgentControllerBase {
       return await this.service.deleteAgent({
         where: params,
         select: {
+          activeSession: true,
           createdAt: true,
+          description: true,
           id: true,
+          name: true,
+          status: true,
+          typeField: true,
           updatedAt: true,
+
+          user: {
+            select: {
+              id: true,
+            },
+          },
         },
       });
     } catch (error) {
@@ -125,5 +202,183 @@ export class AgentControllerBase {
       }
       throw error;
     }
+  }
+
+  @common.Get("/:id/memoryLogs")
+  @ApiNestedQuery(MemoryLogFindManyArgs)
+  async findMemoryLogs(
+    @common.Req() request: Request,
+    @common.Param() params: AgentWhereUniqueInput
+  ): Promise<MemoryLog[]> {
+    const query = plainToClass(MemoryLogFindManyArgs, request.query);
+    const results = await this.service.findMemoryLogs(params.id, {
+      ...query,
+      select: {
+        agent: {
+          select: {
+            id: true,
+          },
+        },
+
+        content: true,
+        createdAt: true,
+        id: true,
+        relatedTask: true,
+
+        session: {
+          select: {
+            id: true,
+          },
+        },
+
+        timestamp: true,
+        typeField: true,
+        updatedAt: true,
+      },
+    });
+    if (results === null) {
+      throw new errors.NotFoundException(
+        `No resource was found for ${JSON.stringify(params)}`
+      );
+    }
+    return results;
+  }
+
+  @common.Post("/:id/memoryLogs")
+  async connectMemoryLogs(
+    @common.Param() params: AgentWhereUniqueInput,
+    @common.Body() body: MemoryLogWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      memoryLogs: {
+        connect: body,
+      },
+    };
+    await this.service.updateAgent({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Patch("/:id/memoryLogs")
+  async updateMemoryLogs(
+    @common.Param() params: AgentWhereUniqueInput,
+    @common.Body() body: MemoryLogWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      memoryLogs: {
+        set: body,
+      },
+    };
+    await this.service.updateAgent({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Delete("/:id/memoryLogs")
+  async disconnectMemoryLogs(
+    @common.Param() params: AgentWhereUniqueInput,
+    @common.Body() body: MemoryLogWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      memoryLogs: {
+        disconnect: body,
+      },
+    };
+    await this.service.updateAgent({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Get("/:id/tasks")
+  @ApiNestedQuery(TaskFindManyArgs)
+  async findTasks(
+    @common.Req() request: Request,
+    @common.Param() params: AgentWhereUniqueInput
+  ): Promise<Task[]> {
+    const query = plainToClass(TaskFindManyArgs, request.query);
+    const results = await this.service.findTasks(params.id, {
+      ...query,
+      select: {
+        agent: {
+          select: {
+            id: true,
+          },
+        },
+
+        createdAt: true,
+        description: true,
+        id: true,
+        output: true,
+        parentTask: true,
+        relatedSession: true,
+        scheduledTime: true,
+        status: true,
+        title: true,
+        updatedAt: true,
+      },
+    });
+    if (results === null) {
+      throw new errors.NotFoundException(
+        `No resource was found for ${JSON.stringify(params)}`
+      );
+    }
+    return results;
+  }
+
+  @common.Post("/:id/tasks")
+  async connectTasks(
+    @common.Param() params: AgentWhereUniqueInput,
+    @common.Body() body: TaskWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      tasks: {
+        connect: body,
+      },
+    };
+    await this.service.updateAgent({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Patch("/:id/tasks")
+  async updateTasks(
+    @common.Param() params: AgentWhereUniqueInput,
+    @common.Body() body: TaskWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      tasks: {
+        set: body,
+      },
+    };
+    await this.service.updateAgent({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Delete("/:id/tasks")
+  async disconnectTasks(
+    @common.Param() params: AgentWhereUniqueInput,
+    @common.Body() body: TaskWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      tasks: {
+        disconnect: body,
+      },
+    };
+    await this.service.updateAgent({
+      where: params,
+      data,
+      select: { id: true },
+    });
   }
 }

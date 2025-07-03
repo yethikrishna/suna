@@ -11,12 +11,28 @@ https://docs.amplication.com/how-to/custom-code
   */
 import { InputType, Field } from "@nestjs/graphql";
 import { ApiProperty } from "@nestjs/swagger";
-import { StringFilter } from "../../util/StringFilter";
+import { JsonFilter } from "../../util/JsonFilter";
 import { Type } from "class-transformer";
-import { IsOptional } from "class-validator";
+import { IsOptional, IsEnum, ValidateNested } from "class-validator";
+import { StringFilter } from "../../util/StringFilter";
+import { DateTimeNullableFilter } from "../../util/DateTimeNullableFilter";
+import { EnumIntegrationStatus } from "./EnumIntegrationStatus";
+import { EnumIntegrationTypeField } from "./EnumIntegrationTypeField";
+import { UserWhereUniqueInput } from "../../user/base/UserWhereUniqueInput";
 
 @InputType()
 class IntegrationWhereInput {
+  @ApiProperty({
+    required: false,
+    type: JsonFilter,
+  })
+  @Type(() => JsonFilter)
+  @IsOptional()
+  @Field(() => JsonFilter, {
+    nullable: true,
+  })
+  configField?: JsonFilter;
+
   @ApiProperty({
     required: false,
     type: StringFilter,
@@ -27,6 +43,51 @@ class IntegrationWhereInput {
     nullable: true,
   })
   id?: StringFilter;
+
+  @ApiProperty({
+    required: false,
+    type: DateTimeNullableFilter,
+  })
+  @Type(() => DateTimeNullableFilter)
+  @IsOptional()
+  @Field(() => DateTimeNullableFilter, {
+    nullable: true,
+  })
+  lastSync?: DateTimeNullableFilter;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumIntegrationStatus,
+  })
+  @IsEnum(EnumIntegrationStatus)
+  @IsOptional()
+  @Field(() => EnumIntegrationStatus, {
+    nullable: true,
+  })
+  status?: "Option1";
+
+  @ApiProperty({
+    required: false,
+    enum: EnumIntegrationTypeField,
+  })
+  @IsEnum(EnumIntegrationTypeField)
+  @IsOptional()
+  @Field(() => EnumIntegrationTypeField, {
+    nullable: true,
+  })
+  typeField?: "Option1";
+
+  @ApiProperty({
+    required: false,
+    type: () => UserWhereUniqueInput,
+  })
+  @ValidateNested()
+  @Type(() => UserWhereUniqueInput)
+  @IsOptional()
+  @Field(() => UserWhereUniqueInput, {
+    nullable: true,
+  })
+  user?: UserWhereUniqueInput;
 }
 
 export { IntegrationWhereInput as IntegrationWhereInput };

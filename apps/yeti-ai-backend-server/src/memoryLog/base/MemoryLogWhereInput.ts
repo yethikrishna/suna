@@ -11,12 +11,40 @@ https://docs.amplication.com/how-to/custom-code
   */
 import { InputType, Field } from "@nestjs/graphql";
 import { ApiProperty } from "@nestjs/swagger";
-import { StringFilter } from "../../util/StringFilter";
+import { AgentWhereUniqueInput } from "../../agent/base/AgentWhereUniqueInput";
+import { ValidateNested, IsOptional, IsEnum } from "class-validator";
 import { Type } from "class-transformer";
-import { IsOptional } from "class-validator";
+import { StringNullableFilter } from "../../util/StringNullableFilter";
+import { StringFilter } from "../../util/StringFilter";
+import { SessionWhereUniqueInput } from "../../session/base/SessionWhereUniqueInput";
+import { DateTimeNullableFilter } from "../../util/DateTimeNullableFilter";
+import { EnumMemoryLogTypeField } from "./EnumMemoryLogTypeField";
 
 @InputType()
 class MemoryLogWhereInput {
+  @ApiProperty({
+    required: false,
+    type: () => AgentWhereUniqueInput,
+  })
+  @ValidateNested()
+  @Type(() => AgentWhereUniqueInput)
+  @IsOptional()
+  @Field(() => AgentWhereUniqueInput, {
+    nullable: true,
+  })
+  agent?: AgentWhereUniqueInput;
+
+  @ApiProperty({
+    required: false,
+    type: StringNullableFilter,
+  })
+  @Type(() => StringNullableFilter)
+  @IsOptional()
+  @Field(() => StringNullableFilter, {
+    nullable: true,
+  })
+  content?: StringNullableFilter;
+
   @ApiProperty({
     required: false,
     type: StringFilter,
@@ -27,6 +55,51 @@ class MemoryLogWhereInput {
     nullable: true,
   })
   id?: StringFilter;
+
+  @ApiProperty({
+    required: false,
+    type: StringNullableFilter,
+  })
+  @Type(() => StringNullableFilter)
+  @IsOptional()
+  @Field(() => StringNullableFilter, {
+    nullable: true,
+  })
+  relatedTask?: StringNullableFilter;
+
+  @ApiProperty({
+    required: false,
+    type: () => SessionWhereUniqueInput,
+  })
+  @ValidateNested()
+  @Type(() => SessionWhereUniqueInput)
+  @IsOptional()
+  @Field(() => SessionWhereUniqueInput, {
+    nullable: true,
+  })
+  session?: SessionWhereUniqueInput;
+
+  @ApiProperty({
+    required: false,
+    type: DateTimeNullableFilter,
+  })
+  @Type(() => DateTimeNullableFilter)
+  @IsOptional()
+  @Field(() => DateTimeNullableFilter, {
+    nullable: true,
+  })
+  timestamp?: DateTimeNullableFilter;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumMemoryLogTypeField,
+  })
+  @IsEnum(EnumMemoryLogTypeField)
+  @IsOptional()
+  @Field(() => EnumMemoryLogTypeField, {
+    nullable: true,
+  })
+  typeField?: "Option1";
 }
 
 export { MemoryLogWhereInput as MemoryLogWhereInput };

@@ -11,11 +11,33 @@ https://docs.amplication.com/how-to/custom-code
   */
 import { ObjectType, Field } from "@nestjs/graphql";
 import { ApiProperty } from "@nestjs/swagger";
-import { IsDate, IsString } from "class-validator";
+import { IsJSONValue } from "../../validators";
+import {
+  IsOptional,
+  IsDate,
+  IsString,
+  IsEnum,
+  ValidateNested,
+} from "class-validator";
+import { GraphQLJSON } from "graphql-type-json";
+import { JsonValue } from "type-fest";
 import { Type } from "class-transformer";
+import { EnumIntegrationStatus } from "./EnumIntegrationStatus";
+import { EnumIntegrationTypeField } from "./EnumIntegrationTypeField";
+import { User } from "../../user/base/User";
 
 @ObjectType()
 class Integration {
+  @ApiProperty({
+    required: false,
+  })
+  @IsJSONValue()
+  @IsOptional()
+  @Field(() => GraphQLJSON, {
+    nullable: true,
+  })
+  configField!: JsonValue;
+
   @ApiProperty({
     required: true,
   })
@@ -33,12 +55,54 @@ class Integration {
   id!: string;
 
   @ApiProperty({
+    required: false,
+  })
+  @IsDate()
+  @Type(() => Date)
+  @IsOptional()
+  @Field(() => Date, {
+    nullable: true,
+  })
+  lastSync!: Date | null;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumIntegrationStatus,
+  })
+  @IsEnum(EnumIntegrationStatus)
+  @IsOptional()
+  @Field(() => EnumIntegrationStatus, {
+    nullable: true,
+  })
+  status?: "Option1" | null;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumIntegrationTypeField,
+  })
+  @IsEnum(EnumIntegrationTypeField)
+  @IsOptional()
+  @Field(() => EnumIntegrationTypeField, {
+    nullable: true,
+  })
+  typeField?: "Option1" | null;
+
+  @ApiProperty({
     required: true,
   })
   @IsDate()
   @Type(() => Date)
   @Field(() => Date)
   updatedAt!: Date;
+
+  @ApiProperty({
+    required: false,
+    type: () => User,
+  })
+  @ValidateNested()
+  @Type(() => User)
+  @IsOptional()
+  user?: User | null;
 }
 
 export { Integration as Integration };

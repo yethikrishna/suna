@@ -11,14 +11,32 @@ https://docs.amplication.com/how-to/custom-code
   */
 import { ObjectType, Field } from "@nestjs/graphql";
 import { ApiProperty } from "@nestjs/swagger";
-import { IsDate, IsString, IsOptional, MaxLength } from "class-validator";
+import { Agent } from "../../agent/base/Agent";
+import {
+  ValidateNested,
+  IsOptional,
+  IsDate,
+  IsString,
+  MaxLength,
+} from "class-validator";
 import { Type } from "class-transformer";
+import { Integration } from "../../integration/base/Integration";
 import { IsJSONValue } from "../../validators";
 import { GraphQLJSON } from "graphql-type-json";
 import { JsonValue } from "type-fest";
+import { Session } from "../../session/base/Session";
 
 @ObjectType()
 class User {
+  @ApiProperty({
+    required: false,
+    type: () => [Agent],
+  })
+  @ValidateNested()
+  @Type(() => Agent)
+  @IsOptional()
+  agents?: Array<Agent>;
+
   @ApiProperty({
     required: true,
   })
@@ -60,6 +78,15 @@ class User {
 
   @ApiProperty({
     required: false,
+    type: () => [Integration],
+  })
+  @ValidateNested()
+  @Type(() => Integration)
+  @IsOptional()
+  integrations?: Array<Integration>;
+
+  @ApiProperty({
+    required: false,
     type: String,
   })
   @IsString()
@@ -71,11 +98,30 @@ class User {
   lastName!: string | null;
 
   @ApiProperty({
+    required: false,
+  })
+  @IsJSONValue()
+  @IsOptional()
+  @Field(() => GraphQLJSON, {
+    nullable: true,
+  })
+  preferences!: JsonValue;
+
+  @ApiProperty({
     required: true,
   })
   @IsJSONValue()
   @Field(() => GraphQLJSON)
   roles!: JsonValue;
+
+  @ApiProperty({
+    required: false,
+    type: () => [Session],
+  })
+  @ValidateNested()
+  @Type(() => Session)
+  @IsOptional()
+  sessions?: Array<Session>;
 
   @ApiProperty({
     required: true,

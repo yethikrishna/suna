@@ -22,6 +22,9 @@ import { Session } from "./Session";
 import { SessionFindManyArgs } from "./SessionFindManyArgs";
 import { SessionWhereUniqueInput } from "./SessionWhereUniqueInput";
 import { SessionUpdateInput } from "./SessionUpdateInput";
+import { MemoryLogFindManyArgs } from "../../memoryLog/base/MemoryLogFindManyArgs";
+import { MemoryLog } from "../../memoryLog/base/MemoryLog";
+import { MemoryLogWhereUniqueInput } from "../../memoryLog/base/MemoryLogWhereUniqueInput";
 
 export class SessionControllerBase {
   constructor(protected readonly service: SessionService) {}
@@ -31,11 +34,27 @@ export class SessionControllerBase {
     @common.Body() data: SessionCreateInput
   ): Promise<Session> {
     return await this.service.createSession({
-      data: data,
+      data: {
+        ...data,
+
+        user: data.user
+          ? {
+              connect: data.user,
+            }
+          : undefined,
+      },
       select: {
         createdAt: true,
+        endTime: true,
         id: true,
+        startTime: true,
         updatedAt: true,
+
+        user: {
+          select: {
+            id: true,
+          },
+        },
       },
     });
   }
@@ -49,8 +68,16 @@ export class SessionControllerBase {
       ...args,
       select: {
         createdAt: true,
+        endTime: true,
         id: true,
+        startTime: true,
         updatedAt: true,
+
+        user: {
+          select: {
+            id: true,
+          },
+        },
       },
     });
   }
@@ -65,8 +92,16 @@ export class SessionControllerBase {
       where: params,
       select: {
         createdAt: true,
+        endTime: true,
         id: true,
+        startTime: true,
         updatedAt: true,
+
+        user: {
+          select: {
+            id: true,
+          },
+        },
       },
     });
     if (result === null) {
@@ -87,11 +122,27 @@ export class SessionControllerBase {
     try {
       return await this.service.updateSession({
         where: params,
-        data: data,
+        data: {
+          ...data,
+
+          user: data.user
+            ? {
+                connect: data.user,
+              }
+            : undefined,
+        },
         select: {
           createdAt: true,
+          endTime: true,
           id: true,
+          startTime: true,
           updatedAt: true,
+
+          user: {
+            select: {
+              id: true,
+            },
+          },
         },
       });
     } catch (error) {
@@ -115,8 +166,16 @@ export class SessionControllerBase {
         where: params,
         select: {
           createdAt: true,
+          endTime: true,
           id: true,
+          startTime: true,
           updatedAt: true,
+
+          user: {
+            select: {
+              id: true,
+            },
+          },
         },
       });
     } catch (error) {
@@ -127,5 +186,96 @@ export class SessionControllerBase {
       }
       throw error;
     }
+  }
+
+  @common.Get("/:id/memoryLogs")
+  @ApiNestedQuery(MemoryLogFindManyArgs)
+  async findMemoryLogs(
+    @common.Req() request: Request,
+    @common.Param() params: SessionWhereUniqueInput
+  ): Promise<MemoryLog[]> {
+    const query = plainToClass(MemoryLogFindManyArgs, request.query);
+    const results = await this.service.findMemoryLogs(params.id, {
+      ...query,
+      select: {
+        agent: {
+          select: {
+            id: true,
+          },
+        },
+
+        content: true,
+        createdAt: true,
+        id: true,
+        relatedTask: true,
+
+        session: {
+          select: {
+            id: true,
+          },
+        },
+
+        timestamp: true,
+        typeField: true,
+        updatedAt: true,
+      },
+    });
+    if (results === null) {
+      throw new errors.NotFoundException(
+        `No resource was found for ${JSON.stringify(params)}`
+      );
+    }
+    return results;
+  }
+
+  @common.Post("/:id/memoryLogs")
+  async connectMemoryLogs(
+    @common.Param() params: SessionWhereUniqueInput,
+    @common.Body() body: MemoryLogWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      memoryLogs: {
+        connect: body,
+      },
+    };
+    await this.service.updateSession({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Patch("/:id/memoryLogs")
+  async updateMemoryLogs(
+    @common.Param() params: SessionWhereUniqueInput,
+    @common.Body() body: MemoryLogWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      memoryLogs: {
+        set: body,
+      },
+    };
+    await this.service.updateSession({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Delete("/:id/memoryLogs")
+  async disconnectMemoryLogs(
+    @common.Param() params: SessionWhereUniqueInput,
+    @common.Body() body: MemoryLogWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      memoryLogs: {
+        disconnect: body,
+      },
+    };
+    await this.service.updateSession({
+      where: params,
+      data,
+      select: { id: true },
+    });
   }
 }

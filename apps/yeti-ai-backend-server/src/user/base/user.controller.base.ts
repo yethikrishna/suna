@@ -22,6 +22,15 @@ import { User } from "./User";
 import { UserFindManyArgs } from "./UserFindManyArgs";
 import { UserWhereUniqueInput } from "./UserWhereUniqueInput";
 import { UserUpdateInput } from "./UserUpdateInput";
+import { AgentFindManyArgs } from "../../agent/base/AgentFindManyArgs";
+import { Agent } from "../../agent/base/Agent";
+import { AgentWhereUniqueInput } from "../../agent/base/AgentWhereUniqueInput";
+import { IntegrationFindManyArgs } from "../../integration/base/IntegrationFindManyArgs";
+import { Integration } from "../../integration/base/Integration";
+import { IntegrationWhereUniqueInput } from "../../integration/base/IntegrationWhereUniqueInput";
+import { SessionFindManyArgs } from "../../session/base/SessionFindManyArgs";
+import { Session } from "../../session/base/Session";
+import { SessionWhereUniqueInput } from "../../session/base/SessionWhereUniqueInput";
 
 export class UserControllerBase {
   constructor(protected readonly service: UserService) {}
@@ -36,6 +45,7 @@ export class UserControllerBase {
         firstName: true,
         id: true,
         lastName: true,
+        preferences: true,
         roles: true,
         updatedAt: true,
         username: true,
@@ -56,6 +66,7 @@ export class UserControllerBase {
         firstName: true,
         id: true,
         lastName: true,
+        preferences: true,
         roles: true,
         updatedAt: true,
         username: true,
@@ -77,6 +88,7 @@ export class UserControllerBase {
         firstName: true,
         id: true,
         lastName: true,
+        preferences: true,
         roles: true,
         updatedAt: true,
         username: true,
@@ -107,6 +119,7 @@ export class UserControllerBase {
           firstName: true,
           id: true,
           lastName: true,
+          preferences: true,
           roles: true,
           updatedAt: true,
           username: true,
@@ -137,6 +150,7 @@ export class UserControllerBase {
           firstName: true,
           id: true,
           lastName: true,
+          preferences: true,
           roles: true,
           updatedAt: true,
           username: true,
@@ -150,5 +164,256 @@ export class UserControllerBase {
       }
       throw error;
     }
+  }
+
+  @common.Get("/:id/agents")
+  @ApiNestedQuery(AgentFindManyArgs)
+  async findAgents(
+    @common.Req() request: Request,
+    @common.Param() params: UserWhereUniqueInput
+  ): Promise<Agent[]> {
+    const query = plainToClass(AgentFindManyArgs, request.query);
+    const results = await this.service.findAgents(params.id, {
+      ...query,
+      select: {
+        activeSession: true,
+        createdAt: true,
+        description: true,
+        id: true,
+        name: true,
+        status: true,
+        typeField: true,
+        updatedAt: true,
+
+        user: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+    if (results === null) {
+      throw new errors.NotFoundException(
+        `No resource was found for ${JSON.stringify(params)}`
+      );
+    }
+    return results;
+  }
+
+  @common.Post("/:id/agents")
+  async connectAgents(
+    @common.Param() params: UserWhereUniqueInput,
+    @common.Body() body: AgentWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      agents: {
+        connect: body,
+      },
+    };
+    await this.service.updateUser({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Patch("/:id/agents")
+  async updateAgents(
+    @common.Param() params: UserWhereUniqueInput,
+    @common.Body() body: AgentWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      agents: {
+        set: body,
+      },
+    };
+    await this.service.updateUser({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Delete("/:id/agents")
+  async disconnectAgents(
+    @common.Param() params: UserWhereUniqueInput,
+    @common.Body() body: AgentWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      agents: {
+        disconnect: body,
+      },
+    };
+    await this.service.updateUser({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Get("/:id/integrations")
+  @ApiNestedQuery(IntegrationFindManyArgs)
+  async findIntegrations(
+    @common.Req() request: Request,
+    @common.Param() params: UserWhereUniqueInput
+  ): Promise<Integration[]> {
+    const query = plainToClass(IntegrationFindManyArgs, request.query);
+    const results = await this.service.findIntegrations(params.id, {
+      ...query,
+      select: {
+        configField: true,
+        createdAt: true,
+        id: true,
+        lastSync: true,
+        status: true,
+        typeField: true,
+        updatedAt: true,
+
+        user: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+    if (results === null) {
+      throw new errors.NotFoundException(
+        `No resource was found for ${JSON.stringify(params)}`
+      );
+    }
+    return results;
+  }
+
+  @common.Post("/:id/integrations")
+  async connectIntegrations(
+    @common.Param() params: UserWhereUniqueInput,
+    @common.Body() body: IntegrationWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      integrations: {
+        connect: body,
+      },
+    };
+    await this.service.updateUser({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Patch("/:id/integrations")
+  async updateIntegrations(
+    @common.Param() params: UserWhereUniqueInput,
+    @common.Body() body: IntegrationWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      integrations: {
+        set: body,
+      },
+    };
+    await this.service.updateUser({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Delete("/:id/integrations")
+  async disconnectIntegrations(
+    @common.Param() params: UserWhereUniqueInput,
+    @common.Body() body: IntegrationWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      integrations: {
+        disconnect: body,
+      },
+    };
+    await this.service.updateUser({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Get("/:id/sessions")
+  @ApiNestedQuery(SessionFindManyArgs)
+  async findSessions(
+    @common.Req() request: Request,
+    @common.Param() params: UserWhereUniqueInput
+  ): Promise<Session[]> {
+    const query = plainToClass(SessionFindManyArgs, request.query);
+    const results = await this.service.findSessions(params.id, {
+      ...query,
+      select: {
+        createdAt: true,
+        endTime: true,
+        id: true,
+        startTime: true,
+        updatedAt: true,
+
+        user: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+    if (results === null) {
+      throw new errors.NotFoundException(
+        `No resource was found for ${JSON.stringify(params)}`
+      );
+    }
+    return results;
+  }
+
+  @common.Post("/:id/sessions")
+  async connectSessions(
+    @common.Param() params: UserWhereUniqueInput,
+    @common.Body() body: SessionWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      sessions: {
+        connect: body,
+      },
+    };
+    await this.service.updateUser({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Patch("/:id/sessions")
+  async updateSessions(
+    @common.Param() params: UserWhereUniqueInput,
+    @common.Body() body: SessionWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      sessions: {
+        set: body,
+      },
+    };
+    await this.service.updateUser({
+      where: params,
+      data,
+      select: { id: true },
+    });
+  }
+
+  @common.Delete("/:id/sessions")
+  async disconnectSessions(
+    @common.Param() params: UserWhereUniqueInput,
+    @common.Body() body: SessionWhereUniqueInput[]
+  ): Promise<void> {
+    const data = {
+      sessions: {
+        disconnect: body,
+      },
+    };
+    await this.service.updateUser({
+      where: params,
+      data,
+      select: { id: true },
+    });
   }
 }

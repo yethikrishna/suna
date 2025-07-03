@@ -9,5 +9,60 @@ https://docs.amplication.com/how-to/custom-code
 
 ------------------------------------------------------------------------------
   */
-class SessionUpdateInput {}
+import { InputType, Field } from "@nestjs/graphql";
+import { ApiProperty } from "@nestjs/swagger";
+import { IsDate, IsOptional, ValidateNested } from "class-validator";
+import { Type } from "class-transformer";
+import { MemoryLogUpdateManyWithoutSessionsInput } from "./MemoryLogUpdateManyWithoutSessionsInput";
+import { UserWhereUniqueInput } from "../../user/base/UserWhereUniqueInput";
+
+@InputType()
+class SessionUpdateInput {
+  @ApiProperty({
+    required: false,
+  })
+  @IsDate()
+  @Type(() => Date)
+  @IsOptional()
+  @Field(() => Date, {
+    nullable: true,
+  })
+  endTime?: Date | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => MemoryLogUpdateManyWithoutSessionsInput,
+  })
+  @ValidateNested()
+  @Type(() => MemoryLogUpdateManyWithoutSessionsInput)
+  @IsOptional()
+  @Field(() => MemoryLogUpdateManyWithoutSessionsInput, {
+    nullable: true,
+  })
+  memoryLogs?: MemoryLogUpdateManyWithoutSessionsInput;
+
+  @ApiProperty({
+    required: false,
+  })
+  @IsDate()
+  @Type(() => Date)
+  @IsOptional()
+  @Field(() => Date, {
+    nullable: true,
+  })
+  startTime?: Date | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => UserWhereUniqueInput,
+  })
+  @ValidateNested()
+  @Type(() => UserWhereUniqueInput)
+  @IsOptional()
+  @Field(() => UserWhereUniqueInput, {
+    nullable: true,
+  })
+  user?: UserWhereUniqueInput | null;
+}
+
 export { SessionUpdateInput as SessionUpdateInput };

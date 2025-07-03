@@ -17,7 +17,12 @@ import { Session } from "./Session";
 import { SessionCountArgs } from "./SessionCountArgs";
 import { SessionFindManyArgs } from "./SessionFindManyArgs";
 import { SessionFindUniqueArgs } from "./SessionFindUniqueArgs";
+import { CreateSessionArgs } from "./CreateSessionArgs";
+import { UpdateSessionArgs } from "./UpdateSessionArgs";
 import { DeleteSessionArgs } from "./DeleteSessionArgs";
+import { MemoryLogFindManyArgs } from "../../memoryLog/base/MemoryLogFindManyArgs";
+import { MemoryLog } from "../../memoryLog/base/MemoryLog";
+import { User } from "../../user/base/User";
 import { SessionService } from "../session.service";
 @graphql.Resolver(() => Session)
 export class SessionResolverBase {
@@ -51,6 +56,51 @@ export class SessionResolverBase {
   }
 
   @graphql.Mutation(() => Session)
+  async createSession(
+    @graphql.Args() args: CreateSessionArgs
+  ): Promise<Session> {
+    return await this.service.createSession({
+      ...args,
+      data: {
+        ...args.data,
+
+        user: args.data.user
+          ? {
+              connect: args.data.user,
+            }
+          : undefined,
+      },
+    });
+  }
+
+  @graphql.Mutation(() => Session)
+  async updateSession(
+    @graphql.Args() args: UpdateSessionArgs
+  ): Promise<Session | null> {
+    try {
+      return await this.service.updateSession({
+        ...args,
+        data: {
+          ...args.data,
+
+          user: args.data.user
+            ? {
+                connect: args.data.user,
+              }
+            : undefined,
+        },
+      });
+    } catch (error) {
+      if (isRecordNotFoundError(error)) {
+        throw new GraphQLError(
+          `No resource was found for ${JSON.stringify(args.where)}`
+        );
+      }
+      throw error;
+    }
+  }
+
+  @graphql.Mutation(() => Session)
   async deleteSession(
     @graphql.Args() args: DeleteSessionArgs
   ): Promise<Session | null> {
@@ -64,5 +114,32 @@ export class SessionResolverBase {
       }
       throw error;
     }
+  }
+
+  @graphql.ResolveField(() => [MemoryLog], { name: "memoryLogs" })
+  async findMemoryLogs(
+    @graphql.Parent() parent: Session,
+    @graphql.Args() args: MemoryLogFindManyArgs
+  ): Promise<MemoryLog[]> {
+    const results = await this.service.findMemoryLogs(parent.id, args);
+
+    if (!results) {
+      return [];
+    }
+
+    return results;
+  }
+
+  @graphql.ResolveField(() => User, {
+    nullable: true,
+    name: "user",
+  })
+  async getUser(@graphql.Parent() parent: Session): Promise<User | null> {
+    const result = await this.service.getUser(parent.id);
+
+    if (!result) {
+      return null;
+    }
+    return result;
   }
 }

@@ -9,5 +9,73 @@ https://docs.amplication.com/how-to/custom-code
 
 ------------------------------------------------------------------------------
   */
-class IntegrationCreateInput {}
+import { InputType, Field } from "@nestjs/graphql";
+import { ApiProperty } from "@nestjs/swagger";
+import { IsJSONValue } from "../../validators";
+import { IsOptional, IsDate, IsEnum, ValidateNested } from "class-validator";
+import { GraphQLJSON } from "graphql-type-json";
+import { InputJsonValue } from "../../types";
+import { Type } from "class-transformer";
+import { EnumIntegrationStatus } from "./EnumIntegrationStatus";
+import { EnumIntegrationTypeField } from "./EnumIntegrationTypeField";
+import { UserWhereUniqueInput } from "../../user/base/UserWhereUniqueInput";
+
+@InputType()
+class IntegrationCreateInput {
+  @ApiProperty({
+    required: false,
+  })
+  @IsJSONValue()
+  @IsOptional()
+  @Field(() => GraphQLJSON, {
+    nullable: true,
+  })
+  configField?: InputJsonValue;
+
+  @ApiProperty({
+    required: false,
+  })
+  @IsDate()
+  @Type(() => Date)
+  @IsOptional()
+  @Field(() => Date, {
+    nullable: true,
+  })
+  lastSync?: Date | null;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumIntegrationStatus,
+  })
+  @IsEnum(EnumIntegrationStatus)
+  @IsOptional()
+  @Field(() => EnumIntegrationStatus, {
+    nullable: true,
+  })
+  status?: "Option1" | null;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumIntegrationTypeField,
+  })
+  @IsEnum(EnumIntegrationTypeField)
+  @IsOptional()
+  @Field(() => EnumIntegrationTypeField, {
+    nullable: true,
+  })
+  typeField?: "Option1" | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => UserWhereUniqueInput,
+  })
+  @ValidateNested()
+  @Type(() => UserWhereUniqueInput)
+  @IsOptional()
+  @Field(() => UserWhereUniqueInput, {
+    nullable: true,
+  })
+  user?: UserWhereUniqueInput | null;
+}
+
 export { IntegrationCreateInput as IntegrationCreateInput };

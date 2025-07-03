@@ -11,13 +11,29 @@ https://docs.amplication.com/how-to/custom-code
   */
 import { InputType, Field } from "@nestjs/graphql";
 import { ApiProperty } from "@nestjs/swagger";
-import { StringNullableFilter } from "../../util/StringNullableFilter";
+import { AgentListRelationFilter } from "../../agent/base/AgentListRelationFilter";
+import { ValidateNested, IsOptional } from "class-validator";
 import { Type } from "class-transformer";
-import { IsOptional } from "class-validator";
+import { StringNullableFilter } from "../../util/StringNullableFilter";
 import { StringFilter } from "../../util/StringFilter";
+import { IntegrationListRelationFilter } from "../../integration/base/IntegrationListRelationFilter";
+import { JsonFilter } from "../../util/JsonFilter";
+import { SessionListRelationFilter } from "../../session/base/SessionListRelationFilter";
 
 @InputType()
 class UserWhereInput {
+  @ApiProperty({
+    required: false,
+    type: () => AgentListRelationFilter,
+  })
+  @ValidateNested()
+  @Type(() => AgentListRelationFilter)
+  @IsOptional()
+  @Field(() => AgentListRelationFilter, {
+    nullable: true,
+  })
+  agents?: AgentListRelationFilter;
+
   @ApiProperty({
     required: false,
     type: StringNullableFilter,
@@ -53,6 +69,18 @@ class UserWhereInput {
 
   @ApiProperty({
     required: false,
+    type: () => IntegrationListRelationFilter,
+  })
+  @ValidateNested()
+  @Type(() => IntegrationListRelationFilter)
+  @IsOptional()
+  @Field(() => IntegrationListRelationFilter, {
+    nullable: true,
+  })
+  integrations?: IntegrationListRelationFilter;
+
+  @ApiProperty({
+    required: false,
     type: StringNullableFilter,
   })
   @Type(() => StringNullableFilter)
@@ -61,6 +89,29 @@ class UserWhereInput {
     nullable: true,
   })
   lastName?: StringNullableFilter;
+
+  @ApiProperty({
+    required: false,
+    type: JsonFilter,
+  })
+  @Type(() => JsonFilter)
+  @IsOptional()
+  @Field(() => JsonFilter, {
+    nullable: true,
+  })
+  preferences?: JsonFilter;
+
+  @ApiProperty({
+    required: false,
+    type: () => SessionListRelationFilter,
+  })
+  @ValidateNested()
+  @Type(() => SessionListRelationFilter)
+  @IsOptional()
+  @Field(() => SessionListRelationFilter, {
+    nullable: true,
+  })
+  sessions?: SessionListRelationFilter;
 
   @ApiProperty({
     required: false,

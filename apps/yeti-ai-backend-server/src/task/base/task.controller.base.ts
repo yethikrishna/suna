@@ -29,10 +29,31 @@ export class TaskControllerBase {
   @swagger.ApiCreatedResponse({ type: Task })
   async createTask(@common.Body() data: TaskCreateInput): Promise<Task> {
     return await this.service.createTask({
-      data: data,
+      data: {
+        ...data,
+
+        agent: data.agent
+          ? {
+              connect: data.agent,
+            }
+          : undefined,
+      },
       select: {
+        agent: {
+          select: {
+            id: true,
+          },
+        },
+
         createdAt: true,
+        description: true,
         id: true,
+        output: true,
+        parentTask: true,
+        relatedSession: true,
+        scheduledTime: true,
+        status: true,
+        title: true,
         updatedAt: true,
       },
     });
@@ -46,8 +67,21 @@ export class TaskControllerBase {
     return this.service.tasks({
       ...args,
       select: {
+        agent: {
+          select: {
+            id: true,
+          },
+        },
+
         createdAt: true,
+        description: true,
         id: true,
+        output: true,
+        parentTask: true,
+        relatedSession: true,
+        scheduledTime: true,
+        status: true,
+        title: true,
         updatedAt: true,
       },
     });
@@ -62,8 +96,21 @@ export class TaskControllerBase {
     const result = await this.service.task({
       where: params,
       select: {
+        agent: {
+          select: {
+            id: true,
+          },
+        },
+
         createdAt: true,
+        description: true,
         id: true,
+        output: true,
+        parentTask: true,
+        relatedSession: true,
+        scheduledTime: true,
+        status: true,
+        title: true,
         updatedAt: true,
       },
     });
@@ -85,10 +132,31 @@ export class TaskControllerBase {
     try {
       return await this.service.updateTask({
         where: params,
-        data: data,
+        data: {
+          ...data,
+
+          agent: data.agent
+            ? {
+                connect: data.agent,
+              }
+            : undefined,
+        },
         select: {
+          agent: {
+            select: {
+              id: true,
+            },
+          },
+
           createdAt: true,
+          description: true,
           id: true,
+          output: true,
+          parentTask: true,
+          relatedSession: true,
+          scheduledTime: true,
+          status: true,
+          title: true,
           updatedAt: true,
         },
       });
@@ -112,8 +180,21 @@ export class TaskControllerBase {
       return await this.service.deleteTask({
         where: params,
         select: {
+          agent: {
+            select: {
+              id: true,
+            },
+          },
+
           createdAt: true,
+          description: true,
           id: true,
+          output: true,
+          parentTask: true,
+          relatedSession: true,
+          scheduledTime: true,
+          status: true,
+          title: true,
           updatedAt: true,
         },
       });

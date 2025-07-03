@@ -11,11 +11,35 @@ https://docs.amplication.com/how-to/custom-code
   */
 import { ObjectType, Field } from "@nestjs/graphql";
 import { ApiProperty } from "@nestjs/swagger";
-import { IsDate, IsString } from "class-validator";
+import {
+  IsString,
+  MaxLength,
+  IsOptional,
+  IsDate,
+  ValidateNested,
+  IsEnum,
+} from "class-validator";
 import { Type } from "class-transformer";
+import { MemoryLog } from "../../memoryLog/base/MemoryLog";
+import { EnumAgentStatus } from "./EnumAgentStatus";
+import { Task } from "../../task/base/Task";
+import { EnumAgentTypeField } from "./EnumAgentTypeField";
+import { User } from "../../user/base/User";
 
 @ObjectType()
 class Agent {
+  @ApiProperty({
+    required: false,
+    type: String,
+  })
+  @IsString()
+  @MaxLength(1000)
+  @IsOptional()
+  @Field(() => String, {
+    nullable: true,
+  })
+  activeSession!: string | null;
+
   @ApiProperty({
     required: true,
   })
@@ -23,6 +47,18 @@ class Agent {
   @Type(() => Date)
   @Field(() => Date)
   createdAt!: Date;
+
+  @ApiProperty({
+    required: false,
+    type: String,
+  })
+  @IsString()
+  @MaxLength(1000)
+  @IsOptional()
+  @Field(() => String, {
+    nullable: true,
+  })
+  description!: string | null;
 
   @ApiProperty({
     required: true,
@@ -33,12 +69,73 @@ class Agent {
   id!: string;
 
   @ApiProperty({
+    required: false,
+    type: () => [MemoryLog],
+  })
+  @ValidateNested()
+  @Type(() => MemoryLog)
+  @IsOptional()
+  memoryLogs?: Array<MemoryLog>;
+
+  @ApiProperty({
+    required: false,
+    type: String,
+  })
+  @IsString()
+  @MaxLength(1000)
+  @IsOptional()
+  @Field(() => String, {
+    nullable: true,
+  })
+  name!: string | null;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumAgentStatus,
+  })
+  @IsEnum(EnumAgentStatus)
+  @IsOptional()
+  @Field(() => EnumAgentStatus, {
+    nullable: true,
+  })
+  status?: "Option1" | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => [Task],
+  })
+  @ValidateNested()
+  @Type(() => Task)
+  @IsOptional()
+  tasks?: Array<Task>;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumAgentTypeField,
+  })
+  @IsEnum(EnumAgentTypeField)
+  @IsOptional()
+  @Field(() => EnumAgentTypeField, {
+    nullable: true,
+  })
+  typeField?: "Option1" | null;
+
+  @ApiProperty({
     required: true,
   })
   @IsDate()
   @Type(() => Date)
   @Field(() => Date)
   updatedAt!: Date;
+
+  @ApiProperty({
+    required: false,
+    type: () => User,
+  })
+  @ValidateNested()
+  @Type(() => User)
+  @IsOptional()
+  user?: User | null;
 }
 
 export { Agent as Agent };

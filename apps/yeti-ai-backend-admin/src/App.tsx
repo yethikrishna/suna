@@ -5,6 +5,10 @@ import { theme } from "./theme/theme";
 import Login from "./Login";
 import "./App.scss";
 import Dashboard from "./pages/Dashboard";
+import { AgentList } from "./agent/AgentList";
+import { AgentCreate } from "./agent/AgentCreate";
+import { AgentEdit } from "./agent/AgentEdit";
+import { AgentShow } from "./agent/AgentShow";
 import { TaskList } from "./task/TaskList";
 import { TaskCreate } from "./task/TaskCreate";
 import { TaskEdit } from "./task/TaskEdit";
@@ -13,10 +17,6 @@ import { MemoryLogList } from "./memoryLog/MemoryLogList";
 import { MemoryLogCreate } from "./memoryLog/MemoryLogCreate";
 import { MemoryLogEdit } from "./memoryLog/MemoryLogEdit";
 import { MemoryLogShow } from "./memoryLog/MemoryLogShow";
-import { AgentList } from "./agent/AgentList";
-import { AgentCreate } from "./agent/AgentCreate";
-import { AgentEdit } from "./agent/AgentEdit";
-import { AgentShow } from "./agent/AgentShow";
 import { PluginList } from "./plugin/PluginList";
 import { PluginCreate } from "./plugin/PluginCreate";
 import { PluginEdit } from "./plugin/PluginEdit";
@@ -47,6 +47,13 @@ const App = (): React.ReactElement => {
         loginPage={Login}
       >
         <Resource
+          name="Agent"
+          list={AgentList}
+          edit={AgentEdit}
+          create={AgentCreate}
+          show={AgentShow}
+        />
+        <Resource
           name="Task"
           list={TaskList}
           edit={TaskEdit}
@@ -59,13 +66,6 @@ const App = (): React.ReactElement => {
           edit={MemoryLogEdit}
           create={MemoryLogCreate}
           show={MemoryLogShow}
-        />
-        <Resource
-          name="Agent"
-          list={AgentList}
-          edit={AgentEdit}
-          create={AgentCreate}
-          show={AgentShow}
         />
         <Resource
           name="Plugin"

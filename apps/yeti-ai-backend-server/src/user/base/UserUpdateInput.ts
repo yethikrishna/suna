@@ -11,13 +11,34 @@ https://docs.amplication.com/how-to/custom-code
   */
 import { InputType, Field } from "@nestjs/graphql";
 import { ApiProperty } from "@nestjs/swagger";
-import { IsString, IsOptional, MaxLength } from "class-validator";
+import { AgentUpdateManyWithoutUsersInput } from "./AgentUpdateManyWithoutUsersInput";
+import {
+  ValidateNested,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from "class-validator";
+import { Type } from "class-transformer";
+import { IntegrationUpdateManyWithoutUsersInput } from "./IntegrationUpdateManyWithoutUsersInput";
 import { IsJSONValue } from "../../validators";
 import { GraphQLJSON } from "graphql-type-json";
 import { InputJsonValue } from "../../types";
+import { SessionUpdateManyWithoutUsersInput } from "./SessionUpdateManyWithoutUsersInput";
 
 @InputType()
 class UserUpdateInput {
+  @ApiProperty({
+    required: false,
+    type: () => AgentUpdateManyWithoutUsersInput,
+  })
+  @ValidateNested()
+  @Type(() => AgentUpdateManyWithoutUsersInput)
+  @IsOptional()
+  @Field(() => AgentUpdateManyWithoutUsersInput, {
+    nullable: true,
+  })
+  agents?: AgentUpdateManyWithoutUsersInput;
+
   @ApiProperty({
     required: false,
     type: String,
@@ -40,6 +61,18 @@ class UserUpdateInput {
     nullable: true,
   })
   firstName?: string | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => IntegrationUpdateManyWithoutUsersInput,
+  })
+  @ValidateNested()
+  @Type(() => IntegrationUpdateManyWithoutUsersInput)
+  @IsOptional()
+  @Field(() => IntegrationUpdateManyWithoutUsersInput, {
+    nullable: true,
+  })
+  integrations?: IntegrationUpdateManyWithoutUsersInput;
 
   @ApiProperty({
     required: false,
@@ -72,7 +105,29 @@ class UserUpdateInput {
   @Field(() => GraphQLJSON, {
     nullable: true,
   })
+  preferences?: InputJsonValue;
+
+  @ApiProperty({
+    required: false,
+  })
+  @IsJSONValue()
+  @IsOptional()
+  @Field(() => GraphQLJSON, {
+    nullable: true,
+  })
   roles?: InputJsonValue;
+
+  @ApiProperty({
+    required: false,
+    type: () => SessionUpdateManyWithoutUsersInput,
+  })
+  @ValidateNested()
+  @Type(() => SessionUpdateManyWithoutUsersInput)
+  @IsOptional()
+  @Field(() => SessionUpdateManyWithoutUsersInput, {
+    nullable: true,
+  })
+  sessions?: SessionUpdateManyWithoutUsersInput;
 
   @ApiProperty({
     required: false,

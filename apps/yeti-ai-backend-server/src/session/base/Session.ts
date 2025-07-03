@@ -11,8 +11,10 @@ https://docs.amplication.com/how-to/custom-code
   */
 import { ObjectType, Field } from "@nestjs/graphql";
 import { ApiProperty } from "@nestjs/swagger";
-import { IsDate, IsString } from "class-validator";
+import { IsDate, IsOptional, IsString, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
+import { MemoryLog } from "../../memoryLog/base/MemoryLog";
+import { User } from "../../user/base/User";
 
 @ObjectType()
 class Session {
@@ -25,6 +27,17 @@ class Session {
   createdAt!: Date;
 
   @ApiProperty({
+    required: false,
+  })
+  @IsDate()
+  @Type(() => Date)
+  @IsOptional()
+  @Field(() => Date, {
+    nullable: true,
+  })
+  endTime!: Date | null;
+
+  @ApiProperty({
     required: true,
     type: String,
   })
@@ -33,12 +46,41 @@ class Session {
   id!: string;
 
   @ApiProperty({
+    required: false,
+    type: () => [MemoryLog],
+  })
+  @ValidateNested()
+  @Type(() => MemoryLog)
+  @IsOptional()
+  memoryLogs?: Array<MemoryLog>;
+
+  @ApiProperty({
+    required: false,
+  })
+  @IsDate()
+  @Type(() => Date)
+  @IsOptional()
+  @Field(() => Date, {
+    nullable: true,
+  })
+  startTime!: Date | null;
+
+  @ApiProperty({
     required: true,
   })
   @IsDate()
   @Type(() => Date)
   @Field(() => Date)
   updatedAt!: Date;
+
+  @ApiProperty({
+    required: false,
+    type: () => User,
+  })
+  @ValidateNested()
+  @Type(() => User)
+  @IsOptional()
+  user?: User | null;
 }
 
 export { Session as Session };

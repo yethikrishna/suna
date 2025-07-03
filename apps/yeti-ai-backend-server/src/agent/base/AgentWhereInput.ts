@@ -11,12 +11,40 @@ https://docs.amplication.com/how-to/custom-code
   */
 import { InputType, Field } from "@nestjs/graphql";
 import { ApiProperty } from "@nestjs/swagger";
-import { StringFilter } from "../../util/StringFilter";
+import { StringNullableFilter } from "../../util/StringNullableFilter";
 import { Type } from "class-transformer";
-import { IsOptional } from "class-validator";
+import { IsOptional, ValidateNested, IsEnum } from "class-validator";
+import { StringFilter } from "../../util/StringFilter";
+import { MemoryLogListRelationFilter } from "../../memoryLog/base/MemoryLogListRelationFilter";
+import { EnumAgentStatus } from "./EnumAgentStatus";
+import { TaskListRelationFilter } from "../../task/base/TaskListRelationFilter";
+import { EnumAgentTypeField } from "./EnumAgentTypeField";
+import { UserWhereUniqueInput } from "../../user/base/UserWhereUniqueInput";
 
 @InputType()
 class AgentWhereInput {
+  @ApiProperty({
+    required: false,
+    type: StringNullableFilter,
+  })
+  @Type(() => StringNullableFilter)
+  @IsOptional()
+  @Field(() => StringNullableFilter, {
+    nullable: true,
+  })
+  activeSession?: StringNullableFilter;
+
+  @ApiProperty({
+    required: false,
+    type: StringNullableFilter,
+  })
+  @Type(() => StringNullableFilter)
+  @IsOptional()
+  @Field(() => StringNullableFilter, {
+    nullable: true,
+  })
+  description?: StringNullableFilter;
+
   @ApiProperty({
     required: false,
     type: StringFilter,
@@ -27,6 +55,75 @@ class AgentWhereInput {
     nullable: true,
   })
   id?: StringFilter;
+
+  @ApiProperty({
+    required: false,
+    type: () => MemoryLogListRelationFilter,
+  })
+  @ValidateNested()
+  @Type(() => MemoryLogListRelationFilter)
+  @IsOptional()
+  @Field(() => MemoryLogListRelationFilter, {
+    nullable: true,
+  })
+  memoryLogs?: MemoryLogListRelationFilter;
+
+  @ApiProperty({
+    required: false,
+    type: StringNullableFilter,
+  })
+  @Type(() => StringNullableFilter)
+  @IsOptional()
+  @Field(() => StringNullableFilter, {
+    nullable: true,
+  })
+  name?: StringNullableFilter;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumAgentStatus,
+  })
+  @IsEnum(EnumAgentStatus)
+  @IsOptional()
+  @Field(() => EnumAgentStatus, {
+    nullable: true,
+  })
+  status?: "Option1";
+
+  @ApiProperty({
+    required: false,
+    type: () => TaskListRelationFilter,
+  })
+  @ValidateNested()
+  @Type(() => TaskListRelationFilter)
+  @IsOptional()
+  @Field(() => TaskListRelationFilter, {
+    nullable: true,
+  })
+  tasks?: TaskListRelationFilter;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumAgentTypeField,
+  })
+  @IsEnum(EnumAgentTypeField)
+  @IsOptional()
+  @Field(() => EnumAgentTypeField, {
+    nullable: true,
+  })
+  typeField?: "Option1";
+
+  @ApiProperty({
+    required: false,
+    type: () => UserWhereUniqueInput,
+  })
+  @ValidateNested()
+  @Type(() => UserWhereUniqueInput)
+  @IsOptional()
+  @Field(() => UserWhereUniqueInput, {
+    nullable: true,
+  })
+  user?: UserWhereUniqueInput;
 }
 
 export { AgentWhereInput as AgentWhereInput };

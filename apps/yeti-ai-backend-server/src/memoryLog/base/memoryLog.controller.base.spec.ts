@@ -18,25 +18,37 @@ import { MemoryLogService } from "../memoryLog.service";
 const nonExistingId = "nonExistingId";
 const existingId = "existingId";
 const CREATE_INPUT = {
+  content: "exampleContent",
   createdAt: new Date(),
   id: "exampleId",
+  relatedTask: "exampleRelatedTask",
+  timestamp: new Date(),
   updatedAt: new Date(),
 };
 const CREATE_RESULT = {
+  content: "exampleContent",
   createdAt: new Date(),
   id: "exampleId",
+  relatedTask: "exampleRelatedTask",
+  timestamp: new Date(),
   updatedAt: new Date(),
 };
 const FIND_MANY_RESULT = [
   {
+    content: "exampleContent",
     createdAt: new Date(),
     id: "exampleId",
+    relatedTask: "exampleRelatedTask",
+    timestamp: new Date(),
     updatedAt: new Date(),
   },
 ];
 const FIND_ONE_RESULT = {
+  content: "exampleContent",
   createdAt: new Date(),
   id: "exampleId",
+  relatedTask: "exampleRelatedTask",
+  timestamp: new Date(),
   updatedAt: new Date(),
 };
 
@@ -123,6 +135,7 @@ describe("MemoryLog", () => {
       .expect({
         ...CREATE_RESULT,
         createdAt: CREATE_RESULT.createdAt.toISOString(),
+        timestamp: CREATE_RESULT.timestamp.toISOString(),
         updatedAt: CREATE_RESULT.updatedAt.toISOString(),
       });
   });
@@ -135,6 +148,7 @@ describe("MemoryLog", () => {
         {
           ...FIND_MANY_RESULT[0],
           createdAt: FIND_MANY_RESULT[0].createdAt.toISOString(),
+          timestamp: FIND_MANY_RESULT[0].timestamp.toISOString(),
           updatedAt: FIND_MANY_RESULT[0].updatedAt.toISOString(),
         },
       ]);
@@ -158,6 +172,7 @@ describe("MemoryLog", () => {
       .expect({
         ...FIND_ONE_RESULT,
         createdAt: FIND_ONE_RESULT.createdAt.toISOString(),
+        timestamp: FIND_ONE_RESULT.timestamp.toISOString(),
         updatedAt: FIND_ONE_RESULT.updatedAt.toISOString(),
       });
   });
@@ -171,6 +186,7 @@ describe("MemoryLog", () => {
       .expect({
         ...CREATE_RESULT,
         createdAt: CREATE_RESULT.createdAt.toISOString(),
+        timestamp: CREATE_RESULT.timestamp.toISOString(),
         updatedAt: CREATE_RESULT.updatedAt.toISOString(),
       })
       .then(function () {

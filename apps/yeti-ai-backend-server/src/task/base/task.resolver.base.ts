@@ -17,7 +17,10 @@ import { Task } from "./Task";
 import { TaskCountArgs } from "./TaskCountArgs";
 import { TaskFindManyArgs } from "./TaskFindManyArgs";
 import { TaskFindUniqueArgs } from "./TaskFindUniqueArgs";
+import { CreateTaskArgs } from "./CreateTaskArgs";
+import { UpdateTaskArgs } from "./UpdateTaskArgs";
 import { DeleteTaskArgs } from "./DeleteTaskArgs";
+import { Agent } from "../../agent/base/Agent";
 import { TaskService } from "../task.service";
 @graphql.Resolver(() => Task)
 export class TaskResolverBase {
@@ -47,6 +50,47 @@ export class TaskResolverBase {
   }
 
   @graphql.Mutation(() => Task)
+  async createTask(@graphql.Args() args: CreateTaskArgs): Promise<Task> {
+    return await this.service.createTask({
+      ...args,
+      data: {
+        ...args.data,
+
+        agent: args.data.agent
+          ? {
+              connect: args.data.agent,
+            }
+          : undefined,
+      },
+    });
+  }
+
+  @graphql.Mutation(() => Task)
+  async updateTask(@graphql.Args() args: UpdateTaskArgs): Promise<Task | null> {
+    try {
+      return await this.service.updateTask({
+        ...args,
+        data: {
+          ...args.data,
+
+          agent: args.data.agent
+            ? {
+                connect: args.data.agent,
+              }
+            : undefined,
+        },
+      });
+    } catch (error) {
+      if (isRecordNotFoundError(error)) {
+        throw new GraphQLError(
+          `No resource was found for ${JSON.stringify(args.where)}`
+        );
+      }
+      throw error;
+    }
+  }
+
+  @graphql.Mutation(() => Task)
   async deleteTask(@graphql.Args() args: DeleteTaskArgs): Promise<Task | null> {
     try {
       return await this.service.deleteTask(args);
@@ -58,5 +102,18 @@ export class TaskResolverBase {
       }
       throw error;
     }
+  }
+
+  @graphql.ResolveField(() => Agent, {
+    nullable: true,
+    name: "agent",
+  })
+  async getAgent(@graphql.Parent() parent: Task): Promise<Agent | null> {
+    const result = await this.service.getAgent(parent.id);
+
+    if (!result) {
+      return null;
+    }
+    return result;
   }
 }

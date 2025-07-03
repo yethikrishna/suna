@@ -11,11 +11,42 @@ https://docs.amplication.com/how-to/custom-code
   */
 import { ObjectType, Field } from "@nestjs/graphql";
 import { ApiProperty } from "@nestjs/swagger";
-import { IsDate, IsString } from "class-validator";
+import { Agent } from "../../agent/base/Agent";
+import {
+  ValidateNested,
+  IsOptional,
+  IsString,
+  MaxLength,
+  IsDate,
+  IsEnum,
+} from "class-validator";
 import { Type } from "class-transformer";
+import { Session } from "../../session/base/Session";
+import { EnumMemoryLogTypeField } from "./EnumMemoryLogTypeField";
 
 @ObjectType()
 class MemoryLog {
+  @ApiProperty({
+    required: false,
+    type: () => Agent,
+  })
+  @ValidateNested()
+  @Type(() => Agent)
+  @IsOptional()
+  agent?: Agent | null;
+
+  @ApiProperty({
+    required: false,
+    type: String,
+  })
+  @IsString()
+  @MaxLength(1000)
+  @IsOptional()
+  @Field(() => String, {
+    nullable: true,
+  })
+  content!: string | null;
+
   @ApiProperty({
     required: true,
   })
@@ -31,6 +62,49 @@ class MemoryLog {
   @IsString()
   @Field(() => String)
   id!: string;
+
+  @ApiProperty({
+    required: false,
+    type: String,
+  })
+  @IsString()
+  @MaxLength(1000)
+  @IsOptional()
+  @Field(() => String, {
+    nullable: true,
+  })
+  relatedTask!: string | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => Session,
+  })
+  @ValidateNested()
+  @Type(() => Session)
+  @IsOptional()
+  session?: Session | null;
+
+  @ApiProperty({
+    required: false,
+  })
+  @IsDate()
+  @Type(() => Date)
+  @IsOptional()
+  @Field(() => Date, {
+    nullable: true,
+  })
+  timestamp!: Date | null;
+
+  @ApiProperty({
+    required: false,
+    enum: EnumMemoryLogTypeField,
+  })
+  @IsEnum(EnumMemoryLogTypeField)
+  @IsOptional()
+  @Field(() => EnumMemoryLogTypeField, {
+    nullable: true,
+  })
+  typeField?: "Option1" | null;
 
   @ApiProperty({
     required: true,

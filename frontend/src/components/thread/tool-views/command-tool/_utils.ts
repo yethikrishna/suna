@@ -54,7 +54,7 @@ const extractFromNewFormat = (content: any): CommandData => {
       timestamp: toolExecution.execution_details?.timestamp
     };
 
-    console.log('CommandToolView: Extracted from new format:', {
+    console.log('CommandToolView: Extracted from new format (fixed):', {
       command: extractedData.command,
       hasOutput: !!extractedData.output,
       exitCode: extractedData.exitCode,
@@ -109,6 +109,8 @@ const extractFromLegacyFormat = (content: any): Omit<CommandData, 'success' | 't
     completed: null
   };
 };
+
+export const getAgentName = (agentName?: string) => agentName || 'Yeti';
 
 export function extractCommandData(
   assistantContent: any,
@@ -236,4 +238,4 @@ export function extractCommandData(
     actualToolTimestamp,
     actualAssistantTimestamp
   };
-} 
+}

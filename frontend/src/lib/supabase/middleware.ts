@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
+import { getSupabaseUrl, getSupabaseAnonKey } from '@/lib/env';
 
 function forceLoginWithReturn(request: NextRequest) {
   const originalUrl = new URL(request.url);
@@ -25,8 +26,8 @@ export const validateSession = async (request: NextRequest) => {
     });
 
     const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      getSupabaseUrl(),
+      getSupabaseAnonKey(),
       {
         cookies: {
           get(name: string) {
@@ -90,6 +91,7 @@ export const validateSession = async (request: NextRequest) => {
 
     return response;
   } catch (e) {
+    console.error('Supabase client could not be created or session validation failed:', e);
     // If you are here, a Supabase client could not be created!
     // This is likely because you have not set up environment variables.
     // Check out http://localhost:3000 for Next Steps.

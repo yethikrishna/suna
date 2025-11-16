@@ -29,7 +29,7 @@ services:
       start_period: 10s
 
   backend:
-    image: ghcr.io/suna-ai/suna-backend:latest
+    image: ghcr.io/yethikrishna-ai/yeti-backend:latest
     platform: linux/amd64
     build:
       context: ./backend

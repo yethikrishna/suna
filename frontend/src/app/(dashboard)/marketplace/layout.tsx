@@ -3,10 +3,10 @@ import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
 export const metadata: Metadata = {
-  title: 'Agent Marketplace | Kortix Suna',
+  title: 'Agent Marketplace | Yeti AI',
   description: 'Discover and add powerful AI agents created by the community to your personal library',
   openGraph: {
-    title: 'Agent Marketplace | Kortix Suna',
+    title: 'Agent Marketplace | Yeti AI',
     description: 'Discover and add powerful AI agents created by the community to your personal library',
     type: 'website',
   },

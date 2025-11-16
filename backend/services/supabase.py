@@ -16,6 +16,8 @@ class DBConnection:
     _instance: Optional['DBConnection'] = None
     _initialized = False
     _client: Optional[AsyncClient] = None
+    _dynamic_supabase_url: Optional[str] = None
+    _dynamic_supabase_key: Optional[str] = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -26,24 +28,32 @@ class DBConnection:
         """No initialization needed in __init__ as it's handled in __new__"""
         pass
 
-    async def initialize(self):
-        """Initialize the database connection."""
+    async def initialize(self, supabase_url: Optional[str] = None, supabase_key: Optional[str] = None):
+        """Initialize the database connection.
+        Allows overriding environment variables with provided parameters.
+        """
+        # If dynamic credentials are provided, store them and force re-initialization
+        if supabase_url and supabase_key:
+            self._dynamic_supabase_url = supabase_url
+            self._dynamic_supabase_key = supabase_key
+            self._initialized = False # Force re-initialization
+
         if self._initialized:
             return
                 
         try:
-            supabase_url = config.SUPABASE_URL
-            # Use service role key preferentially for backend operations
-            supabase_key = config.SUPABASE_SERVICE_ROLE_KEY or config.SUPABASE_ANON_KEY
+            final_supabase_url = self._dynamic_supabase_url or config.SUPABASE_URL
+            # Use service role key preferentially for backend operations, or dynamic key
+            final_supabase_key = self._dynamic_supabase_key or config.SUPABASE_SERVICE_ROLE_KEY or config.SUPABASE_ANON_KEY
             
-            if not supabase_url or not supabase_key:
-                logger.error("Missing required environment variables for Supabase connection")
-                raise RuntimeError("SUPABASE_URL and a key (SERVICE_ROLE_KEY or ANON_KEY) environment variables must be set.")
+            if not final_supabase_url or not final_supabase_key:
+                logger.error("Missing required environment variables or dynamic credentials for Supabase connection")
+                raise RuntimeError("SUPABASE_URL and a key (SERVICE_ROLE_KEY or ANON_KEY) environment variables, or dynamic credentials, must be set.")
 
             logger.debug("Initializing Supabase connection")
-            self._client = await create_async_client(supabase_url, supabase_key)
+            self._client = await create_async_client(final_supabase_url, final_supabase_key)
             self._initialized = True
-            key_type = "SERVICE_ROLE_KEY" if config.SUPABASE_SERVICE_ROLE_KEY else "ANON_KEY"
+            key_type = "DYNAMIC_KEY" if self._dynamic_supabase_key else ("SERVICE_ROLE_KEY" if config.SUPABASE_SERVICE_ROLE_KEY else "ANON_KEY")
             logger.debug(f"Database connection initialized with Supabase using {key_type}")
         except Exception as e:
             logger.error(f"Database initialization error: {e}")
@@ -60,10 +70,12 @@ class DBConnection:
 
     @property
     async def client(self) -> AsyncClient:
-        """Get the Supabase client instance."""
-        if not self._initialized:
-            logger.debug("Supabase client not initialized, initializing now")
-            await self.initialize()
+        """Get the Supabase client instance.
+        Ensures initialization with dynamic credentials if they were set.
+        """
+        if not self._initialized or (self._dynamic_supabase_url and not self._client):
+            logger.debug("Supabase client not initialized or dynamic credentials present, initializing now")
+            await self.initialize(self._dynamic_supabase_url, self._dynamic_supabase_key)
         if not self._client:
             logger.error("Database client is None after initialization")
             raise RuntimeError("Database not initialized")

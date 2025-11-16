@@ -12,6 +12,11 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient();
+    if (!supabase) {
+      console.error('Supabase client is not initialized.');
+      // Optionally, redirect to an error page or handle the error gracefully
+      return NextResponse.redirect(`${origin}/error?message=supabase_client_not_initialized`);
+    }
     await supabase.auth.exchangeCodeForSession(code);
   }
 

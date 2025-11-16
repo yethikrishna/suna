@@ -15,6 +15,10 @@ import { redirect } from 'next/navigation';
 
 export default async function UserAccountButton() {
   const supabaseClient = await createClient();
+  if (!supabaseClient) {
+    console.error('Supabase client is not initialized.');
+    return null; // Or handle the error appropriately
+  }
   const { data: personalAccount } = await supabaseClient.rpc(
     'get_personal_account',
   );
@@ -23,6 +27,10 @@ export default async function UserAccountButton() {
     'use server';
 
     const supabase = await createClient();
+    if (!supabase) {
+      console.error('Supabase client is not initialized.');
+      return;
+    }
     await supabase.auth.signOut();
     return redirect('/');
   };

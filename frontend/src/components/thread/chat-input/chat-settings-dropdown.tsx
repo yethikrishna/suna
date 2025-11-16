@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useAgents } from '@/hooks/react-query/agents/use-agents';
 import { ChatSettingsDialog } from './chat-settings-dialog';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/router';
 import { cn, truncateString } from '@/lib/utils';
 
 interface PredefinedAgent {
@@ -83,7 +83,7 @@ export const ChatSettingsDropdown: React.FC<ChatSettingsDropdownProps> = ({
   const allAgents = [
     {
       id: undefined,
-      name: 'Suna',
+      name: 'Yeti',
       description: 'Your personal AI assistant',
       type: 'default' as const,
       icon: <User className="h-4 w-4" />
@@ -326,4 +326,4 @@ export const ChatSettingsDropdown: React.FC<ChatSettingsDropdownProps> = ({
       />
     </>
   );
-}; 
+};

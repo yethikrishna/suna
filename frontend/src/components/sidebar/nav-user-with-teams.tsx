@@ -141,6 +141,10 @@ export function NavUserWithTeams({
 
   const handleLogout = async () => {
     const supabase = createClient();
+    if (!supabase) {
+      console.error('Supabase client is not initialized.');
+      return;
+    }
     await supabase.auth.signOut();
     router.push('/auth');
   };

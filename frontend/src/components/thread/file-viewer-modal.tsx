@@ -1144,6 +1144,12 @@ export function FileViewerModal({
         formData.append('path', uploadPath);
 
         const supabase = createClient();
+        if (!supabase) {
+          console.error('Supabase client is not initialized.');
+          toast.error('Supabase client is not initialized. Cannot upload files.');
+          setIsUploading(false);
+          return;
+        }
         const {
           data: { session },
         } = await supabase.auth.getSession();

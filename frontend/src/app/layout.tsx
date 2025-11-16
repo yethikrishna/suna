@@ -1,9 +1,11 @@
 import { ThemeProvider } from '@/components/home/theme-provider';
 import { siteConfig } from '@/lib/site';
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Geist, Geist_Mono, Space_Grotesk } from 'next/font/google';
 import './globals.css';
+import { ClerkProvider } from '@clerk/nextjs';
 import { Providers } from './providers';
+import { SupabaseCredentialsProvider } from '@/contexts/SupabaseCredentialsContext';
 import { Toaster } from '@/components/ui/sonner';
 import { Analytics } from '@vercel/analytics/react';
 import { GoogleAnalytics } from '@next/third-parties/google';
@@ -20,6 +22,11 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+const spaceGrotesk = Space_Grotesk({
+  variable: '--font-display',
+  subsets: ['latin'],
+});
+
 export const viewport: Viewport = {
   themeColor: 'black',
 };
@@ -31,7 +38,7 @@ export const metadata: Metadata = {
     template: `%s - ${siteConfig.name}`,
   },
   description:
-    'Suna is a fully open source AI assistant that helps you accomplish real-world tasks with ease. Through natural conversation, Suna becomes your digital companion for research, data analysis, and everyday challenges.',
+    'Y0 is a modern platform experience that improves usability and cohesion across devices, powered by intelligent workflows and a unified design system.',
   keywords: [
     'AI',
     'artificial intelligence',
@@ -43,13 +50,13 @@ export const metadata: Metadata = {
     'research',
     'data analysis',
   ],
-  authors: [{ name: 'Kortix Team', url: 'https://suna.so' }],
+  authors: [{ name: 'Y0 Team', url: siteConfig.url }],
   creator:
-    'Kortix Team - Adam Cohen Hillel, Marko Kraemer, Domenico Gagliardi, and Quoc Dat Le',
+    'Y0 Platform',
   publisher:
-    'Kortix Team - Adam Cohen Hillel, Marko Kraemer, Domenico Gagliardi, and Quoc Dat Le',
+    'Y0 Platform',
   category: 'Technology',
-  applicationName: 'Suna',
+  applicationName: 'Y0',
   formatDetection: {
     telephone: false,
     email: false,
@@ -64,17 +71,17 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'Suna - Open Source Generalist AI Agent',
+    title: 'Y0 Platform',
     description:
-      'Suna is a fully open source AI assistant that helps you accomplish real-world tasks with ease through natural conversation.',
+      'A modern, cohesive platform experience powered by intelligent workflows and a unified design system.',
     url: siteConfig.url,
-    siteName: 'Suna',
+    siteName: 'Y0',
     images: [
       {
         url: '/banner.png',
         width: 1200,
         height: 630,
-        alt: 'Suna - Open Source Generalist AI Agent',
+        alt: 'Yeti - Your Intelligent Generalist AI',
         type: 'image/png',
       },
     ],
@@ -83,11 +90,11 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Suna - Open Source Generalist AI Agent',
+    title: 'Y0 Platform',
     description:
-      'Suna is a fully open source AI assistant that helps you accomplish real-world tasks with ease through natural conversation.',
-    creator: '@kortixai',
-    site: '@kortixai',
+      'A modern, cohesive platform experience powered by intelligent workflows and a unified design system.',
+    creator: '@y0',
+    site: '@y0',
     images: [
       {
         url: '/banner.png',
@@ -113,7 +120,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <ClerkProvider>
+      <html lang="en" suppressHydrationWarning>
       <head>
         {/* Google Tag Manager */}
         <Script id="google-tag-manager" strategy="afterInteractive">
@@ -127,7 +135,7 @@ export default function RootLayout({
       </head>
 
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased font-sans bg-background`}
+        className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} antialiased font-sans bg-background`}
       >
         <noscript>
           <iframe
@@ -145,15 +153,18 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <Providers>
-            {children}
-            <Toaster />
-          </Providers>
+          <SupabaseCredentialsProvider>
+            <Providers>
+              {children}
+              <Toaster />
+            </Providers>
+          </SupabaseCredentialsProvider>
           <Analytics />
           <GoogleAnalytics gaId="G-6ETJFB3PT3" />
           <SpeedInsights />
         </ThemeProvider>
       </body>
     </html>
+  </ClerkProvider>
   );
 }

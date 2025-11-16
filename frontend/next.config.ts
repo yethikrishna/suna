@@ -1,18 +1,9 @@
 import { withSentryConfig } from '@sentry/nextjs';
 import type { NextConfig } from 'next';
 
-let nextConfig: NextConfig = {
-  webpack: (config) => {
-    // This rule prevents issues with pdf.js and canvas
-    config.externals = [...(config.externals || []), { canvas: 'canvas' }];
-
-    // Ensure node native modules are ignored
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      canvas: false,
-    };
-
-    return config;
+const nextConfig = {
+  env: {
+    NEXT_PUBLIC_SITE_NAME: 'Yeti',
   },
 };
 

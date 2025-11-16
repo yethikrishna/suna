@@ -2397,7 +2397,7 @@ wheels = [
 ]
 
 [[package]]
-name = "suna"
+name = "yeti"
 version = "1.0"
 source = { virtual = "." }
 dependencies = [

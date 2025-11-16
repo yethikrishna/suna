@@ -1,37 +1,45 @@
 'use server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { getSupabaseUrl, getSupabaseAnonKey } from '@/lib/env';
 
-export const createClient = async () => {
+export const createClient = async ({ supabaseUrl, supabaseAnonKey }: { supabaseUrl?: string; supabaseAnonKey?: string; } = {}) => {
   const cookieStore = await cookies();
-  let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  let finalSupabaseUrl = supabaseUrl || getSupabaseUrl();
+  const finalSupabaseAnonKey = supabaseAnonKey || getSupabaseAnonKey();
 
   // Ensure the URL is in the proper format with http/https protocol
-  if (supabaseUrl && !supabaseUrl.startsWith('http')) {
+  if (finalSupabaseUrl && !finalSupabaseUrl.startsWith('http')) {
     // If it's just a hostname without protocol, add http://
-    supabaseUrl = `http://${supabaseUrl}`;
+    finalSupabaseUrl = `http://${finalSupabaseUrl}`;
   }
 
-  // console.log('[SERVER] Supabase URL:', supabaseUrl);
-  // console.log('[SERVER] Supabase Anon Key:', supabaseAnonKey);
+  // console.log('[SERVER] Supabase URL:', finalSupabaseUrl);
+  // console.log('[SERVER] Supabase Anon Key:', finalSupabaseAnonKey);
 
-  return createServerClient(supabaseUrl, supabaseAnonKey, {
+  if (!finalSupabaseUrl || !finalSupabaseAnonKey) {
+     return null; // Return null if credentials are not available
+   }
+
+   return createServerClient(finalSupabaseUrl, finalSupabaseAnonKey, {
     cookies: {
-      getAll() {
-        return cookieStore.getAll();
+      get(name: string) {
+        return cookieStore.get(name)?.value;
       },
-      setAll(cookiesToSet) {
-        try {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set({ name, value, ...options }),
-          );
-        } catch (error) {
-          // The `set` method was called from a Server Component.
-          // This can be ignored if you have middleware refreshing
-          // user sessions.
-        }
-      },
+      set(name: string, value: string, options: CookieOptions) {
+         try {
+           cookieStore.set(name, value, options);
+         } catch (error) {
+           console.error('Error setting cookie:', error);
+         }
+       },
+       remove(name: string, options: CookieOptions) {
+         try {
+           cookieStore.set(name, '', options);
+         } catch (error) {
+           console.error('Error removing cookie:', error);
+         }
+       },
     },
   });
 };

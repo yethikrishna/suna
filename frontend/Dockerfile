@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM ghcr.io/yethikrishna-ai/yeti-frontend:latest as base
 
 WORKDIR /app
 

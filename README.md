@@ -1,36 +1,36 @@
 <div align="center">
 
-# Suna - Open Source Generalist AI Agent
+# Yeti - Open Source Generalist AI Agent
 
 (that acts on your behalf)
 
-![Suna Screenshot](frontend/public/banner.png)
+![Yeti Screenshot](frontend/public/banner.png)
 
-Suna is a fully open source AI assistant that helps you accomplish real-world tasks with ease. Through natural conversation, Suna becomes your digital companion for research, data analysis, and everyday challenges—combining powerful capabilities with an intuitive interface that understands what you need and delivers results.
+Yeti is a fully open source AI assistant that helps you accomplish real-world tasks with ease. Through natural conversation, Yeti becomes your digital companion for research, data analysis, and everyday challenges—combining powerful capabilities with an intuitive interface that understands what you need and delivers results.
 
-Suna's powerful toolkit includes seamless browser automation to navigate the web and extract data, file management for document creation and editing, web crawling and extended search capabilities, command-line execution for system tasks, website deployment, and integration with various APIs and services. These capabilities work together harmoniously, allowing Suna to solve your complex problems and automate workflows through simple conversations!
+Yeti's powerful toolkit includes seamless browser automation to navigate the web and extract data, file management for document creation and editing, web crawling and extended search capabilities, command-line execution for system tasks, website deployment, and integration with various APIs and services. These capabilities work together harmoniously, allowing Yeti to solve your complex problems and automate workflows through simple conversations!
 
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue)](./license)
 [![Discord Follow](https://dcbadge.limes.pink/api/server/Py6pCBUUPw?style=flat)](https://discord.gg/Py6pCBUUPw)
 [![Twitter Follow](https://img.shields.io/twitter/follow/kortixai)](https://x.com/kortixai)
-[![GitHub Repo stars](https://img.shields.io/github/stars/kortix-ai/suna)](https://github.com/kortix-ai/suna)
-[![Issues](https://img.shields.io/github/issues/kortix-ai/suna)](https://github.com/kortix-ai/suna/labels/bug)
+[![GitHub Repo stars](https://img.shields.io/github/stars/yethikrishna-ai/yeti)](https://github.com/yethikrishna-ai/yeti)
+[![Issues](https://img.shields.io/github/issues/yethikrishna-ai/yeti)](https://github.com/yethikrishna-ai/yeti/labels/bug)
 
 <!-- Keep these links. Translations will automatically update with the README. -->
-[Deutsch](https://www.readme-i18n.com/kortix-ai/suna?lang=de) | 
-[Español](https://www.readme-i18n.com/kortix-ai/suna?lang=es) | 
-[français](https://www.readme-i18n.com/kortix-ai/suna?lang=fr) | 
-[日本語](https://www.readme-i18n.com/kortix-ai/suna?lang=ja) | 
-[한국어](https://www.readme-i18n.com/kortix-ai/suna?lang=ko) | 
-[Português](https://www.readme-i18n.com/kortix-ai/suna?lang=pt) | 
-[Русский](https://www.readme-i18n.com/kortix-ai/suna?lang=ru) | 
-[中文](https://www.readme-i18n.com/kortix-ai/suna?lang=zh)
+[Deutsch](https://www.readme-i18n.com/yethikrishna-ai/yeti?lang=de) | 
+[Español](https://www.readme-i18n.com/yethikrishna-ai/yeti?lang=es) | 
+[français](https://www.readme-i18n.com/yethikrishna-ai/yeti?lang=fr) | 
+[日本語](https://www.readme-i18n.com/yethikrishna-ai/yeti?lang=ja) | 
+[한국어](https://www.readme-i18n.com/yethikrishna-ai/yeti?lang=ko) | 
+[Português](https://www.readme-i18n.com/yethikrishna-ai/yeti?lang=pt) | 
+[Русский](https://www.readme-i18n.com/yethikrishna-ai/yeti?lang=ru) | 
+[中文](https://www.readme-i18n.com/yethikrishna-ai/yeti?lang=zh)
 
 </div>
 
 ## Table of Contents
 
-- [Suna Architecture](#project-architecture)
+- [Yeti Architecture](#project-architecture)
   - [Backend API](#backend-api)
   - [Frontend](#frontend)
   - [Agent Docker](#agent-docker)
@@ -44,7 +44,7 @@ Suna's powerful toolkit includes seamless browser automation to navigate the web
 
 ![Architecture Diagram](docs/images/diagram.png)
 
-Suna consists of four main components:
+Yeti consists of four main components:
 
 ### Backend API
 
@@ -80,7 +80,7 @@ Handles data persistence with authentication, user management, conversation hist
 
 8. **Research + First Contact Draft** ([Watch](https://www.suna.so/share/6b6296a6-8683-49e5-9ad0-a32952d12c44)) - _"Research my potential customers (B2B) on LinkedIn. They should be in the clean tech industry. Find their websites and their email addresses. After that, based on the company profile, generate a personalized first contact email where I present my company which is offering consulting services to cleantech companies to maximize their profits and reduce their costs."_
 
-9. **SEO Analysis** ([Watch](https://www.suna.so/share/43491cb0-cd6c-45f0-880c-66ddc8c4b842)) - _"Based on my website suna.so, generate an SEO report analysis, find top-ranking pages by keyword clusters, and identify topics I'm missing."_
+9. **SEO Analysis** ([Watch](https://www.suna.so/share/43491cb0-cd6c-45f0-880c-66ddc8c4b842)) - _"Based on my website yeti.so, generate an SEO report analysis, find top-ranking pages by keyword clusters, and identify topics I'm missing."_
 
 10. **Generate a Personal Trip** ([Watch](https://www.suna.so/share/37b31907-8349-4f63-b0e5-27ca597ed02a)) - _"Generate a personal trip to London, with departure from Bangkok on the 1st of May. The trip will last 10 days. Find an accommodation in the center of London, with a rating on Google reviews of at least 4.5. Find me interesting outdoor activities to do during the journey. Generate a detailed itinerary plan."_
 
@@ -90,7 +90,7 @@ Handles data persistence with authentication, user management, conversation hist
 
 ## Self-Hosting
 
-Suna can be self-hosted on your own infrastructure using our comprehensive setup wizard. For a complete guide to self-hosting Suna, please refer to our [Self-Hosting Guide](./docs/SELF-HOSTING.md).
+Yeti can be self-hosted on your own infrastructure using our comprehensive setup wizard. For a complete guide to self-hosting Yeti, please refer to our [Self-Hosting Guide](./docs/SELF-HOSTING.md).
 
 The setup process includes:
 
@@ -108,8 +108,8 @@ The setup process includes:
 1. **Clone the repository**:
 
 ```bash
-git clone https://github.com/kortix-ai/suna.git
-cd suna
+git clone https://github.com/yethikrishna-ai/yeti.git
+cd yeti
 ```
 
 2. **Run the setup wizard**:
@@ -130,7 +130,7 @@ python start.py
 
 See the [Self-Hosting Guide](./docs/SELF-HOSTING.md) for detailed manual setup instructions.
 
-The wizard will guide you through all necessary steps to get your Suna instance up and running. For detailed instructions, troubleshooting tips, and advanced configuration options, see the [Self-Hosting Guide](./docs/SELF-HOSTING.md).
+The wizard will guide you through all necessary steps to get your Yeti instance up and running. For detailed instructions, troubleshooting tips, and advanced configuration options, see the [Self-Hosting Guide](./docs/SELF-HOSTING.md).
 
 ## Contributing
 
@@ -159,4 +159,4 @@ We welcome contributions from the community! Please see our [Contributing Guide]
 
 ## License
 
-Kortix Suna is licensed under the Apache License, Version 2.0. See [LICENSE](./LICENSE) for the full license text.
+Yethikrishna Yeti is licensed under the Apache License, Version 2.0. See [LICENSE](./LICENSE) for the full license text.

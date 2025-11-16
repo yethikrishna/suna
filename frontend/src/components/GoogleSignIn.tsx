@@ -77,6 +77,12 @@ export default function GoogleSignIn({ returnUrl }: GoogleSignInProps) {
         setIsLoading(true);
         const supabase = createClient();
 
+        if (!supabase) {
+          console.error('Supabase client is not initialized.');
+          setIsLoading(false);
+          return;
+        }
+
         console.log('Starting Google sign in process');
 
         const { error } = await supabase.auth.signInWithIdToken({

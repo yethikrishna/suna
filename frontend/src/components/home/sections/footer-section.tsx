@@ -8,6 +8,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
+import { log } from '@/lib/blink/analytics';
 
 export function FooterSection() {
   const tablet = useMediaQuery('(max-width: 1024px)');
@@ -20,10 +21,10 @@ export function FooterSection() {
   }, []);
 
   const logoSrc = !mounted
-    ? '/kortix-logo.svg'
+    ? '/y0-logo.svg'
     : resolvedTheme === 'dark'
-      ? '/kortix-logo-white.svg'
-      : '/kortix-logo.svg';
+      ? '/y0-logo-white.svg'
+      : '/y0-logo.svg';
 
   return (
     <footer id="footer" className="w-full pb-0">
@@ -32,7 +33,7 @@ export function FooterSection() {
           <Link href="/" className="flex items-center gap-2">
             <Image
               src={logoSrc}
-              alt="Kortix Logo"
+              alt="Y0 Logo"
               width={122}
               height={22}
               priority
@@ -44,7 +45,7 @@ export function FooterSection() {
 
           <div className="flex items-center gap-4">
             <a
-              href="https://github.com/kortix-ai/suna"
+              // Our GitHub is not available
               target="_blank"
               rel="noopener noreferrer"
               aria-label="GitHub"
@@ -61,7 +62,7 @@ export function FooterSection() {
               </svg>
             </a>
             <a
-              href="https://x.com/kortixai"
+              href="https://x.com/yethikrishna_r"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="X (Twitter)"
@@ -78,7 +79,7 @@ export function FooterSection() {
               </svg>
             </a>
             <a
-              href="https://www.linkedin.com/company/kortix/"
+              href="https://www.instagram.com/yethikrishnar/"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="LinkedIn"
@@ -106,34 +107,14 @@ export function FooterSection() {
             <Icons.gdprDark className="size-12" />
           </div> */}
         </div>
-        <div className="pt-5 md:w-1/2">
-          <div className="flex flex-col items-start justify-start md:flex-row md:items-center md:justify-between gap-y-5 lg:pl-10">
-            {siteConfig.footerLinks.map((column, columnIndex) => (
-              <ul key={columnIndex} className="flex flex-col gap-y-2">
-                <li className="mb-2 text-sm font-semibold text-primary">
-                  {column.title}
-                </li>
-                {column.links.map((link) => (
-                  <li
-                    key={link.id}
-                    className="group inline-flex cursor-pointer items-center justify-start gap-1 text-[15px]/snug text-muted-foreground"
-                  >
-                    <Link href={link.url}>{link.title}</Link>
-                    <div className="flex size-4 items-center justify-center border border-border rounded translate-x-0 transform opacity-0 transition-all duration-300 ease-out group-hover:translate-x-1 group-hover:opacity-100">
-                      <ChevronRightIcon className="h-4 w-4 " />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ))}
-          </div>
-        </div>
+
       </div>
       <Link
         href="https://www.youtube.com/watch?v=nuf5BF1jvjQ"
         target="_blank"
         rel="noopener noreferrer"
         className="block w-full h-48 md:h-64 relative mt-24 z-0 cursor-pointer"
+        onClick={() => log('button_clicked', { button_id: 'footer_video', page: '/footer' })}
       >
         <div className="absolute inset-0 bg-gradient-to-t from-transparent to-background z-10 from-40%" />
         <div className="absolute inset-0 ">

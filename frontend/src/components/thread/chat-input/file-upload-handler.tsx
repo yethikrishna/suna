@@ -89,6 +89,11 @@ const uploadFiles = async (
       formData.append('path', uploadPath);
 
       const supabase = createClient();
+      if (!supabase) {
+        console.error('Supabase client is not initialized.');
+        setIsUploading(false);
+        return;
+      }
       const {
         data: { session },
       } = await supabase.auth.getSession();

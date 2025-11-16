@@ -57,17 +57,16 @@ export interface PricingTier {
 }
 
 export const siteConfig = {
-  name: 'Kortix Suna',
+  name: 'Yethikrishna Yeti',
   description: 'The Generalist AI Agent that can act on your behalf.',
   cta: 'Start Free',
   url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
   keywords: ['AI Agent', 'Generalist AI', 'Open Source AI', 'Autonomous Agent'],
   links: {
-    email: 'support@kortix.ai',
-    twitter: 'https://x.com/kortixai',
-    discord: 'https://discord.gg/kortixai',
-    github: 'https://github.com/Kortix-ai/Suna',
-    instagram: 'https://instagram.com/kortixai',
+    email: 'yethikrishna@yeti.so',
+    twitter: 'https://x.com/yethikrishna_ai',
+    github: 'https://github.com/yethikrishna-ai/yeti',
+    instagram: 'https://instagram.com/yethikrishna_ai',
   },
   nav: {
     links: [
@@ -106,10 +105,10 @@ export const siteConfig = {
     ),
     badge: '100% OPEN SOURCE',
     githubUrl: 'https://github.com/kortix-ai/suna',
-    title: 'Suna, the AI Employee.',
+    title: 'Yeti, the AI Employee.',
     description:
-      'Suna by Kortix – is a generalist AI Agent that acts on your behalf.',
-    inputPlaceholder: 'Ask Suna to...',
+      'Yeti by Yethikrishna – is a generalist AI Agent that acts on your behalf.',
+    inputPlaceholder: 'Ask Yeti to...',
   },
   cloudPricingItems: [
     {

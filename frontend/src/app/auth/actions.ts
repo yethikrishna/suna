@@ -40,6 +40,8 @@ export async function signIn(prevState: any, formData: FormData) {
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
   const returnUrl = formData.get('returnUrl') as string | undefined;
+  const supabaseUrl = formData.get('supabaseUrl') as string | undefined;
+  const supabaseAnonKey = formData.get('supabaseAnonKey') as string | undefined;
 
   if (!email || !email.includes('@')) {
     return { message: 'Please enter a valid email address' };
@@ -49,7 +51,14 @@ export async function signIn(prevState: any, formData: FormData) {
     return { message: 'Password must be at least 6 characters' };
   }
 
-  const supabase = await createClient();
+  const supabase = await createClient({
+    supabaseUrl: supabaseUrl,
+    supabaseAnonKey: supabaseAnonKey,
+  });
+  
+  if (!supabase) {
+    return { message: 'Supabase client could not be initialized' };
+  }
 
   const { error } = await supabase.auth.signInWithPassword({
     email,
@@ -70,6 +79,8 @@ export async function signUp(prevState: any, formData: FormData) {
   const password = formData.get('password') as string;
   const confirmPassword = formData.get('confirmPassword') as string;
   const returnUrl = formData.get('returnUrl') as string | undefined;
+  const supabaseUrl = formData.get('supabaseUrl') as string | undefined;
+  const supabaseAnonKey = formData.get('supabaseAnonKey') as string | undefined;
 
   if (!email || !email.includes('@')) {
     return { message: 'Please enter a valid email address' };
@@ -83,7 +94,14 @@ export async function signUp(prevState: any, formData: FormData) {
     return { message: 'Passwords do not match' };
   }
 
-  const supabase = await createClient();
+  const supabase = await createClient({
+    supabaseUrl: supabaseUrl,
+    supabaseAnonKey: supabaseAnonKey,
+  });
+
+  if (!supabase) {
+    return { error: 'Supabase client could not be initialized. Please provide valid Supabase URL and Anon Key.' };
+  }
 
   const { error } = await supabase.auth.signUp({
     email,
@@ -122,12 +140,21 @@ export async function signUp(prevState: any, formData: FormData) {
 export async function forgotPassword(prevState: any, formData: FormData) {
   const email = formData.get('email') as string;
   const origin = formData.get('origin') as string;
+  const supabaseUrl = formData.get('supabaseUrl') as string | undefined;
+  const supabaseAnonKey = formData.get('supabaseAnonKey') as string | undefined;
 
   if (!email || !email.includes('@')) {
     return { message: 'Please enter a valid email address' };
   }
 
-  const supabase = await createClient();
+  const supabase = await createClient({
+    supabaseUrl: supabaseUrl,
+    supabaseAnonKey: supabaseAnonKey,
+  });
+  
+  if (!supabase) {
+    return { message: 'Supabase client could not be initialized' };
+  }
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${origin}/auth/reset-password`,
@@ -146,6 +173,8 @@ export async function forgotPassword(prevState: any, formData: FormData) {
 export async function resetPassword(prevState: any, formData: FormData) {
   const password = formData.get('password') as string;
   const confirmPassword = formData.get('confirmPassword') as string;
+  const supabaseUrl = formData.get('supabaseUrl') as string | undefined;
+  const supabaseAnonKey = formData.get('supabaseAnonKey') as string | undefined;
 
   if (!password || password.length < 6) {
     return { message: 'Password must be at least 6 characters' };
@@ -155,7 +184,14 @@ export async function resetPassword(prevState: any, formData: FormData) {
     return { message: 'Passwords do not match' };
   }
 
-  const supabase = await createClient();
+  const supabase = await createClient({
+    supabaseUrl: supabaseUrl,
+    supabaseAnonKey: supabaseAnonKey,
+  });
+
+  if (!supabase) {
+    return { message: 'Supabase client could not be initialized' };
+  }
 
   const { error } = await supabase.auth.updateUser({
     password,
@@ -171,8 +207,16 @@ export async function resetPassword(prevState: any, formData: FormData) {
   };
 }
 
-export async function signOut() {
-  const supabase = await createClient();
+export async function signOut(supabaseUrl?: string, supabaseAnonKey?: string) {
+  const supabase = await createClient({
+    supabaseUrl: supabaseUrl,
+    supabaseAnonKey: supabaseAnonKey,
+  });
+  
+  if (!supabase) {
+    return { message: 'Supabase client could not be initialized' };
+  }
+
   const { error } = await supabase.auth.signOut();
 
   if (error) {

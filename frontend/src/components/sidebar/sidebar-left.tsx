@@ -55,6 +55,10 @@ export function SidebarLeft({
   useEffect(() => {
     const fetchUserData = async () => {
       const supabase = createClient();
+      if (!supabase) {
+        console.error('Supabase client is not initialized.');
+        return;
+      }
       const { data } = await supabase.auth.getUser();
 
       if (data.user) {

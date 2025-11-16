@@ -1,10 +1,10 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Credentials | Kortix Suna',
+  title: 'Credentials | Yeti AI',
   description: 'Create and manage credentials to your services',
   openGraph: {
-    title: 'Credentials | Kortix Suna',
+    title: 'Credentials | Yeti AI',
     description: 'Create and manage credentials to your services',
     type: 'website',
   },

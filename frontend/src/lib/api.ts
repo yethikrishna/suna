@@ -1811,6 +1811,9 @@ export const createPortalSession = async (
 export const getSubscription = async (): Promise<SubscriptionStatus> => {
   try {
     const supabase = createClient();
+    if (!supabase) {
+      throw new Error('Supabase client could not be initialized.');
+    }
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -1853,6 +1856,9 @@ export const getSubscription = async (): Promise<SubscriptionStatus> => {
 export const getAvailableModels = async (): Promise<AvailableModelsResponse> => {
   try {
     const supabase = createClient();
+    if (!supabase) {
+      throw new Error('Supabase client could not be initialized.');
+    }
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -1896,6 +1902,9 @@ export const getAvailableModels = async (): Promise<AvailableModelsResponse> => 
 export const checkBillingStatus = async (): Promise<BillingStatusResponse> => {
   try {
     const supabase = createClient();
+    if (!supabase) {
+      throw new Error('Supabase client could not be initialized.');
+    }
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -1943,6 +1952,9 @@ export interface TranscriptionResponse {
 export const transcribeAudio = async (audioFile: File): Promise<TranscriptionResponse> => {
   try {
     const supabase = createClient();
+    if (!supabase) {
+      throw new Error('Supabase client could not be initialized.');
+    }
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -1989,6 +2001,9 @@ export const transcribeAudio = async (audioFile: File): Promise<TranscriptionRes
 
 export const getAgentBuilderChatHistory = async (agentId: string): Promise<{messages: Message[], thread_id: string | null}> => {
   const supabase = createClient();
+  if (!supabase) {
+    throw new Error('Supabase client could not be initialized.');
+  }
   const {
     data: { session },
   } = await supabase.auth.getSession();

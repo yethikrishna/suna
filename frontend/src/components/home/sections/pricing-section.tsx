@@ -178,6 +178,11 @@ function PricingTier({
   // Auto-select the correct plan only on initial load - simplified since no more Custom tier
   const handleSubscribe = async (planStripePriceId: string) => {
     if (!isAuthenticated) {
+      // Assuming createClient() might return null if Supabase is not configured
+      // This check ensures we don't proceed with authentication if the client is not available.
+      // However, the redirect to /auth?mode=signup is a client-side navigation
+      // and doesn't directly involve the Supabase client at this point.
+      // The actual Supabase client null check should be within the authentication actions themselves.
       window.location.href = '/auth?mode=signup';
       return;
     }

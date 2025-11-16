@@ -19,6 +19,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
+import { useSupabaseCredentials } from '@/contexts/SupabaseCredentialsContext';
 
 import {
   Dialog,
@@ -33,6 +34,7 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isLoading } = useAuth();
+  const { setSupabaseCredentials } = useSupabaseCredentials();
   const mode = searchParams.get('mode');
   const returnUrl = searchParams.get('returnUrl');
   const message = searchParams.get('message');
@@ -62,6 +64,8 @@ function LoginContent() {
   const [registrationSuccess, setRegistrationSuccess] =
     useState(!!isSuccessMessage);
   const [registrationEmail, setRegistrationEmail] = useState('');
+  const [supabaseUrl, setSupabaseUrl] = useState('');
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState('');
 
   // Forgot password state
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
@@ -112,6 +116,12 @@ function LoginContent() {
     } else {
       formData.append('returnUrl', '/dashboard');
     }
+    if (supabaseUrl) {
+      formData.append('supabaseUrl', supabaseUrl);
+    }
+    if (supabaseAnonKey) {
+      formData.append('supabaseAnonKey', supabaseAnonKey);
+    }
     const result = await signIn(prevState, formData);
 
     // Check for success and redirectTo properties
@@ -142,6 +152,14 @@ function LoginContent() {
     // Add origin for email redirects
     formData.append('origin', window.location.origin);
 
+    // Append Supabase credentials if provided
+    if (supabaseUrl) {
+      formData.append('supabaseUrl', supabaseUrl);
+    }
+    if (serviceRoleKey) {
+      formData.append('supabaseAnonKey', supabaseAnonKey);
+    }
+
     const result = await signUp(prevState, formData);
 
     // Check for success and redirectTo properties (direct login case)
@@ -162,6 +180,13 @@ function LoginContent() {
       const resultMessage = result.message as string;
       if (resultMessage.includes('Check your email')) {
         setRegistrationSuccess(true);
+
+        // Store Supabase credentials if sign-up was successful
+        const url = formData.get('supabaseUrl') as string;
+        const key = formData.get('supabaseAnonKey') as string;
+        if (url && key) {
+          setSupabaseCredentials(url, key);
+        }
 
         // Update URL without causing a refresh
         const params = new URLSearchParams(window.location.search);
@@ -196,6 +221,12 @@ function LoginContent() {
     const formData = new FormData();
     formData.append('email', forgotPasswordEmail);
     formData.append('origin', window.location.origin);
+    if (supabaseUrl) {
+      formData.append('supabaseUrl', supabaseUrl);
+    }
+    if (supabaseAnonKey) {
+      formData.append('supabaseAnonKey', supabaseAnonKey);
+    }
 
     const result = await forgotPassword(null, formData);
 
@@ -423,22 +454,56 @@ function LoginContent() {
                     name="password"
                     type="password"
                     placeholder="Password"
-                    className="h-12 rounded-full bg-background border-border"
+                    className="w-full"
                     required
                   />
                 </div>
 
                 {isSignUp && (
-                  <div>
-                    <Input
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      type="password"
-                      placeholder="Confirm password"
-                      className="h-12 rounded-full bg-background border-border"
-                      required
-                    />
-                  </div>
+                  <>
+                    <div className="grid gap-2">
+                      <div className="grid gap-1">
+                        <label htmlFor="confirmPassword">Confirm Password</label>
+                        <Input
+                          id="confirmPassword"
+                          name="confirmPassword"
+                          type="password"
+                          placeholder="Confirm Password"
+                          required
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+        {isSignUp && (
+          <div className="flex flex-col gap-2">
+            <label htmlFor="supabaseUrl">Supabase URL</label>
+            <Input
+              id="supabaseUrl"
+              name="supabaseUrl"
+              type="text"
+              placeholder="https://your-project-ref.supabase.co"
+              value={supabaseUrl}
+              onChange={(e) => setSupabaseUrl(e.target.value)}
+              className="w-full"
+            />
+          </div>
+        )}
+
+        {isSignUp && (
+          <div className="flex flex-col gap-2">
+            <label htmlFor="supabaseAnonKey">Supabase Anon Key</label>
+            <Input
+              id="supabaseAnonKey"
+              name="supabaseAnonKey"
+              type="password"
+              placeholder="Your Supabase Anon Key"
+              value={supabaseAnonKey}
+              onChange={(e) => setSupabaseAnonKey(e.target.value)}
+              className="w-full"
+            />
+          </div>
+        )}
+                  </>
                 )}
 
                 <div className="space-y-4 pt-4">

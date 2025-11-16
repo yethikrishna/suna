@@ -12,6 +12,7 @@ import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/AuthProvider';
+import { log } from '@/lib/blink/analytics';
 
 const INITIAL_WIDTH = '70rem';
 const MAX_WIDTH = '800px';
@@ -100,10 +101,10 @@ export function Navbar() {
   const handleOverlayClick = () => setIsDrawerOpen(false);
 
   const logoSrc = !mounted
-    ? '/kortix-logo.svg'
+    ? '/y0-logo.svg'
     : resolvedTheme === 'dark'
-      ? '/kortix-logo-white.svg'
-      : '/kortix-logo.svg';
+      ? '/y0-logo-white.svg'
+      : '/y0-logo.svg';
 
   return (
     <header
@@ -129,7 +130,7 @@ export function Navbar() {
             <Link href="/" className="flex items-center gap-3">
               <Image
                 src={logoSrc}
-                alt="Kortix Logo"
+                alt="Y0 Logo"
                 width={140}
                 height={22}
                 priority
@@ -153,6 +154,7 @@ export function Navbar() {
                   <Link
                     className="bg-secondary h-8 hidden md:flex items-center justify-center text-sm font-normal tracking-wide rounded-full text-primary-foreground dark:text-secondary-foreground w-fit px-4 shadow-[inset_0_1px_2px_rgba(255,255,255,0.25),0_3px_3px_-1.5px_rgba(16,24,40,0.06),0_1px_1px_rgba(16,24,40,0.08)] border border-white/[0.12]"
                     href="/dashboard"
+                    onClick={() => log('button_clicked', { button_id: 'dashboard', page: '/navbar' })}
                   >
                     Dashboard
                   </Link>
@@ -160,6 +162,7 @@ export function Navbar() {
                   <Link
                     className="bg-secondary h-8 hidden md:flex items-center justify-center text-sm font-normal tracking-wide rounded-full text-primary-foreground dark:text-secondary-foreground w-fit px-4 shadow-[inset_0_1px_2px_rgba(255,255,255,0.25),0_3px_3px_-1.5px_rgba(16,24,40,0.06),0_1px_1px_rgba(16,24,40,0.08)] border border-white/[0.12]"
                     href="/auth"
+                    onClick={() => log('button_clicked', { button_id: 'get_started', page: '/navbar' })}
                   >
                     Get started
                   </Link>
@@ -208,13 +211,13 @@ export function Navbar() {
                   <Link href="/" className="flex items-center gap-3">
                     <Image
                       src={logoSrc}
-                      alt="Kortix Logo"
+                      alt="Y0 Logo"
                       width={120}
                       height={22}
                       priority
                     />
-                    <span className="font-medium text-primary text-sm">
-                      / Suna
+                    <span className="font-medium text-primary text-sm font-display">
+                      / Y0
                     </span>
                   </Link>
                   <button

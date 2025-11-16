@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="140" height="24" viewBox="0 0 140 24" fill="none">
+  <g>
+    <path d="M8.5 2L13 10.5L17.5 2H22L15.5 14.5V22H10.5V14.5L4 2H8.5Z" fill="#2763FF"/>
+    <rect x="26" y="2" width="18" height="20" rx="9" stroke="#0EA5A0" stroke-width="4"/>
+    <text x="50" y="18" font-family="'Geist', 'Segoe UI', Arial" font-size="16" font-weight="700" fill="#1F2937">Y0 Platform</text>
+  </g>
+</svg>

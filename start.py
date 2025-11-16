@@ -143,7 +143,7 @@ def main():
 
     else:  # docker setup
         print(f"{Colors.BLUE}{Colors.BOLD}Docker Setup Detected{Colors.ENDC}")
-        print("Managing all Suna services with Docker Compose...\n")
+        print("Starting Yeti...")
 
         force = "-f" in sys.argv
         if force:

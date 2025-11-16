@@ -1,5 +1,5 @@
 [project]
-name = "suna"
+name = "yeti"
 version = "1.0"
 description = "open source generalist AI Agent"
 authors = [{ name = "marko-kraemer", email = "mail@markokraemer.com" }]
@@ -69,8 +69,8 @@ dependencies = [
 ]
 
 [project.urls]
-homepage = "https://www.suna.so/"
-repository = "https://github.com/kortix-ai/suna"
+homepage = "https://www.yeti.so/"
+repository = "https://github.com/yethikrishna-ai/yeti"
 
 [tool.uv]
 package = false

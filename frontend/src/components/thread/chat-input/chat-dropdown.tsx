@@ -24,7 +24,7 @@ const ChatDropdown = () => {
                 >
                     <div className="flex items-center gap-2">
                         <User size={16} />
-                        <span>Suna</span>
+                        <span>Yeti</span>
                         <ChevronDown size={14} className="opacity-50" />
                     </div>
                 </Button>

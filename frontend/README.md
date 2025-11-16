@@ -1,4 +1,4 @@
-# Suna Frontend
+# Yeti Frontend
 
 ## Quick Setup
 

@@ -9,7 +9,7 @@ export function getBlinkClient() {
     projectId,
     authRequired: false,
     auth: { mode: (process.env.NEXT_PUBLIC_BLINK_AUTH_MODE as 'managed' | 'headless') || 'headless' },
-    baseUrl: process.env.NEXT_PUBLIC_BLINK_CORE_URL,
+    // baseUrl: process.env.NEXT_PUBLIC_BLINK_CORE_URL,
   })
   return client
 }

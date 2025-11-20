@@ -1,8 +1,9 @@
-import * as Sentry from '@sentry/nextjs';
-import { SentryConfig } from './sentry.config';
-
+// Sentry instrumentation disabled
 export async function register() {
-  Sentry.init(SentryConfig);
+  // Sentry is currently disabled in next.config.ts
+  console.log('Instrumentation registered (Sentry disabled)');
 }
 
-export const onRequestError = Sentry.captureRequestError;
+export const onRequestError = () => {
+  // Sentry disabled
+};

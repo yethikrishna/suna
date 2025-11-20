@@ -10,20 +10,35 @@ type SupabaseCredentialsContextType = {
 
 const SupabaseCredentialsContext = createContext<SupabaseCredentialsContextType | undefined>(undefined);
 
+// 前端-only 模式下的默认模拟凭证
+const DEFAULT_SUPABASE_URL = 'https://mock-supabase-url.example.com';
+const DEFAULT_SUPABASE_ANON_KEY = 'mock-supabase-anon-key';
+
 export const SupabaseCredentialsProvider = ({ children }: { children: ReactNode }) => {
   const [supabaseUrl, setSupabaseUrl] = useState<string | undefined>(() => {
-    // Initialize from localStorage if available
+    // 首先检查 localStorage
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('supabaseUrl') || undefined;
+      const storedUrl = localStorage.getItem('supabaseUrl');
+      if (storedUrl) {
+        return storedUrl;
+      }
+      // 前端-only 模式：提供默认的模拟 URL
+      localStorage.setItem('supabaseUrl', DEFAULT_SUPABASE_URL);
     }
-    return undefined;
+    return DEFAULT_SUPABASE_URL;
   });
+  
   const [supabaseAnonKey, setSupabaseAnonKey] = useState<string | undefined>(() => {
-    // Initialize from localStorage if available
+    // 首先检查 localStorage
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('supabaseAnonKey') || undefined;
+      const storedKey = localStorage.getItem('supabaseAnonKey');
+      if (storedKey) {
+        return storedKey;
+      }
+      // 前端-only 模式：提供默认的模拟密钥
+      localStorage.setItem('supabaseAnonKey', DEFAULT_SUPABASE_ANON_KEY);
     }
-    return undefined;
+    return DEFAULT_SUPABASE_ANON_KEY;
   });
 
   const setSupabaseCredentials = (url: string, key: string) => {
@@ -49,7 +64,14 @@ export const SupabaseCredentialsProvider = ({ children }: { children: ReactNode 
 export const useSupabaseCredentials = () => {
   const context = useContext(SupabaseCredentialsContext);
   if (context === undefined) {
-    throw new Error('useSupabaseCredentials must be used within a SupabaseCredentialsProvider');
+    // 前端-only 模式：提供一个默认的上下文，避免错误
+    return {
+      supabaseUrl: DEFAULT_SUPABASE_URL,
+      supabaseAnonKey: DEFAULT_SUPABASE_ANON_KEY,
+      setSupabaseCredentials: () => {
+        console.log('Setting credentials in frontend-only mode');
+      },
+    };
   }
   return context;
 };

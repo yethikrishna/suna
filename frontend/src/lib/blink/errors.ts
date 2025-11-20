@@ -5,6 +5,7 @@ import {
   BlinkDataError,
   BlinkRealtimeError,
   BlinkNotificationsError,
+  BlinkError,
 } from '@blinkdotnew/sdk'
 
 type NormalizedError = {
@@ -27,6 +28,7 @@ export function handleBlinkError(err: unknown): NormalizedError {
   if (err instanceof BlinkDataError) return { type: 'data', message: (err as Error).message }
   if (err instanceof BlinkRealtimeError) return { type: 'realtime', message: (err as Error).message }
   if (err instanceof BlinkNotificationsError) return { type: 'notifications', message: (err as Error).message }
+  if (err instanceof BlinkError) return { type: 'unknown', code: err.code, message: err.message }
   const fallback = err as Error
   return { type: 'unknown', message: fallback?.message || 'Unknown error' }
 }

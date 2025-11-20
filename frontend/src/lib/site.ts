@@ -7,6 +7,10 @@ export const siteConfig = {
     github: 'https://github.com/yethikrishna/',
     linkedin: 'https://www.linkedin.com/in/yethikrishnar',
   },
+  hero: {
+    title: 'Yeti, your Intelligent Generalist AI',
+    description: 'Build powerful AI agents and automate your workflows with cutting-edge technology.',
+  },
 };
 
 export type SiteConfig = typeof siteConfig;

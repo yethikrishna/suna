@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "routes": [
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/"
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_FRONTEND_ONLY_MODE": "true"
+  },
+  "build": {
+    "env": {
+      "NEXT_PUBLIC_FRONTEND_ONLY_MODE": "true"
+    }
+  }
+}

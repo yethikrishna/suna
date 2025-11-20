@@ -5,7 +5,7 @@ export function createBlinkServerClient(jwt?: string) {
   const client = createClient({
     projectId,
     auth: { mode: 'headless' },
-    baseUrl: process.env.NEXT_PUBLIC_BLINK_CORE_URL,
+    // baseUrl: process.env.NEXT_PUBLIC_BLINK_CORE_URL,
   })
   if (jwt) client.auth.setToken(jwt)
   return client

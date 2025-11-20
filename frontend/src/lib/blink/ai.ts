@@ -26,7 +26,7 @@ export async function modifyImage(input: { images: string[]; prompt: string }) {
 
 export async function generateSpeech(input: { text: string; voice?: string }) {
   try {
-    const result = await blink.ai.generateSpeech({ text: input.text, voice: input.voice || 'nova' })
+    const result = await blink.ai.generateSpeech({ text: input.text, voice: (input.voice as any) || 'nova' })
     return result
   } catch (err) {
     throw handleBlinkError(err)

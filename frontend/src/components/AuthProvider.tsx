@@ -25,7 +25,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode; }) => {
   const { supabaseUrl, supabaseAnonKey } = useSupabaseCredentials();
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const supabase = createClient({ supabaseUrl, supabaseAnonKey });
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);

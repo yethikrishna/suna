@@ -1,6 +1,6 @@
-import * as Sentry from '@sentry/nextjs';
-import { SentryConfig } from './sentry.config';
+// Sentry client instrumentation disabled
+// Sentry is currently disabled in next.config.ts
 
-Sentry.init(SentryConfig);
-
-export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+export const onRouterTransitionStart = () => {
+  // Sentry disabled
+};

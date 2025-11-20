@@ -156,7 +156,7 @@ function LoginContent() {
     if (supabaseUrl) {
       formData.append('supabaseUrl', supabaseUrl);
     }
-    if (serviceRoleKey) {
+    if (supabaseAnonKey) {
       formData.append('supabaseAnonKey', supabaseAnonKey);
     }
 
@@ -474,35 +474,30 @@ function LoginContent() {
                         />
                       </div>
                     </div>
-        {isSignUp && (
-          <div className="flex flex-col gap-2">
-            <label htmlFor="supabaseUrl">Supabase URL</label>
-            <Input
-              id="supabaseUrl"
-              name="supabaseUrl"
-              type="text"
-              placeholder="https://your-project-ref.supabase.co"
-              value={supabaseUrl}
-              onChange={(e) => setSupabaseUrl(e.target.value)}
-              className="w-full"
-            />
-          </div>
-        )}
-
-        {isSignUp && (
-          <div className="flex flex-col gap-2">
-            <label htmlFor="supabaseAnonKey">Supabase Anon Key</label>
-            <Input
-              id="supabaseAnonKey"
-              name="supabaseAnonKey"
-              type="password"
-              placeholder="Your Supabase Anon Key"
-              value={supabaseAnonKey}
-              onChange={(e) => setSupabaseAnonKey(e.target.value)}
-              className="w-full"
-            />
-          </div>
-        )}
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="supabaseUrl">Supabase URL</label>
+                      <Input
+                        id="supabaseUrl"
+                        name="supabaseUrl"
+                        type="text"
+                        placeholder="https://your-project-ref.supabase.co"
+                        value={supabaseUrl}
+                        onChange={(e) => setSupabaseUrl(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="supabaseAnonKey">Supabase Anon Key</label>
+                      <Input
+                        id="supabaseAnonKey"
+                        name="supabaseAnonKey"
+                        type="password"
+                        placeholder="Your Supabase Anon Key"
+                        value={supabaseAnonKey}
+                        onChange={(e) => setSupabaseAnonKey(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
                   </>
                 )}
 

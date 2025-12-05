@@ -52,7 +52,7 @@ export const BrowseDialog: React.FC<BrowseDialogProps> = ({
         <DialogHeader>
           <DialogTitle>Browse MCP Servers</DialogTitle>
           <DialogDescription>
-            Discover and add Model Context Protocol servers from Smithery
+            Discover and add Model Context Protocol servers
           </DialogDescription>
         </DialogHeader>
         <div className="relative">

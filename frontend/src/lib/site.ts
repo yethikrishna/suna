@@ -1,14 +1,12 @@
 export const siteConfig = {
-  name: 'Y0 Platform',
-  url: 'https://yeti.so/',
-  description: 'Y0: a modern, cohesive platform experience with intelligent usability.',
+  name: 'y0',
+  url: 'https://y0.so/',
+  description: 'y0: Open source AI agent platform that helps you accomplish real-world tasks.',
   links: {
-    twitter: 'https://x.com/yethikrishna',
-    github: 'https://github.com/yethikrishna/',
-    linkedin: 'https://www.linkedin.com/in/yethikrishnar',
+    // No social media links as per requirements
   },
   hero: {
-    title: 'Yeti, your Intelligent Generalist AI',
+    title: 'y0, your Intelligent Generalist AI',
     description: 'Build powerful AI agents and automate your workflows with cutting-edge technology.',
   },
 };

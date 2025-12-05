@@ -588,7 +588,7 @@ export function extractSearchQuery(content: string | object | undefined | null):
       // Parse the output JSON from ToolResult
       const outputJson = JSON.parse(toolResultMatch[1]);
       
-      // Check if this is the new Tavily response format with query field
+      // Check if this is the new search response format with query field
       if (outputJson.query && typeof outputJson.query === 'string') {
         return outputJson.query;
       }
@@ -603,7 +603,7 @@ export function extractSearchQuery(content: string | object | undefined | null):
   try {
     const parsedContent = JSON.parse(contentStr);
     
-    // Check if it's the new Tavily response format
+    // Check if it's the new search response format
     if (parsedContent.query && typeof parsedContent.query === 'string') {
       return parsedContent.query;
     }
@@ -1145,10 +1145,10 @@ export function extractSearchResults(
       return results;
     }
 
-    // Try parsing the entire content as JSON (for direct Tavily responses)
+    // Try parsing the entire content as JSON (for direct search responses)
     const parsedContent = JSON.parse(contentStr);
-    
-    // Check if this is the new Tavily response format
+
+    // Check if this is the new search response format
     if (parsedContent.results && Array.isArray(parsedContent.results)) {
       return parsedContent.results.map(result => ({
         title: result.title || '',

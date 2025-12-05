@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Bot, Menu, Store, Shield, Key, Workflow, Plus } from 'lucide-react';
+import { Bot, Menu, Store, Shield, Key, Workflow, Plus, BarChart3 } from 'lucide-react';
 
 import { NavAgents } from '@/components/sidebar/nav-agents';
 import { NavUserWithTeams } from '@/components/sidebar/nav-user-with-teams';
@@ -182,6 +182,16 @@ export function SidebarLeft({
                 </SidebarMenuButton>
               </Link>
             )}
+            <Link href="/analytics">
+              <SidebarMenuButton className={cn({
+                'bg-accent text-accent-foreground font-medium': pathname === '/analytics',
+              })}>
+                <BarChart3 className="h-4 w-4 mr-2" />
+                <span className="flex items-center justify-between w-full">
+                  Analytics
+                </span>
+              </SidebarMenuButton>
+            </Link>
           </SidebarGroup>
         )}
         <NavAgents />

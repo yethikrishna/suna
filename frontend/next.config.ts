@@ -95,9 +95,7 @@ const nextConfig: NextConfig = {
   distDir: '.next',
   trailingSlash: true,
 
-  // Telemetry
-  telemetry: false,
-
+  
   // Bundle analyzer for production builds
   webpack: (config, { buildId, dev, isServer }) => {
     if (process.env.ANALYZE === 'true') {

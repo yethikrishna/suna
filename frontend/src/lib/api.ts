@@ -612,45 +612,9 @@ export interface HealthCheckResponse {
   timestamp: string;
 }
 
-// Mock data storage moved to top of file (around line 124)
+// Mock data already defined above
 
-let mockThreads: Thread[] = [
-  {
-    thread_id: 'thread-1',
-    account_id: 'user-1',
-    project_id: 'proj-1',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    metadata: {}
-  }
-];
-
-let mockMessages: Message[] = [
-  {
-    id: 'msg-1',
-    thread_id: 'thread-1',
-    type: 'user',
-    content: JSON.stringify({ role: 'user', content: '你好，我是一个测试消息' }),
-    created_at: new Date(Date.now() - 3600000).toISOString(),
-    is_llm_message: true
-  },
-  {
-    id: 'msg-2',
-    thread_id: 'thread-1',
-    type: 'assistant',
-    content: JSON.stringify({ role: 'assistant', content: '你好！我是AI助手。这是一个模拟回复。' }),
-    created_at: new Date(Date.now() - 3500000).toISOString(),
-    agent_id: 'agent-1',
-    is_llm_message: true,
-    agents: {
-      name: '默认助手',
-      avatar: '🤖',
-      avatar_color: '#4CAF50'
-    }
-  }
-];
-
-let mockAgentRuns: AgentRun[] = [];
+// Mock data already defined above
 
 // 模拟EventSource
 class MockEventSource {

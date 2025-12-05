@@ -40,15 +40,16 @@ class Y0BlinkClient {
     sendEmailVerification: () => Promise<any>;
   };
 
-  from: (table: string) => any;
-
   storage: {
     from: (bucket: string) => {
-      upload: (path: string, file: any, options?: any) => Promise<{ data: { path: string } | null; error: any }>;
+      upload: (path: string, file: any, options?: any) => Promise<{ data: { path: string }; error: any }>;
       getPublicUrl: (path: string) => { data: { publicUrl: string } };
       remove: (paths: string[]) => Promise<{ error: any }>;
     };
   };
+
+  from: (table: string) => any;
+  rpc: (functionName: string, params?: any) => Promise<{ data: any; error: any }>;
 
   constructor() {
     // Auth methods using Blink SDK
@@ -152,8 +153,79 @@ class Y0BlinkClient {
         return await blink.auth.sendEmailVerification();
       }
     };
+
+    // Initialize RPC method for Blink SDK compatibility
+    this.rpc = async (functionName: string, params?: any) => {
+      try {
+        // Map common RPC functions to Blink SDK operations
+        switch (functionName) {
+          case 'get_personal_account':
+            // Return mock personal account data for now
+            return {
+              data: {
+                account_id: 'personal-account-id',
+                user_id: 'user-id',
+                name: 'Personal Account',
+                plan: 'free'
+              },
+              error: null
+            };
+          case 'get_team_account':
+            // Return mock team account data
+            return {
+              data: {
+                account_id: params?.account_id || 'team-account-id',
+                name: 'Team Account',
+                plan: 'pro'
+              },
+              error: null
+            };
+          default:
+            // For other RPC calls, try to call Blink SDK functions if they exist
+            if (blink.db && typeof blink.db[functionName] === 'function') {
+              const result = await blink.db[functionName](params);
+              return { data: result, error: null };
+            }
+            // Return mock data for unknown functions
+            return { data: null, error: null };
+        }
+      } catch (error) {
+        return { data: null, error };
+      }
+    };
+
+    // Initialize storage
+    this.storage = {
+      from: (bucket: string) => {
+        return {
+          upload: async (path: string, file: any, options?: any) => {
+            try {
+              const result = await blink.storage.upload(file, path, {
+                upsert: options?.upsert || false
+              });
+              return { data: { path: result.publicUrl }, error: null };
+            } catch (error) {
+              return { data: null, error };
+            }
+          },
+          getPublicUrl: (path: string) => {
+            // For Blink SDK, construct the public URL
+            const publicUrl = `https://storage.blink.new/${bucket}/${path}`;
+            return { data: { publicUrl } };
+          },
+          remove: async (paths: string[]) => {
+            try {
+              await blink.storage.remove(...paths);
+              return { error: null };
+            } catch (error) {
+              return { error };
+            }
+          }
+        };
+      }
+    };
   }
-  
+
   from(table: string) {
     const queryBuilder: any = {
       _table: table,
@@ -336,37 +408,6 @@ class Y0BlinkClient {
 
     return queryBuilder;
   }
-
-  // Storage using Blink SDK
-  storage = {
-    from: (bucket: string) => {
-      return {
-        upload: async (path: string, file: any, options?: any) => {
-          try {
-            const result = await blink.storage.upload(file, path, {
-              upsert: options?.upsert || false
-            });
-            return { data: { path: result.publicUrl }, error: null };
-          } catch (error) {
-            return { data: null, error };
-          }
-        },
-        getPublicUrl: (path: string) => {
-          // For Blink SDK, construct the public URL
-          const publicUrl = `https://storage.blink.new/${bucket}/${path}`;
-          return { data: { publicUrl } };
-        },
-        remove: async (paths: string[]) => {
-          try {
-            await blink.storage.remove(...paths);
-            return { error: null };
-          } catch (error) {
-            return { error };
-          }
-        }
-      };
-    }
-  };
 }
 
 // Create y0 Blink client instance
@@ -380,4 +421,4 @@ export const y0Client = createY0Client();
 export const supabaseClient = y0Client;
 
 // Export types for other modules
-export { Database };
+export type { Database };

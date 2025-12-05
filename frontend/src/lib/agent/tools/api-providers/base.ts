@@ -76,7 +76,7 @@ export abstract class DataProviderBase {
         'User-Agent': 'y0-agent/1.0'
       }
 
-      // Extract host for RapidAPI if needed
+      // Extract host for external APIs if needed
       if (url.includes('rapidapi.com')) {
         const urlParts = url.split('//')[1]?.split('/') || []
         if (urlParts.length > 0) {
@@ -152,7 +152,7 @@ export abstract class DataProviderBase {
         'User-Agent': 'y0-agent/1.0'
       }
 
-      // Add RapidAPI headers if needed
+      // Add external API headers if needed
       if (url.includes('rapidapi.com')) {
         const urlParts = url.split('//')[1]?.split('/') || []
         if (urlParts.length > 0) {

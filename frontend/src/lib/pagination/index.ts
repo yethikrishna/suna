@@ -130,7 +130,7 @@ export function decodeCursor(cursor: string): Cursor | null {
  */
 export function applyPaginationToQuery(
   query: any,
-  params: { limit: number; offset?: number; sinceId?: string; cursor?: string; sinceCreatedAt?: string },
+  params: { limit: number; offset?: number; sinceId?: string; cursor?: string; sinceCreatedAt?: string; sinceUpdatedAt?: string },
   config: PaginationConfig = DEFAULT_PAGINATION_CONFIG
 ): any {
   let resultQuery = query;

@@ -1,15 +1,12 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  // Experimental features
-  experimental: {
-    serverComponentsExternalPackages: ['@radix-ui/react-icons']
-  },
-
   // Performance optimizations
   poweredByHeader: false,
   reactStrictMode: true,
-  swcMinify: true,
+
+  // External packages
+  serverExternalPackages: ['@radix-ui/react-icons'],
 
   // Image optimization
   images: {
@@ -89,7 +86,7 @@ const nextConfig: NextConfig = {
     BLINK_PROJECT_ID: process.env.BLINK_PROJECT_ID,
     CRON_JOB_API_KEY: process.env.CRON_JOB_API_KEY,
     SENTRY_DSN: process.env.SENTRY_DSN,
-    ANALYZE: process.env.ANALYZE === 'true',
+    ANALYZE_BOOLEAN: process.env.ANALYZE === 'true',
   },
 
   // Output configuration
@@ -111,7 +108,7 @@ const nextConfig: NextConfig = {
       webpack
     }))
 
-    if (process.env.ANALYZE === 'true') {
+    if (process.env.ANALYZE_BOOLEAN) {
       const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
       finalConfig.plugins.push(
         new BundleAnalyzerPlugin({

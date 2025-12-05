@@ -81,12 +81,12 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_ENV_MODE: process.env.NODE_ENV || 'development',
     NEXT_PUBLIC_URL: process.env.NEXT_PUBLIC_URL,
     NEXT_PUBLIC_BLINK_PROJECT_ID: process.env.NEXT_PUBLIC_BLINK_PROJECT_ID,
-    NEXT_PUBLIC_BLINK_AUTH_MODE: process.env.NEXT_PUBLIC_BLINK_AUTH_MODE || 'production',
+    NEXT_PUBLIC_BLINK_AUTH_MODE: process.env.NEXT_PUBLIC_BLINK_AUTH_MODE || 'headless',
     BLINK_API_KEY: process.env.BLINK_API_KEY,
     BLINK_PROJECT_ID: process.env.BLINK_PROJECT_ID,
     CRON_JOB_API_KEY: process.env.CRON_JOB_API_KEY,
     SENTRY_DSN: process.env.SENTRY_DSN,
-    ANALYZE_BOOLEAN: process.env.ANALYZE === 'true',
+    ANALYZE_BOOLEAN: process.env.ANALYZE === 'true' ? 'true' : 'false',
   },
 
   // Output configuration
@@ -99,18 +99,10 @@ const nextConfig: NextConfig = {
   telemetry: false,
 
   // Bundle analyzer for production builds
-  webpack: (config, { buildId, dev, isServer, loadConfig, defaultLoadConfig, webpack }) => {
-    const finalConfig = defaultLoadConfig(webpack(config, {
-      buildId,
-      dev,
-      isServer,
-      loadConfig,
-      webpack
-    }))
-
-    if (process.env.ANALYZE_BOOLEAN) {
+  webpack: (config, { buildId, dev, isServer }) => {
+    if (process.env.ANALYZE === 'true') {
       const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
-      finalConfig.plugins.push(
+      config.plugins.push(
         new BundleAnalyzerPlugin({
           analyzerMode: 'static',
           openAnalyzer: false,
@@ -119,36 +111,13 @@ const nextConfig: NextConfig = {
       )
     }
 
-    return finalConfig
+    return config
   },
 
   // Production optimizations
   ...(process.env.NODE_ENV === 'production' && {
     poweredByHeader: false,
     reactStrictMode: true,
-    swcMinify: true,
-
-    // Optimize bundles
-    webpack: (config) => {
-      config.optimization.splitChunks = {
-        chunks: 'all',
-        cacheGroups: {
-          vendor: {
-            test: /[\\/]node_modules[\\/]/,
-            name: 'vendors',
-            chunks: 'all',
-          },
-          common: {
-            name: 'common',
-            minChunks: 2,
-            chunks: 'all',
-            enforce: true,
-          },
-        },
-      }
-
-      return config
-    }
   })
 }
 

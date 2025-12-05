@@ -2,6 +2,7 @@
  * y0 Cron Jobs Management Page
  * Main page for managing scheduled workflows
  */
+'use client';
 
 import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'

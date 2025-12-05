@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Bot, Menu, Store, Shield, Key, Workflow, Plus, BarChart3, Brain, ShieldCheck, Terminal, Settings } from 'lucide-react';
+import { Bot, Menu, Store, Shield, Key, Workflow, Plus, BarChart3, Brain, ShieldCheck, Terminal, Settings, Activity, Database } from 'lucide-react';
 
 import { NavAgents } from '@/components/sidebar/nav-agents';
 import { NavUserWithTeams } from '@/components/sidebar/nav-user-with-teams';
@@ -219,6 +219,26 @@ export function SidebarLeft({
                 <Terminal className="h-4 w-4 mr-2" />
                 <span className="flex items-center justify-between w-full">
                   Developer Tools
+                </span>
+              </SidebarMenuButton>
+            </Link>
+            <Link href="/monitoring">
+              <SidebarMenuButton className={cn({
+                'bg-accent text-accent-foreground font-medium': pathname === '/monitoring',
+              })}>
+                <Activity className="h-4 w-4 mr-2" />
+                <span className="flex items-center justify-between w-full">
+                  Monitoring
+                </span>
+              </SidebarMenuButton>
+            </Link>
+            <Link href="/backup">
+              <SidebarMenuButton className={cn({
+                'bg-accent text-accent-foreground font-medium': pathname === '/backup',
+              })}>
+                <Database className="h-4 w-4 mr-2" />
+                <span className="flex items-center justify-between w-full">
+                  Backup & DR
                 </span>
               </SidebarMenuButton>
             </Link>

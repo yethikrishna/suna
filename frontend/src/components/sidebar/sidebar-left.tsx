@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Bot, Menu, Store, Shield, Key, Workflow, Plus, BarChart3 } from 'lucide-react';
+import { Bot, Menu, Store, Shield, Key, Workflow, Plus, BarChart3, Brain, ShieldCheck, Terminal, Settings } from 'lucide-react';
 
 import { NavAgents } from '@/components/sidebar/nav-agents';
 import { NavUserWithTeams } from '@/components/sidebar/nav-user-with-teams';
@@ -189,6 +189,36 @@ export function SidebarLeft({
                 <BarChart3 className="h-4 w-4 mr-2" />
                 <span className="flex items-center justify-between w-full">
                   Analytics
+                </span>
+              </SidebarMenuButton>
+            </Link>
+            <Link href="/ai-optimizer">
+              <SidebarMenuButton className={cn({
+                'bg-accent text-accent-foreground font-medium': pathname === '/ai-optimizer',
+              })}>
+                <Brain className="h-4 w-4 mr-2" />
+                <span className="flex items-center justify-between w-full">
+                  AI Optimizer
+                </span>
+              </SidebarMenuButton>
+            </Link>
+            <Link href="/security">
+              <SidebarMenuButton className={cn({
+                'bg-accent text-accent-foreground font-medium': pathname === '/security',
+              })}>
+                <ShieldCheck className="h-4 w-4 mr-2" />
+                <span className="flex items-center justify-between w-full">
+                  Security
+                </span>
+              </SidebarMenuButton>
+            </Link>
+            <Link href="/dev-tools">
+              <SidebarMenuButton className={cn({
+                'bg-accent text-accent-foreground font-medium': pathname === '/dev-tools',
+              })}>
+                <Terminal className="h-4 w-4 mr-2" />
+                <span className="flex items-center justify-between w-full">
+                  Developer Tools
                 </span>
               </SidebarMenuButton>
             </Link>

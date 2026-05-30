@@ -1,0 +1,540 @@
+# Instincts generated from https://github.com/yethikrishna/suna
+# Generated: 2026-05-30T19:42:37.582Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: suna-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/yethikrishna/suna
+---
+
+# Suna Commit Length
+
+## Action
+
+Keep commit messages concise (~20 characters)
+
+## Evidence
+
+- Average commit message length: 20 chars
+- Based on 100 commits
+
+---
+id: suna-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/yethikrishna/suna
+---
+
+# Suna Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: suna-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/yethikrishna/suna
+---
+
+# Suna Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: suna-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/yethikrishna/suna
+---
+
+# Suna Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: suna-arch-type-based
+trigger: "when adding new code"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: https://github.com/yethikrishna/suna
+---
+
+# Suna Arch Type Based
+
+## Action
+
+Place code in the appropriate type folder (components/, services/, utils/, etc.)
+
+## Evidence
+
+- Type-based module organization detected
+- Folders: 
+
+---
+id: suna-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/yethikrishna/suna
+---
+
+# Suna Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: suna-workflow-refactoring
+trigger: "when refactoring code"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/yethikrishna/suna
+---
+
+# Suna Workflow Refactoring
+
+## Action
+
+Follow the refactoring workflow:
+1. Ensure tests pass before refactor
+2. Refactor code structure
+3. Verify tests still pass
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/**/*
+
+---
+id: suna-workflow-version-bump-and-release
+trigger: "when doing version bump and release"
+confidence: 0.75
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/yethikrishna/suna
+---
+
+# Suna Workflow Version Bump And Release
+
+## Action
+
+Follow the version-bump-and-release workflow:
+1. Update the version number in pyproject.toml
+2. Optionally update README.md and/or CHANGELOG.md
+3. Commit with a message indicating version bump
+4. Sometimes merge a pull request for the version bump
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~5x per month
+- Files: pyproject.toml, README.md, CHANGELOG.md
+
+---
+id: suna-workflow-feature-development-with-example-agent-and-tool
+trigger: "when doing feature development with example agent and tool"
+confidence: 0.7
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/yethikrishna/suna
+---
+
+# Suna Workflow Feature Development With Example Agent And Tool
+
+## Action
+
+Follow the feature-development-with-example-agent-and-tool workflow:
+1. Edit agentpress/examples/example_agent/agent.py
+2. Edit or add files in agentpress/examples/example_agent/tools/ (e.g., files_tool.py, terminal_tool.py)
+3. Edit related core files (e.g., agentpress/thread_manager.py, agentpress/tool.py, agentpress/tool_registry.py)
+4. Optionally update workspace files (HTML/CSS/JS) for the example agent
+5. Commit changes, often with 'wip', 'refactor', or feature-specific message
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~4x per month
+- Files: agentpress/examples/example_agent/agent.py, agentpress/examples/example_agent/tools/*.py, agentpress/thread_manager.py
+
+---
+id: suna-workflow-workspace-ui-update
+trigger: "when doing workspace ui update"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/yethikrishna/suna
+---
+
+# Suna Workflow Workspace Ui Update
+
+## Action
+
+Follow the workspace-ui-update workflow:
+1. Edit files in agentpress/examples/example_agent/workspace/ (index.html, styles.css, script.js, etc.)
+2. Optionally update backend files (e.g., agentpress/response_processor.py, agentpress/thread_manager.py)
+3. Commit changes, often with 'wip', 'fix', or 'refactor' message
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: agentpress/examples/example_agent/workspace/index.html, agentpress/examples/example_agent/workspace/styles.css, agentpress/examples/example_agent/workspace/script.js
+
+---
+id: suna-workflow-add-or-update-thread-and-state-files
+trigger: "when doing add or update thread and state files"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/yethikrishna/suna
+---
+
+# Suna Workflow Add Or Update Thread And State Files
+
+## Action
+
+Follow the add-or-update-thread-and-state-files workflow:
+1. Edit or add files in threads/*.json
+2. Edit state.json
+3. Optionally update related Python files
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: threads/*.json, state.json
+
+---
+id: suna-instinct-camelcase-functions
+trigger: "When defining a new function in Python code"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Camelcase Functions
+
+## Action
+
+Name the function using camelCase (e.g., makeAddTool)
+
+## Evidence
+
+- Pattern: codeStyle.namingConventions.functions = camelCase
+
+---
+id: suna-instinct-pascalcase-classes
+trigger: "When creating a new class in Python code"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Pascalcase Classes
+
+## Action
+
+Name the class using PascalCase (e.g., ThreadManager)
+
+## Evidence
+
+- Pattern: codeStyle.namingConventions.classes = PascalCase
+
+---
+id: suna-instinct-screaming-snake-constants
+trigger: "When declaring a constant in Python code"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Screaming Snake Constants
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE (e.g., MAX_THREADS)
+
+## Evidence
+
+- Pattern: codeStyle.namingConventions.constants = SCREAMING_SNAKE_CASE
+
+---
+id: suna-instinct-camelcase-files
+trigger: "When creating a new file"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Camelcase Files
+
+## Action
+
+Name the file using camelCase (e.g., threadManager.py)
+
+## Evidence
+
+- Pattern: codeStyle.namingConventions.files = camelCase
+
+---
+id: suna-instinct-relative-imports
+trigger: "When importing modules within the package"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Relative Imports
+
+## Action
+
+Use relative imports (e.g., from .tool import Tool)
+
+## Evidence
+
+- Pattern: codeStyle.importStyle = relative
+
+---
+id: suna-instinct-named-exports
+trigger: "When exporting functions or classes from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Named Exports
+
+## Action
+
+Use named exports (e.g., __all__ = ['Tool', 'ThreadManager'])
+
+## Evidence
+
+- Pattern: codeStyle.exportStyle = named
+
+---
+id: suna-instinct-try-catch-errors
+trigger: "When handling errors in Python code"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Try Catch Errors
+
+## Action
+
+Use try-except blocks for error handling
+
+## Evidence
+
+- Pattern: errorHandling.style = try-catch
+
+---
+id: suna-instinct-git-commit-prefix
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Git Commit Prefix
+
+## Action
+
+Optionally use a prefix (e.g., fix:, chore:, refactor:) but allow freeform messages
+
+## Evidence
+
+- Seen in commit: 'fix: fe – only scroll to bottom on initial page load, not on tab switch'
+- Pattern: commits.type = freeform, prefixes = []
+
+---
+id: suna-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Commit Length
+
+## Action
+
+Keep the commit message concise (average ~20 characters)
+
+## Evidence
+
+- Pattern: commits.averageLength = 20
+
+---
+id: suna-instinct-version-bump
+trigger: "When preparing a new release or after merging significant changes"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Version Bump
+
+## Action
+
+Update pyproject.toml version, optionally update README.md and/or CHANGELOG.md, and commit with a message indicating version bump
+
+## Evidence
+
+- Workflow: version-bump-and-release
+- Seen in commits: 'chore: bump version to 0.1.5', 'bump version'
+
+---
+id: suna-instinct-feature-agent-tool
+trigger: "When adding or updating a feature involving the example agent and its tools"
+confidence: 0.92
+domain: workflow
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Feature Agent Tool
+
+## Action
+
+Edit agentpress/examples/example_agent/agent.py, update/add tools in agentpress/examples/example_agent/tools/, edit core files (thread_manager.py, tool.py, tool_registry.py), optionally update workspace files, and commit changes
+
+## Evidence
+
+- Workflow: feature-development-with-example-agent-and-tool
+- Pattern in files: agentpress/examples/example_agent/agent.py, agentpress/examples/example_agent/tools/*.py
+
+---
+id: suna-instinct-workspace-ui-update
+trigger: "When improving or adding UI features for the example agent workspace"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Workspace Ui Update
+
+## Action
+
+Edit files in agentpress/examples/example_agent/workspace/ (index.html, styles.css, script.js, etc.), optionally update backend files (response_processor.py, thread_manager.py), and commit changes
+
+## Evidence
+
+- Workflow: workspace-ui-update
+- Pattern in files: agentpress/examples/example_agent/workspace/index.html, styles.css, script.js
+
+---
+id: suna-instinct-update-thread-state
+trigger: "When thread or state data changes, often after running or testing features"
+confidence: 0.88
+domain: workflow
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Update Thread State
+
+## Action
+
+Edit or add files in threads/*.json and state.json, optionally update related Python files
+
+## Evidence
+
+- Workflow: add-or-update-thread-and-state-files
+- Pattern in files: threads/*.json, state.json
+
+---
+id: suna-instinct-refactor-test-sequence
+trigger: "When refactoring code"
+confidence: 0.8
+domain: workflow
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Refactor Test Sequence
+
+## Action
+
+Ensure tests pass before refactor, perform refactor, verify tests still pass
+
+## Evidence
+
+- Workflow: refactoring
+- Commit sequence: Ensure tests pass before refactor → Refactor code structure → Verify tests still pass
+
+---
+id: suna-instinct-tests-in-separate-folder
+trigger: "When writing or organizing tests"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: yethikrishna/suna
+---
+
+# Suna Instinct Tests In Separate Folder
+
+## Action
+
+Place tests in a separate folder from source code
+
+## Evidence
+
+- Pattern: architecture.folderStructure.testLocation = separate
+

@@ -189,8 +189,8 @@ Also stop if the same failure survives three different fixes (use
 | 2 | Database lifecycle | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `572bedb5a` |
 | 3 | OAuth2 protocol engine | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `db31d216e` |
 | 4 | API lifecycle routes | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `63dda6afe` |
-| 5 | Executor and non-OAuth request authentication | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | pending commit |
-| 6 | SDK and web integration | NOT STARTED | — | — | — |
+| 5 | Executor and non-OAuth request authentication | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `35daeda10` |
+| 6 | SDK and web integration | IN PROGRESS | `native-oauth-full-lifecycle` | 2026-07-25 | claim |
 | 7 | Local verification | NOT STARTED | — | — | — |
 | 8 | Delivery and dev proof | NOT STARTED | — | — | — |
 

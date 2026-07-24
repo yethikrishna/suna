@@ -20,6 +20,8 @@ const verdictSchema = z.object({
   offMean: z.number(),
   ratio: z.number(),
   samples: z.number(),
+  /** The probe confirmed its own oscillator was producing signal. False = the run proves nothing. */
+  toneVerified: z.boolean(),
 });
 
 const reportSchema = z.object({
@@ -73,11 +75,15 @@ voiceProbeApp.openapi(
       return c.json({ error: 'Invalid report' }, 400);
     }
 
-    const echo = body.verdict.ratio > ECHO_RATIO_THRESHOLD;
+    // A silent probe (blocked AudioContext) looks identical to a clean result, so
+    // an unverified tone is reported as INVALID rather than as "no echo".
+    const echo = body.verdict.toneVerified && body.verdict.ratio > ECHO_RATIO_THRESHOLD;
+    const outcome = !body.verdict.toneVerified ? 'INVALID(no-tone)' : echo ? 'YES' : 'no';
+
     // Console is the intended output — an operator is watching this run live.
     console.log(
       `[voice-probe] run=${body.run} aec=${body.aec} rate=${body.sampleRate} ` +
-        `echo=${echo ? 'YES' : 'no'} ratio=${body.verdict.ratio.toFixed(2)} ` +
+        `echo=${outcome} ratio=${body.verdict.ratio.toFixed(2)} ` +
         `on=${body.verdict.onMean.toExponential(2)} off=${body.verdict.offMean.toExponential(2)} ` +
         `n=${body.verdict.samples} api=${body.latency.api ?? 'n/a'}ms xai=${body.latency.xai ?? 'n/a'}ms`,
     );

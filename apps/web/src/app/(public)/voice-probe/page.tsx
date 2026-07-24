@@ -29,14 +29,19 @@ const TONE_ON_MS = 1000;
 const TONE_CYCLE_MS = 4000;
 const SAMPLE_INTERVAL_MS = 100;
 const REPORT_INTERVAL_MS = 5000;
-const TONE_GAIN = 0.2;
+/** Low on purpose — the real run measured ~40x headroom, and anyone testing this
+ *  locally has it going straight into their own speakers. */
+const TONE_GAIN = 0.06;
 /** Bins either side of the tone bin to include — covers FFT leakage and resampling drift. */
 const BIN_HALFWIDTH = 2;
 
 interface Sample {
   t: number;
   toneOn: boolean;
+  /** Tone-bin energy in the CAPTURED (meeting) stream — the thing under test. */
   toneEnergy: number;
+  /** Audio graph was actually running with the tone gain open at this instant. */
+  emitting: boolean;
   rms: number;
 }
 
@@ -45,21 +50,37 @@ interface Verdict {
   offMean: number;
   ratio: number;
   samples: number;
+  /** False when the oscillator never produced signal — the run proves nothing. */
+  toneVerified: boolean;
+}
+
+function mean(xs: Sample[], pick: (s: Sample) => number): number {
+  return xs.length === 0 ? 0 : xs.reduce((a, s) => a + pick(s), 0) / xs.length;
 }
 
 function summarize(samples: Sample[]): Verdict | null {
   const on = samples.filter((s) => s.toneOn);
   const off = samples.filter((s) => !s.toneOn);
   if (on.length < 5 || off.length < 5) return null;
-  const mean = (xs: Sample[]) => xs.reduce((a, s) => a + s.toneEnergy, 0) / xs.length;
-  const onMean = mean(on);
-  const offMean = mean(off);
+
+  const onMean = mean(on, (s) => s.toneEnergy);
+  const offMean = mean(off, (s) => s.toneEnergy);
+
+  // A blocked AudioContext emits silence, which looks exactly like "no echo", so a
+  // negative result is only trustworthy if the graph was actually running with the
+  // gain open. Checked directly rather than by tapping an analyser off the gain
+  // node — an analyser with no downstream connection never gets pulled and reads
+  // silence even while the tone is plainly audible.
+  const emittingOn = on.filter((s) => s.emitting).length / on.length;
+  const toneVerified = emittingOn > 0.8;
+
   return {
     onMean,
     offMean,
     // Guard the divide: a silent room gives offMean ~0.
     ratio: offMean > 0.0001 ? onMean / offMean : onMean > 0.0001 ? Infinity : 1,
     samples: samples.length,
+    toneVerified,
   };
 }
 
@@ -104,6 +125,7 @@ export default function VoiceProbePage() {
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [latency, setLatency] = useState<{ api: number | null; xai: number | null } | null>(null);
   const [reported, setReported] = useState(0);
+  const [audioState, setAudioState] = useState<AudioContextState | 'unknown'>('unknown');
   const samplesRef = useRef<Sample[]>([]);
 
   useEffect(() => {
@@ -118,8 +140,35 @@ export default function VoiceProbePage() {
     async function run() {
       const ctx = new AudioContext();
       cleanups.push(() => void ctx.close().catch(() => {}));
-      // Headless Chrome usually autoplays, but resume() is free insurance.
-      if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+
+      // Recall's browser autoplays, but a normal browser suspends until a gesture —
+      // and a suspended context's resume() promise simply never settles, which would
+      // hang the whole probe before it reports anything. Never await it unbounded.
+      if (ctx.state === 'suspended') {
+        void ctx.resume().catch(() => {});
+        await Promise.race([
+          new Promise((r) => setTimeout(r, 500)),
+          new Promise<void>((r) => {
+            const check = setInterval(() => {
+              if (ctx.state === 'running') {
+                clearInterval(check);
+                r();
+              }
+            }, 50);
+            cleanups.push(() => clearInterval(check));
+          }),
+        ]);
+      }
+      setAudioState(ctx.state);
+
+      // Local runs need a gesture; any click retries. No-op where autoplay is allowed.
+      const onGesture = () => void ctx.resume().catch(() => {});
+      window.addEventListener('click', onGesture);
+      window.addEventListener('keydown', onGesture);
+      cleanups.push(() => {
+        window.removeEventListener('click', onGesture);
+        window.removeEventListener('keydown', onGesture);
+      });
 
       // --- Emit the pulsed tone into the page's audio output (what Recall streams out).
       const osc = ctx.createOscillator();
@@ -165,24 +214,30 @@ export default function VoiceProbePage() {
       const binWidth = ctx.sampleRate / analyser.fftSize;
       const toneBin = Math.round(TONE_HZ / binWidth);
 
+      /** Peak magnitude across the tone bin ± leakage, converted out of dB. */
+      const tonePeak = (bins: Float32Array): number => {
+        let peakDb = -Infinity;
+        for (let b = toneBin - BIN_HALFWIDTH; b <= toneBin + BIN_HALFWIDTH; b++) {
+          if (b >= 0 && b < bins.length && bins[b]! > peakDb) peakDb = bins[b]!;
+        }
+        return peakDb === -Infinity ? 0 : 10 ** (peakDb / 20);
+      };
+
       setStatus(`listening (aec=${aec ? 'on' : 'off'}, ${Math.round(ctx.sampleRate)}Hz)`);
 
       const sampleTimer = setInterval(() => {
         analyser.getFloatFrequencyData(freq);
         analyser.getFloatTimeDomainData(time);
 
-        // Peak magnitude across the tone bin ± leakage, converted out of dB.
-        let peakDb = -Infinity;
-        for (let b = toneBin - BIN_HALFWIDTH; b <= toneBin + BIN_HALFWIDTH; b++) {
-          if (b >= 0 && b < freq.length && freq[b]! > peakDb) peakDb = freq[b]!;
-        }
-        const toneEnergy = peakDb === -Infinity ? 0 : 10 ** (peakDb / 20);
+        const toneEnergy = tonePeak(freq);
+        const emitting = ctx.state === 'running' && gain.gain.value > TONE_GAIN / 2;
 
         let sumSq = 0;
         for (let i = 0; i < time.length; i++) sumSq += time[i]! * time[i]!;
         const rms = Math.sqrt(sumSq / time.length);
 
-        samplesRef.current.push({ t: Date.now(), toneOn: isOn, toneEnergy, rms });
+        if (!cancelled) setAudioState(ctx.state);
+        samplesRef.current.push({ t: Date.now(), toneOn: isOn, toneEnergy, emitting, rms });
         if (samplesRef.current.length > 6000) samplesRef.current.splice(0, 1000);
         if (!cancelled) setVerdict(summarize(samplesRef.current));
       }, SAMPLE_INTERVAL_MS);
@@ -239,6 +294,7 @@ export default function VoiceProbePage() {
   // Output Media always renders a video track, so make it readable at a glance —
   // this is how you diagnose a stuck probe without digging through logs.
   const echoing = verdict != null && verdict.ratio > 3;
+  const invalid = verdict != null && !verdict.toneVerified;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-black p-12 font-mono text-white">
@@ -251,13 +307,24 @@ export default function VoiceProbePage() {
         <span>{toneOn ? `tone ${TONE_HZ}Hz ON` : 'silent'}</span>
       </div>
 
-      <div className="text-2xl text-neutral-400">{status}</div>
+      <div className="text-2xl text-neutral-400">
+        {status} · audio {audioState}
+      </div>
+      {audioState === 'suspended' && (
+        <div className="max-w-3xl text-center text-3xl text-amber-400">
+          audio blocked by autoplay policy — click the page to start
+        </div>
+      )}
       {error && <div className="max-w-3xl text-center text-2xl text-red-400">{error}</div>}
 
       {verdict && (
         <div className="flex flex-col items-center gap-3">
-          <div className={`text-6xl font-bold ${echoing ? 'text-red-400' : 'text-emerald-400'}`}>
-            {echoing ? 'ECHO DETECTED' : 'no echo'}
+          <div
+            className={`text-6xl font-bold ${
+              invalid ? 'text-amber-400' : echoing ? 'text-red-400' : 'text-emerald-400'
+            }`}
+          >
+            {invalid ? 'INVALID — tone not emitting' : echoing ? 'ECHO DETECTED' : 'no echo'}
           </div>
           <div className="text-2xl text-neutral-300">
             on {verdict.onMean.toExponential(2)} / off {verdict.offMean.toExponential(2)} = ratio{' '}

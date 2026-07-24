@@ -354,6 +354,14 @@ const OAuth2HttpsUrlSchema = z
   .url()
   .refine((value) => value.startsWith('https://'), 'OAuth2 endpoints must use https');
 
+const OAuth2RedirectUrlSchema = z.string().url().refine((value) => {
+  const url = new URL(value);
+  return (
+    url.protocol === 'https:' ||
+    (url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1'))
+  );
+}, 'redirect URI must use https except on loopback');
+
 export const OAuth2TokenEndpointAuthMethodSchema = z.enum([
   'none',
   'client_secret_basic',
@@ -437,8 +445,8 @@ const OAuth2OptionalScopesSchema = z
 export const OAuth2AuthorizationStartInputSchema = z
   .object({
     scopes: OAuth2OptionalScopesSchema,
-    success_redirect_uri: OAuth2HttpsUrlSchema.optional(),
-    error_redirect_uri: OAuth2HttpsUrlSchema.optional(),
+    success_redirect_uri: OAuth2RedirectUrlSchema.optional(),
+    error_redirect_uri: OAuth2RedirectUrlSchema.optional(),
   })
   .strict();
 export type OAuth2AuthorizationStartInput = z.infer<

@@ -229,7 +229,7 @@ export async function upsertProfileCredential(input: {
   connectorId: string;
   profileId: string;
   value: string;
-  kind?: 'secret' | 'connection' | 'oauth2_client_credentials';
+  kind?: 'secret' | 'connection' | 'oauth2_client_credentials' | 'oauth2_delegated';
   createdBy?: string | null;
 }): Promise<void> {
   const [profile] = await db
@@ -359,7 +359,7 @@ export async function upsertCredential(opts: {
   connectorId: string;
   userId: string | null;
   value: string;
-  kind?: 'secret' | 'connection' | 'oauth2_client_credentials';
+  kind?: 'secret' | 'connection' | 'oauth2_client_credentials' | 'oauth2_delegated';
   createdBy?: string | null;
 }): Promise<void> {
   const profileId = await ensureDefaultProfile(opts);

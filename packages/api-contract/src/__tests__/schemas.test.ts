@@ -615,6 +615,16 @@ describe('native OAuth2 lifecycle schemas', () => {
         success_redirect_uri: 'https://dev.kortix.com/projects/p1',
       }),
     ).toEqual({ success_redirect_uri: 'https://dev.kortix.com/projects/p1' });
+    expect(
+      OAuth2AuthorizationStartInputSchema.safeParse({
+        success_redirect_uri: 'http://localhost:15300/projects/p1',
+      }).success,
+    ).toBe(true);
+    expect(
+      OAuth2AuthorizationStartInputSchema.safeParse({
+        success_redirect_uri: 'http://example.com/projects/p1',
+      }).success,
+    ).toBe(false);
     expect(OAuth2DeviceAuthorizationStartInputSchema.parse({ scopes: ['read'] })).toEqual({
       scopes: ['read'],
     });

@@ -188,7 +188,7 @@ Also stop if the same failure survives three different fixes (use
 | 1 | Contracts and RED tests | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `de7026bfc` |
 | 2 | Database lifecycle | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `572bedb5a` |
 | 3 | OAuth2 protocol engine | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `db31d216e` |
-| 4 | API lifecycle routes | IN PROGRESS | `native-oauth-full-lifecycle` | 2026-07-25 | claim |
+| 4 | API lifecycle routes | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | pending commit |
 | 5 | Executor and non-OAuth request authentication | NOT STARTED | — | — | — |
 | 6 | SDK and web integration | NOT STARTED | — | — | — |
 | 7 | Local verification | NOT STARTED | — | — | — |
@@ -1714,6 +1714,29 @@ generic `private_key_jwt`. The optional thumbprint remains supported.
 - SDK typecheck and example typecheck: exit 0.
 
 **Shippable to production: NOT YET.** Tasks 4 through 8 remain incomplete.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 4)
+
+Added project-scoped routes for redacted application configuration, discovery,
+Authorization Code start, Device Authorization start and poll, and status.
+Added the public state-authenticated callback. Callback state is hashed,
+profile-bound, user-bound, expiring, and consumed once. Added remote
+revocation attempts with unconditional local delegated-credential deletion.
+
+**Verification:**
+
+- Focused OAuth, contract, and SDK suites: **83 pass / 0 fail**.
+- API typecheck: exit 0.
+- Local API proof: application PUT 200, redacted GET 200, status GET 200,
+  Authorization Code start 200 with `S256` and state.
+- Callback replay proof: first provider-error callback returned 302 to the
+  allowlisted local frontend; the second callback returned 400.
+- Ke2e `CONN-OAUTH2`: **1 pass / 0 fail** in 4.55 seconds.
+- Ke2e coverage: **492/501 routes covered, 9 allowlisted, 0 uncovered**.
+
+**Shippable to production: NOT YET.** Tasks 5 through 8 remain incomplete.
 
 ---
 

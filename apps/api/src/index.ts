@@ -70,6 +70,7 @@ import {
 } from './shared/leader-election';
 import { marketplaceApp } from './marketplace';
 import { oauthApp } from './oauth';
+import { nativeOAuth2CallbackApp } from './executor/oauth2-callback';
 import {
   projectWebhooksApp,
   projectsApp,
@@ -774,6 +775,7 @@ app.route('/v1/admin', adminApp);
 
 // OAuth2 provider — public token endpoint, auth on authorize/consent
 app.route('/v1/oauth', oauthApp);
+app.route('/v1/integrations/oauth2', nativeOAuth2CallbackApp);
 
 // Public device-auth endpoints (no auth — CLI uses these)
 import { createDeviceAuthPublicRouter } from './tunnel/routes/device-auth';

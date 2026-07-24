@@ -152,6 +152,67 @@ export interface OAuth2ClientCredentials {
   audience?: string;
 }
 
+export type OAuth2TokenEndpointAuthMethod =
+  | 'none'
+  | 'client_secret_basic'
+  | 'client_secret_post'
+  | 'client_secret_jwt'
+  | 'private_key_jwt';
+
+export interface OAuth2ApplicationInput {
+  discovery_url?: string;
+  authorization_url?: string;
+  token_url?: string;
+  device_authorization_url?: string;
+  revocation_url?: string;
+  client_id: string;
+  token_endpoint_auth_method: OAuth2TokenEndpointAuthMethod;
+  client_secret?: string;
+  private_key?: string;
+  scopes?: string[];
+  resource?: string;
+  audience?: string;
+  authorization_params?: Record<string, string>;
+  token_params?: Record<string, string>;
+}
+
+export interface OAuth2ApplicationView
+  extends Omit<OAuth2ApplicationInput, 'client_secret' | 'private_key'> {
+  has_client_secret: boolean;
+  has_private_key: boolean;
+}
+
+export interface OAuth2AuthorizationStartInput {
+  scopes?: string[];
+  success_redirect_uri?: string;
+  error_redirect_uri?: string;
+}
+
+export interface OAuth2AuthorizationStartResult {
+  authorization_url: string;
+  expires_at: string;
+}
+
+export interface OAuth2DeviceAuthorizationStartInput {
+  scopes?: string[];
+}
+
+export interface OAuth2DeviceAuthorizationStartResult {
+  session_id: string;
+  user_code: string;
+  verification_uri: string;
+  verification_uri_complete?: string;
+  expires_at: string;
+  interval_seconds: number;
+}
+
+export interface OAuth2ConnectionStatus {
+  status: 'not_configured' | 'ready' | 'pending' | 'active' | 'error' | 'revoked';
+  expires_at?: string | null;
+  scopes?: string[];
+  error_code?: string | null;
+}
+
 export type ConnectionProfileCredentialInput =
   | { value: string; kind?: 'secret' | 'connection' }
   | { oauth2: OAuth2ClientCredentials };
@@ -191,6 +252,94 @@ export async function updateConnectionProfileCredential(
     await backendApi.put<{ ok: true }>(
       `/projects/${projectId}/connector-profiles/${profileId}/credential`,
       input,
+    ),
+  );
+}
+
+function profileOAuth2Path(projectId: string, profileId: string, suffix: string): string {
+  return `/projects/${projectId}/connector-profiles/${profileId}/oauth2/${suffix}`;
+}
+
+export async function putConnectionProfileOAuth2Application(
+  projectId: string,
+  profileId: string,
+  input: OAuth2ApplicationInput,
+) {
+  return unwrap(
+    await backendApi.put<{ ok: true }>(
+      profileOAuth2Path(projectId, profileId, 'application'),
+      input,
+    ),
+  );
+}
+
+export async function getConnectionProfileOAuth2Application(
+  projectId: string,
+  profileId: string,
+) {
+  return unwrap(
+    await backendApi.get<{ application: OAuth2ApplicationView }>(
+      profileOAuth2Path(projectId, profileId, 'application'),
+    ),
+  );
+}
+
+export async function discoverConnectionProfileOAuth2(
+  projectId: string,
+  profileId: string,
+  input: { discovery_url: string },
+) {
+  return unwrap(
+    await backendApi.post<{ metadata: Partial<OAuth2ApplicationView> }>(
+      profileOAuth2Path(projectId, profileId, 'discover'),
+      input,
+    ),
+  );
+}
+
+export async function startConnectionProfileOAuth2Authorization(
+  projectId: string,
+  profileId: string,
+  input: OAuth2AuthorizationStartInput,
+) {
+  return unwrap(
+    await backendApi.post<OAuth2AuthorizationStartResult>(
+      profileOAuth2Path(projectId, profileId, 'authorize'),
+      input,
+    ),
+  );
+}
+
+export async function startConnectionProfileOAuth2DeviceAuthorization(
+  projectId: string,
+  profileId: string,
+  input: OAuth2DeviceAuthorizationStartInput,
+) {
+  return unwrap(
+    await backendApi.post<OAuth2DeviceAuthorizationStartResult>(
+      profileOAuth2Path(projectId, profileId, 'device'),
+      input,
+    ),
+  );
+}
+
+export async function pollConnectionProfileOAuth2DeviceAuthorization(
+  projectId: string,
+  profileId: string,
+  sessionId: string,
+) {
+  return unwrap(
+    await backendApi.post<OAuth2ConnectionStatus>(
+      profileOAuth2Path(projectId, profileId, `device/${encodeURIComponent(sessionId)}`),
+      {},
+    ),
+  );
+}
+
+export async function getConnectionProfileOAuth2Status(projectId: string, profileId: string) {
+  return unwrap(
+    await backendApi.get<OAuth2ConnectionStatus>(
+      profileOAuth2Path(projectId, profileId, 'status'),
     ),
   );
 }

@@ -4,6 +4,9 @@ import {
   EXPERIMENTAL_FEATURE_KEYS,
   ErrorEnvelopeSchema,
   OkResponseSchema,
+  OAuth2ApplicationInputSchema,
+  OAuth2AuthorizationStartInputSchema,
+  OAuth2DeviceAuthorizationStartInputSchema,
   ProjectSchema,
   ProjectSessionSandboxSchema,
   ProjectSessionSchema,
@@ -551,6 +554,70 @@ describe('session connector profile contracts', () => {
         },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('native OAuth2 lifecycle schemas', () => {
+  test('accepts a provider-independent Authorization Code application with PKCE', () => {
+    expect(
+      OAuth2ApplicationInputSchema.parse({
+        authorization_url: 'https://identity.example.com/oauth2/authorize',
+        token_url: 'https://identity.example.com/oauth2/token',
+        revocation_url: 'https://identity.example.com/oauth2/revoke',
+        client_id: 'client-123',
+        token_endpoint_auth_method: 'client_secret_basic',
+        client_secret: 'secret-123',
+        scopes: ['files.read', 'files.write'],
+      }),
+    ).toMatchObject({ client_id: 'client-123' });
+  });
+
+  test('accepts public clients and rejects non-HTTPS provider endpoints', () => {
+    expect(
+      OAuth2ApplicationInputSchema.safeParse({
+        authorization_url: 'https://identity.example.com/authorize',
+        token_url: 'https://identity.example.com/token',
+        client_id: 'public-client',
+        token_endpoint_auth_method: 'none',
+      }).success,
+    ).toBe(true);
+    expect(
+      OAuth2ApplicationInputSchema.safeParse({
+        authorization_url: 'http://127.0.0.1/authorize',
+        token_url: 'https://identity.example.com/token',
+        client_id: 'public-client',
+        token_endpoint_auth_method: 'none',
+      }).success,
+    ).toBe(false);
+  });
+
+  test('requires the selected client credential', () => {
+    expect(
+      OAuth2ApplicationInputSchema.safeParse({
+        token_url: 'https://identity.example.com/token',
+        client_id: 'confidential-client',
+        token_endpoint_auth_method: 'client_secret_jwt',
+      }).success,
+    ).toBe(false);
+    expect(
+      OAuth2ApplicationInputSchema.safeParse({
+        token_url: 'https://identity.example.com/token',
+        client_id: 'confidential-client',
+        token_endpoint_auth_method: 'private_key_jwt',
+        private_key: 'private-key',
+      }).success,
+    ).toBe(true);
+  });
+
+  test('validates authorization and device start inputs', () => {
+    expect(
+      OAuth2AuthorizationStartInputSchema.parse({
+        success_redirect_uri: 'https://dev.kortix.com/projects/p1',
+      }),
+    ).toEqual({ success_redirect_uri: 'https://dev.kortix.com/projects/p1' });
+    expect(OAuth2DeviceAuthorizationStartInputSchema.parse({ scopes: ['read'] })).toEqual({
+      scopes: ['read'],
+    });
   });
 });
 

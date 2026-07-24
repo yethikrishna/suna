@@ -4,11 +4,14 @@ import {
   activateConnectionProfile,
   createConnector,
   discoverConnectorAuth,
+  discoverConnectionProfileOAuth2,
   deleteConnector,
   getConnectStatus,
   getDiscoverIntegration,
   getConnectorConfig,
   getConnectorPolicies,
+  getConnectionProfileOAuth2Application,
+  getConnectionProfileOAuth2Status,
   listConnectionProfiles,
   listConnectors,
   listDiscoverIntegrations,
@@ -17,6 +20,8 @@ import {
   pipedreamConnectConnectionProfile,
   pipedreamFinalize,
   pipedreamFinalizeConnectionProfile,
+  pollConnectionProfileOAuth2DeviceAuthorization,
+  putConnectionProfileOAuth2Application,
   reconcileConnectionProfile,
   reconcileMemberConnectionProfile,
   revokeConnectionProfile,
@@ -26,6 +31,8 @@ import {
   setConnectorPolicies,
   setConnectorSensitive,
   syncConnectors,
+  startConnectionProfileOAuth2Authorization,
+  startConnectionProfileOAuth2DeviceAuthorization,
   updateConnectionProfileCredential,
 } from './connectors';
 
@@ -50,6 +57,57 @@ beforeEach(() => {
 
 configureKortix({ backendUrl: 'http://test.local', getToken: async () => 'tok' });
 const last = () => calls[calls.length - 1];
+
+test('native OAuth2 lifecycle methods use profile-scoped generic routes', async () => {
+  nextResponse = { status: 200, body: { ok: true } };
+  const application = {
+    authorization_url: 'https://identity.example.com/authorize',
+    token_url: 'https://identity.example.com/token',
+    client_id: 'client-123',
+    token_endpoint_auth_method: 'none' as const,
+    scopes: ['read'],
+  };
+  await putConnectionProfileOAuth2Application('P1', 'profile-1', application);
+  expect(last()).toMatchObject({ method: 'PUT', body: application });
+  expect(last().url).toContain('/projects/P1/connector-profiles/profile-1/oauth2/application');
+
+  nextResponse = { status: 200, body: { application: { ...application, has_client_secret: false } } };
+  await getConnectionProfileOAuth2Application('P1', 'profile-1');
+  expect(last().method).toBe('GET');
+
+  nextResponse = { status: 200, body: { metadata: { token_url: application.token_url } } };
+  await discoverConnectionProfileOAuth2('P1', 'profile-1', {
+    discovery_url: 'https://identity.example.com/.well-known/oauth-authorization-server',
+  });
+  expect(last().method).toBe('POST');
+
+  nextResponse = { status: 200, body: { authorization_url: application.authorization_url } };
+  await startConnectionProfileOAuth2Authorization('P1', 'profile-1', {
+    success_redirect_uri: 'https://dev.kortix.com/projects/P1',
+  });
+  expect(last().url).toContain('/oauth2/authorize');
+
+  nextResponse = {
+    status: 200,
+    body: {
+      session_id: 'session-1',
+      user_code: 'ABCD-EFGH',
+      verification_uri: 'https://identity.example.com/device',
+      expires_at: '2026-07-25T12:00:00.000Z',
+      interval_seconds: 5,
+    },
+  };
+  await startConnectionProfileOAuth2DeviceAuthorization('P1', 'profile-1', {});
+  expect(last().url).toContain('/oauth2/device');
+
+  nextResponse = { status: 200, body: { status: 'pending' } };
+  await pollConnectionProfileOAuth2DeviceAuthorization('P1', 'profile-1', 'session-1');
+  expect(last().url).toContain('/oauth2/device/session-1');
+
+  nextResponse = { status: 200, body: { status: 'active', scopes: ['read'] } };
+  await getConnectionProfileOAuth2Status('P1', 'profile-1');
+  expect(last().url).toContain('/oauth2/status');
+});
 
 const postmanDraftTypecheck: import('./connectors').ConnectorDraftInput = {
   slug: 'hubspot',

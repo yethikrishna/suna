@@ -185,7 +185,7 @@ Also stop if the same failure survives three different fixes (use
 
 | # | Task | Status | Session | Last touched | Commit |
 |---|---|---|---|---|---|
-| 1 | Contracts and RED tests | IN PROGRESS | `native-oauth-full-lifecycle` | 2026-07-25 | claim |
+| 1 | Contracts and RED tests | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | pending commit |
 | 2 | Database lifecycle | NOT STARTED | — | — | — |
 | 3 | OAuth2 protocol engine | NOT STARTED | — | — | — |
 | 4 | API lifecycle routes | NOT STARTED | — | — | — |
@@ -1904,3 +1904,21 @@ packed-install smoke built, packed, installed, imported, and constructed
 **Shippable to production: YES** for B18 and the published SDK surface.
 Repository delivery and live-dev verification remain part of the repository
 lifecycle.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 1)
+
+Added provider-independent OAuth2 application, Authorization Code, Device
+Authorization, connection-status, and client-authentication contracts. Added
+typed SDK methods for every profile-scoped lifecycle route.
+
+**RED evidence:** the focused test command reported two missing exports and
+zero passing tests before implementation.
+
+**Verification:**
+
+- Contract and SDK focused suites: **67 pass / 0 fail**.
+- SDK typecheck and example typecheck: exit 0.
+
+**Shippable to production: NOT YET.** Tasks 2 through 8 remain incomplete.

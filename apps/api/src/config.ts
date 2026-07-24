@@ -296,6 +296,10 @@ const envSchema = z.object({
   // ElevenLabs TTS — gives the meeting bot a voice (the agent speaks in-call).
   ELEVENLABS_BASE_URL: optUrl('https://api.elevenlabs.io'),
   ELEVENLABS_API_KEY: optStr,
+  // Gate 0 echo probe (see channels/voice-probe.ts). Opens a PUBLIC unauthenticated
+  // report sink, so it stays off unless an operator is actively running the
+  // experiment. Never enable in production.
+  VOICE_PROBE_ENABLED: optBoolFalse,
 
   // ── Channels — Microsoft Teams adapter (optional) ────────────────────────
   // One Kortix-owned multi-tenant Azure AD bot app. The same app id/password
@@ -911,6 +915,7 @@ export const config = {
   RECALL_API_KEY: env.RECALL_API_KEY,
   ELEVENLABS_BASE_URL: env.ELEVENLABS_BASE_URL,
   ELEVENLABS_API_KEY: env.ELEVENLABS_API_KEY,
+  VOICE_PROBE_ENABLED: env.VOICE_PROBE_ENABLED,
 
   // ─── Channels (Microsoft Teams) ───────────────────────────────────────────
   MICROSOFT_APP_ID: env.MICROSOFT_APP_ID,

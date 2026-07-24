@@ -186,7 +186,7 @@ Also stop if the same failure survives three different fixes (use
 | # | Task | Status | Session | Last touched | Commit |
 |---|---|---|---|---|---|
 | 1 | Contracts and RED tests | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `de7026bfc` |
-| 2 | Database lifecycle | IN PROGRESS | `native-oauth-full-lifecycle` | 2026-07-25 | claim |
+| 2 | Database lifecycle | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | pending commit |
 | 3 | OAuth2 protocol engine | NOT STARTED | — | — | — |
 | 4 | API lifecycle routes | NOT STARTED | — | — | — |
 | 5 | Executor and non-OAuth request authentication | NOT STARTED | — | — | — |
@@ -1922,3 +1922,23 @@ zero passing tests before implementation.
 - SDK typecheck and example typecheck: exit 0.
 
 **Shippable to production: NOT YET.** Tasks 2 through 8 remain incomplete.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 2)
+
+Added project-scoped encrypted OAuth application storage. Added short-lived
+Authorization Code and Device Authorization session storage. The database
+enforces valid flow material, session status, unique state hashes, and profile
+tenant ownership.
+
+**Verification:**
+
+- Database typecheck: exit 0.
+- Migration lint: 72 files pass with eight existing destructive warnings.
+- Isolated database migration: applied
+  `20260725120000000_executor_oauth_lifecycle`.
+- Database query returned `executor_oauth_applications` and
+  `executor_oauth_sessions`.
+
+**Shippable to production: NOT YET.** Tasks 3 through 8 remain incomplete.

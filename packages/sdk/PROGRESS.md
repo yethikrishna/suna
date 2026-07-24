@@ -187,7 +187,7 @@ Also stop if the same failure survives three different fixes (use
 |---|---|---|---|---|---|
 | 1 | Contracts and RED tests | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `de7026bfc` |
 | 2 | Database lifecycle | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `572bedb5a` |
-| 3 | OAuth2 protocol engine | IN PROGRESS | `native-oauth-full-lifecycle` | 2026-07-25 | claim |
+| 3 | OAuth2 protocol engine | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | pending commit |
 | 4 | API lifecycle routes | NOT STARTED | — | — | — |
 | 5 | Executor and non-OAuth request authentication | NOT STARTED | — | — | — |
 | 6 | SDK and web integration | NOT STARTED | — | — | — |
@@ -1688,6 +1688,32 @@ file. Two errors are in the OG template test. Two errors are unresolved
 generated docs-source imports.
 
 **Shippable to production: NOT YET.** Tasks 3 through 8 remain incomplete.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 3)
+
+Added the generic OAuth2 protocol engine. It implements PKCE S256,
+Authorization Code exchange, refresh-token rotation, Device Authorization,
+discovery, and revocation. Token requests support `none`,
+`client_secret_basic`, `client_secret_post`, `client_secret_jwt`, and
+`private_key_jwt`. Provider responses are bounded. Provider errors omit
+descriptions and token values. Production egress uses the shared SSRF guard.
+
+Expanded the existing Client Credentials contract with `none` and
+`client_secret_jwt`. Removed the certificate-thumbprint requirement from
+generic `private_key_jwt`. The optional thumbprint remains supported.
+
+**RED evidence:** the focused protocol test failed because
+`oauth2-lifecycle.ts` did not exist.
+
+**Verification:**
+
+- Focused OAuth, contract, and SDK suites: **83 pass / 0 fail**.
+- API typecheck: exit 0.
+- SDK typecheck and example typecheck: exit 0.
+
+**Shippable to production: NOT YET.** Tasks 4 through 8 remain incomplete.
 
 ---
 

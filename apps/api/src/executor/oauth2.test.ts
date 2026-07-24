@@ -76,6 +76,41 @@ describe('OAuth2 client credentials', () => {
     expect(new URLSearchParams(String(request.current?.body)).has('client_secret')).toBe(false);
   });
 
+  test('supports public clients and client_secret_jwt', async () => {
+    let publicBody = new URLSearchParams();
+    await acquireOAuth2ClientCredentialsToken(
+      {
+        ...SECRET_CONFIG,
+        token_endpoint_auth_method: 'none',
+        client_secret: undefined,
+      },
+      {
+        fetchImpl: async (_url, init) => {
+          publicBody = new URLSearchParams(String(init?.body));
+          return Response.json({ access_token: 'public-access' });
+        },
+      },
+    );
+    expect(publicBody.get('client_id')).toBe('client-123');
+    expect(publicBody.has('client_secret')).toBe(false);
+
+    let jwtBody = new URLSearchParams();
+    await acquireOAuth2ClientCredentialsToken(
+      { ...SECRET_CONFIG, token_endpoint_auth_method: 'client_secret_jwt' },
+      {
+        now: () => 1_000_000,
+        randomId: () => 'jwt-id',
+        fetchImpl: async (_url, init) => {
+          jwtBody = new URLSearchParams(String(init?.body));
+          return Response.json({ access_token: 'jwt-access' });
+        },
+      },
+    );
+    expect(jwtBody.has('client_secret')).toBe(false);
+    expect(jwtBody.get('client_assertion_type')).toContain('jwt-bearer');
+    expect(jwtBody.get('client_assertion')?.split('.')).toHaveLength(3);
+  });
+
   test('creates a PS256 private-key client assertion with the certificate thumbprint', () => {
     const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
     const assertion = buildPrivateKeyClientAssertion(

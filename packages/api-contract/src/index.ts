@@ -310,8 +310,10 @@ export const OAuth2ClientCredentialsSchema = z
       .refine((value) => value.startsWith('https://'), 'token_url must use https'),
     client_id: z.string().trim().min(1).max(1024),
     token_endpoint_auth_method: z.enum([
+      'none',
       'client_secret_post',
       'client_secret_basic',
+      'client_secret_jwt',
       'private_key_jwt',
     ]),
     client_secret: z.string().min(1).max(65536).optional(),
@@ -325,7 +327,8 @@ export const OAuth2ClientCredentialsSchema = z
   .superRefine((value, ctx) => {
     const usesSecret =
       value.token_endpoint_auth_method === 'client_secret_post' ||
-      value.token_endpoint_auth_method === 'client_secret_basic';
+      value.token_endpoint_auth_method === 'client_secret_basic' ||
+      value.token_endpoint_auth_method === 'client_secret_jwt';
     if (usesSecret && !value.client_secret) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -335,12 +338,12 @@ export const OAuth2ClientCredentialsSchema = z
     }
     if (
       value.token_endpoint_auth_method === 'private_key_jwt' &&
-      (!value.private_key || !value.certificate_thumbprint)
+      !value.private_key
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['private_key'],
-        message: 'private_key and certificate_thumbprint are required for private_key_jwt',
+        message: 'private_key is required for private_key_jwt',
       });
     }
   });

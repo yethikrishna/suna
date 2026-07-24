@@ -1,4 +1,4 @@
-import { constants, createSign, randomUUID } from 'node:crypto';
+import { constants, createHmac, createSign, randomUUID } from 'node:crypto';
 import { OAuth2ClientCredentialsSchema, type OAuth2ClientCredentials } from '@kortix/api-contract';
 import { safeEgressFetch } from '../shared/ssrf-guard';
 
@@ -41,7 +41,9 @@ export function buildPrivateKeyClientAssertion(
   const header = encodeJson({
     alg: 'PS256',
     typ: 'JWT',
-    'x5t#S256': config.certificate_thumbprint,
+    ...(config.certificate_thumbprint
+      ? { 'x5t#S256': config.certificate_thumbprint }
+      : {}),
   });
   const payload = encodeJson({
     aud: config.token_url,
@@ -63,6 +65,24 @@ export function buildPrivateKeyClientAssertion(
   return `${input}.${signature.toString('base64url')}`;
 }
 
+function buildClientSecretAssertion(
+  config: OAuth2ClientCredentials,
+  runtime: OAuth2Runtime,
+): string {
+  const nowSeconds = Math.floor((runtime.now?.() ?? Date.now()) / 1000);
+  const header = encodeJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = encodeJson({
+    aud: config.token_url,
+    iss: config.client_id,
+    sub: config.client_id,
+    jti: runtime.randomId?.() ?? randomUUID(),
+    iat: nowSeconds,
+    exp: nowSeconds + 300,
+  });
+  const input = `${header}.${payload}`;
+  return `${input}.${createHmac('sha256', config.client_secret ?? '').update(input).digest('base64url')}`;
+}
+
 function tokenRequest(config: OAuth2ClientCredentials, runtime: OAuth2Runtime): RequestInit {
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
@@ -74,13 +94,18 @@ function tokenRequest(config: OAuth2ClientCredentials, runtime: OAuth2Runtime): 
   if (config.resource) body.set('resource', config.resource);
   if (config.audience) body.set('audience', config.audience);
 
-  if (config.token_endpoint_auth_method === 'client_secret_basic') {
+  if (config.token_endpoint_auth_method === 'none') {
+    // Public client. client_id remains in the request body.
+  } else if (config.token_endpoint_auth_method === 'client_secret_basic') {
     headers.set(
       'authorization',
       `Basic ${Buffer.from(`${config.client_id}:${config.client_secret}`).toString('base64')}`,
     );
   } else if (config.token_endpoint_auth_method === 'client_secret_post') {
     body.set('client_secret', config.client_secret ?? '');
+  } else if (config.token_endpoint_auth_method === 'client_secret_jwt') {
+    body.set('client_assertion_type', 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer');
+    body.set('client_assertion', buildClientSecretAssertion(config, runtime));
   } else {
     body.set('client_assertion_type', 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer');
     body.set('client_assertion', buildPrivateKeyClientAssertion(config, runtime));

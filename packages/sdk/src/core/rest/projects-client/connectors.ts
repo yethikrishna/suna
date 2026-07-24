@@ -143,7 +143,12 @@ export interface OAuth2ClientCredentials {
   type: 'oauth2_client_credentials';
   token_url: string;
   client_id: string;
-  token_endpoint_auth_method: 'client_secret_post' | 'client_secret_basic' | 'private_key_jwt';
+  token_endpoint_auth_method:
+    | 'none'
+    | 'client_secret_post'
+    | 'client_secret_basic'
+    | 'client_secret_jwt'
+    | 'private_key_jwt';
   client_secret?: string;
   private_key?: string;
   certificate_thumbprint?: string;

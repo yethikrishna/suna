@@ -190,9 +190,9 @@ Also stop if the same failure survives three different fixes (use
 | 3 | OAuth2 protocol engine | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `db31d216e` |
 | 4 | API lifecycle routes | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `63dda6afe` |
 | 5 | Executor and non-OAuth request authentication | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `35daeda10` |
-| 6 | SDK and web integration | IN PROGRESS | `native-oauth-full-lifecycle` | 2026-07-25 | claim |
-| 7 | Local verification | NOT STARTED | — | — | — |
-| 8 | Delivery and dev proof | NOT STARTED | — | — | — |
+| 6 | SDK and web integration | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `b3826fa8f` |
+| 7 | Local verification | DONE WITH BROWSER BLOCKER | `native-oauth-full-lifecycle` | 2026-07-25 | pending |
+| 8 | Delivery and dev proof | IN PROGRESS | `native-oauth-full-lifecycle` | 2026-07-25 | claim |
 
 ---
 
@@ -2092,12 +2092,44 @@ proof remains open for Task 7.
 
 ### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 7)
 
-**Status: IN PROGRESS.**
-
-Running full local contract, API, executor, SDK, database, web, and live HTTP
+Completed the local contract, API, executor, SDK, database, web, and live HTTP
 verification.
 
-**Shippable to production: NOT YET.** Local and deployed verification remains.
+**Verification:**
+
+- OAuth and request-authentication API suite: **44 pass / 0 fail**.
+- Executor faces and authentication discovery suite: **80 pass / 0 fail**.
+- OAuth web suite: **18 pass / 0 fail**.
+- Full web suite: **2064 pass / 0 fail**.
+- Full SDK suite: **1214 pass / 0 fail**.
+- SDK typecheck, example typecheck, and packed-install smoke: exit 0.
+- API, contract, manifest, and database typechecks: exit 0.
+- API contract: **41 pass / 0 fail**.
+- Manifest schema: **321 pass / 0 fail**.
+- Database: **118 pass / 0 fail**.
+- Migration lint: **72 files pass**. Squawk reports zero issues.
+- Authorization Code callback: HTTP `302`; PKCE method `S256`.
+- Authorization state replay: first callback HTTP `302`; replay HTTP `400`.
+- Device Authorization: start HTTP `200`; poll reaches `active`.
+- Refresh-token rotation replaced both access and refresh tokens.
+- Revocation: HTTP `200`; profile status reaches `revoked`.
+- Local API health: HTTP `200`.
+
+The browser runtime reports `No browser is available`. Browser discovery
+returns `[]`. Chromium DOM and network proof remains blocked.
+
+**Shippable to production: NOT YET.** Task 8 delivery and dev proof remains.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 8)
+
+Claimed repository delivery and dev proof. The task includes the pull request,
+merge, Deploy Dev workflow, deployed SHA proof, and live dev API verification.
+
+**Status: IN PROGRESS.**
+
+**Shippable to production: NOT YET.** The branch is not merged or deployed.
 
 ---
 

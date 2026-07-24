@@ -39,6 +39,10 @@ const reportSchema = z.object({
 /** Ratio of in-band energy (tone on vs off) above which the bot is hearing itself. */
 const ECHO_RATIO_THRESHOLD = 3;
 
+/** Last few reports, so a run can be read back over HTTP instead of scraped from stdout. */
+const recent: Array<Record<string, unknown>> = [];
+const RECENT_LIMIT = 50;
+
 voiceProbeApp.openapi(
   createRoute({
     method: 'get',
@@ -50,6 +54,20 @@ voiceProbeApp.openapi(
   async (c: any) => {
     if (!config.VOICE_PROBE_ENABLED) return c.json({ error: 'Not found' }, 404);
     return c.json({ ok: true });
+  },
+);
+
+voiceProbeApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/reports',
+    tags: ['channels'],
+    summary: 'Read back recent voice probe reports (Gate 0 experiment)',
+    responses: { 200: json(z.object({ reports: z.array(z.any()) }), 'Recent'), ...errors(404) },
+  }),
+  async (c: any) => {
+    if (!config.VOICE_PROBE_ENABLED) return c.json({ error: 'Not found' }, 404);
+    return c.json({ reports: recent });
   },
 );
 
@@ -87,6 +105,9 @@ voiceProbeApp.openapi(
         `on=${body.verdict.onMean.toExponential(2)} off=${body.verdict.offMean.toExponential(2)} ` +
         `n=${body.verdict.samples} api=${body.latency.api ?? 'n/a'}ms xai=${body.latency.xai ?? 'n/a'}ms`,
     );
+
+    recent.push({ at: new Date().toISOString(), outcome, echo, ...body });
+    if (recent.length > RECENT_LIMIT) recent.splice(0, recent.length - RECENT_LIMIT);
 
     return c.json({ ok: true, echo });
   },

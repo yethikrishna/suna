@@ -160,7 +160,7 @@ Also stop if the same failure survives three different fixes (use
 
 ---
 
-## NOW — active plan: web SDK-only boundary
+## COMPLETED PLAN — web SDK-only boundary
 
 - **Plan:** `docs/superpowers/plans/2026-07-24-web-sdk-only-boundary.md`
 - **Spec:** `docs/superpowers/specs/2026-07-24-web-sdk-only-boundary-design.md`
@@ -175,6 +175,24 @@ Also stop if the same failure survives three different fixes (use
 | 6 | Remove runtime routing knowledge | DONE | `frontend-sdk-only` | 2026-07-24 | `e6241bbfc` |
 | 7 | Local parity proof | DONE | `frontend-sdk-only` | 2026-07-24 | `6c02b601e` |
 | 8 | Delivery and dev proof | DONE | `frontend-sdk-only` | 2026-07-24 | `aefa2a628` + `8688b8492` |
+
+---
+
+## NOW — active plan: native integration authentication lifecycle
+
+- **Plan:** `docs/superpowers/plans/2026-07-25-native-integration-auth-lifecycle.md`
+- **Spec:** `docs/superpowers/specs/2026-07-25-native-integration-auth-lifecycle-design.md`
+
+| # | Task | Status | Session | Last touched | Commit |
+|---|---|---|---|---|---|
+| 1 | Contracts and RED tests | NOT STARTED | — | — | — |
+| 2 | Database lifecycle | NOT STARTED | — | — | — |
+| 3 | OAuth2 protocol engine | NOT STARTED | — | — | — |
+| 4 | API lifecycle routes | NOT STARTED | — | — | — |
+| 5 | Executor and non-OAuth request authentication | NOT STARTED | — | — | — |
+| 6 | SDK and web integration | NOT STARTED | — | — | — |
+| 7 | Local verification | NOT STARTED | — | — | — |
+| 8 | Delivery and dev proof | NOT STARTED | — | — | — |
 
 ---
 

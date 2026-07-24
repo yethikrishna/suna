@@ -1,5 +1,6 @@
 import type {
   ConnectionProfileCredentialInput,
+  ConnectorDraftInput,
   OAuth2ClientCredentials,
 } from '@kortix/sdk/projects-client';
 
@@ -27,6 +28,13 @@ export const EMPTY_OAUTH2_CREDENTIAL_FORM: OAuth2CredentialForm = {
   audience: '',
 };
 
+export function oauth2CredentialFormValid(form: OAuth2CredentialForm): boolean {
+  if (!form.tokenUrl.trim() || !form.clientId.trim()) return false;
+  return form.authMethod === 'private_key_jwt'
+    ? Boolean(form.privateKey.trim() && form.certificateThumbprint.trim())
+    : Boolean(form.clientSecret.trim());
+}
+
 export function buildOAuth2CredentialInput(
   form: OAuth2CredentialForm,
 ): ConnectionProfileCredentialInput {
@@ -47,4 +55,39 @@ export function buildOAuth2CredentialInput(
   if (form.resource.trim()) oauth2.resource = form.resource.trim();
   if (form.audience.trim()) oauth2.audience = form.audience.trim();
   return { oauth2 };
+}
+
+export async function createConnectorWithOptionalOAuth2(
+  projectId: string,
+  draft: ConnectorDraftInput,
+  oauth2: OAuth2CredentialForm | null,
+  deps: {
+    createConnector: (projectId: string, draft: ConnectorDraftInput) => Promise<unknown>;
+    deleteConnector: (projectId: string, slug: string) => Promise<unknown>;
+    setConnectorCredential: (
+      projectId: string,
+      slug: string,
+      credential: ConnectionProfileCredentialInput,
+    ) => Promise<unknown>;
+  },
+): Promise<void> {
+  await deps.createConnector(projectId, draft);
+  if (!oauth2) return;
+
+  try {
+    await deps.setConnectorCredential(projectId, draft.slug, buildOAuth2CredentialInput(oauth2));
+  } catch (credentialError) {
+    try {
+      await deps.deleteConnector(projectId, draft.slug);
+    } catch (rollbackError) {
+      const credentialMessage =
+        credentialError instanceof Error ? credentialError.message : String(credentialError);
+      const rollbackMessage =
+        rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+      throw new Error(
+        `OAuth2 credential validation failed: ${credentialMessage}. Connector rollback failed: ${rollbackMessage}`,
+      );
+    }
+    throw credentialError;
+  }
 }

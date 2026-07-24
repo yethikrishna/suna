@@ -1,5 +1,22 @@
 import { describe, expect, test } from 'bun:test';
-import { buildOAuth2CredentialInput } from './connector-oauth2';
+import {
+  buildOAuth2CredentialInput,
+  createConnectorWithOptionalOAuth2,
+  oauth2CredentialFormValid,
+  type OAuth2CredentialForm,
+} from './connector-oauth2';
+
+const SECRET_FORM: OAuth2CredentialForm = {
+  tokenUrl: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/token',
+  clientId: 'client-id',
+  authMethod: 'client_secret_post',
+  clientSecret: 'client-secret',
+  privateKey: '',
+  certificateThumbprint: '',
+  scopes: 'https://graph.microsoft.com/.default',
+  resource: '',
+  audience: '',
+};
 
 describe('buildOAuth2CredentialInput', () => {
   test('normalizes a Microsoft client-secret configuration', () => {
@@ -52,5 +69,110 @@ describe('buildOAuth2CredentialInput', () => {
         audience: 'https://api.example.com',
       },
     });
+  });
+
+  test('builds HTTP Basic token authentication', () => {
+    expect(
+      buildOAuth2CredentialInput({
+        ...SECRET_FORM,
+        authMethod: 'client_secret_basic',
+      }),
+    ).toEqual({
+      oauth2: {
+        type: 'oauth2_client_credentials',
+        token_url: SECRET_FORM.tokenUrl,
+        client_id: 'client-id',
+        token_endpoint_auth_method: 'client_secret_basic',
+        client_secret: 'client-secret',
+        scopes: ['https://graph.microsoft.com/.default'],
+      },
+    });
+  });
+});
+
+describe('oauth2CredentialFormValid', () => {
+  test('requires the token URL, client ID, and selected client authentication', () => {
+    expect(oauth2CredentialFormValid(SECRET_FORM)).toBe(true);
+    expect(oauth2CredentialFormValid({ ...SECRET_FORM, clientSecret: '' })).toBe(false);
+    expect(
+      oauth2CredentialFormValid({
+        ...SECRET_FORM,
+        authMethod: 'private_key_jwt',
+        clientSecret: '',
+        privateKey: 'private-key',
+        certificateThumbprint: 'thumbprint',
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('createConnectorWithOptionalOAuth2', () => {
+  test('creates the connector before it stores the OAuth2 credential', async () => {
+    const calls: string[] = [];
+    await createConnectorWithOptionalOAuth2(
+      'project-1',
+      { slug: 'sharepoint', provider: 'openapi', spec: 'https://example.com/openapi.json' },
+      SECRET_FORM,
+      {
+        createConnector: async () => {
+          calls.push('create');
+        },
+        deleteConnector: async () => {
+          calls.push('delete');
+        },
+        setConnectorCredential: async (_projectId, slug, credential) => {
+          const method =
+            'oauth2' in credential ? credential.oauth2.token_endpoint_auth_method : 'static';
+          calls.push(`credential:${slug}:${method}`);
+        },
+      },
+    );
+
+    expect(calls).toEqual(['create', 'credential:sharepoint:client_secret_post']);
+  });
+
+  test('does not create a credential when OAuth2 is not selected', async () => {
+    let credentialCalls = 0;
+    await createConnectorWithOptionalOAuth2(
+      'project-1',
+      { slug: 'public-api', provider: 'openapi', spec: 'https://example.com/openapi.json' },
+      null,
+      {
+        createConnector: async () => undefined,
+        deleteConnector: async () => undefined,
+        setConnectorCredential: async () => {
+          credentialCalls += 1;
+        },
+      },
+    );
+
+    expect(credentialCalls).toBe(0);
+  });
+
+  test('deletes the connector when OAuth2 credential validation fails', async () => {
+    const calls: string[] = [];
+    const credentialError = new Error('invalid_client');
+
+    await expect(
+      createConnectorWithOptionalOAuth2(
+        'project-1',
+        { slug: 'sharepoint', provider: 'openapi', spec: 'https://example.com/openapi.json' },
+        SECRET_FORM,
+        {
+          createConnector: async () => {
+            calls.push('create');
+          },
+          deleteConnector: async () => {
+            calls.push('delete');
+          },
+          setConnectorCredential: async () => {
+            calls.push('credential');
+            throw credentialError;
+          },
+        },
+      ),
+    ).rejects.toBe(credentialError);
+
+    expect(calls).toEqual(['create', 'credential', 'delete']);
   });
 });

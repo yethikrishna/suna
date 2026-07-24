@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { botId, readRecordingConfig } from './meet';
+import { botId, readRecordingConfig } from './voice';
 
 describe('botId', () => {
   test('extracts the Recall bot id from the create response', () => {

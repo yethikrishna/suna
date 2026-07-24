@@ -4,13 +4,13 @@
 // attached SERVER-SIDE by the Executor gateway (as `Authorization: Token …`); it
 // never reaches this sandbox. Mirrors the `slack` CLI's gateway posture.
 import { ExecutorError, createExecutorClient } from '../../../../packages/executor-sdk/src/index';
-import { CliError, getEnv, handleError, kortixPost, kortixProjectId, out, parseArgs } from '../lib';
+import { CliError, getEnv, handleError, kortixProjectId, out, parseArgs } from '../lib';
 
-// The reserved, platform-owned channel slug the Meet (Recall.ai) connector
-// materializes under — must match MEET_CHANNEL_CONNECTOR_SLUG in apps/api.
-const MEET_CONNECTOR = 'kortix_meet';
+// The reserved, platform-owned channel slug the voice (Recall.ai) connector
+// materializes under — must match VOICE_CHANNEL_CONNECTOR_SLUG in apps/api.
+const VOICE_CONNECTOR = 'kortix_voice';
 
-// Default recording config so `meet transcript` works out of the box: Recall's
+// Default recording config so `voice transcript` works out of the box: Recall's
 // `meeting_captions` provider transcribes from the platform's own captions (the
 // cheapest option, no external STT vendor). Override with --recording-config.
 const DEFAULT_RECORDING_CONFIG = { transcript: { provider: { meeting_captions: {} } } };
@@ -32,7 +32,7 @@ function executorClient() {
 // ExecutorError, surfaced here as a clean CliError.
 async function call(action: string, args: Record<string, unknown>): Promise<unknown> {
   try {
-    const res = await executorClient().call(MEET_CONNECTOR, action, args);
+    const res = await executorClient().call(VOICE_CONNECTOR, action, args);
     return (res.data ?? res) as unknown;
   } catch (err) {
     if (err instanceof ExecutorError) throw new CliError(executorErrorReason(err) ?? err.message);
@@ -85,19 +85,6 @@ async function chat(id: string, message: string) {
   return { ok: true, bot_id: id, sent: message, result: data ?? 'sent' };
 }
 
-// Speak aloud in the meeting (TTS voice). Server-side proxy: text → ElevenLabs
-// (the project's chosen voice) → Recall output_audio. Keys stay on the server.
-async function speak(id: string, text: string, voice?: string) {
-  const projectId = kortixProjectId();
-  if (!projectId) throw new CliError('KORTIX_PROJECT_ID not set — cannot speak.');
-  const res = await kortixPost<Record<string, unknown>>(`/projects/${projectId}/channels/meet/speak`, {
-    bot_id: id,
-    text,
-    ...(voice ? { voice } : {}),
-  });
-  return { ok: true, bot_id: id, spoke: text, ...(res && typeof res === 'object' ? res : {}) };
-}
-
 async function transcript(id: string) {
   // List the bot's transcript artifact(s) through the gateway, then follow the
   // presigned download_url (a plain GET — the URL is already signed) to the JSON.
@@ -132,47 +119,39 @@ async function main(): Promise<void> {
   switch (command) {
     case 'join': {
       const url = args[0];
-      if (!url) throw new CliError('meeting URL required, e.g. meet join https://meet.google.com/abc-defg-hij');
+      if (!url) throw new CliError('meeting URL required, e.g. voice join https://meet.google.com/abc-defg-hij');
       out(await join({ url, botName: flags['bot-name'], recordingConfig: readRecordingConfig(flags['recording-config']) }));
       break;
     }
     case 'leave': {
       const id = args[0];
-      if (!id) throw new CliError('bot id required, e.g. meet leave <bot_id>');
+      if (!id) throw new CliError('bot id required, e.g. voice leave <bot_id>');
       out(await leave(id));
       break;
     }
     case 'status': {
       const id = args[0];
-      if (!id) throw new CliError('bot id required, e.g. meet status <bot_id>');
+      if (!id) throw new CliError('bot id required, e.g. voice status <bot_id>');
       out(await status(id));
       break;
     }
     case 'chat': {
       const id = args[0];
       const message = (flags.text ?? args.slice(1).join(' ')).trim();
-      if (!id) throw new CliError('bot id required, e.g. meet chat <bot_id> "message"');
-      if (!message) throw new CliError('message required, e.g. meet chat <bot_id> "On it — sharing the doc."');
+      if (!id) throw new CliError('bot id required, e.g. voice chat <bot_id> "message"');
+      if (!message) throw new CliError('message required, e.g. voice chat <bot_id> "On it — sharing the doc."');
       out(await chat(id, message));
-      break;
-    }
-    case 'speak': {
-      const id = args[0];
-      const text = (flags.text ?? args.slice(1).join(' ')).trim();
-      if (!id) throw new CliError('bot id required, e.g. meet speak <bot_id> "message"');
-      if (!text) throw new CliError('text required, e.g. meet speak <bot_id> "Sure, the Q3 numbers are up 12 percent."');
-      out(await speak(id, text, flags.voice));
       break;
     }
     case 'transcript': {
       const id = args[0];
-      if (!id) throw new CliError('bot id required, e.g. meet transcript <bot_id>');
+      if (!id) throw new CliError('bot id required, e.g. voice transcript <bot_id>');
       out(await transcript(id));
       break;
     }
     default:
       console.log(`
-meet — meeting notetaker for Google Meet / Zoom / Microsoft Teams (via Recall.ai)
+voice — join a call and talk: Google Meet / Zoom / Microsoft Teams (via Recall.ai)
 
 Auth: none in-sandbox — calls run through the Kortix Executor (server-side Recall key).
 
@@ -181,12 +160,14 @@ Commands:
   leave      <bot-id>                                                     # remove the bot (irreversible)
   status     <bot-id>                                                     # bot status + recordings
   transcript <bot-id>                                                     # speaker-labelled transcript so far
-  chat       <bot-id> "<message>"                                         # post to the meeting chat (the bot talks back)
-  speak      <bot-id> "<message>" ([--voice <id>])                        # SAY it aloud in the call (TTS voice)
+  chat       <bot-id> "<message>"                                         # post to the meeting chat (for links/code)
 
 <meeting-url> is the full meeting link — Google Meet, Zoom, or Microsoft Teams; the
 platform is detected from the URL. join returns a bot id that the other commands take.
-Transcripts use the platform's own captions; speak uses the project's selected voice.
+
+There is no speak command. The agent does not read replies aloud one at a time
+any more — joining starts a live conversation the realtime voice model holds on
+its own, and it reaches back into this session when it needs real work done.
 `);
       break;
   }

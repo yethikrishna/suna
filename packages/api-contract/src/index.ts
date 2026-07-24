@@ -85,12 +85,7 @@ export type ProjectRole = z.infer<typeof ProjectRoleSchema>;
  * (underscore) single-instance provider ripped out in 9cbf57dda — the schema
  * test suite asserts the old identifier stays rejected.
  */
-export const SANDBOX_PROVIDERS = [
-  'daytona',
-  'platinum',
-  'e2b',
-  'local-docker',
-] as const;
+export const SANDBOX_PROVIDERS = ['daytona', 'platinum', 'e2b', 'local-docker'] as const;
 export const SandboxProviderSchema = z.enum(SANDBOX_PROVIDERS);
 export type SandboxProvider = z.infer<typeof SandboxProviderSchema>;
 
@@ -306,12 +301,60 @@ export const ReconcileConnectionProfileInputSchema = z
   .strict();
 export type ReconcileConnectionProfileInput = z.infer<typeof ReconcileConnectionProfileInputSchema>;
 
-export const UpdateConnectionProfileCredentialInputSchema = z
+export const OAuth2ClientCredentialsSchema = z
   .object({
-    value: z.string().min(1).max(65536),
-    kind: z.enum(['secret', 'connection']).optional(),
+    type: z.literal('oauth2_client_credentials'),
+    token_url: z
+      .string()
+      .url()
+      .refine((value) => value.startsWith('https://'), 'token_url must use https'),
+    client_id: z.string().trim().min(1).max(1024),
+    token_endpoint_auth_method: z.enum([
+      'client_secret_post',
+      'client_secret_basic',
+      'private_key_jwt',
+    ]),
+    client_secret: z.string().min(1).max(65536).optional(),
+    private_key: z.string().min(1).max(65536).optional(),
+    certificate_thumbprint: z.string().min(1).max(512).optional(),
+    scopes: z.array(z.string().trim().min(1).max(2048)).max(64).optional(),
+    resource: z.string().trim().min(1).max(4096).optional(),
+    audience: z.string().trim().min(1).max(4096).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    const usesSecret =
+      value.token_endpoint_auth_method === 'client_secret_post' ||
+      value.token_endpoint_auth_method === 'client_secret_basic';
+    if (usesSecret && !value.client_secret) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['client_secret'],
+        message: 'client_secret is required for the selected authentication method',
+      });
+    }
+    if (
+      value.token_endpoint_auth_method === 'private_key_jwt' &&
+      (!value.private_key || !value.certificate_thumbprint)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['private_key'],
+        message: 'private_key and certificate_thumbprint are required for private_key_jwt',
+      });
+    }
+  });
+export type OAuth2ClientCredentials = z.infer<typeof OAuth2ClientCredentialsSchema>;
+
+export const UpdateConnectionProfileCredentialInputSchema = z.union([
+  z
+    .object({
+      value: z.string().min(1).max(65536),
+      kind: z.enum(['secret', 'connection']).optional(),
+    })
+    .strict(),
+  z.object({ oauth2: OAuth2ClientCredentialsSchema }).strict(),
+]);
 export type UpdateConnectionProfileCredentialInput = z.infer<
   typeof UpdateConnectionProfileCredentialInputSchema
 >;
@@ -328,8 +371,8 @@ export const SessionCreateInputSchema = z
     session_id: z
       .string()
       .regex(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-      'session_id must be an RFC 4122 v4 UUID',
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        'session_id must be an RFC 4122 v4 UUID',
       )
       .optional(),
     provider: SandboxProviderSchema.optional(),
@@ -364,8 +407,8 @@ export const SessionCreateInputSchema = z
     sessionId: z
       .string()
       .regex(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-      'sessionId must be an RFC 4122 v4 UUID',
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        'sessionId must be an RFC 4122 v4 UUID',
       )
       .optional(),
     branchAlreadyCreated: z.boolean().optional(),

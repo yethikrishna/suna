@@ -172,26 +172,42 @@ describe('ProjectSchema', () => {
   });
 
   test('accepts E2B and rejects retired sandbox providers in project pin fields', () => {
-    expect(() => ProjectSchema.parse(projectFixture({
-      default_sandbox_provider: 'e2b',
-      available_sandbox_providers: ['daytona', 'platinum', 'e2b'],
-    }))).not.toThrow();
-    expect(() => ProjectSchema.parse(projectFixture({
-      default_sandbox_provider: 'managed',
-    }))).toThrow();
+    expect(() =>
+      ProjectSchema.parse(
+        projectFixture({
+          default_sandbox_provider: 'e2b',
+          available_sandbox_providers: ['daytona', 'platinum', 'e2b'],
+        }),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      ProjectSchema.parse(
+        projectFixture({
+          default_sandbox_provider: 'managed',
+        }),
+      ),
+    ).toThrow();
     // The RETIRED single-instance provider ('local_docker', underscore) stays
     // rejected — a genuinely different identifier from the new EXPERIMENTAL
     // 'local-docker' (hyphen) provider below.
-    expect(() => ProjectSchema.parse(projectFixture({
-      available_sandbox_providers: ['daytona', 'local_docker'],
-    }))).toThrow();
+    expect(() =>
+      ProjectSchema.parse(
+        projectFixture({
+          available_sandbox_providers: ['daytona', 'local_docker'],
+        }),
+      ),
+    ).toThrow();
   });
 
   test('accepts the EXPERIMENTAL local-docker (hyphenated) sandbox provider', () => {
-    expect(() => ProjectSchema.parse(projectFixture({
-      default_sandbox_provider: 'local-docker',
-      available_sandbox_providers: ['local-docker'],
-    }))).not.toThrow();
+    expect(() =>
+      ProjectSchema.parse(
+        projectFixture({
+          default_sandbox_provider: 'local-docker',
+          available_sandbox_providers: ['local-docker'],
+        }),
+      ),
+    ).not.toThrow();
   });
 
   test('rejects an unknown status', () => {
@@ -453,13 +469,13 @@ describe('SessionCreateInputSchema runtime_context', () => {
   test('retains deprecated camelCase inputs already accepted by the route', () => {
     expect(
       SessionCreateInputSchema.safeParse({
-      baseRef: 'main',
-      agentName: 'veyris',
-      sandboxSlug: 'default',
-      initialPrompt: 'hello',
-      opencodeModel: 'kortix/glm-5.2',
-      sessionId: '11111111-1111-4111-a111-111111111111',
-      branchAlreadyCreated: true,
+        baseRef: 'main',
+        agentName: 'veyris',
+        sandboxSlug: 'default',
+        initialPrompt: 'hello',
+        opencodeModel: 'kortix/glm-5.2',
+        sessionId: '11111111-1111-4111-a111-111111111111',
+        branchAlreadyCreated: true,
       }).success,
     ).toBe(true);
   });
@@ -512,6 +528,29 @@ describe('session connector profile contracts', () => {
     expect(
       UpdateConnectionProfileCredentialInputSchema.safeParse({ value: 'x'.repeat(65537) }).success,
     ).toBe(false);
+    expect(
+      UpdateConnectionProfileCredentialInputSchema.safeParse({
+        oauth2: {
+          type: 'oauth2_client_credentials',
+          token_url: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/token',
+          client_id: 'client-id',
+          token_endpoint_auth_method: 'client_secret_post',
+          client_secret: 'client-secret',
+          scopes: ['https://graph.microsoft.com/.default'],
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      UpdateConnectionProfileCredentialInputSchema.safeParse({
+        oauth2: {
+          type: 'oauth2_client_credentials',
+          token_url: 'http://localhost/token',
+          client_id: 'client-id',
+          token_endpoint_auth_method: 'client_secret_post',
+          client_secret: 'client-secret',
+        },
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -520,13 +559,15 @@ describe('SessionCreateInputSchema backend overrides (origin_ref + secrets bound
     expect(SessionCreateInputSchema.safeParse({ origin_ref: 'tenant-42' }).success).toBe(true);
     expect(SessionCreateInputSchema.safeParse({ origin_ref: 'x'.repeat(257) }).success).toBe(false);
     expect(SessionCreateInputSchema.safeParse({ origin_ref: '   ' }).success).toBe(false);
-    expect(SessionCreateInputSchema.parse({ origin_ref: '  tenant-7  ' }).origin_ref).toBe('tenant-7');
+    expect(SessionCreateInputSchema.parse({ origin_ref: '  tenant-7  ' }).origin_ref).toBe(
+      'tenant-7',
+    );
   });
 
   test('secrets: accepts an identifier list and [] (narrow to zero), rejects an over-long list', () => {
-    expect(SessionCreateInputSchema.safeParse({ secrets: ['GMAIL_TOKEN', 'STRIPE_KEY'] }).success).toBe(
-      true,
-    );
+    expect(
+      SessionCreateInputSchema.safeParse({ secrets: ['GMAIL_TOKEN', 'STRIPE_KEY'] }).success,
+    ).toBe(true);
     expect(SessionCreateInputSchema.safeParse({ secrets: [] }).success).toBe(true);
     expect(
       SessionCreateInputSchema.safeParse({

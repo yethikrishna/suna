@@ -198,7 +198,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B14 | **Remove the synthetic `auto` model and enforce paid-tier access for every Kortix-managed model in every environment.** Free-tier wallet credits are sandbox-only; stale `auto` requests must fail closed instead of selecting a managed fallback. | `packages/sdk/src/react/use-opencode-local.ts` sends `kortix/auto`; `apps/api/src/billing/services/tiers.ts` disables managed-model entitlement enforcement for every dev/preview account. | **DONE 2026-07-24** — implementation `406eb5e9a`; session `fix-free-tier-model-entitlement` |
 | B15 | **Top-level `runtime()` on a scoped client bled to the process-global sandbox (cross-tenant).** `createScopedKortix`'s `wrapScoped` scopes the token but not the top-level `runtime()`, which resolves the process-global active runtime (`getActiveOpenCodeUrl()` → last session to `ensureReady()`). In a multi-tenant KaaB wrapper `kortixA.runtime()` reached another end-user's sandbox. #5273 scoped `session().runtime` but not this. | `src/node/server.ts` (`createScopedKortix`); `src/core/client/kortix.ts:43,752,1000`; `src/core/session/server-store/active.ts:21`. RED-proven in `src/node/server.test.ts` (scoped `runtime()` returned a client instead of throwing). | **DONE 2026-07-23** — session `sdk-scoped-runtime`; scoped `runtime()` now throws + steers to `session(pid,sid).runtime`; adds no public export (surface snapshot unchanged); typecheck + full suite (1156 pass) + `smoke:install` green |
 | B16 | **Retry transient transport failures on idempotent REST reads before reporting them.** Browser CORS preflight failures surface as opaque `TypeError: Failed to fetch`, bypass the existing HTTP 502/503/504 retry loop, and call the host error handler before React Query retries successfully. Cache successful preflights to reduce exposure without retrying mutations. | Production session `d9abee06-5af1-48b9-ba92-53ca0fcf0589` logged continuous audit `200` responses after one browser preflight failure; `src/core/http/api-client.ts` retries response statuses but reports initial fetch throws immediately; `apps/api/src/index.ts` emits no `Access-Control-Max-Age`. | **DONE 2026-07-24** — implementation `9f6e5b615`; session `cors-transport-resilience` |
-| B17 | **Add native OAuth2 client-credentials lifecycle support to existing connector connection profiles.** Static bearer credentials cannot acquire, cache, refresh, or revoke OAuth2 access tokens. Microsoft Graph and SharePoint require OAuth2 and cannot use a static API key. | `apps/api/src/executor/credentials.ts` decrypts one opaque value; `apps/api/src/executor/db-deps.ts` passes that value directly to `executeCall`; `packages/sdk/src/core/rest/projects-client/connectors.ts` accepts only `{ value }`. | **IN PROGRESS 2026-07-24** — session `native-oauth-sharepoint` |
+| B17 | **Add native OAuth2 client-credentials lifecycle support to existing connector connection profiles.** Static bearer credentials cannot acquire, cache, refresh, or revoke OAuth2 access tokens. Microsoft Graph and SharePoint require OAuth2 and cannot use a static API key. | `apps/api/src/executor/credentials.ts` decrypts one opaque value; `apps/api/src/executor/db-deps.ts` passes that value directly to `executeCall`; `packages/sdk/src/core/rest/projects-client/connectors.ts` accepts only `{ value }`. | **DONE 2026-07-24** — session `native-oauth-sharepoint`; full SDK gates and real SharePoint proof green |
 
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
@@ -1568,3 +1568,48 @@ The first slice supports client secrets and certificate-based client assertions.
 Existing static credentials and Pipedream connections remain backward compatible.
 
 **Status:** IN PROGRESS.
+
+---
+
+### 2026-07-24 — session `native-oauth-sharepoint` (B17 completion)
+
+Added OAuth2 client credentials to the existing Connector and Executor
+credential routes. Static credentials remain compatible. The new contract
+supports `client_secret_post`, `client_secret_basic`, and `private_key_jwt`.
+Certificate assertions use `PS256` and include `x5t#S256`.
+
+The API validates the token endpoint before storage. It encrypts the OAuth2
+configuration and cached access token with the project key. Executor resolution
+refreshes tokens with 60 seconds or less remaining. A PostgreSQL advisory lock
+serializes concurrent refreshes for each credential row. Profile revocation
+removes the credential from the next Executor resolution.
+
+**Final SDK gates:** the SDK typecheck exited 0. The full SDK suite reported
+**1187 pass / 0 fail** across 89 files. The packed-install smoke built,
+packed, installed, imported, and constructed `@kortix/sdk`. The public type
+snapshot adds only `ConnectionProfileCredentialInput` and
+`OAuth2ClientCredentials` under the root and `projects-client` exports.
+
+**Cross-surface evidence:** the API contract reported **37 pass / 0 fail**.
+The focused API suites reported **45 pass / 0 fail**. The isolated PostgreSQL
+profile suite reported **22 pass / 0 fail**. The full web suite reported
+**2089 pass / 0 fail**. Ke2e coverage reported **493/502 routes**, 9 allowlisted,
+and 0 uncovered. API, SDK, and API-contract typechecks exited 0. Focused web
+ESLint and `git diff --check` exited 0.
+
+The repository-wide API suite is not green on this base. Unrelated baseline
+failures include missing `getTraceHeaders`, stale sandbox-reaper exports, and
+incomplete maintenance mocks. The changed OAuth2 and Executor suites pass.
+
+**Real SharePoint evidence:** the isolated API acquired a Microsoft Graph token.
+Graph returned 200 for the configured SharePoint site. Graph returned 200 for
+the document-library list and returned one drive. Local profile revocation
+returned 200. The next Executor call returned 404.
+
+The browser runtime exposed zero browsers. Browser DOM and network verification
+remain unexecuted. The temporary browser fixture was deleted. The isolated
+database reports zero rows for its project and auth user.
+
+**Shippable to production: YES** for B17 and the published SDK surface.
+Repository merge, Deploy Dev, deployed-SHA proof, and live-dev verification
+remain part of the repository lifecycle.

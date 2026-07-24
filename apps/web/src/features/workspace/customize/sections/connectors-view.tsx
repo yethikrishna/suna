@@ -73,6 +73,7 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import { errorToast, successToast, warningToast } from '@/components/ui/toast';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import {
@@ -125,6 +126,11 @@ import {
   setConnectorSensitive,
   syncConnectors,
 } from '@kortix/sdk/projects-client';
+import {
+  buildOAuth2CredentialInput,
+  EMPTY_OAUTH2_CREDENTIAL_FORM,
+  type OAuth2CredentialForm,
+} from './connector-oauth2';
 import { DiscoverCatalogue } from './discover-catalogue';
 
 const PROVIDER_ICON: Record<AdminConnector['provider'], LucideIcon> = {
@@ -309,13 +315,15 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
   });
   const connectors = useMemo(() => query.data?.connectors ?? [], [query.data]);
   const emailChannelEnabled = projectQuery.data?.project?.experimental?.agentmail_email === true;
-  const discoverEnabled = projectQuery.data?.project?.experimental?.connectors_api_discover === true;
+  const discoverEnabled =
+    projectQuery.data?.project?.experimental?.connectors_api_discover === true;
   const isForbidden = query.isError && /403|forbidden/i.test((query.error as Error)?.message ?? '');
   // READ vs WRITE: the section is visible to project.connector.read, but every
   // mutating control (rename/remove/reconnect/credentials/permissions/channels/
   // config) is gated on project.connector.write. Fails closed until the probe
   // resolves, matching the backend's assertProjectCapability on those routes.
-  const canWrite = useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE).allowed === true;
+  const canWrite =
+    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE).allowed === true;
 
   // Selection persists in ?c= (slug | "global" | "add") for deep links.
   const search = useSearchParams();
@@ -1200,7 +1208,10 @@ function ConnectorDetail({
         {/* The sensitive toggle lives under Permissions (it IS a permission
             default), so Profile only exists when there's a connection to
             manage — for Pipedream/managed connectors it would be empty. */}
-        <Tabs defaultValue={!isPipedream && !isManaged ? 'profile' : 'permissions'} className="gap-3">
+        <Tabs
+          defaultValue={!isPipedream && !isManaged ? 'profile' : 'permissions'}
+          className="gap-3"
+        >
           <TabsList>
             {!isPipedream && !isManaged && <TabsTrigger value="profile">Profile</TabsTrigger>}
             <TabsTrigger value="permissions">Permissions</TabsTrigger>
@@ -1352,7 +1363,9 @@ function ChannelConnectionSection({
     <section className="space-y-4">
       <Label>Connection</Label>
       <div className="bg-popover rounded-md border px-4 py-5">
-        <InfoBanner tone="warning">This channel profile is missing its platform setting.</InfoBanner>
+        <InfoBanner tone="warning">
+          This channel profile is missing its platform setting.
+        </InfoBanner>
       </div>
     </section>
   );
@@ -1440,41 +1453,41 @@ function ConnectedEmailProfile({
         canWrite={canWrite}
       />
       {canWrite && (
-      <div className="flex items-center justify-end gap-2">
-        {confirming ? (
-          <>
-            <span className="text-muted-foreground mr-auto text-xs">
-              Removes the Email channel profile from this project.
-            </span>
-            <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={disconnect.isPending}
-              onClick={() =>
-                disconnect.mutate(
-                  { projectId, connectorSlug },
-                  {
-                    onSuccess: () => {
-                      setConfirming(false);
-                      onRemoved();
+        <div className="flex items-center justify-end gap-2">
+          {confirming ? (
+            <>
+              <span className="text-muted-foreground mr-auto text-xs">
+                Removes the Email channel profile from this project.
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={disconnect.isPending}
+                onClick={() =>
+                  disconnect.mutate(
+                    { projectId, connectorSlug },
+                    {
+                      onSuccess: () => {
+                        setConfirming(false);
+                        onRemoved();
+                      },
                     },
-                  },
-                )
-              }
-            >
-              {disconnect.isPending ? <Loading className="mr-2 size-3.5 shrink-0" /> : null}
+                  )
+                }
+              >
+                {disconnect.isPending ? <Loading className="mr-2 size-3.5 shrink-0" /> : null}
+                Disconnect
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
               Disconnect
             </Button>
-          </>
-        ) : (
-          <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
-            Disconnect
-          </Button>
-        )}
-      </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1952,38 +1965,38 @@ function ConnectedSlackProfile({
         <code className="font-mono">{installation.workspaceName || installation.workspaceId}</code>
       </InfoBanner>
       {canWrite && (
-      <div className="flex items-center justify-end gap-2">
-        {confirming ? (
-          <>
-            <span className="text-muted-foreground mr-auto text-xs">
-              Removes the Slack channel profile from this project.
-            </span>
-            <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={disconnect.isPending}
-              onClick={() =>
-                disconnect.mutate(projectId, {
-                  onSuccess: () => {
-                    setConfirming(false);
-                    onRemoved();
-                  },
-                })
-              }
-            >
-              {disconnect.isPending ? <Loading className="mr-2 size-3.5 shrink-0" /> : null}
+        <div className="flex items-center justify-end gap-2">
+          {confirming ? (
+            <>
+              <span className="text-muted-foreground mr-auto text-xs">
+                Removes the Slack channel profile from this project.
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={disconnect.isPending}
+                onClick={() =>
+                  disconnect.mutate(projectId, {
+                    onSuccess: () => {
+                      setConfirming(false);
+                      onRemoved();
+                    },
+                  })
+                }
+              >
+                {disconnect.isPending ? <Loading className="mr-2 size-3.5 shrink-0" /> : null}
+                Disconnect
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
               Disconnect
             </Button>
-          </>
-        ) : (
-          <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
-            Disconnect
-          </Button>
-        )}
-      </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -2338,7 +2351,12 @@ function ConnectionSection({
                     {connector.secretSet ? 'Set' : 'Not set'}
                   </Badge>
                   {canWrite && (
-                    <Button size="sm" variant="outline" className="gap-1.5" onClick={onSetCredential}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={onSetCredential}
+                    >
                       <KeyRound className="size-3.5" />
                       {connector.secretSet ? 'Replace' : 'Set credential'}
                     </Button>
@@ -2649,343 +2667,348 @@ function PermissionsSection({
       </div>
       <div className="bg-popover rounded-md border px-4 py-5">
         <div className="space-y-4">
-        <div className="space-y-2">
-          <Label>Default</Label>
-          <RadioGroup
-            value={connector.sensitive ? 'ask_first' : 'follow_rules'}
-            onValueChange={(v) => canWrite && sensitiveMut.mutate(v === 'ask_first')}
-            className="space-y-2"
-          >
-            <RadioGroupItem
-              value="follow_rules"
-              id={`connector-default-follow-${connector.slug}`}
-              label="Follow global rules & risk"
-              description="Reads run automatically; writes and destructive actions still ask, per the rules below."
-              size="lg"
-              variant="outline"
-              disabled={sensitiveMut.isPending || !canWrite}
-            />
-            <RadioGroupItem
-              value="ask_first"
-              id={`connector-default-ask-${connector.slug}`}
-              label="Ask first"
-              description={
-                <>
-                  Every action — including{' '}
-                  <span className="text-foreground font-medium">reads</span> — asks before it runs
-                  (approve once, or “allow for session”). For email, files, or secrets, where
-                  reading is itself risky. A per-tool rule below can still override a specific
-                  action.
-                </>
-              }
-              size="lg"
-              variant="outline"
-              disabled={sensitiveMut.isPending || !canWrite}
-            />
-          </RadioGroup>
-        </div>
-
-        {tools.length === 0 ? (
-          <InfoBanner
-            tone="neutral"
-            title={tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleNo0e439be9',
-            )}
-          >
-            {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextConnectThec56fd30b',
-            )}
-          </InfoBanner>
-        ) : (
-          <div className="border-border/60 overflow-hidden rounded-2xl border">
-            {/* Select-all + bulk apply */}
-            <div className="border-border/60 bg-muted/30 flex h-9 items-center gap-2 border-b px-3">
-              {canWrite && (
-                <Checkbox
-                  checked={
-                    allFilteredSelected ? true : someFilteredSelected ? 'indeterminate' : false
-                  }
-                  onCheckedChange={toggleAllFiltered}
-                  aria-label={tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrAriaLabel924a321f',
-                  )}
-                  className="size-3.5"
-                />
-              )}
-              {canWrite && selected.size > 0 ? (
-                <>
-                  <span className="text-foreground text-xs font-medium">
-                    {selected.size} selected
-                  </span>
-                  <span className="text-muted-foreground text-xs">
-                    {tI18nHardcoded.raw(
-                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextSetToff934ec7',
-                    )}
-                  </span>
-                  {POLICY_CHOICES.map((c) => (
-                    <button
-                      key={c.value}
-                      type="button"
-                      onClick={() => applyBulk(c.value)}
-                      className={cn(
-                        'hover:bg-muted rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
-                        c.value === 'default'
-                          ? 'text-muted-foreground'
-                          : POLICY_LABEL[c.value].tint,
-                      )}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setSelected(new Set())}
-                    className="text-muted-foreground hover:text-foreground ml-auto text-xs transition-colors"
-                  >
-                    Clear
-                  </button>
-                </>
-              ) : (
-                <span className="text-muted-foreground text-xs">
-                  {filtered.length} {filtered.length === 1 ? 'tool' : 'tools'}{' '}
-                  {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextTapA9c38f324',
-                  )}
-                </span>
-              )}
-            </div>
-
-            <div className="max-h-[52vh] overflow-y-auto">
-              {filtered.map((t) => {
-                const explicit = perTool[t.path];
-                const ruled = !explicit ? governingRule(t.path) : undefined;
-                const isOpen = expanded === t.path;
-                const isSel = selected.has(t.path);
-                return (
-                  <div key={t.path} className="border-border/60 border-t first:border-t-0">
-                    <div
-                      className={cn(
-                        'group flex items-center gap-2.5 px-3 py-1.5 transition-colors',
-                        isSel ? 'bg-primary/[0.05]' : 'hover:bg-muted/30',
-                      )}
-                    >
-                      {canWrite && (
-                        <Checkbox
-                          checked={isSel}
-                          onCheckedChange={() => toggleSel(t.path)}
-                          aria-label={`Select ${t.path}`}
-                          className={cn(
-                            'size-3.5 shrink-0 transition-opacity',
-                            isSel
-                              ? ''
-                              : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-                          )}
-                        />
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setExpanded(isOpen ? null : t.path)}
-                        className="flex min-w-0 flex-1 items-baseline gap-2 text-left"
-                      >
-                        <span className="text-foreground shrink-0 font-mono text-xs">{t.path}</span>
-                        {t.description && (
-                          <span className="text-muted-foreground/70 truncate text-xs">
-                            {t.description}
-                          </span>
-                        )}
-                      </button>
-                      {ruled && (
-                        <span
-                          className={cn(
-                            'shrink-0 text-xs opacity-80',
-                            POLICY_LABEL[ruled.action].tint,
-                          )}
-                          title={`From pattern rule: ${ruled.match}`}
-                        >
-                          {POLICY_LABEL[ruled.action].label}{' '}
-                          {tI18nHardcoded.raw(
-                            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextRulebbcba279',
-                          )}
-                        </span>
-                      )}
-                      <ChevronRight
-                        className={cn(
-                          'size-3 shrink-0 transition',
-                          isOpen
-                            ? 'text-muted-foreground/70 rotate-90'
-                            : 'text-muted-foreground/40 opacity-0 group-hover:opacity-100',
-                        )}
-                      />
-                      <PermissionPicker
-                        value={explicit ?? 'default'}
-                        onChange={(c) => setChoice(t.path, c)}
-                        readOnly={!canWrite}
-                      />
-                    </div>
-                    {isOpen && (
-                      <div className="bg-muted/20 space-y-3 px-4 pt-1 pb-3">
-                        <div className="flex items-center gap-2">
-                          <Badge variant={RISK_VARIANT[t.risk]} size="sm">
-                            {t.risk}
-                          </Badge>
-                          {t.description && (
-                            <span className="text-muted-foreground text-xs">{t.description}</span>
-                          )}
-                        </div>
-                        <CodeSnippet code={tsSignature(connector.slug, t)} language="typescript" />
-                        <CodeSnippet
-                          code={JSON.stringify(
-                            t.inputSchema ?? { type: 'object', properties: {} },
-                            null,
-                            2,
-                          )}
-                          language="json"
-                          className="max-h-56 overflow-auto"
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {filtered.length === 0 && (
-                <p className="text-muted-foreground px-3 py-6 text-center text-xs">
-                  {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNoTools69d22076',
-                  )}
-                  {search}”.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Advanced pattern rules */}
-        {tools.length > 0 && (
-          <div className="border-border/60 rounded-2xl border">
-            <button
-              type="button"
-              onClick={() => setShowRules((s) => !s)}
-              className="text-foreground hover:bg-muted/40 flex w-full items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-sm font-medium"
+          <div className="space-y-2">
+            <Label>Default</Label>
+            <RadioGroup
+              value={connector.sensitive ? 'ask_first' : 'follow_rules'}
+              onValueChange={(v) => canWrite && sensitiveMut.mutate(v === 'ask_first')}
+              className="space-y-2"
             >
-              <ChevronRight
-                className={cn(
-                  'text-muted-foreground h-4 w-4 transition-transform',
-                  showRules && 'rotate-90',
-                )}
+              <RadioGroupItem
+                value="follow_rules"
+                id={`connector-default-follow-${connector.slug}`}
+                label="Follow global rules & risk"
+                description="Reads run automatically; writes and destructive actions still ask, per the rules below."
+                size="lg"
+                variant="outline"
+                disabled={sensitiveMut.isPending || !canWrite}
               />
+              <RadioGroupItem
+                value="ask_first"
+                id={`connector-default-ask-${connector.slug}`}
+                label="Ask first"
+                description={
+                  <>
+                    Every action — including{' '}
+                    <span className="text-foreground font-medium">reads</span> — asks before it runs
+                    (approve once, or “allow for session”). For email, files, or secrets, where
+                    reading is itself risky. A per-tool rule below can still override a specific
+                    action.
+                  </>
+                }
+                size="lg"
+                variant="outline"
+                disabled={sensitiveMut.isPending || !canWrite}
+              />
+            </RadioGroup>
+          </div>
+
+          {tools.length === 0 ? (
+            <InfoBanner
+              tone="neutral"
+              title={tI18nHardcoded.raw(
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleNo0e439be9',
+              )}
+            >
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextPatternRules6a07e5a7',
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextConnectThec56fd30b',
               )}
-              {rules.length > 0 && (
-                <Badge variant="secondary" size="sm">
-                  {rules.length}
-                </Badge>
-              )}
-              <span className="text-muted-foreground ml-auto text-xs font-normal">
-                {tI18nHardcoded.raw(
-                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextCoverMany170203ce',
+            </InfoBanner>
+          ) : (
+            <div className="border-border/60 overflow-hidden rounded-2xl border">
+              {/* Select-all + bulk apply */}
+              <div className="border-border/60 bg-muted/30 flex h-9 items-center gap-2 border-b px-3">
+                {canWrite && (
+                  <Checkbox
+                    checked={
+                      allFilteredSelected ? true : someFilteredSelected ? 'indeterminate' : false
+                    }
+                    onCheckedChange={toggleAllFiltered}
+                    aria-label={tI18nHardcoded.raw(
+                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrAriaLabel924a321f',
+                    )}
+                    className="size-3.5"
+                  />
                 )}
-              </span>
-            </button>
-            {showRules && (
-              <div className="border-border/60 space-y-2 border-t px-3 py-3">
-                <p className="text-muted-foreground text-xs">
-                  {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextMatchBy60561318',
-                  )}
-                  <code className="bg-muted rounded px-1 font-mono">
-                    {tI18nHardcoded.raw(
-                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextSend0110e0d9',
-                    )}
-                  </code>
-                  {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextOrRegexf5a26a27',
-                  )}
-                  <code className="bg-muted rounded px-1 font-mono">
-                    {tI18nHardcoded.raw(
-                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextDelete37c77402',
-                    )}
-                  </code>
-                  {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextPerTool4d0d7e9f',
-                  )}
-                </p>
-                {rules.map((r) => (
-                  <div key={r.id} className="flex items-center gap-2">
-                    <Input
-                      value={r.match}
-                      onChange={(e) =>
-                        setRules((rs) =>
-                          rs.map((x) => (x.id === r.id ? { ...x, match: e.target.value } : x)),
-                        )
-                      }
-                      placeholder={tI18nHardcoded.raw(
-                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrPlaceholderSend3b0a4ee1',
+                {canWrite && selected.size > 0 ? (
+                  <>
+                    <span className="text-foreground text-xs font-medium">
+                      {selected.size} selected
+                    </span>
+                    <span className="text-muted-foreground text-xs">
+                      {tI18nHardcoded.raw(
+                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextSetToff934ec7',
                       )}
-                      className="h-8 flex-1 font-mono text-xs"
-                      disabled={!canWrite}
-                    />
-                    <Select
-                      value={r.action}
-                      disabled={!canWrite}
-                      onValueChange={(v) =>
-                        setRules((rs) =>
-                          rs.map((x) =>
-                            x.id === r.id ? { ...x, action: v as ConnectorPolicyAction } : x,
-                          ),
-                        )
-                      }
-                    >
-                      <SelectTrigger className="h-8 w-[100px] shrink-0 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(
-                          ['always_run', 'require_approval', 'block'] as ConnectorPolicyAction[]
-                        ).map((a) => (
-                          <SelectItem key={a} value={a} className="text-xs">
-                            {POLICY_LABEL[a].label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {canWrite && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="hover:text-destructive h-8 w-8 shrink-0"
-                        onClick={() => setRules((rs) => rs.filter((x) => x.id !== r.id))}
-                        aria-label={tI18nHardcoded.raw(
-                          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrAriaLabeld2296c34',
+                    </span>
+                    {POLICY_CHOICES.map((c) => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        onClick={() => applyBulk(c.value)}
+                        className={cn(
+                          'hover:bg-muted rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
+                          c.value === 'default'
+                            ? 'text-muted-foreground'
+                            : POLICY_LABEL[c.value].tint,
                         )}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                        {c.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setSelected(new Set())}
+                      className="text-muted-foreground hover:text-foreground ml-auto text-xs transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground text-xs">
+                    {filtered.length} {filtered.length === 1 ? 'tool' : 'tools'}{' '}
+                    {tI18nHardcoded.raw(
+                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextTapA9c38f324',
                     )}
-                  </div>
-                ))}
-                {canWrite && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 gap-1.5 text-xs"
-                  onClick={() =>
-                    setRules((rs) => [
-                      ...rs,
-                      { id: ruleId(), match: '', action: 'require_approval' },
-                    ])
-                  }
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextAddRule873a093f',
-                  )}
-                </Button>
+                  </span>
                 )}
               </div>
-            )}
-          </div>
-        )}
+
+              <div className="max-h-[52vh] overflow-y-auto">
+                {filtered.map((t) => {
+                  const explicit = perTool[t.path];
+                  const ruled = !explicit ? governingRule(t.path) : undefined;
+                  const isOpen = expanded === t.path;
+                  const isSel = selected.has(t.path);
+                  return (
+                    <div key={t.path} className="border-border/60 border-t first:border-t-0">
+                      <div
+                        className={cn(
+                          'group flex items-center gap-2.5 px-3 py-1.5 transition-colors',
+                          isSel ? 'bg-primary/[0.05]' : 'hover:bg-muted/30',
+                        )}
+                      >
+                        {canWrite && (
+                          <Checkbox
+                            checked={isSel}
+                            onCheckedChange={() => toggleSel(t.path)}
+                            aria-label={`Select ${t.path}`}
+                            className={cn(
+                              'size-3.5 shrink-0 transition-opacity',
+                              isSel
+                                ? ''
+                                : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+                            )}
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setExpanded(isOpen ? null : t.path)}
+                          className="flex min-w-0 flex-1 items-baseline gap-2 text-left"
+                        >
+                          <span className="text-foreground shrink-0 font-mono text-xs">
+                            {t.path}
+                          </span>
+                          {t.description && (
+                            <span className="text-muted-foreground/70 truncate text-xs">
+                              {t.description}
+                            </span>
+                          )}
+                        </button>
+                        {ruled && (
+                          <span
+                            className={cn(
+                              'shrink-0 text-xs opacity-80',
+                              POLICY_LABEL[ruled.action].tint,
+                            )}
+                            title={`From pattern rule: ${ruled.match}`}
+                          >
+                            {POLICY_LABEL[ruled.action].label}{' '}
+                            {tI18nHardcoded.raw(
+                              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextRulebbcba279',
+                            )}
+                          </span>
+                        )}
+                        <ChevronRight
+                          className={cn(
+                            'size-3 shrink-0 transition',
+                            isOpen
+                              ? 'text-muted-foreground/70 rotate-90'
+                              : 'text-muted-foreground/40 opacity-0 group-hover:opacity-100',
+                          )}
+                        />
+                        <PermissionPicker
+                          value={explicit ?? 'default'}
+                          onChange={(c) => setChoice(t.path, c)}
+                          readOnly={!canWrite}
+                        />
+                      </div>
+                      {isOpen && (
+                        <div className="bg-muted/20 space-y-3 px-4 pt-1 pb-3">
+                          <div className="flex items-center gap-2">
+                            <Badge variant={RISK_VARIANT[t.risk]} size="sm">
+                              {t.risk}
+                            </Badge>
+                            {t.description && (
+                              <span className="text-muted-foreground text-xs">{t.description}</span>
+                            )}
+                          </div>
+                          <CodeSnippet
+                            code={tsSignature(connector.slug, t)}
+                            language="typescript"
+                          />
+                          <CodeSnippet
+                            code={JSON.stringify(
+                              t.inputSchema ?? { type: 'object', properties: {} },
+                              null,
+                              2,
+                            )}
+                            language="json"
+                            className="max-h-56 overflow-auto"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {filtered.length === 0 && (
+                  <p className="text-muted-foreground px-3 py-6 text-center text-xs">
+                    {tI18nHardcoded.raw(
+                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNoTools69d22076',
+                    )}
+                    {search}”.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Advanced pattern rules */}
+          {tools.length > 0 && (
+            <div className="border-border/60 rounded-2xl border">
+              <button
+                type="button"
+                onClick={() => setShowRules((s) => !s)}
+                className="text-foreground hover:bg-muted/40 flex w-full items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-sm font-medium"
+              >
+                <ChevronRight
+                  className={cn(
+                    'text-muted-foreground h-4 w-4 transition-transform',
+                    showRules && 'rotate-90',
+                  )}
+                />
+                {tI18nHardcoded.raw(
+                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextPatternRules6a07e5a7',
+                )}
+                {rules.length > 0 && (
+                  <Badge variant="secondary" size="sm">
+                    {rules.length}
+                  </Badge>
+                )}
+                <span className="text-muted-foreground ml-auto text-xs font-normal">
+                  {tI18nHardcoded.raw(
+                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextCoverMany170203ce',
+                  )}
+                </span>
+              </button>
+              {showRules && (
+                <div className="border-border/60 space-y-2 border-t px-3 py-3">
+                  <p className="text-muted-foreground text-xs">
+                    {tI18nHardcoded.raw(
+                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextMatchBy60561318',
+                    )}
+                    <code className="bg-muted rounded px-1 font-mono">
+                      {tI18nHardcoded.raw(
+                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextSend0110e0d9',
+                      )}
+                    </code>
+                    {tI18nHardcoded.raw(
+                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextOrRegexf5a26a27',
+                    )}
+                    <code className="bg-muted rounded px-1 font-mono">
+                      {tI18nHardcoded.raw(
+                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextDelete37c77402',
+                      )}
+                    </code>
+                    {tI18nHardcoded.raw(
+                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextPerTool4d0d7e9f',
+                    )}
+                  </p>
+                  {rules.map((r) => (
+                    <div key={r.id} className="flex items-center gap-2">
+                      <Input
+                        value={r.match}
+                        onChange={(e) =>
+                          setRules((rs) =>
+                            rs.map((x) => (x.id === r.id ? { ...x, match: e.target.value } : x)),
+                          )
+                        }
+                        placeholder={tI18nHardcoded.raw(
+                          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrPlaceholderSend3b0a4ee1',
+                        )}
+                        className="h-8 flex-1 font-mono text-xs"
+                        disabled={!canWrite}
+                      />
+                      <Select
+                        value={r.action}
+                        disabled={!canWrite}
+                        onValueChange={(v) =>
+                          setRules((rs) =>
+                            rs.map((x) =>
+                              x.id === r.id ? { ...x, action: v as ConnectorPolicyAction } : x,
+                            ),
+                          )
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-[100px] shrink-0 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(
+                            ['always_run', 'require_approval', 'block'] as ConnectorPolicyAction[]
+                          ).map((a) => (
+                            <SelectItem key={a} value={a} className="text-xs">
+                              {POLICY_LABEL[a].label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {canWrite && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="hover:text-destructive h-8 w-8 shrink-0"
+                          onClick={() => setRules((rs) => rs.filter((x) => x.id !== r.id))}
+                          aria-label={tI18nHardcoded.raw(
+                            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrAriaLabeld2296c34',
+                          )}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  {canWrite && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 text-xs"
+                      onClick={() =>
+                        setRules((rs) => [
+                          ...rs,
+                          { id: ruleId(), match: '', action: 'require_approval' },
+                        ])
+                      }
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      {tI18nHardcoded.raw(
+                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextAddRule873a093f',
+                      )}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {canWrite && (
@@ -3027,7 +3050,6 @@ function GlobalRulesPanel({ projectId }: { projectId: string }) {
     </div>
   );
 }
-
 
 function AddAppPanel({
   projectId,
@@ -3738,14 +3760,17 @@ function ConnectorConfigFields({
             id="connector-spec"
             value={draft.spec ?? ''}
             onChange={(e) => set({ spec: e.target.value })}
-            placeholder={p === 'postman' ? 'https://github.com/… or collection.json' : 'https://…/openapi.json'}
+            placeholder={
+              p === 'postman' ? 'https://github.com/… or collection.json' : 'https://…/openapi.json'
+            }
             variant="popover"
             disabled={readOnly}
             required
           />
           {p === 'postman' ? (
             <FieldDescription>
-              Supports Collection v2 JSON, Postman-managed Git repositories, and configured public workspaces.
+              Supports Collection v2 JSON, Postman-managed Git repositories, and configured public
+              workspaces.
             </FieldDescription>
           ) : null}
         </Field>
@@ -3909,7 +3934,9 @@ function ConnectorConfigFields({
                 variant="popover"
                 className="font-mono text-xs"
               />
-              <FieldDescription>From the source. Choose Custom header to change it.</FieldDescription>
+              <FieldDescription>
+                From the source. Choose Custom header to change it.
+              </FieldDescription>
             </Field>
           )}
           {draft.auth?.type === 'custom' && (
@@ -3937,7 +3964,9 @@ function ConnectorConfigFields({
           value={draft.headers ?? {}}
           onChange={(headers) => set({ headers })}
           readOnly={readOnly}
-          authHeaderName={draft.auth?.type === 'custom' ? draft.auth?.name : detectedAuth?.parameterName}
+          authHeaderName={
+            draft.auth?.type === 'custom' ? draft.auth?.name : detectedAuth?.parameterName
+          }
         />
       )}
     </FieldGroup>
@@ -4035,7 +4064,8 @@ export function CustomConnectorForm({
           )}
           {draft.auth === undefined && discovery.data?.status === 'unsupported' && (
             <InfoBanner tone="warning">
-              The source advertises authentication Kortix cannot inject yet. Choose a manual override or None.
+              The source advertises authentication Kortix cannot inject yet. Choose a manual
+              override or None.
             </InfoBanner>
           )}
           {draft.auth === undefined && discovery.error && (
@@ -4054,7 +4084,9 @@ export function CustomConnectorForm({
             <Button
               type="submit"
               size="sm"
-              disabled={!draft.slug || save.isPending || !connectionValid(draft, emailChannelEnabled)}
+              disabled={
+                !draft.slug || save.isPending || !connectionValid(draft, emailChannelEnabled)
+              }
               className="gap-1.5"
             >
               {save.isPending && <Loading className="size-4 shrink-0" />}
@@ -4083,12 +4115,30 @@ function SetCredentialModal({
   onSaved: () => void;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
+  const [credentialType, setCredentialType] = useState<'static' | 'oauth2'>('static');
   const [value, setValue] = useState('');
+  const [oauth2, setOauth2] = useState<OAuth2CredentialForm>(EMPTY_OAUTH2_CREDENTIAL_FORM);
+  const setOauth2Field = <K extends keyof OAuth2CredentialForm>(
+    key: K,
+    next: OAuth2CredentialForm[K],
+  ) => setOauth2((current) => ({ ...current, [key]: next }));
+  const oauth2Valid =
+    !!oauth2.tokenUrl.trim() &&
+    !!oauth2.clientId.trim() &&
+    (oauth2.authMethod === 'private_key_jwt'
+      ? !!oauth2.privateKey && !!oauth2.certificateThumbprint.trim()
+      : !!oauth2.clientSecret);
   const save = useMutation({
-    mutationFn: () => setConnectorCredential(projectId, connector!.slug, value),
+    mutationFn: () =>
+      setConnectorCredential(
+        projectId,
+        connector!.slug,
+        credentialType === 'static' ? value : buildOAuth2CredentialInput(oauth2),
+      ),
     onSuccess: () => {
       successToast('Credential saved');
       setValue('');
+      setOauth2(EMPTY_OAUTH2_CREDENTIAL_FORM);
       onSaved();
       onOpenChange(false);
     },
@@ -4101,7 +4151,7 @@ function SetCredentialModal({
         if (!save.isPending) onOpenChange(o);
       }}
     >
-      <ModalContent className="lg:max-w-md">
+      <ModalContent className="lg:max-w-2xl">
         <ModalHeader>
           <ModalTitle>
             {tI18nHardcoded.raw(
@@ -4110,33 +4160,162 @@ function SetCredentialModal({
             {connector?.slug}
           </ModalTitle>
           <ModalDescription>
-            {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextStoredEncryptedc3eb374b',
-            )}
-            <code className="font-mono">{connector?.authSecret}</code>{' '}
-            {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextAndResolved8293aa3e',
-            )}
+            Kortix encrypts this configuration. The Executor resolves it and sends only the
+            resulting authorization header to the upstream API.
           </ModalDescription>
         </ModalHeader>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (value) save.mutate();
+            if (
+              (credentialType === 'static' && value) ||
+              (credentialType === 'oauth2' && oauth2Valid)
+            ) {
+              save.mutate();
+            }
           }}
         >
           <ModalBody>
-            <div className="space-y-1.5">
-              <Label>Value</Label>
-              <Input
-                type="password"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="••••••••"
-                className="font-mono"
-                autoFocus
-              />
-            </div>
+            <Tabs
+              value={credentialType}
+              onValueChange={(next) => setCredentialType(next as 'static' | 'oauth2')}
+              className="gap-4"
+            >
+              <TabsList>
+                <TabsTrigger value="static">Static credential</TabsTrigger>
+                <TabsTrigger value="oauth2">OAuth2 client credentials</TabsTrigger>
+              </TabsList>
+              <TabsContent value="static">
+                <Field>
+                  <FieldLabel htmlFor="connector-static-credential">Value</FieldLabel>
+                  <Input
+                    id="connector-static-credential"
+                    type="password"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    placeholder="••••••••"
+                    className="font-mono"
+                    autoFocus
+                  />
+                </Field>
+              </TabsContent>
+              <TabsContent value="oauth2" className="space-y-4">
+                <InfoBanner tone="info">
+                  Kortix requests a token now and refreshes it before expiry. Use a Bearer or custom
+                  header in the connector authentication settings.
+                </InfoBanner>
+                <FieldGroup className="grid gap-3 sm:grid-cols-2">
+                  <Field className="sm:col-span-2">
+                    <FieldLabel htmlFor="oauth2-token-url">Token URL</FieldLabel>
+                    <Input
+                      id="oauth2-token-url"
+                      type="url"
+                      value={oauth2.tokenUrl}
+                      onChange={(e) => setOauth2Field('tokenUrl', e.target.value)}
+                      placeholder="https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+                      variant="popover"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="oauth2-client-id">Client ID</FieldLabel>
+                    <Input
+                      id="oauth2-client-id"
+                      value={oauth2.clientId}
+                      onChange={(e) => setOauth2Field('clientId', e.target.value)}
+                      variant="popover"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="oauth2-auth-method">Token authentication</FieldLabel>
+                    <Select
+                      value={oauth2.authMethod}
+                      onValueChange={(next) =>
+                        setOauth2Field('authMethod', next as OAuth2CredentialForm['authMethod'])
+                      }
+                    >
+                      <SelectTrigger id="oauth2-auth-method" variant="popover">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="client_secret_post">Client secret in body</SelectItem>
+                        <SelectItem value="client_secret_basic">
+                          Client secret with Basic
+                        </SelectItem>
+                        <SelectItem value="private_key_jwt">Certificate assertion</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  {oauth2.authMethod === 'private_key_jwt' ? (
+                    <>
+                      <Field className="sm:col-span-2">
+                        <FieldLabel htmlFor="oauth2-private-key">Private key PEM</FieldLabel>
+                        <Textarea
+                          id="oauth2-private-key"
+                          value={oauth2.privateKey}
+                          onChange={(e) => setOauth2Field('privateKey', e.target.value)}
+                          className="min-h-32 font-mono text-xs"
+                        />
+                      </Field>
+                      <Field className="sm:col-span-2">
+                        <FieldLabel htmlFor="oauth2-thumbprint">
+                          Certificate SHA-256 thumbprint
+                        </FieldLabel>
+                        <Input
+                          id="oauth2-thumbprint"
+                          type="password"
+                          value={oauth2.certificateThumbprint}
+                          onChange={(e) => setOauth2Field('certificateThumbprint', e.target.value)}
+                          placeholder="Base64url x5t#S256 value"
+                          variant="popover"
+                        />
+                      </Field>
+                    </>
+                  ) : (
+                    <Field className="sm:col-span-2">
+                      <FieldLabel htmlFor="oauth2-client-secret">Client secret</FieldLabel>
+                      <Input
+                        id="oauth2-client-secret"
+                        type="password"
+                        value={oauth2.clientSecret}
+                        onChange={(e) => setOauth2Field('clientSecret', e.target.value)}
+                        variant="popover"
+                      />
+                    </Field>
+                  )}
+                  <Field className="sm:col-span-2">
+                    <FieldLabel htmlFor="oauth2-scopes">Scopes</FieldLabel>
+                    <Input
+                      id="oauth2-scopes"
+                      value={oauth2.scopes}
+                      onChange={(e) => setOauth2Field('scopes', e.target.value)}
+                      placeholder="https://graph.microsoft.com/.default"
+                      variant="popover"
+                    />
+                    <FieldDescription>Separate multiple scopes with spaces.</FieldDescription>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="oauth2-resource">Resource</FieldLabel>
+                    <Input
+                      id="oauth2-resource"
+                      value={oauth2.resource}
+                      onChange={(e) => setOauth2Field('resource', e.target.value)}
+                      placeholder="Optional"
+                      variant="popover"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="oauth2-audience">Audience</FieldLabel>
+                    <Input
+                      id="oauth2-audience"
+                      value={oauth2.audience}
+                      onChange={(e) => setOauth2Field('audience', e.target.value)}
+                      placeholder="Optional"
+                      variant="popover"
+                    />
+                  </Field>
+                </FieldGroup>
+              </TabsContent>
+            </Tabs>
           </ModalBody>
           <ModalFooter className="sm:justify-between">
             <Button
@@ -4148,7 +4327,12 @@ function SetCredentialModal({
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={!value || save.isPending} className="gap-1.5">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={save.isPending || (credentialType === 'static' ? !value : !oauth2Valid)}
+              className="gap-1.5"
+            >
               {save.isPending && <Loading className="size-4 shrink-0" />}Save
             </Button>
           </ModalFooter>

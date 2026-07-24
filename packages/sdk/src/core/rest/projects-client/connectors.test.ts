@@ -185,11 +185,15 @@ test('discoverConnectorAuth POSTs a draft to the auth-discovery endpoint', async
   const discovery: import('./connectors').ConnectorAuthDiscovery = {
     status: 'detected',
     recommended: { type: 'bearer', in: 'header', name: 'Authorization', prefix: 'Bearer' },
-    candidates: [], warnings: [], totalRequests: 10, title: 'HubSpot',
+    candidates: [],
+    warnings: [],
+    totalRequests: 10,
+    title: 'HubSpot',
   };
   nextResponse = { status: 200, body: discovery };
   const draft = {
-    slug: 'hubspot', provider: 'postman' as const,
+    slug: 'hubspot',
+    provider: 'postman' as const,
     spec: 'https://github.com/HubSpot/HubSpot-public-api-spec-collection',
   };
   expect(await discoverConnectorAuth('P1', draft)).toEqual(discovery);
@@ -259,6 +263,22 @@ test('setConnectorCredential PUTs { value }', async () => {
   expect(last().body).toEqual({ value: 'sekret' });
 });
 
+test('setConnectorCredential PUTs a native OAuth2 client-credentials configuration', async () => {
+  nextResponse = { status: 200, body: { ok: true } };
+  const oauth2 = {
+    type: 'oauth2_client_credentials' as const,
+    token_url: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/token',
+    client_id: 'client-id',
+    token_endpoint_auth_method: 'client_secret_post' as const,
+    client_secret: 'client-secret',
+    scopes: ['https://graph.microsoft.com/.default'],
+  };
+  await setConnectorCredential('P1', 'sharepoint', { oauth2 });
+  expect(last().url).toContain('/executor/projects/P1/connectors/sharepoint/credential');
+  expect(last().method).toBe('PUT');
+  expect(last().body).toEqual({ oauth2 });
+});
+
 test('pipedreamFinalize POSTs an empty body to the connect/finalize endpoint', async () => {
   nextResponse = { status: 200, body: { connected: true, accountId: 'acc_1' } };
   const result = await pipedreamFinalize('P1', 'github');
@@ -300,6 +320,17 @@ test('connection profile lifecycle uses the typed project profile routes', async
   await updateConnectionProfileCredential('P1', 'profile-1', { value: 'capability' });
   expect(last().url).toContain('/connector-profiles/profile-1/credential');
   expect(last().body).toEqual({ value: 'capability' });
+  await updateConnectionProfileCredential('P1', 'profile-1', {
+    oauth2: {
+      type: 'oauth2_client_credentials',
+      token_url: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/token',
+      client_id: 'client-id',
+      token_endpoint_auth_method: 'client_secret_post',
+      client_secret: 'client-secret',
+      scopes: ['https://graph.microsoft.com/.default'],
+    },
+  });
+  expect(last().body).toHaveProperty('oauth2.type', 'oauth2_client_credentials');
   await revokeConnectionProfile('P1', 'profile-1');
   expect(last().url).toContain('/connector-profiles/profile-1/revoke');
   await activateConnectionProfile('P1', 'profile-1');

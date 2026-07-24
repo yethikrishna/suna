@@ -18,7 +18,15 @@ export interface ConnectorAction {
 export interface AdminConnector {
   slug: string;
   name: string;
-  provider: 'pipedream' | 'mcp' | 'openapi' | 'postman' | 'graphql' | 'http' | 'channel' | 'computer';
+  provider:
+    | 'pipedream'
+    | 'mcp'
+    | 'openapi'
+    | 'postman'
+    | 'graphql'
+    | 'http'
+    | 'channel'
+    | 'computer';
   platform?: 'slack' | 'email' | null;
   /** Provider icon materialized during connector synchronization. */
   iconUrl?: string | null;
@@ -45,29 +53,56 @@ export interface ConnectorSyncResult {
 }
 
 export type DiscoveredAuthScheme =
-  | 'none' | 'bearer' | 'basic' | 'api_key' | 'oauth1' | 'oauth2'
-  | 'openid_connect' | 'mutual_tls' | 'digest' | 'hawk' | 'ntlm'
-  | 'aws_v4' | 'edgegrid' | 'asap' | 'unknown';
+  | 'none'
+  | 'bearer'
+  | 'basic'
+  | 'api_key'
+  | 'oauth1'
+  | 'oauth2'
+  | 'openid_connect'
+  | 'mutual_tls'
+  | 'digest'
+  | 'hawk'
+  | 'ntlm'
+  | 'aws_v4'
+  | 'edgegrid'
+  | 'asap'
+  | 'unknown';
 export interface ExecutableConnectorAuth {
   type: 'none' | 'bearer' | 'basic' | 'custom' | 'oauth1';
-  in: 'header' | 'query'; name: string | null; prefix: string | null;
+  in: 'header' | 'query';
+  name: string | null;
+  prefix: string | null;
 }
 export interface ConnectorAuthCandidate {
-  id: string; source: string; scheme: DiscoveredAuthScheme; label: string;
-  supported: boolean; requestCount: number; totalRequests: number;
+  id: string;
+  source: string;
+  scheme: DiscoveredAuthScheme;
+  label: string;
+  supported: boolean;
+  requestCount: number;
+  totalRequests: number;
   placement: 'header' | 'query' | 'cookie' | null;
-  parameterName: string | null; prefix: string | null;
-  parameterNames: string[]; variables: string[];
+  parameterName: string | null;
+  prefix: string | null;
+  parameterNames: string[];
+  variables: string[];
   oauth?: {
-    authorizationUrl?: string; tokenUrl?: string; refreshUrl?: string;
-    openIdConnectUrl?: string; protectedResourceMetadataUrl?: string; scopes: string[];
+    authorizationUrl?: string;
+    tokenUrl?: string;
+    refreshUrl?: string;
+    openIdConnectUrl?: string;
+    protectedResourceMetadataUrl?: string;
+    scopes: string[];
   };
   executable: ExecutableConnectorAuth | null;
 }
 export interface ConnectorAuthDiscovery {
   status: 'detected' | 'none' | 'ambiguous' | 'unsupported';
   recommended: ExecutableConnectorAuth | null;
-  candidates: ConnectorAuthCandidate[]; warnings: string[]; totalRequests: number;
+  candidates: ConnectorAuthCandidate[];
+  warnings: string[];
+  totalRequests: number;
   /** The source document's own name (OpenAPI `info.title`, Postman `info.name`). */
   title: string | null;
 }
@@ -104,6 +139,23 @@ export interface ConnectionProfileConnectInput {
   error_redirect_uri?: string;
 }
 
+export interface OAuth2ClientCredentials {
+  type: 'oauth2_client_credentials';
+  token_url: string;
+  client_id: string;
+  token_endpoint_auth_method: 'client_secret_post' | 'client_secret_basic' | 'private_key_jwt';
+  client_secret?: string;
+  private_key?: string;
+  certificate_thumbprint?: string;
+  scopes?: string[];
+  resource?: string;
+  audience?: string;
+}
+
+export type ConnectionProfileCredentialInput =
+  | { value: string; kind?: 'secret' | 'connection' }
+  | { oauth2: OAuth2ClientCredentials };
+
 export async function listConnectionProfiles(projectId: string) {
   return unwrap(
     await backendApi.get<{ profiles: ConnectionProfile[] }>(
@@ -133,7 +185,7 @@ export async function reconcileMemberConnectionProfile(
 export async function updateConnectionProfileCredential(
   projectId: string,
   profileId: string,
-  input: { value: string; kind?: 'secret' | 'connection' },
+  input: ConnectionProfileCredentialInput,
 ) {
   return unwrap(
     await backendApi.put<{ ok: true }>(
@@ -336,18 +388,18 @@ export interface ConnectorDraftInput {
 export async function createConnector(projectId: string, draft: ConnectorDraftInput) {
   return unwrap(
     await backendApi.post<{
-      ok: boolean; sync?: ConnectorSyncResult; authDiscovery?: ConnectorAuthDiscovery;
-    }>(
-      `/executor/projects/${projectId}/connectors`,
-      draft,
-    ),
+      ok: boolean;
+      sync?: ConnectorSyncResult;
+      authDiscovery?: ConnectorAuthDiscovery;
+    }>(`/executor/projects/${projectId}/connectors`, draft),
   );
 }
 
 export async function discoverConnectorAuth(projectId: string, draft: ConnectorDraftInput) {
   return unwrap(
     await backendApi.post<ConnectorAuthDiscovery>(
-      `/executor/projects/${projectId}/connectors/auth-discovery`, draft,
+      `/executor/projects/${projectId}/connectors/auth-discovery`,
+      draft,
     ),
   );
 }
@@ -471,11 +523,16 @@ export async function getConnectStatus() {
   );
 }
 
-export async function setConnectorCredential(projectId: string, slug: string, value: string) {
+export async function setConnectorCredential(
+  projectId: string,
+  slug: string,
+  credential: string | ConnectionProfileCredentialInput,
+) {
+  const input = typeof credential === 'string' ? { value: credential } : credential;
   return unwrap(
     await backendApi.put<{ ok: boolean }>(
       `/executor/projects/${projectId}/connectors/${encodeURIComponent(slug)}/credential`,
-      { value },
+      input,
     ),
   );
 }

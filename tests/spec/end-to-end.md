@@ -580,7 +580,7 @@ Scale: ~500 exported symbols / ~520 route handlers in `apps/api/src` — a tract
 `CONN-3` `POST /executor/call {connector,action,args}` → executor-principal route; user JWT + `ANON` → 401.
 `CONN-4` `POST /executor/projects/:id/connectors/sync` → admin → 200 (re-materialize from kortix.yaml).
 `CONN-5` `GET /executor/projects/:id/policies` → admin → 200; `PUT …/policies {policies[]}` → admin → 200.
-`CONN-7` `PUT /executor/projects/:id/connectors/:slug/credential` → missing value → 400.
+`CONN-7` `PUT /executor/projects/:id/connectors/:slug/credential` → accepts a static value or native OAuth2 client-credentials configuration; missing value or a non-HTTPS OAuth2 token URL → 400.
 `CONN-8` `POST /executor/projects/:id/connectors` → admin; invalid json → 400. `DELETE …/:slug` → admin → ok/404.
 `CONN-9` `GET /executor/projects/:id/pipedream/apps` → admin → 200 or 501 (pipedream not configured).
 `CONN-13` `PUT /executor/projects/:id/connectors/:slug/credential-mode|name|policies` → admin (`project.connector.write`); body validated before the connector lookup (bad mode/empty name/invalid policy action → 400 even against an unknown slug); well-formed body + unknown connector → 404; NONMEMBER → 403.

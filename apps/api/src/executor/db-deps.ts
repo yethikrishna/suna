@@ -769,12 +769,12 @@ async function listCatalog(p: ExecutorPrincipal): Promise<CatalogConnector[]> {
         .filter(
           (a) =>
             resolveEffectiveAction({
-          fullPath: `${row.slug}.${a.path}`,
-          relPath: a.path,
-          projectPolicies,
-          connectorPolicies,
-          risk: a.risk,
-          defaultMode,
+              fullPath: `${row.slug}.${a.path}`,
+              relPath: a.path,
+              projectPolicies,
+              connectorPolicies,
+              risk: a.risk,
+              defaultMode,
             }).action !== 'block',
         )
         .map((a) => ({
@@ -842,10 +842,7 @@ async function resolveReader(
 /** Admin list — sharing + credential mode + whether the shared credential is set. */
 async function listConnectors(projectId: string): Promise<AdminConnectorView[]> {
   const conns = hideSupersededSlack(
-    await db
-      .select()
-      .from(executorConnectors)
-      .where(eq(executorConnectors.projectId, projectId)),
+    await db.select().from(executorConnectors).where(eq(executorConnectors.projectId, projectId)),
   );
   if (conns.length === 0) return [];
 
@@ -861,16 +858,17 @@ async function listConnectors(projectId: string): Promise<AdminConnectorView[]> 
     db
       .select()
       .from(executorConnectorActions)
-      .where(inArray(executorConnectorActions.connectorId, conns.map((row) => row.connectorId))),
+      .where(
+        inArray(
+          executorConnectorActions.connectorId,
+          conns.map((row) => row.connectorId),
+        ),
+      ),
     connectorIdsWithSharedCredentials(credentialRows.map((row) => row.connectorId)),
     Promise.all(
-      channelRows.map(async (row) => [
-        row.slug,
-        await connectorConnected(row, null),
-      ] as const),
+      channelRows.map(async (row) => [row.slug, await connectorConnected(row, null)] as const),
     ).then(
-      (entries) =>
-        new Set(entries.filter(([, connected]) => connected).map(([slug]) => slug)),
+      (entries) => new Set(entries.filter(([, connected]) => connected).map(([slug]) => slug)),
     ),
   ]);
   const actionsByConnector = new Map<string, typeof actions>();
@@ -986,8 +984,8 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
   createConnector: (projectId, accountId, draft) =>
     upsertConnectorInManifest(projectId, accountId, draft as unknown as ConnectorDraft),
   deleteConnector: (projectId, slug) => deleteConnectorFromManifest(projectId, slug),
-  setConnectorCredential: (projectId, slug, value) =>
-    setConnectorCredentialShared(projectId, slug, value),
+  setConnectorCredential: (projectId, slug, input) =>
+    setConnectorCredentialShared(projectId, slug, input),
   deleteConnectorCredential: async (projectId, slug) => {
     const [row] = await db
       .select()

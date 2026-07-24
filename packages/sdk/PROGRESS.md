@@ -174,7 +174,7 @@ Also stop if the same failure survives three different fixes (use
 | 5 | Typed platform API coverage | DONE | `frontend-sdk-only` | 2026-07-24 | `65202adea` |
 | 6 | Remove runtime routing knowledge | DONE | `frontend-sdk-only` | 2026-07-24 | `e6241bbfc` |
 | 7 | Local parity proof | DONE | `frontend-sdk-only` | 2026-07-24 | `6c02b601e` |
-| 8 | Delivery and dev proof | IN PROGRESS | `frontend-sdk-only` | 2026-07-24 | — |
+| 8 | Delivery and dev proof | DONE | `frontend-sdk-only` | 2026-07-24 | `aefa2a628` + `8688b8492` |
 
 ---
 
@@ -1817,6 +1817,55 @@ The generic auth spec failed because its default local user credentials were
 absent. The SDK-only regression creates and deletes its own confirmed user.
 
 **Shippable to production: NOT YET.** Task 8 delivery and dev proof remains.
+
+---
+
+### 2026-07-24 — session `frontend-sdk-only` (web SDK boundary Task 8)
+
+Merged the SDK-only web refactor in PR #5388. The merge commit is
+`aefa2a6282ed540a7296e35db2747bce2cc1d3eb`.
+
+Deploy Dev run 30129604715 completed successfully at
+`ae967fdbc6066f3a941a4553c0d21afb10639774`. Git ancestry proves that deployed
+commit contains the refactor merge. The API health route reported
+`0.10.15-dev.ae967fdb`. The tested Vercel deployment reported
+`0.10.14-dev.ae967fdb`.
+
+The deployed Chromium regression passed in 1.2 minutes. It rendered the session
+workspace, sent one `prompt_async` request, displayed `PONG`, observed zero
+failed Kortix project or runtime responses, and opened `kortix.yaml`.
+
+The first protected-dev browser run exposed an E2E harness defect. The shared
+Vercel bypass header reached the cross-origin API and failed its CORS preflight.
+The login helper now converts that header into a web-origin Vercel cookie before
+the browser sends API requests.
+
+The public PTY smoke exposed a Cloudflare WebSocket response defect. PR #5392,
+merged as `8688b8492c9534bb6d43a3282904f19cbd557c78`, preserves Cloudflare
+`response.webSocket` upgrade responses. Dev worker version
+`33ef7b35-3e6d-452f-9165-b00bafd9e9a1` carries the fix.
+
+The final public dev PTY smoke passed against a real Platinum sandbox. It
+created a PTY, opened the WebSocket, sent and observed a marker, reconnected and
+observed replay, listed the running PTY, deleted it, and removed its disposable
+project and session.
+
+**Verification:**
+
+- SDK typecheck: exit 0.
+- SDK suite: **1210 pass / 0 fail**.
+- SDK packed-install smoke: pass.
+- Web suite: **2043 pass / 0 fail**.
+- Web boundary test: **1 pass / 0 fail**.
+- White-label E2E: **44 pass / 0 fail / 3 live-upstream skips**.
+- Managed session HTTP smoke: **25 pass / 0 fail**.
+- SDK-only local Chromium session: **1 pass**.
+- SDK-only dev Chromium session: **1 pass**.
+- Public dev Platinum PTY smoke: pass.
+- Cloudflare API router regression: **5 pass / 0 fail**.
+
+**Shippable to production: YES.** All eight tasks are complete. Local and
+deployed dev paths pass.
 ---
 
 ### 2026-07-24 — session `managed-models-aster` (B18 completion)

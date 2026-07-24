@@ -327,14 +327,21 @@ async function loadGatewayCatalog(opts: KortixProviderOpts): Promise<Record<stri
 
 export const buildExecutorMcpConfigContent = buildOpencodeConfigContent
 
-const GATEWAY_MODELS_RETRY_DELAYS_MS = [500, 1000, 2000]
+const GATEWAY_MODELS_RETRY_DELAYS_MS = [400, 800]
 // Per-request hard cap. `opencode serve` cannot bind its port until
 // buildOpencodeConfigContent (which awaits this fetch) returns — so a slow/degraded
 // gateway `/models` directly blocks session start on BOTH providers (platinum +
 // daytona). Bound it and fall back to the minimal catalog rather than hang; a slow
 // gateway won't get faster on retry. Restoring the full catalog is the gateway's
 // job once /models is fast (it is uncached + ~400KB today).
-const GATEWAY_MODELS_TIMEOUT_MS = 6_000
+const GATEWAY_MODELS_TIMEOUT_MS = 2_500
+// TOTAL wall-clock ceiling across every attempt + backoff. The per-request cap
+// alone does NOT bound this path: responses that are slow but never time out
+// (say 2.4s each) still cost attempts × timeout + backoff, which was ~25s of
+// dead session-start time on the old 6s × 4 budget. The catalog is a nicety —
+// opencode boots fine on the baked/minimal one — so it gets a fixed, small
+// slice of the boot budget and nothing more.
+const GATEWAY_MODELS_TOTAL_BUDGET_MS = 4_000
 
 async function fetchGatewayModels(
   baseUrl: string,
@@ -342,12 +349,21 @@ async function fetchGatewayModels(
 ): Promise<Record<string, KortixGatewayModel> | null> {
   const url = `${baseUrl.replace(/\/+$/, '')}/models`
   const attempts = GATEWAY_MODELS_RETRY_DELAYS_MS.length + 1
-  logger.info(`[opencode] fetching gateway models from ${url} (timeout ${GATEWAY_MODELS_TIMEOUT_MS}ms)`)
+  const deadline = Date.now() + GATEWAY_MODELS_TOTAL_BUDGET_MS
+  logger.info(
+    `[opencode] fetching gateway models from ${url} ` +
+      `(per-try ${GATEWAY_MODELS_TIMEOUT_MS}ms, total budget ${GATEWAY_MODELS_TOTAL_BUDGET_MS}ms)`,
+  )
   for (let attempt = 0; attempt < attempts; attempt++) {
+    if (Date.now() >= deadline) {
+      logger.warn('[opencode] gateway models budget exhausted; falling back to the baked/minimal catalog')
+      break
+    }
     try {
       const res = await fetch(url, {
         headers: { authorization: `Bearer ${apiKey}` },
-        signal: AbortSignal.timeout(GATEWAY_MODELS_TIMEOUT_MS),
+        // Never let one attempt outlive the total budget.
+        signal: AbortSignal.timeout(Math.max(250, Math.min(GATEWAY_MODELS_TIMEOUT_MS, deadline - Date.now()))),
       })
       if (!res.ok) {
         const detail = (await res.text().catch(() => '')).slice(0, 200)
@@ -369,7 +385,8 @@ async function fetchGatewayModels(
       // genuine transient failures (5xx / network) are worth retrying.
       if (timedOut) break
       const delay = GATEWAY_MODELS_RETRY_DELAYS_MS[attempt]
-      if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
+      if (delay && Date.now() + delay < deadline) await new Promise((resolve) => setTimeout(resolve, delay))
+      else break
     }
   }
   logger.error(`[opencode] gateway models unavailable (${url}); caller will fall back to the baked/minimal catalog`)

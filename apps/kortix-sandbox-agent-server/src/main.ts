@@ -11,6 +11,7 @@ import {
   materializeScaffoldSeed,
   materializeProjectSeed,
   runGitCredentialHelper,
+  scheduleHistoryBackfill,
 } from './git'
 import { logger } from './logger'
 import {
@@ -130,6 +131,25 @@ async function main() {
   if (!writeAgentEnvFile(projectEnv)) {
     logger.error('[boot] failed to write agent secret env file; agent shells will lack project secrets')
   }
+  // ── Serve BEFORE doing any slow work ────────────────────────────────────
+  // The proxy (and with it /kortix/health) used to bind only after the clone
+  // AND the opencode spawn, so a live VM answered nothing for ~9s — the API and
+  // frontend were blind for most of the boot and every readiness poll in that
+  // window hit a closed port (measured 2026-07-25: VM up at 2.5s, first health
+  // answer at 13s). Nothing about the proxy needs the repo: it already 503s
+  // cleanly while opencode is still starting, and /kortix/health never touches
+  // opencode at all. So bind first, then clone.
+  //
+  // The supervisor is created here with the BAKED config dir because the
+  // project's own dir lives inside the repo and isn't known yet; it is
+  // reconfigured with the resolved dir below, before the process is ever
+  // spawned. `reconfigure` only rewrites state read at spawn time, so this is
+  // exactly equivalent to constructing it late.
+  const opencode = createOpencodeSupervisor(cfg, cfg.defaultOpencodeConfigDir, projectEnv)
+  const server = startProxy(cfg, opencode, bootTime, bootState, projectEnv, staticWeb.port)
+  installShutdownHandlers(opencode, server, staticWeb)
+  bootMark('proxy-up')
+
   const repoMaterializePromise: Promise<void> = cfg.autoClone
     ? materializeRepo(cfg).catch((err) => {
         bootState.repoMaterializationError = err instanceof Error ? err.message : String(err)
@@ -142,6 +162,13 @@ async function main() {
   // is ready.
   await repoMaterializePromise
   bootMark('repo-materialized')
+
+  // The boot clone is shallow; restore history in the background now that the
+  // workspace is usable, so `git log`/`blame`/`diff` work without ever having
+  // been on the critical path.
+  if (cfg.autoClone && !bootState.repoMaterializationError) {
+    scheduleHistoryBackfill(cfg, cfg.projectTarget)
+  }
 
   const opencodeConfigDir = await resolveOpencodeConfigDir(cfg)
   logger.info('[boot] resolved opencode config dir', {
@@ -159,7 +186,8 @@ async function main() {
   await ensureInjectedManagedSkills(opencodeConfigDir)
   bootMark('config-deps')
 
-  const opencode = createOpencodeSupervisor(cfg, opencodeConfigDir, projectEnv)
+  // Bind the resolved (possibly project-owned) config dir before the first spawn.
+  opencode.reconfigure(cfg, opencodeConfigDir, projectEnv)
 
   if (bootState.repoMaterializationError) {
     logger.warn('[boot] skipping opencode readiness because repo materialization failed')
@@ -182,10 +210,6 @@ async function main() {
     })
   }
   bootMark('opencode-spawned')
-
-  const server = startProxy(cfg, opencode, bootTime, bootState, projectEnv, staticWeb.port)
-  installShutdownHandlers(opencode, server, staticWeb)
-  bootMark('proxy-up')
 
   logger.info('[boot] proxy up; waiting for opencode readiness in background', {
     servicePort: cfg.servicePort,
@@ -314,7 +338,10 @@ function armSeedAdoption(
           logger.error('[seed] repo adoption failed', err)
         })
         bootMark('seed-repo-adopted')
-        if (!bootState.repoMaterializationError) await configureRepoCredentialHelper(cfg2, cfg2.projectTarget).catch(() => {})
+        if (!bootState.repoMaterializationError) {
+          scheduleHistoryBackfill(cfg2, cfg2.projectTarget)
+          await configureRepoCredentialHelper(cfg2, cfg2.projectTarget).catch(() => {})
+        }
       }
       await startSessionRuntime(opencode, cfg2, bootState, bootMark)
       logger.info('[seed] adoption complete', { adoptMs: Date.now() - t0, timeline: bootState.timeline })
@@ -620,7 +647,10 @@ async function runWarmSeedMode(
           logger.error('[seed] repo materialization failed', err)
         })
         bootMark('adopt-repo-materialized')
-        if (!bootState.repoMaterializationError) await configureRepoCredentialHelper(cfg2, cfg2.projectTarget).catch(() => {})
+        if (!bootState.repoMaterializationError) {
+          scheduleHistoryBackfill(cfg2, cfg2.projectTarget)
+          await configureRepoCredentialHelper(cfg2, cfg2.projectTarget).catch(() => {})
+        }
       }
 
       // The seed opencode process is started before adoption, when it has no
@@ -747,7 +777,18 @@ async function maybeCreateInitialOpencodeSession(
   const baseUrl = `http://127.0.0.1:${opencodePort}`
   const workspace = process.env.KORTIX_WORKSPACE || '/workspace'
 
+  // `opencode-session-created` used to be ONE mark covering opencode's entire
+  // cold start plus every bootstrap round-trip — 4.7s (Daytona) / 12.0s
+  // (Platinum) at p50, and completely unattributable. These sub-marks split it:
+  //   opencode-answering  → opencode's own cold start (runtime + config +
+  //                         provider init + per-directory project init)
+  //   opencode-root-ready → resolving/creating this session's root
+  //   event-loop-connected→ the SSE subscribe we hold the first turn on
+  //   opencode-session-created (existing) → first prompt delivered
+  // A big opencode-answering means the fix is in the image (pre-booted
+  // opencode); a big root-ready means it's our bootstrap.
   let existing = await resolveExistingRoot(baseUrl, workspace)
+  bootMark('opencode-answering')
   // Warm-fork de-collision: a CoW-forked sandbox inherits the snapshot's single
   // pinned root, so `existing` here is the SHARED seed root — every fork would
   // otherwise resolve the same opencode session id and their chats bleed together
@@ -796,6 +837,7 @@ async function maybeCreateInitialOpencodeSession(
     }
   }
   bootState.initialOpenCodeSessionId = sessionId
+  bootMark('opencode-root-ready')
   // Set the durable DB pin server-side now — Slack/trigger/cron sessions that no
   // browser ever opens otherwise kept a null pin, which forced a lazy resolution
   // that could land on the wrong root.
@@ -814,6 +856,7 @@ async function maybeCreateInitialOpencodeSession(
         new Promise<void>((r) => { timer = setTimeout(r, 10_000) }),
       ])
       if (timer) clearTimeout(timer)
+      bootMark('event-loop-connected')
     }
     const promptRes = await fetch(
       `${baseUrl}/session/${sessionId}/prompt_async?directory=${encodeURIComponent(workspace)}`,

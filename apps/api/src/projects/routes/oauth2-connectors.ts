@@ -4,9 +4,10 @@ import {
   OAuth2DeviceAuthorizationStartInputSchema,
   OAuth2DiscoveryInputSchema,
 } from '@kortix/api-contract';
-import { executorConnectionProfiles } from '@kortix/db';
+import { executorConnectionProfiles, executorConnectors } from '@kortix/db';
 import { and, eq } from 'drizzle-orm';
 import { config } from '../../config';
+import { ensureDefaultProfile } from '../../executor/credentials';
 import {
   completeAuthorizationCodeSession,
   createAuthorizationCodeSession,
@@ -88,6 +89,39 @@ async function loadMutableProfile(c: any, projectId: string, profileId: string) 
   return allowed ? { loaded, profile } : null;
 }
 
+projectsApp.post('/:projectId/connectors/:slug/oauth2/profile', async (c: any) => {
+  const projectId = c.req.param('projectId');
+  const slug = c.req.param('slug');
+  const loaded = await loadProjectForUser(c, projectId, 'read');
+  if (!loaded) return c.json({ error: 'Not found' }, 404);
+  const mayManage = await projectCapabilityAllowed(
+    c,
+    loaded.userId,
+    loaded.row.accountId,
+    projectId,
+    PROJECT_ACTIONS.PROJECT_CONNECTOR_PROFILES_MANAGE,
+  );
+  if (!mayManage) return c.json({ error: 'Forbidden' }, 403);
+  const [connector] = await db
+    .select({ connectorId: executorConnectors.connectorId })
+    .from(executorConnectors)
+    .where(
+      and(
+        eq(executorConnectors.accountId, loaded.row.accountId),
+        eq(executorConnectors.projectId, projectId),
+        eq(executorConnectors.slug, slug),
+      ),
+    )
+    .limit(1);
+  if (!connector) return c.json({ error: 'Connector not found' }, 404);
+  const profileId = await ensureDefaultProfile({
+    projectId,
+    connectorId: connector.connectorId,
+    createdBy: loaded.userId,
+  });
+  return c.json({ profile_id: profileId });
+});
+
 projectsApp.put('/:projectId/connector-profiles/:profileId/oauth2/application', async (c: any) => {
   const projectId = c.req.param('projectId');
   const profileId = c.req.param('profileId');
@@ -95,7 +129,12 @@ projectsApp.put('/:projectId/connector-profiles/:profileId/oauth2/application', 
   if (!mutable) return c.json({ error: 'Not found' }, 404);
   const parsed = OAuth2ApplicationInputSchema.safeParse(await readBody(c));
   if (!parsed.success) {
-    return c.json({ error: parsed.error.issues[0]?.message ?? 'invalid OAuth2 application' }, 400);
+    return c.json(
+      {
+        error: parsed.error.issues[0]?.message ?? 'invalid OAuth2 application',
+      },
+      400,
+    );
   }
   await saveOAuth2Application(mutable.profile, parsed.data, mutable.loaded.userId);
   return c.json({ ok: true });
@@ -120,7 +159,9 @@ projectsApp.post('/:projectId/connector-profiles/:profileId/oauth2/discover', as
   const parsed = OAuth2DiscoveryInputSchema.safeParse(await readBody(c));
   if (!parsed.success) return c.json({ error: 'invalid discovery URL' }, 400);
   try {
-    return c.json({ metadata: await discoverConfiguredOAuth2Application(parsed.data.discovery_url) });
+    return c.json({
+      metadata: await discoverConfiguredOAuth2Application(parsed.data.discovery_url),
+    });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }

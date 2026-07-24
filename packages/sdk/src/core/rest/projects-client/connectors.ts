@@ -19,14 +19,7 @@ export interface AdminConnector {
   slug: string;
   name: string;
   provider:
-    | 'pipedream'
-    | 'mcp'
-    | 'openapi'
-    | 'postman'
-    | 'graphql'
-    | 'http'
-    | 'channel'
-    | 'computer';
+    'pipedream' | 'mcp' | 'openapi' | 'postman' | 'graphql' | 'http' | 'channel' | 'computer';
   platform?: 'slack' | 'email' | null;
   /** Provider icon materialized during connector synchronization. */
   iconUrl?: string | null;
@@ -69,15 +62,7 @@ export type DiscoveredAuthScheme =
   | 'asap'
   | 'unknown';
 export type ConnectorRequestAuthType =
-  | 'none'
-  | 'bearer'
-  | 'basic'
-  | 'custom'
-  | 'api_key'
-  | 'oauth1'
-  | 'hmac'
-  | 'aws_sigv4'
-  | 'mtls';
+  'none' | 'bearer' | 'basic' | 'custom' | 'api_key' | 'oauth1' | 'hmac' | 'aws_sigv4' | 'mtls';
 export interface ExecutableConnectorAuth {
   type: ConnectorRequestAuthType;
   in: 'header' | 'query' | 'cookie';
@@ -154,11 +139,7 @@ export interface OAuth2ClientCredentials {
   token_url: string;
   client_id: string;
   token_endpoint_auth_method:
-    | 'none'
-    | 'client_secret_post'
-    | 'client_secret_basic'
-    | 'client_secret_jwt'
-    | 'private_key_jwt';
+    'none' | 'client_secret_post' | 'client_secret_basic' | 'client_secret_jwt' | 'private_key_jwt';
   client_secret?: string;
   private_key?: string;
   certificate_thumbprint?: string;
@@ -168,11 +149,7 @@ export interface OAuth2ClientCredentials {
 }
 
 export type OAuth2TokenEndpointAuthMethod =
-  | 'none'
-  | 'client_secret_basic'
-  | 'client_secret_post'
-  | 'client_secret_jwt'
-  | 'private_key_jwt';
+  'none' | 'client_secret_basic' | 'client_secret_post' | 'client_secret_jwt' | 'private_key_jwt';
 
 export interface OAuth2ApplicationInput {
   discovery_url?: string;
@@ -191,8 +168,10 @@ export interface OAuth2ApplicationInput {
   token_params?: Record<string, string>;
 }
 
-export interface OAuth2ApplicationView
-  extends Omit<OAuth2ApplicationInput, 'client_secret' | 'private_key'> {
+export interface OAuth2ApplicationView extends Omit<
+  OAuth2ApplicationInput,
+  'client_secret' | 'private_key'
+> {
   has_client_secret: boolean;
   has_private_key: boolean;
 }
@@ -229,8 +208,7 @@ export interface OAuth2ConnectionStatus {
 }
 
 export type ConnectionProfileCredentialInput =
-  | { value: string; kind?: 'secret' | 'connection' }
-  | { oauth2: OAuth2ClientCredentials };
+  { value: string; kind?: 'secret' | 'connection' } | { oauth2: OAuth2ClientCredentials };
 
 export async function listConnectionProfiles(projectId: string) {
   return unwrap(
@@ -275,6 +253,15 @@ function profileOAuth2Path(projectId: string, profileId: string, suffix: string)
   return `/projects/${projectId}/connector-profiles/${profileId}/oauth2/${suffix}`;
 }
 
+export async function ensureProjectConnectorProfile(projectId: string, slug: string) {
+  return unwrap(
+    await backendApi.post<{ profile_id: string }>(
+      `/projects/${projectId}/connectors/${encodeURIComponent(slug)}/oauth2/profile`,
+      {},
+    ),
+  );
+}
+
 export async function putConnectionProfileOAuth2Application(
   projectId: string,
   profileId: string,
@@ -288,10 +275,7 @@ export async function putConnectionProfileOAuth2Application(
   );
 }
 
-export async function getConnectionProfileOAuth2Application(
-  projectId: string,
-  profileId: string,
-) {
+export async function getConnectionProfileOAuth2Application(projectId: string, profileId: string) {
   return unwrap(
     await backendApi.get<{ application: OAuth2ApplicationView }>(
       profileOAuth2Path(projectId, profileId, 'application'),
@@ -353,9 +337,7 @@ export async function pollConnectionProfileOAuth2DeviceAuthorization(
 
 export async function getConnectionProfileOAuth2Status(projectId: string, profileId: string) {
   return unwrap(
-    await backendApi.get<OAuth2ConnectionStatus>(
-      profileOAuth2Path(projectId, profileId, 'status'),
-    ),
+    await backendApi.get<OAuth2ConnectionStatus>(profileOAuth2Path(projectId, profileId, 'status')),
   );
 }
 
@@ -383,10 +365,11 @@ export async function pipedreamConnectConnectionProfile(
   input: ConnectionProfileConnectInput = {},
 ) {
   return unwrap(
-    await backendApi.post<{ token?: string; app?: string; connectUrl?: string }>(
-      `/projects/${projectId}/connector-profiles/${profileId}/connect`,
-      input,
-    ),
+    await backendApi.post<{
+      token?: string;
+      app?: string;
+      connectUrl?: string;
+    }>(`/projects/${projectId}/connector-profiles/${profileId}/connect`, input),
   );
 }
 
@@ -513,10 +496,11 @@ export async function setConnectorName(projectId: string, slug: string, name: st
 
 export async function pipedreamConnect(projectId: string, slug: string) {
   return unwrap(
-    await backendApi.post<{ token?: string; app?: string; connectUrl?: string }>(
-      `/executor/projects/${projectId}/connectors/${encodeURIComponent(slug)}/connect`,
-      {},
-    ),
+    await backendApi.post<{
+      token?: string;
+      app?: string;
+      connectUrl?: string;
+    }>(`/executor/projects/${projectId}/connectors/${encodeURIComponent(slug)}/connect`, {}),
   );
 }
 
@@ -592,9 +576,11 @@ export async function listPipedreamApps(projectId: string, q?: string, cursor?: 
   if (cursor) params.set('cursor', cursor);
   const qs = params.toString();
   return unwrap(
-    await backendApi.get<{ apps: PipedreamApp[]; nextCursor?: string; hasMore: boolean }>(
-      `/executor/projects/${projectId}/pipedream/apps${qs ? `?${qs}` : ''}`,
-    ),
+    await backendApi.get<{
+      apps: PipedreamApp[];
+      nextCursor?: string;
+      hasMore: boolean;
+    }>(`/executor/projects/${projectId}/pipedream/apps${qs ? `?${qs}` : ''}`),
   );
 }
 

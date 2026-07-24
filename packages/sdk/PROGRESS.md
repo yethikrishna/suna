@@ -2018,3 +2018,34 @@ tenant ownership.
   `executor_oauth_sessions`.
 
 **Shippable to production: NOT YET.** Tasks 3 through 8 remain incomplete.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 6)
+
+Added provider-independent web controls for Client Credentials, Authorization
+Code with PKCE, and Device Authorization. Added all five token-endpoint client
+authentication methods. Added typed project-profile creation for the first
+delegated connection.
+
+Added visible request-authentication controls for API keys, OAuth 1.0a,
+HMAC-SHA256, AWS SigV4, mutual TLS, bearer, Basic, custom parameters, and no
+authentication. Structured strategies accept validated encrypted JSON
+credentials.
+
+**RED evidence:** the focused web suite reported four failures and one missing
+export before implementation.
+
+**Verification:**
+
+- Focused web suite: **17 pass / 0 fail**.
+- Focused SDK connector suite: **26 pass / 0 fail**.
+- API typecheck: exit 0.
+- Changed-file ESLint: exit 0.
+- Changed-file web TypeScript output: no errors.
+- Live profile creation: connector list `200`; profile creation `200`.
+
+The browser runtime reported zero available browsers. DOM and browser network
+proof remains open for Task 7.
+
+**Shippable to production: NOT YET.** Tasks 7 and 8 remain incomplete.

@@ -31,7 +31,7 @@ import { Icon } from '@/features/icon/icon';
 import { ComposerChatInput, type ComposerOptions } from '@/features/session/composer-chat-input';
 import type { AttachedFile } from '@/features/session/session-chat-input';
 import { SessionWelcome } from '@/features/session/session-welcome';
-import type { Command } from '@/hooks/opencode/use-opencode-sessions';
+import type { Command } from '@kortix/sdk/react';
 import type { CustomizeSection } from '@/lib/customize-sections';
 import { STARTER_PROMPTS } from '@/lib/starter-prompts';
 import { cn } from '@/lib/utils';
@@ -42,7 +42,7 @@ import {
   listProjectAccessRequests,
   listProjectSandboxes,
   type SandboxTemplate,
-} from '@kortix/sdk/projects-client';
+} from '@kortix/sdk';
 import { chalkColors } from '@kortix/shared';
 import { HiOutlineViewGrid } from 'react-icons/hi';
 

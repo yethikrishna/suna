@@ -24,7 +24,7 @@ import Loading from '@/components/ui/loading';
 import { SidebarContext } from '@/components/ui/sidebar';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { openSessionQuickView } from '@/features/session/open-session-quick-view';
-import { useOpenCodeAgents, useOpenCodeProviders } from '@/hooks/opencode/use-opencode-sessions';
+import { useRuntimeAgents, useRuntimeProviders } from '@kortix/sdk/react';
 import { useNewProjectSession } from '@/hooks/projects/use-new-project-session';
 import { parseCustomizeSection } from '@/lib/customize-sections';
 import { type MenuItemDef, type SettingsTabId, getItemsForSurface } from '@/lib/menu-registry';
@@ -34,7 +34,7 @@ import { useCustomizeStore } from '@/stores/customize-store';
 import { useProjectSessionTabsStore } from '@/stores/project-session-tabs-store';
 import { featureFlags } from '@kortix/sdk/feature-flags';
 import { normalizeAppPathname } from '@kortix/sdk/instance-routes';
-import { systemReload } from '@kortix/sdk/opencode-client';
+import { systemReload } from '@kortix/sdk';
 import {
   type ExperimentalFeatureKey,
   type KortixAccount,
@@ -44,7 +44,7 @@ import {
   listAccounts,
   listProjectSessions,
   listProjectsForAccount,
-} from '@kortix/sdk/projects-client';
+} from '@kortix/sdk';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown,
@@ -76,12 +76,12 @@ import { MODEL_SELECTOR_PROVIDER_IDS, ProviderLogo } from '@/features/providers/
 import { DiffDialog } from '@/features/session/diff-dialog';
 import { CompactModal } from '@/features/session/header/compact-modal';
 import { flattenModels } from '@/features/session/session-chat-input';
-import { useModelStore } from '@/hooks/opencode/use-model-store';
-import { useCreatePty } from '@/hooks/opencode/use-opencode-pty';
+import { useModelStore } from '@kortix/sdk/react';
+import { useCreatePty } from '@kortix/sdk/react';
 import {
-  useCreateOpenCodeSession,
-  useOpenCodeMessages,
-} from '@/hooks/opencode/use-opencode-sessions';
+  useCreateRuntimeSession,
+  useRuntimeMessages,
+} from '@kortix/sdk/react';
 import { useSandboxProxy } from '@/hooks/use-sandbox-proxy';
 import { isBillingEnabled } from '@/lib/config';
 import { isLlmGatewayAvailable } from '@/lib/llm-gateway';
@@ -285,7 +285,7 @@ function MessagesPage({
   onSelect: (messageId: string) => void;
 }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
-  const { data: messages, isLoading } = useOpenCodeMessages(sessionId);
+  const { data: messages, isLoading } = useRuntimeMessages(sessionId);
 
   const turns = useMemo(() => (messages ? groupMessagesIntoTurns(messages) : []), [messages]);
 
@@ -385,7 +385,7 @@ export function CommandPalette() {
   const sidebarCtx = useContext(SidebarContext);
   const sidebarOpen = sidebarCtx?.open ?? false;
   const { proxyUrl: buildProxyUrl, subdomainOpts } = useSandboxProxy();
-  const createSession = useCreateOpenCodeSession();
+  const createSession = useCreateRuntimeSession();
   const createPty = useCreatePty();
   const { theme, setTheme } = useTheme();
   const activeWallpaperId = useUserPreferencesStore(
@@ -394,8 +394,8 @@ export function CommandPalette() {
   const panelMode = useUserPreferencesStore((s) => s.preferences.panelMode ?? 'easy');
   const billingEnabled = isBillingEnabled();
 
-  const { data: agents } = useOpenCodeAgents();
-  const { data: providers } = useOpenCodeProviders();
+  const { data: agents } = useRuntimeAgents();
+  const { data: providers } = useRuntimeProviders();
 
   const selectedAccountId = useCurrentAccountStore((s) => s.selectedAccountId);
   const { data: accountsList } = useQuery({

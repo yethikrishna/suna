@@ -119,7 +119,7 @@ real output. `typecheck` is not evidence.
 
 ---
 
-## NOW — active plan: v2 structure & distribution
+## COMPLETED PLAN — v2 structure & distribution
 
 - **Plan:** `docs/superpowers/plans/2026-07-10-sdk-v2-structure-and-distribution.md`
 - **Spec:** `docs/superpowers/specs/2026-07-10-sdk-v2-structure-and-distribution-design.md`
@@ -157,6 +157,24 @@ Statuses: `NOT STARTED` · `IN PROGRESS` · `BLOCKED (reason)` · `DONE (sha)` �
 
 Also stop if the same failure survives three different fixes (use
 `superpowers:systematic-debugging`), or you are about to change what a test asserts.
+
+---
+
+## NOW — active plan: web SDK-only boundary
+
+- **Plan:** `docs/superpowers/plans/2026-07-24-web-sdk-only-boundary.md`
+- **Spec:** `docs/superpowers/specs/2026-07-24-web-sdk-only-boundary-design.md`
+
+| # | Task | Status | Session | Last touched | Commit |
+|---|---|---|---|---|---|
+| 1 | Baseline and static boundary gate | DONE | `frontend-sdk-only` | 2026-07-24 | `b388f2f58` |
+| 2 | Canonical SDK imports | DONE | `frontend-sdk-only` | 2026-07-24 | `b84e23c17` |
+| 3 | One session engine | DONE | `frontend-sdk-only` | 2026-07-24 | `486df10f4` |
+| 4 | Runtime-neutral web state | DONE | `frontend-sdk-only` | 2026-07-24 | `afbd6e5a0` |
+| 5 | Typed platform API coverage | DONE | `frontend-sdk-only` | 2026-07-24 | `65202adea` |
+| 6 | Remove runtime routing knowledge | DONE | `frontend-sdk-only` | 2026-07-24 | `e6241bbfc` |
+| 7 | Local parity proof | DONE | `frontend-sdk-only` | 2026-07-24 | `6c02b601e` |
+| 8 | Delivery and dev proof | IN PROGRESS | `frontend-sdk-only` | 2026-07-24 | — |
 
 ---
 
@@ -1556,7 +1574,6 @@ remains unexecuted.
 **Shippable to production: YES** for B16 and the published SDK surface.
 Repository PR, Deploy Dev, deployed-SHA proof, and live-dev verification remain
 part of the repository lifecycle.
-
 ---
 
 ### 2026-07-24 — session `native-oauth-sharepoint` (B17 claim)
@@ -1613,3 +1630,190 @@ database reports zero rows for its project and auth user.
 **Shippable to production: YES** for B17 and the published SDK surface.
 Repository merge, Deploy Dev, deployed-SHA proof, and live-dev verification
 remain part of the repository lifecycle.
+
+---
+
+### 2026-07-24 — session `frontend-sdk-only` (web SDK boundary Task 1)
+
+Created the web SDK-only specification and implementation plan. Added an AST
+boundary scanner, an exact ratchet baseline, and ESLint import restrictions.
+
+The RED test reported 155 forbidden production imports. The categories were 103
+host runtime imports, 32 host-owned Kortix API imports, and 20 deprecated SDK
+runtime imports.
+
+The focused GREEN run reported 1 pass and 0 failures. ESLint returned one
+`no-restricted-imports` error for a synthetic `@opencode-ai/sdk` import outside
+the baseline. ESLint passed for the changed configuration, scanner, and test.
+
+**Shippable to production: NOT YET.** The baseline still contains 155 violations.
+
+---
+
+### 2026-07-24 — session `frontend-sdk-only` (web SDK boundary Task 2)
+
+Replaced frontend OpenCode compatibility imports with `@kortix/sdk` and
+`@kortix/sdk/react`. Replaced host store imports with
+`@kortix/sdk/internal/*`. Deleted 13 compatibility re-export files.
+
+The boundary baseline decreased from 155 violations to 47 violations. All 20
+deprecated SDK runtime imports are gone. The host runtime category decreased
+from 103 imports to 15 imports. The 32 host-owned Kortix API imports remain for
+Task 5.
+
+Focused web tests reported **51 pass / 0 fail**. The boundary test passed.
+ESLint checked 78 changed TypeScript files and reported 0 errors. It reported
+four existing `react-hooks/exhaustive-deps` warnings.
+
+The web typecheck reported four existing errors. None references a changed
+file. Two errors are in the OG template test. Two errors are unresolved
+generated docs-source imports.
+
+**Shippable to production: NOT YET.** Tasks 3 through 8 remain incomplete.
+
+---
+
+### 2026-07-24 — session `frontend-sdk-only` (web SDK boundary Task 3)
+
+Enabled the complete `useSession(projectId, sessionId)` engine on the project
+session page. The root `SessionChat` now consumes its messages, status, and
+pagination state. Child session modals retain an isolated read-only sync engine.
+
+Moved permission recovery into `useSession`. Disabled duplicate question and
+permission recovery inside the root `SessionChat`. Replaced the frontend
+`getClient().session.command()` call with the typed SDK command action.
+
+**TDD evidence:** the first command-input test failed because
+`buildSessionCommandInput` did not exist. The first runtime forwarding test
+failed because `executeOpenCodeCommand` did not exist. The GREEN SDK run
+reported **20 pass / 0 fail**.
+
+The web architecture test first reported **0 pass / 2 fail**. It detected
+`chatEngine: false`, a second message sync engine, duplicate recovery pollers,
+and a direct runtime client call. The GREEN web run reported **53 pass / 0
+fail** across 11 focused files.
+
+The SDK typecheck exited 0. The web typecheck reported four existing errors.
+None references a changed file. ESLint reported 0 errors and one existing
+`react-hooks/exhaustive-deps` warning.
+
+**Shippable to production: NOT YET.** Tasks 4 through 8 remain incomplete.
+
+---
+
+### 2026-07-24 — session `frontend-sdk-only` (web SDK boundary Task 4)
+
+Moved provider normalization, provider merging, and server-backed model defaults
+into `@kortix/sdk/react`. Added `useSessionModelSelection` as the
+runtime-neutral project model and agent hook.
+
+Moved optimistic compaction state behind `useSession`. Consolidated first-message
+files and boot-time queued messages into one presentation-only web store.
+Deleted every file under `apps/web/src/hooks/opencode`.
+
+The boundary baseline decreased from 47 violations to 32 violations. The host
+runtime category decreased from 15 imports to 0 imports. The remaining 32
+violations are host-owned Kortix API imports assigned to Task 5.
+
+**TDD evidence:** the provider merge test failed because
+`mergeProviderLists` did not exist. The model-default test failed because
+`use-model-defaults` did not exist. The compaction boundary test failed while
+`SessionChat` imported the host compaction store.
+
+The GREEN SDK run reported **113 pass / 0 fail**. The GREEN web run reported
+**33 pass / 0 fail**. The SDK typecheck exited 0. The web typecheck retained
+four unrelated existing errors. ESLint reported 0 errors and two existing hook
+warnings.
+
+**Shippable to production: NOT YET.** Tasks 5 through 8 remain incomplete.
+
+---
+
+### 2026-07-24 — session `frontend-sdk-only` (web SDK boundary Task 5)
+
+Moved every frontend Kortix API transport into `@kortix/sdk`. Deleted
+`apps/web/src/lib/api-client.ts` and nine host API wrapper modules. Moved the
+IAM client and portable React Query modules into the SDK.
+
+The corrected boundary inventory found 40 forbidden imports after adding
+`@/lib/api-client` enforcement. The final baseline contains 0 violations.
+The scanner also rejects the `backendApi` and `authenticatedFetch` identifiers.
+
+**TDD evidence:** five focused SDK files first failed on missing exports.
+The GREEN SDK run reported **48 pass / 0 fail**. The web boundary and public
+marketplace run reported **5 pass / 0 fail**. The SDK typecheck exited 0.
+ESLint reported 0 errors.
+
+The public runtime and type snapshots contain additions only. They contain no
+removed or renamed exports.
+
+**Shippable to production: NOT YET.** Tasks 6 through 8 remain incomplete.
+
+---
+
+### 2026-07-24 — session `frontend-sdk-only` (web SDK boundary Task 6)
+
+Moved runtime routing, runtime actions, SSE transport, preview authentication,
+presentation conversion, PTY commands, and explicit host-boundary transport
+into `@kortix/sdk`.
+
+Added runtime-neutral SDK aliases without removing existing public exports.
+Renamed the remaining frontend files that contained `opencode`. The web source
+tree now contains no file path with that term.
+
+Expanded the AST boundary and ESLint gates. They reject OpenCode imports,
+deprecated runtime SDK subpaths, SDK internal subpaths, legacy runtime stores,
+runtime proxy paths, OpenCode REST paths, and raw Kortix backend routes.
+The boundary baseline contains 0 violations.
+
+The runtime snapshot added 145 names and removed 0 names. The type snapshot
+added 167 names and removed 0 names.
+
+**Verification:**
+
+- SDK typecheck: exit 0.
+- SDK suite: **1206 pass / 0 fail / 2 skip** across 98 files.
+- SDK packed-install smoke: pass.
+- Web suite: **2043 pass / 0 fail** across 224 files.
+- Web boundary test: **1 pass / 0 fail**.
+- Changed-file ESLint: 0 errors and 22 existing warnings.
+- Web typecheck: four existing errors only. Two are in the OG template test.
+  Two are unresolved generated docs-source imports.
+- White-label typecheck: exit 0.
+- White-label fresh build: exit 0.
+- White-label E2E: **44 pass / 0 fail / 3 live-upstream skips**.
+
+**Shippable to production: NOT YET.** Task 7 local parity proof and Task 8
+delivery and dev proof remain incomplete.
+
+---
+
+### 2026-07-24 — session `frontend-sdk-only` (web SDK boundary Task 7)
+
+Added a real browser regression for the SDK-only session path. The test creates
+a confirmed user, provisions a project and Platinum session, sends one prompt,
+observes the SDK runtime request, opens Files, and deletes all created resources.
+
+Updated the shared browser login helper for the email-first password flow.
+Added the SDK boundary test and frontend ESLint to the pull-request CI job.
+
+**Verification:**
+
+- SDK typecheck: exit 0.
+- SDK suite: **1206 pass / 0 fail / 2 skip** across 98 files.
+- SDK packed-install smoke: pass.
+- Web suite: **2043 pass / 0 fail** across 224 files.
+- Web SDK boundary plus full source ESLint: **1 pass / 0 fail**, ESLint exit 0.
+- White-label typecheck and fresh build: exit 0.
+- White-label E2E: **44 pass / 0 fail / 3 live-upstream skips**.
+- Managed session HTTP smoke: **25 pass / 0 fail** with a visible `PONG`.
+- PTY smoke: pass, including WebSocket attach and replay.
+- File transport smoke: **26 pass / 1 optional agent-read failure**.
+- SDK-only Chromium session: **1 pass** in 1.0 minutes. It observed one
+  `prompt_async`, visible `PONG`, no failed Kortix responses, and `kortix.yaml`.
+- Tests TypeScript check and `git diff --check`: exit 0.
+
+The generic auth spec failed because its default local user credentials were
+absent. The SDK-only regression creates and deletes its own confirmed user.
+
+**Shippable to production: NOT YET.** Task 8 delivery and dev proof remains.

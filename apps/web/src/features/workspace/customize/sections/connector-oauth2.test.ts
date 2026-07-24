@@ -3,6 +3,7 @@ import {
   buildOAuth2ApplicationInput,
   buildOAuth2CredentialInput,
   createConnectorWithOptionalOAuth2,
+  mergeOAuth2DiscoveryMetadata,
   oauth2ApplicationFormValid,
   oauth2CredentialFormValid,
   type OAuth2ApplicationForm,
@@ -185,6 +186,22 @@ describe('OAuth2 application form', () => {
         tokenUrl: '',
       }),
     ).toBe(true);
+  });
+
+  test('merges discovered endpoints without replacing explicit values', () => {
+    expect(
+      mergeOAuth2DiscoveryMetadata(AUTHORIZATION_CODE_FORM, {
+        authorization_url: 'https://discovered.example.com/authorize',
+        token_url: 'https://discovered.example.com/token',
+        device_authorization_url: 'https://discovered.example.com/device',
+        revocation_url: 'https://discovered.example.com/revoke',
+      }),
+    ).toMatchObject({
+      authorizationUrl: AUTHORIZATION_CODE_FORM.authorizationUrl,
+      tokenUrl: AUTHORIZATION_CODE_FORM.tokenUrl,
+      deviceAuthorizationUrl: 'https://discovered.example.com/device',
+      revocationUrl: AUTHORIZATION_CODE_FORM.revocationUrl,
+    });
   });
 });
 

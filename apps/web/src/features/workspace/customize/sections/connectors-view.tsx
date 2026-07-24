@@ -108,6 +108,7 @@ import {
   createConnector,
   deleteConnector,
   discoverConnectorAuth,
+  discoverConnectionProfileOAuth2,
   ensureProjectConnectorProfile,
   getConnectorConfig,
   getConnectorPolicies,
@@ -140,6 +141,7 @@ import {
   EMPTY_OAUTH2_APPLICATION_FORM,
   EMPTY_OAUTH2_CREDENTIAL_FORM,
   type OAuth2ApplicationForm,
+  mergeOAuth2DiscoveryMetadata,
   oauth2ApplicationFormValid,
   type OAuth2CredentialForm,
   oauth2CredentialFormValid,
@@ -4320,12 +4322,22 @@ function SetCredentialModal({
       }
       const activeProfileId =
         profileId ?? (await ensureProjectConnectorProfile(projectId, connector!.slug)).profile_id;
+      const resolvedApplication = application.discoveryUrl
+        ? mergeOAuth2DiscoveryMetadata(
+            application,
+            (
+              await discoverConnectionProfileOAuth2(projectId, activeProfileId, {
+                discovery_url: application.discoveryUrl,
+              })
+            ).metadata,
+          )
+        : application;
       await putConnectionProfileOAuth2Application(
         projectId,
         activeProfileId,
-        buildOAuth2ApplicationInput(application),
+        buildOAuth2ApplicationInput(resolvedApplication),
       );
-      const scopes = application.scopes.split(/\s+/).filter(Boolean);
+      const scopes = resolvedApplication.scopes.split(/\s+/).filter(Boolean);
       if (application.grant === 'authorization_code') {
         const redirect = new URL(window.location.href);
         redirect.searchParams.delete('oauth2');

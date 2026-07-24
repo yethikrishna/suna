@@ -313,12 +313,18 @@ export async function oauth2ProfileStatus(profileId: string) {
       valueEnc: executorCredentials.valueEnc,
       kind: executorCredentials.kind,
       projectId: executorOAuthApplications.projectId,
+      profileStatus: executorConnectionProfiles.status,
     })
     .from(executorOAuthApplications)
+    .innerJoin(
+      executorConnectionProfiles,
+      eq(executorConnectionProfiles.profileId, executorOAuthApplications.profileId),
+    )
     .leftJoin(executorCredentials, eq(executorCredentials.profileId, profileId))
     .where(eq(executorOAuthApplications.profileId, profileId))
     .limit(1);
   if (!credential) return { status: 'not_configured' as const };
+  if (credential.profileStatus === 'revoked') return { status: 'revoked' as const };
   if (!credential.valueEnc || credential.kind !== 'oauth2_delegated') {
     return { status: 'ready' as const };
   }

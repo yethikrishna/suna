@@ -142,6 +142,21 @@ export function buildOAuth2ApplicationInput(form: OAuth2ApplicationForm): OAuth2
   return input;
 }
 
+export function mergeOAuth2DiscoveryMetadata(
+  form: OAuth2ApplicationForm,
+  metadata: Partial<OAuth2ApplicationInput>,
+): OAuth2ApplicationForm {
+  return {
+    ...form,
+    authorizationUrl: form.authorizationUrl || metadata.authorization_url || '',
+    tokenUrl: form.tokenUrl || metadata.token_url || '',
+    deviceAuthorizationUrl:
+      form.deviceAuthorizationUrl || metadata.device_authorization_url || '',
+    revocationUrl: form.revocationUrl || metadata.revocation_url || '',
+    scopes: form.scopes || metadata.scopes?.join(' ') || '',
+  };
+}
+
 export async function createConnectorWithOptionalOAuth2(
   projectId: string,
   draft: ConnectorDraftInput,

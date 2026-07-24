@@ -1,3 +1,6 @@
+SET lock_timeout = '1s';
+SET statement_timeout = '5s';
+
 CREATE TABLE kortix.executor_oauth_applications (
   application_id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   account_id uuid NOT NULL,

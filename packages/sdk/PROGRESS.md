@@ -189,7 +189,7 @@ Also stop if the same failure survives three different fixes (use
 | 2 | Database lifecycle | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `572bedb5a` |
 | 3 | OAuth2 protocol engine | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `db31d216e` |
 | 4 | API lifecycle routes | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `63dda6afe` |
-| 5 | Executor and non-OAuth request authentication | IN PROGRESS | `native-oauth-full-lifecycle` | 2026-07-25 | claim |
+| 5 | Executor and non-OAuth request authentication | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | pending commit |
 | 6 | SDK and web integration | NOT STARTED | — | — | — |
 | 7 | Local verification | NOT STARTED | — | — | — |
 | 8 | Delivery and dev proof | NOT STARTED | — | — | — |
@@ -1737,6 +1737,33 @@ revocation attempts with unconditional local delegated-credential deletion.
 - Ke2e coverage: **492/501 routes covered, 9 allowlisted, 0 uncovered**.
 
 **Shippable to production: NOT YET.** Tasks 5 through 8 remain incomplete.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 5)
+
+Added delegated OAuth2 token resolution and refresh under the credential
+database advisory lock. Refresh-token rotation updates the encrypted credential.
+
+Added native request authentication for API keys in headers, query parameters,
+and cookies; generic HMAC-SHA256; AWS Signature Version 4; and mutual TLS.
+Existing bearer, HTTP Basic, custom, OAuth 1.0a, and no-auth behavior remains.
+The manifest schema and SDK types expose the same authentication matrix.
+
+**RED evidence:** four executor tests failed before implementation. They showed
+missing cookie placement, raw HMAC and SigV4 credentials in headers, and absent
+TLS options.
+
+**Verification:**
+
+- Focused executor, OAuth, manifest, contract, and SDK suites:
+  **205 pass / 0 fail**.
+- Added manifest conformance proof: **108 pass / 0 fail** in the final focused
+  wave.
+- API typecheck: exit 0.
+- SDK typecheck and example typecheck: exit 0.
+
+**Shippable to production: NOT YET.** Tasks 6 through 8 remain incomplete.
 
 ---
 

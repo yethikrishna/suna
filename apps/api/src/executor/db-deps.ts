@@ -443,7 +443,12 @@ function toGatewayConnector(
 }
 
 const nodeFetch: FetchImpl = async (url, init) => {
-  const res = await fetch(url, { method: init.method, headers: init.headers, body: init.body });
+  const res = await fetch(url, {
+    method: init.method,
+    headers: init.headers,
+    body: init.body,
+    ...(init.tls ? { tls: init.tls } : {}),
+  } as RequestInit);
   return { status: res.status, ok: res.ok, text: () => res.text() };
 };
 

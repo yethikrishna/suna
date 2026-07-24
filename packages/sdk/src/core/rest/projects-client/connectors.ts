@@ -68,9 +68,19 @@ export type DiscoveredAuthScheme =
   | 'edgegrid'
   | 'asap'
   | 'unknown';
+export type ConnectorRequestAuthType =
+  | 'none'
+  | 'bearer'
+  | 'basic'
+  | 'custom'
+  | 'api_key'
+  | 'oauth1'
+  | 'hmac'
+  | 'aws_sigv4'
+  | 'mtls';
 export interface ExecutableConnectorAuth {
-  type: 'none' | 'bearer' | 'basic' | 'custom' | 'oauth1';
-  in: 'header' | 'query';
+  type: ConnectorRequestAuthType;
+  in: 'header' | 'query' | 'cookie';
   name: string | null;
   prefix: string | null;
 }
@@ -471,8 +481,8 @@ export interface ConnectorConfig {
   baseUrl: string | null;
   spec: string | null;
   auth: {
-    type: 'none' | 'bearer' | 'basic' | 'custom' | 'oauth1' | 'oauth1';
-    in: 'header' | 'query';
+    type: ConnectorRequestAuthType;
+    in: 'header' | 'query' | 'cookie';
     name: string | null;
     prefix: string | null;
   };
@@ -526,8 +536,8 @@ export interface ConnectorDraftInput {
    *  removed 2026-07-05). */
   credential?: 'shared';
   auth?: {
-    type?: 'none' | 'bearer' | 'basic' | 'custom' | 'oauth1';
-    in?: 'header' | 'query';
+    type?: ConnectorRequestAuthType;
+    in?: 'header' | 'query' | 'cookie';
     name?: string;
     prefix?: string;
   };

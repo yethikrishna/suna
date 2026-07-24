@@ -17,50 +17,17 @@ import {
   pollOAuth2DeviceAuthorization,
   revokeOAuth2Token,
   startOAuth2DeviceAuthorization,
-  type OAuth2TokenSet,
 } from './oauth2-lifecycle';
+import {
+  createStoredDelegatedCredential,
+  parseDelegatedCredential,
+} from './oauth2-delegated';
 
 interface ProfileIdentity {
   accountId: string;
   projectId: string;
   connectorId: string;
   profileId: string;
-}
-
-interface StoredDelegatedOAuth2Credential {
-  kind: 'oauth2_delegated';
-  version: 1;
-  application: OAuth2ApplicationInput;
-  token: OAuth2TokenSet;
-}
-
-function serializeDelegatedCredential(
-  application: OAuth2ApplicationInput,
-  token: OAuth2TokenSet,
-): string {
-  return JSON.stringify({
-    kind: 'oauth2_delegated',
-    version: 1,
-    application,
-    token,
-  } satisfies StoredDelegatedOAuth2Credential);
-}
-
-export function parseDelegatedCredential(value: string): StoredDelegatedOAuth2Credential | null {
-  try {
-    const parsed = JSON.parse(value) as StoredDelegatedOAuth2Credential;
-    if (
-      parsed.kind !== 'oauth2_delegated' ||
-      parsed.version !== 1 ||
-      typeof parsed.application !== 'object' ||
-      typeof parsed.token?.access_token !== 'string'
-    ) {
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
 }
 
 export async function saveOAuth2Application(
@@ -205,7 +172,7 @@ export async function completeAuthorizationCodeSession(input: {
       projectId: loaded.projectId,
       connectorId: loaded.connectorId,
       profileId: loaded.profileId,
-      value: serializeDelegatedCredential(loaded.application, token),
+      value: createStoredDelegatedCredential(loaded.application, token),
       kind: 'oauth2_delegated',
       createdBy: claimed.initiatedBy,
     });
@@ -324,7 +291,7 @@ export async function pollDeviceAuthorizationSession(input: {
       projectId: loaded.projectId,
       connectorId: loaded.connectorId,
       profileId: loaded.profileId,
-      value: serializeDelegatedCredential(loaded.application, result.token),
+      value: createStoredDelegatedCredential(loaded.application, result.token),
       kind: 'oauth2_delegated',
       createdBy: session.initiatedBy,
     });

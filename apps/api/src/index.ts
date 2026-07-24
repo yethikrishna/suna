@@ -60,6 +60,8 @@ import {
   startTunnelService,
   stopTunnelService,
 } from './tunnel';
+import { attachBridge as attachVoiceBridge } from './channels/voice/bridge';
+import { voiceMcpRoutes } from './channels/voice/routes';
 import { accessControlApp } from './access-control';
 import { startAccessControlCache, stopAccessControlCache } from './shared/access-control-cache';
 import { startTmpReaper, stopTmpReaper } from './snapshots/tmp-reaper';
@@ -699,6 +701,10 @@ app.route('/v1/account', accountDeletionApp); // account deletion status/request
 app.route('/v1/platform', platformApp); // /v1/platform, /v1/platform/sandbox/version
 registerSunaMigrationRoutes(projectsApp); // /v1/projects/suna-migration/* (OG Suna → opencode, user-triggered)
 app.route('/v1/projects', projectsApp); // /v1/projects — Git-backed Kortix projects
+// /v1/projects/:projectId/mcp/voice — the voice MCP an in-sandbox agent calls to
+// spawn a voice agent on its own session thread. Mounted alongside projectsApp so
+// it inherits the same auth surface.
+app.route('/v1/projects', voiceMcpRoutes);
 app.route('/v1/marketplace', marketplaceApp); // /v1/marketplace — browse the registry catalog
 
 // Universal git smart-HTTP proxy — every git-backed project's client origin.
@@ -730,7 +736,6 @@ const {
   slackOauthApp,
   slackIdentityApp,
   emailWebhookApp,
-  voiceProbeApp,
 } = await import('./channels');
 app.route('/v1/webhooks/slack/oauth', slackOauthApp); // /v1/webhooks/slack/oauth/callback — OAuth dance
 app.route('/v1/webhooks/slack', slackWebhookApp); // /v1/webhooks/slack/:projectId — raw Slack events (BYO mode)
@@ -740,7 +745,6 @@ app.route('/v1/channels/slack/identity', slackIdentityApp); // /v1/channels/slac
 app.route('/v1/channels/teams/identity', teamsIdentityApp); // /v1/channels/teams/identity/bind — authed login bind
 app.route('/v1/webhooks/telegram', telegramWebhookApp); // /v1/webhooks/telegram/:projectId — Telegram updates
 app.route('/v1/webhooks/email', emailWebhookApp); // /v1/webhooks/email/agentmail — AgentMail inbound email (Svix-signed)
-app.route('/v1/webhooks/voice-probe', voiceProbeApp); // Gate 0 echo experiment — 404s unless VOICE_PROBE_ENABLED
 
 const { sandboxWebhooksApp } = await import('./platform/webhooks/routes');
 app.route('/v1/webhooks/sandbox', sandboxWebhooksApp); // /v1/webhooks/sandbox/{daytona,platinum} — provider lifecycle → close billing
@@ -1344,6 +1348,22 @@ export default {
       if (success) return undefined;
     }
 
+    // ── Voice audio bridge ──────────────────────────────────────────────
+    // `/v1/voice/bridge/{token}` — the page Recall renders inside the meeting
+    // bot streams room audio up and plays agent audio down. Raw binary PCM both
+    // ways; the token scopes it to exactly one call and carries no other
+    // authority (see channels/voice-bridge-token.ts).
+    if (isWsUpgrade && url.pathname.startsWith('/v1/voice/bridge/')) {
+      server.timeout(req, 0);
+      const token = url.pathname.slice('/v1/voice/bridge/'.length);
+      const success = server.upgrade(req, { data: { type: 'voice-bridge', token } });
+      if (success) return undefined;
+      return new Response(JSON.stringify({ error: 'WebSocket upgrade failed' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // ── Preview WebSocket proxy ─────────────────────────────────────────
     // Path-based preview upgrades (`/v1/p/{sandboxId}/{port}/...`) — today the
     // xterm PTY terminal. Authenticate via the `?token=` query param (browsers
@@ -1392,6 +1412,19 @@ export default {
         previewWsHandlers.open(ws as any);
         return;
       }
+      if (ws.data?.type === 'voice-bridge') {
+        const attached = attachVoiceBridge(ws.data.token, ws as any);
+        if (!attached.ok) {
+          try {
+            ws.close(4000 + (attached.status % 1000), attached.error ?? 'voice bridge rejected');
+          } catch {}
+          return;
+        }
+        // Stash the per-socket handlers; message/close read them back.
+        ws.data.onAudio = attached.onAudio;
+        ws.data.detach = attached.detach;
+        return;
+      }
       // No other WS upgrades are accepted.
       try {
         ws.close(1011, 'unsupported websocket upgrade');
@@ -1410,6 +1443,11 @@ export default {
         previewWsHandlers.message(ws as any, message);
         return;
       }
+      if (ws.data?.type === 'voice-bridge') {
+        // Binary PCM only — a text frame here is a client bug, not audio.
+        if (typeof message !== 'string') ws.data.onAudio?.(Buffer.from(message));
+        return;
+      }
     },
 
     close(ws: { data: any }) {
@@ -1419,6 +1457,10 @@ export default {
       }
       if (ws.data?.type === 'preview-ws') {
         previewWsHandlers.close(ws as any);
+        return;
+      }
+      if (ws.data?.type === 'voice-bridge') {
+        ws.data.detach?.();
         return;
       }
     },

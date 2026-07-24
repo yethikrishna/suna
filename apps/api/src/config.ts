@@ -293,10 +293,6 @@ const envSchema = z.object({
   VOICE_ENABLED: optBoolFalse,
   RECALL_BASE_URL: optUrl('https://us-west-2.recall.ai/api/v1'),
   RECALL_API_KEY: optStr,
-  // Gate 0 echo probe (see channels/voice-probe.ts). Opens a PUBLIC unauthenticated
-  // report sink, so it stays off unless an operator is actively running the
-  // experiment. Never enable in production.
-  VOICE_PROBE_ENABLED: optBoolFalse,
 
   // ── Channels — Microsoft Teams adapter (optional) ────────────────────────
   // One Kortix-owned multi-tenant Azure AD bot app. The same app id/password
@@ -385,9 +381,13 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: optStr,
   OPENAI_API_URL: optUrl('https://api.openai.com/v1'),
   OPENAI_API_KEY: optStr,
-  // xAI / Gemini / Groq route through OpenRouter (see router/config/proxy-services.ts),
-  // so only their base URLs are read — no per-provider API keys.
+  // xAI / Gemini / Groq route their TEXT models through OpenRouter (see
+  // router/config/proxy-services.ts), so only base URLs are read there.
   XAI_API_URL: optUrl('https://api.x.ai/v1'),
+  // The exception: the voice channel talks to xAI's realtime WebSocket directly.
+  // OpenRouter does not proxy realtime audio sessions, and the socket is held
+  // server-side so the key never reaches a sandbox or the Recall-hosted page.
+  XAI_API_KEY: optStr,
   GEMINI_API_URL: optUrl('https://generativelanguage.googleapis.com/v1beta'),
   GROQ_API_URL: optUrl('https://api.groq.com/openai/v1'),
   // ── Billing — Stripe (optional, only for cloud billing) ──────────────────
@@ -910,7 +910,6 @@ export const config = {
   VOICE_ENABLED: env.VOICE_ENABLED,
   RECALL_BASE_URL: env.RECALL_BASE_URL,
   RECALL_API_KEY: env.RECALL_API_KEY,
-  VOICE_PROBE_ENABLED: env.VOICE_PROBE_ENABLED,
 
   // ─── Channels (Microsoft Teams) ───────────────────────────────────────────
   MICROSOFT_APP_ID: env.MICROSOFT_APP_ID,
@@ -946,6 +945,7 @@ export const config = {
   OPENAI_API_URL: env.OPENAI_API_URL,
   OPENAI_API_KEY: env.OPENAI_API_KEY,
   XAI_API_URL: env.XAI_API_URL,
+  XAI_API_KEY: env.XAI_API_KEY,
   GEMINI_API_URL: env.GEMINI_API_URL,
   GROQ_API_URL: env.GROQ_API_URL,
   // ─── Stripe (Billing) ─────────────────────────────────────────────────────

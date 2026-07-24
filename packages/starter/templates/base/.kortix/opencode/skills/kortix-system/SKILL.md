@@ -8,7 +8,7 @@ description: "Canonical reference for a Kortix project: what Kortix can do (rese
 <live-skills>
 The `kortix` CLI is the live source of truth for how Kortix works. The Kortix
 **system skills** — `kortix-system`, `kortix-executor`, `kortix-memory`,
-`kortix-slack`, `kortix-computer`, `kortix-meet`, `kortix-marketplace` — are
+`kortix-slack`, `kortix-computer`, `kortix-voice`, `kortix-marketplace` — are
 served fresh by the CLI,
 so their instructions always match the platform version you're running on (no
 re-install, no image re-bake):

@@ -26,8 +26,8 @@ import {
   loadAgentMailApiKeyForInbox,
   loadAgentMailApiKeyForProject,
   loadAgentMailInstall,
-  loadMeetInstall,
-  loadMeetTokenForProject,
+  loadVoiceInstall,
+  loadVoiceTokenForProject,
   loadSlackInstall,
   loadSlackTokenForProject,
   loadTeamsBotCredentials,
@@ -360,7 +360,7 @@ async function channelToken(
   }
   if (platform === 'email')
     return resolveAgentMailApiKey(await loadAgentMailApiKeyForProject(projectId, slug));
-  if (platform === 'voice') return loadMeetTokenForProject(projectId);
+  if (platform === 'voice') return loadVoiceTokenForProject(projectId);
   return null;
 }
 
@@ -374,7 +374,7 @@ async function channelInstalled(
   if (platform === 'teams') return (await loadTeamsInstall(projectId).catch(() => null)) != null;
   if (platform === 'email')
     return (await loadAgentMailInstall(projectId, slug).catch(() => null)) != null;
-  if (platform === 'voice') return (await loadMeetInstall(projectId).catch(() => null)) != null;
+  if (platform === 'voice') return (await loadVoiceInstall(projectId).catch(() => null)) != null;
   return false;
 }
 

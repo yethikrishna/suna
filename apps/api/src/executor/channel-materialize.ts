@@ -2,7 +2,7 @@ import { projects } from '@kortix/db';
 import { eq } from 'drizzle-orm';
 import {
   listAgentMailInstalls,
-  loadMeetInstall,
+  loadVoiceInstall,
   loadSlackInstall,
   loadTeamsInstall,
 } from '../channels/install-store';
@@ -110,7 +110,7 @@ export async function synthesizeChannelConnectors(
   if (project && resolveExperimentalFeature(project.metadata, 'voice')) {
     const meetSlug = channelDefaultSlug('voice');
     if (!channelAlreadyDeclared(declared, 'voice', meetSlug)) {
-      const install = await loadMeetInstall(projectId).catch(() => null);
+      const install = await loadVoiceInstall(projectId).catch(() => null);
       if (install) specs.push(channelSpec('voice', meetSlug));
     }
   }

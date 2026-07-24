@@ -52,6 +52,7 @@ class GrokVoiceSession implements VoiceSession {
   private transcriptCbs: Array<(t: VoiceTranscriptTurn) => void> = [];
   private toolCbs: Array<(c: VoiceToolCall) => void> = [];
   private closeCbs: Array<(i: { code: number; reason: string }) => void> = [];
+  private interruptCbs: Array<() => void> = [];
   /** Last cumulative user transcript, so we can emit only what is new. */
   private lastUserTranscript = '';
   private agentTextBuffer = '';
@@ -70,20 +71,20 @@ class GrokVoiceSession implements VoiceSession {
   }
 
   configure(): void {
+    // Deliberately minimal. An earlier version also sent `audio` (format +
+    // sample rate), `reasoning`, and `resumption`; the server rejected the whole
+    // event with "8 validation errors" and SILENTLY fell back to defaults — no
+    // voice, no instructions, and critically no tools, so ask_kortix did not
+    // exist. A rejected session.update is not partially applied.
+    //
+    // The audio block is not needed anyway: the provider's default is PCM at
+    // VOICE_SAMPLE_RATE, which is exactly what the bridge sends.
     this.send({
       type: 'session.update',
       session: {
         voice: this.opts.voice,
         instructions: this.opts.instructions,
-        // All real thinking is delegated to the Kortix session via ask_kortix, so
-        // spending reasoning budget here only adds time-to-first-audio.
-        reasoning: { effort: 'none' },
         turn_detection: TURN_DETECTION,
-        audio: {
-          input: { format: 'audio/pcm', sample_rate: this.opts.sampleRate },
-          output: { format: 'audio/pcm', sample_rate: this.opts.sampleRate },
-        },
-        resumption: { enabled: true },
         tools: this.opts.tools.map((t) => ({
           type: 'function',
           name: t.name,
@@ -102,10 +103,28 @@ class GrokVoiceSession implements VoiceSession {
       return; // non-JSON frame; nothing actionable
     }
 
+    // A rejected session.update is silent otherwise: the socket stays open and
+    // the model answers on defaults, so it looks like it works while having no
+    // tools and no instructions. Always surface it.
+    if (e.type === 'error') {
+      console.error(`[voice] provider rejected an event: ${JSON.stringify(e).slice(0, 1500)}`);
+    } else if (process.env.VOICE_DEBUG) {
+      console.log(`  [grok] ${e.type}`);
+    }
+    if (e.type === 'session.updated') console.log('[voice] session config accepted');
+
     switch (e.type) {
       case 'conversation.created': {
         const conv = e.conversation as { id?: string } | undefined;
         this.conversationId = conv?.id ?? null;
+        break;
+      }
+
+      case 'input_audio_buffer.speech_started': {
+        // Barge-in. Anything already queued downstream is stale — if it is not
+        // dropped, playback runs behind by the length of the abandoned reply and
+        // the delay compounds with every interruption.
+        for (const cb of this.interruptCbs) cb();
         break;
       }
 
@@ -139,7 +158,10 @@ class GrokVoiceSession implements VoiceSession {
         break;
       }
 
-      case 'response.text.delta': {
+      case 'response.text.delta':
+      case 'response.output_audio_transcript.delta': {
+        // Spoken output arrives as an audio-transcript delta, not a text delta —
+        // listening only for the latter left every agent turn blank.
         if (typeof e.delta === 'string') this.agentTextBuffer += e.delta;
         break;
       }
@@ -210,6 +232,9 @@ class GrokVoiceSession implements VoiceSession {
   }
   onToolCall(cb: (c: VoiceToolCall) => void): void {
     this.toolCbs.push(cb);
+  }
+  onInterrupt(cb: () => void): void {
+    this.interruptCbs.push(cb);
   }
   onClose(cb: (i: { code: number; reason: string }) => void): void {
     this.closeCbs.push(cb);

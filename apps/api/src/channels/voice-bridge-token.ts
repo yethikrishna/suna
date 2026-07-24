@@ -104,6 +104,14 @@ export function resolveVoiceBridgeToken(token: string | undefined | null): Resol
   return { ok: true, projectId, callId: payload.call, payload };
 }
 
-export function voiceBridgeUrl(frontendUrl: string, token: string): string {
-  return `${frontendUrl.replace(/\/+$/, '')}/voice/${token}`;
+/**
+ * The page is served by the web app but must open its audio socket against the
+ * API, which is a different host in every real deployment (and in local dev).
+ * The API knows its own public base and the page cannot guess it, so it is
+ * passed explicitly rather than inferred from window.location.
+ */
+export function voiceBridgeUrl(frontendUrl: string, token: string, apiBaseUrl?: string): string {
+  const base = `${frontendUrl.replace(/\/+$/, '')}/voice/${token}`;
+  if (!apiBaseUrl) return base;
+  return `${base}?api=${encodeURIComponent(apiBaseUrl.replace(/\/+$/, ''))}`;
 }

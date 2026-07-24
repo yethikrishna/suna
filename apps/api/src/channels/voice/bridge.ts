@@ -15,7 +15,7 @@ import { resolveVoiceBridgeToken } from '../voice-bridge-token';
 import { getCall } from './runtime';
 
 export interface BridgeSocket {
-  send(data: ArrayBufferLike | Uint8Array): void;
+  send(data: ArrayBufferLike | Uint8Array | string): void;
   close(code?: number, reason?: string): void;
 }
 
@@ -60,6 +60,17 @@ export function attachBridge(
   };
   call.sendToRoom = toRoom;
 
+  // Control rides as a TEXT frame; audio is always binary, so the page can tell
+  // them apart without an envelope on every PCM chunk.
+  const interrupt = () => {
+    try {
+      socket.send(JSON.stringify({ type: 'flush' }) as unknown as Uint8Array);
+    } catch {
+      /* page gone */
+    }
+  };
+  call.interruptRoom = interrupt;
+
   return {
     ok: true,
     status: 200,
@@ -72,6 +83,7 @@ export function attachBridge(
       // Only clear if we are still the active page; a reconnect may have already
       // installed a newer sink and we must not unhook it.
       if (call.sendToRoom === toRoom) call.sendToRoom = null;
+      if (call.interruptRoom === interrupt) call.interruptRoom = null;
     },
   };
 }

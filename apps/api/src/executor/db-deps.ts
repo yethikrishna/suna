@@ -535,7 +535,14 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
       // The call is keyed by the session that spawned it — that binding is what
       // lets the voice agent and the Kortix session prompt each other later.
       const { token } = mintVoiceBridgeToken(projectId, sessionId);
-      const patch = voiceJoinPatch(projectId, sessionId, voiceBridgeUrl(config.FRONTEND_URL, token));
+      const patch = voiceJoinPatch(
+        projectId,
+        sessionId,
+        // KORTIX_URL is the API's PUBLIC base (the tunnel in dev, api.kortix.com
+        // in prod) — the page is rendered in Recall's browser and has to reach us
+        // from the internet, not from localhost.
+        voiceBridgeUrl(config.FRONTEND_URL, token, config.KORTIX_URL),
+      );
       return patch ? { metadata: patch.metadata, outputMedia: patch.outputMedia, botName } : null;
     },
     loadPolicies: loadConnectorPoliciesFor,

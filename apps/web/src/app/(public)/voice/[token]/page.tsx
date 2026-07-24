@@ -23,9 +23,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-/** Must match VOICE_SAMPLE_RATE in apps/api. Recall's page context runs at 44.1kHz. */
-const SAMPLE_RATE = 44_100;
-const FRAME_SAMPLES = 2048;
+/** Must match VOICE_SAMPLE_RATE in apps/api. Constructing the AudioContext at
+ *  this rate makes the browser resample the mic for us, so the provider always
+ *  receives audio at the rate it expects. */
+const SAMPLE_RATE = 24_000;
+/** ~20ms of capture per message. Small enough to stay responsive, large enough
+ *  that we are not sending a websocket frame every render quantum. */
+const CAPTURE_FRAME = 480;
+/** ~2s of playback buffer — absorbs burst delivery without adding latency. */
+const RING_SAMPLES = 48_000;
 
 type Phase = 'starting' | 'listening' | 'speaking' | 'reconnecting' | 'failed';
 
@@ -53,17 +59,23 @@ export default function VoiceBridgePage() {
 
   useEffect(() => {
     const token = window.location.pathname.split('/').filter(Boolean).pop() ?? '';
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${
-      process.env.NEXT_PUBLIC_BACKEND_HOST || window.location.host
-    }/v1/voice/bridge/${token}`;
+    // The API told us its public base when it minted this URL. Never infer it
+    // from window.location — that is the WEB host, which is a different origin
+    // from the API in every real deployment.
+    const apiBase = (
+      new URLSearchParams(window.location.search).get('api') ||
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      window.location.origin
+    ).replace(/\/+$/, '');
+    const wsUrl = `${apiBase.replace(/^http/, 'ws')}/v1/voice/bridge/${token}`;
 
     let cancelled = false;
     let ws: WebSocket | null = null;
     let ctx: AudioContext | null = null;
     let stream: MediaStream | null = null;
     let reconnects = 0;
-    /** Absolute time the next chunk of agent audio should start, for gapless playback. */
-    let playHead = 0;
+    let player: AudioWorkletNode | null = null;
+    let speakingTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function connect(): Promise<void> {
       ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
@@ -87,23 +99,19 @@ export default function VoiceBridgePage() {
       };
 
       ws.onmessage = (ev) => {
-        if (!(ev.data instanceof ArrayBuffer) || !ctx) return;
-        const samples = pcm16ToFloat(ev.data);
-        const buffer = ctx.createBuffer(1, samples.length, SAMPLE_RATE);
-        buffer.copyToChannel(samples, 0);
-        const src = ctx.createBufferSource();
-        src.buffer = buffer;
-        src.connect(ctx.destination);
-        // Queue against a running play head so consecutive chunks butt up
-        // against each other; scheduling everything at `currentTime` overlaps
-        // them and turns speech into garbled mush.
-        const now = ctx.currentTime;
-        if (playHead < now) playHead = now;
-        src.start(playHead);
-        playHead += buffer.duration;
+        // Text frames are control, binary is audio.
+        if (typeof ev.data === 'string') {
+          // Barge-in: drop what is queued. Without this, playback stays behind by
+          // the length of the abandoned reply and the delay compounds each time.
+          if (ev.data.includes('flush')) player?.port.postMessage('flush');
+          return;
+        }
+        if (!(ev.data instanceof ArrayBuffer) || !player) return;
+        player.port.postMessage(pcm16ToFloat(ev.data));
         if (!cancelled) {
           setPhase('speaking');
-          setTimeout(() => !cancelled && setPhase('listening'), buffer.duration * 1000 + 250);
+          if (speakingTimer) clearTimeout(speakingTimer);
+          speakingTimer = setTimeout(() => !cancelled && setPhase('listening'), 700);
         }
       };
 
@@ -122,19 +130,84 @@ export default function VoiceBridgePage() {
       };
 
       const source = ctx.createMediaStreamSource(stream);
-      const processor = ctx.createScriptProcessor(FRAME_SAMPLES, 1, 1);
-      source.connect(processor);
-      // ScriptProcessor only runs while connected to a destination; a zero gain
-      // keeps it pumping without echoing the room back into the room.
+
+      // Both directions run on the audio thread, in ONE worklet module.
+      //
+      // Capture batches to ~20ms. A worklet's process() fires every 128 samples,
+      // which at 24kHz is every 5.3ms — sending that raw meant ~188 websocket
+      // frames AND ~188 base64 JSON events per second to the provider. That
+      // flood is what made the audio jittery, not the meeting platform.
+      //
+      // Playback is a ring buffer, not one AudioBuffer per chunk. The provider
+      // bursts a reply as many small deltas; scheduling each as its own node put
+      // a seam at every boundary. A ring buffer emits one continuous stream and
+      // absorbs irregular arrival, which is what makes speech sound like speech.
+      const workletSrc = `
+        const FRAME = ${CAPTURE_FRAME};
+        class Cap extends AudioWorkletProcessor {
+          constructor() { super(); this.buf = new Float32Array(FRAME); this.n = 0; }
+          process(inputs) {
+            const ch = inputs[0] && inputs[0][0];
+            if (!ch) return true;
+            for (let i = 0; i < ch.length; i++) {
+              this.buf[this.n++] = ch[i];
+              if (this.n === FRAME) { this.port.postMessage(this.buf.slice(0)); this.n = 0; }
+            }
+            return true;
+          }
+        }
+        registerProcessor('cap', Cap);
+
+        class Play extends AudioWorkletProcessor {
+          constructor() {
+            super();
+            this.ring = new Float32Array(${RING_SAMPLES});
+            this.r = 0; this.w = 0;
+            this.port.onmessage = (e) => {
+              if (e.data === 'flush') { this.r = this.w = 0; return; }
+              const d = e.data;
+              for (let i = 0; i < d.length; i++) {
+                this.ring[this.w] = d[i];
+                this.w = (this.w + 1) % this.ring.length;
+              }
+            };
+          }
+          process(_i, outputs) {
+            const out = outputs[0][0];
+            for (let i = 0; i < out.length; i++) {
+              // Underrun writes silence rather than stalling — a gap is far less
+              // audible than a stutter, and the ring refills on the next delta.
+              out[i] = this.r === this.w ? 0 : this.ring[this.r];
+              if (this.r !== this.w) this.r = (this.r + 1) % this.ring.length;
+            }
+            return true;
+          }
+        }
+        registerProcessor('play', Play);
+      `;
+      const blobUrl = URL.createObjectURL(new Blob([workletSrc], { type: 'application/javascript' }));
+      await ctx.audioWorklet.addModule(blobUrl);
+      URL.revokeObjectURL(blobUrl);
+
+      const capture = new AudioWorkletNode(ctx, 'cap');
+      source.connect(capture);
+      // A worklet with no downstream connection is not guaranteed to be pulled;
+      // a muted sink keeps it running without feeding the room back to itself.
       const mute = ctx.createGain();
       mute.gain.value = 0;
-      processor.connect(mute).connect(ctx.destination);
+      capture.connect(mute).connect(ctx.destination);
 
-      processor.onaudioprocess = (e) => {
-        const input = e.inputBuffer.getChannelData(0);
-        let peak = 0;
-        for (let i = 0; i < input.length; i++) peak = Math.max(peak, Math.abs(input[i]!));
-        if (!cancelled) setLevel(peak);
+      player = new AudioWorkletNode(ctx, 'play', { outputChannelCount: [1] });
+      player.connect(ctx.destination);
+
+      let levelTick = 0;
+      capture.port.onmessage = (e: MessageEvent<Float32Array>) => {
+        const input = e.data;
+        if (++levelTick % 4 === 0) {
+          let peak = 0;
+          for (let i = 0; i < input.length; i++) peak = Math.max(peak, Math.abs(input[i]!));
+          if (!cancelled) setLevel(peak);
+        }
         if (ws && ws.readyState === WebSocket.OPEN) ws.send(floatToPcm16(input));
       };
     }
@@ -163,7 +236,7 @@ export default function VoiceBridgePage() {
     const canvas = canvasRef.current;
     const c = canvas?.getContext('2d');
     if (!canvas || !c) return;
-    let raf = 0;
+    let timer: ReturnType<typeof setInterval> | null = null;
     const draw = () => {
       c.clearRect(0, 0, canvas.width, canvas.height);
       const r = 60 + level * 260;
@@ -182,10 +255,14 @@ export default function VoiceBridgePage() {
       c.beginPath();
       c.arc(canvas.width / 2, canvas.height / 2, Math.max(r, 1), 0, Math.PI * 2);
       c.fill();
-      raf = requestAnimationFrame(draw);
     };
+    // Recall captures at 15fps; 10fps here is indistinguishable in the call and
+    // leaves the main thread alone.
+    timer = setInterval(draw, 100);
     draw();
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      if (timer) clearInterval(timer);
+    };
   }, [level, phase]);
 
   const label =

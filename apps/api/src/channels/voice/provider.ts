@@ -64,6 +64,9 @@ export interface VoiceSession {
   onAudio(cb: (pcm: PcmFrame) => void): void;
   onTranscript(cb: (turn: VoiceTranscriptTurn) => void): void;
   onToolCall(cb: (call: VoiceToolCall) => void): void;
+  /** The user started talking — whatever is queued for playback is now stale. */
+  onInterrupt(cb: () => void): void;
+
   onClose(cb: (info: { code: number; reason: string }) => void): void;
 
   close(): Promise<void>;

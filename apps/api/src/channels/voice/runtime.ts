@@ -25,8 +25,13 @@ import { db } from '../../shared/db';
 import { grokVoiceProvider } from './providers/grok';
 import type { VoiceProvider, VoiceSession, VoiceToolCall } from './provider';
 
-/** Recall renders the bridge page at 44.1kHz; the provider is told to match. */
-export const VOICE_SAMPLE_RATE = 44_100;
+/**
+ * 24kHz — the realtime provider's native/default rate. Recall's page context
+ * happens to run at 44.1kHz, but the browser resamples for us when the
+ * AudioContext is constructed at this rate, and matching the provider's default
+ * means we never depend on getting a rate-negotiation field exactly right.
+ */
+export const VOICE_SAMPLE_RATE = 24_000;
 
 const provider: VoiceProvider = grokVoiceProvider;
 
@@ -40,6 +45,8 @@ export interface VoiceCall {
   startedAt: number;
   /** Set when the audio bridge page is connected; audio is dropped until then. */
   sendToRoom: ((pcm: Buffer) => void) | null;
+  /** Tells the page to drop queued playback after a barge-in. */
+  interruptRoom: (() => void) | null;
   closed: boolean;
 }
 
@@ -143,6 +150,7 @@ export async function startCall(input: StartCallInput): Promise<VoiceCall> {
     session,
     startedAt: Date.now(),
     sendToRoom: null,
+    interruptRoom: null,
     closed: false,
   };
   calls.set(input.callId, call);
@@ -152,6 +160,8 @@ export async function startCall(input: StartCallInput): Promise<VoiceCall> {
     // correct — buffering would replay stale speech into the room on connect.
     call.sendToRoom?.(pcm);
   });
+
+  session.onInterrupt(() => call.interruptRoom?.());
 
   session.onTranscript((turn) => {
     if (!turn.final) return; // only final turns are worth persisting

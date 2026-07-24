@@ -194,7 +194,7 @@ export function managedModels(): Record<string, GatewayModel> {
   for (const m of RUNTIME_MANAGED_MODELS) {
     out[m.id] = {
       name: m.name,
-      provider: KORTIX_PROVIDER_ID,
+      provider: m.providerBrand ?? KORTIX_PROVIDER_ID,
       reasoning: true,
       tool_call: true,
       attachment: m.vision,

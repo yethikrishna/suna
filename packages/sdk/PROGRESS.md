@@ -217,7 +217,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B15 | **Top-level `runtime()` on a scoped client bled to the process-global sandbox (cross-tenant).** `createScopedKortix`'s `wrapScoped` scopes the token but not the top-level `runtime()`, which resolves the process-global active runtime (`getActiveOpenCodeUrl()` → last session to `ensureReady()`). In a multi-tenant KaaB wrapper `kortixA.runtime()` reached another end-user's sandbox. #5273 scoped `session().runtime` but not this. | `src/node/server.ts` (`createScopedKortix`); `src/core/client/kortix.ts:43,752,1000`; `src/core/session/server-store/active.ts:21`. RED-proven in `src/node/server.test.ts` (scoped `runtime()` returned a client instead of throwing). | **DONE 2026-07-23** — session `sdk-scoped-runtime`; scoped `runtime()` now throws + steers to `session(pid,sid).runtime`; adds no public export (surface snapshot unchanged); typecheck + full suite (1156 pass) + `smoke:install` green |
 | B16 | **Retry transient transport failures on idempotent REST reads before reporting them.** Browser CORS preflight failures surface as opaque `TypeError: Failed to fetch`, bypass the existing HTTP 502/503/504 retry loop, and call the host error handler before React Query retries successfully. Cache successful preflights to reduce exposure without retrying mutations. | Production session `d9abee06-5af1-48b9-ba92-53ca0fcf0589` logged continuous audit `200` responses after one browser preflight failure; `src/core/http/api-client.ts` retries response statuses but reports initial fetch throws immediately; `apps/api/src/index.ts` emits no `Access-Control-Max-Age`. | **DONE 2026-07-24** — implementation `9f6e5b615`; session `cors-transport-resilience` |
 | B17 | **Add native OAuth2 client-credentials lifecycle support to existing connector connection profiles.** Static bearer credentials cannot acquire, cache, refresh, or revoke OAuth2 access tokens. Microsoft Graph and SharePoint require OAuth2 and cannot use a static API key. | `apps/api/src/executor/credentials.ts` decrypts one opaque value; `apps/api/src/executor/db-deps.ts` passes that value directly to `executeCall`; `packages/sdk/src/core/rest/projects-client/connectors.ts` accepts only `{ value }`. | **DONE 2026-07-24** — session `native-oauth-sharepoint`; full SDK gates and real SharePoint proof green |
-| B18 | **Keep the managed-model playground pin synchronized with the managed catalog.** The playground exits before API access when its pinned IDs differ from `MANAGED_MODELS`. | `packages/sdk/playground/chat/14-change-default-model.ts` still pins retired `qwen3.7-max` and `deepseek-v4-pro`. | **IN PROGRESS 2026-07-24** — session `managed-models-aster` |
+| B18 | **Keep the managed-model playground pin synchronized with the managed catalog.** The playground exits before API access when its pinned IDs differ from `MANAGED_MODELS`. | `packages/sdk/playground/chat/14-change-default-model.ts` still pins retired `qwen3.7-max` and `deepseek-v4-pro`. | **DONE 2026-07-24** — session `managed-models-aster`; full SDK gates green |
 
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
@@ -1631,7 +1631,6 @@ database reports zero rows for its project and auth user.
 **Shippable to production: YES** for B17 and the published SDK surface.
 Repository merge, Deploy Dev, deployed-SHA proof, and live-dev verification
 remain part of the repository lifecycle.
-
 ---
 
 ### 2026-07-24 — session `frontend-sdk-only` (web SDK boundary Task 1)
@@ -1818,3 +1817,23 @@ The generic auth spec failed because its default local user credentials were
 absent. The SDK-only regression creates and deletes its own confirmed user.
 
 **Shippable to production: NOT YET.** Task 8 delivery and dev proof remains.
+---
+
+### 2026-07-24 — session `managed-models-aster` (B18 completion)
+
+Synchronized the managed-model playground pin with the four-model managed
+catalog. The pin contains `claude-opus-4.8`, `claude-sonnet-4.6`, `glm-5.2`,
+and `deepseek-v4-flash`. The pin no longer contains `qwen3.7-max` or
+`deepseek-v4-pro`.
+
+**RED evidence:** the playground stopped before API access because the pinned
+IDs contained retired managed models.
+
+**Final SDK gates:** `pnpm --filter @kortix/sdk typecheck` exited 0. The full SDK
+suite reported **1185 pass / 2 skip / 0 fail** across 89 files. The
+packed-install smoke built, packed, installed, imported, and constructed
+`@kortix/sdk`.
+
+**Shippable to production: YES** for B18 and the published SDK surface.
+Repository delivery and live-dev verification remain part of the repository
+lifecycle.

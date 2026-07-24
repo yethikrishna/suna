@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
-// Minimal config stub — none of the functions under test here read config
-// fields, but descriptors.ts imports `config` at module scope (other
-// exports in the file use it), so it must resolve to something.
-const config: Record<string, unknown> = {};
+const config: Record<string, unknown> = {
+  KORTIX_MANAGED_PROVIDER_ENABLED: true,
+  ASTER_API_KEY: 'aster-test-key',
+  ASTER_API_URL: 'https://api.asterlab.ai/v1',
+};
 mock.module('../../config', () => ({ config }));
+mock.module('../../billing/services/tiers', () => ({ llmPriceMarkup: () => 2 }));
 
 // Stand in for the live models.dev pricing cache (router/config/model-pricing)
 // with a tiny fixed catalog keyed by BASE (unprefixed) Bedrock model ids —
@@ -17,7 +19,7 @@ const CATALOG: Record<string, { inputPer1M: number; outputPer1M: number }> = {
 const getModelPricing = mock((modelId: string) => CATALOG[modelId] ?? null);
 mock.module('../../router/config/model-pricing', () => ({ getModelPricing }));
 
-const { livePricing, stripBedrockInferenceProfilePrefix } = await import('./descriptors');
+const { livePricing, managedCandidates, stripBedrockInferenceProfilePrefix } = await import('./descriptors');
 
 beforeEach(() => {
   getModelPricing.mockClear();
@@ -91,5 +93,39 @@ describe('livePricing + stripBedrockInferenceProfilePrefix — the actual $0 bug
   test('amazon.nova-micro cross-region id resolves via apac. prefix too', () => {
     const stripped = stripBedrockInferenceProfilePrefix('apac.amazon.nova-micro-v1:0');
     expect(livePricing(stripped)).toEqual(livePricing('amazon.nova-micro-v1:0'));
+  });
+});
+
+describe('managed AsterLab descriptor', () => {
+  test('routes GLM 5.2 to AsterLab with the AWS-managed deployment credential', () => {
+    expect(managedCandidates({
+      id: 'glm-5.2',
+      name: 'GLM 5.2',
+      upstreamModelId: 'glm-5.2',
+      transport: 'aster',
+      pricingRef: 'z-ai/glm-5.2',
+      pricing: {
+        inputPerMillion: 1,
+        cachedInputPerMillion: 0.2,
+        outputPerMillion: 4,
+      },
+      tier: 'balanced',
+      vision: false,
+      limit: { context: 1_000_000, output: 131_072 },
+    })).toEqual([
+      expect.objectContaining({
+        provider: 'aster',
+        kind: 'openai-compat',
+        baseUrl: 'https://api.asterlab.ai/v1',
+        apiKey: 'aster-test-key',
+        resolvedModel: 'glm-5.2',
+        billingMode: 'credits',
+        pricing: {
+          inputPerMillion: 1,
+          cachedInputPerMillion: 0.2,
+          outputPerMillion: 4,
+        },
+      }),
+    ]);
   });
 });

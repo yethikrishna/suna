@@ -15,8 +15,6 @@ describe("managed catalog", () => {
       "claude-opus-4.8",
       "claude-sonnet-4.6",
       "glm-5.2",
-      "qwen3.7-max",
-      "deepseek-v4-pro",
       "deepseek-v4-flash",
     ]);
   });
@@ -41,7 +39,7 @@ describe("managed catalog", () => {
         m.pricingRef.length,
         `${m.id} needs a pricing ref`,
       ).toBeGreaterThan(0);
-      expect(["bedrock", "openrouter"]).toContain(m.transport);
+      expect(["aster", "bedrock", "openrouter"]).toContain(m.transport);
     }
   });
 
@@ -51,8 +49,8 @@ describe("managed catalog", () => {
   // catalog id ('claude-opus-4-8') — every consumer's pricing/capability
   // lookup by `pricingRef` silently missed and fell back to a permissive
   // synthetic record. Guard the SOURCE OF TRUTH directly for the Claude
-  // (bedrock-transport) managed models specifically — unlike glm-5.2/
-  // qwen3.7-max/deepseek-*, whose `pricingRef` is DELIBERATELY unresolvable
+  // (bedrock-transport) managed models specifically — unlike glm-5.2 and
+  // deepseek-v4-flash, whose `pricingRef` is DELIBERATELY unresolvable
   // on models.dev under a matching provider id (z-ai≠zhipuai, qwen≠alibaba —
   // see the `vision`/`limit` doc comment above), Claude's pricingRef SHOULD
   // always resolve since `anthropic` is a real models.dev provider id.
@@ -76,10 +74,12 @@ describe("managed catalog", () => {
         expect(m.upstreamModelId, `${m.id} (Bedrock) → Anthropic`).toContain(
           "anthropic.claude",
         );
-      } else {
+      } else if (m.transport === "openrouter") {
         // OpenRouter slugs are provider/model.
-        expect(m.transport, `${m.id} transport`).toBe("openrouter");
         expect(m.upstreamModelId, `${m.id} OpenRouter slug`).toContain("/");
+      } else {
+        expect(m.transport, `${m.id} transport`).toBe("aster");
+        expect(m.upstreamModelId, `${m.id} AsterLab model`).toBe("glm-5.2");
       }
     }
   });
@@ -97,14 +97,14 @@ describe("managed resolution + back-compat aliases", () => {
     expect(getManagedModel("claude-opus-4.8")?.name).toBe("Claude Opus 4.8");
     expect(getManagedModel("claude-opus-4.8")?.transport).toBe("bedrock");
     expect(getManagedModel("glm-5.2")?.name).toBe("GLM 5.2");
-    expect(getManagedModel("glm-5.2")?.transport).toBe("openrouter");
-    expect(getManagedModel("glm-5.2")?.upstreamModelId).toBe("z-ai/glm-5.2");
-    expect(getManagedModel("qwen3.7-max")?.upstreamModelId).toBe(
-      "qwen/qwen3.7-max",
-    );
-    expect(getManagedModel("deepseek-v4-pro")?.upstreamModelId).toBe(
-      "deepseek/deepseek-v4-pro",
-    );
+    expect(getManagedModel("glm-5.2")?.transport).toBe("aster");
+    expect(getManagedModel("glm-5.2")?.upstreamModelId).toBe("glm-5.2");
+    expect(getManagedModel("glm-5.2")?.pricing).toEqual({
+      inputPerMillion: 1,
+      cachedInputPerMillion: 0.2,
+      outputPerMillion: 4,
+    });
+    expect(getManagedModel("deepseek-v4-flash")?.providerBrand).toBe("deepseek");
   });
 
   test("retired / superseded model ids no longer resolve (aliases removed)", () => {

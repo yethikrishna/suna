@@ -9,6 +9,10 @@ import { catalogModelForWireModel, gatewayModelCatalog } from './catalog-models'
 describe('gatewayModelCatalog — served catalog', () => {
   const full = gatewayModelCatalog('proj');
 
+  test('brands managed DeepSeek V4 Flash with the DeepSeek provider', () => {
+    expect(full['deepseek-v4-flash']?.provider).toBe('deepseek');
+  });
+
   test('every served model carries a positive context limit', () => {
     const missing = Object.entries(full)
       .filter(([, m]) => !(typeof m.limit?.context === 'number' && m.limit.context > 0))
@@ -127,7 +131,7 @@ describe('gatewayModelCatalog — free-tier visibility', () => {
 
   test('free tier sees no managed Kortix models', () => {
     expect(freeFull.auto).toBeUndefined();
-    for (const id of ['claude-opus-4.8', 'claude-sonnet-4.6', 'glm-5.2', 'qwen3.7-max', 'deepseek-v4-flash']) {
+    for (const id of ['claude-opus-4.8', 'claude-sonnet-4.6', 'glm-5.2', 'deepseek-v4-flash']) {
       expect(freeFull[id], id).toBeUndefined();
     }
   });

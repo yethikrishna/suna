@@ -79,7 +79,7 @@ export function livePricing(modelId: string): UpstreamDescriptor['pricing'] | un
 }
 
 function managedPricing(managed: ManagedModel): UpstreamDescriptor['pricing'] | undefined {
-  return livePricing(managed.pricingRef);
+  return managed.pricing ?? livePricing(managed.pricingRef);
 }
 
 function openRouterManagedDescriptor(managed: ManagedModel): UpstreamDescriptor | null {
@@ -96,6 +96,20 @@ function openRouterManagedDescriptor(managed: ManagedModel): UpstreamDescriptor 
     resolvedModel: managed.upstreamModelId,
     pricing: managedPricing(managed),
     ...(managed.openrouterProvider ? { bodyExtras: { provider: managed.openrouterProvider } } : {}),
+  };
+}
+
+function asterManagedDescriptor(managed: ManagedModel): UpstreamDescriptor | null {
+  if (!config.ASTER_API_KEY) return null;
+  return {
+    provider: 'aster',
+    kind: 'openai-compat',
+    baseUrl: config.ASTER_API_URL,
+    apiKey: config.ASTER_API_KEY,
+    billingMode: 'credits',
+    markup: llmPriceMarkup(),
+    resolvedModel: managed.upstreamModelId,
+    pricing: managedPricing(managed),
   };
 }
 
@@ -133,13 +147,14 @@ export function managedCandidates(managed: ManagedModel): UpstreamDescriptor[] {
   // CLOUD-ONLY gate, defense-in-depth: RUNTIME_MANAGED_MODELS is already empty
   // on a deployment with KORTIX_MANAGED_PROVIDER_ENABLED off (managed-models.ts),
   // so this only ever reaches a real ManagedModel when the flag is on — but
-  // guard here too so neither AWS_BEDROCK_API_KEY nor OPENROUTER_API_KEY is
-  // ever read for managed routing if some future caller reaches this directly.
+  // guard here too so no managed credential is read if some future caller
+  // reaches this directly.
   if (!config.KORTIX_MANAGED_PROVIDER_ENABLED) return [];
-  const d =
-    managed.transport === 'openrouter'
-      ? openRouterManagedDescriptor(managed)
-      : bedrockManagedDescriptor(managed);
+  const d = {
+    aster: asterManagedDescriptor,
+    bedrock: bedrockManagedDescriptor,
+    openrouter: openRouterManagedDescriptor,
+  }[managed.transport](managed);
   return d ? [d] : [];
 }
 

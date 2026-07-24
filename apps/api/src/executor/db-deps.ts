@@ -636,6 +636,18 @@ export function resolveTokenBoundSessionId(
   return { ok: true, sessionId: authenticatedSessionId };
 }
 
+/**
+ * Only project-scoped tokens carry a Kortix project session identity.
+ * Supabase JWTs also set `sessionId`, but that value identifies the Supabase
+ * authentication session. It must not enter connector profile resolution.
+ */
+export function projectSessionIdForProjectPrincipal(
+  tokenProjectId: string | undefined,
+  contextualSessionId: string | undefined,
+): string | null {
+  return tokenProjectId ? (contextualSessionId ?? null) : null;
+}
+
 async function resolvePrincipal(c: Context): Promise<ExecutorPrincipal | null> {
   const header = c.req.header('Authorization');
   const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
@@ -703,7 +715,10 @@ async function resolveProjectPrincipal(
   }
   if (!accountId) return null;
   const sessionIdentity = resolveTokenBoundSessionId(
-    (c.get('sessionId') as string | undefined) ?? null,
+    projectSessionIdForProjectPrincipal(
+      tokenProjectId,
+      c.get('sessionId') as string | undefined,
+    ),
     c.req.header('X-Kortix-Session-Id') ?? null,
   );
   if (!sessionIdentity.ok) return null;

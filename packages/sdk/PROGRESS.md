@@ -185,7 +185,7 @@ Also stop if the same failure survives three different fixes (use
 
 | # | Task | Status | Session | Last touched | Commit |
 |---|---|---|---|---|---|
-| 1 | Contracts and RED tests | NOT STARTED | — | — | — |
+| 1 | Contracts and RED tests | IN PROGRESS | `native-oauth-full-lifecycle` | 2026-07-25 | claim |
 | 2 | Database lifecycle | NOT STARTED | — | — | — |
 | 3 | OAuth2 protocol engine | NOT STARTED | — | — | — |
 | 4 | API lifecycle routes | NOT STARTED | — | — | — |

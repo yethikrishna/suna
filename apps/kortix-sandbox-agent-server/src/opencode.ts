@@ -180,22 +180,18 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
       out.provider && typeof out.provider === 'object' && !Array.isArray(out.provider)
         ? (out.provider as Record<string, unknown>)
         : {}
-    const kortixProvider = await buildKortixProvider({
+    const kortixProvider = buildKortixProvider({
       // In proxy mode opencode talks to the localhost proxy with a placeholder
       // key; the proxy injects the real per-session token upstream. In direct
       // mode (cold/Daytona) it's the real gateway base + key, as before.
       baseURL: proxyMode ? llmProxyUrl! : llmBaseUrl!,
       apiKey: proxyMode ? LLM_PROXY_PLACEHOLDER_KEY : llmApiKey!,
-      // Catalog is org-stable, so prefer the baked file — the full model catalog
-      // ships in every image at BAKED_LLM_CATALOG_PATH. Defaulting to it means a
-      // COLD boot (Daytona + Platinum) reads the file and SKIPS the ~2.2s gateway
-      // /models fetch that otherwise gates opencode's port bind on the critical
-      // path — matching how the warm seed (KORTIX_LLM_CATALOG_FILE) already
-      // behaves. Missing/empty file → readCatalogFile returns null → the fetch
-      // (step 2) still runs as the fallback, so this only ever removes latency.
+      // Catalog is org-stable and ships baked into every image at
+      // BAKED_LLM_CATALOG_PATH, so this resolves off DISK — no network on the
+      // path that gates opencode's port bind. loadGatewayCatalog is local-only
+      // by construction now; a missing file degrades to the minimal set and is
+      // repaired in the background (scheduleCatalogWarm), never by blocking boot.
       catalogFile: env.KORTIX_LLM_CATALOG_FILE ?? BAKED_LLM_CATALOG_PATH,
-      fetchBaseURL: llmBaseUrl,
-      fetchApiKey: llmApiKey,
     })
     out.provider = {
       ...provider,
@@ -243,15 +239,13 @@ type KortixProviderOpts = {
   baseURL: string
   /** apiKey baked into the config (real key, or the proxy placeholder). */
   apiKey: string
-  /** Optional baked catalog file (org-stable models JSON) — preferred source. */
+  /** Baked catalog file (org-stable models JSON). Local read only — there is
+   *  deliberately NO fetch fallback here; see loadGatewayCatalog. */
   catalogFile?: string
-  /** Real gateway base/key for fetching the catalog when no file is baked. */
-  fetchBaseURL?: string
-  fetchApiKey?: string
 }
 
-async function buildKortixProvider(opts: KortixProviderOpts): Promise<Record<string, unknown>> {
-  const catalog = withModelLimits(await loadGatewayCatalog(opts))
+function buildKortixProvider(opts: KortixProviderOpts): Record<string, unknown> {
+  const catalog = withModelLimits(loadGatewayCatalog(opts))
   const models = Object.fromEntries(
     Object.entries(catalog).map(([id, model]) => {
       // The gateway catalog's string `provider` is UI metadata describing the
@@ -295,15 +289,32 @@ function readCatalogFile(path: string): Record<string, KortixGatewayModel> | nul
   }
 }
 
-// Resolve the model catalog. Order:
-//   1. an EXPLICIT baked file (warm seed's KORTIX_LLM_CATALOG_FILE) — tokenless
-//      full catalog, wins outright;
-//   2. a fresh per-session fetch from the real gateway (per-account catalog) when
-//      we have creds (direct mode);
-//   3. the IMAGE-BAKED catalog at the well-known path — so a slow/down gateway
-//      still yields the full picker instead of the tiny minimal set;
-//   4. the minimal hardcoded set (last resort).
-async function loadGatewayCatalog(opts: KortixProviderOpts): Promise<Record<string, KortixGatewayModel>> {
+/**
+ * Resolve the model catalog for the config opencode boots with — from LOCAL
+ * SOURCES ONLY. This function must never touch the network.
+ *
+ * `opencode serve` cannot bind its port until the config that embeds this
+ * catalog is written, so anything awaited here is dead time on every single
+ * session boot. The catalog is org-stable and ~400KB, which makes it the worst
+ * possible thing to fetch on a hot path: a US sandbox fetching it from the
+ * eu-west-2 control plane pays a cross-region round-trip to learn a list that
+ * changes on the order of days.
+ *
+ * So the boot path reads a FILE, always:
+ *   1. an EXPLICIT baked file (warm seed's KORTIX_LLM_CATALOG_FILE);
+ *   2. the IMAGE-BAKED catalog at the well-known path — staged unconditionally
+ *      by build-context.ts and asserted by its completeness guard, so this is
+ *      the normal production hit;
+ *   3. the minimal hardcoded set (~13 models) as a last resort.
+ *
+ * Case 3 is a DEGRADED PICKER, not a broken session — every model still routes
+ * through the gateway. Recovering the full catalog is handled off the critical
+ * path by the caller (see scheduleCatalogWarm), never by blocking boot.
+ *
+ * The live per-account fetch still exists for the post-adoption refresh
+ * (refreshGatewayCatalogFile), which runs when a session is already usable.
+ */
+function loadGatewayCatalog(opts: KortixProviderOpts): Record<string, KortixGatewayModel> {
   if (opts.catalogFile) {
     const models = readCatalogFile(opts.catalogFile)
     if (models) {
@@ -312,17 +323,51 @@ async function loadGatewayCatalog(opts: KortixProviderOpts): Promise<Record<stri
     }
     logger.warn(`[opencode] baked catalog ${opts.catalogFile} unreadable/empty; falling back`)
   }
-  if (opts.fetchBaseURL && opts.fetchApiKey) {
-    const fetched = await fetchGatewayModels(opts.fetchBaseURL, opts.fetchApiKey)
-    if (fetched) return fetched
-  }
   const baked = readCatalogFile(BAKED_LLM_CATALOG_PATH)
   if (baked) {
-    logger.info(`[opencode] gateway fetch unavailable; loaded ${Object.keys(baked).length} models from image-baked catalog ${BAKED_LLM_CATALOG_PATH}`)
+    logger.info(`[opencode] loaded ${Object.keys(baked).length} models from image-baked catalog ${BAKED_LLM_CATALOG_PATH}`)
     return baked
   }
-  logger.warn('[opencode] no baked catalog and no gateway models; using minimal fallback')
+  // Loud: this means the image was built without its catalog layer, which is a
+  // bake regression, not a runtime condition. The session boots fast on the
+  // minimal set rather than paying a cross-region fetch to hide it.
+  logger.error(
+    `[opencode] no catalog file at ${BAKED_LLM_CATALOG_PATH} — booting on the minimal ` +
+      `${Object.keys(MINIMAL_FALLBACK_MODELS).length}-model set. This is an IMAGE BAKE defect ` +
+      `(build-context.ts stages kortix-llm-catalog.json unconditionally); boot latency is preserved by design.`,
+  )
   return MINIMAL_FALLBACK_MODELS
+}
+
+/** True when boot had to fall back to the minimal set — i.e. no catalog on disk. */
+export function catalogIsDegraded(catalogFile?: string): boolean {
+  return !readCatalogFile(catalogFile ?? BAKED_LLM_CATALOG_PATH) && !readCatalogFile(BAKED_LLM_CATALOG_PATH)
+}
+
+/**
+ * Repair a degraded catalog AFTER boot, off the critical path.
+ *
+ * Writes the live catalog to the well-known baked path so the next opencode
+ * start on this box (a restart, a later session) has the full picker. It
+ * deliberately does NOT restart opencode: opencode materializes providers at
+ * process start, so adopting a fresh catalog costs a full cold start
+ * (4.7-12s measured) — vastly more than a temporarily short model list is worth.
+ */
+export function scheduleCatalogWarm(fetchBaseURL?: string, fetchApiKey?: string): void {
+  if (!fetchBaseURL || !fetchApiKey) return
+  void (async () => {
+    try {
+      const models = await fetchGatewayModels(fetchBaseURL, fetchApiKey)
+      if (!models) return
+      mkdirSync(dirname(BAKED_LLM_CATALOG_PATH), { recursive: true })
+      writeFileSync(BAKED_LLM_CATALOG_PATH, JSON.stringify({ models }), { mode: 0o644 })
+      logger.info(`[opencode] repaired degraded catalog off the boot path (${Object.keys(models).length} models)`)
+    } catch (err) {
+      logger.warn('[opencode] background catalog repair failed; minimal set stands', {
+        err: err instanceof Error ? err.message : String(err),
+      })
+    }
+  })()
 }
 
 export const buildExecutorMcpConfigContent = buildOpencodeConfigContent

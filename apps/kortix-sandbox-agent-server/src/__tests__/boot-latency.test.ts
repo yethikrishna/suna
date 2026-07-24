@@ -6,7 +6,12 @@ import { spawnSync } from 'node:child_process'
 
 import { loadConfig } from '../config'
 import { isShallowRepo, scheduleHistoryBackfill } from '../git'
-import { buildOpencodeConfigContent, hasKortixLlmGateway } from '../opencode'
+import {
+  buildOpencodeConfigContent,
+  catalogIsDegraded,
+  hasKortixLlmGateway,
+  MINIMAL_FALLBACK_MODELS,
+} from '../opencode'
 
 const BASE_ENV = { KORTIX_WORKSPACE: '/workspace', KORTIX_REPO_URL: 'https://example.test/r.git' }
 
@@ -131,7 +136,7 @@ describe('scheduleHistoryBackfill', () => {
   })
 })
 
-describe('gateway catalog fetch is bounded so it cannot gate opencode spawn', () => {
+describe('building the opencode boot config never touches the network', () => {
   const realFetch = globalThis.fetch
   afterEach(() => {
     globalThis.fetch = realFetch
@@ -147,36 +152,70 @@ describe('gateway catalog fetch is bounded so it cannot gate opencode spawn', ()
     expect(hasKortixLlmGateway(GATEWAY_ENV as NodeJS.ProcessEnv)).toBe(true)
   })
 
-  test('a gateway that is slow but never errors cannot burn more than the total budget', async () => {
-    let calls = 0
+  test('makes zero fetch calls even with no catalog file on disk', async () => {
+    const calls: string[] = []
     globalThis.fetch = (async (input: string) => {
-      if (String(input).endsWith('/models')) {
-        calls++
-        await new Promise((r) => setTimeout(r, 2_000))
-        return new Response(JSON.stringify({ models: {} }), { status: 200 })
-      }
-      return new Response('not found', { status: 404 })
-    }) as typeof fetch
+      calls.push(String(input))
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
 
-    const started = Date.now()
     const raw = await buildOpencodeConfigContent(GATEWAY_ENV as NodeJS.ProcessEnv)
-    const elapsed = Date.now() - started
 
-    expect(elapsed).toBeLessThan(8_000)
-    expect(calls).toBeGreaterThan(0)
+    expect(calls).toEqual([])
     expect(raw).toBeDefined()
-  }, 20_000)
+  })
 
-  test('a hard-failing gateway falls back without exhausting the budget', async () => {
-    globalThis.fetch = (async (input: string) => {
-      if (String(input).endsWith('/models')) return new Response('boom', { status: 503 })
-      return new Response('not found', { status: 404 })
-    }) as typeof fetch
+  test('an unreachable gateway costs no boot latency at all', async () => {
+    globalThis.fetch = (async () => {
+      await new Promise((r) => setTimeout(r, 30_000))
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
 
     const started = Date.now()
     const raw = await buildOpencodeConfigContent(GATEWAY_ENV as NodeJS.ProcessEnv)
 
-    expect(Date.now() - started).toBeLessThan(6_000)
+    expect(Date.now() - started).toBeLessThan(1_000)
     expect(raw).toBeDefined()
-  }, 20_000)
+  })
+
+  test('falls back to the minimal model set rather than blocking, and says so', async () => {
+    globalThis.fetch = (async () => new Response('{}', { status: 500 })) as unknown as typeof fetch
+
+    const raw = await buildOpencodeConfigContent(GATEWAY_ENV as NodeJS.ProcessEnv)
+    const parsed = JSON.parse(raw!) as { provider: { kortix: { models: Record<string, unknown> } } }
+
+    expect(Object.keys(parsed.provider.kortix.models)).toEqual(Object.keys(MINIMAL_FALLBACK_MODELS))
+  })
+
+  test('a catalog file on disk is used verbatim, still with no fetch', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'kortix-catalog-'))
+    tempDirs.push(dir)
+    const file = join(dir, 'catalog.json')
+    await writeFile(file, JSON.stringify({ models: { 'test/only-model': { name: 'Only Model' } } }))
+
+    const calls: string[] = []
+    globalThis.fetch = (async (input: string) => {
+      calls.push(String(input))
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+
+    const raw = await buildOpencodeConfigContent({
+      ...GATEWAY_ENV,
+      KORTIX_LLM_CATALOG_FILE: file,
+    } as NodeJS.ProcessEnv)
+    const parsed = JSON.parse(raw!) as { provider: { kortix: { models: Record<string, unknown> } } }
+
+    expect(Object.keys(parsed.provider.kortix.models)).toEqual(['test/only-model'])
+    expect(calls).toEqual([])
+  })
+
+  test('catalogIsDegraded reports true with no file and false with one', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'kortix-degraded-'))
+    tempDirs.push(dir)
+    const file = join(dir, 'catalog.json')
+
+    expect(catalogIsDegraded(file)).toBe(true)
+    await writeFile(file, JSON.stringify({ models: { 'a/b': { name: 'B' } } }))
+    expect(catalogIsDegraded(file)).toBe(false)
+  })
 })

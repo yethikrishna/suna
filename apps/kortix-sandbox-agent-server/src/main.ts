@@ -15,10 +15,12 @@ import {
 } from './git'
 import { logger } from './logger'
 import {
+  catalogIsDegraded,
   createOpencodeSupervisor,
   hasKortixLlmGateway,
   OPENCODE_HOME,
   refreshGatewayCatalogFile,
+  scheduleCatalogWarm,
   waitForOpencodeReady,
   type Opencode,
 } from './opencode'
@@ -210,6 +212,15 @@ async function main() {
     })
   }
   bootMark('opencode-spawned')
+
+  // If the image shipped without its baked catalog, opencode just booted on the
+  // minimal model set (see loadGatewayCatalog). Repair the file in the
+  // background so the next opencode start has the full picker — deliberately
+  // AFTER the spawn and without a restart, because the whole point is that a
+  // ~400KB cross-region catalog fetch never gates a session boot again.
+  if (catalogIsDegraded(process.env.KORTIX_LLM_CATALOG_FILE)) {
+    scheduleCatalogWarm(process.env.KORTIX_LLM_BASE_URL, process.env.KORTIX_LLM_API_KEY)
+  }
 
   logger.info('[boot] proxy up; waiting for opencode readiness in background', {
     servicePort: cfg.servicePort,

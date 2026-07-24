@@ -73,7 +73,6 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
 import { errorToast, successToast, warningToast } from '@/components/ui/toast';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import {
@@ -107,9 +106,9 @@ import {
   createConnector,
   deleteConnector,
   discoverConnectorAuth,
-  getConnectStatus,
   getConnectorConfig,
   getConnectorPolicies,
+  getConnectStatus,
   getProjectDetail,
   listConnectionProfiles,
   listConnectors,
@@ -128,9 +127,12 @@ import {
 } from '@kortix/sdk/projects-client';
 import {
   buildOAuth2CredentialInput,
+  createConnectorWithOptionalOAuth2,
   EMPTY_OAUTH2_CREDENTIAL_FORM,
   type OAuth2CredentialForm,
+  oauth2CredentialFormValid,
 } from './connector-oauth2';
+import { OAuth2CredentialFields } from './connector-oauth2-fields';
 import { DiscoverCatalogue } from './discover-catalogue';
 
 const PROVIDER_ICON: Record<AdminConnector['provider'], LucideIcon> = {
@@ -3640,6 +3642,8 @@ function ConnectorConfigFields({
   readOnly = false,
   detectedAuth = null,
   detectedTitle = null,
+  oauth2Selected = false,
+  onOAuth2SelectedChange,
 }: {
   draft: ConnectorDraftInput;
   onChange: (d: ConnectorDraftInput) => void;
@@ -3650,6 +3654,9 @@ function ConnectorConfigFields({
   detectedAuth?: { type: string; parameterName: string | null } | null;
   /** The source document's own name, used to propose a slug. */
   detectedTitle?: string | null;
+  /** Exposes native OAuth2 during initial connector creation. */
+  oauth2Selected?: boolean;
+  onOAuth2SelectedChange?: (selected: boolean) => void;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   // Once the slug is typed in by hand, never overwrite it from the source again.
@@ -3878,9 +3885,15 @@ function ConnectorConfigFields({
           <Field>
             <FieldLabel htmlFor="connector-auth">Auth</FieldLabel>
             <Select
-              value={draft.auth?.type ?? 'auto'}
+              value={oauth2Selected ? 'oauth2_client_credentials' : (draft.auth?.type ?? 'auto')}
               disabled={readOnly}
               onValueChange={(v) => {
+                if (v === 'oauth2_client_credentials') {
+                  onOAuth2SelectedChange?.(true);
+                  set({ auth: { type: 'bearer' } });
+                  return;
+                }
+                onOAuth2SelectedChange?.(false);
                 if (v === 'auto') set({ auth: undefined });
                 else setAuth({ type: v as 'none' | 'bearer' | 'basic' | 'custom' | 'oauth1' });
               }}
@@ -3893,6 +3906,11 @@ function ConnectorConfigFields({
                 <SelectItem value="none">None</SelectItem>
                 <SelectItem value="bearer">Bearer</SelectItem>
                 <SelectItem value="basic">Basic</SelectItem>
+                {onOAuth2SelectedChange && (
+                  <SelectItem value="oauth2_client_credentials">
+                    OAuth 2.0 client credentials
+                  </SelectItem>
+                )}
                 <SelectItem value="oauth1">OAuth 1.0</SelectItem>
                 <SelectItem value="custom">
                   {tI18nHardcoded.raw(
@@ -3902,7 +3920,9 @@ function ConnectorConfigFields({
               </SelectContent>
             </Select>
             <FieldDescription>
-              {draft.auth === undefined && detectedAuth ? (
+              {oauth2Selected ? (
+                'Kortix obtains, refreshes, and injects a bearer token for this connector.'
+              ) : draft.auth === undefined && detectedAuth ? (
                 <>
                   Detected <span className="font-medium">{detectedAuth.type}</span>
                   {detectedAuth.parameterName ? (
@@ -4000,6 +4020,8 @@ export function CustomConnectorForm({
     slug: '',
     provider: 'openapi',
   });
+  const [oauth2Selected, setOauth2Selected] = useState(false);
+  const [oauth2, setOauth2] = useState<OAuth2CredentialForm>(EMPTY_OAUTH2_CREDENTIAL_FORM);
   const [discoveryDraft, setDiscoveryDraft] = useState(draft);
   useEffect(() => {
     const timer = window.setTimeout(() => setDiscoveryDraft(draft), 400);
@@ -4010,11 +4032,21 @@ export function CustomConnectorForm({
       setDraft((current) => ({ ...current, platform: 'slack' }));
     }
   }, [draft.platform, draft.provider, emailChannelEnabled]);
+  useEffect(() => {
+    if (draft.provider === 'channel' && oauth2Selected) {
+      setOauth2Selected(false);
+    }
+  }, [draft.provider, oauth2Selected]);
 
   const save = useMutation({
-    mutationFn: () => createConnector(projectId, draft),
+    mutationFn: () =>
+      createConnectorWithOptionalOAuth2(projectId, draft, oauth2Selected ? oauth2 : null, {
+        createConnector,
+        deleteConnector,
+        setConnectorCredential,
+      }),
     onSuccess: () => {
-      successToast(`Added ${draft.slug}`);
+      successToast(oauth2Selected ? `Added and connected ${draft.slug}` : `Added ${draft.slug}`);
       onAdded(draft.slug);
     },
     onError: (err: Error) => errorToast(err.message || 'Failed to add connector'),
@@ -4037,6 +4069,7 @@ export function CustomConnectorForm({
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          if (oauth2Selected && !oauth2CredentialFormValid(oauth2)) return;
           save.mutate();
         }}
       >
@@ -4055,7 +4088,22 @@ export function CustomConnectorForm({
                 : null
             }
             detectedTitle={discovery.data?.title ?? null}
+            oauth2Selected={oauth2Selected}
+            onOAuth2SelectedChange={setOauth2Selected}
           />
+          {oauth2Selected && (
+            <div className="space-y-4">
+              <InfoBanner tone="info" title="OAuth 2.0 client credentials">
+                Kortix requests a token before saving. It encrypts the configuration and refreshes
+                the access token before expiry.
+              </InfoBanner>
+              <OAuth2CredentialFields
+                value={oauth2}
+                onChange={setOauth2}
+                idPrefix="new-connector-oauth2"
+              />
+            </div>
+          )}
           {draft.auth === undefined && discovery.isFetching && (
             <InfoBanner tone="info">Checking the source for authentication settings…</InfoBanner>
           )}
@@ -4073,7 +4121,7 @@ export function CustomConnectorForm({
               Could not inspect authentication: {(discovery.error as Error).message}
             </InfoBanner>
           )}
-          {authActive && (
+          {authActive && !oauth2Selected && (
             <InfoBanner tone="info">
               {tI18nHardcoded.raw(
                 'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextYouLle5def626',
@@ -4085,7 +4133,10 @@ export function CustomConnectorForm({
               type="submit"
               size="sm"
               disabled={
-                !draft.slug || save.isPending || !connectionValid(draft, emailChannelEnabled)
+                !draft.slug ||
+                save.isPending ||
+                !connectionValid(draft, emailChannelEnabled) ||
+                (oauth2Selected && !oauth2CredentialFormValid(oauth2))
               }
               className="gap-1.5"
             >
@@ -4118,16 +4169,7 @@ function SetCredentialModal({
   const [credentialType, setCredentialType] = useState<'static' | 'oauth2'>('static');
   const [value, setValue] = useState('');
   const [oauth2, setOauth2] = useState<OAuth2CredentialForm>(EMPTY_OAUTH2_CREDENTIAL_FORM);
-  const setOauth2Field = <K extends keyof OAuth2CredentialForm>(
-    key: K,
-    next: OAuth2CredentialForm[K],
-  ) => setOauth2((current) => ({ ...current, [key]: next }));
-  const oauth2Valid =
-    !!oauth2.tokenUrl.trim() &&
-    !!oauth2.clientId.trim() &&
-    (oauth2.authMethod === 'private_key_jwt'
-      ? !!oauth2.privateKey && !!oauth2.certificateThumbprint.trim()
-      : !!oauth2.clientSecret);
+  const oauth2Valid = oauth2CredentialFormValid(oauth2);
   const save = useMutation({
     mutationFn: () =>
       setConnectorCredential(
@@ -4204,116 +4246,11 @@ function SetCredentialModal({
                   Kortix requests a token now and refreshes it before expiry. Use a Bearer or custom
                   header in the connector authentication settings.
                 </InfoBanner>
-                <FieldGroup className="grid gap-3 sm:grid-cols-2">
-                  <Field className="sm:col-span-2">
-                    <FieldLabel htmlFor="oauth2-token-url">Token URL</FieldLabel>
-                    <Input
-                      id="oauth2-token-url"
-                      type="url"
-                      value={oauth2.tokenUrl}
-                      onChange={(e) => setOauth2Field('tokenUrl', e.target.value)}
-                      placeholder="https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
-                      variant="popover"
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="oauth2-client-id">Client ID</FieldLabel>
-                    <Input
-                      id="oauth2-client-id"
-                      value={oauth2.clientId}
-                      onChange={(e) => setOauth2Field('clientId', e.target.value)}
-                      variant="popover"
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="oauth2-auth-method">Token authentication</FieldLabel>
-                    <Select
-                      value={oauth2.authMethod}
-                      onValueChange={(next) =>
-                        setOauth2Field('authMethod', next as OAuth2CredentialForm['authMethod'])
-                      }
-                    >
-                      <SelectTrigger id="oauth2-auth-method" variant="popover">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="client_secret_post">Client secret in body</SelectItem>
-                        <SelectItem value="client_secret_basic">
-                          Client secret with Basic
-                        </SelectItem>
-                        <SelectItem value="private_key_jwt">Certificate assertion</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  {oauth2.authMethod === 'private_key_jwt' ? (
-                    <>
-                      <Field className="sm:col-span-2">
-                        <FieldLabel htmlFor="oauth2-private-key">Private key PEM</FieldLabel>
-                        <Textarea
-                          id="oauth2-private-key"
-                          value={oauth2.privateKey}
-                          onChange={(e) => setOauth2Field('privateKey', e.target.value)}
-                          className="min-h-32 font-mono text-xs"
-                        />
-                      </Field>
-                      <Field className="sm:col-span-2">
-                        <FieldLabel htmlFor="oauth2-thumbprint">
-                          Certificate SHA-256 thumbprint
-                        </FieldLabel>
-                        <Input
-                          id="oauth2-thumbprint"
-                          type="password"
-                          value={oauth2.certificateThumbprint}
-                          onChange={(e) => setOauth2Field('certificateThumbprint', e.target.value)}
-                          placeholder="Base64url x5t#S256 value"
-                          variant="popover"
-                        />
-                      </Field>
-                    </>
-                  ) : (
-                    <Field className="sm:col-span-2">
-                      <FieldLabel htmlFor="oauth2-client-secret">Client secret</FieldLabel>
-                      <Input
-                        id="oauth2-client-secret"
-                        type="password"
-                        value={oauth2.clientSecret}
-                        onChange={(e) => setOauth2Field('clientSecret', e.target.value)}
-                        variant="popover"
-                      />
-                    </Field>
-                  )}
-                  <Field className="sm:col-span-2">
-                    <FieldLabel htmlFor="oauth2-scopes">Scopes</FieldLabel>
-                    <Input
-                      id="oauth2-scopes"
-                      value={oauth2.scopes}
-                      onChange={(e) => setOauth2Field('scopes', e.target.value)}
-                      placeholder="https://graph.microsoft.com/.default"
-                      variant="popover"
-                    />
-                    <FieldDescription>Separate multiple scopes with spaces.</FieldDescription>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="oauth2-resource">Resource</FieldLabel>
-                    <Input
-                      id="oauth2-resource"
-                      value={oauth2.resource}
-                      onChange={(e) => setOauth2Field('resource', e.target.value)}
-                      placeholder="Optional"
-                      variant="popover"
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="oauth2-audience">Audience</FieldLabel>
-                    <Input
-                      id="oauth2-audience"
-                      value={oauth2.audience}
-                      onChange={(e) => setOauth2Field('audience', e.target.value)}
-                      placeholder="Optional"
-                      variant="popover"
-                    />
-                  </Field>
-                </FieldGroup>
+                <OAuth2CredentialFields
+                  value={oauth2}
+                  onChange={setOauth2}
+                  idPrefix="connector-oauth2"
+                />
               </TabsContent>
             </Tabs>
           </ModalBody>

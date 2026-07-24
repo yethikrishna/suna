@@ -55,12 +55,12 @@ Use this path for server-to-server APIs that require OAuth2. Microsoft Graph and
 <Step>
 ### Declare the direct connector
 
-Set the connector authentication type to `bearer`. The Executor injects the access token into the configured authentication header.
+In the Custom connector form, select **OAuth 2.0 client credentials** under **Auth**. Kortix configures bearer-token injection and shows the OAuth2 fields before it creates the connector.
 </Step>
 <Step>
-### Open the credential modal
+### Enter the OAuth2 configuration
 
-Open the connector and select **OAuth2 client credentials**. Enter the token URL, client ID, scopes, and client secret.
+Enter the token URL, client ID, scopes, and client secret. Existing connectors expose the same fields under **Set credential**.
 
 For certificate authentication, select **Certificate assertion**. Enter the PKCS#8 private key PEM and the certificate's Base64url SHA-256 thumbprint (`x5t#S256`).
 </Step>

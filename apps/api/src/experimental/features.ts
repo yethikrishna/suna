@@ -100,15 +100,15 @@ const FEATURES: readonly ExperimentalFeatureDef[] = [
     platformDefault: () => false,
   },
   {
-    key: 'meet',
-    name: 'Meetings',
+    key: 'voice',
+    name: 'Voice',
     description:
-      'Send a notetaker bot to your calls — Google Meet, Zoom, or Microsoft Teams — to record, transcribe with speaker labels, answer when addressed, and speak back in a voice you choose. Powered by Recall.ai; the agent drives it through the `meet` channel CLI.',
+      'Let the agent join your calls — Google Meet, Zoom, or Microsoft Teams — and hold a real spoken conversation: it listens continuously, answers in its own voice, and hands work off to itself in the background while you keep talking. Powered by Recall.ai for the call and a realtime speech model for the conversation.',
     stability: 'experimental',
-    // Master kill switch (the global gate): when off, Meet disappears platform-wide
+    // Master kill switch (the global gate): when off, voice disappears platform-wide
     // and every project falls back to no meeting bot — mirrors LLM Gateway.
-    available: () => config.MEET_ENABLED,
-    // Explicit opt-in: a project enables Meet in Settings.
+    available: () => config.VOICE_ENABLED,
+    // Explicit opt-in: a project enables voice in Settings.
     platformDefault: () => false,
   },
   {

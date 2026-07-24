@@ -13,7 +13,7 @@ import { AgentsView } from '@/features/workspace/customize/sections/view/agents-
 import { ChannelsView } from '@/features/workspace/customize/sections/view/channels-view';
 import { ComputersView } from '@/features/workspace/customize/sections/view/computers-view';
 import { GitView } from '@/features/workspace/customize/sections/view/git-view';
-import { MeetView } from '@/features/workspace/customize/sections/view/meet-view';
+import { VoiceView } from '@/features/workspace/customize/sections/view/voice-view';
 import { MembersView } from '@/features/workspace/customize/sections/view/members-view';
 import { SandboxView } from '@/features/workspace/customize/sections/view/sandbox-view';
 import { SecretsView } from '@/features/workspace/customize/sections/view/secrets-view';
@@ -61,7 +61,7 @@ const COMPUTERS_ITEM: RailItem = { section: 'computers', label: 'Computers', ico
 
 const MARKETPLACE_ITEM: RailItem = { section: 'marketplace', label: 'Marketplace', icon: Store };
 
-const MEET_ITEM: RailItem = { section: 'meet', label: 'Meetings', icon: AudioLines };
+const VOICE_ITEM: RailItem = { section: 'voice', label: 'Voice', icon: AudioLines };
 
 const REVIEW_ITEM: RailItem = { section: 'review', label: 'Review', icon: Inbox };
 
@@ -113,7 +113,7 @@ function railGroups(
   tunnelEnabled: boolean,
   marketplaceEnabled: boolean,
   llmGatewayAvailable: boolean,
-  meetEnabled: boolean,
+  voiceEnabled: boolean,
   reviewEnabled: boolean,
 ): readonly RailGroup[] {
   return GROUPS.map((g) => {
@@ -126,7 +126,7 @@ function railGroups(
       const items = g.items.filter(
         (item) => item.section !== 'llm-management' || llmGatewayAvailable,
       );
-      if (meetEnabled) items.push(MEET_ITEM);
+      if (voiceEnabled) items.push(VOICE_ITEM);
       if (tunnelEnabled) items.push(COMPUTERS_ITEM);
       return { ...g, items };
     }
@@ -192,7 +192,7 @@ export function CustomizPanel({ projectId }: { projectId: string }) {
   const marketplaceEnabled = detail.data?.project?.experimental?.marketplace ?? false;
   const llmGatewayEnabled = isLlmGatewayEnabled(detail.data?.project);
   const llmGatewayAvailable = isLlmGatewayAvailable(detail.data?.project);
-  const meetEnabled = detail.data?.project?.experimental?.meet ?? false;
+  const voiceEnabled = detail.data?.project?.experimental?.voice ?? false;
   const reviewEnabled = detail.data?.project?.experimental?.review_center ?? false;
   // Pin Upgrades to the top only once the manifest read resolved to v1 —
   // while the detail query is in flight (or on v2 projects) the item sits in
@@ -213,14 +213,14 @@ export function CustomizPanel({ projectId }: { projectId: string }) {
     // BOTH its flag check (baked into railGroups) AND its read-leaf probe. Empty
     // groups drop out so no orphan header renders.
     () =>
-      railGroups(tunnelEnabled, marketplaceEnabled, llmGatewayAvailable, meetEnabled, reviewEnabled)
+      railGroups(tunnelEnabled, marketplaceEnabled, llmGatewayAvailable, voiceEnabled, reviewEnabled)
         .map((g) => ({ ...g, items: g.items.filter((item) => isSectionAllowed(item.section)) }))
         .filter((g) => g.items.length > 0),
     [
       tunnelEnabled,
       marketplaceEnabled,
       llmGatewayAvailable,
-      meetEnabled,
+      voiceEnabled,
       reviewEnabled,
       isSectionAllowed,
     ],
@@ -482,8 +482,8 @@ function SectionContent({
       return <SecretsView projectId={projectId} />;
     case 'channels':
       return <ChannelsView projectId={projectId} />;
-    case 'meet':
-      return <MeetView projectId={projectId} />;
+    case 'voice':
+      return <VoiceView projectId={projectId} />;
     case 'computers':
       return <ComputersView projectId={projectId} />;
     case 'schedules':

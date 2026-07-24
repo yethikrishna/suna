@@ -730,7 +730,6 @@ const {
   slackOauthApp,
   slackIdentityApp,
   emailWebhookApp,
-  meetWebhookApp,
   voiceProbeApp,
 } = await import('./channels');
 app.route('/v1/webhooks/slack/oauth', slackOauthApp); // /v1/webhooks/slack/oauth/callback — OAuth dance
@@ -741,7 +740,6 @@ app.route('/v1/channels/slack/identity', slackIdentityApp); // /v1/channels/slac
 app.route('/v1/channels/teams/identity', teamsIdentityApp); // /v1/channels/teams/identity/bind — authed login bind
 app.route('/v1/webhooks/telegram', telegramWebhookApp); // /v1/webhooks/telegram/:projectId — Telegram updates
 app.route('/v1/webhooks/email', emailWebhookApp); // /v1/webhooks/email/agentmail — AgentMail inbound email (Svix-signed)
-app.route('/v1/webhooks/meet', meetWebhookApp); // /v1/webhooks/meet/realtime — Recall.ai live transcript/chat relay
 app.route('/v1/webhooks/voice-probe', voiceProbeApp); // Gate 0 echo experiment — 404s unless VOICE_PROBE_ENABLED
 
 const { sandboxWebhooksApp } = await import('./platform/webhooks/routes');

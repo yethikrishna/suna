@@ -72,10 +72,10 @@ describe('createModelPricingLookup', () => {
 
   test('resolves kortix managed models through pricingRef and cached models.dev rates', () => {
     const cached = buildModelsDevPricingMap({
-      deepseek: {
+      'z-ai': {
         models: {
-          'deepseek/deepseek-v4-pro': {
-            id: 'deepseek/deepseek-v4-pro',
+          'z-ai/glm-5.2': {
+            id: 'z-ai/glm-5.2',
             cost: { input: 0.435, output: 0.87 },
           },
         },
@@ -83,7 +83,7 @@ describe('createModelPricingLookup', () => {
     });
 
     const lookup = createModelPricingLookup(undefined, cached);
-    expect(lookup('kortix', 'deepseek-v4-pro')).toEqual({
+    expect(lookup('kortix', 'glm-5.2')).toEqual({
       inputPer1M: 0.435,
       outputPer1M: 0.87,
       cacheReadPer1M: undefined,
@@ -117,13 +117,13 @@ describe('createModelPricingLookup', () => {
 
   test('rebuilds from empty pricing to loaded cached pricing', () => {
     const emptyLookup = createModelPricingLookup(undefined, new Map());
-    expect(emptyLookup('kortix', 'deepseek-v4-pro')).toBeNull();
+    expect(emptyLookup('kortix', 'glm-5.2')).toBeNull();
 
     const cached = buildModelsDevPricingMap({
-      deepseek: {
+      'z-ai': {
         models: {
-          'deepseek/deepseek-v4-pro': {
-            id: 'deepseek/deepseek-v4-pro',
+          'z-ai/glm-5.2': {
+            id: 'z-ai/glm-5.2',
             cost: { input: 0.435, output: 0.87 },
           },
         },
@@ -131,7 +131,7 @@ describe('createModelPricingLookup', () => {
     });
 
     const loadedLookup = createModelPricingLookup(undefined, cached);
-    expect(loadedLookup('kortix', 'deepseek-v4-pro')).toEqual({
+    expect(loadedLookup('kortix', 'glm-5.2')).toEqual({
       inputPer1M: 0.435,
       outputPer1M: 0.87,
       cacheReadPer1M: undefined,

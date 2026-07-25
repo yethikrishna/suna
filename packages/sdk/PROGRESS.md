@@ -2599,3 +2599,26 @@ Restored the five removed REST compatibility tests.
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, and deployed web
 verification remain.
+
+---
+
+### 2026-07-25 — session `whitelabel-acp-reference` (claim)
+
+Claimed the full white-label ACP and SDK reference-app refactor.
+The SDK will add the provider-neutral `default_agent` project-config field.
+The legacy `open_code_default_agent` field will remain as a deprecated alias.
+
+The reference app will use one `createKortix` client and one `useSession`
+runtime path.
+Client code will not import runtime transports, legacy runtime stores, or
+OpenCode packages.
+Client code will not construct Kortix REST or runtime proxy requests.
+Project settings will render the server-provided experimental-feature catalog.
+
+Implementation will follow RED -> GREEN -> REFACTOR.
+Required gates are the SDK suite, SDK typecheck, packed-install smoke,
+white-label typecheck, build, full E2E suite, deterministic boundary tests,
+real ACP browser proof, REST rollback proof, PR merge, Deploy Dev, and deployed
+artifact verification.
+
+**Status:** IN PROGRESS.

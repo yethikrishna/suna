@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
 import { createInitialOpenCodeSession, deliverInitialOpenCodePrompt, resumeInitialOpenCodeSession } from '../main'
-import type { Opencode } from '../opencode'
+import {
+  resumeCanonicalAcpSession,
+  type Opencode,
+} from '../opencode'
 
 function acpRuntime() {
   const calls: Array<{ method: string; params: unknown; id?: string | number }> = []
@@ -83,5 +86,28 @@ describe('ACP initial session boot', () => {
       sessionId: 'ses_acp',
       prompt: [{ type: 'text', text: 'Run.' }],
     })
+  })
+
+  test('resumes the canonical session after the ACP process restarts', async () => {
+    const calls: Array<{ method: string; params: unknown }> = []
+    const connection = {
+      async request(method: string, params: unknown) {
+        calls.push({ method, params })
+        return {}
+      },
+    }
+
+    await resumeCanonicalAcpSession(connection, 'ses_acp', '/workspace')
+
+    expect(calls).toEqual([
+      {
+        method: 'session/resume',
+        params: {
+          sessionId: 'ses_acp',
+          cwd: '/workspace',
+          mcpServers: [],
+        },
+      },
+    ])
   })
 })

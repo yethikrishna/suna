@@ -202,11 +202,11 @@ Also stop if the same failure survives three different fixes (use
 | 1 | Native process and protocol core | DONE | `acp-opencode-canary` | 2026-07-25 | `2ba64ab68` |
 | 2 | Authenticated HTTP/SSE bridge | DONE | `acp-opencode-canary` | 2026-07-25 | `8560c2dfc` |
 | 3 | API transport metadata and rollback | DONE | `acp-opencode-canary` | 2026-07-25 | `b558def6f` |
-| 4 | SDK ACP transport | IN PROGRESS | `acp-opencode-canary` | 2026-07-25 | — |
-| 5 | SDK session projection | NOT STARTED | — | — | — |
-| 6 | Existing `useSession` integration | NOT STARTED | — | — | — |
-| 7 | Local parity and rollback proof | NOT STARTED | — | — | — |
-| 8 | Delivery and dev proof | NOT STARTED | — | — | — |
+| 4 | SDK ACP transport | DONE | `acp-opencode-canary` | 2026-07-25 | `a28df36f3` |
+| 5 | SDK session projection | DONE | `acp-opencode-canary` | 2026-07-25 | `951896a44` |
+| 6 | Existing `useSession` integration | DONE | `acp-opencode-canary` | 2026-07-25 | `951896a44` |
+| 7 | Local parity and rollback proof | DONE | `acp-opencode-canary` | 2026-07-25 | pending |
+| 8 | Delivery and dev proof | IN PROGRESS | `acp-opencode-canary` | 2026-07-25 | — |
 
 ---
 
@@ -2313,3 +2313,41 @@ The existing self-describing experimental settings UI renders its catalog entry.
 - White-label typecheck: exit 0.
 
 **Status:** COMPLETE.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (OpenCode ACP Task 7 completion)
+
+Completed the real OpenCode ACP parity matrix in one Chromium session.
+The matrix covers ordered SSE reconnects, `Last-Event-ID`, `session/load`,
+transcript restoration, text streaming, permissions, questions, attachments,
+busy-message serialization, cancellation, slash commands, and process restart.
+
+The sandbox daemon resumes the canonical ACP session after OpenCode restarts.
+It publishes the replayable `kortix/runtime_ready` process-generation signal.
+The SDK reloads the canonical session before it accepts another prompt.
+
+The OpenCode question compatibility bridge exposes questions as
+`session/request_input`.
+The browser returns only ACP JSON-RPC responses.
+
+**RED evidence:**
+
+- SDK restart recovery: **12 pass / 1 fail**.
+- Sandbox restart signal: **13 pass / 1 fail**.
+- The pre-fix Chromium matrix reconnected SSE after `/kortix/refresh/`.
+  It did not send a post-restart prompt because the new process had no loaded
+  ACP session.
+
+**Verification:**
+
+- Focused ACP SDK suite: **18 pass / 0 fail**.
+- Focused sandbox ACP suite: **17 pass / 0 fail**.
+- Linux sandbox daemon build: exit 0.
+- Platinum image `kortix-default-0429779a8bc2`: built in 370.774 seconds.
+- Full local Chromium ACP and REST rollback matrix: **1 pass / 0 fail** in
+  4.3 minutes.
+
+**Status:** COMPLETE.
+
+**Shippable to production: NOT YET.** Task 8 delivery and dev proof remain.

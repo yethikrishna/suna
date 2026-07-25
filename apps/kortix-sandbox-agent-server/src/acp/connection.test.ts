@@ -4,7 +4,9 @@ import { PassThrough } from 'node:stream'
 import {
   AcpConnection,
   AcpProtocolError,
+  type AcpStreamEvent,
   buildOpenCodeLaunch,
+  type JsonRpcEnvelope,
   parseJsonRpcEnvelope,
   redactAcpDiagnostic,
   resolveOpenCodeTransport,
@@ -12,7 +14,11 @@ import {
 
 type Harness = ReturnType<typeof createHarness>
 
-function createHarness(options: { requestTimeoutMs?: number; maxReplayEvents?: number } = {}) {
+function createHarness(options: {
+  requestTimeoutMs?: number
+  maxReplayEvents?: number
+  initialEventId?: number
+} = {}) {
   const input = new PassThrough()
   const output = new PassThrough()
   const diagnostics: string[] = []
@@ -21,6 +27,7 @@ function createHarness(options: { requestTimeoutMs?: number; maxReplayEvents?: n
     output,
     requestTimeoutMs: options.requestTimeoutMs,
     maxReplayEvents: options.maxReplayEvents,
+    initialEventId: options.initialEventId,
     onDiagnostic: (line) => diagnostics.push(line),
   })
   const writes: Record<string, unknown>[] = []
@@ -66,10 +73,12 @@ describe('OpenCode ACP launch', () => {
         '/workspace',
       ],
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: { OPENCODE_ENABLE_QUESTION_TOOL: '1' },
     })
     expect(buildOpenCodeLaunch('rest', 4096, '/workspace')).toEqual({
       args: ['serve', '--port', '4096', '--hostname', '127.0.0.1'],
       stdio: ['ignore', 'inherit', 'inherit'],
+      env: {},
     })
   })
 })
@@ -149,6 +158,42 @@ describe('ACP NDJSON connection', () => {
     expect(replayed).toEqual([2, 3])
   })
 
+  test('continues event ids after an OpenCode ACP process restart', async () => {
+    const harness = createHarness({ initialEventId: 41 })
+    respond(harness, {
+      method: 'session/update',
+      params: { sessionId: 'session', update: { sessionUpdate: 'agent_message_chunk' } },
+    })
+    await nextTick()
+
+    const replayed: number[] = []
+    harness.connection.subscribe(40, (event) => replayed.push(event.id))
+
+    expect(replayed).toEqual([41])
+    expect(harness.connection.lastEventId).toBe(41)
+  })
+
+  test('publishes daemon runtime notifications to reconnecting clients', () => {
+    const harness = createHarness({ initialEventId: 41 })
+
+    harness.connection.notifyClient('kortix/runtime_ready', {
+      sessionId: 'session',
+    })
+
+    const replayed: AcpStreamEvent[] = []
+    harness.connection.subscribe(40, (event) => replayed.push(event))
+    expect(replayed).toEqual([
+      {
+        id: 41,
+        envelope: {
+          jsonrpc: '2.0',
+          method: 'kortix/runtime_ready',
+          params: { sessionId: 'session' },
+        },
+      },
+    ])
+  })
+
   test('rejects a request after the configured timeout', async () => {
     const harness = createHarness({ requestTimeoutMs: 10 })
     await expect(
@@ -179,6 +224,52 @@ describe('ACP NDJSON connection', () => {
     respond(harness, { id: 'response', result: {} })
     await request
     expect(events).toEqual([])
+  })
+
+  test('publishes a daemon-owned client request and intercepts its browser response', async () => {
+    const harness = createHarness()
+    const events: JsonRpcEnvelope[] = []
+    const handled: JsonRpcEnvelope[] = []
+    harness.connection.subscribe(0, (event) => events.push(event.envelope))
+
+    harness.connection.requestClient(
+      'session/request_input',
+      {
+        sessionId: 'session',
+        questions: [{ question: 'Choose one', options: [] }],
+      },
+      'kortix:question:q1',
+      async (response) => {
+        handled.push(response)
+      },
+    )
+
+    expect(events).toEqual([
+      {
+        jsonrpc: '2.0',
+        id: 'kortix:question:q1',
+        method: 'session/request_input',
+        params: {
+          sessionId: 'session',
+          questions: [{ question: 'Choose one', options: [] }],
+        },
+      },
+    ])
+
+    await harness.connection.post({
+      jsonrpc: '2.0',
+      id: 'kortix:question:q1',
+      result: { action: 'accept', content: { answers: [['Beta']] } },
+    })
+
+    expect(handled).toEqual([
+      {
+        jsonrpc: '2.0',
+        id: 'kortix:question:q1',
+        result: { action: 'accept', content: { answers: [['Beta']] } },
+      },
+    ])
+    expect(harness.writes).toEqual([])
   })
 
   test('forwards browser requests immediately and publishes their responses', async () => {

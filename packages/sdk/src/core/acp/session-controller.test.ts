@@ -135,6 +135,13 @@ describe('ACP session controller', () => {
         parts: [{ type: 'text', text: 'previous answer' }],
       },
     ]);
+    expect(controller.getSnapshot().projection.status).toEqual({ type: 'idle' });
+    const restoredAssistant =
+      controller.getSnapshot().projection.messages.at(-1)?.info;
+    expect(restoredAssistant?.role).toBe('assistant');
+    if (restoredAssistant?.role === 'assistant') {
+      expect(restoredAssistant.time.completed).toEqual(expect.any(Number));
+    }
   });
 
   test('applies model and agent options before one ACP prompt', async () => {
@@ -169,6 +176,45 @@ describe('ACP session controller', () => {
     ]);
   });
 
+  test('serializes prompts that the busy-message queue drains at a tool boundary', async () => {
+    const h = harness();
+    let releaseFirst: () => void = () => {};
+    const firstBlocked = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let promptCount = 0;
+    h.client.prompt = async (sessionId, prompt) => {
+      h.calls.push({ method: 'prompt', args: [sessionId, prompt] });
+      promptCount += 1;
+      if (promptCount === 1) await firstBlocked;
+      return { stopReason: 'end_turn' };
+    };
+    const controller = createAcpSessionController({
+      sessionId: 'ses_1',
+      client: h.client,
+    });
+    await controller.connect();
+
+    const first = controller.send([{ type: 'text', text: 'first' }]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const second = controller.send([{ type: 'text', text: 'queued' }]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      h.calls.filter((call) => call.method === 'prompt').map((call) => call.args[1]),
+    ).toEqual([[{ type: 'text', text: 'first' }]]);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+
+    expect(
+      h.calls.filter((call) => call.method === 'prompt').map((call) => call.args[1]),
+    ).toEqual([
+      [{ type: 'text', text: 'first' }],
+      [{ type: 'text', text: 'queued' }],
+    ]);
+  });
+
   test('answers ACP permission requests with the matching option id', async () => {
     const h = harness();
     const controller = createAcpSessionController({
@@ -196,6 +242,56 @@ describe('ACP session controller', () => {
       args: ['permission-1', { outcome: { outcome: 'selected', optionId: 'allow_always' } }],
     });
     expect(controller.getSnapshot().projection.permissions).toEqual([]);
+  });
+
+  test('preserves a numeric ACP permission request id in the response', async () => {
+    const h = harness();
+    const controller = createAcpSessionController({
+      sessionId: 'ses_1',
+      client: h.client,
+    });
+    await controller.connect();
+    h.emit({
+      jsonrpc: '2.0',
+      id: 0,
+      method: 'session/request_permission',
+      params: {
+        sessionId: 'ses_1',
+        options: [{ optionId: 'always', kind: 'allow_always', name: 'Always' }],
+      },
+    });
+
+    await controller.answerPermission('0', 'always');
+
+    expect(h.calls.at(-1)).toEqual({
+      method: 'respond',
+      args: [0, { outcome: { outcome: 'selected', optionId: 'always' } }],
+    });
+  });
+
+  test('preserves a numeric ACP question request id in the response', async () => {
+    const h = harness();
+    const controller = createAcpSessionController({
+      sessionId: 'ses_1',
+      client: h.client,
+    });
+    await controller.connect();
+    h.emit({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'session/request_input',
+      params: {
+        sessionId: 'ses_1',
+        questions: [{ question: 'Choose one', options: ['Alpha', 'Beta'] }],
+      },
+    });
+
+    await controller.answerQuestion('7', [['Beta']]);
+
+    expect(h.calls.at(-1)).toEqual({
+      method: 'respond',
+      args: [7, { action: 'accept', content: { answers: [['Beta']] } }],
+    });
   });
 
   test('cancels a rejected permission request when no reject option exists', async () => {
@@ -265,6 +361,29 @@ describe('ACP session controller', () => {
     expect(controller.getSnapshot()).toMatchObject({
       connection: 'error',
       error: { message: 'permission denied' },
+    });
+  });
+
+  test('reloads the canonical session after OpenCode reports a new ACP process', async () => {
+    const h = harness();
+    const controller = createAcpSessionController({
+      sessionId: 'ses_1',
+      client: h.client,
+    });
+    await controller.connect();
+
+    h.emit({
+      jsonrpc: '2.0',
+      method: 'kortix/runtime_ready',
+      params: { sessionId: 'ses_1' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(h.calls.filter((call) => call.method === 'loadSession')).toHaveLength(2);
+    expect(controller.getSnapshot()).toMatchObject({
+      ready: true,
+      connection: 'open',
+      error: null,
     });
   });
 

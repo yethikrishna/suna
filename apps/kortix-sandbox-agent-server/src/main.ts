@@ -41,6 +41,10 @@ import type { SandboxBootState } from './routes/health'
 import { installShutdownHandlers } from './shutdown'
 import { startStaticWebServer } from './static-web'
 import { ExecutionLeaseReporter, executionLeaseContextFromEnv } from './execution-lease'
+import {
+  createQuestionResponseHandler,
+  publishQuestionRequest,
+} from './acp/questions'
 
 // Pin file for the opencode session created from KORTIX_INITIAL_PROMPT.
 // Webhook follow-ups (e.g. Slack thread replies) read this to deliver new
@@ -159,7 +163,9 @@ async function main() {
   await ensureInjectedManagedSkills(opencodeConfigDir)
   bootMark('config-deps')
 
-  const opencode = createOpencodeSupervisor(cfg, opencodeConfigDir, projectEnv)
+  const opencode = createOpencodeSupervisor(cfg, opencodeConfigDir, projectEnv, {
+    getCanonicalAcpSessionId: readPinnedOpencodeSessionId,
+  })
 
   if (bootState.repoMaterializationError) {
     logger.warn('[boot] skipping opencode readiness because repo materialization failed')
@@ -345,7 +351,7 @@ async function startSessionRuntime(
     else if (status === 'idle') executionLease?.markInactive(opencodeSessionId)
   }
   const onQuestionAsked = (req: QuestionRequest) => {
-    void relayQuestionToApi(req, cfg).catch((err) =>
+    void relayQuestion(req, opencode, cfg).catch((err) =>
       logger.warn('[opencode-events] question relay failed', { err: (err as Error).message }),
     )
   }
@@ -547,7 +553,9 @@ async function runWarmSeedMode(
     )
   }
 
-  const opencode = createOpencodeSupervisor(cfg, opencodeConfigDir, projectEnv)
+  const opencode = createOpencodeSupervisor(cfg, opencodeConfigDir, projectEnv, {
+    getCanonicalAcpSessionId: readPinnedOpencodeSessionId,
+  })
   await opencode.start().catch((err) => logger.warn('[seed] opencode.start() rejected', { err: err instanceof Error ? err.message : String(err) }))
   bootMark('seed-opencode-spawned')
   const server = startProxy(cfg, opencode, bootTime, bootState, projectEnv, staticWeb.port)
@@ -1202,6 +1210,31 @@ function slackRelayContext(): { projectId: string; sessionId: string; token: str
 // dashboard answers `question.asked` interactively over opencode's own SSE, and
 // auto-answering it here was the "every question is auto-answered even outside
 // Slack" bug. No round-trip, no status codes — the env is the source of truth.
+async function relayQuestion(
+  req: QuestionRequest,
+  opencode: Opencode,
+  cfg: Config,
+): Promise<void> {
+  if (slackRelayContext()) {
+    await relayQuestionToApi(req, cfg)
+    return
+  }
+  if (opencode.getTransport() !== 'acp') return
+  const connection = opencode.getAcpConnection()
+  if (!connection?.ready) {
+    throw new Error('OpenCode ACP connection is not ready for question relay')
+  }
+  publishQuestionRequest(
+    connection,
+    req,
+    createQuestionResponseHandler({
+      baseUrl: opencode.getInternalUrl(),
+      workspace: cfg.workspace,
+      requestId: req.id,
+    }),
+  )
+}
+
 async function relayQuestionToApi(req: QuestionRequest, cfg: Config): Promise<void> {
   const ctx = slackRelayContext()
   if (!ctx) return

@@ -95,12 +95,47 @@ function questionContent(
   );
 }
 
+function settleLoadedProjection(projection: AcpProjection): AcpProjection {
+  const blocked =
+    projection.permissions.length > 0 ||
+    projection.questions.length > 0 ||
+    projection.messages.some((message) =>
+      message.parts.some(
+        (part) =>
+          part.type === 'tool' &&
+          (part.state.status === 'pending' || part.state.status === 'running'),
+      ),
+    );
+  if (blocked) return projection;
+  const completed = Date.now();
+  return {
+    ...projection,
+    status: { type: 'idle' },
+    messages: projection.messages.map((message) =>
+      message.info.role === 'assistant' && !message.info.time.completed
+        ? {
+            ...message,
+            info: {
+              ...message.info,
+              time: { ...message.info.time, completed },
+            },
+          }
+        : message,
+    ),
+  };
+}
+
 export class AcpSessionController {
   private readonly client: AcpSessionClient;
   private readonly listeners = new Set<() => void>();
-  private readonly openRequests = new Map<string, Record<string, unknown>>();
+  private readonly openRequests = new Map<
+    string,
+    { id: AcpJsonRpcId; params: Record<string, unknown> }
+  >();
   private stream: AcpStreamHandle | null = null;
   private connecting: Promise<void> | null = null;
+  private runtimeReload: Promise<void> | null = null;
+  private promptQueue: Promise<void> = Promise.resolve();
   private snapshot: AcpSessionControllerSnapshot;
 
   constructor(private readonly options: AcpSessionControllerOptions) {
@@ -130,6 +165,7 @@ export class AcpSessionController {
   getSnapshot = (): AcpSessionControllerSnapshot => this.snapshot;
 
   async connect(): Promise<void> {
+    if (this.runtimeReload) return this.runtimeReload;
     if (this.snapshot.ready) return;
     if (this.connecting) return this.connecting;
     this.connecting = this.open();
@@ -157,22 +193,7 @@ export class AcpSessionController {
     }
     try {
       await this.stream.ready;
-      const loaded = await this.client.loadSession({
-        sessionId: this.options.sessionId,
-        cwd: this.options.cwd ?? '/workspace',
-      });
-      const configOptions = Array.isArray(loaded.configOptions)
-        ? loaded.configOptions.filter(isObject)
-        : [];
-      this.patch({
-        ready: true,
-        connection: 'open',
-        configOptions,
-        projection: {
-          ...this.snapshot.projection,
-          configOptions,
-        },
-      });
+      await this.loadCanonicalSession();
     } catch (error) {
       this.patch({
         ready: false,
@@ -183,9 +204,57 @@ export class AcpSessionController {
     }
   }
 
-  async send(
+  private async loadCanonicalSession(): Promise<void> {
+    const loaded = await this.client.loadSession({
+      sessionId: this.options.sessionId,
+      cwd: this.options.cwd ?? '/workspace',
+    });
+    const configOptions = Array.isArray(loaded.configOptions)
+      ? loaded.configOptions.filter(isObject)
+      : [];
+    const projection = settleLoadedProjection(this.snapshot.projection);
+    this.patch({
+      ready: true,
+      connection: 'open',
+      error: null,
+      configOptions,
+      projection: {
+        ...projection,
+        configOptions,
+      },
+    });
+  }
+
+  private reloadAfterRuntimeReady(): void {
+    if (!this.snapshot.ready || this.runtimeReload) return;
+    this.patch({ ready: false, connection: 'connecting', error: null });
+    const reload = this.loadCanonicalSession()
+      .catch((error) => {
+        this.patch({
+          ready: false,
+          connection: 'error',
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
+      })
+      .finally(() => {
+        if (this.runtimeReload === reload) this.runtimeReload = null;
+      });
+    this.runtimeReload = reload;
+    void reload;
+  }
+
+  send(
     prompt: AcpContentBlock[],
     options: { model?: string | null; agent?: string | null } = {},
+  ): Promise<void> {
+    const queued = this.promptQueue.then(() => this.executeSend(prompt, options));
+    this.promptQueue = queued.catch(() => {});
+    return queued;
+  }
+
+  private async executeSend(
+    prompt: AcpContentBlock[],
+    options: { model?: string | null; agent?: string | null },
   ): Promise<void> {
     if (!this.snapshot.ready) await this.connect();
     const text = prompt
@@ -259,12 +328,14 @@ export class AcpSessionController {
   }
 
   async answerPermission(requestId: string, reply: 'once' | 'always' | 'reject'): Promise<void> {
-    const params = this.openRequests.get(requestId) ?? {};
+    const request = this.openRequests.get(requestId);
+    const responseId = request?.id ?? requestId;
+    const params = request?.params ?? {};
     const optionId = selectedPermissionOption(params, reply);
     if (reply === 'reject' && !optionId) {
       const result = { outcome: { outcome: 'cancelled' } };
-      await this.client.respond(requestId, result);
-      this.onEnvelope({ jsonrpc: '2.0', id: requestId, result });
+      await this.client.respond(responseId, result);
+      this.onEnvelope({ jsonrpc: '2.0', id: responseId, result });
       return;
     }
     if (!optionId) {
@@ -273,24 +344,27 @@ export class AcpSessionController {
     const result = {
       outcome: { outcome: 'selected', optionId },
     };
-    await this.client.respond(requestId, result);
-    this.onEnvelope({ jsonrpc: '2.0', id: requestId, result });
+    await this.client.respond(responseId, result);
+    this.onEnvelope({ jsonrpc: '2.0', id: responseId, result });
   }
 
   async answerQuestion(requestId: string, answers: string[][]): Promise<void> {
-    const params = this.openRequests.get(requestId) ?? {};
+    const request = this.openRequests.get(requestId);
+    const responseId = request?.id ?? requestId;
+    const params = request?.params ?? {};
     const result = {
       action: 'accept',
       content: questionContent(params, answers),
     };
-    await this.client.respond(requestId, result);
-    this.onEnvelope({ jsonrpc: '2.0', id: requestId, result });
+    await this.client.respond(responseId, result);
+    this.onEnvelope({ jsonrpc: '2.0', id: responseId, result });
   }
 
   async rejectQuestion(requestId: string): Promise<void> {
+    const responseId = this.openRequests.get(requestId)?.id ?? requestId;
     const result = { action: 'decline' };
-    await this.client.respond(requestId, result);
-    this.onEnvelope({ jsonrpc: '2.0', id: requestId, result });
+    await this.client.respond(responseId, result);
+    this.onEnvelope({ jsonrpc: '2.0', id: responseId, result });
   }
 
   close(): void {
@@ -300,8 +374,20 @@ export class AcpSessionController {
   }
 
   private onEnvelope(envelope: AcpEnvelope): void {
+    if (
+      'method' in envelope &&
+      envelope.method === 'kortix/runtime_ready' &&
+      (!isObject(envelope.params) ||
+        envelope.params.sessionId === null ||
+        envelope.params.sessionId === this.options.sessionId)
+    ) {
+      this.reloadAfterRuntimeReady();
+    }
     if ('method' in envelope && 'id' in envelope && isObject(envelope.params)) {
-      this.openRequests.set(String(envelope.id), envelope.params);
+      this.openRequests.set(String(envelope.id), {
+        id: envelope.id,
+        params: envelope.params,
+      });
     } else if ('id' in envelope && !('method' in envelope)) {
       this.openRequests.delete(String(envelope.id));
     }

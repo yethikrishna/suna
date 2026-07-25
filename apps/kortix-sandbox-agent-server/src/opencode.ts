@@ -712,10 +712,27 @@ export type Opencode = {
   markReady(): void
 }
 
+export async function resumeCanonicalAcpSession(
+  connection: Pick<AcpConnection, 'request'>,
+  sessionId: string,
+  cwd: string,
+): Promise<void> {
+  await connection.request('session/resume', {
+    sessionId,
+    cwd,
+    mcpServers: [],
+  })
+}
+
+export interface OpencodeSupervisorOptions {
+  getCanonicalAcpSessionId?: () => string | null
+}
+
 export function createOpencodeSupervisor(
   cfg: Config,
   opencodeConfigDir: string,
   projectEnv?: ProjectEnvStore,
+  options: OpencodeSupervisorOptions = {},
 ): Opencode {
   let currentCfg = cfg
   let currentOpencodeConfigDir = opencodeConfigDir
@@ -729,6 +746,12 @@ export function createOpencodeSupervisor(
   let opencodeCwd = cfg.workspace
   let transport: OpenCodeTransport = resolveOpenCodeTransport(process.env)
   let acpConnection: AcpConnection | null = null
+  let nextAcpEventId = 1
+
+  function rememberAcpEventCursor(): void {
+    if (!acpConnection) return
+    nextAcpEventId = Math.max(nextAcpEventId, acpConnection.lastEventId + 1)
+  }
 
   function ensureCwdExists(): string {
     try {
@@ -842,13 +865,14 @@ export function createOpencodeSupervisor(
     // prompt until the sandbox is rebuilt.
     const proc = spawn(bin, launch.args, {
       cwd,
-      env,
+      env: { ...env, ...launch.env },
       stdio: launch.stdio,
       detached: true,
     })
 
     proc.on('exit', (code, signal) => {
       logger.warn('[opencode] child exited', { code, signal })
+      rememberAcpEventCursor()
       acpConnection?.dispose(
         `OpenCode ACP exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`,
       )
@@ -883,9 +907,9 @@ export function createOpencodeSupervisor(
       const connection = new AcpConnection({
         input: proc.stdin,
         output: proc.stdout,
+        initialEventId: nextAcpEventId,
         onDiagnostic: (line) => logger.warn('[opencode-acp] protocol', { line }),
       })
-      acpConnection = connection
       try {
         const initialized = await connection.initialize({
           clientInfo: {
@@ -895,6 +919,21 @@ export function createOpencodeSupervisor(
         })
         logger.info('[opencode-acp] initialized', {
           protocolVersion: initialized.protocolVersion,
+        })
+        const canonicalSessionId = options.getCanonicalAcpSessionId?.()
+        if (canonicalSessionId) {
+          await resumeCanonicalAcpSession(
+            connection,
+            canonicalSessionId,
+            currentCfg.workspace,
+          )
+          logger.info('[opencode-acp] resumed canonical session after process start', {
+            sessionId: canonicalSessionId,
+          })
+        }
+        acpConnection = connection
+        connection.notifyClient('kortix/runtime_ready', {
+          sessionId: canonicalSessionId ?? null,
         })
       } catch (error) {
         connection.dispose('OpenCode ACP initialization failed')
@@ -962,6 +1001,7 @@ export function createOpencodeSupervisor(
     async stop(signal: NodeJS.Signals = 'SIGTERM') {
       stopping = true
       state = 'down'
+      rememberAcpEventCursor()
       acpConnection?.dispose('OpenCode supervisor stopped')
       acpConnection = null
       if (readinessTimer) {

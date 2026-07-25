@@ -16,6 +16,11 @@ type PendingRequest = {
   timer: ReturnType<typeof setTimeout>
 }
 
+type PendingClientRequest = {
+  handle(response: JsonRpcEnvelope): Promise<void>
+  timer: ReturnType<typeof setTimeout>
+}
+
 type Subscriber = {
   event(value: AcpStreamEvent): void
   close(): void
@@ -51,11 +56,13 @@ export function buildOpenCodeLaunch(
 ): {
   args: string[]
   stdio: ['pipe', 'pipe', 'pipe'] | ['ignore', 'inherit', 'inherit']
+  env: Record<string, string>
 } {
   if (transport === 'rest') {
     return {
       args: ['serve', '--port', String(port), '--hostname', '127.0.0.1'],
       stdio: ['ignore', 'inherit', 'inherit'],
+      env: {},
     }
   }
   return {
@@ -69,6 +76,10 @@ export function buildOpenCodeLaunch(
       cwd,
     ],
     stdio: ['pipe', 'pipe', 'pipe'],
+    // OpenCode excludes its interactive question tool for non-TUI clients
+    // unless this explicit compatibility flag is set. The daemon bridges
+    // question.asked events into ACP session/request_input requests.
+    env: { OPENCODE_ENABLE_QUESTION_TOOL: '1' },
   }
 }
 
@@ -116,13 +127,14 @@ export class AcpProtocolError extends Error {
 export class AcpConnection {
   private readonly input: Writable
   private readonly pending = new Map<string, PendingRequest>()
+  private readonly pendingClientRequests = new Map<string, PendingClientRequest>()
   private readonly subscribers = new Set<Subscriber>()
   private readonly replay: AcpStreamEvent[] = []
   private readonly requestTimeoutMs: number
   private readonly maxReplayEvents: number
   private readonly onDiagnostic: (line: string) => void
   private nextRequestId = 1
-  private nextEventId = 1
+  private nextEventId: number
   private writeQueue = Promise.resolve()
   private closed = false
   private initialized = false
@@ -132,6 +144,7 @@ export class AcpConnection {
     output: Readable
     requestTimeoutMs?: number
     maxReplayEvents?: number
+    initialEventId?: number
     onDiagnostic?: (line: string) => void
   }) {
     this.input = options.input
@@ -139,6 +152,10 @@ export class AcpConnection {
       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
     this.maxReplayEvents =
       options.maxReplayEvents ?? DEFAULT_MAX_REPLAY_EVENTS
+    this.nextEventId = options.initialEventId ?? 1
+    if (!Number.isSafeInteger(this.nextEventId) || this.nextEventId < 1) {
+      throw new Error('initialEventId must be a positive safe integer')
+    }
     this.onDiagnostic = options.onDiagnostic ?? (() => {})
 
     const lines = createInterface({ input: options.output })
@@ -247,7 +264,42 @@ export class AcpConnection {
   }
 
   async post(envelope: JsonRpcEnvelope): Promise<void> {
+    if (!('method' in envelope) && Object.prototype.hasOwnProperty.call(envelope, 'id')) {
+      const key = rpcIdKey(envelope.id)
+      const pending = this.pendingClientRequests.get(key)
+      if (pending) {
+        clearTimeout(pending.timer)
+        this.pendingClientRequests.delete(key)
+        await pending.handle(envelope)
+        return
+      }
+    }
     await this.write(envelope)
+  }
+
+  requestClient(
+    method: string,
+    params: unknown,
+    id: string | number,
+    handle: (response: JsonRpcEnvelope) => Promise<void>,
+  ): void {
+    if (this.closed) throw new AcpProtocolError('ACP output closed')
+    const key = rpcIdKey(id)
+    if (this.pendingClientRequests.has(key)) return
+    const timer = setTimeout(() => {
+      this.pendingClientRequests.delete(key)
+      this.onDiagnostic(`timed out waiting for ACP client response to id ${key}`)
+    }, this.requestTimeoutMs)
+    this.pendingClientRequests.set(key, { handle, timer })
+    this.publish({ jsonrpc: '2.0', id, method, params })
+  }
+
+  notifyClient(method: string, params?: unknown): void {
+    this.publish({
+      jsonrpc: '2.0',
+      method,
+      ...(params === undefined ? {} : { params }),
+    })
   }
 
   subscribe(
@@ -313,6 +365,10 @@ export class AcpConnection {
       }
     }
 
+    this.publish(envelope)
+  }
+
+  private publish(envelope: JsonRpcEnvelope): void {
     const event = { id: this.nextEventId++, envelope }
     this.replay.push(event)
     if (this.replay.length > this.maxReplayEvents) this.replay.shift()
@@ -328,6 +384,10 @@ export class AcpConnection {
       pending.reject(error)
     }
     this.pending.clear()
+    for (const pending of this.pendingClientRequests.values()) {
+      clearTimeout(pending.timer)
+    }
+    this.pendingClientRequests.clear()
     for (const subscriber of this.subscribers) subscriber.close()
     this.subscribers.clear()
   }

@@ -249,7 +249,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B18 | **Keep the managed-model playground pin synchronized with the managed catalog.** The playground exits before API access when its pinned IDs differ from `MANAGED_MODELS`.                                                                                                                                                                                                                                                                    | `packages/sdk/playground/chat/14-change-default-model.ts` still pins retired `qwen3.7-max` and `deepseek-v4-pro`.                                                                                                                                                                                       | **DONE 2026-07-24** — session `managed-models-aster`; full SDK gates green                                                                                                                                                                                             |
 | B19 | **Preserve explicit managed-model pricing and cache-write rates through the project catalog and turn-cost estimator.** Browser-side `models.dev` lookup can substitute another provider's price for a Kortix-managed model, and the turn estimator does not accept a distinct cache-write rate.                                                                                                                                              | `src/core/rest/projects-client/projects.ts`, `src/core/turns/types.ts`, `src/core/turns/state.ts`; confirmed for managed Aster `glm-5.2`.                                                                                                                                                               | **DONE 2026-07-25** — implementation `28c18cbfa`; full SDK suite, typecheck, public-surface snapshot, and packed-install smoke green                                                                                                                                   |
 | B20 | **Keep ACP SSE connections outside the shared 30-second authenticated-fetch timeout.** The ACP controller uses `/kortix/acp/:sessionId` as a long-lived SSE stream.                                                                                                                                                                                                                                                                            | `src/platform/auth-core.ts` exempted only `/global/event`; deployed cold Chromium aborted the ACP stream before `session/load` settled.                                                                                                                                                                | **DONE 2026-07-25** — implementation `89b97f4cc`; RED test, full SDK gates, and local cold ACP plus REST browser matrix pass                                                                                                                                                                                                         |
-| B21 | **Serialize ACP sends with runtime restart reloads.** A send that starts while OpenCode restarts can wait forever on `session/set_config_option` and never send `session/prompt`.                                                                                                                                                                                                                                                               | Deployed cold Chromium sent `session/set_config_option` at `13:36:20.250Z`, received `kortix/runtime_ready`, then sent `session/load` at `13:36:20.640Z`; `POST_RESTART_PONG` never produced `session/prompt`.                                                                                              | **IN PROGRESS 2026-07-25** — session `acp-opencode-canary`; claim commit pending                                                                                                                                                                                                                                                     |
+| B21 | **Serialize ACP sends with runtime restart reloads.** A send that starts while OpenCode restarts can wait forever on `session/set_config_option` and never send `session/prompt`.                                                                                                                                                                                                                                                               | Deployed cold Chromium sent `session/set_config_option` at `13:36:20.250Z`, received `kortix/runtime_ready`, then sent `session/load` at `13:36:20.640Z`; `POST_RESTART_PONG` never produced `session/prompt`.                                                                                              | **DONE 2026-07-25** — implementation `d8537fa2c`; RED tests, full SDK gates, and test-harness typecheck pass                                                                                                                                                                                                                          |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -2437,3 +2437,35 @@ Non-streaming requests retain the 30-second timeout.
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, and the deployed
 cold Chromium matrix remain.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (B21 implementation)
+
+Serialized ACP prompt preparation with OpenCode runtime restarts.
+The controller interrupts stalled config-option requests when
+`kortix/runtime_ready` changes the runtime generation.
+It waits for canonical `session/load` replay and retries only the idempotent
+model and mode config preflight.
+It does not retry `session/prompt` after dispatch.
+It resets the ACP projection before runtime replay.
+
+**RED evidence:**
+
+- Focused controller suite: **13 pass / 2 fail**.
+- Runtime replay produced four messages instead of two.
+- The interrupted config preflight did not complete within 50 milliseconds.
+
+**Verification:**
+
+- Focused ACP controller suite: **16 pass / 0 fail**.
+- SDK typecheck and example typecheck: exit 0.
+- SDK full suite: **1253 pass / 0 fail** across 104 files with 5603 assertions.
+- SDK packed-install smoke: pass.
+- Test-harness typecheck: exit 0.
+- `git diff --check`: exit 0.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, and the deployed
+cold Chromium ACP plus REST rollback matrix remain.

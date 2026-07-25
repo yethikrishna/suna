@@ -130,6 +130,15 @@ export async function ensureSandboxImage(
   // (no clone at boot). On a MISS, kick a fire-and-forget background bake so the
   // next session on this commit boots warm; this boot never blocks on the bake and
   // falls through to the normal cold path when no warm image exists yet.
+  // NOTE (ppwarm template-scoping migration): the ppwarm NAME and its reap paths
+  // (ppwarm-names.ts, quota-gc-select.ts) are now scoped to (project, template),
+  // so a per-project template COULD safely get its own warm image without
+  // endangering the default's. This `template.isShared` gate is left in place
+  // anyway — it is the prerequisite, not the full fix. `ensurePerProjectWarmImage`
+  // below still hardcodes `DEFAULT_SANDBOX_SLUG` regardless of `opts.slug`, so
+  // lifting this read-side gate alone would not unlock anything: the bake path
+  // (and kickProjectWarmPrebake / kickBackgroundWarmBuild's callers) would need
+  // to thread an actual per-template slug through first. Lift both together.
   if (
     config.KORTIX_WARM_SNAPSHOT_ENABLED &&
     (opts.source ?? 'session-start') === 'session-start' &&
@@ -138,7 +147,7 @@ export async function ensureSandboxImage(
     try {
       const warmTip = await resolveCommitSha(project, project.defaultBranch);
       if (warmTip) {
-        const warmName = perProjectWarmImageName(project.projectId, warmTip, identity.snapshotName);
+        const warmName = perProjectWarmImageName(project.projectId, warmTip, identity.snapshotName, template.slug);
         if ((await provider.getSnapshotState(warmName)) === 'active') {
           console.log(
             `[snapshots] per-project warm HIT: booting ${template.slug} from ${warmName} ` +
@@ -1079,7 +1088,7 @@ async function prebakeForProvider(
     const identity = await computeTemplateIdentity(project, template);
     const tip = await resolveCommitSha(project, project.defaultBranch);
     if (!tip) return;
-    const warmName = perProjectWarmImageName(project.projectId, tip, identity.snapshotName);
+    const warmName = perProjectWarmImageName(project.projectId, tip, identity.snapshotName, template.slug);
     // Tip unchanged (or already warm for this commit) → nothing to do.
     if ((await provider.getSnapshotState(warmName)) === 'active') return;
     kickBackgroundWarmBuild(project, { accountId, provider: buildProvider, snapshotName: warmName });
@@ -1307,7 +1316,7 @@ export async function ensurePerProjectWarmImage(
   const tip = await resolveCommitSha(project, project.defaultBranch);
   if (!tip) throw new SnapshotBuildError(`could not resolve ${project.defaultBranch} tip for per-project warm`);
 
-  const snapshotName = perProjectWarmImageName(project.projectId, tip, baseIdentity.snapshotName);
+  const snapshotName = perProjectWarmImageName(project.projectId, tip, baseIdentity.snapshotName, template.slug);
 
   // Idempotency: active image under this (project, tip, runtime) → reuse it.
   // Still reap here — this path also runs when a prior bake's reap failed or a

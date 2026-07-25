@@ -29,6 +29,8 @@ const MODEL_IDS = [
   "claude-opus-4.8",
   "claude-sonnet-4.6",
   "glm-5.2",
+  "qwen3.7-max",
+  "deepseek-v4-pro",
   "deepseek-v4-flash",
 ] as const;
 

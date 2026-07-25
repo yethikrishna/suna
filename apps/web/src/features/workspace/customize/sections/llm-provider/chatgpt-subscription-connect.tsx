@@ -5,8 +5,8 @@ import { InfoBanner } from '@/components/ui/info-banner';
 import Loading from '@/components/ui/loading';
 import { successToast } from '@/components/ui/toast';
 import { ProviderLogo } from '@/features/providers/provider-branding';
-import { refreshProjectProviderState } from '@kortix/sdk/react';
-import { pollProjectProviderOAuth, startProjectProviderOAuth } from '@kortix/sdk';
+import { refreshProjectProviderState } from '@/hooks/opencode/provider-refresh';
+import { pollProjectProviderOAuth, startProjectProviderOAuth } from '@kortix/sdk/projects-client';
 import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, ExternalLink, TriangleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -23,7 +23,7 @@ export function ChatGptSubscriptionConnect({
   onConnected,
 }: {
   projectId: string;
-  onConnected: (providerId: string) => void;
+  onConnected: () => void;
 }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
@@ -75,7 +75,7 @@ export function ChatGptSubscriptionConnect({
           successToast('ChatGPT subscription connected to this project');
           queryClient.invalidateQueries({ queryKey: ['project-secrets', projectId] });
           refreshProjectProviderState(queryClient, projectId, { expectProviderId: 'codex' });
-          onConnected('codex');
+          onConnected();
           return;
         }
         if (res.status === 'failed') {

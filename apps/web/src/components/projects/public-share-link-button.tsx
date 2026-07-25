@@ -12,7 +12,7 @@ import {
 import {
   createSessionPublicShare,
   type CreateSessionPublicShareInput,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
@@ -23,8 +23,6 @@ export function PublicShareLinkButton({
   tooltip = 'Copy a public view-only link',
   title = 'Copy public link',
   className,
-  iconClassName = 'h-4 w-4',
-  tooltipSideOffset,
 }: {
   projectId?: string;
   sessionId?: string;
@@ -32,10 +30,6 @@ export function PublicShareLinkButton({
   tooltip?: string;
   title?: string;
   className?: string;
-  /** Icon size override. Defaults to this component's own 16px. */
-  iconClassName?: string;
-  /** TooltipContent sideOffset override. Omit to keep Radix's own default. */
-  tooltipSideOffset?: number;
 }) {
   const share = useMutation({
     mutationFn: async () => {
@@ -72,13 +66,13 @@ export function PublicShareLinkButton({
           title={title}
         >
           {share.isPending ? (
-            <Loader2 className={cn(iconClassName, 'animate-spin')} />
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <Link2 className={cn(iconClassName)} />
+            <Link2 className="h-4 w-4" />
           )}
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="max-w-56 text-xs" sideOffset={tooltipSideOffset}>
+      <TooltipContent side="bottom" className="max-w-56 text-xs">
         {tooltip}
       </TooltipContent>
     </Tooltip>

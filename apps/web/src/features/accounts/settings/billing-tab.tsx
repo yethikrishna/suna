@@ -17,7 +17,7 @@ import {
   invalidateAccountState,
   useCreatePortalSession,
 } from '@/hooks/billing';
-import { getAccountState, type AccountState } from '@kortix/sdk';
+import { type AccountState, billingApi } from '@/lib/api/billing';
 import { isBillingEnabled } from '@/lib/config';
 import { useBillingAccountId } from '@/stores/billing-account-context';
 import { useUpgradeDialogStore } from '@/stores/upgrade-dialog-store';
@@ -40,7 +40,7 @@ export function BillingTab({ returnUrl, isActive }: { returnUrl: string; isActiv
     error: subscriptionError,
   } = useQuery<AccountState>({
     queryKey: accountStateKeys.state(billingAccountId),
-    queryFn: () => getAccountState({ accountId: billingAccountId }),
+    queryFn: () => billingApi.getAccountState(false, billingAccountId),
     enabled: !!session && !authLoading,
     staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 15,

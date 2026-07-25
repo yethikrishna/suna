@@ -1,51 +1,26 @@
 import { HTTPException } from 'hono/http-exception';
 import { type ProxyServiceConfig } from '../../config/proxy-services';
 import { config, KORTIX_MARKUP, PLATFORM_FEE_MARKUP } from '../../../config';
-import { requireModelPricing } from '../../config/models';
+import { getModel } from '../../config/models';
+import { calculateCost, extractUsage } from '../../services/llm';
 import {
-  accumulateUsageChunk,
-  calculateCost,
-  extractUsage,
-  type UsageAccumulator,
-} from '../../services/llm';
-import { resolveActorFromRequest, type ActorContext } from '../../../shared/actor-context';
-import type { ToolCreditReservation } from './app';
-import {
-  refundLlmReservation,
-  reserveEstimatedLlmCredits,
-  settleLlmReservation,
-  type LlmCreditReservation,
-} from '../../services/llm-reservation';
+  resolveActorFromRequest,
+  type ActorContext,
+} from '../../../shared/actor-context';
+import type { LlmCreditReservation, ToolCreditReservation } from './app';
 import {
   matchAllowedRoute,
   tryAuthenticate,
   maybeNormalizeOpenAIResponsesInput,
   buildForwardHeaders,
   getRequestBody,
+  reserveEstimatedLlmCredits,
   reserveToolProxyCredits,
+  settleLlmReservation,
+  refundLlmReservation,
   refundToolReservation,
   injectApiKey,
 } from './helpers';
-
-function pricingProvider(service: ProxyServiceConfig, managed: boolean): string {
-  if (managed && service.kortixTargetBaseUrl === config.OPENROUTER_API_URL) {
-    return 'openrouter';
-  }
-  return (
-    {
-      xai: 'x-ai',
-      gemini: 'google',
-    }[service.name] ?? service.name
-  );
-}
-
-function usageProvider(service: ProxyServiceConfig): 'openai' | 'anthropic' {
-  return service.name === 'anthropic' ? 'anthropic' : 'openai';
-}
-
-function usageRoute(service: ProxyServiceConfig, subPath: string): string {
-  return `/v1/${service.name}${subPath}`;
-}
 
 // === Core Proxy Handler ===
 //
@@ -65,7 +40,9 @@ export async function handleProxy(c: any, service: ProxyServiceConfig, prefix: s
   const prefixStr = `/${prefix}`;
   // Find the prefix anywhere in the path (handles mount-point prefixing by Hono)
   const prefixIdx = fullPath.indexOf(prefixStr);
-  const subPath = prefixIdx !== -1 ? fullPath.slice(prefixIdx + prefixStr.length) || '/' : '/';
+  const subPath = prefixIdx !== -1
+    ? fullPath.slice(prefixIdx + prefixStr.length) || '/'
+    : '/';
   const queryString = new URL(c.req.url).search;
   const method = c.req.method;
 
@@ -98,7 +75,7 @@ async function handleKortixProxy(
   subPath: string,
   queryString: string,
   method: string,
-  accountId: string,
+  accountId: string
 ) {
   const matchedRoute = matchAllowedRoute(method, subPath, service.allowedRoutes);
   if (!matchedRoute) {
@@ -116,10 +93,7 @@ async function handleKortixProxy(
     } catch {
       requestedVersion = undefined;
     }
-    if (
-      typeof requestedVersion !== 'string' ||
-      !matchedRoute.allowedBodyVersions.includes(requestedVersion)
-    ) {
+    if (typeof requestedVersion !== 'string' || !matchedRoute.allowedBodyVersions.includes(requestedVersion)) {
       throw new HTTPException(403, {
         message: `Model version not allowed for ${service.name}`,
       });
@@ -152,13 +126,7 @@ async function handleKortixProxy(
   let reservation: LlmCreditReservation | null = null;
   let toolReservation: ToolCreditReservation | null = null;
   if (service.isLlm === true) {
-    reservation = await reserveEstimatedLlmCredits(
-      accountId,
-      body,
-      KORTIX_MARKUP,
-      actor,
-      pricingProvider(service, true),
-    );
+    reservation = await reserveEstimatedLlmCredits(accountId, body, KORTIX_MARKUP, actor);
   } else {
     toolReservation = await reserveToolProxyCredits(
       accountId,
@@ -168,37 +136,15 @@ async function handleKortixProxy(
     );
   }
 
-  console.log(
-    `[PROXY] ${service.name} (kortix:${accountId}) ${method} ${subPath} → ${targetUrl} [bill:${billingToolName}]`,
-  );
+  console.log(`[PROXY] ${service.name} (kortix:${accountId}) ${method} ${subPath} → ${targetUrl} [bill:${billingToolName}]`);
 
-  let upstream: Response;
-  try {
-    upstream = await fetch(targetUrl, {
-      method,
-      headers,
-      body,
-      // @ts-ignore
-      duplex: 'half',
-    });
-  } catch (error) {
-    if (service.isLlm === true) {
-      await refundLlmReservation(
-        reservation,
-        `LLM reservation refund after dispatch error: ${service.name}`,
-      ).catch((refundError) =>
-        console.error('[PROXY] LLM reservation refund failed:', refundError),
-      );
-    } else {
-      await refundToolReservation(
-        toolReservation,
-        `Tool reservation refund after dispatch error: ${service.name}`,
-      ).catch((refundError) =>
-        console.error('[PROXY] Tool reservation refund failed:', refundError),
-      );
-    }
-    throw error;
-  }
+  const upstream = await fetch(targetUrl, {
+    method,
+    headers,
+    body,
+    // @ts-ignore
+    duplex: 'half',
+  });
 
   // LLM services: bill per-token at KORTIX_MARKUP (1.2×)
   if (service.isLlm === true) {
@@ -206,13 +152,10 @@ async function handleKortixProxy(
       return billLlmKortixProxy(upstream, service, subPath, accountId, actor, reservation);
     }
     // Upstream error — don't bill for failed requests
-    console.warn(
-      `[PROXY] LLM kortix proxy ${service.name} upstream error ${upstream.status} — no billing`,
+    console.warn(`[PROXY] LLM kortix proxy ${service.name} upstream error ${upstream.status} — no billing`);
+    refundLlmReservation(reservation, `LLM reservation refund after upstream error: ${service.name}`).catch(
+      (err) => console.error('[PROXY] LLM reservation refund failed:', err),
     );
-    await refundLlmReservation(
-      reservation,
-      `LLM reservation refund after upstream error: ${service.name}`,
-    ).catch((err) => console.error('[PROXY] LLM reservation refund failed:', err));
     return new Response(upstream.body, {
       status: upstream.status,
       statusText: upstream.statusText,
@@ -221,10 +164,9 @@ async function handleKortixProxy(
   }
 
   if (!upstream.ok) {
-    refundToolReservation(
-      toolReservation,
-      `Tool reservation refund after upstream error: ${service.name}`,
-    ).catch((err) => console.error('[PROXY] Tool reservation refund failed:', err));
+    refundToolReservation(toolReservation, `Tool reservation refund after upstream error: ${service.name}`).catch(
+      (err) => console.error('[PROXY] Tool reservation refund failed:', err),
+    );
   }
 
   return new Response(upstream.body, {
@@ -254,92 +196,75 @@ async function billLlmKortixProxy(
   if (isStreaming) {
     const upstreamBody = upstream.body;
     if (!upstreamBody) {
-      await refundLlmReservation(
-        reservation,
-        `LLM reservation refund after missing stream body: ${service.name}`,
-      );
       return new Response(null, { status: 502 });
     }
 
     const [clientStream, billingStream] = upstreamBody.tee();
 
     // Fire-and-forget: extract usage from billing stream
-    extractUsageFromKortixProxyStream(
-      billingStream,
-      service,
-      subPath,
-      accountId,
-      actor,
-      reservation,
-    );
+    extractUsageFromKortixProxyStream(billingStream, service, subPath, accountId, actor, reservation);
 
     return new Response(clientStream, {
       status: upstream.status,
       headers: {
         'Content-Type': contentType,
         'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
+        'Connection': 'keep-alive',
       },
     });
   }
 
   // Non-streaming: read response, extract usage, bill, return
-  let responseBody: any;
-  try {
-    responseBody = await upstream.json();
-  } catch {
-    await refundLlmReservation(
-      reservation,
-      `LLM reservation refund after invalid JSON response: ${service.name}`,
-    );
-    throw new HTTPException(502, {
-      message: `${service.name} returned an invalid JSON response`,
-    });
-  }
-  const provider = usageProvider(service);
-  const usage = extractUsage(responseBody, provider);
+  const responseBody = await upstream.json();
+  const isAnthropic = service.name === 'anthropic';
+
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let cachedTokens = 0;
+  let cacheWriteTokens = 0;
   let modelId = responseBody?.model || 'unknown';
 
-  if (usage && (usage.promptTokens > 0 || usage.completionTokens > 0)) {
-    const modelConfig =
-      reservation?.modelConfig ??
-      requireModelPricing(modelId, pricingProvider(service, true));
+  if (isAnthropic && responseBody?.usage) {
+    promptTokens = responseBody.usage.input_tokens ?? 0;
+    completionTokens = responseBody.usage.output_tokens ?? 0;
+  } else {
+    const usage = extractUsage(responseBody);
+    if (usage) {
+      promptTokens = usage.promptTokens;
+      completionTokens = usage.completionTokens;
+      cachedTokens = usage.cachedTokens;
+      cacheWriteTokens = usage.cacheWriteTokens;
+    }
+  }
+
+  if (promptTokens > 0 || completionTokens > 0) {
+    const modelConfig = getModel(modelId);
     const cost = calculateCost(
       modelConfig,
-      usage.promptTokens,
-      usage.completionTokens,
-      usage.cachedTokens,
-      usage.cacheWriteTokens,
+      promptTokens,
+      completionTokens,
+      cachedTokens,
+      cacheWriteTokens,
       KORTIX_MARKUP,
-      usage.upstreamCost,
     );
 
-    await settleLlmReservation({
+    settleLlmReservation({
       accountId,
       modelId,
-      promptTokens: usage.promptTokens,
-      completionTokens: usage.completionTokens,
+      promptTokens,
+      completionTokens,
       actualCost: cost,
       reservation,
       actor,
       logPrefix: 'LLM kortix billing',
-      provider: pricingProvider(service, true),
-      route: usageRoute(service, subPath),
-      cachedTokens: usage.cachedTokens,
-      cacheWriteTokens: usage.cacheWriteTokens,
-      upstreamCost: usage.upstreamCost,
-      upstreamStatus: upstream.status,
-    });
+    }).catch((err) => console.error(`[PROXY] LLM kortix billing error: ${err}`));
 
-    console.log(
-      `[PROXY] LLM kortix ${modelId}: ${usage.promptTokens}/${usage.completionTokens} tokens, cost=$${cost.toFixed(6)} (${KORTIX_MARKUP}x)`,
-    );
+    console.log(`[PROXY] LLM kortix ${modelId}: ${promptTokens}/${completionTokens} tokens, cost=$${cost.toFixed(6)} (${KORTIX_MARKUP}x)`);
   } else {
     console.warn(`[PROXY] LLM kortix ${service.name}: no usage data in response — billing skipped`);
-    await refundLlmReservation(
-      reservation,
-      `LLM reservation refund after missing usage: ${service.name}`,
-    ).catch((err) => console.error('[PROXY] LLM reservation refund failed:', err));
+    refundLlmReservation(reservation, `LLM reservation refund after missing usage: ${service.name}`).catch(
+      (err) => console.error('[PROXY] LLM reservation refund failed:', err),
+    );
   }
 
   return new Response(JSON.stringify(responseBody), {
@@ -361,14 +286,15 @@ async function extractUsageFromKortixProxyStream(
   actor: ActorContext | null,
   reservation: LlmCreditReservation | null,
 ) {
-  let settlementStarted = false;
   try {
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let detectedModel = 'unknown';
-    const provider = usageProvider(service);
-    let usageState: UsageAccumulator | null = null;
+    const isAnthropic = service.name === 'anthropic';
+    let lastUsage: { promptTokens: number; completionTokens: number; cachedTokens: number; cacheWriteTokens: number } | null = null;
+    let anthropicInputTokens = 0;
+    let anthropicOutputTokens = 0;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -382,39 +308,64 @@ async function extractUsageFromKortixProxyStream(
         if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
         try {
           const chunk = JSON.parse(line.slice(6));
-          usageState = accumulateUsageChunk(usageState, chunk, provider);
-          detectedModel = usageState?.model ?? detectedModel;
+          if (isAnthropic) {
+            if (chunk.type === 'message_start' && chunk.message) {
+              detectedModel = chunk.message.model || detectedModel;
+              anthropicInputTokens = chunk.message.usage?.input_tokens ?? 0;
+            }
+            if (chunk.type === 'message_delta' && chunk.usage) {
+              anthropicOutputTokens = chunk.usage.output_tokens ?? 0;
+            }
+          } else {
+            if (chunk.model) detectedModel = chunk.model;
+            if (chunk.usage) {
+              const details = chunk.usage.prompt_tokens_details;
+              lastUsage = {
+                promptTokens: chunk.usage.prompt_tokens ?? 0,
+                completionTokens: chunk.usage.completion_tokens ?? 0,
+                cachedTokens: details?.cached_tokens ?? 0,
+                cacheWriteTokens: details?.cache_write_tokens ?? 0,
+              };
+            }
+          }
         } catch {
           // Not valid JSON — skip
         }
       }
     }
 
-    if (!usageState) {
-      console.warn(`[PROXY] LLM kortix stream (${service.name}): no usage data — billing skipped`);
-      await refundLlmReservation(
+    if (isAnthropic) {
+      if (!(anthropicInputTokens > 0 || anthropicOutputTokens > 0)) {
+        console.warn(`[PROXY] LLM kortix stream (${service.name}): zero tokens — billing skipped`);
+        await refundLlmReservation(reservation, `LLM reservation refund after zero stream usage: ${service.name}`);
+        return;
+      }
+      const modelConfig = getModel(detectedModel);
+      const cost = calculateCost(modelConfig, anthropicInputTokens, anthropicOutputTokens, 0, 0, KORTIX_MARKUP);
+      await settleLlmReservation({
+        accountId,
+        modelId: detectedModel,
+        promptTokens: anthropicInputTokens,
+        completionTokens: anthropicOutputTokens,
+        actualCost: cost,
         reservation,
-        `LLM reservation refund after missing stream usage: ${service.name}`,
-      );
+        actor,
+        logPrefix: 'LLM kortix stream billing',
+      });
+      console.log(`[PROXY] LLM kortix stream ${detectedModel}: ${anthropicInputTokens}/${anthropicOutputTokens} tokens, cost=$${cost.toFixed(6)} (${KORTIX_MARKUP}x)`);
       return;
     }
 
-    const { promptTokens, completionTokens, cachedTokens, cacheWriteTokens, upstreamCost } =
-      usageState.usage;
+    if (!lastUsage) {
+      console.warn(`[PROXY] LLM kortix stream (${service.name}): no usage data — billing skipped`);
+      await refundLlmReservation(reservation, `LLM reservation refund after missing stream usage: ${service.name}`);
+      return;
+    }
+
+    const { promptTokens, completionTokens, cachedTokens, cacheWriteTokens } = lastUsage;
     if (promptTokens > 0 || completionTokens > 0) {
-      const modelConfig =
-        reservation?.modelConfig ??
-        requireModelPricing(detectedModel, pricingProvider(service, true));
-      const cost = calculateCost(
-        modelConfig,
-        promptTokens,
-        completionTokens,
-        cachedTokens,
-        cacheWriteTokens,
-        KORTIX_MARKUP,
-        upstreamCost,
-      );
-      settlementStarted = true;
+      const modelConfig = getModel(detectedModel);
+      const cost = calculateCost(modelConfig, promptTokens, completionTokens, cachedTokens, cacheWriteTokens, KORTIX_MARKUP);
       await settleLlmReservation({
         accountId,
         modelId: detectedModel,
@@ -424,32 +375,17 @@ async function extractUsageFromKortixProxyStream(
         reservation,
         actor,
         logPrefix: 'LLM kortix stream billing',
-        provider: pricingProvider(service, true),
-        route: usageRoute(service, subPath),
-        cachedTokens,
-        cacheWriteTokens,
-        upstreamCost,
-        streaming: true,
-        upstreamStatus: 200,
       });
-      console.log(
-        `[PROXY] LLM kortix stream ${detectedModel}: ${promptTokens}/${completionTokens} tokens, cost=$${cost.toFixed(6)} (${KORTIX_MARKUP}x)`,
-      );
+      console.log(`[PROXY] LLM kortix stream ${detectedModel}: ${promptTokens}/${completionTokens} tokens, cost=$${cost.toFixed(6)} (${KORTIX_MARKUP}x)`);
     } else {
       console.warn(`[PROXY] LLM kortix stream (${service.name}): zero tokens — billing skipped`);
-      await refundLlmReservation(
-        reservation,
-        `LLM reservation refund after zero stream usage: ${service.name}`,
-      );
+      await refundLlmReservation(reservation, `LLM reservation refund after zero stream usage: ${service.name}`);
     }
   } catch (err) {
     console.error(`[PROXY] Error extracting usage from kortix proxy stream:`, err);
-    if (!settlementStarted) {
-      await refundLlmReservation(
-        reservation,
-        `LLM reservation refund after stream usage error: ${service.name}`,
-      ).catch((refundErr) => console.error('[PROXY] LLM reservation refund failed:', refundErr));
-    }
+    await refundLlmReservation(reservation, `LLM reservation refund after stream usage error: ${service.name}`).catch(
+      (refundErr) => console.error('[PROXY] LLM reservation refund failed:', refundErr),
+    );
   }
 }
 
@@ -476,13 +412,7 @@ async function handleKortixPassthrough(
   let reservation: LlmCreditReservation | null = null;
   let toolReservation: ToolCreditReservation | null = null;
   if (isLlm) {
-    reservation = await reserveEstimatedLlmCredits(
-      accountId,
-      body,
-      PLATFORM_FEE_MARKUP,
-      null,
-      pricingProvider(service, false),
-    );
+    reservation = await reserveEstimatedLlmCredits(accountId, body, PLATFORM_FEE_MARKUP, null);
   } else {
     toolReservation = await reserveToolProxyCredits(
       accountId,
@@ -492,37 +422,15 @@ async function handleKortixPassthrough(
     );
   }
 
-  console.log(
-    `[PROXY] ${service.name} (passthrough:${accountId}) ${method} ${subPath} → ${targetUrl} [bill:${billingToolName}@${PLATFORM_FEE_MARKUP}x]`,
-  );
+  console.log(`[PROXY] ${service.name} (passthrough:${accountId}) ${method} ${subPath} → ${targetUrl} [bill:${billingToolName}@${PLATFORM_FEE_MARKUP}x]`);
 
-  let upstream: Response;
-  try {
-    upstream = await fetch(targetUrl, {
-      method,
-      headers,
-      body,
-      // @ts-ignore
-      duplex: 'half',
-    });
-  } catch (error) {
-    if (isLlm) {
-      await refundLlmReservation(
-        reservation,
-        `LLM reservation refund after dispatch error: ${service.name}`,
-      ).catch((refundError) =>
-        console.error('[PROXY] LLM reservation refund failed:', refundError),
-      );
-    } else {
-      await refundToolReservation(
-        toolReservation,
-        `Tool reservation refund after dispatch error: ${service.name}`,
-      ).catch((refundError) =>
-        console.error('[PROXY] Tool reservation refund failed:', refundError),
-      );
-    }
-    throw error;
-  }
+  const upstream = await fetch(targetUrl, {
+    method,
+    headers,
+    body,
+    // @ts-ignore
+    duplex: 'half',
+  });
 
   if (isLlm && upstream.ok) {
     // For LLM passthrough: extract token usage and bill at platform fee
@@ -531,13 +439,10 @@ async function handleKortixPassthrough(
 
   if (isLlm) {
     // LLM call failed upstream — don't bill for failed requests
-    console.warn(
-      `[PROXY] LLM passthrough ${service.name} upstream error ${upstream.status} — no billing`,
+    console.warn(`[PROXY] LLM passthrough ${service.name} upstream error ${upstream.status} — no billing`);
+    refundLlmReservation(reservation, `LLM reservation refund after upstream error: ${service.name}`).catch(
+      (err) => console.error('[PROXY] LLM reservation refund failed:', err),
     );
-    await refundLlmReservation(
-      reservation,
-      `LLM reservation refund after upstream error: ${service.name}`,
-    ).catch((err) => console.error('[PROXY] LLM reservation refund failed:', err));
     return new Response(upstream.body, {
       status: upstream.status,
       statusText: upstream.statusText,
@@ -546,10 +451,9 @@ async function handleKortixPassthrough(
   }
 
   if (!upstream.ok) {
-    refundToolReservation(
-      toolReservation,
-      `Tool reservation refund after upstream error: ${service.name}`,
-    ).catch((err) => console.error('[PROXY] Tool reservation refund failed:', err));
+    refundToolReservation(toolReservation, `Tool reservation refund after upstream error: ${service.name}`).catch(
+      (err) => console.error('[PROXY] Tool reservation refund failed:', err),
+    );
   }
 
   return new Response(upstream.body, {
@@ -566,7 +470,7 @@ async function handlePassthrough(
   service: ProxyServiceConfig,
   subPath: string,
   queryString: string,
-  method: string,
+  method: string
 ) {
   const targetUrl = `${service.targetBaseUrl}${subPath}${queryString}`;
   const headers = buildForwardHeaders(c);
@@ -608,10 +512,6 @@ async function billLlmPassthrough(
   if (isStreaming) {
     const upstreamBody = upstream.body;
     if (!upstreamBody) {
-      await refundLlmReservation(
-        reservation,
-        `LLM reservation refund after missing stream body: ${service.name}`,
-      );
       return new Response(null, { status: 502 });
     }
 
@@ -625,69 +525,60 @@ async function billLlmPassthrough(
       headers: {
         'Content-Type': contentType,
         'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
+        'Connection': 'keep-alive',
       },
     });
   }
 
   // Non-streaming: read response, extract usage, bill, return
-  let responseBody: any;
-  try {
-    responseBody = await upstream.json();
-  } catch {
-    await refundLlmReservation(
-      reservation,
-      `LLM reservation refund after invalid JSON response: ${service.name}`,
-    );
-    throw new HTTPException(502, {
-      message: `${service.name} returned an invalid JSON response`,
-    });
-  }
-  const provider = usageProvider(service);
+  const responseBody = await upstream.json();
+  const isAnthropic = service.name === 'anthropic';
+
+  // Extract usage — handle both OpenAI and Anthropic response formats
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let cachedTokens = 0;
+  let cacheWriteTokens = 0;
   let modelId = 'unknown';
-  const usage = extractUsage(responseBody, provider);
-  modelId = responseBody?.model || modelId;
 
-  if (usage && (usage.promptTokens > 0 || usage.completionTokens > 0)) {
-    const modelConfig =
-      reservation?.modelConfig ??
-      requireModelPricing(modelId, pricingProvider(service, false));
-    const cost = calculateCost(
-      modelConfig,
-      usage.promptTokens,
-      usage.completionTokens,
-      usage.cachedTokens,
-      usage.cacheWriteTokens,
-      PLATFORM_FEE_MARKUP,
-      usage.upstreamCost,
-    );
+  if (isAnthropic && responseBody?.usage) {
+    // Anthropic: { usage: { input_tokens, output_tokens }, model }
+    promptTokens = responseBody.usage.input_tokens ?? 0;
+    completionTokens = responseBody.usage.output_tokens ?? 0;
+    modelId = responseBody.model || modelId;
+  } else {
+    // OpenAI-compatible: { usage: { prompt_tokens, completion_tokens }, model }
+    const usage = extractUsage(responseBody);
+    if (usage) {
+      promptTokens = usage.promptTokens;
+      completionTokens = usage.completionTokens;
+      cachedTokens = usage.cachedTokens;
+      cacheWriteTokens = usage.cacheWriteTokens;
+    }
+    modelId = responseBody?.model || modelId;
+  }
 
-    await settleLlmReservation({
+  if (promptTokens > 0 || completionTokens > 0) {
+    const modelConfig = getModel(modelId);
+    const cost = calculateCost(modelConfig, promptTokens, completionTokens, cachedTokens, cacheWriteTokens, PLATFORM_FEE_MARKUP);
+
+    settleLlmReservation({
       accountId,
       modelId,
-      promptTokens: usage.promptTokens,
-      completionTokens: usage.completionTokens,
+      promptTokens,
+      completionTokens,
       actualCost: cost,
       reservation,
       actor: null,
       logPrefix: 'LLM passthrough billing',
-      provider: pricingProvider(service, false),
-      route: usageRoute(service, subPath),
-      cachedTokens: usage.cachedTokens,
-      cacheWriteTokens: usage.cacheWriteTokens,
-      upstreamCost: usage.upstreamCost,
-      upstreamStatus: upstream.status,
-    });
+    }).catch((err) => console.error(`[PROXY] LLM passthrough billing error: ${err}`));
 
-    console.log(
-      `[PROXY] LLM passthrough ${modelId}: ${usage.promptTokens}/${usage.completionTokens} tokens, cost=$${cost.toFixed(6)} (${PLATFORM_FEE_MARKUP}x)`,
-    );
+    console.log(`[PROXY] LLM passthrough ${modelId}: ${promptTokens}/${completionTokens} tokens, cost=$${cost.toFixed(6)} (${PLATFORM_FEE_MARKUP}x)`);
   } else {
     console.warn(`[PROXY] LLM passthrough ${service.name}: no usage data — billing skipped`);
-    await refundLlmReservation(
-      reservation,
-      `LLM reservation refund after missing usage: ${service.name}`,
-    ).catch((err) => console.error('[PROXY] LLM reservation refund failed:', err));
+    refundLlmReservation(reservation, `LLM reservation refund after missing usage: ${service.name}`).catch(
+      (err) => console.error('[PROXY] LLM reservation refund failed:', err),
+    );
   }
 
   return new Response(JSON.stringify(responseBody), {
@@ -711,14 +602,19 @@ async function extractUsageFromPassthroughStream(
   accountId: string,
   reservation: LlmCreditReservation | null,
 ) {
-  let settlementStarted = false;
   try {
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let detectedModel = 'unknown';
-    const provider = usageProvider(service);
-    let usageState: UsageAccumulator | null = null;
+    const isAnthropic = service.name === 'anthropic';
+
+    // OpenAI-compatible tracking
+    let lastUsage: { promptTokens: number; completionTokens: number } | null = null;
+
+    // Anthropic-specific tracking
+    let anthropicInputTokens = 0;
+    let anthropicOutputTokens = 0;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -733,41 +629,49 @@ async function extractUsageFromPassthroughStream(
         try {
           const chunk = JSON.parse(line.slice(6));
 
-          usageState = accumulateUsageChunk(usageState, chunk, provider);
-          detectedModel = usageState?.model ?? detectedModel;
+          if (isAnthropic) {
+            // Anthropic SSE: message_start → input tokens, message_delta → output tokens
+            if (chunk.type === 'message_start' && chunk.message) {
+              detectedModel = chunk.message.model || detectedModel;
+              anthropicInputTokens = chunk.message.usage?.input_tokens ?? 0;
+            }
+            if (chunk.type === 'message_delta' && chunk.usage) {
+              anthropicOutputTokens = chunk.usage.output_tokens ?? 0;
+            }
+          } else {
+            // OpenAI-compatible SSE
+            if (chunk.model) detectedModel = chunk.model;
+            if (chunk.usage) {
+              lastUsage = {
+                promptTokens: chunk.usage.prompt_tokens ?? 0,
+                completionTokens: chunk.usage.completion_tokens ?? 0,
+              };
+            }
+          }
         } catch {
           // Not valid JSON — skip
         }
       }
     }
 
-    if (!usageState) {
-      console.warn(
-        `[PROXY] LLM passthrough stream (${service.name}): no usage data — billing skipped`,
-      );
-      await refundLlmReservation(
-        reservation,
-        `LLM reservation refund after missing stream usage: ${service.name}`,
-      );
+    let promptTokens: number;
+    let completionTokens: number;
+
+    if (isAnthropic) {
+      promptTokens = anthropicInputTokens;
+      completionTokens = anthropicOutputTokens;
+    } else if (lastUsage) {
+      promptTokens = lastUsage.promptTokens;
+      completionTokens = lastUsage.completionTokens;
+    } else {
+      console.warn(`[PROXY] LLM passthrough stream (${service.name}): no usage data — billing skipped`);
+      await refundLlmReservation(reservation, `LLM reservation refund after missing stream usage: ${service.name}`);
       return;
     }
 
-    const { promptTokens, completionTokens, cachedTokens, cacheWriteTokens, upstreamCost } =
-      usageState.usage;
     if (promptTokens > 0 || completionTokens > 0) {
-      const modelConfig =
-        reservation?.modelConfig ??
-        requireModelPricing(detectedModel, pricingProvider(service, false));
-      const cost = calculateCost(
-        modelConfig,
-        promptTokens,
-        completionTokens,
-        cachedTokens,
-        cacheWriteTokens,
-        PLATFORM_FEE_MARKUP,
-        upstreamCost,
-      );
-      settlementStarted = true;
+      const modelConfig = getModel(detectedModel);
+      const cost = calculateCost(modelConfig, promptTokens, completionTokens, 0, 0, PLATFORM_FEE_MARKUP);
       await settleLlmReservation({
         accountId,
         modelId: detectedModel,
@@ -777,33 +681,16 @@ async function extractUsageFromPassthroughStream(
         reservation,
         actor: null,
         logPrefix: 'LLM passthrough stream billing',
-        provider: pricingProvider(service, false),
-        route: usageRoute(service, subPath),
-        cachedTokens,
-        cacheWriteTokens,
-        upstreamCost,
-        streaming: true,
-        upstreamStatus: 200,
       });
-      console.log(
-        `[PROXY] LLM passthrough stream ${detectedModel}: ${promptTokens}/${completionTokens} tokens, cost=$${cost.toFixed(6)} (${PLATFORM_FEE_MARKUP}x)`,
-      );
+      console.log(`[PROXY] LLM passthrough stream ${detectedModel}: ${promptTokens}/${completionTokens} tokens, cost=$${cost.toFixed(6)} (${PLATFORM_FEE_MARKUP}x)`);
     } else {
-      console.warn(
-        `[PROXY] LLM passthrough stream (${service.name}): zero tokens — billing skipped`,
-      );
-      await refundLlmReservation(
-        reservation,
-        `LLM reservation refund after zero stream usage: ${service.name}`,
-      );
+      console.warn(`[PROXY] LLM passthrough stream (${service.name}): zero tokens — billing skipped`);
+      await refundLlmReservation(reservation, `LLM reservation refund after zero stream usage: ${service.name}`);
     }
   } catch (err) {
     console.error(`[PROXY] Error extracting usage from passthrough stream:`, err);
-    if (!settlementStarted) {
-      await refundLlmReservation(
-        reservation,
-        `LLM reservation refund after stream usage error: ${service.name}`,
-      ).catch((refundErr) => console.error('[PROXY] LLM reservation refund failed:', refundErr));
-    }
+    await refundLlmReservation(reservation, `LLM reservation refund after stream usage error: ${service.name}`).catch(
+      (refundErr) => console.error('[PROXY] LLM reservation refund failed:', refundErr),
+    );
   }
 }

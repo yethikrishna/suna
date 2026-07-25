@@ -1,4 +1,4 @@
-import type { KortixProject } from '@kortix/sdk';
+import type { KortixProject } from '@kortix/sdk/projects-client';
 
 /** True when this project routes LLM calls through the managed gateway. */
 export function isLlmGatewayEnabled(project: KortixProject | undefined): boolean {

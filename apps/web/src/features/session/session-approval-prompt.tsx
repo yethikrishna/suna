@@ -38,7 +38,7 @@ import {
   type SessionAuditAction,
   listProjectPolicies,
   setProjectPolicies,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import { ShieldAlert } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';

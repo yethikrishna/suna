@@ -7,7 +7,6 @@ import {
   isExperimentalFeatureKey,
   resolveExperimentalFeature,
   resolveExperimentalFeatures,
-  resolveProjectRuntimeTransport,
 } from '../experimental/features';
 import { projectLlmGatewayEnabled } from '../llm-gateway/enablement';
 
@@ -24,7 +23,6 @@ describe('isExperimentalFeatureKey', () => {
     expect(isExperimentalFeatureKey('connectors_api_discover')).toBe(true);
     expect(isExperimentalFeatureKey('agentmail_email')).toBe(true);
     expect(isExperimentalFeatureKey('llm_gateway')).toBe(true);
-    expect(isExperimentalFeatureKey('acp_runtime')).toBe(true);
     expect(isExperimentalFeatureKey('nope')).toBe(false);
     expect(isExperimentalFeatureKey(undefined)).toBe(false);
     expect(isExperimentalFeatureKey(42)).toBe(false);
@@ -71,19 +69,6 @@ describe('resolveExperimentalFeature — explicit override wins', () => {
         'connectors_api_discover',
       ),
     ).toBe(false);
-  });
-
-  test('ACP runtime is an explicit per-project client transport', () => {
-    expect(resolveExperimentalFeature({}, 'acp_runtime')).toBe(false);
-    expect(resolveExperimentalFeature({ experimental: { acp_runtime: true } }, 'acp_runtime')).toBe(
-      true,
-    );
-    expect(resolveProjectRuntimeTransport({})).toBe('rest');
-    expect(
-      resolveProjectRuntimeTransport({
-        experimental: { acp_runtime: true },
-      }),
-    ).toBe('acp');
   });
 
   test('llm_gateway is platform-gated and defaults on when available', () => {

@@ -8,7 +8,7 @@ import {
   setMeetVoice,
   type MeetVoice,
   type MeetVoicesResponse,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 
 export type { MeetVoice, MeetVoicesResponse };
 

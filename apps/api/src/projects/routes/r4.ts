@@ -66,8 +66,7 @@ import {
   relayTurnStep,
 } from '../../channels/turn-relay';
 import { config } from '../../config';
-import { upsertProfileCredential, upsertProfileOAuth2Credential } from '../../executor/credentials';
-import { revokeProfileOAuth2 } from '../../executor/oauth2-store';
+import { upsertProfileCredential } from '../../executor/credentials';
 import {
   finalizePipedreamProfileConnection,
   pipedreamConfigured,
@@ -347,7 +346,10 @@ projectsApp.openapi(
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     if (c.get('authType') === 'service_account') {
-      return c.json({ error: 'Only human members can reconcile personal connector profiles' }, 403);
+      return c.json(
+        { error: 'Only human members can reconcile personal connector profiles' },
+        403,
+      );
     }
     const body = await readBody(c);
     const connectorAlias = canonicalConnectorAlias(
@@ -433,7 +435,10 @@ projectsApp.openapi(
     const connectorAlias = canonicalConnectorAlias(requestedAlias);
     const ownerType = typeof body.owner_type === 'string' ? body.owner_type : 'external';
     if (ownerType === 'member' && c.get('authType') === 'service_account') {
-      return c.json({ error: 'Only human members can reconcile personal connector profiles' }, 403);
+      return c.json(
+        { error: 'Only human members can reconcile personal connector profiles' },
+        403,
+      );
     }
     // Backwards-compatible manager path: a submitted member owner is always
     // rewritten to the caller. Managers may create their own member profile,
@@ -557,42 +562,18 @@ for (const operation of ['credential', 'revoke', 'activate'] as const) {
       }
       if (operation === 'credential') {
         const body = await readBody(c);
-        const parsed = UpdateConnectionProfileCredentialInputSchema.safeParse(body);
-        if (!parsed.success) {
-          return c.json(
-            {
-              error:
-                body?.oauth2 != null
-                  ? (parsed.error.issues[0]?.message ?? 'invalid OAuth2 credential')
-                  : 'value is required',
-            },
-            400,
-          );
+        if (typeof body.value !== 'string' || !body.value) {
+          return c.json({ error: 'value is required' }, 400);
         }
-        try {
-          if ('oauth2' in parsed.data) {
-            await upsertProfileOAuth2Credential({
-              projectId,
-              connectorId: profile.connectorId,
-              profileId,
-              oauth2: parsed.data.oauth2,
-              createdBy: loaded.userId,
-            });
-          } else {
-            await upsertProfileCredential({
-              projectId,
-              connectorId: profile.connectorId,
-              profileId,
-              value: parsed.data.value,
-              kind: parsed.data.kind,
-              createdBy: loaded.userId,
-            });
-          }
-        } catch (error) {
-          return c.json({ error: (error as Error).message || 'credential validation failed' }, 400);
-        }
+        await upsertProfileCredential({
+          projectId,
+          connectorId: profile.connectorId,
+          profileId,
+          value: body.value,
+          kind: body.kind === 'connection' ? 'connection' : 'secret',
+          createdBy: loaded.userId,
+        });
       } else {
-        if (operation === 'revoke') await revokeProfileOAuth2(profileId);
         await db
           .update(executorConnectionProfiles)
           .set({ status: operation === 'revoke' ? 'revoked' : 'active', updatedAt: new Date() })
@@ -908,9 +889,7 @@ projectsApp.openapi(
     const [row] = await db
       .update(projects)
       .set({
-        metadata: paused
-          ? metadataMerge({ triggers_paused: true })
-          : metadataMerge({}, ['triggers_paused']),
+        metadata: paused ? metadataMerge({ triggers_paused: true }) : metadataMerge({}, ['triggers_paused']),
         updatedAt: new Date(),
       })
       .where(eq(projects.projectId, projectId))
@@ -2747,7 +2726,8 @@ projectsApp.openapi(
       accountDefault: defaults.account,
       agentDefaults: defaults.agents,
       projectDefault: defaults.projects[projectId] ?? null,
-      resolvedForCaller: resolved.model ?? (freeTier ? null : config.LLM_GATEWAY_DEFAULT_MODEL),
+      resolvedForCaller:
+        resolved.model ?? (freeTier ? null : config.LLM_GATEWAY_DEFAULT_MODEL),
       resolvedSource: resolved.source,
       freeTier,
     });

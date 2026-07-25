@@ -1,5 +1,4 @@
 import { executorConnectionProfiles, executorConnectors, executorCredentials } from '@kortix/db';
-import type { OAuth2ClientCredentials } from '@kortix/api-contract';
 /**
  * Connector credentials. A connector is project-wide visible — the only
  * ACCESS gate is the agent-side `[[agents]].connectors` grant (iam/agent-scope.ts),
@@ -10,16 +9,9 @@ import type { OAuth2ClientCredentials } from '@kortix/api-contract';
  * `userId: null`). Values are encrypted with the project key and resolved
  * server-side only. See docs/specs/executor.md §5–6.
  */
-import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { decryptProjectSecret, encryptProjectSecret } from '../projects/secrets';
 import { db } from '../shared/db';
-import {
-  acquireOAuth2ClientCredentialsToken,
-  createStoredOAuth2Credential,
-  resolveStoredOAuth2Credential,
-  type OAuth2AccessToken,
-} from './oauth2';
-import { resolveStoredDelegatedCredential } from './oauth2-delegated';
 
 /* ─── credentials (split per user) ────────────────────────────────────────── */
 
@@ -27,84 +19,14 @@ function userClause(userId: string | null) {
   return userId ? eq(executorCredentials.userId, userId) : isNull(executorCredentials.userId);
 }
 
-interface CredentialRow {
-  credentialId: string;
-  kind: string;
-  valueEnc: string;
-  projectId: string;
-}
-
-interface OAuth2CredentialRuntime {
-  acquire?: (config: OAuth2ClientCredentials) => Promise<OAuth2AccessToken>;
-}
-
-async function resolveCredentialRow(
-  row: CredentialRow,
-  runtime: OAuth2CredentialRuntime = {},
-): Promise<string | null> {
-  if (row.kind !== 'oauth2_client_credentials' && row.kind !== 'oauth2_delegated') {
-    try {
-      return decryptProjectSecret(row.projectId, row.valueEnc);
-    } catch {
-      return null;
-    }
-  }
-  return db.transaction(async (tx) => {
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtextextended(${row.credentialId}::text, 0))`,
-    );
-    const [current] = await tx
-      .select({
-        kind: executorCredentials.kind,
-        valueEnc: executorCredentials.valueEnc,
-      })
-      .from(executorCredentials)
-      .where(eq(executorCredentials.credentialId, row.credentialId))
-      .limit(1);
-    if (!current) return null;
-    let value: string;
-    try {
-      value = decryptProjectSecret(row.projectId, current.valueEnc);
-    } catch {
-      return null;
-    }
-    if (
-      current.kind !== 'oauth2_client_credentials' &&
-      current.kind !== 'oauth2_delegated'
-    ) {
-      return value;
-    }
-    const resolved =
-      current.kind === 'oauth2_delegated'
-        ? await resolveStoredDelegatedCredential(value)
-        : await resolveStoredOAuth2Credential(value, runtime);
-    if (resolved.updatedValue) {
-      await tx
-        .update(executorCredentials)
-        .set({
-          valueEnc: encryptProjectSecret(row.projectId, resolved.updatedValue),
-          updatedAt: new Date(),
-        })
-        .where(eq(executorCredentials.credentialId, row.credentialId));
-    }
-    return resolved.accessToken;
-  });
-}
-
 /** Resolve a credential value/binding (decrypted) for (connector, user|shared). */
 export async function resolveCredentialValue(
   connectorId: string,
   userId: string | null,
-  runtime: OAuth2CredentialRuntime = {},
 ): Promise<string | null> {
   const defaultProfileId = await defaultProfileIdForConnector(connectorId);
   const [row] = await db
-    .select({
-      credentialId: executorCredentials.credentialId,
-      kind: executorCredentials.kind,
-      valueEnc: executorCredentials.valueEnc,
-      projectId: executorConnectors.projectId,
-    })
+    .select({ valueEnc: executorCredentials.valueEnc, projectId: executorConnectors.projectId })
     .from(executorCredentials)
     .innerJoin(
       executorConnectors,
@@ -124,7 +46,11 @@ export async function resolveCredentialValue(
     )
     .limit(1);
   if (!row) return null;
-  return resolveCredentialRow(row, runtime);
+  try {
+    return decryptProjectSecret(row.projectId, row.valueEnc);
+  } catch {
+    return null;
+  }
 }
 
 export async function credentialExists(
@@ -186,20 +112,12 @@ async function defaultProfileIdForConnector(connectorId: string): Promise<string
   return profile?.profileId ?? null;
 }
 
-export async function resolveProfileCredentialValue(
-  input: {
-    connectorId: string;
-    profileId: string;
-  },
-  runtime: OAuth2CredentialRuntime = {},
-): Promise<string | null> {
+export async function resolveProfileCredentialValue(input: {
+  connectorId: string;
+  profileId: string;
+}): Promise<string | null> {
   const [row] = await db
-    .select({
-      credentialId: executorCredentials.credentialId,
-      kind: executorCredentials.kind,
-      valueEnc: executorCredentials.valueEnc,
-      projectId: executorConnectors.projectId,
-    })
+    .select({ valueEnc: executorCredentials.valueEnc, projectId: executorConnectors.projectId })
     .from(executorCredentials)
     .innerJoin(
       executorConnectors,
@@ -213,7 +131,11 @@ export async function resolveProfileCredentialValue(
     )
     .limit(1);
   if (!row) return null;
-  return resolveCredentialRow(row, runtime);
+  try {
+    return decryptProjectSecret(row.projectId, row.valueEnc);
+  } catch {
+    return null;
+  }
 }
 
 export async function profileCredentialExists(input: {
@@ -238,7 +160,7 @@ export async function upsertProfileCredential(input: {
   connectorId: string;
   profileId: string;
   value: string;
-  kind?: 'secret' | 'connection' | 'oauth2_client_credentials' | 'oauth2_delegated';
+  kind?: 'secret' | 'connection';
   createdBy?: string | null;
 }): Promise<void> {
   const [profile] = await db
@@ -278,29 +200,6 @@ export async function upsertProfileCredential(input: {
     .update(executorConnectionProfiles)
     .set({ status: 'active', updatedAt: new Date() })
     .where(eq(executorConnectionProfiles.profileId, input.profileId));
-}
-
-export async function upsertProfileOAuth2Credential(
-  input: {
-    projectId: string;
-    connectorId: string;
-    profileId: string;
-    oauth2: OAuth2ClientCredentials;
-    createdBy?: string | null;
-  },
-  runtime: OAuth2CredentialRuntime = {},
-): Promise<void> {
-  const token = runtime.acquire
-    ? await runtime.acquire(input.oauth2)
-    : await acquireOAuth2ClientCredentialsToken(input.oauth2);
-  await upsertProfileCredential({
-    projectId: input.projectId,
-    connectorId: input.connectorId,
-    profileId: input.profileId,
-    value: createStoredOAuth2Credential(input.oauth2, token),
-    kind: 'oauth2_client_credentials',
-    createdBy: input.createdBy,
-  });
 }
 
 export async function ensureDefaultProfile(input: {
@@ -368,7 +267,7 @@ export async function upsertCredential(opts: {
   connectorId: string;
   userId: string | null;
   value: string;
-  kind?: 'secret' | 'connection' | 'oauth2_client_credentials' | 'oauth2_delegated';
+  kind?: 'secret' | 'connection';
   createdBy?: string | null;
 }): Promise<void> {
   const profileId = await ensureDefaultProfile(opts);
@@ -404,29 +303,6 @@ export async function upsertCredential(opts: {
     .update(executorConnectors)
     .set({ status: 'active', updatedAt: new Date() })
     .where(eq(executorConnectors.connectorId, opts.connectorId));
-}
-
-export async function upsertOAuth2Credential(
-  opts: {
-    projectId: string;
-    connectorId: string;
-    userId: string | null;
-    oauth2: OAuth2ClientCredentials;
-    createdBy?: string | null;
-  },
-  runtime: OAuth2CredentialRuntime = {},
-): Promise<void> {
-  const token = runtime.acquire
-    ? await runtime.acquire(opts.oauth2)
-    : await acquireOAuth2ClientCredentialsToken(opts.oauth2);
-  await upsertCredential({
-    projectId: opts.projectId,
-    connectorId: opts.connectorId,
-    userId: opts.userId,
-    value: createStoredOAuth2Credential(opts.oauth2, token),
-    kind: 'oauth2_client_credentials',
-    createdBy: opts.createdBy,
-  });
 }
 
 /**

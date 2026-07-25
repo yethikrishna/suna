@@ -1,20 +1,20 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useRuntimeStore } from '@kortix/sdk/react';
+import { useServerStore } from '@/stores/server-store';
 import { getFileHistory, getFileCommitDiff, getFileAtCommit } from '../api/git-history';
 import type { FileHistoryResult, FileCommitDiff } from '@/features/file-browser/types';
 
 export const fileHistoryKeys = {
-  all: ['runtime-files', 'history'] as const,
+  all: ['opencode-files', 'history'] as const,
   file: (serverUrl: string, filePath: string) =>
-    ['runtime-files', 'history', serverUrl, filePath] as const,
+    ['opencode-files', 'history', serverUrl, filePath] as const,
   filePaged: (serverUrl: string, filePath: string, skip: number, limit: number) =>
-    ['runtime-files', 'history', serverUrl, filePath, skip, limit] as const,
+    ['opencode-files', 'history', serverUrl, filePath, skip, limit] as const,
   commitDiff: (serverUrl: string, filePath: string, commitHash: string) =>
-    ['runtime-files', 'history', 'diff', serverUrl, filePath, commitHash] as const,
+    ['opencode-files', 'history', 'diff', serverUrl, filePath, commitHash] as const,
   fileAtCommit: (serverUrl: string, filePath: string, commitHash: string) =>
-    ['runtime-files', 'history', 'content', serverUrl, filePath, commitHash] as const,
+    ['opencode-files', 'history', 'content', serverUrl, filePath, commitHash] as const,
 };
 
 /**
@@ -31,7 +31,7 @@ export function useFileHistory(
     skip?: number;
   },
 ) {
-  const serverUrl = useRuntimeStore((s) => s.getActiveServerUrl());
+  const serverUrl = useServerStore((s) => s.getActiveServerUrl());
   const limit = options?.limit ?? 50;
   const skip = options?.skip ?? 0;
 
@@ -68,7 +68,7 @@ export function useFileCommitDiff(
   commitHash: string | null,
   options?: { enabled?: boolean },
 ) {
-  const serverUrl = useRuntimeStore((s) => s.getActiveServerUrl());
+  const serverUrl = useServerStore((s) => s.getActiveServerUrl());
 
   return useQuery<FileCommitDiff>({
     queryKey:
@@ -91,7 +91,7 @@ export function useFileAtCommit(
   commitHash: string | null,
   options?: { enabled?: boolean },
 ) {
-  const serverUrl = useRuntimeStore((s) => s.getActiveServerUrl());
+  const serverUrl = useServerStore((s) => s.getActiveServerUrl());
 
   return useQuery<string>({
     queryKey:

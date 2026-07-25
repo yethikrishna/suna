@@ -116,7 +116,7 @@ import {
   resendAccountInvite,
   updateAccountMemberRole,
   updateAccountName,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import {
   CogOne,
   type Icon as IconMynauiType,

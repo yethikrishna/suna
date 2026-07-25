@@ -1,7 +1,7 @@
-import { useFilesStore } from '@/features/files';
-import { useFilePreviewStore } from '@/stores/file-preview-store';
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
+import { useFilesStore } from '@/features/files';
+import { useFilePreviewStore } from '@/stores/file-preview-store';
 
 const HIDE_BROWSER_TAB = true;
 
@@ -20,28 +20,6 @@ export interface ReadyChipState {
   count: number;
   /** Human name of the primary deliverable, when there is one. */
   primaryName?: string;
-}
-
-/** The panel surfaces reachable from outside the panel. */
-export type QuickView = 'terminal' | 'audit' | 'browser' | 'files';
-
-/**
- * Extra aim for a quick-view request — "open the browser" vs "open the browser
- * ON THIS URL".
- *
- * Without it, every caller that knows WHICH page/tab it wants had to write
- * `viewBySession` directly to get there. That key is only read by Advanced
- * mode, so in Easy — the only mode that ships — those writes rendered nothing:
- * the panel opened on the Easy home and the target was dropped. The preview
- * button, localhost links in chat, and both header chips all failed this way.
- */
-export interface QuickViewTarget {
-  /** `browser`: open at this URL instead of the first running app. */
-  url?: string;
-  /** `browser`: tab/preview title for the URL above. */
-  title?: string;
-  /** `files`: land on the Changes diff rather than All files. */
-  changes?: boolean;
 }
 
 interface KortixComputerState {
@@ -96,14 +74,12 @@ interface KortixComputerState {
   // action reference.
   pendingQuickView: {
     sessionId: string;
-    view: QuickView;
+    view: 'terminal' | 'audit' | 'browser';
     /** When the request was made — consume discards anything older than
      *  {@link QUICK_VIEW_TTL_MS}. A quick-view is a "right now" intent; a
      *  request that couldn't be consumed promptly must never replay later
      *  (the "terminal randomly pops up" bug). */
     requestedAt: number;
-    /** Optional aim for the request — see {@link QuickViewTarget}. */
-    target?: QuickViewTarget;
   } | null;
 
   // === ACTIONS ===
@@ -160,14 +136,10 @@ interface KortixComputerState {
    *  itself, see `command-palette.tsx`'s handler comment. Also opens the panel
    *  the same way `focusToolCall` does: `isSidePanelOpen` true, the
    *  per-session map updated, and this session's own ready chip cleared. */
-  requestQuickView: (view: QuickView, explicitSessionId?: string, target?: QuickViewTarget) => void;
+  requestQuickView: (view: 'terminal' | 'audit' | 'browser', explicitSessionId?: string) => void;
   /** One-shot, session-scoped consume — mirrors `consumePrimaryOpen`. Returns
-   *  the requested view (and any target that came with it) when it belonged to
-   *  `sessionId`, else null. */
-  consumeQuickView: (
-    sessionId: string,
-    now?: number,
-  ) => { view: QuickView; target?: QuickViewTarget } | null;
+   *  the requested view when it belonged to `sessionId`, else null. */
+  consumeQuickView: (sessionId: string, now?: number) => 'terminal' | 'audit' | 'browser' | null;
 
   // Reset all state (full reset)
   reset: () => void;
@@ -189,9 +161,8 @@ const initialState = {
   pendingPrimaryOpenSessionId: null as string | null,
   pendingQuickView: null as {
     sessionId: string;
-    view: QuickView;
+    view: 'terminal' | 'audit' | 'browser';
     requestedAt: number;
-    target?: QuickViewTarget;
   } | null,
 };
 
@@ -204,10 +175,7 @@ export const useKortixComputerStore = create<KortixComputerState>()(
         // If browser tab is hidden and trying to set browser view, default to tools
         const effectiveView = HIDE_BROWSER_TAB && view === 'browser' ? 'tools' : view;
         // Terminal and Desktop are now in the right sidebar - redirect to tools
-        const finalView =
-          effectiveView === 'terminal' || effectiveView === 'desktop' || effectiveView === 'changes'
-            ? 'tools'
-            : effectiveView;
+        const finalView = (effectiveView === 'terminal' || effectiveView === 'desktop' || effectiveView === 'changes') ? 'tools' : effectiveView;
         set({ activeView: finalView });
       },
 
@@ -381,7 +349,7 @@ export const useKortixComputerStore = create<KortixComputerState>()(
         return true;
       },
 
-      requestQuickView: (view: QuickView, explicitSessionId?: string, target?: QuickViewTarget) => {
+      requestQuickView: (view: 'terminal' | 'audit' | 'browser', explicitSessionId?: string) => {
         // `_activeSessionId` is only maintained for TAB-system sessions
         // (session-layout gates `setActiveSession` on `isActiveTab`) — on the
         // standalone /projects/:id/sessions/:id route it stays null, which
@@ -396,7 +364,7 @@ export const useKortixComputerStore = create<KortixComputerState>()(
         if (get().readyChip?.sessionId === sessionId) update.readyChip = null;
         if (sessionId) {
           update._panelOpenBySession = { ...get()._panelOpenBySession, [sessionId]: true };
-          update.pendingQuickView = { sessionId, view, requestedAt: Date.now(), target };
+          update.pendingQuickView = { sessionId, view, requestedAt: Date.now() };
         }
         set(update);
       },
@@ -406,7 +374,7 @@ export const useKortixComputerStore = create<KortixComputerState>()(
         if (!pending || pending.sessionId !== sessionId) return null;
         set({ pendingQuickView: null });
         if (now - pending.requestedAt > QUICK_VIEW_TTL_MS) return null;
-        return { view: pending.view, target: pending.target };
+        return pending.view;
       },
 
       reset: () => {
@@ -417,8 +385,8 @@ export const useKortixComputerStore = create<KortixComputerState>()(
     }),
     {
       name: 'kortix-computer-store',
-    },
-  ),
+    }
+  )
 );
 
 // === SELECTOR HOOKS ===
@@ -442,16 +410,21 @@ export const useClearFocusedToolCall = () =>
   useKortixComputerStore((state) => state.clearFocusedToolCall);
 
 // Side panel state selectors
-export const useIsSidePanelOpen = () => useKortixComputerStore((state) => state.isSidePanelOpen);
+export const useIsSidePanelOpen = () =>
+  useKortixComputerStore((state) => state.isSidePanelOpen);
 
 export const useSetIsSidePanelOpen = () =>
   useKortixComputerStore((state) => state.setIsSidePanelOpen);
 
-export const useIsExpanded = () => useKortixComputerStore((state) => state.isExpanded);
+export const useIsExpanded = () =>
+  useKortixComputerStore((state) => state.isExpanded);
 
-export const useToggleExpanded = () => useKortixComputerStore((state) => state.toggleExpanded);
+export const useToggleExpanded = () =>
+  useKortixComputerStore((state) => state.toggleExpanded);
 
 // Ready chip state selectors
-export const useReadyChip = () => useKortixComputerStore((state) => state.readyChip);
+export const useReadyChip = () =>
+  useKortixComputerStore((state) => state.readyChip);
 
-export const useClearReadyChip = () => useKortixComputerStore((state) => state.clearReadyChip);
+export const useClearReadyChip = () =>
+  useKortixComputerStore((state) => state.clearReadyChip);

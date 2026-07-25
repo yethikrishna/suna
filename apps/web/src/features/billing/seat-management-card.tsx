@@ -8,7 +8,7 @@ import { useTranslations } from 'next-intl';
 // SPEND attribution is split.
 
 import { Label } from '@/components/ui/label';
-import type { AccountState } from '@kortix/sdk';
+import type { AccountState } from '@/lib/api/billing';
 
 export interface SeatManagementCardProps {
   accountState: AccountState;

@@ -8,7 +8,7 @@
  *   logger.error('Stream disconnected', { runId, attempt: 3 });
  */
 
-import { logRuntimeEvent } from '@kortix/sdk/react';
+import { getClient } from '@/lib/opencode-sdk';
 
 const SERVICE_NAME = 'frontend';
 
@@ -34,7 +34,8 @@ function send(level: LogLevel, message: string, extra?: LogExtra): void {
   // Fire-and-forget: ship the log entry to the server.
   // Wrapped in try/catch so a logging failure never breaks the caller.
   try {
-    logRuntimeEvent({
+    const client = getClient();
+    client.app.log({
       service: SERVICE_NAME,
       level,
       message,

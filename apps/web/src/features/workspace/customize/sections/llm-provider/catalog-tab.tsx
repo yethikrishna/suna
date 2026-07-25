@@ -35,7 +35,6 @@ export function CatalogTab({
   search,
   subview,
   setSubview,
-  onProviderConnected,
   canWrite = false,
 }: {
   projectId: string;
@@ -43,7 +42,6 @@ export function CatalogTab({
   search: string;
   subview: CatalogSubview;
   setSubview: (next: CatalogSubview) => void;
-  onProviderConnected: (providerId: string) => void;
   canWrite?: boolean;
 }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
@@ -93,10 +91,7 @@ export function CatalogTab({
         projectId={projectId}
         provider={provider}
         onBack={() => setSubview({ kind: 'detail', providerId: provider.id })}
-        onConnected={(providerId) => {
-          setSubview({ kind: 'list' });
-          onProviderConnected(providerId);
-        }}
+        onConnected={() => setSubview({ kind: 'list' })}
       />
     );
   }

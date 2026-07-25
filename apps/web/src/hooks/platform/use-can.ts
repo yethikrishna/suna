@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   getViewerSandboxScopes,
   type SandboxViewerScopes,
-} from '@kortix/sdk';
+} from '@kortix/sdk/platform-client';
 
 export function useViewerScopes(sandboxId: string | null | undefined) {
   return useQuery<SandboxViewerScopes>({

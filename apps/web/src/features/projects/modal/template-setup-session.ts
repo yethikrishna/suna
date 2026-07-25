@@ -6,7 +6,7 @@ import {
 import {
   createProjectSession,
   type KortixProject,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 
 /**
  * Cloned from a marketplace item → don't drop the user on an empty project.

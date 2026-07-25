@@ -20,7 +20,6 @@ export type ExperimentalFeatureKey =
   | 'agentmail_email'
   | 'meet'
   | 'llm_gateway'
-  | 'acp_runtime'
   | 'review_center';
 
 /** One experimental feature as described by the API catalog. */

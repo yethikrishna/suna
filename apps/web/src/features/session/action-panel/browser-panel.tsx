@@ -32,7 +32,7 @@ import { useTabStore } from '@/stores/tab-store';
 import {
   createSessionPublicShare,
   type CreateSessionPublicShareInput,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import { useMutation } from '@tanstack/react-query';
 import {
   AlertTriangle,

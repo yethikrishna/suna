@@ -24,7 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { errorToast } from '@/components/ui/toast';
 import { ModelSelector } from '@/features/session/model-selector';
 import CustomizeSectionWrapper from '@/features/workspace/customize/sections/component/section-wrapper';
-import { modelKeyToWire, wireToModelKey } from '@kortix/sdk/react';
+import { modelKeyToWire, wireToModelKey } from '@/hooks/opencode/use-model-store';
 import { useGatewayPlayground } from '@/hooks/projects/use-project-gateway';
 import type {
   GatewayModelGenerationConfig,

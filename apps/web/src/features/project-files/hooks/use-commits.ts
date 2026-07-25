@@ -7,7 +7,7 @@ import type {
   ProjectCommitDetail,
   ProjectCommitDiffResponse,
   ProjectCommitsResponse,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 
 export const commitKeys = {
   all: ['project-files', 'commits'] as const,

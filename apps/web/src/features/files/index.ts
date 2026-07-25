@@ -14,7 +14,7 @@ export type {
   FindMatch,
   LssHit,
   LssSearchResult,
-  RuntimeProjectInfo,
+  OpenCodeProjectInfo,
   ServerHealth,
   GitCommit,
   FileHistoryResult,
@@ -41,7 +41,7 @@ export {
   createFile,
   copyFile,
   type UploadResult,
-} from './api/runtime-files';
+} from './api/opencode-files';
 
 // Pure path heuristics
 export { hasFileExtension } from './path-utils';

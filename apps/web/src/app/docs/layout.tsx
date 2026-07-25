@@ -52,14 +52,6 @@ export default function Layout({ children }: { children: ReactNode }) {
         links={[
           {
             type: 'icon',
-            text: 'Get started',
-            label: 'Get started',
-            icon: <Icon.Sparkles />,
-            url: '/auth',
-            external: false,
-          },
-          {
-            type: 'icon',
             text: 'GitHub',
             label: 'GitHub',
             icon: <Icon.Github />,

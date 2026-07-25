@@ -6,9 +6,9 @@ import { Terminal as XTerm, ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
-import { getPtyWebSocketUrl, useUpdatePty } from '@kortix/sdk/react';
+import { getPtyWebSocketUrl, useUpdatePty } from '@/hooks/opencode/use-opencode-pty';
 import { invalidateTokenCache } from '@/lib/auth-token';
-import type { Pty } from '@kortix/sdk';
+import type { Pty } from '@kortix/sdk/opencode-client';
 import { classifyPtyClose, shouldExpirePtyConnect } from './pty-connection';
 
 // ============================================================================

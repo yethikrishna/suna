@@ -20,7 +20,7 @@
  * agent-editor-primitives.tsx, the all/pick/none governance control in
  * grant-mode-field.tsx, the permission-tree editor in permission-editor.tsx,
  * and the two layers' field blocks in kortix-layer-fields.tsx /
- * runtime-layer-fields.tsx. This file owns only the modal shell (state,
+ * opencode-layer-fields.tsx. This file owns only the modal shell (state,
  * queries, save) and the public entry point.
  */
 
@@ -48,16 +48,16 @@ import {
   type AgentGrantSetV2,
   listConnectors,
   listProjectSecrets,
-  type RuntimeAgentConfig,
+  type OpencodeAgentConfig,
   type ProjectConfigSummary,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { Bot, Cpu, Layers } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { SectionHeader, LayerHeader } from './agent-editor-primitives';
 import { KortixLayerFields } from './kortix-layer-fields';
-import { RuntimeLayerFields } from './runtime-layer-fields';
+import { OpencodeLayerFields } from './opencode-layer-fields';
 
 export {
   AGENT_MODE_HELP,
@@ -133,9 +133,9 @@ function AgentEditorModal({
 
   // OpenCode-layer fields live nested under `draft.opencode` — same
   // clear-on-empty semantics as `set`, folded into the sub-object.
-  const setOc = <K extends keyof RuntimeAgentConfig>(key: K, value: RuntimeAgentConfig[K]) =>
+  const setOc = <K extends keyof OpencodeAgentConfig>(key: K, value: OpencodeAgentConfig[K]) =>
     setDraft((d) => {
-      const oc: RuntimeAgentConfig = { ...(d.opencode ?? {}) };
+      const oc: OpencodeAgentConfig = { ...(d.opencode ?? {}) };
       if (value === undefined || value === '') delete oc[key];
       else oc[key] = value;
       const next = { ...d };
@@ -191,7 +191,7 @@ function AgentEditorModal({
               tone="outline"
               description="Behavior this agent's runtime executes — mode, sampling, permission tree. Namespaced so a future runtime (Codex/Claude) gets its own block here."
             />
-            <RuntimeLayerFields agentName={agentName} oc={draft.opencode ?? {}} setOc={setOc} />
+            <OpencodeLayerFields agentName={agentName} oc={draft.opencode ?? {}} setOc={setOc} />
           </div>
         </ModalBody>
         <ModalFooter className="sm:justify-between">

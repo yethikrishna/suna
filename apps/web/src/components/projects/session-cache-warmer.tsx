@@ -8,7 +8,7 @@ import {
   listProjectSessions,
   projectSessionStartSeed,
   sessionStartKey,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import { prefetchSession } from '@kortix/sdk/react';
 import { runningSessionWarmupTargets } from './session-cache-warmer-targets';
 

@@ -12,7 +12,7 @@
 #   ecs-deploy.sh <env> <image> [--service api|gateway] [--version X.Y.Z]
 #                 [--no-wait] [--dry-run]
 #
-#   env        dev | staging | prod | prod-usw2-shadow
+#   env        dev | staging | prod
 #   image      full image ref to pin, e.g. kortix/kortix-api:dev-481dc551
 #   --version  explicit KORTIX_VERSION to stamp into the task-def env. When
 #              omitted, it is DERIVED from the image tag if the tag is a clean
@@ -47,7 +47,7 @@ if [ "${KORTIX_ECS_DEPLOY_LIB:-}" = "1" ]; then
   return 0 2>/dev/null || exit 0
 fi
 
-ENV="${1:?env required: dev|staging|prod|prod-usw2-shadow}"
+ENV="${1:?env required: dev|staging|prod}"
 IMAGE="${2:?image required, e.g. kortix/kortix-api:dev-481dc551}"
 shift 2
 
@@ -69,41 +69,25 @@ done
 
 # ── per-environment coordinates ──────────────────────────────────────────────
 case "$ENV" in
-  dev)
-    REGION="us-west-2"
-    SERVICE_PREFIX="kortix-dev"
-    SECRET_NAME="kortix-dev-env"
-    ;;
-  staging)
-    REGION="us-west-2"
-    SERVICE_PREFIX="kortix-staging"
-    SECRET_NAME="kortix-staging-env"
-    ;;
-  prod)
-    REGION="eu-west-2"
-    SERVICE_PREFIX="kortix-prod"
-    SECRET_NAME="kortix-prod-env"
-    ;;
-  prod-usw2-shadow)
-    REGION="us-west-2"
-    SERVICE_PREFIX="kortix-prod-usw2"
-    SECRET_NAME="kortix-prod-us-west-2-env"
-    ;;
+  dev)     REGION="us-west-2" ;;
+  staging) REGION="us-west-2" ;;
+  prod)    REGION="eu-west-2" ;;
   *) echo "unknown env: $ENV" >&2; exit 2 ;;
 esac
 
 # Each service lives in its own cluster (the ecs-api module names cluster==service):
-#   api     → cluster/service <service-prefix>,         container "api"
-#   gateway → cluster/service <service-prefix>-gateway, container "gateway"
+#   api     → cluster/service kortix-<env>,         container "api"
+#   gateway → cluster/service kortix-<env>-gateway,  container "gateway"
 if [ "$SVC_KIND" = "gateway" ]; then
-  CLUSTER="${SERVICE_PREFIX}-gateway"
-  SERVICE="${SERVICE_PREFIX}-gateway"
+  CLUSTER="kortix-${ENV}-gateway"
+  SERVICE="kortix-${ENV}-gateway"
   CONTAINER="gateway"
 else
-  CLUSTER="$SERVICE_PREFIX"
-  SERVICE="$SERVICE_PREFIX"
+  CLUSTER="kortix-${ENV}"
+  SERVICE="kortix-${ENV}"
   CONTAINER="api"
 fi
+SECRET_NAME="kortix-${ENV}-env"
 
 echo "▶ env=$ENV region=$REGION cluster=$CLUSTER service=$SERVICE container=$CONTAINER"
 echo "▶ image=$IMAGE  secrets<-$SECRET_NAME"

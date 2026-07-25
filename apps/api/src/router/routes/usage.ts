@@ -29,7 +29,6 @@ const UsageTotalsSchema = z
     total_input_tokens: z.number(),
     total_output_tokens: z.number(),
     total_cached_tokens: z.number(),
-    total_cache_write_tokens: z.number(),
     total_cost: z.number(),
     count: z.number(),
   })
@@ -43,7 +42,6 @@ const UsageBreakdownItemSchema = z
     input_tokens: z.number(),
     output_tokens: z.number(),
     cached_tokens: z.number(),
-    cache_write_tokens: z.number(),
     cost: z.number(),
     count: z.number(),
   })
@@ -107,7 +105,6 @@ usageApp.openapi(
         totalInputTokens: sql<number>`coalesce(sum(${usageEvents.inputTokens}), 0)`,
         totalOutputTokens: sql<number>`coalesce(sum(${usageEvents.outputTokens}), 0)`,
         totalCachedTokens: sql<number>`coalesce(sum(${usageEvents.cachedTokens}), 0)`,
-        totalCacheWriteTokens: sql<number>`coalesce(sum(${usageEvents.cacheWriteTokens}), 0)`,
         totalCost: sql<number>`coalesce(sum(${usageEvents.costUsd}), 0)::float8`,
         count: sql<number>`count(*)::int`,
       })
@@ -127,7 +124,6 @@ usageApp.openapi(
           inputTokens: sql<number>`coalesce(sum(${usageEvents.inputTokens}), 0)`,
           outputTokens: sql<number>`coalesce(sum(${usageEvents.outputTokens}), 0)`,
           cachedTokens: sql<number>`coalesce(sum(${usageEvents.cachedTokens}), 0)`,
-          cacheWriteTokens: sql<number>`coalesce(sum(${usageEvents.cacheWriteTokens}), 0)`,
           cost: sql<number>`coalesce(sum(${usageEvents.costUsd}), 0)::float8`,
           count: sql<number>`count(*)::int`,
         })
@@ -146,7 +142,6 @@ usageApp.openapi(
           inputTokens: sql<number>`coalesce(sum(${usageEvents.inputTokens}), 0)`,
           outputTokens: sql<number>`coalesce(sum(${usageEvents.outputTokens}), 0)`,
           cachedTokens: sql<number>`coalesce(sum(${usageEvents.cachedTokens}), 0)`,
-          cacheWriteTokens: sql<number>`coalesce(sum(${usageEvents.cacheWriteTokens}), 0)`,
           cost: sql<number>`coalesce(sum(${usageEvents.costUsd}), 0)::float8`,
           count: sql<number>`count(*)::int`,
         })
@@ -164,7 +159,6 @@ usageApp.openapi(
         inputTokens: sql<number>`coalesce(sum(${usageEvents.inputTokens}), 0)`,
         outputTokens: sql<number>`coalesce(sum(${usageEvents.outputTokens}), 0)`,
         cachedTokens: sql<number>`coalesce(sum(${usageEvents.cachedTokens}), 0)`,
-        cacheWriteTokens: sql<number>`coalesce(sum(${usageEvents.cacheWriteTokens}), 0)`,
         cost: sql<number>`coalesce(sum(${usageEvents.costUsd}), 0)::float8`,
         count: sql<number>`count(*)::int`,
       })

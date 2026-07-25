@@ -9,7 +9,7 @@ import {
   firstMeaningfulLine,
 } from '@/features/session/tool/shared/infrastructure';
 import { SubAgentActivity, SubAgentStatusBanner } from '@/features/session/tool/shared/sub-agent';
-import { useRuntimeMessages } from '@kortix/sdk/react';
+import { useOpenCodeMessages } from '@/hooks/opencode/use-opencode-sessions';
 import {
   ExternalLink,
   SquareKanban,
@@ -38,7 +38,7 @@ export function TaskTool({ part, forceOpen }: ToolProps) {
 
   const childSessionId: string | undefined = useMemo(() => getChildSessionId(part), [part]);
 
-  const { data: childMessages } = useRuntimeMessages(childSessionId ?? '');
+  const { data: childMessages } = useOpenCodeMessages(childSessionId ?? '');
 
   const childToolParts = useMemo(() => {
     if (!childMessages) return [];

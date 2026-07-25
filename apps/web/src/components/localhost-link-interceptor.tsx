@@ -27,7 +27,7 @@
  * views, JSON viewers, etc.).
  */
 
-import { openSessionQuickView } from '@/features/session/open-session-quick-view';
+import { useEffect } from 'react';
 import { useSandboxProxy } from '@/hooks/use-sandbox-proxy';
 import {
   buildWebProxyUrl,
@@ -40,9 +40,13 @@ import {
   toInternalUrl,
 } from '@/lib/utils/sandbox-url';
 import { enrichPreviewMetadata } from '@/lib/utils/session-context';
-import { getActivePanelSessionId, sessionPreviewTabId } from '@/stores/session-browser-store';
+import {
+  getActivePanelSessionId,
+  sessionPreviewTabId,
+  useSessionBrowserStore,
+} from '@/stores/session-browser-store';
+import { useKortixComputerStore } from '@/stores/kortix-computer-store';
 import { useTabStore } from '@/stores/tab-store';
-import { useEffect } from 'react';
 
 // The session's panel is keyed by the OpenCode chatSessionId (registered by the
 // active SessionLayout), NOT the Kortix session id in the URL — those differ,
@@ -69,9 +73,7 @@ export function LocalhostLinkInterceptor() {
 
       try {
         if (new URL(href).origin === window.location.origin) return;
-      } catch {
-        /* not a valid URL, skip */
-      }
+      } catch { /* not a valid URL, skip */ }
 
       const consume = () => {
         e.preventDefault();
@@ -91,21 +93,14 @@ export function LocalhostLinkInterceptor() {
           href: window.location.pathname,
           metadata: enrichPreviewMetadata(meta),
         });
-        // Mode-aware: writing `viewBySession` here only ever worked in
-        // Advanced mode, so in Easy a clicked localhost link opened the panel
-        // on the Easy home and lost the URL. The target carries the page.
-        openSessionQuickView('browser', 'chat', {
-          url: meta.url,
-          title: meta.port ? `localhost:${meta.port}` : safeHostname(meta.originalUrl),
-        });
+        useSessionBrowserStore.getState().setView(sessionId, 'browser');
+        useKortixComputerStore.getState().setIsSidePanelOpen(true);
       };
 
       /** Off-session fallback: window.open the proxy URL. */
       const openExternally = (url: string) => {
         consume();
-        try {
-          window.open(url, '_blank', 'noopener,noreferrer');
-        } catch {}
+        try { window.open(url, '_blank', 'noopener,noreferrer'); } catch {}
       };
 
       // ── Case 1: Fresh localhost:PORT URL (not yet proxied) ──
@@ -174,9 +169,5 @@ export function LocalhostLinkInterceptor() {
 }
 
 function safeHostname(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return 'preview';
-  }
+  try { return new URL(url).hostname; } catch { return 'preview'; }
 }

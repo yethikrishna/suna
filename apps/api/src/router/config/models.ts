@@ -13,8 +13,6 @@ export interface ModelConfig {
   tier: 'free' | 'paid';
   cacheReadPer1M?: number; // Cost per 1M cached-read tokens (USD)
   cacheWritePer1M?: number; // Cost per 1M cache-write tokens (USD)
-  tiers?: import('./model-pricing').ModelPricingTier[];
-  contextOver200k?: import('./model-pricing').ModelPricingTier;
 }
 
 /**
@@ -40,12 +38,9 @@ const MODELS: Record<string, ModelConfig> = {};
  * 1. models.dev live pricing (always current, refreshed every 24h) — pricing only
  * 2. MODELS registry — provides contextWindow, tier, and cache pricing,
  *    and acts as pricing fallback when models.dev hasn't loaded yet or is unknown
- * 3. `null` if no exact provider-qualified price exists
+ * 3. Zero pricing (billing skipped) if completely unknown
  */
-export function getModel(
-  modelId: string,
-  providerId: string = 'openrouter',
-): ModelConfig | null {
+export function getModel(modelId: string): ModelConfig {
   const openrouterId = modelId.startsWith('openrouter/')
     ? modelId.replace('openrouter/', '')
     : modelId;
@@ -53,7 +48,7 @@ export function getModel(
   const registryEntry = MODELS[modelId] ?? MODELS[openrouterId];
 
   // models.dev is source of truth for pricing — always wins if available
-  const livePricing = getModelPricing(providerId, openrouterId);
+  const livePricing = getModelPricing(modelId) ?? getModelPricing(openrouterId);
 
   if (livePricing) {
     return {
@@ -61,10 +56,8 @@ export function getModel(
       // Merge registry metadata with live pricing
       contextWindow: registryEntry?.contextWindow ?? 128000,
       tier: registryEntry?.tier ?? 'paid',
-      cacheReadPer1M: livePricing.cacheReadPer1M ?? registryEntry?.cacheReadPer1M,
-      cacheWritePer1M: livePricing.cacheWritePer1M ?? registryEntry?.cacheWritePer1M,
-      tiers: livePricing.tiers,
-      contextOver200k: livePricing.contextOver200k,
+      cacheReadPer1M: registryEntry?.cacheReadPer1M,
+      cacheWritePer1M: registryEntry?.cacheWritePer1M,
       // Pricing always from models.dev
       inputPer1M: livePricing.inputPer1M,
       outputPer1M: livePricing.outputPer1M,
@@ -76,20 +69,13 @@ export function getModel(
     return registryEntry;
   }
 
-  return null;
-}
-
-/**
- * Resolve an exact provider-qualified price for an authenticated billing path.
- * Unknown prices fail closed.
- */
-export function requireModelPricing(
-  modelId: string,
-  providerId: string = 'openrouter',
-): ModelConfig {
-  const model = getModel(modelId, providerId);
-  if (model) return model;
-  throw new Error(`No billing price for ${providerId}/${resolveOpenRouterId(modelId)}`);
+  return {
+    openrouterId,
+    inputPer1M: 0,
+    outputPer1M: 0,
+    contextWindow: 128000,
+    tier: 'paid',
+  };
 }
 
 /**
@@ -97,7 +83,7 @@ export function requireModelPricing(
  * This is the ID that gets sent in the request body to OpenRouter.
  */
 export function resolveOpenRouterId(modelId: string): string {
-  return modelId.startsWith('openrouter/') ? modelId.slice('openrouter/'.length) : modelId;
+  return getModel(modelId).openrouterId;
 }
 
 /**

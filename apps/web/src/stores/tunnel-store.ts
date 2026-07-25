@@ -10,7 +10,7 @@
  */
 
 import { create } from 'zustand';
-import { createTunnelEventStream, type SSEStream } from '@kortix/sdk';
+import { createSSEStream, type SSEStream } from '@/lib/utils/sse-stream';
 import type { TunnelPermissionRequest } from '@/hooks/tunnel/use-tunnel';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -87,8 +87,11 @@ export const useTunnelStore = create<TunnelStoreState>()((set, get) => ({
     // Close existing connection
     get().stopSseStream();
 
+    const url = `${apiUrl}/tunnel/permission-requests/stream`;
+
     try {
-      sseStream = createTunnelEventStream(apiUrl, {
+      sseStream = createSSEStream({
+        url,
         token,
         onOpen: () => {
           set({ sseConnected: true });

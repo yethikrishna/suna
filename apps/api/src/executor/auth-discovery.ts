@@ -21,17 +21,8 @@ export type DiscoveredAuthScheme =
   | 'unknown';
 
 export interface ExecutableConnectorAuth {
-  type:
-    | 'none'
-    | 'bearer'
-    | 'basic'
-    | 'custom'
-    | 'api_key'
-    | 'oauth1'
-    | 'hmac'
-    | 'aws_sigv4'
-    | 'mtls';
-  in: 'header' | 'query' | 'cookie';
+  type: 'none' | 'bearer' | 'basic' | 'custom' | 'oauth1';
+  in: 'header' | 'query';
   name: string | null;
   prefix: string | null;
 }

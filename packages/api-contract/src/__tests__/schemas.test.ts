@@ -4,9 +4,6 @@ import {
   EXPERIMENTAL_FEATURE_KEYS,
   ErrorEnvelopeSchema,
   OkResponseSchema,
-  OAuth2ApplicationInputSchema,
-  OAuth2AuthorizationStartInputSchema,
-  OAuth2DeviceAuthorizationStartInputSchema,
   ProjectSchema,
   ProjectSessionSandboxSchema,
   ProjectSessionSchema,
@@ -49,7 +46,6 @@ function projectFixture(overrides: Record<string, unknown> = {}) {
       agentmail_email: false,
       meet: false,
       llm_gateway: true,
-      acp_runtime: false,
       review_center: false,
     },
     experimental_features: [],
@@ -176,42 +172,26 @@ describe('ProjectSchema', () => {
   });
 
   test('accepts E2B and rejects retired sandbox providers in project pin fields', () => {
-    expect(() =>
-      ProjectSchema.parse(
-        projectFixture({
-          default_sandbox_provider: 'e2b',
-          available_sandbox_providers: ['daytona', 'platinum', 'e2b'],
-        }),
-      ),
-    ).not.toThrow();
-    expect(() =>
-      ProjectSchema.parse(
-        projectFixture({
-          default_sandbox_provider: 'managed',
-        }),
-      ),
-    ).toThrow();
+    expect(() => ProjectSchema.parse(projectFixture({
+      default_sandbox_provider: 'e2b',
+      available_sandbox_providers: ['daytona', 'platinum', 'e2b'],
+    }))).not.toThrow();
+    expect(() => ProjectSchema.parse(projectFixture({
+      default_sandbox_provider: 'managed',
+    }))).toThrow();
     // The RETIRED single-instance provider ('local_docker', underscore) stays
     // rejected — a genuinely different identifier from the new EXPERIMENTAL
     // 'local-docker' (hyphen) provider below.
-    expect(() =>
-      ProjectSchema.parse(
-        projectFixture({
-          available_sandbox_providers: ['daytona', 'local_docker'],
-        }),
-      ),
-    ).toThrow();
+    expect(() => ProjectSchema.parse(projectFixture({
+      available_sandbox_providers: ['daytona', 'local_docker'],
+    }))).toThrow();
   });
 
   test('accepts the EXPERIMENTAL local-docker (hyphenated) sandbox provider', () => {
-    expect(() =>
-      ProjectSchema.parse(
-        projectFixture({
-          default_sandbox_provider: 'local-docker',
-          available_sandbox_providers: ['local-docker'],
-        }),
-      ),
-    ).not.toThrow();
+    expect(() => ProjectSchema.parse(projectFixture({
+      default_sandbox_provider: 'local-docker',
+      available_sandbox_providers: ['local-docker'],
+    }))).not.toThrow();
   });
 
   test('rejects an unknown status', () => {
@@ -392,7 +372,6 @@ describe('envelopes', () => {
       'agentmail_email',
       'meet',
       'llm_gateway',
-      'acp_runtime',
       'review_center',
     ]);
   });
@@ -474,13 +453,13 @@ describe('SessionCreateInputSchema runtime_context', () => {
   test('retains deprecated camelCase inputs already accepted by the route', () => {
     expect(
       SessionCreateInputSchema.safeParse({
-        baseRef: 'main',
-        agentName: 'veyris',
-        sandboxSlug: 'default',
-        initialPrompt: 'hello',
-        opencodeModel: 'kortix/glm-5.2',
-        sessionId: '11111111-1111-4111-a111-111111111111',
-        branchAlreadyCreated: true,
+      baseRef: 'main',
+      agentName: 'veyris',
+      sandboxSlug: 'default',
+      initialPrompt: 'hello',
+      opencodeModel: 'kortix/glm-5.2',
+      sessionId: '11111111-1111-4111-a111-111111111111',
+      branchAlreadyCreated: true,
       }).success,
     ).toBe(true);
   });
@@ -533,103 +512,6 @@ describe('session connector profile contracts', () => {
     expect(
       UpdateConnectionProfileCredentialInputSchema.safeParse({ value: 'x'.repeat(65537) }).success,
     ).toBe(false);
-    expect(
-      UpdateConnectionProfileCredentialInputSchema.safeParse({
-        oauth2: {
-          type: 'oauth2_client_credentials',
-          token_url: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/token',
-          client_id: 'client-id',
-          token_endpoint_auth_method: 'client_secret_post',
-          client_secret: 'client-secret',
-          scopes: ['https://graph.microsoft.com/.default'],
-        },
-      }).success,
-    ).toBe(true);
-    expect(
-      UpdateConnectionProfileCredentialInputSchema.safeParse({
-        oauth2: {
-          type: 'oauth2_client_credentials',
-          token_url: 'http://localhost/token',
-          client_id: 'client-id',
-          token_endpoint_auth_method: 'client_secret_post',
-          client_secret: 'client-secret',
-        },
-      }).success,
-    ).toBe(false);
-  });
-});
-
-describe('native OAuth2 lifecycle schemas', () => {
-  test('accepts a provider-independent Authorization Code application with PKCE', () => {
-    expect(
-      OAuth2ApplicationInputSchema.parse({
-        authorization_url: 'https://identity.example.com/oauth2/authorize',
-        token_url: 'https://identity.example.com/oauth2/token',
-        revocation_url: 'https://identity.example.com/oauth2/revoke',
-        client_id: 'client-123',
-        token_endpoint_auth_method: 'client_secret_basic',
-        client_secret: 'secret-123',
-        scopes: ['files.read', 'files.write'],
-      }),
-    ).toMatchObject({ client_id: 'client-123' });
-  });
-
-  test('accepts public clients and rejects non-HTTPS provider endpoints', () => {
-    expect(
-      OAuth2ApplicationInputSchema.safeParse({
-        authorization_url: 'https://identity.example.com/authorize',
-        token_url: 'https://identity.example.com/token',
-        client_id: 'public-client',
-        token_endpoint_auth_method: 'none',
-      }).success,
-    ).toBe(true);
-    expect(
-      OAuth2ApplicationInputSchema.safeParse({
-        authorization_url: 'http://127.0.0.1/authorize',
-        token_url: 'https://identity.example.com/token',
-        client_id: 'public-client',
-        token_endpoint_auth_method: 'none',
-      }).success,
-    ).toBe(false);
-  });
-
-  test('requires the selected client credential', () => {
-    expect(
-      OAuth2ApplicationInputSchema.safeParse({
-        token_url: 'https://identity.example.com/token',
-        client_id: 'confidential-client',
-        token_endpoint_auth_method: 'client_secret_jwt',
-      }).success,
-    ).toBe(false);
-    expect(
-      OAuth2ApplicationInputSchema.safeParse({
-        token_url: 'https://identity.example.com/token',
-        client_id: 'confidential-client',
-        token_endpoint_auth_method: 'private_key_jwt',
-        private_key: 'private-key',
-      }).success,
-    ).toBe(true);
-  });
-
-  test('validates authorization and device start inputs', () => {
-    expect(
-      OAuth2AuthorizationStartInputSchema.parse({
-        success_redirect_uri: 'https://dev.kortix.com/projects/p1',
-      }),
-    ).toEqual({ success_redirect_uri: 'https://dev.kortix.com/projects/p1' });
-    expect(
-      OAuth2AuthorizationStartInputSchema.safeParse({
-        success_redirect_uri: 'http://localhost:15300/projects/p1',
-      }).success,
-    ).toBe(true);
-    expect(
-      OAuth2AuthorizationStartInputSchema.safeParse({
-        success_redirect_uri: 'http://example.com/projects/p1',
-      }).success,
-    ).toBe(false);
-    expect(OAuth2DeviceAuthorizationStartInputSchema.parse({ scopes: ['read'] })).toEqual({
-      scopes: ['read'],
-    });
   });
 });
 
@@ -638,15 +520,13 @@ describe('SessionCreateInputSchema backend overrides (origin_ref + secrets bound
     expect(SessionCreateInputSchema.safeParse({ origin_ref: 'tenant-42' }).success).toBe(true);
     expect(SessionCreateInputSchema.safeParse({ origin_ref: 'x'.repeat(257) }).success).toBe(false);
     expect(SessionCreateInputSchema.safeParse({ origin_ref: '   ' }).success).toBe(false);
-    expect(SessionCreateInputSchema.parse({ origin_ref: '  tenant-7  ' }).origin_ref).toBe(
-      'tenant-7',
-    );
+    expect(SessionCreateInputSchema.parse({ origin_ref: '  tenant-7  ' }).origin_ref).toBe('tenant-7');
   });
 
   test('secrets: accepts an identifier list and [] (narrow to zero), rejects an over-long list', () => {
-    expect(
-      SessionCreateInputSchema.safeParse({ secrets: ['GMAIL_TOKEN', 'STRIPE_KEY'] }).success,
-    ).toBe(true);
+    expect(SessionCreateInputSchema.safeParse({ secrets: ['GMAIL_TOKEN', 'STRIPE_KEY'] }).success).toBe(
+      true,
+    );
     expect(SessionCreateInputSchema.safeParse({ secrets: [] }).success).toBe(true);
     expect(
       SessionCreateInputSchema.safeParse({

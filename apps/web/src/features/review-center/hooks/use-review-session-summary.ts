@@ -1,6 +1,6 @@
 'use client';
 
-import { listReviewItems, type ApiReviewItem } from '@kortix/sdk';
+import { listReviewItems, type ApiReviewItem } from '@kortix/sdk/projects-client';
 import { useQuery } from '@tanstack/react-query';
 
 import { reviewKeys } from './use-review-items';

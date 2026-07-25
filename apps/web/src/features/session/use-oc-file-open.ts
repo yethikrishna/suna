@@ -3,12 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useKortixComputerStore } from '@/stores/kortix-computer-store';
-import {
-  getRuntimePathInfo,
-  getRuntimeProjectInfo,
-  runtimeKeys,
-  readRuntimeTextFile,
-} from '@kortix/sdk/react';
+import { getClient } from '@/lib/opencode-sdk';
+import { opencodeKeys } from '@/hooks/opencode/use-opencode-sessions';
 
 /**
  * Module-level cache of candidate prefixes.
@@ -35,7 +31,7 @@ function toRelative(absPath: string, prefixes: string[]): string {
  * Fetch all candidate worktree/directory prefixes.
  *
  * CONSOLIDATED: First checks the React Query cache (shared with
- * useRuntimeCurrentProject and useRuntimePathInfo). Only makes SDK calls
+ * useOpenCodeCurrentProject and useOpenCodePathInfo). Only makes SDK calls
  * as a fallback if the cache is empty. This prevents duplicate /project/current
  * and /path requests that were previously made on every tool-view mount.
  */
@@ -54,10 +50,10 @@ async function fetchPrefixesFromSdkUncached(queryClient?: ReturnType<typeof useQ
 
   // 1) Try React Query cache first (shared with other hooks)
   if (queryClient) {
-    const cachedProject = queryClient.getQueryData<any>(runtimeKeys.currentProject());
+    const cachedProject = queryClient.getQueryData<any>(opencodeKeys.currentProject());
     if (cachedProject?.worktree) candidates.push(cachedProject.worktree);
 
-    const cachedPath = queryClient.getQueryData<any>(runtimeKeys.pathInfo());
+    const cachedPath = queryClient.getQueryData<any>(opencodeKeys.pathInfo());
     if (cachedPath?.directory) candidates.push(cachedPath.directory);
     if (cachedPath?.worktree) candidates.push(cachedPath.worktree);
   }
@@ -72,15 +68,24 @@ async function fetchPrefixesFromSdkUncached(queryClient?: ReturnType<typeof useQ
 
   // 3) Fallback: SDK calls (only on first mount before cache is populated)
   // If the sandbox URL isn't ready yet, skip for now and let the next render retry.
+  let client;
   try {
-    const project = await getRuntimeProjectInfo();
+    client = getClient();
+  } catch {
+    return [];
+  }
+
+  try {
+    const projectRes = await client.project.current();
+    const project = projectRes.data;
     if (project?.worktree) candidates.push(project.worktree);
   } catch {
     // non-critical
   }
 
   try {
-    const pathData = await getRuntimePathInfo();
+    const pathRes = await client.path.get();
+    const pathData = pathRes.data;
     if (pathData?.directory) candidates.push(pathData.directory);
     if (pathData?.worktree) candidates.push(pathData.worktree);
   } catch {
@@ -104,6 +109,12 @@ async function fetchPrefixesFromSdkUncached(queryClient?: ReturnType<typeof useQ
  * Caches the discovered prefix for future use.
  */
 async function discoverPrefixViaFileApi(absPath: string): Promise<string | null> {
+  let client;
+  try {
+    client = getClient();
+  } catch {
+    return null;
+  }
   const segments = absPath.split('/').filter(Boolean);
   if (segments.length < 2) return null;
 
@@ -112,8 +123,8 @@ async function discoverPrefixViaFileApi(absPath: string): Promise<string | null>
   for (let depth = 1; depth <= maxDepth; depth++) {
     const candidate = segments.slice(segments.length - depth).join('/');
     try {
-      const content = await readRuntimeTextFile(candidate);
-      if (content) {
+      const result = await client.file.read({ path: candidate });
+      if (result.data) {
         // Derive the prefix from the original path minus the working suffix
         const prefix = '/' + segments.slice(0, segments.length - depth).join('/');
         // Merge into cache

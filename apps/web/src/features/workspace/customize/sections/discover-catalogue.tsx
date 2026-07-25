@@ -11,7 +11,7 @@ import {
   getDiscoverIntegration,
   listDiscoverIntegrations,
   listPipedreamApps,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import { Boxes, ChevronRight, ExternalLink, Globe, Plus, Search, Zap } from 'lucide-react';
 import Image from 'next/image';
 import { useState } from 'react';

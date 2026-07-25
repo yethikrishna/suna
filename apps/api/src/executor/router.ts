@@ -17,10 +17,6 @@
  * boundary; production wires DB-backed deps (db-deps.ts). See docs/specs/executor.md.
  */
 import { type OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
-import {
-  UpdateConnectionProfileCredentialInputSchema,
-  type UpdateConnectionProfileCredentialInput,
-} from '@kortix/api-contract';
 import type { AgentGrant } from '@kortix/db';
 import type { Context } from 'hono';
 import { agentMayUseConnector } from '../iam/agent-scope';
@@ -191,12 +187,8 @@ export interface ExecutorRouterDeps {
   ): Promise<ConnectorAuthDiscovery>;
   /** Remove a connector from kortix.yaml + drop its rows. */
   deleteConnector?(projectId: string, slug: string): Promise<CrudOutcome>;
-  /** Set a connector's server-side static or OAuth2 credential. */
-  setConnectorCredential?(
-    projectId: string,
-    slug: string,
-    input: UpdateConnectionProfileCredentialInput,
-  ): Promise<CrudOutcome>;
+  /** Set a connector's credential value (stored scope='connector', never injected). */
+  setConnectorCredential?(projectId: string, slug: string, value: string): Promise<CrudOutcome>;
   /** `userId` is accepted for back-compat but unused — a connector has exactly
    *  one (shared) credential since `per_user` was removed 2026-07-05. */
   deleteConnectorCredential?(projectId: string, slug: string, userId: string): Promise<CrudOutcome>;
@@ -245,17 +237,8 @@ export interface ExecutorRouterDeps {
     baseUrl: string | null;
     spec: string | null;
     auth: {
-      type:
-        | 'none'
-        | 'bearer'
-        | 'basic'
-        | 'custom'
-        | 'api_key'
-        | 'oauth1'
-        | 'hmac'
-        | 'aws_sigv4'
-        | 'mtls';
-      in: 'header' | 'query' | 'cookie';
+      type: 'none' | 'bearer' | 'basic' | 'custom' | 'oauth1';
+      in: 'header' | 'query';
       name: string | null;
       prefix: string | null;
     };
@@ -466,12 +449,10 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       if (!admin) return c.json({ error: 'forbidden' }, 403);
       if (!deps.listDiscoverIntegrations) return c.json({ error: 'catalogue unavailable' }, 502);
       try {
-        return c.json(
-          await deps.listDiscoverIntegrations({
-            q: c.req.query('q') || undefined,
-            cursor: c.req.query('cursor') || undefined,
-          }),
-        );
+        return c.json(await deps.listDiscoverIntegrations({
+          q: c.req.query('q') || undefined,
+          cursor: c.req.query('cursor') || undefined,
+        }));
       } catch (error) {
         return c.json({ error: (error as Error).message || 'catalogue unavailable' }, 502);
       }
@@ -670,8 +651,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const projectId = c.req.param('projectId');
       const admin = await deps.resolveAdmin(c, projectId);
       if (!admin) return c.json({ error: 'forbidden' }, 403);
-      if (!deps.discoverConnectorAuth)
-        return featureNotSupportedResponse(c, 'connector_auth_discovery');
+      if (!deps.discoverConnectorAuth) return featureNotSupportedResponse(c, 'connector_auth_discovery');
       let body: Record<string, unknown>;
       try {
         body = await c.req.json();
@@ -761,11 +741,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       ...auth,
       request: {
         params: ProjectSlugParam,
-        body: {
-          content: {
-            'application/json': { schema: UpdateConnectionProfileCredentialInputSchema },
-          },
-        },
+        body: { content: { 'application/json': { schema: z.object({ value: z.string() }) } } },
       },
       responses: {
         200: json(OkSchema, 'Credential set'),
@@ -779,32 +755,16 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const slug = c.req.param('slug');
       const admin = await deps.resolveAdmin(c, projectId);
       if (!admin) return c.json({ error: 'forbidden' }, 403);
-      if (!deps.setConnectorCredential)
-        return featureNotSupportedResponse(c, 'connector_credential_set');
+      if (!deps.setConnectorCredential) return featureNotSupportedResponse(c, 'connector_credential_set');
       let body: any;
       try {
         body = await c.req.json();
       } catch {
         return c.json({ error: 'invalid_json' }, 400);
       }
-      const parsed = UpdateConnectionProfileCredentialInputSchema.safeParse(body);
-      if (!parsed.success) {
-        return c.json(
-          {
-            error:
-              body?.oauth2 != null
-                ? (parsed.error.issues[0]?.message ?? 'invalid OAuth2 credential')
-                : 'value is required',
-          },
-          400,
-        );
-      }
-      let result: CrudOutcome;
-      try {
-        result = await deps.setConnectorCredential(projectId, slug, parsed.data);
-      } catch (error) {
-        return c.json({ error: (error as Error).message || 'credential validation failed' }, 400);
-      }
+      const value = typeof body?.value === 'string' ? body.value : '';
+      if (!value) return c.json({ error: 'value is required' }, 400);
+      const result = await deps.setConnectorCredential(projectId, slug, value);
       return result.ok
         ? c.json({ ok: true })
         : c.json({ error: result.error }, result.status as 400);
@@ -830,8 +790,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const slug = c.req.param('slug');
       const admin = await deps.resolveAdmin(c, projectId);
       if (!admin) return c.json({ error: 'forbidden' }, 403);
-      if (!deps.deleteConnectorCredential)
-        return featureNotSupportedResponse(c, 'connector_credential_delete');
+      if (!deps.deleteConnectorCredential) return featureNotSupportedResponse(c, 'connector_credential_delete');
       const result = await deps.deleteConnectorCredential(projectId, slug, admin.userId);
       return result.ok
         ? c.json({ ok: true })
@@ -943,8 +902,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const slug = c.req.param('slug');
       const admin = await deps.resolveAdmin(c, projectId);
       if (!admin) return c.json({ error: 'forbidden' }, 403);
-      if (!deps.setCredentialMode)
-        return featureNotSupportedResponse(c, 'connector_credential_mode');
+      if (!deps.setCredentialMode) return featureNotSupportedResponse(c, 'connector_credential_mode');
       let body: any;
       try {
         body = await c.req.json();
@@ -954,12 +912,9 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const mode = body?.mode;
       if (mode !== 'shared') {
         return c.json(
-          {
-            error:
-              mode === 'per_user'
-                ? 'per_user credential mode was removed — connectors are always shared now'
-                : 'mode must be "shared"',
-          },
+          { error: mode === 'per_user'
+            ? 'per_user credential mode was removed — connectors are always shared now'
+            : 'mode must be "shared"' },
           400,
         );
       }
@@ -1066,8 +1021,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const slug = c.req.param('slug');
       const admin = await deps.resolveAdmin(c, projectId);
       if (!admin) return c.json({ error: 'forbidden' }, 403);
-      if (!deps.getConnectorPolicies)
-        return featureNotSupportedResponse(c, 'connector_policies_read');
+      if (!deps.getConnectorPolicies) return featureNotSupportedResponse(c, 'connector_policies_read');
       const result = await deps.getConnectorPolicies(projectId, slug);
       if (!result) return c.json({ error: 'connector not found' }, 404);
       return c.json(result);
@@ -1122,8 +1076,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const slug = c.req.param('slug');
       const admin = await deps.resolveAdmin(c, projectId);
       if (!admin) return c.json({ error: 'forbidden' }, 403);
-      if (!deps.setConnectorPolicies)
-        return featureNotSupportedResponse(c, 'connector_policies_write');
+      if (!deps.setConnectorPolicies) return featureNotSupportedResponse(c, 'connector_policies_write');
       let body: any;
       try {
         body = await c.req.json();

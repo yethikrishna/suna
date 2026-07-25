@@ -212,7 +212,6 @@ describe('serializeSandboxRow ⇄ ProjectSessionSandboxSchema', () => {
       retriable: false,
       sandbox: serializeSandboxRow(sandboxRow()),
       opencode_session_id: 'ses_abc',
-      runtime_transport: 'acp' as const,
       runtime_url: '/p/sbx-123/8000',
       reason: 'pinned',
     };

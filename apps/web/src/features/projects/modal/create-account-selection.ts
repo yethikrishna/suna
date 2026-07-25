@@ -1,4 +1,4 @@
-import type { KortixAccount } from '@kortix/sdk';
+import type { KortixAccount } from '@kortix/sdk/projects-client';
 
 export interface CreateAccountSelection {
   /** Accounts the user may create projects in (owner/admin), sorted by name. */

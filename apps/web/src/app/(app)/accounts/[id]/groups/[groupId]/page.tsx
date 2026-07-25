@@ -65,7 +65,7 @@ import {
   listAccountMembers,
   listProjectsForAccount,
   type ProjectRole,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import { usePermission } from '@/lib/use-permission';
 
 // Entity row dialect shared with the customize section views.

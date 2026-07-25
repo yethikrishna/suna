@@ -1,18 +1,25 @@
 import {
-  createActiveSandboxProxyContext,
-  type ActiveSandboxProxyContext,
-} from '@kortix/sdk/react';
+  getActiveOpenCodeUrl,
+  deriveSubdomainOpts,
+} from '@/stores/server-store';
 import {
   getProxyBaseUrl,
   proxyLocalhostUrl,
   rewriteLocalhostUrl,
+  type SubdomainUrlOptions,
 } from '@/lib/utils/sandbox-url';
 
-export type SandboxProxyContext = ActiveSandboxProxyContext;
+export interface SandboxProxyContext {
+  serverUrl: string;
+  subdomainOpts: SubdomainUrlOptions;
+}
 
 /** Build a proxy context from the active runtime (opencode URL + sandbox id). */
 export function createSandboxProxyContext(): SandboxProxyContext {
-  return createActiveSandboxProxyContext();
+  return {
+    serverUrl: getActiveOpenCodeUrl(),
+    subdomainOpts: deriveSubdomainOpts(),
+  };
 }
 
 export function proxySandboxUrl(

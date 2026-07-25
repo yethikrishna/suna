@@ -50,21 +50,24 @@ import {
   normalizeCustomProviderForm,
   validateCustomProviderForm,
 } from '@/features/providers/custom-provider-config';
-import { configKeys } from '@kortix/sdk/react';
-import type { ProviderListResponse } from '@kortix/sdk/react';
-import {
-  authorizeRuntimeProvider,
-  completeRuntimeProviderOAuth,
-  getRuntimeConfig,
-  getRuntimeProviderAuthMethods,
-  runtimeKeys,
-  refreshRuntimeConfiguration,
-  setRuntimeProviderApiKey,
-  updateRuntimeConfig,
-} from '@kortix/sdk/react';
+import { configKeys } from '@/hooks/opencode/use-opencode-config';
+import type { ProviderListResponse } from '@/hooks/opencode/use-opencode-sessions';
+import { opencodeKeys } from '@/hooks/opencode/use-opencode-sessions';
+import { getClient } from '@/lib/opencode-sdk';
 import { useQueryClient } from '@tanstack/react-query';
 
 const FALLBACK_PROVIDER_CARDS: Array<{ id: string; name: string }> = [];
+
+function unwrapResult<T>(result: { data?: T; error?: unknown }): T {
+  if (result.error) {
+    const err = result.error as {
+      message?: string;
+      data?: { message?: string };
+    };
+    throw new Error(err?.data?.message || err?.message || 'Request failed');
+  }
+  return result.data as T;
+}
 
 // =============================================================================
 // Auth method display helpers
@@ -263,11 +266,12 @@ export function ConnectProviderContent({
   const completeConnection = useCallback(
     async (providerID: string) => {
       try {
-        await refreshRuntimeConfiguration();
+        const client = getClient();
+        await client.global.dispose();
       } catch {
         /* ignore */
       }
-      queryClient.invalidateQueries({ queryKey: runtimeKeys.providers() });
+      queryClient.invalidateQueries({ queryKey: opencodeKeys.providers() });
       onProviderConnected?.();
       const label = PROVIDER_LABELS[providerID] || providerID;
       successToast(`${label} connected`, {
@@ -300,7 +304,13 @@ export function ConnectProviderContent({
       if (method.type === 'oauth') {
         setOauthState('pending');
         try {
-          const data = await authorizeRuntimeProvider(providerID, index);
+          const client = getClient();
+          const result = await client.provider.oauth.authorize({
+            providerID,
+            method: index,
+          });
+          if (result.error) throw result.error;
+          const data = result.data!;
           setOauthUrl(data.url);
 
           if (data.method === 'code') {
@@ -328,7 +338,11 @@ export function ConnectProviderContent({
       setView({ type: 'connect', providerID });
 
       try {
-        const methods = (await getRuntimeProviderAuthMethods())[providerID];
+        const client = getClient();
+        const result = await client.provider.auth();
+        const methods = (result.data as Record<string, Array<{ type: string; label: string }>>)?.[
+          providerID
+        ];
         if (methods && methods.length > 0) {
           setAuthMethods(methods);
           if (methods.length === 1) {
@@ -358,7 +372,11 @@ export function ConnectProviderContent({
       setSaving(true);
       setError('');
       try {
-        await setRuntimeProviderApiKey(view.providerID, apiKey.trim());
+        const client = getClient();
+        await client.auth.set({
+          providerID: view.providerID,
+          auth: { type: 'api', key: apiKey.trim() },
+        });
         await completeConnection(view.providerID);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -381,7 +399,13 @@ export function ConnectProviderContent({
       setSaving(true);
       setError('');
       try {
-        await completeRuntimeProviderOAuth(view.providerID, methodIndex, oauthCode);
+        const client = getClient();
+        const result = await client.provider.oauth.callback({
+          providerID: view.providerID,
+          method: methodIndex,
+          code: oauthCode,
+        });
+        if (result.error) throw result.error;
         await completeConnection(view.providerID);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -406,8 +430,13 @@ export function ConnectProviderContent({
 
     (async () => {
       try {
-        await completeRuntimeProviderOAuth(view.providerID, methodIndex);
+        const client = getClient();
+        const result = await client.provider.oauth.callback({
+          providerID: view.providerID,
+          method: methodIndex,
+        });
         if (cancelled) return;
+        if (result.error) throw result.error;
         await completeConnection(view.providerID);
       } catch (err) {
         if (cancelled) return;
@@ -436,18 +465,24 @@ export function ConnectProviderContent({
       setError('');
       try {
         const normalizedForm = normalizeCustomProviderForm(customForm);
-        const currentConfig = await getRuntimeConfig();
+        const client = getClient();
+        const currentConfig = unwrapResult(await client.global.config.get());
         const configUpdate = buildCustomProviderConfigUpdate(currentConfig, normalizedForm);
 
-        await updateRuntimeConfig(configUpdate);
+        unwrapResult(await client.global.config.update({ config: configUpdate } as any));
 
         if (normalizedForm.apiKey && !isEnvReference(normalizedForm.apiKey)) {
-          await setRuntimeProviderApiKey(normalizedForm.providerID, normalizedForm.apiKey);
+          unwrapResult(
+            await client.auth.set({
+              providerID: normalizedForm.providerID,
+              auth: { type: 'api', key: normalizedForm.apiKey },
+            }),
+          );
         }
 
-        await refreshRuntimeConfiguration();
+        await client.global.dispose();
         queryClient.invalidateQueries({ queryKey: configKeys.all });
-        queryClient.invalidateQueries({ queryKey: runtimeKeys.providers() });
+        queryClient.invalidateQueries({ queryKey: opencodeKeys.providers() });
         onProviderConnected?.();
         const label = normalizedForm.name || normalizedForm.providerID;
         successToast(`${label} connected`, {

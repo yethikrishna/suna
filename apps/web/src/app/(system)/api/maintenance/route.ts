@@ -6,7 +6,6 @@ import {
   type MaintenanceConfig,
   type MaintenanceLevel,
 } from '@/lib/maintenance-store';
-import { getUserRolesWithToken } from '@kortix/sdk';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -119,10 +118,16 @@ async function checkAdminRole(request: NextRequest): Promise<boolean> {
       process.env.NEXT_PUBLIC_BACKEND_URL ||
       '';
 
-    const data = await getUserRolesWithToken<{ isAdmin?: boolean }>({
-      backendUrl,
-      accessToken: session.access_token,
+    const res = await fetch(`${backendUrl}/user-roles`, {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
     });
+
+    if (!res.ok) return false;
+
+    const data: { isAdmin?: boolean } = await res.json();
     return data.isAdmin === true;
   } catch {
     return false;

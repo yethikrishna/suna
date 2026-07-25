@@ -37,7 +37,7 @@ const resolveApprovalMock = mock(async () => {
   throw new Error('not found');
 });
 
-mock.module('@kortix/sdk', () => ({
+mock.module('@kortix/sdk/projects-client', () => ({
   getSessionAudit: mock(async () => ({ actions: [] })),
   listSessionsNeedingInput: mock(async () => ({ sessions: {}, total: 0 })),
   resolveApproval: resolveApprovalMock,

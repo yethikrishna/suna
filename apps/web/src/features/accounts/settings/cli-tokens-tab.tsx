@@ -23,16 +23,14 @@ import { Icon } from '@/features/icon/icon';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { useCopy } from '@/hooks/use-copy';
 import {
-  createAccountToken,
-  listAccountTokens,
-  revokeAccountToken,
+  accountTokensApi,
   type AccountToken,
   type CreatedAccountToken,
-} from '@kortix/sdk';
+} from '@/lib/api/account-tokens';
 import { getEnv } from '@/lib/env-config';
 import { cn } from '@/lib/utils';
 import { useCurrentAccountStore } from '@/stores/current-account-store';
-import { listProjectsForAccount, type KortixProject } from '@kortix/sdk';
+import { listProjectsForAccount, type KortixProject } from '@kortix/sdk/projects-client';
 import { ShieldSolid, TrashSolid } from '@mynaui/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, KeyRound, X } from 'lucide-react';
@@ -117,7 +115,7 @@ function TokenRow({
   const { selectedAccountId } = useCurrentAccountStore();
 
   const mutation = useMutation({
-    mutationFn: () => revokeAccountToken(token.token_id, selectedAccountId ?? undefined),
+    mutationFn: () => accountTokensApi.revoke(token.token_id),
     onSuccess: () => {
       successToast(`Revoked "${token.name}"`);
       onChange();
@@ -246,7 +244,7 @@ export function CliTokensTab() {
 
   const tokensQuery = useQuery({
     queryKey: ['account-tokens'],
-    queryFn: () => listAccountTokens(selectedAccountId ?? undefined),
+    queryFn: () => accountTokensApi.list(),
   });
 
   const projectsQuery = useQuery({
@@ -404,9 +402,9 @@ function InlineCreate({
 
   const mutation = useMutation({
     mutationFn: () =>
-      createAccountToken({
+      accountTokensApi.create({
         name: name.trim(),
-        projectId: scope === ACCOUNT_SCOPE ? undefined : scope,
+        project_id: scope === ACCOUNT_SCOPE ? undefined : scope,
       }),
     onSuccess: (token) => {
       setCreated(token);

@@ -231,9 +231,6 @@ const envSchema = z.object({
   // after validating; tune how many recent sessions to pre-resume per project.
   KORTIX_PRERESUME_ENABLED: optBoolFalse,
   KORTIX_PRERESUME_MAX_PER_PROJECT: optInt(1),
-  // OpenCode client transport. REST remains the default until the project
-  // experimental flag enables ACP after parity verification.
-  KORTIX_OPENCODE_TRANSPORT: z.enum(['acp', 'rest']).default('rest'),
 
   // Lock a session to the agent it booted with: the preview proxy 409s a prompt
   // that asks OpenCode to run a different agent. GATED OFF by default — it was
@@ -325,18 +322,13 @@ const envSchema = z.object({
   // gateway (/v1/llm). The gateway used to read a separate KORTIX_OPENROUTER_API_KEY
   // — consolidated onto this one var.
   OPENROUTER_API_KEY: optStr,
-  // AsterLab OpenAI-compatible endpoint for the managed GLM 5.2 route.
-  // Cloud deployments load ASTER_API_KEY from the environment's AWS Secrets
-  // Manager bundle. Self-host deployments leave it unset.
-  ASTER_API_URL: optUrl('https://api.asterlab.ai/v1'),
-  ASTER_API_KEY: optStr,
   // Managed LLM gateway (/v1/llm) — the `kortix` OpenCode provider routes every
-  // sandbox model call here. Off by default.
+  // sandbox model call here. Off by default; needs OPENROUTER_API_KEY when on.
   LLM_GATEWAY_ENABLED: optBoolFalse,
-  // CLOUD-ONLY. Whether KORTIX's own managed model lineup exists on this
-  // deployment. The lineup routes through Kortix's shared Bedrock, AsterLab,
-  // and OpenRouter credentials. Kortix bills each route as platform credits.
-  // This flag is independent of
+  // CLOUD-ONLY. Whether KORTIX's own managed model lineup (Claude/GLM/Qwen/
+  // DeepSeek/…, routed through Kortix's SHARED Bedrock/OpenRouter credentials
+  // and billed as platform credits — "Managed · Included with your plan" in
+  // the picker) exists at all on this deployment. Independent of
   // LLM_GATEWAY_ENABLED above: a self-host still runs the gateway for its own
   // BYOK routing (every sandbox model call goes through `/v1/llm`), it just
   // must never see or route to Kortix's shared credentials. When unset it
@@ -344,8 +336,8 @@ const envSchema = z.object({
   // managed cloud where the managed lineup is the product; billing off =
   // self-host where it must stay dark. An explicit true/false always wins.
   // See RUNTIME_MANAGED_MODELS (managed-models.ts) and managedCandidates()
-  // (descriptors.ts) — both are gated on this and read no managed credentials
-  // when off.
+  // (descriptors.ts) — both are gated on this and read NEITHER
+  // AWS_BEDROCK_API_KEY NOR OPENROUTER_API_KEY for managed routing when off.
   KORTIX_MANAGED_PROVIDER_ENABLED: optBoolUnset,
   // Fleet default for projects with no explicit per-project override. Defaults
   // ON: wherever the gateway is available (master switch above), the managed
@@ -436,16 +428,6 @@ const envSchema = z.object({
   // bakes. Provider transitions still prepare their target image explicitly.
   // Default OFF keeps the session path on one shared image per provider.
   KORTIX_WARM_SNAPSHOT_ENABLED: optBoolFalse,
-  // Per-provider allowlist for per-project warm images of CUSTOM (non-default-
-  // slug) templates — see `perProjectWarmEligible` in builder.ts. Defaults to
-  // 'platinum' only: Platinum's per-project templates warm-miss 100% of the
-  // time today (`template.isShared` used to gate this off entirely), while
-  // Daytona's shared-default warm path already hits 66% and its quota-gc
-  // cache-floor math (quota-gc-select.ts) has not been re-measured for real
-  // Daytona custom-template counts. Comma-separated, same syntax and parser as
-  // ALLOWED_SANDBOX_PROVIDERS; a provider listed here that isn't itself in
-  // ALLOWED_SANDBOX_PROVIDERS is a no-op (intersected below).
-  KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS: optStrDefault('platinum'),
 
   // ── Platinum — Sandbox provisioning (conditional: required if platinum provider enabled) ──
   // Platinum is our own Cloud Hypervisor microVM API. PLATINUM_API_KEY is a
@@ -612,19 +594,9 @@ export const KNOWN_PROVIDERS: readonly SandboxProviderName[] = [
   'local-docker',
 ] as const;
 
-/**
- * Parse comma-separated provider list (e.g. "daytona,platinum"). `fallback` is
- * returned both when `raw` is empty and when every entry in it is unrecognised
- * — kept as a parameter (rather than hardcoding `['daytona']`) so callers whose
- * empty/all-invalid answer should mean "nothing enabled" (e.g.
- * KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS) don't silently inherit
- * ALLOWED_SANDBOX_PROVIDERS' "default to daytona" safety belt.
- */
-export function parseAllowedProviders(
-  raw: string,
-  fallback: SandboxProviderName[] = ['daytona'],
-): SandboxProviderName[] {
-  if (!raw) return fallback;
+/** Parse comma-separated provider list (e.g. "daytona,platinum"). */
+function parseAllowedProviders(raw: string): SandboxProviderName[] {
+  if (!raw) return ['daytona'];
   const names = raw
     .split(',')
     .map((s) => s.trim().toLowerCase())
@@ -640,7 +612,7 @@ export function parseAllowedProviders(
       );
     }
   }
-  return valid.length > 0 ? valid : fallback;
+  return valid.length > 0 ? valid : ['daytona'];
 }
 
 function validateEnv(): z.infer<typeof envSchema> {
@@ -850,12 +822,6 @@ const env = validateEnv();
 // ─── Parse Providers ────────────────────────────────────────────────────────
 
 const allowedProviders = parseAllowedProviders(env.ALLOWED_SANDBOX_PROVIDERS);
-// Intersected with `allowedProviders`: a provider listed here that isn't itself
-// enabled globally must never become "enabled for custom-template warming only".
-const customTemplateWarmProviders = parseAllowedProviders(
-  env.KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS,
-  ['platinum'],
-).filter((p) => allowedProviders.includes(p));
 
 // ─── Config Object (typed, validated) ───────────────────────────────────────
 
@@ -917,7 +883,6 @@ export const config = {
   KORTIX_GIT_PROXY: env.KORTIX_GIT_PROXY,
   KORTIX_PRERESUME_ENABLED: env.KORTIX_PRERESUME_ENABLED,
   KORTIX_PRERESUME_MAX_PER_PROJECT: env.KORTIX_PRERESUME_MAX_PER_PROJECT,
-  KORTIX_OPENCODE_TRANSPORT: env.KORTIX_OPENCODE_TRANSPORT,
   KORTIX_ENFORCE_SESSION_AGENT_LOCK: env.KORTIX_ENFORCE_SESSION_AGENT_LOCK,
   KORTIX_REQUIRE_DECLARED_AGENTS: env.KORTIX_REQUIRE_DECLARED_AGENTS,
 
@@ -959,8 +924,6 @@ export const config = {
   // ─── LLM Providers ────────────────────────────────────────────────────────
   OPENROUTER_API_URL: env.OPENROUTER_API_URL,
   OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
-  ASTER_API_URL: env.ASTER_API_URL,
-  ASTER_API_KEY: env.ASTER_API_KEY,
   LLM_GATEWAY_ENABLED: env.LLM_GATEWAY_ENABLED,
   // Unset → follow billing (cloud keeps its revenue lineup even if the env
   // blob misses the var; self-host stays off). Explicit value always wins.
@@ -1021,7 +984,6 @@ export const config = {
   // ─── Sandbox Provisioning (Platform) ──────────────────────────────────────
   KORTIX_URL: env.KORTIX_URL,
   ALLOWED_SANDBOX_PROVIDERS: allowedProviders,
-  KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS: customTemplateWarmProviders,
 
   /**
    * INTERNAL_SERVICE_KEY -- direction: kortix-api -> sandbox.
@@ -1175,16 +1137,6 @@ export const config = {
 
   isE2BEnabled(): boolean {
     return this.ALLOWED_SANDBOX_PROVIDERS.includes('e2b') && !!this.E2B_API_KEY;
-  },
-
-  /**
-   * True iff `provider` is allowlisted to warm-bake per-project images for
-   * CUSTOM (non-default-slug) templates — see `perProjectWarmEligible` in
-   * builder.ts. Already intersected with ALLOWED_SANDBOX_PROVIDERS at parse
-   * time, so this alone is the full gate.
-   */
-  isCustomTemplateWarmEligible(provider: SandboxProviderName): boolean {
-    return this.KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS.includes(provider);
   },
 };
 

@@ -1,4 +1,4 @@
-import { listProjectsForAccount, type KortixProject } from '@kortix/sdk';
+import { listProjectsForAccount, type KortixProject } from '@kortix/sdk/projects-client';
 
 export type FirstProjectAutoCreateState = {
   bootstrapRequested: boolean;

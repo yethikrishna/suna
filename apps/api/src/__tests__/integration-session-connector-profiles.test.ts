@@ -20,7 +20,6 @@ import {
   resolveCredentialValue,
   resolveProfileCredentialValue,
   upsertCredential,
-  upsertProfileOAuth2Credential,
   upsertProfileCredential,
 } from '../executor/credentials';
 import { makeDbGatewayDeps } from '../executor/db-deps';
@@ -719,108 +718,6 @@ describe('session connector profile isolation', () => {
       userId: null,
       value: 'default-capability',
     });
-  });
-
-  test('OAuth2 profile credentials refresh once and persist the fresh access token', async () => {
-    let acquisitions = 0;
-    const acquire = async () => {
-      acquisitions += 1;
-      return {
-        access_token: `oauth-access-${acquisitions}`,
-        token_type: 'Bearer',
-        expires_at: acquisitions === 1 ? 0 : Date.now() + 3_600_000,
-        scopes: ['https://graph.microsoft.com/.default'],
-      };
-    };
-    try {
-      await upsertProfileOAuth2Credential(
-        {
-          projectId: PROJECT_A,
-          connectorId: CONNECTOR_A,
-          profileId: PROFILE_A,
-          oauth2: {
-            type: 'oauth2_client_credentials',
-            token_url: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/token',
-            client_id: 'client-id',
-            token_endpoint_auth_method: 'client_secret_post',
-            client_secret: 'client-secret',
-            scopes: ['https://graph.microsoft.com/.default'],
-          },
-          createdBy: USER,
-        },
-        { acquire },
-      );
-      expect(
-        await resolveProfileCredentialValue(
-          { connectorId: CONNECTOR_A, profileId: PROFILE_A },
-          { acquire },
-        ),
-      ).toBe('oauth-access-2');
-      expect(
-        await resolveProfileCredentialValue(
-          { connectorId: CONNECTOR_A, profileId: PROFILE_A },
-          { acquire },
-        ),
-      ).toBe('oauth-access-2');
-      expect(acquisitions).toBe(2);
-    } finally {
-      await upsertProfileCredential({
-        projectId: PROJECT_A,
-        connectorId: CONNECTOR_A,
-        profileId: PROFILE_A,
-        value: 'workspace-a-capability',
-        createdBy: USER,
-      });
-    }
-  });
-
-  test('OAuth2 profile credentials serialize concurrent refreshes in PostgreSQL', async () => {
-    let acquisitions = 0;
-    const acquire = async () => {
-      acquisitions += 1;
-      if (acquisitions > 1) await Bun.sleep(25);
-      return {
-        access_token: `oauth-concurrent-${acquisitions}`,
-        token_type: 'Bearer',
-        expires_at: acquisitions === 1 ? 0 : Date.now() + 3_600_000,
-        scopes: [],
-      };
-    };
-    try {
-      await upsertProfileOAuth2Credential(
-        {
-          projectId: PROJECT_A,
-          connectorId: CONNECTOR_A,
-          profileId: PROFILE_A,
-          oauth2: {
-            type: 'oauth2_client_credentials',
-            token_url: 'https://login.example.com/token',
-            client_id: 'client-id',
-            token_endpoint_auth_method: 'client_secret_post',
-            client_secret: 'client-secret',
-          },
-        },
-        { acquire },
-      );
-      const values = await Promise.all(
-        Array.from({ length: 6 }, () =>
-          resolveProfileCredentialValue(
-            { connectorId: CONNECTOR_A, profileId: PROFILE_A },
-            { acquire },
-          ),
-        ),
-      );
-      expect(new Set(values)).toEqual(new Set(['oauth-concurrent-2']));
-      expect(acquisitions).toBe(2);
-    } finally {
-      await upsertProfileCredential({
-        projectId: PROJECT_A,
-        connectorId: CONNECTOR_A,
-        profileId: PROFILE_A,
-        value: 'workspace-a-capability',
-        createdBy: USER,
-      });
-    }
   });
 
   test('AgentMail profiles stay immutable per inbox and revoke on partial or final disconnect', async () => {

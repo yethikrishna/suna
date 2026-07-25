@@ -231,6 +231,9 @@ const envSchema = z.object({
   // after validating; tune how many recent sessions to pre-resume per project.
   KORTIX_PRERESUME_ENABLED: optBoolFalse,
   KORTIX_PRERESUME_MAX_PER_PROJECT: optInt(1),
+  // OpenCode client transport. REST remains the default until the project
+  // experimental flag enables ACP after parity verification.
+  KORTIX_OPENCODE_TRANSPORT: z.enum(['acp', 'rest']).default('rest'),
 
   // Lock a session to the agent it booted with: the preview proxy 409s a prompt
   // that asks OpenCode to run a different agent. GATED OFF by default — it was
@@ -888,6 +891,7 @@ export const config = {
   KORTIX_GIT_PROXY: env.KORTIX_GIT_PROXY,
   KORTIX_PRERESUME_ENABLED: env.KORTIX_PRERESUME_ENABLED,
   KORTIX_PRERESUME_MAX_PER_PROJECT: env.KORTIX_PRERESUME_MAX_PER_PROJECT,
+  KORTIX_OPENCODE_TRANSPORT: env.KORTIX_OPENCODE_TRANSPORT,
   KORTIX_ENFORCE_SESSION_AGENT_LOCK: env.KORTIX_ENFORCE_SESSION_AGENT_LOCK,
   KORTIX_REQUIRE_DECLARED_AGENTS: env.KORTIX_REQUIRE_DECLARED_AGENTS,
 

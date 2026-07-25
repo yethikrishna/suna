@@ -174,21 +174,39 @@ Also stop if the same failure survives three different fixes (use
 
 ---
 
-## NOW — active plan: native integration authentication lifecycle
+## COMPLETED PLAN — native integration authentication lifecycle
 
 - **Plan:** `docs/superpowers/plans/2026-07-25-native-integration-auth-lifecycle.md`
 - **Spec:** `docs/superpowers/specs/2026-07-25-native-integration-auth-lifecycle-design.md`
 
-| #   | Task                                          | Status                    | Session                       | Last touched | Commit      |
-| --- | --------------------------------------------- | ------------------------- | ----------------------------- | ------------ | ----------- |
-| 1   | Contracts and RED tests                       | DONE                      | `native-oauth-full-lifecycle` | 2026-07-25   | `de7026bfc` |
-| 2   | Database lifecycle                            | DONE                      | `native-oauth-full-lifecycle` | 2026-07-25   | `572bedb5a` |
-| 3   | OAuth2 protocol engine                        | DONE                      | `native-oauth-full-lifecycle` | 2026-07-25   | `db31d216e` |
-| 4   | API lifecycle routes                          | DONE                      | `native-oauth-full-lifecycle` | 2026-07-25   | `63dda6afe` |
-| 5   | Executor and non-OAuth request authentication | DONE                      | `native-oauth-full-lifecycle` | 2026-07-25   | `35daeda10` |
-| 6   | SDK and web integration                       | DONE                      | `native-oauth-full-lifecycle` | 2026-07-25   | `b3826fa8f` |
-| 7   | Local verification                            | DONE WITH BROWSER BLOCKER | `native-oauth-full-lifecycle` | 2026-07-25   | `4575346db` |
-| 8   | Delivery and dev proof                        | IN PROGRESS               | `native-oauth-full-lifecycle` | 2026-07-25   | claim       |
+| # | Task | Status | Session | Last touched | Commit |
+|---|---|---|---|---|---|
+| 1 | Contracts and RED tests | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `de7026bfc` |
+| 2 | Database lifecycle | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `572bedb5a` |
+| 3 | OAuth2 protocol engine | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `db31d216e` |
+| 4 | API lifecycle routes | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `63dda6afe` |
+| 5 | Executor and non-OAuth request authentication | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `35daeda10` |
+| 6 | SDK and web integration | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `b3826fa8f` |
+| 7 | Local verification | DONE WITH BROWSER BLOCKER | `native-oauth-full-lifecycle` | 2026-07-25 | `4575346db` |
+| 8 | Delivery and dev proof | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `00bc29065` + `8a1249883` |
+
+---
+
+## NOW — active plan: OpenCode ACP canary
+
+- **Plan:** `docs/superpowers/plans/2026-07-25-opencode-acp-canary.md`
+- **Spec:** `docs/superpowers/specs/2026-07-25-opencode-acp-canary-design.md`
+
+| # | Task | Status | Session | Last touched | Commit |
+|---|---|---|---|---|---|
+| 1 | Native process and protocol core | DONE | `acp-opencode-canary` | 2026-07-25 | `2ba64ab68` |
+| 2 | Authenticated HTTP/SSE bridge | DONE | `acp-opencode-canary` | 2026-07-25 | `8560c2dfc` |
+| 3 | API transport metadata and rollback | DONE | `acp-opencode-canary` | 2026-07-25 | `b558def6f` |
+| 4 | SDK ACP transport | DONE | `acp-opencode-canary` | 2026-07-25 | `a28df36f3` |
+| 5 | SDK session projection | DONE | `acp-opencode-canary` | 2026-07-25 | `951896a44` |
+| 6 | Existing `useSession` integration | DONE | `acp-opencode-canary` | 2026-07-25 | `951896a44` |
+| 7 | Local parity and rollback proof | DONE | `acp-opencode-canary` | 2026-07-25 | pending |
+| 8 | Delivery and dev proof | IN PROGRESS | `acp-opencode-canary` | 2026-07-25 | — |
 
 ---
 
@@ -803,8 +821,6 @@ default names and behavior remain unchanged. SDK work will follow RED → GREEN 
 REFACTOR and finish on the full typecheck, test, and packed-install smoke gates.
 
 **Status:** IN PROGRESS.
-
----
 
 ### 2026-07-13 — session `gateway-routing-ui` (completion)
 
@@ -2149,7 +2165,6 @@ SDK typecheck, test, and packed-install smoke gates, focused web tests, browser
 verification, repository merge, Deploy Dev, and live-dev proof.
 
 **Status:** IN PROGRESS.
-
 ---
 
 ### 2026-07-25 — session `gateway-billing-audit` (B19 claim)
@@ -2194,3 +2209,145 @@ The browser no longer uses `models.dev` as a fallback for `kortix` models.
 **Shippable to production: YES** for B19 and the published SDK surface.
 Repository merge, Deploy Dev, and live-dev verification remain repository
 delivery tasks.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (OpenCode ACP Task 3 claim)
+
+Claimed the OpenCode-only ACP canary after both previous SDK claims closed.
+PR #5400 merged the session-history pagination change.
+PR #5403 and Deploy Dev run 30136343999 completed the authentication lifecycle.
+
+The sandbox process and bridge slices are complete.
+The real OpenCode `1.18.4` smoke negotiated ACP v1, exposed its internal HTTP
+server, and created ACP session `ses_0693a6e03ffeGeChw6OVEfRGaW`.
+
+Task 3 will add server-owned `acp` and `rest` transport metadata.
+The SDK source remains unchanged until Task 4 starts with a failing test.
+
+**Status:** IN PROGRESS.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (OpenCode ACP Task 3 completion)
+
+Separated the OpenCode process transport from the SDK client transport.
+Every sandbox injects `KORTIX_OPENCODE_PROCESS_TRANSPORT=acp`.
+The API client transport defaults to `rest` during the parity implementation.
+The `/start` response reports that client transport as `runtime_transport`.
+Pre-ACP servers can omit the additive field.
+
+**Verification:**
+
+- API contract and runtime-env tests: **22 pass / 0 fail**.
+- Focused `/start` HTTP contract: **1 pass / 0 fail**.
+- API contract typecheck: exit 0.
+- API typecheck: exit 0.
+
+**Status:** COMPLETE.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (OpenCode ACP Task 4 completion)
+
+Added the framework-free SDK ACP transport.
+It sends JSON-RPC requests, notifications, and responses through the authenticated sandbox bridge.
+It consumes ordered SSE events and reconnects with `Last-Event-ID`.
+It exposes native `session/load`, `session/prompt`, `session/cancel`, and `session/set_config_option` methods.
+
+Added the framework-free ACP session projection.
+It converts user, assistant, thought, tool, plan, permission, question, usage, and stop updates into the existing Kortix session presentation types.
+It rejects updates for a different ACP session.
+
+**RED evidence:** the focused run reported two missing modules and zero passing tests.
+
+**Verification:**
+
+- Focused ACP SDK suite: **8 pass / 0 fail**.
+- SDK typecheck and example typecheck: exit 0.
+- Isomorphic export and public-surface gates: **69 pass / 0 fail**.
+- Direct OpenCode `1.18.4` smoke: ACP v1 initialize, session creation, streamed thought and assistant chunks, and `end_turn` completion.
+
+**Status:** COMPLETE.
+
+**Shippable to production: NOT YET.** Tasks 5 through 8 remain incomplete.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (OpenCode ACP Tasks 5–6 completion)
+
+Extended the ACP projection for command, mode, config, session-information,
+usage, permission, question, cancellation, and transport-error state.
+
+Integrated ACP into the existing `useSession(projectId, sessionId)` hook.
+The server-provided `runtime_transport` selects the SDK path.
+Missing metadata and `rest` retain the existing OpenCode REST path.
+The ACP path disables OpenCode REST events, session listing, message sync, and
+prompt sends.
+
+The root web composer calls `sessionState.sendParts()`.
+The web application does not inspect `runtimeTransport`.
+The same SDK result handles commands, cancellation, permissions, and questions.
+
+Added the `acp_runtime` project experiment.
+The existing self-describing experimental settings UI renders its catalog entry.
+
+**RED evidence:**
+
+- Runtime policy test: missing `createSessionRuntimePolicy` export; **0 pass / 1 fail**.
+- Web routing test: missing `sessionState.sendParts`; **1 pass / 1 fail**.
+- Projection and controller error fixtures: **8 pass / 2 fail**.
+
+**Verification:**
+
+- Focused ACP projection/controller suite: **10 pass / 0 fail**.
+- Runtime policy/controller suite: **8 pass / 0 fail**.
+- Web SDK routing gate: **2 pass / 0 fail**.
+- SDK typecheck and examples: exit 0.
+- SDK full suite: **1228 pass / 2 skip / 0 fail**.
+- SDK packed-install smoke: pass.
+- API experimental-feature suite: **16 pass / 0 fail**.
+- API serializer suite: **17 pass / 0 fail**.
+- API contract schema suite: **41 pass / 0 fail**.
+- Sandbox ACP process and bridge suite: **19 pass / 0 fail**.
+- White-label typecheck: exit 0.
+
+**Status:** COMPLETE.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (OpenCode ACP Task 7 completion)
+
+Completed the real OpenCode ACP parity matrix in one Chromium session.
+The matrix covers ordered SSE reconnects, `Last-Event-ID`, `session/load`,
+transcript restoration, text streaming, permissions, questions, attachments,
+busy-message serialization, cancellation, slash commands, and process restart.
+
+The sandbox daemon resumes the canonical ACP session after OpenCode restarts.
+It publishes the replayable `kortix/runtime_ready` process-generation signal.
+The SDK reloads the canonical session before it accepts another prompt.
+
+The OpenCode question compatibility bridge exposes questions as
+`session/request_input`.
+The browser returns only ACP JSON-RPC responses.
+
+**RED evidence:**
+
+- SDK restart recovery: **12 pass / 1 fail**.
+- Sandbox restart signal: **13 pass / 1 fail**.
+- The pre-fix Chromium matrix reconnected SSE after `/kortix/refresh/`.
+  It did not send a post-restart prompt because the new process had no loaded
+  ACP session.
+
+**Verification:**
+
+- Focused ACP SDK suite: **18 pass / 0 fail**.
+- Focused sandbox ACP suite: **17 pass / 0 fail**.
+- Linux sandbox daemon build: exit 0.
+- Platinum image `kortix-default-0429779a8bc2`: built in 370.774 seconds.
+- Full local Chromium ACP and REST rollback matrix: **1 pass / 0 fail** in
+  4.3 minutes.
+
+**Status:** COMPLETE.
+
+**Shippable to production: NOT YET.** Task 8 delivery and dev proof remain.

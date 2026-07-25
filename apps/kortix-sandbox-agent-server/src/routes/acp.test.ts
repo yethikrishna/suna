@@ -30,6 +30,7 @@ function config(sandboxToken: string | null = TOKEN): Config {
     gitUserName: 'Kortix Agent',
     gitUserEmail: 'agent@kortix.ai',
     cloneFilter: '',
+    cloneDepth: 1,
   }
 }
 

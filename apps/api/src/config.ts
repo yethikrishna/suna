@@ -384,12 +384,17 @@ const envSchema = z.object({
   // xAI / Gemini / Groq route their TEXT models through OpenRouter (see
   // router/config/proxy-services.ts), so only base URLs are read there.
   XAI_API_URL: optUrl('https://api.x.ai/v1'),
-  // The exception: the voice channel talks to xAI's realtime WebSocket directly.
-  // OpenRouter does not proxy realtime audio sessions, and the socket is held
-  // server-side so the key never reaches a sandbox or the Recall-hosted page.
-  XAI_API_KEY: optStr,
   GEMINI_API_URL: optUrl('https://generativelanguage.googleapis.com/v1beta'),
   GROQ_API_URL: optUrl('https://api.groq.com/openai/v1'),
+  // ── LiveKit — the voice channel's transport (see channels/voice/livekit.ts) ──
+  // A room per call, an agents-js worker doing STT->LLM->TTS, Recall's rendered
+  // page as a plain LiveKit client. Defaults match the project's local dev
+  // server (ws://localhost:7880, devkey/secret are LiveKit's own published
+  // dev-mode credentials, not a real secret) — every real deployment overrides
+  // all three.
+  LIVEKIT_URL: optStrDefault('ws://localhost:7880'),
+  LIVEKIT_API_KEY: optStrDefault('devkey'),
+  LIVEKIT_API_SECRET: optStrDefault('secret'),
   // ── Billing — Stripe (optional, only for cloud billing) ──────────────────
   STRIPE_SECRET_KEY: optStr,
   STRIPE_WEBHOOK_SECRET: optStr,
@@ -945,9 +950,11 @@ export const config = {
   OPENAI_API_URL: env.OPENAI_API_URL,
   OPENAI_API_KEY: env.OPENAI_API_KEY,
   XAI_API_URL: env.XAI_API_URL,
-  XAI_API_KEY: env.XAI_API_KEY,
   GEMINI_API_URL: env.GEMINI_API_URL,
   GROQ_API_URL: env.GROQ_API_URL,
+  LIVEKIT_URL: env.LIVEKIT_URL,
+  LIVEKIT_API_KEY: env.LIVEKIT_API_KEY,
+  LIVEKIT_API_SECRET: env.LIVEKIT_API_SECRET,
   // ─── Stripe (Billing) ─────────────────────────────────────────────────────
   STRIPE_SECRET_KEY: env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: env.STRIPE_WEBHOOK_SECRET,

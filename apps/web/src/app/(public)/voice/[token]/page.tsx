@@ -1,16 +1,20 @@
 'use client';
 
 /**
- * The audio bridge page.
+ * The voice room page.
  *
- * Recall renders this inside the meeting bot and streams whatever it plays into
- * the call, while `getUserMedia` hands us the room's audio. So this page is a
- * pipe: room audio up the socket, agent audio down and out the speakers.
+ * Recall renders this inside the meeting bot. It used to be a raw WebSocket pipe
+ * that hand-rolled PCM framing, a ring buffer and reconnect logic; all of that is
+ * gone now that the room itself is a LiveKit room. This page's only job is to
+ * join it: publish the mic, play whatever the agent publishes back, and render a
+ * status surface. Jitter buffering, packet-loss concealment, Opus encode/decode
+ * and reconnects are LiveKit's problem now, not ours.
  *
- * It is deliberately dumb. The realtime provider WebSocket, the transcript, and
- * anything that can prompt a session all live server-side, because this code
- * runs in a browser inside Recall's infrastructure with its token visible in the
- * URL. That token authorises relaying audio for one call and nothing else.
+ * It is deliberately dumb. The STT/LLM/TTS pipeline, the transcript, and anything
+ * that can prompt a session all live server-side (the LiveKit agent worker), because
+ * this code runs in a browser inside Recall's infrastructure with its token visible
+ * in the URL. That token is a room-scoped LiveKit access token and nothing else —
+ * it authorises joining one room as one participant, not calling the Kortix API.
  *
  * Gate 0 (2026-07-25) measured that Recall's capture does NOT contain the bot's
  * own output, so there is no echo gate here and barge-in works for real. If that
@@ -22,207 +26,100 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import {
+  ConnectionState,
+  Room,
+  RoomEvent,
+  Track,
+  type Participant,
+  type RemoteTrack,
+} from 'livekit-client';
 
-/** Must match VOICE_SAMPLE_RATE in apps/api. Constructing the AudioContext at
- *  this rate makes the browser resample the mic for us, so the provider always
- *  receives audio at the rate it expects. */
-const SAMPLE_RATE = 24_000;
-/** ~20ms of capture per message. Small enough to stay responsive, large enough
- *  that we are not sending a websocket frame every render quantum. */
-const CAPTURE_FRAME = 480;
-/** ~2s of playback buffer — absorbs burst delivery without adding latency. */
-const RING_SAMPLES = 48_000;
-
-type Phase = 'starting' | 'listening' | 'speaking' | 'reconnecting' | 'failed';
-
-function floatToPcm16(input: Float32Array): ArrayBuffer {
-  const out = new Int16Array(input.length);
-  for (let i = 0; i < input.length; i++) {
-    const s = Math.max(-1, Math.min(1, input[i]!));
-    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-  return out.buffer;
-}
-
-function pcm16ToFloat(buf: ArrayBuffer): Float32Array<ArrayBuffer> {
-  const view = new Int16Array(buf);
-  const out = new Float32Array(new ArrayBuffer(view.length * 4));
-  for (let i = 0; i < view.length; i++) out[i] = view[i]! / 0x8000;
-  return out;
-}
+type Phase = 'connecting' | 'listening' | 'speaking' | 'failed';
 
 export default function VoiceBridgePage() {
-  const [phase, setPhase] = useState<Phase>('starting');
+  const [phase, setPhase] = useState<Phase>('connecting');
   const [error, setError] = useState<string | null>(null);
-  const [level, setLevel] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const audioContainerRef = useRef<HTMLDivElement | null>(null);
+  // The draw loop below (a plain interval, see the comment on it) reads room
+  // state directly off this ref rather than through React state — polling avoids
+  // subscribing the render tree to every audio-level tick LiveKit emits.
+  const roomRef = useRef<Room | null>(null);
 
   useEffect(() => {
     const token = window.location.pathname.split('/').filter(Boolean).pop() ?? '';
-    // The API told us its public base when it minted this URL. Never infer it
-    // from window.location — that is the WEB host, which is a different origin
-    // from the API in every real deployment.
-    const apiBase = (
-      new URLSearchParams(window.location.search).get('api') ||
-      process.env.NEXT_PUBLIC_BACKEND_URL ||
-      window.location.origin
-    ).replace(/\/+$/, '');
-    const wsUrl = `${apiBase.replace(/^http/, 'ws')}/v1/voice/bridge/${token}`;
+    // The API mints the LiveKit access token AND tells us which LiveKit deployment
+    // issued it, the same way it used to tell us its own base via `?api=`. Never
+    // infer this from window.location or from an API base — the web origin, the
+    // Kortix API and the LiveKit server are three different hosts in every real
+    // deployment (and the LiveKit URL is a `ws(s)://`, not `http(s)://`, to begin
+    // with).
+    const livekitUrl = (
+      new URLSearchParams(window.location.search).get('url') ||
+      process.env.NEXT_PUBLIC_LIVEKIT_URL ||
+      ''
+    ).trim();
 
     let cancelled = false;
-    let ws: WebSocket | null = null;
-    let ctx: AudioContext | null = null;
-    let stream: MediaStream | null = null;
-    let reconnects = 0;
-    let player: AudioWorkletNode | null = null;
-    let speakingTimer: ReturnType<typeof setTimeout> | null = null;
+    const room = new Room();
+    roomRef.current = room;
+    // Elements handed back by `track.attach()` are plain DOM nodes LiveKit does
+    // not track for us — we own removing them on unmount/unsubscribe.
+    const attachedEls: HTMLMediaElement[] = [];
 
-    /** Audio graph is built ONCE. Only the socket reconnects. */
-    async function setupAudio(): Promise<void> {
-      ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
-      if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
+    async function join(): Promise<void> {
+      if (!token || !livekitUrl) {
+        throw new Error('missing LiveKit room token or server URL');
+      }
 
-      stream = await navigator.mediaDevices.getUserMedia({
-        // Recall does not feed the bot its own output (measured), so leaving the
-        // browser's processing off keeps the model's own VAD working on clean,
-        // unmangled room audio rather than something AGC has been chewing on.
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-      });
-
-      connectSocket();
-      await buildGraph();
-    }
-
-    function connectSocket(): void {
-      ws = new WebSocket(wsUrl);
-      ws.binaryType = 'arraybuffer';
-
-      ws.onopen = () => {
-        if (!cancelled) {
-          setPhase('listening');
-          reconnects = 0;
-        }
-      };
-
-      ws.onmessage = (ev) => {
-        // Text frames are control, binary is audio.
-        if (typeof ev.data === 'string') {
-          // Barge-in: drop what is queued. Without this, playback stays behind by
-          // the length of the abandoned reply and the delay compounds each time.
-          if (ev.data.includes('flush')) player?.port.postMessage('flush');
-          return;
-        }
-        if (!(ev.data instanceof ArrayBuffer) || !player) return;
-        player.port.postMessage(pcm16ToFloat(ev.data));
-        if (!cancelled) {
-          setPhase('speaking');
-          if (speakingTimer) clearTimeout(speakingTimer);
-          speakingTimer = setTimeout(() => !cancelled && setPhase('listening'), 700);
-        }
-      };
-
-      ws.onclose = () => {
-        if (cancelled) return;
-        // Reconnect the SOCKET ONLY — never rebuild the audio graph. Doing that
-        // races the existing getUserMedia for the mic and yields a live-looking
-        // but silent capture chain.
-        if (reconnects < 5) {
-          reconnects++;
-          setPhase('reconnecting');
-          setTimeout(() => connectSocket(), 1000 * reconnects);
-        } else {
+      room
+        .on(RoomEvent.Connected, () => {
+          if (!cancelled) setPhase('listening');
+        })
+        .on(RoomEvent.Reconnecting, () => {
+          if (!cancelled) setPhase('connecting');
+        })
+        .on(RoomEvent.Reconnected, () => {
+          if (!cancelled) setPhase('listening');
+        })
+        .on(RoomEvent.Disconnected, () => {
+          if (cancelled) return;
           setPhase('failed');
           setError('lost connection to Kortix');
-        }
-      };
+        })
+        // LiveKit already computes per-participant speech activity for us on
+        // every audio-level tick — no hand-rolled peak meter over raw samples
+        // needed, unlike the old bridge's capture worklet.
+        .on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
+          if (cancelled || room.state !== ConnectionState.Connected) return;
+          const agentTalking = speakers.some((p) => p.identity !== room.localParticipant.identity);
+          setPhase(agentTalking ? 'speaking' : 'listening');
+        })
+        // Output Media just needs a real <audio>/<video> element playing in the
+        // DOM to produce sound. `track.attach()` gives us that element with
+        // LiveKit's jitter buffer, PLC and Opus decode already wired behind it —
+        // there is nothing left here for us to buffer or schedule by hand.
+        .on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
+          if (track.kind !== Track.Kind.Audio) return;
+          const el = track.attach();
+          el.style.display = 'none';
+          audioContainerRef.current?.appendChild(el);
+          attachedEls.push(el);
+        })
+        .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
+          for (const el of track.detach()) el.remove();
+        });
+
+      await room.connect(livekitUrl, token);
+      // No echoCancellation/noiseSuppression/autoGainControl flags to fight with
+      // here — LiveKit's default capture settings are what its own client-side
+      // processing expects, and Gate 0 already established there is no bot
+      // self-echo in Recall's capture to cancel in the first place.
+      await room.localParticipant.setMicrophoneEnabled(true);
     }
 
-    async function buildGraph(): Promise<void> {
-      if (!ctx || !stream) return;
-      const source = ctx.createMediaStreamSource(stream);
-
-      // Both directions run on the audio thread, in ONE worklet module.
-      //
-      // Capture batches to ~20ms. A worklet's process() fires every 128 samples,
-      // which at 24kHz is every 5.3ms — sending that raw meant ~188 websocket
-      // frames AND ~188 base64 JSON events per second to the provider. That
-      // flood is what made the audio jittery, not the meeting platform.
-      //
-      // Playback is a ring buffer, not one AudioBuffer per chunk. The provider
-      // bursts a reply as many small deltas; scheduling each as its own node put
-      // a seam at every boundary. A ring buffer emits one continuous stream and
-      // absorbs irregular arrival, which is what makes speech sound like speech.
-      const workletSrc = `
-        const FRAME = ${CAPTURE_FRAME};
-        class Cap extends AudioWorkletProcessor {
-          constructor() { super(); this.buf = new Float32Array(FRAME); this.n = 0; }
-          process(inputs) {
-            const ch = inputs[0] && inputs[0][0];
-            if (!ch) return true;
-            for (let i = 0; i < ch.length; i++) {
-              this.buf[this.n++] = ch[i];
-              if (this.n === FRAME) { this.port.postMessage(this.buf.slice(0)); this.n = 0; }
-            }
-            return true;
-          }
-        }
-        registerProcessor('cap', Cap);
-
-        class Play extends AudioWorkletProcessor {
-          constructor() {
-            super();
-            this.ring = new Float32Array(${RING_SAMPLES});
-            this.r = 0; this.w = 0;
-            this.port.onmessage = (e) => {
-              if (e.data === 'flush') { this.r = this.w = 0; return; }
-              const d = e.data;
-              for (let i = 0; i < d.length; i++) {
-                this.ring[this.w] = d[i];
-                this.w = (this.w + 1) % this.ring.length;
-              }
-            };
-          }
-          process(_i, outputs) {
-            const out = outputs[0][0];
-            for (let i = 0; i < out.length; i++) {
-              // Underrun writes silence rather than stalling — a gap is far less
-              // audible than a stutter, and the ring refills on the next delta.
-              out[i] = this.r === this.w ? 0 : this.ring[this.r];
-              if (this.r !== this.w) this.r = (this.r + 1) % this.ring.length;
-            }
-            return true;
-          }
-        }
-        registerProcessor('play', Play);
-      `;
-      const blobUrl = URL.createObjectURL(new Blob([workletSrc], { type: 'application/javascript' }));
-      await ctx.audioWorklet.addModule(blobUrl);
-      URL.revokeObjectURL(blobUrl);
-
-      const capture = new AudioWorkletNode(ctx, 'cap');
-      source.connect(capture);
-      // A worklet with no downstream connection is not guaranteed to be pulled;
-      // a muted sink keeps it running without feeding the room back to itself.
-      const mute = ctx.createGain();
-      mute.gain.value = 0;
-      capture.connect(mute).connect(ctx.destination);
-
-      player = new AudioWorkletNode(ctx, 'play', { outputChannelCount: [1] });
-      player.connect(ctx.destination);
-
-      let levelTick = 0;
-      capture.port.onmessage = (e: MessageEvent<Float32Array>) => {
-        const input = e.data;
-        if (++levelTick % 4 === 0) {
-          let peak = 0;
-          for (let i = 0; i < input.length; i++) peak = Math.max(peak, Math.abs(input[i]!));
-          if (!cancelled) setLevel(peak);
-        }
-        if (ws && ws.readyState === WebSocket.OPEN) ws.send(floatToPcm16(input));
-      };
-    }
-
-    setupAudio().catch((e) => {
+    join().catch((e) => {
       if (cancelled) return;
       setPhase('failed');
       setError(e instanceof Error ? e.message : String(e));
@@ -230,25 +127,35 @@ export default function VoiceBridgePage() {
 
     return () => {
       cancelled = true;
-      try {
-        ws?.close();
-      } catch {
-        /* best effort */
-      }
-      stream?.getTracks().forEach((t) => t.stop());
-      void ctx?.close().catch(() => {});
+      for (const el of attachedEls) el.remove();
+      void room.disconnect();
+      roomRef.current = null;
     };
   }, []);
 
-  // The required video track. Kept legible at a glance: this is what someone
-  // stares at when the bot is in a call and something looks wrong.
+  // The required video track. Output Media always renders a video track — audio-
+  // only is not possible — so this canvas is the only diagnostic surface a stuck
+  // bot has, and participants can read it. Draw on a plain interval, NEVER
+  // requestAnimationFrame: a 60fps gradient competed with audio on the main
+  // thread and was one of the causes of the choppy audio this migration fixes.
   useEffect(() => {
     const canvas = canvasRef.current;
     const c = canvas?.getContext('2d');
     if (!canvas || !c) return;
-    let timer: ReturnType<typeof setInterval> | null = null;
     const draw = () => {
       c.clearRect(0, 0, canvas.width, canvas.height);
+      // Read the live audio level straight off whichever participant is talking
+      // right now — LiveKit already tracks this per-participant, so there's
+      // nothing to compute ourselves.
+      const room = roomRef.current;
+      let level = 0;
+      if (room) {
+        const speaker =
+          phase === 'speaking'
+            ? Array.from(room.remoteParticipants.values()).find((p) => p.isSpeaking)
+            : room.localParticipant;
+        level = speaker?.audioLevel ?? 0;
+      }
       const r = 60 + level * 260;
       const grad = c.createRadialGradient(
         canvas.width / 2,
@@ -267,28 +174,26 @@ export default function VoiceBridgePage() {
       c.fill();
     };
     // Recall captures at 15fps; 10fps here is indistinguishable in the call and
-    // leaves the main thread alone.
-    timer = setInterval(draw, 100);
+    // leaves the main thread alone for audio.
+    const timer = setInterval(draw, 100);
     draw();
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [level, phase]);
+    return () => clearInterval(timer);
+  }, [phase]);
 
   const label =
     phase === 'speaking'
       ? 'speaking'
       : phase === 'listening'
         ? 'listening'
-        : phase === 'reconnecting'
-          ? 'reconnecting…'
-          : phase === 'failed'
-            ? 'voice unavailable'
-            : 'connecting…';
+        : phase === 'failed'
+          ? 'voice unavailable'
+          : 'connecting…';
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black">
       <canvas ref={canvasRef} width={1280} height={720} className="absolute inset-0 h-full w-full" />
+      {/* Remote audio plays through elements parked here — invisible, audio-only. */}
+      <div ref={audioContainerRef} style={{ display: 'none' }} />
       <div className="relative flex flex-col items-center gap-4">
         <div className="font-mono text-6xl font-bold tracking-tight text-white">Kortix</div>
         <div className="font-mono text-3xl text-neutral-300">{label}</div>

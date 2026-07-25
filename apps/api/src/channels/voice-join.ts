@@ -39,6 +39,13 @@ export interface VoiceJoinPatch {
   outputMedia: { camera: { kind: 'webpage'; config: { url: string } } };
 }
 
+/**
+ * `bridgeUrl` is now a LiveKit client page (see channels/voice/livekit.ts —
+ * `bridgePageUrl`), carrying a room name + a scoped LiveKit access token, in
+ * place of the old raw-audio-WebSocket page's `kvr_` bridge token. Recall
+ * doesn't care what the page does; this function's job — wrap it into the
+ * join patch — is unchanged.
+ */
 export function voiceJoinPatch(
   projectId: string,
   sessionId: string,

@@ -25,12 +25,13 @@ describe('voice MCP', () => {
     expect(await handleVoiceMcp(ctx(), { jsonrpc: '2.0', method: 'notifications/initialized' })).toBeNull();
   });
 
-  test('exposes exactly the non-blocking tool set', async () => {
+  test('exposes exactly the non-blocking (or short-bounded) tool set', async () => {
     const res = await call('tools/list');
     const names = res.result.tools.map((t: { name: string }) => t.name).sort();
-    expect(names).toEqual(['voice_end', 'voice_prompt', 'voice_read', 'voice_spawn', 'voice_status']);
+    expect(names).toEqual(['run_command', 'send_prompt', 'voice_end', 'voice_read', 'voice_spawn']);
     // A follow/tail/stream tool would wedge the single-threaded agent loop. If
     // one ever appears here, that is the bug this assertion exists to catch.
+    // run_command is the one deliberate, SHORT-bounded exception (see mcp.ts).
     expect(names.some((n: string) => /follow|tail|stream|wait/.test(n))).toBe(false);
   });
 
@@ -72,8 +73,18 @@ describe('voice MCP', () => {
     expect(res.result.content[0].text).toContain('connector_not_found');
   });
 
-  test('voice_prompt on a call that is not live reports it instead of pretending', async () => {
-    const res = await call('tools/call', { name: 'voice_prompt', arguments: { call_id: 'nope', text: 'hi' } });
+  test('send_prompt on a call that is not live reports it instead of pretending', async () => {
+    const res = await call('tools/call', { name: 'send_prompt', arguments: { call_id: 'nope', text: 'hi' } });
+    expect(res.result.isError).toBe(true);
+  });
+
+  test('run_command on a call that is not live reports it instead of pretending', async () => {
+    const res = await call('tools/call', { name: 'run_command', arguments: { call_id: 'nope', command: 'echo hi' } });
+    expect(res.result.isError).toBe(true);
+  });
+
+  test('run_command requires call_id and command', async () => {
+    const res = await call('tools/call', { name: 'run_command', arguments: { call_id: 'sess-1' } });
     expect(res.result.isError).toBe(true);
   });
 

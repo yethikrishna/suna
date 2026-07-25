@@ -14,11 +14,14 @@
  * anything else until the tool returns. So `voice_spawn` hands back a call id
  * immediately and the call runs on its own; `voice_read` returns whatever is new
  * since a cursor and returns now, empty if nothing. There is deliberately no
- * follow/tail/stream tool, and adding one would break the agent.
+ * follow/tail/stream tool, and adding one would break the agent. `run_command`
+ * is the one bounded exception — it waits, but only up to a short hard cap (see
+ * run-command.ts), never indefinitely.
  */
 import { createRoute, z } from '@hono/zod-openapi';
 import { errors, json, makeOpenApiApp } from '../../openapi';
 import { availableVoices, endCall, listCallsForSession, promptVoiceAgent, readTurns } from './runtime';
+import { runCommandInSandbox } from './run-command';
 
 type JsonRpcId = string | number | null;
 
@@ -74,7 +77,7 @@ function toolDefinitions() {
       },
     },
     {
-      name: 'voice_prompt',
+      name: 'send_prompt',
       description:
         'Say something into a live call. Use this to volunteer information, answer what someone asked, or steer the conversation. It is spoken aloud in your own voice.',
       inputSchema: {
@@ -88,9 +91,18 @@ function toolDefinitions() {
       },
     },
     {
-      name: 'voice_status',
-      description: 'List the live calls attached to this session.',
-      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      name: 'run_command',
+      description:
+        'Run a shell command in the sandbox behind this call and return its output. Unrestricted — use with the same care as a real terminal. Bounded by a short timeout, so a long-running command will report timed_out with whatever output arrived before the cutoff.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          call_id: { type: 'string' },
+          command: { type: 'string', description: 'Shell command, run via `bash -lc`.' },
+        },
+        required: ['call_id', 'command'],
+        additionalProperties: false,
+      },
     },
     {
       name: 'voice_end',
@@ -158,7 +170,7 @@ async function callTool(
       });
     }
 
-    case 'voice_prompt': {
+    case 'send_prompt': {
       const callId = String(args.call_id ?? '').trim();
       const text = String(args.text ?? '').trim();
       if (!callId || !text) return toolError('call_id and text are required');
@@ -167,17 +179,24 @@ async function callTool(
       return toolText('Said.', { call_id: callId });
     }
 
-    case 'voice_status': {
-      const live = listCallsForSession(ctx.sessionId).map((c) => ({
-        call_id: c.callId,
-        bot_id: c.botId,
-        voice: c.voice,
-        started_at: new Date(c.startedAt).toISOString(),
-      }));
-      return toolText(
-        live.length ? JSON.stringify(live, null, 2) : 'No live calls on this session.',
-        { calls: live },
-      );
+    case 'run_command': {
+      const callId = String(args.call_id ?? '').trim();
+      const command = String(args.command ?? '').trim();
+      if (!callId || !command) return toolError('call_id and command are required');
+      const call = listCallsForSession(ctx.sessionId).find((c) => c.callId === callId);
+      if (!call) return toolError(`call ${callId} is not live`);
+      try {
+        const result = await runCommandInSandbox(call.sessionId, command);
+        return toolText(result.stdout || '(no output)', {
+          call_id: callId,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exit_code: result.exitCode,
+          timed_out: result.timedOut,
+        });
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : String(err));
+      }
     }
 
     case 'voice_end': {

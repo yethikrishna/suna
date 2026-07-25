@@ -34,7 +34,7 @@ import {
   loadTeamsInstall,
   loadTeamsTenantForProject,
 } from '../channels/install-store';
-import { mintVoiceBridgeToken, voiceBridgeUrl } from '../channels/voice-bridge-token';
+import { bridgePageUrl, mintAccessToken, roomNameForCall } from '../channels/voice/livekit';
 import { resolveProjectBotName } from '../channels/voice-identity';
 import { voiceJoinPatch } from '../channels/voice-join';
 import { authorize } from '../iam';
@@ -532,17 +532,18 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
     resolveVoiceJoinContext: async (projectId, sessionId) => {
       if (!sessionId) return null;
       const botName = await resolveProjectBotName(projectId);
-      // The call is keyed by the session that spawned it — that binding is what
-      // lets the voice agent and the Kortix session prompt each other later.
-      const { token } = mintVoiceBridgeToken(projectId, sessionId);
-      const patch = voiceJoinPatch(
-        projectId,
-        sessionId,
-        // KORTIX_URL is the API's PUBLIC base (the tunnel in dev, api.kortix.com
-        // in prod) — the page is rendered in Recall's browser and has to reach us
-        // from the internet, not from localhost.
-        voiceBridgeUrl(config.FRONTEND_URL, token, config.KORTIX_URL),
-      );
+      // The call id IS the session id (see runtime.ts / routes.ts), so the room
+      // name is derivable without touching the call registry — this stays
+      // decoupled from runtime.ts on purpose, same as it was decoupled from the
+      // old bridge-token module.
+      const room = roomNameForCall(sessionId);
+      const token = await mintAccessToken({
+        room,
+        identity: `recall-bridge-${sessionId}`,
+        canPublish: true, // publishes the meeting's captured audio into the room
+        canSubscribe: true, // plays the worker's TTS audio back into the meeting
+      });
+      const patch = voiceJoinPatch(projectId, sessionId, bridgePageUrl(config.FRONTEND_URL, token));
       return patch ? { metadata: patch.metadata, outputMedia: patch.outputMedia, botName } : null;
     },
     loadPolicies: loadConnectorPoliciesFor,

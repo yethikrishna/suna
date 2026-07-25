@@ -60,7 +60,6 @@ import {
   startTunnelService,
   stopTunnelService,
 } from './tunnel';
-import { attachBridge as attachVoiceBridge } from './channels/voice/bridge';
 import { voiceMcpRoutes } from './channels/voice/routes';
 import { accessControlApp } from './access-control';
 import { startAccessControlCache, stopAccessControlCache } from './shared/access-control-cache';
@@ -1348,22 +1347,6 @@ export default {
       if (success) return undefined;
     }
 
-    // ── Voice audio bridge ──────────────────────────────────────────────
-    // `/v1/voice/bridge/{token}` — the page Recall renders inside the meeting
-    // bot streams room audio up and plays agent audio down. Raw binary PCM both
-    // ways; the token scopes it to exactly one call and carries no other
-    // authority (see channels/voice-bridge-token.ts).
-    if (isWsUpgrade && url.pathname.startsWith('/v1/voice/bridge/')) {
-      server.timeout(req, 0);
-      const token = url.pathname.slice('/v1/voice/bridge/'.length);
-      const success = server.upgrade(req, { data: { type: 'voice-bridge', token } });
-      if (success) return undefined;
-      return new Response(JSON.stringify({ error: 'WebSocket upgrade failed' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
     // ── Preview WebSocket proxy ─────────────────────────────────────────
     // Path-based preview upgrades (`/v1/p/{sandboxId}/{port}/...`) — today the
     // xterm PTY terminal. Authenticate via the `?token=` query param (browsers
@@ -1412,19 +1395,6 @@ export default {
         previewWsHandlers.open(ws as any);
         return;
       }
-      if (ws.data?.type === 'voice-bridge') {
-        const attached = attachVoiceBridge(ws.data.token, ws as any);
-        if (!attached.ok) {
-          try {
-            ws.close(4000 + (attached.status % 1000), attached.error ?? 'voice bridge rejected');
-          } catch {}
-          return;
-        }
-        // Stash the per-socket handlers; message/close read them back.
-        ws.data.onAudio = attached.onAudio;
-        ws.data.detach = attached.detach;
-        return;
-      }
       // No other WS upgrades are accepted.
       try {
         ws.close(1011, 'unsupported websocket upgrade');
@@ -1443,11 +1413,6 @@ export default {
         previewWsHandlers.message(ws as any, message);
         return;
       }
-      if (ws.data?.type === 'voice-bridge') {
-        // Binary PCM only — a text frame here is a client bug, not audio.
-        if (typeof message !== 'string') ws.data.onAudio?.(Buffer.from(message));
-        return;
-      }
     },
 
     close(ws: { data: any }) {
@@ -1457,10 +1422,6 @@ export default {
       }
       if (ws.data?.type === 'preview-ws') {
         previewWsHandlers.close(ws as any);
-        return;
-      }
-      if (ws.data?.type === 'voice-bridge') {
-        ws.data.detach?.();
         return;
       }
     },

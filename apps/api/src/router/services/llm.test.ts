@@ -80,6 +80,26 @@ describe('canonical LLM usage extraction', () => {
 });
 
 describe('canonical LLM pricing', () => {
+  test('uses an exact zero upstream cost instead of the fallback price', () => {
+    expect(
+      calculateCost(
+        {
+          openrouterId: 'free-model',
+          inputPer1M: 1,
+          outputPer1M: 4,
+          contextWindow: 128_000,
+          tier: 'paid',
+        },
+        1_000_000,
+        1_000_000,
+        0,
+        0,
+        1.2,
+        0,
+      ),
+    ).toBe(0);
+  });
+
   test('uses an explicit cache-write rate without requiring a cache-read rate', () => {
     expect(
       calculateCost(

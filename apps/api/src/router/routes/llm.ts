@@ -108,7 +108,12 @@ llm.openapi(
       actor,
       'openrouter',
     );
-    const modelConfig = getModel(modelId, 'openrouter');
+    const modelConfig = reservation?.modelConfig ?? getModel(modelId, 'openrouter');
+    if (!modelConfig) {
+      throw new HTTPException(422, {
+        message: `No billing price for openrouter/${modelId}. The request was not sent upstream.`,
+      });
+    }
     let response: Response;
     try {
       response = await proxyToOpenRouter(body, isStreaming, undefined, getTraceHeaders());

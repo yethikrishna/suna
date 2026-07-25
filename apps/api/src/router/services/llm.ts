@@ -19,7 +19,7 @@ export function calculateCost(
   markup: number = KORTIX_MARKUP,
   upstreamCostHint?: number,
 ): number {
-  if (typeof upstreamCostHint === 'number' && upstreamCostHint > 0) {
+  if (typeof upstreamCostHint === 'number' && upstreamCostHint >= 0) {
     return upstreamCostHint * markup;
   }
   const tierCandidates = [

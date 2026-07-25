@@ -74,7 +74,7 @@ export function calculateCost(
 ): CostBreakdown {
   let upstreamCost: number;
 
-  if (typeof upstreamCostHint === 'number' && upstreamCostHint > 0) {
+  if (typeof upstreamCostHint === 'number' && upstreamCostHint >= 0) {
     upstreamCost = upstreamCostHint;
   } else if (pricingOverride) {
     upstreamCost = priceFromTable(pricingOverride, usage);

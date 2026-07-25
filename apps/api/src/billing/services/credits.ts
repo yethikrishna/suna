@@ -10,7 +10,7 @@ import { insertLedgerEntry } from '../repositories/transactions';
 import { MINIMUM_CREDIT_FOR_RUN, TOKEN_PRICE_MULTIPLIER } from './tiers';
 import { getManagedModel } from '@kortix/llm-catalog';
 import { calculateCost as calculateGatewayCost } from '@kortix/llm-gateway';
-import { getModel } from '../../router/config/models';
+import { requireModelPricing } from '../../router/config/models';
 
 const CREDIT_GRANT_DUPLICATE_MARKERS = [
   'kortix_unique_stripe_event',
@@ -190,7 +190,7 @@ export function calculateTokenCost(
   const slash = pricingRef.indexOf('/');
   const providerId = slash > 0 ? pricingRef.slice(0, slash) : 'openrouter';
   const modelId = slash > 0 ? pricingRef.slice(slash + 1) : pricingRef;
-  const pricing = getModel(modelId, providerId);
+  const pricing = requireModelPricing(modelId, providerId);
   return calculateGatewayCost(
     model,
     { promptTokens, completionTokens, cachedTokens: 0, cacheWriteTokens: 0 },

@@ -2,7 +2,7 @@ import { HTTPException } from 'hono/http-exception';
 import { grantCredits } from '../../billing/services/credits';
 import { recordUsageEvent } from '../../shared/usage-events';
 import type { ActorContext } from '../../shared/actor-context';
-import { getModel } from '../config/models';
+import { requireModelPricing, type ModelConfig } from '../config/models';
 import { calculateCost } from './llm';
 import { deductLLMCredits } from './billing';
 import { dollarsToCents, refundActorSpend, reserveActorSpend } from './member-spend';
@@ -19,6 +19,8 @@ export interface LlmCreditReservation {
   cost: number;
   actor?: ActorContext | null;
   actorReservedCents?: number;
+  modelConfig: ModelConfig;
+  pricingProvider: string;
 }
 
 function extractText(value: unknown): string {
@@ -87,8 +89,16 @@ export async function reserveEstimatedLlmCredits(
       : 4096;
   const inputText = extractText(parsed.messages ?? parsed.input ?? parsed.prompt ?? '');
   const estimatedInputTokens = Math.ceil(inputText.length / 2);
+  let modelConfig: ModelConfig;
+  try {
+    modelConfig = requireModelPricing(modelId, pricingProvider);
+  } catch {
+    throw new HTTPException(422, {
+      message: `No billing price for ${pricingProvider}/${modelId}. The request was not sent upstream.`,
+    });
+  }
   const estimatedCost = calculateCost(
-    getModel(modelId, pricingProvider),
+    modelConfig,
     estimatedInputTokens,
     maxOutputTokens,
     0,
@@ -135,6 +145,8 @@ export async function reserveEstimatedLlmCredits(
     cost: creditReservation.cost,
     actor,
     actorReservedCents,
+    modelConfig,
+    pricingProvider,
   };
 }
 

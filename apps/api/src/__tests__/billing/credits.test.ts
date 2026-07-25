@@ -73,14 +73,16 @@ describe('calculateTokenCost', () => {
     expect(cost).toBeCloseTo(expected, 6);
   });
 
-  test('does not fuzzy-match a versioned model id', () => {
-    const cost = calculateTokenCost(1_000_000, 1_000_000, 'claude-sonnet-4.6-20250101');
-    expect(cost).toBe(0);
+  test('rejects a versioned model id without exact provider pricing', () => {
+    expect(() =>
+      calculateTokenCost(1_000_000, 1_000_000, 'claude-sonnet-4.6-20250101'),
+    ).toThrow('No billing price');
   });
 
-  test('does not invent default pricing for an unknown model', () => {
-    const cost = calculateTokenCost(1_000_000, 1_000_000, 'some-unknown-model');
-    expect(cost).toBe(0);
+  test('rejects an unknown model instead of treating it as free', () => {
+    expect(() => calculateTokenCost(1_000_000, 1_000_000, 'some-unknown-model')).toThrow(
+      'No billing price',
+    );
   });
 
   test('0 tokens returns 0 cost', () => {

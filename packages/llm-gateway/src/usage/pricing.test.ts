@@ -193,14 +193,16 @@ describe('calculateCost — upstreamCostHint precedence', () => {
     expect(finalCost).toBeCloseTo(0.0042 * 1.1, 10);
   });
 
-  test('an upstreamCostHint of exactly 0 is NOT treated as "present" — falls through to zero, not an error', () => {
-    const { upstreamCost } = calculateCost(
+  test('an exact zero upstream cost overrides a non-zero pricing table', () => {
+    const { upstreamCost, finalCost } = calculateCost(
       'openrouter/some-model',
       { promptTokens: 500, completionTokens: 500, cachedTokens: 0 },
-      1,
+      1.2,
       0,
+      BASE_PRICING,
     );
     expect(upstreamCost).toBe(0);
+    expect(finalCost).toBe(0);
   });
 
   test('a negative upstreamCostHint is ignored (never produces a negative bill)', () => {

@@ -1,7 +1,7 @@
 import { HTTPException } from 'hono/http-exception';
 import { type ProxyServiceConfig } from '../../config/proxy-services';
 import { config, KORTIX_MARKUP, PLATFORM_FEE_MARKUP } from '../../../config';
-import { getModel } from '../../config/models';
+import { requireModelPricing } from '../../config/models';
 import {
   accumulateUsageChunk,
   calculateCost,
@@ -301,7 +301,9 @@ async function billLlmKortixProxy(
   let modelId = responseBody?.model || 'unknown';
 
   if (usage && (usage.promptTokens > 0 || usage.completionTokens > 0)) {
-    const modelConfig = getModel(modelId, pricingProvider(service, true));
+    const modelConfig =
+      reservation?.modelConfig ??
+      requireModelPricing(modelId, pricingProvider(service, true));
     const cost = calculateCost(
       modelConfig,
       usage.promptTokens,
@@ -400,7 +402,9 @@ async function extractUsageFromKortixProxyStream(
     const { promptTokens, completionTokens, cachedTokens, cacheWriteTokens, upstreamCost } =
       usageState.usage;
     if (promptTokens > 0 || completionTokens > 0) {
-      const modelConfig = getModel(detectedModel, pricingProvider(service, true));
+      const modelConfig =
+        reservation?.modelConfig ??
+        requireModelPricing(detectedModel, pricingProvider(service, true));
       const cost = calculateCost(
         modelConfig,
         promptTokens,
@@ -645,7 +649,9 @@ async function billLlmPassthrough(
   modelId = responseBody?.model || modelId;
 
   if (usage && (usage.promptTokens > 0 || usage.completionTokens > 0)) {
-    const modelConfig = getModel(modelId, pricingProvider(service, false));
+    const modelConfig =
+      reservation?.modelConfig ??
+      requireModelPricing(modelId, pricingProvider(service, false));
     const cost = calculateCost(
       modelConfig,
       usage.promptTokens,
@@ -749,7 +755,9 @@ async function extractUsageFromPassthroughStream(
     const { promptTokens, completionTokens, cachedTokens, cacheWriteTokens, upstreamCost } =
       usageState.usage;
     if (promptTokens > 0 || completionTokens > 0) {
-      const modelConfig = getModel(detectedModel, pricingProvider(service, false));
+      const modelConfig =
+        reservation?.modelConfig ??
+        requireModelPricing(detectedModel, pricingProvider(service, false));
       const cost = calculateCost(
         modelConfig,
         promptTokens,

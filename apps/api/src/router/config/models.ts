@@ -40,9 +40,12 @@ const MODELS: Record<string, ModelConfig> = {};
  * 1. models.dev live pricing (always current, refreshed every 24h) — pricing only
  * 2. MODELS registry — provides contextWindow, tier, and cache pricing,
  *    and acts as pricing fallback when models.dev hasn't loaded yet or is unknown
- * 3. Zero pricing (billing skipped) if completely unknown
+ * 3. `null` if no exact provider-qualified price exists
  */
-export function getModel(modelId: string, providerId: string = 'openrouter'): ModelConfig {
+export function getModel(
+  modelId: string,
+  providerId: string = 'openrouter',
+): ModelConfig | null {
   const openrouterId = modelId.startsWith('openrouter/')
     ? modelId.replace('openrouter/', '')
     : modelId;
@@ -73,13 +76,20 @@ export function getModel(modelId: string, providerId: string = 'openrouter'): Mo
     return registryEntry;
   }
 
-  return {
-    openrouterId,
-    inputPer1M: 0,
-    outputPer1M: 0,
-    contextWindow: 128000,
-    tier: 'paid',
-  };
+  return null;
+}
+
+/**
+ * Resolve an exact provider-qualified price for an authenticated billing path.
+ * Unknown prices fail closed.
+ */
+export function requireModelPricing(
+  modelId: string,
+  providerId: string = 'openrouter',
+): ModelConfig {
+  const model = getModel(modelId, providerId);
+  if (model) return model;
+  throw new Error(`No billing price for ${providerId}/${resolveOpenRouterId(modelId)}`);
 }
 
 /**
@@ -87,7 +97,7 @@ export function getModel(modelId: string, providerId: string = 'openrouter'): Mo
  * This is the ID that gets sent in the request body to OpenRouter.
  */
 export function resolveOpenRouterId(modelId: string): string {
-  return getModel(modelId).openrouterId;
+  return modelId.startsWith('openrouter/') ? modelId.slice('openrouter/'.length) : modelId;
 }
 
 /**

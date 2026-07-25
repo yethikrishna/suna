@@ -3743,6 +3743,91 @@ export const executorCredentials = kortixSchema.table(
   ],
 );
 
+/** Encrypted provider-independent OAuth2 application configuration per profile. */
+export const executorOAuthApplications = kortixSchema.table(
+  'executor_oauth_applications',
+  {
+    applicationId: uuid('application_id').defaultRandom().primaryKey(),
+    accountId: uuid('account_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    connectorId: uuid('connector_id').notNull(),
+    profileId: uuid('profile_id').notNull(),
+    configEnc: text('config_enc').notNull(),
+    createdBy: uuid('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.accountId, table.projectId, table.connectorId, table.profileId],
+      foreignColumns: [
+        executorConnectionProfiles.accountId,
+        executorConnectionProfiles.projectId,
+        executorConnectionProfiles.connectorId,
+        executorConnectionProfiles.profileId,
+      ],
+      name: 'executor_oauth_applications_profile_tenant_fk',
+    }).onDelete('cascade'),
+    uniqueIndex('idx_executor_oauth_applications_profile').on(table.profileId),
+    index('idx_executor_oauth_applications_project').on(table.projectId),
+  ],
+);
+
+/**
+ * Short-lived Authorization Code or Device Authorization transaction.
+ * State is hashed. PKCE verifiers and device codes are encrypted.
+ */
+export const executorOAuthSessions = kortixSchema.table(
+  'executor_oauth_sessions',
+  {
+    sessionId: uuid('session_id').defaultRandom().primaryKey(),
+    applicationId: uuid('application_id').notNull(),
+    accountId: uuid('account_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    profileId: uuid('profile_id').notNull(),
+    initiatedBy: uuid('initiated_by').notNull(),
+    flow: varchar('flow', { length: 32 }).notNull(),
+    status: varchar('status', { length: 32 }).default('pending').notNull(),
+    stateHash: varchar('state_hash', { length: 64 }),
+    pkceVerifierEnc: text('pkce_verifier_enc'),
+    deviceCodeEnc: text('device_code_enc'),
+    successRedirectUri: text('success_redirect_uri'),
+    errorRedirectUri: text('error_redirect_uri'),
+    scopes: text('scopes').array(),
+    intervalSeconds: integer('interval_seconds'),
+    nextPollAt: timestamp('next_poll_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    errorCode: varchar('error_code', { length: 128 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.applicationId],
+      foreignColumns: [executorOAuthApplications.applicationId],
+      name: 'executor_oauth_sessions_application_fk',
+    }).onDelete('cascade'),
+    uniqueIndex('idx_executor_oauth_sessions_state_hash')
+      .on(table.stateHash)
+      .where(sql`${table.stateHash} is not null`),
+    index('idx_executor_oauth_sessions_profile').on(table.profileId),
+    index('idx_executor_oauth_sessions_expires').on(table.expiresAt),
+    check(
+      'executor_oauth_sessions_flow_check',
+      sql`${table.flow} IN ('authorization_code', 'device_authorization')`,
+    ),
+    check(
+      'executor_oauth_sessions_status_check',
+      sql`${table.status} IN ('pending', 'active', 'consumed', 'error', 'expired')`,
+    ),
+    check(
+      'executor_oauth_sessions_material_check',
+      sql`(${table.flow} = 'authorization_code' AND ${table.stateHash} IS NOT NULL AND ${table.pkceVerifierEnc} IS NOT NULL AND ${table.deviceCodeEnc} IS NULL) OR (${table.flow} = 'device_authorization' AND ${table.stateHash} IS NULL AND ${table.pkceVerifierEnc} IS NULL AND ${table.deviceCodeEnc} IS NOT NULL)`,
+    ),
+  ],
+);
+
 export const executorConnectorActions = kortixSchema.table(
   'executor_connector_actions',
   {

@@ -78,6 +78,13 @@
       "when": 1784900386151,
       "tag": "20260724133946_session_connector_bindings_inherit_unbound",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784937680824,
+      "tag": "20260725000120_executor_oauth_lifecycle",
+      "breakpoints": true
     }
   ]
 }

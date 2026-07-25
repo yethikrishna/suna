@@ -1,5 +1,6 @@
-import { constants, createSign, randomUUID } from 'node:crypto';
+import { createPrivateKey, createSecretKey, randomUUID } from 'node:crypto';
 import { OAuth2ClientCredentialsSchema, type OAuth2ClientCredentials } from '@kortix/api-contract';
+import { CompactSign } from 'jose';
 import { safeEgressFetch } from '../shared/ssrf-guard';
 
 export interface OAuth2AccessToken {
@@ -22,14 +23,10 @@ interface OAuth2Runtime {
   randomId?: () => string;
 }
 
-function encodeJson(value: unknown): string {
-  return Buffer.from(JSON.stringify(value)).toString('base64url');
-}
-
-export function buildPrivateKeyClientAssertion(
+export async function buildPrivateKeyClientAssertion(
   config: OAuth2ClientCredentials,
   runtime: Pick<OAuth2Runtime, 'now' | 'randomId'> = {},
-): string {
+): Promise<string> {
   if (
     config.token_endpoint_auth_method !== 'private_key_jwt' ||
     !config.private_key ||
@@ -38,32 +35,49 @@ export function buildPrivateKeyClientAssertion(
     throw new Error('OAuth2 private_key_jwt requires a private key and certificate thumbprint');
   }
   const nowSeconds = Math.floor((runtime.now?.() ?? Date.now()) / 1000);
-  const header = encodeJson({
-    alg: 'PS256',
-    typ: 'JWT',
-    'x5t#S256': config.certificate_thumbprint,
-  });
-  const payload = encodeJson({
-    aud: config.token_url,
-    iss: config.client_id,
-    sub: config.client_id,
-    jti: runtime.randomId?.() ?? randomUUID(),
-    nbf: nowSeconds - 60,
-    exp: nowSeconds + 600,
-  });
-  const input = `${header}.${payload}`;
-  const signer = createSign('sha256');
-  signer.update(input);
-  signer.end();
-  const signature = signer.sign({
-    key: config.private_key,
-    padding: constants.RSA_PKCS1_PSS_PADDING,
-    saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
-  });
-  return `${input}.${signature.toString('base64url')}`;
+  const payload = Buffer.from(
+    JSON.stringify({
+      aud: config.token_url,
+      iss: config.client_id,
+      sub: config.client_id,
+      jti: runtime.randomId?.() ?? randomUUID(),
+      nbf: nowSeconds - 60,
+      exp: nowSeconds + 600,
+    }),
+  );
+  return new CompactSign(payload)
+    .setProtectedHeader({
+      alg: 'PS256',
+      typ: 'JWT',
+      'x5t#S256': config.certificate_thumbprint,
+    })
+    .sign(createPrivateKey(config.private_key));
 }
 
-function tokenRequest(config: OAuth2ClientCredentials, runtime: OAuth2Runtime): RequestInit {
+async function buildClientSecretAssertion(
+  config: OAuth2ClientCredentials,
+  runtime: OAuth2Runtime,
+): Promise<string> {
+  const nowSeconds = Math.floor((runtime.now?.() ?? Date.now()) / 1000);
+  const payload = Buffer.from(
+    JSON.stringify({
+      aud: config.token_url,
+      iss: config.client_id,
+      sub: config.client_id,
+      jti: runtime.randomId?.() ?? randomUUID(),
+      iat: nowSeconds,
+      exp: nowSeconds + 300,
+    }),
+  );
+  return new CompactSign(payload)
+    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+    .sign(createSecretKey(Buffer.from(config.client_secret ?? '')));
+}
+
+async function tokenRequest(
+  config: OAuth2ClientCredentials,
+  runtime: OAuth2Runtime,
+): Promise<RequestInit> {
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
     client_id: config.client_id,
@@ -74,16 +88,21 @@ function tokenRequest(config: OAuth2ClientCredentials, runtime: OAuth2Runtime): 
   if (config.resource) body.set('resource', config.resource);
   if (config.audience) body.set('audience', config.audience);
 
-  if (config.token_endpoint_auth_method === 'client_secret_basic') {
+  if (config.token_endpoint_auth_method === 'none') {
+    // Public client. client_id remains in the request body.
+  } else if (config.token_endpoint_auth_method === 'client_secret_basic') {
     headers.set(
       'authorization',
       `Basic ${Buffer.from(`${config.client_id}:${config.client_secret}`).toString('base64')}`,
     );
   } else if (config.token_endpoint_auth_method === 'client_secret_post') {
     body.set('client_secret', config.client_secret ?? '');
+  } else if (config.token_endpoint_auth_method === 'client_secret_jwt') {
+    body.set('client_assertion_type', 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer');
+    body.set('client_assertion', await buildClientSecretAssertion(config, runtime));
   } else {
     body.set('client_assertion_type', 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer');
-    body.set('client_assertion', buildPrivateKeyClientAssertion(config, runtime));
+    body.set('client_assertion', await buildPrivateKeyClientAssertion(config, runtime));
   }
 
   return { method: 'POST', headers, body };
@@ -94,9 +113,10 @@ export async function acquireOAuth2ClientCredentialsToken(
   runtime: OAuth2Runtime = {},
 ): Promise<OAuth2AccessToken> {
   const now = runtime.now?.() ?? Date.now();
+  const request = await tokenRequest(config, runtime);
   const response = runtime.fetchImpl
-    ? await runtime.fetchImpl(config.token_url, tokenRequest(config, runtime))
-    : await safeEgressFetch(config.token_url, tokenRequest(config, runtime));
+    ? await runtime.fetchImpl(config.token_url, request)
+    : await safeEgressFetch(config.token_url, request);
   let payload: Record<string, unknown> = {};
   try {
     payload = (await response.json()) as Record<string, unknown>;

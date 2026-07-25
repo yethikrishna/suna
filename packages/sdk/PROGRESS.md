@@ -160,7 +160,7 @@ Also stop if the same failure survives three different fixes (use
 
 ---
 
-## NOW — active plan: web SDK-only boundary
+## COMPLETED PLAN — web SDK-only boundary
 
 - **Plan:** `docs/superpowers/plans/2026-07-24-web-sdk-only-boundary.md`
 - **Spec:** `docs/superpowers/specs/2026-07-24-web-sdk-only-boundary-design.md`
@@ -175,6 +175,24 @@ Also stop if the same failure survives three different fixes (use
 | 6 | Remove runtime routing knowledge | DONE | `frontend-sdk-only` | 2026-07-24 | `e6241bbfc` |
 | 7 | Local parity proof | DONE | `frontend-sdk-only` | 2026-07-24 | `6c02b601e` |
 | 8 | Delivery and dev proof | DONE | `frontend-sdk-only` | 2026-07-24 | `aefa2a628` + `8688b8492` |
+
+---
+
+## NOW — active plan: native integration authentication lifecycle
+
+- **Plan:** `docs/superpowers/plans/2026-07-25-native-integration-auth-lifecycle.md`
+- **Spec:** `docs/superpowers/specs/2026-07-25-native-integration-auth-lifecycle-design.md`
+
+| # | Task | Status | Session | Last touched | Commit |
+|---|---|---|---|---|---|
+| 1 | Contracts and RED tests | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `de7026bfc` |
+| 2 | Database lifecycle | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `572bedb5a` |
+| 3 | OAuth2 protocol engine | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `db31d216e` |
+| 4 | API lifecycle routes | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `63dda6afe` |
+| 5 | Executor and non-OAuth request authentication | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `35daeda10` |
+| 6 | SDK and web integration | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `b3826fa8f` |
+| 7 | Local verification | DONE WITH BROWSER BLOCKER | `native-oauth-full-lifecycle` | 2026-07-25 | `4575346db` |
+| 8 | Delivery and dev proof | IN PROGRESS | `native-oauth-full-lifecycle` | 2026-07-25 | claim |
 
 ---
 
@@ -1712,6 +1730,82 @@ generated docs-source imports.
 
 ---
 
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 3)
+
+Added the generic OAuth2 protocol engine. It implements PKCE S256,
+Authorization Code exchange, refresh-token rotation, Device Authorization,
+discovery, and revocation. Token requests support `none`,
+`client_secret_basic`, `client_secret_post`, `client_secret_jwt`, and
+`private_key_jwt`. Provider responses are bounded. Provider errors omit
+descriptions and token values. Production egress uses the shared SSRF guard.
+
+Expanded the existing Client Credentials contract with `none` and
+`client_secret_jwt`. Removed the certificate-thumbprint requirement from
+generic `private_key_jwt`. The optional thumbprint remains supported.
+
+**RED evidence:** the focused protocol test failed because
+`oauth2-lifecycle.ts` did not exist.
+
+**Verification:**
+
+- Focused OAuth, contract, and SDK suites: **83 pass / 0 fail**.
+- API typecheck: exit 0.
+- SDK typecheck and example typecheck: exit 0.
+
+**Shippable to production: NOT YET.** Tasks 4 through 8 remain incomplete.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 4)
+
+Added project-scoped routes for redacted application configuration, discovery,
+Authorization Code start, Device Authorization start and poll, and status.
+Added the public state-authenticated callback. Callback state is hashed,
+profile-bound, user-bound, expiring, and consumed once. Added remote
+revocation attempts with unconditional local delegated-credential deletion.
+
+**Verification:**
+
+- Focused OAuth, contract, and SDK suites: **83 pass / 0 fail**.
+- API typecheck: exit 0.
+- Local API proof: application PUT 200, redacted GET 200, status GET 200,
+  Authorization Code start 200 with `S256` and state.
+- Callback replay proof: first provider-error callback returned 302 to the
+  allowlisted local frontend; the second callback returned 400.
+- Ke2e `CONN-OAUTH2`: **1 pass / 0 fail** in 4.55 seconds.
+- Ke2e coverage: **492/501 routes covered, 9 allowlisted, 0 uncovered**.
+
+**Shippable to production: NOT YET.** Tasks 5 through 8 remain incomplete.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 5)
+
+Added delegated OAuth2 token resolution and refresh under the credential
+database advisory lock. Refresh-token rotation updates the encrypted credential.
+
+Added native request authentication for API keys in headers, query parameters,
+and cookies; generic HMAC-SHA256; AWS Signature Version 4; and mutual TLS.
+Existing bearer, HTTP Basic, custom, OAuth 1.0a, and no-auth behavior remains.
+The manifest schema and SDK types expose the same authentication matrix.
+
+**RED evidence:** four executor tests failed before implementation. They showed
+missing cookie placement, raw HMAC and SigV4 credentials in headers, and absent
+TLS options.
+
+**Verification:**
+
+- Focused executor, OAuth, manifest, contract, and SDK suites:
+  **205 pass / 0 fail**.
+- Added manifest conformance proof: **108 pass / 0 fail** in the final focused
+  wave.
+- API typecheck: exit 0.
+- SDK typecheck and example typecheck: exit 0.
+
+**Shippable to production: NOT YET.** Tasks 6 through 8 remain incomplete.
+
+---
+
 ### 2026-07-24 — session `frontend-sdk-only` (web SDK boundary Task 3)
 
 Enabled the complete `useSession(projectId, sessionId)` engine on the project
@@ -1925,6 +2019,117 @@ packed-install smoke built, packed, installed, imported, and constructed
 **Shippable to production: YES** for B18 and the published SDK surface.
 Repository delivery and live-dev verification remain part of the repository
 lifecycle.
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 1)
+
+Added provider-independent OAuth2 application, Authorization Code, Device
+Authorization, connection-status, and client-authentication contracts. Added
+typed SDK methods for every profile-scoped lifecycle route.
+
+**RED evidence:** the focused test command reported two missing exports and
+zero passing tests before implementation.
+
+**Verification:**
+
+- Contract and SDK focused suites: **67 pass / 0 fail**.
+- SDK typecheck and example typecheck: exit 0.
+
+**Shippable to production: NOT YET.** Tasks 2 through 8 remain incomplete.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 2)
+
+Added project-scoped encrypted OAuth application storage. Added short-lived
+Authorization Code and Device Authorization session storage. The database
+enforces valid flow material, session status, unique state hashes, and profile
+tenant ownership.
+
+**Verification:**
+
+- Database typecheck: exit 0.
+- Migration lint: 72 files pass with eight existing destructive warnings.
+- Isolated database migration: applied
+  `20260725120000000_executor_oauth_lifecycle`.
+- Database query returned `executor_oauth_applications` and
+  `executor_oauth_sessions`.
+
+**Shippable to production: NOT YET.** Tasks 3 through 8 remain incomplete.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 6)
+
+Added provider-independent web controls for Client Credentials, Authorization
+Code with PKCE, and Device Authorization. Added all five token-endpoint client
+authentication methods. Added typed project-profile creation for the first
+delegated connection.
+
+Added visible request-authentication controls for API keys, OAuth 1.0a,
+HMAC-SHA256, AWS SigV4, mutual TLS, bearer, Basic, custom parameters, and no
+authentication. Structured strategies accept validated encrypted JSON
+credentials.
+
+**RED evidence:** the focused web suite reported four failures and one missing
+export before implementation.
+
+**Verification:**
+
+- Focused web suite: **17 pass / 0 fail**.
+- Focused SDK connector suite: **26 pass / 0 fail**.
+- API typecheck: exit 0.
+- Changed-file ESLint: exit 0.
+- Changed-file web TypeScript output: no errors.
+- Live profile creation: connector list `200`; profile creation `200`.
+
+The browser runtime reported zero available browsers. DOM and browser network
+proof remains open for Task 7.
+
+**Shippable to production: NOT YET.** Tasks 7 and 8 remain incomplete.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 7)
+
+Completed the local contract, API, executor, SDK, database, web, and live HTTP
+verification.
+
+**Verification:**
+
+- OAuth and request-authentication API suite: **44 pass / 0 fail**.
+- Executor faces and authentication discovery suite: **80 pass / 0 fail**.
+- OAuth web suite: **18 pass / 0 fail**.
+- Full web suite: **2064 pass / 0 fail**.
+- Full SDK suite: **1214 pass / 0 fail**.
+- SDK typecheck, example typecheck, and packed-install smoke: exit 0.
+- API, contract, manifest, and database typechecks: exit 0.
+- API contract: **41 pass / 0 fail**.
+- Manifest schema: **321 pass / 0 fail**.
+- Database: **118 pass / 0 fail**.
+- Migration lint: **72 files pass**. Squawk reports zero issues.
+- Authorization Code callback: HTTP `302`; PKCE method `S256`.
+- Authorization state replay: first callback HTTP `302`; replay HTTP `400`.
+- Device Authorization: start HTTP `200`; poll reaches `active`.
+- Refresh-token rotation replaced both access and refresh tokens.
+- Revocation: HTTP `200`; profile status reaches `revoked`.
+- Local API health: HTTP `200`.
+
+The browser runtime reports `No browser is available`. Browser discovery
+returns `[]`. Chromium DOM and network proof remains blocked.
+
+**Shippable to production: NOT YET.** Task 8 delivery and dev proof remains.
+
+---
+
+### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 8)
+
+Claimed repository delivery and dev proof. The task includes the pull request,
+merge, Deploy Dev workflow, deployed SHA proof, and live dev API verification.
+
+**Status: IN PROGRESS.**
+
+**Shippable to production: NOT YET.** The branch is not merged or deployed.
 
 ---
 

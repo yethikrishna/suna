@@ -245,8 +245,17 @@ export interface ExecutorRouterDeps {
     baseUrl: string | null;
     spec: string | null;
     auth: {
-      type: 'none' | 'bearer' | 'basic' | 'custom' | 'oauth1';
-      in: 'header' | 'query';
+      type:
+        | 'none'
+        | 'bearer'
+        | 'basic'
+        | 'custom'
+        | 'api_key'
+        | 'oauth1'
+        | 'hmac'
+        | 'aws_sigv4'
+        | 'mtls';
+      in: 'header' | 'query' | 'cookie';
       name: string | null;
       prefix: string | null;
     };

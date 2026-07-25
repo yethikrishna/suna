@@ -50,6 +50,29 @@ function extractText(content: readonly unknown[]): string {
 }
 
 export function wireTranscripts(session: voice.AgentSession<CallContext>, ctx: CallContext): void {
+  // The user's half is read from session.history, not from an event.
+  //
+  // ConversationItemAdded was instrumented across a full verified conversation
+  // and delivered ONLY `type=message role=assistant` (plus one agent_handoff).
+  // UserInputTranscribed never fired under either STT. The transcription text
+  // stream carries both sides under the AGENT's identity, so it cannot be split
+  // by participant either. History is the one place the user's words are
+  // guaranteed to exist — the LLM could not have answered otherwise.
+  const postedUserItems = new Set<string>();
+
+  const drainUserHistory = () => {
+    for (const item of session.history.items) {
+      if (item.type !== 'message') continue;
+      const msg = item as { id?: string; role?: string; content?: readonly unknown[] };
+      if (msg.role !== 'user') continue;
+      const id = msg.id ?? '';
+      if (!id || postedUserItems.has(id)) continue;
+      postedUserItems.add(id);
+      const text = extractText(msg.content ?? []);
+      if (text) void postTranscriptTurn(ctx, 'user', text);
+    }
+  };
+
   // The USER side does not arrive on ConversationItemAdded — verified against
   // the installed 1.5.5 events.d.ts, and empirically: that event fired exactly
   // twice in a full conversation, both times for agent items, while the agent
@@ -70,6 +93,9 @@ export function wireTranscripts(session: voice.AgentSession<CallContext>, ctx: C
 
     const role = item.role === 'user' ? 'user' : item.role === 'assistant' ? 'agent' : null;
     if (!role) return; // system/developer messages are not part of the spoken transcript
+
+    // Runs before the agent-side write so the two land in conversational order.
+    drainUserHistory();
 
     const text = extractText(item.content);
     if (!text) return;

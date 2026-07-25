@@ -73,6 +73,7 @@ export default defineAgent({
     await session.start({ agent, room: ctx.room });
     await ctx.connect();
 
+
     // Only wireable once connected — needs the live rtc-node Room to listen
     // for data messages on.
     wireInboundReplies(ctx.room, session, callContext);

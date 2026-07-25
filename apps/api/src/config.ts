@@ -231,9 +231,9 @@ const envSchema = z.object({
   // after validating; tune how many recent sessions to pre-resume per project.
   KORTIX_PRERESUME_ENABLED: optBoolFalse,
   KORTIX_PRERESUME_MAX_PER_PROJECT: optInt(1),
-  // OpenCode runtime transport. ACP is the platform default. REST remains an
-  // explicit server-side rollback and never becomes a frontend flag.
-  KORTIX_OPENCODE_TRANSPORT: z.enum(['acp', 'rest']).default('acp'),
+  // OpenCode client transport. REST remains the default until the project
+  // experimental flag enables ACP after parity verification.
+  KORTIX_OPENCODE_TRANSPORT: z.enum(['acp', 'rest']).default('rest'),
 
   // Lock a session to the agent it booted with: the preview proxy 409s a prompt
   // that asks OpenCode to run a different agent. GATED OFF by default — it was

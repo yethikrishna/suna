@@ -47,11 +47,11 @@ async function nextTick() {
 describe('OpenCode ACP launch', () => {
   test('defaults to native ACP and keeps REST as an explicit rollback', () => {
     expect(resolveOpenCodeTransport({})).toBe('acp')
-    expect(resolveOpenCodeTransport({ KORTIX_OPENCODE_TRANSPORT: 'acp' })).toBe('acp')
-    expect(resolveOpenCodeTransport({ KORTIX_OPENCODE_TRANSPORT: 'rest' })).toBe('rest')
+    expect(resolveOpenCodeTransport({ KORTIX_OPENCODE_PROCESS_TRANSPORT: 'acp' })).toBe('acp')
+    expect(resolveOpenCodeTransport({ KORTIX_OPENCODE_PROCESS_TRANSPORT: 'rest' })).toBe('rest')
     expect(() =>
-      resolveOpenCodeTransport({ KORTIX_OPENCODE_TRANSPORT: 'claude' }),
-    ).toThrow("KORTIX_OPENCODE_TRANSPORT must be 'acp' or 'rest'")
+      resolveOpenCodeTransport({ KORTIX_OPENCODE_PROCESS_TRANSPORT: 'claude' }),
+    ).toThrow("KORTIX_OPENCODE_PROCESS_TRANSPORT must be 'acp' or 'rest'")
   })
 
   test('starts one OpenCode ACP process with the existing internal HTTP port', () => {

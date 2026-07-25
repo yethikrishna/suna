@@ -21,8 +21,8 @@
 
 - Add failing tests for server-owned transport selection.
 - Expose `acp` or `rest` in session runtime metadata.
-- Default new OpenCode sessions to `acp`.
-- Keep an explicit server-side `rest` rollback value.
+- Keep the client transport at `rest` during SDK implementation.
+- Report the server-selected transport without frontend routing logic.
 
 ## Task 4: SDK ACP transport
 
@@ -45,6 +45,8 @@
 - Route send, cancel, command, permission, and question actions through ACP.
 - Preserve the current hook return type and OpenCode-named compatibility exports.
 - Keep `apps/web` unchanged except for tests and presentation-only fixes.
+- Add one project experimental flag that selects ACP inside the SDK.
+- Keep REST as the disabled-flag rollback.
 
 ## Task 7: Local parity and rollback proof
 

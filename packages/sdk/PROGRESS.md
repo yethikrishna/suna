@@ -2231,10 +2231,10 @@ The SDK source remains unchanged until Task 4 starts with a failing test.
 
 ### 2026-07-25 — session `acp-opencode-canary` (OpenCode ACP Task 3 completion)
 
-Added server-owned `acp` and `rest` transport selection.
-The API defaults to `acp`.
-It injects `KORTIX_OPENCODE_TRANSPORT` into each sandbox.
-The `/start` response reports `runtime_transport`.
+Separated the OpenCode process transport from the SDK client transport.
+Every sandbox injects `KORTIX_OPENCODE_PROCESS_TRANSPORT=acp`.
+The API client transport defaults to `rest` during the parity implementation.
+The `/start` response reports that client transport as `runtime_transport`.
 Pre-ACP servers can omit the additive field.
 
 **Verification:**

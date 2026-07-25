@@ -8,22 +8,22 @@ const BASE_INPUT = {
   baseRef: 'main',
   agentName: 'default',
   apiUrl: 'https://api.kortix.test/v1',
-  opencodeTransport: 'acp' as const,
+  opencodeProcessTransport: 'acp' as const,
 };
 
 describe('buildSessionRuntimeEnv — KORTIX_COMPILED_AGENT_CONFIG', () => {
-  test('passes the server-selected OpenCode transport into the sandbox', () => {
+  test('passes the server-selected OpenCode process transport into the sandbox', () => {
     expect(
       buildSessionRuntimeEnv({
         ...BASE_INPUT,
-        opencodeTransport: 'acp',
-      }).KORTIX_OPENCODE_TRANSPORT,
+        opencodeProcessTransport: 'acp',
+      }).KORTIX_OPENCODE_PROCESS_TRANSPORT,
     ).toBe('acp');
     expect(
       buildSessionRuntimeEnv({
         ...BASE_INPUT,
-        opencodeTransport: 'rest',
-      }).KORTIX_OPENCODE_TRANSPORT,
+        opencodeProcessTransport: 'rest',
+      }).KORTIX_OPENCODE_PROCESS_TRANSPORT,
     ).toBe('rest');
   });
 

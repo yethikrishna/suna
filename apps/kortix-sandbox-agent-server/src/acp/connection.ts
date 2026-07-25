@@ -36,9 +36,12 @@ function rpcIdKey(value: unknown): string {
 export function resolveOpenCodeTransport(
   env: NodeJS.ProcessEnv,
 ): OpenCodeTransport {
-  const value = env.KORTIX_OPENCODE_TRANSPORT?.trim().toLowerCase() || 'acp'
+  const value =
+    env.KORTIX_OPENCODE_PROCESS_TRANSPORT?.trim().toLowerCase() || 'acp'
   if (value === 'acp' || value === 'rest') return value
-  throw new Error("KORTIX_OPENCODE_TRANSPORT must be 'acp' or 'rest'")
+  throw new Error(
+    "KORTIX_OPENCODE_PROCESS_TRANSPORT must be 'acp' or 'rest'",
+  )
 }
 
 export function buildOpenCodeLaunch(

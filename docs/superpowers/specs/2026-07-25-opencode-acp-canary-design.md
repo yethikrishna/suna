@@ -101,8 +101,9 @@ The frontend does not construct ACP paths.
 
 The server selects the runtime transport.
 
-The default value is `acp`.
-The explicit rollback value is `rest`.
+The default client value is `rest` until ACP parity passes.
+A project experimental flag selects `acp`.
+Disabling the flag restores `rest`.
 
 The rollback switch must not require a frontend deployment.
 The REST path remains covered until ACP dev verification passes.

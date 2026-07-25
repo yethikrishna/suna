@@ -77,6 +77,7 @@ agents:
     skills: all
 
   release-bot:
+    sandbox: ml
     connectors: [github]
     kortix_cli: [project.cr.open]
     secrets: [GITHUB_AGENT_TOKEN]
@@ -169,6 +170,23 @@ sandbox:
 ```
 
 `default` must name a template declared in this manifest, or the reserved value `"default"` for the platform image.
+
+An agent can select its environment with `agents.<name>.sandbox`. The value must name a manifest or dashboard template, or `"default"`.
+
+```yaml
+agents:
+  researcher:
+    sandbox: ml
+```
+
+Session template resolution uses this order:
+
+1. Explicit session `sandbox_slug`.
+2. Selected agent `sandbox`.
+3. Project `sandbox.default`.
+4. Platform `"default"`.
+
+Cron triggers, webhook triggers, schedules, and channels use the selected agent's template.
 
 A spec change (`cpu`, `memory`, `disk`, or the image itself) rebuilds the project's snapshot. The new size applies on the next session, not a running one.
 

@@ -84,6 +84,8 @@ export interface ProjectConfigSummary {
     mode: string | null;
     source?: 'opencode' | 'kortix.toml';
     enabled?: boolean;
+    /** Agent-specific sandbox template. null or absent inherits the project default. */
+    sandbox?: string | null;
     /** Per-agent governance from `kortix.yaml` `agents:` (read-only mirror).
      *  `'all'` = unscoped; a list = the allowlist; `[]` = none. Absent for
      *  OpenCode-discovered agents (not governed by `agents:`). */

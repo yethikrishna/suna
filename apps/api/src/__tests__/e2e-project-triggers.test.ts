@@ -38,6 +38,7 @@ let activeSessionCount = 0;
 let provisioningSessionCount = 0;
 let secretRows: Array<typeof projectSecrets.$inferSelect>;
 let manifestReadCalls = 0;
+let mirrorInvalidationCalls = 0;
 let modelDefaults: {
   account: string | null;
   agents: Record<string, string>;
@@ -82,6 +83,7 @@ function resetState() {
   provisioningSessionCount = 0;
   secretRows = [];
   manifestReadCalls = 0;
+  mirrorInvalidationCalls = 0;
   modelDefaults = { account: null, agents: {}, projects: {} };
   projectRow.metadata = {};
   secretValues.clear();
@@ -139,7 +141,9 @@ mock.module('../projects/git', () => ({
   getCommit: async () => null,
   getCommitDiff: async () => null,
   getFileHistory: async () => ({ entries: [], nextCursor: null }),
-  invalidateProjectMirror: () => {},
+  invalidateProjectMirror: () => {
+    mirrorInvalidationCalls += 1;
+  },
   resolveCommitSha: async () => 'a'.repeat(40),
   resolveBranchTip: async () => 'a'.repeat(40),
   getBranchDiff: async () => ({ files: [], diff: '' }),
@@ -1088,6 +1092,7 @@ describe('git-backed triggers — runtime fire paths', () => {
       body: rawBody,
     });
     expect(wrong.status).toBe(401);
+    expect(mirrorInvalidationCalls).toBe(1);
     expect(manifestReadCalls).toBe(1);
   });
 

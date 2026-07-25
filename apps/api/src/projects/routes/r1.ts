@@ -25,6 +25,7 @@ import {
 } from '../seed-files';
 import { getCatalogItemDetail } from '../../marketplace/catalog';
 import { loadProjectTriggers } from '../triggers';
+import { invalidateProjectMirror } from '../git';
 import { createRoute, z } from '@hono/zod-openapi';
 import { accountGithubInstallations, projectMembers, projects } from '@kortix/db';
 import { and, desc, eq, inArray } from 'drizzle-orm';
@@ -70,6 +71,10 @@ projectWebhooksApp.post('/projects/:projectId/:slug', async (c) => {
     .limit(1);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
+  // Trigger CRUD can commit on another API replica. Force this public delivery
+  // path to fetch the current manifest before it authenticates or renders the
+  // webhook. A stale replica must not return 404 or run an older prompt.
+  invalidateProjectMirror(projectId);
   const { specs } = await loadProjectTriggers(await withProjectGitAuth(project));
   const spec = specs.find((s) => s.slug === slug);
   if (!spec || spec.type !== 'webhook' || !spec.enabled) {

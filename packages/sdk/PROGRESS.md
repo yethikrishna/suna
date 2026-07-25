@@ -2574,3 +2574,28 @@ Required completion gates are SDK typecheck, full tests, packed-install smoke,
 PR merge, and Deploy Dev.
 
 **Status:** IN PROGRESS.
+
+---
+
+### 2026-07-25 — session `voice-sdk-import-recovery` (implementation)
+
+PR #5450 supplied the RED state.
+The SDK typecheck failed because the voice change removed the public
+`.channels.meet` compatibility surface.
+
+Restored `.channels.meet` as a deprecated compatibility facade.
+Kept `.channels.voice` as the current voice surface.
+Restored the five removed REST compatibility tests.
+
+**Verification:**
+
+- SDK typecheck: exit 0.
+- SDK full suite: **1254 pass / 0 fail** across 104 files.
+- SDK assertions: **5608**.
+- SDK packed-install smoke: pass.
+- `git diff --check`: exit 0.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, and deployed web
+verification remain.

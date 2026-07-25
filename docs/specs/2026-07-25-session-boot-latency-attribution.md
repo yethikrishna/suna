@@ -299,10 +299,37 @@ Platinum **24.5 s**.
 | 4 | **Split `opencode-session-created`** into `opencode-answering` / `-root-ready` / `event-loop-connected` | 0 s; makes the largest remaining cost attributable | **shipped** | Very low |
 | 4a | **SSE event loop: flat 100 ms retry until first subscribe**, exponential only after. It backed off from attempt one while `maybeCreateInitialOpencodeSession` blocked on `connected`, so an opencode ready at t=5 s went unnoticed until t=7.75 s | **up to −2.7 s** | **shipped** | Low; tests fail under the old regime |
 | 4b | **`waitForInitialSessionCreate`: 1 s → 10 s per attempt, and stop resending on timeout.** The call is ~370 ms warm but ~1.1 s on a 3×-slower Platinum guest, so it aborted work about to succeed AND could create a duplicate root (a client abort does not cancel opencode's server-side work) | −1 s + a correctness bug | **shipped** | Low; tests fail under the old regime |
-| 5 | **Kill the transatlantic git triangle** — region-local git termination, or a scoped direct-to-GitHub credential | **−3 s** | not started | Security trade (see Finding 1) |
-| 6 | **Drop the `isShared` gate** on per-project warm images | **−7 s** (clone → 0) and Platinum's first warm hit ever | **blocked, see below** | High until the reaper is template-scoped |
-| 7 | **Persist `boot_timeline`** server-side (daemon POSTs it at ready) | 0 s; permanent attribution | not started | Low |
+| 4c | **`readRepoInfo`: 3 sequential git subprocesses → concurrent.** Called on EVERY `/kortix/health` request, i.e. on every readiness poll, during the window where the guest is CPU-saturated by index-pack | small but on a hot loop | **shipped** | Very low; read-only plumbing, no index lock |
+| 4d | **Daytona: eager preview-link warm at create**, matching Platinum's eager expose. Closes a provider asymmetry where Daytona paid `getPreviewLink` (~179 ms) plus edge cold-routing on its first proxied request | part of Daytona's 0–3.8 s `vm_created`→`daemon_reachable` spread | **shipped** | Very low; best-effort, not awaited |
+| 5 | **Kill the transatlantic git triangle** — region-local git termination, or a scoped direct-to-GitHub credential | **−3.2 s** (verified) | **owner: API→US move, tracked separately** | Security trade (see Finding 1) |
+| 6 | **Drop the `isShared` gate** on per-project warm images | **−7 s on Platinum only** (Daytona already hits 66%) | **prerequisite shipped; gate still on** | See below |
+| 7 | **Persist `boot_timeline`** server-side (daemon POSTs it at ready) | 0 s; permanent attribution | **shipped** | Low |
 | 8 | **Platinum guest + create perf** — 3 428 ms to return a booted microVM, ~3× slower on trivial CPU stages | −2.4 s create, −7 s in-guest | not started | Platinum-team work, not app code |
+
+### #6 — what shipped, and what is still in the way
+
+The ppwarm **name and both reap paths** are now scoped to `(project, template)`
+(`ppwarm-names.ts`, `quota-gc-select.ts`), which removes the mutual-deletion
+hazard. The `template.isShared` gate is **deliberately still in place**, because
+`ensurePerProjectWarmImage` resolves `DEFAULT_SANDBOX_SLUG` (`builder.ts:1313`)
+regardless of the caller's slug: the bake path only ever produces the *default*
+template's image. Passing a custom slug without changing that would bake the
+default Dockerfile while **naming** it as the custom template's warm image, so
+sessions on that template would boot missing whatever it installs — invisible
+until an agent's tooling was gone. Strictly worse than a slow boot.
+`provider-transition-service.ts:81-97` also records a deliberate decision not to
+warm-prep custom templates. Lift the read gate and the bake path together, or not
+at all.
+
+⚠ **Deploying #6's rename is not free.** The new name adds a `tpl8` segment and
+folds the slug into the hash, so no pre-migration name can be recomputed —
+including the default template's. With ~66% of Daytona sessions currently booting
+warm, the release carrying it makes the first session per project miss, clone cold,
+and kick a re-bake: a fleet-wide bake burst against the Daytona org's hard
+100-snapshot cap, with old tips lingering until quota-gc ages them out
+(~2× tips/project transiently). One-time, steady state unchanged — but it is the
+same shape as the 2026-07-22 rebuild storm, so release it behind the existing
+warm-bake pacing and watch it.
 
 **Why #6 is blocked, not merely unstarted.** Removing the `isShared` gate is the
 single highest-value change left (it takes the clone to zero and is the only
@@ -324,11 +351,29 @@ was on the original plan at −4 to −5 s. It is dropped: it requires resolving
 the payoff shrinks to roughly `min(clone, opencode-start)` — real, but far below
 the cost of getting config-dir semantics subtly wrong.
 
-Shipped (1–4) removes the ~25 s gateway cliff, closes the 9 s observability
-blind window, and takes ~0.5–2 s off every boot. **It does not move the needle
-the way the original 22× reading suggested** — the honest expectation is Daytona
-~17 s and Platinum ~23 s, not 8–9 s. The real reductions are #5 (−3 s) and #6
-(−7 s), and #6 is the only one that helps Platinum.
+### Expected effect of everything shipped — stated honestly
+
+Summing only what is verified and actually on the critical path:
+
+| Item | Daytona | Platinum |
+|---|---:|---:|
+| Shallow clone | −0.5 s | −0.5 s |
+| SSE loop retry regime (#4a) | up to −2.7 s | up to −2.7 s |
+| Session-create no-abort (#4b) | ~0 s | −1 s |
+| `readRepoInfo` + eager preview (#4c/#4d) | small | small |
+| **Expected p50** | **~15–16 s** (from 18.9 s) | **~20–21 s** (from 24.5 s) |
+
+That is a real but unglamorous ~15%. The two changes that would actually halve
+this are #5 (−3.2 s, tracked as the API region move) and #6 (−7 s, Platinum only,
+gated on the bake path above). Nothing shipped here touches the biggest single
+line item — opencode's warm start — because it is not yet proven what that time is
+made of; #7 is what makes it provable.
+
+**Do not report these as measured.** They are the sum of verified per-change
+savings, not a re-run of the harness. Re-run `bench-boot-attribution.ts` after
+deploy and replace this table with real numbers — that is exactly the mistake
+(reasoning past the data) that produced the retracted 22× claim earlier in this
+document.
 
 ### On "sub one second"
 

@@ -435,9 +435,11 @@ source of truth.
 7. Monitor replication lag and retained WAL.
 
 Logical replication does not advance target sequences. Do not accept target
-Auth writes while source Auth remains writable. A stale
-`auth.refresh_tokens_id_seq` causes refresh-token rotation to return HTTP `500`
-after a duplicate primary-key insert.
+Auth writes while source Auth remains writable unless the write is a controlled
+smoke test. Each controlled smoke test must reserve 100,000,000 values above
+`max(auth.refresh_tokens.id)`. It must delete its target-only rows after the
+test. A stale `auth.refresh_tokens_id_seq` causes refresh-token rotation to
+return HTTP `500` after a duplicate primary-key insert.
 
 Do not publish Supabase-owned internal tables through a publication owned by
 the application role. Supabase Support must handle those schemas.
@@ -481,6 +483,19 @@ Run the target smoke:
 bash scripts/prod-us-east-2/target-smoke.sh
 ```
 
+The target smoke retains 100,000,000 refresh-token sequence values by default.
+It verifies password Auth, Google and GitHub authorization redirects, MFA,
+Storage, API authentication, and target-only row cleanup.
+
+Run the deployed frontend Auth smoke:
+
+```bash
+bash scripts/prod-us-east-2/frontend-auth-smoke.sh
+```
+
+The frontend Auth smoke verifies the password grant, the visible login form,
+and the authenticated application shell on `https://us.kortix.com`.
+
 Run the source refresh-token compatibility smoke:
 
 ```bash
@@ -494,7 +509,9 @@ The refresh smoke reserves a temporary high target sequence range. It restores
 The production release calls
 `.github/workflows/deploy-prod-us-east-2-shadow.yml`. It applies target
 migrations, refreshes application replication, synchronizes `avatars`, deploys
-the released API and gateway images, and verifies the shadow endpoints.
+the released API and gateway images, verifies the shadow endpoints, validates
+the disabled writer flags, and runs target Auth, OAuth, MFA, Storage, public
+API, and deployed frontend checks.
 
 ## Reconciliation gates
 

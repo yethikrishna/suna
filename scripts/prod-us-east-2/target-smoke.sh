@@ -20,14 +20,29 @@ target_secret_json="$(
 )"
 
 export TARGET_DATABASE_URL
-TARGET_DATABASE_URL="$(jq -er '.target_database_url' <<<"$target_secret_json")"
+TARGET_DATABASE_URL="$(
+  jq -er '.target_database_url // .DATABASE_URL' <<<"$target_secret_json"
+)"
 export TARGET_SUPABASE_URL
-TARGET_SUPABASE_URL="$(jq -er '.target_supabase_url' <<<"$target_secret_json")"
+TARGET_SUPABASE_URL="$(
+  jq -er '.target_supabase_url // .SUPABASE_URL' <<<"$target_secret_json"
+)"
 export TARGET_ANON_KEY
-TARGET_ANON_KEY="$(jq -er '.target_anon_key' <<<"$target_secret_json")"
+TARGET_ANON_KEY="$(
+  jq -er '.target_anon_key // .SUPABASE_ANON_KEY' <<<"$target_secret_json"
+)"
 export TARGET_SERVICE_ROLE_KEY
-TARGET_SERVICE_ROLE_KEY="$(jq -er '.target_service_role_key' <<<"$target_secret_json")"
+TARGET_SERVICE_ROLE_KEY="$(
+  jq -er '.target_service_role_key // .SUPABASE_SERVICE_ROLE_KEY' \
+    <<<"$target_secret_json"
+)"
 export TARGET_API_URL
 TARGET_API_URL="${TARGET_API_URL:-https://api-use2-shadow.kortix.com}"
+export TARGET_FRONTEND_URL
+TARGET_FRONTEND_URL="${TARGET_FRONTEND_URL:-https://us.kortix.com}"
+export TARGET_AUTH_SEQUENCE_HEADROOM
+TARGET_AUTH_SEQUENCE_HEADROOM="${TARGET_AUTH_SEQUENCE_HEADROOM:-100000000}"
+export KEEP_TARGET_AUTH_SEQUENCE_HEADROOM
+KEEP_TARGET_AUTH_SEQUENCE_HEADROOM="${KEEP_TARGET_AUTH_SEQUENCE_HEADROOM:-1}"
 
 node "$(dirname "$0")/target-smoke.mjs"

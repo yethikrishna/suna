@@ -30,9 +30,15 @@ export function createSessionRuntimePolicy(
   };
 }
 
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 /** Build the authenticated, session-scoped ACP bridge endpoint.
  *  Hosts receive the completed URL through `useSession`; they never construct
  *  or import this runtime path. */
 export function buildAcpBridgeEndpoint(runtimeUrl: string, sessionId: string): string {
-  return `${runtimeUrl.replace(/\/+$/, '')}/kortix/acp/${encodeURIComponent(sessionId)}`;
+  return `${trimTrailingSlashes(runtimeUrl)}/kortix/acp/${encodeURIComponent(sessionId)}`;
 }

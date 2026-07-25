@@ -26,6 +26,12 @@ type PendingRequest = {
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -86,7 +92,7 @@ export class AcpClient {
   private readonly pending = new Map<string, PendingRequest>();
 
   constructor(options: AcpClientOptions) {
-    this.endpoint = options.endpoint.replace(/\/+$/, '');
+    this.endpoint = trimTrailingSlashes(options.endpoint);
     this.fetcher = options.fetch ?? (authenticatedFetch as typeof fetch);
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }

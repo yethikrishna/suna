@@ -96,6 +96,21 @@ describe('ACP HTTP/SSE client', () => {
     ]);
   });
 
+  test('removes a slash-heavy endpoint suffix before the request', async () => {
+    const urls: string[] = [];
+    const client = createAcpClient({
+      endpoint: `https://runtime.test/kortix/acp/session${'/'.repeat(100_000)}`,
+      fetch: (async (input) => {
+        urls.push(String(input));
+        return new Response(null, { status: 202 });
+      }) as typeof fetch,
+    });
+
+    await client.cancel('ses_1');
+
+    expect(urls).toEqual(['https://runtime.test/kortix/acp/session']);
+  });
+
   test('streams ordered events and resumes with Last-Event-ID', async () => {
     const headers: Array<Record<string, string>> = [];
     let calls = 0;

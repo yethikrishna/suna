@@ -19,6 +19,11 @@ const EMPTY_SNAPSHOT: AcpSessionControllerSnapshot = {
 };
 const noopSubscribe = () => () => {};
 
+export async function cancelAcpSession(controller: { cancel(): Promise<void> } | null): Promise<void> {
+  if (!controller) return;
+  await controller.cancel();
+}
+
 export function useAcpSessionRuntime(input: {
   runtimeUrl: string | null;
   sessionId: string | null;
@@ -54,7 +59,9 @@ export function useAcpSessionRuntime(input: {
     },
     [controller],
   );
-  const cancel = useCallback(() => controller?.cancel() ?? Promise.resolve(), [controller]);
+  const cancel = useCallback(async () => {
+    await cancelAcpSession(controller);
+  }, [controller]);
   const runCommand = useCallback(
     (command: string, args: string, options?: { model?: string | null; agent?: string | null }) => {
       if (!controller) throw new Error('ACP session runtime is not ready');

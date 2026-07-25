@@ -18,6 +18,13 @@ test('the SDK owns the sandbox ACP bridge path', () => {
   );
 });
 
+test('the ACP bridge trims a slash-heavy runtime URL suffix', () => {
+  const runtimeUrl = `https://api.kortix.test/v1/p/box/8000${'/'.repeat(100_000)}`;
+  expect(buildAcpBridgeEndpoint(runtimeUrl, 'ses_1')).toBe(
+    'https://api.kortix.test/v1/p/box/8000/kortix/acp/ses_1',
+  );
+});
+
 test('missing runtime transport keeps every OpenCode REST client path enabled', () => {
   expect(createSessionRuntimePolicy(undefined)).toEqual({
     transport: 'rest',

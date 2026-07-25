@@ -248,6 +248,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B17 | **Add native OAuth2 client-credentials lifecycle support to existing connector connection profiles.** Static bearer credentials cannot acquire, cache, refresh, or revoke OAuth2 access tokens. Microsoft Graph and SharePoint require OAuth2 and cannot use a static API key.                                                                                                                                                               | `apps/api/src/executor/credentials.ts` decrypts one opaque value; `apps/api/src/executor/db-deps.ts` passes that value directly to `executeCall`; `packages/sdk/src/core/rest/projects-client/connectors.ts` accepts only `{ value }`.                                                                  | **DONE 2026-07-24** — session `native-oauth-sharepoint`; full SDK gates and real SharePoint proof green                                                                                                                                                                |
 | B18 | **Keep the managed-model playground pin synchronized with the managed catalog.** The playground exits before API access when its pinned IDs differ from `MANAGED_MODELS`.                                                                                                                                                                                                                                                                    | `packages/sdk/playground/chat/14-change-default-model.ts` still pins retired `qwen3.7-max` and `deepseek-v4-pro`.                                                                                                                                                                                       | **DONE 2026-07-24** — session `managed-models-aster`; full SDK gates green                                                                                                                                                                                             |
 | B19 | **Preserve explicit managed-model pricing and cache-write rates through the project catalog and turn-cost estimator.** Browser-side `models.dev` lookup can substitute another provider's price for a Kortix-managed model, and the turn estimator does not accept a distinct cache-write rate.                                                                                                                                              | `src/core/rest/projects-client/projects.ts`, `src/core/turns/types.ts`, `src/core/turns/state.ts`; confirmed for managed Aster `glm-5.2`.                                                                                                                                                               | **DONE 2026-07-25** — implementation `28c18cbfa`; full SDK suite, typecheck, public-surface snapshot, and packed-install smoke green                                                                                                                                   |
+| B20 | **Keep ACP SSE connections outside the shared 30-second authenticated-fetch timeout.** The ACP controller uses `/kortix/acp/:sessionId` as a long-lived SSE stream.                                                                                                                                                                                                                                                                            | `src/platform/auth-core.ts` exempted only `/global/event`; deployed cold Chromium aborted the ACP stream before `session/load` settled.                                                                                                                                                                | **DONE 2026-07-25** — implementation `89b97f4cc`; RED test, full SDK gates, and local cold ACP plus REST browser matrix pass                                                                                                                                                                                                         |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -2401,3 +2402,37 @@ failed click.
 
 **Shippable to production: YES.** All eight tasks are complete.
 Local and deployed dev ACP and REST paths pass.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (ACP stream timeout correction)
+
+The follow-up deployed cold Chromium run exposed an ACP transport defect.
+`authenticatedFetch` applied its 30-second default timeout to `/kortix/acp/:sessionId`.
+The controller lost the stream while `session/load` was pending.
+The browser never sent `session/prompt`.
+
+`isStreamingRequest` now exempts both OpenCode REST `/global/event` streams and
+ACP `/kortix/acp/:sessionId` streams.
+Non-streaming requests retain the 30-second timeout.
+
+**RED evidence:**
+
+- Focused auth transport suite: **11 pass / 1 fail**.
+- The ACP URL returned `false` from `isStreamingRequest`.
+
+**Verification:**
+
+- Focused auth transport suite: **12 pass / 0 fail**.
+- SDK typecheck and example typecheck: exit 0.
+- SDK full suite: **1250 pass / 0 fail** across 104 files with 5592 assertions.
+- SDK packed-install smoke: pass.
+- Test-harness typecheck: exit 0.
+- Frontend SDK and session-engine boundaries: **3 pass / 0 fail**.
+- Full local cold Chromium ACP and REST rollback matrix: **1 pass / 0 fail** in
+  2.7 minutes.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, and the deployed
+cold Chromium matrix remain.

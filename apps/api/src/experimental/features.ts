@@ -126,6 +126,15 @@ const FEATURES: readonly ExperimentalFeatureDef[] = [
     platformDefault: () => config.LLM_GATEWAY_DEFAULT_ENABLED,
   },
   {
+    key: 'acp_runtime',
+    name: 'ACP Runtime',
+    description:
+      'Use the Agent Client Protocol for this project session interface. Disable this experiment to return to the OpenCode REST client.',
+    stability: 'experimental',
+    available: () => true,
+    platformDefault: () => false,
+  },
+  {
     key: 'review_center',
     name: 'Review Center',
     description:
@@ -186,6 +195,14 @@ export function resolveExperimentalFeatures(
   return Object.fromEntries(
     FEATURES.map((f) => [f.key, resolveExperimentalFeature(metadata, f.key)]),
   ) as Record<ExperimentalFeatureKey, boolean>;
+}
+
+/** Select the SDK client transport for one project.
+ *  `KORTIX_OPENCODE_TRANSPORT=acp` is the operator-wide rollout override.
+ *  The normal rollout remains an explicit project `acp_runtime` opt-in. */
+export function resolveProjectRuntimeTransport(metadata: unknown): 'acp' | 'rest' {
+  if (config.KORTIX_OPENCODE_TRANSPORT === 'acp') return 'acp';
+  return resolveExperimentalFeature(metadata, 'acp_runtime') ? 'acp' : 'rest';
 }
 
 /** Serialized catalog entry for the client (drives the Customize UI). */

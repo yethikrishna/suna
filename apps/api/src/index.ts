@@ -1078,7 +1078,7 @@ console.log(`
 
 // Load LLM pricing from models.dev (non-blocking if it fails).
 // Awaited so pricing is available before the first billing request.
-initModelPricing().catch((err) =>
+await initModelPricing().catch((err) =>
   console.error('[startup] Model pricing init failed (will retry in 24h):', err),
 );
 runtimeModelCatalog

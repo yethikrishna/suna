@@ -13,13 +13,17 @@ mock.module('../../billing/services/tiers', () => ({ llmPriceMarkup: () => 2 }))
 // mirrors what models.dev actually publishes for Bedrock: it has never heard
 // of a cross-region inference-profile id like `us.anthropic.claude-...`.
 const CATALOG: Record<string, { inputPer1M: number; outputPer1M: number }> = {
-  'anthropic.claude-opus-4-8': { inputPer1M: 15, outputPer1M: 75 },
-  'amazon.nova-micro-v1:0': { inputPer1M: 0.035, outputPer1M: 0.14 },
+  'amazon-bedrock/anthropic.claude-opus-4-8': { inputPer1M: 15, outputPer1M: 75 },
+  'amazon-bedrock/amazon.nova-micro-v1:0': { inputPer1M: 0.035, outputPer1M: 0.14 },
 };
-const getModelPricing = mock((modelId: string) => CATALOG[modelId] ?? null);
+const getModelPricing = mock(
+  (providerId: string, modelId: string) => CATALOG[`${providerId}/${modelId}`] ?? null,
+);
 mock.module('../../router/config/model-pricing', () => ({ getModelPricing }));
 
-const { livePricing, managedCandidates, stripBedrockInferenceProfilePrefix } = await import('./descriptors');
+const { livePricing, managedCandidates, stripBedrockInferenceProfilePrefix } = await import(
+  './descriptors'
+);
 
 beforeEach(() => {
   getModelPricing.mockClear();
@@ -76,43 +80,52 @@ describe('stripBedrockInferenceProfilePrefix', () => {
 
 describe('livePricing + stripBedrockInferenceProfilePrefix — the actual $0 bug', () => {
   test('a cross-region-prefixed id misses the catalog on its own (reproduces the bug)', () => {
-    expect(livePricing('us.anthropic.claude-opus-4-8')).toBeUndefined();
+    expect(livePricing('amazon-bedrock', 'us.anthropic.claude-opus-4-8')).toBeUndefined();
   });
 
   test('stripping the prefix first resolves the same catalog price as the base id', () => {
     const stripped = stripBedrockInferenceProfilePrefix('us.anthropic.claude-opus-4-8');
-    expect(livePricing(stripped)).toEqual({
+    expect(livePricing('amazon-bedrock', stripped)).toEqual({
       inputPerMillion: 15,
       outputPerMillion: 75,
       cachedInputPerMillion: undefined,
       cacheWritePerMillion: undefined,
+      tiers: undefined,
+      contextOver200k: undefined,
     });
-    expect(livePricing(stripped)).toEqual(livePricing('anthropic.claude-opus-4-8'));
+    expect(livePricing('amazon-bedrock', stripped)).toEqual(
+      livePricing('amazon-bedrock', 'anthropic.claude-opus-4-8'),
+    );
   });
 
   test('amazon.nova-micro cross-region id resolves via apac. prefix too', () => {
     const stripped = stripBedrockInferenceProfilePrefix('apac.amazon.nova-micro-v1:0');
-    expect(livePricing(stripped)).toEqual(livePricing('amazon.nova-micro-v1:0'));
+    expect(livePricing('amazon-bedrock', stripped)).toEqual(
+      livePricing('amazon-bedrock', 'amazon.nova-micro-v1:0'),
+    );
   });
 });
 
 describe('managed AsterLab descriptor', () => {
   test('routes GLM 5.2 to AsterLab with the AWS-managed deployment credential', () => {
-    expect(managedCandidates({
-      id: 'glm-5.2',
-      name: 'GLM 5.2',
-      upstreamModelId: 'glm-5.2',
-      transport: 'aster',
-      pricingRef: 'z-ai/glm-5.2',
-      pricing: {
-        inputPerMillion: 1,
-        cachedInputPerMillion: 0.2,
-        outputPerMillion: 4,
-      },
-      tier: 'balanced',
-      vision: false,
-      limit: { context: 1_000_000, output: 131_072 },
-    })).toEqual([
+    expect(
+      managedCandidates({
+        id: 'glm-5.2',
+        name: 'GLM 5.2',
+        upstreamModelId: 'glm-5.2',
+        transport: 'aster',
+        pricingRef: 'z-ai/glm-5.2',
+        pricing: {
+          inputPerMillion: 1,
+          cachedInputPerMillion: 0.2,
+          cacheWritePerMillion: 1,
+          outputPerMillion: 4,
+        },
+        tier: 'balanced',
+        vision: false,
+        limit: { context: 1_000_000, output: 131_072 },
+      }),
+    ).toEqual([
       expect.objectContaining({
         provider: 'aster',
         kind: 'openai-compat',
@@ -123,6 +136,7 @@ describe('managed AsterLab descriptor', () => {
         pricing: {
           inputPerMillion: 1,
           cachedInputPerMillion: 0.2,
+          cacheWritePerMillion: 1,
           outputPerMillion: 4,
         },
       }),

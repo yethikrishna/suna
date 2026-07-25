@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -7,10 +7,11 @@ import { spawnSync } from 'node:child_process'
 import { loadConfig } from '../config'
 import { isShallowRepo, scheduleHistoryBackfill } from '../git'
 import {
+  MINIMAL_FALLBACK_MODELS,
   buildOpencodeConfigContent,
   catalogIsDegraded,
   hasKortixLlmGateway,
-  MINIMAL_FALLBACK_MODELS,
+  scheduleCatalogWarmToPathForTests,
 } from '../opencode'
 
 const BASE_ENV = { KORTIX_WORKSPACE: '/workspace', KORTIX_REPO_URL: 'https://example.test/r.git' }
@@ -217,5 +218,64 @@ describe('building the opencode boot config never touches the network', () => {
     expect(catalogIsDegraded(file)).toBe(true)
     await writeFile(file, JSON.stringify({ models: { 'a/b': { name: 'B' } } }))
     expect(catalogIsDegraded(file)).toBe(false)
+  })
+})
+
+describe('catalog written to disk is rebuilt to a known shape, never passed through', () => {
+  const realFetch = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = realFetch
+  })
+
+  const GATEWAY = { KORTIX_LLM_BASE_URL: 'https://gw.kortix.test/v1', KORTIX_LLM_API_KEY: 'k' }
+
+  async function warmThenRead(catalog: unknown): Promise<Record<string, any> | null> {
+    const dir = await mkdtemp(join(tmpdir(), 'kortix-warm-'))
+    tempDirs.push(dir)
+    const target = join(dir, 'llm-catalog.json')
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ models: catalog }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })) as unknown as typeof fetch
+
+    scheduleCatalogWarmToPathForTests(GATEWAY.KORTIX_LLM_BASE_URL, GATEWAY.KORTIX_LLM_API_KEY, target)
+    const deadline = Date.now() + 8_000
+    while (Date.now() < deadline) {
+      try {
+        return JSON.parse(await readFile(target, 'utf8')).models
+      } catch {
+        await new Promise((r) => setTimeout(r, 25))
+      }
+    }
+    return null
+  }
+
+  test('drops unrecognised fields instead of writing them through', async () => {
+    const written = await warmThenRead({
+      'a/b': { name: 'B', reasoning: true, __proto__hack: 'x', arbitrary: { deep: 'junk' } },
+    })
+    expect(written).not.toBeNull()
+    expect(written!['a/b'].name).toBe('B')
+    expect(written!['a/b'].reasoning).toBe(true)
+    expect(written!['a/b'].arbitrary).toBeUndefined()
+  })
+
+  test('rejects non-object model entries rather than persisting them', async () => {
+    const written = await warmThenRead({ 'good/one': { name: 'G' }, 'bad/one': 'not-an-object' })
+    expect(Object.keys(written!)).toEqual(['good/one'])
+  })
+
+  test('coerces a missing name to the model id rather than writing undefined', async () => {
+    const written = await warmThenRead({ 'x/y': { reasoning: true } })
+    expect(written!['x/y'].name).toBe('x/y')
+  })
+
+  test('keeps structured limit/cost objects but drops non-object ones', async () => {
+    const written = await warmThenRead({
+      'm/1': { name: 'M', limit: { context: 1000 }, cost: 'free' },
+    })
+    expect(written!['m/1'].limit).toEqual({ context: 1000 })
+    expect(written!['m/1'].cost).toBeUndefined()
   })
 })

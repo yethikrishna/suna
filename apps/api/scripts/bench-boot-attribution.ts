@@ -34,7 +34,8 @@
  *   BENCH_TARGETS   JSON array of {label, projectId}. Required.
  *   BENCH_DB_URL    Postgres URL for host-side transitions. Required.
  *   BENCH_API       API base origin (default https://api.kortix.com).
- *   BENCH_TOKEN     kortix_pat_… (falls back to ~/.config/kortix/config.json `cloud`).
+ *   BENCH_TOKEN     kortix_pat_… Required. Read from env only, never from a
+ *                   config file — see the comment on TOKEN below.
  *   BENCH_ROUNDS    boots per target (default 3).
  *   BENCH_TIMEOUT_S per-boot ceiling (default 180).
  *   BENCH_KEEP      "1" to leave the sessions behind (default: delete them).
@@ -43,7 +44,7 @@
  * Boots are sequential per target and targets run in parallel, so the two
  * providers see comparable control-plane load without self-contention.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { SQL } from 'bun';
 
 const API = (process.env.BENCH_API ?? 'https://api.kortix.com').replace(/\/+$/, '');
@@ -52,22 +53,22 @@ const TIMEOUT_MS = Number(process.env.BENCH_TIMEOUT_S ?? 180) * 1000;
 const KEEP = process.env.BENCH_KEEP === '1';
 const DB_URL = process.env.BENCH_DB_URL ?? '';
 
-function resolveToken(): string {
-  if (process.env.BENCH_TOKEN) return process.env.BENCH_TOKEN;
-  try {
-    const cfg = JSON.parse(readFileSync(`${process.env.HOME}/.config/kortix/config.json`, 'utf8'));
-    return cfg.hosts?.cloud?.token ?? '';
-  } catch {
-    return '';
-  }
-}
-const TOKEN = resolveToken();
+// Token comes from the environment ONLY — deliberately not read out of
+// ~/.config/kortix/config.json. Two reasons, and the second is the important one:
+//   1. This harness points at whatever BENCH_API says, including production.
+//      Silently pairing an explicit host with an implicitly-discovered credential
+//      from a config file is how you benchmark the wrong deployment with the wrong
+//      account's token. Making the credential as explicit as the target removes
+//      that whole class of mistake.
+//   2. It also removes a real file-data-to-outbound-request flow (CodeQL
+//      js/file-data-in-outbound-request), rather than suppressing the alert.
+const TOKEN = (process.env.BENCH_TOKEN ?? '').trim();
 
 interface Target { label: string; projectId: string }
 const TARGETS: Target[] = JSON.parse(process.env.BENCH_TARGETS ?? '[]');
 
 if (!TARGETS.length || !DB_URL || !TOKEN) {
-  console.error('Need BENCH_TARGETS, BENCH_DB_URL, and a token (BENCH_TOKEN or ~/.config/kortix/config.json).');
+  console.error('Need BENCH_TARGETS, BENCH_DB_URL, and BENCH_TOKEN.');
   process.exit(1);
 }
 

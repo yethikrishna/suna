@@ -152,6 +152,7 @@ import {
   classifySendError,
   clearStartStash,
   readStartStash,
+  recoverFromSendFailure,
   replayStartStash,
   sendAndRecover,
   usePermissionSelfHeal,
@@ -4216,8 +4217,10 @@ export function SessionChat({
   const allPermissions = useRuntimePendingStore((s) => s.permissions);
   const allQuestions = useRuntimePendingStore((s) => s.questions);
   const pendingPermissions = useMemo(
-    () => Object.values(allPermissions).filter((p) => p.sessionID === sessionId),
-    [allPermissions, sessionId],
+    () =>
+      sessionState?.permissions ??
+      Object.values(allPermissions).filter((p) => p.sessionID === sessionId),
+    [sessionState?.permissions, allPermissions, sessionId],
   );
   const suppressedQuestionIdsRef = useRef<Map<string, number>>(new Map());
   const suppressQuestionFor = useCallback((requestId: string, ms = 15000) => {
@@ -4234,10 +4237,11 @@ export function SessionChat({
   }, []);
   const pendingQuestions = useMemo(
     () =>
-      Object.values(allQuestions).filter(
-        (q) => q.sessionID === sessionId && !isQuestionSuppressed(q.id),
-      ),
-    [allQuestions, sessionId, isQuestionSuppressed],
+      (
+        sessionState?.questions ??
+        Object.values(allQuestions).filter((q) => q.sessionID === sessionId)
+      ).filter((q) => !isQuestionSuppressed(q.id)),
+    [sessionState?.questions, allQuestions, sessionId, isQuestionSuppressed],
   );
   const QUESTION_PROMPT_ANIMATION_MS = 320;
   const activePendingQuestion = pendingQuestions[0] ?? null;
@@ -4332,17 +4336,23 @@ export function SessionChat({
       // No optimistic remove: only drop the card once the runtime accepted the
       // reply — a failed reply must stay answerable. Rethrow so callers
       // (prompt buttons) reset their busy state and surface the error.
-      await replyToPermission(requestId, reply);
-      removePermission(requestId);
+      if (sessionState) {
+        await sessionState.answerPermission(requestId, reply);
+      } else {
+        await replyToPermission(requestId, reply);
+        removePermission(requestId);
+      }
     },
-    [removePermission],
+    [sessionState, removePermission],
   );
 
   const handleQuestionReply = useCallback(
     async (requestId: string, answers: string[][]) => {
       // Snapshot the question BEFORE removing it so we can cache the
       // answer against the tool part's ID.
-      const questionReq = useRuntimePendingStore.getState().questions[requestId];
+      const questionReq =
+        sessionState?.questions.find((question) => question.id === requestId) ??
+        useRuntimePendingStore.getState().questions[requestId];
 
       suppressQuestionFor(requestId);
       // Optimistically remove the question so the textarea shows immediately
@@ -4372,12 +4382,13 @@ export function SessionChat({
       }
 
       try {
-        await replyToQuestion(requestId, answers);
+        if (sessionState) await sessionState.answerQuestion(requestId, answers);
+        else await replyToQuestion(requestId, answers);
       } catch {
         // ignore — SSE "question.replied" event will also remove it
       }
     },
-    [removeQuestion, suppressQuestionFor],
+    [sessionState, removeQuestion, suppressQuestionFor],
   );
 
   const handleQuestionReject = useCallback(
@@ -4386,16 +4397,19 @@ export function SessionChat({
       // Optimistically remove the question so the textarea shows immediately
       removeQuestion(requestId);
       try {
-        await rejectQuestion(requestId);
+        if (sessionState) await sessionState.rejectQuestion(requestId);
+        else await rejectQuestion(requestId);
       } catch {
         // ignore — SSE "question.rejected" event will also remove it
       }
       // Also abort the session so the "The operation was aborted." banner appears
-      if (!abortSession.isPending) {
+      if (sessionState) {
+        sessionState.cancel();
+      } else if (!abortSession.isPending) {
         abortSession.mutate(sessionId);
       }
     },
-    [removeQuestion, abortSession, sessionId, suppressQuestionFor],
+    [sessionState, removeQuestion, abortSession, sessionId, suppressQuestionFor],
   );
   const hasCompactionTurn = useMemo(
     () =>
@@ -4678,6 +4692,9 @@ export function SessionChat({
         return { type: 'text' as const, text: p.text };
       });
       const sendOpts = Object.keys(options).length > 0 ? options : undefined;
+      const selectedAgent = typeof sendOpts?.agent === 'string' ? sendOpts.agent : null;
+      const selectedVariant = typeof sendOpts?.variant === 'string' ? sendOpts.variant : null;
+      const selectedModel = sendOpts?.model ? (sendOpts.model as ModelKey) : null;
 
       // Sending to the sandbox's OpenCode server can transiently fail — the
       // container may be waking from auto-stop, restarting, or the tunnel
@@ -4690,21 +4707,38 @@ export function SessionChat({
       // busy, then either rehydrate real messages from the server (some error
       // paths — e.g. missing API key — never emit a `session.error` SSE
       // event) or drop the optimistic message if the server has no record.
-      const result = await sendAndRecover({
-        sessionId,
-        messageId: messageID,
-        parts: mappedParts,
-        options: {
-          // Pass the session's directory so opencode resolves project-scoped
-          // agents (.opencode/agent/*.md under the project) and applies them
-          // when the user picked a project agent from the picker.
-          ...(session?.directory ? { directory: session.directory } : {}),
-          ...(sendOpts?.agent ? { agent: sendOpts.agent } : {}),
-          ...(sendOpts?.model ? { model: formatPromptModel(sendOpts.model as ModelKey) } : {}),
-          ...(sendOpts?.variant ? { variant: sendOpts.variant } : {}),
-        } as any,
-        classify: classifySessionError,
-      });
+      const result = sessionState
+        ? await (async () => {
+            try {
+              await sessionState.sendParts(mappedParts, {
+                ...(session?.directory ? { directory: session.directory } : {}),
+                ...(selectedAgent ? { agent: selectedAgent } : {}),
+                ...(selectedModel ? { model: selectedModel } : {}),
+                ...(selectedVariant ? { variant: selectedVariant } : {}),
+              });
+              return { ok: true } as const;
+            } catch (cause) {
+              const error = recoverFromSendFailure(sessionId, messageID, cause, {
+                classify: classifySessionError,
+              });
+              return { ok: false, error, cause } as const;
+            }
+          })()
+        : await sendAndRecover({
+            sessionId,
+            messageId: messageID,
+            parts: mappedParts,
+            options: {
+              // Pass the session's directory so opencode resolves project-scoped
+              // agents (.opencode/agent/*.md under the project) and applies them
+              // when the user picked a project agent from the picker.
+              ...(session?.directory ? { directory: session.directory } : {}),
+              ...(selectedAgent ? { agent: selectedAgent } : {}),
+              ...(selectedModel ? { model: formatPromptModel(selectedModel) } : {}),
+              ...(selectedVariant ? { variant: selectedVariant } : {}),
+            } as any,
+            classify: classifySessionError,
+          });
       if (!result.ok) {
         setCommandError(result.error);
         throw result.cause instanceof Error ? result.cause : new Error(result.error.message);
@@ -4723,6 +4757,7 @@ export function SessionChat({
       scrollToBottom,
       replyTo,
       messages,
+      sessionState,
     ],
   );
 
@@ -4809,8 +4844,9 @@ export function SessionChat({
     clearTimeout(busyTimerRef.current);
     setIsBusy(false);
 
-    abortSession.mutate(sessionId);
-  }, [sessionId, abortSession]);
+    if (sessionState) sessionState.cancel();
+    else abortSession.mutate(sessionId);
+  }, [sessionId, sessionState, abortSession]);
 
   // ---- Triple-ESC to stop ----
   // ESC 1 → show hint (2 more). ESC 2 → show hint (1 more). ESC 3 → stop.

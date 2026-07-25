@@ -51,6 +51,7 @@ export const ExperimentalFeatureMapSchema = z.object({
   agentmail_email: z.boolean(),
   meet: z.boolean(),
   llm_gateway: z.boolean(),
+  acp_runtime: z.boolean(),
   review_center: z.boolean(),
 });
 export type ExperimentalFeatureMap = z.infer<typeof ExperimentalFeatureMapSchema>;
@@ -663,6 +664,11 @@ export const SessionStartResultSchema = z.object({
   sandbox: ProjectSessionSandboxSchema.nullable(),
   /** Canonical OpenCode root pin, resolved server-side once the box is up. */
   opencode_session_id: z.string().nullable(),
+  /**
+   * Server-selected OpenCode transport. Omitted only by pre-ACP servers.
+   * Clients must treat omission as the legacy REST transport.
+   */
+  runtime_transport: z.enum(['acp', 'rest']).optional(),
   /**
    * Relative proxy path for this session's OpenCode runtime (port 8000),
    * composed by the client against its configured backend URL. The server owns

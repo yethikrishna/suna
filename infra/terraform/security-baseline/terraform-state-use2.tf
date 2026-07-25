@@ -36,7 +36,40 @@ resource "aws_kms_key" "terraform_state_use2" {
       Principal = {
         AWS = "arn:aws:iam::${local.account_id}:root"
       }
-      Action   = "kms:*"
+      Action = [
+        "kms:CancelKeyDeletion",
+        "kms:CreateAlias",
+        "kms:CreateGrant",
+        "kms:Decrypt",
+        "kms:DeleteAlias",
+        "kms:DescribeKey",
+        "kms:DisableKey",
+        "kms:DisableKeyRotation",
+        "kms:EnableKey",
+        "kms:EnableKeyRotation",
+        "kms:Encrypt",
+        "kms:GenerateDataKey",
+        "kms:GenerateDataKeyWithoutPlaintext",
+        "kms:GetKeyPolicy",
+        "kms:GetKeyRotationStatus",
+        "kms:ListAliases",
+        "kms:ListGrants",
+        "kms:ListKeyPolicies",
+        "kms:ListKeyRotations",
+        "kms:ListResourceTags",
+        "kms:ListRetirableGrants",
+        "kms:PutKeyPolicy",
+        "kms:ReEncryptFrom",
+        "kms:ReEncryptTo",
+        "kms:RetireGrant",
+        "kms:RevokeGrant",
+        "kms:RotateKeyOnDemand",
+        "kms:ScheduleKeyDeletion",
+        "kms:TagResource",
+        "kms:UntagResource",
+        "kms:UpdateAlias",
+        "kms:UpdateKeyDescription",
+      ]
       Resource = "*"
     }]
   })
@@ -144,9 +177,10 @@ resource "aws_s3_bucket_policy" "terraform_state_use2" {
 resource "aws_dynamodb_table" "terraform_locks_use2" {
   provider = aws.use2
 
-  name         = "kortix-terraform-locks-us-east-2"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
+  name                        = "kortix-terraform-locks-us-east-2"
+  billing_mode                = "PAY_PER_REQUEST"
+  hash_key                    = "LockID"
+  deletion_protection_enabled = true
 
   attribute {
     name = "LockID"

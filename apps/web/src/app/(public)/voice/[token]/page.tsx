@@ -77,7 +77,8 @@ export default function VoiceBridgePage() {
     let player: AudioWorkletNode | null = null;
     let speakingTimer: ReturnType<typeof setTimeout> | null = null;
 
-    async function connect(): Promise<void> {
+    /** Audio graph is built ONCE. Only the socket reconnects. */
+    async function setupAudio(): Promise<void> {
       ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
       if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
 
@@ -88,6 +89,11 @@ export default function VoiceBridgePage() {
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       });
 
+      connectSocket();
+      await buildGraph();
+    }
+
+    function connectSocket(): void {
       ws = new WebSocket(wsUrl);
       ws.binaryType = 'arraybuffer';
 
@@ -117,18 +123,22 @@ export default function VoiceBridgePage() {
 
       ws.onclose = () => {
         if (cancelled) return;
-        // The call may simply have ended; retry a few times before giving up so
-        // a blip doesn't silently take the agent out of the meeting.
+        // Reconnect the SOCKET ONLY — never rebuild the audio graph. Doing that
+        // races the existing getUserMedia for the mic and yields a live-looking
+        // but silent capture chain.
         if (reconnects < 5) {
           reconnects++;
           setPhase('reconnecting');
-          setTimeout(() => void connect().catch(() => {}), 1000 * reconnects);
+          setTimeout(() => connectSocket(), 1000 * reconnects);
         } else {
           setPhase('failed');
           setError('lost connection to Kortix');
         }
       };
+    }
 
+    async function buildGraph(): Promise<void> {
+      if (!ctx || !stream) return;
       const source = ctx.createMediaStreamSource(stream);
 
       // Both directions run on the audio thread, in ONE worklet module.
@@ -212,7 +222,7 @@ export default function VoiceBridgePage() {
       };
     }
 
-    connect().catch((e) => {
+    setupAudio().catch((e) => {
       if (cancelled) return;
       setPhase('failed');
       setError(e instanceof Error ? e.message : String(e));

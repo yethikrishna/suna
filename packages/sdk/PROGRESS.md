@@ -174,21 +174,39 @@ Also stop if the same failure survives three different fixes (use
 
 ---
 
-## NOW — active plan: native integration authentication lifecycle
+## COMPLETED PLAN — native integration authentication lifecycle
 
 - **Plan:** `docs/superpowers/plans/2026-07-25-native-integration-auth-lifecycle.md`
 - **Spec:** `docs/superpowers/specs/2026-07-25-native-integration-auth-lifecycle-design.md`
 
-| #   | Task                                          | Status                    | Session                       | Last touched | Commit      |
-| --- | --------------------------------------------- | ------------------------- | ----------------------------- | ------------ | ----------- |
-| 1   | Contracts and RED tests                       | DONE                      | `native-oauth-full-lifecycle` | 2026-07-25   | `de7026bfc` |
-| 2   | Database lifecycle                            | DONE                      | `native-oauth-full-lifecycle` | 2026-07-25   | `572bedb5a` |
-| 3   | OAuth2 protocol engine                        | DONE                      | `native-oauth-full-lifecycle` | 2026-07-25   | `db31d216e` |
-| 4   | API lifecycle routes                          | DONE                      | `native-oauth-full-lifecycle` | 2026-07-25   | `63dda6afe` |
-| 5   | Executor and non-OAuth request authentication | DONE                      | `native-oauth-full-lifecycle` | 2026-07-25   | `35daeda10` |
-| 6   | SDK and web integration                       | DONE                      | `native-oauth-full-lifecycle` | 2026-07-25   | `b3826fa8f` |
-| 7   | Local verification                            | DONE WITH BROWSER BLOCKER | `native-oauth-full-lifecycle` | 2026-07-25   | `4575346db` |
-| 8   | Delivery and dev proof                        | IN PROGRESS               | `native-oauth-full-lifecycle` | 2026-07-25   | claim       |
+| # | Task | Status | Session | Last touched | Commit |
+|---|---|---|---|---|---|
+| 1 | Contracts and RED tests | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `de7026bfc` |
+| 2 | Database lifecycle | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `572bedb5a` |
+| 3 | OAuth2 protocol engine | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `db31d216e` |
+| 4 | API lifecycle routes | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `63dda6afe` |
+| 5 | Executor and non-OAuth request authentication | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `35daeda10` |
+| 6 | SDK and web integration | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `b3826fa8f` |
+| 7 | Local verification | DONE WITH BROWSER BLOCKER | `native-oauth-full-lifecycle` | 2026-07-25 | `4575346db` |
+| 8 | Delivery and dev proof | DONE | `native-oauth-full-lifecycle` | 2026-07-25 | `00bc29065` + `8a1249883` |
+
+---
+
+## NOW — active plan: OpenCode ACP canary
+
+- **Plan:** `docs/superpowers/plans/2026-07-25-opencode-acp-canary.md`
+- **Spec:** `docs/superpowers/specs/2026-07-25-opencode-acp-canary-design.md`
+
+| # | Task | Status | Session | Last touched | Commit |
+|---|---|---|---|---|---|
+| 1 | Native process and protocol core | DONE | `acp-opencode-canary` | 2026-07-25 | `2ba64ab68` |
+| 2 | Authenticated HTTP/SSE bridge | DONE | `acp-opencode-canary` | 2026-07-25 | `8560c2dfc` |
+| 3 | API transport metadata and rollback | IN PROGRESS | `acp-opencode-canary` | 2026-07-25 | — |
+| 4 | SDK ACP transport | NOT STARTED | — | — | — |
+| 5 | SDK session projection | NOT STARTED | — | — | — |
+| 6 | Existing `useSession` integration | NOT STARTED | — | — | — |
+| 7 | Local parity and rollback proof | NOT STARTED | — | — | — |
+| 8 | Delivery and dev proof | NOT STARTED | — | — | — |
 
 ---
 
@@ -803,8 +821,6 @@ default names and behavior remain unchanged. SDK work will follow RED → GREEN 
 REFACTOR and finish on the full typecheck, test, and packed-install smoke gates.
 
 **Status:** IN PROGRESS.
-
----
 
 ### 2026-07-13 — session `gateway-routing-ui` (completion)
 
@@ -2149,7 +2165,6 @@ SDK typecheck, test, and packed-install smoke gates, focused web tests, browser
 verification, repository merge, Deploy Dev, and live-dev proof.
 
 **Status:** IN PROGRESS.
-
 ---
 
 ### 2026-07-25 — session `gateway-billing-audit` (B19 claim)
@@ -2194,3 +2209,20 @@ The browser no longer uses `models.dev` as a fallback for `kortix` models.
 **Shippable to production: YES** for B19 and the published SDK surface.
 Repository merge, Deploy Dev, and live-dev verification remain repository
 delivery tasks.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (OpenCode ACP Task 3 claim)
+
+Claimed the OpenCode-only ACP canary after both previous SDK claims closed.
+PR #5400 merged the session-history pagination change.
+PR #5403 and Deploy Dev run 30136343999 completed the authentication lifecycle.
+
+The sandbox process and bridge slices are complete.
+The real OpenCode `1.18.4` smoke negotiated ACP v1, exposed its internal HTTP
+server, and created ACP session `ses_0693a6e03ffeGeChw6OVEfRGaW`.
+
+Task 3 will add server-owned `acp` and `rest` transport metadata.
+The SDK source remains unchanged until Task 4 starts with a failing test.
+
+**Status:** IN PROGRESS.

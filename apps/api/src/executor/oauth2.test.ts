@@ -111,9 +111,9 @@ describe('OAuth2 client credentials', () => {
     expect(jwtBody.get('client_assertion')?.split('.')).toHaveLength(3);
   });
 
-  test('creates a PS256 private-key client assertion with the certificate thumbprint', () => {
+  test('creates a PS256 private-key client assertion with the certificate thumbprint', async () => {
     const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-    const assertion = buildPrivateKeyClientAssertion(
+    const assertion = await buildPrivateKeyClientAssertion(
       {
         ...SECRET_CONFIG,
         token_endpoint_auth_method: 'private_key_jwt',

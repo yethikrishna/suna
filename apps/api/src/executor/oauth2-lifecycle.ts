@@ -1,5 +1,12 @@
 import type { OAuth2ApplicationInput } from '@kortix/api-contract';
-import { createHash, createHmac, createSign, randomBytes, randomUUID } from 'node:crypto';
+import {
+  createHash,
+  createPrivateKey,
+  createSecretKey,
+  randomBytes,
+  randomUUID,
+} from 'node:crypto';
+import { CompactSign } from 'jose';
 import { safeEgressFetch } from '../shared/ssrf-guard';
 
 const ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer';
@@ -21,51 +28,39 @@ export interface OAuth2TokenSet {
   scopes: string[];
 }
 
-function base64Json(value: unknown): string {
-  return Buffer.from(JSON.stringify(value)).toString('base64url');
-}
-
-function clientAssertion(
+async function clientAssertion(
   application: OAuth2ApplicationInput,
   audience: string,
   runtime: OAuth2LifecycleRuntime,
-): string {
+): Promise<string> {
   const now = Math.floor((runtime.now?.() ?? Date.now()) / 1000);
-  const payload = base64Json({
-    aud: audience,
-    iss: application.client_id,
-    sub: application.client_id,
-    jti: runtime.randomId?.() ?? randomUUID(),
-    iat: now,
-    exp: now + 300,
-  });
+  const payload = Buffer.from(
+    JSON.stringify({
+      aud: audience,
+      iss: application.client_id,
+      sub: application.client_id,
+      jti: runtime.randomId?.() ?? randomUUID(),
+      iat: now,
+      exp: now + 300,
+    }),
+  );
   if (application.token_endpoint_auth_method === 'client_secret_jwt') {
-    const header = base64Json({ alg: 'HS256', typ: 'JWT' });
-    const input = `${header}.${payload}`;
-    // OAuth client_secret_jwt requires JWS HS256. This is a signature, not password hashing.
-    // lgtm[js/insufficient-password-hash]
-    const signature = createHmac('sha256', application.client_secret ?? '')
-      .update(input)
-      .digest('base64url');
-    return `${input}.${signature}`;
+    return new CompactSign(payload)
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .sign(createSecretKey(Buffer.from(application.client_secret ?? '')));
   }
-  const header = base64Json({ alg: 'RS256', typ: 'JWT' });
-  const input = `${header}.${payload}`;
-  // OAuth private_key_jwt requires JWS RS256. This is a signature, not password hashing.
-  // lgtm[js/insufficient-password-hash]
-  const signer = createSign('RSA-SHA256');
-  signer.update(input);
-  signer.end();
-  return `${input}.${signer.sign(application.private_key ?? '', 'base64url')}`;
+  return new CompactSign(payload)
+    .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+    .sign(createPrivateKey(application.private_key ?? ''));
 }
 
-function applyClientAuthentication(
+async function applyClientAuthentication(
   application: OAuth2ApplicationInput,
   endpoint: string,
   body: URLSearchParams,
   headers: Headers,
   runtime: OAuth2LifecycleRuntime,
-): void {
+): Promise<void> {
   body.set('client_id', application.client_id);
   switch (application.token_endpoint_auth_method) {
     case 'none':
@@ -82,7 +77,7 @@ function applyClientAuthentication(
     case 'client_secret_jwt':
     case 'private_key_jwt':
       body.set('client_assertion_type', ASSERTION_TYPE);
-      body.set('client_assertion', clientAssertion(application, endpoint, runtime));
+      body.set('client_assertion', await clientAssertion(application, endpoint, runtime));
   }
 }
 
@@ -164,7 +159,7 @@ async function tokenRequest(
 ): Promise<OAuth2TokenSet> {
   const tokenUrl = endpoint(application, 'token_url');
   const headers = new Headers({ 'content-type': 'application/x-www-form-urlencoded' });
-  applyClientAuthentication(application, tokenUrl, body, headers, runtime);
+  await applyClientAuthentication(application, tokenUrl, body, headers, runtime);
   for (const [key, value] of Object.entries(application.token_params ?? {})) body.set(key, value);
   if (application.resource) body.set('resource', application.resource);
   if (application.audience) body.set('audience', application.audience);
@@ -266,7 +261,7 @@ export async function startOAuth2DeviceAuthorization(
   const deviceUrl = endpoint(application, 'device_authorization_url');
   const body = new URLSearchParams();
   const headers = new Headers({ 'content-type': 'application/x-www-form-urlencoded' });
-  applyClientAuthentication(application, deviceUrl, body, headers, runtime);
+  await applyClientAuthentication(application, deviceUrl, body, headers, runtime);
   if (application.scopes?.length) body.set('scope', application.scopes.join(' '));
   const response = await providerFetch(deviceUrl, { method: 'POST', headers, body }, runtime);
   const payload = await boundedJson(response);
@@ -316,7 +311,7 @@ export async function pollOAuth2DeviceAuthorization(
   const tokenUrl = endpoint(application, 'token_url');
   const body = new URLSearchParams({ grant_type: DEVICE_GRANT, device_code: deviceCode });
   const headers = new Headers({ 'content-type': 'application/x-www-form-urlencoded' });
-  applyClientAuthentication(application, tokenUrl, body, headers, runtime);
+  await applyClientAuthentication(application, tokenUrl, body, headers, runtime);
   const response = await providerFetch(tokenUrl, { method: 'POST', headers, body }, runtime);
   const payload = await boundedJson(response);
   if (response.ok) {
@@ -342,7 +337,7 @@ export async function revokeOAuth2Token(
   const revocationUrl = endpoint(application, 'revocation_url');
   const body = new URLSearchParams({ token, token_type_hint: tokenTypeHint });
   const headers = new Headers({ 'content-type': 'application/x-www-form-urlencoded' });
-  applyClientAuthentication(application, revocationUrl, body, headers, runtime);
+  await applyClientAuthentication(application, revocationUrl, body, headers, runtime);
   const response = await providerFetch(revocationUrl, { method: 'POST', headers, body }, runtime);
   if (!response.ok) {
     const payload = await boundedJson(response);

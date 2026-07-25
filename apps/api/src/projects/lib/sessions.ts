@@ -424,6 +424,7 @@ export async function buildSessionSandboxEnvVars(input: {
       // platform resolution. The sandbox uses it for the first OpenCode turn
       // and as the session's OpenCode config default.
       opencodeModel: input.opencodeModel,
+      opencodeTransport: config.KORTIX_OPENCODE_TRANSPORT,
       // Backend-vouched end-user (KaaB) → KORTIX_ORIGIN_REF in the sandbox.
       originRef: sessionKaabRow?.originRef ?? null,
       compiledAgentConfig,

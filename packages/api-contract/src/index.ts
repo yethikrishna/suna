@@ -664,6 +664,11 @@ export const SessionStartResultSchema = z.object({
   /** Canonical OpenCode root pin, resolved server-side once the box is up. */
   opencode_session_id: z.string().nullable(),
   /**
+   * Server-selected OpenCode transport. Omitted only by pre-ACP servers.
+   * Clients must treat omission as the legacy REST transport.
+   */
+  runtime_transport: z.enum(['acp', 'rest']).optional(),
+  /**
    * Relative proxy path for this session's OpenCode runtime (port 8000),
    * composed by the client against its configured backend URL. The server owns
    * the proxy scheme; absent until the box has an external_id.

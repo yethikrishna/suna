@@ -88,7 +88,13 @@ projectsApp.openapi(
     const waitMsRaw = Number(c.req.query('wait_ms'));
     const waitMs = Number.isFinite(waitMsRaw) && waitMsRaw > 0 ? Math.min(waitMsRaw, 8000) : 0;
     const result = await startSession({ source: 'ui', loaded, visible, projectId, sessionId, waitMs });
-    return c.json(result.start, 200);
+    return c.json(
+      {
+        ...result.start,
+        runtime_transport: config.KORTIX_OPENCODE_TRANSPORT,
+      },
+      200,
+    );
   },
 );
 

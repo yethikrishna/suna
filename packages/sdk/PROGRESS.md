@@ -202,7 +202,7 @@ Also stop if the same failure survives three different fixes (use
 | 1 | Native process and protocol core | DONE | `acp-opencode-canary` | 2026-07-25 | `2ba64ab68` |
 | 2 | Authenticated HTTP/SSE bridge | DONE | `acp-opencode-canary` | 2026-07-25 | `8560c2dfc` |
 | 3 | API transport metadata and rollback | DONE | `acp-opencode-canary` | 2026-07-25 | `b558def6f` |
-| 4 | SDK ACP transport | NOT STARTED | — | — | — |
+| 4 | SDK ACP transport | IN PROGRESS | `acp-opencode-canary` | 2026-07-25 | — |
 | 5 | SDK session projection | NOT STARTED | — | — | — |
 | 6 | Existing `useSession` integration | NOT STARTED | — | — | — |
 | 7 | Local parity and rollback proof | NOT STARTED | — | — | — |

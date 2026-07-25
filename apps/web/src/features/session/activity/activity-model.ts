@@ -347,3 +347,70 @@ export function formatActivityDuration(ms: number): string {
   const seconds = totalSeconds % 60;
   return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
+
+// ============================================================================
+// Narrative fold
+// ============================================================================
+
+export interface NarrativeFold {
+  /** Item keys absorbed into the single work line. */
+  foldedKeys: Set<string>;
+  /** The key whose slot paints the work line — the FIRST folded item, so the
+   *  line keeps its place in the narrative order rather than jumping to the
+   *  top of the turn. `null` when nothing folded. */
+  workLineKey: string | null;
+  /** Every tool call inside the work line, in order. */
+  entries: ActivityEntry[];
+  /** The turn's thinking, folded in rather than dropped. */
+  reasoningParts: ReasoningPart[];
+}
+
+/**
+ * Decide what Narrative mode hides behind its one work line.
+ *
+ * Two things must stay OUT of the fold, and both are correctness rather than
+ * taste: a FAILED step (a reader must see something went wrong without
+ * expanding anything) and a step waiting on a PERMISSION prompt (a reader must
+ * see what they are approving).
+ *
+ * A group is decided as a whole before any of it is collected. Collecting
+ * eagerly and bailing out later would leave the same call rendered twice —
+ * once inside the work line and once inside the group that still had to
+ * render for its un-foldable member.
+ */
+export function partitionForNarrative(
+  items: ReadonlyArray<ActivityItem>,
+  lockedCallIds?: ReadonlySet<string>,
+): NarrativeFold {
+  const foldedKeys = new Set<string>();
+  const entries: ActivityEntry[] = [];
+  const reasoningParts: ReasoningPart[] = [];
+  let workLineKey: string | null = null;
+
+  const canFold = (entry: ActivityEntry) => {
+    const status = (entry.part.state as { status?: string } | undefined)?.status;
+    if (status === 'error') return false;
+    return !lockedCallIds?.has(entry.part.callID);
+  };
+
+  for (const item of items) {
+    if (item.type === 'group') {
+      if (item.entries.every(canFold)) {
+        entries.push(...item.entries);
+        foldedKeys.add(item.key);
+      }
+    } else if (item.type === 'tool') {
+      if (canFold(item.entry)) {
+        entries.push(item.entry);
+        foldedKeys.add(item.key);
+      }
+    } else if (item.type === 'reasoning') {
+      reasoningParts.push(...item.parts);
+      foldedKeys.add(item.key);
+    }
+
+    if (workLineKey === null && foldedKeys.has(item.key)) workLineKey = item.key;
+  }
+
+  return { foldedKeys, workLineKey, entries, reasoningParts };
+}

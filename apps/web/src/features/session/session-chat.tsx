@@ -49,7 +49,16 @@ import {
   type ActivityEntry,
   type ActivityKind,
   buildActivityItems,
+  formatActivityDuration,
+  partitionForNarrative,
+  summarizeEntries,
 } from '@/features/session/activity/activity-model';
+import {
+  ChatDetailProvider,
+  ChatDetailToggle,
+  densityForDetail,
+  useChatDetail,
+} from '@/features/session/activity/chat-detail';
 import {
   type ActivityCounts,
   activityGroupLabel,
@@ -2080,6 +2089,105 @@ function ShellStepRow({
  * more click away), everything else renders its full `ToolPartRenderer` so
  * real results (search hits, diffs, fetched pages) stay visible.
  */
+/**
+ * Narrative mode's single work line — the whole of a turn's machinery, folded
+ * to one faint row.
+ *
+ * This is the shipping default. A reader following along sees the ask, the
+ * agent's words and the deliverable; the twelve shell calls that produced it
+ * are one line they never have to look at. Expanding shows the same humanized
+ * step rows the full-history reading uses, and each of those still expands to
+ * the real tool output — so nothing is unreachable, it is only quiet.
+ *
+ * What deliberately does NOT fold in here (handled by the caller): errors,
+ * permission-locked calls, deliverables, todos and questions.
+ */
+function TurnWorkLine({
+  entries,
+  reasoningParts,
+  sessionId,
+  disableNavigation,
+  working,
+}: {
+  entries: ActivityEntry[];
+  reasoningParts: ReasoningPart[];
+  sessionId: string;
+  disableNavigation?: boolean;
+  working: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const reasoningText = useMemo(
+    () =>
+      reasoningParts
+        .map((p) => p.text ?? '')
+        .join('\n\n')
+        .trim(),
+    [reasoningParts],
+  );
+
+  const summary = useMemo(() => summarizeEntries(entries), [entries]);
+  const duration = formatActivityDuration(summary.durationMs);
+  const running = working || summary.running;
+
+  if (entries.length === 0 && !reasoningText) return null;
+
+  const stepWord = summary.totalSteps === 1 ? 'step' : 'steps';
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <div
+          className={cn(
+            'group/work -mx-1.5 flex w-fit cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1',
+            'text-muted-foreground/45 hover:text-muted-foreground hover:bg-muted/40',
+            'text-xs transition-colors select-none',
+          )}
+        >
+          {running && <Loading variant="spokes" className="size-3 shrink-0" />}
+          <span className="tabular-nums">
+            {running
+              ? `Working… · ${summary.totalSteps} ${stepWord}`
+              : `${summary.totalSteps} ${stepWord}${duration ? ` · ${duration}` : ''}`}
+          </span>
+          <ChevronRight
+            className={cn(
+              'size-3 shrink-0 opacity-0 transition-transform group-hover/work:opacity-100',
+              open && 'rotate-90 opacity-100',
+            )}
+          />
+        </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="border-border/40 mt-1.5 mb-1 ml-1 space-y-0.5 border-l pl-3">
+          {reasoningText && (
+            <div className="text-muted-foreground/60 mb-1.5 space-y-2 text-xs leading-relaxed italic [&_.kortix-markdown]:italic">
+              <UnifiedMarkdown content={reasoningText} />
+            </div>
+          )}
+          {entries.map(({ part }) =>
+            isShellActivityTool(part.tool) ? (
+              <ShellStepRow
+                key={part.id}
+                part={part}
+                sessionId={sessionId}
+                disableNavigation={disableNavigation}
+              />
+            ) : (
+              <ToolPartRenderer
+                key={part.id}
+                part={part}
+                sessionId={sessionId}
+                disableNavigation={disableNavigation}
+              />
+            ),
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function SameToolGroup({
   kind,
   counts,
@@ -2180,6 +2288,10 @@ function SameToolGroup({
     </Collapsible>
   );
 }
+
+/** Shared empty set for the full-history branch — allocating a new one per
+ *  render would defeat the memo on every child that reads it. */
+const EMPTY_FOLD_KEYS: ReadonlySet<string> = new Set<string>();
 
 // ============================================================================
 // Session Turn — core turn component
@@ -2636,14 +2748,18 @@ function SessionTurn({
   // runtime's step-start/step-finish bookkeeping parts (and agent/retry/
   // snapshot/patch) are transparent to grouping, so a run of N tool calls
   // folds into one group instead of N raw rows.
+  // Narrative is the default reading: machinery folds into one work line per
+  // turn. "Show full history" flips this to the per-kind step list — same
+  // parts, same model, re-rendered in place.
+  const { detail } = useChatDetail();
   const activityItems = useMemo(
     () =>
       buildActivityItems(allParts, {
-        density: 'detailed',
+        density: densityForDetail(detail),
         lockedCallIds,
         isHidden: (part, messageId) => isToolPartHidden(part, messageId, hidden),
       }),
-    [allParts, lockedCallIds, hidden],
+    [allParts, lockedCallIds, hidden, detail],
   );
 
   // Whether the user message has any visible content (non-synthetic, non-ignored
@@ -2942,7 +3058,38 @@ function SessionTurn({
           {(() => {
             const reasoningActive = working && permissions.length === 0 && questions.length === 0;
 
+            // ── Narrative mode (the default) ──
+            // Fold the turn's machinery into ONE work line, placed where the
+            // first piece of machinery occurred so the surrounding prose still
+            // reads in order. Errors and permission-locked calls are pulled
+            // back out — a reader must see a failure, and must see what they
+            // are being asked to approve, without expanding anything.
+            const narrative = detail === 'narrative';
+            // The fold decision is pure and lives in the model, where it is
+            // tested — see `partitionForNarrative`. Duplicating it here is how
+            // the two readings would drift apart.
+            const { foldedKeys, workLineKey, entries: foldedEntries, reasoningParts: foldedReasoning } =
+              narrative
+                ? partitionForNarrative(activityItems, lockedCallIds)
+                : { foldedKeys: EMPTY_FOLD_KEYS, workLineKey: null, entries: [], reasoningParts: [] };
+
             return activityItems.map((item) => {
+              if (narrative && foldedKeys.has(item.key)) {
+                // Only the first folded item's slot paints the line; the rest
+                // are absorbed into it.
+                if (item.key !== workLineKey) return null;
+                return (
+                  <TurnWorkLine
+                    key={item.key}
+                    entries={foldedEntries}
+                    reasoningParts={foldedReasoning}
+                    sessionId={sessionId}
+                    disableNavigation={disableToolNavigation}
+                    working={reasoningActive}
+                  />
+                );
+              }
+
               switch (item.type) {
                 case 'reasoning':
                   return (
@@ -5173,6 +5320,9 @@ export function SessionChat({
   }
 
   return (
+    // Narrative vs full history is a per-reader choice that has to be visible
+    // to every turn in the transcript, so the provider wraps the whole chat.
+    <ChatDetailProvider>
     <div
       className={cn(
         'relative flex h-full flex-col',
@@ -5354,6 +5504,14 @@ export function SessionChat({
                     >
                       {isLoadingOlder ? <Loading /> : 'Load older messages'}
                     </Button>
+                  </div>
+                )}
+                {/* The offer to see everything. Lives with the transcript,
+                    not in a settings panel — the decision to look closer is
+                    made while reading. */}
+                {turns.length > 0 && (
+                  <div className="mb-2 flex justify-end">
+                    <ChatDetailToggle />
                   </div>
                 )}
                 <ToolActivateContext.Provider value={toolActivate}>
@@ -5567,5 +5725,6 @@ export function SessionChat({
         />
       )}
     </div>
+    </ChatDetailProvider>
   );
 }

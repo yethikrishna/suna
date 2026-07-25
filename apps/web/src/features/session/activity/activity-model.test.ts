@@ -5,6 +5,7 @@ import {
   buildActivityItems,
   formatActivityDuration,
   isStructuralPart,
+  partitionForNarrative,
   summarizeItems,
 } from './activity-model';
 
@@ -199,5 +200,87 @@ describe('formatActivityDuration', () => {
     expect(formatActivityDuration(4_200)).toBe('4s');
     expect(formatActivityDuration(72_000)).toBe('1m 12s');
     expect(formatActivityDuration(120_000)).toBe('2m');
+  });
+});
+
+describe('partitionForNarrative — what the shipping default hides', () => {
+  const reasoning = (text: string): Part =>
+    ({ id: `r-${(seq += 1)}`, type: 'reasoning', text }) as unknown as Part;
+
+  test('a plain run of work folds entirely into one work line', () => {
+    const items = buildActivityItems(wrap([tool('bash'), tool('bash'), tool('bash')]), {
+      density: 'simple',
+    });
+    const fold = partitionForNarrative(items);
+    expect(fold.entries).toHaveLength(3);
+    expect(fold.workLineKey).toBe(items[0].key);
+    expect(fold.foldedKeys.has(items[0].key)).toBe(true);
+  });
+
+  test('the work line takes the FIRST folded slot, so it keeps its place in the prose', () => {
+    // text, then work — the line must land after the paragraph, not above it.
+    const items = buildActivityItems(wrap([text('Planning the deck.'), tool('bash'), tool('bash')]), {
+      density: 'simple',
+    });
+    const fold = partitionForNarrative(items);
+    expect(items[0].type).toBe('text');
+    expect(fold.foldedKeys.has(items[0].key)).toBe(false);
+    expect(fold.workLineKey).toBe(items[1].key);
+  });
+
+  test('a FAILED step is never folded — a reader must see it without expanding', () => {
+    const boom = tool('bash', { state: { status: 'error', error: 'boom' } } as Partial<ToolPart>);
+    const items = buildActivityItems(wrap([tool('bash'), boom, tool('bash')]), { density: 'simple' });
+    const fold = partitionForNarrative(items);
+    const foldedIds = fold.entries.map((e) => e.part.id);
+    expect(foldedIds).not.toContain((boom as unknown as ToolPart).id);
+  });
+
+  test('a permission-locked step is never folded — approval needs to be legible', () => {
+    const locked = tool('bash') as unknown as ToolPart;
+    const items = buildActivityItems(wrap([tool('bash'), locked as unknown as Part, tool('bash')]), {
+      density: 'simple',
+      lockedCallIds: new Set([locked.callID]),
+    });
+    const fold = partitionForNarrative(items, new Set([locked.callID]));
+    expect(fold.entries.map((e) => e.part.id)).not.toContain(locked.id);
+  });
+
+  test('a group containing an un-foldable member is not folded AT ALL — no double render', () => {
+    // The bug this guards: collecting eagerly then bailing left the same call
+    // inside the work line AND inside the group that still had to render.
+    const boom = tool('bash', { state: { status: 'error', error: 'boom' } } as Partial<ToolPart>);
+    const items = buildActivityItems(wrap([tool('bash'), boom]), { density: 'simple' });
+    expect(items[0].type).toBe('group'); // the two are adjacent, so they grouped
+    const fold = partitionForNarrative(items);
+    expect(fold.foldedKeys.size).toBe(0);
+    expect(fold.entries).toHaveLength(0);
+  });
+
+  test('reasoning folds in rather than vanishing', () => {
+    const items = buildActivityItems(wrap([reasoning('Let me plan this out.'), tool('bash')]), {
+      density: 'simple',
+    });
+    const fold = partitionForNarrative(items);
+    expect(fold.reasoningParts.map((p) => p.text)).toEqual(['Let me plan this out.']);
+  });
+
+  test('deliverables and passthrough are never folded', () => {
+    const items = buildActivityItems(wrap([tool('show'), tool('todowrite'), tool('bash')]), {
+      density: 'simple',
+    });
+    const fold = partitionForNarrative(items);
+    for (const item of items) {
+      if (item.type === 'deliverable' || item.type === 'passthrough') {
+        expect(fold.foldedKeys.has(item.key)).toBe(false);
+      }
+    }
+  });
+
+  test('a turn with nothing foldable yields no work line at all', () => {
+    const items = buildActivityItems(wrap([text('Just an answer.')]), { density: 'simple' });
+    const fold = partitionForNarrative(items);
+    expect(fold.workLineKey).toBeNull();
+    expect(fold.entries).toHaveLength(0);
   });
 });

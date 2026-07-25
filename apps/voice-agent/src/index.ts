@@ -1,6 +1,6 @@
 /**
  * The LiveKit agent worker — the voice of a Kortix agent inside a live
- * meeting. STT -> LLM -> TTS pipeline (deepgram / openai / openai) with
+ * meeting. STT -> LLM -> TTS pipeline (all OpenAI today; see the stt note) with
  * silero VAD driving turn detection, per the LiveKit agents-js 1.5.5 API
  * (see README.md for exactly how this was verified against the pinned
  * package versions rather than docs/memory).
@@ -10,7 +10,6 @@
  */
 import { fileURLToPath } from 'node:url';
 import { ServerOptions, type VAD, cli, defineAgent, voice } from '@livekit/agents';
-import * as deepgram from '@livekit/agents-plugin-deepgram';
 import * as openai from '@livekit/agents-plugin-openai';
 import * as silero from '@livekit/agents-plugin-silero';
 import { type CallContext, resolveCallContext } from './call-context';
@@ -48,7 +47,11 @@ export default defineAgent<ProcessUserData>({
     const { send_prompt, run_command } = buildTools();
 
     const session = new voice.AgentSession<CallContext>({
-      stt: new deepgram.STT({ model: 'nova-3', language: 'en' }),
+      // OpenAI STT rather than Deepgram: the whole pipeline then runs on ONE
+      // credential we already hold, instead of requiring a second vendor key
+      // just to say a sentence. Swap back to deepgram.STT (nova-3 is faster and
+      // cheaper for high call volume) once a DEEPGRAM_API_KEY is provisioned.
+      stt: new openai.STT({ model: 'gpt-4o-mini-transcribe' }),
       llm: new openai.LLM({ model: 'gpt-4.1-mini' }),
       tts: new openai.TTS({ model: 'gpt-4o-mini-tts', voice: 'alloy' }),
       vad,

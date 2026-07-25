@@ -75,12 +75,28 @@ export async function mintAccessToken(input: MintAccessTokenInput): Promise<stri
  * to call back into the API just to learn who it's talking to.
  */
 export async function createRoom(room: string, metadata: string): Promise<void> {
-  await roomService().createRoom({
+  const svc = roomService();
+  await svc.createRoom({
     name: room,
     metadata,
+    // emptyTimeout covers "created but nobody ever joined". departureTimeout is
+    // the one that actually bites: it governs how long the room survives after
+    // the LAST participant leaves, and its default (~20s) is short enough that a
+    // brief gap — a page reload, a bot reconnect — destroys the room. A
+    // participant rejoining then IMPLICITLY recreates it with NO metadata, and
+    // the agent worker dies with "room metadata is missing project_id" because
+    // the call context and its API token travel in that metadata.
     emptyTimeout: 30 * 60,
+    departureTimeout: 15 * 60,
     maxParticipants: 8,
   });
+
+  // createRoom is a no-op on an already-existing room, so a room that was
+  // implicitly created by an early joiner would keep its empty metadata
+  // forever. Set it explicitly rather than trusting creation to have applied it.
+  await svc.updateRoomMetadata(room, metadata).catch((err) =>
+    console.error('[voice/livekit] updateRoomMetadata failed', err),
+  );
 }
 
 /** Best-effort — an empty room times out on its own via `emptyTimeout` anyway. */

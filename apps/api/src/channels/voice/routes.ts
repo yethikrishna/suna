@@ -240,15 +240,27 @@ voiceMcpRoutes.openapi(
     responses: { 200: json(z.any(), 'Persisted'), ...errors(400, 401, 404) },
   }),
   async (c: any) => {
-    const auth = await authenticateWorker(c, c.req.param('projectId'), c.req.param('sessionId'));
-    if (!auth.ok) return c.json({ error: auth.error }, auth.status);
+    const projectId = c.req.param('projectId');
+    const sessionId = c.req.param('sessionId');
+
+    // Deliberately does NOT require a live entry in the in-process call
+    // registry, unlike the other two worker routes. Since LiveKit took over the
+    // media plane the API holds no socket for a call, so which instance has it
+    // in memory is arbitrary — and an API restart mid-call would otherwise
+    // silently stop persisting a conversation that is still happening. The HMAC
+    // already proves this caller owns this call, and projectId/sessionId are in
+    // the path, which is everything a transcript row needs.
+    const authHeader = c.req.header('Authorization') ?? '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : '';
+    if (!verifyCallApiToken(sessionId, token)) return c.json({ error: 'Unauthorized' }, 401);
 
     const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
     const role = body.role === 'agent' ? 'agent' : 'user';
     const text = typeof body.text === 'string' ? body.text : '';
     const speaker = typeof body.speaker === 'string' ? body.speaker : null;
+    const callId = typeof body.call_id === 'string' && body.call_id ? body.call_id : sessionId;
 
-    await appendTurn(auth.call, role, text, speaker);
+    await appendTurn({ callId, projectId, sessionId }, role, text, speaker);
     return c.json({ ok: true });
   },
 );

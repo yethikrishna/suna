@@ -699,11 +699,13 @@ app.route('/v1/billing', billingApp); // /v1/billing/account-state, /v1/billing/
 app.route('/v1/account', accountDeletionApp); // account deletion status/request/cancel/immediate
 app.route('/v1/platform', platformApp); // /v1/platform, /v1/platform/sandbox/version
 registerSunaMigrationRoutes(projectsApp); // /v1/projects/suna-migration/* (OG Suna → opencode, user-triggered)
-app.route('/v1/projects', projectsApp); // /v1/projects — Git-backed Kortix projects
-// /v1/projects/:projectId/mcp/voice — the voice MCP an in-sandbox agent calls to
-// spawn a voice agent on its own session thread. Mounted alongside projectsApp so
-// it inherits the same auth surface.
+// Voice routes are registered BEFORE projectsApp: Hono matches in registration
+// order, and projectsApp's auth middleware would otherwise claim the worker
+// callbacks (/sessions/:id/voice/*) and reject them with a generic 401 before
+// their own per-call HMAC check ever runs. The worker is not a Kortix session
+// and cannot present session auth.
 app.route('/v1/projects', voiceMcpRoutes);
+app.route('/v1/projects', projectsApp); // /v1/projects — Git-backed Kortix projects
 app.route('/v1/marketplace', marketplaceApp); // /v1/marketplace — browse the registry catalog
 
 // Universal git smart-HTTP proxy — every git-backed project's client origin.

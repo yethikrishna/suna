@@ -40,6 +40,7 @@ type Phase = 'connecting' | 'listening' | 'speaking' | 'failed';
 export default function VoiceBridgePage() {
   const [phase, setPhase] = useState<Phase>('connecting');
   const [error, setError] = useState<string | null>(null);
+  const [needsGesture, setNeedsGesture] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioContainerRef = useRef<HTMLDivElement | null>(null);
   // The draw loop below (a plain interval, see the comment on it) reads room
@@ -62,6 +63,7 @@ export default function VoiceBridgePage() {
     ).trim();
 
     let cancelled = false;
+    let unblockListener: (() => void) | null = null;
     const room = new Room();
     roomRef.current = room;
     // Elements handed back by `track.attach()` are plain DOM nodes LiveKit does
@@ -111,7 +113,28 @@ export default function VoiceBridgePage() {
           for (const el of track.detach()) el.remove();
         });
 
+      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        // Browsers refuse programmatic audio until a user gesture. Without this
+        // the agent speaks, LiveKit delivers it, and the page plays NOTHING —
+        // which looks exactly like a dead agent. Surface it instead of hiding it.
+        if (!cancelled) setNeedsGesture(!room.canPlaybackAudio);
+      });
+
       await room.connect(livekitUrl, token);
+
+      // Recall's browser autoplays, so this usually succeeds outright; a normal
+      // browser needs the click handler below.
+      try {
+        await room.startAudio();
+      } catch {
+        if (!cancelled) setNeedsGesture(true);
+      }
+      const unblock = () => {
+        void room.startAudio().then(() => !cancelled && setNeedsGesture(false)).catch(() => {});
+      };
+      window.addEventListener('click', unblock);
+      window.addEventListener('keydown', unblock);
+      unblockListener = unblock;
       // No echoCancellation/noiseSuppression/autoGainControl flags to fight with
       // here — LiveKit's default capture settings are what its own client-side
       // processing expects, and Gate 0 already established there is no bot
@@ -127,6 +150,10 @@ export default function VoiceBridgePage() {
 
     return () => {
       cancelled = true;
+      if (unblockListener) {
+        window.removeEventListener('click', unblockListener);
+        window.removeEventListener('keydown', unblockListener);
+      }
       for (const el of attachedEls) el.remove();
       void room.disconnect();
       roomRef.current = null;
@@ -180,8 +207,12 @@ export default function VoiceBridgePage() {
     return () => clearInterval(timer);
   }, [phase]);
 
+  // A blocked-autoplay page looks identical to a dead agent: it says
+  // 'listening' forever while speech it already received goes unplayed.
   const label =
-    phase === 'speaking'
+    needsGesture
+      ? 'click anywhere to enable audio'
+      : phase === 'speaking'
       ? 'speaking'
       : phase === 'listening'
         ? 'listening'

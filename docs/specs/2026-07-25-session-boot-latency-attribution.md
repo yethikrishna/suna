@@ -379,7 +379,27 @@ Platinum. Expect Platinum's first-ever warm bakes as a consequence — new build
 load on a provider that has never done them; the existing per-provider bake
 cooldown applies.
 
-⚠ **Deploying #6's rename is not free.** The new name adds a `tpl8` segment and
+### The rename burst is now designed away, not merely watched
+
+An earlier revision of this doc said the rename "must be released behind the
+warm-bake pacing and watched". That was accepting an avoidable risk. The warm-HIT
+lookup now falls back to the **legacy name** (`legacyPerProjectWarmImageName`) for
+the shared default template, so an image baked before the scoping change is still
+found and served — it is already built, and for the default template it is already
+exactly right (same project, same tip, same base identity).
+
+Effect: nothing is invalidated at deploy. A legacy image keeps serving until that
+project's default branch actually moves, at which point the new-format name misses
+and bakes once. The fleet migrates at the natural rate of pushes rather than all
+inside one deploy window, and stale legacy tips age out through quota-gc's
+idle/LRU rules (which match both name shapes). Gated on `isShared` because a legacy
+name encodes no template, so resolving one for a custom template would hand it a
+different template's image.
+
+The paragraph below describes what WOULD have happened without that fallback, and
+is kept because it is the reason the fallback exists.
+
+⚠ **Without the legacy fallback, deploying #6's rename would not be free.** The new name adds a `tpl8` segment and
 folds the slug into the hash, so no pre-migration name can be recomputed —
 including the default template's. With ~66% of Daytona sessions currently booting
 warm, the release carrying it makes the first session per project miss, clone cold,

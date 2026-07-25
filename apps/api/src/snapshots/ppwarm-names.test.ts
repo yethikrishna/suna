@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { PPWARM_PREFIX, excludePinnedTargets, perProjectWarmImageName, ppwarmReapTargets, proj8, tpl8 } from './ppwarm-names';
+import { PPWARM_PREFIX, excludePinnedTargets, legacyPerProjectWarmImageName, perProjectWarmImageName, ppwarmReapTargets, proj8, tpl8 } from './ppwarm-names';
+import { ppwarmProj8, ppwarmTpl8 } from './quota-gc-select';
 
 const PROJ_A = '9ee8bc9c-5108-437f-a01f-6c5e26f2062c';
 const PROJ_B_COLLIDING = '9ee8bc9c-aaaa-bbbb-cccc-dddddddddddd';
@@ -97,5 +98,50 @@ describe('ppwarmReapTargets — template-scoped reap', () => {
     expect(raw).toContain(bPinnedLive);
     const guarded = excludePinnedTargets(raw, new Set([bPinnedLive]));
     expect(guarded).not.toContain(bPinnedLive);
+  });
+});
+
+describe('legacyPerProjectWarmImageName — migration fallback', () => {
+  const PROJ = '11112222-3333-4444-5555-666677778888';
+  const TIP = 'a'.repeat(40);
+  const BASE = 'kortix-default-c17604ba585c';
+
+  test('reproduces the pre-migration two-segment shape', () => {
+    const legacy = legacyPerProjectWarmImageName(PROJ, TIP, BASE);
+    expect(legacy.startsWith(PPWARM_PREFIX)).toBe(true);
+    expect(legacy.slice(PPWARM_PREFIX.length).split('-')).toHaveLength(2);
+  });
+
+  test('is a different name from the new template-scoped one', () => {
+    expect(legacyPerProjectWarmImageName(PROJ, TIP, BASE)).not.toBe(
+      perProjectWarmImageName(PROJ, TIP, BASE, 'default'),
+    );
+  });
+
+  test('hash excludes the template slug, unlike the new format', () => {
+    const a = legacyPerProjectWarmImageName(PROJ, TIP, BASE);
+    const b = legacyPerProjectWarmImageName(PROJ, TIP, BASE);
+    expect(a).toBe(b);
+    expect(perProjectWarmImageName(PROJ, TIP, BASE, 'default')).not.toBe(
+      perProjectWarmImageName(PROJ, TIP, BASE, 'custom'),
+    );
+  });
+
+  test('moves with the tip, so a stale legacy name is never served for a moved branch', () => {
+    expect(legacyPerProjectWarmImageName(PROJ, TIP, BASE)).not.toBe(
+      legacyPerProjectWarmImageName(PROJ, 'b'.repeat(40), BASE),
+    );
+  });
+
+  test('a legacy name is not an on-bake reap target of a new-format tip', () => {
+    const legacy = legacyPerProjectWarmImageName(PROJ, TIP, BASE);
+    const current = perProjectWarmImageName(PROJ, 'c'.repeat(40), BASE, 'default');
+    expect(ppwarmReapTargets(PROJ, current, [legacy, current])).not.toContain(legacy);
+  });
+
+  test('a legacy name is still recognised as this project ppwarm by the quota sweeps', () => {
+    const legacy = legacyPerProjectWarmImageName(PROJ, TIP, BASE);
+    expect(ppwarmProj8(legacy)).toBe(proj8(PROJ));
+    expect(ppwarmTpl8(legacy)).toBeNull();
   });
 });

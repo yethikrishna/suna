@@ -20,7 +20,7 @@ import { resolveCommitSha, type GitBackedProject } from '../projects/git';
 import { getSandboxProvider, type BuildLogTap, type BuildSnapshotResult, type ProviderState, type SandboxProviderAdapter } from './providers';
 import { config, type SandboxProviderName } from '../config';
 import { warmPrebakeProviders } from '../projects/lib/provider-precedence';
-import { PPWARM_REAP_PROTECT_MS, excludePinnedTargets, perProjectWarmImageName, ppwarmReapTargets, warmBuildSlug } from './ppwarm-names';
+import { PPWARM_REAP_PROTECT_MS, excludePinnedTargets, legacyPerProjectWarmImageName, perProjectWarmImageName, ppwarmReapTargets, warmBuildSlug } from './ppwarm-names';
 import { collectPinnedImageRefs } from './pinned-images';
 import {
   computeTemplateIdentity,
@@ -192,6 +192,48 @@ export async function ensureSandboxImage(
             built: false,
             isDefault: !!template.isShared,
           };
+        }
+        // LEGACY-FORMAT FALLBACK. The ppwarm name gained a `<tpl8>` segment when
+        // warm images became (project, template)-scoped, so no image baked before
+        // that release can be recomputed under the new name. Without this lookup,
+        // that release would invalidate EVERY warm image simultaneously: ~65% of
+        // Daytona sessions currently hit one, so the first session per project
+        // would miss, clone cold, and kick a bake — a fleet-wide bake burst inside
+        // one deploy window, against a hard 100-snapshot org cap and with a
+        // 2026-07-22 storm already on record.
+        //
+        // A legacy image is already built and — for the SHARED DEFAULT only —
+        // already exactly right: same project, same tip, same base identity. Serve
+        // it. It keeps serving until this project's default branch actually moves,
+        // at which point the new-format name misses and bakes once; the stale
+        // legacy tip then ages out through quota-gc's idle/LRU rules (which match
+        // both name shapes). The fleet migrates at the natural rate of pushes
+        // instead of all at once.
+        //
+        // Gated on `isShared` because a legacy name encodes NO template: every
+        // caller that ever minted one passed the default slug, so resolving it for
+        // a custom template would hand that template a different one's image.
+        if (template.isShared) {
+          const legacyName = legacyPerProjectWarmImageName(
+            project.projectId,
+            warmTip,
+            identity.snapshotName,
+          );
+          if ((await provider.getSnapshotState(legacyName)) === 'active') {
+            console.log(
+              `[snapshots] per-project warm HIT (legacy name): booting ${template.slug} from ` +
+              `${legacyName} (project ${project.projectId.slice(0, 8)}, tip ${warmTip.slice(0, 8)}, ` +
+              `provider ${buildProvider}) — pre-dates template scoping; will re-bake under the ` +
+              `new name when this branch next moves`,
+            );
+            return {
+              snapshotName: legacyName,
+              slug: template.slug,
+              contentHash: identity.contentHash,
+              built: false,
+              isDefault: true,
+            };
+          }
         }
         // MISS — no warm image for this (project, tip) yet. Kick a fire-and-forget
         // background bake so the NEXT session on this commit boots warm, and fall

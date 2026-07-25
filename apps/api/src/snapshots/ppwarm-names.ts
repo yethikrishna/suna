@@ -138,6 +138,40 @@ export function perProjectWarmImageName(
 }
 
 /**
+ * The PRE-MIGRATION name for a project's default-template warm image:
+ * `kortix-ppwarm-<proj8>-<hash12>` over `projectId|tip|baseSnapshotName` (no
+ * template segment, no slug in the hash).
+ *
+ * Exists so the warm-HIT lookup can serve an image that is already built and
+ * already correct instead of re-baking the entire fleet. Without this, shipping
+ * the (project, template) scoping would invalidate EVERY warm image at once —
+ * ~65% of Daytona sessions currently hit one, so the release would make the first
+ * session per project miss, clone cold, and kick a bake, all inside one deploy
+ * window, against a hard 100-snapshot org cap. With it, a legacy image keeps
+ * serving until its tip moves for real, and the fleet migrates gradually at the
+ * natural rate of default-branch pushes.
+ *
+ * ONLY valid for the shared default template. A legacy name encodes no template,
+ * and every caller that ever minted one passed the default slug, so resolving it
+ * for a custom template would serve that template a DIFFERENT template's image.
+ * Callers must gate on `template.isShared` — see the read path in builder.ts.
+ *
+ * Delete this once no legacy name can still be active anywhere (they age out via
+ * quota-gc's idle/LRU rules, which match both formats).
+ */
+export function legacyPerProjectWarmImageName(
+  projectId: string,
+  tip: string,
+  baseSnapshotName: string,
+): string {
+  const hash = createHash('sha256')
+    .update(`${projectId}|${tip}|${baseSnapshotName}`)
+    .digest('hex')
+    .slice(0, 12);
+  return `${PPWARM_PREFIX}${proj8(projectId)}-${hash}`;
+}
+
+/**
  * ── FORMAT MIGRATION ────────────────────────────────────────────────────────
  * Every ppwarm name baked before this change has the OLD shape
  * `kortix-ppwarm-<proj8>-<hash12>` (2 dash-delimited segments after the

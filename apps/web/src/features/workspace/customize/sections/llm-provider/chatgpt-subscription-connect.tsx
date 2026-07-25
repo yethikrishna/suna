@@ -23,7 +23,7 @@ export function ChatGptSubscriptionConnect({
   onConnected,
 }: {
   projectId: string;
-  onConnected: () => void;
+  onConnected: (providerId: string) => void;
 }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
@@ -75,7 +75,7 @@ export function ChatGptSubscriptionConnect({
           successToast('ChatGPT subscription connected to this project');
           queryClient.invalidateQueries({ queryKey: ['project-secrets', projectId] });
           refreshProjectProviderState(queryClient, projectId, { expectProviderId: 'codex' });
-          onConnected();
+          onConnected('codex');
           return;
         }
         if (res.status === 'failed') {

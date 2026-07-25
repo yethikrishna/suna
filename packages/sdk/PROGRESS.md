@@ -249,6 +249,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B18 | **Keep the managed-model playground pin synchronized with the managed catalog.** The playground exits before API access when its pinned IDs differ from `MANAGED_MODELS`.                                                                                                                                                                                                                                                                    | `packages/sdk/playground/chat/14-change-default-model.ts` still pins retired `qwen3.7-max` and `deepseek-v4-pro`.                                                                                                                                                                                       | **DONE 2026-07-24** — session `managed-models-aster`; full SDK gates green                                                                                                                                                                                             |
 | B19 | **Preserve explicit managed-model pricing and cache-write rates through the project catalog and turn-cost estimator.** Browser-side `models.dev` lookup can substitute another provider's price for a Kortix-managed model, and the turn estimator does not accept a distinct cache-write rate.                                                                                                                                              | `src/core/rest/projects-client/projects.ts`, `src/core/turns/types.ts`, `src/core/turns/state.ts`; confirmed for managed Aster `glm-5.2`.                                                                                                                                                               | **DONE 2026-07-25** — implementation `28c18cbfa`; full SDK suite, typecheck, public-surface snapshot, and packed-install smoke green                                                                                                                                   |
 | B20 | **Keep ACP SSE connections outside the shared 30-second authenticated-fetch timeout.** The ACP controller uses `/kortix/acp/:sessionId` as a long-lived SSE stream.                                                                                                                                                                                                                                                                            | `src/platform/auth-core.ts` exempted only `/global/event`; deployed cold Chromium aborted the ACP stream before `session/load` settled.                                                                                                                                                                | **DONE 2026-07-25** — implementation `89b97f4cc`; RED test, full SDK gates, and local cold ACP plus REST browser matrix pass                                                                                                                                                                                                         |
+| B21 | **Serialize ACP sends with runtime restart reloads.** A send that starts while OpenCode restarts can wait forever on `session/set_config_option` and never send `session/prompt`.                                                                                                                                                                                                                                                               | Deployed cold Chromium sent `session/set_config_option` at `13:36:20.250Z`, received `kortix/runtime_ready`, then sent `session/load` at `13:36:20.640Z`; `POST_RESTART_PONG` never produced `session/prompt`.                                                                                              | **DONE 2026-07-25** — implementation `d8537fa2c`; RED tests, full SDK gates, and test-harness typecheck pass                                                                                                                                                                                                                          |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -822,6 +823,46 @@ default names and behavior remain unchanged. SDK work will follow RED → GREEN 
 REFACTOR and finish on the full typecheck, test, and packed-install smoke gates.
 
 **Status:** IN PROGRESS.
+
+---
+
+### 2026-07-25 — session `false-load-older` (local completion)
+
+OpenCode paginates raw messages in groups of 10. The reported dev session has
+one user message and 43 assistant messages in one logical turn. The initial page
+contained 10 assistant messages and an `x-next-cursor` header. The user message
+was on page 5.
+
+The controller now follows assistant-only pages during the initial load until
+every assistant parent user message is present. It hydrates the complete newest
+turn once in chronological order. It exposes `hasOlder` only when the completed
+turn has an earlier cursor.
+
+Implementation commit: `b759cca6bad8548b54ec3ab80d105f162a1f497d`.
+
+**RED evidence:**
+
+- The focused controller suite reported **13 pass / 1 fail**.
+- The new test expected three page requests. The controller made one request.
+
+**Verification:**
+
+- Focused controller suite: **14 pass / 0 fail** with 32 assertions.
+- SDK typecheck and example typecheck: exit 0.
+- SDK full suite: **1249 pass / 2 skip / 0 fail** across 104 files with 5589
+  assertions.
+- SDK packed-install smoke: pass.
+- Exact dev-session probe: 5 HTTP `200` page requests, 44 hydrated messages,
+  1 user message, 43 assistant messages, and `hasOlder: false`.
+- `git diff --check`: exit 0.
+
+The browser runtime returned `No browser is available` and `[]`. Local and
+deployed DOM proof remains open.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, and deployed proof
+remain.
 
 ### 2026-07-13 — session `gateway-routing-ui` (completion)
 
@@ -2436,3 +2477,87 @@ Non-streaming requests retain the 30-second timeout.
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, and the deployed
 cold Chromium matrix remain.
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (B21 implementation)
+
+Serialized ACP prompt preparation with OpenCode runtime restarts.
+The controller interrupts stalled config-option requests when
+`kortix/runtime_ready` changes the runtime generation.
+It waits for canonical `session/load` replay and retries only the idempotent
+model and mode config preflight.
+It does not retry `session/prompt` after dispatch.
+It resets the ACP projection before runtime replay.
+
+**RED evidence:**
+
+- Focused controller suite: **13 pass / 2 fail**.
+- Runtime replay produced four messages instead of two.
+- The interrupted config preflight did not complete within 50 milliseconds.
+
+**Verification:**
+
+- Focused ACP controller suite: **16 pass / 0 fail**.
+- SDK typecheck and example typecheck: exit 0.
+- SDK full suite: **1253 pass / 0 fail** across 104 files with 5603 assertions.
+- SDK packed-install smoke: pass.
+- Test-harness typecheck: exit 0.
+- `git diff --check`: exit 0.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, and the deployed
+cold Chromium ACP plus REST rollback matrix remain.
+---
+
+### 2026-07-25 — session `false-load-older` (claim)
+
+Claimed the user-reported false `Load older messages` control on a one-turn
+session. The investigation will verify the runtime pagination response before
+changing the SDK contract. The implementation will follow RED -> GREEN ->
+REFACTOR and preserve all exported names.
+
+Required completion gates are the full SDK typecheck, test suite, packed-install
+smoke, focused web tests, local browser proof, repository merge, Deploy Dev, and
+deployed browser proof.
+
+**Status:** IN PROGRESS.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (B21 delivery completion)
+
+Merged the ACP restart-safe send serialization in PR #5433.
+The merge commit is `aedb8c16b1c11baeb501ea9107dfcac083cb8caa`.
+All 15 PR checks passed.
+
+Deploy Dev run `30160708566` completed successfully.
+The active API reports `0.10.15-dev.85ae91df`.
+The active Vercel deployment is `dpl_9M5yptfdDL48vPASvYDt92kQCFtD`.
+It is `READY` at commit `85ae91df47da26281dc35d098954567b132f192e`.
+Git ancestry proves that both deployed artifacts contain the B21 merge.
+
+The first post-deploy rollback attempt pressed Enter before the REST model list
+loaded. Its trace contains zero `/prompt_async` occurrences.
+The harness now opens the model picker and waits for `Claude Sonnet 4.6` before
+it sends the REST rollback prompt.
+
+The final deployed cold Chromium matrix passed.
+It proved ACP chat, SSE reconnect, transcript reload, tool approval, question
+input, attachments, queueing, cancellation, slash commands, runtime restart,
+post-restart prompt delivery, and REST rollback.
+
+**Final verification:**
+
+- Focused ACP controller suite: **16 pass / 0 fail**.
+- SDK full suite: **1253 pass / 0 fail** across 104 files.
+- SDK assertions: **5603**.
+- SDK typecheck and example typecheck: exit 0.
+- SDK packed-install smoke: pass.
+- Test-harness typecheck: exit 0.
+- PR #5433 checks: **15 pass / 0 fail**.
+- Deployed cold ACP and REST Chromium matrix: **1 pass / 0 fail** in 3.3 minutes.
+
+**Status:** COMPLETE.
+
+**Shippable to production: YES.** ACP and REST rollback pass on deployed dev.

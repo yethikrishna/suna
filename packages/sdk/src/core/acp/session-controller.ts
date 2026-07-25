@@ -10,6 +10,15 @@ import type {
 } from './types';
 import { AcpTransportError } from './types';
 
+const MAX_CONFIG_RESTART_RETRIES = 3;
+
+class AcpRuntimeRestartError extends Error {
+  constructor() {
+    super('ACP runtime restarted');
+    this.name = 'AcpRuntimeRestartError';
+  }
+}
+
 export interface AcpSessionClient {
   connect(options: {
     onEvent(event: AcpStreamEvent): void;
@@ -135,6 +144,8 @@ export class AcpSessionController {
   private stream: AcpStreamHandle | null = null;
   private connecting: Promise<void> | null = null;
   private runtimeReload: Promise<void> | null = null;
+  private runtimeGeneration = 0;
+  private readonly restartWaiters = new Set<() => void>();
   private promptQueue: Promise<void> = Promise.resolve();
   private snapshot: AcpSessionControllerSnapshot;
 
@@ -205,6 +216,10 @@ export class AcpSessionController {
   }
 
   private async loadCanonicalSession(): Promise<void> {
+    this.openRequests.clear();
+    this.patch({
+      projection: createAcpProjection(this.options.sessionId),
+    });
     const loaded = await this.client.loadSession({
       sessionId: this.options.sessionId,
       cwd: this.options.cwd ?? '/workspace',
@@ -243,6 +258,30 @@ export class AcpSessionController {
     void reload;
   }
 
+  private onRuntimeReady(): void {
+    this.runtimeGeneration += 1;
+    for (const restart of this.restartWaiters) restart();
+    this.restartWaiters.clear();
+    this.reloadAfterRuntimeReady();
+  }
+
+  private async raceWithRuntimeRestart<T>(operation: Promise<T>, generation: number): Promise<T> {
+    if (generation !== this.runtimeGeneration) {
+      void operation.catch(() => {});
+      throw new AcpRuntimeRestartError();
+    }
+    let restart = (): void => {};
+    const restarted = new Promise<never>((_resolve, reject) => {
+      restart = () => reject(new AcpRuntimeRestartError());
+    });
+    this.restartWaiters.add(restart);
+    try {
+      return await Promise.race([operation, restarted]);
+    } finally {
+      this.restartWaiters.delete(restart);
+    }
+  }
+
   send(
     prompt: AcpContentBlock[],
     options: { model?: string | null; agent?: string | null } = {},
@@ -256,33 +295,71 @@ export class AcpSessionController {
     prompt: AcpContentBlock[],
     options: { model?: string | null; agent?: string | null },
   ): Promise<void> {
-    if (!this.snapshot.ready) await this.connect();
     const text = prompt
       .filter((part): part is Extract<AcpContentBlock, { type: 'text' }> => part.type === 'text')
       .map((part) => part.text)
       .join('');
-    if (text) {
-      this.onEnvelope({
-        jsonrpc: '2.0',
-        method: 'session/update',
-        params: {
-          sessionId: this.options.sessionId,
-          update: {
-            sessionUpdate: 'user_message_chunk',
-            content: { type: 'text', text },
-          },
-        },
-      });
-    }
     this.patch({ sending: true, error: null });
     try {
-      if (options.model) {
-        await this.client.setSessionConfigOption(this.options.sessionId, 'model', options.model);
+      let restartRetries = 0;
+      let generation = this.runtimeGeneration;
+      while (true) {
+        if (!this.snapshot.ready) await this.connect();
+        generation = this.runtimeGeneration;
+        try {
+          if (options.model) {
+            await this.raceWithRuntimeRestart(
+              this.client.setSessionConfigOption(this.options.sessionId, 'model', options.model),
+              generation,
+            );
+          }
+          if (options.agent) {
+            await this.raceWithRuntimeRestart(
+              this.client.setSessionConfigOption(this.options.sessionId, 'mode', options.agent),
+              generation,
+            );
+          }
+          if (generation !== this.runtimeGeneration) {
+            throw new AcpRuntimeRestartError();
+          }
+          break;
+        } catch (error) {
+          if (!(error instanceof AcpRuntimeRestartError)) throw error;
+          restartRetries += 1;
+          if (restartRetries > MAX_CONFIG_RESTART_RETRIES) {
+            throw new Error(
+              `ACP runtime restarted more than ${MAX_CONFIG_RESTART_RETRIES} times while preparing the prompt`,
+            );
+          }
+          if (this.runtimeReload) await this.runtimeReload;
+        }
       }
-      if (options.agent) {
-        await this.client.setSessionConfigOption(this.options.sessionId, 'mode', options.agent);
+
+      if (text) {
+        this.onEnvelope({
+          jsonrpc: '2.0',
+          method: 'session/update',
+          params: {
+            sessionId: this.options.sessionId,
+            update: {
+              sessionUpdate: 'user_message_chunk',
+              content: { type: 'text', text },
+            },
+          },
+        });
       }
-      const result = await this.client.prompt(this.options.sessionId, prompt);
+      const promptOperation = this.client.prompt(this.options.sessionId, prompt);
+      let result: Awaited<ReturnType<AcpSessionClient['prompt']>>;
+      try {
+        result = await this.raceWithRuntimeRestart(promptOperation, generation);
+      } catch (error) {
+        if (error instanceof AcpRuntimeRestartError) {
+          throw new Error(
+            'ACP runtime restarted after session/prompt dispatch; the prompt result is unknown',
+          );
+        }
+        throw error;
+      }
       this.onEnvelope({
         jsonrpc: '2.0',
         id: `prompt:${Date.now()}`,
@@ -381,7 +458,7 @@ export class AcpSessionController {
         envelope.params.sessionId === null ||
         envelope.params.sessionId === this.options.sessionId)
     ) {
-      this.reloadAfterRuntimeReady();
+      this.onRuntimeReady();
     }
     if ('method' in envelope && 'id' in envelope && isObject(envelope.params)) {
       this.openRequests.set(String(envelope.id), {

@@ -2758,3 +2758,69 @@ Post-fix verification:
 
 **Shippable to production: NOT YET.** Follow-up PR merge, Deploy Dev, deployed
 SHA proof, and deployed ACP plus REST parity remain.
+
+---
+
+### 2026-07-26 — session `whitelabel-acp-reference` (deployed parity completion)
+
+The first deployed parity run exposed a fixture funding defect.
+The test changed only `credit_accounts.balance`.
+Billing reads `balance_precise` and `non_expiring_credits_precise`.
+Both precise fields retained the default `$1.00` balance.
+
+The corrected fixture seeds `$100.00` into the rounded and precise wallet
+fields. The test rejects `Out of credits`.
+
+The deployed screenshot comparison also exposed a REST synchronization defect.
+The REST prompt reached `/prompt_async`, but the UI became idle before the first
+SSE status event. The SDK did not start its 10-second reconciliation fallback.
+The transcript therefore contained only the user message at the screenshot
+point.
+
+`useSession()` now marks an accepted REST prompt busy before the first SSE event.
+The session synchronization controller polls the transcript and runtime status
+until the runtime reports idle. Failed sends and explicit cancellation clear the
+optimistic busy state.
+
+The parity specification now requires:
+
+- one rendered assistant message per transport;
+- one rendered tool card per transport;
+- no `Out of credits` transcript;
+- ACP question persistence after 121 seconds and reload;
+- `QUESTION_BETA` after both question replies;
+- zero REST prompt calls from ACP;
+- zero ACP prompt calls from REST.
+
+TDD evidence:
+
+- Deployed screenshot RED: REST had no assistant message or tool card.
+- Focused unit RED: missing `beginRestPromptObservation` export.
+- Focused unit GREEN: **20 pass / 0 fail** with **43** assertions.
+
+Final verification:
+
+- SDK typecheck and example typecheck: exit 0.
+- SDK suite: **1261 pass / 0 fail** with **5632** assertions.
+- SDK packed-install smoke: pass.
+- White-label typecheck and dev-API production build: exit 0.
+- White-label suite: **57 pass / 3 skip / 0 fail** with **182** assertions.
+- White-label SDK boundary: **0 violations**.
+- Test-harness typecheck: exit 0.
+- Strong deployed ACP and REST presentation plus question parity:
+  **1 pass / 0 fail** in **14.1 minutes**.
+- ACP sent **2** ACP prompts and **0** REST prompts.
+- REST sent **2** REST prompts and **0** ACP prompts.
+- ACP rendered **29** real tool cards.
+- REST rendered **32** real tool cards.
+- Both screenshots contain completed presentation tool sequences.
+- Both transports submitted Beta and rendered `QUESTION_BETA`.
+- The stale project `81050937-bc7f-4b05-aafb-914acc019fe4` was archived
+  through `@kortix/sdk`.
+- Post-cleanup database proof: `active_projects=0`, `cleanup_users=0`.
+- `git diff --check`: exit 0.
+
+**Status:** DEPLOYED PARITY COMPLETE.
+
+**Shippable to production: NOT YET.** The synchronization correction still
+requires PR merge, Deploy Dev, deployed SHA proof, and one post-deploy smoke.

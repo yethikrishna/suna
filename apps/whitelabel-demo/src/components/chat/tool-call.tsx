@@ -325,6 +325,7 @@ export function ToolCall({ tool }: { tool: ToolView }) {
 
   return (
     <Collapsible
+      data-slot="tool-call"
       className={cn(
         'rounded-lg border bg-card/50',
         isError ? 'border-destructive/30 bg-destructive/[0.03]' : 'border-border',

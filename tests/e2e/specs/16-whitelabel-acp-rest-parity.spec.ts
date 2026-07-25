@@ -19,6 +19,7 @@ const supabaseUrl = process.env.E2E_SUPABASE_URL || 'http://127.0.0.1:54321';
 const databaseUrl =
   process.env.E2E_DATABASE_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const password = 'WhiteLabelParity123!';
+const testCreditBalance = 100;
 const acpQuestionReconnectDelayMs = Number(
   process.env.E2E_WHITELABEL_ACP_QUESTION_RECONNECT_DELAY_MS ?? 121_000,
 );
@@ -115,6 +116,11 @@ async function runSurface(
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible({
     timeout: 30_000,
   });
+  await expect(page.locator('[data-message-role="assistant"]').last()).toBeVisible({
+    timeout: 120_000,
+  });
+  const renderedToolCards = page.locator('[data-slot="tool-call"]');
+  await expect(renderedToolCards.first()).toBeVisible({ timeout: 120_000 });
 
   const screenshotPath = testInfo.outputPath(`${fixture.transport}-presentation.png`);
   await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -124,13 +130,12 @@ async function runSurface(
   });
 
   const transcript = await page.locator('main').innerText();
-  const toolCards = await page
-    .locator('main button')
-    .evaluateAll((buttons) =>
-      buttons
-        .map((button) => button.textContent?.replace(/\s+/g, ' ').trim() ?? '')
-        .filter((text) => text.length > 0),
-    );
+  expect(transcript).not.toContain('Out of credits');
+  const toolCards = await renderedToolCards.evaluateAll((cards) =>
+    cards
+      .map((card) => card.textContent?.replace(/\s+/g, ' ').trim() ?? '')
+      .filter((text) => text.length > 0),
+  );
   await testInfo.attach(`${fixture.transport}-transcript`, {
     body: transcript,
     contentType: 'text/plain',
@@ -196,10 +201,29 @@ test.describe.serial('16 — white-label ACP and REST parity', () => {
         '-v',
         'ON_ERROR_STOP=1',
         '-c',
-        `INSERT INTO kortix.credit_accounts (account_id, balance, tier)
-         VALUES ('${account.account_id}', 1000, 'tier_2_20')
+        `INSERT INTO kortix.credit_accounts (
+           account_id,
+           balance,
+           balance_precise,
+           non_expiring_credits,
+           non_expiring_credits_precise,
+           tier
+         )
+         VALUES (
+           '${account.account_id}',
+           ${testCreditBalance},
+           ${testCreditBalance},
+           ${testCreditBalance},
+           ${testCreditBalance},
+           'tier_2_20'
+         )
          ON CONFLICT (account_id)
-         DO UPDATE SET balance = 1000, tier = 'tier_2_20'`,
+         DO UPDATE SET
+           balance = ${testCreditBalance},
+           balance_precise = ${testCreditBalance},
+           non_expiring_credits = ${testCreditBalance},
+           non_expiring_credits_precise = ${testCreditBalance},
+           tier = 'tier_2_20'`,
       ],
       { stdio: 'ignore' },
     );

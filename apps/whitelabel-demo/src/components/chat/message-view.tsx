@@ -165,7 +165,7 @@ export function MessageView({ message }: { message: MessageWithParts }) {
     // Bubble sits directly in the row (no min-w-0 column) so it sizes to its
     // content up to max-width — never collapses to a sliver.
     return (
-      <Message align="end">
+      <Message align="end" data-message-role="user">
         <Bubble variant="secondary" align="end">
           <BubbleContent>{text}</BubbleContent>
         </Bubble>
@@ -175,7 +175,7 @@ export function MessageView({ message }: { message: MessageWithParts }) {
 
   if (isEmpty) return null;
   return (
-    <div className="space-y-2.5 text-sm leading-relaxed">
+    <div data-message-role="assistant" className="space-y-2.5 text-sm leading-relaxed">
       {/* Fragment (not a div) so parts that deliberately render `null`
           (step/snapshot/agent/unknown) don't leave behind an empty spacer
           under `space-y-2.5`. */}

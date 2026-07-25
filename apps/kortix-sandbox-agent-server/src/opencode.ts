@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileS
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { access, constants, stat } from 'node:fs/promises'
+import { createInterface } from 'node:readline'
 import { isDeepStrictEqual } from 'node:util'
 
 import { AGENT_ENV_SH } from './agent-env-file'
@@ -12,6 +13,13 @@ import { buildGitIdentityEnv } from './git'
 import { logger } from './logger'
 import { applyManagedOpencodeEnv } from './managed-opencode-env'
 import { mergeProjectEnv, type ProjectEnvStore } from './project-env'
+import {
+  AcpConnection,
+  buildOpenCodeLaunch,
+  redactAcpDiagnostic,
+  resolveOpenCodeTransport,
+  type OpenCodeTransport,
+} from './acp/connection'
 
 const READY_POLL_MS = 100
 const BOOT_READY_POLL_MS = 50
@@ -699,6 +707,8 @@ export type Opencode = {
   getInternalUrl(): string
   getBinaryPath(): string | null
   getState(): OpencodeState
+  getTransport(): OpenCodeTransport
+  getAcpConnection(): AcpConnection | null
   markReady(): void
 }
 
@@ -717,6 +727,8 @@ export function createOpencodeSupervisor(
   let state: OpencodeState = 'starting'
   let readinessTimer: ReturnType<typeof setTimeout> | null = null
   let opencodeCwd = cfg.workspace
+  let transport: OpenCodeTransport = resolveOpenCodeTransport(process.env)
+  let acpConnection: AcpConnection | null = null
 
   function ensureCwdExists(): string {
     try {
@@ -807,16 +819,19 @@ export function createOpencodeSupervisor(
       logger.info(`[opencode] wrote config (${opencodeConfig.length} bytes) to ${configPath}`)
     }
 
-    const args = [
-      'serve',
-      '--port',
-      String(currentCfg.opencodeInternalPort),
-      '--hostname',
-      '127.0.0.1',
-    ]
-
     const cwd = ensureCwdExists()
-    logger.info('[opencode] spawning', { bin, port: currentCfg.opencodeInternalPort, cwd })
+    transport = resolveOpenCodeTransport(env)
+    const launch = buildOpenCodeLaunch(
+      transport,
+      currentCfg.opencodeInternalPort,
+      cwd,
+    )
+    logger.info('[opencode] spawning', {
+      bin,
+      port: currentCfg.opencodeInternalPort,
+      cwd,
+      transport,
+    })
     // detached: true makes opencode the leader of its own process group, so
     // stop()/restart() can SIGTERM/SIGKILL the whole group (-pid) instead of
     // just this direct child. Without it, a grandchild opencode forks itself
@@ -825,15 +840,19 @@ export function createOpencodeSupervisor(
     // freshly-spawned opencode is installing into concurrently — a real path
     // to a torn/corrupted node_modules that then fails every session's first
     // prompt until the sandbox is rebuilt.
-    const proc = spawn(bin, args, {
+    const proc = spawn(bin, launch.args, {
       cwd,
       env,
-      stdio: ['ignore', 'inherit', 'inherit'],
+      stdio: launch.stdio,
       detached: true,
     })
 
     proc.on('exit', (code, signal) => {
       logger.warn('[opencode] child exited', { code, signal })
+      acpConnection?.dispose(
+        `OpenCode ACP exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`,
+      )
+      acpConnection = null
       child = null
       state = stopping ? 'down' : 'starting'
       if (stopping) return
@@ -850,6 +869,46 @@ export function createOpencodeSupervisor(
     })
 
     child = proc
+
+    if (transport === 'acp') {
+      if (!proc.stdin || !proc.stdout || !proc.stderr) {
+        throw new Error('OpenCode ACP process did not expose stdio pipes')
+      }
+      const stderr = createInterface({ input: proc.stderr })
+      stderr.on('line', (line) => {
+        logger.warn('[opencode-acp] stderr', {
+          line: redactAcpDiagnostic(line, env),
+        })
+      })
+      const connection = new AcpConnection({
+        input: proc.stdin,
+        output: proc.stdout,
+        onDiagnostic: (line) => logger.warn('[opencode-acp] protocol', { line }),
+      })
+      acpConnection = connection
+      try {
+        const initialized = await connection.initialize({
+          clientInfo: {
+            name: 'kortix-sandbox-agent-server',
+            version: '1',
+          },
+        })
+        logger.info('[opencode-acp] initialized', {
+          protocolVersion: initialized.protocolVersion,
+        })
+      } catch (error) {
+        connection.dispose('OpenCode ACP initialization failed')
+        acpConnection = null
+        if (proc.pid) {
+          try {
+            process.kill(-proc.pid, 'SIGTERM')
+          } catch {
+            proc.kill('SIGTERM')
+          }
+        }
+        throw error
+      }
+    }
   }
 
   function markReady() {
@@ -903,6 +962,8 @@ export function createOpencodeSupervisor(
     async stop(signal: NodeJS.Signals = 'SIGTERM') {
       stopping = true
       state = 'down'
+      acpConnection?.dispose('OpenCode supervisor stopped')
+      acpConnection = null
       if (readinessTimer) {
         clearTimeout(readinessTimer)
         readinessTimer = null
@@ -953,6 +1014,9 @@ export function createOpencodeSupervisor(
       currentCfg = nextCfg
       currentOpencodeConfigDir = nextOpencodeConfigDir
       if (nextProjectEnv) currentProjectEnv = nextProjectEnv
+      transport = resolveOpenCodeTransport(
+        nextProjectEnv ? mergeProjectEnv(process.env, nextProjectEnv) : process.env,
+      )
       state = 'starting'
       logger.info('[opencode] reconfigured', {
         projectId: nextCfg.projectId,
@@ -974,6 +1038,14 @@ export function createOpencodeSupervisor(
 
     getState() {
       return state
+    },
+
+    getTransport() {
+      return transport
+    },
+
+    getAcpConnection() {
+      return acpConnection
     },
 
     markReady,

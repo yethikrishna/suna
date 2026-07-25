@@ -2124,12 +2124,27 @@ returns `[]`. Chromium DOM and network proof remains blocked.
 
 ### 2026-07-25 — session `native-oauth-full-lifecycle` (authentication Task 8)
 
-Claimed repository delivery and dev proof. The task includes the pull request,
-merge, Deploy Dev workflow, deployed SHA proof, and live dev API verification.
+Merged the provider-independent authentication engine in PR #5403. The merge
+commit is `00bc29065ac54791b71957b9d2e2ccac313b5c29`.
 
-**Status: IN PROGRESS.**
+Deploy Dev run 30136343999 completed successfully. The workflow applied the
+OAuth lifecycle migration. It deployed API image tag `dev-00bc2906` to ECS and
+EKS. It also tagged the frontend image with the full merge SHA.
 
-**Shippable to production: NOT YET.** The branch is not merged or deployed.
+The live dev health route returned HTTP `200`, environment `dev`, and version
+`0.10.15-dev.00bc2906`. The public OAuth callback returned HTTP `400` without
+state. The protected OAuth status route returned HTTP `401` without
+authentication. These responses prove that the deployed OAuth routes are
+mounted on the merged API artifact.
+
+The browser runtime returned `No browser is available`. Browser discovery
+returned `[]`. Chromium DOM and network proof remains blocked by the missing
+browser runtime.
+
+**Status: COMPLETE.**
+
+**Shippable to production: YES.** Local protocol proof, CI, repository delivery,
+deployed-SHA proof, database migration, and live dev API verification pass.
 
 ---
 

@@ -2680,3 +2680,34 @@ import.
 
 **Shippable to production: NOT YET.** Rebase, full post-rebase gates, PR merge,
 Deploy Dev, deployed SHA proof, and deployed ACP plus REST parity remain.
+
+---
+
+### 2026-07-25 — session `whitelabel-acp-reference` (CI repair)
+
+PR #5458 exposed two delivery defects.
+
+The root `@kortix/sdk` development dependency broke the reduced API Docker
+workspace. The dependency now belongs to the minimal `tests/e2e` workspace.
+Both Playwright specs import the public `@kortix/sdk/server` entry point.
+
+The first package-unit run timed out while the mode suite built Next.js and
+started two servers. The setup limit is now 120 seconds. Test assertions remain
+unchanged.
+
+Post-repair verification:
+
+- SDK typecheck: exit 0.
+- SDK suite: **1259 pass / 0 fail** with **5629** assertions.
+- SDK packed-install smoke: pass.
+- White-label suite: **57 pass / 3 skip / 0 fail** with **182** assertions.
+- White-label SDK boundary: **0 violations**.
+- Repository test-harness typecheck: exit 0.
+- Playwright collection: **2 tests in 2 files**.
+- API self-host Docker build: exit 0.
+- `git diff --check`: exit 0.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
+and deployed ACP plus REST parity remain.

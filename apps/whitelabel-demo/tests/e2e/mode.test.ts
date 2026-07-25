@@ -29,7 +29,7 @@ describe('mode bootstrap', () => {
       startApp(wrapperEnv()),
       startApp({ KORTIX_API_KEY: undefined, NEXT_PUBLIC_KORTIX_API_URL: 'https://direct.example/v1' }),
     ]);
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     await Promise.all([wrapperApp?.stop(), directApp?.stop()]);

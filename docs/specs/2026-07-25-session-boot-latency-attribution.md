@@ -332,24 +332,52 @@ Platinum **24.5 s**.
 | 4c | **`readRepoInfo`: 3 sequential git subprocesses → concurrent.** Called on EVERY `/kortix/health` request, i.e. on every readiness poll, during the window where the guest is CPU-saturated by index-pack | small but on a hot loop | **shipped** | Very low; read-only plumbing, no index lock |
 | 4d | **Daytona: eager preview-link warm at create**, matching Platinum's eager expose. Closes a provider asymmetry where Daytona paid `getPreviewLink` (~179 ms) plus edge cold-routing on its first proxied request | part of Daytona's 0–3.8 s `vm_created`→`daemon_reachable` spread | **shipped** | Very low; best-effort, not awaited |
 | 5 | **Kill the transatlantic git triangle** — region-local git termination, or a scoped direct-to-GitHub credential | **−3.2 s** (verified) | **owner: API→US move, tracked separately** | Security trade (see Finding 1) |
-| 6 | **Drop the `isShared` gate** on per-project warm images | **−7 s on Platinum only** (Daytona already hits 66%) | **prerequisite shipped; gate still on** | See below |
+| 6 | **Drop the `isShared` gate** on per-project warm images | **−7 s on Platinum** (Daytona already hits 65%) | **shipped** | See below |
 | 7 | **Persist `boot_timeline`** server-side (daemon POSTs it at ready) | 0 s; permanent attribution | **shipped** | Low |
 | 8 | **Platinum guest + create perf** — 3 428 ms to return a booted microVM, ~3× slower on trivial CPU stages | −2.4 s create, −7 s in-guest | not started | Platinum-team work, not app code |
 
-### #6 — what shipped, and what is still in the way
+### #6 — what shipped
 
-The ppwarm **name and both reap paths** are now scoped to `(project, template)`
-(`ppwarm-names.ts`, `quota-gc-select.ts`), which removes the mutual-deletion
-hazard. The `template.isShared` gate is **deliberately still in place**, because
-`ensurePerProjectWarmImage` resolves `DEFAULT_SANDBOX_SLUG` (`builder.ts:1313`)
-regardless of the caller's slug: the bake path only ever produces the *default*
-template's image. Passing a custom slug without changing that would bake the
-default Dockerfile while **naming** it as the custom template's warm image, so
-sessions on that template would boot missing whatever it installs — invisible
-until an agent's tooling was gone. Strictly worse than a slow boot.
-`provider-transition-service.ts:81-97` also records a deliberate decision not to
-warm-prep custom templates. Lift the read gate and the bake path together, or not
-at all.
+Landed in two steps, and the order mattered.
+
+**Step 1 (prerequisite):** the ppwarm name and both reap paths scoped to
+`(project, template)`, removing the mutual-deletion hazard where two templates'
+bakes would delete each other's tip forever.
+
+**Step 2 (the unlock):** `ensurePerProjectWarmImage` now resolves the *requested*
+template instead of hardcoding `DEFAULT_SANDBOX_SLUG`. That is the entire
+correctness fix — `computeTemplateIdentity`/`resolveUserDockerfile` were already
+generic over the template (shared → the constant `PLATFORM_DEFAULT_USER_DOCKERFILE`
+with zero git I/O; custom → its real `dockerfilePath` at the tip), i.e. exactly
+what the cold path does, so warm and cold converge on the same Dockerfile bytes.
+Two things had to ship in the same change or they'd break: the build-log slug
+(`warmBuildSlug(template.slug)`, else Retry-build / Fix-with-agent's round-trip
+resolves the wrong template) and the cross-replica cooldown check (else
+per-template bakes all match the default's warm slug and fight over one slot).
+
+Safety is in code, not in discipline: the new gate `perProjectWarmEligible`
+returns `true` **unconditionally** for a shared template — byte-identical to the
+gate it replaces, so Daytona's working 65% path is provably untouched — and
+otherwise consults `KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS`, default
+**`platinum` only**. Daytona custom-template warming stays off until quota-gc's
+cache-floor math is re-measured against real Daytona custom-template counts,
+because that org has a hard 100-snapshot cap and a storm on record.
+
+Deliberately not extended: `provider-transition-service.ts` (its FIX-M1 decision
+that custom templates are *not* warm-prepared before a provider switch stands) and
+the push-triggered `prebakeForProvider` (still default-only). Neither is needed
+for Platinum to go 0% → warm via session-start.
+
+Accepted residuals, documented where a reader will hit them: `tpl8` has no
+collision backstop (32-bit space, 1–3 templates/project; closing it would force a
+second warm-image-invalidating migration), and a narrow TOCTOU can bake
+`/workspace` at a newer tip than a *custom* template's Dockerfile layer reflects —
+self-healing on the next bake, never touching the agent/CLI/opencode runtime.
+
+**This is the only shipped change that removes the clone**, and it only helps
+Platinum. Expect Platinum's first-ever warm bakes as a consequence — new build
+load on a provider that has never done them; the existing per-provider bake
+cooldown applies.
 
 ⚠ **Deploying #6's rename is not free.** The new name adds a `tpl8` segment and
 folds the slug into the hash, so no pre-migration name can be recomputed —
@@ -391,7 +419,8 @@ Summing only what is verified and actually on the critical path:
 | SSE loop retry regime (#4a) | up to −2.7 s | up to −2.7 s |
 | Session-create no-abort (#4b) | ~0 s | −1 s |
 | `readRepoInfo` + eager preview (#4c/#4d) | small | small |
-| **Expected p50** | **~15–16 s** (from 18.9 s) | **~20–21 s** (from 24.5 s) |
+| Per-project warm image (#6) | — (already 65%) | **−7 s** (0% → warm) |
+| **Expected p50** | **~15–16 s** (from 18.9 s) | **~13–14 s** (from 24.5 s) |
 
 That is a real but unglamorous ~15%. The two changes that would actually halve
 this are #5 (−3.2 s, tracked as the API region move) and #6 (−7 s, Platinum only,

@@ -8,7 +8,7 @@
 // and idx_audit_events_resource (resource_type).
 
 import { auditEvents } from '@kortix/db';
-import { type SQL, and, eq, gte, ilike, like, lte, or } from 'drizzle-orm';
+import { type SQL, eq, gte, ilike, like, lte, or } from 'drizzle-orm';
 
 export interface AuditFilterInput {
   /** actor user_id, or null for "everyone". */

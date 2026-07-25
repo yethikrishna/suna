@@ -42,6 +42,8 @@ function clientAssertion(
   if (application.token_endpoint_auth_method === 'client_secret_jwt') {
     const header = base64Json({ alg: 'HS256', typ: 'JWT' });
     const input = `${header}.${payload}`;
+    // OAuth client_secret_jwt requires JWS HS256. This is a signature, not password hashing.
+    // lgtm[js/insufficient-password-hash]
     const signature = createHmac('sha256', application.client_secret ?? '')
       .update(input)
       .digest('base64url');
@@ -49,6 +51,8 @@ function clientAssertion(
   }
   const header = base64Json({ alg: 'RS256', typ: 'JWT' });
   const input = `${header}.${payload}`;
+  // OAuth private_key_jwt requires JWS RS256. This is a signature, not password hashing.
+  // lgtm[js/insufficient-password-hash]
   const signer = createSign('RSA-SHA256');
   signer.update(input);
   signer.end();

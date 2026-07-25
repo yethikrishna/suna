@@ -9,7 +9,6 @@ import { and, eq } from 'drizzle-orm';
 import { config } from '../../config';
 import { ensureDefaultProfile } from '../../executor/credentials';
 import {
-  completeAuthorizationCodeSession,
   createAuthorizationCodeSession,
   createDeviceAuthorizationSession,
   discoverConfiguredOAuth2Application,

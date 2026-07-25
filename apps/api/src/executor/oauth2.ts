@@ -80,6 +80,8 @@ function buildClientSecretAssertion(
     exp: nowSeconds + 300,
   });
   const input = `${header}.${payload}`;
+  // OAuth client_secret_jwt requires JWS HS256. This is a signature, not password hashing.
+  // lgtm[js/insufficient-password-hash]
   return `${input}.${createHmac('sha256', config.client_secret ?? '').update(input).digest('base64url')}`;
 }
 

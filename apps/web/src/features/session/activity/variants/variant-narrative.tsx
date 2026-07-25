@@ -29,25 +29,10 @@ import {
   formatActivityDuration,
   summarizeEntries,
 } from '../activity-model';
-import { humanizeShellStep } from '../humanize';
+import { WorkStepRow } from '../work-step-row';
 import { AssistantProse, UserBubble, useTurnParts, useTurns } from './shared';
 import type { ChatVariantProps } from './types';
 
-function stepLabel(part: ActivityEntry['part']): string {
-  const input = ((part.state as { input?: Record<string, unknown> })?.input ?? {}) as Record<
-    string,
-    unknown
-  >;
-  if (part.tool.replace(/^oc-/, '') === 'bash') {
-    return humanizeShellStep({
-      description: input.description as string | undefined,
-      command: input.command as string | undefined,
-    });
-  }
-  const path = (input.filePath ?? input.path ?? input.pattern ?? input.query) as string | undefined;
-  const verb = part.tool.replace(/^oc-/, '').replace(/[-_]/g, ' ');
-  return path ? `${verb} · ${path.split('/').slice(-1)[0]}` : verb;
-}
 
 function isErrored(entry: ActivityEntry): boolean {
   return (entry.part.state as { status?: string } | undefined)?.status === 'error';
@@ -62,8 +47,10 @@ function isErrored(entry: ActivityEntry): boolean {
 function WorkLine({
   entries,
   reasoning,
+  sessionId,
 }: {
   entries: ActivityEntry[];
+  sessionId: string;
   /** The turn's thinking. Folded in here rather than dropped: Narrative hides
    *  machinery at rest, but nothing may become UNREACHABLE — reasoning that
    *  renders nowhere is content loss, not a fold. */
@@ -111,10 +98,11 @@ function WorkLine({
               <UnifiedMarkdown content={reasoningText} />
             </div>
           )}
+          {/* Actionable, not decorative: in a session this opens the step in
+              the side panel; in the demo (no panel) it expands the real tool
+              output inline. Same component the product uses. */}
           {entries.map(({ part }) => (
-            <div key={part.id} className="text-muted-foreground/70 truncate py-0.5 text-xs">
-              {stepLabel(part)}
-            </div>
+            <WorkStepRow key={part.id} part={part} sessionId={sessionId} />
           ))}
         </div>
       </CollapsibleContent>
@@ -165,7 +153,7 @@ function TurnBody({ turn, sessionId }: { turn: Turn; sessionId: string; isBusy?:
     <div className="space-y-4">
       <UserBubble turn={turn} />
       <div className="space-y-3">
-        <WorkLine entries={ok} reasoning={reasoning} />
+        <WorkLine entries={ok} reasoning={reasoning} sessionId={sessionId} />
 
         {failed.map((entry) => (
           <ToolPartRenderer key={entry.part.id} part={entry.part} sessionId={sessionId} />

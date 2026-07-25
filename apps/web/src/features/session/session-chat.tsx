@@ -53,6 +53,7 @@ import {
   partitionForNarrative,
   summarizeEntries,
 } from '@/features/session/activity/activity-model';
+import { WorkStepRow } from '@/features/session/activity/work-step-row';
 import {
   ChatDetailProvider,
   ChatDetailToggle,
@@ -2165,23 +2166,18 @@ function TurnWorkLine({
               <UnifiedMarkdown content={reasoningText} />
             </div>
           )}
-          {entries.map(({ part }) =>
-            isShellActivityTool(part.tool) ? (
-              <ShellStepRow
-                key={part.id}
-                part={part}
-                sessionId={sessionId}
-                disableNavigation={disableNavigation}
-              />
-            ) : (
-              <ToolPartRenderer
-                key={part.id}
-                part={part}
-                sessionId={sessionId}
-                disableNavigation={disableNavigation}
-              />
-            ),
-          )}
+          {/* Every step is actionable — clicking opens it in the side panel
+              (or expands the real output inline where there is no panel).
+              A step you can only read is a dead end, which defeats the whole
+              point of expanding the line. */}
+          {entries.map(({ part }) => (
+            <WorkStepRow
+              key={part.id}
+              part={part}
+              sessionId={sessionId}
+              disableNavigation={disableNavigation}
+            />
+          ))}
         </div>
       </CollapsibleContent>
     </Collapsible>

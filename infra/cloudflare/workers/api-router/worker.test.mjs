@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import worker from './worker.mjs';
 
 const env = {
@@ -19,6 +20,22 @@ afterEach(() => {
 });
 
 describe('api-router worker', () => {
+  test('keeps the staging API on EKS in config and deployment metadata', () => {
+    const wrangler = readFileSync(new URL('./wrangler.toml', import.meta.url), 'utf8');
+    const deployWorkflow = readFileSync(
+      new URL('../../../../.github/workflows/deploy-staging.yml', import.meta.url),
+      'utf8',
+    );
+
+    const stagingVars = wrangler.match(
+      /\[env\.staging\.vars\]([\s\S]*?)(?=\n\[env\.|\s*$)/,
+    )?.[1];
+    expect(stagingVars).toContain('ACTIVE_BACKEND = "eks"');
+    expect(deployWorkflow).toContain(
+      '{type:"plain_text", name:"ACTIVE_BACKEND", text:"eks"}',
+    );
+  });
+
   test('redirects plaintext API requests to HTTPS before proxying', async () => {
     let fetched = false;
     globalThis.fetch = async () => {
@@ -92,5 +109,35 @@ describe('api-router worker', () => {
     expect(response.status).toBe(308);
     expect(response.headers.get('Location')).toBe('https://gateway.kortix.com/v1/chat/completions');
     expect(fetched).toBe(false);
+  });
+
+  test('preserves API WebSocket upgrade responses without wrapping them', async () => {
+    const webSocket = {};
+    const upgradeResponse = {
+      status: 101,
+      headers: new Headers(),
+      webSocket,
+    };
+    let proxiedUrl = '';
+    let proxiedUpgrade = '';
+    globalThis.fetch = async (request) => {
+      proxiedUrl = request.url;
+      proxiedUpgrade = request.headers.get('Upgrade') ?? '';
+      return upgradeResponse;
+    };
+
+    const response = await worker.fetch(
+      new Request('https://api.kortix.com/v1/p/sbx_123/8000/kortix/pty/kpty_123/connect', {
+        headers: { Upgrade: 'websocket' },
+      }),
+      env,
+    );
+
+    expect(proxiedUrl).toBe(
+      'https://api-eks.kortix.com/v1/p/sbx_123/8000/kortix/pty/kpty_123/connect',
+    );
+    expect(proxiedUpgrade).toBe('websocket');
+    expect(response).toBe(upgradeResponse);
+    expect(response.webSocket).toBe(webSocket);
   });
 });

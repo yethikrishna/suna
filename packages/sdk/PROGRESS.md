@@ -236,6 +236,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B16 | **Retry transient transport failures on idempotent REST reads before reporting them.** Browser CORS preflight failures surface as opaque `TypeError: Failed to fetch`, bypass the existing HTTP 502/503/504 retry loop, and call the host error handler before React Query retries successfully. Cache successful preflights to reduce exposure without retrying mutations. | Production session `d9abee06-5af1-48b9-ba92-53ca0fcf0589` logged continuous audit `200` responses after one browser preflight failure; `src/core/http/api-client.ts` retries response statuses but reports initial fetch throws immediately; `apps/api/src/index.ts` emits no `Access-Control-Max-Age`. | **DONE 2026-07-24** — implementation `9f6e5b615`; session `cors-transport-resilience` |
 | B17 | **Add native OAuth2 client-credentials lifecycle support to existing connector connection profiles.** Static bearer credentials cannot acquire, cache, refresh, or revoke OAuth2 access tokens. Microsoft Graph and SharePoint require OAuth2 and cannot use a static API key. | `apps/api/src/executor/credentials.ts` decrypts one opaque value; `apps/api/src/executor/db-deps.ts` passes that value directly to `executeCall`; `packages/sdk/src/core/rest/projects-client/connectors.ts` accepts only `{ value }`. | **DONE 2026-07-24** — session `native-oauth-sharepoint`; full SDK gates and real SharePoint proof green |
 | B18 | **Keep the managed-model playground pin synchronized with the managed catalog.** The playground exits before API access when its pinned IDs differ from `MANAGED_MODELS`. | `packages/sdk/playground/chat/14-change-default-model.ts` still pins retired `qwen3.7-max` and `deepseek-v4-pro`. | **DONE 2026-07-24** — session `managed-models-aster`; full SDK gates green |
+| B19 | **Preserve explicit managed-model pricing and cache-write rates through the project catalog and turn-cost estimator.** Browser-side `models.dev` lookup can substitute another provider's price for a Kortix-managed model, and the turn estimator does not accept a distinct cache-write rate. | `src/core/rest/projects-client/projects.ts`, `src/core/turns/types.ts`, `src/core/turns/state.ts`; confirmed for managed Aster `glm-5.2`. | **IN PROGRESS 2026-07-25** — session `gateway-billing-audit` |
 
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
@@ -2157,5 +2158,19 @@ Existing exports and session synchronization contracts remain backward
 compatible. Work will follow RED -> GREEN -> REFACTOR and finish with the full
 SDK typecheck, test, and packed-install smoke gates, focused web tests, browser
 verification, repository merge, Deploy Dev, and live-dev proof.
+
+**Status:** IN PROGRESS.
+
+---
+
+### 2026-07-25 — session `gateway-billing-audit` (B19 claim)
+
+Claimed the additive managed-model pricing and cache-write cost contract. The
+project catalog will carry server-supplied managed prices. The turn estimator
+will accept a distinct cache-write rate. Existing public names and required
+fields remain backward compatible.
+
+Implementation will follow RED -> GREEN -> REFACTOR. The final SDK typecheck,
+full suite, and packed-install smoke gates are required.
 
 **Status:** IN PROGRESS.

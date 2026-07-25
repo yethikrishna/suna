@@ -19,6 +19,7 @@ import {
   resolveStoredOAuth2Credential,
   type OAuth2AccessToken,
 } from './oauth2';
+import { resolveStoredDelegatedCredential } from './oauth2-delegated';
 
 /* ─── credentials (split per user) ────────────────────────────────────────── */
 
@@ -41,7 +42,7 @@ async function resolveCredentialRow(
   row: CredentialRow,
   runtime: OAuth2CredentialRuntime = {},
 ): Promise<string | null> {
-  if (row.kind !== 'oauth2_client_credentials') {
+  if (row.kind !== 'oauth2_client_credentials' && row.kind !== 'oauth2_delegated') {
     try {
       return decryptProjectSecret(row.projectId, row.valueEnc);
     } catch {
@@ -67,8 +68,16 @@ async function resolveCredentialRow(
     } catch {
       return null;
     }
-    if (current.kind !== 'oauth2_client_credentials') return value;
-    const resolved = await resolveStoredOAuth2Credential(value, runtime);
+    if (
+      current.kind !== 'oauth2_client_credentials' &&
+      current.kind !== 'oauth2_delegated'
+    ) {
+      return value;
+    }
+    const resolved =
+      current.kind === 'oauth2_delegated'
+        ? await resolveStoredDelegatedCredential(value)
+        : await resolveStoredOAuth2Credential(value, runtime);
     if (resolved.updatedValue) {
       await tx
         .update(executorCredentials)
@@ -229,7 +238,7 @@ export async function upsertProfileCredential(input: {
   connectorId: string;
   profileId: string;
   value: string;
-  kind?: 'secret' | 'connection' | 'oauth2_client_credentials';
+  kind?: 'secret' | 'connection' | 'oauth2_client_credentials' | 'oauth2_delegated';
   createdBy?: string | null;
 }): Promise<void> {
   const [profile] = await db
@@ -359,7 +368,7 @@ export async function upsertCredential(opts: {
   connectorId: string;
   userId: string | null;
   value: string;
-  kind?: 'secret' | 'connection' | 'oauth2_client_credentials';
+  kind?: 'secret' | 'connection' | 'oauth2_client_credentials' | 'oauth2_delegated';
   createdBy?: string | null;
 }): Promise<void> {
   const profileId = await ensureDefaultProfile(opts);

@@ -181,6 +181,8 @@ export class SessionSyncController {
     isLoadingOlder: false,
   };
   private nextCursor: string | undefined;
+  private knownUserMessageIds = new Set<string>();
+  private olderHistoryStarted = false;
   private tailRequest: Promise<void> | undefined;
   private olderRequest: Promise<void> | undefined;
   private livenessTimer: unknown;
@@ -224,10 +226,12 @@ export class SessionSyncController {
     if (this.olderRequest) return this.olderRequest;
     const before = this.nextCursor;
     this.update({ isLoadingOlder: true });
-    this.olderRequest = this.loadPage('older', 'manual', before)
+    this.olderRequest = this.loadCompleteOlderTurn(before)
       .then((page) => {
         if (this.destroyed) return;
+        this.rememberUserMessages(page.messages);
         this.options.hydrate(page.messages);
+        this.olderHistoryStarted = true;
         this.setCursor(page.nextCursor);
       })
       .finally(() => {
@@ -265,10 +269,14 @@ export class SessionSyncController {
 
   private async loadTail(reason: SessionSyncReason): Promise<void> {
     try {
-      const page = await this.loadPage('tail', reason);
+      const firstPage = await this.loadPage('tail', reason);
+      const page = await this.loadCompleteTurn(firstPage, 'tail', reason);
       if (this.destroyed) return;
+      this.rememberUserMessages(page.messages);
       this.options.hydrate(page.messages);
-      this.setCursor(page.nextCursor);
+      if (!this.olderHistoryStarted) {
+        this.setCursor(page.nextCursor);
+      }
       this.update({ freshness: 'fresh' });
     } catch {
       if (!this.destroyed) {
@@ -307,6 +315,63 @@ export class SessionSyncController {
         succeeded: false,
       });
       throw error;
+    }
+  }
+
+  private async loadCompleteOlderTurn(before: string): Promise<SessionSyncPage> {
+    const firstPage = await this.loadPage('older', 'manual', before);
+    return this.loadCompleteTurn(firstPage, 'older', 'manual', before);
+  }
+
+  private async loadCompleteTurn(
+    firstPage: SessionSyncPage,
+    operation: 'tail' | 'older',
+    reason: SessionSyncReason,
+    initialCursor?: string,
+  ): Promise<SessionSyncPage> {
+    const messages = [...firstPage.messages];
+    const knownUserMessageIds = new Set(this.knownUserMessageIds);
+    const seenCursors = new Set(initialCursor ? [initialCursor] : []);
+    let cursor = firstPage.nextCursor;
+
+    for (const message of firstPage.messages) {
+      if (message.info.role === 'user') {
+        knownUserMessageIds.add(message.info.id);
+      }
+    }
+
+    while (
+      cursor &&
+      messages.some(
+        (message) =>
+          message.info.role === 'assistant' &&
+          Boolean(message.info.parentID) &&
+          !knownUserMessageIds.has(message.info.parentID!),
+      )
+    ) {
+      if (seenCursors.has(cursor)) {
+        throw new Error(`Session history cursor repeated: ${cursor}`);
+      }
+      seenCursors.add(cursor);
+      const page = await this.loadPage(operation, reason, cursor);
+      messages.unshift(...page.messages);
+      for (const message of page.messages) {
+        if (message.info.role === 'user') {
+          knownUserMessageIds.add(message.info.id);
+        }
+      }
+
+      cursor = page.nextCursor;
+    }
+
+    return { messages, nextCursor: cursor };
+  }
+
+  private rememberUserMessages(messages: SessionSyncMessage[]): void {
+    for (const message of messages) {
+      if (message.info.role === 'user') {
+        this.knownUserMessageIds.add(message.info.id);
+      }
     }
   }
 

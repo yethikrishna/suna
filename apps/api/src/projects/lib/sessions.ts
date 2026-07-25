@@ -398,14 +398,20 @@ export async function buildSessionSandboxEnvVars(input: {
     // that one is an intentional native provider).
     KORTIX_OPENCODE_DENY_ENV: input.llmGatewayEnabled ? nativeProviderEnvNames().join(',') : '',
     KORTIX_PROJECT_AUTO_CLONE: '1',
-    // Force a FULL clone (no blobless partial clone). The blobless default
-    // (KORTIX_CLONE_FILTER=blob:none) fetches file blobs lazily during checkout
-    // through the Kortix git proxy; when the proxy's partial-clone capability
-    // isn't advertised consistently, git intermittently stalls on an on-demand
-    // blob fetch and the clone never finishes (repo_ready stuck false → the
-    // session never reaches runtimeReady). A full clone transfers one pack with
-    // no on-demand fetches — reliable. Starter/project repos are small so the
-    // size cost is negligible. Empty string = full clone (see daemon config.ts).
+    // No partial-clone filter. Blobless (`blob:none`) defers file blobs to
+    // on-demand fetches, which stall through the Kortix git proxy when its
+    // partial-clone capability isn't advertised consistently — the clone then
+    // never finishes and the session never reaches runtimeReady. It is also
+    // simply slower: measured on kortix-ai/company, blobless 6161ms vs a full
+    // clone's 4288ms.
+    //
+    // Shallowness is the safe lever instead (KORTIX_CLONE_DEPTH=1, the daemon
+    // default): one pack, one commit, no on-demand fetches, with history
+    // restored in the background right after boot (scheduleHistoryBackfill).
+    // It is worth ~1.5x on the clone, no more — the dominant cost is the
+    // working tree plus the transatlantic git-proxy hop (sandbox US → API
+    // eu-west-2 → GitHub US). See
+    // docs/specs/2026-07-25-session-boot-latency-attribution.md, Finding 1.
     KORTIX_CLONE_FILTER: '',
     ...buildSessionRuntimeEnv({
       projectId: input.projectId,
@@ -424,6 +430,9 @@ export async function buildSessionSandboxEnvVars(input: {
       // platform resolution. The sandbox uses it for the first OpenCode turn
       // and as the session's OpenCode config default.
       opencodeModel: input.opencodeModel,
+      // OpenCode ACP starts its internal REST server. Existing REST clients
+      // continue to work while the project experiment selects the ACP client.
+      opencodeProcessTransport: 'acp',
       // Backend-vouched end-user (KaaB) → KORTIX_ORIGIN_REF in the sandbox.
       originRef: sessionKaabRow?.originRef ?? null,
       compiledAgentConfig,

@@ -58,6 +58,7 @@ import {
 } from '../../channels/turn-relay';
 import { config } from '../../config';
 import { upsertProfileCredential, upsertProfileOAuth2Credential } from '../../executor/credentials';
+import { revokeProfileOAuth2 } from '../../executor/oauth2-store';
 import {
   finalizePipedreamProfileConnection,
   pipedreamConfigured,
@@ -116,6 +117,7 @@ import {
   upsertTriggerInManifest,
 } from '../lib/triggers';
 import { listProjectSecretsSnapshot } from '../secrets';
+import { reconcileProjectTriggerRuntime } from '../trigger-runtime-catalog';
 import { type ParsedManifest, extractTriggers, loadProjectTriggers } from '../triggers';
 
 // Body keys that change the trigger's *repo manifest* (committed to git). A PATCH
@@ -581,6 +583,7 @@ for (const operation of ['credential', 'revoke', 'activate'] as const) {
           return c.json({ error: (error as Error).message || 'credential validation failed' }, 400);
         }
       } else {
+        if (operation === 'revoke') await revokeProfileOAuth2(profileId);
         await db
           .update(executorConnectionProfiles)
           .set({ status: operation === 'revoke' ? 'revoked' : 'active', updatedAt: new Date() })
@@ -839,6 +842,7 @@ projectsApp.openapi(
     if ('error' in result) {
       return c.json({ error: result.error }, result.status as 400 | 502);
     }
+    await reconcileProjectTriggerRuntime(projectId, extractTriggers(next).specs);
 
     return c.json(await loadTriggersForResponse(projectId, loaded.row), 201);
   },
@@ -990,6 +994,7 @@ projectsApp.openapi(
       if ('error' in result) {
         return c.json({ error: result.error }, result.status as 400 | 502);
       }
+      await reconcileProjectTriggerRuntime(projectId, extractTriggers(next).specs);
     }
 
     return c.json(await loadTriggersForResponse(projectId, loaded.row));

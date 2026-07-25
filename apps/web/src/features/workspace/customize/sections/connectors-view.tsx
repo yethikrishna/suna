@@ -104,33 +104,50 @@ import {
   type ConnectorDraftInput,
   type ConnectorPolicyAction,
   type ConnectorPolicyRule,
+  type ConnectorRequestAuthType,
   createConnector,
   deleteConnector,
   discoverConnectorAuth,
-  getConnectStatus,
+  discoverConnectionProfileOAuth2,
+  ensureProjectConnectorProfile,
   getConnectorConfig,
   getConnectorPolicies,
+  getConnectStatus,
   getProjectDetail,
   listConnectionProfiles,
   listConnectors,
   listPipedreamApps,
+  type OAuth2DeviceAuthorizationStartResult,
   pipedreamConnect,
   pipedreamConnectConnectionProfile,
   pipedreamFinalize,
   pipedreamFinalizeConnectionProfile,
+  pollConnectionProfileOAuth2DeviceAuthorization,
+  putConnectionProfileOAuth2Application,
   reconcileMemberConnectionProfile,
   revokeConnectionProfile,
   setConnectorCredential,
   setConnectorName,
   setConnectorPolicies,
   setConnectorSensitive,
+  startConnectionProfileOAuth2Authorization,
+  startConnectionProfileOAuth2DeviceAuthorization,
   syncConnectors,
-} from '@kortix/sdk/projects-client';
+} from '@kortix/sdk';
 import {
+  buildOAuth2ApplicationInput,
   buildOAuth2CredentialInput,
+  createConnectorWithOptionalOAuth2,
+  EMPTY_OAUTH2_APPLICATION_FORM,
   EMPTY_OAUTH2_CREDENTIAL_FORM,
+  type OAuth2ApplicationForm,
+  mergeOAuth2DiscoveryMetadata,
+  oauth2ApplicationFormValid,
   type OAuth2CredentialForm,
+  oauth2CredentialFormValid,
 } from './connector-oauth2';
+import { OAuth2ApplicationFields } from './connector-oauth2-application-fields';
+import { OAuth2CredentialFields } from './connector-oauth2-fields';
 import { DiscoverCatalogue } from './discover-catalogue';
 
 const PROVIDER_ICON: Record<AdminConnector['provider'], LucideIcon> = {
@@ -300,7 +317,7 @@ export function ConnectorsView({ projectId }: { projectId: string }) {
 function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
-  const queryKey = ['project-connectors', projectId];
+  const queryKey = useMemo(() => ['project-connectors', projectId], [projectId]);
   const invalidate = () => queryClient.invalidateQueries({ queryKey });
 
   const query = useQuery({
@@ -330,6 +347,20 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const rawC = search?.get('c') ?? '';
+  const oauth2Result = search?.get('oauth2');
+  const oauth2Error = search?.get('oauth2_error');
+  useEffect(() => {
+    if (oauth2Result !== 'connected' && oauth2Result !== 'error') return;
+    if (oauth2Result === 'connected') successToast('OAuth 2.0 connection completed');
+    else errorToast(oauth2Error || 'OAuth 2.0 connection failed');
+    void queryClient.invalidateQueries({ queryKey });
+    void queryClient.invalidateQueries({ queryKey: ['connector-profiles', projectId] });
+    const params = new URLSearchParams(search?.toString() ?? '');
+    params.delete('oauth2');
+    params.delete('oauth2_error');
+    const suffix = params.toString();
+    router.replace(suffix ? `${pathname}?${suffix}` : pathname, { scroll: false });
+  }, [oauth2Error, oauth2Result, pathname, projectId, queryClient, queryKey, router, search]);
   const select = (sel: Selection) => {
     const key = sel.kind === 'connector' ? sel.slug : sel.kind;
     const params = new URLSearchParams(search?.toString() ?? '');
@@ -1302,6 +1333,7 @@ function ConnectorDetail({
       <SetCredentialModal
         projectId={projectId}
         connector={credOpen ? connector : null}
+        profileId={connectionProfile?.profile_id ?? null}
         open={credOpen}
         onOpenChange={setCredOpen}
         onSaved={onChanged}
@@ -3640,6 +3672,8 @@ function ConnectorConfigFields({
   readOnly = false,
   detectedAuth = null,
   detectedTitle = null,
+  oauth2Selected = false,
+  onOAuth2SelectedChange,
 }: {
   draft: ConnectorDraftInput;
   onChange: (d: ConnectorDraftInput) => void;
@@ -3650,6 +3684,9 @@ function ConnectorConfigFields({
   detectedAuth?: { type: string; parameterName: string | null } | null;
   /** The source document's own name, used to propose a slug. */
   detectedTitle?: string | null;
+  /** Exposes native OAuth2 during initial connector creation. */
+  oauth2Selected?: boolean;
+  onOAuth2SelectedChange?: (selected: boolean) => void;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   // Once the slug is typed in by hand, never overwrite it from the source again.
@@ -3878,11 +3915,17 @@ function ConnectorConfigFields({
           <Field>
             <FieldLabel htmlFor="connector-auth">Auth</FieldLabel>
             <Select
-              value={draft.auth?.type ?? 'auto'}
+              value={oauth2Selected ? 'oauth2_client_credentials' : (draft.auth?.type ?? 'auto')}
               disabled={readOnly}
               onValueChange={(v) => {
+                if (v === 'oauth2_client_credentials') {
+                  onOAuth2SelectedChange?.(true);
+                  set({ auth: { type: 'bearer' } });
+                  return;
+                }
+                onOAuth2SelectedChange?.(false);
                 if (v === 'auto') set({ auth: undefined });
-                else setAuth({ type: v as 'none' | 'bearer' | 'basic' | 'custom' | 'oauth1' });
+                else setAuth({ type: v as ConnectorRequestAuthType });
               }}
             >
               <SelectTrigger id="connector-auth" className="w-full" variant="popover">
@@ -3893,7 +3936,14 @@ function ConnectorConfigFields({
                 <SelectItem value="none">None</SelectItem>
                 <SelectItem value="bearer">Bearer</SelectItem>
                 <SelectItem value="basic">Basic</SelectItem>
+                <SelectItem value="api_key">API key</SelectItem>
+                {onOAuth2SelectedChange && (
+                  <SelectItem value="oauth2_client_credentials">OAuth 2.0</SelectItem>
+                )}
                 <SelectItem value="oauth1">OAuth 1.0</SelectItem>
+                <SelectItem value="hmac">HMAC-SHA256</SelectItem>
+                <SelectItem value="aws_sigv4">AWS Signature Version 4</SelectItem>
+                <SelectItem value="mtls">Mutual TLS</SelectItem>
                 <SelectItem value="custom">
                   {tI18nHardcoded.raw(
                     'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextCustomHeader1e0e82ed',
@@ -3902,7 +3952,9 @@ function ConnectorConfigFields({
               </SelectContent>
             </Select>
             <FieldDescription>
-              {draft.auth === undefined && detectedAuth ? (
+              {oauth2Selected ? (
+                'Kortix obtains, refreshes, and injects a bearer token for this connector.'
+              ) : draft.auth === undefined && detectedAuth ? (
                 <>
                   Detected <span className="font-medium">{detectedAuth.type}</span>
                   {detectedAuth.parameterName ? (
@@ -3939,23 +3991,40 @@ function ConnectorConfigFields({
               </FieldDescription>
             </Field>
           )}
-          {draft.auth?.type === 'custom' && (
-            <Field>
-              <FieldLabel htmlFor="connector-auth-header">
-                {tI18nHardcoded.raw(
-                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelHeader9b2e0143',
-                )}
-              </FieldLabel>
-              <Input
-                id="connector-auth-header"
-                value={draft.auth?.name ?? ''}
-                onChange={(e) => setAuth({ name: e.target.value })}
-                placeholder="X-API-Key"
-                variant="popover"
-                disabled={readOnly}
-                required
-              />
-            </Field>
+          {(draft.auth?.type === 'custom' || draft.auth?.type === 'api_key') && (
+            <>
+              <Field>
+                <FieldLabel htmlFor="connector-auth-name">Parameter name</FieldLabel>
+                <Input
+                  id="connector-auth-name"
+                  value={draft.auth?.name ?? ''}
+                  onChange={(e) => setAuth({ name: e.target.value })}
+                  placeholder="X-API-Key"
+                  variant="popover"
+                  disabled={readOnly}
+                  required
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="connector-auth-placement">Placement</FieldLabel>
+                <Select
+                  value={draft.auth?.in ?? 'header'}
+                  disabled={readOnly}
+                  onValueChange={(placement) =>
+                    setAuth({ in: placement as 'header' | 'query' | 'cookie' })
+                  }
+                >
+                  <SelectTrigger id="connector-auth-placement" variant="popover">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="header">Header</SelectItem>
+                    <SelectItem value="query">Query</SelectItem>
+                    <SelectItem value="cookie">Cookie</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </>
           )}
         </div>
       )}
@@ -3974,7 +4043,9 @@ function ConnectorConfigFields({
 }
 
 function connectionValid(d: ConnectorDraftInput, emailChannelEnabled = true): boolean {
-  if (d.auth?.type === 'custom' && !d.auth.name?.trim()) return false;
+  if ((d.auth?.type === 'custom' || d.auth?.type === 'api_key') && !d.auth.name?.trim()) {
+    return false;
+  }
   if (d.provider === 'mcp') return !!d.url?.trim();
   if (d.provider === 'openapi') return !!d.spec?.trim();
   if (d.provider === 'postman') return !!d.spec?.trim();
@@ -4000,6 +4071,8 @@ export function CustomConnectorForm({
     slug: '',
     provider: 'openapi',
   });
+  const [oauth2Selected, setOauth2Selected] = useState(false);
+  const [oauth2, setOauth2] = useState<OAuth2CredentialForm>(EMPTY_OAUTH2_CREDENTIAL_FORM);
   const [discoveryDraft, setDiscoveryDraft] = useState(draft);
   useEffect(() => {
     const timer = window.setTimeout(() => setDiscoveryDraft(draft), 400);
@@ -4010,11 +4083,21 @@ export function CustomConnectorForm({
       setDraft((current) => ({ ...current, platform: 'slack' }));
     }
   }, [draft.platform, draft.provider, emailChannelEnabled]);
+  useEffect(() => {
+    if (draft.provider === 'channel' && oauth2Selected) {
+      setOauth2Selected(false);
+    }
+  }, [draft.provider, oauth2Selected]);
 
   const save = useMutation({
-    mutationFn: () => createConnector(projectId, draft),
+    mutationFn: () =>
+      createConnectorWithOptionalOAuth2(projectId, draft, oauth2Selected ? oauth2 : null, {
+        createConnector,
+        deleteConnector,
+        setConnectorCredential,
+      }),
     onSuccess: () => {
-      successToast(`Added ${draft.slug}`);
+      successToast(oauth2Selected ? `Added and connected ${draft.slug}` : `Added ${draft.slug}`);
       onAdded(draft.slug);
     },
     onError: (err: Error) => errorToast(err.message || 'Failed to add connector'),
@@ -4037,6 +4120,7 @@ export function CustomConnectorForm({
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          if (oauth2Selected && !oauth2CredentialFormValid(oauth2)) return;
           save.mutate();
         }}
       >
@@ -4055,7 +4139,22 @@ export function CustomConnectorForm({
                 : null
             }
             detectedTitle={discovery.data?.title ?? null}
+            oauth2Selected={oauth2Selected}
+            onOAuth2SelectedChange={setOauth2Selected}
           />
+          {oauth2Selected && (
+            <div className="space-y-4">
+              <InfoBanner tone="info" title="OAuth 2.0 client credentials">
+                Kortix requests a token before saving. It encrypts the configuration and refreshes
+                the access token before expiry.
+              </InfoBanner>
+              <OAuth2CredentialFields
+                value={oauth2}
+                onChange={setOauth2}
+                idPrefix="new-connector-oauth2"
+              />
+            </div>
+          )}
           {draft.auth === undefined && discovery.isFetching && (
             <InfoBanner tone="info">Checking the source for authentication settings…</InfoBanner>
           )}
@@ -4073,7 +4172,7 @@ export function CustomConnectorForm({
               Could not inspect authentication: {(discovery.error as Error).message}
             </InfoBanner>
           )}
-          {authActive && (
+          {authActive && !oauth2Selected && (
             <InfoBanner tone="info">
               {tI18nHardcoded.raw(
                 'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextYouLle5def626',
@@ -4085,7 +4184,10 @@ export function CustomConnectorForm({
               type="submit"
               size="sm"
               disabled={
-                !draft.slug || save.isPending || !connectionValid(draft, emailChannelEnabled)
+                !draft.slug ||
+                save.isPending ||
+                !connectionValid(draft, emailChannelEnabled) ||
+                (oauth2Selected && !oauth2CredentialFormValid(oauth2))
               }
               className="gap-1.5"
             >
@@ -4104,12 +4206,14 @@ export function CustomConnectorForm({
 function SetCredentialModal({
   projectId,
   connector,
+  profileId,
   open,
   onOpenChange,
   onSaved,
 }: {
   projectId: string;
   connector: AdminConnector | null;
+  profileId: string | null;
   open: boolean;
   onOpenChange: (o: boolean) => void;
   onSaved: () => void;
@@ -4118,27 +4222,151 @@ function SetCredentialModal({
   const [credentialType, setCredentialType] = useState<'static' | 'oauth2'>('static');
   const [value, setValue] = useState('');
   const [oauth2, setOauth2] = useState<OAuth2CredentialForm>(EMPTY_OAUTH2_CREDENTIAL_FORM);
-  const setOauth2Field = <K extends keyof OAuth2CredentialForm>(
-    key: K,
-    next: OAuth2CredentialForm[K],
-  ) => setOauth2((current) => ({ ...current, [key]: next }));
+  const [application, setApplication] = useState<OAuth2ApplicationForm>(
+    EMPTY_OAUTH2_APPLICATION_FORM,
+  );
+  const configQuery = useQuery({
+    queryKey: ['connector-config', projectId, connector?.slug],
+    queryFn: () => getConnectorConfig(projectId, connector!.slug),
+    enabled: open && Boolean(connector),
+    staleTime: 30_000,
+  });
+  const requestAuth = configQuery.data?.auth.type;
+  const objectCredential = ['oauth1', 'hmac', 'aws_sigv4', 'mtls'].includes(requestAuth ?? '');
+  const credentialExample =
+    requestAuth === 'oauth1'
+      ? '{"consumer_key":"","consumer_secret":"","token":"","token_secret":""}'
+      : requestAuth === 'hmac'
+        ? '{"secret":"","key_id":""}'
+        : requestAuth === 'aws_sigv4'
+          ? '{"access_key_id":"","secret_access_key":"","region":"","service":"","session_token":""}'
+          : requestAuth === 'mtls'
+            ? '{"certificate":"-----BEGIN CERTIFICATE-----\\n...","private_key":"-----BEGIN PRIVATE KEY-----\\n...","ca":""}'
+            : '••••••••';
+  const staticValid = (() => {
+    if (!value) return false;
+    if (!objectCredential) return true;
+    try {
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+      const hasStrings = (...keys: string[]) =>
+        keys.every((key) => typeof parsed[key] === 'string' && Boolean(parsed[key]));
+      if (requestAuth === 'oauth1') {
+        return hasStrings('consumer_key', 'consumer_secret', 'token', 'token_secret');
+      }
+      if (requestAuth === 'hmac') return hasStrings('secret');
+      if (requestAuth === 'aws_sigv4') {
+        return hasStrings('access_key_id', 'secret_access_key', 'region', 'service');
+      }
+      if (requestAuth === 'mtls') return hasStrings('certificate', 'private_key');
+      return false;
+    } catch {
+      return false;
+    }
+  })();
+  const [device, setDevice] = useState<OAuth2DeviceAuthorizationStartResult | null>(null);
+  const [deviceProfileId, setDeviceProfileId] = useState<string | null>(null);
   const oauth2Valid =
-    !!oauth2.tokenUrl.trim() &&
-    !!oauth2.clientId.trim() &&
-    (oauth2.authMethod === 'private_key_jwt'
-      ? !!oauth2.privateKey && !!oauth2.certificateThumbprint.trim()
-      : !!oauth2.clientSecret);
+    application.grant === 'client_credentials'
+      ? oauth2CredentialFormValid(oauth2)
+      : oauth2ApplicationFormValid(application);
+  useEffect(() => {
+    if (!device || !deviceProfileId) return;
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const status = await pollConnectionProfileOAuth2DeviceAuthorization(
+          projectId,
+          deviceProfileId,
+          device.session_id,
+        );
+        if (stopped || status.status === 'pending') return;
+        stopped = true;
+        if (status.status === 'active') {
+          successToast('OAuth 2.0 device connection completed');
+          onSaved();
+          onOpenChange(false);
+        } else {
+          errorToast(status.error_code || 'OAuth 2.0 device connection failed');
+        }
+      } catch (error) {
+        if (!stopped) errorToast(error instanceof Error ? error.message : 'Device polling failed');
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), device.interval_seconds * 1000);
+    const expiryTimer = window.setTimeout(
+      () => {
+        stopped = true;
+        errorToast('The device authorization code expired');
+      },
+      Math.max(0, new Date(device.expires_at).getTime() - Date.now()),
+    );
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.clearTimeout(expiryTimer);
+    };
+  }, [device, deviceProfileId, onOpenChange, onSaved, projectId]);
   const save = useMutation({
-    mutationFn: () =>
-      setConnectorCredential(
+    mutationFn: async () => {
+      if (credentialType === 'static') {
+        return setConnectorCredential(projectId, connector!.slug, value);
+      }
+      if (application.grant === 'client_credentials') {
+        return setConnectorCredential(
+          projectId,
+          connector!.slug,
+          buildOAuth2CredentialInput(oauth2),
+        );
+      }
+      const activeProfileId =
+        profileId ?? (await ensureProjectConnectorProfile(projectId, connector!.slug)).profile_id;
+      const resolvedApplication = application.discoveryUrl
+        ? mergeOAuth2DiscoveryMetadata(
+            application,
+            (
+              await discoverConnectionProfileOAuth2(projectId, activeProfileId, {
+                discovery_url: application.discoveryUrl,
+              })
+            ).metadata,
+          )
+        : application;
+      await putConnectionProfileOAuth2Application(
         projectId,
-        connector!.slug,
-        credentialType === 'static' ? value : buildOAuth2CredentialInput(oauth2),
-      ),
+        activeProfileId,
+        buildOAuth2ApplicationInput(resolvedApplication),
+      );
+      const scopes = resolvedApplication.scopes.split(/\s+/).filter(Boolean);
+      if (application.grant === 'authorization_code') {
+        const redirect = new URL(window.location.href);
+        redirect.searchParams.delete('oauth2');
+        redirect.searchParams.delete('oauth2_error');
+        const result = await startConnectionProfileOAuth2Authorization(projectId, activeProfileId, {
+          scopes: scopes.length ? scopes : undefined,
+          success_redirect_uri: redirect.toString(),
+          error_redirect_uri: redirect.toString(),
+        });
+        window.location.assign(result.authorization_url);
+        return result;
+      }
+      const result = await startConnectionProfileOAuth2DeviceAuthorization(
+        projectId,
+        activeProfileId,
+        {
+          scopes: scopes.length ? scopes : undefined,
+        },
+      );
+      setDeviceProfileId(activeProfileId);
+      setDevice(result);
+      return result;
+    },
     onSuccess: () => {
-      successToast('Credential saved');
+      if (credentialType === 'oauth2' && application.grant !== 'client_credentials') return;
+      successToast(credentialType === 'oauth2' ? 'OAuth 2.0 connection saved' : 'Credential saved');
       setValue('');
       setOauth2(EMPTY_OAUTH2_CREDENTIAL_FORM);
+      setApplication(EMPTY_OAUTH2_APPLICATION_FORM);
       onSaved();
       onOpenChange(false);
     },
@@ -4151,7 +4379,7 @@ function SetCredentialModal({
         if (!save.isPending) onOpenChange(o);
       }}
     >
-      <ModalContent className="lg:max-w-2xl">
+      <ModalContent className="lg:max-w-3xl">
         <ModalHeader>
           <ModalTitle>
             {tI18nHardcoded.raw(
@@ -4160,15 +4388,15 @@ function SetCredentialModal({
             {connector?.slug}
           </ModalTitle>
           <ModalDescription>
-            Kortix encrypts this configuration. The Executor resolves it and sends only the
-            resulting authorization header to the upstream API.
+            Kortix encrypts credentials and applies the selected authentication strategy to upstream
+            requests.
           </ModalDescription>
         </ModalHeader>
         <form
           onSubmit={(e) => {
             e.preventDefault();
             if (
-              (credentialType === 'static' && value) ||
+              (credentialType === 'static' && staticValid) ||
               (credentialType === 'oauth2' && oauth2Valid)
             ) {
               save.mutate();
@@ -4183,137 +4411,108 @@ function SetCredentialModal({
             >
               <TabsList>
                 <TabsTrigger value="static">Static credential</TabsTrigger>
-                <TabsTrigger value="oauth2">OAuth2 client credentials</TabsTrigger>
+                <TabsTrigger value="oauth2">OAuth 2.0</TabsTrigger>
               </TabsList>
               <TabsContent value="static">
                 <Field>
-                  <FieldLabel htmlFor="connector-static-credential">Value</FieldLabel>
-                  <Input
-                    id="connector-static-credential"
-                    type="password"
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    placeholder="••••••••"
-                    className="font-mono"
-                    autoFocus
-                  />
+                  <FieldLabel htmlFor="connector-static-credential">
+                    {objectCredential ? 'Credential JSON' : 'Value'}
+                  </FieldLabel>
+                  {objectCredential ? (
+                    <Textarea
+                      id="connector-static-credential"
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                      placeholder={credentialExample}
+                      className="min-h-28 font-mono text-xs"
+                      autoFocus
+                    />
+                  ) : (
+                    <Input
+                      id="connector-static-credential"
+                      type="password"
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                      placeholder={credentialExample}
+                      className="font-mono"
+                      autoFocus
+                    />
+                  )}
+                  {objectCredential && (
+                    <FieldDescription>
+                      The selected {requestAuth} strategy requires one encrypted JSON object.
+                    </FieldDescription>
+                  )}
                 </Field>
               </TabsContent>
               <TabsContent value="oauth2" className="space-y-4">
                 <InfoBanner tone="info">
-                  Kortix requests a token now and refreshes it before expiry. Use a Bearer or custom
-                  header in the connector authentication settings.
+                  Kortix stores the application configuration, rotates refresh tokens, and revokes
+                  the connection when you disconnect it.
                 </InfoBanner>
-                <FieldGroup className="grid gap-3 sm:grid-cols-2">
-                  <Field className="sm:col-span-2">
-                    <FieldLabel htmlFor="oauth2-token-url">Token URL</FieldLabel>
-                    <Input
-                      id="oauth2-token-url"
-                      type="url"
-                      value={oauth2.tokenUrl}
-                      onChange={(e) => setOauth2Field('tokenUrl', e.target.value)}
-                      placeholder="https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
-                      variant="popover"
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="oauth2-client-id">Client ID</FieldLabel>
-                    <Input
-                      id="oauth2-client-id"
-                      value={oauth2.clientId}
-                      onChange={(e) => setOauth2Field('clientId', e.target.value)}
-                      variant="popover"
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="oauth2-auth-method">Token authentication</FieldLabel>
-                    <Select
-                      value={oauth2.authMethod}
-                      onValueChange={(next) =>
-                        setOauth2Field('authMethod', next as OAuth2CredentialForm['authMethod'])
-                      }
-                    >
-                      <SelectTrigger id="oauth2-auth-method" variant="popover">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="client_secret_post">Client secret in body</SelectItem>
-                        <SelectItem value="client_secret_basic">
-                          Client secret with Basic
-                        </SelectItem>
-                        <SelectItem value="private_key_jwt">Certificate assertion</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  {oauth2.authMethod === 'private_key_jwt' ? (
-                    <>
-                      <Field className="sm:col-span-2">
-                        <FieldLabel htmlFor="oauth2-private-key">Private key PEM</FieldLabel>
-                        <Textarea
-                          id="oauth2-private-key"
-                          value={oauth2.privateKey}
-                          onChange={(e) => setOauth2Field('privateKey', e.target.value)}
-                          className="min-h-32 font-mono text-xs"
-                        />
-                      </Field>
-                      <Field className="sm:col-span-2">
-                        <FieldLabel htmlFor="oauth2-thumbprint">
-                          Certificate SHA-256 thumbprint
-                        </FieldLabel>
-                        <Input
-                          id="oauth2-thumbprint"
-                          type="password"
-                          value={oauth2.certificateThumbprint}
-                          onChange={(e) => setOauth2Field('certificateThumbprint', e.target.value)}
-                          placeholder="Base64url x5t#S256 value"
-                          variant="popover"
-                        />
-                      </Field>
-                    </>
-                  ) : (
-                    <Field className="sm:col-span-2">
-                      <FieldLabel htmlFor="oauth2-client-secret">Client secret</FieldLabel>
-                      <Input
-                        id="oauth2-client-secret"
-                        type="password"
-                        value={oauth2.clientSecret}
-                        onChange={(e) => setOauth2Field('clientSecret', e.target.value)}
-                        variant="popover"
-                      />
-                    </Field>
-                  )}
-                  <Field className="sm:col-span-2">
-                    <FieldLabel htmlFor="oauth2-scopes">Scopes</FieldLabel>
-                    <Input
-                      id="oauth2-scopes"
-                      value={oauth2.scopes}
-                      onChange={(e) => setOauth2Field('scopes', e.target.value)}
-                      placeholder="https://graph.microsoft.com/.default"
-                      variant="popover"
-                    />
-                    <FieldDescription>Separate multiple scopes with spaces.</FieldDescription>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="oauth2-resource">Resource</FieldLabel>
-                    <Input
-                      id="oauth2-resource"
-                      value={oauth2.resource}
-                      onChange={(e) => setOauth2Field('resource', e.target.value)}
-                      placeholder="Optional"
-                      variant="popover"
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="oauth2-audience">Audience</FieldLabel>
-                    <Input
-                      id="oauth2-audience"
-                      value={oauth2.audience}
-                      onChange={(e) => setOauth2Field('audience', e.target.value)}
-                      placeholder="Optional"
-                      variant="popover"
-                    />
-                  </Field>
-                </FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="connector-oauth2-grant">Grant</FieldLabel>
+                  <Select
+                    value={application.grant}
+                    onValueChange={(grant) => {
+                      setDevice(null);
+                      setApplication({
+                        ...application,
+                        grant: grant as OAuth2ApplicationForm['grant'],
+                      });
+                    }}
+                  >
+                    <SelectTrigger id="connector-oauth2-grant" variant="popover">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="client_credentials">Client Credentials</SelectItem>
+                      <SelectItem value="authorization_code">
+                        Authorization Code with PKCE
+                      </SelectItem>
+                      <SelectItem value="device_authorization">Device Authorization</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                {application.grant === 'client_credentials' ? (
+                  <OAuth2CredentialFields
+                    value={oauth2}
+                    onChange={setOauth2}
+                    idPrefix="connector-oauth2"
+                  />
+                ) : (
+                  <OAuth2ApplicationFields
+                    value={application}
+                    onChange={setApplication}
+                    idPrefix="connector-oauth2-application"
+                  />
+                )}
+                {device && (
+                  <InfoBanner
+                    tone="neutral"
+                    title={`Enter code ${device.user_code}`}
+                    action={
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          window.open(
+                            device.verification_uri_complete ?? device.verification_uri,
+                            '_blank',
+                            'noopener,noreferrer',
+                          )
+                        }
+                      >
+                        <ExternalLink className="size-4" />
+                        Open verification page
+                      </Button>
+                    }
+                  >
+                    Kortix checks the connection every {device.interval_seconds} seconds until{' '}
+                    {new Date(device.expires_at).toLocaleTimeString()}.
+                  </InfoBanner>
+                )}
               </TabsContent>
             </Tabs>
           </ModalBody>
@@ -4330,10 +4529,17 @@ function SetCredentialModal({
             <Button
               type="submit"
               size="sm"
-              disabled={save.isPending || (credentialType === 'static' ? !value : !oauth2Valid)}
+              disabled={
+                save.isPending || (credentialType === 'static' ? !staticValid : !oauth2Valid)
+              }
               className="gap-1.5"
             >
-              {save.isPending && <Loading className="size-4 shrink-0" />}Save
+              {save.isPending && <Loading className="size-4 shrink-0" />}
+              {credentialType === 'oauth2' && application.grant === 'authorization_code'
+                ? 'Continue to provider'
+                : credentialType === 'oauth2' && application.grant === 'device_authorization'
+                  ? 'Get device code'
+                  : 'Save'}
             </Button>
           </ModalFooter>
         </form>

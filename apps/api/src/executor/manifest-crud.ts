@@ -50,8 +50,17 @@ export interface ConnectorDraft {
    *  into the manifest, since `shared` is already the implicit default. */
   credential?: 'shared';
   auth?: {
-    type?: 'none' | 'bearer' | 'basic' | 'custom' | 'oauth1';
-    in?: 'header' | 'query';
+    type?:
+      | 'none'
+      | 'bearer'
+      | 'basic'
+      | 'custom'
+      | 'api_key'
+      | 'oauth1'
+      | 'hmac'
+      | 'aws_sigv4'
+      | 'mtls';
+    in?: 'header' | 'query' | 'cookie';
     name?: string;
     prefix?: string;
   };
@@ -91,7 +100,7 @@ function draftToEntry(d: ConnectorDraft): Record<string, unknown> {
   // Omitted means auto-detect; explicit none must remain a durable opt-out.
   if (d.auth && d.auth.type) {
     const auth: Record<string, unknown> = { type: d.auth.type };
-    if (d.auth.type === 'custom') {
+    if (d.auth.type === 'custom' || d.auth.type === 'api_key' || d.auth.type === 'hmac') {
       if (d.auth.in && d.auth.in !== 'header') auth.in = d.auth.in;
       if (d.auth.name) auth.name = d.auth.name;
     }
@@ -421,8 +430,17 @@ export interface ConnectorConfigView {
   baseUrl: string | null;
   spec: string | null;
   auth: {
-    type: 'none' | 'bearer' | 'basic' | 'custom' | 'oauth1';
-    in: 'header' | 'query';
+    type:
+      | 'none'
+      | 'bearer'
+      | 'basic'
+      | 'custom'
+      | 'api_key'
+      | 'oauth1'
+      | 'hmac'
+      | 'aws_sigv4'
+      | 'mtls';
+    in: 'header' | 'query' | 'cookie';
     name: string | null;
     prefix: string | null;
   };

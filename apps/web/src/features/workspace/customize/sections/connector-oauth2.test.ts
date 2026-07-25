@@ -1,8 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  buildOAuth2ApplicationInput,
   buildOAuth2CredentialInput,
   createConnectorWithOptionalOAuth2,
+  mergeOAuth2DiscoveryMetadata,
+  oauth2ApplicationFormValid,
   oauth2CredentialFormValid,
+  type OAuth2ApplicationForm,
   type OAuth2CredentialForm,
 } from './connector-oauth2';
 
@@ -103,6 +107,101 @@ describe('oauth2CredentialFormValid', () => {
         certificateThumbprint: 'thumbprint',
       }),
     ).toBe(true);
+  });
+
+  test('supports public clients and client secret JWT', () => {
+    expect(
+      oauth2CredentialFormValid({
+        ...SECRET_FORM,
+        authMethod: 'none',
+        clientSecret: '',
+      }),
+    ).toBe(true);
+    expect(
+      oauth2CredentialFormValid({
+        ...SECRET_FORM,
+        authMethod: 'client_secret_jwt',
+      }),
+    ).toBe(true);
+  });
+
+  test('does not require a certificate thumbprint for private key JWT', () => {
+    expect(
+      oauth2CredentialFormValid({
+        ...SECRET_FORM,
+        authMethod: 'private_key_jwt',
+        clientSecret: '',
+        privateKey: 'private-key',
+        certificateThumbprint: '',
+      }),
+    ).toBe(true);
+  });
+});
+
+const AUTHORIZATION_CODE_FORM: OAuth2ApplicationForm = {
+  grant: 'authorization_code',
+  discoveryUrl: '',
+  authorizationUrl: 'https://identity.example.com/authorize',
+  tokenUrl: 'https://identity.example.com/token',
+  deviceAuthorizationUrl: '',
+  revocationUrl: 'https://identity.example.com/revoke',
+  clientId: 'client-id',
+  authMethod: 'client_secret_basic',
+  clientSecret: 'client-secret',
+  privateKey: '',
+  scopes: 'openid profile',
+  resource: '',
+  audience: 'https://api.example.com',
+};
+
+describe('OAuth2 application form', () => {
+  test('builds a provider-independent delegated application', () => {
+    expect(buildOAuth2ApplicationInput(AUTHORIZATION_CODE_FORM)).toEqual({
+      authorization_url: 'https://identity.example.com/authorize',
+      token_url: 'https://identity.example.com/token',
+      revocation_url: 'https://identity.example.com/revoke',
+      client_id: 'client-id',
+      token_endpoint_auth_method: 'client_secret_basic',
+      client_secret: 'client-secret',
+      scopes: ['openid', 'profile'],
+      audience: 'https://api.example.com',
+    });
+  });
+
+  test('validates Authorization Code, Device Authorization, and discovery', () => {
+    expect(oauth2ApplicationFormValid(AUTHORIZATION_CODE_FORM)).toBe(true);
+    expect(
+      oauth2ApplicationFormValid({
+        ...AUTHORIZATION_CODE_FORM,
+        grant: 'device_authorization',
+        authorizationUrl: '',
+        deviceAuthorizationUrl: 'https://identity.example.com/device',
+      }),
+    ).toBe(true);
+    expect(
+      oauth2ApplicationFormValid({
+        ...AUTHORIZATION_CODE_FORM,
+        discoveryUrl: 'https://identity.example.com/.well-known/openid-configuration',
+        authorizationUrl: '',
+        tokenUrl: '',
+      }),
+    ).toBe(true);
+  });
+
+  test('merges discovered endpoints without replacing explicit values', () => {
+    expect(
+      mergeOAuth2DiscoveryMetadata(AUTHORIZATION_CODE_FORM, {
+        authorization_url: 'https://discovered.example.com/authorize',
+        token_url: 'https://discovered.example.com/token',
+        device_authorization_url: 'https://discovered.example.com/device',
+        revocation_url: 'https://discovered.example.com/revoke',
+      }),
+    ).toMatchObject({
+      authorizationUrl: AUTHORIZATION_CODE_FORM.authorizationUrl,
+      tokenUrl: AUTHORIZATION_CODE_FORM.tokenUrl,
+      deviceAuthorizationUrl: 'https://discovered.example.com/device',
+      revocationUrl: AUTHORIZATION_CODE_FORM.revocationUrl,
+    });
   });
 });
 

@@ -67,6 +67,7 @@ import {
 } from '../../channels/turn-relay';
 import { config } from '../../config';
 import { upsertProfileCredential, upsertProfileOAuth2Credential } from '../../executor/credentials';
+import { revokeProfileOAuth2 } from '../../executor/oauth2-store';
 import {
   finalizePipedreamProfileConnection,
   pipedreamConfigured,
@@ -590,6 +591,7 @@ for (const operation of ['credential', 'revoke', 'activate'] as const) {
           return c.json({ error: (error as Error).message || 'credential validation failed' }, 400);
         }
       } else {
+        if (operation === 'revoke') await revokeProfileOAuth2(profileId);
         await db
           .update(executorConnectionProfiles)
           .set({ status: operation === 'revoke' ? 'revoked' : 'active', updatedAt: new Date() })

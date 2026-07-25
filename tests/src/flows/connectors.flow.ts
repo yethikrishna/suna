@@ -665,6 +665,125 @@ flow(
   },
 );
 
+flow(
+  'CONN-OAUTH2',
+  {
+    domain: 'connectors',
+    routes: [
+      'PUT /v1/projects/:projectId/connector-profiles/:profileId/oauth2/application',
+      'GET /v1/projects/:projectId/connector-profiles/:profileId/oauth2/application',
+      'POST /v1/projects/:projectId/connector-profiles/:profileId/oauth2/discover',
+      'POST /v1/projects/:projectId/connector-profiles/:profileId/oauth2/authorize',
+      'POST /v1/projects/:projectId/connector-profiles/:profileId/oauth2/device',
+      'POST /v1/projects/:projectId/connector-profiles/:profileId/oauth2/device/:sessionId',
+      'GET /v1/projects/:projectId/connector-profiles/:profileId/oauth2/status',
+      'GET /v1/integrations/oauth2/callback',
+    ],
+  },
+  async (ctx) => {
+    const p = await ctx.fixtures.project();
+    const slug = `ke2e-oauth2-${Date.now().toString(36)}`;
+    await ctx.client.as(ctx.P.OWNER).post(
+      '/v1/executor/projects/:projectId/connectors',
+      {
+        slug,
+        provider: 'mcp',
+        url: 'https://ke2e.kortix.test/mcp',
+        auth: { type: 'none' },
+      },
+      { params: { projectId: p.id } },
+    );
+    const created = await ctx.client.as(ctx.P.OWNER).post(
+      '/v1/projects/:projectId/connector-profiles',
+      {
+        connector_alias: slug,
+        owner_type: 'external',
+        owner_id: 'ke2e-oauth2-owner',
+        label: 'KE2E OAuth2',
+      },
+      { params: { projectId: p.id } },
+    );
+    created.status(201);
+    const profileId = created.json<any>().profile_id;
+
+    await ctx.step('save and read a redacted generic OAuth2 application', async () => {
+      const saved = await ctx.client.as(ctx.P.OWNER).put(
+        '/v1/projects/:projectId/connector-profiles/:profileId/oauth2/application',
+        {
+          authorization_url: 'https://identity.example.com/authorize',
+          token_url: 'https://identity.example.com/token',
+          client_id: 'ke2e-public-client',
+          token_endpoint_auth_method: 'none',
+          scopes: ['read'],
+        },
+        { params: { projectId: p.id, profileId } },
+      );
+      saved.status(200).body().has('$.ok', true);
+      const read = await ctx.client.as(ctx.P.OWNER).get(
+        '/v1/projects/:projectId/connector-profiles/:profileId/oauth2/application',
+        { params: { projectId: p.id, profileId } },
+      );
+      read
+        .status(200)
+        .body()
+        .has('$.application.client_id', 'ke2e-public-client')
+        .has('$.application.has_client_secret', false);
+    });
+
+    await ctx.step('start Authorization Code with PKCE and read ready status', async () => {
+      const started = await ctx.client.as(ctx.P.OWNER).post(
+        '/v1/projects/:projectId/connector-profiles/:profileId/oauth2/authorize',
+        {},
+        { params: { projectId: p.id, profileId } },
+      );
+      started
+        .status(200)
+        .body()
+        .exists('$.authorization_url')
+        .exists('$.expires_at');
+      const status = await ctx.client.as(ctx.P.OWNER).get(
+        '/v1/projects/:projectId/connector-profiles/:profileId/oauth2/status',
+        { params: { projectId: p.id, profileId } },
+      );
+      status.status(200).body().has('$.status', 'ready');
+    });
+
+    await ctx.step('reject SSRF discovery and unavailable device endpoints', async () => {
+      const discovery = await ctx.client.as(ctx.P.OWNER).post(
+        '/v1/projects/:projectId/connector-profiles/:profileId/oauth2/discover',
+        { discovery_url: 'https://127.0.0.1/.well-known/oauth-authorization-server' },
+        { params: { projectId: p.id, profileId } },
+      );
+      discovery.status(400);
+      const device = await ctx.client.as(ctx.P.OWNER).post(
+        '/v1/projects/:projectId/connector-profiles/:profileId/oauth2/device',
+        {},
+        { params: { projectId: p.id, profileId } },
+      );
+      device.status(400);
+      const poll = await ctx.client.as(ctx.P.OWNER).post(
+        '/v1/projects/:projectId/connector-profiles/:profileId/oauth2/device/:sessionId',
+        {},
+        {
+          params: {
+            projectId: p.id,
+            profileId,
+            sessionId: '00000000-0000-4000-8000-000000000000',
+          },
+        },
+      );
+      poll.status(400);
+    });
+
+    await ctx.step('reject an invalid public callback state', async () => {
+      const callback = await ctx.client
+        .as(ctx.P.ANON)
+        .get('/v1/integrations/oauth2/callback?state=invalid&code=invalid');
+      callback.status(400);
+    });
+  },
+);
+
 // Setup-links (connector half) — public, token-gated read + start. The minting
 // side (POST /v1/projects/:projectId/connect-requests) belongs to a different
 // coverage group; this covers the two public consume-side routes independently

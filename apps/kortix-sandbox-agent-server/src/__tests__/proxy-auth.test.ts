@@ -46,6 +46,7 @@ function baseConfig(over: Partial<Config> = {}): Config {
     gitUserName: 'Kortix Agent',
     gitUserEmail: 'agent@kortix.ai',
     cloneFilter: '',
+    cloneDepth: 1,
     ...over,
   }
 }

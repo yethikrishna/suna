@@ -2245,3 +2245,29 @@ Pre-ACP servers can omit the additive field.
 - API typecheck: exit 0.
 
 **Status:** COMPLETE.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (OpenCode ACP Task 4 completion)
+
+Added the framework-free SDK ACP transport.
+It sends JSON-RPC requests, notifications, and responses through the authenticated sandbox bridge.
+It consumes ordered SSE events and reconnects with `Last-Event-ID`.
+It exposes native `session/load`, `session/prompt`, `session/cancel`, and `session/set_config_option` methods.
+
+Added the framework-free ACP session projection.
+It converts user, assistant, thought, tool, plan, permission, question, usage, and stop updates into the existing Kortix session presentation types.
+It rejects updates for a different ACP session.
+
+**RED evidence:** the focused run reported two missing modules and zero passing tests.
+
+**Verification:**
+
+- Focused ACP SDK suite: **8 pass / 0 fail**.
+- SDK typecheck and example typecheck: exit 0.
+- Isomorphic export and public-surface gates: **69 pass / 0 fail**.
+- Direct OpenCode `1.18.4` smoke: ACP v1 initialize, session creation, streamed thought and assistant chunks, and `end_turn` completion.
+
+**Status:** COMPLETE.
+
+**Shippable to production: NOT YET.** Tasks 5 through 8 remain incomplete.

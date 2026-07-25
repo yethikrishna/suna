@@ -1,0 +1,118 @@
+import { describe, expect, test } from 'bun:test';
+
+import { AcpRpcError, AcpTransportError, createAcpClient } from './client';
+
+function sseResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+        controller.close();
+      },
+    }),
+    { headers: { 'content-type': 'text/event-stream' } },
+  );
+}
+
+describe('ACP HTTP/SSE client', () => {
+  test('correlates JSON-RPC responses and preserves RPC errors', async () => {
+    const methods: string[] = [];
+    const client = createAcpClient({
+      endpoint: 'https://runtime.test/kortix/acp/session',
+      fetch: (async (_input, init) => {
+        const body = JSON.parse(String(init?.body)) as {
+          id: string;
+          method: string;
+        };
+        methods.push(body.method);
+        if (body.method === 'session/load') {
+          return Response.json({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { sessionId: 'ses_1' },
+          });
+        }
+        return Response.json({
+          jsonrpc: '2.0',
+          id: body.id,
+          error: { code: -32000, message: 'session missing' },
+        });
+      }) as typeof fetch,
+    });
+
+    await expect(
+      client.loadSession({ sessionId: 'ses_1', cwd: '/workspace' }),
+    ).resolves.toEqual({ sessionId: 'ses_1' });
+    await expect(client.request('session/missing', {})).rejects.toEqual(
+      new AcpRpcError('session missing', -32000),
+    );
+    expect(methods).toEqual(['session/load', 'session/missing']);
+  });
+
+  test('sends cancellation as an ACP notification', async () => {
+    const bodies: unknown[] = [];
+    const client = createAcpClient({
+      endpoint: 'https://runtime.test/kortix/acp/session',
+      fetch: (async (_input, init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return new Response(null, { status: 202 });
+      }) as typeof fetch,
+    });
+
+    await client.cancel('ses_1');
+    expect(bodies).toEqual([
+      {
+        jsonrpc: '2.0',
+        method: 'session/cancel',
+        params: { sessionId: 'ses_1' },
+      },
+    ]);
+  });
+
+  test('streams ordered events and resumes with Last-Event-ID', async () => {
+    const headers: Array<Record<string, string>> = [];
+    let calls = 0;
+    const client = createAcpClient({
+      endpoint: 'https://runtime.test/kortix/acp/session',
+      fetch: (async (_input, init) => {
+        calls += 1;
+        headers.push((init?.headers ?? {}) as Record<string, string>);
+        if (calls === 1) {
+          return sseResponse([
+            'id: 1\ndata: {"jsonrpc":"2.0","method":"session/update","params":{"index":1}}\n\n',
+            'id: 2\ndata: {"jsonrpc":"2.0","method":"session/update","params":{"index":2}}\n\n',
+          ]);
+        }
+        return sseResponse([]);
+      }) as typeof fetch,
+    });
+    const received: number[] = [];
+    const stream = client.connect({
+      onEvent(event) {
+        received.push(event.id);
+      },
+    });
+    const deadline = Date.now() + 2_000;
+    while (calls < 2 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    stream.close();
+
+    expect(received).toEqual([1, 2]);
+    expect(headers[0]?.['Last-Event-ID']).toBeUndefined();
+    expect(headers[1]?.['Last-Event-ID']).toBe('2');
+  });
+
+  test('classifies terminal HTTP failures', async () => {
+    const client = createAcpClient({
+      endpoint: 'https://runtime.test/kortix/acp/session',
+      fetch: (async () =>
+        new Response('forbidden', { status: 403 })) as unknown as typeof fetch,
+    });
+
+    await expect(client.request('session/load', {})).rejects.toEqual(
+      new AcpTransportError('ACP request failed with HTTP 403: forbidden', 403, true),
+    );
+  });
+});

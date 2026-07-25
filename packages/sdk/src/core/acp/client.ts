@@ -1,0 +1,263 @@
+import { authenticatedFetch } from '../http/auth';
+import {
+  AcpRpcError,
+  AcpTransportError,
+  type AcpContentBlock,
+  type AcpEnvelope,
+  type AcpJsonRpcId,
+  type AcpResponse,
+  type AcpStreamEvent,
+  type AcpStreamHandle,
+} from './types';
+
+export { AcpRpcError, AcpTransportError } from './types';
+
+export interface AcpClientOptions {
+  endpoint: string;
+  fetch?: typeof fetch;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isResponse(value: AcpEnvelope | null): value is AcpResponse {
+  return !!value && 'id' in value && ('result' in value || 'error' in value);
+}
+
+function isTerminalStatus(status: number): boolean {
+  return status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
+function parseEventBlock(block: string): AcpStreamEvent | null {
+  let id: number | null = null;
+  const data: string[] = [];
+  for (const line of block.split(/\r?\n/)) {
+    if (line.startsWith('id:')) id = Number(line.slice(3).trim());
+    if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
+  }
+  if (!Number.isSafeInteger(id) || id === null || data.length === 0) return null;
+  const envelope = JSON.parse(data.join('\n')) as AcpEnvelope;
+  return { id, envelope };
+}
+
+async function consumeSse(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: AcpStreamEvent) => void,
+  onError: (error: unknown) => void,
+): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let pending = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    pending += decoder.decode(value, { stream: !done }).replaceAll('\r\n', '\n');
+    const blocks = pending.split('\n\n');
+    pending = blocks.pop() ?? '';
+    if (done && pending.trim()) blocks.push(pending);
+    for (const block of blocks) {
+      try {
+        const event = parseEventBlock(block);
+        if (event) onEvent(event);
+      } catch (error) {
+        onError(error);
+      }
+    }
+    if (done) return;
+  }
+}
+
+export class AcpClient {
+  private static instanceCount = 0;
+  private readonly idPrefix = `${Date.now()}-${AcpClient.instanceCount++}`;
+  private nextId = 0;
+  private readonly endpoint: string;
+  private readonly fetcher: typeof fetch;
+
+  constructor(options: AcpClientOptions) {
+    this.endpoint = options.endpoint.replace(/\/+$/, '');
+    this.fetcher = options.fetch ?? (authenticatedFetch as typeof fetch);
+  }
+
+  async request<T = unknown>(method: string, params?: unknown): Promise<T> {
+    const id = `${this.idPrefix}-${++this.nextId}`;
+    const response = await this.post({
+      jsonrpc: '2.0',
+      id,
+      method,
+      ...(params === undefined ? {} : { params }),
+    });
+    if (!isResponse(response)) {
+      throw new Error(`ACP method ${method} returned no JSON-RPC response`);
+    }
+    if (response.id !== id) {
+      throw new Error(
+        `ACP response id mismatch for ${method}: expected ${JSON.stringify(id)}, got ${JSON.stringify(response.id)}`,
+      );
+    }
+    if (response.error) {
+      throw new AcpRpcError(
+        response.error.message,
+        response.error.code,
+        response.error.data,
+      );
+    }
+    return response.result as T;
+  }
+
+  async notify(method: string, params?: unknown): Promise<void> {
+    await this.post({
+      jsonrpc: '2.0',
+      method,
+      ...(params === undefined ? {} : { params }),
+    });
+  }
+
+  async respond(
+    id: AcpJsonRpcId,
+    result?: unknown,
+    error?: AcpResponse['error'],
+  ): Promise<void> {
+    await this.post({
+      jsonrpc: '2.0',
+      id,
+      ...(error ? { error } : { result: result ?? null }),
+    });
+  }
+
+  loadSession(input: {
+    sessionId: string;
+    cwd: string;
+    mcpServers?: unknown[];
+  }) {
+    return this.request<Record<string, unknown>>('session/load', {
+      ...input,
+      mcpServers: input.mcpServers ?? [],
+    });
+  }
+
+  prompt(sessionId: string, prompt: AcpContentBlock[]) {
+    return this.request<{
+      stopReason: string;
+      usage?: Record<string, unknown>;
+    }>('session/prompt', { sessionId, prompt });
+  }
+
+  cancel(sessionId: string) {
+    return this.notify('session/cancel', { sessionId });
+  }
+
+  setSessionConfigOption(
+    sessionId: string,
+    configId: string,
+    value: unknown,
+  ) {
+    return this.request<Record<string, unknown>>('session/set_config_option', {
+      sessionId,
+      configId,
+      value,
+    });
+  }
+
+  connect(options: {
+    onEvent(event: AcpStreamEvent): void;
+    onError?(error: unknown): void;
+    lastEventId?: number;
+    reconnect?: boolean;
+    signal?: AbortSignal;
+  }): AcpStreamHandle {
+    let lastEventId = options.lastEventId ?? 0;
+    let hasEventId = options.lastEventId !== undefined;
+    let closed = false;
+    const controller = new AbortController();
+    const onAbort = () => controller.abort(options.signal?.reason);
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+
+    const run = async () => {
+      let retryMs = 250;
+      while (!closed && !controller.signal.aborted) {
+        try {
+          const response = await this.fetcher(this.endpoint, {
+            headers: {
+              Accept: 'text/event-stream',
+              ...(hasEventId
+                ? { 'Last-Event-ID': String(lastEventId) }
+                : {}),
+            },
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            throw new AcpTransportError(
+              `ACP stream failed with HTTP ${response.status}`,
+              response.status,
+              isTerminalStatus(response.status),
+            );
+          }
+          if (!response.body) throw new Error('ACP stream response has no body');
+          await consumeSse(
+            response.body,
+            (event) => {
+              if (hasEventId && event.id <= lastEventId) return;
+              hasEventId = true;
+              lastEventId = event.id;
+              retryMs = 250;
+              options.onEvent(event);
+            },
+            (error) => options.onError?.(error),
+          );
+          if (options.reconnect === false) return;
+        } catch (error) {
+          if (closed || controller.signal.aborted) return;
+          options.onError?.(error);
+          if (
+            options.reconnect === false ||
+            (error instanceof AcpTransportError && error.terminal)
+          ) {
+            return;
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, retryMs));
+        retryMs = Math.min(retryMs * 2, 5_000);
+      }
+    };
+    queueMicrotask(() => void run());
+
+    return {
+      close() {
+        if (closed) return;
+        closed = true;
+        options.signal?.removeEventListener('abort', onAbort);
+        controller.abort();
+      },
+      get lastEventId() {
+        return lastEventId;
+      },
+    };
+  }
+
+  private async post(envelope: AcpEnvelope): Promise<AcpEnvelope | null> {
+    const response = await this.fetcher(this.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(envelope),
+    });
+    if (response.status === 202 || response.status === 204) return null;
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new AcpTransportError(
+        `ACP request failed with HTTP ${response.status}: ${text}`,
+        response.status,
+        isTerminalStatus(response.status),
+      );
+    }
+    const value = (await response.json()) as unknown;
+    if (!isObject(value) || value.jsonrpc !== '2.0') {
+      throw new Error('ACP response is not a JSON-RPC 2.0 envelope');
+    }
+    return value as AcpEnvelope;
+  }
+}
+
+export function createAcpClient(options: AcpClientOptions): AcpClient {
+  return new AcpClient(options);
+}

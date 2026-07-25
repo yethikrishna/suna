@@ -1,6 +1,9 @@
 {
   ".": [
     "ACTIVE_INSTANCE_COOKIE",
+    "AcpClient",
+    "AcpRpcError",
+    "AcpTransportError",
     "ApiError",
     "AuthError",
     "BillingError",
@@ -28,6 +31,7 @@
     "addSandboxMember",
     "allDescendantIds",
     "appendPreviewToken",
+    "applyAcpEnvelope",
     "approveProjectAccessRequest",
     "approveTask",
     "archiveProject",
@@ -84,6 +88,8 @@
     "createAccount",
     "createAccountAuditWebhook",
     "createAccountToken",
+    "createAcpClient",
+    "createAcpProjection",
     "createAuditWebhook",
     "createBackup",
     "createCheckoutSession",

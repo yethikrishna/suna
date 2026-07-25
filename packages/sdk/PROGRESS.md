@@ -2618,3 +2618,22 @@ installed, imported, and constructed `@kortix/sdk` successfully.
 
 **Shippable to production: YES** for the SDK surface.
 Staging deployment and production promotion remain part of the release lifecycle.
+
+---
+
+### 2026-07-25 — session `scheduler-release` (CodeQL release gate)
+
+CodeQL reported an unused initial assignment in
+`src/core/acp/session-controller.ts`.
+The loop always assigns `generation` before its first read.
+The declaration now has an explicit type and no initial value.
+This change does not alter the public API or runtime behavior.
+
+**Final SDK gates:** the focused controller suite reported **16 pass / 0 fail**.
+`pnpm --filter @kortix/sdk typecheck` exited 0.
+The full suite reported **1255 pass / 0 fail** across 104 files with 5611
+assertions.
+`pnpm --filter @kortix/sdk smoke:install` packed, installed, imported, and
+constructed `@kortix/sdk` successfully.
+
+**Shippable to production: YES.**

@@ -302,7 +302,7 @@ export class AcpSessionController {
     this.patch({ sending: true, error: null });
     try {
       let restartRetries = 0;
-      let generation = this.runtimeGeneration;
+      let generation: number;
       while (true) {
         if (!this.snapshot.ready) await this.connect();
         generation = this.runtimeGeneration;

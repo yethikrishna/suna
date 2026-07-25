@@ -188,6 +188,7 @@ export class AcpSessionController {
   }
 
   private async open(): Promise<void> {
+    this.resetCanonicalSessionState();
     this.patch({ connection: 'connecting', error: null });
     if (!this.stream) {
       this.stream = this.client.connect({
@@ -215,11 +216,14 @@ export class AcpSessionController {
     }
   }
 
-  private async loadCanonicalSession(): Promise<void> {
+  private resetCanonicalSessionState(): void {
     this.openRequests.clear();
     this.patch({
       projection: createAcpProjection(this.options.sessionId),
     });
+  }
+
+  private async loadCanonicalSession(): Promise<void> {
     const loaded = await this.client.loadSession({
       sessionId: this.options.sessionId,
       cwd: this.options.cwd ?? '/workspace',
@@ -242,6 +246,7 @@ export class AcpSessionController {
 
   private reloadAfterRuntimeReady(): void {
     if (!this.snapshot.ready || this.runtimeReload) return;
+    this.resetCanonicalSessionState();
     this.patch({ ready: false, connection: 'connecting', error: null });
     const reload = this.loadCanonicalSession()
       .catch((error) => {

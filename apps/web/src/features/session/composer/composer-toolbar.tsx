@@ -51,6 +51,9 @@ export interface ComposerToolbarProps {
   agentSelectorLocked: boolean;
 
   models: FlatModel[];
+  /** Threaded through to ModelSelector so it can show its loading state —
+   *  added on main while this toolbar was being extracted. */
+  modelsLoading?: boolean;
   selectedModel: { providerID: string; modelID: string } | null;
   onModelChange?: (model: { providerID: string; modelID: string } | null) => void;
   modelDefaultControls?: ModelDefaultControls;
@@ -94,6 +97,7 @@ export function ComposerToolbar({
   onAgentChange,
   agentSelectorLocked,
   models,
+  modelsLoading,
   selectedModel,
   onModelChange,
   modelDefaultControls,
@@ -174,6 +178,7 @@ export function ComposerToolbar({
             {showModel && (
               <ModelSelector
                 models={models}
+                modelsLoading={modelsLoading}
                 selectedModel={selectedModel}
                 onSelect={onModelChange!}
                 providers={providers}

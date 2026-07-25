@@ -1299,6 +1299,7 @@ function SessionChatInputImpl({
           />
           <ComposerToolbar
             onAttachClick={() => fileInputRef.current?.click()}
+            modelsLoading={modelsLoading}
             agents={primaryAgents}
             selectedAgent={selectedAgent}
             onAgentChange={onAgentChange}

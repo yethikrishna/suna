@@ -310,7 +310,11 @@ export const ProjectCreateModal = ({
   }
 
   const createMutation = useMutation({
-    mutationFn: provisionProject,
+    // Wrapped rather than passed by reference: react-query now hands the
+    // mutationFn a context object as its 2nd arg, which collides with
+    // `provisionProject(input, options?: ApiClientOptions)`. Pre-existing on
+    // main after the react-query bump; fixed here because it blocks typecheck.
+    mutationFn: (input: Parameters<typeof provisionProject>[0]) => provisionProject(input),
     onSuccess: finishCreatedProject,
     onError: async (error: Error) => {
       if (effectiveAccountId && isProjectLimitError(error)) {

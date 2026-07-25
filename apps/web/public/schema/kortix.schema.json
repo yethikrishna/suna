@@ -425,7 +425,7 @@
                     "slack",
                     "teams",
                     "email",
-                    "meet"
+                    "voice"
                   ]
                 },
                 "credential": {},
@@ -546,7 +546,7 @@
                   "if": {
                     "properties": {
                       "slug": {
-                        "const": "kortix_meet"
+                        "const": "kortix_voice"
                       }
                     }
                   },
@@ -1409,7 +1409,7 @@
                     "slack",
                     "teams",
                     "email",
-                    "meet"
+                    "voice"
                   ]
                 },
                 "credential": {
@@ -1532,7 +1532,7 @@
                   "if": {
                     "properties": {
                       "slug": {
-                        "const": "kortix_meet"
+                        "const": "kortix_voice"
                       }
                     }
                   },

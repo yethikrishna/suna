@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
+import { Disclosure, DisclosureContent, DisclosureTrigger } from '@/components/ui/disclosure';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,7 +73,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { useCurrentAccountStore } from '@/stores/current-account-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircleSolid } from '@mynaui/icons-react';
-import { Boxes, ChevronsUpDown, ExternalLink, GitFork, Github } from 'lucide-react';
+import { Boxes, ChevronsUpDown, ExternalLink, Github } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -158,6 +159,12 @@ export const ProjectCreateModal = ({
   const [mode, setMode] = useState<'github-create' | 'github-import' | 'managed' | 'template'>(
     'managed',
   );
+  // Repository source (Kortix managed / create in GitHub / import from
+  // GitHub) is an opt-in disclosure — collapsed by default so the modal's
+  // default state is just a name field. Forced open below once the user has
+  // actually picked a non-managed mode, or managed git isn't usable, so the
+  // switcher stays reachable.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [isConnectingGitHub, setIsConnectingGitHub] = useState(false);
   const [sourceNameApplied, setSourceNameApplied] = useState(false);
   const [repositorySearch, setRepositorySearch] = useState('');
@@ -222,6 +229,7 @@ export const ProjectCreateModal = ({
 
   function resetAndClose() {
     setMode('managed');
+    setAdvancedOpen(false);
     setSourceNameApplied(false);
     setPickedAccountId(null);
     setPickedTemplateId(null);
@@ -525,6 +533,10 @@ export const ProjectCreateModal = ({
   const selectedRepository = repos.find((repo) => repo.full_name === selectedRepo);
   const repositoryLoading = githubReposQuery.isFetching || isDebouncingRepositorySearch;
   const repositoryMode: RepositoryMode = mode === 'template' ? 'managed' : mode;
+  // Stay open once the user has left the silent "Kortix managed" default —
+  // either by picking another source, or because managed git needs a fix —
+  // so the switcher that got them there doesn't disappear underneath them.
+  const repositoryOptionsOpen = advancedOpen || mode !== 'managed' || managedGitUnavailable;
 
   return (
     <Modal open={open} onOpenChange={(o) => (!o ? resetAndClose() : onOpenChange(o))}>
@@ -540,36 +552,67 @@ export const ProjectCreateModal = ({
           </ModalDescription> */}
         </ModalHeader>
 
-        {accountSelection.currentAccount ? (
+        {accountSelection.canSwitch && accountSelection.currentAccount ? (
           <CreateAccountField
             current={accountSelection.currentAccount}
             options={accountSelection.options}
-            canSwitch={accountSelection.canSwitch}
             disabled={submitting}
             onSelect={setPickedAccountId}
           />
         ) : null}
 
         {!cloningFromSource && mode !== 'template' ? (
-          <div className="space-y-1.5 px-5">
-            <Label>Repository source</Label>
-            <Tabs value={repositoryMode} onValueChange={switchRepositoryMode}>
-              <TabsList type="secondary" className="w-full" aria-label="Repository source">
-                <TabsTrigger value="managed" size="sm">
-                  Kortix managed
-                </TabsTrigger>
-                <TabsTrigger value="github-create" size="sm">
-                  Create in GitHub
-                </TabsTrigger>
-                <TabsTrigger value="github-import" size="sm">
-                  Import from GitHub
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <p className="text-muted-foreground text-xs">
-              {REPOSITORY_MODE_DESCRIPTIONS[repositoryMode]}
-            </p>
-          </div>
+          <Disclosure
+            open={repositoryOptionsOpen}
+            onOpenChange={setAdvancedOpen}
+            className="space-y-3 px-5"
+          >
+            <div className="flex flex-wrap items-center gap-1">
+              <DisclosureTrigger>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground h-8 px-2 text-xs"
+                >
+                  {repositoryOptionsOpen ? 'Hide repository options' : 'Use my own GitHub'}
+                </Button>
+              </DisclosureTrigger>
+              {mode === 'managed' ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground h-8 px-2 text-xs"
+                  disabled={submitting}
+                  onClick={switchToTemplateMode}
+                >
+                  Clone from a template
+                </Button>
+              ) : null}
+            </div>
+            <DisclosureContent>
+              <div className="space-y-1.5 pb-0.5">
+                <Label>Repository source</Label>
+                <Tabs value={repositoryMode} onValueChange={switchRepositoryMode}>
+                  <TabsList type="secondary" className="w-full" aria-label="Repository source">
+                    <TabsTrigger value="managed" size="sm">
+                      Kortix managed
+                    </TabsTrigger>
+                    <TabsTrigger value="github-create" size="sm">
+                      Create in GitHub
+                    </TabsTrigger>
+                    <TabsTrigger value="github-import" size="sm">
+                      Import from GitHub
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <p className="text-muted-foreground text-xs">
+                  {REPOSITORY_MODE_DESCRIPTIONS[repositoryMode]}
+                </p>
+              </div>
+            </DisclosureContent>
+          </Disclosure>
         ) : null}
 
         {mode === 'managed' && managedGitUnavailable ? (
@@ -707,19 +750,7 @@ export const ProjectCreateModal = ({
                         </p>
                       </div>
                     )
-                  ) : (
-                    <div className="border-border flex items-start gap-3 rounded-md border px-3.5 py-3">
-                      <GitFork className="text-muted-foreground mt-0.5 size-4" />
-                      <div>
-                        <div className="text-foreground text-sm font-medium">
-                          Managed repository
-                        </div>
-                        <p className="text-muted-foreground mt-0.5 text-xs">
-                          Kortix creates a private repository and manages its credentials.
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                  ) : null}
 
                   {cloningFromSource ? (
                     <div className="divide-border/60 divide-y overflow-hidden rounded-md border">
@@ -749,42 +780,6 @@ export const ProjectCreateModal = ({
                           </Button>
                         ) : null}
                       </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      <span className="text-foreground text-sm font-medium">Starter skills</span>
-                      <p className="text-muted-foreground text-xs leading-relaxed">
-                        Every new project ships with the full Kortix skill kit —
-                        preinstalled into your repo and ready in the first session.
-                      </p>
-                      <div className="flex items-center gap-3 rounded-md border px-3.5 py-3">
-                        <span className="bg-primary/10 text-primary inline-flex size-8 shrink-0 items-center justify-center rounded-sm">
-                          <Boxes className="size-4" />
-                        </span>
-                        <div className="min-w-0">
-                          <div className="text-foreground text-sm font-medium">Starter pack</div>
-                          <div className="text-muted-foreground text-xs leading-relaxed">
-                            Ready-made skills for research, writing, documents, slides, data, the
-                            web, and browser automation.
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {!cloningFromSource && mode === 'managed' ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="gap-1.5"
-                        disabled={submitting}
-                        onClick={switchToTemplateMode}
-                      >
-                        <Boxes className="size-4" />
-                        Clone from a template
-                      </Button>
                     </div>
                   ) : null}
                 </div>
@@ -1069,19 +1064,17 @@ export const ProjectCreateModal = ({
   );
 };
 
-/** Shows which account the new project will be created under. Becomes a
- *  dropdown when the user can create projects in more than one account;
- *  otherwise it's a static read-only field so the target is still visible. */
+/** Account switcher for the new-project target. Only rendered by the caller
+ *  when there's more than one account to create in — a single-account user
+ *  never sees this, so the default dialog stays down to just a name field. */
 function CreateAccountField({
   current,
   options,
-  canSwitch,
   disabled,
   onSelect,
 }: {
   current: KortixAccount;
   options: KortixAccount[];
-  canSwitch: boolean;
   disabled?: boolean;
   onSelect: (accountId: string) => void;
 }) {
@@ -1096,49 +1089,40 @@ function CreateAccountField({
   return (
     <div className="space-y-1.5 px-5" data-testid="project-create-account">
       <Label>Account</Label>
-      {canSwitch ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="secondary-outline"
-              disabled={disabled}
-              className="w-full justify-between px-3"
-            >
-              {summary}
-              <ChevronsUpDown className="text-muted-foreground size-3.5 shrink-0" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            className="w-[var(--radix-dropdown-menu-trigger-width)]"
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="secondary-outline"
+            disabled={disabled}
+            className="w-full justify-between px-3"
           >
-            <DropdownMenuLabel className="text-muted-foreground">Create in</DropdownMenuLabel>
-            <div className="max-h-[280px] [scrollbar-width:none] overflow-y-auto [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              {options.map((account) => {
-                const itemLabel = account.name || 'Account';
-                const active = account.account_id === current.account_id;
-                return (
-                  <DropdownMenuItem
-                    key={account.account_id}
-                    onSelect={() => onSelect(account.account_id)}
-                  >
-                    <EntityAvatar label={itemLabel} size="xs" />
-                    <span className="min-w-0 flex-1 truncate text-sm leading-tight font-medium">
-                      {itemLabel}
-                    </span>
-                    {active && <CheckCircleSolid className="text-kortix-green size-3.5 shrink-0" />}
-                  </DropdownMenuItem>
-                );
-              })}
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : (
-        <div className="border-border bg-secondary flex h-9 w-full items-center rounded-md border px-3">
-          {summary}
-        </div>
-      )}
+            {summary}
+            <ChevronsUpDown className="text-muted-foreground size-3.5 shrink-0" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+          <DropdownMenuLabel className="text-muted-foreground">Create in</DropdownMenuLabel>
+          <div className="max-h-[280px] [scrollbar-width:none] overflow-y-auto [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            {options.map((account) => {
+              const itemLabel = account.name || 'Account';
+              const active = account.account_id === current.account_id;
+              return (
+                <DropdownMenuItem
+                  key={account.account_id}
+                  onSelect={() => onSelect(account.account_id)}
+                >
+                  <EntityAvatar label={itemLabel} size="xs" />
+                  <span className="min-w-0 flex-1 truncate text-sm leading-tight font-medium">
+                    {itemLabel}
+                  </span>
+                  {active && <CheckCircleSolid className="text-kortix-green size-3.5 shrink-0" />}
+                </DropdownMenuItem>
+              );
+            })}
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

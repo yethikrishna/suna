@@ -112,7 +112,11 @@ async function fetchMessages(
         // turned into an answer that simply never arrived and a watcher that
         // polled silently until its deadline.
         headers: sandboxRuntimeRequestHeaders(endpoint.headers),
-        signal: AbortSignal.timeout(5_000),
+        // Generous on purpose: a sandbox that is resuming answers slowly, and
+        // a timeout here is indistinguishable from "no answer yet" — it just
+        // burns a poll. 5s was short enough to time out every tick while the
+        // box was waking.
+        signal: AbortSignal.timeout(15_000),
       },
     );
     // Thrown, not returned-null: a sandbox that is still waking answers 502/503
@@ -163,7 +167,7 @@ function latestCompletedAssistantId(messages: OpencodeMessageLite[]): string | n
  */
 export function speakAnswerWhenReady(callId: string, sessionId: string): void {
   void (async () => {
-    const endpoint = await resolveOpencode(sessionId);
+    let endpoint = await resolveOpencode(sessionId);
     if (!endpoint) {
       console.error('[voice] cannot watch for answer — no opencode endpoint', { sessionId });
       return;
@@ -183,6 +187,18 @@ export function speakAnswerWhenReady(callId: string, sessionId: string): void {
       if (!messages) {
         lastError = tick.error ?? lastError;
         consecutiveFailures++;
+
+        // Re-resolve rather than keep retrying with credentials that may be
+        // dead. The endpoint carries a SIGNED, sandbox-specific header, and
+        // delivering the prompt is itself liable to resume or restart the
+        // sandbox — which rotates that signature. Reusing the original headers
+        // then 401s on every remaining poll, so the answer never arrives even
+        // though the sandbox is healthy and answering other callers fine.
+        if (consecutiveFailures % 4 === 0) {
+          const refreshed = await resolveOpencode(sessionId);
+          if (refreshed) endpoint = refreshed;
+        }
+
         // ~30s of unbroken failure is not a blip — say so once, loudly, rather
         // than polling in silence until the deadline and reporting nothing.
         if (consecutiveFailures === 12) {

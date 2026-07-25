@@ -1,24 +1,27 @@
-# Production Supabase migration to `us-west-2`
+# Production Supabase migration to `us-east-2`
 
 ## Status
 
 - Source project: `jbriwassebxdwoieikga` in `eu-west-2`.
-- Target project: `iaepefxnmhjqhilaxevk` in `us-west-2`.
+- Target project: `uhrwvisbqjfxhxjvoofd` in `us-east-2`.
 - Target status: `ACTIVE_HEALTHY`.
 - Target PostgreSQL version: `17.6`.
 - Target compute: XL with 4 dedicated vCPU and 16 GB RAM.
 - Target disk: 500 GB gp3 with 3,000 IOPS and 125 MiB/s throughput.
 - Target PITR: 7 days.
 - Target dedicated IPv4: enabled.
-- Target credentials: AWS Secrets Manager secret `kortix/prod-us-west-2-migration`.
+- Target credentials: AWS Secrets Manager secret `kortix/prod-us-east-2-migration`.
 - Fresh-project bootstrap: applied.
-- Repository migration ledger: 75 migrations applied through
-  `20260725003708138_align_nullable_schema_contract`.
+- Repository migration ledger: 79 migrations applied through
+  `20260725012141489_gateway_cost_precision_sync`.
 - `pg_cron`: enabled at version 1.6.4 with zero scheduled jobs.
 - Application logical replication: `101/101` relations ready.
 - Auth logical replication: `22/22` relations ready.
 - Replication apply errors: `0`.
-- Replication sync errors: `0`.
+- Application replication sync errors: `3`.
+- Auth replication sync errors: `0`.
+- The three application sync errors are historical initial-copy retries.
+- Both subscriptions have active apply workers.
 - Source WAL retention limit: 32 GB.
 - Replication credential: rotated after the initial copy.
 - Storage copied: all 79 `avatars` objects with byte and SHA-256 verification.
@@ -26,17 +29,40 @@
 - US API shadow: two healthy ECS tasks on image `kortix/kortix-api:0.10.14`.
 - US gateway shadow: two healthy ECS tasks on image
   `kortix/kortix-gateway:0.10.14`.
-- US API task definition: `kortix-prod-usw2:2`.
-- US gateway task definition: `kortix-prod-usw2-gateway:2`.
-- Shadow Terraform state: `prod-us-west-2-shadow/ecs-api.tfstate`.
+- US API task definition: `kortix-prod-use2:1`.
+- US gateway task definition: `kortix-prod-use2-gateway:1`.
+- Shadow Terraform state: `prod-us-east-2-shadow/ecs-api.tfstate`.
+- Shadow Terraform state bucket:
+  `kortix-terraform-state-us-east-2-935064898258` in `us-east-2`.
+- Shadow Terraform lock table: `kortix-terraform-locks-us-east-2`.
+- Shadow Terraform state and lock data use customer-managed KMS encryption.
+- Shadow Terraform state keeps noncurrent versions for 365 days.
 - Shadow verification hosts:
-  - `api-usw2-shadow.kortix.com`
-  - `gateway-usw2-shadow.kortix.com`
+  - `api-use2-shadow.kortix.com`
+  - `gateway-use2-shadow.kortix.com`
 - Target Auth email rate limit: 30,000 per hour, equal to the source.
 - Production release workflow: deploys and verifies the US shadow.
+- Runtime database endpoint: regional session pooler
+  `aws-0-us-east-2.pooler.supabase.com:5432`.
+- Logical replication endpoint: direct target database host
+  `db.uhrwvisbqjfxhxjvoofd.supabase.co:5432`.
+- US frontend project: `suna-us-east-2-shadow`.
+- US frontend deployment: `dpl_9Fs1dXprKoGqVPro17GTZtWxqeWL`.
+- US frontend host: `https://us.kortix.com`.
+- US frontend function region: Vercel `cle1`.
+- Cloudflare contains inactive US East 2 API and gateway origins.
+- Cloudflare active backend values remain `ecs-fargate`.
 - US shadow worker, scheduler, channel, tunnel, warm-pool, managed-provider,
   legacy-migration, and Suna-migration flags: disabled.
 - Production traffic still uses the source project.
+- The obsolete US West 2 Supabase project is deleted.
+- The obsolete US West 2 VPC, ECS services, ALBs, DNS records, NAT gateways,
+  task definitions, publications, replication slots, and replication role are
+  deleted or inactive.
+- Two obsolete US West 2 KMS keys are in AWS `PendingDeletion` until
+  2026-08-24.
+- Two obsolete US West 2 Secrets Manager secrets have a seven-day recovery
+  window until 2026-08-01.
 
 Do not print or copy secret values into this document, shell output, or Git.
 
@@ -61,10 +87,9 @@ Do not print or copy secret values into this document, shell output, or Git.
 
 The source has `wal_level=logical`. It has 24 replication slots and 24 WAL
 senders. The measured WAL rate is approximately 0.39 MB/s. The current
-`max_slot_wal_keep_size` is 3 GB.
+`max_slot_wal_keep_size` is 32 GB.
 
-Increase and monitor WAL retention before creating a long-lived replication
-slot.
+Monitor retained WAL until both subscriptions are disabled after cutover.
 
 ## Migration scope
 
@@ -121,7 +146,7 @@ the approved retention policy.
 5. The `public` credit functions and Auth signup trigger from
    `packages/db/drizzle/0000_bootstrap.sql`.
 6. The `kortix_global_tick` cron job created by
-   `kortix.configure_scheduler(...)`.
+   `kortix.configure_scheduler(...)` after source writers stop at cutover.
 
 ### Do not migrate as live runtime data
 
@@ -258,6 +283,10 @@ Supabase Support must enable the source secret as the target legacy no-`kid`
 verification secret. This is required for active source user tokens and cached
 source anon keys during cutover.
 
+The Management API accepted a PATCH for the three platform-managed Auth fields.
+It kept the target values unchanged. Supabase Support must change or approve
+those fields.
+
 SMTP is complete. The target uses the original Mailtrap token. SMTP
 authentication returns `235 2.7.0 Ok`. Auth recovery returns HTTP `200`.
 
@@ -317,6 +346,22 @@ The US shadow endpoints return:
 - API `/v1/health`: HTTP `200`, version `0.10.14`.
 - Gateway `/health/live`: HTTP `200`, version `0.10.14`.
 - Gateway `/health`: HTTP `200`, API dependency `up`.
+- Frontend `/`: HTTP `200` from Vercel `fra1::cle1`.
+- Frontend HTML contains `api-use2-shadow.kortix.com`.
+- Frontend HTML contains the target project ref `uhrwvisbqjfxhxjvoofd`.
+
+### Database connection requirement
+
+The direct target database endpoint accepts connections from the migration
+host. A Fargate probe returned `ECONNREFUSED` for the same endpoint.
+
+The regional session pooler accepted the Fargate connection. The
+`kortix-prod-us-east-2-env` secret therefore uses the session pooler on port
+`5432` with user `postgres.uhrwvisbqjfxhxjvoofd`.
+
+Do not replace the runtime `DATABASE_URL` with the direct database endpoint.
+Keep the direct endpoint in `kortix/prod-us-east-2-migration` for logical
+replication and migration administration.
 
 ## Target preparation
 
@@ -326,7 +371,7 @@ The US shadow endpoints return:
 4. Verify all required extensions, functions, triggers, RLS policies, grants,
    and sequences.
 5. Insert the source `webhook_config` row without printing its values.
-6. Configure only `kortix_global_tick`.
+6. Keep `cron.job` empty until source writers stop at cutover.
 7. Keep application traffic disabled.
 
 Do not use `supabase db push`. The repository migration ledger is the schema
@@ -350,53 +395,53 @@ the application role. Supabase Support must handle those schemas.
 Inspect both subscriptions:
 
 ```bash
-bash scripts/prod-us-west-2/db-sync.sh status
-bash scripts/prod-us-west-2/auth-sync.sh status
+bash scripts/prod-us-east-2/db-sync.sh status
+bash scripts/prod-us-east-2/auth-sync.sh status
 ```
 
 Refresh the application publication after source and target migrations:
 
 ```bash
 ALLOW_REPLICATION_REFRESH=1 \
-  bash scripts/prod-us-west-2/refresh-replication.sh
+  bash scripts/prod-us-east-2/refresh-replication.sh
 ```
 
 Repair target-only smoke mutations:
 
 ```bash
 ALLOW_TARGET_SHADOW_REPAIR=1 \
-  bash scripts/prod-us-west-2/db-sync.sh repair-shadow-mutations
+  bash scripts/prod-us-east-2/db-sync.sh repair-shadow-mutations
 
 ALLOW_TARGET_AUTH_SHADOW_REPAIR=1 \
-  bash scripts/prod-us-west-2/auth-sync.sh repair-shadow-mutations
+  bash scripts/prod-us-east-2/auth-sync.sh repair-shadow-mutations
 ```
 
 Synchronize and verify `avatars`:
 
 ```bash
-bash scripts/prod-us-west-2/storage-sync.sh
-STORAGE_VERIFY_ALL=1 bash scripts/prod-us-west-2/storage-sync.sh
+bash scripts/prod-us-east-2/storage-sync.sh
+STORAGE_VERIFY_ALL=1 bash scripts/prod-us-east-2/storage-sync.sh
 ```
 
 Run the target smoke:
 
 ```bash
-bash scripts/prod-us-west-2/target-smoke.sh
+bash scripts/prod-us-east-2/target-smoke.sh
 ```
 
 The production release calls
-`.github/workflows/deploy-prod-us-west-2-shadow.yml`. It applies target
+`.github/workflows/deploy-prod-us-east-2-shadow.yml`. It applies target
 migrations, refreshes application replication, synchronizes `avatars`, deploys
 the released API and gateway images, and verifies the shadow endpoints.
 
 ## Reconciliation gates
 
-The cutover cannot start until all gates pass.
+The cutover cannot complete until all gates pass.
 
 1. Row counts match for every migrated table.
 2. Primary-key set hashes match for every migrated table.
 3. Critical aggregate hashes match for Auth, billing, accounts, projects,
-   sessions, API keys, and the legacy Suna subset.
+   sessions, and API keys.
 4. The `avatars` object count and total bytes match.
 5. A deterministic object sample passes content checksum verification.
 6. Auth password login succeeds on the target.
@@ -405,7 +450,7 @@ The cutover cannot start until all gates pass.
 9. Credit use, credit add, and renewal idempotency succeed on the target.
 10. New-user signup fires the welcome webhook once.
 11. API-key authentication uses `kortix.api_keys`.
-12. `kortix_global_tick` fires once per minute.
+12. `kortix_global_tick` fires once per minute after source writers stop.
 13. Logical replication lag reaches zero.
 14. The target passes the production smoke suite before DNS changes.
 
@@ -422,6 +467,7 @@ The prepared US backend uses the same active topology.
 - US API: `2/2` tasks, autoscaling range `2..10`.
 - US gateway: `2/2` tasks, autoscaling range `2..6`.
 - US EKS: not provisioned.
+- US frontend: Vercel project `suna-us-east-2-shadow` in `cle1`.
 
 US EKS is not required for the database and traffic cutover. The US ECS stack
 matches the current active production backend. Provision US EKS later if the
@@ -457,6 +503,13 @@ post-cutover design requires a same-region standby.
 
 Target downtime: the final write freeze, final reconciliation, secret switch,
 custom-domain activation, and smoke checks.
+
+The Cloudflare Worker switch values are:
+
+- `ACTIVE_BACKEND=us-east-2`
+- `GATEWAY_ACTIVE_BACKEND=us-east-2`
+
+Do not set either value before step 18.
 
 ## Rollback
 

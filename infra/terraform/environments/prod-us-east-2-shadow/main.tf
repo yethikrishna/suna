@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/aws"
       version = ">= 5.0"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = ">= 4.0, < 5.0"
+    }
   }
 }
 
@@ -14,9 +18,9 @@ provider "aws" {
 }
 
 locals {
-  name = "kortix-prod-usw2"
+  name = "kortix-prod-use2"
   tags = {
-    Environment = "prod-usw2-shadow"
+    Environment = "prod-use2-shadow"
     Project     = "kortix"
     ManagedBy   = "terraform"
   }
@@ -30,10 +34,23 @@ module "network" {
   source = "../../modules/network"
 
   name               = local.name
-  cidr               = "10.30.0.0/16"
+  cidr               = "10.40.0.0/16"
   az_count           = 2
   single_nat_gateway = false
   tags               = local.tags
+}
+
+module "certificate" {
+  source = "../../modules/acm-cloudflare"
+
+  domain_name               = "*.kortix.com"
+  subject_alternative_names = ["kortix.com"]
+  manage_validation_records = false
+  zone_id                   = var.cloudflare_zone_id
+  tags = merge(local.tags, {
+    Platform = "ecs"
+    Service  = "certificate"
+  })
 }
 
 module "api" {
@@ -50,7 +67,7 @@ module "api" {
   container_name    = "api"
   container_port    = 8000
   health_check_path = "/v1/health"
-  certificate_arn   = var.certificate_arn
+  certificate_arn   = module.certificate.certificate_arn
   environment = {
     KORTIX_VERSION = "0.10.14"
   }
@@ -88,7 +105,7 @@ module "gateway" {
   container_name    = "gateway"
   container_port    = 8090
   health_check_path = "/health/live"
-  certificate_arn   = var.certificate_arn
+  certificate_arn   = module.certificate.certificate_arn
   environment = {
     KORTIX_API_URL = "https://${var.api_shadow_hostname}"
     KORTIX_VERSION = "0.10.14"

@@ -69,7 +69,7 @@ async function apiRequest(path, accessToken, expectedStatuses = [200]) {
   const response = await fetch(`${apiUrl}${path}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      'User-Agent': 'kortix-us-west-2-migration-smoke',
+      'User-Agent': 'kortix-us-east-2-migration-smoke',
     },
   });
   if (!expectedStatuses.includes(response.status)) {
@@ -326,7 +326,7 @@ WHERE id = 1;
       method: 'POST',
       headers: userHeaders(accessToken),
       body: JSON.stringify({
-        friendly_name: 'kortix-us-west-2-migration-smoke',
+        friendly_name: 'kortix-us-east-2-migration-smoke',
         factor_type: 'totp',
         issuer: 'Kortix migration smoke',
       }),

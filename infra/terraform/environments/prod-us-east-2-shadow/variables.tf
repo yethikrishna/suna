@@ -1,7 +1,7 @@
 variable "aws_region" {
   description = "AWS region for the production shadow stack."
   type        = string
-  default     = "us-west-2"
+  default     = "us-east-2"
 }
 
 variable "api_image" {
@@ -16,10 +16,10 @@ variable "gateway_image" {
   default     = "kortix/kortix-gateway:0.10.14"
 }
 
-variable "certificate_arn" {
-  description = "Existing us-west-2 ACM certificate for *.kortix.com."
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID for kortix.com and ACM DNS validation."
   type        = string
-  default     = "arn:aws:acm:us-west-2:935064898258:certificate/d70f1f49-d981-4add-abb6-971bad1f3755"
+  default     = "af378d3df4e4dd5052a1fcbf263b685d"
 }
 
 variable "secret_arn" {
@@ -65,5 +65,5 @@ variable "alb_ingress_cidrs" {
 variable "api_shadow_hostname" {
   description = "SNI hostname used for direct shadow API verification. Terraform does not create DNS."
   type        = string
-  default     = "api-usw2-shadow.kortix.com"
+  default     = "api-use2-shadow.kortix.com"
 }

@@ -4,7 +4,7 @@ set -Eeuo pipefail
 CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-}"
 CLOUDFLARE_GLOBAL_API_KEY="${CLOUDFLARE_GLOBAL_API_KEY:-}"
 CLOUDFLARE_EMAIL="${CLOUDFLARE_EMAIL:-}"
-AWS_REGION="${AWS_REGION:-us-west-2}"
+AWS_REGION="${AWS_REGION:-us-east-2}"
 CLOUDFLARE_ZONE_NAME="${CLOUDFLARE_ZONE_NAME:-kortix.com}"
 
 for command_name in aws curl jq; do
@@ -44,14 +44,14 @@ zone_id="$(jq -er '.result | select(length == 1) | .[0].id' <<<"$zone_response")
 api_origin="$(
   aws elbv2 describe-load-balancers \
     --region "$AWS_REGION" \
-    --names kortix-prod-usw2-alb \
+    --names kortix-prod-use2-alb \
     --query 'LoadBalancers[0].DNSName' \
     --output text
 )"
 gateway_origin="$(
   aws elbv2 describe-load-balancers \
     --region "$AWS_REGION" \
-    --names kortix-prod-usw2-gateway-alb \
+    --names kortix-prod-use2-gateway-alb \
     --query 'LoadBalancers[0].DNSName' \
     --output text
 )"
@@ -59,19 +59,37 @@ gateway_origin="$(
 ensure_record() {
   local hostname="$1"
   local expected_origin="$2"
+  local record_count
   local record_response
   local record_id
+  local request_method
+  local request_url
   local update_response
 
   record_response="$(
     cloudflare_request \
       "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records?type=CNAME&name=${hostname}"
   )"
-  record_id="$(jq -er '.result | select(length == 1) | .[0].id' <<<"$record_response")"
+  record_count="$(jq -er '.result | length' <<<"$record_response")"
+  case "$record_count" in
+    0)
+      request_method="POST"
+      request_url="https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records"
+      ;;
+    1)
+      record_id="$(jq -er '.result[0].id' <<<"$record_response")"
+      request_method="PUT"
+      request_url="https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records/${record_id}"
+      ;;
+    *)
+      echo "Expected at most one CNAME for $hostname, found $record_count." >&2
+      exit 1
+      ;;
+  esac
 
   update_response="$(
     cloudflare_request \
-      --request PUT \
+      --request "$request_method" \
       --data "$(
         jq -nc \
           --arg name "$hostname" \
@@ -84,7 +102,7 @@ ensure_record() {
             proxied: true
           }'
       )" \
-      "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records/${record_id}"
+      "$request_url"
   )"
 
   jq -e \
@@ -99,5 +117,5 @@ ensure_record() {
   echo "$hostname: proxied CNAME to $expected_origin"
 }
 
-ensure_record api-usw2-shadow.kortix.com "$api_origin"
-ensure_record gateway-usw2-shadow.kortix.com "$gateway_origin"
+ensure_record api-use2-shadow.kortix.com "$api_origin"
+ensure_record gateway-use2-shadow.kortix.com "$gateway_origin"

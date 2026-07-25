@@ -3,8 +3,8 @@ set -Eeuo pipefail
 
 SOURCE_DATABASE_URL="${SOURCE_DATABASE_URL:?SOURCE_DATABASE_URL is required}"
 TARGET_DATABASE_URL="${TARGET_DATABASE_URL:?TARGET_DATABASE_URL is required}"
-PUBLICATION="${PUBLICATION:-kortix_us_west_2_20260725}"
-SUBSCRIPTION="${SUBSCRIPTION:-kortix_us_west_2_20260725}"
+PUBLICATION="${PUBLICATION:-kortix_us_east_2_20260725}"
+SUBSCRIPTION="${SUBSCRIPTION:-kortix_us_east_2_20260725}"
 
 if [[ "${ALLOW_REPLICATION_REFRESH:-}" != "1" ]]; then
   echo "Set ALLOW_REPLICATION_REFRESH=1 to refresh the US shadow publication." >&2
@@ -18,7 +18,7 @@ for command_name in comm cut mktemp psql sort; do
   }
 done
 
-temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/kortix-usw2-publication.XXXXXX")"
+temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/kortix-use2-publication.XXXXXX")"
 source_manifest="$temporary_directory/source.tsv"
 target_manifest="$temporary_directory/target.tsv"
 

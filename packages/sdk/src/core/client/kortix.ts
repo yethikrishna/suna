@@ -506,6 +506,9 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
           P.listProjectSessions(projectId, options),
         create: (input?: Parameters<typeof P.createProjectSession>[1]) =>
           P.createProjectSession(projectId, input),
+        ensureWarm: () => P.ensureWarmProjectSession(projectId),
+        claimWarm: (input: Parameters<typeof P.claimWarmProjectSession>[1]) =>
+          P.claimWarmProjectSession(projectId, input),
       },
 
       /** Review Center — the per-project human-in-the-loop inbox (change requests, tool approvals, agent outputs/decisions). */

@@ -605,6 +605,13 @@ export const projectSessions = kortixSchema.table(
       table.projectId,
       table.sessionId,
     ),
+    uniqueIndex('idx_project_sessions_one_available_warm')
+      .on(table.projectId, table.createdBy)
+      .where(
+        sql`${table.createdBy} is not null
+          and ${table.metadata}->'warm_session'->>'state' = 'available'
+          and coalesce(${table.metadata}->>'deletedAt', '') = ''`,
+      ),
     // NOTE: a partial composite index `idx_project_sessions_account_active`
     // ((account_id) WHERE status IN active-set) ALSO exists — created by the
     // hand-written migration drizzle/20260617102106_account_active_session_index.sql

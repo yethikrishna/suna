@@ -252,34 +252,41 @@ test.describe.serial("14 — OpenCode ACP runtime canary", () => {
     }> = [];
     const acpStreamHeaders: Array<Record<string, string>> = [];
     const restPromptRequests: string[] = [];
-    let replaceFirstAcpStream = true;
 
-    await page.route(/\/kortix\/acp\//, async (route) => {
-      const request = route.request();
-      if (request.method() !== "GET") {
-        await route.continue();
-        return;
-      }
-      acpStreamHeaders.push(request.headers());
-      if (!replaceFirstAcpStream) {
-        await route.continue();
-        return;
-      }
-      replaceFirstAcpStream = false;
-      const origin = request.headers().origin ?? new URL(request.url()).origin;
-      await route.fulfill({
-        status: 200,
-        headers: {
-          "Access-Control-Allow-Credentials": "true",
-          "Access-Control-Allow-Origin": origin,
-          "Cache-Control": "no-cache",
-          "Content-Type": "text/event-stream",
-        },
-        body: 'id: 0\ndata: {"jsonrpc":"2.0","method":"kortix/cursor"}\n\n',
-      });
-    });
+    // Intercept one stream only. Remove the route before the reconnect so
+    // Chromium can consume the deployed SSE response incrementally.
+    const acpRoutePattern = /\/kortix\/acp\//;
+    await page.route(
+      acpRoutePattern,
+      async function interruptFirstAcpStream(route) {
+        const request = route.request();
+        if (request.method() !== "GET") {
+          await route.continue();
+          return;
+        }
+        const origin =
+          request.headers().origin ?? new URL(request.url()).origin;
+        await route.fulfill({
+          status: 200,
+          headers: {
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Origin": origin,
+            "Cache-Control": "no-cache",
+            "Content-Type": "text/event-stream",
+          },
+          body: 'id: 0\ndata: {"jsonrpc":"2.0","method":"kortix/cursor"}\n\n',
+        });
+        await page.unroute(acpRoutePattern, interruptFirstAcpStream);
+      },
+    );
 
     page.on("request", (request) => {
+      if (
+        request.method() === "GET" &&
+        request.url().includes("/kortix/acp/")
+      ) {
+        acpStreamHeaders.push(request.headers());
+      }
       if (
         request.method() === "POST" &&
         request.url().includes("/kortix/acp/")

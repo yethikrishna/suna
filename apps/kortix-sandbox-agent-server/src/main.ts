@@ -24,6 +24,7 @@ import {
   waitForOpencodeReady,
   type Opencode,
 } from './opencode'
+import { relayBootTimelineToApi } from './boot-timeline-relay'
 import { ensureOpencodeConfigDeps } from './opencode-config-deps'
 import { ensureInjectedManagedSkills } from './injected-skills'
 import { isSharedSeedBakedRoot, OPENCODE_SEED_BAKED_PIN_PATH } from './opencode-fork-root'
@@ -435,6 +436,9 @@ async function startSessionRuntime(
       opencode.markReady()
       bootMark('opencode-ready')
       logger.info('[boot] opencode ready via initial session', { opencodePid: opencode.getPid(), timeline: bootState.timeline })
+      // Persist the in-guest timeline now that this boot is complete — see
+      // boot-timeline-relay.ts. Fire-and-forget and once-guarded.
+      relayBootTimelineToApi(bootState.timeline)
       return
     }
   }
@@ -442,6 +446,7 @@ async function startSessionRuntime(
   if (ready) {
     bootMark('opencode-ready')
     logger.info('[boot] opencode ready', { opencodePid: opencode.getPid(), timeline: bootState.timeline })
+    relayBootTimelineToApi(bootState.timeline)
     // Only start the loop if the initial-session branch didn't already (avoids a
     // duplicate subscription when the initial session was requested but failed).
     if (!loopStarted) startOpencodeEventLoop(opencode, cfg, eventHandlers)

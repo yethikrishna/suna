@@ -2841,4 +2841,84 @@ template. Existing public names and required fields remain unchanged.
 Implementation will follow RED -> GREEN -> REFACTOR. Required SDK gates are the
 full typecheck, test suite, and packed-install smoke.
 
-**Status:** IN PROGRESS.
+**Status:** IMPLEMENTED — `7174dddc4`.
+
+---
+
+### 2026-07-26 — session `agent-sandbox-environments` (completion)
+
+Added `agents.<name>.sandbox` as an optional SDK and manifest field. The server
+now resolves session templates in this order:
+
+1. Explicit session `sandbox_slug`.
+2. Selected agent `sandbox`.
+3. Project `sandbox.default`.
+4. Platform `default`.
+
+The central session-create path applies the result to manual sessions,
+triggers, schedules, and channels. The server persists the resolved slug in
+`project_sessions.metadata.sandbox_slug`. Runtime-open, unmaterialized-runtime
+replacement, and restart allocation paths reuse this persisted value. Custom
+templates cannot boot through a pinned project-default external template ID.
+
+The dashboard agent editor now exposes the field as **Environment**. The new
+session composer now sends `sandbox_slug` only for an explicit user override.
+Manifest validation checks slug syntax. The agent-config API checks the slug
+against manifest-defined and dashboard-managed templates before committing it.
+
+TDD evidence:
+
+- Manifest RED: `agents.researcher.sandbox` was not part of the v2 schema.
+- API parser RED: the parsed `AgentSpec` had no `sandbox` value.
+- Precedence RED: the new `session-sandbox-metadata` module did not exist.
+- Provider RED: a custom image still selected the pinned default template ID.
+- SDK RED: `AgentConfigBlock` rejected `{ sandbox: "ml" }`.
+- Web RED: the agent editor had no environment control and the composer sent
+  the project default as an explicit override.
+- GREEN: manifest **324 pass / 0 fail**.
+- GREEN: focused API **66 pass / 0 fail**.
+- GREEN: focused web **17 pass / 0 fail**.
+- GREEN: starter **45 pass / 0 fail**.
+
+SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit 0.
+- `pnpm --filter @kortix/sdk test`: **1262 pass / 0 fail**, **5633**
+  assertions.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed install and Node ESM
+  import passed.
+
+Additional gates:
+
+- `pnpm --filter @kortix/manifest-schema typecheck`: exit 0.
+- `pnpm --filter kortix-api typecheck`: exit 0.
+- Focused web ESLint: exit 0.
+- `pnpm --filter @kortix/starter typecheck`: exit 0.
+- `git diff --check`: exit 0.
+
+Real local proof used disposable project
+`d6a155db-3ab5-44b2-aa26-0ffb7df42042`:
+
+- Agent-config GET returned `block.sandbox = "ml"`.
+- Manual session `e4ef1acd-44cb-4ad8-934a-169b95b7d4ca` persisted `ml`.
+- Scheduled session `bddc4c18-de6b-485f-bb5b-32aaadcc2f85` persisted `ml`.
+- Explicit override session `c046cc69-68b7-4ef1-8d05-ecd41dce1dde`
+  persisted `default`.
+- Both inherited sessions reached `active` on Platinum.
+- Both inherited sessions used content hash
+  `3e41f3954ec150c409e145f73c22de3c335f534713ea39981b562805bbc781bf`.
+- Restarting the two unmaterialized rows allocated runtimes with the persisted
+  `ml` environment.
+- Established runtime identity remains immutable. Provider-confirmed loss
+  returns `409 SESSION_RUNTIME_IDENTITY_UNAVAILABLE`; it does not create a
+  replacement with a different external ID.
+- Cleanup archived all three session rows, removed all three provider
+  sandboxes, deleted the template, purged the managed repository, archived the
+  project, and deleted the Supabase user.
+
+Browser discovery returned `[]`. The Environment selector interaction, outgoing
+PUT payload, and saved visible value remain unverified in a real browser.
+
+**Shippable to production: YES.** The implementation, SDK package, API path,
+provider allocation, generated schemas, starter artifact, and source-level web
+contract pass. Browser interaction remains a deployment verification item.

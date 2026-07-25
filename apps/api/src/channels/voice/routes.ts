@@ -274,6 +274,14 @@ voiceMcpRoutes.openapi(
     const speaker = typeof body.speaker === 'string' ? body.speaker : null;
     const callId = typeof body.call_id === 'string' && body.call_id ? body.call_id : sessionId;
 
+    // Reject empty/whitespace-only text with 400 rather than silently 200'ing
+    // a no-op write. appendTurn() itself no-ops on empty text (by design, for
+    // its other caller paths), which used to mean a caller sending blank text
+    // saw a green 200 in its own logs while nothing was persisted — a capture
+    // regression upstream of this route would look identical to success. This
+    // makes that failure mode loud at the one place that can see it happen.
+    if (!text.trim()) return c.json({ error: 'text must not be empty' }, 400);
+
     await appendTurn({ callId, projectId, sessionId }, role, text, speaker);
     return c.json({ ok: true });
   },

@@ -119,11 +119,27 @@ async function speechPcm(text: string): Promise<Int16Array> {
 
 /** Push PCM onto the track in 10ms frames — captureFrame paces itself to
  * roughly real time, so this naturally produces natural-timed speech rather
- * than an instant burst, which matters for the agent's turn detection. */
+ * than an instant burst, which matters for the agent's turn detection.
+ *
+ * Each chunk is COPIED into a fresh, zero-byteOffset Int16Array — do not pass
+ * `pcm.subarray(...)` straight through. `AudioFrame.protoInfo()` in
+ * @livekit/rtc-node@0.13.31 (src/audio_frame.ts) builds the FFI pointer as
+ * `new Uint8Array(this.data.buffer)`, which reads from byte 0 of the
+ * UNDERLYING buffer and ignores `data.byteOffset`/`data.byteLength`
+ * entirely. `.subarray()` shares its parent's buffer with a nonzero
+ * `byteOffset`, so every chunk after the first was silently sending bytes
+ * from the START of the whole `pcm` buffer instead of its own slice —
+ * verified live: the worker's per-frame peak-amplitude tap showed every
+ * "spoken" frame near the noise floor (~1-45 out of a 32767 range) for the
+ * ENTIRE speak arm, VAD never saw START_OF_SPEECH, and no turn was ever
+ * detected, while the silent arm still "passed" only because reading the
+ * wrong offset out of an all-zero silence buffer is still zero. `Int16Array.
+ * from()` allocates a new buffer per chunk (byteOffset 0), which sidesteps
+ * the bug regardless of whose fault it technically is. */
 async function feedPcm(source: AudioSource, pcm: Int16Array): Promise<void> {
   const per = (SAMPLE_RATE / 100) * CHANNELS;
   for (let off = 0; off < pcm.length; off += per) {
-    const chunk = pcm.subarray(off, Math.min(off + per, pcm.length));
+    const chunk = Int16Array.from(pcm.subarray(off, Math.min(off + per, pcm.length)));
     await source.captureFrame(new AudioFrame(chunk, SAMPLE_RATE, CHANNELS, chunk.length / CHANNELS));
   }
 }
@@ -380,6 +396,20 @@ async function run(): Promise<number> {
     let speakArm: ArmResult = { ran: false, ok: false, detail: 'skipped (--silent)' };
     if (!silentOnly) {
       speakArm = await runSpeakArm(source, state, callId, line);
+      if (speakArm.ok) {
+        // Give the agent's own REPLY to what we said a moment to finish and
+        // commit before this probe disconnects. runSpeakArm's own pass
+        // criterion is just the durable USER row landing — it returns the
+        // instant that shows up, which is often mid-reply. Disconnecting
+        // immediately interrupts the in-flight speech (see agent_activity.ts:
+        // an interrupted SpeechHandle's assistant-side chat-ctx insert is
+        // skipped), so the agent's reply never gets a chance to land as its
+        // own ConversationItemAdded row. This wait is purely so a human (or
+        // the next inspection step) can see a real reply row in the DB — it
+        // does not affect PASS/FAIL, which was already decided above.
+        console.log('\n  (waiting a few seconds for the agent\'s reply to finish, non-scoring)');
+        await sleep(6_000);
+      }
     }
 
     console.log('\n=== RESULT ===');

@@ -15,7 +15,7 @@ import { type CallContext, resolveCallContext } from './call-context';
 import { wireInboundReplies } from './inbound-replies';
 import { buildInstructions } from './instructions';
 import { buildTools } from './tools';
-import { wireTranscripts } from './transcripts';
+import { postUserTurn, wireTranscripts } from './transcripts';
 
 // No prewarm: there is no local model to load any more. Turn detection is
 // hosted (see the AgentSession comment below), so nothing here has to keep up
@@ -88,22 +88,57 @@ export default defineAgent({
     const originalSttNode = agent.sttNode.bind(agent);
     agent.sttNode = async (audio, modelSettings) => {
       let frameCount = 0;
+      let peakAmplitudeSinceLog = 0;
       const tapped = (async function* () {
-        for await (const frame of audio as AsyncIterable<{ sampleRate: number; samplesPerChannel: number }>) {
+        for await (const frame of audio as AsyncIterable<{
+          sampleRate: number;
+          samplesPerChannel: number;
+          data?: Int16Array;
+        }>) {
           frameCount++;
+          if (frame.data) {
+            for (let i = 0; i < frame.data.length; i++) {
+              const abs = Math.abs(frame.data[i]!);
+              if (abs > peakAmplitudeSinceLog) peakAmplitudeSinceLog = abs;
+            }
+          }
           if (frameCount === 1) {
             console.log(
-              `[voice-debug] STT_INPUT first frame sampleRate=${frame.sampleRate} samplesPerChannel=${frame.samplesPerChannel}`,
+              `[voice-debug] STT_INPUT first frame sampleRate=${frame.sampleRate} samplesPerChannel=${frame.samplesPerChannel} hasData=${!!frame.data}`,
             );
           }
           if (frameCount % 100 === 0) {
-            console.log(`[voice-debug] STT_INPUT frames=${frameCount}`);
+            // peak int16 amplitude in the last 100 frames — near 0 means the
+            // audio is effectively silent regardless of frame COUNT.
+            console.log(`[voice-debug] STT_INPUT frames=${frameCount} peakAmplitude(last100)=${peakAmplitudeSinceLog}`);
+            peakAmplitudeSinceLog = 0;
           }
           yield frame;
         }
         console.log(`[voice-debug] STT_INPUT stream ended, total frames=${frameCount}`);
       })();
-      return originalSttNode(tapped as typeof audio, modelSettings);
+      const result = await originalSttNode(tapped as typeof audio, modelSettings);
+      if (!result) return result;
+      // Tap the STT OUTPUT too — does deepgram/flux ever emit a SpeechEvent at
+      // all for this audio, and with what type/text? sttNode's INPUT tap above
+      // only proves frames reach the STT stage; it says nothing about whether
+      // the STT service itself recognizes speech in them.
+      const reader = (result as ReadableStream<unknown>).getReader();
+      return new ReadableStream<unknown>({
+        async pull(controller) {
+          const { done, value } = await reader.read();
+          if (done) {
+            controller.close();
+            return;
+          }
+          const ev = value as { type?: number; alternatives?: Array<{ text?: string }> };
+          console.log('[voice-debug] STT_OUTPUT', {
+            type: ev?.type,
+            text: ev?.alternatives?.[0]?.text,
+          });
+          controller.enqueue(value);
+        },
+      }) as unknown as typeof result;
     };
 
     const originalLlmNode = agent.llmNode.bind(agent);
@@ -119,9 +154,14 @@ export default defineAgent({
       return originalLlmNode(chatCtx, toolCtx, modelSettings);
     };
 
+    // This is the REAL user-side transcript capture, not diagnostic-only —
+    // see transcripts.ts's file header for why this hook, and not
+    // ConversationItemAdded/session.history/UserInputTranscribed, is the one
+    // that actually fires for the user's side of a real conversation.
     const originalOnUserTurnCompleted = agent.onUserTurnCompleted.bind(agent);
     agent.onUserTurnCompleted = async (chatCtx, newMessage) => {
       console.log('[voice-debug] USER_TURN_COMPLETED', { content: newMessage.content });
+      postUserTurn(callContext, chatCtx, newMessage);
       return originalOnUserTurnCompleted(chatCtx, newMessage);
     };
     // --- END TEMP DIAGNOSTIC INSTRUMENTATION ---

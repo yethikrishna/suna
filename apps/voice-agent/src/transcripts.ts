@@ -2,36 +2,45 @@
  * Posts each finalized turn of the conversation back to Kortix, mirroring
  * what the old in-process `appendTurn()` wrote to `voice_call_turns`.
  *
- * `conversation_item_added` fires once per committed chat item, for both the
- * user's and the agent's side, after each is finalized into history — one
- * subscription covers both roles, and there is no separate "interim agent
- * text" event to worry about (the agent side streams via TTS/audio until the
- * turn commits).
+ * The user side and the agent side use TWO DIFFERENT mechanisms on purpose —
+ * they are not symmetric, and treating them as if they were is exactly what
+ * produced the one-sided-transcript bug this file used to have.
  *
- * VERIFIED against @livekit/agents@1.5.5's own source (not docs/memory —
- * see node_modules/.pnpm/@livekit+agents@1.5.5.../src/voice/agent_activity.ts):
- * for the STT->LLM->TTS pipeline this worker uses (not a RealtimeModel),
- * `AgentActivity.pipelineReplyTask` calls
- * `this.agentSession._conversationItemAdded(newMessage)` for the USER's
- * ChatMessage (role: 'user', content: the STT transcript) right alongside
- * the equivalent call for the assistant's reply — both roles go through the
- * exact same event, confirmed live by instrumenting every AgentSessionEventTypes
- * member during a real call: a `conversation_item_added` role:'user' item is
- * what a committed user turn looks like on the wire, there is no separate
- * event to wire up for it.
+ * USER SIDE: `Agent.onUserTurnCompleted(chatCtx, newMessage)`
+ * (`voice/agent.ts:316`), called from `AgentActivity.userTurnCompleted()`
+ * (`voice/agent_activity.ts:2376`) — unconditionally, once per real completed
+ * user turn, BEFORE the message is scheduled/committed to chat context. This
+ * is invoked directly by index.ts (it is a documented per-Agent override
+ * point, not an event you subscribe to) which then calls `postUserTurn` here.
  *
- * `item.content`'s type (`ChatContent = ImageContent | AudioContent |
- * Instructions | string`, per llm/chat_context.ts) never actually includes a
- * `{ type: 'text', text }` object for either role in this SDK version — every
- * `ChatMessage.create()` call site in agent_activity.ts passes a plain
- * string, which the constructor wraps as `[string]`. That object shape only
- * exists internally in llm/provider_format/openai.ts, for building the wire
- * request to the OpenAI API — it never appears in a ConversationItemAdded
- * item. `extractText`'s object-part branch below is therefore not what makes
- * user turns land; it's a harmless no-op guard kept in case a future SDK
- * version (or a different LLM provider's content parts) changes that.
+ * AGENT SIDE: `AgentSessionEventTypes.ConversationItemAdded`, filtered to
+ * `role === 'assistant'`. This is the one part of the OLD approach that was
+ * actually correct and proven — verified against @livekit/agents@1.5.5
+ * source (`voice/agent_activity.ts:2639-2646`, the TTS-side insert) and
+ * confirmed empirically across every test run: this event fires 1:1 with
+ * every real spoken agent reply, no misses, no dupes.
+ *
+ * What this file explicitly does NOT do any more, and why:
+ *  - `ConversationItemAdded` for role==='user': per source
+ *    (`agent_activity.ts:2857-2862`), the user-role insert into
+ *    `session.history` and the event emission happen in the SAME atomic call
+ *    (`AgentSession._conversationItemAdded`, `agent_session.ts:1462-1465`).
+ *    Instrumented live across a full conversation, it delivered only
+ *    `role:'assistant'` items (plus one `agent_handoff`) — never `role:'user'`.
+ *    Whatever gates that atomic call for the user side in practice (most
+ *    likely `speechHandle.scheduled` racing something in this pipeline
+ *    config) means this event is not a reliable signal for the user's turn,
+ *    even though the source says it fires alongside the history insert.
+ *  - Draining `session.history` on that event: built on the premise that
+ *    history might contain user items the event missed — but they are
+ *    populated by the exact same atomic call, so there is nothing there that
+ *    the event wouldn't have already reported. Not an independent safety net.
+ *  - `UserInputTranscribed`: never fires, under either the OpenAI STT plugin
+ *    or LiveKit Inference deepgram/flux-general-en. Confirmed dead in this
+ *    SDK version for this config.
  */
 import { voice } from '@livekit/agents';
+import type { ChatContext, ChatMessage } from '@livekit/agents';
 import type { CallContext } from './call-context';
 import { postTranscriptTurn } from './kortix-client';
 
@@ -49,70 +58,41 @@ function extractText(content: readonly unknown[]): string {
     .trim();
 }
 
+/**
+ * Called directly from index.ts's `agent.onUserTurnCompleted` override, once
+ * per real completed user turn, with the SDK's own committed transcript for
+ * that turn. `rawTextContent` (not `textContent`) because `textContent`
+ * strips LiveKit's `<expr/>` markup for `role === 'assistant'` only — for a
+ * `role === 'user'` message they're identical, but `rawTextContent` is the
+ * one that's correct for both, so it's the one to standardize on here.
+ */
+export function postUserTurn(ctx: CallContext, _chatCtx: ChatContext, newMessage: ChatMessage): void {
+  const text = (newMessage.rawTextContent ?? '').trim();
+  if (!text) return;
+  void postTranscriptTurn(ctx, 'user', text);
+}
+
 export function wireTranscripts(session: voice.AgentSession<CallContext>, ctx: CallContext): void {
-  // The user's half is read from session.history, not from an event.
-  //
-  // ConversationItemAdded was instrumented across a full verified conversation
-  // and delivered ONLY `type=message role=assistant` (plus one agent_handoff).
-  // UserInputTranscribed never fired under either STT. The transcription text
-  // stream carries both sides under the AGENT's identity, so it cannot be split
-  // by participant either. History is the one place the user's words are
-  // guaranteed to exist — the LLM could not have answered otherwise.
-  const postedUserItems = new Set<string>();
-
-  const drainUserHistory = () => {
-    for (const item of session.history.items) {
-      if (item.type !== 'message') continue;
-      const msg = item as { id?: string; role?: string; content?: readonly unknown[] };
-      if (msg.role !== 'user') continue;
-      const id = msg.id ?? '';
-      if (!id || postedUserItems.has(id)) continue;
-      postedUserItems.add(id);
-      const text = extractText(msg.content ?? []);
-      if (text) void postTranscriptTurn(ctx, 'user', text);
-    }
-  };
-
-  // The USER side does not arrive on ConversationItemAdded — verified against
-  // the installed 1.5.5 events.d.ts, and empirically: that event fired exactly
-  // twice in a full conversation, both times for agent items, while the agent
-  // was demonstrably hearing and answering. User speech has its own event, and
-  // without this the transcript is permanently one-sided: voice_read shows the
-  // agent talking to nobody.
-  session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
-    // [voice-debug] Every STT transcript, interim or final, lands here first —
-    // this is the earliest point the WORD CONTENT of user speech is visible
-    // to this process at all. A silent room produces zero of these logs.
-    console.log('[voice-debug] UserInputTranscribed', {
-      isFinal: ev.isFinal,
-      transcript: ev.transcript,
-    });
-    // Interim results stream as the sentence forms; only the final one is a turn.
-    if (!ev.isFinal) return;
-    const text = (ev.transcript ?? '').trim();
-    if (!text) return;
-    void postTranscriptTurn(ctx, 'user', text);
-  });
+  const postedAgentItems = new Set<string>();
 
   session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (ev) => {
     const item = ev.item;
-    if (item.type !== 'message') return; // skip agent-handoff items — no such thing here anyway
+    if (item.type !== 'message') return; // skip agent-handoff items
+    if (item.role !== 'assistant') return; // the user side is captured via onUserTurnCompleted, not this event
 
-    const role = item.role === 'user' ? 'user' : item.role === 'assistant' ? 'agent' : null;
-    if (!role) return; // system/developer messages are not part of the spoken transcript
+    const id = (item as { id?: string }).id ?? '';
+    if (id) {
+      if (postedAgentItems.has(id)) return;
+      postedAgentItems.add(id);
+    }
 
-    // [voice-debug] Every committed chat item, both roles — a 'user' one here
-    // proves the turn made it all the way into session.history.
-    console.log('[voice-debug] ConversationItemAdded', { role, itemId: (item as { id?: string }).id });
-
-    // Runs before the agent-side write so the two land in conversational order.
-    drainUserHistory();
+    console.log('[voice-debug] ConversationItemAdded', { role: 'agent', itemId: id });
 
     const text = extractText(item.content);
     if (!text) return;
 
     // Fire-and-forget: a transcript write must never delay or interrupt the
     // live conversation (see kortix-client.ts's postTranscriptTurn doc).
-    void postTranscriptTurn(ctx, role, text);
+    void postTranscriptTurn(ctx, 'agent', text);
   });
 }

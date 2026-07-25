@@ -360,12 +360,22 @@ export async function createProjectRepo(input: CreateProjectRepoInput) {
  * default. No GitHub account or repo-name uniqueness needed; the starter is
  * seeded server-side so the project boots immediately.
  */
-export async function provisionProject(input: ProvisionProjectInput) {
+export async function provisionProject(
+  input: ProvisionProjectInput,
+  options: ApiClientOptions = {},
+) {
   return unwrap(
-    await backendApi.post<KortixProject>('/projects/provision', {
-      seed_starter: true,
-      ...input,
-    }),
+    await backendApi.post<KortixProject>(
+      '/projects/provision',
+      {
+        seed_starter: true,
+        ...input,
+      },
+      {
+        timeout: 120_000,
+        ...options,
+      },
+    ),
   );
 }
 

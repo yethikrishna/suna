@@ -2711,3 +2711,50 @@ Post-repair verification:
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
 and deployed ACP plus REST parity remain.
+
+---
+
+### 2026-07-25 — session `whitelabel-acp-reference` (runtime freshness follow-up)
+
+The merged reference app exposed two live-path defects.
+
+Project provisioning used the shared 30-second request timeout. Real sandbox
+provisioning exceeded that limit. `projects.provision()` now accepts request
+options and defaults to 120 seconds.
+
+ACP startup accepted a stale last-known-good daemon snapshot while rebuilding the
+current snapshot. That daemon dropped unresolved ACP questions after 120 seconds.
+ACP sessions now require the current content-addressed runtime snapshot. REST
+sessions retain the last-known-good compatibility policy.
+
+TDD evidence:
+
+- Provisioning request options and default timeout: RED before `6c9db9051`,
+  GREEN after `6c9db9051`.
+- Runtime-freshness module: **0 pass / 1 fail** before implementation.
+- Session-sandbox policy: **9 pass / 2 fail** before implementation.
+- Runtime-freshness module: **3 pass / 0 fail** after implementation.
+- Session-sandbox policy: **11 pass / 0 fail** after implementation.
+
+Post-fix verification:
+
+- SDK typecheck: exit 0.
+- SDK suite: **1260 pass / 0 fail** with **5630** assertions.
+- SDK packed-install smoke: pass.
+- API typecheck: exit 0.
+- White-label typecheck and production build: exit 0.
+- White-label suite: **57 pass / 3 skip / 0 fail** with **182** assertions.
+- White-label SDK boundary: **0 violations**.
+- Real local ACP and REST presentation plus question parity: **1 pass** in
+  **12.4 minutes**.
+- The ACP question remained visible after 121 seconds and a page reload.
+- Both transports submitted Beta and rendered `QUESTION_BETA`.
+- ACP used `session/prompt` and sent zero `/prompt_async` requests.
+- REST used `/prompt_async` and sent zero `/kortix/acp/` requests.
+- Post-cleanup database proof: `active_projects=0`, `cleanup_users=0`.
+- `git diff --check`: exit 0.
+
+**Status:** FOLLOW-UP IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** Follow-up PR merge, Deploy Dev, deployed
+SHA proof, and deployed ACP plus REST parity remain.

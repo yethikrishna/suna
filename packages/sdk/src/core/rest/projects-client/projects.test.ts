@@ -2,6 +2,7 @@ import { beforeEach, expect, mock, test } from 'bun:test';
 
 import {
   getProjectDetail,
+  provisionProject,
   provisionProjectWithToken,
   type CreateProjectRepoInput,
 } from './projects';
@@ -36,6 +37,49 @@ test('returns ok:true with the parsed project on a real 200 body', async () => {
   const result = await provisionProjectWithToken(opts, input);
   expect(result.ok).toBe(true);
   expect(result.ok && result.project.project_id).toBe('proj-1');
+});
+
+test('provisionProject applies the caller timeout to slow managed-git provisioning', async () => {
+  configureKortix({
+    backendUrl: 'http://backend.test/v1',
+    getToken: async () => 'tok',
+  });
+  globalThis.fetch = mock(
+    async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
+      await new Promise<Response>((resolve, reject) => {
+        const timer = setTimeout(
+          () =>
+            resolve(
+              new Response(JSON.stringify({ project_id: 'proj-too-late' }), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+              }),
+            ),
+          50,
+        );
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            const error = new Error('aborted');
+            error.name = 'AbortError';
+            reject(error);
+          },
+          { once: true },
+        );
+      }),
+  ) as unknown as typeof fetch;
+
+  await expect(
+    provisionProject(
+      { account_id: 'acc-1', name: 'Slow Project', seed_starter: true },
+      { timeout: 5 },
+    ),
+  ).rejects.toMatchObject({
+    code: 'TIMEOUT',
+    endpoint: '/projects/provision',
+    timeout: 5,
+  });
 });
 
 // Regression: a 200 whose body has no project_id used to be reported as a

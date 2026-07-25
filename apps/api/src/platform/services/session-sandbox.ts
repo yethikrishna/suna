@@ -56,6 +56,7 @@ import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { resolveLlmGatewayBaseUrl } from '../../llm-gateway/sandbox-base-url';
 import { RuntimeIdentityConflictError } from '../../projects/runtime-identity-error';
 import { withTimeout, configuredTimeoutMs } from '../../shared/with-timeout';
+import { resolveProjectRuntimeTransport } from '../../experimental/features';
 
 /**
  * Bound for the pre-active hook. Generous, because the hook is a data restore and
@@ -258,6 +259,7 @@ export async function provisionSessionSandbox(opts: {
 }): Promise<ProvisionSessionSandboxResult> {
   const { sandboxId, accountId, projectId, userId, serverType, location } = opts;
   const providerWasExplicitlySelected = opts.provider !== undefined;
+  const requireCurrentRuntime = resolveProjectRuntimeTransport(opts.projectMetadata) === 'acp';
   // Resolution order:
   //   1. Explicit per-request `opts.provider` (set by callers that need a
   //      specific runtime, e.g. when restarting an existing sandbox).
@@ -294,6 +296,7 @@ export async function provisionSessionSandbox(opts: {
       accountId,
       source: 'session-start',
       provider: providerName,
+      requireCurrentRuntime,
     });
     return { ...image, gitProject };
   })();
@@ -515,6 +518,7 @@ export async function provisionSessionSandbox(opts: {
           accountId,
           source: 'session-start',
           provider: providerName,
+          requireCurrentRuntime,
         });
       }
       imageInfo = {

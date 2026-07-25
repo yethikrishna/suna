@@ -13,6 +13,15 @@ describe('gatewayModelCatalog — served catalog', () => {
     expect(full['deepseek-v4-flash']?.provider).toBe('deepseek');
   });
 
+  test('serves Aster GLM pricing instead of a models.dev provider price', () => {
+    expect(full['glm-5.2']?.cost).toEqual({
+      input: 1,
+      output: 4,
+      cache_read: 0.2,
+      cache_write: 1,
+    });
+  });
+
   test('every served model carries a positive context limit', () => {
     const missing = Object.entries(full)
       .filter(([, m]) => !(typeof m.limit?.context === 'number' && m.limit.context > 0))

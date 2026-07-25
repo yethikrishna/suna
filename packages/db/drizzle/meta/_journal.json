@@ -85,6 +85,20 @@
       "when": 1784937680824,
       "tag": "20260725000120_executor_oauth_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784941778905,
+      "tag": "20260725010938_gateway_billing_precision_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784942492106,
+      "tag": "20260725012132_gateway_cost_precision_columns",
+      "breakpoints": true
     }
   ]
 }

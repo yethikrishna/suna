@@ -13,6 +13,8 @@ export interface ModelConfig {
   tier: 'free' | 'paid';
   cacheReadPer1M?: number; // Cost per 1M cached-read tokens (USD)
   cacheWritePer1M?: number; // Cost per 1M cache-write tokens (USD)
+  tiers?: import('./model-pricing').ModelPricingTier[];
+  contextOver200k?: import('./model-pricing').ModelPricingTier;
 }
 
 /**
@@ -40,7 +42,7 @@ const MODELS: Record<string, ModelConfig> = {};
  *    and acts as pricing fallback when models.dev hasn't loaded yet or is unknown
  * 3. Zero pricing (billing skipped) if completely unknown
  */
-export function getModel(modelId: string): ModelConfig {
+export function getModel(modelId: string, providerId: string = 'openrouter'): ModelConfig {
   const openrouterId = modelId.startsWith('openrouter/')
     ? modelId.replace('openrouter/', '')
     : modelId;
@@ -48,7 +50,7 @@ export function getModel(modelId: string): ModelConfig {
   const registryEntry = MODELS[modelId] ?? MODELS[openrouterId];
 
   // models.dev is source of truth for pricing — always wins if available
-  const livePricing = getModelPricing(modelId) ?? getModelPricing(openrouterId);
+  const livePricing = getModelPricing(providerId, openrouterId);
 
   if (livePricing) {
     return {
@@ -56,8 +58,10 @@ export function getModel(modelId: string): ModelConfig {
       // Merge registry metadata with live pricing
       contextWindow: registryEntry?.contextWindow ?? 128000,
       tier: registryEntry?.tier ?? 'paid',
-      cacheReadPer1M: registryEntry?.cacheReadPer1M,
-      cacheWritePer1M: registryEntry?.cacheWritePer1M,
+      cacheReadPer1M: livePricing.cacheReadPer1M ?? registryEntry?.cacheReadPer1M,
+      cacheWritePer1M: livePricing.cacheWritePer1M ?? registryEntry?.cacheWritePer1M,
+      tiers: livePricing.tiers,
+      contextOver200k: livePricing.contextOver200k,
       // Pricing always from models.dev
       inputPer1M: livePricing.inputPer1M,
       outputPer1M: livePricing.outputPer1M,

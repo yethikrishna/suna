@@ -3,7 +3,6 @@
 import { useState } from 'react';
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import type { Agent, ProviderListResponse } from '@kortix/sdk/react';
 import { EllipsisIcon } from 'lucide-react';
@@ -14,7 +13,6 @@ import { ReasoningEffortSelector } from '../reasoning-effort-selector';
 import type { ModelDefaultControls } from '../model-selector';
 import { ModelSelector } from '../model-selector';
 import { AgentSelector } from './agent-selector';
-import { useComposerPreferencesStore } from './composer-preferences';
 import { VariantSelector } from './variant-selector';
 
 /**
@@ -61,26 +59,15 @@ export interface ComposerOverflowMenuProps {
   showReasoningEffort: boolean;
 }
 
-function OverflowRow({
-  label,
-  emphasis = false,
-  children,
-}: {
-  label: string;
-  emphasis?: boolean;
-  children: React.ReactNode;
-}) {
+/** One setting per row: name on the left, its existing selector on the right.
+ *  Uniform by design — the previous menu bolded Agent, boxed Model, and left
+ *  the reasoning control as an unlabeled "Auto" chip adrift between two
+ *  separators, so three settings read as three unrelated kinds of thing. */
+function OverflowRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span
-        className={cn(
-          'text-xs',
-          emphasis ? 'text-foreground font-medium' : 'text-muted-foreground',
-        )}
-      >
-        {label}
-      </span>
-      {children}
+    <div className="flex min-h-8 items-center justify-between gap-3">
+      <span className="text-muted-foreground shrink-0 text-xs">{label}</span>
+      <div className="flex min-w-0 items-center justify-end">{children}</div>
     </div>
   );
 }
@@ -106,9 +93,6 @@ export function ComposerOverflowMenu({
   showReasoningEffort,
 }: ComposerOverflowMenuProps) {
   const [open, setOpen] = useState(false);
-  const composerMode = useComposerPreferencesStore((s) => s.mode);
-  const setComposerMode = useComposerPreferencesStore((s) => s.setMode);
-  const showAdvancedRow = variants.length > 0 || showReasoningEffort;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -124,62 +108,42 @@ export function ComposerOverflowMenu({
           <EllipsisIcon className="size-4" strokeWidth={2} />
         </button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" sideOffset={8} className="w-64 space-y-3 p-3">
-        {(showAgent || showModel) && (
-          <div className="space-y-2">
-            {showAgent && (
-              <OverflowRow label="Agent" emphasis>
-                <AgentSelector
-                  agents={agents}
-                  selectedAgent={selectedAgent}
-                  onSelect={onAgentChange}
-                  disabled={agentSelectorLocked}
-                />
-              </OverflowRow>
-            )}
-            {showModel && (
-              <OverflowRow label="Model">
-                <ModelSelector
-                  models={models}
-                  selectedModel={selectedModel}
-                  onSelect={onModelChange}
-                  providers={providers}
-                  defaultControls={modelDefaultControls}
-                />
-              </OverflowRow>
-            )}
-          </div>
+      <PopoverContent side="top" align="start" sideOffset={8} className="w-72 space-y-1 p-2">
+        {showAgent && (
+          <OverflowRow label="Agent">
+            <AgentSelector
+              agents={agents}
+              selectedAgent={selectedAgent}
+              onSelect={onAgentChange}
+              disabled={agentSelectorLocked}
+            />
+          </OverflowRow>
         )}
-
-        {showAdvancedRow && (
-          <div className={cn('flex flex-wrap items-center gap-1', (showAgent || showModel) && 'border-border/60 border-t pt-2')}>
-            {variants.length > 0 && (
-              <VariantSelector
-                variants={variants}
-                selectedVariant={selectedVariant}
-                onSelect={onVariantChange}
-              />
-            )}
-            {showReasoningEffort && (
-              <ReasoningEffortSelector model={reasoningModel} projectId={projectId} />
-            )}
-          </div>
+        {showModel && (
+          <OverflowRow label="Model">
+            <ModelSelector
+              models={models}
+              selectedModel={selectedModel}
+              onSelect={onModelChange}
+              providers={providers}
+              defaultControls={modelDefaultControls}
+            />
+          </OverflowRow>
         )}
-
-        <div
-          className={cn(
-            'border-border/60 flex items-center justify-between gap-3 border-t pt-2.5',
-          )}
-        >
-          <span className="text-muted-foreground text-xs">Show all controls in toolbar</span>
-          <Switch
-            checked={composerMode === 'advanced'}
-            onCheckedChange={(checked: boolean) =>
-              setComposerMode(checked ? 'advanced' : 'simple')
-            }
-            aria-label="Show all composer controls in the toolbar"
-          />
-        </div>
+        {showReasoningEffort && (
+          <OverflowRow label="Thinking">
+            <ReasoningEffortSelector model={reasoningModel} projectId={projectId} />
+          </OverflowRow>
+        )}
+        {variants.length > 0 && (
+          <OverflowRow label="Variant">
+            <VariantSelector
+              variants={variants}
+              selectedVariant={selectedVariant}
+              onSelect={onVariantChange}
+            />
+          </OverflowRow>
+        )}
       </PopoverContent>
     </Popover>
   );

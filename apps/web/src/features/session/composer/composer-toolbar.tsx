@@ -15,26 +15,27 @@ import { VoiceRecorder } from '../voice-recorder';
 import { AgentSelector } from './agent-selector';
 import { ComposerOverflowMenu } from './composer-overflow-menu';
 import { hasComposerOverflowContent } from './composer-overflow';
-import { useComposerPreferencesStore } from './composer-preferences';
 import { SendStopControl } from './send-stop-control';
 import { TokenProgress } from './token-progress';
 import { VariantSelector } from './variant-selector';
 
 /**
  * The composer's bottom toolbar — the piece the "make it feel like ChatGPT
- * Work / Claude Cowork" brief is about. Two modes, gated by
- * `useComposerPreferencesStore` (defaults every user to 'simple'):
+ * Work / Claude Cowork" brief is about. ONE layout, for everyone:
  *
- *  - **simple** (default): attach + ONE low-emphasis overflow control on the
- *    left; token progress (ambient, no label — see token-progress.tsx),
- *    voice, and send/stop on the right. Agent, model, variant and reasoning
- *    effort all move behind the overflow — see composer-overflow-menu.tsx
- *    for the agent-vs-model hierarchy inside it.
- *  - **advanced**: the original dense toolbar, unchanged — attach, agent,
- *    model, variant and reasoning effort all inline, left to right, exactly
- *    as before this refactor. Reachable any time via the overflow menu's
- *    "Show all controls in toolbar" switch, or by any user who already
- *    persisted `mode: 'advanced'`.
+ *  - LEFT: attach + a single low-emphasis overflow control. Agent, model,
+ *    variant and reasoning effort all live behind that overflow — see
+ *    composer-overflow-menu.tsx for the agent-vs-model hierarchy inside it.
+ *  - RIGHT: token progress (ambient, no label — see token-progress.tsx),
+ *    voice, and send/stop.
+ *
+ * There used to be a second 'advanced' mode — the original dense inline
+ * toolbar — behind a "Show all controls in toolbar" switch in the overflow
+ * menu. It was removed because it was a ONE-WAY DOOR: advanced mode did not
+ * render the overflow menu, so turning it on hid the only control that could
+ * turn it off. It was also redundant; the switch changed only WHERE the same
+ * four controls lived, while both paths reach them in one click. Two ways to
+ * do one thing is the complexity this brief exists to remove.
  *
  * Voice and token progress are NOT power-user surfaces by the brief's own
  * carve-out (voice is an alternate input modality on par with attach; token
@@ -128,7 +129,6 @@ export function ComposerToolbar({
   onSubmit,
 }: ComposerToolbarProps) {
   const tHardcodedUi = useTranslations('hardcodedUi');
-  const mode = useComposerPreferencesStore((s) => s.mode);
 
   const showAgent = agents.length > 0 && !!(onAgentChange || agentSelectorLocked);
   const showModel = (models.length > 0 || modelRequired) && !!onModelChange;
@@ -165,38 +165,12 @@ export function ComposerToolbar({
           </TooltipContent>
         </Tooltip>
 
-        {mode === 'advanced' ? (
-          <>
-            {showAgent && (
-              <AgentSelector
-                agents={agents}
-                selectedAgent={selectedAgent}
-                onSelect={onAgentChange ?? (() => {})}
-                disabled={agentSelectorLocked}
-              />
-            )}
-            {showModel && (
-              <ModelSelector
-                models={models}
-                modelsLoading={modelsLoading}
-                selectedModel={selectedModel}
-                onSelect={onModelChange!}
-                providers={providers}
-                defaultControls={modelDefaultControls}
-              />
-            )}
-            {showVariant && (
-              <VariantSelector
-                variants={variants}
-                selectedVariant={selectedVariant}
-                onSelect={onVariantChange!}
-              />
-            )}
-            <ReasoningEffortSelector model={selectedModel} projectId={projectId} />
-          </>
-        ) : (
-          showOverflow && (
-            <ComposerOverflowMenu
+        {/* One composer. The dense inline toolbar used to be a second mode
+            behind a switch in this menu — but `advanced` did not render the
+            menu, so flipping it hid its own off-switch. Everything it exposed
+            is one click away in here instead. */}
+        {showOverflow && (
+          <ComposerOverflowMenu
               agents={agents}
               selectedAgent={selectedAgent}
               onAgentChange={onAgentChange ?? (() => {})}
@@ -214,14 +188,12 @@ export function ComposerToolbar({
               showVariant={showVariant}
               reasoningModel={selectedModel}
               projectId={projectId}
-              showReasoningEffort={reasoning.visible}
-            />
-          )
+            showReasoningEffort={reasoning.visible}
+          />
         )}
       </div>
 
-      {/* RIGHT — identical in both modes: ambient token progress, any
-          slot content, voice input, then send/stop. */}
+      {/* RIGHT: ambient token progress, any slot content, voice, send/stop. */}
       <div className="flex shrink-0 items-center gap-0">
         <TokenProgress
           messages={messages}

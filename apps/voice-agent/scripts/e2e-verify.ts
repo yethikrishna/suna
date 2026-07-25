@@ -95,7 +95,9 @@ async function main() {
   await r.localParticipant!.publishTrack(track, opts);
   console.log('  published probe mic');
 
-  const line = 'Hello. Can you hear me? Please answer with a short sentence.';
+  const line =
+    arg('say') ??
+    'Hello. Can you hear me? Please answer with a short sentence.';
   console.log(`\nspeaking: "${line}"`);
   const pcm = await speechPcm(line);
 
@@ -115,6 +117,7 @@ async function main() {
   console.log('=== RESULT ===');
   console.log(`agent in room:        ${agentJoined ? 'PASS' : 'FAIL'}`);
   console.log(`agent audio frames:   ${agentAudioFrames} ${agentAudioFrames > 0 ? 'PASS' : 'FAIL'}`);
+  console.log(`(check transcript rows + tool calls separately — see the runner)`);
 
   await r.disconnect();
   process.exit(agentJoined && agentAudioFrames > 0 ? 0 : 1);

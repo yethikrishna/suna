@@ -13,9 +13,23 @@ import { voice } from '@livekit/agents';
 import type { CallContext } from './call-context';
 import { postTranscriptTurn } from './kortix-client';
 
+/**
+ * Content parts are NOT all plain strings. LiveKit delivers structured parts
+ * (`{ type: 'text', text }`), and an earlier version only handled the string
+ * case — so every real turn extracted to '', hit the empty-text guard, and was
+ * silently dropped. The only rows that survived came from `session.say()`,
+ * which happens to pass a raw string. Handle both shapes.
+ */
 function extractText(content: readonly unknown[]): string {
   return content
-    .map((part) => (typeof part === 'string' ? part : ''))
+    .map((part) => {
+      if (typeof part === 'string') return part;
+      if (part && typeof part === 'object') {
+        const t = (part as { text?: unknown }).text;
+        if (typeof t === 'string') return t;
+      }
+      return '';
+    })
     .join('')
     .trim();
 }

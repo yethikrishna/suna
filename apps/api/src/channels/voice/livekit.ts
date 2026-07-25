@@ -91,12 +91,13 @@ export async function createRoom(room: string, metadata: string): Promise<void> 
     maxParticipants: 8,
   });
 
-  // createRoom is a no-op on an already-existing room, so a room that was
-  // implicitly created by an early joiner would keep its empty metadata
-  // forever. Set it explicitly rather than trusting creation to have applied it.
-  await svc.updateRoomMetadata(room, metadata).catch((err) =>
-    console.error('[voice/livekit] updateRoomMetadata failed', err),
-  );
+  // NOTE: an explicit updateRoomMetadata() call was tried here to cover the
+  // case where a room already exists (createRoom no-ops, so its metadata would
+  // stay empty). It failed on every call AND correlated exactly with agent jobs
+  // no longer being dispatched, so it is deliberately not done. departureTimeout
+  // above is the real fix for the vanishing-room problem it was meant to patch.
+  // If the pre-existing-room case ever bites, delete the room first rather than
+  // trying to mutate it.
 }
 
 /** Best-effort — an empty room times out on its own via `emptyTimeout` anyway. */

@@ -101,6 +101,10 @@ WHERE user_id = :'smoke_user_id'::uuid;
 DELETE FROM auth.mfa_factors
 WHERE user_id = :'smoke_user_id'::uuid;
 
+DELETE FROM auth.flow_state
+WHERE referrer LIKE '%kortix_use2_oauth_smoke%'
+   OR referrer LIKE '%kortix_use2_github_oauth_smoke%';
+
 DELETE FROM auth.identities
 WHERE user_id = :'smoke_user_id'::uuid;
 
@@ -159,12 +163,15 @@ E2E_API_URL="$TARGET_API_URL" \
 E2E_SUPABASE_URL="$target_supabase_url" \
 E2E_OWNER_EMAIL="$smoke_email" \
 E2E_OWNER_PASSWORD="$smoke_password" \
+E2E_OAUTH_PROVIDER_INITIATION=1 \
 SUPABASE_ANON_KEY="$target_anon_key" \
 NEXT_PUBLIC_SUPABASE_ANON_KEY="$target_anon_key" \
 SUPABASE_SERVICE_ROLE_KEY="$target_service_role_key" \
   "$playwright_command" test \
     -c "$REPOSITORY_ROOT/tests/playwright.config.ts" \
+    "$REPOSITORY_ROOT/tests/e2e/specs/03-frontend-config.spec.ts" \
     "$REPOSITORY_ROOT/tests/e2e/specs/04-auth-flow.spec.ts" \
+    "$REPOSITORY_ROOT/tests/e2e/specs/17-oauth-provider-initiation.spec.ts" \
     --project chromium \
     --reporter=line
 

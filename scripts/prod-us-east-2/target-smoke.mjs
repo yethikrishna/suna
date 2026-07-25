@@ -44,7 +44,6 @@ if (!Number.isSafeInteger(authSequenceHeadroom) || authSequenceHeadroom < 1) {
 let smokeUserId = null;
 let originalWebhookUrl = null;
 let signupWebhookSuppressed = false;
-const smokeFlowStateIds = [];
 
 function sql(input, variables = {}) {
   const args = [databaseUrl, '-X', '-qAt', '-v', 'ON_ERROR_STOP=1'];
@@ -143,8 +142,14 @@ async function verifyProviderAuthorization(provider, expectedHost) {
     );
   }
 
-  const state = providerUrl.searchParams.get('state');
-  if (state && /^[0-9a-f-]{36}$/i.test(state)) smokeFlowStateIds.push(state);
+  sql(
+    `
+DELETE FROM auth.flow_state
+WHERE referrer = :'redirect_to'
+  AND NULLIF(code_challenge, '') IS NULL;
+`,
+    { redirect_to: redirectTo },
+  );
 }
 
 function adminHeaders() {
@@ -234,6 +239,9 @@ WHERE user_id = :'smoke_user_id'::uuid;
 DELETE FROM auth.mfa_factors
 WHERE user_id = :'smoke_user_id'::uuid;
 
+DELETE FROM auth.one_time_tokens
+WHERE user_id = :'smoke_user_id'::uuid;
+
 DELETE FROM auth.identities
 WHERE user_id = :'smoke_user_id'::uuid;
 
@@ -287,6 +295,8 @@ SELECT json_build_object(
   (SELECT count(*) FROM auth.identities WHERE user_id = :'smoke_user_id'::uuid),
   'auth.mfa_factors',
   (SELECT count(*) FROM auth.mfa_factors WHERE user_id = :'smoke_user_id'::uuid),
+  'auth.one_time_tokens',
+  (SELECT count(*) FROM auth.one_time_tokens WHERE user_id = :'smoke_user_id'::uuid),
   'auth.refresh_tokens',
   (SELECT count(*) FROM auth.refresh_tokens WHERE user_id = :'smoke_user_id'),
   'auth.sessions',
@@ -517,15 +527,6 @@ LIMIT 1;
       result.cleanupRows = Object.values(result.cleanupByTable).reduce(
         (total, rowCount) => total + Number(rowCount),
         0,
-      );
-    }
-    if (smokeFlowStateIds.length > 0) {
-      sql(
-        `
-DELETE FROM auth.flow_state
-WHERE id = ANY(string_to_array(:'flow_state_ids', ',')::uuid[]);
-`,
-        { flow_state_ids: smokeFlowStateIds.join(',') },
       );
     }
     result.refreshTokenSequenceHeadroom = Number(

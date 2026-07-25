@@ -389,7 +389,8 @@ The US shadow endpoints return:
 - Gateway `/health/live`: HTTP `200`, version `0.10.14`.
 - Gateway `/health`: HTTP `200`, API dependency `up`.
 - Frontend `/`: HTTP `200` from Vercel `fra1::cle1`.
-- Frontend HTML contains `api-use2-shadow.kortix.com`.
+- Frontend runtime `BACKEND_URL` is
+  `https://api-use2-shadow.kortix.com/v1`.
 - Frontend HTML contains the target project ref `uhrwvisbqjfxhxjvoofd`.
 
 ### Database connection requirement
@@ -493,8 +494,10 @@ Run the deployed frontend Auth smoke:
 bash scripts/prod-us-east-2/frontend-auth-smoke.sh
 ```
 
-The frontend Auth smoke verifies the password grant, the visible login form,
-and the authenticated application shell on `https://us.kortix.com`.
+The frontend Auth smoke verifies the runtime API and Supabase URLs, password
+grant, visible login form, authenticated application shell, and Google and
+GitHub OAuth initiation on `https://us.kortix.com`. The provider gate fails when
+either provider rejects the target Supabase callback URI.
 
 Run the source refresh-token compatibility smoke:
 

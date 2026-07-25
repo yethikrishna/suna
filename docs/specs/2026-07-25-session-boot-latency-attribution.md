@@ -523,3 +523,39 @@ not an engineering unknown.
   include WAN + proxy latency; they are an **upper bound** on the in-guest cost,
   which strengthens the conclusion that HTTP is not the bottleneck.
 - All benchmark sessions were deleted. No production configuration was changed.
+
+### Platinum: three more findings from reading its source
+
+A parallel audit of the Platinum repo (read-only) turned up things the live API
+numbers alone did not show:
+
+1. **Kortix retried a 429 that can never clear.** Platinum answers 429 for two
+   opposite conditions: `rate_limited` (the per-org mutation-rate bucket,
+   `PT_ORG_MUT_RATE` = 20 req/s — genuinely transient) and
+   `org_template_quota_exceeded` (the per-org template COUNT cap — permanent until
+   something deletes a template). `isRetryablePlatinumBuildError` matched on
+   `' 429'` and so burned all `BUILD_ATTEMPTS` against the count cap, adding delay
+   in front of a wall and burying the one error an operator needs to see. **Fixed**,
+   with a test that fails without the fix.
+
+2. **Kortix has no org-wide GC for Platinum templates.** `snapshots/quota-gc.ts`
+   imports `listDaytonaSnapshots`/`deleteDaytonaSnapshotById` exclusively — it is
+   Daytona-only. The single cleanup is `reapOldPerProjectWarm`, which deletes a
+   project's *prior* tip only after a *new* tip for that same project finishes
+   building. A project's first-ever bake is pure net-new, and nothing reclaims
+   org-wide. That is why 63 ppwarm templates have accumulated across 58 projects
+   while only 2 projects boot on Platinum. Not urgent at 96/500, but the trend is
+   monotonic.
+
+3. **Platinum's soft-delete contract is exactly what Kortix assumes.** DELETE
+   renames to `<name>__deleted_<id>` (keeping the ppwarm prefix) and sets
+   `state='deprecated'`; the row is never removed. `GET /v1/templates` does **not**
+   filter tombstones, so Kortix's `n.includes('__deleted')` exclusion is both
+   necessary and correct — and because the quota gate counts only
+   `state IN ('ready','building')`, deleting an old tip genuinely frees quota.
+   Verified on both sides; no change needed.
+
+Also noted for the Platinum team: `OPS.md` documents `PT_ORG_MAX_TEMPLATE_MB=8192`,
+which does not exist in the code — the real cap is the hardcoded
+`ORG_MAX_SIZE_MB = 20480`. Spend limits fail **open** when unset and a template
+build emits no billing event, so a bake burst cannot trip a spend cap.

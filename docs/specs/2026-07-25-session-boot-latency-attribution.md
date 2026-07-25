@@ -115,6 +115,36 @@ The blobless filter (`blob:none`) remains the wrong tool: measured 6 161 ms —
 slower than a full clone — on top of the lazy-fetch stalls that made us disable
 it in the first place.
 
+### Tested and NOT demonstrated — clone durability settings
+
+A boot clone is throwaway (a failure re-clones), so `core.fsync=none` +
+`gc.auto=0` should in principle help — no durability requirement, and an
+opportunistic gc mid-boot is pure waste. Measured on `kortix-ai/company`,
+`--depth 1`, 3 runs each, every clone verified `rc=0` with `commits=1`:
+
+| | avg | range |
+|---|---:|---|
+| baseline | 4 023 ms | 3 181 – 5 423 ms |
+| `core.fsync=none -c gc.auto=0` | 3 526 ms | 2 999 – 4 283 ms |
+
+The ranges overlap heavily (baseline's best beats the variant's worst), so the
+~12% apparent gain is **not resolvable** — this clone is network-dominated on an
+SSD host. It may matter more on Platinum's virtio disk, but that cannot be
+measured from outside the guest. **Deliberately not shipped**: the honest read is
+"no evidence", and shipping it as a perf win would repeat the retracted-22×
+mistake. Retest in-guest once #7's persisted timeline makes `repo-materialized`
+comparable across boots.
+
+### Also checked and refuted — HOME mismatch between bake and runtime
+
+If the daemon ran opencode under a different HOME than the bake warmed
+(`/home/kortix`), the baked state would be invisible and every boot would pay a
+partial cold start — which would neatly explain the residual. It does not:
+`apps/sandbox/entrypoint.sh` re-execs as `kortix` with `HOME=/home/kortix`
+whenever it starts as root (via `setpriv`, falling back to `sudo -u`), and
+backfills `HOME=/home/kortix` when HOME is `/`. `OPENCODE_HOME = homedir()` then
+resolves to the same path the warmup baked under.
+
 ## Finding 2 — the daemon serves nothing until the clone is done
 
 `daemon-reachable` p50 is **13 s**, while the VM has existed since 2.5 s

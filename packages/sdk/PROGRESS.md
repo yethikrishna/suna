@@ -2561,3 +2561,16 @@ post-restart prompt delivery, and REST rollback.
 **Status:** COMPLETE.
 
 **Shippable to production: YES.** ACP and REST rollback pass on deployed dev.
+
+---
+
+### 2026-07-25 — session `voice-sdk-import-recovery` (claim)
+
+Claimed the stale `.channels.meet` SDK test references found by PR #5450.
+The implementation already exposes `.channels.voice`.
+This correction changes test references only.
+
+Required completion gates are SDK typecheck, full tests, packed-install smoke,
+PR merge, and Deploy Dev.
+
+**Status:** IN PROGRESS.

@@ -46,7 +46,7 @@ flow(
     });
 
     // meet uses the same write path + reconciles the kortix_voice channel connector.
-    // Assert structure (not the effective value — that depends on VOICE_ENABLED on the
+    // Assert structure (not the effective value — that depends on the project's own
     // target), then clear it.
     await ctx.step("OWNER enables meet → 200 + catalog in body", async () => {
       const r = await ctx.client

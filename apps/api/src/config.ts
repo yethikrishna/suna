@@ -285,12 +285,13 @@ const envSchema = z.object({
   AGENTMAIL_WEBHOOK_SECRET: optStr,
 
   // ── Channels — Recall.ai meeting bot (optional) ──────────────────────────
-  // VOICE_ENABLED is the operator master switch (the global gate): when false the
-  // Google Meet experimental feature is unavailable platform-wide regardless of
-  // any per-project choice. RECALL_BASE_URL is the regional gateway (us-west-2 =
-  // pay-as-you-go default; us-east-1 / eu-central-1 / ap-northeast-1 also exist).
-  // The key is sent server-side as `Authorization: Token <key>`; never in a sandbox.
-  VOICE_ENABLED: optBoolFalse,
+  // No operator on/off switch here: voice is gated the same way every other
+  // experimental feature is — per project, in Settings. An env var would be a
+  // second, hidden gate that only an operator could clear, which is exactly the
+  // friction the experimental-features system exists to avoid.
+  // RECALL_BASE_URL is the regional gateway (us-west-2 = pay-as-you-go default;
+  // us-east-1 / eu-central-1 / ap-northeast-1 also exist). The key is sent
+  // server-side as `Authorization: Token <key>`; never in a sandbox.
   RECALL_BASE_URL: optUrl('https://us-west-2.recall.ai/api/v1'),
   RECALL_API_KEY: optStr,
 
@@ -767,15 +768,6 @@ function validateEnv(): z.infer<typeof envSchema> {
     }
   }
 
-  if (raw.VOICE_ENABLED === 'true' && !raw.RECALL_API_KEY) {
-    issues.push({
-      var: 'RECALL_API_KEY',
-      message:
-        'VOICE_ENABLED is on but RECALL_API_KEY is unset — the meeting bot cannot join or transcribe',
-      level: 'warn',
-    });
-  }
-
   // ── Print results ─────────────────────────────────────────────────────
   const errors = issues.filter((i) => i.level === 'error');
   const warnings = issues.filter((i) => i.level === 'warn');
@@ -912,7 +904,6 @@ export const config = {
   AGENTMAIL_WEBHOOK_SECRET: env.AGENTMAIL_WEBHOOK_SECRET,
 
   // ─── Channels (Recall.ai meeting bot) ────────────────────────────────────
-  VOICE_ENABLED: env.VOICE_ENABLED,
   RECALL_BASE_URL: env.RECALL_BASE_URL,
   RECALL_API_KEY: env.RECALL_API_KEY,
 

@@ -13,13 +13,14 @@
 
 import { Button } from '@/components/ui/button';
 import { buildDemoMessages } from '@/features/session/activity/demo-transcript';
+import { ChatDetailProvider } from '@/features/session/activity/chat-detail';
 import { CHAT_VARIANTS } from '@/features/session/activity/variants';
 import { VariantCurrent } from '@/features/session/activity/variants/variant-current';
 import type { ChatVariantDefinition } from '@/features/session/activity/variants/types';
 import { cn } from '@/lib/utils';
 import { Columns2, Moon, Rows3, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const TODAY: ChatVariantDefinition = {
   id: 'current',
@@ -35,10 +36,16 @@ export default function ChatVariantsPage() {
   const [layout, setLayout] = useState<'compare' | 'single'>('compare');
   const [activeId, setActiveId] = useState<string>(CHAT_VARIANTS[0].id);
   const { resolvedTheme, setTheme } = useTheme();
+  // `resolvedTheme` is undefined during SSR, so painting an icon from it on the
+  // first render is a guaranteed hydration mismatch. Render the icon only once
+  // mounted; the button itself stays in the layout either way.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const shown = layout === 'compare' ? ALL : ALL.filter((v) => v.id === activeId);
 
   return (
+    <ChatDetailProvider>
     <div className="bg-background text-foreground min-h-dvh">
       <header className="bg-background/80 sticky top-0 z-20 border-b backdrop-blur">
         <div className="mx-auto flex max-w-[1800px] flex-wrap items-center gap-3 px-6 py-3">
@@ -92,7 +99,13 @@ export default function ChatVariantsPage() {
             aria-label="Toggle theme"
             onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
           >
-            {resolvedTheme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
+            {!mounted ? (
+              <span className="size-4" />
+            ) : resolvedTheme === 'dark' ? (
+              <Sun className="size-4" />
+            ) : (
+              <Moon className="size-4" />
+            )}
           </Button>
         </div>
       </header>
@@ -100,7 +113,7 @@ export default function ChatVariantsPage() {
       <main
         className={cn(
           'mx-auto max-w-[1800px] gap-px p-6',
-          layout === 'compare' ? 'grid grid-cols-1 xl:grid-cols-4' : 'flex justify-center',
+          layout === 'compare' ? 'grid grid-cols-1 xl:grid-cols-5' : 'flex justify-center',
         )}
       >
         {shown.map((variant) => (
@@ -124,5 +137,6 @@ export default function ChatVariantsPage() {
         ))}
       </main>
     </div>
+    </ChatDetailProvider>
   );
 }

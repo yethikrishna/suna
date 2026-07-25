@@ -1,4 +1,5 @@
 import { VariantActivityCard } from './variant-activity-card';
+import { VariantAdaptive } from './variant-adaptive';
 import { VariantGrouped } from './variant-grouped';
 import { VariantNarrative } from './variant-narrative';
 import type { ChatVariantDefinition } from './types';
@@ -29,6 +30,13 @@ export const CHAT_VARIANTS: ChatVariantDefinition[] = [
     thesis:
       'Only what a non-technical reader would read aloud: the ask, the answer, the deliverable. All machinery is one ghost line.',
     Component: VariantNarrative,
+  },
+  {
+    id: 'adaptive',
+    name: 'C + full history',
+    thesis:
+      'The proposal: C at rest, A on demand. One toggle, same data, re-rendered in place — A is not a rival design, it is C expanded.',
+    Component: VariantAdaptive,
   },
 ];
 

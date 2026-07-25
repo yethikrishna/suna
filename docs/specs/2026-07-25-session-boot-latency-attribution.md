@@ -140,7 +140,61 @@ opencode spawn. The proxy already returns a clean 503 when opencode isn't ready
 Pure ordering fix. It does not by itself cut time-to-ready, but it is the
 prerequisite for measuring and for showing honest progress.
 
-## Finding 3 — opencode's cold start is the second monster, and it is serialized behind the clone
+## Finding 3a — opencode's cold start is a ONE-TIME, HOME-SCOPED init that the image already bakes
+
+Measured directly against the pinned opencode binary (not inferred):
+
+| Scenario | port listening | `GET /session` 200 | `POST /session` |
+|---|---:|---:|---:|
+| **fresh HOME (cold)** | 2 443 ms | **21 086 ms** | 366 ms |
+| warm HOME, same directory | 1 951 ms | 2 302 ms | 365 ms |
+| warm HOME, **different** directory | 995 ms | 1 463 ms | 395 ms |
+
+The ~18.6 s is **not per-directory work** — warming it makes a *different*
+checkout fast too. It is one-time, HOME-scoped state. Creating the session is
+~370 ms; it is not the cost.
+
+This is already handled: `apps/sandbox/opencode-warmup.sh` runs a real opencode
+instance at bake time under `HOME=/home/kortix`, which matches the runtime HOME.
+`templates.ts`'s own layer history records the win — *v10: "6–60s → ~2–4s cold
+start"*. That is why production sees 4.7–12.0 s and not 21 s.
+
+Two hypotheses tested and **refuted**, recorded so they are not re-run:
+
+- **Catalog size is irrelevant.** 20 models vs 5 699 (4 KB vs 1.1 MB of
+  `OPENCODE_CONFIG`): `GET /session` 200 at 1 118 ms vs 1 208 ms.
+- **The `@opencode-ai/plugin` version is in sync**, so the known 5–8 s
+  network re-fetch (`templates.ts` layer *v15*) is NOT firing:
+  `runtime-versions.json` pins `opencode: 1.17.11`, the starter pins the same,
+  and `dockerfile-layer.ts:632` writes the config-deps `package.json` with
+  `"@opencode-ai/plugin":"${opencodeVersion}"` by construction.
+
+**What remains unexplained:** a warm opencode is ~1.5 s on a laptop but 4.7 s
+(Daytona) / 12.0 s (Platinum) in production. The uniform ~3× Platinum penalty on
+stages with nothing to wait on (`static-web` 5→19 ms, `git-identity` 13→44 ms) at
+an identical 2-vCPU spec says the guest CPU is simply slower. Whether the residual
+is *purely* CPU or partly ineffective baking is **not yet proven** — it needs the
+persisted guest timeline (see below). Do not optimize it blind.
+
+### Why the vCPU default was NOT raised
+
+Bumping `KORTIX_DEFAULT_SANDBOX_CPU` 2 → 4 is the obvious lever on a CPU-bound
+boot, and it was implemented and then **reverted**. Per-core-second billing makes
+it cost-neutral *for the boot seconds only*; across a whole session it is a real
+increase, because most session wall-clock is spent waiting on LLM tokens, not
+burning CPU:
+
+| Spec | Cost |
+|---|---:|
+| 2 vCPU / 4 GiB / 20 GiB | **$0.201/hr** |
+| 4 vCPU / 4 GiB / 20 GiB | **$0.322/hr** (+60%) |
+
+It would also falsify user-facing copy in four places that state "2 vCPU … about
+$0.20/hour" (`pricing/page.tsx` ×2, `compute-credit-calculator.tsx`,
+`content/docs/work/runtime.mdx`). It remains available per-deployment via the env
+var, but it is a pricing decision, not a perf tweak.
+
+## Finding 3 — opencode's cold start is serialized behind the clone
 
 `opencode-session-created` is 4 730 ms (Daytona) / **12 066 ms (Platinum)**.
 
@@ -243,6 +297,8 @@ Platinum **24.5 s**.
 | 2 | **Bind the proxy before the clone** — `startProxy` moved above `await repoMaterializePromise`; supervisor created with the baked config dir and `reconfigure`d before first spawn | 0 s direct; removes the ~9 s blind window | **shipped** | Very low; proxy already 503s correctly |
 | 3 | **Bound `fetchGatewayModels`** with a 4 s total wall-clock budget (was per-request only) | 0 s p50; removes a ~25 s cliff | **shipped** | Very low |
 | 4 | **Split `opencode-session-created`** into `opencode-answering` / `-root-ready` / `event-loop-connected` | 0 s; makes the largest remaining cost attributable | **shipped** | Very low |
+| 4a | **SSE event loop: flat 100 ms retry until first subscribe**, exponential only after. It backed off from attempt one while `maybeCreateInitialOpencodeSession` blocked on `connected`, so an opencode ready at t=5 s went unnoticed until t=7.75 s | **up to −2.7 s** | **shipped** | Low; tests fail under the old regime |
+| 4b | **`waitForInitialSessionCreate`: 1 s → 10 s per attempt, and stop resending on timeout.** The call is ~370 ms warm but ~1.1 s on a 3×-slower Platinum guest, so it aborted work about to succeed AND could create a duplicate root (a client abort does not cancel opencode's server-side work) | −1 s + a correctness bug | **shipped** | Low; tests fail under the old regime |
 | 5 | **Kill the transatlantic git triangle** — region-local git termination, or a scoped direct-to-GitHub credential | **−3 s** | not started | Security trade (see Finding 1) |
 | 6 | **Drop the `isShared` gate** on per-project warm images | **−7 s** (clone → 0) and Platinum's first warm hit ever | **blocked, see below** | High until the reaper is template-scoped |
 | 7 | **Persist `boot_timeline`** server-side (daemon POSTs it at ready) | 0 s; permanent attribution | not started | Low |

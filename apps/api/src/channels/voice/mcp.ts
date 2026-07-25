@@ -35,8 +35,8 @@ interface JsonRpcRequest {
 export interface VoiceMcpContext {
   projectId: string;
   sessionId: string;
-  /** Joins a meeting and starts a call bound to this session. */
-  spawn(input: { meetingUrl: string; voice?: string | null }): Promise<{ callId: string; botId: string | null }>;
+  /** Starts a live voice room bound to this session and returns a join link. */
+  spawn(input: { voice?: string | null }): Promise<{ callId: string; joinUrl: string }>;
 }
 
 const PROTOCOL_VERSION = '2025-06-18';
@@ -47,18 +47,21 @@ function toolDefinitions() {
     {
       name: 'voice_spawn',
       description:
-        'Join a meeting URL with a voice agent bound to THIS session, and return immediately. The call then runs in the background — check in with voice_read. Google Meet, Zoom, and Microsoft Teams links all work.',
+        'Start a live voice call bound to THIS session and return a join link. ' +
+        'You cannot open a browser yourself — send this link to the person you want ' +
+        'to talk to (post it in chat, read it aloud if you have another channel, etc.) ' +
+        'and they open it to join. The call runs in the background once started — ' +
+        'check in with voice_read. Returns immediately.',
       inputSchema: {
         type: 'object',
         properties: {
-          meeting_url: { type: 'string', description: 'Full meeting link.' },
           voice: {
             type: 'string',
             enum: voices,
             description: `Speaking voice. Defaults to ${defaultVoice}.`,
           },
         },
-        required: ['meeting_url'],
+        required: [],
         additionalProperties: false,
       },
     },
@@ -145,13 +148,11 @@ async function callTool(
 
   switch (name) {
     case 'voice_spawn': {
-      const meetingUrl = String(args.meeting_url ?? '').trim();
-      if (!meetingUrl) return toolError('meeting_url is required');
       const voice = typeof args.voice === 'string' ? args.voice : null;
-      const { callId, botId } = await ctx.spawn({ meetingUrl, voice });
+      const { callId, joinUrl } = await ctx.spawn({ voice });
       return toolText(
-        `Joined. call_id=${callId}. The call runs in the background — poll voice_read with the cursor it returns; it never blocks.`,
-        { call_id: callId, bot_id: botId, cursor: 0 },
+        `Call started. call_id=${callId}. Send this link to the person joining — they open it in a browser: ${joinUrl}. The call runs in the background — poll voice_read with the cursor it returns.`,
+        { call_id: callId, join_url: joinUrl, cursor: 0 },
       );
     }
 

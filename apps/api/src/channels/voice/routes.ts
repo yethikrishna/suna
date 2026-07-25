@@ -5,10 +5,7 @@
  * Auth for the MCP route reuses the executor's project-principal resolution
  * rather than inventing a second path: the caller is an in-sandbox agent
  * holding a session-scoped credential, which is exactly what the executor
- * already knows how to identify. That also means `voice_spawn` joins the
- * meeting through the executor gateway, so connector policies, approvals, and
- * the audit trail all apply — a direct Recall call from here would quietly
- * bypass every one of them.
+ * already knows how to identify.
  *
  * Auth for the `/voice/*` routes below is completely different: the caller is
  * the LiveKit worker process, not a Kortix session, so it authenticates with
@@ -16,15 +13,19 @@
  * the room's metadata (see runtime.ts's `VoiceRoomMetadata`) — never the
  * project-principal auth the MCP route uses.
  */
+import { eq } from 'drizzle-orm';
+import { projects } from '@kortix/db';
 import { createRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
+import { resolveExperimentalFeature } from '../../experimental/features';
+import { db } from '../../shared/db';
 import { dbExecutorRouterDeps } from '../../executor/db-deps';
-import { handleCall } from '../../executor/gateway';
-import { VOICE_CHANNEL_CONNECTOR_SLUG } from '../../executor/channels';
 import { supabaseAuth } from '../../middleware/auth';
+import { config } from '../../config';
 import { errors, json, makeOpenApiApp } from '../../openapi';
 import { resolveProjectBotName } from '../voice-identity';
 import { handleVoiceMcp, type VoiceMcpContext } from './mcp';
+import { bridgePageUrl, mintAccessToken, roomNameForCall } from './livekit';
 import { appendTurn, askKortix, getCall, startCall, type VoiceCall } from './runtime';
 import { runCommandInSandbox } from './run-command';
 import { verifyCallApiToken } from './worker-token';
@@ -44,6 +45,15 @@ export const voiceMcpRoutes = makeOpenApiApp();
 // are untouched.
 voiceMcpRoutes.use('/:projectId/mcp/voice', supabaseAuth);
 
+async function projectHasVoiceEnabled(projectId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ metadata: projects.metadata })
+    .from(projects)
+    .where(eq(projects.projectId, projectId))
+    .limit(1);
+  return resolveExperimentalFeature(row?.metadata, 'voice');
+}
+
 async function buildContext(c: Context, projectId: string): Promise<VoiceMcpContext | null> {
   const principal = await dbExecutorRouterDeps.resolveProjectPrincipal(c, projectId);
   if (!principal?.sessionId) return null;
@@ -53,7 +63,11 @@ async function buildContext(c: Context, projectId: string): Promise<VoiceMcpCont
   return {
     projectId,
     sessionId,
-    async spawn({ meetingUrl, voice }) {
+    async spawn({ voice }) {
+      if (!(await projectHasVoiceEnabled(projectId))) {
+        throw new Error('voice is not enabled for this project — turn it on in Settings first');
+      }
+
       const botName = await resolveProjectBotName(projectId);
 
       // The call id IS the session id: one live call per session, and it is what
@@ -61,38 +75,23 @@ async function buildContext(c: Context, projectId: string): Promise<VoiceMcpCont
       // LiveKit token minted at join time carries the same value.
       const callId = sessionId;
 
-      // Start the room BEFORE joining. If the bot arrives first it renders a
-      // bridge page whose room does not exist yet, and the page's join is
-      // rejected with nothing to retry against.
-      await startCall({ callId, projectId, sessionId, botId: null, botName, voice });
+      // Start the room BEFORE minting the human's join link. If a person opens
+      // the page first it would try to join a room that does not exist yet, and
+      // that join is rejected with nothing to retry against.
+      await startCall({ callId, projectId, sessionId, botName, voice });
 
-      const result = await handleCall(dbExecutorRouterDeps.makeGatewayDeps(principal), {
-        projectId,
-        accountId: principal.accountId,
-        subject: principal.subject,
-        sessionId,
-        connectorSlug: VOICE_CHANNEL_CONNECTOR_SLUG,
-        actionPath: 'join_meeting',
-        args: { meeting_url: meetingUrl },
+      // A human-facing token — not the worker's; that one is minted separately
+      // inside startCall and carried in the room's metadata (see runtime.ts).
+      const room = roomNameForCall(callId);
+      const token = await mintAccessToken({
+        room,
+        identity: `human-${callId}`,
+        canPublish: true,
+        canSubscribe: true,
       });
+      const joinUrl = bridgePageUrl(config.FRONTEND_URL, token);
 
-      if (result.status !== 'ok') {
-        // Surface the gateway's own reason (policy denial, missing connector,
-        // pending approval) rather than a generic failure — the agent can act on
-        // "connector_not_found" and cannot act on "join failed".
-        const detail = (result as { reason?: string }).reason ?? result.status;
-        throw new Error(`could not join the meeting: ${detail}`);
-      }
-
-      const botId =
-        result.data && typeof result.data === 'object'
-          ? ((result.data as { id?: string }).id ?? null)
-          : null;
-
-      const call = (await import('./runtime')).getCall(callId);
-      if (call) call.botId = botId;
-
-      return { callId, botId };
+      return { callId, joinUrl };
     },
   };
 }

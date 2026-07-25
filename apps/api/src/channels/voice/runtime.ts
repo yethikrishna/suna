@@ -2,7 +2,7 @@
  * The voice runtime — where a live call actually lives.
  *
  * A call is a LiveKit room plus a row in this in-process registry. The room
- * carries the actual audio (browser mic <-> Recall's rendered page <-> the
+ * carries the actual audio (browser mic <-> the /voice/[token] page <-> the
  * apps/voice-agent worker doing STT/LLM/TTS); this file never touches audio.
  * What it owns is the two hand-offs either side of that conversation:
  *
@@ -56,7 +56,6 @@ export interface VoiceCall {
   callId: string;
   projectId: string;
   sessionId: string;
-  botId: string | null;
   voice: string;
   /** LiveKit room name — `roomNameForCall(callId)`. */
   room: string;
@@ -95,7 +94,6 @@ export interface StartCallInput {
   callId: string;
   projectId: string;
   sessionId: string;
-  botId: string | null;
   botName: string;
   voice?: string | null;
 }
@@ -126,7 +124,6 @@ export async function startCall(input: StartCallInput): Promise<VoiceCall> {
     callId: input.callId,
     projectId: input.projectId,
     sessionId: input.sessionId,
-    botId: input.botId,
     voice,
     room,
     startedAt: Date.now(),

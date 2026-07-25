@@ -287,17 +287,6 @@ const envSchema = z.object({
   AGENTMAIL_API_KEY: optStr,
   AGENTMAIL_WEBHOOK_SECRET: optStr,
 
-  // ── Channels — Recall.ai meeting bot (optional) ──────────────────────────
-  // No operator on/off switch here: voice is gated the same way every other
-  // experimental feature is — per project, in Settings. An env var would be a
-  // second, hidden gate that only an operator could clear, which is exactly the
-  // friction the experimental-features system exists to avoid.
-  // RECALL_BASE_URL is the regional gateway (us-west-2 = pay-as-you-go default;
-  // us-east-1 / eu-central-1 / ap-northeast-1 also exist). The key is sent
-  // server-side as `Authorization: Token <key>`; never in a sandbox.
-  RECALL_BASE_URL: optUrl('https://us-west-2.recall.ai/api/v1'),
-  RECALL_API_KEY: optStr,
-
   // ── Channels — Microsoft Teams adapter (optional) ────────────────────────
   // One Kortix-owned multi-tenant Azure AD bot app. The same app id/password
   // serve every tenant; the per-conversation tenant id arrives on each inbound
@@ -396,8 +385,8 @@ const envSchema = z.object({
   GEMINI_API_URL: optUrl('https://generativelanguage.googleapis.com/v1beta'),
   GROQ_API_URL: optUrl('https://api.groq.com/openai/v1'),
   // ── LiveKit — the voice channel's transport (see channels/voice/livekit.ts) ──
-  // A room per call, an agents-js worker doing STT->LLM->TTS, Recall's rendered
-  // page as a plain LiveKit client. Defaults match the project's local dev
+  // A room per call, an agents-js worker doing STT->LLM->TTS, a plain LiveKit
+  // client page a human opens directly. Defaults match the project's local dev
   // server (ws://localhost:7880, devkey/secret are LiveKit's own published
   // dev-mode credentials, not a real secret) — every real deployment overrides
   // all three.
@@ -937,10 +926,6 @@ export const config = {
   AGENTMAIL_API_URL: env.AGENTMAIL_API_URL,
   AGENTMAIL_API_KEY: env.AGENTMAIL_API_KEY,
   AGENTMAIL_WEBHOOK_SECRET: env.AGENTMAIL_WEBHOOK_SECRET,
-
-  // ─── Channels (Recall.ai meeting bot) ────────────────────────────────────
-  RECALL_BASE_URL: env.RECALL_BASE_URL,
-  RECALL_API_KEY: env.RECALL_API_KEY,
 
   // ─── Channels (Microsoft Teams) ───────────────────────────────────────────
   MICROSOFT_APP_ID: env.MICROSOFT_APP_ID,

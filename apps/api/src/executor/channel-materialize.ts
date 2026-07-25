@@ -2,7 +2,6 @@ import { projects } from '@kortix/db';
 import { eq } from 'drizzle-orm';
 import {
   listAgentMailInstalls,
-  loadVoiceInstall,
   loadSlackInstall,
   loadTeamsInstall,
 } from '../channels/install-store';
@@ -104,17 +103,6 @@ export async function synthesizeChannelConnectors(
     .from(projects)
     .where(eq(projects.projectId, projectId))
     .limit(1);
-
-  // Meet (Recall.ai) — gated on the per-project `meet` experimental flag. Like
-  // Slack, a resolvable Recall key IS the registration (no OAuth / no [[connectors]]).
-  if (project && resolveExperimentalFeature(project.metadata, 'voice')) {
-    const meetSlug = channelDefaultSlug('voice');
-    if (!channelAlreadyDeclared(declared, 'voice', meetSlug)) {
-      const install = await loadVoiceInstall(projectId).catch(() => null);
-      if (install) specs.push(channelSpec('voice', meetSlug));
-    }
-  }
-
 
   if (!project || !resolveExperimentalFeature(project.metadata, 'agentmail_email')) {
     return specs;

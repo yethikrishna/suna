@@ -125,20 +125,6 @@ export interface GatewayDeps {
   ): Promise<EmailConnectorContext | null>;
   /** Resolve the AgentMail credential for the install that owns this inbox. */
   resolveEmailCredentialForInbox?(projectId: string, inboxId: string): Promise<string | null>;
-  /**
-   * Meet (Recall.ai) join augmentation — the realtime webhook endpoint + bot
-   * `metadata` (owning session + an HMAC token) injected server-side so Recall
-   * streams transcript/chat back to us. Null when no public URL is configured or
-   * the call isn't session-scoped. The sandbox never builds this callback.
-   */
-  resolveVoiceJoinContext?(
-    projectId: string,
-    sessionId: string | null,
-  ): Promise<{
-    metadata: Record<string, unknown>;
-    outputMedia: unknown;
-    botName: string;
-  } | null>;
   /** Connector-scoped policies (relative patterns over the connector's tool paths). */
   loadPolicies(connectorId: string): Promise<Policy[]>;
   /** Project-scoped policies (fully-qualified patterns over <slug>.<path>). */
@@ -423,36 +409,8 @@ export async function handleCall(deps: GatewayDeps, input: CallInput): Promise<C
     return { status: 'denied', reason: usable.reason };
   }
 
-  let executionArgs = emailExecution.args;
+  const executionArgs = emailExecution.args;
   const executionSecret = usable.secret;
-
-  // Voice (Recall.ai): on join, point the bot at the audio bridge page and tag it
-  // with this session, server-side. Recall streams that page's audio into the call
-  // and the page relays the room's audio back, which is how the realtime provider
-  // hears and speaks. Note output_media and automatic_audio_output are mutually
-  // exclusive in Recall — a caller-supplied one would silence the agent, so the
-  // bridge wins.
-  if (
-    connector.provider === 'channel' &&
-    connector.platform === 'voice' &&
-    input.actionPath === 'join_meeting' &&
-    deps.resolveVoiceJoinContext
-  ) {
-    const ctx = await deps.resolveVoiceJoinContext(input.projectId, input.sessionId ?? null);
-    if (ctx) {
-      const { automatic_audio_output: _dropped, ...rest } = executionArgs;
-      executionArgs = {
-        ...rest,
-        output_media: ctx.outputMedia,
-        metadata: {
-          ...((executionArgs.metadata as Record<string, unknown>) ?? {}),
-          ...ctx.metadata,
-        },
-        // The project's configured bot display name, unless the caller passed one.
-        bot_name: executionArgs.bot_name ?? ctx.botName,
-      };
-    }
-  }
 
   // Layered policy enforcement: project policies first → connector → risk default.
   if (deps.enforcePolicies !== false) {

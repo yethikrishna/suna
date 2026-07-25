@@ -1,7 +1,7 @@
 /**
  * LiveKit wiring for the voice channel — the ONLY module that touches
  * LiveKit's control plane (room admin, access tokens, the room data channel).
- * Everything above this (runtime.ts, mcp.ts, voice-join.ts) deals in call ids
+ * Everything above this (runtime.ts, mcp.ts, routes.ts) deals in call ids
  * and room names, never in raw LiveKit credentials, for the same reason
  * provider.ts drew a hard line around the old realtime WebSocket: a
  * compromised caller must never get to mint its own room access.
@@ -121,14 +121,13 @@ export async function deleteRoom(room: string): Promise<void> {
 }
 
 /**
- * The page Recall renders inside the bot, now a plain LiveKit client instead
- * of a raw-audio-WebSocket page. URL shape is fixed by that page
+ * The join link a human opens directly in their own browser — a plain
+ * LiveKit client page. URL shape is fixed by that page
  * (apps/web/src/app/(public)/voice/[token]/page.tsx, out of scope to edit
  * here): the LAST PATH SEGMENT is the raw LiveKit access token itself — not a
  * room name; the token's own grant already encodes which room it joins — and
  * the LiveKit server URL rides in the `url` query param, since the page can't
- * guess LIVEKIT_URL from window.location (Recall's browser runs on infra with
- * no relationship to either the API's or the frontend's own origin).
+ * assume it shares an origin with either the API or the frontend that served it.
  */
 export function bridgePageUrl(frontendUrl: string, token: string): string {
   const qs = new URLSearchParams({ url: config.LIVEKIT_URL });

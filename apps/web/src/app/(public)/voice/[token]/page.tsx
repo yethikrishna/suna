@@ -3,26 +3,32 @@
 /**
  * The voice room page.
  *
- * Recall renders this inside the meeting bot. It used to be a raw WebSocket pipe
- * that hand-rolled PCM framing, a ring buffer and reconnect logic; all of that is
- * gone now that the room itself is a LiveKit room. This page's only job is to
- * join it: publish the mic, play whatever the agent publishes back, and render a
- * status surface. Jitter buffering, packet-loss concealment, Opus encode/decode
- * and reconnects are LiveKit's problem now, not ours.
+ * A human opens this link directly in their own browser — `voice_spawn` mints
+ * the token and hands out the URL, nothing renders it on their behalf. It used
+ * to be a raw WebSocket pipe that hand-rolled PCM framing, a ring buffer and
+ * reconnect logic; all of that is gone now that the room itself is a LiveKit
+ * room. This page's only job is to join it: publish the mic, play whatever the
+ * agent publishes back, and render a status surface. Jitter buffering,
+ * packet-loss concealment, Opus encode/decode and reconnects are LiveKit's
+ * problem now, not ours.
  *
  * It is deliberately dumb. The STT/LLM/TTS pipeline, the transcript, and anything
  * that can prompt a session all live server-side (the LiveKit agent worker), because
- * this code runs in a browser inside Recall's infrastructure with its token visible
- * in the URL. That token is a room-scoped LiveKit access token and nothing else —
- * it authorises joining one room as one participant, not calling the Kortix API.
+ * this code runs in a browser with its token visible in the URL. That token is a
+ * room-scoped LiveKit access token and nothing else — it authorises joining one
+ * room as one participant, not calling the Kortix API.
  *
- * Gate 0 (2026-07-25) measured that Recall's capture does NOT contain the bot's
- * own output, so there is no echo gate here and barge-in works for real. If that
- * ever changes, this is where a half-duplex mute would go.
+ * Live-tested 2026-07-25 in a real Google Meet-adjacent call (this page open in
+ * its own tab, no third-party meeting bot involved): no audible self-echo and
+ * barge-in worked, with no explicit echoCancellation/noiseSuppression/
+ * autoGainControl constraints set — see the plain `setMicrophoneEnabled(true)`
+ * call below. If a browser/OS combination ever does produce audible self-echo,
+ * this is where a half-duplex mute or explicit AEC constraints would go.
  *
- * Output Media always renders a video track — audio-only is not possible — so
- * the page also draws call state. It is the only diagnostic surface a stuck bot
- * has, and participants can read it.
+ * There's no third-party UI to lean on here, so the page also draws call state
+ * itself — a simple audio-level visual. It is the only diagnostic surface the
+ * person on the call has, so it stays even though it's cosmetic (nothing here
+ * publishes a video track into the room).
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -122,8 +128,8 @@ export default function VoiceBridgePage() {
 
       await room.connect(livekitUrl, token);
 
-      // Recall's browser autoplays, so this usually succeeds outright; a normal
-      // browser needs the click handler below.
+      // Succeeds outright in some browsers; most need the click handler below
+      // (autoplay policies block programmatic audio until a user gesture).
       try {
         await room.startAudio();
       } catch {
@@ -137,8 +143,8 @@ export default function VoiceBridgePage() {
       unblockListener = unblock;
       // No echoCancellation/noiseSuppression/autoGainControl flags to fight with
       // here — LiveKit's default capture settings are what its own client-side
-      // processing expects, and Gate 0 already established there is no bot
-      // self-echo in Recall's capture to cancel in the first place.
+      // processing expects, and live-testing (see file header) found no audible
+      // self-echo to cancel in the first place.
       await room.localParticipant.setMicrophoneEnabled(true);
     }
 
@@ -160,11 +166,10 @@ export default function VoiceBridgePage() {
     };
   }, []);
 
-  // The required video track. Output Media always renders a video track — audio-
-  // only is not possible — so this canvas is the only diagnostic surface a stuck
-  // bot has, and participants can read it. Draw on a plain interval, NEVER
-  // requestAnimationFrame: a 60fps gradient competed with audio on the main
-  // thread and was one of the causes of the choppy audio this migration fixes.
+  // The audio-level visual — a purely cosmetic canvas, not a published video
+  // track. Draw on a plain interval, NEVER requestAnimationFrame: a 60fps
+  // gradient competed with audio on the main thread and was one of the causes
+  // of choppy audio in an earlier version of this page.
   useEffect(() => {
     const canvas = canvasRef.current;
     const c = canvas?.getContext('2d');
@@ -200,8 +205,8 @@ export default function VoiceBridgePage() {
       c.arc(canvas.width / 2, canvas.height / 2, Math.max(r, 1), 0, Math.PI * 2);
       c.fill();
     };
-    // Recall captures at 15fps; 10fps here is indistinguishable in the call and
-    // leaves the main thread alone for audio.
+    // 10fps is indistinguishable to the eye here and leaves the main thread
+    // alone for audio.
     const timer = setInterval(draw, 100);
     draw();
     return () => clearInterval(timer);

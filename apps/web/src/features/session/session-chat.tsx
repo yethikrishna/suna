@@ -2108,14 +2108,19 @@ function TurnWorkLine({
   reasoningParts,
   sessionId,
   disableNavigation,
-  working,
+  turnWorking,
+  isLatest,
   statusText,
 }: {
   entries: ActivityEntry[];
   reasoningParts: ReasoningPart[];
   sessionId: string;
   disableNavigation?: boolean;
-  working: boolean;
+  /** Whether the TURN is still streaming. On its own this says nothing about
+   *  THIS run — an earlier run finished long ago and must read as finished. */
+  turnWorking: boolean;
+  /** Only the last run of a still-working turn can still receive steps. */
+  isLatest: boolean;
   /** The turn's live activity ("Running commands…", "Planning…"). While a run
    *  is live this line IS the turn's status indicator, so it shows this instead
    *  of a bare step count — there is no second indicator underneath. */
@@ -2140,7 +2145,12 @@ function TurnWorkLine({
 
   const summary = useMemo(() => summarizeEntries(entries), [entries]);
   const duration = formatActivityDuration(summary.durationMs);
-  const running = working || summary.running;
+  // A run is live only if one of ITS OWN steps is in flight, or it is the last
+  // run of a turn that is still going (the next step will land here). Using the
+  // turn-level flag for every run made four finished runs all claim
+  // "Making edits… · N steps" with a spinner — the same live state replicated
+  // down the page.
+  const running = summary.running || (turnWorking && isLatest);
 
   const stepWord = summary.totalSteps === 1 ? 'step' : 'steps';
 
@@ -2325,6 +2335,9 @@ function SameToolGroup({
 const EMPTY_FOLD_KEYS: ReadonlySet<string> = new Set<string>();
 const EMPTY_RUNS: ReadonlyMap<string, import('@/features/session/activity/activity-model').NarrativeRun> =
   new Map();
+const EMPTY_RUN_LIST: ReadonlyArray<
+  import('@/features/session/activity/activity-model').NarrativeRun
+> = [];
 
 // ============================================================================
 // Session Turn — core turn component
@@ -3111,9 +3124,12 @@ function SessionTurn({
             // The fold decision is pure and lives in the model, where it is
             // tested — see `partitionForNarrative`. Duplicating it here is how
             // the two readings would drift apart.
-            const { foldedKeys, runByKey } = narrative
+            const { foldedKeys, runByKey, runs: narrativeRuns } = narrative
               ? partitionForNarrative(activityItems, lockedCallIds)
-              : { foldedKeys: EMPTY_FOLD_KEYS, runByKey: EMPTY_RUNS };
+              : { foldedKeys: EMPTY_FOLD_KEYS, runByKey: EMPTY_RUNS, runs: EMPTY_RUN_LIST };
+            const latestRunKey = narrativeRuns.length
+              ? narrativeRuns[narrativeRuns.length - 1].key
+              : null;
 
             return activityItems.map((item) => {
               if (narrative && foldedKeys.has(item.key)) {
@@ -3130,7 +3146,8 @@ function SessionTurn({
                     reasoningParts={run.reasoningParts}
                     sessionId={sessionId}
                     disableNavigation={disableToolNavigation}
-                    working={reasoningActive}
+                    turnWorking={reasoningActive}
+                    isLatest={item.key === latestRunKey}
                     statusText={throttledStatus || undefined}
                   />
                 );

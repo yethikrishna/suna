@@ -4,6 +4,7 @@ import type { MessageWithParts, Part, ToolPart } from '@/ui';
 import {
   buildActivityItems,
   formatActivityDuration,
+  isRunLive,
   isStructuralPart,
   partitionForNarrative,
   summarizeItems,
@@ -299,5 +300,24 @@ describe('partitionForNarrative — what the shipping default hides, and where',
     const fold = partitionForNarrative(items);
     expect(fold.runs).toHaveLength(0);
     expect(fold.foldedKeys.size).toBe(0);
+  });
+});
+
+describe('isRunLive — only one run may spin', () => {
+  test('an earlier, finished run is never live, even mid-turn', () => {
+    // The bug: "Making edits…" repeated down the page, once per finished run.
+    expect(isRunLive({ hasRunningStep: false, turnWorking: true, isLatest: false })).toBe(false);
+  });
+
+  test('the last run of a working turn is live — the next step lands there', () => {
+    expect(isRunLive({ hasRunningStep: false, turnWorking: true, isLatest: true })).toBe(true);
+  });
+
+  test('a run with a step actually in flight is live regardless of position', () => {
+    expect(isRunLive({ hasRunningStep: true, turnWorking: false, isLatest: false })).toBe(true);
+  });
+
+  test('nothing is live once the turn is done', () => {
+    expect(isRunLive({ hasRunningStep: false, turnWorking: false, isLatest: true })).toBe(false);
   });
 });

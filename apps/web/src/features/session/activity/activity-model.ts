@@ -445,3 +445,25 @@ export function partitionForNarrative(
 
   return { foldedKeys, runs, runByKey };
 }
+
+/**
+ * Is THIS run still live?
+ *
+ * The turn-level "still streaming" flag is not the answer. Applying it to every
+ * run made a page of finished work all claim the same live status — four rows
+ * of "Making edits… · N steps", each spinning, for runs that had completed
+ * minutes earlier. A run is live only when one of its own steps is in flight,
+ * or when it is the last run of a turn that is still going and will therefore
+ * receive the next step.
+ */
+export function isRunLive({
+  hasRunningStep,
+  turnWorking,
+  isLatest,
+}: {
+  hasRunningStep: boolean;
+  turnWorking: boolean;
+  isLatest: boolean;
+}): boolean {
+  return hasRunningStep || (turnWorking && isLatest);
+}

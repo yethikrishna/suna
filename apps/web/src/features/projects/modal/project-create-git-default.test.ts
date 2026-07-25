@@ -84,4 +84,50 @@ describe('new project dialog: simplified default state', () => {
       /accountSelection\.canSwitch && accountSelection\.currentAccount \? \(\s*<CreateAccountField/,
     );
   });
+
+  test('repository options render below the project name field, not above it', () => {
+    // `autoFocus` only lives on the managed-form name Input — the primary
+    // 95%-path field. Its own RepositoryOptions usage (the nearest one
+    // after it) must come after it in source order, i.e. below it in that
+    // form body, not above as a header-level block.
+    expect(source).toMatch(/autoFocus[\s\S]*?<RepositoryOptions/);
+
+    // The github-import form's name field has no autoFocus (it's the last
+    // field in that body) — anchor on its placeholder key instead and
+    // confirm its own RepositoryOptions usage also comes after it.
+    expect(source).toMatch(
+      /line516JsxAttrPlaceholderUseRepositoryName[\s\S]*?<RepositoryOptions/,
+    );
+
+    // Managed/github-create body, github-import body, and the
+    // managed-git-unavailable fallback (a documented exception — it has no
+    // name field to anchor below) each render it exactly once.
+    const usages = source.match(/<RepositoryOptions/g) ?? [];
+    expect(usages).toHaveLength(3);
+  });
+
+  test('extracts one RepositoryOptions component instead of duplicating the tabs block per mode', () => {
+    const definitionMatches = source.match(/function RepositoryOptions\(/g) ?? [];
+    expect(definitionMatches).toHaveLength(1);
+  });
+
+  test('never shows a collapse trigger the user cannot act on', () => {
+    // `collapsible` is only true for the silent default (managed mode, git
+    // usable) — everywhere `repositoryOptionsOpen` is forced true, the
+    // component must fall back to a plain label instead of a "Hide" button
+    // that does nothing.
+    expect(source).toContain(
+      "const repositoryOptionsCollapsible = mode === 'managed' && !managedGitUnavailable;",
+    );
+    expect(source).toMatch(
+      /\{collapsible \? \(\s*<div className="flex flex-wrap items-center gap-1">\s*<DisclosureTrigger>/,
+    );
+    expect(source).toContain('<Label className="text-muted-foreground">Repository source</Label>');
+  });
+
+  test('the managed-git-unavailable state does not show two ways to import an existing repo at once', () => {
+    expect(source).toMatch(
+      /secondaryAction=\{\s*cloningFromSource \? \(\s*<Button[\s\S]*?Import an existing repo[\s\S]*?\) : undefined\s*\}/,
+    );
+  });
 });

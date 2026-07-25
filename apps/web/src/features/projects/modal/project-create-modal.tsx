@@ -537,6 +537,11 @@ export const ProjectCreateModal = ({
   // either by picking another source, or because managed git needs a fix —
   // so the switcher that got them there doesn't disappear underneath them.
   const repositoryOptionsOpen = advancedOpen || mode !== 'managed' || managedGitUnavailable;
+  // Only the true silent default (managed mode, managed git actually usable)
+  // is a real toggle. Everywhere else `repositoryOptionsOpen` above is
+  // pinned true for a reason the user can't undo from here — showing a
+  // "Hide" trigger in that state would promise a collapse that can't happen.
+  const repositoryOptionsCollapsible = mode === 'managed' && !managedGitUnavailable;
 
   return (
     <Modal open={open} onOpenChange={(o) => (!o ? resetAndClose() : onOpenChange(o))}>
@@ -561,73 +566,42 @@ export const ProjectCreateModal = ({
           />
         ) : null}
 
-        {!cloningFromSource && mode !== 'template' ? (
-          <Disclosure
-            open={repositoryOptionsOpen}
-            onOpenChange={setAdvancedOpen}
-            className="space-y-3 px-5"
-          >
-            <div className="flex flex-wrap items-center gap-1">
-              <DisclosureTrigger>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground h-8 px-2 text-xs"
-                >
-                  {repositoryOptionsOpen ? 'Hide repository options' : 'Use my own GitHub'}
-                </Button>
-              </DisclosureTrigger>
-              {mode === 'managed' ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground h-8 px-2 text-xs"
-                  disabled={submitting}
-                  onClick={switchToTemplateMode}
-                >
-                  Clone from a template
-                </Button>
-              ) : null}
-            </div>
-            <DisclosureContent>
-              <div className="space-y-1.5 pb-0.5">
-                <Label>Repository source</Label>
-                <Tabs value={repositoryMode} onValueChange={switchRepositoryMode}>
-                  <TabsList type="secondary" className="w-full" aria-label="Repository source">
-                    <TabsTrigger value="managed" size="sm">
-                      Kortix managed
-                    </TabsTrigger>
-                    <TabsTrigger value="github-create" size="sm">
-                      Create in GitHub
-                    </TabsTrigger>
-                    <TabsTrigger value="github-import" size="sm">
-                      Import from GitHub
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-                <p className="text-muted-foreground text-xs">
-                  {REPOSITORY_MODE_DESCRIPTIONS[repositoryMode]}
-                </p>
-              </div>
-            </DisclosureContent>
-          </Disclosure>
-        ) : null}
-
         {mode === 'managed' && managedGitUnavailable ? (
           <>
             <ModalBody>
-              <GitHubSetupRequiredPanel
-                accountId={effectiveAccountId}
-                isAdmin={isGitAdmin}
-                onNavigate={resetAndClose}
-                secondaryAction={
-                  <Button type="button" variant="ghost" size="sm" onClick={switchToGitHubMode}>
-                    Import an existing repo
-                  </Button>
-                }
-              />
+              <div className="space-y-4">
+                {/* Tabs are pinned open here (managed git is broken), so they
+                    already offer "Import from GitHub" — no separate
+                    secondaryAction button needed unless the source-tabs
+                    themselves are hidden (cloning a template). */}
+                {!cloningFromSource ? (
+                  <RepositoryOptions
+                    repositoryMode={repositoryMode}
+                    repositoryOptionsOpen={repositoryOptionsOpen}
+                    collapsible={repositoryOptionsCollapsible}
+                    onOpenChange={setAdvancedOpen}
+                    onModeChange={switchRepositoryMode}
+                    submitting={submitting}
+                  />
+                ) : null}
+                <GitHubSetupRequiredPanel
+                  accountId={effectiveAccountId}
+                  isAdmin={isGitAdmin}
+                  onNavigate={resetAndClose}
+                  // Tabs (or the cloning card) already sit directly above via
+                  // the shared `space-y-4` — drop EmptyState's own generous
+                  // top padding (both breakpoints — the base p-6 and the
+                  // md:p-12 override) so the two don't compound into a dead gap.
+                  className="pt-0 md:pt-0"
+                  secondaryAction={
+                    cloningFromSource ? (
+                      <Button type="button" variant="ghost" size="sm" onClick={switchToGitHubMode}>
+                        Import an existing repo
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              </div>
             </ModalBody>
             <ModalFooter>
               <Button
@@ -781,6 +755,18 @@ export const ProjectCreateModal = ({
                         ) : null}
                       </div>
                     </div>
+                  ) : null}
+
+                  {!cloningFromSource ? (
+                    <RepositoryOptions
+                      repositoryMode={repositoryMode}
+                      repositoryOptionsOpen={repositoryOptionsOpen}
+                      collapsible={repositoryOptionsCollapsible}
+                      onOpenChange={setAdvancedOpen}
+                      onModeChange={switchRepositoryMode}
+                      onCloneTemplate={mode === 'managed' ? switchToTemplateMode : undefined}
+                      submitting={submitting}
+                    />
                   ) : null}
                 </div>
               </ModalBody>
@@ -1039,6 +1025,17 @@ export const ProjectCreateModal = ({
                       />
                     </>
                   )}
+
+                  {!cloningFromSource ? (
+                    <RepositoryOptions
+                      repositoryMode={repositoryMode}
+                      repositoryOptionsOpen={repositoryOptionsOpen}
+                      collapsible={repositoryOptionsCollapsible}
+                      onOpenChange={setAdvancedOpen}
+                      onModeChange={switchRepositoryMode}
+                      submitting={submitting}
+                    />
+                  ) : null}
                 </div>
               </ModalBody>
 
@@ -1124,6 +1121,93 @@ function CreateAccountField({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  );
+}
+
+/** Repository source (Kortix managed / Create in GitHub / Import from
+ *  GitHub) as a progressive-disclosure control. Rendered at the bottom of
+ *  each mode's form body, right above the footer — never above the project
+ *  name field, so the 95% path (name → Create) is what a user reads first.
+ *
+ *  Only truly collapsible in the silent default (`collapsible`, i.e. managed
+ *  mode with managed git actually usable). Everywhere else the caller has
+ *  already pinned `repositoryOptionsOpen` true for a reason the user can't
+ *  undo from here (they picked GitHub, or managed git is broken) — showing
+ *  an interactive "Hide" trigger there would be a dead control, so we show
+ *  a plain label instead and let the Tabs themselves be how you switch back. */
+function RepositoryOptions({
+  repositoryMode,
+  repositoryOptionsOpen,
+  collapsible,
+  onOpenChange,
+  onModeChange,
+  onCloneTemplate,
+  submitting,
+}: {
+  repositoryMode: RepositoryMode;
+  repositoryOptionsOpen: boolean;
+  collapsible: boolean;
+  onOpenChange: (open: boolean) => void;
+  onModeChange: (nextMode: string) => void;
+  onCloneTemplate?: () => void;
+  submitting: boolean;
+}) {
+  return (
+    <Disclosure
+      open={repositoryOptionsOpen}
+      onOpenChange={onOpenChange}
+      className={collapsible ? 'space-y-3' : 'space-y-1.5'}
+    >
+      {collapsible ? (
+        <div className="flex flex-wrap items-center gap-1">
+          <DisclosureTrigger>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground h-8 px-2 text-xs"
+            >
+              {repositoryOptionsOpen ? 'Hide repository options' : 'Use my own GitHub'}
+            </Button>
+          </DisclosureTrigger>
+          {onCloneTemplate ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground h-8 px-2 text-xs"
+              disabled={submitting}
+              onClick={onCloneTemplate}
+            >
+              Clone from a template
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <Label className="text-muted-foreground">Repository source</Label>
+      )}
+      <DisclosureContent>
+        <div className="space-y-1.5 pb-0.5">
+          {collapsible ? <Label>Repository source</Label> : null}
+          <Tabs value={repositoryMode} onValueChange={onModeChange}>
+            <TabsList type="secondary" className="w-full" aria-label="Repository source">
+              <TabsTrigger value="managed" size="sm">
+                Kortix managed
+              </TabsTrigger>
+              <TabsTrigger value="github-create" size="sm">
+                Create in GitHub
+              </TabsTrigger>
+              <TabsTrigger value="github-import" size="sm">
+                Import from GitHub
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <p className="text-muted-foreground text-xs">
+            {REPOSITORY_MODE_DESCRIPTIONS[repositoryMode]}
+          </p>
+        </div>
+      </DisclosureContent>
+    </Disclosure>
   );
 }
 

@@ -79,8 +79,17 @@ async function main() {
   await r.connect(url, token, { autoSubscribe: true, dynacast: false });
   console.log('  connected');
 
-  // Give the agent worker a moment to be dispatched into the room.
-  await new Promise((res) => setTimeout(res, 4000));
+  // POLL for dispatch rather than assuming a fixed delay. LiveKit dispatches on
+  // participant join and it routinely takes longer than a few seconds; a fixed
+  // 4s wait produced spurious "DEAF" results while the agent was simply still
+  // on its way in.
+  for (let i = 0; i < 30 && !agentJoined; i++) {
+    for (const [, p] of (r.remoteParticipants ?? new Map())) {
+      if (!String(p.identity).startsWith('probe-')) agentJoined = true;
+    }
+    if (agentJoined) break;
+    await new Promise((res) => setTimeout(res, 1000));
+  }
   // ParticipantConnected only fires for participants who join AFTER us, so an
   // agent that was already dispatched is invisible to the event alone.
   for (const [, p] of (r.remoteParticipants ?? new Map())) {

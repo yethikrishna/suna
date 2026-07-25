@@ -9,7 +9,7 @@
  * README.md.
  */
 import { fileURLToPath } from 'node:url';
-import { ServerOptions, type VAD, cli, defineAgent, voice } from '@livekit/agents';
+import { ServerOptions, cli, defineAgent, inference, voice } from '@livekit/agents';
 import * as openai from '@livekit/agents-plugin-openai';
 import { type CallContext, resolveCallContext } from './call-context';
 import { wireInboundReplies } from './inbound-replies';
@@ -35,11 +35,15 @@ export default defineAgent({
     const { send_prompt, run_command } = buildTools();
 
     const session = new voice.AgentSession<CallContext>({
-      // OpenAI STT rather than Deepgram: the whole pipeline then runs on ONE
-      // credential we already hold, instead of requiring a second vendor key
-      // just to say a sentence. Swap back to deepgram.STT (nova-3 is faster and
-      // cheaper for high call volume) once a DEEPGRAM_API_KEY is provisioned.
-      stt: new openai.STT({ model: 'gpt-4o-mini-transcribe' }),
+      // LiveKit Inference, not the OpenAI plugin. Two reasons, both learned the
+      // hard way:
+      //  - It needs NO extra vendor key; the LiveKit credential covers STT.
+      //  - The OpenAI STT plugin never emitted user transcription events, so
+      //    UserInputTranscribed never fired and the human half of every
+      //    conversation was missing from voice_call_turns while the agent was
+      //    demonstrably hearing and answering. Deepgram Flux does its own
+      //    endpointing and emits transcripts server-side.
+      stt: new inference.STT({ model: 'deepgram/flux-general-en' }),
       llm: new openai.LLM({ model: 'gpt-4.1-mini' }),
       tts: new openai.TTS({ model: 'gpt-4o-mini-tts', voice: 'alloy' }),
       // Turn detection is LiveKit's hosted VAD + TurnDetector, NOT a local

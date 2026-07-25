@@ -680,7 +680,7 @@
             "if": {
               "properties": {
                 "slug": {
-                  "const": "kortix_meet"
+                  "const": "kortix_voice"
                 }
               }
             },

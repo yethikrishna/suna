@@ -18,7 +18,7 @@ export type ExperimentalFeatureKey =
   | 'marketplace'
   | 'connectors_api_discover'
   | 'agentmail_email'
-  | 'meet'
+  | 'voice'
   | 'llm_gateway'
   | 'acp_runtime'
   | 'review_center';

@@ -587,14 +587,8 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
           updatePolicy: (...a: DropFirst<Parameters<typeof P.updateEmailPolicy>>) =>
             P.updateEmailPolicy(projectId, ...a),
         },
-        meet: {
-          voices: () => P.getMeetVoices(projectId),
-          setVoice: (voice: string) => P.setMeetVoice(projectId, voice),
+        voice: {
           setBotName: (name: string) => P.setMeetBotName(projectId, name),
-          previewVoice: (voiceId: string) => P.previewMeetVoice(projectId, voiceId),
-          /** Make the meeting bot speak text (text → ElevenLabs → Recall `output_audio`). */
-          speak: (botId: string, text: string, voice?: string) =>
-            P.speakInMeeting(projectId, botId, text, voice),
         },
       },
 

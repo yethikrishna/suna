@@ -824,6 +824,46 @@ REFACTOR and finish on the full typecheck, test, and packed-install smoke gates.
 
 **Status:** IN PROGRESS.
 
+---
+
+### 2026-07-25 — session `false-load-older` (local completion)
+
+OpenCode paginates raw messages in groups of 10. The reported dev session has
+one user message and 43 assistant messages in one logical turn. The initial page
+contained 10 assistant messages and an `x-next-cursor` header. The user message
+was on page 5.
+
+The controller now follows assistant-only pages during the initial load until
+every assistant parent user message is present. It hydrates the complete newest
+turn once in chronological order. It exposes `hasOlder` only when the completed
+turn has an earlier cursor.
+
+Implementation commit: `b759cca6bad8548b54ec3ab80d105f162a1f497d`.
+
+**RED evidence:**
+
+- The focused controller suite reported **13 pass / 1 fail**.
+- The new test expected three page requests. The controller made one request.
+
+**Verification:**
+
+- Focused controller suite: **14 pass / 0 fail** with 32 assertions.
+- SDK typecheck and example typecheck: exit 0.
+- SDK full suite: **1249 pass / 2 skip / 0 fail** across 104 files with 5589
+  assertions.
+- SDK packed-install smoke: pass.
+- Exact dev-session probe: 5 HTTP `200` page requests, 44 hydrated messages,
+  1 user message, 43 assistant messages, and `hasOlder: false`.
+- `git diff --check`: exit 0.
+
+The browser runtime returned `No browser is available` and `[]`. Local and
+deployed DOM proof remains open.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, and deployed proof
+remain.
+
 ### 2026-07-13 — session `gateway-routing-ui` (completion)
 
 Completed the additive project LLM routing-policy SDK surface: typed whole-document
@@ -2437,7 +2477,6 @@ Non-streaming requests retain the 30-second timeout.
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, and the deployed
 cold Chromium matrix remain.
-
 ---
 
 ### 2026-07-25 — session `acp-opencode-canary` (B21 implementation)
@@ -2469,3 +2508,18 @@ It resets the ACP projection before runtime replay.
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, and the deployed
 cold Chromium ACP plus REST rollback matrix remain.
+
+---
+
+### 2026-07-25 — session `false-load-older` (claim)
+
+Claimed the user-reported false `Load older messages` control on a one-turn
+session. The investigation will verify the runtime pagination response before
+changing the SDK contract. The implementation will follow RED -> GREEN ->
+REFACTOR and preserve all exported names.
+
+Required completion gates are the full SDK typecheck, test suite, packed-install
+smoke, focused web tests, local browser proof, repository merge, Deploy Dev, and
+deployed browser proof.
+
+**Status:** IN PROGRESS.

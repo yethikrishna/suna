@@ -152,6 +152,10 @@ export class AcpConnection {
     return this.initialized && !this.closed
   }
 
+  get lastEventId(): number {
+    return this.nextEventId - 1
+  }
+
   async initialize(input: {
     clientInfo: { name: string; version: string }
   }): Promise<Record<string, unknown>> {
@@ -242,19 +246,8 @@ export class AcpConnection {
     await this.write({ jsonrpc: '2.0', method, params })
   }
 
-  async post(envelope: JsonRpcEnvelope): Promise<JsonRpcEnvelope | null> {
-    const hasMethod = typeof envelope.method === 'string'
-    const hasId = Object.prototype.hasOwnProperty.call(envelope, 'id')
-    if (!hasMethod || !hasId) {
-      await this.write(envelope)
-      return null
-    }
-
-    return this.requestEnvelope(
-      envelope.method as string,
-      envelope.params,
-      envelope.id as string | number,
-    )
+  async post(envelope: JsonRpcEnvelope): Promise<void> {
+    await this.write(envelope)
   }
 
   subscribe(
@@ -312,15 +305,12 @@ export class AcpConnection {
     if (!hasMethod && hasId) {
       const key = rpcIdKey(envelope.id)
       const pending = this.pending.get(key)
-      if (!pending) {
-        this.onDiagnostic(`ignored ACP response for unknown id ${key}`)
+      if (pending) {
+        clearTimeout(pending.timer)
+        this.pending.delete(key)
+        pending.resolve(envelope)
         return
       }
-      clearTimeout(pending.timer)
-      this.pending.delete(key)
-
-      pending.resolve(envelope)
-      return
     }
 
     const event = { id: this.nextEventId++, envelope }

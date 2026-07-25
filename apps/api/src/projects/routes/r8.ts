@@ -26,6 +26,7 @@ import { AnyObject, ChangeRequestSchema, SessionStartResultSchema, projectsApp }
 import { withProjectGitAuth } from '../lib/git';
 import { UUID_V4_REGEX, normalizeString, readBody } from '../lib/serializers';
 import { continueSession, restartSession, startSession, stopSession } from '../session-lifecycle';
+import { resolveProjectRuntimeTransport } from '../../experimental/features';
 import {
   refreshCrTips,
 } from './shared';
@@ -91,7 +92,7 @@ projectsApp.openapi(
     return c.json(
       {
         ...result.start,
-        runtime_transport: config.KORTIX_OPENCODE_TRANSPORT,
+        runtime_transport: resolveProjectRuntimeTransport(loaded.row.metadata),
       },
       200,
     );

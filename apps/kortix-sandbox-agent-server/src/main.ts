@@ -251,11 +251,10 @@ async function main() {
       // path. The capture condition requires the pin file, so the snapshot is
       // guaranteed to contain this session.
       try {
-        const res = await waitForInitialSessionCreate(
-          `http://127.0.0.1:${cfg.opencodeInternalPort}`,
+        const session = await createInitialOpenCodeSession(
+          opencode,
           process.env.KORTIX_WORKSPACE || '/workspace',
         )
-        const session = (await res.json()) as { id?: string }
         if (session.id) {
           // Marker BEFORE the pin: the snapshot capture gates on the pin file
           // existing, so writing the marker first guarantees every fork that
@@ -389,7 +388,7 @@ async function startSessionRuntime(
     // backstop for any residual gap.
     const loop = startOpencodeEventLoop(opencode, cfg, eventHandlers)
     loopStarted = true
-    await maybeCreateInitialOpencodeSession(cfg.opencodeInternalPort, bootState, bootMark, loop.connected).catch((err) => {
+    await maybeCreateInitialOpencodeSession(opencode, bootState, bootMark, loop.connected).catch((err) => {
       bootState.initialOpenCodeSessionError = err instanceof Error ? err.message : String(err)
       logger.warn('[boot] initial opencode session setup failed', err)
     })
@@ -570,8 +569,7 @@ async function runWarmSeedMode(
       if (!ok) { logger.warn('[seed] opencode never warmed; capture will not trigger'); return }
       bootMark('seed-opencode-ready')
       try {
-        const res = await waitForInitialSessionCreate(`http://127.0.0.1:${cfg.opencodeInternalPort}`, cfg.projectTarget)
-        const session = (await res.json()) as { id?: string }
+        const session = await createInitialOpenCodeSession(opencode, cfg.projectTarget)
         if (session.id) {
           // Marker BEFORE the pin: the snapshot capture gates on the pin file
           // existing, so writing the marker first guarantees every fork that
@@ -730,7 +728,7 @@ async function runWarmSeedMode(
 // It also reports the canonical root to apps/api so the durable DB pin is set
 // server-side at bootstrap, with no dependency on a browser ever opening it.
 async function maybeCreateInitialOpencodeSession(
-  opencodePort: number,
+  opencode: Opencode,
   bootState: SandboxBootState,
   bootMark: (label: string) => void,
   // Resolves when the /event SSE subscription is live. The first turn's
@@ -744,7 +742,7 @@ async function maybeCreateInitialOpencodeSession(
   const bootstrapSession = (process.env.KORTIX_BOOTSTRAP_OPENCODE_SESSION ?? '').trim() === '1'
   if (!prompt && !bootstrapSession) return
 
-  const baseUrl = `http://127.0.0.1:${opencodePort}`
+  const baseUrl = opencode.getInternalUrl()
   const workspace = process.env.KORTIX_WORKSPACE || '/workspace'
 
   let existing = await resolveExistingRoot(baseUrl, workspace)
@@ -773,14 +771,14 @@ async function maybeCreateInitialOpencodeSession(
     // A turn interrupted by the restart left a part stuck "running"; finalize it
     // so a client streaming this root sees the turn end instead of spinning.
     if (existing.lastTurnIncomplete) await abortOpencodeTurn(baseUrl, workspace, sessionId)
+    await resumeInitialOpenCodeSession(opencode, sessionId, workspace)
   } else {
     logger.info('[boot] creating initial opencode session', {
       bytes: prompt.length,
       hasPrompt: prompt.length > 0,
       workspace,
     })
-    const sessionRes = await waitForInitialSessionCreate(baseUrl, workspace)
-    const session = (await sessionRes.json()) as { id?: string }
+    const session = await createInitialOpenCodeSession(opencode, workspace)
     if (!session.id) throw new Error('opencode session create returned no id')
     sessionId = session.id
   }
@@ -815,18 +813,12 @@ async function maybeCreateInitialOpencodeSession(
       ])
       if (timer) clearTimeout(timer)
     }
-    const promptRes = await fetch(
-      `${baseUrl}/session/${sessionId}/prompt_async?directory=${encodeURIComponent(workspace)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildInitialPromptBody(prompt)),
-        signal: AbortSignal.timeout(15_000),
-      },
+    await deliverInitialOpenCodePrompt(
+      opencode,
+      sessionId,
+      workspace,
+      buildInitialPromptBody(prompt),
     )
-    if (!promptRes.ok) {
-      throw new Error(`opencode prompt failed: ${promptRes.status} ${await promptRes.text()}`)
-    }
     logger.info('[boot] initial prompt delivered', { sessionId })
   } else if (prompt) {
     logger.info('[boot] initial prompt already delivered to reused root; not re-running', { sessionId })
@@ -1043,6 +1035,101 @@ async function relayBootstrapPinToApi(opencodeSessionId: string): Promise<void> 
     logger.info('[boot] bootstrap opencode session pinned via api', { opencodeSessionId })
   } catch (err) {
     logger.warn('[boot] bootstrap pin relay failed', { err: (err as Error).message })
+  }
+}
+
+function requireAcpConnection(opencode: Opencode) {
+  const connection = opencode.getAcpConnection()
+  if (!connection?.ready) {
+    throw new Error('OpenCode ACP connection is not ready')
+  }
+  return connection
+}
+
+export async function createInitialOpenCodeSession(
+  opencode: Opencode,
+  workspace: string,
+): Promise<{ id: string }> {
+  if (opencode.getTransport() === 'acp') {
+    const result = await requireAcpConnection(opencode).request('session/new', {
+      cwd: workspace,
+      mcpServers: [],
+    })
+    const sessionId =
+      result &&
+      typeof result === 'object' &&
+      !Array.isArray(result) &&
+      typeof (result as Record<string, unknown>).sessionId === 'string'
+        ? ((result as Record<string, unknown>).sessionId as string)
+        : ''
+    if (!sessionId) throw new Error('OpenCode ACP session/new returned no sessionId')
+    return { id: sessionId }
+  }
+
+  const response = await waitForInitialSessionCreate(opencode.getInternalUrl(), workspace)
+  const session = (await response.json()) as { id?: string }
+  if (!session.id) throw new Error('opencode session create returned no id')
+  return { id: session.id }
+}
+
+export async function resumeInitialOpenCodeSession(
+  opencode: Opencode,
+  sessionId: string,
+  workspace: string,
+): Promise<void> {
+  if (opencode.getTransport() !== 'acp') return
+  await requireAcpConnection(opencode).request('session/resume', {
+    sessionId,
+    cwd: workspace,
+    mcpServers: [],
+  })
+}
+
+export async function deliverInitialOpenCodePrompt(
+  opencode: Opencode,
+  sessionId: string,
+  workspace: string,
+  prompt: ReturnType<typeof buildInitialPromptBody>,
+): Promise<void> {
+  if (opencode.getTransport() === 'acp') {
+    const connection = requireAcpConnection(opencode)
+    if (prompt.model) {
+      await connection.request('session/set_config_option', {
+        sessionId,
+        configId: 'model',
+        value: `${prompt.model.providerID}/${prompt.model.modelID}`,
+      })
+    }
+    if (prompt.agent) {
+      await connection.request('session/set_config_option', {
+        sessionId,
+        configId: 'mode',
+        value: prompt.agent,
+      })
+    }
+    await connection.post({
+      jsonrpc: '2.0',
+      id: `kortix:initial-prompt:${Date.now()}`,
+      method: 'session/prompt',
+      params: {
+        sessionId,
+        prompt: prompt.parts,
+      },
+    })
+    return
+  }
+
+  const response = await fetch(
+    `${opencode.getInternalUrl()}/session/${sessionId}/prompt_async?directory=${encodeURIComponent(workspace)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(prompt),
+      signal: AbortSignal.timeout(15_000),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(`opencode prompt failed: ${response.status} ${await response.text()}`)
   }
 }
 

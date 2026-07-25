@@ -28,6 +28,8 @@ export interface AcpProjection {
   configOptions: Array<Record<string, unknown>>;
   availableCommands: Array<Record<string, unknown>>;
   currentModeId: string | null;
+  sessionInfo: Record<string, unknown> | null;
+  usage: Record<string, unknown> | null;
   nextId: number;
 }
 
@@ -281,6 +283,15 @@ function normalizeTodo(value: unknown): Todo | null {
   };
 }
 
+function normalizeTodos(entries: unknown): Todo[] {
+  return Array.isArray(entries)
+    ? entries.flatMap((entry) => {
+        const todo = normalizeTodo(entry);
+        return todo ? [todo] : [];
+      })
+    : [];
+}
+
 function normalizeQuestion(params: Record<string, unknown>): QuestionInfo[] {
   const explicit = Array.isArray(params.questions) ? params.questions : [];
   const fromExplicit = explicit.flatMap((candidate) => {
@@ -471,6 +482,8 @@ export function createAcpProjection(sessionId: string): AcpProjection {
     configOptions: [],
     availableCommands: [],
     currentModeId: null,
+    sessionInfo: null,
+    usage: null,
     nextId: 1,
   };
 }
@@ -505,13 +518,15 @@ export function applyAcpEnvelope(
       return projectTool(state, update);
     }
     if (kind === 'plan') {
-      const todos = Array.isArray(update.entries)
-        ? update.entries.flatMap((entry) => {
-            const todo = normalizeTodo(entry);
-            return todo ? [todo] : [];
-          })
-        : [];
-      return { ...state, todos };
+      return { ...state, todos: normalizeTodos(update.entries) };
+    }
+    if (kind === 'plan_update') {
+      const plan = isObject(update.plan) ? update.plan : update;
+      if (asString(plan.type) !== 'items') return state;
+      return { ...state, todos: normalizeTodos(plan.entries) };
+    }
+    if (kind === 'plan_removed') {
+      return { ...state, todos: [] };
     }
     if (kind === 'config_option_update' && Array.isArray(update.configOptions)) {
       return {
@@ -533,6 +548,14 @@ export function applyAcpEnvelope(
         ...state,
         currentModeId: asString(update.currentModeId),
       };
+    }
+    if (kind === 'session_info_update') {
+      const { sessionUpdate: _sessionUpdate, type: _type, ...sessionInfo } = update;
+      return { ...state, sessionInfo };
+    }
+    if (kind === 'usage_update') {
+      const { sessionUpdate: _sessionUpdate, type: _type, ...usage } = update;
+      return { ...state, usage };
     }
     return state;
   }

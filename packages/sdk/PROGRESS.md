@@ -2271,3 +2271,45 @@ It rejects updates for a different ACP session.
 **Status:** COMPLETE.
 
 **Shippable to production: NOT YET.** Tasks 5 through 8 remain incomplete.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (OpenCode ACP Tasks 5–6 completion)
+
+Extended the ACP projection for command, mode, config, session-information,
+usage, permission, question, cancellation, and transport-error state.
+
+Integrated ACP into the existing `useSession(projectId, sessionId)` hook.
+The server-provided `runtime_transport` selects the SDK path.
+Missing metadata and `rest` retain the existing OpenCode REST path.
+The ACP path disables OpenCode REST events, session listing, message sync, and
+prompt sends.
+
+The root web composer calls `sessionState.sendParts()`.
+The web application does not inspect `runtimeTransport`.
+The same SDK result handles commands, cancellation, permissions, and questions.
+
+Added the `acp_runtime` project experiment.
+The existing self-describing experimental settings UI renders its catalog entry.
+
+**RED evidence:**
+
+- Runtime policy test: missing `createSessionRuntimePolicy` export; **0 pass / 1 fail**.
+- Web routing test: missing `sessionState.sendParts`; **1 pass / 1 fail**.
+- Projection and controller error fixtures: **8 pass / 2 fail**.
+
+**Verification:**
+
+- Focused ACP projection/controller suite: **10 pass / 0 fail**.
+- Runtime policy/controller suite: **8 pass / 0 fail**.
+- Web SDK routing gate: **2 pass / 0 fail**.
+- SDK typecheck and examples: exit 0.
+- SDK full suite: **1228 pass / 2 skip / 0 fail**.
+- SDK packed-install smoke: pass.
+- API experimental-feature suite: **16 pass / 0 fail**.
+- API serializer suite: **17 pass / 0 fail**.
+- API contract schema suite: **41 pass / 0 fail**.
+- Sandbox ACP process and bridge suite: **19 pass / 0 fail**.
+- White-label typecheck: exit 0.
+
+**Status:** COMPLETE.

@@ -181,24 +181,30 @@ describe('ACP NDJSON connection', () => {
     expect(events).toEqual([])
   })
 
-  test('preserves JSON-RPC errors across the HTTP bridge', async () => {
+  test('forwards browser requests immediately and publishes their responses', async () => {
     const harness = createHarness()
+    const events: unknown[] = []
+    harness.connection.subscribe(0, (event) => events.push(event.envelope))
     const posted = harness.connection.post({
       jsonrpc: '2.0',
       id: 'error',
       method: 'session/load',
       params: { sessionId: 'missing' },
     })
+    await expect(posted).resolves.toBeUndefined()
     respond(harness, {
       id: 'error',
       error: { code: -32000, message: 'session not found' },
     })
+    await nextTick()
 
-    await expect(posted).resolves.toEqual({
-      jsonrpc: '2.0',
-      id: 'error',
-      error: { code: -32000, message: 'session not found' },
-    })
+    expect(events).toEqual([
+      {
+        jsonrpc: '2.0',
+        id: 'error',
+        error: { code: -32000, message: 'session not found' },
+      },
+    ])
   })
 
   test('redacts credential values from diagnostics', () => {

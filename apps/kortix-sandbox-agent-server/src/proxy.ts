@@ -129,7 +129,11 @@ export function buildOpencodeApp(
   // (see routes/pty.ts). `ptyRegistry` is always passed by `startProxy`;
   // the parameter is optional only so tests can build the app without one.
   const ptyRouter = createPtyRouter(cfg, ptyRegistry ?? createPtyRegistry(cfg))
-  const acpRouter = createAcpRouter(cfg, () => opencode.getAcpConnection())
+  const acpRouter = createAcpRouter(
+    cfg,
+    () => opencode.getAcpConnection(),
+    () => bootState.initialOpenCodeSessionId ?? null,
+  )
   kortixRouter.route('/health', healthRouter)
   kortixRouter.route('/health/', healthRouter)
   kortixRouter.route('/refresh', refreshRouter)

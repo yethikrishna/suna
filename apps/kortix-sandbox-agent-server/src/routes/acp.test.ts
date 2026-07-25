@@ -63,7 +63,8 @@ function signedContext(secret = TOKEN): string {
 
 function connection(overrides: {
   ready?: boolean
-  post?: (envelope: JsonRpcEnvelope) => Promise<JsonRpcEnvelope | null>
+  lastEventId?: number
+  post?: (envelope: JsonRpcEnvelope) => Promise<void>
   subscribe?: (
     after: number,
     event: (value: AcpStreamEvent) => void,
@@ -72,13 +73,8 @@ function connection(overrides: {
 } = {}): AcpConnection {
   return {
     ready: overrides.ready ?? true,
-    post:
-      overrides.post ??
-      (async (envelope) => ({
-        jsonrpc: '2.0',
-        id: envelope.id,
-        result: { ok: true },
-      })),
+    lastEventId: overrides.lastEventId ?? 0,
+    post: overrides.post ?? (async () => {}),
     subscribe:
       overrides.subscribe ??
       ((_after, _event, _close) => {
@@ -99,7 +95,11 @@ function request(
 
 describe('authenticated OpenCode ACP bridge', () => {
   test('rejects missing and invalid sandbox user context', async () => {
-    const app = createAcpRouter(config(), () => connection())
+    const app = createAcpRouter(
+      config(),
+      () => connection(),
+      () => 'session',
+    )
 
     const missing = await app.request('http://localhost/session', {
       method: 'POST',
@@ -120,19 +120,27 @@ describe('authenticated OpenCode ACP bridge', () => {
   })
 
   test('fails closed when the sandbox token is missing', async () => {
-    const app = createAcpRouter(config(null), () => connection())
+    const app = createAcpRouter(
+      config(null),
+      () => connection(),
+      () => 'session',
+    )
     const response = await app.request('http://localhost/session')
     expect(response.status).toBe(503)
   })
 
   test('returns 503 until the initialized ACP connection is ready', async () => {
-    const app = createAcpRouter(config(), () => connection({ ready: false }))
+    const app = createAcpRouter(
+      config(),
+      () => connection({ ready: false }),
+      () => 'session',
+    )
     const response = await request(app, '/session')
     expect(response.status).toBe(503)
     expect(await response.json()).toEqual({ error: 'OpenCode ACP not ready' })
   })
 
-  test('posts one JSON-RPC request and returns its response', async () => {
+  test('accepts one JSON-RPC request without waiting for its response', async () => {
     const seen: JsonRpcEnvelope[] = []
     const app = createAcpRouter(
       config(),
@@ -140,13 +148,9 @@ describe('authenticated OpenCode ACP bridge', () => {
         connection({
           post: async (envelope) => {
             seen.push(envelope)
-            return {
-              jsonrpc: '2.0',
-              id: envelope.id,
-              result: { sessionId: 'open-code-session' },
-            }
           },
         }),
+      () => 'session',
     )
 
     const response = await request(app, '/session', {
@@ -156,23 +160,20 @@ describe('authenticated OpenCode ACP bridge', () => {
         jsonrpc: '2.0',
         id: 1,
         method: 'session/load',
-        params: { sessionId: 'open-code-session' },
+        params: { sessionId: 'session' },
       }),
     })
 
-    expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({
-      jsonrpc: '2.0',
-      id: 1,
-      result: { sessionId: 'open-code-session' },
-    })
+    expect(response.status).toBe(202)
+    expect(await response.text()).toBe('')
     expect(seen).toHaveLength(1)
   })
 
   test('returns 202 for JSON-RPC notifications and responses', async () => {
     const app = createAcpRouter(
       config(),
-      () => connection({ post: async () => null }),
+      () => connection({ post: async () => {} }),
+      () => 'session',
     )
     const response = await request(app, '/session', {
       method: 'POST',
@@ -187,7 +188,11 @@ describe('authenticated OpenCode ACP bridge', () => {
   })
 
   test('rejects unsupported media types and malformed JSON-RPC', async () => {
-    const app = createAcpRouter(config(), () => connection())
+    const app = createAcpRouter(
+      config(),
+      () => connection(),
+      () => 'session',
+    )
     const media = await request(app, '/session', {
       method: 'POST',
       body: '{}',
@@ -222,6 +227,7 @@ describe('authenticated OpenCode ACP bridge', () => {
             return () => {}
           },
         }),
+      () => 'session',
     )
 
     const response = await request(app, '/session', {
@@ -238,8 +244,38 @@ describe('authenticated OpenCode ACP bridge', () => {
     expect(after).toBe(7)
   })
 
+  test('starts a new SSE client at the current event tail', async () => {
+    let after = -1
+    const app = createAcpRouter(
+      config(),
+      () =>
+        connection({
+          lastEventId: 12,
+          subscribe: (lastEventId, _event, close = () => {}) => {
+            after = lastEventId
+            queueMicrotask(close)
+            return () => {}
+          },
+        }),
+      () => 'session',
+    )
+
+    const response = await request(app, '/session', {
+      headers: { accept: 'text/event-stream' },
+    })
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain(
+      'id: 12\ndata: {"jsonrpc":"2.0","method":"kortix/cursor"}',
+    )
+    expect(after).toBe(12)
+  })
+
   test('rejects an invalid Last-Event-ID', async () => {
-    const app = createAcpRouter(config(), () => connection())
+    const app = createAcpRouter(
+      config(),
+      () => connection(),
+      () => 'session',
+    )
     const response = await request(app, '/session', {
       headers: {
         accept: 'text/event-stream',
@@ -247,5 +283,37 @@ describe('authenticated OpenCode ACP bridge', () => {
       },
     })
     expect(response.status).toBe(400)
+  })
+
+  test('rejects a route or payload for a different OpenCode session', async () => {
+    const app = createAcpRouter(
+      config(),
+      () => connection(),
+      () => 'session',
+    )
+
+    const wrongPath = await request(app, '/other', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/resume',
+        params: { sessionId: 'other', cwd: '/workspace', mcpServers: [] },
+      }),
+    })
+    expect(wrongPath.status).toBe(404)
+
+    const wrongPayload = await request(app, '/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        params: { sessionId: 'other', prompt: [] },
+      }),
+    })
+    expect(wrongPayload.status).toBe(409)
   })
 })

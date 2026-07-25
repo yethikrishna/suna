@@ -15,7 +15,16 @@ export { AcpRpcError, AcpTransportError } from './types';
 export interface AcpClientOptions {
   endpoint: string;
   fetch?: typeof fetch;
+  requestTimeoutMs?: number;
 }
+
+type PendingRequest = {
+  resolve(value: unknown): void;
+  reject(error: Error): void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -73,36 +82,51 @@ export class AcpClient {
   private nextId = 0;
   private readonly endpoint: string;
   private readonly fetcher: typeof fetch;
+  private readonly requestTimeoutMs: number;
+  private readonly pending = new Map<string, PendingRequest>();
 
   constructor(options: AcpClientOptions) {
     this.endpoint = options.endpoint.replace(/\/+$/, '');
     this.fetcher = options.fetch ?? (authenticatedFetch as typeof fetch);
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   async request<T = unknown>(method: string, params?: unknown): Promise<T> {
     const id = `${this.idPrefix}-${++this.nextId}`;
-    const response = await this.post({
-      jsonrpc: '2.0',
-      id,
-      method,
-      ...(params === undefined ? {} : { params }),
+    const key = JSON.stringify(id);
+    const result = new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(key);
+        reject(new Error(`Timed out waiting for ACP response to ${method}`));
+      }, this.requestTimeoutMs);
+      this.pending.set(key, {
+        resolve: (value) => resolve(value as T),
+        reject,
+        timer,
+      });
     });
-    if (!isResponse(response)) {
-      throw new Error(`ACP method ${method} returned no JSON-RPC response`);
+    try {
+      const response = await this.post({
+        jsonrpc: '2.0',
+        id,
+        method,
+        ...(params === undefined ? {} : { params }),
+      });
+      if (response) {
+        if (!isResponse(response)) {
+          throw new Error(`ACP method ${method} returned an invalid response`);
+        }
+        this.settleResponse(response);
+      }
+    } catch (error) {
+      const pending = this.pending.get(key);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pending.delete(key);
+        pending.reject(error instanceof Error ? error : new Error(String(error)));
+      }
     }
-    if (response.id !== id) {
-      throw new Error(
-        `ACP response id mismatch for ${method}: expected ${JSON.stringify(id)}, got ${JSON.stringify(response.id)}`,
-      );
-    }
-    if (response.error) {
-      throw new AcpRpcError(
-        response.error.message,
-        response.error.code,
-        response.error.data,
-      );
-    }
-    return response.result as T;
+    return result;
   }
 
   async notify(method: string, params?: unknown): Promise<void> {
@@ -113,11 +137,7 @@ export class AcpClient {
     });
   }
 
-  async respond(
-    id: AcpJsonRpcId,
-    result?: unknown,
-    error?: AcpResponse['error'],
-  ): Promise<void> {
+  async respond(id: AcpJsonRpcId, result?: unknown, error?: AcpResponse['error']): Promise<void> {
     await this.post({
       jsonrpc: '2.0',
       id,
@@ -147,11 +167,7 @@ export class AcpClient {
     return this.notify('session/cancel', { sessionId });
   }
 
-  setSessionConfigOption(
-    sessionId: string,
-    configId: string,
-    value: unknown,
-  ) {
+  setSessionConfigOption(sessionId: string, configId: string, value: unknown) {
     return this.request<Record<string, unknown>>('session/set_config_option', {
       sessionId,
       configId,
@@ -170,6 +186,13 @@ export class AcpClient {
     let hasEventId = options.lastEventId !== undefined;
     let closed = false;
     const controller = new AbortController();
+    let resolveReady: () => void = () => {};
+    let rejectReady: (error: Error) => void = () => {};
+    let opened = false;
+    const ready = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
     const onAbort = () => controller.abort(options.signal?.reason);
     options.signal?.addEventListener('abort', onAbort, { once: true });
 
@@ -180,9 +203,7 @@ export class AcpClient {
           const response = await this.fetcher(this.endpoint, {
             headers: {
               Accept: 'text/event-stream',
-              ...(hasEventId
-                ? { 'Last-Event-ID': String(lastEventId) }
-                : {}),
+              ...(hasEventId ? { 'Last-Event-ID': String(lastEventId) } : {}),
             },
             signal: controller.signal,
           });
@@ -197,10 +218,17 @@ export class AcpClient {
           await consumeSse(
             response.body,
             (event) => {
+              if (!opened) {
+                opened = true;
+                resolveReady();
+              }
               if (hasEventId && event.id <= lastEventId) return;
               hasEventId = true;
               lastEventId = event.id;
               retryMs = 250;
+              if (isResponse(event.envelope)) {
+                this.settleResponse(event.envelope);
+              }
               options.onEvent(event);
             },
             (error) => options.onError?.(error),
@@ -213,6 +241,9 @@ export class AcpClient {
             options.reconnect === false ||
             (error instanceof AcpTransportError && error.terminal)
           ) {
+            if (!opened) {
+              rejectReady(error instanceof Error ? error : new Error(String(error)));
+            }
             return;
           }
         }
@@ -228,10 +259,12 @@ export class AcpClient {
         closed = true;
         options.signal?.removeEventListener('abort', onAbort);
         controller.abort();
+        if (!opened) rejectReady(new Error('ACP stream closed before opening'));
       },
       get lastEventId() {
         return lastEventId;
       },
+      ready,
     };
   }
 
@@ -255,6 +288,21 @@ export class AcpClient {
       throw new Error('ACP response is not a JSON-RPC 2.0 envelope');
     }
     return value as AcpEnvelope;
+  }
+
+  private settleResponse(response: AcpResponse): void {
+    const key = JSON.stringify(response.id);
+    const pending = this.pending.get(key);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pending.delete(key);
+    if (response.error) {
+      pending.reject(
+        new AcpRpcError(response.error.message, response.error.code, response.error.data),
+      );
+      return;
+    }
+    pending.resolve(response.result);
   }
 }
 

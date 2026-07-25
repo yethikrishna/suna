@@ -13,6 +13,13 @@ import {
 import { logger } from '../logger'
 
 const encoder = new TextEncoder()
+const ALLOWED_SESSION_METHODS = new Set([
+  'session/load',
+  'session/resume',
+  'session/prompt',
+  'session/cancel',
+  'session/set_config_option',
+])
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -21,6 +28,7 @@ function errorMessage(error: unknown): string {
 export function createAcpRouter(
   cfg: Config,
   getConnection: () => AcpConnection | null,
+  getCanonicalSessionId: () => string | null,
 ): Hono {
   const router = new Hono()
 
@@ -46,6 +54,17 @@ export function createAcpRouter(
     return next()
   })
 
+  router.use('/:serverId', async (c, next) => {
+    const canonicalSessionId = getCanonicalSessionId()
+    if (!canonicalSessionId) {
+      return c.json({ error: 'Canonical OpenCode session not ready' }, 503)
+    }
+    if (c.req.param('serverId') !== canonicalSessionId) {
+      return c.json({ error: 'ACP session not found' }, 404)
+    }
+    return next()
+  })
+
   router.post('/:serverId', async (c) => {
     if (
       !c.req
@@ -63,8 +82,20 @@ export function createAcpRouter(
 
     try {
       const envelope = parseJsonRpcEnvelope(await c.req.json())
-      const response = await connection.post(envelope)
-      return response ? c.json(response) : c.body(null, 202)
+      if ('method' in envelope) {
+        if (!ALLOWED_SESSION_METHODS.has(envelope.method as string)) {
+          return c.json({ error: 'ACP method is not allowed' }, 405)
+        }
+        const params =
+          envelope.params && typeof envelope.params === 'object' && !Array.isArray(envelope.params)
+            ? (envelope.params as Record<string, unknown>)
+            : {}
+        if (params.sessionId !== c.req.param('serverId')) {
+          return c.json({ error: 'ACP payload session does not match route session' }, 409)
+        }
+      }
+      await connection.post(envelope)
+      return c.body(null, 202)
     } catch (error) {
       const status = error instanceof AcpProtocolError ? 502 : 400
       return c.json({ error: errorMessage(error) }, status)
@@ -86,7 +117,7 @@ export function createAcpRouter(
     }
 
     const rawLastEventId = c.req.header('last-event-id')?.trim()
-    const lastEventId = rawLastEventId ? Number(rawLastEventId) : 0
+    const lastEventId = rawLastEventId ? Number(rawLastEventId) : connection.lastEventId
     if (!Number.isSafeInteger(lastEventId) || lastEventId < 0) {
       return c.json(
         { error: 'Last-Event-ID must be a non-negative integer' },
@@ -103,7 +134,9 @@ export function createAcpRouter(
             controller.enqueue(encoder.encode(value))
           } catch {}
         }
-        write(': connected\n\n')
+        write(
+          `id: ${lastEventId}\ndata: {"jsonrpc":"2.0","method":"kortix/cursor"}\n\n`,
+        )
         unsubscribe = connection.subscribe(
           lastEventId,
           (event) => {

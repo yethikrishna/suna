@@ -115,6 +115,27 @@ describe('ACP to Kortix session projection', () => {
     ]);
   });
 
+  test('projects item plan updates and plan removal', () => {
+    let state = createAcpProjection('ses_1');
+    state = update(state, 'plan_update', {
+      plan: {
+        type: 'items',
+        planId: 'plan-1',
+        entries: [
+          { content: 'Inspect', status: 'completed', priority: 'high' },
+          { content: 'Verify', status: 'pending', priority: 'medium' },
+        ],
+      },
+    });
+    expect(state.todos).toEqual([
+      { content: 'Inspect', status: 'completed', priority: 'high' },
+      { content: 'Verify', status: 'pending', priority: 'medium' },
+    ]);
+
+    state = update(state, 'plan_removed', { planId: 'plan-1' });
+    expect(state.todos).toEqual([]);
+  });
+
   test('tracks permission and question requests until a response closes them', () => {
     let state = createAcpProjection('ses_1');
     state = applyAcpEnvelope(state, {
@@ -160,6 +181,41 @@ describe('ACP to Kortix session projection', () => {
     });
     expect(state.permissions).toEqual([]);
     expect(state.questions).toEqual([]);
+  });
+
+  test('projects command, mode, config, session information, and usage updates', () => {
+    let state = createAcpProjection('ses_1');
+    state = update(state, 'available_commands_update', {
+      availableCommands: [{ name: 'review', description: 'Review changes' }],
+    });
+    state = update(state, 'current_mode_update', {
+      currentModeId: 'plan',
+    });
+    state = update(state, 'config_option_update', {
+      configOptions: [{ id: 'model', currentValue: 'kortix/glm-5.2' }],
+    });
+    state = update(state, 'session_info_update', {
+      title: 'ACP session',
+      updatedAt: '2026-07-25T00:00:00.000Z',
+    });
+    state = update(state, 'usage_update', {
+      used: 1024,
+      size: 8192,
+      cost: { amount: 0.04, currency: 'USD' },
+    });
+
+    expect(state.availableCommands).toEqual([{ name: 'review', description: 'Review changes' }]);
+    expect(state.currentModeId).toBe('plan');
+    expect(state.configOptions).toEqual([{ id: 'model', currentValue: 'kortix/glm-5.2' }]);
+    expect(state.sessionInfo).toEqual({
+      title: 'ACP session',
+      updatedAt: '2026-07-25T00:00:00.000Z',
+    });
+    expect(state.usage).toEqual({
+      used: 1024,
+      size: 8192,
+      cost: { amount: 0.04, currency: 'USD' },
+    });
   });
 
   test('ignores updates for a different ACP session', () => {

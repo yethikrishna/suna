@@ -42,6 +42,8 @@ export type AcpStreamEvent = {
 export type AcpStreamHandle = {
   close(): void;
   readonly lastEventId: number;
+  /** Resolves after the first SSE response is open and can receive replies. */
+  readonly ready: Promise<void>;
 };
 
 export class AcpRpcError extends Error {

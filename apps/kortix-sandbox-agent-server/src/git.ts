@@ -978,11 +978,24 @@ export type RepoInfo = {
   remoteUrl: string | null
 }
 
+/**
+ * Read branch/commit/remote for a materialized repo.
+ *
+ * The three git calls run CONCURRENTLY, not in sequence. This is on a hotter path
+ * than it looks: `/kortix/health` calls it on EVERY request (to compute
+ * `repo_ready`), and both the frontend and the API poll health throughout boot —
+ * so three serial process spawns per poll land squarely in the window where the
+ * guest is CPU-saturated by the clone's index-pack, on a 2-vCPU box. All three
+ * are read-only plumbing commands that take no index lock, so concurrency here is
+ * safe; only the `.git` existence check has to happen first.
+ */
 export async function readRepoInfo(target: string): Promise<RepoInfo | null> {
   if (!(await pathExists(`${target}/.git`))) return null
-  const branch = await execGit(['-C', target, 'rev-parse', '--abbrev-ref', 'HEAD'])
-  const commit = await execGit(['-C', target, 'rev-parse', 'HEAD'])
-  const remote = await execGit(['-C', target, 'remote', 'get-url', 'origin'])
+  const [branch, commit, remote] = await Promise.all([
+    execGit(['-C', target, 'rev-parse', '--abbrev-ref', 'HEAD']),
+    execGit(['-C', target, 'rev-parse', 'HEAD']),
+    execGit(['-C', target, 'remote', 'get-url', 'origin']),
+  ])
   return {
     path: target,
     branch: branch.code === 0 ? branch.stdout.trim() : null,

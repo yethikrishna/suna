@@ -38,6 +38,7 @@ let activeSessionCount = 0;
 let provisioningSessionCount = 0;
 let secretRows: Array<typeof projectSecrets.$inferSelect>;
 let manifestReadCalls = 0;
+let mirrorInvalidationCalls = 0;
 let modelDefaults: {
   account: string | null;
   agents: Record<string, string>;
@@ -68,6 +69,7 @@ const projectRow: typeof projects.$inferSelect = {
 };
 
 function resetState() {
+  resetRateLimiters();
   setTestAuth();
   repoFiles = new Map();
   commitCalls = [];
@@ -82,6 +84,7 @@ function resetState() {
   provisioningSessionCount = 0;
   secretRows = [];
   manifestReadCalls = 0;
+  mirrorInvalidationCalls = 0;
   modelDefaults = { account: null, agents: {}, projects: {} };
   projectRow.metadata = {};
   secretValues.clear();
@@ -139,7 +142,9 @@ mock.module('../projects/git', () => ({
   getCommit: async () => null,
   getCommitDiff: async () => null,
   getFileHistory: async () => ({ entries: [], nextCursor: null }),
-  invalidateProjectMirror: () => {},
+  invalidateProjectMirror: () => {
+    mirrorInvalidationCalls += 1;
+  },
   resolveCommitSha: async () => 'a'.repeat(40),
   resolveBranchTip: async () => 'a'.repeat(40),
   getBranchDiff: async () => ({ files: [], diff: '' }),
@@ -537,6 +542,7 @@ const {
   projectWebhooksApp,
   runProjectTriggerSweep,
 } = await import('../projects/index');
+const { resetRateLimiters } = await import('../shared/rate-limit');
 
 function createApp() {
   const app = new Hono();
@@ -1088,7 +1094,20 @@ describe('git-backed triggers — runtime fire paths', () => {
       body: rawBody,
     });
     expect(wrong.status).toBe(401);
+    expect(mirrorInvalidationCalls).toBe(1);
     expect(manifestReadCalls).toBe(1);
+
+    const repeated = await app.request(`/v1/webhooks/projects/${PROJECT_ID}/hook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Kortix-Signature': sign(rawBody, 'another-wrong-secret'),
+      },
+      body: rawBody,
+    });
+    expect(repeated.status).toBe(401);
+    expect(mirrorInvalidationCalls).toBe(1);
+    expect(manifestReadCalls).toBe(2);
   });
 
   test('webhook fires with a valid HMAC spawn a session', async () => {

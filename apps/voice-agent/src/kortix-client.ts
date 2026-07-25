@@ -35,8 +35,10 @@ async function postJson(
   timeoutMs: number,
 ): Promise<PostResult> {
   let res: Response;
+  const url = endpoint(ctx, path);
+  console.log('[voice-agent] postJson fetch ->', url, { body });
   try {
-    res = await fetch(endpoint(ctx, path), {
+    res = await fetch(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -45,6 +47,7 @@ async function postJson(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
+    console.log('[voice-agent] postJson fetch <-', url, res.status);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, error: `kortix api /voice/${path} unreachable: ${message}` };

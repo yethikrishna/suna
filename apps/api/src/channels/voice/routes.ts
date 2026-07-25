@@ -21,6 +21,7 @@ import type { Context } from 'hono';
 import { dbExecutorRouterDeps } from '../../executor/db-deps';
 import { handleCall } from '../../executor/gateway';
 import { VOICE_CHANNEL_CONNECTOR_SLUG } from '../../executor/channels';
+import { supabaseAuth } from '../../middleware/auth';
 import { errors, json, makeOpenApiApp } from '../../openapi';
 import { resolveProjectBotName } from '../voice-identity';
 import { handleVoiceMcp, type VoiceMcpContext } from './mcp';
@@ -29,6 +30,19 @@ import { runCommandInSandbox } from './run-command';
 import { verifyCallApiToken } from './worker-token';
 
 export const voiceMcpRoutes = makeOpenApiApp();
+
+// `voiceMcpRoutes` is mounted standalone BEFORE `projectsApp` (see the file
+// header + index.ts's comment) specifically so the three worker-callback
+// routes below skip projectsApp's `supabaseAuth` and use their own HMAC
+// check instead. That means `/mcp/voice` — the ONE route on this app that
+// actually needs standard session/PAT auth, the same as every other
+// projectsApp route — never runs `supabaseAuth` either, since it lives on a
+// completely separate Hono instance that never reaches projectsApp's `.use('/*',
+// supabaseAuth)`. Without this, `resolveProjectPrincipal` always sees an
+// empty `c.get('userId')` and every call — regardless of token validity —
+// 401s. Scoped to exactly this one path so the worker callback routes below
+// are untouched.
+voiceMcpRoutes.use('/:projectId/mcp/voice', supabaseAuth);
 
 async function buildContext(c: Context, projectId: string): Promise<VoiceMcpContext | null> {
   const principal = await dbExecutorRouterDeps.resolveProjectPrincipal(c, projectId);

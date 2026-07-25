@@ -21,15 +21,29 @@ const runCommandParams = z.object({
     .string()
     .min(1)
     .describe('The shell command to run, e.g. "cat package.json" or "ls -la".'),
+  // `.nullable()` in addition to `.optional()`: OpenAI-family tool calling
+  // routinely fills every declared property and represents "no value" for an
+  // optional argument as an explicit JSON `null` rather than omitting the
+  // key (this happens even with strictToolSchema off — it's a model habit,
+  // not just a strict-schema requirement). A plain `.optional()` schema
+  // accepts a missing key but REJECTS `cwd: null` with a zod validation
+  // error — and that validation runs inside the framework's tool-call-stream
+  // consumer, before `execute()` below is ever invoked. That is exactly how
+  // this tool went silent: the model calls it, the framework logs the
+  // attempt, argument parsing throws, a ToolError goes back to the model,
+  // and `execute()` — and therefore the fetch in kortix-client.ts — never
+  // runs. See generation.js's `performToolExecutions` in the installed
+  // @livekit/agents package for the parse-then-execute ordering.
   cwd: z
     .string()
+    .nullable()
     .optional()
     .describe('Working directory, relative to the project root. Defaults to the project root.'),
 });
 
 export interface VoiceTools {
   send_prompt: FunctionTool<{ request: string }, CallContext, string>;
-  run_command: FunctionTool<{ command: string; cwd?: string }, CallContext, string>;
+  run_command: FunctionTool<{ command: string; cwd?: string | null }, CallContext, string>;
 }
 
 export function buildTools(): VoiceTools {
@@ -69,8 +83,13 @@ export function buildTools(): VoiceTools {
       'that changes real state or needs judgement — use send_prompt for that instead.',
     parameters: runCommandParams,
     execute: async ({ command, cwd }, { ctx }) => {
+      console.log('[voice-agent] run_command execute() called', { command, cwd });
       const call = ctx.userData;
-      const result = await runCommandInSandbox(call, command, cwd);
+      // Normalize the schema's `null` (see the param doc above) to
+      // `undefined` for kortix-client.ts / apps/api, which only know `cwd`
+      // as "present" or "absent", never `null`.
+      const result = await runCommandInSandbox(call, command, cwd ?? undefined);
+      console.log('[voice-agent] run_command execute() got result', result);
 
       if (!result.ok) {
         return `The command could not be run (${result.error}). Say briefly that the quick check failed and offer to hand it to send_prompt instead.`;

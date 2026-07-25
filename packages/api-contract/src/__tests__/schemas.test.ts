@@ -47,7 +47,7 @@ function projectFixture(overrides: Record<string, unknown> = {}) {
       marketplace: false,
       connectors_api_discover: false,
       agentmail_email: false,
-      meet: false,
+      voice: false,
       llm_gateway: true,
       acp_runtime: false,
       review_center: false,

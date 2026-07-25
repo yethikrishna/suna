@@ -375,9 +375,54 @@ second warm-image-invalidating migration), and a narrow TOCTOU can bake
 self-healing on the next bake, never touching the agent/CLI/opencode runtime.
 
 **This is the only shipped change that removes the clone**, and it only helps
-Platinum. Expect Platinum's first-ever warm bakes as a consequence — new build
-load on a provider that has never done them; the existing per-provider bake
-cooldown applies.
+Platinum.
+
+### Platinum capacity — investigated against the live platform, not assumed
+
+> **Correction.** An earlier revision said "expect Platinum's first-ever warm
+> bakes — new build load on a provider that has never done them". That was wrong.
+> Platinum has been baking warm images all along; what it has never done is *serve*
+> one.
+
+Measured against Platinum's own API and its source (`kortix/platinum`, read-only —
+no changes made):
+
+| Fact | Value | Source |
+|---|---|---|
+| Kortix's Platinum role | **`role: "org"`, `orgRole: "owner"` — NOT admin** | `GET /v1/auth/me` |
+| Template quota | **used 96 / cap 500** (enterprise tier) | `GET /v1/auth/orgs/quota` |
+| Inflight cap | **used 0 / cap 50** | same |
+| Sandboxes | 81 / uncapped | same |
+| Projects running Platinum sessions (14d) | **2** (277 sessions) | Kortix DB |
+| Projects running Daytona sessions (14d) | **537** | Kortix DB |
+| ppwarm templates already on Platinum | **63 ready, across 58 distinct projects** | `GET /v1/templates` |
+| Platinum ppwarm bake attempts (14d) | **373** (238 ok, 135 failed) | `project_snapshot_builds` |
+
+The quota **does** apply — Kortix is not an admin org, so `pickBuildHost`'s
+`org_template_quota_exceeded` (HTTP 429) gate is live
+(`platinum/apps/api/src/api/templates.ts`), reached from `/from-build`, which is the
+route Kortix's adapter uses. `/derive` would have been quota-exempt — Platinum's own
+comment anticipates "a project with many warm seeds would otherwise block real image
+builds" — but Kortix does not use it.
+
+At 96/500 there are **404 slots of headroom**, and only **2** projects actually boot
+on Platinum, so this change adds roughly 2 templates. Bake concurrency is bounded by
+the per-(project, provider) cooldown against an inflight cap of 50.
+**Verdict: not a capacity risk.**
+
+Two pre-existing problems this investigation surfaced, neither caused by this change
+and both worth their own attention:
+
+1. **Platinum's warm bakes fail 36.2% of the time** (135/373) versus Daytona's 9.4%
+   (92/976). 129 of those are an opaque `Platinum template … build failed` with no
+   detail surfaced; 6 are `503 no healthy host available for build`, i.e. Platinum
+   build capacity genuinely does run out sometimes.
+2. **63 ppwarm templates exist on Platinum across 58 projects and, until this
+   change, not one was ever read** (0 warm hits in 277 sessions). They come from the
+   push-triggered `prebakeForProvider`, which bakes the default template for a
+   provider regardless of whether the project ever boots on it. That is ~27 bake
+   attempts/day of pure waste plus ~63 consumed template slots. Gating prebake on
+   "has this project actually used this provider" would reclaim both.
 
 ### The rename burst is now designed away, not merely watched
 

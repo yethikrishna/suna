@@ -71,8 +71,9 @@ flow(
       r.status([200, 401]);
       // A follow/tail/stream tool would wedge the single-threaded agent loop.
       // This is the assertion that catches one being added later.
-      if (r.raw?.status === 200) {
-        const names: string[] = (r.raw.body?.result?.tools ?? []).map((t: { name: string }) => t.name);
+      if (r.statusCode === 200) {
+        const body = r.json<{ result?: { tools?: Array<{ name: string }> } }>();
+        const names = (body?.result?.tools ?? []).map((tool) => tool.name);
         if (names.length > 0 && names.some((n) => /follow|tail|stream|wait/.test(n))) {
           throw new Error(`voice MCP exposes a blocking tool: ${names.join(", ")}`);
         }

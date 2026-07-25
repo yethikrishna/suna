@@ -1100,17 +1100,48 @@ async function relayBootstrapPinToApi(opencodeSessionId: string): Promise<void> 
   }
 }
 
-async function waitForInitialSessionCreate(baseUrl: string, workspace: string): Promise<Response> {
+/**
+ * Create the session's root opencode conversation, retrying while opencode is
+ * still coming up.
+ *
+ * The per-attempt budget is deliberately MUCH larger than the call's normal cost.
+ * Measured 2026-07-25 against the real binary, `POST /session` is ~370ms once
+ * opencode is warm — but Platinum guests run ~3x slower than Daytona on
+ * CPU-bound work (`static-web` 5→19ms, `git-identity` 13→44ms at an identical
+ * 2-vCPU spec), which puts a genuine Platinum session-create right at ~1.1s: over
+ * the 1s budget this used to impose. Aborting there was actively harmful in two
+ * ways:
+ *
+ *  1. It threw away a call that was about to succeed and paid the whole cost
+ *     again (~1.05s per wasted round), on the critical path that
+ *     `opencode-session-created` measures.
+ *  2. A client-side abort does NOT cancel opencode's server-side work. The
+ *     resend could therefore run session-create CONCURRENTLY with the one still
+ *     in flight, and only whichever returned first got pinned — leaving an
+ *     orphaned duplicate root nobody cleans up, in a codebase that goes to
+ *     lengths elsewhere (resolveExistingRoot, the seed-root rotation) precisely
+ *     to guarantee one root per session.
+ *
+ * So: give each attempt room to actually finish, and only retry when the request
+ * failed at the connection level (opencode not listening yet) rather than on our
+ * own impatience. The 20s outer deadline is unchanged and still bounds the whole
+ * loop.
+ */
+const SESSION_CREATE_ATTEMPT_TIMEOUT_MS = 10_000
+
+export async function waitForInitialSessionCreate(baseUrl: string, workspace: string): Promise<Response> {
   const url = `${baseUrl}/session?directory=${encodeURIComponent(workspace)}`
   const deadline = Date.now() + 20_000
   let lastError = 'opencode session create timed out'
   while (Date.now() < deadline) {
+    // Never let one attempt outlive the outer deadline.
+    const attemptMs = Math.max(500, Math.min(SESSION_CREATE_ATTEMPT_TIMEOUT_MS, deadline - Date.now()))
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
-        signal: AbortSignal.timeout(1_000),
+        signal: AbortSignal.timeout(attemptMs),
       })
       if (res.ok) return res
       const body = await res.text().catch(() => '')
@@ -1118,6 +1149,11 @@ async function waitForInitialSessionCreate(baseUrl: string, workspace: string): 
       if (res.status >= 400 && res.status < 500 && res.status !== 404) break
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err)
+      // A timeout means opencode ACCEPTED the request and is still working on it.
+      // Resending would duplicate the root (see the doc comment), so stop and let
+      // the caller surface it rather than racing ourselves.
+      const timedOut = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')
+      if (timedOut) break
     }
     await new Promise((r) => setTimeout(r, 50))
   }

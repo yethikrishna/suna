@@ -3781,9 +3781,7 @@ export const executorOAuthSessions = kortixSchema.table(
   'executor_oauth_sessions',
   {
     sessionId: uuid('session_id').defaultRandom().primaryKey(),
-    applicationId: uuid('application_id')
-      .notNull()
-      .references(() => executorOAuthApplications.applicationId, { onDelete: 'cascade' }),
+    applicationId: uuid('application_id').notNull(),
     accountId: uuid('account_id').notNull(),
     projectId: uuid('project_id').notNull(),
     profileId: uuid('profile_id').notNull(),
@@ -3805,6 +3803,11 @@ export const executorOAuthSessions = kortixSchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    foreignKey({
+      columns: [table.applicationId],
+      foreignColumns: [executorOAuthApplications.applicationId],
+      name: 'executor_oauth_sessions_application_fk',
+    }).onDelete('cascade'),
     uniqueIndex('idx_executor_oauth_sessions_state_hash')
       .on(table.stateHash)
       .where(sql`${table.stateHash} is not null`),

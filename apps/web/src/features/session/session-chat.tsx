@@ -2109,14 +2109,25 @@ function TurnWorkLine({
   sessionId,
   disableNavigation,
   working,
+  statusText,
 }: {
   entries: ActivityEntry[];
   reasoningParts: ReasoningPart[];
   sessionId: string;
   disableNavigation?: boolean;
   working: boolean;
+  /** The turn's live activity ("Running commands…", "Planning…"). While a run
+   *  is live this line IS the turn's status indicator, so it shows this instead
+   *  of a bare step count — there is no second indicator underneath. */
+  statusText?: string;
 }) {
+  // Collapsed-while-working read as "nothing is happening": a static count with
+  // no motion and nothing to look at. So a live run opens itself and shows the
+  // steps landing, then settles shut once the run finishes. A reader who
+  // touches it takes over — `pinned` means we never fight them afterwards.
   const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const wasRunning = useRef(false);
 
   const reasoningText = useMemo(
     () =>
@@ -2131,12 +2142,36 @@ function TurnWorkLine({
   const duration = formatActivityDuration(summary.durationMs);
   const running = working || summary.running;
 
-  if (entries.length === 0 && !reasoningText) return null;
-
   const stepWord = summary.totalSteps === 1 ? 'step' : 'steps';
 
+  // Open on the way into a live run; settle shut on the way out. Guarded on the
+  // running EDGE, not on `running` itself, so a reader's manual toggle mid-run
+  // isn't stomped by the next re-render.
+  useEffect(() => {
+    if (running && !wasRunning.current) {
+      wasRunning.current = true;
+      if (!pinned) setOpen(true);
+      return;
+    }
+    if (!running && wasRunning.current) {
+      wasRunning.current = false;
+      if (!pinned) {
+        const t = setTimeout(() => setOpen(false), 600);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [running, pinned]);
+
+  if (entries.length === 0 && !reasoningText) return null;
+
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
+    <Collapsible
+      open={open}
+      onOpenChange={(next) => {
+        setPinned(true);
+        setOpen(next);
+      }}
+    >
       <CollapsibleTrigger asChild>
         <div
           className={cn(
@@ -2148,7 +2183,7 @@ function TurnWorkLine({
           {running && <Loading variant="spokes" className="size-3 shrink-0" />}
           <span className="tabular-nums">
             {running
-              ? `Working… · ${summary.totalSteps} ${stepWord}`
+              ? `${statusText || 'Working…'} · ${summary.totalSteps} ${stepWord}`
               : `${summary.totalSteps} ${stepWord}${duration ? ` · ${duration}` : ''}`}
           </span>
           <ChevronRight
@@ -2288,6 +2323,8 @@ function SameToolGroup({
 /** Shared empty set for the full-history branch — allocating a new one per
  *  render would defeat the memo on every child that reads it. */
 const EMPTY_FOLD_KEYS: ReadonlySet<string> = new Set<string>();
+const EMPTY_RUNS: ReadonlyMap<string, import('@/features/session/activity/activity-model').NarrativeRun> =
+  new Map();
 
 // ============================================================================
 // Session Turn — core turn component
@@ -2758,6 +2795,16 @@ function SessionTurn({
     [allParts, lockedCallIds, hidden, detail],
   );
 
+  // True when Narrative mode will paint at least one work line for this turn —
+  // i.e. the turn's status already has a home and the trailing indicator would
+  // be a second, competing one.
+  const narrativeStatusOwned = useMemo(
+    () =>
+      detail === 'narrative' &&
+      partitionForNarrative(activityItems, lockedCallIds).runs.length > 0,
+    [detail, activityItems, lockedCallIds],
+  );
+
   // Whether the user message has any visible content (non-synthetic, non-ignored
   // text, or attachments). Background task notifications inject synthetic-only
   // user messages that should not render a user bubble.
@@ -3064,24 +3111,27 @@ function SessionTurn({
             // The fold decision is pure and lives in the model, where it is
             // tested — see `partitionForNarrative`. Duplicating it here is how
             // the two readings would drift apart.
-            const { foldedKeys, workLineKey, entries: foldedEntries, reasoningParts: foldedReasoning } =
-              narrative
-                ? partitionForNarrative(activityItems, lockedCallIds)
-                : { foldedKeys: EMPTY_FOLD_KEYS, workLineKey: null, entries: [], reasoningParts: [] };
+            const { foldedKeys, runByKey } = narrative
+              ? partitionForNarrative(activityItems, lockedCallIds)
+              : { foldedKeys: EMPTY_FOLD_KEYS, runByKey: EMPTY_RUNS };
 
             return activityItems.map((item) => {
               if (narrative && foldedKeys.has(item.key)) {
-                // Only the first folded item's slot paints the line; the rest
-                // are absorbed into it.
-                if (item.key !== workLineKey) return null;
+                // One line per contiguous RUN of machinery, painted at the
+                // run's first slot — so work and prose stay interleaved and the
+                // back-and-forth survives. A key that isn't a run start was
+                // absorbed by the line above it.
+                const run = runByKey.get(item.key);
+                if (!run) return null;
                 return (
                   <TurnWorkLine
                     key={item.key}
-                    entries={foldedEntries}
-                    reasoningParts={foldedReasoning}
+                    entries={run.entries}
+                    reasoningParts={run.reasoningParts}
                     sessionId={sessionId}
                     disableNavigation={disableToolNavigation}
                     working={reasoningActive}
+                    statusText={throttledStatus || undefined}
                   />
                 );
               }
@@ -3347,8 +3397,13 @@ function SessionTurn({
         </>
       )}
 
-      {/* ── Working status indicator (always at the end while working) ── */}
-      {working && (
+      {/* ── Working status indicator ──
+          Suppressed in Narrative mode once a live work line is on screen: that
+          line already carries the same status text, the step count and the
+          elapsed time. Two pulsing indicators stacked, each naming a different
+          thing, read as a bug rather than as progress. The retry notice is the
+          exception — it is not a duplicate of anything and must always show. */}
+      {working && (!narrativeStatusOwned || !!retryInfo) && (
         <div className="space-y-2">
           {retryInfo && retryMessage && (
             <SessionRetryDisplay

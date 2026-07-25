@@ -203,84 +203,101 @@ describe('formatActivityDuration', () => {
   });
 });
 
-describe('partitionForNarrative — what the shipping default hides', () => {
-  const reasoning = (text: string): Part =>
-    ({ id: `r-${(seq += 1)}`, type: 'reasoning', text }) as unknown as Part;
+describe('partitionForNarrative — what the shipping default hides, and where', () => {
+  const reasoning = (value: string): Part =>
+    ({ id: `r-${(seq += 1)}`, type: 'reasoning', text: value }) as unknown as Part;
 
-  test('a plain run of work folds entirely into one work line', () => {
+  test('a plain run of work folds into one line at its first slot', () => {
     const items = buildActivityItems(wrap([tool('bash'), tool('bash'), tool('bash')]), {
       density: 'simple',
     });
     const fold = partitionForNarrative(items);
-    expect(fold.entries).toHaveLength(3);
-    expect(fold.workLineKey).toBe(items[0].key);
-    expect(fold.foldedKeys.has(items[0].key)).toBe(true);
+    expect(fold.runs).toHaveLength(1);
+    expect(fold.runs[0].entries).toHaveLength(3);
+    expect(fold.runs[0].key).toBe(items[0].key);
   });
 
-  test('the work line takes the FIRST folded slot, so it keeps its place in the prose', () => {
-    // text, then work — the line must land after the paragraph, not above it.
-    const items = buildActivityItems(wrap([text('Planning the deck.'), tool('bash'), tool('bash')]), {
+  test('PROSE SPLITS THE FOLD — work/text/work stays interleaved', () => {
+    // The bug: folding per-TURN collapsed every run into one line at the top and
+    // left all the prose bunched underneath, so the back-and-forth vanished.
+    const items = buildActivityItems(
+      wrap([
+        tool('bash'),
+        tool('bash'),
+        text('Here is what I found.'),
+        tool('bash'),
+        tool('bash'),
+        text('Now the plan.'),
+        tool('bash'),
+      ]),
+      { density: 'simple' },
+    );
+    const fold = partitionForNarrative(items);
+
+    expect(fold.runs).toHaveLength(3);
+    expect(fold.runs.map((r) => r.entries.length)).toEqual([2, 2, 1]);
+
+    // Each run paints at its own slot, and the text slots stay unfolded so they
+    // render exactly where they happened.
+    const rendered = items.map((i) =>
+      fold.runByKey.has(i.key) ? 'work' : fold.foldedKeys.has(i.key) ? null : i.type,
+    );
+    expect(rendered.filter(Boolean)).toEqual(['work', 'text', 'work', 'text', 'work']);
+  });
+
+  test('a deliverable breaks the run, so the line above summarises only prior work', () => {
+    const items = buildActivityItems(
+      wrap([tool('bash'), tool('bash'), tool('show'), tool('bash')]),
+      { density: 'simple' },
+    );
+    const fold = partitionForNarrative(items);
+    expect(fold.runs).toHaveLength(2);
+    expect(fold.runs[0].entries).toHaveLength(2);
+    expect(fold.runs[1].entries).toHaveLength(1);
+  });
+
+  test('a FAILED step is never folded, and ends the run it interrupted', () => {
+    const boom = tool('bash', { state: { status: 'error', error: 'boom' } } as Partial<ToolPart>);
+    const items = buildActivityItems(wrap([tool('bash'), text('x'), boom, text('y'), tool('bash')]), {
       density: 'simple',
     });
     const fold = partitionForNarrative(items);
-    expect(items[0].type).toBe('text');
-    expect(fold.foldedKeys.has(items[0].key)).toBe(false);
-    expect(fold.workLineKey).toBe(items[1].key);
-  });
-
-  test('a FAILED step is never folded — a reader must see it without expanding', () => {
-    const boom = tool('bash', { state: { status: 'error', error: 'boom' } } as Partial<ToolPart>);
-    const items = buildActivityItems(wrap([tool('bash'), boom, tool('bash')]), { density: 'simple' });
-    const fold = partitionForNarrative(items);
-    const foldedIds = fold.entries.map((e) => e.part.id);
+    const foldedIds = fold.runs.flatMap((r) => r.entries.map((e) => e.part.id));
     expect(foldedIds).not.toContain((boom as unknown as ToolPart).id);
   });
 
-  test('a permission-locked step is never folded — approval needs to be legible', () => {
+  test('a permission-locked step is never folded — approval must be legible', () => {
     const locked = tool('bash') as unknown as ToolPart;
     const items = buildActivityItems(wrap([tool('bash'), locked as unknown as Part, tool('bash')]), {
       density: 'simple',
       lockedCallIds: new Set([locked.callID]),
     });
     const fold = partitionForNarrative(items, new Set([locked.callID]));
-    expect(fold.entries.map((e) => e.part.id)).not.toContain(locked.id);
+    const foldedIds = fold.runs.flatMap((r) => r.entries.map((e) => e.part.id));
+    expect(foldedIds).not.toContain(locked.id);
   });
 
-  test('a group containing an un-foldable member is not folded AT ALL — no double render', () => {
-    // The bug this guards: collecting eagerly then bailing left the same call
-    // inside the work line AND inside the group that still had to render.
+  test('a group with an un-foldable member is not folded AT ALL — no double render', () => {
     const boom = tool('bash', { state: { status: 'error', error: 'boom' } } as Partial<ToolPart>);
     const items = buildActivityItems(wrap([tool('bash'), boom]), { density: 'simple' });
-    expect(items[0].type).toBe('group'); // the two are adjacent, so they grouped
+    expect(items[0].type).toBe('group');
     const fold = partitionForNarrative(items);
     expect(fold.foldedKeys.size).toBe(0);
-    expect(fold.entries).toHaveLength(0);
+    expect(fold.runs).toHaveLength(0);
   });
 
-  test('reasoning folds in rather than vanishing', () => {
+  test('reasoning folds into its run rather than vanishing', () => {
     const items = buildActivityItems(wrap([reasoning('Let me plan this out.'), tool('bash')]), {
       density: 'simple',
     });
     const fold = partitionForNarrative(items);
-    expect(fold.reasoningParts.map((p) => p.text)).toEqual(['Let me plan this out.']);
-  });
-
-  test('deliverables and passthrough are never folded', () => {
-    const items = buildActivityItems(wrap([tool('show'), tool('todowrite'), tool('bash')]), {
-      density: 'simple',
-    });
-    const fold = partitionForNarrative(items);
-    for (const item of items) {
-      if (item.type === 'deliverable' || item.type === 'passthrough') {
-        expect(fold.foldedKeys.has(item.key)).toBe(false);
-      }
-    }
+    expect(fold.runs[0].reasoningParts.map((p) => p.text)).toEqual(['Let me plan this out.']);
   });
 
   test('a turn with nothing foldable yields no work line at all', () => {
     const items = buildActivityItems(wrap([text('Just an answer.')]), { density: 'simple' });
     const fold = partitionForNarrative(items);
-    expect(fold.workLineKey).toBeNull();
-    expect(fold.entries).toHaveLength(0);
+    expect(fold.runs).toHaveLength(0);
+    expect(fold.foldedKeys.size).toBe(0);
   });
 });

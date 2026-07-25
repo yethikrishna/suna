@@ -352,40 +352,55 @@ export function formatActivityDuration(ms: number): string {
 // Narrative fold
 // ============================================================================
 
-export interface NarrativeFold {
-  /** Item keys absorbed into the single work line. */
-  foldedKeys: Set<string>;
-  /** The key whose slot paints the work line — the FIRST folded item, so the
-   *  line keeps its place in the narrative order rather than jumping to the
-   *  top of the turn. `null` when nothing folded. */
-  workLineKey: string | null;
-  /** Every tool call inside the work line, in order. */
+export interface NarrativeRun {
+  /** Key of the run's FIRST item — the slot that paints the work line, so the
+   *  line keeps its place in the narrative. */
+  key: string;
   entries: ActivityEntry[];
-  /** The turn's thinking, folded in rather than dropped. */
   reasoningParts: ReasoningPart[];
 }
 
+export interface NarrativeFold {
+  /** Every item key absorbed into some run. */
+  foldedKeys: Set<string>;
+  /** Contiguous runs of machinery, in order. */
+  runs: NarrativeRun[];
+  /** Run keyed by the slot that should paint it. */
+  runByKey: Map<string, NarrativeRun>;
+}
+
 /**
- * Decide what Narrative mode hides behind its one work line.
+ * Decide what Narrative mode hides, and WHERE.
  *
- * Two things must stay OUT of the fold, and both are correctness rather than
- * taste: a FAILED step (a reader must see something went wrong without
- * expanding anything) and a step waiting on a PERMISSION prompt (a reader must
- * see what they are approving).
+ * Folds each CONTIGUOUS run of machinery separately rather than collapsing a
+ * whole turn into one line. That distinction is the difference between reading
+ * a conversation and reading a report: an agent that works, explains, works
+ * again and explains again must render as
  *
- * A group is decided as a whole before any of it is collected. Collecting
- * eagerly and bailing out later would leave the same call rendered twice —
- * once inside the work line and once inside the group that still had to
- * render for its un-foldable member.
+ *     [work] "here's what I found" [work] "here's the plan" [work]
+ *
+ * Collapsing per-turn instead produced [work] followed by every paragraph in a
+ * row, which destroyed the back-and-forth — prose all bunched at the bottom,
+ * disconnected from the work that produced it.
+ *
+ * Two things stay OUT of a run, and both are correctness rather than taste: a
+ * FAILED step (a reader must see it without expanding) and a step waiting on a
+ * PERMISSION prompt (a reader must see what they are approving). Either one
+ * also ENDS the current run, so the line above it summarises only the work that
+ * actually preceded it.
+ *
+ * A group is decided as a whole before any of it is collected — collecting
+ * eagerly and bailing later would leave the same call rendered twice, once
+ * inside the work line and once inside the group that still had to render.
  */
 export function partitionForNarrative(
   items: ReadonlyArray<ActivityItem>,
   lockedCallIds?: ReadonlySet<string>,
 ): NarrativeFold {
   const foldedKeys = new Set<string>();
-  const entries: ActivityEntry[] = [];
-  const reasoningParts: ReasoningPart[] = [];
-  let workLineKey: string | null = null;
+  const runs: NarrativeRun[] = [];
+  const runByKey = new Map<string, NarrativeRun>();
+  let current: NarrativeRun | null = null;
 
   const canFold = (entry: ActivityEntry) => {
     const status = (entry.part.state as { status?: string } | undefined)?.status;
@@ -393,24 +408,40 @@ export function partitionForNarrative(
     return !lockedCallIds?.has(entry.part.callID);
   };
 
+  const open = (key: string) => {
+    if (current) return current;
+    current = { key, entries: [], reasoningParts: [] };
+    runs.push(current);
+    runByKey.set(key, current);
+    return current;
+  };
+  /** Anything that is not foldable machinery breaks the run — prose, a
+   *  deliverable, a failure, an approval. The next machinery starts a new one. */
+  const close = () => {
+    current = null;
+  };
+
   for (const item of items) {
+    let folded = false;
+
     if (item.type === 'group') {
       if (item.entries.every(canFold)) {
-        entries.push(...item.entries);
-        foldedKeys.add(item.key);
+        open(item.key).entries.push(...item.entries);
+        folded = true;
       }
     } else if (item.type === 'tool') {
       if (canFold(item.entry)) {
-        entries.push(item.entry);
-        foldedKeys.add(item.key);
+        open(item.key).entries.push(item.entry);
+        folded = true;
       }
     } else if (item.type === 'reasoning') {
-      reasoningParts.push(...item.parts);
-      foldedKeys.add(item.key);
+      open(item.key).reasoningParts.push(...item.parts);
+      folded = true;
     }
 
-    if (workLineKey === null && foldedKeys.has(item.key)) workLineKey = item.key;
+    if (folded) foldedKeys.add(item.key);
+    else close();
   }
 
-  return { foldedKeys, workLineKey, entries, reasoningParts };
+  return { foldedKeys, runs, runByKey };
 }

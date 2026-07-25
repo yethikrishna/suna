@@ -31,7 +31,7 @@ Do not print or copy secret values into this document, shell output, or Git.
 | Storage data | approximately 138 GB |
 | Auth users | 405,859 |
 | MFA factors | 8,606 |
-| `public` schema | 209 GB |
+| `public` schema | 250 GB |
 | `kortix` schema | 29 GB |
 | `auth` schema | 11 GB |
 | `cron` schema | 33 GB |
@@ -45,6 +45,44 @@ Increase and monitor WAL retention before creating a long-lived replication
 slot.
 
 ## Migration scope
+
+### Verified live `public` dependencies
+
+The source `pg_stat_statements` counters were reset on 2026-06-24.
+The counters prove that the application still reads these legacy Suna tables:
+
+| Relation | Calls since reset |
+|---|---:|
+| `public.projects` | 6,206 |
+| `public.resources` | 149 |
+| `public.threads` | 1,086 |
+| `public.messages` | 1,076 |
+
+The same counters distinguish the retired and current credit tables:
+
+| Relation | Calls since reset |
+|---|---:|
+| `public.credit_accounts` | 0 |
+| `public.credit_ledger` | 1 |
+| `kortix.credit_accounts` | 4,475,763 |
+| `kortix.credit_ledger` | 311,776 |
+
+The application also called the public credit RPC functions at least 295,678
+times since the reset. These functions operate on `kortix.credit_accounts` and
+`kortix.credit_ledger`.
+
+The current control-table row counts are:
+
+| Relation | Rows |
+|---|---:|
+| `public.daily_refresh_tracking` | 389,009 |
+| `public.renewal_processing` | 3,450 |
+| `public.contact_forms` | 101 |
+| `public.webhook_config` | 1 |
+
+Do not treat the complete `public` schema as one migration unit. Select live
+relations by verified repository dependency, production query activity, and
+the approved retention policy.
 
 ### Always migrate
 

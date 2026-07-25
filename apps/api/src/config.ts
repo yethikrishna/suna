@@ -433,6 +433,16 @@ const envSchema = z.object({
   // bakes. Provider transitions still prepare their target image explicitly.
   // Default OFF keeps the session path on one shared image per provider.
   KORTIX_WARM_SNAPSHOT_ENABLED: optBoolFalse,
+  // Per-provider allowlist for per-project warm images of CUSTOM (non-default-
+  // slug) templates — see `perProjectWarmEligible` in builder.ts. Defaults to
+  // 'platinum' only: Platinum's per-project templates warm-miss 100% of the
+  // time today (`template.isShared` used to gate this off entirely), while
+  // Daytona's shared-default warm path already hits 66% and its quota-gc
+  // cache-floor math (quota-gc-select.ts) has not been re-measured for real
+  // Daytona custom-template counts. Comma-separated, same syntax and parser as
+  // ALLOWED_SANDBOX_PROVIDERS; a provider listed here that isn't itself in
+  // ALLOWED_SANDBOX_PROVIDERS is a no-op (intersected below).
+  KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS: optStrDefault('platinum'),
 
   // ── Platinum — Sandbox provisioning (conditional: required if platinum provider enabled) ──
   // Platinum is our own Cloud Hypervisor microVM API. PLATINUM_API_KEY is a
@@ -599,9 +609,19 @@ export const KNOWN_PROVIDERS: readonly SandboxProviderName[] = [
   'local-docker',
 ] as const;
 
-/** Parse comma-separated provider list (e.g. "daytona,platinum"). */
-function parseAllowedProviders(raw: string): SandboxProviderName[] {
-  if (!raw) return ['daytona'];
+/**
+ * Parse comma-separated provider list (e.g. "daytona,platinum"). `fallback` is
+ * returned both when `raw` is empty and when every entry in it is unrecognised
+ * — kept as a parameter (rather than hardcoding `['daytona']`) so callers whose
+ * empty/all-invalid answer should mean "nothing enabled" (e.g.
+ * KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS) don't silently inherit
+ * ALLOWED_SANDBOX_PROVIDERS' "default to daytona" safety belt.
+ */
+export function parseAllowedProviders(
+  raw: string,
+  fallback: SandboxProviderName[] = ['daytona'],
+): SandboxProviderName[] {
+  if (!raw) return fallback;
   const names = raw
     .split(',')
     .map((s) => s.trim().toLowerCase())
@@ -617,7 +637,7 @@ function parseAllowedProviders(raw: string): SandboxProviderName[] {
       );
     }
   }
-  return valid.length > 0 ? valid : ['daytona'];
+  return valid.length > 0 ? valid : fallback;
 }
 
 function validateEnv(): z.infer<typeof envSchema> {
@@ -827,6 +847,12 @@ const env = validateEnv();
 // ─── Parse Providers ────────────────────────────────────────────────────────
 
 const allowedProviders = parseAllowedProviders(env.ALLOWED_SANDBOX_PROVIDERS);
+// Intersected with `allowedProviders`: a provider listed here that isn't itself
+// enabled globally must never become "enabled for custom-template warming only".
+const customTemplateWarmProviders = parseAllowedProviders(
+  env.KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS,
+  ['platinum'],
+).filter((p) => allowedProviders.includes(p));
 
 // ─── Config Object (typed, validated) ───────────────────────────────────────
 
@@ -991,6 +1017,7 @@ export const config = {
   // ─── Sandbox Provisioning (Platform) ──────────────────────────────────────
   KORTIX_URL: env.KORTIX_URL,
   ALLOWED_SANDBOX_PROVIDERS: allowedProviders,
+  KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS: customTemplateWarmProviders,
 
   /**
    * INTERNAL_SERVICE_KEY -- direction: kortix-api -> sandbox.
@@ -1144,6 +1171,16 @@ export const config = {
 
   isE2BEnabled(): boolean {
     return this.ALLOWED_SANDBOX_PROVIDERS.includes('e2b') && !!this.E2B_API_KEY;
+  },
+
+  /**
+   * True iff `provider` is allowlisted to warm-bake per-project images for
+   * CUSTOM (non-default-slug) templates — see `perProjectWarmEligible` in
+   * builder.ts. Already intersected with ALLOWED_SANDBOX_PROVIDERS at parse
+   * time, so this alone is the full gate.
+   */
+  isCustomTemplateWarmEligible(provider: SandboxProviderName): boolean {
+    return this.KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS.includes(provider);
   },
 };
 

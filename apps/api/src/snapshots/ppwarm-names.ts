@@ -96,11 +96,16 @@ const MIRRORED_DEFAULT_TEMPLATE_SLUG = 'default';
  * {@link excludePinnedTargets}, which cross-checks reap targets against live pins
  * by name. There is no equivalent guard for tpl8, so two distinct template slugs
  * in ONE project that collided would silently reintroduce the mutual-deletion
- * hazard this scoping exists to close. Harmless today (only the default template
- * is ever minted — see the isShared note in builder.ts), and vanishingly unlikely
- * at realistic template cardinality. Whoever lifts that gate and starts minting
- * per-template warm images for real should either widen this or extend the pinned
- * -target guard to cover tpl8.
+ * hazard this scoping exists to close.
+ *
+ * This is now a LIVE residual, not a hypothetical: `perProjectWarmEligible`
+ * (builder.ts) mints per-template warm images for real on the providers in
+ * `KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS` (Platinum by default). It is
+ * accepted deliberately — a 32-bit space against a realistic 1-3 templates per
+ * project — and widening it now would force a SECOND warm-image-invalidating
+ * format migration (see the FORMAT MIGRATION note below) for a negligible risk.
+ * The cheaper fix, if this ever needs closing, is to extend the pinned-target
+ * guard to cover tpl8 rather than to widen the key.
  */
 export function tpl8(templateSlug: string): string {
   return createHash('sha256').update(templateSlug).digest('hex').slice(0, 8);

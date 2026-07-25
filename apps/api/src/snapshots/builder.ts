@@ -95,6 +95,47 @@ export interface EnsureSandboxImageResult {
 }
 
 /**
+ * Whether `template` is allowed to get a per-project WARM image on
+ * `buildProvider` (the read-side gate for `ensureSandboxImage`'s warm-HIT
+ * lookup, and by extension the write-side bake it kicks on a miss).
+ *
+ * The shared default is always eligible — it's the pre-existing, already-safe
+ * 66%-hit-rate path. A CUSTOM (non-default-slug) template is eligible only on
+ * a provider allowlisted via `KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS`
+ * (default: platinum only). Platinum's per-project templates warm-MISS 100% of
+ * the time today precisely because this gate used to be `template.isShared`
+ * unconditionally; Daytona's shared-default path is untouched by default and
+ * stays that way until its quota-gc cache-floor math (quota-gc-select.ts) is
+ * re-measured against real Daytona custom-template counts — a separate,
+ * later ops decision, not part of this change.
+ *
+ * TWO RESIDUAL RISKS accepted for custom-template warming (both narrow,
+ * bounded, self-healing — not blockers):
+ *  (a) TOCTOU: `computeTemplateIdentity` → `resolveUserDockerfile` reads the
+ *      Dockerfile at a commit sha it resolves internally (templates.ts), and
+ *      `ensurePerProjectWarmImage` resolves the warmRepo tip via its OWN,
+ *      separate `resolveCommitSha` call. For the shared default this is inert
+ *      (constant Dockerfile, zero git I/O). For a custom template, a push that
+ *      lands in that sub-second window between the two reads can bake
+ *      /workspace at a newer tip than the Dockerfile layer reflects. The next
+ *      push (or rebake) fixes it; it never affects the agent/CLI/opencode
+ *      runtime, only the repo-checkout layer.
+ *  (b) ppwarm-names.ts's `tpl8` (sha256(slug).slice(0,8)) scope key has no
+ *      collision backstop, unlike `proj8` (protected by
+ *      `excludePinnedTargets`) — see ppwarm-names.ts:94-104. Accepted as
+ *      negligible at realistic per-project template cardinality (1-3);
+ *      widening it now would force a second full warm-image-invalidating
+ *      name-format migration for a currently negligible risk.
+ */
+export function perProjectWarmEligible(
+  template: Pick<ResolvedTemplate, 'isShared'>,
+  buildProvider: string,
+): boolean {
+  if (template.isShared) return true;
+  return config.isCustomTemplateWarmEligible(buildProvider as SandboxProviderName);
+}
+
+/**
  * Make sure a provider-side snapshot exists for `(project, slug)` and return
  * its name. Builds inline if the provider doesn't have it yet.
  */
@@ -124,25 +165,16 @@ export async function ensureSandboxImage(
 
   const identity = await computeTemplateIdentity(project, template);
 
-  // Per-project warm preference. On a session boot of the shared default slug, if
-  // a per-project warm image — same runtime identity, current default-branch tip,
-  // repo baked into /workspace — is already active on this provider, boot off it
-  // (no clone at boot). On a MISS, kick a fire-and-forget background bake so the
-  // next session on this commit boots warm; this boot never blocks on the bake and
+  // Per-project warm preference. On a session boot, if a per-project warm image
+  // — same runtime identity, current default-branch tip, repo baked into
+  // /workspace — is already active on this provider, boot off it (no clone at
+  // boot). On a MISS, kick a fire-and-forget background bake so the next
+  // session on this commit boots warm; this boot never blocks on the bake and
   // falls through to the normal cold path when no warm image exists yet.
-  // NOTE (ppwarm template-scoping migration): the ppwarm NAME and its reap paths
-  // (ppwarm-names.ts, quota-gc-select.ts) are now scoped to (project, template),
-  // so a per-project template COULD safely get its own warm image without
-  // endangering the default's. This `template.isShared` gate is left in place
-  // anyway — it is the prerequisite, not the full fix. `ensurePerProjectWarmImage`
-  // below still hardcodes `DEFAULT_SANDBOX_SLUG` regardless of `opts.slug`, so
-  // lifting this read-side gate alone would not unlock anything: the bake path
-  // (and kickProjectWarmPrebake / kickBackgroundWarmBuild's callers) would need
-  // to thread an actual per-template slug through first. Lift both together.
   if (
     config.KORTIX_WARM_SNAPSHOT_ENABLED &&
     (opts.source ?? 'session-start') === 'session-start' &&
-    template.isShared
+    perProjectWarmEligible(template, buildProvider)
   ) {
     try {
       const warmTip = await resolveCommitSha(project, project.defaultBranch);
@@ -168,6 +200,7 @@ export async function ensureSandboxImage(
           accountId: opts.accountId,
           provider: buildProvider,
           snapshotName: warmName,
+          slug: template.slug,
         });
       }
     } catch (err) {
@@ -960,6 +993,7 @@ const inflightWarmBakesByProject = new Set<string>();
 async function warmBakeRecentlyStartedCluster(
   projectId: string,
   provider: string,
+  slug: string,
   withinMs: number,
 ): Promise<boolean> {
   try {
@@ -975,7 +1009,7 @@ async function warmBakeRecentlyStartedCluster(
       )
       .orderBy(desc(projectSnapshotBuilds.startedAt))
       .limit(25);
-    const warmSlug = warmBuildSlug(DEFAULT_SANDBOX_SLUG);
+    const warmSlug = warmBuildSlug(slug);
     return rows.some((row) => {
       const meta = (row.metadata ?? {}) as Record<string, unknown>;
       return meta.slug === warmSlug && meta.provider === provider;
@@ -983,6 +1017,22 @@ async function warmBakeRecentlyStartedCluster(
   } catch {
     return false;
   }
+}
+
+/**
+ * Pure scope key for per-(project, template) warm-bake pacing: the component
+ * `kickBackgroundWarmBuild` feeds as `warmBakeCooldownGate`'s first argument
+ * (opaque to that gate — see its own doc) and folds into
+ * `inflightWarmBakesByProject`'s key. `slug` defaults to `DEFAULT_SANDBOX_SLUG`
+ * so every pre-existing (default-slug) caller computes the EXACT SAME key as
+ * before a custom `slug` was ever threaded through — the cooldown/inflight
+ * pacing for the default template is byte-identical in behavior. A distinct
+ * `slug` gets its own independent budget instead of sharing (and fighting
+ * over) the default template's cooldown slot on the same (project, provider).
+ * Exported for unit coverage; not meant to be called outside this module.
+ */
+export function warmBakeScopeId(projectId: string, slug?: string): string {
+  return `${projectId}:${slug ?? DEFAULT_SANDBOX_SLUG}`;
 }
 
 /**
@@ -995,17 +1045,19 @@ async function warmBakeRecentlyStartedCluster(
  */
 function kickBackgroundWarmBuild(
   project: GitBackedProject,
-  opts: { accountId?: string; provider: string; snapshotName: string },
+  opts: { accountId?: string; provider: string; snapshotName: string; slug?: string },
 ): void {
   const key = backgroundBuildKey(opts.provider, opts.snapshotName);
   if (inflightBackgroundBuilds.has(key)) return;
-  const projectKey = `${project.projectId}:${opts.provider}`;
+  const slug = opts.slug ?? DEFAULT_SANDBOX_SLUG;
+  const scopedProjectId = warmBakeScopeId(project.projectId, slug);
+  const projectKey = `${scopedProjectId}:${opts.provider}`;
   if (inflightWarmBakesByProject.has(projectKey)) return;
-  if (!warmBakeCooldownGate(project.projectId, opts.provider)) return;
+  if (!warmBakeCooldownGate(scopedProjectId, opts.provider)) return;
   inflightBackgroundBuilds.add(key);
   inflightWarmBakesByProject.add(projectKey);
   void (async () => {
-    if (await warmBakeRecentlyStartedCluster(project.projectId, opts.provider, WARM_BAKE_COOLDOWN_MS)) {
+    if (await warmBakeRecentlyStartedCluster(project.projectId, opts.provider, slug, WARM_BAKE_COOLDOWN_MS)) {
       console.log(
         `[snapshots] warm bake for ${project.projectId.slice(0, 8)} (${opts.provider}) skipped: ` +
         `another replica started one inside the cooldown window`,
@@ -1016,6 +1068,7 @@ function kickBackgroundWarmBuild(
       accountId: opts.accountId,
       provider: opts.provider,
       source: 'background',
+      slug: opts.slug,
     });
   })()
     .catch((err) =>
@@ -1280,7 +1333,8 @@ export interface PerProjectWarmResult {
 }
 
 /**
- * Build (or reuse) a project's COLD warm image: the shared default runtime with
+ * Build (or reuse) a project's COLD warm image: the requested template's runtime
+ * (`opts.slug`, defaulting to the shared default) with
  * the project's repo checkout baked into /workspace at the default-branch tip.
  * capture:'none' — NO memory snapshot, NO stateful CH; BOTH Daytona and Platinum
  * boot it cold and the daemon (git.ts) fast-paths the baked `.git` with no clone.
@@ -1297,6 +1351,14 @@ export async function ensurePerProjectWarmImage(
     accountId?: string;
     provider?: string;
     source?: SnapshotBuildSource;
+    /** Template to warm-bake. Omitted/undefined → the shared default
+     *  (DEFAULT_SANDBOX_SLUG), preserving every pre-existing caller's exact
+     *  behavior (provider-transition-service.ts's resolvePrepIdentity/
+     *  ensureWarmImage, the push-triggered default-only prebakeForProvider,
+     *  and every default-slug session-start warm bake). A caller that passes
+     *  a CUSTOM (non-default-slug) template gets that template's OWN runtime
+     *  — see the identity comment below. */
+    slug?: string;
     /** Lease-renewal hook, forwarded into the provider's build-wait poll loop so
      *  a long build never lets the caller's lease TTL lapse. */
     heartbeat?: () => void | Promise<void>;
@@ -1307,10 +1369,19 @@ export async function ensurePerProjectWarmImage(
   const provider = getSandboxProvider(buildProvider);
   if (!provider.isConfigured()) throw new SnapshotBuildError(`Sandbox provider ${buildProvider} is not configured`);
 
-  // Base runtime == the SHARED default (same opencode/agent/CLI a cold session
-  // gets). The repo is layered ON TOP via warmRepo — the userDockerfile is the
-  // platform default's, unchanged, so the runtime is byte-identical to default.
-  const template = await resolveTemplateBySlug(project, DEFAULT_SANDBOX_SLUG);
+  // Base runtime == the REQUESTED template (opts.slug, defaulting to the shared
+  // default — same opencode/agent/CLI a cold session gets). The repo is layered
+  // ON TOP via warmRepo. `computeTemplateIdentity`/`resolveUserDockerfile` are
+  // fully generic over `template`: the shared default returns the constant
+  // PLATFORM_DEFAULT_USER_DOCKERFILE (zero git I/O), a custom template reads its
+  // real `dockerfilePath` at the current tip — exactly what the cold
+  // `ensureSandboxImage` path already does for that same template. So the warm
+  // runtime is byte-identical to what a cold boot of THIS template would
+  // produce, whichever template that is. Naming (`warmBuildSlug`,
+  // `perProjectWarmImageName`) below must stay keyed on `template.slug`, not a
+  // hardcoded default, or Retry-build / Fix-with-agent's build-slug round-trip
+  // breaks for a custom template's warm bake.
+  const template = await resolveTemplateBySlug(project, opts.slug ?? DEFAULT_SANDBOX_SLUG);
   const baseIdentity = await computeTemplateIdentity(project, template);
 
   const tip = await resolveCommitSha(project, project.defaultBranch);
@@ -1361,7 +1432,7 @@ export async function ensurePerProjectWarmImage(
     ? await openBuildLog({
         accountId: opts.accountId,
         projectId: project.projectId,
-        slug: warmBuildSlug(DEFAULT_SANDBOX_SLUG),
+        slug: warmBuildSlug(template.slug),
         snapshotName,
         contentHash: baseIdentity.contentHash,
         commitSha: tip,
@@ -1430,9 +1501,12 @@ export function shouldAttemptWarmFromBase(baseState: ProviderState): boolean {
 }
 
 /**
- * Resolve a registry-addressable ref for the already-built base (shared
- * default) image, for use as `BuildableTemplate.baseImageRef` — the
- * per-project warm fast path. Returns undefined (never throws) whenever the
+ * Resolve a registry-addressable ref for the already-built base image of the
+ * template being warmed, for use as `BuildableTemplate.baseImageRef` — the
+ * per-project warm fast path. Generic over the template: this used to serve only
+ * the shared default, but since `perProjectWarmEligible` allows custom templates
+ * on the providers in KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS, the caller
+ * passes whichever template's base identity it is warming. Returns undefined (never throws) whenever the
  * fast path isn't available: the provider doesn't implement
  * `getSnapshotImageRef`, the base snapshot isn't `active` yet, or the lookup
  * itself fails. Every one of those is a normal, expected condition (a fresh

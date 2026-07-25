@@ -2824,3 +2824,21 @@ Final verification:
 
 **Shippable to production: NOT YET.** The synchronization correction still
 requires PR merge, Deploy Dev, deployed SHA proof, and one post-deploy smoke.
+
+---
+
+### 2026-07-26 — session `agent-sandbox-environments` (claim)
+
+Claimed the user-directed per-agent sandbox environment contract. The additive
+SDK field will expose `agents.<name>.sandbox` from `kortix.yaml`. Session
+creation will resolve an explicit session override first, then the selected
+agent environment, then the project default, then the platform default.
+
+The central session path will apply this contract to manual sessions, triggers,
+schedules, and channels. Replacement runtimes will retain the resolved sandbox
+template. Existing public names and required fields remain unchanged.
+
+Implementation will follow RED -> GREEN -> REFACTOR. Required SDK gates are the
+full typecheck, test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.

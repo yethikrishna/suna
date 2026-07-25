@@ -387,6 +387,150 @@ describe('ACP session controller', () => {
     });
   });
 
+  test('replaces the projection with runtime replay instead of duplicating it', async () => {
+    const h = harness();
+    h.client.loadSession = async (input) => {
+      h.calls.push({ method: 'loadSession', args: [input] });
+      h.emit({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: input.sessionId,
+          update: {
+            sessionUpdate: 'user_message_chunk',
+            content: { type: 'text', text: 'question' },
+          },
+        },
+      });
+      h.emit({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: input.sessionId,
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'answer' },
+          },
+        },
+      });
+      return {};
+    };
+    const controller = createAcpSessionController({
+      sessionId: 'ses_1',
+      client: h.client,
+    });
+    await controller.connect();
+    expect(controller.getSnapshot().projection.messages).toHaveLength(2);
+
+    h.emit({
+      jsonrpc: '2.0',
+      method: 'kortix/runtime_ready',
+      params: { sessionId: 'ses_1' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(controller.getSnapshot().projection.messages).toHaveLength(2);
+    expect(
+      controller.getSnapshot().projection.messages.map((message) => message.info.role),
+    ).toEqual(['user', 'assistant']);
+  });
+
+  test('restarts config preflight after runtime_ready interrupts a send', async () => {
+    const h = harness();
+    let configCallCount = 0;
+    h.client.setSessionConfigOption = async (sessionId, configId, value) => {
+      h.calls.push({
+        method: 'setSessionConfigOption',
+        args: [sessionId, configId, value],
+      });
+      configCallCount += 1;
+      if (configCallCount === 1) {
+        await new Promise<never>(() => {});
+      }
+      return {};
+    };
+    const controller = createAcpSessionController({
+      sessionId: 'ses_1',
+      client: h.client,
+    });
+    await controller.connect();
+
+    const send = controller.send([{ type: 'text', text: 'after restart' }], {
+      model: 'kortix/glm-5.2',
+      agent: 'reviewer',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(h.calls.filter((call) => call.method === 'setSessionConfigOption')).toHaveLength(1);
+
+    h.emit({
+      jsonrpc: '2.0',
+      method: 'kortix/runtime_ready',
+      params: { sessionId: 'ses_1' },
+    });
+
+    const completed = await Promise.race([
+      send.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 50)),
+    ]);
+    expect(completed).toBe(true);
+    expect(h.calls.filter((call) => call.method === 'loadSession')).toHaveLength(2);
+    expect(h.calls.filter((call) => call.method === 'setSessionConfigOption')).toEqual([
+      {
+        method: 'setSessionConfigOption',
+        args: ['ses_1', 'model', 'kortix/glm-5.2'],
+      },
+      {
+        method: 'setSessionConfigOption',
+        args: ['ses_1', 'model', 'kortix/glm-5.2'],
+      },
+      {
+        method: 'setSessionConfigOption',
+        args: ['ses_1', 'mode', 'reviewer'],
+      },
+    ]);
+    expect(h.calls.filter((call) => call.method === 'prompt')).toEqual([
+      {
+        method: 'prompt',
+        args: ['ses_1', [{ type: 'text', text: 'after restart' }]],
+      },
+    ]);
+  });
+
+  test('does not retry a prompt after runtime_ready makes its result ambiguous', async () => {
+    const h = harness();
+    h.client.prompt = async (sessionId, prompt) => {
+      h.calls.push({ method: 'prompt', args: [sessionId, prompt] });
+      return await new Promise<{ stopReason: string }>(() => {});
+    };
+    const controller = createAcpSessionController({
+      sessionId: 'ses_1',
+      client: h.client,
+    });
+    await controller.connect();
+
+    const send = controller.send([{ type: 'text', text: 'one prompt only' }]);
+    const outcome = send.then(
+      () => 'resolved',
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(h.calls.filter((call) => call.method === 'prompt')).toHaveLength(1);
+
+    h.emit({
+      jsonrpc: '2.0',
+      method: 'kortix/runtime_ready',
+      params: { sessionId: 'ses_1' },
+    });
+
+    expect(
+      await Promise.race([
+        outcome,
+        new Promise<'timed out'>((resolve) => setTimeout(() => resolve('timed out'), 50)),
+      ]),
+    ).toBe('ACP runtime restarted after session/prompt dispatch; the prompt result is unknown');
+    expect(h.calls.filter((call) => call.method === 'prompt')).toHaveLength(1);
+  });
+
   test('returns explicit unsupported errors for undo and redo', async () => {
     const h = harness();
     const controller = createAcpSessionController({

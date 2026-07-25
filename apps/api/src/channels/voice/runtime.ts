@@ -1,8 +1,8 @@
 /**
  * The voice runtime — where a live call actually lives.
  *
- * A call is a LiveKit room plus a row in this in-process registry. The room
- * carries the actual audio (browser mic <-> the /voice/[token] page <-> the
+ * A call IS a LiveKit room — there is no call record anywhere. The room carries
+ * the actual audio (browser mic <-> the /voice/[token] page <-> the
  * apps/voice-agent worker doing STT/LLM/TTS); this file never touches audio.
  * What it owns is the two hand-offs either side of that conversation:
  *
@@ -19,17 +19,15 @@
  * version this replaces: `askKortix` (the old `ask_kortix`, now the worker's
  * `send_prompt` tool) answers in milliseconds and NEVER waits for the agent
  * turn. A Kortix turn runs 30s-10min; a conversation that blocks that long is
- * broken. Progress comes back later as unsolicited speech via
- * `promptVoiceAgent`, driven by the turn-relay (turn.ts).
+ * broken. The answer comes back later as unsolicited speech, driven by
+ * answer-watch.ts — see its header for why the API watches for the answer
+ * instead of the sandbox relaying it.
  *
- * State is per-process and deliberately not in Postgres: a call is pinned to
- * whichever API instance handled its `voice_spawn`, and if that instance dies
- * the call is over anyway. Only the transcript is durable. This does mean the
- * worker's `/voice/*` POSTs must land on that same instance — true today for
- * the exact reason it was true of the old WebSocket bridge (a live call is
- * inherently sticky to one process); a shared registry (Redis, a DB lease) is
- * the fix if this ever needs to survive an instance restart, and is out of
- * scope here.
+ * NOTHING here is kept in memory. A call's identity is its session id, its room
+ * name derives from that, its liveness is whatever LiveKit says right now, and
+ * its transcript is in Postgres. That is what makes the worker's `/voice/*`
+ * callbacks work regardless of which API instance they land on — they used to
+ * have to hit the one process that happened to run `voice_spawn`.
  */
 import { and, asc, eq, gt } from 'drizzle-orm';
 import { voiceCallTurns } from '@kortix/db';
@@ -44,6 +42,7 @@ import {
   roomNameForCall,
   sendRoomData,
 } from './livekit';
+import { speakAnswerWhenReady } from './answer-watch';
 import { mintCallApiToken } from './worker-token';
 
 /**
@@ -172,6 +171,12 @@ export function askKortix(call: VoiceCall, request: string): { ok: true } | { ok
   const trimmed = request.trim();
   if (!trimmed) return { ok: false, error: 'empty request' };
 
+  // Start watching BEFORE the prompt is delivered: the watcher's first act is
+  // to record which assistant turn was already the newest, and it must do that
+  // while that is still true, or a fast turn could complete between delivery and
+  // baseline and then look like pre-existing history.
+  speakAnswerWhenReady(call.callId, call.sessionId);
+
   void continueSession({
     source: 'voice',
     sessionId: call.sessionId,
@@ -182,7 +187,7 @@ export function askKortix(call: VoiceCall, request: string): { ok: true } | { ok
       if (outcome !== 'delivered') {
         console.error('[voice] ask_kortix not delivered', { outcome, sessionId: call.sessionId });
         // The conversation would otherwise hang on a promise nobody kept.
-        promptVoiceAgent(
+        void promptVoiceAgent(
           call.callId,
           "I couldn't reach the agent session just now, so that request didn't go through.",
         );

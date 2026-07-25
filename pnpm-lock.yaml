@@ -66,6 +66,9 @@ importers:
       '@dotenvx/dotenvx':
         specifier: ^1.69.2
         version: 1.75.1
+      '@kortix/sdk':
+        specifier: workspace:*
+        version: link:packages/sdk
       '@types/bun':
         specifier: ^1.3.12
         version: 1.3.14

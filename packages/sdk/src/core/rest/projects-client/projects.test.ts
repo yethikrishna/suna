@@ -1,9 +1,11 @@
 import { beforeEach, expect, mock, test } from 'bun:test';
 
 import {
+  getProjectDetail,
   provisionProjectWithToken,
   type CreateProjectRepoInput,
 } from './projects';
+import { configureKortix } from '../../http/config';
 
 let nextResponse: () => Response = () => new Response('{}', { status: 200 });
 
@@ -77,4 +79,35 @@ test('returns ok:false without hitting the network when credentials are missing'
   const result = await provisionProjectWithToken({ backendUrl: '', accessToken: '' }, input);
   expect(result).toEqual({ ok: false, limitReached: false });
   expect(calls).toHaveLength(0);
+});
+
+test('normalizes the provider-neutral default_agent field from legacy project config', async () => {
+  configureKortix({
+    backendUrl: 'http://backend.test/v1',
+    getToken: async () => 'tok',
+  });
+  nextResponse = () =>
+    new Response(
+      JSON.stringify({
+        project: { project_id: 'proj-1' },
+        config: {
+          open_code_default_agent: 'kortix',
+          agents: [],
+          commands: [],
+          skills: [],
+          env: { required: [], optional: [] },
+        },
+        file_count: 0,
+        files: [],
+      }),
+      {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      },
+    );
+
+  const detail = await getProjectDetail('proj-1');
+
+  expect(detail.config.default_agent).toBe('kortix');
+  expect(detail.config.open_code_default_agent).toBe('kortix');
 });

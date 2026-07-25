@@ -723,7 +723,7 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     // server-side capabilities (pre-runtime)
     models,
     agents,
-    defaultAgent: config?.open_code_default_agent ?? null,
+    defaultAgent: config?.default_agent ?? config?.open_code_default_agent ?? null,
     commands: config?.commands ?? [],
     picks,
 

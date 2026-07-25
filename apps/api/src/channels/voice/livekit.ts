@@ -76,6 +76,19 @@ export async function mintAccessToken(input: MintAccessTokenInput): Promise<stri
  */
 export async function createRoom(room: string, metadata: string): Promise<void> {
   const svc = roomService();
+
+  // Delete any existing room of this name FIRST. LiveKit's automatic agent
+  // dispatch fires on room CREATION, and createRoom() is a no-op on a room that
+  // already exists — so re-spawning a call for a session whose room is still
+  // alive (departureTimeout keeps it for 15min) silently produces a room with
+  // NO agent in it. That was the intermittent "worker registered but never got
+  // a job" failure: it only ever worked when the previous room happened to have
+  // expired first. Deleting is safe — a room worth keeping has a live call in
+  // it, and that call owns this same name.
+  await svc.deleteRoom(room).catch(() => {
+    // Room did not exist; that is the normal path.
+  });
+
   await svc.createRoom({
     name: room,
     metadata,

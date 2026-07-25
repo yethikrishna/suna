@@ -80,6 +80,13 @@ export function wireTranscripts(session: voice.AgentSession<CallContext>, ctx: C
   // without this the transcript is permanently one-sided: voice_read shows the
   // agent talking to nobody.
   session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
+    // [voice-debug] Every STT transcript, interim or final, lands here first —
+    // this is the earliest point the WORD CONTENT of user speech is visible
+    // to this process at all. A silent room produces zero of these logs.
+    console.log('[voice-debug] UserInputTranscribed', {
+      isFinal: ev.isFinal,
+      transcript: ev.transcript,
+    });
     // Interim results stream as the sentence forms; only the final one is a turn.
     if (!ev.isFinal) return;
     const text = (ev.transcript ?? '').trim();
@@ -93,6 +100,10 @@ export function wireTranscripts(session: voice.AgentSession<CallContext>, ctx: C
 
     const role = item.role === 'user' ? 'user' : item.role === 'assistant' ? 'agent' : null;
     if (!role) return; // system/developer messages are not part of the spoken transcript
+
+    // [voice-debug] Every committed chat item, both roles — a 'user' one here
+    // proves the turn made it all the way into session.history.
+    console.log('[voice-debug] ConversationItemAdded', { role, itemId: (item as { id?: string }).id });
 
     // Runs before the agent-side write so the two land in conversational order.
     drainUserHistory();

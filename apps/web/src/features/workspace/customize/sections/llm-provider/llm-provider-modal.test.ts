@@ -21,4 +21,13 @@ describe('LLM provider modal flow', () => {
     expect(modalSource).toContain('Connecting {pendingProviderLabel}…');
     expect(modalSource).toContain('<Loading');
   });
+
+  test('uses the compact content-sized modal dimensions', () => {
+    expect(modalSource).toContain('max-h-[min(85vh,560px)]');
+    expect(modalSource).toContain('max-w-[520px]');
+    expect(modalSource).toContain('lg:max-w-[520px]');
+    expect(modalSource).toContain('lg:h-auto');
+    expect(modalSource).not.toContain('h-[min(80vh,680px)]');
+    expect(modalSource).not.toContain('max-w-[600px]');
+  });
 });

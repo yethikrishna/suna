@@ -245,7 +245,7 @@ export function ProjectProviderModal({
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent className="flex h-auto max-h-[min(85vh,560px)] w-[calc(100vw-2rem)] max-w-[520px] flex-col gap-0 overflow-hidden p-0 lg:h-auto lg:max-w-[520px]">
+      <ModalContent className="flex h-[min(80vh,680px)] w-[calc(100vw-2rem)] max-w-[600px] flex-col gap-0 overflow-hidden p-0 lg:max-w-[600px]">
         <ModalHeader>
           <ModalTitle>
             {tHardcodedUi.raw('componentsProjectsProjectProviderModal.line151JsxTextLlmProviders')}

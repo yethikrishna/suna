@@ -41,12 +41,15 @@ import {
   answerPermission,
   classifySendError,
   buildSessionCommandInput,
+  beginRestPromptObservation,
+  endRestPromptObservation,
   sendStateOnStart,
   sendStateOnError,
   shouldRetrySessionStart,
 } from './use-session';
 import { clearSessionFresh, markSessionFresh } from '../core/http/fresh-sessions';
 import { SessionStartError } from '../core/rest/projects-client';
+import { useSyncStore } from '../browser/stores/sync-store';
 
 function seedQuestion(id: string, sessionID = 'sess-1') {
   useOpenCodePendingStore.getState().addQuestion({
@@ -212,6 +215,17 @@ describe('classifySendError', () => {
 });
 
 describe('send state transitions (sendStateOnStart / sendStateOnError)', () => {
+  test('REST prompt observation keeps reconciliation busy until completion', () => {
+    const sessionId = 'sess-rest-observation';
+    useSyncStore.getState().setStatus(sessionId, { type: 'idle' });
+
+    beginRestPromptObservation(sessionId);
+    expect(useSyncStore.getState().sessionStatus[sessionId]).toEqual({ type: 'busy' });
+
+    endRestPromptObservation(sessionId);
+    expect(useSyncStore.getState().sessionStatus[sessionId]).toEqual({ type: 'idle' });
+  });
+
   test('a send failure with a 402-shaped error clears pending and yields a billing sendError', async () => {
     sessionPromptImpl = async () => ({
       error: { data: { message: 'Insufficient credits. Balance: $-0.06' } },

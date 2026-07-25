@@ -2508,7 +2508,6 @@ It resets the ACP projection before runtime replay.
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, and the deployed
 cold Chromium ACP plus REST rollback matrix remain.
-
 ---
 
 ### 2026-07-25 — session `false-load-older` (claim)
@@ -2523,3 +2522,42 @@ smoke, focused web tests, local browser proof, repository merge, Deploy Dev, and
 deployed browser proof.
 
 **Status:** IN PROGRESS.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (B21 delivery completion)
+
+Merged the ACP restart-safe send serialization in PR #5433.
+The merge commit is `aedb8c16b1c11baeb501ea9107dfcac083cb8caa`.
+All 15 PR checks passed.
+
+Deploy Dev run `30160708566` completed successfully.
+The active API reports `0.10.15-dev.85ae91df`.
+The active Vercel deployment is `dpl_9M5yptfdDL48vPASvYDt92kQCFtD`.
+It is `READY` at commit `85ae91df47da26281dc35d098954567b132f192e`.
+Git ancestry proves that both deployed artifacts contain the B21 merge.
+
+The first post-deploy rollback attempt pressed Enter before the REST model list
+loaded. Its trace contains zero `/prompt_async` occurrences.
+The harness now opens the model picker and waits for `Claude Sonnet 4.6` before
+it sends the REST rollback prompt.
+
+The final deployed cold Chromium matrix passed.
+It proved ACP chat, SSE reconnect, transcript reload, tool approval, question
+input, attachments, queueing, cancellation, slash commands, runtime restart,
+post-restart prompt delivery, and REST rollback.
+
+**Final verification:**
+
+- Focused ACP controller suite: **16 pass / 0 fail**.
+- SDK full suite: **1253 pass / 0 fail** across 104 files.
+- SDK assertions: **5603**.
+- SDK typecheck and example typecheck: exit 0.
+- SDK packed-install smoke: pass.
+- Test-harness typecheck: exit 0.
+- PR #5433 checks: **15 pass / 0 fail**.
+- Deployed cold ACP and REST Chromium matrix: **1 pass / 0 fail** in 3.3 minutes.
+
+**Status:** COMPLETE.
+
+**Shippable to production: YES.** ACP and REST rollback pass on deployed dev.

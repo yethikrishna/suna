@@ -1,7 +1,7 @@
 /**
  * The LiveKit agent worker — the voice of a Kortix agent inside a live
  * meeting. STT -> LLM -> TTS pipeline (all OpenAI today; see the stt note) with
- * silero VAD driving turn detection, per the LiveKit agents-js 1.5.5 API
+ * hosted turn detection, per the LiveKit agents-js 1.5.5 API
  * (see README.md for exactly how this was verified against the pinned
  * package versions rather than docs/memory).
  *
@@ -11,30 +11,18 @@
 import { fileURLToPath } from 'node:url';
 import { ServerOptions, type VAD, cli, defineAgent, voice } from '@livekit/agents';
 import * as openai from '@livekit/agents-plugin-openai';
-import * as silero from '@livekit/agents-plugin-silero';
 import { type CallContext, resolveCallContext } from './call-context';
 import { wireInboundReplies } from './inbound-replies';
 import { buildInstructions } from './instructions';
 import { buildTools } from './tools';
 import { wireTranscripts } from './transcripts';
 
-/**
- * Per-worker-process data. VAD loads an ONNX model — load it once here, not
- * per job. Typed against the core `VAD` base class, not `silero.VAD`:
- * `silero.VAD.load()` itself resolves to `Promise<VAD>` (the base class),
- * per the plugin's own `dist/vad.d.ts`.
- */
-interface ProcessUserData {
-  vad: VAD;
-}
+// No prewarm: there is no local model to load any more. Turn detection is
+// hosted (see the AgentSession comment below), so nothing here has to keep up
+// with realtime audio on whatever host the worker happens to land on.
 
-export default defineAgent<ProcessUserData>({
-  prewarm: async (proc) => {
-    proc.userData.vad = await silero.VAD.load();
-  },
-
+export default defineAgent({
   entry: async (ctx) => {
-    const vad = ctx.proc.userData.vad;
 
     // Read call identity + Kortix credentials from the room BEFORE connecting
     // — `ctx.job.room` is a snapshot of the room's server-side state at
@@ -54,12 +42,17 @@ export default defineAgent<ProcessUserData>({
       stt: new openai.STT({ model: 'gpt-4o-mini-transcribe' }),
       llm: new openai.LLM({ model: 'gpt-4.1-mini' }),
       tts: new openai.TTS({ model: 'gpt-4o-mini-tts', voice: 'alloy' }),
-      vad,
-      // Explicit, rather than relying on AgentSession's auto-provisioned
-      // bundled inference.VAD + inference.TurnDetector: this pins the
-      // standalone silero plugin loaded above and keeps turn detection local
-      // instead of adding a network hop to LiveKit's inference gateway.
-      turnHandling: { turnDetection: 'vad' },
+      // Turn detection is LiveKit's hosted VAD + TurnDetector, NOT a local
+      // silero plugin. Running silero in-process was the original choice — one
+      // less network hop — but its inference has to keep up with realtime, and
+      // on a busy host it simply does not: 152 "VAD inference slower than
+      // realtime" warnings and, more damningly, userTurnCompleted stayed at 0
+      // across every run. The agent never heard a single word, while still
+      // greeting on join, so it looked alive the whole time.
+      //
+      // A hosted detector cannot be starved by whatever else the machine is
+      // doing, which matters far more here than saving a round trip.
+      // AgentSession auto-provisions it when no vad/turnDetection is pinned.
       userData: callContext,
     });
 

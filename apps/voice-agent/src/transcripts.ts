@@ -50,6 +50,20 @@ function extractText(content: readonly unknown[]): string {
 }
 
 export function wireTranscripts(session: voice.AgentSession<CallContext>, ctx: CallContext): void {
+  // The USER side does not arrive on ConversationItemAdded — verified against
+  // the installed 1.5.5 events.d.ts, and empirically: that event fired exactly
+  // twice in a full conversation, both times for agent items, while the agent
+  // was demonstrably hearing and answering. User speech has its own event, and
+  // without this the transcript is permanently one-sided: voice_read shows the
+  // agent talking to nobody.
+  session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
+    // Interim results stream as the sentence forms; only the final one is a turn.
+    if (!ev.isFinal) return;
+    const text = (ev.transcript ?? '').trim();
+    if (!text) return;
+    void postTranscriptTurn(ctx, 'user', text);
+  });
+
   session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (ev) => {
     const item = ev.item;
     if (item.type !== 'message') return; // skip agent-handoff items — no such thing here anyway

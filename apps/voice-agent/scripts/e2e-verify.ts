@@ -95,6 +95,7 @@ async function main() {
   await r.localParticipant!.publishTrack(track, opts);
   console.log('  published probe mic');
 
+  const framesBeforeSpeech = agentAudioFrames;
   const line =
     arg('say') ??
     'Hello. Can you hear me? Please answer with a short sentence.';
@@ -112,15 +113,25 @@ async function main() {
 
   console.log('\nwaiting 20s for the agent to reply…');
   await new Promise((res) => setTimeout(res, 20_000));
+  const framesAfterSpeech = agentAudioFrames;
 
   console.log('');
   console.log('=== RESULT ===');
   console.log(`agent in room:        ${agentJoined ? 'PASS' : 'FAIL'}`);
-  console.log(`agent audio frames:   ${agentAudioFrames} ${agentAudioFrames > 0 ? 'PASS' : 'FAIL'}`);
-  console.log(`(check transcript rows + tool calls separately — see the runner)`);
+
+  // Audio frames alone are NOT proof of a conversation. The agent greets on
+  // join, so `frames > 0` is true even when it never heard a word — that
+  // assertion passed five times while userTurnCompleted was 0 and the whole
+  // pipeline was deaf. The real signal is whether OUR speech produced a turn.
+  console.log(`agent audio frames:   ${agentAudioFrames} (not a pass criterion — greeting alone produces these)`);
+
+  const heardMe = framesAfterSpeech > framesBeforeSpeech + 200;
+  console.log(`heard our speech:     ${heardMe ? 'PASS' : 'FAIL'} (${framesBeforeSpeech} -> ${framesAfterSpeech} frames)`);
+  console.log('');
+  console.log(heardMe ? 'CONVERSATION VERIFIED' : 'DEAF — agent never responded to speech');
 
   await r.disconnect();
-  process.exit(agentJoined && agentAudioFrames > 0 ? 0 : 1);
+  process.exit(agentJoined && heardMe ? 0 : 1);
 }
 
 main().catch((e) => {

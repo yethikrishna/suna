@@ -3,11 +3,11 @@ set -Eeuo pipefail
 
 SOURCE_SECRET_ID="${SOURCE_SECRET_ID:-kortix-prod-env}"
 SOURCE_AWS_REGION="${SOURCE_AWS_REGION:-eu-west-2}"
-TARGET_SECRET_ID="${TARGET_SECRET_ID:-kortix/prod-us-west-2-migration}"
-TARGET_AWS_REGION="${TARGET_AWS_REGION:-us-west-2}"
-PUBLICATION="${PUBLICATION:-kortix_us_west_2_20260725}"
-SUBSCRIPTION="${SUBSCRIPTION:-kortix_us_west_2_20260725}"
-AUTH_SUBSCRIPTION="${AUTH_SUBSCRIPTION:-kortix_usw2_auth_20260725}"
+TARGET_SECRET_ID="${TARGET_SECRET_ID:-kortix/prod-us-east-2-migration}"
+TARGET_AWS_REGION="${TARGET_AWS_REGION:-us-east-2}"
+PUBLICATION="${PUBLICATION:-kortix_us_east_2_20260725}"
+SUBSCRIPTION="${SUBSCRIPTION:-kortix_us_east_2_20260725}"
+AUTH_SUBSCRIPTION="${AUTH_SUBSCRIPTION:-kortix_use2_auth_20260725}"
 SHADOW_AUDIT_START_AT="${SHADOW_AUDIT_START_AT:-2026-07-25 00:00:00+00}"
 
 require_command() {
@@ -54,34 +54,34 @@ prepare_source() {
     printf "\\set replication_password '%s'\n" "${replication_password//\'/\'\'}"
     cat <<'SQL'
 SELECT format(
-  'CREATE ROLE kortix_usw2_repl WITH LOGIN REPLICATION PASSWORD %L',
+  'CREATE ROLE kortix_use2_repl WITH LOGIN REPLICATION PASSWORD %L',
   :'replication_password'
 )
 WHERE NOT EXISTS (
   SELECT 1
   FROM pg_roles
-  WHERE rolname = 'kortix_usw2_repl'
+  WHERE rolname = 'kortix_use2_repl'
 )
 \gexec
 SELECT format(
-  'ALTER ROLE kortix_usw2_repl WITH LOGIN REPLICATION PASSWORD %L',
+  'ALTER ROLE kortix_use2_repl WITH LOGIN REPLICATION PASSWORD %L',
   :'replication_password'
 )
 \gexec
-ALTER ROLE kortix_usw2_repl SET statement_timeout = 0;
-ALTER ROLE kortix_usw2_repl BYPASSRLS;
-GRANT CONNECT ON DATABASE postgres TO kortix_usw2_repl;
-GRANT USAGE ON SCHEMA kortix, public TO kortix_usw2_repl;
-GRANT SELECT ON ALL TABLES IN SCHEMA kortix TO kortix_usw2_repl;
+ALTER ROLE kortix_use2_repl SET statement_timeout = 0;
+ALTER ROLE kortix_use2_repl BYPASSRLS;
+GRANT CONNECT ON DATABASE postgres TO kortix_use2_repl;
+GRANT USAGE ON SCHEMA kortix, public TO kortix_use2_repl;
+GRANT SELECT ON ALL TABLES IN SCHEMA kortix TO kortix_use2_repl;
 GRANT SELECT ON
   public.daily_refresh_tracking,
   public.renewal_processing,
   public.contact_forms,
   public.webhook_config
-TO kortix_usw2_repl;
+TO kortix_use2_repl;
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres
   IN SCHEMA kortix
-  GRANT SELECT ON TABLES TO kortix_usw2_repl;
+  GRANT SELECT ON TABLES TO kortix_use2_repl;
 SQL
   } | psql "$source_database_url" -X -v ON_ERROR_STOP=1
 
@@ -339,7 +339,7 @@ repair_public_rls_tables() {
   local caught_up=false
   local subscription_disabled=false
 
-  temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/kortix-usw2-public-repair.XXXXXX")"
+  temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/kortix-use2-public-repair.XXXXXX")"
 
   coproc SOURCE_SESSION {
     psql "$source_database_url" -X -qAt -v ON_ERROR_STOP=1
@@ -466,7 +466,7 @@ repair_shadow_mutations() {
 
   local temporary_directory
   local subscription_disabled=false
-  temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/kortix-usw2-shadow-repair.XXXXXX")"
+  temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/kortix-use2-shadow-repair.XXXXXX")"
 
   cleanup_shadow_repair() {
     if [[ "$subscription_disabled" == "true" ]]; then
@@ -670,7 +670,7 @@ SQL
 }
 
 reconcile_counts() {
-  temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/kortix-usw2-counts.XXXXXX")"
+  temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/kortix-use2-counts.XXXXXX")"
   source_counts="$temporary_directory/source.tsv"
   target_counts="$temporary_directory/target.tsv"
   cleanup_counts() {
@@ -972,7 +972,7 @@ reconcile_hashes() {
       ;;
   esac
 
-  temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/kortix-usw2-hashes.XXXXXX")"
+  temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/kortix-use2-hashes.XXXXXX")"
   source_hashes="$temporary_directory/source.tsv"
   target_hashes="$temporary_directory/target.tsv"
   cleanup_hashes() {
@@ -1059,7 +1059,7 @@ SQL
 }
 
 reconcile_sequences() {
-  sequence_state_file="$(mktemp "${TMPDIR:-/tmp}/kortix-usw2-sequences.XXXXXX")"
+  sequence_state_file="$(mktemp "${TMPDIR:-/tmp}/kortix-use2-sequences.XXXXXX")"
   cleanup_sequence_state() {
     [[ -f "$sequence_state_file" ]] && unlink "$sequence_state_file"
   }
@@ -1161,7 +1161,7 @@ SQL
     printf "\\set replication_password '%s'\n" "${new_password//\'/\'\'}"
     cat <<'SQL'
 SELECT format(
-  'ALTER ROLE kortix_usw2_repl WITH LOGIN REPLICATION PASSWORD %L',
+  'ALTER ROLE kortix_use2_repl WITH LOGIN REPLICATION PASSWORD %L',
   :'replication_password'
 )
 \gexec
@@ -1235,7 +1235,7 @@ SQL
 
 usage() {
   cat <<'EOF'
-Usage: scripts/prod-us-west-2/db-sync.sh <command>
+Usage: scripts/prod-us-east-2/db-sync.sh <command>
 
 Commands:
   prepare-source     Set WAL retention, replica identities, and publication.

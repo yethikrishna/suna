@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-TARGET_SECRET_ID="${TARGET_SECRET_ID:-kortix/prod-us-west-2-migration}"
-TARGET_AWS_REGION="${TARGET_AWS_REGION:-us-west-2}"
+TARGET_SECRET_ID="${TARGET_SECRET_ID:-kortix/prod-us-east-2-migration}"
+TARGET_AWS_REGION="${TARGET_AWS_REGION:-us-east-2}"
 
 for command_name in aws jq node psql; do
   command -v "$command_name" >/dev/null 2>&1 || {
@@ -28,6 +28,6 @@ TARGET_ANON_KEY="$(jq -er '.target_anon_key' <<<"$target_secret_json")"
 export TARGET_SERVICE_ROLE_KEY
 TARGET_SERVICE_ROLE_KEY="$(jq -er '.target_service_role_key' <<<"$target_secret_json")"
 export TARGET_API_URL
-TARGET_API_URL="${TARGET_API_URL:-https://api-usw2-shadow.kortix.com}"
+TARGET_API_URL="${TARGET_API_URL:-https://api-use2-shadow.kortix.com}"
 
 node "$(dirname "$0")/target-smoke.mjs"

@@ -1,4 +1,4 @@
-name: Deploy Prod US West 2 Shadow
+name: Deploy Prod US East 2 Shadow
 
 on:
   workflow_call:
@@ -43,7 +43,7 @@ on:
         type: boolean
 
 concurrency:
-  group: deploy-prod-us-west-2-shadow
+  group: deploy-prod-us-east-2-shadow
   cancel-in-progress: false
 
 permissions:
@@ -51,18 +51,106 @@ permissions:
   id-token: write
 
 jobs:
+  infrastructure:
+    name: Apply US East 2 shadow Terraform
+    runs-on: ubuntu-latest
+    environment: prod-use2-shadow
+    env:
+      AWS_REGION: us-east-2
+      ROLE: arn:aws:iam::935064898258:role/kortix-gha-prod-use2-terraform
+      TF_ROOT: infra/terraform/environments/prod-us-east-2-shadow
+      TARGET_ENV_BLOB: kortix-prod-us-east-2-env
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_GLOBAL_API_KEY }}
+      CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require Cloudflare credentials
+        run: |
+          set -euo pipefail
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "Using CLOUDFLARE_API_TOKEN."
+            exit 0
+          fi
+          if [ -z "${CLOUDFLARE_API_KEY:-}" ] || [ -z "${CLOUDFLARE_EMAIL:-}" ]; then
+            echo "::error::Set CLOUDFLARE_API_TOKEN or both CLOUDFLARE_GLOBAL_API_KEY and CLOUDFLARE_EMAIL."
+            exit 1
+          fi
+          echo "Using CLOUDFLARE_GLOBAL_API_KEY with CLOUDFLARE_EMAIL."
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.9.8
+
+      - name: Load Terraform secret inputs
+        run: |
+          set -euo pipefail
+          secret_json="$(
+            aws secretsmanager get-secret-value \
+              --secret-id "$TARGET_ENV_BLOB" \
+              --region "$AWS_REGION" \
+              --query SecretString \
+              --output text
+          )"
+          secret_arn="$(
+            aws secretsmanager describe-secret \
+              --secret-id "$TARGET_ENV_BLOB" \
+              --region "$AWS_REGION" \
+              --query ARN \
+              --output text
+          )"
+          printf 'TF_VAR_secret_arn=%s\n' "$secret_arn" >> "$GITHUB_ENV"
+          printf 'TF_VAR_secret_keys=%s\n' "$(jq -c 'keys' <<<"$secret_json")" >> "$GITHUB_ENV"
+
+      - name: Plan create-only infrastructure changes
+        run: |
+          set -euo pipefail
+          terraform -chdir="$TF_ROOT" init -input=false
+          terraform -chdir="$TF_ROOT" plan -input=false -out=shadow.tfplan
+          terraform -chdir="$TF_ROOT" show -json shadow.tfplan > /tmp/shadow-plan.json
+          deletes="$(
+            jq '[.resource_changes[] | select(.change.actions | index("delete"))] | length' \
+              /tmp/shadow-plan.json
+          )"
+          replacements="$(
+            jq '[.resource_changes[] | select(
+              .change.actions == ["delete", "create"]
+              or .change.actions == ["create", "delete"]
+            )] | length' /tmp/shadow-plan.json
+          )"
+          if [ "$deletes" != "0" ] || [ "$replacements" != "0" ]; then
+            echo "::error::US East 2 shadow plan contains deletes=$deletes replacements=$replacements."
+            exit 1
+          fi
+          jq -r '
+            [.resource_changes[].change.actions | join(",")]
+            | group_by(.)
+            | map({action:.[0], count:length})
+          ' /tmp/shadow-plan.json
+
+      - name: Apply US East 2 infrastructure
+        run: terraform -chdir="$TF_ROOT" apply -input=false -auto-approve shadow.tfplan
+
   deploy:
     name: Deploy API and gateway to US shadow
     runs-on: ubuntu-latest
+    needs: infrastructure
     env:
-      AWS_REGION: us-west-2
+      AWS_REGION: us-east-2
       ROLE: arn:aws:iam::935064898258:role/kortix-gha-ecs-deploy
       VERSION: ${{ inputs.version }}
       SOURCE_SHA: ${{ inputs.source_sha }}
       SOURCE_SECRET_ID: kortix-prod-env
-      TARGET_ENV_BLOB: kortix-prod-us-west-2-env
-      API_URL: https://api-usw2-shadow.kortix.com
-      GATEWAY_URL: https://gateway-usw2-shadow.kortix.com
+      TARGET_ENV_BLOB: kortix-prod-us-east-2-env
+      API_URL: https://api-use2-shadow.kortix.com
+      GATEWAY_URL: https://gateway-use2-shadow.kortix.com
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -85,7 +173,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Keep shadow DNS proxied
-        run: bash scripts/prod-us-west-2/ensure-shadow-dns.sh
+        run: bash scripts/prod-us-east-2/ensure-shadow-dns.sh
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_GLOBAL_API_KEY: ${{ secrets.CLOUDFLARE_GLOBAL_API_KEY }}
@@ -142,23 +230,23 @@ jobs:
 
       - name: Refresh application replication
         if: inputs.synchronize_database
-        run: bash scripts/prod-us-west-2/refresh-replication.sh
+        run: bash scripts/prod-us-east-2/refresh-replication.sh
         env:
           ALLOW_REPLICATION_REFRESH: "1"
 
       - name: Synchronize current avatar objects
         if: inputs.synchronize_database
-        run: TARGET_SECRET_ID="$TARGET_ENV_BLOB" bash scripts/prod-us-west-2/storage-sync.sh
+        run: TARGET_SECRET_ID="$TARGET_ENV_BLOB" bash scripts/prod-us-east-2/storage-sync.sh
 
       - name: Deploy released images
         run: |
           set -euo pipefail
           bash infra/scripts/ecs-deploy.sh \
-            prod-usw2-shadow \
+            prod-use2-shadow \
             "kortix/kortix-api:${VERSION}" \
             --version "$VERSION"
           bash infra/scripts/ecs-deploy.sh \
-            prod-usw2-shadow \
+            prod-use2-shadow \
             "kortix/kortix-gateway:${VERSION}" \
             --service gateway \
             --version "$VERSION"
@@ -203,13 +291,13 @@ jobs:
           }
 
           verify_service \
-            kortix-prod-usw2 \
-            kortix-prod-usw2 \
+            kortix-prod-use2 \
+            kortix-prod-use2 \
             api \
             "kortix/kortix-api:${VERSION}"
           verify_service \
-            kortix-prod-usw2-gateway \
-            kortix-prod-usw2-gateway \
+            kortix-prod-use2-gateway \
+            kortix-prod-use2-gateway \
             gateway \
             "kortix/kortix-gateway:${VERSION}"
 
@@ -247,11 +335,11 @@ jobs:
       - name: Summary
         run: |
           {
-            echo "### US West 2 production shadow"
+            echo "### US East 2 production shadow"
             echo "- API: \`kortix/kortix-api:${VERSION}\`"
             echo "- Gateway: \`kortix/kortix-gateway:${VERSION}\`"
             echo "- API tasks: 2 or more"
             echo "- Gateway tasks: 2 or more"
             echo "- Production traffic: unchanged"
-            echo "- Workers and schedulers: disabled in \`kortix-prod-us-west-2-env\`"
+            echo "- Workers and schedulers: disabled in \`kortix-prod-us-east-2-env\`"
           } >> "$GITHUB_STEP_SUMMARY"

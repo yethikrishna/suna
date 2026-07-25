@@ -3,6 +3,11 @@ output "api_alb_dns_name" {
   value       = module.api.alb_dns_name
 }
 
+output "certificate_arn" {
+  description = "Validated us-east-2 ACM certificate for *.kortix.com."
+  value       = module.certificate.certificate_arn
+}
+
 output "api_cluster" {
   value = module.api.cluster_name
 }

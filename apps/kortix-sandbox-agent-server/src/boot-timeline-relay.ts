@@ -70,11 +70,7 @@ async function doRelay(timeline: BootMark[]): Promise<void> {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        session_id: sessionId,
-        project_id: projectId,
-        timeline,
-      }),
+      body: JSON.stringify({ session_id: sessionId, timeline }),
       signal: AbortSignal.timeout(15_000),
     })
     if (!res.ok) {

@@ -30,7 +30,6 @@ const BootMarkSchema = z.object({ label: z.string(), atMs: z.number() });
 
 const BootTimelineRequestSchema = z.object({
   session_id: z.string(),
-  project_id: z.string().optional(),
   timeline: z.array(BootMarkSchema),
 });
 
@@ -48,7 +47,7 @@ bootTimelineRouter.openapi(
     },
     responses: {
       200: json(z.object({ ok: z.boolean() }), 'Timeline recorded'),
-      ...errors(400, 403, 404),
+      ...errors(400, 403),
     },
   }),
   async (c) => {

@@ -60,8 +60,8 @@ describe('relayBootTimelineToApi', () => {
     expect(headers.Authorization).toBe('Bearer sandbox-token-abc')
     const body = JSON.parse(call.init.body as string)
     expect(body.session_id).toBe('sess-1')
-    expect(body.project_id).toBe('proj-1')
     expect(body.timeline).toEqual(TIMELINE)
+    expect(body.project_id).toBeUndefined()
   })
 
   test('does not append a trailing /v1 twice when KORTIX_API_URL already ends in /v1', async () => {

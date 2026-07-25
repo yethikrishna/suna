@@ -90,6 +90,17 @@ const MIRRORED_DEFAULT_TEMPLATE_SLUG = 'default';
  * the latter moves on every runtime bump, which would make a template's own
  * predecessor tip fall OUTSIDE its own reap scope after every release — exactly
  * the kind of self-inflicted leak this migration exists to prevent, not add.
+ *
+ * ⚠ COLLISION HAS NO BACKSTOP, unlike proj8. 8 hex chars is a 32-bit space, the
+ * same budget proj8 accepts — but a proj8 collision is caught downstream by
+ * {@link excludePinnedTargets}, which cross-checks reap targets against live pins
+ * by name. There is no equivalent guard for tpl8, so two distinct template slugs
+ * in ONE project that collided would silently reintroduce the mutual-deletion
+ * hazard this scoping exists to close. Harmless today (only the default template
+ * is ever minted — see the isShared note in builder.ts), and vanishingly unlikely
+ * at realistic template cardinality. Whoever lifts that gate and starts minting
+ * per-template warm images for real should either widen this or extend the pinned
+ * -target guard to cover tpl8.
  */
 export function tpl8(templateSlug: string): string {
   return createHash('sha256').update(templateSlug).digest('hex').slice(0, 8);
@@ -143,6 +154,19 @@ export function perProjectWarmImageName(
  * name regardless of shape, so an old-format tip is NEVER silently unreapable —
  * it just ages out on quota-gc's schedule instead of being swept the instant a
  * new tip goes active.
+ *
+ * ⚠ DEPLOYMENT: THIS INVALIDATES EVERY EXISTING WARM IMAGE. The name changes for
+ * the default template too — a tpl8 segment is added AND templateSlug is folded
+ * into the hash — so no pre-migration name can ever be recomputed. Concretely:
+ * ~66% of Daytona sessions currently boot warm; on the release that carries this,
+ * the first session per project MISSES, pays a cold clone, and kicks a background
+ * re-bake. That is a fleet-wide bake burst against the Daytona org's hard
+ * 100-snapshot cap, plus the old tips lingering until quota-gc ages them out
+ * (they are no longer swept on-bake, see above) — i.e. transiently ~2x the ppwarm
+ * tips per project. This is the same shape as the 2026-07-22 rebuild storm, so
+ * it MUST be released behind the warm-bake pacing (WARM_BAKE_COOLDOWN_MS /
+ * warmBakeRecentlyStartedCluster) and watched, not shipped blind. It is a
+ * one-time cost: steady state is unchanged.
  */
 interface ParsedPpwarmName {
   proj8: string;

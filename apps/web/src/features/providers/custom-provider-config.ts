@@ -1,4 +1,4 @@
-import type { Config } from '@kortix/sdk';
+import type { Config } from '@kortix/sdk/opencode-client';
 
 export interface CustomProviderFormValues {
   providerID: string;

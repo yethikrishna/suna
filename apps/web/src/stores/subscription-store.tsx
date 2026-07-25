@@ -1,6 +1,6 @@
 import { useAuth } from '@/features/providers/auth-provider';
 import { useAccountState } from '@/hooks/billing';
-import type { AccountState } from '@kortix/sdk';
+import { AccountState } from '@/lib/api/billing';
 import { dollarsToCredits } from '@kortix/shared';
 import React, { useEffect } from 'react';
 import { create } from 'zustand';

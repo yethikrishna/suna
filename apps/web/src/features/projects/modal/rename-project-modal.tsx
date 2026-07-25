@@ -17,7 +17,7 @@ import {
   ModalTitle,
 } from '@/components/ui/modal';
 import { errorToast, successToast } from '@/components/ui/toast';
-import { updateProject } from '@kortix/sdk';
+import { updateProject } from '@kortix/sdk/projects-client';
 
 interface RenameProjectDialogProps {
   projectId: string | null;

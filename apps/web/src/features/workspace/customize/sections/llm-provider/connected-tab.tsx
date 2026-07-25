@@ -8,19 +8,19 @@ import Loading from '@/components/ui/loading';
 import { errorToast, successToast, warningToast } from '@/components/ui/toast';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ProviderLogo } from '@/features/providers/provider-branding';
-import { refreshProjectProviderState } from '@kortix/sdk/react';
+import { refreshProjectProviderState } from '@/hooks/opencode/provider-refresh';
 import { LLM_PROVIDER_BY_ID, type LlmProviderEntry } from '@/lib/llm-providers';
 import { cn } from '@/lib/utils';
 import {
   deleteProjectSecret,
   type GatewayProviderVerifyResult,
   verifyGatewayProvider,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plug, Plus, ShieldAlert, ShieldCheck, ShieldQuestion, Unplug } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
-import { CODEX_AUTH_JSON_SECRET_NAME, LEGACY_RUNTIME_AUTH_JSON_SECRET_NAME } from './constants';
+import { CODEX_AUTH_JSON_SECRET_NAME, LEGACY_OPENCODE_AUTH_JSON_SECRET_NAME } from './constants';
 import { providerCredentialSummary } from './utils';
 
 // GAP C1 — "Connected" only means a secret row exists in project_secrets; it
@@ -89,7 +89,7 @@ export function ConnectedTab({
           ? [
               ...provider.envVars,
               CODEX_AUTH_JSON_SECRET_NAME,
-              LEGACY_RUNTIME_AUTH_JSON_SECRET_NAME,
+              LEGACY_OPENCODE_AUTH_JSON_SECRET_NAME,
             ]
           : provider.envVars;
       await Promise.all(

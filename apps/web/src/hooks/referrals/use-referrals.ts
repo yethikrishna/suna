@@ -1,13 +1,6 @@
 import { errorToast, successToast, warningToast } from '@/components/ui/toast';
+import { referralsApi } from '@/lib/api/referrals';
 import { copyToClipboard } from '@/lib/utils/clipboard';
-import {
-  getReferralCode,
-  getReferralStats,
-  listReferrals,
-  refreshReferralCode,
-  sendReferralEmails,
-  validateReferralCode,
-} from '@kortix/sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 
@@ -21,7 +14,7 @@ export function useReferralCode(options?: { enabled?: boolean }) {
   const enabled = options?.enabled ?? true;
   return useQuery({
     queryKey: REFERRALS_QUERY_KEYS.code,
-    queryFn: getReferralCode,
+    queryFn: () => referralsApi.getReferralCode(),
     staleTime: Infinity,
     enabled,
   });
@@ -32,7 +25,7 @@ export function useRefreshReferralCode() {
   const t = useTranslations('settings.referrals');
 
   return useMutation({
-    mutationFn: refreshReferralCode,
+    mutationFn: () => referralsApi.refreshReferralCode(),
     onSuccess: (data) => {
       queryClient.setQueryData(REFERRALS_QUERY_KEYS.code, data);
       queryClient.invalidateQueries({ queryKey: REFERRALS_QUERY_KEYS.stats });
@@ -48,7 +41,7 @@ export function useReferralStats(options?: { enabled?: boolean }) {
   const enabled = options?.enabled ?? true;
   return useQuery({
     queryKey: REFERRALS_QUERY_KEYS.stats,
-    queryFn: getReferralStats,
+    queryFn: () => referralsApi.getReferralStats(),
     staleTime: 5 * 60 * 1000, // 5 minutes - data doesn't change frequently
     refetchInterval: enabled ? 60000 : false, // Only poll when enabled, and less aggressively (1 min)
     enabled,
@@ -59,7 +52,7 @@ export function useUserReferrals(limit = 50, offset = 0, options?: { enabled?: b
   const enabled = options?.enabled ?? true;
   return useQuery({
     queryKey: REFERRALS_QUERY_KEYS.list(limit, offset),
-    queryFn: () => listReferrals({ limit, offset }),
+    queryFn: () => referralsApi.getUserReferrals(limit, offset),
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchInterval: enabled ? 60000 : false, // Only poll when enabled
     enabled,
@@ -68,7 +61,7 @@ export function useUserReferrals(limit = 50, offset = 0, options?: { enabled?: b
 
 export function useValidateReferralCode() {
   return useMutation({
-    mutationFn: validateReferralCode,
+    mutationFn: (code: string) => referralsApi.validateReferralCode(code),
     onError: (error) => {
       errorToast('Failed to validate referral code');
       console.error('Referral code validation error:', error);
@@ -99,7 +92,7 @@ export function useSendReferralEmails() {
   const t = useTranslations('settings.referrals');
 
   return useMutation({
-    mutationFn: sendReferralEmails,
+    mutationFn: (emails: string[]) => referralsApi.sendReferralEmails(emails),
     onSuccess: (data) => {
       if (data.success_count && data.total_count) {
         if (data.success_count === data.total_count) {

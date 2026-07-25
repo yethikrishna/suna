@@ -9,7 +9,7 @@ import {
   listReviewItems,
   resolveApproval,
   submitReviewItem,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export const reviewKeys = {

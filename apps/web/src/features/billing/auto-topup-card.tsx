@@ -9,12 +9,7 @@ import { Input } from '@/components/ui/input';
 import { InfoBanner } from '@/components/ui/info-banner';
 import Loading from '@/components/ui/loading';
 import { errorToast, successToast } from '@/components/ui/toast';
-import {
-  configureAutoTopup,
-  getAutoTopupSettings,
-  getAutoTopupSetupStatus,
-  type AutoTopupSettings as AutoTopupConfig,
-} from '@kortix/sdk';
+import { configureAutoTopup, getAutoTopupSettings, getAutoTopupSetupStatus, type AutoTopupConfig } from '@/lib/api/billing';
 import { useBillingAccountId } from '@/stores/billing-account-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -124,12 +119,7 @@ export function AutoTopupCard({
     setSaving(true);
     setSaveResult(null);
     try {
-      await configureAutoTopup({
-        accountId,
-        enabled,
-        threshold: thresholdNum,
-        amount: amountNum,
-      });
+      await configureAutoTopup({ enabled, threshold: thresholdNum, amount: amountNum }, accountId);
       queryClient.invalidateQueries({ queryKey: ['auto-topup-settings'] });
       queryClient.invalidateQueries({ queryKey: ['accountState'] });
       queryClient.invalidateQueries({ queryKey: ['auto-topup-setup-status'] });

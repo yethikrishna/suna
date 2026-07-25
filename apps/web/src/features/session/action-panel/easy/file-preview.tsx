@@ -17,19 +17,19 @@ import { Button } from '@/components/ui/button';
 import Hint from '@/components/ui/hint';
 import Loading from '@/components/ui/loading';
 import {
+  type FileCategory,
   FileContentRenderer,
   FileSourceProvider,
   getFileCategory,
-  type FileCategory,
 } from '@/features/file-viewer';
-import { isBrowserViewable } from '@/features/files/api/runtime-files';
+import { isBrowserViewable } from '@/features/files/api/opencode-files';
 import { workspaceFileSource } from '@/features/files/file-source';
 import { useFileContent } from '@/features/files/hooks';
 import { getFileIcon } from '@/features/project-files';
 import { useIsMobile } from '@/hooks/utils';
 import { track } from '@/lib/track';
 import { useIsExpanded, useToggleExpanded } from '@/stores/kortix-computer-store';
-import { useRuntimeConnectionStore } from '@kortix/sdk/react';
+import { useSandboxConnectionStore } from '@kortix/sdk/sandbox-connection-store';
 import {
   Check,
   Copy,
@@ -41,8 +41,7 @@ import {
 } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { CloseButton, DetailSidebarToggle } from './detail-view';
-import { DownloadButton, FileViewer, isSvg, OpenInNewTabButton } from './file-viewer';
-import { ShareFileButton, type ShareContext } from './viewer-actions';
+import { DownloadButton, FileViewer, OpenInNewTabButton } from './file-viewer';
 
 // zustand v5's own hook feeds React's `useSyncExternalStore` a
 // `getServerSnapshot` pinned to `getInitialState()` — correct for real SSR
@@ -53,7 +52,7 @@ import { ShareFileButton, type ShareContext } from './viewer-actions';
 // `getState()` for both snapshots sidesteps that — same live value, same
 // reactivity via `subscribe`, no behavior change in the browser or real SSR.
 const getSandboxAliveSnapshot = () => {
-  const s = useRuntimeConnectionStore.getState();
+  const s = useSandboxConnectionStore.getState();
   return s.status === 'connected' && s.healthy === true;
 };
 
@@ -68,7 +67,6 @@ function PreviewShell({
   name,
   fileName = name,
   path,
-  shareContext,
   onClose,
   onAskForChanges,
   onPresent,
@@ -83,10 +81,6 @@ function PreviewShell({
    *  separate display title. */
   fileName?: string;
   path: string;
-  /** Project-session ids the share link is scoped to. Omitted where the session
-   *  has no project context yet, in which case the control is omitted entirely
-   *  rather than shown disabled (W4). */
-  shareContext?: ShareContext;
   onClose: () => void;
   /** Seeds the composer with a starter line about this file and closes the
    *  detail (W12). Omitted entirely (not disabled) where there's no session
@@ -145,7 +139,6 @@ function PreviewShell({
           )}
           {isBrowserViewable(fileName) && <OpenInNewTabButton path={path} />}
           {actions}
-          <ShareFileButton shareContext={shareContext} path={path} fileName={fileName} />
           <DownloadButton path={path} fileName={fileName} />
           {/* The store flip is a no-op on mobile — the drawer never reads
               `isExpanded` — so the control was dead weight there. */}
@@ -255,34 +248,15 @@ const RICH_CATEGORIES = new Set<FileCategory>([
   'image',
 ]);
 
-/**
- * `.svg` classifies as an `image`, which is true of how it looks and wrong
- * about what it is. Left on the rich path it reaches `FileContentRenderer`,
- * which only ever knows a URL — so the markup the user wants to read never
- * arrives anywhere that could show it. Sending SVG down the text path instead
- * hands `FileViewer` the real source, and it renders the picture itself (see
- * its `isSvg` branch). Nothing is lost: the preview there is the same
- * `ImageRenderer` the rich path would have reached.
- *
- * Exported for tests: which path a file takes decides whether its source is
- * ever fetched, and that is worth pinning without mounting the whole preview.
- */
-export function isRich(fileName: string): boolean {
-  return RICH_CATEGORIES.has(getFileCategory(fileName)) && !isSvg(fileName);
-}
-
 export function FilePreview({
   path,
   name,
   fileName = name,
-  shareContext,
   onClose,
   onAskForChanges,
   onPresent,
 }: {
   path: string;
-  /** Forwarded to the toolbar's share control. See `PreviewShell`. */
-  shareContext?: ShareContext;
   /** The display name shown in the toolbar — a human title when the output
    *  carries one (W3), the real filename otherwise. */
   name: string;
@@ -302,10 +276,10 @@ export function FilePreview({
    *  entirely (not disabled) for anything that isn't a presentation_gen deck. */
   onPresent?: () => void;
 }) {
-  const rich = isRich(fileName);
+  const rich = RICH_CATEGORIES.has(getFileCategory(fileName));
 
   const sandboxAlive = useSyncExternalStore(
-    useRuntimeConnectionStore.subscribe,
+    useSandboxConnectionStore.subscribe,
     getSandboxAliveSnapshot,
     getSandboxAliveSnapshot,
   );
@@ -318,7 +292,6 @@ export function FilePreview({
     return (
       <PreviewShell
         name={name}
-        shareContext={shareContext}
         fileName={fileName}
         path={path}
         onClose={onClose}
@@ -336,7 +309,6 @@ export function FilePreview({
     return (
       <PreviewShell
         name={name}
-        shareContext={shareContext}
         fileName={fileName}
         path={path}
         onClose={onClose}
@@ -354,7 +326,6 @@ export function FilePreview({
     return (
       <PreviewShell
         name={name}
-        shareContext={shareContext}
         fileName={fileName}
         path={path}
         onClose={onClose}
@@ -381,7 +352,6 @@ export function FilePreview({
     return (
       <PreviewShell
         name={name}
-        shareContext={shareContext}
         fileName={fileName}
         path={path}
         onClose={onClose}

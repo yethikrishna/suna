@@ -70,11 +70,6 @@ const MaintenanceBannerHost = lazy(() =>
     default: mod.MaintenanceBannerHost,
   })),
 );
-const AppFilePreviewHost = lazy(() =>
-  import('@/components/app-file-preview-host').then((mod) => ({
-    default: mod.AppFilePreviewHost,
-  })),
-);
 
 export const viewport: Viewport = {
   themeColor: [
@@ -350,13 +345,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       Needs the query client, so it mounts inside ReactQueryProvider. */}
                   <Suspense fallback={null}>
                     <MaintenanceBannerHost />
-                  </Suspense>
-                  {/* Fallback file-preview modal for surfaces with no session side
-                      panel (dashboard, project pages). Its file/history hooks need
-                      the query client, so it mounts inside ReactQueryProvider like
-                      MaintenanceBannerHost above. */}
-                  <Suspense fallback={null}>
-                    <AppFilePreviewHost />
                   </Suspense>
                 </ReactQueryProvider>
                 {/* Analytics - lazy loaded to not block FCP */}

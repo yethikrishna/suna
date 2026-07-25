@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation';
 
 import { ChatIdentityConnect } from '@/features/auth/chat-identity-connect';
-import { bindSlackIdentity } from '@kortix/sdk';
+import { slackIdentityApi } from '@/lib/api/slack-identity';
 
 /**
  * Slack `/login` bind page. The bot DMs the user a link to
@@ -21,7 +21,7 @@ export default function SlackLoginPage() {
       service="Slack"
       token={token}
       loginPath={`/slack/login/${token}`}
-      bind={bindSlackIdentity}
+      bind={(t) => slackIdentityApi.bind(t)}
       missingLinkMessage="This page is opened from a Kortix message in Slack. Run /kortix login in Slack to get a fresh link."
       disconnectNote={
         <>

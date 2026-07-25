@@ -24,7 +24,7 @@ import Loading from '@/components/ui/loading';
 import { SidebarContext } from '@/components/ui/sidebar';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { openSessionQuickView } from '@/features/session/open-session-quick-view';
-import { useRuntimeAgents, useRuntimeProviders } from '@kortix/sdk/react';
+import { useOpenCodeAgents, useOpenCodeProviders } from '@/hooks/opencode/use-opencode-sessions';
 import { useNewProjectSession } from '@/hooks/projects/use-new-project-session';
 import { parseCustomizeSection } from '@/lib/customize-sections';
 import { type MenuItemDef, type SettingsTabId, getItemsForSurface } from '@/lib/menu-registry';
@@ -34,7 +34,7 @@ import { useCustomizeStore } from '@/stores/customize-store';
 import { useProjectSessionTabsStore } from '@/stores/project-session-tabs-store';
 import { featureFlags } from '@kortix/sdk/feature-flags';
 import { normalizeAppPathname } from '@kortix/sdk/instance-routes';
-import { systemReload } from '@kortix/sdk';
+import { systemReload } from '@kortix/sdk/opencode-client';
 import {
   type ExperimentalFeatureKey,
   type KortixAccount,
@@ -44,7 +44,7 @@ import {
   listAccounts,
   listProjectSessions,
   listProjectsForAccount,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown,
@@ -76,12 +76,12 @@ import { MODEL_SELECTOR_PROVIDER_IDS, ProviderLogo } from '@/features/providers/
 import { DiffDialog } from '@/features/session/diff-dialog';
 import { CompactModal } from '@/features/session/header/compact-modal';
 import { flattenModels } from '@/features/session/session-chat-input';
-import { useModelStore } from '@kortix/sdk/react';
-import { useCreatePty } from '@kortix/sdk/react';
+import { useModelStore } from '@/hooks/opencode/use-model-store';
+import { useCreatePty } from '@/hooks/opencode/use-opencode-pty';
 import {
-  useCreateRuntimeSession,
-  useRuntimeMessages,
-} from '@kortix/sdk/react';
+  useCreateOpenCodeSession,
+  useOpenCodeMessages,
+} from '@/hooks/opencode/use-opencode-sessions';
 import { useSandboxProxy } from '@/hooks/use-sandbox-proxy';
 import { isBillingEnabled } from '@/lib/config';
 import { isLlmGatewayAvailable } from '@/lib/llm-gateway';
@@ -285,7 +285,7 @@ function MessagesPage({
   onSelect: (messageId: string) => void;
 }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
-  const { data: messages, isLoading } = useRuntimeMessages(sessionId);
+  const { data: messages, isLoading } = useOpenCodeMessages(sessionId);
 
   const turns = useMemo(() => (messages ? groupMessagesIntoTurns(messages) : []), [messages]);
 
@@ -385,7 +385,7 @@ export function CommandPalette() {
   const sidebarCtx = useContext(SidebarContext);
   const sidebarOpen = sidebarCtx?.open ?? false;
   const { proxyUrl: buildProxyUrl, subdomainOpts } = useSandboxProxy();
-  const createSession = useCreateRuntimeSession();
+  const createSession = useCreateOpenCodeSession();
   const createPty = useCreatePty();
   const { theme, setTheme } = useTheme();
   const activeWallpaperId = useUserPreferencesStore(
@@ -394,8 +394,8 @@ export function CommandPalette() {
   const panelMode = useUserPreferencesStore((s) => s.preferences.panelMode ?? 'easy');
   const billingEnabled = isBillingEnabled();
 
-  const { data: agents } = useRuntimeAgents();
-  const { data: providers } = useRuntimeProviders();
+  const { data: agents } = useOpenCodeAgents();
+  const { data: providers } = useOpenCodeProviders();
 
   const selectedAccountId = useCurrentAccountStore((s) => s.selectedAccountId);
   const { data: accountsList } = useQuery({
@@ -1008,14 +1008,14 @@ export function CommandPalette() {
   }, [close, panelMode]);
 
   /**
-   * "Open Terminal" / "Open Audit" / "Open Browser" / "Open Files" (Easy: the
-   * Easy panel's detail layer, Advanced: the panel's corresponding tab). The
+   * "Open Terminal" / "Open Audit" / "Open Browser" (Easy: the Easy panel's
+   * detail layer, Advanced: the panel's Terminal/Audit/Browser tab). The
    * id-space-sensitive branching lives in `openSessionQuickView` — shared
-   * with the session header's terminal/browser/files buttons, so it can never
+   * with the session header's terminal/browser buttons, so it can never
    * drift between them.
    */
   const handleOpenQuickView = useCallback(
-    (view: 'terminal' | 'audit' | 'browser' | 'files') => {
+    (view: 'terminal' | 'audit' | 'browser') => {
       close();
       openSessionQuickView(view, 'palette');
     },
@@ -1032,10 +1032,6 @@ export function CommandPalette() {
   );
   const handleOpenSessionBrowser = useCallback(
     () => handleOpenQuickView('browser'),
-    [handleOpenQuickView],
-  );
-  const handleOpenSessionFiles = useCallback(
-    () => handleOpenQuickView('files'),
     [handleOpenQuickView],
   );
 
@@ -1155,7 +1151,6 @@ export function CommandPalette() {
       openSessionTerminal: handleOpenSessionTerminal,
       openSessionAudit: handleOpenSessionAudit,
       openSessionBrowser: handleOpenSessionBrowser,
-      openSessionFiles: handleOpenSessionFiles,
       logout: handleLogout,
       openPlan: handleOpenPlan,
       openProviderModal: handleOpenProviderModal,
@@ -1174,7 +1169,6 @@ export function CommandPalette() {
       handleOpenSessionTerminal,
       handleOpenSessionAudit,
       handleOpenSessionBrowser,
-      handleOpenSessionFiles,
       handleLogout,
       handleOpenPlan,
       handleOpenProviderModal,

@@ -1,7 +1,4 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 
 import { buildExecutorMcpConfigContent, buildOpencodeConfigContent } from '../opencode'
 
@@ -18,13 +15,16 @@ const GATEWAY_CATALOG = {
 
 const realFetch = globalThis.fetch
 
-const CATALOG_FILE = join(mkdtempSync(join(tmpdir(), 'kortix-mcp-catalog-')), 'catalog.json')
-
-function stageGatewayCatalog(catalog: Record<string, unknown>) {
-  writeFileSync(CATALOG_FILE, JSON.stringify({ models: catalog }))
+function stubGatewayModels(catalog: Record<string, unknown>) {
   globalThis.fetch = (async (input: string) => {
-    throw new Error(`boot config must not fetch; attempted ${String(input)}`)
-  }) as unknown as typeof fetch
+    if (String(input).endsWith('/models')) {
+      return new Response(JSON.stringify({ models: catalog }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response('not found', { status: 404 })
+  }) as typeof fetch
 }
 
 afterEach(() => {
@@ -89,11 +89,10 @@ describe('buildOpencodeConfigContent — Kortix LLM gateway provider', () => {
   const GATEWAY_ENV = {
     KORTIX_LLM_BASE_URL: 'https://api.kortix.test/v1/llm',
     KORTIX_LLM_API_KEY: 'kyolo_abc123',
-    KORTIX_LLM_CATALOG_FILE: CATALOG_FILE,
   }
 
   test('registers the kortix provider when gateway env present', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const config = JSON.parse((await buildOpencodeConfigContent(GATEWAY_ENV))!)
     expect(config.provider.kortix).toMatchObject({
       npm: '@ai-sdk/openai-compatible',
@@ -106,8 +105,8 @@ describe('buildOpencodeConfigContent — Kortix LLM gateway provider', () => {
     expect(Object.keys(config.provider.kortix.models).length).toBeGreaterThan(0)
   })
 
-  test('populates the provider models from the baked catalog file', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+  test('populates the provider models from the gateway /models fetch', async () => {
+    stubGatewayModels(GATEWAY_CATALOG)
     const config = JSON.parse((await buildOpencodeConfigContent(GATEWAY_ENV))!)
     const models = config.provider.kortix.models
     expect(models['anthropic/claude-opus-4.8'].reasoning).toBe(true)
@@ -121,25 +120,16 @@ describe('buildOpencodeConfigContent — Kortix LLM gateway provider', () => {
     expect(models['anthropic/claude-opus-4.8'].provider).toBeUndefined()
   })
 
-  test('falls back to a minimal catalog immediately when no catalog file exists', async () => {
-    globalThis.fetch = (async (input: string) => {
-      throw new Error(`boot config must not fetch; attempted ${String(input)}`)
-    }) as unknown as typeof fetch
-    const started = Date.now()
-    const config = JSON.parse(
-      (await buildOpencodeConfigContent({
-        ...GATEWAY_ENV,
-        KORTIX_LLM_CATALOG_FILE: join(tmpdir(), 'kortix-absent-catalog.json'),
-      }))!,
-    )
+  test('falls back to a minimal catalog when the gateway /models fetch fails', async () => {
+    globalThis.fetch = (async () => new Response('boom', { status: 503 })) as unknown as typeof fetch
+    const config = JSON.parse((await buildOpencodeConfigContent(GATEWAY_ENV))!)
     const models = config.provider.kortix.models
     expect(Object.keys(models).length).toBeGreaterThan(0)
     expect(models['claude-sonnet-4.6']).toBeDefined()
-    expect(Date.now() - started).toBeLessThan(1_000)
-  })
+  }, 20_000) // full backoff (~15.5s) before the minimal-catalog fallback
 
   test('uses the resolved session model as the OpenCode default', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const config = JSON.parse((await buildOpencodeConfigContent({
       ...GATEWAY_ENV,
       KORTIX_OPENCODE_MODEL: 'codex/gpt-5.6-sol',
@@ -149,14 +139,14 @@ describe('buildOpencodeConfigContent — Kortix LLM gateway provider', () => {
   })
 
   test('uses an available gateway model for legacy sessions without a resolved model', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const config = JSON.parse((await buildOpencodeConfigContent(GATEWAY_ENV))!)
     expect(config.model).toBe('kortix/anthropic/claude-opus-4.8')
     expect(config.small_model).toBe('kortix/anthropic/claude-opus-4.8')
   })
 
   test('routes a user-set default model through the Kortix provider', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const existing = JSON.stringify({ model: 'anthropic/claude-sonnet-4.6' })
     const config = JSON.parse(
       (await buildOpencodeConfigContent({ ...GATEWAY_ENV, OPENCODE_CONFIG_CONTENT: existing }))!,
@@ -165,14 +155,14 @@ describe('buildOpencodeConfigContent — Kortix LLM gateway provider', () => {
   })
 
   test('does not include executor MCP alongside the provider unless explicitly enabled', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const config = JSON.parse((await buildOpencodeConfigContent({ ...ENV, ...GATEWAY_ENV }))!)
     expect(config.provider.kortix).toBeDefined()
     expect(config.mcp).toBeUndefined()
   })
 
   test('can include the optional executor MCP alongside the provider', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const config = JSON.parse((await buildOpencodeConfigContent({
       ...ENV,
       ...GATEWAY_ENV,
@@ -183,14 +173,14 @@ describe('buildOpencodeConfigContent — Kortix LLM gateway provider', () => {
   })
 
   test('returns config with provider only (no mcp) when executor env missing', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const config = JSON.parse((await buildOpencodeConfigContent(GATEWAY_ENV))!)
     expect(config.provider.kortix).toBeDefined()
     expect(config.mcp).toBeUndefined()
   })
 
   test('merges provider onto pre-existing inline provider block', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const existing = JSON.stringify({
       provider: { anthropic: { options: { timeout: 600000 } } },
     })
@@ -206,17 +196,16 @@ describe('buildOpencodeConfigContent — gateway provider allowlist', () => {
   const GATEWAY_ENV = {
     KORTIX_LLM_BASE_URL: 'https://api.kortix.test/v1/llm',
     KORTIX_LLM_API_KEY: 'kyolo_abc123',
-    KORTIX_LLM_CATALOG_FILE: CATALOG_FILE,
   }
 
   test('allows only kortix when the gateway is active', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const config = JSON.parse((await buildOpencodeConfigContent(GATEWAY_ENV))!)
     expect(config.enabled_providers).toEqual(['kortix'])
   })
 
   test('a leaked native key (e.g. GITHUB_TOKEN) cannot open its native provider', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const config = JSON.parse(
       (await buildOpencodeConfigContent({ ...GATEWAY_ENV, GITHUB_TOKEN: 'ghp_x', OPENAI_API_KEY: 'sk-x' }))!,
     )
@@ -224,14 +213,14 @@ describe('buildOpencodeConfigContent — gateway provider allowlist', () => {
   })
 
   test('does not enable codex/openai subscription providers while gateway is active', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const authJson = JSON.stringify({ openai: { type: 'oauth', access: 'x' }, opencode: { key: 'y' } })
     const config = JSON.parse((await buildOpencodeConfigContent({ ...GATEWAY_ENV, CODEX_AUTH_JSON: authJson }))!)
     expect(config.enabled_providers).toEqual(['kortix'])
   })
 
   test('ignores malformed auth.json and still keeps the explicit allowlist', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const config = JSON.parse((await buildOpencodeConfigContent({ ...GATEWAY_ENV, OPENCODE_AUTH_JSON: 'not json{' }))!)
     expect(config.enabled_providers).toEqual(['kortix'])
   })
@@ -275,7 +264,6 @@ describe('buildOpencodeConfigContent — server-compiled v2 agent config (KORTIX
   const GATEWAY_ENV = {
     KORTIX_LLM_BASE_URL: 'https://api.kortix.test/v1/llm',
     KORTIX_LLM_API_KEY: 'kyolo_abc123',
-    KORTIX_LLM_CATALOG_FILE: CATALOG_FILE,
   }
   const COMPILED = JSON.stringify({
     model: 'anthropic/claude-sonnet-5',
@@ -299,7 +287,7 @@ describe('buildOpencodeConfigContent — server-compiled v2 agent config (KORTIX
   })
 
   test('the gateway overlay normalizes compiled top-level and agent models', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const config = JSON.parse(
       (await buildOpencodeConfigContent({ ...GATEWAY_ENV, KORTIX_COMPILED_AGENT_CONFIG: COMPILED }))!,
     )
@@ -309,7 +297,7 @@ describe('buildOpencodeConfigContent — server-compiled v2 agent config (KORTIX
   })
 
   test('the gateway overlay keeps the complete Codex wire model as the Kortix model id', async () => {
-    stageGatewayCatalog(GATEWAY_CATALOG)
+    stubGatewayModels(GATEWAY_CATALOG)
     const compiled = JSON.stringify({
       model: 'codex/gpt-5.6-sol',
       agent: { mike: { mode: 'primary', model: 'codex/gpt-5.6-sol' } },

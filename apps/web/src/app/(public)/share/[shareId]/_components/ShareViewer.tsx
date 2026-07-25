@@ -53,7 +53,7 @@ import {
   type PublicSessionShareMeta,
   type PublicSessionTranscript,
   type PublicSessionTranscriptMessage,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import { describeShareError, toShareLoadError, transcriptUnavailableMessage, type ShareLoadError } from './share-load-error';
 
 interface ShareData {

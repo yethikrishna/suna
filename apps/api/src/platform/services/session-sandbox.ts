@@ -55,19 +55,6 @@ import { resolveAgentGrant } from '../../projects/agents';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { resolveLlmGatewayBaseUrl } from '../../llm-gateway/sandbox-base-url';
 import { RuntimeIdentityConflictError } from '../../projects/runtime-identity-error';
-import { withTimeout, configuredTimeoutMs } from '../../shared/with-timeout';
-
-/**
- * Bound for the pre-active hook. Generous, because the hook is a data restore and
- * cutting it short mid-write is worse than waiting — but finite, because it sits
- * between "VM exists" and "row is active", i.e. directly on time-to-usable. See
- * the call site for the measured cost of it being unbounded.
- */
-const BEFORE_ACTIVE_HOOK_TIMEOUT_MS = configuredTimeoutMs(
-  'KORTIX_BEFORE_ACTIVE_HOOK_TIMEOUT_MS',
-  20_000,
-  1_000,
-);
 
 // Fallback spec for sandboxes that don't declare `sandbox:` in kortix.yaml.
 // Mirrors the platform default sandbox size (2 vCPU / 4 GB / 20 GB).
@@ -694,31 +681,13 @@ export async function provisionSessionSandbox(opts: {
 
       // Pre-active hook (legacy migration chat restore). Runs while the row is
       // still 'provisioning' so the frontend hasn't started ensure-opencode yet.
-      //
-      // The comment here used to say "never block the session opening on it" while
-      // the code awaited it UNBOUNDED — and the telemetry shows what that cost
-      // when the hook was live: `before-active-hook` p50 12 267ms, p90 33 762ms,
-      // max 62 490ms across 162 provisions, every millisecond of it added to
-      // time-to-usable because the row cannot flip to 'active' until this returns
-      // (last live occurrence 2026-07-12; no caller passes `beforeActive` today,
-      // so this is currently unreachable).
-      //
-      // Left in place as the documented extension point it is, but now bounded so
-      // re-enabling it cannot silently reintroduce a 12-60s stall. On timeout the
-      // hook keeps running detached — it is a data-restore, so abandoning the WAIT
-      // is right while abandoning the WORK is not — and the session proceeds to
-      // 'active' as the original comment always promised.
+      // Best-effort: never block the session opening on it.
       if (opts.beforeActive) {
         try {
-          await withTimeout(
-            opts.beforeActive(result.externalId),
-            BEFORE_ACTIVE_HOOK_TIMEOUT_MS,
-            `beforeActive(${sandbox.sandboxId})`,
-          );
+          await opts.beforeActive(result.externalId);
           tl.mark('before-active-hook');
         } catch (err) {
-          console.warn(`[session-sandbox] beforeActive hook failed or timed out for ${sandbox.sandboxId}:`, err);
-          tl.mark('before-active-hook-abandoned');
+          console.warn(`[session-sandbox] beforeActive hook failed for ${sandbox.sandboxId}:`, err);
         }
       }
 

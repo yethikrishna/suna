@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
+import { backendApi } from '@/lib/api-client';
 import { accountStateKeys } from './use-account-state';
 import { useBillingAccountId } from '@/stores/billing-account-context';
 import { dollarsToCredits } from '@kortix/shared';
-import { getBillingTransactionsSummary, listBillingTransactions } from '@kortix/sdk';
 
 export interface CreditTransaction {
   id: string;
@@ -68,12 +68,24 @@ export function useTransactions(
     // skip the request entirely rather than surfacing that raw error.
     enabled: options?.enabled ?? true,
     queryFn: async () => {
-      const data = (await listBillingTransactions({
-        accountId: accountId ?? undefined,
-        limit,
-        offset,
-        typeFilter: normalizedTypeFilter,
-      })) as TransactionsResponse;
+      const params = new URLSearchParams({
+        limit: limit.toString(),
+        offset: offset.toString(),
+      });
+
+      if (normalizedTypeFilter) {
+        params.append('type_filter', normalizedTypeFilter);
+      }
+      if (accountId) {
+        params.append('account_id', accountId);
+      }
+
+      const response = await backendApi.get(`/billing/transactions?${params.toString()}`);
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      const data = response.data as TransactionsResponse;
       return {
         ...data,
         transactions: data.transactions.map((tx) => ({
@@ -92,10 +104,14 @@ export function useTransactionsSummary(days: number = 30) {
   return useQuery<TransactionsSummary>({
     queryKey: [...accountStateKeys.transactions(), 'summary', days, { accountId: accountId ?? null }],
     queryFn: async () => {
-      const data = await getBillingTransactionsSummary({
-        days,
-        accountId: accountId ?? undefined,
-      });
+      const params = new URLSearchParams({ days: String(days) });
+      if (accountId) params.append('account_id', accountId);
+      const response = await backendApi.get(`/billing/transactions/summary?${params.toString()}`);
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      const data = response.data as TransactionsSummary;
       return {
         totalCredits: dollarsToCredits(data.totalCredits),
         totalDebits: dollarsToCredits(data.totalDebits),

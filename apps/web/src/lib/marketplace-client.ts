@@ -1,14 +1,4 @@
-import {
-  addMarketplaceSource as sdkAddMarketplaceSource,
-  createMarketplaceInstallSession,
-  getMarketplaceCatalogItem,
-  getMarketplaceCatalogItemFile,
-  listFeaturedMarketplaces as sdkListFeaturedMarketplaces,
-  listMarketplaceCatalogItems,
-  listMarketplaceSources as sdkListMarketplaceSources,
-  listMarketplaces as sdkListMarketplaces,
-  removeMarketplaceSource as sdkRemoveMarketplaceSource,
-} from '@kortix/sdk';
+import { backendApi } from '@/lib/api-client';
 
 // Server-safe public reads live in a separate module (no api-client import) so
 // Server Components can call them. Re-exported here for existing client imports.
@@ -91,6 +81,13 @@ export interface InstallResult {
   capabilities: ItemCapabilities;
 }
 
+function unwrap<T>(response: { data?: T; success: boolean; error?: Error }): T {
+  if (!response.success || response.data === undefined) {
+    throw response.error ?? new Error('Request failed');
+  }
+  return response.data;
+}
+
 /** A source still resolving during the cold first-load — rendered as a spinner
  *  pill until it lands and becomes a real facet. */
 export interface PendingSource {
@@ -124,18 +121,23 @@ export async function listMarketplaceItems(params?: {
   limit?: number;
   offset?: number;
 }): Promise<ItemsPage> {
-  const res = (await listMarketplaceCatalogItems({
-    ...params,
-    type: params?.type === 'all' ? undefined : params?.type,
-    source: params?.source === 'all' ? undefined : params?.source,
-  })) as unknown as {
+  const qs = new URLSearchParams();
+  if (params?.query) qs.set('query', params.query);
+  if (params?.type && params.type !== 'all') qs.set('type', params.type);
+  if (params?.source && params.source !== 'all') qs.set('source', params.source);
+  if (params?.limit !== undefined) qs.set('limit', String(params.limit));
+  if (params?.offset !== undefined) qs.set('offset', String(params.offset));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const res = unwrap(
+    await backendApi.get<{
       items: MarketplaceItem[];
       total?: number;
       hasMore?: boolean;
       loading?: boolean;
       pending?: number;
       sources?: PendingSource[];
-    };
+    }>(`/marketplace/items${suffix}`),
+  );
   const items = res.items ?? [];
   return {
     items,
@@ -186,12 +188,14 @@ export interface MarketplacesPage {
 }
 
 export async function listMarketplaces(): Promise<MarketplacesPage> {
-  const res = (await sdkListMarketplaces()) as unknown as {
+  const res = unwrap(
+    await backendApi.get<{
       marketplaces: MarketplaceSummary[];
       loading?: boolean;
       pending?: number;
       sources?: PendingSource[];
-    };
+    }>(`/marketplace/marketplaces`),
+  );
   return {
     marketplaces: res.marketplaces ?? [],
     loading: !!res.loading,
@@ -210,14 +214,16 @@ export interface FeaturedMarketplace {
 }
 
 export async function listFeaturedMarketplaces(): Promise<FeaturedMarketplace[]> {
-  const res = (await sdkListFeaturedMarketplaces()) as unknown as {
-    featured: FeaturedMarketplace[];
-  };
+  const res = unwrap(
+    await backendApi.get<{ featured: FeaturedMarketplace[] }>(`/marketplace/marketplaces/featured`),
+  );
   return res.featured ?? [];
 }
 
 export async function getMarketplaceItem(id: string): Promise<MarketplaceItemDetail> {
-  return (await getMarketplaceCatalogItem(id)) as unknown as MarketplaceItemDetail;
+  return unwrap(
+    await backendApi.get<MarketplaceItemDetail>(`/marketplace/items/${encodeURIComponent(id)}`),
+  );
 }
 
 export interface MarketplaceItemFile {
@@ -230,8 +236,11 @@ export async function getMarketplaceItemFile(
   id: string,
   target: string,
 ): Promise<MarketplaceItemFile> {
-  const file = await getMarketplaceCatalogItemFile(id, target);
-  return { target: String(file.target ?? file.path ?? target), content: file.content };
+  return unwrap(
+    await backendApi.get<MarketplaceItemFile>(
+      `/marketplace/items/${encodeURIComponent(id)}/file?path=${encodeURIComponent(target)}`,
+    ),
+  );
 }
 
 /** Install ANY marketplace item (skill/agent/command/tool, or a whole
@@ -245,7 +254,12 @@ export async function installMarketplaceItemAsSession(
   projectId: string,
   id: string,
 ): Promise<{ session_id: string }> {
-  return createMarketplaceInstallSession(projectId, id);
+  return unwrap(
+    await backendApi.post<{ session_id: string }>(
+      `/projects/${projectId}/marketplace/install-session`,
+      { id },
+    ),
+  );
 }
 
 // ── "Add a marketplace" sources ─────────────────────────────────────────────
@@ -267,15 +281,21 @@ export interface AddSourceInput {
 }
 
 export async function listMarketplaceSources(): Promise<MarketplaceSource[]> {
-  const res = await sdkListMarketplaceSources();
-  return (res.sources ?? []) as unknown as MarketplaceSource[];
+  const res = unwrap(
+    await backendApi.get<{ sources: MarketplaceSource[] }>(`/marketplace/sources`),
+  );
+  return res.sources ?? [];
 }
 
 export async function addMarketplaceSource(input: AddSourceInput): Promise<MarketplaceSource> {
-  const res = await sdkAddMarketplaceSource(input);
-  return res.source as unknown as MarketplaceSource;
+  const res = unwrap(
+    await backendApi.post<{ source: MarketplaceSource }>(`/marketplace/sources`, input),
+  );
+  return res.source;
 }
 
 export async function removeMarketplaceSource(id: string): Promise<void> {
-  await sdkRemoveMarketplaceSource(id);
+  unwrap(
+    await backendApi.delete<{ ok: boolean }>(`/marketplace/sources/${encodeURIComponent(id)}`),
+  );
 }

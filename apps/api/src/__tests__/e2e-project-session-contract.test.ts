@@ -1536,7 +1536,6 @@ describe('project session API contract', () => {
     expect(await pendingSandbox.json()).toMatchObject({
       stage: 'provisioning',
       agent_name: 'default',
-      runtime_transport: 'rest',
     });
 
     sessionRow = null;

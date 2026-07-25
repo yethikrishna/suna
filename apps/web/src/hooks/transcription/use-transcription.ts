@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { transcribeAudio, type TranscriptionResponse } from '@kortix/sdk';
+import { transcribeAudio, TranscriptionResponse } from '@/lib/api/transcription';
 import { handleApiError } from '@/lib/error-handler';
 
 export const useTranscription = () => {

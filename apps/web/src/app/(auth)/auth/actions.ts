@@ -12,12 +12,7 @@ import {
 } from '@/lib/auth/unified-auth-flow';
 import { getServerPublicEnv } from '@/lib/public-env-server';
 import { createClient } from '@/lib/supabase/server';
-import {
-  checkAccessEmail,
-  fetchAccountStateWithToken,
-  recordPlatformLogout,
-  submitAccessRequest,
-} from '@kortix/sdk';
+import { fetchAccountStateWithToken } from '@kortix/sdk/projects-client';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
@@ -104,14 +99,17 @@ async function checkEmailFlowMode(email: string): Promise<EmailFlowMode> {
     const backendUrl = getServerPublicEnv().BACKEND_URL || 'http://localhost:8008/v1';
     const requestHeaders = await headers();
     const forwardedFor = requestHeaders.get('x-forwarded-for') || requestHeaders.get('x-real-ip');
-    const body = await checkAccessEmail(email, {
-      backendUrl,
+    const res = await fetch(`${backendUrl}/access/check-email`, {
+      method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         ...(forwardedFor ? { 'x-forwarded-for': forwardedFor } : {}),
       },
+      body: JSON.stringify({ email }),
       signal: AbortSignal.timeout(4_000),
     });
-    return resolveEmailFlowMode(body);
+    if (!res.ok) return 'unknown';
+    return resolveEmailFlowMode(await res.json());
   } catch {
     // Fail open — 'unknown' routes through the adaptive signup action, which
     // signs in existing users and registers new ones.
@@ -202,18 +200,22 @@ export async function requestAccess(prevState: any, formData: FormData) {
 
   try {
     const backendUrl = getServerPublicEnv().BACKEND_URL || 'http://localhost:8008/v1';
-    await submitAccessRequest(
-      {
+    const res = await fetch(`${backendUrl}/access/request-access`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         email: email.trim().toLowerCase(),
         company: company?.trim() || undefined,
         useCase: useCase?.trim() || undefined,
-      },
-      { backendUrl },
-    );
-    return {
-      success: true,
-      message: "Your access request has been submitted. We'll be in touch!",
-    };
+      }),
+    });
+    if (res.ok) {
+      return {
+        success: true,
+        message: "Your access request has been submitted. We'll be in touch!",
+      };
+    }
+    return { message: 'Failed to submit request. Please try again.' };
   } catch {
     return { message: 'Failed to submit request. Please try again.' };
   }
@@ -491,9 +493,14 @@ export async function signOut() {
     } = await supabase.auth.getSession();
     if (session?.access_token) {
       const backendUrl = getServerPublicEnv().BACKEND_URL || 'http://localhost:8008/v1';
-      await recordPlatformLogout({
-        backendUrl,
-        accessToken: session.access_token,
+      await fetch(`${backendUrl}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: '{}',
+        // Short timeout — logout should never hang on a slow backend.
         signal: AbortSignal.timeout(3_000),
       });
     }

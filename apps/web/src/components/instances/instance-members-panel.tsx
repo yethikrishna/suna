@@ -15,7 +15,7 @@ import {
   type SandboxMember,
   type SandboxMemberRole,
   type SandboxPendingInvite,
-} from '@kortix/sdk';
+} from '@kortix/sdk/platform-client';
 import { cn } from '@/lib/utils';
 import {
   Dialog,

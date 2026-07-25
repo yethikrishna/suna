@@ -8,9 +8,9 @@ import { Input } from '@/components/ui/input';
 import Loading from '@/components/ui/loading';
 import { successToast } from '@/components/ui/toast';
 import { ProviderLogo } from '@/features/providers/provider-branding';
-import { refreshProjectProviderState } from '@kortix/sdk/react';
+import { refreshProjectProviderState } from '@/hooks/opencode/provider-refresh';
 import type { LlmProviderEntry } from '@/lib/llm-providers';
-import { upsertProjectSecret } from '@kortix/sdk';
+import { upsertProjectSecret } from '@kortix/sdk/projects-client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ExternalLink, Info, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -34,7 +34,7 @@ export function ApiKeyConnectForm({
   projectId: string;
   provider: LlmProviderEntry;
   onBack: () => void;
-  onConnected: (providerId: string) => void;
+  onConnected: () => void;
 }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
@@ -56,7 +56,7 @@ export function ApiKeyConnectForm({
       successToast(`${provider.label} connected`);
       queryClient.invalidateQueries({ queryKey: ['project-secrets', projectId] });
       refreshProjectProviderState(queryClient, projectId, { expectProviderId: provider.id });
-      onConnected(provider.id);
+      onConnected();
     },
     onError: (err) => setError(err instanceof Error ? err.message : 'Failed to save credentials'),
   });

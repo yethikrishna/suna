@@ -7,7 +7,7 @@ import {
   shouldPollProjectSessions,
   sortSessionsByCreatedAt,
 } from './project-session-list-helpers';
-import type { ProjectSession } from '@kortix/sdk';
+import type { ProjectSession } from '@kortix/sdk/projects-client';
 
 function makeSession(overrides: Partial<ProjectSession> = {}): ProjectSession {
   return {

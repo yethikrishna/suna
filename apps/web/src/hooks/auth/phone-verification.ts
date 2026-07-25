@@ -1,5 +1,5 @@
 import { useAuth } from '@/features/providers/auth-provider';
-import { supabaseMFAService as phoneVerificationService } from '@/lib/supabase/mfa';
+import { phoneVerificationService } from '@/lib/api/phone-verification';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export const useEnrollPhoneNumber = () => {

@@ -20,7 +20,6 @@ export interface GatewayTraceInput {
   promptTokens?: number;
   completionTokens?: number;
   cachedTokens?: number;
-  cacheWriteTokens?: number;
   upstreamCost?: number;
   finalCost?: number;
   streaming?: boolean;
@@ -77,7 +76,6 @@ export function buildGatewayTraceRow(input: GatewayTraceInput) {
     inputTokens: nonNegInt(input.promptTokens),
     outputTokens: nonNegInt(input.completionTokens),
     cachedTokens: nonNegInt(input.cachedTokens),
-    cacheWriteTokens: nonNegInt(input.cacheWriteTokens),
     upstreamCost: String(input.upstreamCost ?? 0),
     finalCost: String(input.finalCost ?? 0),
     streaming: input.streaming ?? false,

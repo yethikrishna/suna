@@ -1,6 +1,6 @@
 'use client';
 
-import { listProjectsForAccount, type KortixProject } from '@kortix/sdk';
+import { listProjectsForAccount, type KortixProject } from '@kortix/sdk/projects-client';
 import { Loader2, LogIn, MessagesSquare, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';

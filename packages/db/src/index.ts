@@ -177,8 +177,6 @@ export {
   projectSessionConnectorBindings,
   executorConnectorGrants,
   executorCredentials,
-  executorOAuthApplications,
-  executorOAuthSessions,
   executorConnectorActions,
   executorConnectorPolicies,
   executorProjectPolicies,

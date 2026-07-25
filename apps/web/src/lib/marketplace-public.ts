@@ -7,12 +7,6 @@
 // so the client module is never loaded at runtime.
 
 import { getEnv } from '@/lib/env-config';
-import {
-  getPublicMarketplaceItem as sdkGetPublicMarketplaceItem,
-  getPublicMarketplaceItemFile as sdkGetPublicMarketplaceItemFile,
-  listPublicMarketplaceItems as sdkListPublicMarketplaceItems,
-  listPublicMarketplaces as sdkListPublicMarketplaces,
-} from '@kortix/sdk';
 import type {
   ItemsPage,
   MarketplaceItem,
@@ -26,11 +20,19 @@ import type {
 /** Static/ISR revalidation for public marketplace catalog reads. */
 export const MARKETPLACE_PUBLIC_REVALIDATE_SECONDS = 3600;
 
-function publicRequestOptions() {
-  return {
-    backendUrl: getEnv().BACKEND_URL || 'http://localhost:8008/v1',
+function publicApiOrigin(): string {
+  const backend = getEnv().BACKEND_URL || '';
+  return backend.replace(/\/$/, '').replace(/\/v1$/, '');
+}
+
+async function publicGet<T>(path: string): Promise<T> {
+  const base = publicApiOrigin();
+  const response = await fetch(`${base}/v1${path.startsWith('/') ? path : `/${path}`}`, {
+    headers: { Accept: 'application/json' },
     next: { revalidate: MARKETPLACE_PUBLIC_REVALIDATE_SECONDS },
-  };
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  return response.json() as Promise<T>;
 }
 
 /** Client-side filter mirroring the public catalog query params. */
@@ -59,20 +61,21 @@ export async function listPublicMarketplaceItems(params?: {
   limit?: number;
   offset?: number;
 }): Promise<ItemsPage> {
-  const res = await sdkListPublicMarketplaceItems<{
+  const qs = new URLSearchParams();
+  if (params?.query) qs.set('query', params.query);
+  if (params?.type && params.type !== 'all') qs.set('type', params.type);
+  if (params?.source && params.source !== 'all') qs.set('source', params.source);
+  if (params?.limit !== undefined) qs.set('limit', String(params.limit));
+  if (params?.offset !== undefined) qs.set('offset', String(params.offset));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await publicGet<{
     items: MarketplaceItem[];
     total?: number;
     hasMore?: boolean;
     loading?: boolean;
     pending?: number;
     sources?: PendingSource[];
-  }>(publicRequestOptions(), {
-    query: params?.query,
-    type: params?.type && params.type !== 'all' ? params.type : undefined,
-    source: params?.source && params.source !== 'all' ? params.source : undefined,
-    limit: params?.limit,
-    offset: params?.offset,
-  });
+  }>(`/marketplace/items${suffix}`);
   const items = res.items ?? [];
   return {
     items,
@@ -87,12 +90,12 @@ export async function listPublicMarketplaceItems(params?: {
 }
 
 export async function listPublicMarketplaces(): Promise<MarketplacesPage> {
-  const res = await sdkListPublicMarketplaces<{
+  const res = await publicGet<{
     marketplaces: MarketplaceSummary[];
     loading?: boolean;
     pending?: number;
     sources?: PendingSource[];
-  }>(publicRequestOptions());
+  }>(`/marketplace/marketplaces`);
   return {
     marketplaces: res.marketplaces ?? [],
     loading: !!res.loading,
@@ -103,7 +106,7 @@ export async function listPublicMarketplaces(): Promise<MarketplacesPage> {
 
 /** Unauthenticated detail read for the public marketplace directory. */
 export async function getPublicMarketplaceItem(id: string): Promise<MarketplaceItemDetail> {
-  return sdkGetPublicMarketplaceItem<MarketplaceItemDetail>(id, publicRequestOptions());
+  return publicGet<MarketplaceItemDetail>(`/marketplace/items/${encodeURIComponent(id)}`);
 }
 
 /** Unauthenticated single-file read for the public marketplace detail viewer. */
@@ -111,10 +114,8 @@ export async function getPublicMarketplaceItemFile(
   id: string,
   target: string,
 ): Promise<MarketplaceItemFile> {
-  return sdkGetPublicMarketplaceItemFile<MarketplaceItemFile>(
-    id,
-    target,
-    publicRequestOptions(),
+  return publicGet<MarketplaceItemFile>(
+    `/marketplace/items/${encodeURIComponent(id)}/file?path=${encodeURIComponent(target)}`,
   );
 }
 

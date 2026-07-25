@@ -34,7 +34,7 @@ import {
   setGitHubAppFromExisting,
   setGitHubAppPat,
   startGitHubAppManifest,
-} from '@kortix/sdk';
+} from '@kortix/sdk/platform-client';
 
 export const GITHUB_APP_STATUS_KEY = ['github-app-status'];
 

@@ -12,7 +12,6 @@ import { getEnv } from '@/lib/env-config';
 import { cn } from '@/lib/utils';
 import { PublicFileShareView } from './public-file-share-view';
 import { SHARE_PAGE_ROOT_CLASS, SHARE_PREVIEW_IFRAME_CLASS } from './share-layout';
-import { getPublicShareByToken, startSessionWithToken } from '@kortix/sdk';
 
 interface PublicShareMeta {
   share: {
@@ -80,11 +79,12 @@ export default function PublicSessionSharePage() {
       setLoading(true);
       setError(null);
       try {
-        const body = await getPublicShareByToken<PublicShareMeta>(token, {
-          backendUrl: base,
+        const res = await fetch(`${base}/p/public-share/${encodeURIComponent(token)}`, {
           cache: 'no-store',
         });
-        if (!cancelled) setMeta(body);
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(body?.error || 'Share link unavailable');
+        if (!cancelled) setMeta(body as PublicShareMeta);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Share link unavailable');
       } finally {
@@ -108,10 +108,17 @@ export default function PublicSessionSharePage() {
     }
     setStarting(true);
     try {
-      await startSessionWithToken(meta.share.project_id, meta.share.session_id, {
-        backendUrl: base,
-        accessToken: authToken,
-      });
+      await fetch(
+        `${base}/projects/${meta.share.project_id}/sessions/${meta.share.session_id}/start`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: '{}',
+        },
+      );
       window.location.reload();
     } finally {
       setStarting(false);

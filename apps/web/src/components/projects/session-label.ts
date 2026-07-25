@@ -1,4 +1,4 @@
-import type { ProjectRuntimeSession, ProjectSession } from '@kortix/sdk';
+import type { ProjectOpenCodeSession, ProjectSession } from '@kortix/sdk/projects-client';
 
 /**
  * Canonical helpers for resolving a project session's display label and its
@@ -7,7 +7,7 @@ import type { ProjectRuntimeSession, ProjectSession } from '@kortix/sdk';
  */
 
 /** The root opencode session a project session is pinned to (if synced). */
-export function rootOpenCodeSession(session: ProjectSession): ProjectRuntimeSession | null {
+export function rootOpenCodeSession(session: ProjectSession): ProjectOpenCodeSession | null {
   const opencodeSessions = session.opencode_sessions ?? [];
   const rootId = session.opencode_session_id;
   if (rootId) return opencodeSessions.find((item) => item.id === rootId) ?? null;
@@ -15,7 +15,7 @@ export function rootOpenCodeSession(session: ProjectSession): ProjectRuntimeSess
 }
 
 /** Direct, non-archived children of the root opencode session, newest first. */
-export function directSubsessions(session: ProjectSession): ProjectRuntimeSession[] {
+export function directSubsessions(session: ProjectSession): ProjectOpenCodeSession[] {
   const root = rootOpenCodeSession(session);
   if (!root) return [];
   return (session.opencode_sessions ?? [])

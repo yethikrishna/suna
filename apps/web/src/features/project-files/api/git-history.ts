@@ -11,7 +11,7 @@ import {
   getProjectCommitDiff,
   getProjectFileHistory,
   type ProjectCommit,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 import type { FileCommitDiff, FileHistoryResult, GitCommit } from '@/features/file-browser/types';
 
 function toGitCommit(c: ProjectCommit): GitCommit {

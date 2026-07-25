@@ -39,4 +39,4 @@ export {
   type GatewayPlaygroundResult,
   type GatewayPlaygroundResponse,
   type GatewayModelGenerationConfig,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';

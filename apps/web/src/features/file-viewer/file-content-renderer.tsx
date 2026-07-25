@@ -15,16 +15,14 @@ import {
   useAuthenticatedPreviewUrl,
 } from '@/hooks/use-authenticated-preview-url';
 import { useHeicBlob } from '@/hooks/use-heic-url';
+import { useSandboxProxy } from '@/hooks/use-sandbox-proxy';
 import { getAuthToken } from '@/lib/auth-token';
-import {
-  getActiveStaticFileHealthUrl,
-  getActiveStaticFilePreviewUrl,
-} from '@kortix/sdk/react';
+import { SANDBOX_PORTS } from '@kortix/sdk/platform-client';
 import { getIframeSandbox } from '@/lib/security/iframe-sandbox';
 import { cn } from '@/lib/utils';
 import { isHeicFile } from '@/lib/utils/heic-convert';
 import { findDiagnosticsForFile, useDiagnosticsStore } from '@/stores/diagnostics-store';
-import { toSandboxAbsolutePath } from '@kortix/sdk';
+import { toSandboxAbsolutePath } from '@kortix/sdk/files';
 import {
   AlertTriangle,
   Braces,
@@ -369,16 +367,21 @@ export function FileContentRenderer({
   const [isHtmlPreview, setIsHtmlPreview] = useState(true);
 
   // Build proxied static-file-server URLs for HTML preview
+  const { rewritePortPath } = useSandboxProxy();
+  const staticPort = parseInt(SANDBOX_PORTS.STATIC_FILE_SERVER ?? '3211', 10);
+
   const htmlPreviewUrl = useMemo(() => {
     if (!isHtmlFile) return '';
-    return getActiveStaticFilePreviewUrl(toSandboxAbsolutePath(filePath));
-  }, [isHtmlFile, filePath]);
+    const normalizedPath = toSandboxAbsolutePath(filePath);
+    const encodedPath = normalizedPath.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+    return rewritePortPath(staticPort, `/open?path=/${encodedPath}`);
+  }, [isHtmlFile, filePath, rewritePortPath, staticPort]);
 
   // Health URL: hit /health on the static file server through the proxy
   const htmlHealthUrl = useMemo(() => {
     if (!isHtmlFile) return '';
-    return getActiveStaticFileHealthUrl();
-  }, [isHtmlFile]);
+    return rewritePortPath(staticPort, '/health');
+  }, [isHtmlFile, rewritePortPath, staticPort]);
 
   // Authenticate the preview session before rendering the iframe
   const authenticatedPreviewUrl = useAuthenticatedPreviewUrl(

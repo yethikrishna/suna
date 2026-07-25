@@ -1,12 +1,12 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useRuntimeStore } from '@kortix/sdk/react';
+import { useServerStore } from '@/stores/server-store';
 import { searchWorkspaceFilePaths } from '../search/workspace-search-service';
 
 export const fileSearchKeys = {
   files: (serverUrl: string, query: string, type?: 'file' | 'directory', limit?: number) =>
-    ['runtime-files', 'search', 'files', serverUrl, query, type ?? 'all', limit ?? 50] as const,
+    ['opencode-files', 'search', 'files', serverUrl, query, type ?? 'all', limit ?? 50] as const,
 };
 
 /**
@@ -19,7 +19,7 @@ export function useFileSearch(
   query: string,
   options?: { type?: 'file' | 'directory'; limit?: number; enabled?: boolean },
 ) {
-  const serverUrl = useRuntimeStore((s) => s.getActiveServerUrl());
+  const serverUrl = useServerStore((s) => s.getActiveServerUrl());
   const limit = options?.limit ?? 50;
 
   return useQuery<string[]>({

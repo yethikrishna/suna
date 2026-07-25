@@ -1,4 +1,4 @@
-import type { ProjectSession, ProjectSessionStatus } from '@kortix/sdk';
+import type { ProjectSession, ProjectSessionStatus } from '@kortix/sdk/projects-client';
 
 /**
  * Pure helpers extracted from `project-session-list.tsx` so the sidebar's

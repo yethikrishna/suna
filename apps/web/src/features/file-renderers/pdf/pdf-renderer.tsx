@@ -24,10 +24,6 @@ interface PdfRendererProps {
   className?: string;
   compact?: boolean;
   fileName?: string;
-  /** Extra controls for the viewer's own toolbar, rendered after zoom and
-   *  before the file menu — so a caller adds actions to the ONE header this
-   *  viewer already has, instead of stacking a second one above it. */
-  toolbarActions?: React.ReactNode;
 }
 
 export function PdfRenderer({
@@ -36,7 +32,6 @@ export function PdfRenderer({
   className,
   compact = false,
   fileName,
-  toolbarActions,
 }: PdfRendererProps) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -112,7 +107,6 @@ export function PdfRenderer({
       showToolbar={!compact}
       showUpload={false}
       className={cn('h-full w-full', className)}
-      toolbarActions={toolbarActions}
     />
   );
 }

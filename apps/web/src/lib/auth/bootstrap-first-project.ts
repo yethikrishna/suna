@@ -2,7 +2,7 @@ import {
   fetchAccountsWithToken,
   fetchProjectsForAccountWithToken,
   provisionProjectWithToken,
-} from '@kortix/sdk';
+} from '@kortix/sdk/projects-client';
 
 const BACKEND_TIMEOUT_MS = 8_000;
 const PROVISION_TIMEOUT_MS = 90_000;

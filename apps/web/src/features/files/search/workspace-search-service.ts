@@ -1,5 +1,5 @@
-import { getRuntimeCacheKey } from '@kortix/sdk/react';
-import { findFiles, listFiles } from '../api/runtime-files';
+import { getActiveOpenCodeUrl } from '@/stores/server-store';
+import { findFiles, listFiles } from '../api/opencode-files';
 import type { FileNode } from '@/features/file-browser/types';
 import {
   type WorkspaceSearchEntry,
@@ -215,7 +215,7 @@ async function buildWorkspaceIndex(): Promise<WorkspaceSearchEntry[]> {
 }
 
 async function getWorkspaceIndexEntries(): Promise<WorkspaceSearchEntry[]> {
-  const serverUrl = getRuntimeCacheKey();
+  const serverUrl = getActiveOpenCodeUrl();
   const current = getCacheForServer(serverUrl);
   const now = Date.now();
 

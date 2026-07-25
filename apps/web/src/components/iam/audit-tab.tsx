@@ -44,9 +44,9 @@ import {
 import { FilterBar, FilterBarItem } from '@/components/ui/tabs';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
-import { type AuditEvent, listAuditEvents } from '@/lib/iam-client';
+import { type IamAuditEvent, listAuditEvents } from '@/lib/iam-client';
 import { cn } from '@/lib/utils';
-import { listAccountMembers } from '@kortix/sdk/projects-client';
+import { downloadAccountAudit, listAccountMembers } from '@kortix/sdk';
 import {
   type HumanizedAuditAction,
   formatResourcePill,
@@ -186,38 +186,31 @@ export function AuditTab({ accountId }: AuditTabProps) {
   async function exportEvents(format: 'csv' | 'jsonl') {
     setExporting(true);
     try {
-      const params = new URLSearchParams();
-      params.set('format', format);
-      if (filter.action) params.set('action', filter.action);
-      if (filter.actor) params.set('actor', filter.actor);
-      if (filter.resourceType) params.set('resource_type', filter.resourceType);
-      if (filter.q) params.set('q', filter.q);
-      if (filter.since) params.set('since', filter.since);
-      if (filter.until) params.set('until', filter.until);
-
       const token = await getSupabaseAccessTokenWithRetry();
       if (!token) {
         errorToast('Not signed in');
         return;
       }
-      // BACKEND_URL already includes the `/v1` prefix (e.g. https://api.kortix.com/v1),
-      // so paths are appended WITHOUT another `/v1` — adding one 404'd the export.
-      const base = (getEnv().BACKEND_URL ?? '').replace(/\/+$/, '');
-      const url = `${base}/accounts/${accountId}/audit/export?${params.toString()}`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        errorToast(`Export failed: ${res.status} ${text.slice(0, 120)}`);
-        return;
-      }
+      const result = await downloadAccountAudit(
+        accountId,
+        {
+          format,
+          action: filter.action || undefined,
+          actor: filter.actor || undefined,
+          resource_type: filter.resourceType || undefined,
+          q: filter.q || undefined,
+          since: filter.since || undefined,
+          until: filter.until || undefined,
+        },
+        {
+          backendUrl: getEnv().BACKEND_URL ?? '',
+          accessToken: token,
+        },
+      );
 
-      const blob = await res.blob();
-      const downloadUrl = URL.createObjectURL(blob);
+      const downloadUrl = URL.createObjectURL(result.blob);
       const filename =
-        res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] ??
-        `audit-${new Date().toISOString().slice(0, 10)}.${format}`;
+        result.filename ?? `audit-${new Date().toISOString().slice(0, 10)}.${format}`;
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.download = filename;
@@ -226,8 +219,8 @@ export function AuditTab({ accountId }: AuditTabProps) {
       link.remove();
       URL.revokeObjectURL(downloadUrl);
 
-      const capped = res.headers.get('x-audit-capped') === 'true';
-      const rowCount = res.headers.get('x-audit-row-count') ?? '?';
+      const capped = result.capped;
+      const rowCount = result.rowCount ?? '?';
       successToast(
         capped
           ? `Exported ${rowCount} events (capped — narrow your filter for older data)`
@@ -259,7 +252,7 @@ export function AuditTab({ accountId }: AuditTabProps) {
     getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
 
-  const allEvents: AuditEvent[] = useMemo(
+  const allEvents: IamAuditEvent[] = useMemo(
     () => (query.data?.pages ?? []).flatMap((p) => p.events),
     [query.data],
   );
@@ -465,7 +458,7 @@ export function AuditTab({ accountId }: AuditTabProps) {
 
 // ─── Row ──────────────────────────────────────────────────────────────────
 
-function AuditRow({ event, actorEmail }: { event: AuditEvent; actorEmail: string | null }) {
+function AuditRow({ event, actorEmail }: { event: IamAuditEvent; actorEmail: string | null }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const [expanded, setExpanded] = useState(false);
   const hasDiff = event.before !== null || event.after !== null;

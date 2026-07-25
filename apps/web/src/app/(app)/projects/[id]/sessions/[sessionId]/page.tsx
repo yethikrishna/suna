@@ -19,10 +19,6 @@ import { isAutoResuming, isSandboxResumable } from '@/features/session/session-r
 import { SessionStartingLoader } from '@/features/session/session-starting-loader';
 import { isUnmaterializedSessionFailure } from '@/features/session/session-terminal-state';
 import { useAccountState } from '@/hooks/billing';
-import {
-  clearOpencodeEnsureGuard,
-  useCanonicalOpenCodeSession,
-} from '@/hooks/opencode/use-canonical-opencode-session';
 import { useSandboxConnection } from '@/hooks/platform/use-sandbox-connection';
 import { isBillingEnabled } from '@/lib/config';
 import { finishSessionTiming, sessionMark } from '@/lib/session-timing';
@@ -34,14 +30,20 @@ import {
 import { useUpgradeDialogStore } from '@/stores/upgrade-dialog-store';
 import { clearSessionFresh, isSessionFresh } from '@kortix/sdk/fresh-sessions';
 import { setActiveInstanceCookie } from '@kortix/sdk/instance-routes';
-import { formatOpenCodeRuntimeError } from '@kortix/sdk/opencode-errors';
+import { formatRuntimeError } from '@kortix/sdk';
 import {
   getProjectDetail,
   restartProjectSession,
   sessionStartKey,
-} from '@kortix/sdk/projects-client';
-import { migrateStash, readStartStash, useSession } from '@kortix/sdk/react';
-import { useSandboxConnectionStore } from '@kortix/sdk/sandbox-connection-store';
+} from '@kortix/sdk';
+import {
+  clearRuntimeEnsureGuard,
+  migrateStash,
+  readStartStash,
+  useSession,
+  type UseSessionResult,
+} from '@kortix/sdk/react';
+import { useRuntimeConnectionStore } from '@kortix/sdk/react';
 
 /**
  * /projects/[id]/sessions/[sessionId] — project-scoped session view.
@@ -89,14 +91,11 @@ export default function ProjectSessionPage() {
   // seeding (no client health poll), and the canonical id. Gated on the billing
   // check so a no-plan account never spins on a sandbox that won't provision.
   // replayStartStash:false — the web has its own pending-prompt hand-off (below).
-  // chatEngine:false — this page only reads boot/lifecycle fields (switched,
-  // stage, sandbox, opencodeSessionId); `SessionChat` below mounts its own
-  // useSessionSync + useQuestionSelfHeal. Leaving the default `true` here would
-  // double-mount both against the same session for no reason.
+  // The default chat engine stays enabled. This hook owns message sync and the
+  // question and permission recovery pollers for the root session.
   const session = useSession(projectId, sessionId, {
     enabled: !!user && !billingGatePending && !noPlan,
     replayStartStash: false,
-    chatEngine: false,
   });
   const sandbox = session.sandbox;
   const startStage = session.stage ?? 'provisioning';
@@ -375,7 +374,7 @@ export default function ProjectSessionPage() {
                 <ActiveSessionChat
                   projectId={projectId}
                   sessionId={sessionId}
-                  pinFromStart={session.opencodeSessionId}
+                  sessionState={session}
                   onChatReady={() => setChatReady(true)}
                 />
               )}
@@ -455,37 +454,34 @@ function InlineSessionError({
 
 /**
  * Renders SessionLayout + SessionChat against this project session's sandbox.
- * useSession (at the page level) already resolved the canonical pin; this still
- * calls useCanonicalOpenCodeSession to surface the live OpenCode session LIST for
- * ?oc deep-links + sub-session rendering (React Query dedupes the shared queries).
+ * `useSession` owns the canonical runtime session and the optional REST session
+ * list used by legacy `?oc` deep links.
  */
 function ActiveSessionChat({
   projectId,
   sessionId,
-  pinFromStart,
+  sessionState,
   onChatReady,
 }: {
   projectId: string;
   sessionId: string;
-  pinFromStart: string | null;
+  sessionState: UseSessionResult;
   onChatReady?: () => void;
 }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
-  const runtimeReady = useSandboxConnectionStore(
+  const runtimeReady = useRuntimeConnectionStore(
     (s) => s.status === 'connected' && s.healthy === true,
   );
-  const runtimeBootError = useSandboxConnectionStore((s) => s.runtimeError);
+  const runtimeBootError = useRuntimeConnectionStore((s) => s.runtimeError);
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const {
-    rootSessionId,
-    sessions: opencodeSessions,
-    isLoading: sessionsLoading,
-    listed: sessionsListed,
-    error: runtimeError,
-  } = useCanonicalOpenCodeSession({ projectId, sessionId, pinFromStart });
+  const rootSessionId = sessionState.opencodeSessionId;
+  const runtimeSessions = sessionState.runtimeSessions;
+  const sessionsLoading = sessionState.runtimeSessionsLoading;
+  const sessionsListed = sessionState.runtimeSessionsListed;
+  const runtimeError = sessionState.runtimeError;
 
   const restartMutation = useMutation({
     mutationFn: () => restartProjectSession(projectId, sessionId),
@@ -499,7 +495,7 @@ function ActiveSessionChat({
       });
     },
     onSuccess: () => {
-      clearOpencodeEnsureGuard();
+      clearRuntimeEnsureGuard();
       queryClient.removeQueries({ queryKey: ['opencode'] });
       queryClient.invalidateQueries({ queryKey: sessionStartKey(projectId, sessionId) });
       queryClient.invalidateQueries({
@@ -511,7 +507,7 @@ function ActiveSessionChat({
 
   const selectedOpenCodeSessionId = searchParams.get('oc');
   const selectedSession = selectedOpenCodeSessionId
-    ? opencodeSessions.find((session) => session.id === selectedOpenCodeSessionId)
+    ? runtimeSessions.find((session) => session.id === selectedOpenCodeSessionId)
     : null;
   const pinRef = useRef<{ sid: string; id: string | null }>({ sid: sessionId, id: null });
   if (pinRef.current.sid !== sessionId) pinRef.current = { sid: sessionId, id: null };
@@ -614,9 +610,9 @@ function ActiveSessionChat({
   }
 
   if (runtimeError) {
-    const formatted = formatOpenCodeRuntimeError(runtimeError);
+    const formatted = formatRuntimeError(runtimeError);
     const restartError = restartMutation.error
-      ? formatOpenCodeRuntimeError(restartMutation.error)
+      ? formatRuntimeError(restartMutation.error)
       : null;
     return (
       <InlineSessionError
@@ -654,7 +650,14 @@ function ActiveSessionChat({
       projectSessionId={sessionId}
     >
       <ClientErrorBoundary>
-        <SessionChat key={chatSessionId} sessionId={chatSessionId} projectId={projectId} />
+        <SessionChat
+          key={chatSessionId}
+          sessionId={chatSessionId}
+          projectId={projectId}
+          sessionState={
+            chatSessionId === sessionState.opencodeSessionId ? sessionState : undefined
+          }
+        />
       </ClientErrorBoundary>
     </SessionLayout>
   );

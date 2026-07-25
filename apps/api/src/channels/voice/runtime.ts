@@ -36,7 +36,14 @@ import { voiceCallTurns } from '@kortix/db';
 import { continueSession } from '../../projects/session-lifecycle';
 import { config } from '../../config';
 import { db } from '../../shared/db';
-import { createRoom, deleteRoom, KORTIX_REPLY_TOPIC, roomNameForCall, sendRoomData } from './livekit';
+import {
+  createRoom,
+  deleteRoom,
+  KORTIX_REPLY_TOPIC,
+  roomHasAgent,
+  roomNameForCall,
+  sendRoomData,
+} from './livekit';
 import { mintCallApiToken } from './worker-token';
 
 /**
@@ -63,14 +70,20 @@ export interface VoiceCall {
   closed: boolean;
 }
 
-const calls = new Map<string, VoiceCall>();
-
-export function getCall(callId: string): VoiceCall | undefined {
-  return calls.get(callId);
-}
-
-export function listCallsForSession(sessionId: string): VoiceCall[] {
-  return [...calls.values()].filter((c) => c.sessionId === sessionId && !c.closed);
+/**
+ * Whether a call is live, asked of the only thing that actually knows: LiveKit.
+ *
+ * There is deliberately NO in-process call registry. There used to be, and every
+ * fact it held was either already in the caller's hands or derivable — `callId`
+ * IS the session id, `room` is `voice-${callId}`, and liveness is whether a
+ * worker is in that room. What the Map added was a second, wrong answer: it
+ * outlived calls the worker had already left (so `voice_spawn` reported a live
+ * call and handed out a link to an empty room), it 404'd `/voice/prompt` with
+ * "call not found" for requests whose URL already named the project and session,
+ * and being per-process it could only ever be right on a single API pod.
+ */
+export async function isCallLive(callId: string): Promise<boolean> {
+  return roomHasAgent(roomNameForCall(callId));
 }
 
 /**
@@ -99,12 +112,25 @@ export interface StartCallInput {
 }
 
 export async function startCall(input: StartCallInput): Promise<VoiceCall> {
-  const existing = calls.get(input.callId);
-  if (existing && !existing.closed) return existing;
-
   const voice =
     input.voice && (VOICES as readonly string[]).includes(input.voice) ? input.voice : DEFAULT_VOICE;
   const room = roomNameForCall(input.callId);
+
+  const call: VoiceCall = {
+    callId: input.callId,
+    projectId: input.projectId,
+    sessionId: input.sessionId,
+    voice,
+    room,
+    startedAt: Date.now(),
+    closed: false,
+  };
+
+  // Already staffed → reuse. Otherwise (re)build the room and dispatch a worker.
+  // Liveness is asked of LiveKit rather than remembered, so a second
+  // `voice_spawn` in the same session can no longer hand back a link to a room
+  // the worker left — which it did every time, since callId IS the session id.
+  if (await roomHasAgent(room)) return call;
 
   const metadata: VoiceRoomMetadata = {
     project_id: input.projectId,
@@ -120,16 +146,6 @@ export async function startCall(input: StartCallInput): Promise<VoiceCall> {
   // arrives first it must find somewhere real to join.
   await createRoom(room, JSON.stringify(metadata));
 
-  const call: VoiceCall = {
-    callId: input.callId,
-    projectId: input.projectId,
-    sessionId: input.sessionId,
-    voice,
-    room,
-    startedAt: Date.now(),
-    closed: false,
-  };
-  calls.set(input.callId, call);
   return call;
 }
 
@@ -230,11 +246,7 @@ export async function readTurns(
 }
 
 export async function endCall(callId: string): Promise<boolean> {
-  const call = calls.get(callId);
-  if (!call) return false;
-  call.closed = true;
-  calls.delete(callId);
-  await deleteRoom(call.room);
+  await deleteRoom(roomNameForCall(callId));
   return true;
 }
 
@@ -245,16 +257,24 @@ export async function endCall(callId: string): Promise<boolean> {
  * no new transport, and unlike an HTTP POST from here TO the worker, it
  * doesn't require knowing which machine the worker process is on. Topic and
  * payload shape are fixed by apps/voice-agent's `inbound-replies.ts` — see
- * `KORTIX_REPLY_TOPIC`'s doc comment. Always fire-and-forget — this function
- * must stay synchronous so callers (turn.ts) never block a turn on it.
+ * `KORTIX_REPLY_TOPIC`'s doc comment.
+ *
+ * Fire-and-forget, so callers (turn.ts) never block a turn on it — but it does
+ * confirm a worker is actually in the room first. Nothing acks the data message,
+ * so this is not a delivery receipt; it rules out the failure that actually
+ * happens, which is speaking into a room whose agent has left. Without that
+ * check `send_prompt` answered "Said." for prompts nobody ever heard — the worst
+ * shape of failure for an agent-facing tool, because the caller has no reason to
+ * doubt it.
  */
-export function promptVoiceAgent(callId: string, text: string): boolean {
-  const call = calls.get(callId);
-  if (!call || call.closed) return false;
-  void sendRoomData(call.room, KORTIX_REPLY_TOPIC, {
-    type: 'kortix_reply',
-    call_id: call.callId,
-    text,
-  }).catch((err) => console.error('[voice] say failed', err));
-  return true;
+export async function promptVoiceAgent(
+  callId: string,
+  text: string,
+): Promise<{ delivered: boolean; reason?: string }> {
+  const room = roomNameForCall(callId);
+  if (!(await roomHasAgent(room))) {
+    return { delivered: false, reason: 'no voice agent is connected to the call' };
+  }
+  await sendRoomData(room, KORTIX_REPLY_TOPIC, { type: 'kortix_reply', call_id: callId, text });
+  return { delivered: true };
 }

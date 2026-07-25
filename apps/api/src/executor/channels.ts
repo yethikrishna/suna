@@ -8,6 +8,14 @@
  * API base, so the gateway's existing executeCall runs them unchanged. The
  * Slack catalog mirrors the in-sandbox `slack` CLI 1:1 for full parity. See
  * KORTIX-206.
+ *
+ * Voice is the one channel that breaks the "plain http binding" pattern: it
+ * has no third-party API and no install token — a call is a LiveKit room
+ * created by this API's own server-side code. Its actions bind `{ kind:
+ * 'voice', op }` instead of `http`, and the gateway routes them through
+ * GatewayDeps.executeVoiceCall rather than executeCall. It still goes through
+ * the same connector row / catalog / policy / audit machinery as every other
+ * channel — only the execution mechanism differs.
  */
 import type { ExecutorAuth } from './execute';
 import type { ActionBinding, NormalizedAction, Risk } from './types';
@@ -25,6 +33,7 @@ import type { ActionBinding, NormalizedAction, Risk } from './types';
 export const SLACK_CHANNEL_CONNECTOR_SLUG = 'kortix_slack';
 export const TEAMS_CHANNEL_CONNECTOR_SLUG = 'kortix_teams';
 export const EMAIL_CHANNEL_CONNECTOR_SLUG = 'kortix_email';
+export const VOICE_CHANNEL_CONNECTOR_SLUG = 'kortix_voice';
 
 export function channelDefaultSlug(platform: string): string {
   switch (platform) {
@@ -34,14 +43,22 @@ export function channelDefaultSlug(platform: string): string {
       return TEAMS_CHANNEL_CONNECTOR_SLUG;
     case 'email':
       return EMAIL_CHANNEL_CONNECTOR_SLUG;
+    case 'voice':
+      return VOICE_CHANNEL_CONNECTOR_SLUG;
     default:
       return platform;
   }
 }
 
-/** Per-platform credential placement. Slack/Teams/email all attach their install
- *  token as `Authorization: Bearer <token>`. */
-export function channelAuth(_platform: string): ExecutorAuth {
+/**
+ * Per-platform credential placement. Slack/Teams/email all attach their
+ * install token as `Authorization: Bearer <token>`. Voice has no install
+ * token at all — a call is created by this API's own server-side code
+ * (LiveKit config lives in this service's env, not a per-project install), so
+ * the gateway never needs to resolve or attach a credential for it.
+ */
+export function channelAuth(platform: string): ExecutorAuth {
+  if (platform === 'voice') return { type: 'none', in: 'header', name: null, prefix: null };
   return { type: 'bearer', in: 'header', name: null, prefix: null };
 }
 
@@ -59,6 +76,10 @@ export function channelApiBase(platform: string): string {
       return 'https://graph.microsoft.com/v1.0';
     case 'email':
       return 'https://api.agentmail.to/v0';
+    case 'voice':
+      // No external API base — every voice action is a `{ kind: 'voice' }`
+      // binding executed by the gateway's own server-side code, never HTTP.
+      return '';
     default:
       return '';
   }
@@ -73,6 +94,8 @@ export function channelLabel(platform: string): string {
       return 'Microsoft Teams';
     case 'email':
       return 'Email';
+    case 'voice':
+      return 'Voice';
     default:
       return platform;
   }
@@ -443,6 +466,95 @@ const EMAIL_ACTIONS: ChannelActionDef[] = [
   },
 ];
 
+/**
+ * One curated voice action — normalized into a `{ kind: 'voice' }`-bound
+ * NormalizedAction. Unlike `ChannelActionDef` there is no HTTP method/path:
+ * every voice action is executed by this API's own server-side code
+ * (GatewayDeps.executeVoiceCall), never an outbound request, so there is
+ * nothing for executeCall's HTTP builders to do here.
+ */
+interface VoiceActionDef {
+  /** Connector-relative tool path — also the `op` the binding carries. */
+  path: string;
+  name: string;
+  description: string;
+  risk: Risk;
+  properties: Record<string, { type: string; description: string }>;
+  required: string[];
+}
+
+/**
+ * The Voice catalog. `spawn_room` is the one implemented mechanism today — it
+ * creates a LiveKit room and returns a join link a human opens in their own
+ * browser. `join_gmeet` / `join_zoom` are declared so the action surface is
+ * stable for an agent to discover and future joining-an-existing-meeting
+ * mechanisms slot in without reshaping the catalog, but neither is
+ * implemented yet: calling either fails with a clear, actionable error
+ * (never silently absent, never pretending to work) — see
+ * GatewayDeps.executeVoiceCall in gateway.ts / db-deps.ts.
+ */
+const VOICE_ACTIONS: VoiceActionDef[] = [
+  {
+    path: 'spawn_room',
+    name: 'Spawn voice room',
+    description:
+      'Create a live voice room bound to this session and return a join link — a human opens it in their own browser to talk with you. The only voice mechanism implemented today.',
+    risk: 'write',
+    properties: {
+      voice: { type: 'string', description: 'Optional speaking voice for the agent side of the call.' },
+    },
+    required: [],
+  },
+  {
+    path: 'join_gmeet',
+    name: 'Join Google Meet',
+    description:
+      'NOT IMPLEMENTED YET. Joining an existing Google Meet is not supported — use spawn_room instead and share the join link with whoever you would have invited.',
+    risk: 'write',
+    properties: {
+      meeting_url: {
+        type: 'string',
+        description: 'The Google Meet URL you would join (accepted for forward compatibility; not usable yet).',
+      },
+    },
+    required: ['meeting_url'],
+  },
+  {
+    path: 'join_zoom',
+    name: 'Join Zoom',
+    description:
+      'NOT IMPLEMENTED YET. Joining an existing Zoom meeting is not supported — use spawn_room instead and share the join link with whoever you would have invited.',
+    risk: 'write',
+    properties: {
+      meeting_url: {
+        type: 'string',
+        description: 'The Zoom meeting URL you would join (accepted for forward compatibility; not usable yet).',
+      },
+    },
+    required: ['meeting_url'],
+  },
+];
+
+function toVoiceAction(def: VoiceActionDef): NormalizedAction {
+  const binding: ActionBinding = { kind: 'voice', op: def.path };
+  const inputSchema = Object.keys(def.properties).length
+    ? {
+        type: 'object',
+        properties: def.properties,
+        ...(def.required.length ? { required: def.required } : {}),
+      }
+    : null;
+  return {
+    path: def.path,
+    name: def.name,
+    description: def.description,
+    inputSchema,
+    outputSchema: null,
+    risk: def.risk,
+    binding,
+  };
+}
+
 function toAction(def: ChannelActionDef): NormalizedAction {
   const binding: ActionBinding = { kind: 'http', method: def.verb, path: `/${def.method}` };
   const properties: Record<string, { type: string; description: string; 'x-in'?: string }> = {};
@@ -595,6 +707,8 @@ export function channelCatalog(platform: string): NormalizedAction[] {
       return TEAMS_ACTIONS.map(toAction);
     case 'email':
       return EMAIL_ACTIONS.map(toAction);
+    case 'voice':
+      return VOICE_ACTIONS.map(toVoiceAction);
     default:
       return [];
   }

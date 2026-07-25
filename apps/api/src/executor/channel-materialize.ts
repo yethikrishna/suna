@@ -104,6 +104,18 @@ export async function synthesizeChannelConnectors(
     .where(eq(projects.projectId, projectId))
     .limit(1);
 
+  // Voice — gated on the per-project `voice` experimental flag. Unlike
+  // Slack/Teams/email there is no install to check: LiveKit config lives in
+  // this API's own env, not a per-project OAuth token, so the flag itself IS
+  // the registration (mirrors how `sensitive`-less channels work, minus the
+  // install lookup).
+  if (project && resolveExperimentalFeature(project.metadata, 'voice')) {
+    const voiceSlug = channelDefaultSlug('voice');
+    if (!channelAlreadyDeclared(declared, 'voice', voiceSlug)) {
+      specs.push(channelSpec('voice', voiceSlug));
+    }
+  }
+
   if (!project || !resolveExperimentalFeature(project.metadata, 'agentmail_email')) {
     return specs;
   }

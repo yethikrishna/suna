@@ -31,6 +31,10 @@ import {
   loadTeamsInstall,
   loadTeamsTenantForProject,
 } from '../channels/install-store';
+import { resolveProjectBotName } from '../channels/voice-identity';
+import { bridgePageUrl, mintAccessToken, roomNameForCall } from '../channels/voice/livekit';
+import { startCall } from '../channels/voice/runtime';
+import { config } from '../config';
 import { authorize } from '../iam';
 import { agentMayUseConnector } from '../iam/agent-scope';
 import type { ChannelPlatform } from '../projects/connectors';
@@ -566,6 +570,44 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
     // selector, scoped to this account.
     executeComputerCall: ({ accountId, selector, method, args }) =>
       executeComputerCall({ accountId, selector, method, args }),
+    // Voice channel: `spawn_room` creates the LiveKit room + human join token
+    // (the same logic voice/routes.ts used to inline before it went through
+    // the gateway); `join_gmeet`/`join_zoom` are declared but not implemented
+    // yet, so they fail loud with what to do instead rather than pretending.
+    executeVoiceCall: async ({ projectId, sessionId, op, args }) => {
+      if (op === 'join_gmeet' || op === 'join_zoom') {
+        const platform = op === 'join_gmeet' ? 'Google Meet' : 'Zoom';
+        return {
+          ok: false,
+          kind: 'not_implemented',
+          message: `joining an existing ${platform} is not supported yet — use spawn_room and share the join link instead`,
+        };
+      }
+      if (op !== 'spawn_room') {
+        return { ok: false, kind: 'error', message: `unknown voice action "${op}"` };
+      }
+      if (!sessionId) {
+        return { ok: false, kind: 'error', message: 'spawn_room requires a session' };
+      }
+      const voice = typeof args.voice === 'string' ? args.voice : null;
+      const botName = await resolveProjectBotName(projectId);
+      // The call id IS the session id — one live call per session, and the
+      // join-time LiveKit token minted below carries the same value.
+      const callId = sessionId;
+      // Start the room BEFORE minting the human's join link. If a person opens
+      // the page first it would try to join a room that does not exist yet,
+      // and that join is rejected with nothing to retry against.
+      await startCall({ callId, projectId, sessionId, botName, voice });
+      const room = roomNameForCall(callId);
+      const token = await mintAccessToken({
+        room,
+        identity: `human-${callId}`,
+        canPublish: true,
+        canSubscribe: true,
+      });
+      const joinUrl = bridgePageUrl(config.FRONTEND_URL, token);
+      return { ok: true, data: { call_id: callId, join_url: joinUrl } };
+    },
     fetchImpl: nodeFetch,
     enforcePolicies: true,
   };

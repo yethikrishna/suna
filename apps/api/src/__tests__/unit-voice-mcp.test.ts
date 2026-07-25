@@ -61,6 +61,59 @@ describe('voice MCP', () => {
     expect(res.result.isError).toBeUndefined();
   });
 
+  test('voice_spawn declares an action surface: spawn_room (default, implemented) plus join_gmeet/join_zoom', async () => {
+    const res = await call('tools/list');
+    const spawn = res.result.tools.find((t: { name: string }) => t.name === 'voice_spawn');
+    expect(spawn.inputSchema.properties.action.enum).toEqual(['spawn_room', 'join_gmeet', 'join_zoom']);
+  });
+
+  test('voice_spawn leaves the action unset by default — the connector decides spawn_room', async () => {
+    let seenAction: string | null | undefined = 'unset';
+    const c = ctx({
+      spawn: async ({ action }) => {
+        seenAction = action;
+        return { callId: 'sess-1', joinUrl: 'https://app.example.com/voice/tok' };
+      },
+    });
+    await call('tools/call', { name: 'voice_spawn', arguments: {} }, c);
+    expect(seenAction).toBeNull();
+  });
+
+  test('voice_spawn passes an explicit action + meeting_url through', async () => {
+    let seen: { action?: string | null; meetingUrl?: string | null } = {};
+    const c = ctx({
+      spawn: async ({ action, meetingUrl }) => {
+        seen = { action, meetingUrl };
+        return { callId: 'sess-1', joinUrl: 'https://app.example.com/voice/tok' };
+      },
+    });
+    await call(
+      'tools/call',
+      { name: 'voice_spawn', arguments: { action: 'join_gmeet', meeting_url: 'https://meet.google.com/abc-defg-hij' } },
+      c,
+    );
+    expect(seen.action).toBe('join_gmeet');
+    expect(seen.meetingUrl).toBe('https://meet.google.com/abc-defg-hij');
+  });
+
+  test('a not-implemented action (join_gmeet/join_zoom) surfaces as a tool error pointing back at spawn_room', async () => {
+    const c = ctx({
+      spawn: async ({ action }) => {
+        if (action === 'join_gmeet' || action === 'join_zoom') {
+          const platform = action === 'join_gmeet' ? 'Google Meet' : 'Zoom';
+          throw new Error(
+            `joining an existing ${platform} is not supported yet — use spawn_room and share the join link instead`,
+          );
+        }
+        return { callId: 'sess-1', joinUrl: 'https://app.example.com/voice/tok' };
+      },
+    });
+    const res = await call('tools/call', { name: 'voice_spawn', arguments: { action: 'join_zoom' } }, c);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('not supported yet');
+    expect(res.result.content[0].text).toContain('spawn_room');
+  });
+
   test('a spawn failure comes back as a tool error, not a protocol error', async () => {
     // The agent can read and react to a tool error; a JSON-RPC error usually
     // just aborts its turn.

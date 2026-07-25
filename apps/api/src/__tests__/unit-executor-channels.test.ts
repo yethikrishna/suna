@@ -12,6 +12,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   EMAIL_CHANNEL_CONNECTOR_SLUG,
   SLACK_CHANNEL_CONNECTOR_SLUG,
+  VOICE_CHANNEL_CONNECTOR_SLUG,
   channelApiBase,
   channelAuth,
   channelCatalog,
@@ -146,6 +147,50 @@ describe('channelCatalog(email)', () => {
     expect(channelApiBase('email')).toBe('https://api.agentmail.to/v0');
     expect(channelDefaultSlug('email')).toBe(EMAIL_CHANNEL_CONNECTOR_SLUG);
     expect(EMAIL_CHANNEL_CONNECTOR_SLUG).toBe('kortix_email');
+  });
+});
+
+describe('channelCatalog(voice)', () => {
+  const actions = channelCatalog('voice');
+  const byPath = new Map(actions.map((a) => [a.path, a]));
+  const action = (path: string) => expectDefined(byPath.get(path));
+
+  test('exposes spawn_room (implemented) + join_gmeet/join_zoom (declared, not implemented)', () => {
+    expect(actions.map((a) => a.path).sort()).toEqual(['join_gmeet', 'join_zoom', 'spawn_room']);
+  });
+
+  test('every voice action binds `{ kind: "voice" }`, never http — there is no third-party API', () => {
+    for (const a of actions) {
+      expect(a.binding.kind).toBe('voice');
+      if (a.binding.kind === 'voice') expect(a.binding.op).toBe(a.path);
+    }
+  });
+
+  test('spawn_room takes an optional voice, no meeting_url', () => {
+    const a = action('spawn_room');
+    expect(a.risk).toBe('write');
+    const props = objectSchema(a.inputSchema).properties;
+    expect(Object.keys(props)).toEqual(['voice']);
+    expect(objectSchema(a.inputSchema).required ?? []).toEqual([]);
+  });
+
+  test('join_gmeet / join_zoom are declared with a meeting_url input and read as not-implemented', () => {
+    for (const path of ['join_gmeet', 'join_zoom']) {
+      const a = action(path);
+      expect(objectSchema(a.inputSchema).required).toEqual(['meeting_url']);
+      expect(a.description).toMatch(/not implemented/i);
+      expect(a.description).toMatch(/spawn_room/);
+    }
+  });
+
+  test('no credential, no external API base — a call is created by this API itself', () => {
+    expect(channelAuth('voice')).toEqual({ type: 'none', in: 'header', name: null, prefix: null });
+    expect(channelApiBase('voice')).toBe('');
+  });
+
+  test('reserved voice channel slug', () => {
+    expect(channelDefaultSlug('voice')).toBe(VOICE_CHANNEL_CONNECTOR_SLUG);
+    expect(VOICE_CHANNEL_CONNECTOR_SLUG).toBe('kortix_voice');
   });
 });
 
@@ -557,5 +602,152 @@ describe('handleCall — channel (email)', () => {
       'https://api.agentmail.to/v0/inboxes/email-inbox%40agentmail.to/messages?limit=1',
     );
     expect(call.headers.Authorization).toBe('Bearer am_profile_token');
+  });
+});
+
+/* ─── gateway execution — voice ──────────────────────────────────────────── */
+
+const VOICE: GatewayConnector = {
+  connectorId: 'conn-voice',
+  slug: VOICE_CHANNEL_CONNECTOR_SLUG,
+  provider: 'channel',
+  platform: 'voice',
+  baseUrl: '',
+  auth: { type: 'none', in: 'header', name: null, prefix: null },
+  hasAuth: false,
+  credentialMode: 'shared',
+  enabled: true,
+};
+
+const SPAWN_ROOM: GatewayAction = {
+  path: 'spawn_room',
+  relPath: 'spawn_room',
+  inputSchema: { type: 'object', properties: { voice: {} } },
+  risk: 'write',
+  binding: { kind: 'voice', op: 'spawn_room' },
+};
+
+const JOIN_GMEET: GatewayAction = {
+  path: 'join_gmeet',
+  relPath: 'join_gmeet',
+  inputSchema: { type: 'object', properties: { meeting_url: {} }, required: ['meeting_url'] },
+  risk: 'write',
+  binding: { kind: 'voice', op: 'join_gmeet' },
+};
+
+const voiceInput: CallInput = {
+  projectId: 'proj-1',
+  accountId: 'acct-1',
+  subject: { userId: 'u1', groupIds: [] },
+  sessionId: 'sess-1',
+  connectorSlug: VOICE_CHANNEL_CONNECTOR_SLUG,
+  actionPath: 'spawn_room',
+  args: {},
+};
+
+describe('handleCall — channel (voice)', () => {
+  test('spawn_room routes through executeVoiceCall (never executeCall/fetch) and returns its data', async () => {
+    const seen: { op: string | null; args: Record<string, unknown> | null } = { op: null, args: null };
+    let fetchCalled = false;
+    const deps: GatewayDeps = {
+      loadConnectorBySlug: async () => VOICE,
+      loadAction: async () => SPAWN_ROOM,
+      resolveCredential: async () => {
+        throw new Error('spawn_room has no credential — resolveCredential must not be called');
+      },
+      loadPolicies: async () => [],
+      loadProjectPolicies: async () => [],
+      loadDefaultMode: async () => 'allow_all',
+      recordExecution: async () => null,
+      fetchImpl: async () => {
+        fetchCalled = true;
+        return { status: 200, ok: true, text: async () => '{}' };
+      },
+      executeVoiceCall: async ({ op, args }) => {
+        seen.op = op;
+        seen.args = args;
+        return { ok: true, data: { call_id: 'sess-1', join_url: 'https://app.example.com/voice/tok' } };
+      },
+    };
+
+    const res = await handleCall(deps, { ...voiceInput, args: { voice: 'rex' } });
+
+    expect(res.status).toBe('ok');
+    if (res.status === 'ok') {
+      expect(res.data).toEqual({ call_id: 'sess-1', join_url: 'https://app.example.com/voice/tok' });
+    }
+    expect(seen.op).toBe('spawn_room');
+    expect(seen.args).toEqual({ voice: 'rex' });
+    expect(fetchCalled).toBe(false); // no third-party HTTP call for voice
+  });
+
+  test('join_gmeet / join_zoom come back as a clear not-implemented error, not a silent no-op', async () => {
+    const deps: GatewayDeps = {
+      loadConnectorBySlug: async () => VOICE,
+      loadAction: async () => JOIN_GMEET,
+      resolveCredential: async () => null,
+      loadPolicies: async () => [],
+      loadProjectPolicies: async () => [],
+      loadDefaultMode: async () => 'allow_all',
+      recordExecution: async () => null,
+      fetchImpl: async () => ({ status: 200, ok: true, text: async () => '{}' }),
+      executeVoiceCall: async ({ op }) => ({
+        ok: false,
+        kind: 'not_implemented',
+        message: `joining an existing Google Meet is not supported yet — use spawn_room and share the join link instead (op=${op})`,
+      }),
+    };
+
+    const res = await handleCall(deps, {
+      ...voiceInput,
+      actionPath: 'join_gmeet',
+      args: { meeting_url: 'https://meet.google.com/abc-defg-hij' },
+    });
+
+    expect(res.status).toBe('error');
+    if (res.status === 'error') {
+      expect(res.reason).toMatch(/not supported yet/);
+      expect(res.reason).toMatch(/spawn_room/);
+    }
+  });
+
+  test('missing executeVoiceCall wiring fails loud instead of silently no-opping', async () => {
+    const deps: GatewayDeps = {
+      loadConnectorBySlug: async () => VOICE,
+      loadAction: async () => SPAWN_ROOM,
+      resolveCredential: async () => null,
+      loadPolicies: async () => [],
+      loadProjectPolicies: async () => [],
+      loadDefaultMode: async () => 'allow_all',
+      recordExecution: async () => null,
+      fetchImpl: async () => ({ status: 200, ok: true, text: async () => '{}' }),
+      // executeVoiceCall intentionally omitted
+    };
+
+    const res = await handleCall(deps, voiceInput);
+    expect(res.status).toBe('error');
+    if (res.status === 'error') expect(res.reason).toMatch(/voice runner not wired/);
+  });
+
+  test('a policy block on the voice connector still applies — the action never even reaches executeVoiceCall', async () => {
+    let called = false;
+    const deps: GatewayDeps = {
+      loadConnectorBySlug: async () => VOICE,
+      loadAction: async () => SPAWN_ROOM,
+      resolveCredential: async () => null,
+      loadPolicies: async () => [{ match: 'spawn_room', action: 'block', position: 0 }],
+      loadProjectPolicies: async () => [],
+      loadDefaultMode: async () => 'allow_all',
+      recordExecution: async () => null,
+      fetchImpl: async () => ({ status: 200, ok: true, text: async () => '{}' }),
+      executeVoiceCall: async () => {
+        called = true;
+        return { ok: true, data: {} };
+      },
+    };
+
+    const res = await handleCall(deps, voiceInput);
+    expect(res.status).toBe('denied');
+    expect(called).toBe(false);
   });
 });

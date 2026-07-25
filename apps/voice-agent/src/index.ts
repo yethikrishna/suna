@@ -174,6 +174,20 @@ export default defineAgent({
     // for data messages on.
     wireInboundReplies(ctx.room, session, callContext);
 
+    // NOTE: a `session.on(AgentSessionEventTypes.Close, …)` listener was tried
+    // here to shut the job down with its session (a closed session leaves the
+    // process connected to the room as a participant that can no longer act on
+    // `kortix` data messages). Adding it correlated with ConversationItemAdded
+    // never firing again — the agent spoke, but nothing reached
+    // voice_call_turns — which is the same failure mode this codebase has
+    // already hit once from subscribing to AgentSessionEventTypes. Do not
+    // re-add it without proving transcripts still land afterwards.
+    //
+    // The zombie it was meant to prevent is handled where it actually matters:
+    // runtime.ts's `startCall` checks `roomHasAgent` before reusing a call, so
+    // a room whose worker has gone is rebuilt and re-dispatched rather than
+    // handed out as live.
+
     session.generateReply({
       instructions:
         'Greet the room in one short, natural sentence. Do not mention tools or being an AI.',
@@ -181,4 +195,23 @@ export default defineAgent({
   },
 });
 
-cli.runApp(new ServerOptions({ agent: fileURLToPath(import.meta.url) }));
+/**
+ * `agentName` opts this worker OUT of LiveKit's automatic dispatch and into
+ * EXPLICIT dispatch — the API names this worker when it starts a call (see
+ * apps/api/src/channels/voice/livekit.ts `createRoom`). That trade is
+ * deliberate. Automatic dispatch fires once, on room CREATION, and is
+ * unobservable when it doesn't happen: `createRoom` no-ops on an existing
+ * room, a room implicitly recreated by a rejoining participant gets no job,
+ * and the only symptom is a registered worker that silently never receives
+ * one. Explicit dispatch is a request with a response — it either returns a
+ * dispatch id or throws, so a call that cannot get an agent fails loudly at
+ * spawn time instead of handing the user a link to an empty room.
+ *
+ * This name is a contract with the API. Changing it on one side alone means
+ * every dispatch targets a worker that does not exist.
+ */
+export const VOICE_AGENT_NAME = 'kortix-voice';
+
+cli.runApp(
+  new ServerOptions({ agent: fileURLToPath(import.meta.url), agentName: VOICE_AGENT_NAME }),
+);

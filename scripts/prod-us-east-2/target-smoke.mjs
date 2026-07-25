@@ -9,6 +9,9 @@ const requiredEnvironment = [
   'TARGET_ANON_KEY',
   'TARGET_SERVICE_ROLE_KEY',
   'TARGET_API_URL',
+  'TARGET_FRONTEND_URL',
+  'TARGET_AUTH_SEQUENCE_HEADROOM',
+  'KEEP_TARGET_AUTH_SEQUENCE_HEADROOM',
 ];
 
 for (const name of requiredEnvironment) {
@@ -22,12 +25,26 @@ const databaseUrl = process.env.TARGET_DATABASE_URL;
 const anonKey = process.env.TARGET_ANON_KEY;
 const serviceRoleKey = process.env.TARGET_SERVICE_ROLE_KEY;
 const apiUrl = process.env.TARGET_API_URL.replace(/\/+$/, '');
+const frontendUrl = process.env.TARGET_FRONTEND_URL.replace(/\/+$/, '');
+const authSequenceHeadroom = Number.parseInt(
+  process.env.TARGET_AUTH_SEQUENCE_HEADROOM,
+  10,
+);
+const keepAuthSequenceHeadroom =
+  process.env.KEEP_TARGET_AUTH_SEQUENCE_HEADROOM === '1';
 const smokePassword = `${randomBytes(32).toString('base64url')}aA1!`;
 const smokeEmail = `migration-smoke-${Date.now()}-${randomUUID().slice(0, 8)}@invalid.kortix.test`;
+
+if (!Number.isSafeInteger(authSequenceHeadroom) || authSequenceHeadroom < 1) {
+  throw new Error(
+    'TARGET_AUTH_SEQUENCE_HEADROOM must be a positive safe integer',
+  );
+}
 
 let smokeUserId = null;
 let originalWebhookUrl = null;
 let signupWebhookSuppressed = false;
+const smokeFlowStateIds = [];
 
 function sql(input, variables = {}) {
   const args = [databaseUrl, '-X', '-qAt', '-v', 'ON_ERROR_STOP=1'];
@@ -87,6 +104,49 @@ async function apiRequest(path, accessToken, expectedStatuses = [200]) {
   return response;
 }
 
+async function verifyProviderAuthorization(provider, expectedHost) {
+  const redirectTo = `${frontendUrl}/auth/callback`;
+  const authorizeUrl = new URL('/auth/v1/authorize', `${targetUrl}/`);
+  authorizeUrl.searchParams.set('provider', provider);
+  authorizeUrl.searchParams.set('redirect_to', redirectTo);
+
+  const response = await fetch(authorizeUrl, {
+    redirect: 'manual',
+    headers: {
+      apikey: anonKey,
+      Referer: `${frontendUrl}/auth`,
+    },
+  });
+  if (response.status !== 302) {
+    throw new Error(
+      `${provider} authorization returned HTTP ${response.status}`,
+    );
+  }
+
+  const location = response.headers.get('location');
+  if (!location) throw new Error(`${provider} authorization omitted Location`);
+  const providerUrl = new URL(location);
+  if (providerUrl.hostname !== expectedHost) {
+    throw new Error(
+      `${provider} authorization used ${providerUrl.hostname}, expected ${expectedHost}`,
+    );
+  }
+  if (providerUrl.searchParams.get('redirect_to') !== redirectTo) {
+    throw new Error(`${provider} authorization changed redirect_to`);
+  }
+  if (
+    providerUrl.searchParams.get('redirect_uri') !==
+    `${targetUrl}/auth/v1/callback`
+  ) {
+    throw new Error(
+      `${provider} authorization used the wrong Supabase callback`,
+    );
+  }
+
+  const state = providerUrl.searchParams.get('state');
+  if (state && /^[0-9a-f-]{36}$/i.test(state)) smokeFlowStateIds.push(state);
+}
+
 function adminHeaders() {
   return {
     Authorization: `Bearer ${serviceRoleKey}`,
@@ -105,7 +165,10 @@ function userHeaders(accessToken) {
 
 function decodeBase32(input) {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  const normalized = input.toUpperCase().replaceAll('=', '').replace(/[^A-Z2-7]/g, '');
+  const normalized = input
+    .toUpperCase()
+    .replaceAll('=', '')
+    .replace(/[^A-Z2-7]/g, '');
   let bits = '';
   for (const character of normalized) {
     const value = alphabet.indexOf(character);
@@ -123,7 +186,9 @@ function currentTotp(secret) {
   const counter = Math.floor(Date.now() / 30_000);
   const counterBuffer = Buffer.alloc(8);
   counterBuffer.writeBigUInt64BE(BigInt(counter));
-  const digest = createHmac('sha1', decodeBase32(secret)).update(counterBuffer).digest();
+  const digest = createHmac('sha1', decodeBase32(secret))
+    .update(counterBuffer)
+    .digest();
   const offset = digest[digest.length - 1] & 0x0f;
   const value =
     ((digest[offset] & 0x7f) << 24) |
@@ -177,11 +242,18 @@ WHERE id = :'smoke_user_id'::uuid;
 
 SELECT setval(
   'auth.refresh_tokens_id_seq'::regclass,
-  COALESCE((SELECT max(id) FROM auth.refresh_tokens), 1),
-  EXISTS (SELECT 1 FROM auth.refresh_tokens)
+  COALESCE((SELECT max(id) FROM auth.refresh_tokens), 1)
+    + :'sequence_headroom'::bigint,
+  CASE
+    WHEN :'sequence_headroom'::bigint > 0 THEN true
+    ELSE EXISTS (SELECT 1 FROM auth.refresh_tokens)
+  END
 );
 `,
-    { smoke_user_id: smokeUserId },
+    {
+      smoke_user_id: smokeUserId,
+      sequence_headroom: keepAuthSequenceHeadroom ? authSequenceHeadroom : 0,
+    },
   );
 }
 
@@ -241,18 +313,31 @@ async function run() {
     aal2Token: false,
     signedAvatar: false,
     publicAvatar: null,
+    googleAuthorization: false,
+    githubAuthorization: false,
+    refreshTokenSequenceHeadroom: null,
+    refreshTokenSequenceReady: false,
     cleanupRows: null,
     cleanupByTable: null,
   };
 
   try {
-    sql(`
+    sql(
+      `
 SELECT setval(
   'auth.refresh_tokens_id_seq'::regclass,
-  COALESCE((SELECT max(id) FROM auth.refresh_tokens), 1) + 1000000,
+  COALESCE((SELECT max(id) FROM auth.refresh_tokens), 1)
+    + :'sequence_headroom'::bigint,
   true
 );
-`);
+`,
+      { sequence_headroom: authSequenceHeadroom },
+    );
+
+    await verifyProviderAuthorization('google', 'accounts.google.com');
+    result.googleAuthorization = true;
+    await verifyProviderAuthorization('github', 'github.com');
+    result.githubAuthorization = true;
 
     originalWebhookUrl = sql(
       `SELECT backend_url FROM public.webhook_config WHERE id = 1;\n`,
@@ -276,7 +361,8 @@ WHERE id = 1;
     });
     const created = await createResponse.json();
     smokeUserId = created.id ?? created.user?.id;
-    if (!smokeUserId) throw new Error('Auth admin create did not return a user id');
+    if (!smokeUserId)
+      throw new Error('Auth admin create did not return a user id');
 
     await restoreSignupWebhook();
 
@@ -296,14 +382,16 @@ WHERE id = 1;
     });
     const tokenBody = await tokenResponse.json();
     const accessToken = tokenBody.access_token;
-    if (!accessToken) throw new Error('Password login did not return an access token');
+    if (!accessToken)
+      throw new Error('Password login did not return an access token');
     result.passwordLogin = true;
 
     const userResponse = await request('/auth/v1/user', {
       headers: userHeaders(accessToken),
     });
     const user = await userResponse.json();
-    if (user.id !== smokeUserId) throw new Error('Auth user response returned another user');
+    if (user.id !== smokeUserId)
+      throw new Error('Auth user response returned another user');
 
     const apiResponse = await apiRequest('/v1/user-roles', accessToken);
     const apiIdentity = await apiResponse.json();
@@ -334,7 +422,8 @@ WHERE id = 1;
     const enrolled = await enrollResponse.json();
     const factorId = enrolled.id;
     const totpSecret = enrolled.totp?.secret;
-    if (!factorId || !totpSecret) throw new Error('TOTP enrollment omitted factor data');
+    if (!factorId || !totpSecret)
+      throw new Error('TOTP enrollment omitted factor data');
     result.totpEnrollment = true;
 
     const challengeResponse = await request(
@@ -396,7 +485,8 @@ LIMIT 1;
       ? `${targetUrl}/storage/v1${signedPath}`
       : new URL(signedPath, targetUrl).toString();
     const signedResponse = await request(signedUrl, {}, [200]);
-    result.signedAvatar = Number(signedResponse.headers.get('content-length') ?? 1) > 0;
+    result.signedAvatar =
+      Number(signedResponse.headers.get('content-length') ?? 1) > 0;
 
     if (bucketPublic === 't') {
       const publicResponse = await request(
@@ -404,7 +494,8 @@ LIMIT 1;
         {},
         [200],
       );
-      result.publicAvatar = Number(publicResponse.headers.get('content-length') ?? 1) > 0;
+      result.publicAvatar =
+        Number(publicResponse.headers.get('content-length') ?? 1) > 0;
     }
   } finally {
     await restoreSignupWebhook();
@@ -428,6 +519,26 @@ LIMIT 1;
         0,
       );
     }
+    if (smokeFlowStateIds.length > 0) {
+      sql(
+        `
+DELETE FROM auth.flow_state
+WHERE id = ANY(string_to_array(:'flow_state_ids', ',')::uuid[]);
+`,
+        { flow_state_ids: smokeFlowStateIds.join(',') },
+      );
+    }
+    result.refreshTokenSequenceHeadroom = Number(
+      sql(`
+SELECT
+  last_value - COALESCE((SELECT max(id) FROM auth.refresh_tokens), 0)
+FROM auth.refresh_tokens_id_seq;
+`),
+    );
+    result.refreshTokenSequenceReady =
+      !keepAuthSequenceHeadroom ||
+      result.refreshTokenSequenceHeadroom >=
+        Math.floor(authSequenceHeadroom / 2);
   }
 
   const requiredChecks = [
@@ -439,6 +550,9 @@ LIMIT 1;
     result.totpChallenge,
     result.aal2Token,
     result.signedAvatar,
+    result.googleAuthorization,
+    result.githubAuthorization,
+    result.refreshTokenSequenceReady,
     result.cleanupRows === 0,
   ];
   if (result.publicAvatar !== null) requiredChecks.push(result.publicAvatar);

@@ -590,6 +590,15 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
         voice: {
           setBotName: (name: string) => P.setMeetBotName(projectId, name),
         },
+        /** @deprecated Use `channels.voice`. Retained for SDK compatibility. */
+        meet: {
+          voices: () => P.getMeetVoices(projectId),
+          setVoice: (voice: string) => P.setMeetVoice(projectId, voice),
+          setBotName: (name: string) => P.setMeetBotName(projectId, name),
+          previewVoice: (voiceId: string) => P.previewMeetVoice(projectId, voiceId),
+          speak: (botId: string, text: string, voice?: string) =>
+            P.speakInMeeting(projectId, botId, text, voice),
+        },
       },
 
       /** Toggle an experimental feature (Customize → Settings → Experimental). Pass `enabled: null` to clear the override. */

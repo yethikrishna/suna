@@ -402,7 +402,7 @@
               "slack",
               "teams",
               "email",
-              "meet"
+              "voice"
             ]
           },
           "credential": {},

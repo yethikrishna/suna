@@ -69,6 +69,7 @@ const projectRow: typeof projects.$inferSelect = {
 };
 
 function resetState() {
+  resetRateLimiters();
   setTestAuth();
   repoFiles = new Map();
   commitCalls = [];
@@ -541,6 +542,7 @@ const {
   projectWebhooksApp,
   runProjectTriggerSweep,
 } = await import('../projects/index');
+const { resetRateLimiters } = await import('../shared/rate-limit');
 
 function createApp() {
   const app = new Hono();
@@ -1094,6 +1096,18 @@ describe('git-backed triggers — runtime fire paths', () => {
     expect(wrong.status).toBe(401);
     expect(mirrorInvalidationCalls).toBe(1);
     expect(manifestReadCalls).toBe(1);
+
+    const repeated = await app.request(`/v1/webhooks/projects/${PROJECT_ID}/hook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Kortix-Signature': sign(rawBody, 'another-wrong-secret'),
+      },
+      body: rawBody,
+    });
+    expect(repeated.status).toBe(401);
+    expect(mirrorInvalidationCalls).toBe(1);
+    expect(manifestReadCalls).toBe(2);
   });
 
   test('webhook fires with a valid HMAC spawn a session', async () => {

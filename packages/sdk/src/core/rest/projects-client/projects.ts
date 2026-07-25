@@ -72,6 +72,9 @@ export interface ProjectConfigSummary {
   signals: Record<string, boolean>;
   manifest_raw: string | null;
   open_code_raw: string | null;
+  /** Provider-neutral project default. The SDK derives this from legacy servers. */
+  default_agent?: string | null;
+  /** @deprecated Use `default_agent`. */
   open_code_default_agent: string | null;
   agent_discovery: 'opencode' | 'declarative';
   agents: Array<{
@@ -271,12 +274,19 @@ export function isManagedGithubProject(project: {
 }
 
 export async function getProjectDetail(projectId: string, options?: ApiClientOptions) {
-  return unwrap(
+  const detail = unwrap(
     await backendApi.get<ProjectDetail>(`/projects/${projectId}/detail`, {
       showErrors: false,
       ...options,
     }),
   );
+  return {
+    ...detail,
+    config: {
+      ...detail.config,
+      default_agent: detail.config.default_agent ?? detail.config.open_code_default_agent ?? null,
+    },
+  };
 }
 
 export async function getProjectLlmCatalog(projectId: string, options?: ApiClientOptions) {

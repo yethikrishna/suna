@@ -2599,3 +2599,115 @@ Restored the five removed REST compatibility tests.
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, and deployed web
 verification remain.
+
+---
+
+### 2026-07-25 — session `whitelabel-acp-reference` (claim)
+
+Claimed the full white-label ACP and SDK reference-app refactor.
+The SDK will add the provider-neutral `default_agent` project-config field.
+The legacy `open_code_default_agent` field will remain as a deprecated alias.
+
+The reference app will use one `createKortix` client and one `useSession`
+runtime path.
+Client code will not import runtime transports, legacy runtime stores, or
+OpenCode packages.
+Client code will not construct Kortix REST or runtime proxy requests.
+Project settings will render the server-provided experimental-feature catalog.
+
+Implementation will follow RED -> GREEN -> REFACTOR.
+Required gates are the SDK suite, SDK typecheck, packed-install smoke,
+white-label typecheck, build, full E2E suite, deterministic boundary tests,
+real ACP browser proof, REST rollback proof, PR merge, Deploy Dev, and deployed
+artifact verification.
+
+**Status:** IN PROGRESS.
+
+---
+
+### 2026-07-25 — session `whitelabel-acp-reference` (local completion)
+
+Completed the SDK-only white-label ACP reference implementation.
+
+The white-label application uses one `createKortix` client and one
+`useSession` path. Application code does not import OpenCode packages,
+runtime transports, legacy runtime stores, or SDK source files.
+
+The wrapper BFF delegates HTTP forwarding to the SDK-owned
+`forwardKortixRequest()` function. White-label BFF tests use
+`createScopedKortix()` from `@kortix/sdk/server`. Repository Playwright specs
+also import the public SDK entry point.
+
+The boundary scanner covers application source, local tests, and repository
+Playwright specs. It rejects raw Kortix transport calls, SDK source imports,
+OpenCode imports, runtime proxy URLs, OpenCode REST paths, provider terms,
+legacy runtime stores, and direct runtime imports.
+
+ACP question requests remain pending without a timeout. Fresh subscribers
+receive unresolved questions. The daemon accepts the first client response
+and suppresses duplicate or late responses.
+
+ACP tool projections preserve native tool names, output text, output metadata,
+and reference-compatible labels. Projection resets preserve requests received
+during `session/load`.
+
+Local verification:
+
+- SDK typecheck: exit 0.
+- SDK suite: **1259 pass / 0 fail** with **5627** assertions.
+- SDK packed-install smoke: pass.
+- Sandbox daemon typecheck and build: exit 0.
+- Sandbox daemon suite: **293 pass / 0 fail** with **704** assertions.
+- White-label typecheck and build: exit 0.
+- White-label suite: **56 pass / 3 skip / 0 fail** with **181** assertions.
+- White-label SDK boundary: **0 violations**.
+- API typecheck: exit 0.
+- Repository test-harness typecheck: exit 0.
+- `git diff --check`: exit 0.
+- Real ACP and REST presentation plus question parity: **1 pass** in
+  **11.9 minutes**.
+- Real project-settings ACP-to-REST rollback: **1 pass** in **1.2 minutes**.
+- Test cleanup archived **15** projects through SDK methods.
+- Post-cleanup database proof: `active_projects=0`, `cleanup_users=0`.
+
+The final boundary review found two Playwright imports of
+`packages/sdk/src/node/server`. The RED test reported **10 pass / 1 fail**.
+Both specs now import `@kortix/sdk/server`. The GREEN run reports
+**11 pass / 0 fail**. Playwright lists both specs with the public package
+import.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** Rebase, full post-rebase gates, PR merge,
+Deploy Dev, deployed SHA proof, and deployed ACP plus REST parity remain.
+
+---
+
+### 2026-07-25 — session `whitelabel-acp-reference` (CI repair)
+
+PR #5458 exposed two delivery defects.
+
+The root `@kortix/sdk` development dependency broke the reduced API Docker
+workspace. The dependency now belongs to the minimal `tests/e2e` workspace.
+Both Playwright specs import the public `@kortix/sdk/server` entry point.
+
+The first package-unit run timed out while the mode suite built Next.js and
+started two servers. The setup limit is now 120 seconds. Test assertions remain
+unchanged.
+
+Post-repair verification:
+
+- SDK typecheck: exit 0.
+- SDK suite: **1259 pass / 0 fail** with **5629** assertions.
+- SDK packed-install smoke: pass.
+- White-label suite: **57 pass / 3 skip / 0 fail** with **182** assertions.
+- White-label SDK boundary: **0 violations**.
+- Repository test-harness typecheck: exit 0.
+- Playwright collection: **2 tests in 2 files**.
+- API self-host Docker build: exit 0.
+- `git diff --check`: exit 0.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
+and deployed ACP plus REST parity remain.

@@ -144,6 +144,44 @@ describe('ACP session controller', () => {
     }
   });
 
+  test('preserves a pending client request replayed while the stream opens', async () => {
+    const h = harness();
+    const connect = h.client.connect;
+    h.client.connect = (options) => {
+      const stream = connect(options);
+      options.onEvent({
+        id: 12,
+        envelope: {
+          jsonrpc: '2.0',
+          id: 'kortix:question:q1',
+          method: 'session/request_input',
+          params: {
+            sessionId: 'ses_1',
+            questions: [{ question: 'Choose one', options: ['Alpha', 'Beta'] }],
+          },
+        },
+      });
+      return stream;
+    };
+    const controller = createAcpSessionController({
+      sessionId: 'ses_1',
+      client: h.client,
+    });
+
+    await controller.connect();
+
+    expect(controller.getSnapshot().projection.questions).toEqual([
+      expect.objectContaining({
+        id: 'kortix:question:q1',
+        questions: [
+          expect.objectContaining({
+            question: 'Choose one',
+          }),
+        ],
+      }),
+    ]);
+  });
+
   test('applies model and agent options before one ACP prompt', async () => {
     const h = harness();
     const controller = createAcpSessionController({

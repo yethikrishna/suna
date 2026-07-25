@@ -3200,7 +3200,12 @@
     "writeLastSeen",
     "writeStartStash"
   ],
-  "./server": ["createScopedKortix", "getScopedConfig", "runWithKortix"],
+  "./server": [
+    "createScopedKortix",
+    "forwardKortixRequest",
+    "getScopedConfig",
+    "runWithKortix"
+  ],
   "./internal/sync-store": [
     "Binary",
     "MessageError",

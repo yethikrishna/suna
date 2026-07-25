@@ -201,7 +201,7 @@ Also stop if the same failure survives three different fixes (use
 |---|---|---|---|---|---|
 | 1 | Native process and protocol core | DONE | `acp-opencode-canary` | 2026-07-25 | `2ba64ab68` |
 | 2 | Authenticated HTTP/SSE bridge | DONE | `acp-opencode-canary` | 2026-07-25 | `8560c2dfc` |
-| 3 | API transport metadata and rollback | IN PROGRESS | `acp-opencode-canary` | 2026-07-25 | — |
+| 3 | API transport metadata and rollback | DONE | `acp-opencode-canary` | 2026-07-25 | `b558def6f` |
 | 4 | SDK ACP transport | NOT STARTED | — | — | — |
 | 5 | SDK session projection | NOT STARTED | — | — | — |
 | 6 | Existing `useSession` integration | NOT STARTED | — | — | — |
@@ -2226,3 +2226,22 @@ Task 3 will add server-owned `acp` and `rest` transport metadata.
 The SDK source remains unchanged until Task 4 starts with a failing test.
 
 **Status:** IN PROGRESS.
+
+---
+
+### 2026-07-25 — session `acp-opencode-canary` (OpenCode ACP Task 3 completion)
+
+Added server-owned `acp` and `rest` transport selection.
+The API defaults to `acp`.
+It injects `KORTIX_OPENCODE_TRANSPORT` into each sandbox.
+The `/start` response reports `runtime_transport`.
+Pre-ACP servers can omit the additive field.
+
+**Verification:**
+
+- API contract and runtime-env tests: **22 pass / 0 fail**.
+- Focused `/start` HTTP contract: **1 pass / 0 fail**.
+- API contract typecheck: exit 0.
+- API typecheck: exit 0.
+
+**Status:** COMPLETE.

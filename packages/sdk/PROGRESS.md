@@ -2865,6 +2865,82 @@ and deployed browser verification remain open.
 
 ---
 
+### 2026-07-26 — session `api-latency-refactor` (B24 and B25 delivery completion)
+
+PR #5490 merged into `main`.
+The merge commit is `4f46e3aafdd02d43bbb022a28fd17fcfb94baeb5`.
+All PR checks passed.
+
+Deploy Dev run `30204286487` completed successfully.
+The run head is the full merge commit.
+The API EKS and ECS rollouts used image tag `dev-4f46e3aa`.
+The frontend retag used the full merge commit.
+The live API health response reports `0.10.16-dev.4f46e3aa`.
+
+Deployed API contract proof:
+
+- An unauthenticated `POST /v1/projects/x/execution-lease` returned `401`.
+- The disposable live verifier returned `200` for `acquire`, `renew`, and
+  `release`.
+- The verifier measured **2807.1 ms**, **598.4 ms**, and **534.0 ms**.
+- Acquire and renew response timestamps matched `executionLeaseUntil` in the
+  dev database.
+- Release stored `executionLeaseUntil = null`.
+
+Deployed sandbox-agent proof used Daytona snapshot
+`kortix-default-631f50320491`.
+Disposable session `07729779-f350-4af0-b46f-f727d91859f6` entered `busy` after
+a real OpenRouter prompt.
+CloudWatch recorded:
+
+- One bootstrap-pin `turn-stream` request: `200` in **885 ms**.
+- One lease `acquire` request: `200` in **793 ms**.
+- One lease `release` request: `200` in **266 ms**.
+- The gateway completed the model request with `200` in **2521 ms** and
+  returned **808 tokens**.
+
+CloudWatch Insights query
+`dd8a17dd-bc08-4fdc-bc83-b0e8bfa21be5` covers the post-deploy window beginning
+at `2026-07-26T13:44:00Z`.
+It found **6** `execution-lease` requests across **3** disposable projects:
+**266 ms p50**, **2005 ms p95**, **2005 ms p99**, and **603.2 ms average**.
+
+CloudWatch Insights query
+`874b0176-dc50-44ab-ab70-efdee3ac7268` covers the same window.
+It found **227** `turn-stream` requests across **5** projects:
+**260.9 ms p50**, **2006.6 ms p95**, **3001.9 ms p99**, and **593.0 ms
+average**.
+Three pre-existing sandboxes continued the legacy 20-second heartbeat.
+New sandboxes use `execution-lease`; existing sandboxes retain their old daemon
+until they stop or restart.
+
+The deployed infrastructure-only session smoke completed **20 passes / 1
+failure**.
+The deployed busy-turn smoke completed **22 passes / 3 failures**.
+Both smokes provisioned a real managed repository, built or reused the new
+Daytona snapshot, started a real sandbox, reached OpenCode, and cleaned up.
+The shared failures were `POST /git-token` returning `503`.
+The busy-turn smoke also found no assistant text in the OpenCode message
+response, although the gateway completed the model request with `200`.
+
+Cleanup proof:
+
+- Both disposable projects have status `archived`.
+- Both disposable sessions have status `stopped` and a `deletedAt` timestamp.
+- Both disposable sandboxes have status `archived` and a `stoppedAt` timestamp.
+- Both disposable Supabase users were deleted with status `200`.
+
+Browser discovery returned `[]` after troubleshooting.
+Deployed DOM and browser-network verification remains open.
+
+**Status:** MERGED AND DEPLOYED TO DEV.
+
+**Shippable to production: NOT YET.** The deployed lease path passes.
+Deployed browser verification, the `git-token` `503`, and the missing
+assistant-text result remain open.
+
+---
+
 ### 2026-07-26 — session `whitelabel-acp-stable-completion` (B23 delivery completion)
 
 Merged B23 in PR #5477.

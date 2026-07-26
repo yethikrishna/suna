@@ -21,7 +21,7 @@
  * it was whatever the worker happened to echo back via ConversationItemAdded.
  *
  * Nothing here touches the DB or the network, which is what makes the exact
- * wording testable — see unit-voice-utterance.test.ts. The `instruction` text
+ * wording testable — see unit-voice-recording.test.ts. The `instruction` text
  * of each kind is carried over verbatim from the call sites it replaces
  * (turn.ts, answer-watch.ts, executor/db-deps.ts); changing it changes what a
  * live call actually says, so treat these strings as behaviour, not comments.

@@ -131,7 +131,8 @@ DELETE FROM auth.mfa_factors
 WHERE user_id = :'smoke_user_id'::uuid;
 
 DELETE FROM auth.flow_state
-WHERE referrer LIKE '%kortix_use2_oauth_smoke%'
+WHERE user_id = :'smoke_user_id'::uuid
+   OR referrer LIKE '%kortix_use2_oauth_smoke%'
    OR referrer LIKE '%kortix_use2_github_oauth_smoke%';
 
 DELETE FROM auth.identities
@@ -215,6 +216,8 @@ SELECT
     WHERE payload::text LIKE '%' || :'smoke_user_id' || '%')
   + (SELECT count(*) FROM auth.users
     WHERE id = :'smoke_user_id'::uuid)
+  + (SELECT count(*) FROM auth.flow_state
+    WHERE user_id = :'smoke_user_id'::uuid)
   + (SELECT count(*) FROM kortix.audit_events
     WHERE actor_user_id = :'smoke_user_id'::uuid)
   + (SELECT count(*) FROM kortix.accounts

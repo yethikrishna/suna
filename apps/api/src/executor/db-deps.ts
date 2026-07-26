@@ -610,7 +610,20 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
         if (!text) {
           return { ok: false, kind: 'error', message: 'send_prompt requires `text`' };
         }
-        const result = await promptVoiceAgent(sessionId, text);
+        // FRAME IT. What reaches the worker is handed to `generateReply` as
+        // INSTRUCTIONS, not as a script — so raw text arrives at the voice model
+        // as an unattributed order and it has no idea the words came from its own
+        // Kortix agent, or whether it is meant to say them, answer them, or act
+        // on them. Sending "the connector works straight from the session" raw
+        // made the call treat a statement as a prompt. Every other path into this
+        // channel tags its intent (turn.ts's [progress]/[result]/[question],
+        // answer-watch.ts's [result]) — this one must too.
+        const result = await promptVoiceAgent(
+          sessionId,
+          `[say] Your Kortix agent — the one you hand work to — wants the room to hear this now. ` +
+            `Say it out loud in your own voice, keeping its meaning exactly, and do not treat it ` +
+            `as a question or a task to act on: ${text}`,
+        );
         if (!result.delivered) {
           // Deliberately an error, not a silent success: an agent that believes
           // it spoke and did not will carry on as though the room heard it.

@@ -178,7 +178,7 @@ const TURN_INSTRUCTIONS = [
   '- Whatever you report back is SPOKEN ALOUD, so answer in plain spoken language — no markdown,',
   '  no bullet lists, no raw URLs, no code. A couple of sentences unless more was asked for.',
   '- You can also talk into the call yourself at any time with `send_prompt`, and read what is',
-  '  being said with `read_transcript` (cursor-paged, returns immediately, never blocks).',
+  '  being said with `read_transcript` — call it bare, it returns only what is new, immediately.',
   '- Nothing blocks: the conversation continues while you work, and you are not holding the line.',
 ].join('\n');
 

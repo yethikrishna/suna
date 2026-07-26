@@ -1158,11 +1158,11 @@ export const voiceCallTurns = kortixSchema.table(
  * path and removes the agent's obligation to remember anything.
  *
  * `cursor` is the highest `voice_call_turns.cursor` actually handed over, and it
- * only ever moves forward (upserted with GREATEST) — a race between two reads in
- * one call must not rewind it. Exactly one writer: the agent-side
- * `read_transcript`. The call page's poll (r7.ts, public-join-routes.ts) passes
- * its own explicit cursor and never touches this row, so a human scrolling the
- * transcript cannot consume the agent's unread.
+ * only ever moves forward (the upsert's `setWhere` refuses to lower it) — a race
+ * between two reads in one call must not rewind it. Exactly one writer: the
+ * agent-side `read_transcript`. The call page's poll (r7.ts,
+ * public-join-routes.ts) passes its own explicit cursor and never touches this
+ * row, so a human scrolling the transcript cannot consume the agent's unread.
  */
 export const voiceCallReadCursors = kortixSchema.table('voice_call_read_cursors', {
   /** The call — which is also the session id. */

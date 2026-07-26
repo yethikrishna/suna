@@ -24,7 +24,16 @@ const sent: Array<{ room: string; topic: string; payload: any }> = [];
 
 function makeChain(kind?: string): any {
   const chain: any = {};
-  for (const m of ['from', 'where', 'limit', 'values', 'onConflictDoNothing', 'set']) {
+  for (const m of [
+    'from',
+    'where',
+    'limit',
+    'orderBy',
+    'values',
+    'onConflictDoNothing',
+    'onConflictDoUpdate',
+    'set',
+  ]) {
     chain[m] = (...args: unknown[]) => {
       if (kind === 'insert' && m === 'values') {
         if (insertThrows) throw new Error('transcript write exploded');
@@ -78,6 +87,49 @@ mock.module('../projects/session-lifecycle', () => ({
 }));
 
 const { buildAskPrompt, promptVoiceAgent } = await import('../channels/voice/runtime');
+
+/**
+ * An in-memory stand-in for the three transcript QUERIES, so the read-position
+ * behaviour can be exercised without a database.
+ *
+ * Only those three are replaced — everything else in runtime.ts is spread
+ * through untouched, because bun's module mocks are global for the whole test
+ * RUN and a partial stand-in would break every other file that imports this
+ * module (the same trap the livekit mock above documents). `promptVoiceAgent`
+ * was destructured above, before this registration, so the recording tests keep
+ * the real implementation.
+ *
+ * The fakes mirror the SQL exactly: forward from an exclusive floor, the tail in
+ * speaking order, and a count that fetches nothing.
+ */
+interface FakeTurn {
+  cursor: number;
+  role: string;
+  speaker: string | null;
+  text: string;
+  at: string;
+}
+let transcript: FakeTurn[] = [];
+
+const realRuntime = await import('../channels/voice/runtime');
+mock.module('../channels/voice/runtime', () => ({
+  ...realRuntime,
+  readTurns: async (_callId: string, cursor: number, limit = 200) => {
+    const turns = transcript.filter((t) => t.cursor > cursor).slice(0, limit);
+    return { turns, cursor: turns.length > 0 ? turns[turns.length - 1]!.cursor : cursor };
+  },
+  readLastTurns: async (_callId: string, limit = 10) => {
+    const turns = limit >= transcript.length ? [...transcript] : transcript.slice(-limit);
+    return { turns, cursor: turns.length > 0 ? turns[turns.length - 1]!.cursor : 0 };
+  },
+  countTurnsAfter: async (_callId: string, cursor: number) =>
+    transcript.filter((t) => t.cursor > cursor).length,
+}));
+
+const { readTranscriptForAgent, resolveReadPlan } = await import(
+  '../channels/voice/transcript-read'
+);
+
 const { relayTurnAnswer, relayTurnEnd, relayTurnStep } = await import('../channels/voice/turn');
 const {
   KORTIX_SPEAKER,
@@ -95,6 +147,8 @@ beforeEach(() => {
   insertThrows = false;
   agentInRoom = true;
   sent.length = 0;
+  transcript = [];
+  storedPosition = 0;
 });
 
 describe('kortix utterances — instruction on the wire, payload in the record', () => {
@@ -280,12 +334,29 @@ describe('kortix_voice connector wiring', () => {
     expect(source).not.toContain('[say] Your Kortix agent');
   });
 
-  test('read_transcript hands back `speaker`, not just role and text', () => {
+  test('read_transcript delegates the whole read, and only adds liveness', () => {
+    // Mode/position/shape belong to transcript-read.ts, which is unit-testable.
+    // What db-deps must not do is re-derive any of it here, or add a second
+    // place where the response shape can drift.
+    const mapping = source.slice(
+      source.indexOf("if (op === 'read_transcript')"),
+      source.indexOf("if (op === 'send_prompt')"),
+    );
+    expect(mapping).toContain('readTranscriptForAgent');
+    // Liveness is a LiveKit question, not a transcript one, so it is the one
+    // field added on this side.
+    expect(mapping).toContain('live: await isCallLive(sessionId)');
+    expect(mapping).not.toContain('readTurns(');
+  });
+
+  test('the shaped turn still carries `speaker`, not just role and text', async () => {
     // role 'agent' covers BOTH the voice speaking and the agent's own
     // send_prompt lines, and role 'tool' is meaningless without the tool name —
     // so a transcript without `speaker` is one the agent cannot attribute.
-    const mapping = source.slice(source.indexOf('if (op === '), source.indexOf("if (op === 'send_prompt')"));
-    expect(mapping).toContain('speaker: t.speaker');
+    const shaping = await Bun.file(
+      new URL('../channels/voice/transcript-read.ts', import.meta.url).pathname,
+    ).text();
+    expect(shaping).toContain('speaker: t.speaker');
   });
 });
 
@@ -339,5 +410,241 @@ describe('the inbound voice prompt teaches the agent how to work the call', () =
     // Not a style rule: the whole block is re-sent per utterance, so length
     // here is paid over and over for the life of the call.
     expect(prompt.length).toBeLessThan(900);
+  });
+});
+
+/**
+ * `read_transcript` — the read position, and why the DEFAULT is the cheap one.
+ *
+ * The defect these exist for is not a crash, it is a bill. The transcript was
+ * always cursor-paged, but the cursor was the AGENT's to carry: forget it, or
+ * start a fresh turn without it, and you passed 0 and re-read the whole call.
+ * A bare `read_transcript {}` must now return only what has not been handed over
+ * before — and the second bare call in a row must return nothing at all. That
+ * one property is the entire change, so it is the first test here.
+ */
+
+/** The one row in `voice_call_read_cursors` this call would have. */
+let storedPosition = 0;
+
+/**
+ * One `read_transcript`, against a persisted position.
+ *
+ * `getReadCursor` is the only SELECT the code under test issues (the transcript
+ * queries are faked above), so queueing one row answers it; `advanceReadCursor`
+ * shows up in `inserts`, and applying it to `storedPosition` here — max(), never
+ * backwards, exactly as the upsert's `setWhere` does — is what makes the next
+ * call see a real, surviving position rather than a fresh 0.
+ */
+async function agentRead(args: Record<string, unknown> = {}) {
+  dbResults = [[{ cursor: storedPosition }]];
+  inserts = [];
+  const res = await readTranscriptForAgent({ callId: 'call-1', projectId: 'proj-1', args });
+  const advance = inserts.find((i) => 'cursor' in i && 'callId' in i && !('role' in i));
+  if (advance) storedPosition = Math.max(storedPosition, Number(advance.cursor));
+  return res;
+}
+
+function seed(n: number): void {
+  transcript = Array.from({ length: n }, (_, i) => ({
+    cursor: i + 1,
+    role: i % 2 === 0 ? 'user' : 'agent',
+    speaker: i % 2 === 0 ? 'Marko' : 'kortix',
+    text: `turn ${i + 1}`,
+    at: new Date(1700000000000 + i).toISOString(),
+  }));
+}
+
+describe('read_transcript — a bare call never re-reads what it already read', () => {
+  test('THE property: the second bare read returns nothing, and the position survived it', async () => {
+    seed(4);
+
+    const first = await agentRead();
+    expect(first.mode).toBe('unread');
+    expect(first.turns.map((t) => t.text)).toEqual(['turn 1', 'turn 2', 'turn 3', 'turn 4']);
+    expect(first.cursor).toBe(4);
+    expect(first.unread).toBe(0);
+    expect(storedPosition).toBe(4);
+
+    const second = await agentRead();
+    expect(second.turns).toEqual([]);
+    expect(second.unread).toBe(0);
+    // Nothing new arrived, so nothing was written — an idle poll must not churn
+    // the row on every turn of every live call.
+    expect(inserts).toHaveLength(0);
+  });
+
+  test('only what arrives after the last read comes back', async () => {
+    seed(2);
+    await agentRead();
+
+    transcript.push({
+      cursor: 3,
+      role: 'user',
+      speaker: 'Marko',
+      text: 'and the deploy?',
+      at: new Date().toISOString(),
+    });
+
+    const next = await agentRead();
+    expect(next.turns.map((t) => t.text)).toEqual(['and the deploy?']);
+    expect(next.unread).toBe(0);
+  });
+
+  test('a clipped page advances only to what it actually handed over — nothing is skipped', async () => {
+    // The failure this rules out is the bad one: marking turns read because they
+    // EXISTED rather than because they were delivered.
+    seed(5);
+
+    const a = await agentRead({ limit: 2 });
+    expect(a.turns.map((t) => t.text)).toEqual(['turn 1', 'turn 2']);
+    expect(a.truncated).toBe(true);
+    expect(a.unread).toBe(3);
+    expect(storedPosition).toBe(2);
+
+    const b = await agentRead({ limit: 2 });
+    expect(b.turns.map((t) => t.text)).toEqual(['turn 3', 'turn 4']);
+    expect(b.unread).toBe(1);
+
+    const c = await agentRead({ limit: 2 });
+    expect(c.turns.map((t) => t.text)).toEqual(['turn 5']);
+    expect(c.truncated).toBeUndefined();
+    expect(c.unread).toBe(0);
+  });
+
+  test('`unread` counts what is still waiting, so "is it worth reading" costs nothing', async () => {
+    seed(5);
+    const peeked = await agentRead({ peek: true, limit: 1 });
+    expect(peeked.unread).toBe(5);
+  });
+});
+
+describe('read_transcript — the modes that do not consume', () => {
+  test('peek returns the unread and leaves the position where it was', async () => {
+    seed(3);
+
+    const first = await agentRead({ peek: true });
+    expect(first.turns).toHaveLength(3);
+    expect(storedPosition).toBe(0);
+
+    // The whole point of peek: a turn that may not survive can look first.
+    const second = await agentRead({ peek: true });
+    expect(second.turns).toHaveLength(3);
+    expect(storedPosition).toBe(0);
+  });
+
+  test('`last` re-orients without replaying the call and without consuming it', async () => {
+    seed(6);
+
+    const glance = await agentRead({ mode: 'last', limit: 2 });
+    expect(glance.mode).toBe('last');
+    expect(glance.turns.map((t) => t.text)).toEqual(['turn 5', 'turn 6']);
+    // A `last` window always has older turns behind it; saying so every time
+    // would be noise, so `truncated` is a forward-page signal only.
+    expect(glance.truncated).toBeUndefined();
+    expect(storedPosition).toBe(0);
+
+    // It skipped turns 1-4, so it must NOT have claimed them as read.
+    const drain = await agentRead();
+    expect(drain.turns).toHaveLength(6);
+  });
+
+  test('`last` is the documented recovery when a turn dies right after reading', async () => {
+    seed(3);
+    await agentRead(); // read... and then, in the failure being modelled, the turn dies.
+    expect((await agentRead()).turns).toEqual([]);
+
+    const recovered = await agentRead({ mode: 'last', limit: 20 });
+    expect(recovered.turns.map((t) => t.text)).toEqual(['turn 1', 'turn 2', 'turn 3']);
+  });
+
+  test('an explicit cursor still works exactly as before and never moves the position', async () => {
+    seed(4);
+
+    const paged = await agentRead({ cursor: 2 });
+    expect(paged.mode).toBe('cursor');
+    expect(paged.turns.map((t) => t.text)).toEqual(['turn 3', 'turn 4']);
+    expect(storedPosition).toBe(0);
+
+    // `{"cursor":0}` — the old habit — is still the whole call, unchanged.
+    const fromZero = await agentRead({ cursor: 0 });
+    expect(fromZero.turns).toHaveLength(4);
+    expect(storedPosition).toBe(0);
+  });
+});
+
+describe('read_transcript — full', () => {
+  test('returns the whole call and marks it read, since it covered everything', async () => {
+    seed(3);
+    await agentRead(); // drain first, so "full" is proving it ignores the position
+    transcript.push({
+      cursor: 4,
+      role: 'user',
+      speaker: 'Marko',
+      text: 'one more',
+      at: new Date().toISOString(),
+    });
+
+    const whole = await agentRead({ mode: 'full' });
+    expect(whole.mode).toBe('full');
+    expect(whole.turns).toHaveLength(4);
+    expect(storedPosition).toBe(4);
+    expect((await agentRead()).turns).toEqual([]);
+  });
+});
+
+describe('read_transcript — the turn shape is the thing paid for on every line', () => {
+  test('no per-turn cursor, and `speaker` is omitted rather than sent as null', async () => {
+    transcript = [
+      { cursor: 1, role: 'user', speaker: 'Marko', text: 'hi', at: 'x' },
+      { cursor: 2, role: 'agent', speaker: null, text: 'hello', at: 'x' },
+    ];
+
+    const page = await agentRead();
+    expect(page.turns[0]).toEqual({ role: 'user', speaker: 'Marko', text: 'hi' });
+    // `speaker` still rides along when there IS one: role 'agent' covers both
+    // the voice and this agent's own send_prompt lines, so role alone cannot
+    // answer "who said this".
+    expect(page.turns[1]).toEqual({ role: 'agent', text: 'hello' });
+    // The per-turn cursor was ~5 tokens of noise per line; the page-level one is
+    // the only resume point anything uses.
+    expect(page.turns[0]).not.toHaveProperty('cursor');
+    expect(page.turns[0]).not.toHaveProperty('at');
+  });
+});
+
+describe('resolveReadPlan — what the agent asked for vs what runs', () => {
+  test('nothing at all means unread', () => {
+    expect(resolveReadPlan({})).toEqual({ mode: 'unread', limit: 100, peek: false, cursor: 0 });
+  });
+
+  test('a bare cursor selects the old stateless contract', () => {
+    expect(resolveReadPlan({ cursor: 7 }).mode).toBe('cursor');
+    expect(resolveReadPlan({ cursor: 0 }).mode).toBe('cursor');
+  });
+
+  test('an explicit mode beats a stray cursor', () => {
+    expect(resolveReadPlan({ mode: 'unread', cursor: 7 }).mode).toBe('unread');
+    expect(resolveReadPlan({ mode: 'LAST' }).mode).toBe('last');
+  });
+
+  test('an unknown mode falls back to unread instead of costing the agent a turn', () => {
+    expect(resolveReadPlan({ mode: 'tail' }).mode).toBe('unread');
+    expect(resolveReadPlan({ mode: 'follow' }).mode).toBe('unread');
+  });
+
+  test('per-mode defaults, and a hard ceiling on any of them', () => {
+    expect(resolveReadPlan({ mode: 'last' }).limit).toBe(10);
+    expect(resolveReadPlan({ mode: 'full' }).limit).toBe(500);
+    expect(resolveReadPlan({ limit: 9999 }).limit).toBe(500);
+    expect(resolveReadPlan({ limit: 0 }).limit).toBe(1);
+    expect(resolveReadPlan({ limit: -5 }).limit).toBe(1);
+  });
+
+  test('args that arrive as strings still parse — a JSON arg is not always a number', () => {
+    expect(resolveReadPlan({ limit: '3' }).limit).toBe(3);
+    expect(resolveReadPlan({ cursor: '12' })).toMatchObject({ mode: 'cursor', cursor: 12 });
+    expect(resolveReadPlan({ peek: 'true' }).peek).toBe(true);
+    expect(resolveReadPlan({ peek: false }).peek).toBe(false);
   });
 });

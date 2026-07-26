@@ -34,7 +34,8 @@ import {
 import { resolveProjectBotName } from '../channels/voice-identity';
 import { joinPageUrl } from '../channels/voice/livekit';
 import { mintJoinLink } from '../channels/voice/join-links';
-import { endCall, isCallLive, promptVoiceAgent, readTurns, startCall } from '../channels/voice/runtime';
+import { endCall, isCallLive, promptVoiceAgent, startCall } from '../channels/voice/runtime';
+import { readTranscriptForAgent } from '../channels/voice/transcript-read';
 import { kortixSay } from '../channels/voice/utterance';
 import { config } from '../config';
 import { authorize } from '../iam';
@@ -591,27 +592,13 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
         if (!sessionId) {
           return { ok: false, kind: 'error', message: 'read_transcript requires a session' };
         }
-        const cursor = typeof args.cursor === 'number' ? args.cursor : 0;
-        const page = await readTurns(sessionId, cursor);
-        return {
-          ok: true,
-          data: {
-            // `speaker` rides along because `role` alone cannot answer "who
-            // said this": role 'agent' covers BOTH the voice speaking and this
-            // very agent's own send_prompt lines (speaker 'kortix'), and role
-            // 'tool' needs the tool's name to mean anything. Dropping it, as
-            // this mapping used to, handed the agent a transcript in which it
-            // could not find its own words.
-            turns: page.turns.map((t) => ({
-              role: t.role,
-              speaker: t.speaker,
-              text: t.text,
-              cursor: t.cursor,
-            })),
-            cursor: page.cursor,
-            live: await isCallLive(sessionId),
-          },
-        };
+        // Mode resolution, the per-call read position, the page shape and the
+        // unread count all live in channels/voice/transcript-read.ts — read its
+        // header for why a bare call is the cheap one, and for what happens to
+        // "unread" turns when a turn dies mid-read. Everything except liveness,
+        // which is a LiveKit question, not a transcript one.
+        const read = await readTranscriptForAgent({ callId: sessionId, projectId, args });
+        return { ok: true, data: { ...read, live: await isCallLive(sessionId) } };
       }
 
       if (op === 'send_prompt') {

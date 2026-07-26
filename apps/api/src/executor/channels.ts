@@ -479,7 +479,10 @@ interface VoiceActionDef {
   name: string;
   description: string;
   risk: Risk;
-  properties: Record<string, { type: string; description: string }>;
+  /** `enum` is carried through to the JSON Schema so a closed set of modes is
+   *  discoverable from the schema instead of only from prose in the
+   *  description — the model sees both, and only one of them is machine-checked. */
+  properties: Record<string, { type: string; description: string; enum?: string[] }>;
   required: string[];
 }
 
@@ -519,14 +522,41 @@ const VOICE_ACTIONS: VoiceActionDef[] = [
   {
     path: 'read_transcript',
     name: 'Read call transcript',
+    // The description is re-read by the model on every single turn, so it is
+    // written to make the DEFAULT unmissable in the first sentence and the modes
+    // findable in the last. The old wording led with `cursor`, which taught the
+    // agent that following a call meant carrying a number between turns — the
+    // exact habit that made it pass 0 and re-read whole conversations.
     description:
-      'Read what has been said in the live call since `cursor` — both sides. Returns IMMEDIATELY with whatever is new (empty if nothing), plus the next cursor to pass back. Poll this while the call runs to follow the conversation and prepare work before anyone asks for it. It never blocks and never waits for the caller to finish speaking.',
+      'Read what is being said in the live call — both sides. Call it BARE, with no arguments: you get only what you have not already been shown, because your read position is remembered per call. You never track a cursor and never re-read the same turns. Returns IMMEDIATELY, empty when nothing is new — it never waits for anyone to speak. Every reply carries `unread` (turns still waiting after this one) and `live`. Other modes: `last` = the newest few turns whatever you have read, for re-orienting mid-call; `full` = the entire call; or pass an explicit `cursor` to page it yourself. Only `unread` and `full` move your saved position; add `peek: true` to read the unread without consuming it.',
+    // Still 'read', even though the default advances a saved read position. What
+    // it mutates is bookkeeping about the READER — nothing about the call, the
+    // room or the transcript changes, no other reader observes it, and every
+    // turn stays readable via `last`/`full`/`cursor`. Grading it 'write' would
+    // put the agent's cheapest and most-encouraged action behind approval in
+    // stricter policy modes. `peek: true` is the literally-non-mutating read.
+    // Full reasoning: channels/voice/transcript-read.ts.
     risk: 'read',
     properties: {
+      mode: {
+        type: 'string',
+        enum: ['unread', 'last', 'full', 'cursor'],
+        description:
+          'Default `unread`: only turns you have not been shown. `last`: the most recent `limit` turns regardless of what you have read. `full`: the whole call. `cursor`: everything after the `cursor` you pass.',
+      },
+      limit: {
+        type: 'number',
+        description: 'Max turns to return. Defaults: unread 100, last 10, full 500. Capped at 500.',
+      },
+      peek: {
+        type: 'boolean',
+        description:
+          'Read without advancing your saved position, so the same turns come back next time. Use it when you may not get to act on them.',
+      },
       cursor: {
         type: 'number',
         description:
-          'Return only turns after this cursor. Start at 0, then pass back the cursor from the previous call.',
+          'Return only turns after this cursor, and leave your saved position alone. Implies `mode: cursor`. Only needed if you are keeping your own place.',
       },
     },
     required: [],

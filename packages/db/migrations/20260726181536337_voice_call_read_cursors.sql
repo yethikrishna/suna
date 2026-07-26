@@ -49,8 +49,9 @@ CREATE TABLE "kortix"."voice_call_read_cursors" (
   "call_id"    text PRIMARY KEY,
   "project_id" uuid NOT NULL,
   -- The highest voice_call_turns.cursor actually HANDED to the agent. Only ever
-  -- moves forward (GREATEST on upsert): two reads racing inside one call must
-  -- never rewind the position and re-serve turns already paid for.
+  -- moves forward: the upsert carries a `WHERE cursor < excluded.cursor`, so two
+  -- reads racing inside one call cannot let the slower one rewind the position
+  -- and re-serve turns the agent has already paid for.
   "cursor"     bigint NOT NULL DEFAULT 0,
   "updated_at" timestamptz NOT NULL DEFAULT now()
 );

@@ -170,11 +170,47 @@ describe('channelCatalog(voice)', () => {
     ]);
   });
 
-  test('read_transcript is a READ and is cursor-paged, so polling it never blocks', () => {
+  test('read_transcript takes NOTHING by default — that is the whole point', () => {
+    // The default has to be both cheap and correct with zero arguments: the
+    // read position lives on the server (channels/voice/transcript-read.ts), so
+    // an agent that remembers nothing still never re-reads the same turns. The
+    // moment anything here becomes required, the agent is carrying state again.
+    const a = action('read_transcript');
+    expect(objectSchema(a.inputSchema).required ?? []).toEqual([]);
+    expect(Object.keys(objectSchema(a.inputSchema).properties).sort()).toEqual([
+      'cursor',
+      'limit',
+      'mode',
+      'peek',
+    ]);
+  });
+
+  test('the modes are a closed, schema-declared set — not prose the model has to infer', () => {
+    const mode = objectSchema(action('read_transcript').inputSchema).properties.mode as {
+      enum?: string[];
+    };
+    expect(mode.enum).toEqual(['unread', 'last', 'full', 'cursor']);
+  });
+
+  test('read_transcript stays a READ even though the default advances a read position', () => {
+    // It mutates only bookkeeping about the READER — nothing about the call —
+    // and it is the action the agent is told to run at the top of every turn.
+    // Grading it 'write' would put that behind approval in stricter policy
+    // modes. `peek: true` is the non-mutating escape hatch.
     const a = action('read_transcript');
     expect(a.risk).toBe('read');
-    expect(Object.keys(objectSchema(a.inputSchema).properties)).toEqual(['cursor']);
-    expect(objectSchema(a.inputSchema).required ?? []).toEqual([]);
+    expect(Object.keys(objectSchema(a.inputSchema).properties)).toContain('peek');
+  });
+
+  test('the description leads with the bare call and never blocks', () => {
+    // This string is re-read by the model on every turn. The old wording led
+    // with `cursor`, which taught the agent to carry a number between turns —
+    // and an agent that dropped it passed 0 and re-read the entire call.
+    const d = action('read_transcript').description;
+    expect(d).toContain('BARE');
+    expect(d).toMatch(/IMMEDIATELY/);
+    expect(d).toContain('never waits');
+    expect(d.indexOf('BARE')).toBeLessThan(d.indexOf('cursor'));
   });
 
   test('send_prompt requires the text to speak', () => {

@@ -31,18 +31,19 @@ The voice channel is an Executor connector, **`kortix_voice`**. Call it the way 
 
 ```sh
 kortix executor call kortix_voice spawn_room '{}'
-kortix executor call kortix_voice read_transcript '{"cursor":0}'
+kortix executor call kortix_voice read_transcript '{}'
 kortix executor call kortix_voice send_prompt '{"text":"The deploy finished — all green."}'
 kortix executor call kortix_voice end_call '{}'
 ```
 
-Or, through the executor `call` tool: `{ "connector": "kortix_voice", "action": "read_transcript", "args": { "cursor": 0 } }`.
+Or, through the executor `call` tool: `{ "connector": "kortix_voice", "action": "read_transcript", "args": {} }`.
 
 ```
-spawn_room      {voice?}   → {call_id, join_url}       start the call; returns instantly
-read_transcript {cursor?}  → {turns, cursor, live}     catch up; never blocks
-send_prompt     {text}     → {spoken: true}            you → the room, out loud
-end_call        {}         → {ended: true}             hang up and tear the room down
+spawn_room      {voice?}                  → {call_id, join_url}    start the call; returns instantly
+read_transcript {mode?, limit?, peek?}    → {turns, cursor,        catch up; never blocks
+                                             unread, mode, live}
+send_prompt     {text}                    → {spoken: true}         you → the room, out loud
+end_call        {}                        → {ended: true}          hang up and tear the room down
 ```
 
 `voice` on `spawn_room` picks the speaking voice — leave it off unless the user asked for a specific one.
@@ -74,30 +75,52 @@ There is no follow, tail, stream, or wait action, and no `sleep` loop that fixes
 </the-iron-rule>
 
 <following-the-conversation>
-Keep a `cursor`. Start at `0`; pass back whatever the last call returned.
+**Call it bare.** `read_transcript '{}'` returns only what you have not already been shown — the read position is remembered for you, per call, on the server. You do not track a cursor, you do not pass one, and you never get the same turn twice.
 
 ```sh
-kortix executor call kortix_voice read_transcript '{"cursor":0}'
-# → {"turns":[{"role":"user","speaker":"Marko","text":"can you check the build?","cursor":41}, …],
-#    "cursor":41,"live":true}
+kortix executor call kortix_voice read_transcript '{}'
+# → {"mode":"unread","turns":[{"role":"user","speaker":"Marko","text":"can you check the build?"}],
+#    "cursor":41,"unread":0,"live":true}
 
-kortix executor call kortix_voice read_transcript '{"cursor":41}'
-# → {"turns":[],"cursor":41,"live":true}      ← nothing new, returned instantly
+kortix executor call kortix_voice read_transcript '{}'
+# → {"mode":"unread","turns":[],"cursor":41,"unread":0,"live":true}   ← nothing new, instantly
 ```
 
-Each turn carries `role` **and** `speaker`, and you need both:
+`unread` is how much is still waiting **after** this reply — `0` means you are caught up. It is your cheap "is there anything worth reading" signal.
+
+Each turn carries `role` **and** `speaker` (omitted when there is none), and you need both:
 
 - `role: "user"` — a human in the room. `speaker` is who.
 - `role: "agent"`, `speaker: "kortix"` — something **you** put into the call (a `send_prompt`, or an answer spoken on your behalf when a turn finished).
 - `role: "agent"`, any other `speaker` — the voice agent talking.
 - `role: "tool"` — a call the voice agent made back into your session; `speaker` is the tool's name.
 
-Read at the **start of every turn** while a call is live. It is nearly free, and it is how you find out what is going on.
+Read at the **start of every turn** while a call is live. On a quiet call that costs you one empty reply, which is the whole reason the default is what it is.
 
 This is the part worth internalizing: you can see the conversation as it happens, **before** anyone asks you for anything. If the room is circling a question you could answer, a file you could open, a build you could start — start it now, so the answer is ready when the ask lands. Do not wait to be prompted when the room has clearly already decided what it needs.
 
 Do not narrate this. Preparing quietly is the point; announcing it is noise.
 </following-the-conversation>
+
+<the-other-read-modes>
+The bare call is right almost always. Reach for these only when it is not:
+
+```sh
+kortix executor call kortix_voice read_transcript '{"mode":"last","limit":10}'   # newest 10, whatever you have read
+kortix executor call kortix_voice read_transcript '{"mode":"full"}'              # the entire call
+kortix executor call kortix_voice read_transcript '{"peek":true}'                # unread, without consuming it
+kortix executor call kortix_voice read_transcript '{"cursor":41}'                # everything after cursor 41
+```
+
+- **`last`** — re-orienting. You lost the thread, or you are picking a call back up and want to know what was *just* said without replaying an hour of it. It ignores your read position and does not move it.
+- **`full`** — you actually need the whole conversation, to summarize it or write it up. Say it explicitly; do not get there by passing `cursor: 0`.
+- **`peek`** — read the unread without consuming it, so the same turns come back next time. Worth it when you might not get to act on what you read.
+- **`cursor`** — you are keeping your own place for some reason. It never touches your saved position.
+
+Only the bare call (`unread`) and `full` move your saved position, and they only ever move it to the last turn they actually **handed you** — a reply clipped by `limit` says `"truncated":true` and leaves the rest unread.
+
+**If your turn dies right after reading, those turns are marked read and will not come back on the next bare call.** Nothing is ever deleted, so the recovery is one call: `read_transcript '{"mode":"last","limit":20}'`. If you are starting a turn on a live call and you cannot account for what happened in it, do that first.
+</the-other-read-modes>
 
 <speaking>
 ```sh
@@ -130,6 +153,7 @@ Be straight about what this is: the call's audio is streamed continuously to a r
 <what-not-to-do>
 - **Do not** poll in a tight loop waiting for someone to say something. Finish your turn; read again next turn.
 - **Do not** pass a `call_id` to any voice action. There is no such argument — the call is the session.
+- **Do not** pass `cursor` "to be safe", and never `{"cursor":0}` out of habit. That re-reads the entire call every turn and is exactly what the remembered read position exists to stop. Bare, or a named mode.
 - **Do not** try to reach the audio, the speech provider, or the join page yourself. You have no business there and there is no key in your sandbox to find.
 - **Do not** speak every step of your work into the call. Progress is narrated for you, throttled on purpose. A running commentary is unbearable to sit through.
 - **Do not** read long output aloud. Summarize in a sentence; share the detail another way.

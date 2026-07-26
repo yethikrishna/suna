@@ -22,8 +22,17 @@ import { voiceCallReadCursors } from '@kortix/db';
  *   last              the newest N turns, ignoring your position. Re-orienting
  *                     mid-call ("what was just said?") without replaying an hour.
  *   full              the whole call, asked for explicitly. Advances.
- *   cursor            an explicit floor — the pre-existing contract, unchanged,
- *                     for a caller doing its own bookkeeping. Never advances.
+ *   cursor            an explicit floor, for a caller doing its own bookkeeping.
+ *                     Never advances, and `{"cursor":0}` still means the whole
+ *                     call. The SEMANTICS are the pre-existing contract; the
+ *                     wire shape is not, and saying "unchanged" here would be a
+ *                     lie a future reader would act on. Two things did change,
+ *                     for every mode alike: the turn shape lost its per-turn
+ *                     `cursor` (see AgentTranscriptTurn), and the default page
+ *                     is 100 rather than readTurns' 200 — a clip now reports
+ *                     `truncated` so the caller pages on. Nothing in-repo read
+ *                     this path (r7.ts and public-join-routes.ts call readTurns
+ *                     directly with their own limits), so nothing broke.
  *
  * ADVANCING IS MUTATION, AND MUTATION CAN LOSE THINGS. If the position moves and
  * the agent's turn then dies before it does anything with what it read, those

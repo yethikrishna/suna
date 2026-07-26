@@ -1,34 +1,38 @@
 /**
- * The voice MCP — how a Kortix agent spawns and talks to a voice agent.
+ * The voice MCP — how apps/voice-agent (the LiveKit worker, a SEPARATE
+ * process — see runtime.ts's file header) calls back INTO Kortix.
  *
- * JSON-RPC 2.0 over streamable HTTP, mounted at /v1/mcp/voice and registered in
- * the project's opencode config. Served from the API rather than shipped as a
- * sandbox binary on purpose: the tool surface can then change with an API deploy
- * instead of a snapshot rebake, which is the slow and risky half of any change
- * here (in-flight sandboxes keep whatever was baked into their image).
+ * JSON-RPC 2.0 over streamable HTTP, mounted at
+ * /v1/projects/:projectId/sessions/:sessionId/mcp/voice (routes.ts). The
+ * caller is not a Kortix agent — it is a third-party-hosted worker process
+ * holding the per-call `kortix_api_token` HMAC minted in `startCall`
+ * (worker-token.ts) and handed to it via LiveKit room metadata. That token
+ * authorizes exactly one call; nothing here accepts session/PAT auth.
  *
- * THE INVARIANT: every tool returns in milliseconds.
+ * This used to be the OTHER direction: the Kortix agent's own tool surface
+ * for driving a call (voice_spawn/voice_read/send_prompt/run_command/
+ * voice_end). That surface has moved to the `kortix_voice` channel connector
+ * (executor/channels.ts's VOICE_ACTIONS, executed by executeVoiceCall in
+ * executor/db-deps.ts) so it goes through the executor gateway like every
+ * other connector call — policies, approvals, audit trail included, which a
+ * direct MCP route never had. This file is now free to be what the worker
+ * actually needs.
  *
- * The agent loop is single-threaded. A tool that waits — on a call, on a turn,
- * on a stream — wedges the whole session: it cannot reason, answer, or do
- * anything else until the tool returns. So `voice_spawn` hands back a call id
- * immediately and the call runs on its own; `voice_read` returns whatever is new
- * since a cursor and returns now, empty if nothing. There is deliberately no
- * follow/tail/stream tool, and adding one would break the agent. `run_command`
- * is the one bounded exception — it waits, but only up to a short hard cap (see
- * run-command.ts), never indefinitely.
+ * THE INVARIANT: every tool returns quickly. `ask_kortix` in particular MUST
+ * stay non-blocking — it hands the request to `askKortix` (runtime.ts) and
+ * returns the instant that's queued, never waiting for the Kortix turn (which
+ * runs 30s-10min). A voice call has no error boundary except "the agent goes
+ * quiet", which blocking here would trigger immediately. `run_command` is the
+ * one deliberate, SHORT-bounded exception — it waits, but only up to a hard
+ * cap well under the worker's own client-side timeout (see run-command.ts).
+ *
+ * Naming note: the OLD Kortix-facing MCP had a `send_prompt` meaning "make
+ * the voice agent speak into the call." The worker's OWN `send_prompt` tool
+ * (apps/voice-agent/src/tools.ts) means the opposite — "ask Kortix to work."
+ * That collision is why this file's hand-off tool is `ask_kortix`, not
+ * `send_prompt`: same direction as the worker's tool, and unambiguous now
+ * that the speak-into-the-call meaning lives only in the connector.
  */
-import { createRoute, z } from '@hono/zod-openapi';
-import { errors, json, makeOpenApiApp } from '../../openapi';
-import {
-  availableVoices,
-  endCall,
-  isCallLive,
-  promptVoiceAgent,
-  readTurns,
-} from './runtime';
-import { runCommandInSandbox } from './run-command';
-
 type JsonRpcId = string | number | null;
 
 interface JsonRpcRequest {
@@ -38,118 +42,81 @@ interface JsonRpcRequest {
   params?: Record<string, unknown>;
 }
 
-/** The `voice_spawn` action surface — what mechanism to start the call with.
- *  Mirrors the `kortix_voice` channel connector's catalog (executor/channels.ts)
- *  1:1; `spawn_room` is the only one implemented. */
-const VOICE_SPAWN_ACTIONS = ['spawn_room', 'join_gmeet', 'join_zoom'] as const;
-type VoiceSpawnAction = (typeof VOICE_SPAWN_ACTIONS)[number];
-const DEFAULT_VOICE_SPAWN_ACTION: VoiceSpawnAction = 'spawn_room';
+export interface RunCommandToolResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  timedOut: boolean;
+}
 
 export interface VoiceMcpContext {
   projectId: string;
   sessionId: string;
-  /**
-   * Starts a live call bound to this session via the chosen `action` and
-   * returns a join link. Routes through the executor gateway (connector
-   * policies/approvals/audit) — `action`s other than `spawn_room` are
-   * declared but not implemented and reject with a clear, actionable error.
-   */
-  spawn(input: {
-    action?: string | null;
-    voice?: string | null;
-    meetingUrl?: string | null;
-  }): Promise<{ callId: string; joinUrl: string }>;
+  callId: string;
+  /** Fire-and-forget hand-off to the Kortix session. Never awaits the turn. */
+  askKortix(request: string): { ok: true } | { ok: false; error: string };
+  /** Waits (short, bounded) for a shell command's result in the call's sandbox. */
+  runCommand(command: string, cwd?: string): Promise<RunCommandToolResult>;
+  /** Persists one transcript line, either side of the conversation. */
+  postTurn(role: 'user' | 'agent', text: string, speaker?: string | null): Promise<void>;
 }
 
 const PROTOCOL_VERSION = '2025-06-18';
 
 function toolDefinitions() {
-  const { voices, default: defaultVoice } = availableVoices();
   return [
     {
-      name: 'voice_spawn',
+      name: 'ask_kortix',
       description:
-        'Start a live call bound to THIS session and return a join link. `action` picks ' +
-        'the mechanism — "spawn_room" (default, the only one implemented) creates a ' +
-        'Kortix voice room; you cannot open a browser yourself, so send the link to the ' +
-        'person you want to talk to (post it in chat, read it aloud if you have another ' +
-        'channel, etc.) and they open it to join. "join_gmeet" / "join_zoom" are declared ' +
-        'for a future join-an-existing-meeting mechanism and are NOT implemented yet — ' +
-        'calling them returns a clear error telling you to use spawn_room instead. The ' +
-        'call runs in the background once started — check in with voice_read. Returns ' +
-        'immediately.',
+        'Hand a request to the Kortix agent for this call. Use for anything needing real project ' +
+        'knowledge, files, connectors, memory, or actions. Returns the instant the request is ' +
+        'queued — NEVER waits for Kortix to finish thinking, which can take minutes. The answer, ' +
+        'if any, arrives later as a separate message to speak into the call.',
       inputSchema: {
         type: 'object',
         properties: {
-          action: {
+          request: {
             type: 'string',
-            enum: [...VOICE_SPAWN_ACTIONS],
-            description: `Which mechanism to start the call with. Defaults to ${DEFAULT_VOICE_SPAWN_ACTION} — the only one implemented today.`,
-          },
-          voice: {
-            type: 'string',
-            enum: voices,
-            description: `Speaking voice (spawn_room only). Defaults to ${defaultVoice}.`,
-          },
-          meeting_url: {
-            type: 'string',
-            description:
-              'Meeting URL for join_gmeet/join_zoom (accepted for forward compatibility — those actions are not implemented yet).',
+            description: "What was asked, in the speaker's own words, plus who asked it.",
           },
         },
-        required: [],
-        additionalProperties: false,
-      },
-    },
-    {
-      name: 'voice_read',
-      description:
-        'Read what has been said in a call since `cursor`. Returns immediately, empty if nothing is new. Pass the returned cursor back next time. This is how you follow a conversation without blocking.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          call_id: { type: 'string' },
-          cursor: { type: 'integer', minimum: 0, default: 0 },
-        },
-        required: ['call_id'],
-        additionalProperties: false,
-      },
-    },
-    {
-      name: 'send_prompt',
-      description:
-        'Say something into a live call. Use this to volunteer information, answer what someone asked, or steer the conversation. It is spoken aloud in your own voice.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          call_id: { type: 'string' },
-          text: { type: 'string', description: 'Plain spoken language — no markdown or URLs.' },
-        },
-        required: ['call_id', 'text'],
+        required: ['request'],
         additionalProperties: false,
       },
     },
     {
       name: 'run_command',
       description:
-        'Run a shell command in the sandbox behind this call and return its output. Unrestricted — use with the same care as a real terminal. Bounded by a short timeout, so a long-running command will report timed_out with whatever output arrived before the cutoff.',
+        "Run a shell command in this call's sandbox and get its output back directly — for quick " +
+        'checks only (reading a short file, listing a directory, checking something exists). Waits ' +
+        'a few seconds and returns the result. Bounded by a short server-side timeout, so a ' +
+        'long-running command reports timed_out with whatever output arrived before the cutoff. Not ' +
+        'a hand-off — use ask_kortix for anything that changes state or needs judgement.',
       inputSchema: {
         type: 'object',
         properties: {
-          call_id: { type: 'string' },
           command: { type: 'string', description: 'Shell command, run via `bash -lc`.' },
+          cwd: {
+            type: 'string',
+            description: 'Working directory, relative to the project root. Defaults to the project root.',
+          },
         },
-        required: ['call_id', 'command'],
+        required: ['command'],
         additionalProperties: false,
       },
     },
     {
-      name: 'voice_end',
-      description: 'Leave the call and end it.',
+      name: 'post_turn',
+      description:
+        'Persist one line of the live transcript — either side of the conversation. Returns immediately.',
       inputSchema: {
         type: 'object',
-        properties: { call_id: { type: 'string' } },
-        required: ['call_id'],
+        properties: {
+          role: { type: 'string', enum: ['user', 'agent'] },
+          text: { type: 'string' },
+          speaker: { type: 'string', description: 'Optional display name for a user-role turn.' },
+        },
+        required: ['role', 'text'],
         additionalProperties: false,
       },
     },
@@ -183,52 +150,23 @@ async function callTool(
   const args = rawArgs && typeof rawArgs === 'object' ? (rawArgs as Record<string, unknown>) : {};
 
   switch (name) {
-    case 'voice_spawn': {
-      const action = typeof args.action === 'string' && args.action.trim() ? args.action.trim() : null;
-      const voice = typeof args.voice === 'string' ? args.voice : null;
-      const meetingUrl = typeof args.meeting_url === 'string' ? args.meeting_url : null;
-      const { callId, joinUrl } = await ctx.spawn({ action, voice, meetingUrl });
-      return toolText(
-        `Call started. call_id=${callId}. Send this link to the person joining — they open it in a browser: ${joinUrl}. The call runs in the background — poll voice_read with the cursor it returns.`,
-        { call_id: callId, join_url: joinUrl, cursor: 0 },
-      );
-    }
-
-    case 'voice_read': {
-      const callId = String(args.call_id ?? '').trim();
-      if (!callId) return toolError('call_id is required');
-      const cursor = Number.isInteger(args.cursor) ? (args.cursor as number) : 0;
-      const page = await readTurns(callId, cursor);
-      const rendered = page.turns
-        .map((t) => `${t.role === 'agent' ? 'you' : (t.speaker ?? 'someone')}: ${t.text}`)
-        .join('\n');
-      return toolText(rendered || '(nothing new)', {
-        turns: page.turns,
-        cursor: page.cursor,
-        live: await isCallLive(callId),
+    case 'ask_kortix': {
+      const request = String(args.request ?? '').trim();
+      if (!request) return toolError('request is required');
+      const result = ctx.askKortix(request);
+      if (!result.ok) return toolError(result.error);
+      return toolText('Queued — Kortix is working on it. The answer will arrive later as something to say.', {
+        queued: true,
       });
     }
 
-    case 'send_prompt': {
-      const callId = String(args.call_id ?? '').trim();
-      const text = String(args.text ?? '').trim();
-      if (!callId || !text) return toolError('call_id and text are required');
-      const result = await promptVoiceAgent(callId, text);
-      if (!result.delivered) return toolError(`call ${callId}: ${result.reason}`);
-      return toolText('Sent to the call.', { call_id: callId });
-    }
-
     case 'run_command': {
-      const callId = String(args.call_id ?? '').trim();
       const command = String(args.command ?? '').trim();
-      if (!callId || !command) return toolError('call_id and command are required');
-      // The call id IS the session id, and the sandbox belongs to the session —
-      // so the command target comes from the MCP context, not a call lookup.
-      if (callId !== ctx.sessionId) return toolError(`call ${callId} is not this session's call`);
+      if (!command) return toolError('command is required');
+      const cwd = typeof args.cwd === 'string' && args.cwd.trim() ? args.cwd.trim() : undefined;
       try {
-        const result = await runCommandInSandbox(ctx.sessionId, command);
+        const result = await ctx.runCommand(command, cwd);
         return toolText(result.stdout || '(no output)', {
-          call_id: callId,
           stdout: result.stdout,
           stderr: result.stderr,
           exit_code: result.exitCode,
@@ -239,11 +177,14 @@ async function callTool(
       }
     }
 
-    case 'voice_end': {
-      const callId = String(args.call_id ?? '').trim();
-      if (!callId) return toolError('call_id is required');
-      const ended = await endCall(callId);
-      return ended ? toolText('Call ended.') : toolError(`call ${callId} is not live`);
+    case 'post_turn': {
+      const role = args.role === 'agent' ? 'agent' : args.role === 'user' ? 'user' : null;
+      const text = String(args.text ?? '').trim();
+      const speaker = typeof args.speaker === 'string' && args.speaker.trim() ? args.speaker.trim() : null;
+      if (!role) return toolError('role must be "user" or "agent"');
+      if (!text) return toolError('text must not be empty');
+      await ctx.postTurn(role, text, speaker);
+      return toolText('Recorded.', { ok: true });
     }
 
     default:
@@ -262,7 +203,7 @@ export async function handleVoiceMcp(
       return ok(id, {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
-        serverInfo: { name: 'kortix-voice', version: '1.0.0' },
+        serverInfo: { name: 'kortix-voice-worker', version: '1.0.0' },
       });
 
     case 'ping':
@@ -279,8 +220,8 @@ export async function handleVoiceMcp(
       try {
         return ok(id, await callTool(ctx, params.name, params.arguments));
       } catch (err) {
-        // Surface as a tool error, not a protocol error: the agent can read and
-        // react to the former, while the latter usually just aborts the turn.
+        // Surface as a tool error, not a protocol error: the caller can read
+        // and react to the former, while the latter usually just aborts.
         return ok(id, toolError(err instanceof Error ? err.message : String(err)));
       }
     }
@@ -289,34 +230,3 @@ export async function handleVoiceMcp(
       return fail(id, -32601, `Method not found: ${req.method ?? '(none)'}`);
   }
 }
-
-export const voiceMcpApp = makeOpenApiApp();
-
-voiceMcpApp.openapi(
-  createRoute({
-    method: 'post',
-    path: '/',
-    tags: ['channels'],
-    summary: 'Voice MCP (JSON-RPC over streamable HTTP)',
-    request: { body: { content: { 'application/json': { schema: z.any() } } } },
-    responses: {
-      200: json(z.any(), 'JSON-RPC response'),
-      ...errors(400, 401, 404),
-    },
-  }),
-  async (c: any) => {
-    const ctx = c.get('voiceMcpContext') as VoiceMcpContext | undefined;
-    if (!ctx) return c.json({ error: 'Unauthorized' }, 401);
-
-    let body: JsonRpcRequest;
-    try {
-      body = (await c.req.json()) as JsonRpcRequest;
-    } catch {
-      return c.json(fail(null, -32700, 'Parse error'), 400);
-    }
-
-    const res = await handleVoiceMcp(ctx, body);
-    if (res === null) return c.body(null, 202);
-    return c.json(res);
-  },
-);

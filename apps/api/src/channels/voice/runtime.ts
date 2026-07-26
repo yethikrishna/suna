@@ -6,27 +6,27 @@
  * apps/voice-agent worker doing STT/LLM/TTS); this file never touches audio.
  * What it owns is the two hand-offs either side of that conversation:
  *
- *   worker ──POST /voice/prompt──► askKortix ──► continueSession   (send_prompt)
+ *   worker ──ask_kortix (MCP)──► askKortix ──► continueSession   (send_prompt)
  *   Kortix turn ──► promptVoiceAgent ──► room data channel ──► worker  (say)
  *
  * The worker is a SEPARATE PROCESS (apps/voice-agent, not part of apps/api),
  * dispatched into the room by name and bootstrapped entirely from the room's
  * metadata — see `VoiceRoomMetadata` below and apps/voice-agent/README.md's
- * "The apps/api contract this app expects", which this file (plus routes.ts's
- * `/voice/{prompt,run-command,turns}` routes) implements.
+ * "The apps/api contract this app expects", which this file (plus the voice
+ * MCP — mcp.ts / routes.ts) implements.
  *
  * The single most important property, unchanged from the realtime-provider
- * version this replaces: `askKortix` (the old `ask_kortix`, now the worker's
- * `send_prompt` tool) answers in milliseconds and NEVER waits for the agent
- * turn. A Kortix turn runs 30s-10min; a conversation that blocks that long is
- * broken. The answer comes back later as unsolicited speech, driven by
- * answer-watch.ts — see its header for why the API watches for the answer
- * instead of the sandbox relaying it.
+ * version this replaces: `askKortix` (the MCP's `ask_kortix` tool, called by
+ * the worker's own `send_prompt` tool) answers in milliseconds and NEVER
+ * waits for the agent turn. A Kortix turn runs 30s-10min; a conversation that
+ * blocks that long is broken. The answer comes back later as unsolicited
+ * speech, driven by answer-watch.ts — see its header for why the API watches
+ * for the answer instead of the sandbox relaying it.
  *
  * NOTHING here is kept in memory. A call's identity is its session id, its room
  * name derives from that, its liveness is whatever LiveKit says right now, and
- * its transcript is in Postgres. That is what makes the worker's `/voice/*`
- * callbacks work regardless of which API instance they land on — they used to
+ * its transcript is in Postgres. That is what makes the worker's voice MCP
+ * calls work regardless of which API instance they land on — they used to
  * have to hit the one process that happened to run `voice_spawn`.
  */
 import { and, asc, eq, gt } from 'drizzle-orm';
@@ -49,15 +49,11 @@ import { mintCallApiToken } from './worker-token';
 /**
  * apps/voice-agent's TTS is hardcoded to `openai.TTS({ voice: 'alloy' })`
  * today (it does not yet read a voice choice from room metadata) — this list
- * exists for the MCP tool's UX (voice_spawn's `voice` enum) ahead of that
- * wiring, not because anything downstream currently honors it.
+ * is just `startCall`'s input validation ahead of that wiring, not because
+ * anything downstream currently honors a non-default choice.
  */
 const VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const;
 const DEFAULT_VOICE: (typeof VOICES)[number] = 'alloy';
-
-export function availableVoices(): { voices: readonly string[]; default: string } {
-  return { voices: VOICES, default: DEFAULT_VOICE };
-}
 
 export interface VoiceCall {
   callId: string;
@@ -175,10 +171,10 @@ function buildAskPrompt(request: string, callId: string): string {
 
 /**
  * The mirror of the old `ask_kortix` tool-call handler, now driven by the
- * worker's `POST /voice/prompt` (routes.ts) instead of an in-process SDK
- * callback. Answers FIRST, then delivers — the caller (the HTTP route)
- * returns immediately after this resolves, well before `continueSession` has
- * done anything at all.
+ * worker's `ask_kortix` MCP tool call (mcp.ts / routes.ts) instead of an
+ * in-process SDK callback. Answers FIRST, then delivers — the caller (the
+ * MCP route) returns immediately after this resolves, well before
+ * `continueSession` has done anything at all.
  */
 export function askKortix(call: VoiceCall, request: string): { ok: true } | { ok: false; error: string } {
   const trimmed = request.trim();

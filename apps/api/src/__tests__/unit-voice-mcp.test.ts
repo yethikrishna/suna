@@ -5,7 +5,10 @@ function ctx(overrides: Partial<VoiceMcpContext> = {}): VoiceMcpContext {
   return {
     projectId: 'proj-1',
     sessionId: 'sess-1',
-    spawn: async () => ({ callId: 'sess-1', joinUrl: 'https://app.example.com/voice/tok' }),
+    callId: 'sess-1',
+    askKortix: () => ({ ok: true }),
+    runCommand: async () => ({ stdout: '', stderr: '', exitCode: 0, timedOut: false }),
+    postTurn: async () => {},
     ...overrides,
   };
 }
@@ -17,7 +20,7 @@ async function call(method: string, params?: Record<string, unknown>, c = ctx())
 describe('voice MCP', () => {
   test('initialize advertises tools', async () => {
     const res = await call('initialize');
-    expect(res.result.serverInfo.name).toBe('kortix-voice');
+    expect(res.result.serverInfo.name).toBe('kortix-voice-worker');
     expect(res.result.capabilities.tools).toBeDefined();
   });
 
@@ -28,118 +31,110 @@ describe('voice MCP', () => {
   test('exposes exactly the non-blocking (or short-bounded) tool set', async () => {
     const res = await call('tools/list');
     const names = res.result.tools.map((t: { name: string }) => t.name).sort();
-    expect(names).toEqual(['run_command', 'send_prompt', 'voice_end', 'voice_read', 'voice_spawn']);
-    // A follow/tail/stream tool would wedge the single-threaded agent loop. If
+    expect(names).toEqual(['ask_kortix', 'post_turn', 'run_command']);
+    // A follow/tail/stream tool would wedge the single-threaded worker. If
     // one ever appears here, that is the bug this assertion exists to catch.
     // run_command is the one deliberate, SHORT-bounded exception (see mcp.ts).
     expect(names.some((n: string) => /follow|tail|stream|wait/.test(n))).toBe(false);
+    // The old Kortix-facing MCP's `send_prompt` meant "speak into the call" —
+    // the worker's own tool of the same name means "ask Kortix to work". This
+    // MCP must never expose a `send_prompt` tool name, or that collision is back.
+    expect(names).not.toContain('send_prompt');
   });
 
-  test('voice_spawn returns a call id + join link immediately and says the call is backgrounded', async () => {
-    const res = await call('tools/call', { name: 'voice_spawn', arguments: {} });
-    expect(res.result.structuredContent.call_id).toBe('sess-1');
-    expect(res.result.structuredContent.join_url).toBe('https://app.example.com/voice/tok');
-    expect(res.result.structuredContent.cursor).toBe(0);
-    expect(res.result.content[0].text).toContain('background');
-    expect(res.result.content[0].text).toContain('https://app.example.com/voice/tok');
-  });
-
-  test('voice_spawn passes the chosen voice through', async () => {
-    let seen: string | null | undefined;
+  test('ask_kortix queues the request and returns immediately, never propagating a slow turn', async () => {
+    let seen: string | undefined;
     const c = ctx({
-      spawn: async ({ voice }) => {
-        seen = voice;
-        return { callId: 'sess-1', joinUrl: 'https://app.example.com/voice/tok' };
+      askKortix: (request) => {
+        seen = request;
+        return { ok: true };
       },
     });
-    await call('tools/call', { name: 'voice_spawn', arguments: { voice: 'rex' } }, c);
-    expect(seen).toBe('rex');
-  });
-
-  test('voice_spawn takes no meeting_url — nothing to join externally', async () => {
-    const res = await call('tools/call', { name: 'voice_spawn', arguments: {} });
+    const res = await call('tools/call', { name: 'ask_kortix', arguments: { request: 'what is the weather' } }, c);
+    expect(seen).toBe('what is the weather');
     expect(res.result.isError).toBeUndefined();
+    expect(res.result.structuredContent.queued).toBe(true);
   });
 
-  test('voice_spawn declares an action surface: spawn_room (default, implemented) plus join_gmeet/join_zoom', async () => {
-    const res = await call('tools/list');
-    const spawn = res.result.tools.find((t: { name: string }) => t.name === 'voice_spawn');
-    expect(spawn.inputSchema.properties.action.enum).toEqual(['spawn_room', 'join_gmeet', 'join_zoom']);
-  });
-
-  test('voice_spawn leaves the action unset by default — the connector decides spawn_room', async () => {
-    let seenAction: string | null | undefined = 'unset';
-    const c = ctx({
-      spawn: async ({ action }) => {
-        seenAction = action;
-        return { callId: 'sess-1', joinUrl: 'https://app.example.com/voice/tok' };
-      },
-    });
-    await call('tools/call', { name: 'voice_spawn', arguments: {} }, c);
-    expect(seenAction).toBeNull();
-  });
-
-  test('voice_spawn passes an explicit action + meeting_url through', async () => {
-    let seen: { action?: string | null; meetingUrl?: string | null } = {};
-    const c = ctx({
-      spawn: async ({ action, meetingUrl }) => {
-        seen = { action, meetingUrl };
-        return { callId: 'sess-1', joinUrl: 'https://app.example.com/voice/tok' };
-      },
-    });
-    await call(
-      'tools/call',
-      { name: 'voice_spawn', arguments: { action: 'join_gmeet', meeting_url: 'https://meet.google.com/abc-defg-hij' } },
-      c,
-    );
-    expect(seen.action).toBe('join_gmeet');
-    expect(seen.meetingUrl).toBe('https://meet.google.com/abc-defg-hij');
-  });
-
-  test('a not-implemented action (join_gmeet/join_zoom) surfaces as a tool error pointing back at spawn_room', async () => {
-    const c = ctx({
-      spawn: async ({ action }) => {
-        if (action === 'join_gmeet' || action === 'join_zoom') {
-          const platform = action === 'join_gmeet' ? 'Google Meet' : 'Zoom';
-          throw new Error(
-            `joining an existing ${platform} is not supported yet — use spawn_room and share the join link instead`,
-          );
-        }
-        return { callId: 'sess-1', joinUrl: 'https://app.example.com/voice/tok' };
-      },
-    });
-    const res = await call('tools/call', { name: 'voice_spawn', arguments: { action: 'join_zoom' } }, c);
+  test('ask_kortix requires a non-empty request', async () => {
+    const res = await call('tools/call', { name: 'ask_kortix', arguments: {} });
     expect(res.result.isError).toBe(true);
-    expect(res.result.content[0].text).toContain('not supported yet');
-    expect(res.result.content[0].text).toContain('spawn_room');
   });
 
-  test('a spawn failure comes back as a tool error, not a protocol error', async () => {
-    // The agent can read and react to a tool error; a JSON-RPC error usually
-    // just aborts its turn.
-    const c = ctx({
-      spawn: async () => {
-        throw new Error('voice is not enabled for this project — turn it on in Settings first');
-      },
-    });
-    const res = await call('tools/call', { name: 'voice_spawn', arguments: {} }, c);
+  test('ask_kortix surfaces a delivery failure as a tool error, not a protocol error', async () => {
+    const c = ctx({ askKortix: () => ({ ok: false, error: 'empty request' }) });
+    const res = await call('tools/call', { name: 'ask_kortix', arguments: { request: 'hi' } }, c);
     expect(res.error).toBeUndefined();
     expect(res.result.isError).toBe(true);
-    expect(res.result.content[0].text).toContain('not enabled');
+    expect(res.result.content[0].text).toContain('empty request');
   });
 
-  test('send_prompt on a call that is not live reports it instead of pretending', async () => {
-    const res = await call('tools/call', { name: 'send_prompt', arguments: { call_id: 'nope', text: 'hi' } });
+  test('run_command returns stdout/stderr/exit_code/timed_out', async () => {
+    const c = ctx({
+      runCommand: async (command) => ({
+        stdout: `ran ${command}`,
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      }),
+    });
+    const res = await call('tools/call', { name: 'run_command', arguments: { command: 'echo hi' } }, c);
+    expect(res.result.structuredContent.stdout).toBe('ran echo hi');
+    expect(res.result.structuredContent.exit_code).toBe(0);
+    expect(res.result.structuredContent.timed_out).toBe(false);
+  });
+
+  test('run_command passes cwd through when provided', async () => {
+    let seenCwd: string | undefined;
+    const c = ctx({
+      runCommand: async (_command, cwd) => {
+        seenCwd = cwd;
+        return { stdout: '', stderr: '', exitCode: 0, timedOut: false };
+      },
+    });
+    await call('tools/call', { name: 'run_command', arguments: { command: 'ls', cwd: 'src' } }, c);
+    expect(seenCwd).toBe('src');
+  });
+
+  test('run_command requires a command', async () => {
+    const res = await call('tools/call', { name: 'run_command', arguments: {} });
     expect(res.result.isError).toBe(true);
   });
 
-  test('run_command on a call that is not live reports it instead of pretending', async () => {
-    const res = await call('tools/call', { name: 'run_command', arguments: { call_id: 'nope', command: 'echo hi' } });
+  test('run_command surfaces a thrown error as a tool error', async () => {
+    const c = ctx({
+      runCommand: async () => {
+        throw new Error('sandbox not ready');
+      },
+    });
+    const res = await call('tools/call', { name: 'run_command', arguments: { command: 'echo hi' } }, c);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('sandbox not ready');
+  });
+
+  test('post_turn persists a turn and returns immediately', async () => {
+    let seen: { role?: string; text?: string; speaker?: string | null } = {};
+    const c = ctx({
+      postTurn: async (role, text, speaker) => {
+        seen = { role, text, speaker };
+      },
+    });
+    const res = await call(
+      'tools/call',
+      { name: 'post_turn', arguments: { role: 'user', text: 'hello there', speaker: 'Alex' } },
+      c,
+    );
+    expect(res.result.isError).toBeUndefined();
+    expect(seen).toEqual({ role: 'user', text: 'hello there', speaker: 'Alex' });
+  });
+
+  test('post_turn requires role and text', async () => {
+    const res = await call('tools/call', { name: 'post_turn', arguments: { role: 'agent' } });
     expect(res.result.isError).toBe(true);
   });
 
-  test('run_command requires call_id and command', async () => {
-    const res = await call('tools/call', { name: 'run_command', arguments: { call_id: 'sess-1' } });
+  test('post_turn rejects an invalid role', async () => {
+    const res = await call('tools/call', { name: 'post_turn', arguments: { role: 'system', text: 'hi' } });
     expect(res.result.isError).toBe(true);
   });
 

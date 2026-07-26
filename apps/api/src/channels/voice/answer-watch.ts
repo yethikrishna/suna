@@ -20,7 +20,8 @@
  * works on sandboxes that exist TODAY and needs nothing rebuilt.
  *
  * Deliberately NOT on the request path: `askKortix` fires this and returns, so
- * `/voice/prompt` still answers in milliseconds. Nothing here can block a turn.
+ * the `ask_kortix` MCP tool still answers in milliseconds. Nothing here can
+ * block a turn.
  */
 import { eq } from 'drizzle-orm';
 import { projectSessions, sessionSandboxes } from '@kortix/db';

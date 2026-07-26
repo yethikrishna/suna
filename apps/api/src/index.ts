@@ -35,6 +35,7 @@ import { setupApp } from './setup';
 import { supabaseAuth, combinedAuth } from './middleware/auth';
 import { createCorsMiddleware } from './middleware/cors';
 import { requestDeadline, isRequestDeadlineHTTPException } from './middleware/request-deadline';
+import { inspectDatabaseError } from './shared/database-errors';
 import { isPlatinumSandboxNotRunningError } from './shared/platinum';
 import { isDaytonaRateLimitError, primeDaytonaRateLimitClassifier } from './shared/daytona-rate-limit';
 import {
@@ -1016,12 +1017,8 @@ app.onError((err, c) => {
   }
 
   // Database / postgres.js errors — extract the useful info, not the full SQL dump
-  const isDbError =
-    errName === 'PostgresError' ||
-    (err as any).severity ||
-    (err as any).code?.match?.(/^[0-9]{5}$/);
-  if (isDbError) {
-    const pgErr = err as any;
+  const databaseError = inspectDatabaseError(err);
+  if (databaseError) {
     // Pool-exhaustion (Supabase pooler / PgBouncer session-mode saturation on
     // the us-east-2 shadow deployment) is a TRANSIENT infra/pooler-capacity
     // class, NOT a code bug — `(EMAXCONNSESSION) max clients reached in
@@ -1037,29 +1034,39 @@ app.onError((err, c) => {
     // follow-up (raise the shadow pooler's `pool_size` / move to transaction
     // mode) is a human-owned external action recorded in the sweep ledger.
     // Better Stack patterns 721b7efe… (API) + b38179c5… (frontend symptom).
-    const isPoolExhaustion = isSentryIgnoredError(errName, err.message);
+    const databaseMessage =
+      databaseError.causeMessage ?? databaseError.outerMessage;
+    const isPoolExhaustion = isSentryIgnoredError(
+      databaseError.causeName ?? databaseError.outerName,
+      databaseMessage,
+    );
     if (!isPoolExhaustion) {
       captureException(err, {
         method,
         path,
         errorType: 'database',
-        pgCode: pgErr.code,
-        table: pgErr.table,
-        schema: pgErr.schema_name || pgErr.schema,
+        pgCode: databaseError.pgCode,
+        table: databaseError.table,
+        schema: databaseError.schema,
       });
     }
     appLogger.error(
-      `${method} ${path} -> 500 [DB ${pgErr.severity || 'ERROR'} ${pgErr.code || '?'}]`,
+      `${method} ${path} -> 500 [DB ${databaseError.severity || 'ERROR'} ${databaseError.pgCode || '?'}]`,
       {
         method,
         path,
         errorType: isPoolExhaustion ? 'database-pool-exhaustion' : 'database',
         transient: isPoolExhaustion || undefined,
-        pgCode: pgErr.code,
-        table: pgErr.table,
-        hint: pgErr.hint,
-        detail: pgErr.detail,
-        message: err.message.split('\n')[0],
+        outerErrorType: databaseError.outerName,
+        causeErrorType: databaseError.causeName,
+        pgCode: databaseError.pgCode,
+        severity: databaseError.severity,
+        table: databaseError.table,
+        schema: databaseError.schema,
+        hint: databaseError.hint,
+        detail: databaseError.detail,
+        message: databaseError.outerMessage.split('\n')[0],
+        causeMessage: databaseError.causeMessage?.split('\n')[0] ?? null,
       },
     );
   } else {

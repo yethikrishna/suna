@@ -2794,6 +2794,41 @@ and deployed ACP plus REST parity remain.
 
 ---
 
+### 2026-07-26 — session `whitelabel-acp-stable-completion` (B23 delivery completion)
+
+Merged B23 in PR #5477.
+The merge commit is `480a44dcb9c6fce4f1f51c54dcb017750d187bdb`.
+All PR checks passed: **15 pass / 0 fail** with **11** path-filtered checks.
+
+Deploy Dev run `30184932143` completed successfully.
+The API health response reports `0.10.16-dev.480a44dc`.
+The API EKS rollout used image tag `dev-480a44dc`.
+The frontend image tag references the full merge SHA.
+
+Vercel deployment `dpl_FX4EmhvavKet4MvwcDyjVeqxZWdD` is ready.
+GitHub maps that deployment to the full merge SHA.
+The deployment owns the `dev.kortix.com` alias.
+
+The final deployed ACP and REST presentation plus question matrix passed:
+
+- Playwright: **1 pass / 0 fail** in **13.8 minutes**.
+- ACP sent **2** ACP prompts and **0** REST prompts.
+- REST sent **2** REST prompts and **0** ACP prompts.
+- ACP rendered **28** completed tool cards.
+- REST rendered **24** completed tool cards.
+- Tool-card parity ratio: **0.857**.
+- ACP created `/workspace/marko-kraemer.pptx` at **250,193 bytes**.
+- REST created `/workspace/marko-kraemer.pptx` at **237,913 bytes**.
+- Both transports persisted the question flow and rendered `QUESTION_BETA`.
+- Post-cleanup database proof: `active_projects=0`, `cleanup_users=0`.
+
+**Status:** COMPLETE.
+
+**Shippable to production: YES.** ACP and REST stable completion pass on
+deployed dev.
+
+---
+
 ### 2026-07-25 — session `whitelabel-acp-reference` (runtime freshness follow-up)
 
 The merged reference app exposed two live-path defects.

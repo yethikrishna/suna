@@ -19,6 +19,15 @@ flow('SKILL-1', { domain: 'skills', tags: ['smoke'], routes: ['GET /v1/skills'] 
     const r = await ctx.client.as(ctx.P.ANON).get('/v1/skills');
     r.status(401);
   });
+  await ctx.step('a PROJECT-scoped PAT can list — this is the in-sandbox agent', async () => {
+    // The `KORTIX_CLI_TOKEN` injected into every sandbox is a project+session
+    // scoped PAT, and project-scoped tokens are default-DENIED on surfaces
+    // outside /v1/projects/:id. That is the caller these routes exist for, so
+    // it is the one that must be asserted here — an owner JWT passing proves
+    // nothing about the sandbox.
+    const r = await ctx.client.as(ctx.P.PAT_PROJ).get('/v1/skills');
+    r.status(200);
+  });
   await ctx.step('authed list → 200 with descriptions and no bodies', async () => {
     const r = await ctx.client.as(ctx.P.OWNER).get('/v1/skills');
     r.status(200).body().exists('$.skills').exists('$.count');
@@ -67,6 +76,12 @@ flow(
       if (refs.length > 0 && typeof refs[0].content !== 'string') {
         throw new Error('?full=1 must inline reference contents');
       }
+    });
+    await ctx.step('a PROJECT-scoped PAT can read the body (the in-sandbox read)', async () => {
+      const r = await ctx.client
+        .as(ctx.P.PAT_PROJ)
+        .get('/v1/skills/:name', { params: { name: KNOWN_SKILL } });
+      r.status(200).body().exists('$.body');
     });
     await ctx.step('a name that is not a managed skill → 404', async () => {
       const r = await ctx.client

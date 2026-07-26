@@ -35,6 +35,7 @@ import { resolveProjectBotName } from '../channels/voice-identity';
 import { joinPageUrl } from '../channels/voice/livekit';
 import { mintJoinLink } from '../channels/voice/join-links';
 import { endCall, isCallLive, promptVoiceAgent, readTurns, startCall } from '../channels/voice/runtime';
+import { kortixSay } from '../channels/voice/utterance';
 import { config } from '../config';
 import { authorize } from '../iam';
 import { agentMayUseConnector } from '../iam/agent-scope';
@@ -595,7 +596,18 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
         return {
           ok: true,
           data: {
-            turns: page.turns.map((t) => ({ role: t.role, text: t.text, cursor: t.cursor })),
+            // `speaker` rides along because `role` alone cannot answer "who
+            // said this": role 'agent' covers BOTH the voice speaking and this
+            // very agent's own send_prompt lines (speaker 'kortix'), and role
+            // 'tool' needs the tool's name to mean anything. Dropping it, as
+            // this mapping used to, handed the agent a transcript in which it
+            // could not find its own words.
+            turns: page.turns.map((t) => ({
+              role: t.role,
+              speaker: t.speaker,
+              text: t.text,
+              cursor: t.cursor,
+            })),
             cursor: page.cursor,
             live: await isCallLive(sessionId),
           },
@@ -610,20 +622,14 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
         if (!text) {
           return { ok: false, kind: 'error', message: 'send_prompt requires `text`' };
         }
-        // FRAME IT. What reaches the worker is handed to `generateReply` as
-        // INSTRUCTIONS, not as a script — so raw text arrives at the voice model
-        // as an unattributed order and it has no idea the words came from its own
-        // Kortix agent, or whether it is meant to say them, answer them, or act
-        // on them. Sending "the connector works straight from the session" raw
-        // made the call treat a statement as a prompt. Every other path into this
-        // channel tags its intent (turn.ts's [progress]/[result]/[question],
-        // answer-watch.ts's [result]) — this one must too.
-        const result = await promptVoiceAgent(
-          sessionId,
-          `[say] Your Kortix agent — the one you hand work to — wants the room to hear this now. ` +
-            `Say it out loud in your own voice, keeping its meaning exactly, and do not treat it ` +
-            `as a question or a task to act on: ${text}`,
-        );
+        // `kortixSay` carries both halves of this utterance: the framing the
+        // voice model needs (it is handed the text as INSTRUCTIONS, so raw text
+        // reads as an unattributed order — that is what made the call answer
+        // statements as questions) AND the plain line that gets written to
+        // voice_call_turns, so what this agent says into the call is actually in
+        // the call's record. `projectId` is passed because we have it here; the
+        // in-call paths (turn.ts, answer-watch.ts) look it up instead.
+        const result = await promptVoiceAgent(sessionId, kortixSay(text), { projectId });
         if (!result.delivered) {
           // Deliberately an error, not a silent success: an agent that believes
           // it spoke and did not will carry on as though the room heard it.

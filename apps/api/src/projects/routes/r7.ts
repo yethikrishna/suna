@@ -980,6 +980,18 @@ projectsApp.openapi(
 // channels/voice/runtime.ts's file header), so there is nothing to look up
 // beyond the session itself.
 //
+// `role` alone does not identify a turn — read `speaker` with it:
+//   user  + <null>          a human in the room
+//   agent + 'kortix'        what the Kortix agent put into the call
+//                           (channels/voice/utterance.ts's KORTIX_SPEAKER,
+//                           written server-side the moment it is delivered)
+//   agent + <bot name>      what the voice actually said, as the worker heard
+//                           itself say it (apps/voice-agent/src/transcripts.ts)
+//   tool  + <tool name>     an ask_kortix/run_command the worker issued; the
+//                           text carries the argument and the outcome
+// The two `agent` rows are not duplicates: one is the instruction Kortix sent,
+// the other the model's spoken phrasing of it, and either can appear alone.
+//
 // This is a THIN read wrapper around `readTurns`/`isCallLive` (already used
 // internally by the voice runtime) for the one thing they didn't have yet: a
 // route a Kortix-authenticated browser session can call. Same visibility gate

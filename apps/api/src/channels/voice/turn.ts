@@ -14,6 +14,13 @@
  *    than silence.
  */
 import { isCallLive, promptVoiceAgent } from './runtime';
+import {
+  kortixError,
+  kortixProgress,
+  kortixQuestion,
+  kortixResult,
+  kortixReview,
+} from './utterance';
 
 /** Speak at most one progress line per this interval, per session. */
 const STEP_SPEAK_INTERVAL_MS = 25_000;
@@ -48,10 +55,7 @@ export async function relayTurnStep(
   if (!shouldSpeak) return false;
 
   lastSpokenAt.set(sessionId, now);
-  return (await promptVoiceAgent(
-    callId,
-    `[progress] You are still working on the request. Current step: ${title}. Mention this briefly and naturally, in one short sentence, only if it has been a while since you last spoke.`,
-  )).delivered;
+  return (await promptVoiceAgent(callId, kortixProgress(title))).delivered;
 }
 
 export async function relayTurnAnswer(
@@ -62,10 +66,7 @@ export async function relayTurnAnswer(
   if (!(await hasLiveCall(sessionId))) return false;
   const callId = sessionId;
   clear(sessionId);
-  return (await promptVoiceAgent(
-    callId,
-    `[result] The work finished. Here is the outcome, which you should now say out loud in your own words, conversationally and briefly: ${text}`,
-  )).delivered;
+  return (await promptVoiceAgent(callId, kortixResult(text))).delivered;
 }
 
 export async function relayTurnEnd(
@@ -81,10 +82,7 @@ export async function relayTurnEnd(
   // saying anything more would just be noise in the room.
   if (status !== 'error') return false;
 
-  return (await promptVoiceAgent(
-    callId,
-    `[error] That request failed${errorInfo?.message ? `: ${errorInfo.message}` : ''}. Tell them briefly that it didn't work, without reading the error verbatim.`,
-  )).delivered;
+  return (await promptVoiceAgent(callId, kortixError(errorInfo?.message))).delivered;
 }
 
 export async function relayTurnQuestion(
@@ -97,7 +95,7 @@ export async function relayTurnQuestion(
   const text = questions.map((q) => q.question ?? '').filter(Boolean).join(' ');
   if (!text) return { ok: false, error: 'no question' };
 
-  void promptVoiceAgent(callId, `[question] Ask the room this, in your own words: ${text}`);
+  void promptVoiceAgent(callId, kortixQuestion(text));
 
   // The answer arrives as speech, which reaches the session through ask_kortix as
   // a NEW turn — there is no way to block here for it, and blocking is exactly
@@ -112,10 +110,7 @@ export async function relayReviewCard(
   if (!(await hasLiveCall(sessionId))) return { ok: false, error: 'no live call' };
   const callId = sessionId;
   const title = item.title ?? 'a change';
-  void promptVoiceAgent(
-    callId,
-    `[review] Mention briefly that ${title} is ready for review, and that the link is in the meeting chat.`,
-  );
+  void promptVoiceAgent(callId, kortixReview(title));
   return { ok: true };
 }
 

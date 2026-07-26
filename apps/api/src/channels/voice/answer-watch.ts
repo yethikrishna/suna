@@ -29,6 +29,7 @@ import { db } from '../../shared/db';
 import { sandboxOpencodeEndpoint } from '../../projects/opencode-mapping';
 import { sandboxRuntimeRequestHeaders } from '../../projects/sandbox-fetch';
 import { promptVoiceAgent } from './runtime';
+import { kortixError, kortixResult } from './utterance';
 
 /** How long to wait for a turn before giving up. Agent turns can be minutes. */
 const MAX_WAIT_MS = 6 * 60_000;
@@ -217,10 +218,7 @@ export function speakAnswerWhenReady(callId: string, sessionId: string): void {
 
       const failure = errorMessage(message);
       if (failure) {
-        await promptVoiceAgent(
-          callId,
-          `[error] That request failed: ${failure}. Tell them briefly it didn't work, without reading the error out verbatim.`,
-        ).catch(() => {});
+        await promptVoiceAgent(callId, kortixError(failure)).catch(() => {});
         return;
       }
 
@@ -233,10 +231,9 @@ export function speakAnswerWhenReady(callId: string, sessionId: string): void {
         return;
       }
 
-      await promptVoiceAgent(
-        callId,
-        `[result] The work finished. Here is the outcome — say it out loud now, in your own words, conversationally and briefly: ${text}`,
-      ).catch((err) => console.error('[voice] failed to speak answer', err));
+      await promptVoiceAgent(callId, kortixResult(text)).catch((err) =>
+        console.error('[voice] failed to speak answer', err),
+      );
       return;
     }
 

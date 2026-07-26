@@ -30,7 +30,7 @@
  * have to hit the one process that happened to run `voice_spawn`.
  */
 import { and, asc, eq, gt } from 'drizzle-orm';
-import { voiceCallTurns } from '@kortix/db';
+import { projectSessions, voiceCallTurns } from '@kortix/db';
 import { continueSession } from '../../projects/session-lifecycle';
 import { config } from '../../config';
 import { db } from '../../shared/db';
@@ -45,6 +45,7 @@ import {
 } from './livekit';
 import { speakAnswerWhenReady } from './answer-watch';
 import { revokeJoinLinksForCall } from './join-links';
+import { KORTIX_SPEAKER, type KortixUtterance, kortixSay } from './utterance';
 import { mintCallApiToken } from './worker-token';
 
 /**
@@ -199,7 +200,8 @@ export function askKortix(call: VoiceCall, request: string): { ok: true } | { ok
         // The conversation would otherwise hang on a promise nobody kept.
         void promptVoiceAgent(
           call.callId,
-          "I couldn't reach the agent session just now, so that request didn't go through.",
+          kortixSay("I couldn't reach the agent session just now, so that request didn't go through."),
+          { projectId: call.projectId },
         );
       }
     })
@@ -293,15 +295,92 @@ export async function endCall(callId: string): Promise<boolean> {
  * check `send_prompt` answered "Said." for prompts nobody ever heard — the worst
  * shape of failure for an agent-facing tool, because the caller has no reason to
  * doubt it.
+ *
+ * Takes a `KortixUtterance` (utterance.ts), never a bare string, for one
+ * reason: the wire needs the INSTRUCTION and the transcript needs the PAYLOAD,
+ * and a signature that only carries the instruction is a signature where
+ * recording the utterance is impossible without re-deriving it from a prompt.
+ * That is exactly how everything Kortix said into a call went unrecorded.
  */
 export async function promptVoiceAgent(
   callId: string,
-  text: string,
+  utterance: KortixUtterance,
+  opts: { projectId?: string | null } = {},
 ): Promise<{ delivered: boolean; reason?: string }> {
   const room = roomNameForCall(callId);
   if (!(await roomHasAgent(room))) {
     return { delivered: false, reason: 'no voice agent is connected to the call' };
   }
-  await sendRoomData(room, KORTIX_REPLY_TOPIC, { type: 'kortix_reply', call_id: callId, text });
+  await sendRoomData(room, KORTIX_REPLY_TOPIC, {
+    type: 'kortix_reply',
+    call_id: callId,
+    text: utterance.instruction,
+  });
+  // Record HERE, at the moment the room is given something to hear — not when
+  // the worker echoes it back. See `recordKortixUtterance`.
+  await recordKortixUtterance(callId, utterance, opts.projectId ?? null);
   return { delivered: true };
+}
+
+/**
+ * Writes the transcript line for something Kortix just put into the call.
+ *
+ * WHY SERVER-SIDE. The worker does record the agent side of the conversation,
+ * from `AgentSessionEventTypes.ConversationItemAdded`
+ * (apps/voice-agent/src/transcripts.ts) — but that is a client-side event in a
+ * process we do not control, and it was observed NOT firing for a programmatic
+ * `generateReply` when nobody else was in the room. The result was the bug this
+ * exists to close: the Kortix agent called `send_prompt`, the room heard it, and
+ * `voice_call_turns` had no trace of it, so the call page showed a conversation
+ * with half the speakers missing. A message the room was given must not be
+ * absent from the record because an event in someone else's process did not
+ * fire.
+ *
+ * The honest caveat, stated rather than papered over: this records DELIVERY —
+ * the data message reached a room that has a worker in it — not audio. If the
+ * worker's session has already closed it drops the message (inbound-replies.ts)
+ * and this line will claim something the room never heard. That is strictly
+ * better than the alternative, which loses everything the room DID hear, and it
+ * is why the two sides are labelled differently: `speaker: 'kortix'` is what
+ * Kortix put into the call, the bot's own name is what the voice actually said.
+ *
+ * Never throws: a transcript write failing must not turn a delivered utterance
+ * into a reported failure, which would make an agent re-say things the room
+ * already heard.
+ */
+async function recordKortixUtterance(
+  callId: string,
+  utterance: KortixUtterance,
+  projectId: string | null,
+): Promise<void> {
+  try {
+    const resolved = projectId ?? (await projectIdForSession(callId));
+    if (!resolved) {
+      console.error('[voice] cannot record kortix utterance — no project for call', { callId });
+      return;
+    }
+    await appendTurn(
+      { callId, projectId: resolved, sessionId: callId },
+      'agent',
+      utterance.transcript,
+      KORTIX_SPEAKER,
+    );
+  } catch (err) {
+    console.error('[voice] failed to record kortix utterance', { callId, kind: utterance.kind }, err);
+  }
+}
+
+/**
+ * `project_id` is NOT NULL on voice_call_turns, and most callers into a live
+ * call (turn.ts, answer-watch.ts) only ever hold a session id — the call id IS
+ * the session id, so the project is one indexed lookup away rather than
+ * something every caller has to thread through.
+ */
+async function projectIdForSession(sessionId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ projectId: projectSessions.projectId })
+    .from(projectSessions)
+    .where(eq(projectSessions.sessionId, sessionId))
+    .limit(1);
+  return row?.projectId ?? null;
 }

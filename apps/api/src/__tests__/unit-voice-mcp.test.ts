@@ -215,6 +215,46 @@ describe('voice MCP', () => {
     expect(res.result.isError).toBe(true);
   });
 
+  test('post_turn cannot write a tool-role line — only this file records those', async () => {
+    // 'tool' rows are a record of what the worker asked KORTIX to do, written
+    // by callTool below with the tool's real name and outcome. If the model
+    // could post them itself, a line saying `run_command: rm -rf / → ok` would
+    // be indistinguishable from one that actually ran.
+    const seen: unknown[] = [];
+    const c = ctx({
+      postTurn: async (role, text) => {
+        seen.push({ role, text });
+      },
+    });
+    const res = await call('tools/call', { name: 'post_turn', arguments: { role: 'tool', text: 'i ran something' } }, c);
+    expect(res.result.isError).toBe(true);
+    expect(seen).toEqual([]);
+
+    const list = await call('tools/list');
+    const postTurn = list.result.tools.find((t: { name: string }) => t.name === 'post_turn');
+    expect(postTurn.inputSchema.properties.role.enum).toEqual(['user', 'agent']);
+  });
+
+  test("every tool line names its tool and, where there is one, its outcome", async () => {
+    // Requirement on the record itself: a reader must be able to tell a human
+    // utterance from the agent's speech from a tool call — and for a tool call,
+    // WHICH tool and how it ended.
+    const seen: Array<{ role?: string; text?: string; speaker?: string | null }> = [];
+    const record = ctx({
+      runCommand: async () => ({ stdout: '', stderr: '', exitCode: 2, timedOut: false }),
+      postTurn: async (role, text, speaker) => {
+        seen.push({ role, text, speaker });
+      },
+    });
+    await call('tools/call', { name: 'ask_kortix', arguments: { request: 'ship it' } }, record);
+    await call('tools/call', { name: 'run_command', arguments: { command: 'bun test' } }, record);
+
+    expect(seen.every((t) => t.role === 'tool')).toBe(true);
+    expect(seen.map((t) => t.speaker)).toEqual(['ask_kortix', 'run_command']);
+    expect(seen[0]!.text).toContain('ask_kortix: ship it');
+    expect(seen[1]!.text).toBe('run_command: bun test → exit 2');
+  });
+
   test('unknown tool is an error, not a crash', async () => {
     const res = await call('tools/call', { name: 'voice_follow', arguments: {} });
     expect(res.result.isError).toBe(true);

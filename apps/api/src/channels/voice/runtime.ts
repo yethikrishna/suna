@@ -159,15 +159,34 @@ export async function startCall(input: StartCallInput): Promise<VoiceCall> {
   return call;
 }
 
-function buildAskPrompt(request: string, callId: string): string {
+/**
+ * Prepended to EVERY inbound voice turn, so it stays short — the cost of a
+ * word here is paid once per thing anyone says in the call.
+ *
+ * The skill pointer is the important line, and it mirrors what Slack and Teams
+ * already do (channels/slack/session.ts, channels/teams/session.ts): the full
+ * surface — the `kortix_voice` connector's actions, one-call-per-session, the
+ * cursor loop, how a human gets a join link — lives in the `kortix-voice`
+ * skill, not in this prompt. Without the pointer the agent only ever learned
+ * the tone rules below and had no idea it could read the room or speak into it
+ * unprompted, which is exactly how it behaved.
+ */
+const TURN_INSTRUCTIONS = [
+  'How to work:',
+  '- First, load the `kortix-voice` skill via the `skill` tool — the canonical reference for',
+  '  working a live call (the `kortix_voice` connector: read_transcript, send_prompt, end_call).',
+  '- Whatever you report back is SPOKEN ALOUD, so answer in plain spoken language — no markdown,',
+  '  no bullet lists, no raw URLs, no code. A couple of sentences unless more was asked for.',
+  '- You can also talk into the call yourself at any time with `send_prompt`, and read what is',
+  '  being said with `read_transcript` (cursor-paged, returns immediately, never blocks).',
+  '- Nothing blocks: the conversation continues while you work, and you are not holding the line.',
+].join('\n');
+
+export function buildAskPrompt(request: string, callId: string): string {
   return [
     `[Live voice call ${callId}] Someone in the call asked: "${request}"`,
     '',
-    'You are on a live call. Whatever you report back gets spoken aloud to the room,',
-    'so answer in plain spoken language — no markdown, no bullet lists, no raw URLs.',
-    'Keep it to a couple of sentences unless more was explicitly asked for.',
-    '',
-    'The conversation continues while you work; you are not holding the line.',
+    TURN_INSTRUCTIONS,
   ].join('\n');
 }
 

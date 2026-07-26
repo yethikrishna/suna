@@ -77,7 +77,7 @@ mock.module('../projects/session-lifecycle', () => ({
   continueSession: async () => 'delivered',
 }));
 
-const { promptVoiceAgent } = await import('../channels/voice/runtime');
+const { buildAskPrompt, promptVoiceAgent } = await import('../channels/voice/runtime');
 const { relayTurnAnswer, relayTurnEnd, relayTurnStep } = await import('../channels/voice/turn');
 const {
   KORTIX_SPEAKER,
@@ -301,5 +301,43 @@ describe('voice_call_turns accepts the roles the code writes', () => {
     const sql = await Bun.file(`${migrations}20260726151944122_validate_voice_call_turns_role_check.sql`).text();
     expect(sql).toContain('VALIDATE CONSTRAINT');
     expect(sql).toContain('voice_call_turns_role_check');
+  });
+});
+
+describe('the inbound voice prompt teaches the agent how to work the call', () => {
+  /**
+   * The defect: this prompt explained tone and nothing else, so an agent woken
+   * by someone speaking never learned that it could read the room or talk back
+   * — it just answered and went quiet. Slack and Teams both open their turn
+   * instructions by pointing at their skill (channels/slack/session.ts,
+   * channels/teams/session.ts); voice now does the same.
+   */
+  const prompt = buildAskPrompt('can you check the build?', 'sess-42');
+
+  test('points at the kortix-voice skill, the way Slack and Teams do', () => {
+    expect(prompt).toContain('`kortix-voice` skill');
+    expect(prompt).toContain('`skill` tool');
+  });
+
+  test('names the two actions the agent has no other way to discover', () => {
+    expect(prompt).toContain('send_prompt');
+    expect(prompt).toContain('read_transcript');
+  });
+
+  test('still carries the request, the call, and the spoken-language rule', () => {
+    expect(prompt).toContain('can you check the build?');
+    expect(prompt).toContain('sess-42');
+    expect(prompt).toContain('no markdown');
+  });
+
+  test('says nothing blocks, so the agent does not sit on the line', () => {
+    expect(prompt.toLowerCase()).toContain('nothing blocks');
+    expect(prompt).toContain('not holding the line');
+  });
+
+  test('stays short — this is prepended to every single thing said in the call', () => {
+    // Not a style rule: the whole block is re-sent per utterance, so length
+    // here is paid over and over for the life of the call.
+    expect(prompt.length).toBeLessThan(900);
   });
 });

@@ -251,6 +251,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B20 | **Keep ACP SSE connections outside the shared 30-second authenticated-fetch timeout.** The ACP controller uses `/kortix/acp/:sessionId` as a long-lived SSE stream.                                                                                                                                                                                                                                                                            | `src/platform/auth-core.ts` exempted only `/global/event`; deployed cold Chromium aborted the ACP stream before `session/load` settled.                                                                                                                                                                | **DONE 2026-07-25** — implementation `89b97f4cc`; RED test, full SDK gates, and local cold ACP plus REST browser matrix pass                                                                                                                                                                                                         |
 | B21 | **Serialize ACP sends with runtime restart reloads.** A send that starts while OpenCode restarts can wait forever on `session/set_config_option` and never send `session/prompt`.                                                                                                                                                                                                                                                               | Deployed cold Chromium sent `session/set_config_option` at `13:36:20.250Z`, received `kortix/runtime_ready`, then sent `session/load` at `13:36:20.640Z`; `POST_RESTART_PONG` never produced `session/prompt`.                                                                                              | **DONE 2026-07-25** — implementation `d8537fa2c`; RED tests, full SDK gates, and test-harness typecheck pass                                                                                                                                                                                                                          |
 | B22 | **Expose server-owned warm project-session ensure and claim operations.** The project index needs one reusable empty session without owning session selection or deduplication in app code.                                                                                                                                                                                                                                                   | `apps/web/src/app/(app)/projects/[id]/page.tsx` creates a session only after send. `packages/sdk/src/core/rest/projects-client/sessions.ts` exposes create and list, but no atomic warm-session operation.                                                                                              | **DONE 2026-07-26** — implementation `13167d7cf`; RED tests, full SDK gates, live API/SDK lifecycle, workspace refresh, and maintenance retention proof pass                                                                                                                                                                           |
+| B23 | **Prevent ACP prompt results from exposing a false idle window before late protocol updates settle.**                                                                                                                                                                                                                                                                                                                                          | The deployed white-label parity screenshot rendered 4 ACP tool cards and `Agent is working…`, while REST rendered 26 completed tool cards. `applyAcpEnvelope()` marks the projection idle on the prompt result, and later tool or text updates can mark it busy again.                                                                                                  | **IN PROGRESS 2026-07-26** — session `whitelabel-acp-stable-completion`; RED test, SDK fix, strengthened parity gate, merge, Deploy Dev, and deployed proof required                                                                                                                            |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -2905,6 +2906,24 @@ requires PR merge, Deploy Dev, deployed SHA proof, and one post-deploy smoke.
 
 ---
 
+### 2026-07-26 — session `whitelabel-acp-stable-completion` (B23 claim)
+
+Claimed the intermittent ACP false-completion gap exposed by the deployed
+white-label parity screenshots.
+
+The SDK will keep prompt completion monotonic across the JSON-RPC result and
+late ACP tool, text, or reasoning updates. The parity gate will require stable
+completion and a complete presentation artifact on both transports.
+
+Implementation will follow RED -> GREEN -> REFACTOR. Required gates are the
+focused SDK test, full SDK typecheck, suite, packed-install smoke, white-label
+typecheck, build, suite, SDK boundary, test-harness typecheck, local ACP and REST
+parity, PR merge, Deploy Dev, deployed SHA proof, and deployed parity.
+
+**Status:** IN PROGRESS.
+
+---
+
 ### 2026-07-26 — session `agent-sandbox-environments` (claim)
 
 Claimed the user-directed per-agent sandbox environment contract. The additive
@@ -3018,3 +3037,58 @@ ke2e coverage, local API proof, browser proof, PR merge, Deploy Dev, deployed SH
 proof, and deployed browser proof.
 
 **Status:** COMPLETE — `13167d7cf`.
+
+---
+
+### 2026-07-26 — session `whitelabel-acp-stable-completion` (B23 local completion)
+
+Completed the monotonic ACP and REST prompt-settlement implementation in
+`7a546585c`.
+
+ACP `send()` now resolves after the prompt result and a 500-millisecond quiet
+period. Late assistant, tool, question, and permission updates restart or block
+that settlement. Prompt queue serialization waits for full settlement.
+
+REST prompt observation now belongs to `SessionSyncController`. Premature idle
+events do not clear the public busy state. Late busy events cancel the
+500-millisecond settlement timer. Status reconciliation and SSE events use the
+same controller.
+
+TDD evidence:
+
+- ACP RED: `send()` resolved before delayed tool updates reached the transcript.
+- REST RED: `beginPromptObservation()` did not exist.
+- Focused REST GREEN: **40 pass / 0 fail** with **113** assertions.
+- Preview RED: expected status `200`; received `502`.
+- Preview GREEN: **7 pass / 0 fail** with **36** assertions.
+
+Post-rebase gates:
+
+- SDK typecheck: exit 0.
+- SDK suite: **1268 pass / 0 fail** with **5662** assertions across **105**
+  files.
+- SDK packed-install smoke: pass.
+- White-label typecheck: exit 0.
+- White-label suite: **57 pass / 3 skip / 0 fail** with **182** assertions.
+- White-label SDK boundary: **0 violations**.
+- White-label dev-API production build: exit 0.
+- Test-harness typecheck: exit 0.
+- `git diff --check`: exit 0.
+
+Post-rebase live ACP and REST presentation plus question parity:
+
+- Playwright: **1 pass / 0 fail** in **13.5 minutes**.
+- ACP sent **2** ACP prompts and **0** REST prompts.
+- REST sent **2** REST prompts and **0** ACP prompts.
+- ACP rendered **34** completed tool cards.
+- REST rendered **28** completed tool cards.
+- Tool-card parity ratio: **0.824**.
+- ACP created `/workspace/marko-kraemer.pptx` at **231,898 bytes**.
+- REST created `/workspace/marko_kraemer.pptx` at **228,064 bytes**.
+- Both transports persisted the question flow and rendered `QUESTION_BETA`.
+- Post-cleanup database proof: `active_projects=0`, `cleanup_users=0`.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
+and deployed ACP plus REST parity remain.

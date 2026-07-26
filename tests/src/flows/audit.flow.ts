@@ -487,3 +487,102 @@ flow(
     });
   },
 );
+
+// AUD-FILTER — the actor / resource_type / date-range / search / cursor / limit
+// filters added in 81947a5fa ("fix(audit): add actor / search / date-range /
+// resource filters"). AUD-1 only exercised `limit` + `action`. The query schema is
+// all `z.string().optional()` with NO 400-validation — bad values are silently
+// coerced/ignored (buildFilters guards Number.isNaN on dates; limit clamps to
+// [1, MAX_LIMIT]). This pins the filter-ACCEPTANCE contract + the limit clamp,
+// so a future tightening that 400s on bad input (the right fix) is a visible
+// delta, not a silent behavior change.
+flow(
+  'AUD-FILTER',
+  { domain: 'audit', routes: ['GET /v1/accounts/:accountId/audit'] },
+  async (ctx) => {
+    const team = await ctx.fixtures.team({ enterprise: true });
+    const base = { params: { accountId: team.id } };
+
+    await ctx.step('actor filter (uuid) → 200 with events envelope', async () => {
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/audit', {
+        ...base,
+        query: { actor: '00000000-0000-4000-a000-000000000000' },
+      });
+      r.status(200).body().exists('$.events').exists('$.next_cursor');
+    });
+    await ctx.step('resource_type prefix filter → 200', async () => {
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/audit', {
+        ...base,
+        query: { resource_type: 'project' },
+      });
+      r.status(200).body().exists('$.events');
+    });
+    await ctx.step('since + until date-range window → 200', async () => {
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/audit', {
+        ...base,
+        query: { since: '2020-01-01T00:00:00Z', until: '2020-01-02T00:00:00Z' },
+      });
+      r.status(200).body().exists('$.events');
+    });
+    await ctx.step('q search substring → 200', async () => {
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/audit', {
+        ...base,
+        query: { q: 'iam' },
+      });
+      r.status(200).body().exists('$.events');
+    });
+    await ctx.step('cursor pagination param accepted → 200', async () => {
+      // A well-formed cursor "<iso>|<uuid>" is accepted; a malformed one is
+      // silently ignored (buildFilters only pushes the cursor condition when
+      // the timestamp parses AND a lastId is present). Either way → 200.
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/audit', {
+        ...base,
+        query: { cursor: '2020-01-01T00:00:00Z|00000000-0000-4000-a000-000000000000' },
+      });
+      r.status(200).body().exists('$.events');
+    });
+    await ctx.step('limit=0 is clamped to 1 (not 400)', async () => {
+      // Math.max(limitRaw, 1) — a zero/negative limit can't 400; it's clamped up.
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/audit', {
+        ...base,
+        query: { limit: '0' },
+      });
+      r.status(200);
+      const events = r.json<{ events: unknown[] }>().events;
+      if (events.length > 1)
+        throw new Error(`limit=0 should clamp to 1, got ${events.length} events`);
+    });
+    await ctx.step('limit=99999 is clamped to MAX_LIMIT (200), not 400', async () => {
+      // Math.min(limitRaw, MAX_LIMIT=200) — an oversized limit is clamped down.
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/audit', {
+        ...base,
+        query: { limit: '99999' },
+      });
+      r.status(200).body().exists('$.events');
+    });
+    await ctx.step('malformed since date is silently ignored → 200 (not 400)', async () => {
+      // buildFilters guards Number.isNaN(since.getTime()) — a non-parseable
+      // date adds no condition rather than 400ing. Pins the CURRENT contract;
+      // a future fix that 400s here is a deliberate, visible delta.
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/audit', {
+        ...base,
+        query: { since: 'not-a-date' },
+      });
+      r.status(200).body().exists('$.events');
+    });
+    await ctx.step('combined filters (actor + resource_type + q + window) → 200', async () => {
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/audit', {
+        ...base,
+        query: {
+          actor: '00000000-0000-4000-a000-000000000000',
+          resource_type: 'project',
+          q: 'session',
+          since: '2020-01-01T00:00:00Z',
+          until: '2026-12-31T00:00:00Z',
+          limit: '10',
+        },
+      });
+      r.status(200).body().exists('$.events');
+    });
+  },
+);

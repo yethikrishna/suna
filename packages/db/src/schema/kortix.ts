@@ -1149,6 +1149,30 @@ export const voiceCallTurns = kortixSchema.table(
 );
 
 /**
+ * The Kortix agent's read position in a call's transcript — the state that lets
+ * a bare `read_transcript {}` mean "only what I have not been shown yet".
+ *
+ * Cursor-paging was already incremental, but only for an agent that threaded the
+ * returned cursor back on every call; one that forgot passed 0 and re-read the
+ * whole conversation. Keeping the position here makes the cheap path the DEFAULT
+ * path and removes the agent's obligation to remember anything.
+ *
+ * `cursor` is the highest `voice_call_turns.cursor` actually handed over, and it
+ * only ever moves forward (upserted with GREATEST) — a race between two reads in
+ * one call must not rewind it. Exactly one writer: the agent-side
+ * `read_transcript`. The call page's poll (r7.ts, public-join-routes.ts) passes
+ * its own explicit cursor and never touches this row, so a human scrolling the
+ * transcript cannot consume the agent's unread.
+ */
+export const voiceCallReadCursors = kortixSchema.table('voice_call_read_cursors', {
+  /** The call — which is also the session id. */
+  callId: text('call_id').primaryKey(),
+  projectId: uuid('project_id').notNull(),
+  cursor: bigint('cursor', { mode: 'number' }).notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
  * Short, ungessable join links that resolve server-side to a fresh LiveKit
  * access token — see `apps/api/src/channels/voice/join-links.ts`. Replaces
  * handing out the raw ~300-char LiveKit JWT itself in `voice_spawn`'s

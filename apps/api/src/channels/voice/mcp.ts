@@ -54,7 +54,7 @@ export interface VoiceMcpContext {
   sessionId: string;
   callId: string;
   /** Fire-and-forget hand-off to the Kortix session. Never awaits the turn. */
-  askKortix(request: string): { ok: true } | { ok: false; error: string };
+  askKortix(request: string): Promise<{ ok: true } | { ok: false; error: string }>;
   /** Waits (short, bounded) for a shell command's result in the call's sandbox. */
   runCommand(command: string, cwd?: string): Promise<RunCommandToolResult>;
   /**
@@ -176,7 +176,7 @@ async function callTool(
     case 'ask_kortix': {
       const request = String(args.request ?? '').trim();
       if (!request) return toolError('request is required');
-      const result = ctx.askKortix(request);
+      const result = await ctx.askKortix(request);
       if (!result.ok) return toolError(result.error);
       // Fire-and-forget, same as everything else on this path (see the
       // interface doc above `postTurn`) — a transcript write must never be

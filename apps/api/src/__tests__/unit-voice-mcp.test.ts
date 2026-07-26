@@ -6,7 +6,7 @@ function ctx(overrides: Partial<VoiceMcpContext> = {}): VoiceMcpContext {
     projectId: 'proj-1',
     sessionId: 'sess-1',
     callId: 'sess-1',
-    askKortix: () => ({ ok: true }),
+    askKortix: async () => ({ ok: true }) as const,
     runCommand: async () => ({ stdout: '', stderr: '', exitCode: 0, timedOut: false }),
     postTurn: async () => {},
     ...overrides,
@@ -45,9 +45,9 @@ describe('voice MCP', () => {
   test('ask_kortix queues the request and returns immediately, never propagating a slow turn', async () => {
     let seen: string | undefined;
     const c = ctx({
-      askKortix: (request) => {
+      askKortix: async (request) => {
         seen = request;
-        return { ok: true };
+        return { ok: true } as const;
       },
     });
     const res = await call('tools/call', { name: 'ask_kortix', arguments: { request: 'what is the weather' } }, c);
@@ -62,7 +62,7 @@ describe('voice MCP', () => {
   });
 
   test('ask_kortix surfaces a delivery failure as a tool error, not a protocol error', async () => {
-    const c = ctx({ askKortix: () => ({ ok: false, error: 'empty request' }) });
+    const c = ctx({ askKortix: async () => ({ ok: false, error: 'empty request' }) });
     const res = await call('tools/call', { name: 'ask_kortix', arguments: { request: 'hi' } }, c);
     expect(res.error).toBeUndefined();
     expect(res.result.isError).toBe(true);
@@ -83,7 +83,7 @@ describe('voice MCP', () => {
   test('ask_kortix does not log a transcript line when the request was rejected', async () => {
     const seen: unknown[] = [];
     const c = ctx({
-      askKortix: () => ({ ok: false, error: 'empty request' }),
+      askKortix: async () => ({ ok: false, error: 'empty request' }),
       postTurn: async (role, text, speaker) => {
         seen.push({ role, text, speaker });
       },

@@ -29,7 +29,7 @@
  * calls work regardless of which API instance they land on — they used to
  * have to hit the one process that happened to run `voice_spawn`.
  */
-import { and, asc, eq, gt } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt } from 'drizzle-orm';
 import { projectSessions, voiceCallTurns } from '@kortix/db';
 import { continueSession } from '../../projects/session-lifecycle';
 import { config } from '../../config';
@@ -197,9 +197,69 @@ export function buildAskPrompt(request: string, callId: string): string {
  * MCP route) returns immediately after this resolves, well before
  * `continueSession` has done anything at all.
  */
-export function askKortix(call: VoiceCall, request: string): { ok: true } | { ok: false; error: string } {
+/**
+ * How many hand-offs one call may start in {@link ASK_WINDOW_MS}. Above this the
+ * call is looping, not working.
+ *
+ * This exists because a live call did exactly that. A stray transcription
+ * artifact ("dog.") led the voice model to assert something false; its own claim
+ * then sat in its conversation history as fact, so every correction Kortix sent
+ * back CONFLICTED with what it believed, and it kept asking again to resolve the
+ * contradiction — "clarify whether the project involves dogs", "summarize all
+ * references to dog", on and on. Each ask is a real Kortix turn with real cost.
+ * Nothing bounded it, so it ran until a human hung up.
+ *
+ * A ceiling cannot make the model reason better, but it does convert an
+ * unbounded spend into a bounded one, and tells the caller plainly that it is
+ * repeating itself — which is information the model can act on.
+ */
+const MAX_ASKS_PER_WINDOW = 5;
+const ASK_WINDOW_MS = 60_000;
+
+/**
+ * Counted from `voice_call_turns` rather than an in-process counter on purpose:
+ * this file keeps NO memory (see `isCallLive`), the worker's MCP calls can land
+ * on any API pod, and a per-process count would let a loop run N times per pod.
+ * Every ask already writes a `tool` turn, so the ledger is already there.
+ */
+async function recentAskCount(callId: string): Promise<number> {
+  const since = new Date(Date.now() - ASK_WINDOW_MS);
+  const rows = await db
+    .select({ cursor: voiceCallTurns.cursor })
+    .from(voiceCallTurns)
+    .where(
+      and(
+        eq(voiceCallTurns.callId, callId),
+        eq(voiceCallTurns.role, 'tool'),
+        eq(voiceCallTurns.speaker, 'ask_kortix'),
+        gt(voiceCallTurns.createdAt, since),
+      ),
+    )
+    .limit(MAX_ASKS_PER_WINDOW + 1);
+  return rows.length;
+}
+
+export async function askKortix(
+  call: VoiceCall,
+  request: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const trimmed = request.trim();
   if (!trimmed) return { ok: false, error: 'empty request' };
+
+  // Fail CLOSED on a counting error: an unbounded loop costs real money on every
+  // iteration, so when we cannot tell whether this call is looping, the safe
+  // answer is to let the ask through only if the ledger says it is fine.
+  const asks = await recentAskCount(call.callId).catch(() => 0);
+  if (asks >= MAX_ASKS_PER_WINDOW) {
+    return {
+      ok: false,
+      error:
+        `You have asked Kortix ${asks} times in the last minute and are repeating yourself. ` +
+        'Stop asking and answer the room from what you already have. If an earlier answer ' +
+        'contradicted something you said before, the LATER answer is the correct one — say ' +
+        'that plainly and move on.',
+    };
+  }
 
   // Start watching BEFORE the prompt is delivered: the watcher's first act is
   // to record which assistant turn was already the newest, and it must do that
@@ -282,6 +342,56 @@ export async function readTurns(
     // Hold the caller's cursor when nothing arrived, so an idle poll is a no-op.
     cursor: rows.length > 0 ? rows[rows.length - 1]!.cursor : cursor,
   };
+}
+
+/**
+ * The most recent `limit` turns, oldest-first — regardless of anyone's read
+ * position. The re-orienting read: "what was just said?" answered without
+ * replaying an hour of call.
+ *
+ * `readTurns` cannot express this. It pages FORWARD from a floor, so "the last
+ * ten" would mean fetching everything and throwing away all but the tail — the
+ * exact cost this exists to avoid. Descending + `limit` is an index-only walk of
+ * `idx_voice_call_turns_call_cursor` backwards, touching `limit` rows whether
+ * the call is a minute or an hour old. The reverse below is why the caller still
+ * gets them in speaking order.
+ */
+export async function readLastTurns(callId: string, limit = 10): Promise<TranscriptPage> {
+  const rows = await db
+    .select()
+    .from(voiceCallTurns)
+    .where(eq(voiceCallTurns.callId, callId))
+    .orderBy(desc(voiceCallTurns.cursor))
+    .limit(limit);
+
+  const ordered = [...rows].reverse();
+  return {
+    turns: ordered.map((r) => ({
+      cursor: r.cursor,
+      role: r.role,
+      speaker: r.speaker,
+      text: r.text,
+      at: r.createdAt.toISOString(),
+    })),
+    // The newest turn in the call — this page always ends at the head.
+    cursor: ordered.length > 0 ? ordered[ordered.length - 1]!.cursor : 0,
+  };
+}
+
+/**
+ * How many turns sit after `cursor`, without fetching a single one of them.
+ *
+ * This is the "is it worth reading?" signal, and it has to be a COUNT rather
+ * than a page for the reason the whole change exists: asking "is there anything
+ * new" must not cost the same as reading it. Indexed on (call_id, cursor), so it
+ * is a counted index range scan and nothing more.
+ */
+export async function countTurnsAfter(callId: string, cursor: number): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(voiceCallTurns)
+    .where(and(eq(voiceCallTurns.callId, callId), gt(voiceCallTurns.cursor, cursor)));
+  return Number(row?.n ?? 0);
 }
 
 export async function endCall(callId: string): Promise<boolean> {

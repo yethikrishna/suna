@@ -163,6 +163,7 @@ const sandboxProxyLimiter = new TokenBucketRateLimiter('sandbox_proxy');
 const publicSessionShareLimiter = new TokenBucketRateLimiter('public_session_share');
 const demoRequestLimiter = new TokenBucketRateLimiter('demo_request');
 const voiceJoinLinkLimiter = new TokenBucketRateLimiter('voice_join_link');
+const voiceTranscriptPollLimiter = new TokenBucketRateLimiter('voice_transcript_poll');
 const checkEmailLimiter = new TokenBucketRateLimiter('check_email');
 const projectWebhookLimiter = new TokenBucketRateLimiter('project_webhook');
 const projectWebhookManifestRefreshLimiter = new TokenBucketRateLimiter('project_webhook_manifest_refresh');
@@ -308,6 +309,39 @@ export function createVoiceJoinLinkRateLimitMiddleware() {
         resourceType: 'voice_join_link',
         resourceId: null,
         metadata: { limiter: 'voice_join_link' },
+      },
+    );
+    if (denied) return denied;
+    await next();
+  };
+}
+
+/**
+ * Guards `GET /v1/public/voice-join/:token/transcript` — the same join-link
+ * capability as above, but a POLLING endpoint, so it cannot share the resolve
+ * step's budget. The /voice page polls the durable call record every couple of
+ * seconds for as long as the call is open; at the resolve limiter's 30/min a
+ * single honest listener would rate-limit ITSELF within a minute.
+ *
+ * Still keyed on client IP for the same reason (a token-keyed bucket would let
+ * an attacker allocate one bucket per guess), and it grants strictly less than
+ * the resolve step does: transcript text for one call, never a LiveKit token.
+ */
+export function createVoiceTranscriptPollRateLimitMiddleware() {
+  return async (c: Context, next: Next) => {
+    const denied = await enforceRateLimit(
+      c,
+      voiceTranscriptPollLimiter,
+      clientIp(c),
+      {
+        limit: positiveInt((config as any).KORTIX_VOICE_TRANSCRIPT_REQS_PER_MIN, 120),
+        windowMs: 60_000,
+      },
+      {
+        action: `RATE_LIMIT ${c.req.method} ${c.req.path}`,
+        resourceType: 'voice_join_link',
+        resourceId: null,
+        metadata: { limiter: 'voice_transcript_poll' },
       },
     );
     if (denied) return denied;

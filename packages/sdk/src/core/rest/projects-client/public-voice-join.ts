@@ -37,11 +37,8 @@ function publicVoiceJoinUrl(token: string): string {
   return `${getBackendUrl()}/public/voice-join/${encodeURIComponent(token)}`;
 }
 
-/** Resolves a short `voice_spawn` join-link token into a live LiveKit
- *  session's server URL + a fresh access token. Throws `PublicVoiceJoinError`
- *  (404 unknown, 410 expired/revoked) on anything but 200. */
-export async function getPublicVoiceJoin(token: string): Promise<PublicVoiceJoinInfo> {
-  const res = await fetch(publicVoiceJoinUrl(token), { method: 'GET', headers: { Accept: 'application/json' } });
+async function getPublicVoiceJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, { method: 'GET', headers: { Accept: 'application/json' } });
   const text = await res.text().catch(() => '');
   let body: unknown = null;
   try {
@@ -56,5 +53,62 @@ export async function getPublicVoiceJoin(token: string): Promise<PublicVoiceJoin
         : null) || res.statusText || `HTTP ${res.status}`;
     throw new PublicVoiceJoinError(message, res.status);
   }
-  return body as PublicVoiceJoinInfo;
+  return body as T;
+}
+
+/** Resolves a short `voice_spawn` join-link token into a live LiveKit
+ *  session's server URL + a fresh access token. Throws `PublicVoiceJoinError`
+ *  (404 unknown, 410 expired/revoked) on anything but 200. */
+export async function getPublicVoiceJoin(token: string): Promise<PublicVoiceJoinInfo> {
+  return getPublicVoiceJson<PublicVoiceJoinInfo>(publicVoiceJoinUrl(token));
+}
+
+/**
+ * One line of a call's durable record (`kortix.voice_call_turns`).
+ *
+ * `role` + `speaker` together say who — and they must be read together,
+ * because `agent` covers two different things:
+ *   - `user`  — a human in the room. `speaker` is a display name if one is known.
+ *   - `agent` + `speaker === 'kortix'` — what the KORTIX agent put into the
+ *     call (`send_prompt`, a finished turn's result, an error).
+ *   - `agent` + anything else — what the voice itself actually said, labelled
+ *     with the bot's display name.
+ *   - `tool`  — an MCP call the voice made; `speaker` is the tool name
+ *     (`ask_kortix`, `run_command`) and `text` is the call and its outcome.
+ *     Nobody spoke this line.
+ */
+export interface PublicVoiceTranscriptTurn {
+  /** Monotonic per-call sequence number — pass the page's last one back as `cursor`. */
+  cursor: number;
+  role: 'user' | 'agent' | 'tool' | (string & {});
+  speaker: string | null;
+  text: string;
+  /** ISO-8601. */
+  at: string;
+}
+
+export interface PublicVoiceTranscriptPage {
+  call_id: string;
+  /** The cursor to poll with next — unchanged when nothing new arrived. */
+  cursor: number;
+  turns: PublicVoiceTranscriptTurn[];
+}
+
+/**
+ * Reads the durable transcript of the ONE call a join-link token was minted
+ * for — every spoken turn on both sides, everything the Kortix agent said into
+ * the call, and every tool call the voice made.
+ *
+ * This is not the same stream as LiveKit's client-side transcription, which
+ * only ever carries the two voices. Authorized by the join link alone (same
+ * capability, same revocation as `getPublicVoiceJoin`), so it works on the
+ * logged-out `/voice/[token]` page. Throws `PublicVoiceJoinError` (404
+ * unknown, 410 expired or the call ended).
+ */
+export async function getPublicVoiceTranscript(
+  token: string,
+  cursor = 0,
+): Promise<PublicVoiceTranscriptPage> {
+  const url = `${publicVoiceJoinUrl(token)}/transcript?cursor=${encodeURIComponent(String(cursor))}`;
+  return getPublicVoiceJson<PublicVoiceTranscriptPage>(url);
 }

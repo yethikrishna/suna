@@ -20,6 +20,31 @@
  * nothing else — it authorises joining one room as one participant, not
  * calling the Kortix API.
  *
+ * TWO SOURCES FEED THE TRANSCRIPT, and which one is authoritative matters:
+ *
+ *   - `kortix.voice_call_turns`, polled from
+ *     `/v1/public/voice-join/:token/transcript`, IS the transcript. It holds
+ *     every spoken turn on both sides, everything the KORTIX agent put into
+ *     the call from outside it (`send_prompt`, a finished turn's result, an
+ *     error), and every MCP tool call the voice made (`ask_kortix`,
+ *     `run_command`).
+ *   - LiveKit's client-side `TranscriptionReceived` is a LIVE TAIL on the end
+ *     of it, nothing more.
+ *
+ * This page used to render only the second one, which is why it showed a call
+ * with holes in it: that stream carries the two voices in this room and
+ * nothing else, so the Kortix agent's own lines and every tool call were
+ * missing entirely — they are written server-side and never reach the
+ * browser's LiveKit connection at all. The tail is still worth having, but
+ * only for latency: it shows a sentence the instant it is spoken, and drops
+ * out again as soon as the same words land in the durable record
+ * (`unrecordedLive`), so nothing is ever shown twice or silently lost.
+ *
+ * The record endpoint is authorised by the join link itself — the same
+ * capability, the same revocation-on-`endCall`, scoped server-side to the one
+ * call the link was minted for. No logged-in user, and nothing project- or
+ * session-wide is reachable from it.
+ *
  * The URL's last path segment is now one of TWO shapes, and this page tells
  * them apart by prefix (`isJoinLinkToken`) before doing anything else:
  *   - `vjl_...` — a short, ungessable, server-resolved join-link token
@@ -57,16 +82,30 @@ import {
   type RemoteTrack,
   type TranscriptionSegment,
 } from 'livekit-client';
-import { getPublicVoiceJoin } from '@kortix/sdk';
+import { getPublicVoiceJoin, getPublicVoiceTranscript, PublicVoiceJoinError } from '@kortix/sdk';
 
 import { AudioGestureOverlay, ConnectingScreen, EndedScreen, ReconnectingBanner } from './_components/connection-states';
 import { CallControls } from './_components/call-controls';
+import { mergeCallRecord, toCallRecordEntries, unrecordedLive } from './_components/call-record';
 import { PresenceRail } from './_components/presence-rail';
 import { RoomHeader } from './_components/room-header';
 import { TranscriptFeed } from './_components/transcript-feed';
-import type { ConnectionPhase, PresenceEntry, TranscriptEntry } from './_components/types';
+import type { CallRecordEntry, ConnectionPhase, LiveUtterance, PresenceEntry } from './_components/types';
 
 const JOIN_LINK_TOKEN_PREFIX = 'vjl_';
+
+/**
+ * How often to pull new lines of the durable call record.
+ *
+ * A poll, not a stream: the record is append-only with a monotonic cursor, so
+ * an idle poll costs one indexed range scan that returns nothing, and a
+ * dropped one self-heals on the next tick — neither of which is true of an SSE
+ * connection this page would then have to reconnect by hand on every network
+ * blip. Two seconds is under the latency of a spoken sentence, and the LIVE
+ * tail (below) covers the gap in the meantime, so nothing here is what the
+ * reader waits on.
+ */
+const RECORD_POLL_INTERVAL_MS = 2_000;
 
 /** Whether a URL path segment is a short, server-resolved join-link token
  *  (`vjl_...`) rather than a legacy raw LiveKit access token embedded
@@ -81,11 +120,15 @@ export default function VoiceBridgePage() {
   const [needsGesture, setNeedsGesture] = useState(false);
   const [micEnabled, setMicEnabled] = useState(true);
   const [roster, setRoster] = useState<PresenceEntry[]>([]);
-  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+  /** The durable call record — the transcript. */
+  const [record, setRecord] = useState<CallRecordEntry[]>([]);
+  /** LiveKit's client-side transcription, which is only a tail on the end of
+   *  the record (see the file header). */
+  const [live, setLive] = useState<LiveUtterance[]>([]);
 
   const audioContainerRef = useRef<HTMLDivElement | null>(null);
   const roomRef = useRef<Room | null>(null);
-  const transcriptMapRef = useRef<Map<string, TranscriptEntry>>(new Map());
+  const liveMapRef = useRef<Map<string, LiveUtterance>>(new Map());
 
   useEffect(() => {
     const pathToken = window.location.pathname.split('/').filter(Boolean).pop() ?? '';
@@ -134,7 +177,7 @@ export default function VoiceBridgePage() {
       setMicEnabled(local.isMicrophoneEnabled);
     };
 
-    const upsertTranscript = (
+    const upsertLive = (
       segments: TranscriptionSegment[],
       participant: Participant | undefined,
     ) => {
@@ -143,20 +186,20 @@ export default function VoiceBridgePage() {
       const isAgent = participant?.isAgent ?? false;
       const name = isLocal ? 'You' : isAgent ? participant?.name || 'Kortix' : participant?.name || participant?.identity || 'Guest';
       for (const segment of segments) {
-        transcriptMapRef.current.set(segment.id, {
+        // Keyed by segment id, which is stable across the interim revisions of
+        // one utterance — so a sentence being revised updates in place instead
+        // of stuttering down the feed.
+        liveMapRef.current.set(segment.id, {
           id: segment.id,
-          identity: participant?.identity ?? segment.id,
           name,
           isLocal,
-          isAgent,
           text: segment.text,
           final: segment.final,
           firstReceivedTime: segment.firstReceivedTime,
-          lastReceivedTime: segment.lastReceivedTime,
         });
       }
-      setTranscript(
-        Array.from(transcriptMapRef.current.values()).sort(
+      setLive(
+        Array.from(liveMapRef.current.values()).sort(
           (a, b) => a.firstReceivedTime - b.firstReceivedTime,
         ),
       );
@@ -218,10 +261,14 @@ export default function VoiceBridgePage() {
         // each Participant is kept in lockstep with this event, so a single
         // roster resync picks up who's talking right now.
         .on(RoomEvent.ActiveSpeakersChanged, syncRoster)
-        // The live, two-directional transcript — both the human's speech and
-        // the agent's replies arrive here as the LiveKit Agents SDK publishes
-        // them, attributed to whichever participant/track produced them.
-        .on(RoomEvent.TranscriptionReceived, upsertTranscript)
+        // The LIVE tail, and only the tail. Both voices arrive here as the
+        // LiveKit Agents SDK publishes them, attributed to whichever
+        // participant produced them — but this stream carries the two VOICES
+        // and nothing else, which is exactly why it cannot be the transcript
+        // (see the file header). It is here for latency: a sentence shows up
+        // the moment it is spoken, and drops out again as soon as the durable
+        // record catches up with it (`unrecordedLive`).
+        .on(RoomEvent.TranscriptionReceived, upsertLive)
         // Output Media just needs a real <audio>/<video> element playing in the
         // DOM to produce sound. `track.attach()` gives us that element with
         // LiveKit's jitter buffer, PLC and Opus decode already wired behind it —
@@ -285,6 +332,61 @@ export default function VoiceBridgePage() {
     };
   }, []);
 
+  // ── The durable call record ──────────────────────────────────────────────
+  //
+  // Runs independently of the LiveKit connection above, on purpose: this is
+  // the transcript, and it must keep filling in even while the room is
+  // reconnecting or the browser is still refusing to play audio.
+  //
+  // Authorized by the join-link token in the URL and nothing else — the same
+  // capability that got this page its LiveKit token, scoped by the server to
+  // the one call that token was minted for (there is no call/session/project
+  // id in this request for anyone to swap). A legacy raw-JWT link has no such
+  // token, so it gets no durable record and falls back to the LiveKit stream
+  // alone; that is the old, lossy behaviour, kept working rather than broken.
+  useEffect(() => {
+    const pathToken = window.location.pathname.split('/').filter(Boolean).pop() ?? '';
+    if (!isJoinLinkToken(pathToken)) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let cursor = 0;
+
+    const poll = async () => {
+      try {
+        const page = await getPublicVoiceTranscript(pathToken, cursor);
+        if (cancelled) return;
+        cursor = page.cursor;
+        if (page.turns.length > 0) {
+          const incoming = toCallRecordEntries(page.turns);
+          setRecord((prev) => mergeCallRecord(prev, incoming));
+        }
+      } catch (err) {
+        // 404/410 is the link itself being gone — unknown, expired, or revoked
+        // because the call ended. Retrying cannot fix any of those, and the
+        // page keeps whatever it already read, so stop rather than hammer a
+        // dead link every two seconds for as long as the tab stays open.
+        if (err instanceof PublicVoiceJoinError && (err.status === 404 || err.status === 410)) {
+          return;
+        }
+        // Anything else is silent and deliberately still scheduled below. A
+        // failed poll is a gap in the record, not a broken call — the human is
+        // still talking to the agent, and the next tick re-reads from the same
+        // cursor and fills the gap in. Tearing the page down over it, or
+        // giving up on the record for the rest of the call, would both be
+        // worse than a two-second delay.
+      }
+      if (!cancelled) timer = setTimeout(poll, RECORD_POLL_INTERVAL_MS);
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
   const toggleMic = useCallback(() => {
     const room = roomRef.current;
     if (!room) return;
@@ -311,7 +413,11 @@ export default function VoiceBridgePage() {
       <div className="mx-auto flex w-full min-h-0 max-w-2xl flex-1 flex-col gap-4 overflow-hidden px-4 py-4 sm:py-6">
         {phase === 'reconnecting' && <ReconnectingBanner />}
         <PresenceRail roster={roster} />
-        <TranscriptFeed entries={transcript} className="min-h-0 flex-1" />
+        <TranscriptFeed
+          entries={record}
+          live={unrecordedLive(live, record)}
+          className="min-h-0 flex-1"
+        />
       </div>
       <CallControls micEnabled={micEnabled} onToggleMic={toggleMic} onLeave={leave} />
       {needsGesture && <AudioGestureOverlay />}

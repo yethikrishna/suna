@@ -1,6 +1,6 @@
 import { beforeEach, expect, mock, test } from 'bun:test';
 import { configureKortix } from '../../http/config';
-import { PublicVoiceJoinError, getPublicVoiceJoin } from './public-voice-join';
+import { PublicVoiceJoinError, getPublicVoiceJoin, getPublicVoiceTranscript } from './public-voice-join';
 
 let calls: { url: string; method: string; headers: Record<string, string> }[] = [];
 let nextResponse: { status: number; body: unknown } = { status: 200, body: {} };
@@ -58,5 +58,50 @@ test('getPublicVoiceJoin surfaces 410 (expired or the call ended) with the statu
     expect(err).toBeInstanceOf(PublicVoiceJoinError);
     expect((err as PublicVoiceJoinError).status).toBe(410);
     expect((err as Error).message).toBe('This call has ended');
+  }
+});
+
+test('getPublicVoiceTranscript reads the join link\'s own call, with no Authorization header', async () => {
+  nextResponse = {
+    status: 200,
+    body: {
+      call_id: 'sess-1',
+      cursor: 7,
+      turns: [
+        { cursor: 6, role: 'agent', speaker: 'kortix', text: 'The deploy finished.', at: '2026-07-26T10:00:00.000Z' },
+        { cursor: 7, role: 'tool', speaker: 'run_command', text: 'run_command: ls → ok', at: '2026-07-26T10:00:01.000Z' },
+      ],
+    },
+  };
+  const page = await getPublicVoiceTranscript('vjl_abc123', 5);
+  expect(last().url).toBe('http://test.local/public/voice-join/vjl_abc123/transcript?cursor=5');
+  expect(last().method).toBe('GET');
+  expect(last().headers.Authorization).toBeUndefined();
+  expect(page.cursor).toBe(7);
+  expect(page.turns).toHaveLength(2);
+  expect(page.turns[0]!.speaker).toBe('kortix');
+  expect(page.turns[1]!.role).toBe('tool');
+});
+
+test('getPublicVoiceTranscript defaults to cursor 0 — the whole call', async () => {
+  nextResponse = { status: 200, body: { call_id: 'sess-1', cursor: 0, turns: [] } };
+  await getPublicVoiceTranscript('vjl_abc123');
+  expect(last().url).toBe('http://test.local/public/voice-join/vjl_abc123/transcript?cursor=0');
+});
+
+test('getPublicVoiceTranscript URL-encodes the token', async () => {
+  nextResponse = { status: 200, body: { call_id: 'sess-1', cursor: 0, turns: [] } };
+  await getPublicVoiceTranscript('vjl_has/slash');
+  expect(last().url).toBe('http://test.local/public/voice-join/vjl_has%2Fslash/transcript?cursor=0');
+});
+
+test('getPublicVoiceTranscript surfaces 410 once the call has ended', async () => {
+  nextResponse = { status: 410, body: { error: 'This call has ended' } };
+  try {
+    await getPublicVoiceTranscript('ended');
+    throw new Error('expected a rejection');
+  } catch (err) {
+    expect(err).toBeInstanceOf(PublicVoiceJoinError);
+    expect((err as PublicVoiceJoinError).status).toBe(410);
   }
 });

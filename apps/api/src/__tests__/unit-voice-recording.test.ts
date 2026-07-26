@@ -59,6 +59,11 @@ mock.module('../channels/voice/livekit', () => ({
   createRoom: async () => {},
   deleteRoom: async () => {},
   joinPageUrl: () => 'https://example.com/voice/tok',
+  // Unused here, but bun's module mocks are registered globally for the whole
+  // test RUN: a partial stand-in for livekit.ts breaks any other unit file in
+  // the same run that imports an export this object omits (public-join-routes
+  // imports `mintAccessToken`). Keep this a faithful superset, not a minimal one.
+  mintAccessToken: async () => 'lk-jwt',
   sendRoomData: async (room: string, topic: string, payload: unknown) => {
     sent.push({ room, topic, payload });
   },

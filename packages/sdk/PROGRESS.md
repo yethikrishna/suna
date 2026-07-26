@@ -254,6 +254,8 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B23 | **Prevent ACP prompt results from exposing a false idle window before late protocol updates settle.**                                                                                                                                                                                                                                                                                                                                          | The deployed white-label parity screenshot rendered 4 ACP tool cards and `Agent is working…`, while REST rendered 26 completed tool cards. `applyAcpEnvelope()` marks the projection idle on the prompt result, and later tool or text updates can mark it busy again.                                                                                                  | **IN PROGRESS 2026-07-26** — session `whitelabel-acp-stable-completion`; RED test, SDK fix, strengthened parity gate, merge, Deploy Dev, and deployed proof required                                                                                                                            |
 | B24 | **Accept a server-authorized initial OpenCode session pin in `useSession`.** The SDK must hydrate the cached transcript before runtime readiness without making the initial pin authoritative over the `/start` result.                                                                                                                                                                                                                          | Existing sessions wait for `/start` before `useSessionSync` can hydrate IndexedDB history. The preserved `session-load-latency` work proved the additive option and pin precedence.                                                                                                                       | **IN PROGRESS 2026-07-26** — session `api-latency-refactor`; RED test, implementation port, full SDK gates, browser proof, merge, and Deploy Dev proof required                                                                                                                               |
 | B25 | **Start project model-picker and project-detail reads in parallel.** Gateway projects must not wait for project detail before the SDK starts the compact model-picker request.                                                                                                                                                                                                                                                                   | `src/react/use-opencode-sessions/providers.ts` enables the model query only after `projectDetailQuery.isSuccess`, which creates a sequential request waterfall on project load.                                                                                                                          | **IN PROGRESS 2026-07-26** — session `api-latency-refactor`; RED test, implementation, full SDK gates, browser network proof, merge, and Deploy Dev proof required                                                                                                                            |
+| B26 | **Do not report an expected warm-session configuration mismatch as a global API error.** The web client catches `WARM_SESSION_CONFIGURATION_MISMATCH` and creates a normal session.                                                                                                                                                                                                                                                               | `src/core/rest/projects-client/sessions.ts` calls `/sessions/warm/claim` with the default `showErrors: true`, so the recoverable `409` still reaches the host error handler.                                                                                                                                | **IN PROGRESS 2026-07-26** — session `use2-session-readiness`; RED test, implementation, full SDK gates, dev proof, and US shadow proof required                                                                                                                                             |
+| B27 | **Let all-account project queries retry transient failures without a global error notification.** The projects page can issue one query per account.                                                                                                                                                                                                                                                                                            | Live US shadow evidence at `2026-07-26T20:03:20Z`: one IAM-backed `GET /projects` returned `500`; the identical retry returned `200` after `1.4s`. `listProjectsForAccount` exposes no `ApiClientOptions`, so the host cannot set `showErrors: false`.                                                           | **IN PROGRESS 2026-07-26** — session `use2-session-readiness`; RED test, additive options parameter, full SDK gates, dev proof, and US shadow proof required                                                                                                                                 |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -2793,6 +2795,23 @@ Post-repair verification:
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
 and deployed ACP plus REST parity remain.
+
+---
+
+### 2026-07-26 — session `use2-session-readiness` (B26 and B27 claim)
+
+Claimed two notification regressions found during live US shadow verification.
+
+- Warm-session configuration mismatches must remain recoverable without a
+  global error notification.
+- All-account project queries must let React Query retry transient failures
+  without a global error notification.
+
+Implementation will follow RED -> GREEN -> REFACTOR. Required gates are focused
+SDK tests, full SDK typecheck, suite, packed-install smoke, web lint, PR merge,
+Deploy Dev SHA proof, and US shadow verification.
+
+**Status:** IN PROGRESS.
 
 ---
 

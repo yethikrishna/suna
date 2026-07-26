@@ -302,6 +302,7 @@ export async function claimWarmProjectSession(
     await backendApi.post<ProjectSession>(
       `/projects/${projectId}/sessions/warm/claim`,
       input,
+      { showErrors: false },
     ),
   );
   markSessionFresh(session.session_id);

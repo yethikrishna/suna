@@ -39,6 +39,13 @@ test("shadow smokes can bypass the production custom domain before cutover", () 
   );
 });
 
+test("US shadow exposes the managed model catalog for runtime verification", () => {
+  assert.match(
+    shadowWorkflow,
+    /\.KORTIX_MANAGED_PROVIDER_ENABLED == "true"/,
+  );
+});
+
 test("target smoke removes and counts recovery flow state", () => {
   assert.match(
     targetSmokeProgram,

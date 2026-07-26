@@ -252,6 +252,8 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B21 | **Serialize ACP sends with runtime restart reloads.** A send that starts while OpenCode restarts can wait forever on `session/set_config_option` and never send `session/prompt`.                                                                                                                                                                                                                                                               | Deployed cold Chromium sent `session/set_config_option` at `13:36:20.250Z`, received `kortix/runtime_ready`, then sent `session/load` at `13:36:20.640Z`; `POST_RESTART_PONG` never produced `session/prompt`.                                                                                              | **DONE 2026-07-25** — implementation `d8537fa2c`; RED tests, full SDK gates, and test-harness typecheck pass                                                                                                                                                                                                                          |
 | B22 | **Expose server-owned warm project-session ensure and claim operations.** The project index needs one reusable empty session without owning session selection or deduplication in app code.                                                                                                                                                                                                                                                   | `apps/web/src/app/(app)/projects/[id]/page.tsx` creates a session only after send. `packages/sdk/src/core/rest/projects-client/sessions.ts` exposes create and list, but no atomic warm-session operation.                                                                                              | **DONE 2026-07-26** — implementation `13167d7cf`; RED tests, full SDK gates, live API/SDK lifecycle, workspace refresh, and maintenance retention proof pass                                                                                                                                                                           |
 | B23 | **Prevent ACP prompt results from exposing a false idle window before late protocol updates settle.**                                                                                                                                                                                                                                                                                                                                          | The deployed white-label parity screenshot rendered 4 ACP tool cards and `Agent is working…`, while REST rendered 26 completed tool cards. `applyAcpEnvelope()` marks the projection idle on the prompt result, and later tool or text updates can mark it busy again.                                                                                                  | **IN PROGRESS 2026-07-26** — session `whitelabel-acp-stable-completion`; RED test, SDK fix, strengthened parity gate, merge, Deploy Dev, and deployed proof required                                                                                                                            |
+| B24 | **Accept a server-authorized initial OpenCode session pin in `useSession`.** The SDK must hydrate the cached transcript before runtime readiness without making the initial pin authoritative over the `/start` result.                                                                                                                                                                                                                          | Existing sessions wait for `/start` before `useSessionSync` can hydrate IndexedDB history. The preserved `session-load-latency` work proved the additive option and pin precedence.                                                                                                                       | **IN PROGRESS 2026-07-26** — session `api-latency-refactor`; RED test, implementation port, full SDK gates, browser proof, merge, and Deploy Dev proof required                                                                                                                               |
+| B25 | **Start project model-picker and project-detail reads in parallel.** Gateway projects must not wait for project detail before the SDK starts the compact model-picker request.                                                                                                                                                                                                                                                                   | `src/react/use-opencode-sessions/providers.ts` enables the model query only after `projectDetailQuery.isSuccess`, which creates a sequential request waterfall on project load.                                                                                                                          | **IN PROGRESS 2026-07-26** — session `api-latency-refactor`; RED test, implementation, full SDK gates, browser network proof, merge, and Deploy Dev proof required                                                                                                                            |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -2791,6 +2793,75 @@ Post-repair verification:
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
 and deployed ACP plus REST parity remain.
+
+---
+
+### 2026-07-26 — session `api-latency-refactor` (B24 and B25 claims)
+
+Claimed two additive React SDK changes.
+
+B24 adds an optional server-authorized initial OpenCode session pin. The pin
+starts IndexedDB transcript hydration before `/start` completes. The `/start`
+pin remains authoritative.
+
+B25 starts the compact project model-picker request in parallel with project
+detail. Native projects continue to wait for runtime readiness.
+
+Implementation follows RED -> GREEN -> REFACTOR. Required gates are SDK
+typecheck, the full SDK suite, packed-install smoke, focused web tests, local
+browser proof, PR merge, Deploy Dev, deployed SHA proof, and deployed browser
+proof.
+
+**Status:** IN PROGRESS.
+
+**Shippable to production: NOT YET.**
+
+---
+
+### 2026-07-26 — session `api-latency-refactor` (B24 and B25 local completion)
+
+Completed the additive initial-session pin and parallel model-picker changes.
+
+RED evidence:
+
+- The initial-pin test failed because `resolveSessionPin()` did not exist.
+- The provider plan test failed because the model-picker waited for project
+  detail.
+- The web session-load test failed because cached transcript content could not
+  mount before the runtime switch completed.
+- The provider-loading test failed because the modal waited for runtime
+  provider discovery after project detail and secrets had resolved.
+
+Post-rebase gates:
+
+- SDK typecheck: exit 0.
+- SDK suite: **1275 pass / 0 fail** with **5669** assertions across **107**
+  files.
+- SDK packed-install smoke: pass.
+- Web suite: **2207 pass / 0 fail** with **5970** assertions across **244**
+  files.
+- Focused web ESLint: exit 0.
+- API typecheck: exit 0.
+- Focused isolated API tests: **67 pass / 0 fail**.
+- Sandbox-agent typecheck: exit 0.
+- Sandbox-agent suite: **298 pass / 0 fail** with **720** assertions.
+
+Live local execution-lease proof:
+
+- `acquire`: HTTP 200 in **33.9 ms**. The response and database stored the same
+  `executionLeaseUntil`.
+- `renew`: HTTP 200 in **20.8 ms**. The response and database stored the same
+  `executionLeaseUntil`.
+- `release`: HTTP 200 in **21.3 ms**. The database stored
+  `executionLeaseUntil = null`.
+
+Browser discovery returned no available browser. Local DOM and browser-network
+verification remains open.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
+and deployed browser verification remain open.
 
 ---
 

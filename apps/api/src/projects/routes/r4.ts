@@ -67,6 +67,7 @@ import {
 import { reconcileChannelConnectors } from '../../executor/sync';
 import { resolveExperimentalFeature } from '../../experimental/features';
 import { PROJECT_ACTIONS } from '../../iam';
+import { setContextField } from '../../lib/request-context';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { gatewayModelCatalog } from '../../llm-gateway/models/catalog-models';
 import { projectPickerCatalog } from '../../llm-gateway/models/picker-catalog';
@@ -120,6 +121,7 @@ import {
 import { listProjectSecretsSnapshot } from '../secrets';
 import { reconcileProjectTriggerRuntime } from '../trigger-runtime-catalog';
 import { type ParsedManifest, extractTriggers, loadProjectTriggers } from '../triggers';
+import { turnStreamKindField } from './r4-turn-stream-kind';
 
 // Body keys that change the trigger's *repo manifest* (committed to git). A PATCH
 // whose body touches none of these has nothing to commit, so we skip git entirely
@@ -2042,6 +2044,7 @@ projectsApp.openapi(
     } catch {
       return c.json({ error: 'Invalid JSON body' }, 400);
     }
+    setContextField('kind', turnStreamKindField(body.kind));
     const sessionId = body.session_id?.trim();
     if (!sessionId) {
       return c.json({ error: 'session_id is required' }, 400);

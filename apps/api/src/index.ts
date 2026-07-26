@@ -48,6 +48,7 @@ import { GitOperationError, isGitOperationError } from './projects/git/mirror';
 // idleTimeout kills the socket with an empty reply. Frontend-polled routes
 // (maintenance banner, user-roles) must never sit behind a dynamic import.
 import { db, hasDatabase } from './shared/db';
+import { computeEtag, etagMatches } from './shared/http-cache';
 import { getPlatformRole } from './shared/platform-roles';
 import { platformSettings } from '@kortix/db';
 import { eq } from 'drizzle-orm';
@@ -517,14 +518,32 @@ app.openapi(
     summary: 'Read the maintenance config (public — banner + maintenance page)',
     responses: { 200: json(MaintenanceSchema, 'Maintenance config') },
   }),
+  // Cacheable: the response never varies per tenant/user (no auth, same row
+  // for every caller), so `public` is safe. `max-age=5` + ETag revalidation
+  // shaves the repeat-poll DB roundtrip most callers pay without risking a
+  // stale kill switch — this is the platform's emergency maintenance toggle,
+  // so a long `stale-while-revalidate` (which would let a just-flipped-on
+  // lockdown keep serving the OLD state to clients for minutes) is
+  // deliberately not used here.
   async (c: any) => {
-    if (!hasDatabase) return c.json(DEFAULT_MAINTENANCE);
+    if (!hasDatabase) {
+      const etag = computeEtag(DEFAULT_MAINTENANCE);
+      c.header('Cache-Control', 'public, max-age=5, must-revalidate');
+      c.header('ETag', etag);
+      if (etagMatches(c.req.header('If-None-Match'), etag)) return c.body(null, 304);
+      return c.json(DEFAULT_MAINTENANCE);
+    }
     const [row] = await db
       .select({ value: platformSettings.value })
       .from(platformSettings)
       .where(eq(platformSettings.key, MAINTENANCE_KEY))
       .limit(1);
-    return c.json(row?.value ?? DEFAULT_MAINTENANCE);
+    const payload = row?.value ?? DEFAULT_MAINTENANCE;
+    const etag = computeEtag(payload);
+    c.header('Cache-Control', 'public, max-age=5, must-revalidate');
+    c.header('ETag', etag);
+    if (etagMatches(c.req.header('If-None-Match'), etag)) return c.body(null, 304);
+    return c.json(payload);
   },
 );
 

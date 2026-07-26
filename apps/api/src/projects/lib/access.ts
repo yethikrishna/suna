@@ -3,7 +3,6 @@ import { authorize, assertAuthorized } from '../../iam';
 import { deriveRequestContext } from '../../iam/cache';
 import { invalidateIamCacheForUser, registerPrincipalScopedMemo } from '../../iam/cache-invalidation';
 import { auth } from '../../openapi';
-import { preResumeRecentStoppedSessions } from '../routes/shared';
 import { recordAuditEvent } from '../../shared/audit';
 import { db } from '../../shared/db';
 import { isPlatformAdmin } from '../../shared/platform-roles';
@@ -598,12 +597,6 @@ export async function loadProjectForUser(c: Context, projectId: string, action: 
   const effectiveRole =
     (accountRole ? effectiveProjectRole(accountRole, projectRole) : projectRole) ?? 'member';
   (c as any).set('accountId', row.accountId);
-
-  if (action !== 'read' || roleAllows(effectiveRole as ProjectRole, 'write')) {
-    // Proactively wake the user's most recently-stopped session(s) so the resume
-    // overlaps their navigation. No-op unless KORTIX_PRERESUME_ENABLED.
-    preResumeRecentStoppedSessions(projectId, userId);
-  }
 
   return {
     row,

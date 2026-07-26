@@ -7,10 +7,11 @@ import { db } from '../../shared/db';
 import { resolveBranchTip } from '../git';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { changeRequests, projectSessions, sessionSandboxes } from '@kortix/db';
-import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { withProjectGitAuth } from '../lib/git';
 import { ProjectRow, serializeSessionSandboxConfig } from '../lib/serializers';
 import { allocateSessionRuntime } from '../lib/session-runtime-allocator';
+import { sandboxSlugFromSessionMetadata } from '../lib/session-sandbox-metadata';
 import { buildSessionSandboxEnvVars, sandboxCallbackUnreachableReason } from '../lib/sessions';
 import { ensureOpencodeSessionPin } from '../opencode-mapping';
 import {
@@ -60,15 +61,6 @@ export async function resumeStoppedSandbox(row: {
   const now = new Date();
   const runtimeWakeId = crypto.randomUUID();
   const wakeMetadata = { ...(row.metadata ?? {}) };
-  // Carry the prior failure count/error forward instead of erasing it here:
-  // erasing it on every new attempt (the old behavior) is what let a
-  // permanently-dead box look "fresh" to selectPreResumeTargets on every
-  // single retry, forever. It's only cleared on an actual provider-start
-  // SUCCESS below, or bumped again on another failure.
-  const priorWakeFailureCount =
-    typeof wakeMetadata.runtimeWakeFailureCount === 'number'
-      ? wakeMetadata.runtimeWakeFailureCount
-      : 0;
   for (const key of [
     'idleQuiesced',
     'idleQuiescedAt',
@@ -78,6 +70,8 @@ export async function resumeStoppedSandbox(row: {
     'runtimeUnavailableAt',
     'preservedExternalId',
     'needsReprovision',
+    'runtimeWakeError',
+    'runtimeWakeFailedAt',
     'opencodeReadyWaitStartedAt',
     'opencodeReadyWaitReason',
   ])
@@ -129,7 +123,7 @@ export async function resumeStoppedSandbox(row: {
     await db
       .update(sessionSandboxes)
       .set({
-        metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) - 'runtimeWakeStartedAt' - 'runtimeWakeId' - 'runtimeWakeProviderStatus' - 'runtimeWakeError' - 'runtimeWakeFailedAt' - 'runtimeWakeFailureCount'`,
+        metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) - 'runtimeWakeStartedAt' - 'runtimeWakeId' - 'runtimeWakeProviderStatus' - 'runtimeWakeError' - 'runtimeWakeFailedAt'`,
         updatedAt: new Date(),
       })
       .where(
@@ -155,11 +149,7 @@ export async function resumeStoppedSandbox(row: {
       .update(sessionSandboxes)
       .set({
         status: 'stopped',
-        metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) || ${JSON.stringify({
-          runtimeWakeError: isMissingRuntimeError(err) ? 'missing' : 'start_failed',
-          runtimeWakeFailedAt: new Date().toISOString(),
-          runtimeWakeFailureCount: priorWakeFailureCount + 1,
-        })}::jsonb`,
+        metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) || ${JSON.stringify({ runtimeWakeError: isMissingRuntimeError(err) ? 'missing' : 'start_failed', runtimeWakeFailedAt: new Date().toISOString() })}::jsonb`,
         updatedAt: new Date(),
       })
       .where(
@@ -214,154 +204,6 @@ export async function resumeStoppedSandboxByExternalId(externalId: string): Prom
   });
 }
 
-// ── Pre-resume on presence ───────────────────────────────────────────────────
-// Throttle pre-resume per project so portal activity doesn't re-kick on every
-// request. The resume itself is idempotent (resumeStoppedSandbox only acts on a
-// stopped→active transition), so this is purely to avoid wasted DB lookups.
-const preResumeThrottle = new Map<string, number>();
-const PRERESUME_THROTTLE_MS = 30_000;
-
-// A stopped box that keeps failing to resume at the provider is presumed dead
-// (measured in prod: two permanently-dead boxes alone accounted for 367 of 435
-// pre-resume wake attempts in a single hour, retried every ~30s forever).
-// PRERESUME_MAX_CONSECUTIVE_FAILURES gives a box a small, bounded number of
-// speculative tries — enough for a transient blip (one bad provider call) to
-// not immediately blacklist the box — before pre-resume gives up on it for
-// good. This ONLY gates speculative selection (selectPreResumeTargets); a
-// real user's explicit /start (openSession / resumeStoppedSandboxByExternalId)
-// always still attempts the resume regardless of this counter. The counter
-// resets to zero the moment a resume actually succeeds.
-const PRERESUME_MAX_CONSECUTIVE_FAILURES = 3;
-// Exponential backoff from the last failure so the handful of tries allowed
-// under the cap above are spread out rather than burned on the very next
-// 30s pass — a transient failure still gets retried once it's genuinely
-// likely to have cleared.
-const PRERESUME_BACKOFF_BASE_MS = 2 * 60_000;
-const PRERESUME_BACKOFF_MAX_MS = 30 * 60_000;
-// selectPreResumeTargets filters ineligible (recently-failed) candidates out
-// AFTER the DB fetch, so it over-fetches a bit past `limit` to still be able
-// to return `limit` eligible rows when the most-recently-used candidates are
-// dead boxes sitting at the top of the lastUsedAt ordering.
-const PRERESUME_CANDIDATE_OVERFETCH = 10;
-
-function preResumeBackoffMs(failureCount: number): number {
-  const exp = PRERESUME_BACKOFF_BASE_MS * 2 ** Math.max(0, failureCount - 1);
-  return Math.min(exp, PRERESUME_BACKOFF_MAX_MS);
-}
-
-/**
- * Whether a stopped sandbox is still worth a speculative pre-resume. A box
- * with no recorded wake failure is always eligible. One that has failed is
- * gated behind BOTH a hard cap (PRERESUME_MAX_CONSECUTIVE_FAILURES — presumed
- * dead, excluded from speculation until a real resume succeeds and clears the
- * counter) and an exponential backoff from its last failure time (so it isn't
- * re-kicked on the very next 30s pass). Pure — exported for direct testing.
- */
-export function isPreResumeEligible(
-  metadata: Record<string, unknown> | null | undefined,
-  nowMs = Date.now(),
-): boolean {
-  const meta = metadata ?? {};
-  if (!meta.runtimeWakeError) return true;
-  const failureCount =
-    typeof meta.runtimeWakeFailureCount === 'number' ? meta.runtimeWakeFailureCount : 1;
-  if (failureCount >= PRERESUME_MAX_CONSECUTIVE_FAILURES) return false;
-  const failedAtMs = parseTimestampMs(meta.runtimeWakeFailedAt);
-  if (failedAtMs == null) return true;
-  return nowMs - failedAtMs >= preResumeBackoffMs(failureCount);
-}
-
-/**
- * When a user returns to a project, proactively resume their most-recently-used
- * STOPPED session sandbox(es) so the ~8s in-place resume (VM restart + opencode
- * re-warm) overlaps the user's navigation and the session is ready by the time
- * they open it. Reuses resumeStoppedSandbox (idempotent with the on-open resume:
- * if the box is already resuming/active, the conditional stopped→active lock
- * simply no-ops). Best-effort + fire-and-forget; GATED OFF by default
- * (KORTIX_PRERESUME_ENABLED) since it spends compute on a box the user might not
- * open. Scoped to the user's OWN sessions (never speculatively resumes someone
- * else's). Most-recent-first, capped at KORTIX_PRERESUME_MAX_PER_PROJECT.
- */
-/**
- * The pre-resume candidates: the user's OWN most-recently-used STOPPED session
- * sandboxes in a project (status='stopped', a provider box still attached),
- * excluding any that recently failed to resume (see isPreResumeEligible) —
- * without that exclusion, a permanently-dead box sorts first on lastUsedAt
- * forever and gets re-kicked on every pass. Most-recent-first among the
- * eligible ones, capped at `limit`. Pure DB read, no side effects — exported
- * so the selection is testable without provisioning real sandboxes.
- */
-export async function selectPreResumeTargets(
-  projectId: string,
-  userId: string,
-  limit: number,
-): Promise<
-  Array<{
-    sandboxId: string;
-    sessionId: string;
-    accountId: string;
-    provider: string;
-    externalId: string | null;
-    metadata: Record<string, unknown> | null;
-  }>
-> {
-  const boundedLimit = Math.max(1, limit);
-  const rows = await db
-    .select({
-      sandboxId: sessionSandboxes.sandboxId,
-      sessionId: sessionSandboxes.sessionId,
-      accountId: sessionSandboxes.accountId,
-      provider: sessionSandboxes.provider,
-      externalId: sessionSandboxes.externalId,
-      metadata: sessionSandboxes.metadata,
-    })
-    .from(sessionSandboxes)
-    .innerJoin(projectSessions, eq(projectSessions.sessionId, sessionSandboxes.sessionId))
-    .where(
-      and(
-      eq(sessionSandboxes.projectId, projectId),
-      eq(sessionSandboxes.status, 'stopped'),
-      isNotNull(sessionSandboxes.externalId),
-      eq(projectSessions.createdBy, userId),
-      ),
-    )
-    .orderBy(desc(sessionSandboxes.lastUsedAt))
-    .limit(boundedLimit + PRERESUME_CANDIDATE_OVERFETCH);
-  return rows.filter((row) => isPreResumeEligible(row.metadata)).slice(0, boundedLimit);
-}
-
-export function preResumeRecentStoppedSessions(projectId: string, userId?: string | null): void {
-  if (!config.KORTIX_PRERESUME_ENABLED || !projectId || !userId) return;
-  const nowMs = Date.now();
-  if (nowMs - (preResumeThrottle.get(projectId) ?? 0) < PRERESUME_THROTTLE_MS) return;
-  preResumeThrottle.set(projectId, nowMs);
-  void (async () => {
-    try {
-      const rows = await selectPreResumeTargets(
-        projectId,
-        userId,
-        config.KORTIX_PRERESUME_MAX_PER_PROJECT,
-      );
-      let kicked = 0;
-      for (const row of rows) {
-        const won = await resumeStoppedSandbox(row).catch((err) => {
-          console.warn(
-            `[pre-resume] resume ${row.sandboxId.slice(0, 8)} failed:`,
-            err instanceof Error ? err.message : err,
-          );
-          return false;
-        });
-        if (won) kicked++;
-      }
-      if (kicked)
-        console.log(`[pre-resume] kicked ${kicked} resume(s) for project ${projectId.slice(0, 8)}`);
-    } catch (err) {
-      console.warn('[pre-resume] failed:', err instanceof Error ? err.message : err);
-      preResumeThrottle.delete(projectId); // let the next presence retry
-    }
-  })();
-}
-
 export async function allocateRuntimeOnOpen(
   loaded: { row: ProjectRow; userId: string },
   session: {
@@ -394,6 +236,7 @@ export async function allocateRuntimeOnOpen(
     providerName,
     baseRef: session.baseRef ?? loaded.row.defaultBranch,
     agentName: session.agentName ?? 'default',
+    sandboxSlug: sandboxSlugFromSessionMetadata(session.metadata),
     runtimeMetadata,
     sessionMetadata,
     buildEnvVars: () =>

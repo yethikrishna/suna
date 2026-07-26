@@ -3037,3 +3037,58 @@ ke2e coverage, local API proof, browser proof, PR merge, Deploy Dev, deployed SH
 proof, and deployed browser proof.
 
 **Status:** COMPLETE — `13167d7cf`.
+
+---
+
+### 2026-07-26 — session `whitelabel-acp-stable-completion` (B23 local completion)
+
+Completed the monotonic ACP and REST prompt-settlement implementation in
+`7a546585c`.
+
+ACP `send()` now resolves after the prompt result and a 500-millisecond quiet
+period. Late assistant, tool, question, and permission updates restart or block
+that settlement. Prompt queue serialization waits for full settlement.
+
+REST prompt observation now belongs to `SessionSyncController`. Premature idle
+events do not clear the public busy state. Late busy events cancel the
+500-millisecond settlement timer. Status reconciliation and SSE events use the
+same controller.
+
+TDD evidence:
+
+- ACP RED: `send()` resolved before delayed tool updates reached the transcript.
+- REST RED: `beginPromptObservation()` did not exist.
+- Focused REST GREEN: **40 pass / 0 fail** with **113** assertions.
+- Preview RED: expected status `200`; received `502`.
+- Preview GREEN: **7 pass / 0 fail** with **36** assertions.
+
+Post-rebase gates:
+
+- SDK typecheck: exit 0.
+- SDK suite: **1268 pass / 0 fail** with **5662** assertions across **105**
+  files.
+- SDK packed-install smoke: pass.
+- White-label typecheck: exit 0.
+- White-label suite: **57 pass / 3 skip / 0 fail** with **182** assertions.
+- White-label SDK boundary: **0 violations**.
+- White-label dev-API production build: exit 0.
+- Test-harness typecheck: exit 0.
+- `git diff --check`: exit 0.
+
+Post-rebase live ACP and REST presentation plus question parity:
+
+- Playwright: **1 pass / 0 fail** in **13.5 minutes**.
+- ACP sent **2** ACP prompts and **0** REST prompts.
+- REST sent **2** REST prompts and **0** ACP prompts.
+- ACP rendered **34** completed tool cards.
+- REST rendered **28** completed tool cards.
+- Tool-card parity ratio: **0.824**.
+- ACP created `/workspace/marko-kraemer.pptx` at **231,898 bytes**.
+- REST created `/workspace/marko_kraemer.pptx` at **228,064 bytes**.
+- Both transports persisted the question flow and rendered `QUESTION_BETA`.
+- Post-cleanup database proof: `active_projects=0`, `cleanup_users=0`.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
+and deployed ACP plus REST parity remain.

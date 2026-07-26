@@ -132,7 +132,7 @@ const FEATURES: readonly ExperimentalFeatureDef[] = [
     key: 'acp_runtime',
     name: 'ACP Runtime',
     description:
-      'Use the Agent Client Protocol for this project session interface. Disable this experiment to return to the OpenCode REST client.',
+      'Use the Agent Client Protocol for this project session interface. Disable this experiment to use the compatibility transport.',
     stability: 'experimental',
     available: () => true,
     platformDefault: () => false,

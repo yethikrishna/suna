@@ -28,6 +28,11 @@ import { useOpenCodeCompactionStore } from '../browser/stores/opencode-compactio
 import { useOpenCodePendingStore } from '../browser/stores/opencode-pending-store';
 import { setOpenCodeHealth, setSandboxStatus } from '../browser/stores/sandbox-connection-store';
 import { getSandboxUrlForExternalId } from '../browser/stores/server-store';
+import { useSyncStore } from '../browser/stores/sync-store';
+import {
+  beginSessionPromptObservation,
+  endSessionPromptObservation,
+} from '../browser/session-sync/session-sync-registry';
 import { setCurrentRuntime } from '../core/session/current-runtime';
 import {
   isSessionStartError,
@@ -223,6 +228,26 @@ export function sendStateOnStart(text: string): SendState {
  * the error. */
 export function sendStateOnError(error: unknown): SendState {
   return { pending: null, sendError: classifySendError(error) };
+}
+
+/**
+ * Keep the REST compatibility transcript reconciler active after
+ * `promptAsync()` accepts a prompt.
+ *
+ * The runtime can accept the prompt before the browser receives its first SSE
+ * status event. Without this optimistic busy state, the 10-second liveness
+ * reconciliation never starts. The transcript can then stay at the user
+ * message even though the agent completed the turn.
+ */
+export function beginRestPromptObservation(sessionId: string): void {
+  beginSessionPromptObservation(sessionId);
+  useSyncStore.getState().setStatus(sessionId, { type: 'busy' });
+}
+
+/** Clear the optimistic REST busy state when the prompt never starts or stops. */
+export function endRestPromptObservation(sessionId: string): void {
+  endSessionPromptObservation(sessionId);
+  useSyncStore.getState().setStatus(sessionId, { type: 'idle' });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -566,8 +591,10 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
   ) => {
     if (!ocSessionId) return;
     pendingBaseCount.current = userMsgCount;
+    if (!usesAcp) beginRestPromptObservation(ocSessionId);
     setSendState(sendStateOnStart(text));
     void sendParts([{ type: 'text', text }], override).catch((error) => {
+      if (!usesAcp) endRestPromptObservation(ocSessionId);
       setSendState(sendStateOnError(error));
     });
   };
@@ -594,7 +621,10 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
   const cancel = () => {
     if (ocSessionId) {
       if (usesAcp) void acpRuntime.cancel();
-      else abortMutation.mutate(ocSessionId);
+      else {
+        endRestPromptObservation(ocSessionId);
+        abortMutation.mutate(ocSessionId);
+      }
     }
     questions.forEach((q) => removeQuestion(q.id));
     permissions.forEach((p) => removePermission(p.id));
@@ -723,7 +753,7 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     // server-side capabilities (pre-runtime)
     models,
     agents,
-    defaultAgent: config?.open_code_default_agent ?? null,
+    defaultAgent: config?.default_agent ?? config?.open_code_default_agent ?? null,
     commands: config?.commands ?? [],
     picks,
 

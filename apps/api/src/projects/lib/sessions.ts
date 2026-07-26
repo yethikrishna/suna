@@ -37,6 +37,7 @@ import {
   loadProjectAgents,
   projectRequiresDeclaredAgents,
   resolveGovernedAgentGrant,
+  sandboxFromLoadedAgents,
 } from '../agents';
 import { createRemoteSessionBranch, resolveCommitSha } from '../git';
 import {
@@ -68,6 +69,7 @@ import {
   validateSessionConnectorBindings,
 } from './session-connector-bindings';
 import { canOverride, resolveSessionOrigin } from './session-origin';
+import { resolveSessionSandboxSlug } from './session-sandbox-metadata';
 import {
   buildSessionRuntimeContextEnv,
   mergeSessionSandboxEnv,
@@ -685,6 +687,7 @@ export async function createProjectSession(input: {
     (requestedAgent && requestedAgent !== 'default' ? requestedAgent : null) ??
     projectDefaultAgent ??
     'default';
+  const loadedAgents = await loadProjectAgents(project);
 
   const freeModelsOnly = config.KORTIX_BILLING_INTERNAL_ENABLED
     ? !tierGrantsAllModels(await getCachedAccountTier(accountId))
@@ -764,7 +767,7 @@ export async function createProjectSession(input: {
 
   let loadedAgentGrant: ReturnType<typeof grantFromLoadedAgents> | undefined;
   if (parsedConnectorBindings.bindings) {
-    loadedAgentGrant = grantFromLoadedAgents(agentName, await loadProjectAgents(project));
+    loadedAgentGrant = grantFromLoadedAgents(agentName, loadedAgents);
     for (const alias of Object.keys(parsedConnectorBindings.bindings)) {
       if (!agentMayUseConnector(loadedAgentGrant, alias)) {
         return {
@@ -823,7 +826,6 @@ export async function createProjectSession(input: {
   // fail-safe for NON-subject projects). Non-subject projects take the exact
   // same path as before this flag existed (zero added I/O, zero behavior change).
   if (projectRequiresDeclaredAgents(project.metadata, config.KORTIX_REQUIRE_DECLARED_AGENTS)) {
-    const loadedAgents = await loadProjectAgents(project);
     const governed = resolveGovernedAgentGrant(agentName, loadedAgents, {
       subject: true,
       projectDefaultAgent,
@@ -832,18 +834,16 @@ export async function createProjectSession(input: {
       return { error: { status: 400, body: { error: governed.error, code: governed.code } } };
     }
   }
-  // Explicit request wins; otherwise fall back to the project's default sandbox
-  // template (`sandbox.default` in kortix.yaml — `[sandbox] default` in a
-  // legacy v1 kortix.toml — synced to project metadata), so EVERY session — UI,
-  // triggers, channels — inherits the project's chosen box without each
-  // caller passing `sandbox_slug`. Unset → platform default.
+  // Explicit request wins. The selected agent environment is next. The
+  // project default and platform default remain the final fallbacks.
   const projectDefaultSandboxSlug = normalizeString(
     (project.metadata as Record<string, unknown> | null | undefined)?.default_sandbox_slug,
   );
-  const sandboxSlug =
-    normalizeString(body.sandbox_slug ?? body.sandboxSlug) ??
-    projectDefaultSandboxSlug ??
-    undefined;
+  const sandboxSlug = resolveSessionSandboxSlug({
+    explicit: normalizeString(body.sandbox_slug ?? body.sandboxSlug),
+    agent: sandboxFromLoadedAgents(agentName, loadedAgents),
+    project: projectDefaultSandboxSlug,
+  });
   // Sandbox provider: explicit request › per-project pin (Customize → Settings) ›
   // weighted balancer. The pin lets you put ONE project on e.g. platinum regardless
   // of the global distribution weights — see resolveSessionProvider.
@@ -956,6 +956,7 @@ export async function createProjectSession(input: {
     ...(opencodeModel ? { opencode_model: opencodeModel } : {}),
     ...(opencodeModelSource ? { opencode_model_source: opencodeModelSource } : {}),
     ...(input.metadata ?? {}),
+    sandbox_slug: sandboxSlug,
   };
 
   let sessionRow: ProjectSessionRow | null = null;
@@ -1145,6 +1146,7 @@ export async function createProjectSession(input: {
         accountId,
         projectId,
         userId,
+        agentName,
         provider: providerName,
         metadata: { session_id: sessionId, project_id: projectId, ...(input.metadata ?? {}) },
         extraEnvVars,

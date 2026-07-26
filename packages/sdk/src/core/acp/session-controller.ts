@@ -11,6 +11,7 @@ import type {
 import { AcpTransportError } from './types';
 
 const MAX_CONFIG_RESTART_RETRIES = 3;
+const ACP_PROMPT_QUIET_PERIOD_MS = 500;
 
 class AcpRuntimeRestartError extends Error {
   constructor() {
@@ -104,8 +105,8 @@ function questionContent(
   );
 }
 
-function settleLoadedProjection(projection: AcpProjection): AcpProjection {
-  const blocked =
+function hasProjectionBlockers(projection: AcpProjection): boolean {
+  return (
     projection.permissions.length > 0 ||
     projection.questions.length > 0 ||
     projection.messages.some((message) =>
@@ -114,8 +115,21 @@ function settleLoadedProjection(projection: AcpProjection): AcpProjection {
           part.type === 'tool' &&
           (part.state.status === 'pending' || part.state.status === 'running'),
       ),
-    );
-  if (blocked) return projection;
+    )
+  );
+}
+
+function isPromptResult(envelope: AcpEnvelope): boolean {
+  return (
+    'id' in envelope &&
+    !('method' in envelope) &&
+    isObject(envelope.result) &&
+    (asString(envelope.result.stopReason) !== null || isObject(envelope.result.usage))
+  );
+}
+
+function settleLoadedProjection(projection: AcpProjection): AcpProjection {
+  if (hasProjectionBlockers(projection)) return projection;
   const completed = Date.now();
   return {
     ...projection,
@@ -147,6 +161,11 @@ export class AcpSessionController {
   private runtimeGeneration = 0;
   private readonly restartWaiters = new Set<() => void>();
   private promptQueue: Promise<void> = Promise.resolve();
+  private promptSettlement: {
+    result: Record<string, unknown>;
+    timer: ReturnType<typeof setTimeout> | null;
+    resolve(): void;
+  } | null = null;
   private snapshot: AcpSessionControllerSnapshot;
 
   constructor(private readonly options: AcpSessionControllerOptions) {
@@ -188,6 +207,7 @@ export class AcpSessionController {
   }
 
   private async open(): Promise<void> {
+    this.resetCanonicalSessionState();
     this.patch({ connection: 'connecting', error: null });
     if (!this.stream) {
       this.stream = this.client.connect({
@@ -215,11 +235,14 @@ export class AcpSessionController {
     }
   }
 
-  private async loadCanonicalSession(): Promise<void> {
+  private resetCanonicalSessionState(): void {
     this.openRequests.clear();
     this.patch({
       projection: createAcpProjection(this.options.sessionId),
     });
+  }
+
+  private async loadCanonicalSession(): Promise<void> {
     const loaded = await this.client.loadSession({
       sessionId: this.options.sessionId,
       cwd: this.options.cwd ?? '/workspace',
@@ -242,6 +265,7 @@ export class AcpSessionController {
 
   private reloadAfterRuntimeReady(): void {
     if (!this.snapshot.ready || this.runtimeReload) return;
+    this.resetCanonicalSessionState();
     this.patch({ ready: false, connection: 'connecting', error: null });
     const reload = this.loadCanonicalSession()
       .catch((error) => {
@@ -286,14 +310,26 @@ export class AcpSessionController {
     prompt: AcpContentBlock[],
     options: { model?: string | null; agent?: string | null } = {},
   ): Promise<void> {
-    const queued = this.promptQueue.then(() => this.executeSend(prompt, options));
+    let resolveRequest: () => void = () => {};
+    let rejectRequest: (error: unknown) => void = () => {};
+    const request = new Promise<void>((resolve, reject) => {
+      resolveRequest = resolve;
+      rejectRequest = reject;
+    });
+    const queued = this.promptQueue.then(() =>
+      this.executeSend(prompt, options, {
+        resolve: resolveRequest,
+        reject: rejectRequest,
+      }),
+    );
     this.promptQueue = queued.catch(() => {});
-    return queued;
+    return request;
   }
 
   private async executeSend(
     prompt: AcpContentBlock[],
     options: { model?: string | null; agent?: string | null },
+    request: { resolve(): void; reject(error: unknown): void },
   ): Promise<void> {
     const text = prompt
       .filter((part): part is Extract<AcpContentBlock, { type: 'text' }> => part.type === 'text')
@@ -360,12 +396,12 @@ export class AcpSessionController {
         }
         throw error;
       }
-      this.onEnvelope({
-        jsonrpc: '2.0',
-        id: `prompt:${Date.now()}`,
-        result,
-      });
+      this.applyPromptResult(result, false);
+      request.resolve();
+      await this.settlePrompt(result);
     } catch (error) {
+      request.reject(error);
+      this.discardPromptSettlement();
       this.patch({
         error: error instanceof Error ? error : new Error(String(error)),
         projection: {
@@ -381,6 +417,7 @@ export class AcpSessionController {
 
   async cancel(): Promise<void> {
     await this.client.cancel(this.options.sessionId);
+    this.discardPromptSettlement();
     this.patch({
       projection: {
         ...this.snapshot.projection,
@@ -445,12 +482,14 @@ export class AcpSessionController {
   }
 
   close(): void {
+    this.discardPromptSettlement();
     this.stream?.close();
     this.stream = null;
     this.patch({ connection: 'closed', ready: false });
   }
 
   private onEnvelope(envelope: AcpEnvelope): void {
+    if (this.snapshot.sending && isPromptResult(envelope)) return;
     if (
       'method' in envelope &&
       envelope.method === 'kortix/runtime_ready' &&
@@ -470,6 +509,57 @@ export class AcpSessionController {
     }
     const projection = applyAcpEnvelope(this.snapshot.projection, envelope);
     if (projection !== this.snapshot.projection) this.patch({ projection });
+    if ('method' in envelope && envelope.method === 'session/update') {
+      this.schedulePromptSettlement();
+    }
+  }
+
+  private settlePrompt(result: Record<string, unknown>): Promise<void> {
+    return new Promise((resolve) => {
+      this.promptSettlement = {
+        result,
+        timer: null,
+        resolve,
+      };
+      this.schedulePromptSettlement();
+    });
+  }
+
+  private schedulePromptSettlement(): void {
+    const settlement = this.promptSettlement;
+    if (!settlement) return;
+    if (settlement.timer) {
+      clearTimeout(settlement.timer);
+      settlement.timer = null;
+    }
+    if (hasProjectionBlockers(this.snapshot.projection)) return;
+    settlement.timer = setTimeout(() => {
+      if (this.promptSettlement !== settlement || hasProjectionBlockers(this.snapshot.projection)) {
+        this.schedulePromptSettlement();
+        return;
+      }
+      this.promptSettlement = null;
+      this.applyPromptResult(settlement.result, true);
+      settlement.resolve();
+    }, ACP_PROMPT_QUIET_PERIOD_MS);
+  }
+
+  private applyPromptResult(result: Record<string, unknown>, settled: boolean): void {
+    const projection = applyAcpEnvelope(this.snapshot.projection, {
+      jsonrpc: '2.0',
+      id: `prompt:${Date.now()}`,
+      result,
+    });
+    const next = settled ? projection : { ...projection, status: { type: 'busy' } as const };
+    if (next !== this.snapshot.projection) this.patch({ projection: next });
+  }
+
+  private discardPromptSettlement(): void {
+    const settlement = this.promptSettlement;
+    if (!settlement) return;
+    this.promptSettlement = null;
+    if (settlement.timer) clearTimeout(settlement.timer);
+    settlement.resolve();
   }
 
   private patch(value: Partial<AcpSessionControllerSnapshot>): void {

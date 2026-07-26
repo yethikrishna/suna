@@ -349,4 +349,3 @@ export async function updateChannelBinding(
     'Failed to update channel binding',
   );
 }
-

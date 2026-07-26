@@ -18,22 +18,20 @@ export interface SessionSyncSnapshot {
   freshness: SessionSyncFreshness;
   hasOlder: boolean;
   isLoadingOlder: boolean;
+  /** True while an accepted REST prompt has not reached stable runtime idle. */
+  isPromptObservedBusy?: boolean;
 }
 
 export interface SessionSyncScheduler {
   now: () => number;
   setInterval: (handler: () => void, intervalMs: number) => unknown;
   clearInterval: (handle: unknown) => void;
+  setTimeout?: (handler: () => void, timeoutMs: number) => unknown;
+  clearTimeout?: (handle: unknown) => void;
 }
 
 export type SessionSyncReason =
-  | 'initial'
-  | 'poll'
-  | 'sse-gap'
-  | 'compaction'
-  | 'session-error'
-  | 'send-recovery'
-  | 'manual';
+  'initial' | 'poll' | 'sse-gap' | 'compaction' | 'session-error' | 'send-recovery' | 'manual';
 
 export interface SessionSyncTelemetryEvent {
   operation: 'tail' | 'older';
@@ -45,10 +43,7 @@ export interface SessionSyncTelemetryEvent {
 
 export interface SessionSyncControllerOptions {
   sessionId: string;
-  loadPage: (request: {
-    limit: number;
-    before?: string;
-  }) => Promise<SessionSyncPage>;
+  loadPage: (request: { limit: number; before?: string }) => Promise<SessionSyncPage>;
   loadStatus?: () => Promise<SessionStatus>;
   hydrate: (messages: SessionSyncMessage[]) => void;
   markLoaded: () => void;
@@ -58,17 +53,16 @@ export interface SessionSyncControllerOptions {
   livenessIntervalMs?: number;
 }
 
-export interface HttpSessionSyncControllerOptions
-  extends Pick<
-    SessionSyncControllerOptions,
-    | 'sessionId'
-    | 'hydrate'
-    | 'markLoaded'
-    | 'setStatus'
-    | 'onTelemetry'
-    | 'scheduler'
-    | 'livenessIntervalMs'
-  > {
+export interface HttpSessionSyncControllerOptions extends Pick<
+  SessionSyncControllerOptions,
+  | 'sessionId'
+  | 'hydrate'
+  | 'markLoaded'
+  | 'setStatus'
+  | 'onTelemetry'
+  | 'scheduler'
+  | 'livenessIntervalMs'
+> {
   baseUrl: string;
   getToken?: () => string | null | Promise<string | null>;
   fetch?: SessionSyncFetch;
@@ -165,7 +159,13 @@ const defaultScheduler: SessionSyncScheduler = {
   now: Date.now,
   setInterval: (handler, intervalMs) => setInterval(handler, intervalMs),
   clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
+  setTimeout: (handler, timeoutMs) => setTimeout(handler, timeoutMs),
+  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
 };
+
+const PROMPT_IDLE_SETTLEMENT_MS = 500;
+
+type PromptObservationPhase = 'idle' | 'awaiting-work' | 'running' | 'settling';
 
 /**
  * Owns bounded session history synchronization without depending on React,
@@ -179,6 +179,7 @@ export class SessionSyncController {
     freshness: 'idle',
     hasOlder: false,
     isLoadingOlder: false,
+    isPromptObservedBusy: false,
   };
   private nextCursor: string | undefined;
   private knownUserMessageIds = new Set<string>();
@@ -186,6 +187,8 @@ export class SessionSyncController {
   private tailRequest: Promise<void> | undefined;
   private olderRequest: Promise<void> | undefined;
   private livenessTimer: unknown;
+  private promptSettlementTimer: unknown;
+  private promptObservationPhase: PromptObservationPhase = 'idle';
   private lastActivityAt: number;
   private listeners = new Set<() => void>();
   private destroyed = false;
@@ -248,6 +251,43 @@ export class SessionSyncController {
     }
   }
 
+  /**
+   * Start monotonic completion observation for an accepted REST prompt.
+   *
+   * OpenCode can publish an idle snapshot from before the prompt and publish
+   * the real busy event later. Keep the public projection busy until real work
+   * starts and the following idle state remains quiet.
+   */
+  beginPromptObservation(): void {
+    this.clearPromptSettlementTimer();
+    this.promptObservationPhase = 'awaiting-work';
+    this.update({ isPromptObservedBusy: true });
+  }
+
+  /** Observe an authoritative runtime status from SSE or status reconciliation. */
+  observePromptStatus(status: SessionStatus): void {
+    if (this.promptObservationPhase === 'idle') return;
+    if (status.type !== 'idle') {
+      this.markPromptRunning();
+      return;
+    }
+    if (this.promptObservationPhase === 'awaiting-work') return;
+    this.schedulePromptSettlement();
+  }
+
+  /** Mark assistant output as proof that the accepted prompt started. */
+  observePromptActivity(): void {
+    if (this.promptObservationPhase === 'idle') return;
+    this.markPromptRunning();
+  }
+
+  /** End observation after rejection, cancellation, or a terminal runtime error. */
+  endPromptObservation(): void {
+    this.clearPromptSettlementTimer();
+    this.promptObservationPhase = 'idle';
+    this.update({ isPromptObservedBusy: false });
+  }
+
   setBusy(isBusy: boolean): void {
     if (!isBusy) {
       this.stopLivenessTimer();
@@ -264,6 +304,7 @@ export class SessionSyncController {
   destroy(): void {
     this.destroyed = true;
     this.stopLivenessTimer();
+    this.clearPromptSettlementTimer();
     this.listeners.clear();
   }
 
@@ -403,12 +444,43 @@ export class SessionSyncController {
     this.livenessTimer = undefined;
   }
 
+  private markPromptRunning(): void {
+    this.clearPromptSettlementTimer();
+    this.promptObservationPhase = 'running';
+  }
+
+  private schedulePromptSettlement(): void {
+    if (this.promptObservationPhase === 'settling') return;
+    this.clearPromptSettlementTimer();
+    this.promptObservationPhase = 'settling';
+    const settle = () => {
+      this.promptSettlementTimer = undefined;
+      if (this.destroyed || this.promptObservationPhase !== 'settling') return;
+      this.promptObservationPhase = 'idle';
+      this.update({ isPromptObservedBusy: false });
+    };
+    this.promptSettlementTimer = this.scheduler.setTimeout
+      ? this.scheduler.setTimeout(settle, PROMPT_IDLE_SETTLEMENT_MS)
+      : setTimeout(settle, PROMPT_IDLE_SETTLEMENT_MS);
+  }
+
+  private clearPromptSettlementTimer(): void {
+    if (this.promptSettlementTimer === undefined) return;
+    if (this.scheduler.clearTimeout) {
+      this.scheduler.clearTimeout(this.promptSettlementTimer);
+    } else {
+      clearTimeout(this.promptSettlementTimer as ReturnType<typeof setTimeout>);
+    }
+    this.promptSettlementTimer = undefined;
+  }
+
   private update(next: Partial<SessionSyncSnapshot>): void {
     const snapshot = { ...this.snapshot, ...next };
     if (
       snapshot.freshness === this.snapshot.freshness &&
       snapshot.hasOlder === this.snapshot.hasOlder &&
-      snapshot.isLoadingOlder === this.snapshot.isLoadingOlder
+      snapshot.isLoadingOlder === this.snapshot.isLoadingOlder &&
+      snapshot.isPromptObservedBusy === this.snapshot.isPromptObservedBusy
     ) {
       return;
     }

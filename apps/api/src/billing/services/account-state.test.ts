@@ -5,9 +5,9 @@
 // independent lookups concurrently via Promise.all. This file asserts both
 // halves of that fix — single fetch, real concurrency — plus that the
 // response shape is unchanged. Mirrors the mock.module + dynamic import
-// pattern in ./billing-gate.test.ts and ../../projects/routes/shared.test.ts.
+// pattern in ./billing-gate.test.ts.
 import { describe, expect, mock, test } from 'bun:test';
-import { projectSessions, sandboxes } from '@kortix/db';
+import { sandboxes } from '@kortix/db';
 
 let getCreditAccountCalls = 0;
 let account: Record<string, unknown> | null = null;

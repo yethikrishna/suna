@@ -250,7 +250,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B19 | **Preserve explicit managed-model pricing and cache-write rates through the project catalog and turn-cost estimator.** Browser-side `models.dev` lookup can substitute another provider's price for a Kortix-managed model, and the turn estimator does not accept a distinct cache-write rate.                                                                                                                                              | `src/core/rest/projects-client/projects.ts`, `src/core/turns/types.ts`, `src/core/turns/state.ts`; confirmed for managed Aster `glm-5.2`.                                                                                                                                                               | **DONE 2026-07-25** — implementation `28c18cbfa`; full SDK suite, typecheck, public-surface snapshot, and packed-install smoke green                                                                                                                                   |
 | B20 | **Keep ACP SSE connections outside the shared 30-second authenticated-fetch timeout.** The ACP controller uses `/kortix/acp/:sessionId` as a long-lived SSE stream.                                                                                                                                                                                                                                                                            | `src/platform/auth-core.ts` exempted only `/global/event`; deployed cold Chromium aborted the ACP stream before `session/load` settled.                                                                                                                                                                | **DONE 2026-07-25** — implementation `89b97f4cc`; RED test, full SDK gates, and local cold ACP plus REST browser matrix pass                                                                                                                                                                                                         |
 | B21 | **Serialize ACP sends with runtime restart reloads.** A send that starts while OpenCode restarts can wait forever on `session/set_config_option` and never send `session/prompt`.                                                                                                                                                                                                                                                               | Deployed cold Chromium sent `session/set_config_option` at `13:36:20.250Z`, received `kortix/runtime_ready`, then sent `session/load` at `13:36:20.640Z`; `POST_RESTART_PONG` never produced `session/prompt`.                                                                                              | **DONE 2026-07-25** — implementation `d8537fa2c`; RED tests, full SDK gates, and test-harness typecheck pass                                                                                                                                                                                                                          |
-| B22 | **Expose server-owned warm project-session ensure and claim operations.** The project index needs one reusable empty session without owning session selection or deduplication in app code.                                                                                                                                                                                                                                                   | `apps/web/src/app/(app)/projects/[id]/page.tsx` creates a session only after send. `packages/sdk/src/core/rest/projects-client/sessions.ts` exposes create and list, but no atomic warm-session operation.                                                                                              | **IN PROGRESS 2026-07-26** — session `warm-project-session`; RED tests, SDK gates, API route proof, browser proof, PR merge, and Deploy Dev required                                                                                                                                                                                    |
+| B22 | **Expose server-owned warm project-session ensure and claim operations.** The project index needs one reusable empty session without owning session selection or deduplication in app code.                                                                                                                                                                                                                                                   | `apps/web/src/app/(app)/projects/[id]/page.tsx` creates a session only after send. `packages/sdk/src/core/rest/projects-client/sessions.ts` exposes create and list, but no atomic warm-session operation.                                                                                              | **DONE 2026-07-26** — implementation `13167d7cf`; RED tests, full SDK gates, live API/SDK lifecycle, workspace refresh, and maintenance retention proof pass                                                                                                                                                                           |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -824,6 +824,84 @@ default names and behavior remain unchanged. SDK work will follow RED → GREEN 
 REFACTOR and finish on the full typecheck, test, and packed-install smoke gates.
 
 **Status:** IN PROGRESS.
+
+---
+
+### 2026-07-26 — session `warm-project-session` (B22 completion)
+
+Added one server-owned available warm session per project and user. A partial
+unique PostgreSQL index resolves concurrent ensure races. The SDK exposes
+`ensureWarmProjectSession`, `claimWarmProjectSession`,
+`project.sessions.ensureWarm()`, and `project.sessions.claimWarm()`.
+
+The project index ensures the warm session on mount and starts its runtime.
+Send claims that session atomically before navigation. A claimed, stopped, or
+configuration-mismatched session cannot become the next warm session.
+
+Reused active workspaces resolve the latest base SHA on the API. The sandbox
+daemon returns immediately when the workspace already matches that SHA. It
+fetches and checks out the exact SHA only when the workspace differs. OpenCode
+does not restart. No agent message performs Git synchronization.
+
+Available warm sessions bypass idle maintenance. Claimed sessions return to the
+normal idle policy.
+
+TDD evidence:
+
+- Workspace refresh RED: the API did not resolve or send `base_sha`.
+- Daemon RED: an unchanged workspace performed a Git fetch and returned `500`
+  against a missing remote.
+- Exact-SHA RED: the daemon checked out remote `v3` instead of requested `v2`.
+- Stopped-session RED: the coordinator reused a stopped warm session.
+- Maintenance RED: an available warm session entered idle-stop handling.
+
+SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit 0.
+- `pnpm --filter @kortix/sdk test`: **1263 pass / 0 fail**, **5644**
+  assertions.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed install and Node ESM
+  import passed.
+
+Additional local gates:
+
+- Database: **121 pass / 0 fail**.
+- API contract: **43 pass / 0 fail**.
+- Warm coordinator and workspace tests: **9 pass / 0 fail**.
+- Sandbox reaper: **43 pass / 0 fail**.
+- Sandbox daemon: **297 pass / 0 fail**.
+- Web helper: **3 pass / 0 fail**.
+- API typecheck, daemon build, migration lint, changed web ESLint, and
+  `git diff --check`: exit 0.
+- ke2e coverage: **490/503 routes**, **13 allowlisted**, **0 uncovered**.
+
+Real local proof used disposable project
+`4f9f6c04-9101-424b-aaaa-2e850b18ef12`:
+
+- Concurrent ensure calls returned one session. The database contained one
+  available warm row.
+- Reused workspace refresh changed
+  `f309cbda70b97a124585ba0e6d12a0b6b2c8be9f` to
+  `92b337bb3641598de4dec4e251f6087ba3609a18` in **2579 ms**.
+- The next refresh returned `unchanged` in **801 ms**.
+- A real maintenance pass returned `candidates=1`, `stopped=0`, and
+  `skipped=1` for an available warm session.
+- Session `5c83a894-d330-45c7-bc7e-a77c0c175881` reached runtime readiness.
+- Claim completed in **14 ms**.
+- Replacement session `444ca1db-97b9-4f16-bf0b-1eb96b2330a9` was different.
+- The replacement reached runtime readiness in **22481 ms**.
+
+The browser runtime returned `agent.browsers.list() = []`. Local DOM and network
+assertions remain unavailable. Web typecheck reports only three unrelated
+baseline errors in `template-url.test.ts` and `project-create-modal.tsx`.
+
+The full API suite retains an existing `mock.module` isolation defect when
+`sandbox-reaper.test.ts` shares a process with sibling files. Each changed API
+test file passes in an isolated process. API typecheck passes.
+
+**Shippable to production: YES.** The SDK surface is additive. The package,
+database, API, daemon, web helper, live lifecycle, and maintenance retention
+contracts pass. Browser verification remains a deployment item.
 
 ---
 
@@ -2939,4 +3017,4 @@ Required gates are SDK typecheck, full SDK tests, packed-install smoke, API test
 ke2e coverage, local API proof, browser proof, PR merge, Deploy Dev, deployed SHA
 proof, and deployed browser proof.
 
-**Status:** IN PROGRESS.
+**Status:** COMPLETE — `13167d7cf`.

@@ -8,7 +8,12 @@ interface MaintenanceRequestOptions {
 }
 
 function apiBase(backendUrl: string): string {
-  const trimmed = backendUrl.replace(/\/+$/, "");
+  let end = backendUrl.length;
+  while (end > 0 && backendUrl.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  const trimmed =
+    end === backendUrl.length ? backendUrl : backendUrl.slice(0, end);
   return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
 }
 

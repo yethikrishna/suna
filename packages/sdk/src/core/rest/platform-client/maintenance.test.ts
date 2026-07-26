@@ -74,4 +74,14 @@ describe("maintenance host transport", () => {
       "Bearer maintenance-token",
     );
   });
+
+  test("normalizes an untrusted backend URL in bounded time", async () => {
+    const backendUrl = `https://api.example.test${"/".repeat(50_000)}x`;
+    const startedAt = performance.now();
+
+    await getMaintenanceConfig({ backendUrl });
+
+    expect(performance.now() - startedAt).toBeLessThan(250);
+    expect(requests[0]?.url.endsWith("x/v1/system/maintenance")).toBe(true);
+  });
 });

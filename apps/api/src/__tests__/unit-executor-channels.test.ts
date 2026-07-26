@@ -155,8 +155,32 @@ describe('channelCatalog(voice)', () => {
   const byPath = new Map(actions.map((a) => [a.path, a]));
   const action = (path: string) => expectDefined(byPath.get(path));
 
-  test('exposes spawn_room (implemented) + join_gmeet/join_zoom (declared, not implemented)', () => {
-    expect(actions.map((a) => a.path).sort()).toEqual(['join_gmeet', 'join_zoom', 'spawn_room']);
+  test('exposes the full both-directions surface, not just spawning', () => {
+    // The Kortix agent drives a call from the INSIDE through this connector, so
+    // spawning alone is useless: it also has to hear the room (read_transcript)
+    // and answer it (send_prompt). Those two living somewhere else is exactly
+    // how an agent ended up able to start a call it could not then talk to.
+    expect(actions.map((a) => a.path).sort()).toEqual([
+      'end_call',
+      'join_gmeet',
+      'join_zoom',
+      'read_transcript',
+      'send_prompt',
+      'spawn_room',
+    ]);
+  });
+
+  test('read_transcript is a READ and is cursor-paged, so polling it never blocks', () => {
+    const a = action('read_transcript');
+    expect(a.risk).toBe('read');
+    expect(Object.keys(objectSchema(a.inputSchema).properties)).toEqual(['cursor']);
+    expect(objectSchema(a.inputSchema).required ?? []).toEqual([]);
+  });
+
+  test('send_prompt requires the text to speak', () => {
+    const a = action('send_prompt');
+    expect(a.risk).toBe('write');
+    expect(objectSchema(a.inputSchema).required ?? []).toEqual(['text']);
   });
 
   test('every voice action binds `{ kind: "voice" }`, never http — there is no third-party API', () => {

@@ -484,14 +484,25 @@ interface VoiceActionDef {
 }
 
 /**
- * The Voice catalog. `spawn_room` is the one implemented mechanism today — it
- * creates a LiveKit room and returns a join link a human opens in their own
- * browser. `join_gmeet` / `join_zoom` are declared so the action surface is
- * stable for an agent to discover and future joining-an-existing-meeting
- * mechanisms slot in without reshaping the catalog, but neither is
- * implemented yet: calling either fails with a clear, actionable error
- * (never silently absent, never pretending to work) — see
- * GatewayDeps.executeVoiceCall in gateway.ts / db-deps.ts.
+ * The Voice catalog — THE KORTIX AGENT'S side of a live call.
+ *
+ * Two surfaces exist and they point in opposite directions; keep them straight:
+ *   - THIS connector is how the Kortix agent drives a call from the inside:
+ *     start one, read what is being said, say something, hang up.
+ *   - The voice MCP (channels/voice/mcp.ts) is the other direction — how the
+ *     LiveKit voice agent calls BACK into Kortix from the outside.
+ *
+ * These actions live on the connector rather than in a project's opencode
+ * config on purpose: connectors are materialized server-side for every project,
+ * so an existing project gets them the moment this ships. Config shipped in the
+ * starter template only ever reaches projects created AFTER the change, which
+ * silently left every older project unable to talk to its own calls.
+ *
+ * `spawn_room` is the one implemented joining mechanism. `join_gmeet` /
+ * `join_zoom` are declared so the surface is stable and future mechanisms slot
+ * in without reshaping the catalog, but neither is implemented: calling either
+ * fails with a clear, actionable error — never silently absent, never
+ * pretending to work. See GatewayDeps.executeVoiceCall in gateway.ts/db-deps.ts.
  */
 const VOICE_ACTIONS: VoiceActionDef[] = [
   {
@@ -503,6 +514,43 @@ const VOICE_ACTIONS: VoiceActionDef[] = [
     properties: {
       voice: { type: 'string', description: 'Optional speaking voice for the agent side of the call.' },
     },
+    required: [],
+  },
+  {
+    path: 'read_transcript',
+    name: 'Read call transcript',
+    description:
+      'Read what has been said in the live call since `cursor` — both sides. Returns IMMEDIATELY with whatever is new (empty if nothing), plus the next cursor to pass back. Poll this while the call runs to follow the conversation and prepare work before anyone asks for it. It never blocks and never waits for the caller to finish speaking.',
+    risk: 'read',
+    properties: {
+      cursor: {
+        type: 'number',
+        description:
+          'Return only turns after this cursor. Start at 0, then pass back the cursor from the previous call.',
+      },
+    },
+    required: [],
+  },
+  {
+    path: 'send_prompt',
+    name: 'Say something in the call',
+    description:
+      'Speak into the live call in your own voice, without waiting to be asked. Use it to answer what someone wanted, volunteer something you found, or say you need a moment. Plain spoken language only — no markdown, no URLs, no code. Returns immediately.',
+    risk: 'write',
+    properties: {
+      text: {
+        type: 'string',
+        description: 'What to say, in plain spoken language.',
+      },
+    },
+    required: ['text'],
+  },
+  {
+    path: 'end_call',
+    name: 'End the call',
+    description: 'Hang up the live call for this session and tear down its room.',
+    risk: 'write',
+    properties: {},
     required: [],
   },
   {

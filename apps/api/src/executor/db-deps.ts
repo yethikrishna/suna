@@ -33,7 +33,7 @@ import {
 } from '../channels/install-store';
 import { resolveProjectBotName } from '../channels/voice-identity';
 import { bridgePageUrl, mintAccessToken, roomNameForCall } from '../channels/voice/livekit';
-import { startCall } from '../channels/voice/runtime';
+import { endCall, isCallLive, promptVoiceAgent, readTurns, startCall } from '../channels/voice/runtime';
 import { config } from '../config';
 import { authorize } from '../iam';
 import { agentMayUseConnector } from '../iam/agent-scope';
@@ -583,6 +583,49 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
           message: `joining an existing ${platform} is not supported yet — use spawn_room and share the join link instead`,
         };
       }
+      // The call id IS the session id, so every action below addresses "this
+      // session's call" without the agent having to carry a call id around.
+      if (op === 'read_transcript') {
+        if (!sessionId) {
+          return { ok: false, kind: 'error', message: 'read_transcript requires a session' };
+        }
+        const cursor = typeof args.cursor === 'number' ? args.cursor : 0;
+        const page = await readTurns(sessionId, cursor);
+        return {
+          ok: true,
+          data: {
+            turns: page.turns.map((t) => ({ role: t.role, text: t.text, cursor: t.cursor })),
+            cursor: page.cursor,
+            live: await isCallLive(sessionId),
+          },
+        };
+      }
+
+      if (op === 'send_prompt') {
+        if (!sessionId) {
+          return { ok: false, kind: 'error', message: 'send_prompt requires a session' };
+        }
+        const text = typeof args.text === 'string' ? args.text.trim() : '';
+        if (!text) {
+          return { ok: false, kind: 'error', message: 'send_prompt requires `text`' };
+        }
+        const result = await promptVoiceAgent(sessionId, text);
+        if (!result.delivered) {
+          // Deliberately an error, not a silent success: an agent that believes
+          // it spoke and did not will carry on as though the room heard it.
+          return { ok: false, kind: 'error', message: result.reason ?? 'could not reach the call' };
+        }
+        return { ok: true, data: { spoken: true } };
+      }
+
+      if (op === 'end_call') {
+        if (!sessionId) {
+          return { ok: false, kind: 'error', message: 'end_call requires a session' };
+        }
+        await endCall(sessionId);
+        return { ok: true, data: { ended: true } };
+      }
+
       if (op !== 'spawn_room') {
         return { ok: false, kind: 'error', message: `unknown voice action "${op}"` };
       }

@@ -26,7 +26,7 @@ import type { ToolPart } from '@/ui';
 import { ChevronRight, PanelRight } from 'lucide-react';
 import { useContext, useState } from 'react';
 import { formatActivityDuration, isPartRunning } from './activity-model';
-import { stepLabel } from './step-label';
+import { stepDetail } from './step-label';
 
 function durationOf(part: ToolPart): string {
   const time = (part.state as { time?: { start?: number; end?: number } } | undefined)?.time;
@@ -48,7 +48,7 @@ export function WorkStepRow({
   const onActivate = useContext(ToolActivateContext);
   const [open, setOpen] = useState(false);
 
-  const label = stepLabel(part);
+  const detail = stepDetail(part);
   const running = isPartRunning(part);
   const duration = running ? '' : durationOf(part);
   const failed = (part.state as { status?: string } | undefined)?.status === 'error';
@@ -66,7 +66,20 @@ export function WorkStepRow({
 
   const body = (
     <>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {/* Concrete, not summarised. A collapsed run says "Ran 11 commands";
+          opening it must show WHICH eleven, or the reader cannot find the one
+          they want. Mono for the argument, matching the pre-refactor
+          transcript. */}
+      {detail.shell && (
+        <span className="text-muted-foreground/50 shrink-0 font-mono select-none">$</span>
+      )}
+      {detail.verb && detail.mono && <span className="shrink-0">{detail.verb}</span>}
+      <span
+        className={cn('min-w-0 flex-1 truncate', detail.mono && 'font-mono')}
+        title={detail.mono || undefined}
+      >
+        {detail.mono || detail.verb}
+      </span>
       {duration && (
         <span className="text-muted-foreground/40 shrink-0 font-mono tabular-nums">{duration}</span>
       )}

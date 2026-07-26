@@ -1,25 +1,35 @@
 /**
- * `kortix skills <subcommand>` — load Kortix system skills straight from the
- * CLI. The `kortix-*` system skills describe how Kortix itself works
- * (sessions, sandboxes, the executor/approval loop, memory, channels). Their
- * bodies are served live by the API from `/v1/skills`, so `get` always returns
- * the instructions that match the deployment you are talking to — no
- * re-install, no image re-bake, no repo checkout.
+ * `kortix system-skills <subcommand>` — the Kortix SYSTEM skills, served live.
  *
- * This is the runtime entry path the seeded `kortix-system` skill points an
- * agent at: read the pointer, then `kortix skills get <name>` for the live body.
- * It is also what makes the CLI self-sufficient in ANY harness — Claude Code,
- * Codex, OpenCode: the binary plus a token is enough to learn the whole platform.
+ * This is the command that makes the CLI self-sufficient in ANY harness — Claude
+ * Code, Codex, OpenCode. The binary plus a token is enough to learn the whole
+ * platform: no repo checkout, no baked image, no local clone. `list` names every
+ * system skill, `get` prints one in full, and both read `/v1/skills` on the host
+ * you are actually signed into, so the instructions always match the deployment.
  *
- *   kortix skills                 list the system skills (how Kortix works)
- *   kortix skills get <name>      print one skill's current SKILL.md body
- *   kortix skills path [name]     locate the on-disk skill dir
+ *   kortix system-skills                 list the system skills (how Kortix works)
+ *   kortix system-skills get <name>      print one skill's current SKILL.md body
+ *   kortix system-skills path [name]     locate the on-disk skill dir
  *
- * `--all` additionally folds in the browsable (non-managed) Kortix catalog
- * skills from `/v1/marketplace/items`. The managed floor is deliberately hidden
- * from that catalog (it is the platform floor, not a browse-and-install card),
- * which is exactly why the two sources are queried separately — querying only
- * the catalog, as this command used to, returned nothing at all.
+ * SCOPE — system skills only, always. The command used to be `kortix skills` with
+ * an `--all` flag that folded the browsable marketplace catalog into the same
+ * list, which made "what does this command return?" depend on a flag. It now
+ * returns exactly one thing: the kortix-managed floor that describes how Kortix
+ * works. Optional/marketplace skills were never lost — they are the marketplace's
+ * job and stay reachable at their proper home:
+ *
+ *   kortix marketplace list --type skill
+ *
+ * which is the identical query `--all` issued (`/marketplace/items?type=skill`),
+ * with richer output. Nothing was deleted; one surface stopped doing two jobs.
+ *
+ * `kortix skills` REMAINS a working alias, permanently and without a deprecation
+ * nag. Every already-baked sandbox image carries a seeded `kortix-system` skill
+ * whose `<live-skills>` pointer says `kortix skills get <name>`, and those images
+ * pin the CLI they were baked with. Dropping the old name would break exactly the
+ * surface this command exists to serve. Output is written in terms of whichever
+ * name you invoked, so either entry point teaches a self-consistent set of
+ * commands.
  */
 
 import { existsSync } from 'node:fs';
@@ -35,8 +45,6 @@ interface SkillSummary {
   description: string;
   referenceCount?: number;
   bytes?: number;
-  /** Set only for the extra `--all` entries pulled from the marketplace catalog. */
-  optional?: boolean;
 }
 
 interface SkillReference {
@@ -58,14 +66,6 @@ interface SkillsListResponse {
   count: number;
 }
 
-interface CatalogItem {
-  id: string;
-  name: string;
-  type: string;
-  title: string;
-  description: string | null;
-}
-
 interface SkillsFlags {
   host?: string;
   all: boolean;
@@ -73,10 +73,16 @@ interface SkillsFlags {
   json: boolean;
 }
 
-const HELP = help`Usage: kortix skills <subcommand> [options]
+/** The canonical command name; `skills` is kept as an alias (see file header). */
+export const SYSTEM_SKILLS_COMMAND = 'system-skills';
 
-Load Kortix system skills — how Kortix works — straight from the CLI.
-Bodies are served live, so \`get\` always returns the current instructions.
+const helpFor = (cmd: string) => help`Usage: kortix ${cmd} <subcommand> [options]
+
+Learn how to drive Kortix. The Kortix system skills are the platform's own
+documentation — sessions, sandboxes, the executor/approval loop, memory,
+channels — served live by the host you are signed into, so they always match
+the version you are talking to. This is all any harness needs: the binary,
+a token, and these skills.
 
 Subcommands:
   list                 List the Kortix system skills (default).
@@ -84,16 +90,18 @@ Subcommands:
   path [name]          Print the on-disk skill directory.
 
 Options:
-  --all                list: include every Kortix skill, not just the system floor.
   --full               get: also print the skill's referenced files.
   --host <name>        Use a configured Kortix host.
   --json               Machine-readable output.
   -h, --help           Show this help.
 
 Examples:
-  kortix skills
-  kortix skills get kortix-system
-  kortix skills get kortix-slack --json
+  kortix ${cmd}
+  kortix ${cmd} get kortix-system
+  kortix ${cmd} get kortix-slack --json
+
+Optional (non-system) skills live in the marketplace:
+  kortix marketplace list --type skill
 `;
 
 /** Where a skill's files live inside a Kortix project. */
@@ -129,60 +137,59 @@ async function fetchSystemSkills(client: ApiClient): Promise<SkillSummary[]> {
   return res.skills ?? [];
 }
 
-/** Best-effort extra: the browsable Kortix catalog skills (`--all` only). A
- *  catalog scan can be slow or transiently unavailable; it must never take the
- *  system floor — the part that matters — down with it. */
-async function fetchCatalogSkills(client: ApiClient): Promise<SkillSummary[]> {
-  try {
-    const res = await client.get<{ items: CatalogItem[] }>(
-      '/marketplace/items?type=skill&source=kortix',
-    );
-    return (res.items ?? []).map((item) => ({
-      name: item.name,
-      description: item.description ?? item.title,
-      optional: true,
-    }));
-  } catch {
-    return [];
-  }
+/** `--all` used to mix the marketplace catalog into this list. It no longer does
+ *  anything, and a silently-different result for an old invocation is worse than
+ *  a one-line redirect — say where those skills went. Skipped under --json: a
+ *  parser deserves a clean run with nothing on either channel it must ignore. */
+function noteAllFlagMoved(flags: SkillsFlags): void {
+  if (!flags.all || flags.json) return;
+  process.stderr.write(
+    `${C.dim}--all no longer applies: this lists system skills only. Optional skills:${C.reset} ${C.cyan}kortix marketplace list --type skill${C.reset}\n`,
+  );
 }
 
-async function skillsList(flags: SkillsFlags): Promise<number> {
+async function skillsList(flags: SkillsFlags, cmd: string): Promise<number> {
   const ctx = resolveClient(flags.host);
   if (!ctx) return 1;
 
   let skills: SkillSummary[];
   try {
     skills = await fetchSystemSkills(ctx.client);
-    if (flags.all) {
-      const known = new Set(skills.map((s) => s.name));
-      for (const extra of await fetchCatalogSkills(ctx.client)) {
-        if (!known.has(extra.name)) skills.push(extra);
-      }
-    }
   } catch (err) {
+    // A 404 on the LIST route is never "no skills" — the route itself is
+    // missing, i.e. the host predates `/v1/skills`. Say that, or an agent burns
+    // turns retrying a bare "Not found".
+    if (err instanceof ApiError && err.status === 404) {
+      process.stderr.write(
+        `${status.err('This Kortix host does not serve system skills yet.')} It needs a newer API; check ${C.cyan}kortix whoami${C.reset} for which host you are on.\n`,
+      );
+      return 1;
+    }
     return surfaceApiError(err);
   }
   skills.sort((a, b) => a.name.localeCompare(b.name));
 
   if (flags.json) {
-    emitJson({ skills });
+    emitJson({ skills, count: skills.length });
     return 0;
   }
+  noteAllFlagMoved(flags);
   if (skills.length === 0) {
-    process.stdout.write(`${status.info('No skills found.')}\n`);
+    process.stdout.write(`${status.info('No system skills found.')}\n`);
     return 0;
   }
-  const heading = flags.all ? 'Kortix skills' : 'System skills — how Kortix works';
-  process.stdout.write(`\n  ${C.bold}${heading}${C.reset} ${C.faded}(live, kortix-managed)${C.reset}\n\n`);
+  process.stdout.write(
+    `\n  ${C.bold}Kortix system skills${C.reset} ${C.faded}(live — how Kortix works)${C.reset}\n\n`,
+  );
   const width = Math.min(24, Math.max(...skills.map((s) => s.name.length)));
   for (const s of skills) {
-    const tag = s.optional ? ` ${C.faded}[optional]${C.reset}` : '';
     process.stdout.write(
-      `  ${C.cyan}${s.name.padEnd(width)}${C.reset}  ${summarize(s.description)}${tag}\n`,
+      `  ${C.cyan}${s.name.padEnd(width)}${C.reset}  ${summarize(s.description)}\n`,
     );
   }
-  process.stdout.write(`\n  ${C.dim}Load one:${C.reset} ${C.cyan}kortix skills get <name>${C.reset}\n`);
+  process.stdout.write(
+    `\n  ${C.dim}Load one:${C.reset} ${C.cyan}kortix ${cmd} get <name>${C.reset}\n`,
+  );
   return 0;
 }
 
@@ -193,10 +200,10 @@ function summarize(description: string): string {
   return first.length > 160 ? `${first.slice(0, 159)}…` : first;
 }
 
-async function skillsGet(argv: string[], flags: SkillsFlags): Promise<number> {
+async function skillsGet(argv: string[], flags: SkillsFlags, cmd: string): Promise<number> {
   const name = argv.find((a) => !a.startsWith('-'));
   if (!name) {
-    process.stderr.write(`${status.err('pass a skill name: kortix skills get kortix-system')}\n`);
+    process.stderr.write(`${status.err(`pass a skill name: kortix ${cmd} get kortix-system`)}\n`);
     return 2;
   }
   const ctx = resolveClient(flags.host);
@@ -211,7 +218,7 @@ async function skillsGet(argv: string[], flags: SkillsFlags): Promise<number> {
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       process.stderr.write(
-        `${status.err(`No Kortix skill matches "${name}".`)} Run ${C.cyan}kortix skills${C.reset}.\n`,
+        `${status.err(`No Kortix system skill matches "${name}".`)} Run ${C.cyan}kortix ${cmd}${C.reset}.\n`,
       );
       return 1;
     }
@@ -280,31 +287,37 @@ function skillsPath(argv: string[], flags: SkillsFlags): number {
   return 0;
 }
 
-export async function runSkills(argv: string[]): Promise<number> {
+/** `invokedAs` is the name the user actually typed (`system-skills`, or the
+ *  `skills` alias). Every hint we print uses it, so a session never learns a
+ *  command spelling that differs from the one that got it here. */
+export async function runSystemSkills(
+  argv: string[],
+  invokedAs: string = SYSTEM_SKILLS_COMMAND,
+): Promise<number> {
   if (argv[0] === '-h' || argv[0] === '--help') {
-    process.stdout.write(HELP);
+    process.stdout.write(helpFor(invokedAs));
     return 0;
   }
 
   const sub = argv[0];
   const rest = argv.slice(1);
 
-  // Bare `kortix skills`, `list`/`ls`, or a leading flag (`kortix skills --json`)
-  // all list the system floor. A leading flag isn't a subcommand, so its flags
-  // come from the whole argv.
+  // Bare `kortix system-skills`, `list`/`ls`, or a leading flag
+  // (`kortix system-skills --json`) all list the system floor. A leading flag
+  // isn't a subcommand, so its flags come from the whole argv.
   if (!sub || sub === 'list' || sub === 'ls' || sub.startsWith('-')) {
-    return skillsList(parseFlags(sub && sub.startsWith('-') ? argv.slice() : rest));
+    return skillsList(parseFlags(sub && sub.startsWith('-') ? argv.slice() : rest), invokedAs);
   }
   switch (sub) {
     case 'get':
     case 'show':
     case 'cat':
-      return skillsGet(rest, parseFlags(rest));
+      return skillsGet(rest, parseFlags(rest), invokedAs);
     case 'path':
     case 'where':
       return skillsPath(rest, parseFlags(rest));
     default:
-      process.stderr.write(`${status.err(`unknown subcommand "${sub}"`)}\n\n${HELP}`);
+      process.stderr.write(`${status.err(`unknown subcommand "${sub}"`)}\n\n${helpFor(invokedAs)}`);
       return 2;
   }
 }

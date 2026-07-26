@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { runSkills } from '../commands/skills.ts';
+import { runSystemSkills } from '../commands/system-skills.ts';
 import { stripAnsi } from '../style.ts';
 
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -35,18 +35,6 @@ const SYSTEM_SKILLS = [
     bytes: 4096,
   },
   { name: 'kortix-slack', description: 'Connect Slack.', referenceCount: 0, bytes: 1024 },
-];
-
-// The browsable (non-managed) catalog skill — reachable only via `--all`, which
-// is the one thing the marketplace catalog is still queried for.
-const CATALOG_ITEMS = [
-  {
-    id: 'kortix-starter:pdf',
-    name: 'pdf',
-    type: 'registry:skill',
-    title: 'pdf',
-    description: 'Work with PDFs.',
-  },
 ];
 
 const DETAILS: Record<string, unknown> = {
@@ -130,10 +118,6 @@ function mockApi() {
     if (path === 'skills' || path.startsWith('skills?')) {
       return json({ skills: SYSTEM_SKILLS, count: SYSTEM_SKILLS.length });
     }
-    // `--all` only: the browsable catalog skills.
-    if (path.startsWith('marketplace/items')) {
-      return json({ items: CATALOG_ITEMS, total: CATALOG_ITEMS.length, hasMore: false });
-    }
     return new Response(JSON.stringify({ error: `unexpected ${url}` }), { status: 500 });
   }) as typeof fetch;
 }
@@ -166,60 +150,84 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-describe('kortix skills — list', () => {
+describe('kortix system-skills — list', () => {
   test('default lists the kortix-managed system floor from /v1/skills', async () => {
-    const code = await runSkills([]);
+    const code = await runSystemSkills([]);
     expect(code).toBe(0);
     const out = stripAnsi(stdout);
     expect(out).toContain('kortix-system');
     expect(out).toContain('kortix-slack');
-    expect(out).not.toContain('pdf');
-    expect(out).toContain('kortix skills get <name>');
+    expect(out).toContain('kortix system-skills get <name>');
     // The managed floor is NOT in the browse catalog — querying it was the bug.
     expect(requests.some((u) => u.includes('/v1/skills'))).toBe(true);
     expect(requests.some((u) => u.includes('marketplace'))).toBe(false);
   });
 
   test('list shows only the first sentence of a paragraph-long description', async () => {
-    await runSkills([]);
+    await runSystemSkills([]);
     const out = stripAnsi(stdout);
     expect(out).toContain('How Kortix works.');
     expect(out).not.toContain('Load whenever the user asks');
   });
 
-  test('--all folds in the browsable catalog skills too', async () => {
-    const code = await runSkills(['list', '--all']);
-    expect(code).toBe(0);
-    const out = stripAnsi(stdout);
-    expect(out).toContain('pdf');
-    expect(out).toContain('kortix-system');
-  });
-
-  test('--all still lists the system floor when the catalog scan fails', async () => {
-    const inner = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).includes('marketplace')) throw new Error('catalog down');
-      return inner(input as any, init);
-    }) as typeof fetch;
-    const code = await runSkills(['list', '--all']);
+  test('--all no longer widens the list — it stays the system floor, and says where the rest went', async () => {
+    const code = await runSystemSkills(['list', '--all']);
     expect(code).toBe(0);
     expect(stripAnsi(stdout)).toContain('kortix-system');
+    expect(requests.some((u) => u.includes('marketplace'))).toBe(false);
+    expect(stripAnsi(stderr)).toContain('kortix marketplace list --type skill');
   });
 
-  test('--json emits the whole description, untruncated', async () => {
-    const code = await runSkills(['--json']);
+  test('--json emits the whole description, untruncated, on a clean pair of streams', async () => {
+    const code = await runSystemSkills(['--json', '--all']);
     expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
+    expect(parsed.count).toBe(2);
     expect(parsed.skills.map((s: any) => s.name).sort()).toEqual(['kortix-slack', 'kortix-system']);
     expect(parsed.skills.find((s: any) => s.name === 'kortix-system').description).toContain(
       'Load whenever the user asks',
     );
+    // A harness parses this; the redirect note must not land in its way.
+    expect(stderr).toBe('');
+  });
+
+  test('a host without /v1/skills is named as the problem, not reported as an empty list', async () => {
+    globalThis.fetch = (async (_input: RequestInfo | URL) =>
+      new Response(JSON.stringify({ error: true, message: 'Not found', status: 404 }), {
+        status: 404,
+      })) as typeof fetch;
+    const code = await runSystemSkills([]);
+    expect(code).toBe(1);
+    expect(stripAnsi(stderr)).toContain('does not serve system skills yet');
+    expect(stripAnsi(stdout)).not.toContain('No system skills found');
   });
 });
 
-describe('kortix skills — get', () => {
+describe('kortix skills — the retained alias', () => {
+  // Every already-baked sandbox image seeds a kortix-system skill whose live
+  // pointer says `kortix skills get <name>`, so the old name must keep working.
+  test('the alias lists the same system floor', async () => {
+    const code = await runSystemSkills([], 'skills');
+    expect(code).toBe(0);
+    expect(stripAnsi(stdout)).toContain('kortix-system');
+  });
+
+  test('hints are written in terms of the name that was actually invoked', async () => {
+    await runSystemSkills([], 'skills');
+    expect(stripAnsi(stdout)).toContain('kortix skills get <name>');
+    expect(stripAnsi(stdout)).not.toContain('kortix system-skills get');
+  });
+
+  test('the alias still reads a body in full', async () => {
+    const code = await runSystemSkills(['get', 'kortix-slack'], 'skills');
+    expect(code).toBe(0);
+    expect(stdout).toContain('How to connect Slack.');
+  });
+});
+
+describe('kortix system-skills — get', () => {
   test('prints the live SKILL.md body for a bare skill name', async () => {
-    const code = await runSkills(['get', 'kortix-system']);
+    const code = await runSystemSkills(['get', 'kortix-system']);
     expect(code).toBe(0);
     expect(stdout).toContain('<skill name="kortix-system">live body');
     // Bare name is the address — no id namespacing, no search round trip.
@@ -228,7 +236,7 @@ describe('kortix skills — get', () => {
   });
 
   test('--json returns name, description, body and referenced file paths', async () => {
-    const code = await runSkills(['get', 'kortix-system', '--json']);
+    const code = await runSystemSkills(['get', 'kortix-system', '--json']);
     expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
     expect(parsed.name).toBe('kortix-system');
@@ -238,7 +246,7 @@ describe('kortix skills — get', () => {
   });
 
   test('--full inlines referenced files in one round trip', async () => {
-    const code = await runSkills(['get', 'kortix-system', '--full']);
+    const code = await runSystemSkills(['get', 'kortix-system', '--full']);
     expect(code).toBe(0);
     expect(stdout).toContain('===== references/manifest.md =====');
     expect(stdout).toContain('# reference doc');
@@ -247,34 +255,34 @@ describe('kortix skills — get', () => {
   });
 
   test('without --full, references are named on stderr but not downloaded', async () => {
-    const code = await runSkills(['get', 'kortix-system']);
+    const code = await runSystemSkills(['get', 'kortix-system']);
     expect(code).toBe(0);
     expect(stripAnsi(stderr)).toContain('1 referenced file not shown');
     expect(stdout).not.toContain('# reference doc');
   });
 
   test('unknown skill exits 1 with a hint', async () => {
-    const code = await runSkills(['get', 'does-not-exist']);
+    const code = await runSystemSkills(['get', 'does-not-exist']);
     expect(code).toBe(1);
-    expect(stripAnsi(stderr)).toContain('No Kortix skill matches');
+    expect(stripAnsi(stderr)).toContain('No Kortix system skill matches');
   });
 
   test('missing name exits 2', async () => {
-    const code = await runSkills(['get']);
+    const code = await runSystemSkills(['get']);
     expect(code).toBe(2);
   });
 });
 
-describe('kortix skills — path', () => {
+describe('kortix system-skills — path', () => {
   test('resolves the on-disk skill dir under a project root', async () => {
     mkdirSync(join(tmp, '.kortix', 'opencode'), { recursive: true });
-    const code = await runSkills(['path', 'kortix-system']);
+    const code = await runSystemSkills(['path', 'kortix-system']);
     expect(code).toBe(0);
     expect(stdout.trim().endsWith('.kortix/opencode/skills/kortix-system')).toBe(true);
   });
 
   test('--json reports the path and whether it exists', async () => {
-    const code = await runSkills(['path', 'kortix-memory', '--json']);
+    const code = await runSystemSkills(['path', 'kortix-memory', '--json']);
     expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
     expect(parsed.path.endsWith('.kortix/opencode/skills/kortix-memory')).toBe(true);

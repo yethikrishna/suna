@@ -2818,6 +2818,53 @@ proof.
 
 ---
 
+### 2026-07-26 — session `api-latency-refactor` (B24 and B25 local completion)
+
+Completed the additive initial-session pin and parallel model-picker changes.
+
+RED evidence:
+
+- The initial-pin test failed because `resolveSessionPin()` did not exist.
+- The provider plan test failed because the model-picker waited for project
+  detail.
+- The web session-load test failed because cached transcript content could not
+  mount before the runtime switch completed.
+- The provider-loading test failed because the modal waited for runtime
+  provider discovery after project detail and secrets had resolved.
+
+Post-rebase gates:
+
+- SDK typecheck: exit 0.
+- SDK suite: **1275 pass / 0 fail** with **5669** assertions across **107**
+  files.
+- SDK packed-install smoke: pass.
+- Web suite: **2207 pass / 0 fail** with **5970** assertions across **244**
+  files.
+- Focused web ESLint: exit 0.
+- API typecheck: exit 0.
+- Focused isolated API tests: **67 pass / 0 fail**.
+- Sandbox-agent typecheck: exit 0.
+- Sandbox-agent suite: **298 pass / 0 fail** with **720** assertions.
+
+Live local execution-lease proof:
+
+- `acquire`: HTTP 200 in **33.9 ms**. The response and database stored the same
+  `executionLeaseUntil`.
+- `renew`: HTTP 200 in **20.8 ms**. The response and database stored the same
+  `executionLeaseUntil`.
+- `release`: HTTP 200 in **21.3 ms**. The database stored
+  `executionLeaseUntil = null`.
+
+Browser discovery returned no available browser. Local DOM and browser-network
+verification remains open.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
+and deployed browser verification remain open.
+
+---
+
 ### 2026-07-26 — session `whitelabel-acp-stable-completion` (B23 delivery completion)
 
 Merged B23 in PR #5477.

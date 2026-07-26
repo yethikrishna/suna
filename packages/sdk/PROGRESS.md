@@ -1555,3 +1555,13 @@ installed, imported, and constructed `@kortix/sdk` successfully.
 **Shippable to production: YES** for the SDK surface. Staging deployment,
 live session CRUD, provider execution, and the production release gate remain
 part of the parent release lifecycle.
+
+---
+
+### 2026-07-26 — session `maintenance-staging-codeql` (claim)
+
+Claimed the CodeQL follow-up for the staging maintenance transport. The change
+will remove polynomial URL-normalization behavior without changing the exported
+maintenance functions or their request contract.
+
+**Status:** IN PROGRESS.

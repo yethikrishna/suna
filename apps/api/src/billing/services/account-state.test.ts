@@ -45,41 +45,11 @@ mock.module('./free-tier', () => ({
   initializeFreeTierAccount: async () => undefined,
 }));
 
-// Mocked here (rather than left to fall through to the real modules) because
-// bun's test runner shares mock.module() state process-wide when the suite
-// isn't run with --isolate: ../../__tests__/unit-account-state-revenuecat.test.ts
-// sorts before this file and globally mocks these same two module paths with
-// fixture data of its own, which would otherwise silently leak into these
-// assertions depending on run order. Mirrors the real implementations'
-// prefetchedAccount arithmetic so this still exercises the same shape.
-mock.module('./credits', () => ({
-  getCreditSummary: async (_accountId: string, prefetchedAccount?: Record<string, unknown> | null) => {
-    const acct = prefetchedAccount !== undefined ? prefetchedAccount : account;
-    if (!acct) return { total: 0, daily: 0, monthly: 0, extra: 0, canRun: false };
-    return {
-      total: Number(acct.balance) || 0,
-      daily: Number(acct.dailyCreditsBalance) || 0,
-      monthly: Number(acct.expiringCredits) || 0,
-      extra: Number(acct.nonExpiringCredits) || 0,
-      canRun: true,
-    };
-  },
-}));
-
-mock.module('./auto-topup', () => ({
-  getAutoTopupSettings: async (
-    _accountId: string,
-    prefetchedAccount?: Record<string, unknown> | null,
-  ) => {
-    const acct = prefetchedAccount !== undefined ? prefetchedAccount : account;
-    if (!acct) return { enabled: true, threshold: 20, amount: 20 };
-    return {
-      enabled: Boolean(acct.autoTopupEnabled),
-      threshold: Number(acct.autoTopupThreshold) || 20,
-      amount: Number(acct.autoTopupAmount) || 20,
-    };
-  },
-}));
+// ./credits and ./auto-topup are deliberately NOT mocked: they are two of the
+// four call sites the dedupe fix threads `prefetchedAccount` through, so
+// mocking them would make this suite pass even if they regressed to an
+// unconditional getCreditAccount(). They reach getCreditAccount only via the
+// mocked ../repositories/credit-accounts, so the real modules run here.
 
 mock.module('./seat-management', () => ({
   countActiveMembers: async (_accountId: string) => trackedDelay(3),

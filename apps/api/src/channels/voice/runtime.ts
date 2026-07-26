@@ -38,6 +38,7 @@ import {
   createRoom,
   deleteRoom,
   KORTIX_REPLY_TOPIC,
+  roomCallbackUrl,
   roomHasAgent,
   roomNameForCall,
   sendRoomData,
@@ -125,11 +126,23 @@ export async function startCall(input: StartCallInput): Promise<VoiceCall> {
     closed: false,
   };
 
-  // Already staffed → reuse. Otherwise (re)build the room and dispatch a worker.
+  // Already staffed AND still pointed at this API → reuse. Otherwise (re)build
+  // the room and dispatch a worker.
+  //
   // Liveness is asked of LiveKit rather than remembered, so a second
   // `voice_spawn` in the same session can no longer hand back a link to a room
   // the worker left — which it did every time, since callId IS the session id.
-  if (await roomHasAgent(room)) return call;
+  //
+  // The metadata check matters just as much: a room outlives the process that
+  // made it (emptyTimeout is 30min), and its metadata carries the callback URL
+  // and per-call token the worker authenticates with. Reusing a live room whose
+  // metadata names a DEAD api url gives you an agent that joins, greets, listens
+  // — and then answers every real request with "I couldn't reach Kortix",
+  // because its hand-off is POSTing into the void. Rebuilding is cheap; a call
+  // that cannot reach Kortix is worthless.
+  if ((await roomHasAgent(room)) && (await roomCallbackUrl(room)) === config.KORTIX_URL) {
+    return call;
+  }
 
   const metadata: VoiceRoomMetadata = {
     project_id: input.projectId,

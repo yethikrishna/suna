@@ -156,6 +156,27 @@ export async function roomHasAgent(room: string): Promise<boolean> {
   return participants.some((p) => p.identity.startsWith('agent-'));
 }
 
+/**
+ * The `kortix_api_url` a live room's metadata was created with, or null if the
+ * room is gone / has no usable metadata.
+ *
+ * Used to decide whether an existing room is still reusable: the worker
+ * bootstraps entirely from this metadata, so a room pointing at an API that no
+ * longer answers produces an agent that talks but cannot act.
+ */
+export async function roomCallbackUrl(room: string): Promise<string | null> {
+  const [existing] = await roomService()
+    .listRooms([room])
+    .catch(() => [] as Awaited<ReturnType<RoomServiceClient['listRooms']>>);
+  if (!existing?.metadata) return null;
+  try {
+    const parsed = JSON.parse(existing.metadata) as { kortix_api_url?: unknown };
+    return typeof parsed.kortix_api_url === 'string' ? parsed.kortix_api_url : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Best-effort — an empty room times out on its own via `emptyTimeout` anyway. */
 export async function deleteRoom(room: string): Promise<void> {
   await roomService()

@@ -611,6 +611,41 @@ export const ProjectSessionSchema = z.object({
 });
 export type ProjectSession = z.infer<typeof ProjectSessionSchema>;
 
+export const WarmProjectSessionWorkspaceRefreshSchema = z.object({
+  status: z.enum(['skipped', 'unchanged', 'updated', 'failed']),
+  before_sha: z.string().nullable().optional(),
+  after_sha: z.string().nullable().optional(),
+  error: z.string().optional(),
+});
+export type WarmProjectSessionWorkspaceRefresh = z.infer<
+  typeof WarmProjectSessionWorkspaceRefreshSchema
+>;
+
+export const WarmProjectSessionResultSchema = z.object({
+  session: ProjectSessionSchema,
+  reused: z.boolean(),
+  workspace_refresh: WarmProjectSessionWorkspaceRefreshSchema,
+});
+export type WarmProjectSessionResult = z.infer<
+  typeof WarmProjectSessionResultSchema
+>;
+
+export const ClaimWarmProjectSessionInputSchema = z
+  .object({
+    session_id: z
+      .string()
+      .regex(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        'session_id must be an RFC 4122 v4 UUID',
+      ),
+    agent_name: z.string().min(1).optional(),
+    sandbox_slug: z.string().min(1).optional(),
+  })
+  .strict();
+export type ClaimWarmProjectSessionInput = z.infer<
+  typeof ClaimWarmProjectSessionInputSchema
+>;
+
 export const SESSION_SANDBOX_STATUSES = [
   'provisioning',
   'active',

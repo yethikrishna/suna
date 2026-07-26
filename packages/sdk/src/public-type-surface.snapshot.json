@@ -131,6 +131,7 @@
     "ChatIdentityBindResult",
     "CheckoutSessionResult",
     "ClaimPerSeatResult",
+    "ClaimWarmProjectSessionInput",
     "ClassifiedAgentPart",
     "ClassifiedCompactionPart",
     "ClassifiedFilePart",
@@ -1908,6 +1909,8 @@
     "VersionChannel",
     "VersionDiffPreview",
     "VersionEntry",
+    "WarmProjectSessionResult",
+    "WarmProjectSessionWorkspaceRefresh",
     "WebSearchResultItem",
     "WellKnownAuth",
     "Workspace",
@@ -1986,6 +1989,7 @@
     "childMapByParent",
     "claimComputer",
     "claimPerSeatBilling",
+    "claimWarmProjectSession",
     "classifyPart",
     "classifyTurn",
     "clearModelDefault",
@@ -2092,6 +2096,7 @@
     "ensurePmSession",
     "ensureProjectConnectorProfile",
     "ensureSandbox",
+    "ensureWarmProjectSession",
     "env",
     "exportAccountAudit",
     "extractGatewayErrorDetails",
@@ -3240,7 +3245,9 @@
     "setSandboxVersion",
     "useSandboxConnectionStore"
   ],
-  "./internal/opencode-pending-store": ["useOpenCodePendingStore"],
+  "./internal/opencode-pending-store": [
+    "useOpenCodePendingStore"
+  ],
   "./internal/idb-sync-cache": [
     "clearSessionIDBCache",
     "deleteSessionFromIDB",
@@ -4826,6 +4833,7 @@
     "ChatIdentityBindResult",
     "CheckoutSessionResult",
     "ClaimPerSeatResult",
+    "ClaimWarmProjectSessionInput",
     "CommitSessionResult",
     "ConfigureAutoTopupInput",
     "ConfirmCheckoutSessionResult",
@@ -5120,6 +5128,8 @@
     "ValidateReferralCodeResponse",
     "ValidateTokenResult",
     "VersionDiffPreview",
+    "WarmProjectSessionResult",
+    "WarmProjectSessionWorkspaceRefresh",
     "acceptAccountInvite",
     "actReviewItem",
     "activateConnectionProfile",
@@ -5139,6 +5149,7 @@
     "cancelScheduledChange",
     "cancelSubscription",
     "claimPerSeatBilling",
+    "claimWarmProjectSession",
     "clearModelDefault",
     "closeChangeRequest",
     "commitSessionChanges",
@@ -5198,6 +5209,7 @@
     "discoverConnectionProfileOAuth2",
     "discoverConnectorAuth",
     "ensureProjectConnectorProfile",
+    "ensureWarmProjectSession",
     "exportAccountAudit",
     "fetchAccountStateWithToken",
     "fetchAccountsWithToken",
@@ -5477,8 +5489,16 @@
     "validateToken",
     "verifyGatewayProvider"
   ],
-  "./feature-flags": ["FeatureFlags", "featureFlags", "parseFlagOverride"],
-  "./fresh-sessions": ["clearSessionFresh", "isSessionFresh", "markSessionFresh"],
+  "./feature-flags": [
+    "FeatureFlags",
+    "featureFlags",
+    "parseFlagOverride"
+  ],
+  "./fresh-sessions": [
+    "clearSessionFresh",
+    "isSessionFresh",
+    "markSessionFresh"
+  ],
   "./instance-routes": [
     "ACTIVE_INSTANCE_COOKIE",
     "INSTANCE_SCOPED_ROUTES",
@@ -5877,7 +5897,13 @@
     "turnHasSteps",
     "unwrapError"
   ],
-  "./sync-store": ["Binary", "MessageError", "MessageWithParts", "ascendingId", "useSyncStore"],
+  "./sync-store": [
+    "Binary",
+    "MessageError",
+    "MessageWithParts",
+    "ascendingId",
+    "useSyncStore"
+  ],
   "./server-store": [
     "deriveSubdomainOpts",
     "getActiveDbSandboxId",
@@ -5905,7 +5931,9 @@
     "setSandboxVersion",
     "useSandboxConnectionStore"
   ],
-  "./opencode-pending-store": ["useOpenCodePendingStore"],
+  "./opencode-pending-store": [
+    "useOpenCodePendingStore"
+  ],
   "./idb-sync-cache": [
     "clearSessionIDBCache",
     "deleteSessionFromIDB",

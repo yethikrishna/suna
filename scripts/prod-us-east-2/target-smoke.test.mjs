@@ -50,6 +50,17 @@ test("target smoke removes and counts recovery flow state", () => {
   );
 });
 
+test("frontend smoke removes and counts password-recovery flow state", () => {
+  assert.match(
+    frontendSmoke,
+    /DELETE FROM auth\.flow_state\s+WHERE user_id = :'smoke_user_id'::uuid/,
+  );
+  assert.match(
+    frontendSmoke,
+    /SELECT count\(\*\) FROM auth\.flow_state\s+WHERE user_id = :'smoke_user_id'::uuid/,
+  );
+});
+
 test("shadow smokes remove and count target-only billing state", () => {
   for (const smokeProgram of [targetSmokeProgram, frontendSmoke]) {
     assert.match(

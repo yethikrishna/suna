@@ -11,7 +11,7 @@ import {
   renderMetrics,
   metricsEnabled,
 } from './lib/metrics';
-import { getRequestContext, runWithContext, setContextField } from './lib/request-context';
+import { getDiagnosticFields, getRequestContext, runWithContext, setContextField } from './lib/request-context';
 import { getRequestUrl, ensureAbsoluteRequestUrl } from './lib/request-url';
 
 import { timingSafeEqual } from 'node:crypto';
@@ -293,6 +293,10 @@ app.use('*', async (c, next) => {
     appLogger[level](`Request completed: ${method} ${path} ${status} ${duration}ms`, {
       status,
       duration,
+      // Allowlisted, non-identifying only — see getDiagnosticFields. This is what
+      // makes turn-stream `kind` queryable in CloudWatch Logs Insights; the full
+      // request context (which carries identity) still goes to Better Stack only.
+      ...getDiagnosticFields(),
     });
     void emitOtelSpan({
       name: `${method} ${path}`,

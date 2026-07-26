@@ -8,8 +8,15 @@
  * API base, so the gateway's existing executeCall runs them unchanged. The
  * Slack catalog mirrors the in-sandbox `slack` CLI 1:1 for full parity. See
  * KORTIX-206.
+ *
+ * Voice is the one channel that breaks the "plain http binding" pattern: it
+ * has no third-party API and no install token — a call is a LiveKit room
+ * created by this API's own server-side code. Its actions bind `{ kind:
+ * 'voice', op }` instead of `http`, and the gateway routes them through
+ * GatewayDeps.executeVoiceCall rather than executeCall. It still goes through
+ * the same connector row / catalog / policy / audit machinery as every other
+ * channel — only the execution mechanism differs.
  */
-import { config } from '../config';
 import type { ExecutorAuth } from './execute';
 import type { ActionBinding, NormalizedAction, Risk } from './types';
 
@@ -44,13 +51,14 @@ export function channelDefaultSlug(platform: string): string {
 }
 
 /**
- * Per-platform credential placement. Slack/email attach their install token as
- * `Authorization: Bearer <token>`; Recall.ai (meet) wants `Authorization: Token
- * <key>`. executeCall's applyAuth honors the custom `name`+`prefix` verbatim, so
- * the only meet-specific auth wiring is this descriptor.
+ * Per-platform credential placement. Slack/Teams/email all attach their
+ * install token as `Authorization: Bearer <token>`. Voice has no install
+ * token at all — a call is created by this API's own server-side code
+ * (LiveKit config lives in this service's env, not a per-project install), so
+ * the gateway never needs to resolve or attach a credential for it.
  */
 export function channelAuth(platform: string): ExecutorAuth {
-  if (platform === 'voice') return { type: 'custom', in: 'header', name: 'Authorization', prefix: 'Token ' };
+  if (platform === 'voice') return { type: 'none', in: 'header', name: null, prefix: null };
   return { type: 'bearer', in: 'header', name: null, prefix: null };
 }
 
@@ -69,8 +77,9 @@ export function channelApiBase(platform: string): string {
     case 'email':
       return 'https://api.agentmail.to/v0';
     case 'voice':
-      // Recall.ai regional gateway. Swappable via RECALL_BASE_URL.
-      return config.RECALL_BASE_URL;
+      // No external API base — every voice action is a `{ kind: 'voice' }`
+      // binding executed by the gateway's own server-side code, never HTTP.
+      return '';
     default:
       return '';
   }
@@ -86,7 +95,7 @@ export function channelLabel(platform: string): string {
     case 'email':
       return 'Email';
     case 'voice':
-      return 'Google Meet';
+      return 'Voice';
     default:
       return platform;
   }
@@ -458,86 +467,93 @@ const EMAIL_ACTIONS: ChannelActionDef[] = [
 ];
 
 /**
- * The Recall.ai (Google Meet/Teams/Zoom) catalog — the meeting-bot lifecycle +
- * transcript reads. Property names match Recall's REST API exactly. Recall is
- * bot-id-centric: `join_meeting` takes the full `meeting_url` and returns a bot
- * `id`; everything else keys off that `id` (a path param). Trailing slashes are
- * required (Recall runs Django REST Framework). Phase 1 is listen-only — speak /
- * output-media land in Phase 2.
+ * One curated voice action — normalized into a `{ kind: 'voice' }`-bound
+ * NormalizedAction. Unlike `ChannelActionDef` there is no HTTP method/path:
+ * every voice action is executed by this API's own server-side code
+ * (GatewayDeps.executeVoiceCall), never an outbound request, so there is
+ * nothing for executeCall's HTTP builders to do here.
  */
-const VOICE_ACTIONS: ChannelActionDef[] = [
+interface VoiceActionDef {
+  /** Connector-relative tool path — also the `op` the binding carries. */
+  path: string;
+  name: string;
+  description: string;
+  risk: Risk;
+  properties: Record<string, { type: string; description: string }>;
+  required: string[];
+}
+
+/**
+ * The Voice catalog. `spawn_room` is the one implemented mechanism today — it
+ * creates a LiveKit room and returns a join link a human opens in their own
+ * browser. `join_gmeet` / `join_zoom` are declared so the action surface is
+ * stable for an agent to discover and future joining-an-existing-meeting
+ * mechanisms slot in without reshaping the catalog, but neither is
+ * implemented yet: calling either fails with a clear, actionable error
+ * (never silently absent, never pretending to work) — see
+ * GatewayDeps.executeVoiceCall in gateway.ts / db-deps.ts.
+ */
+const VOICE_ACTIONS: VoiceActionDef[] = [
   {
-    path: 'join_meeting',
-    method: 'bot/',
-    verb: 'POST',
-    name: 'Join meeting',
+    path: 'spawn_room',
+    name: 'Spawn voice room',
     description:
-      'Send the notetaker bot to join a meeting and start recording/transcribing. Provide the full `meeting_url`; returns a bot with an `id` used for the other actions.',
+      'Create a live voice room bound to this session and return a join link — a human opens it in their own browser to talk with you. The only voice mechanism implemented today.',
     risk: 'write',
     properties: {
-      meeting_url: { type: 'string', description: 'Full meeting URL, e.g. https://meet.google.com/abc-defg-hij.' },
-      bot_name: { type: 'string', description: 'Display name the bot joins under (announces it is recording).' },
-      recording_config: {
-        type: 'object',
-        description: 'Recall recording config. Set transcript.provider (e.g. meeting_captions) to enable a transcript.',
+      voice: { type: 'string', description: 'Optional speaking voice for the agent side of the call.' },
+    },
+    required: [],
+  },
+  {
+    path: 'join_gmeet',
+    name: 'Join Google Meet',
+    description:
+      'NOT IMPLEMENTED YET. Joining an existing Google Meet is not supported — use spawn_room instead and share the join link with whoever you would have invited.',
+    risk: 'write',
+    properties: {
+      meeting_url: {
+        type: 'string',
+        description: 'The Google Meet URL you would join (accepted for forward compatibility; not usable yet).',
       },
     },
     required: ['meeting_url'],
   },
   {
-    path: 'leave_meeting',
-    method: 'bot/{id}/leave_call/',
-    verb: 'POST',
-    name: 'Leave meeting',
-    description: 'Remove the bot from the meeting (irreversible). Requires the bot `id`.',
+    path: 'join_zoom',
+    name: 'Join Zoom',
+    description:
+      'NOT IMPLEMENTED YET. Joining an existing Zoom meeting is not supported — use spawn_room instead and share the join link with whoever you would have invited.',
     risk: 'write',
     properties: {
-      id: { type: 'string', description: 'The bot id returned by join_meeting.' },
+      meeting_url: {
+        type: 'string',
+        description: 'The Zoom meeting URL you would join (accepted for forward compatibility; not usable yet).',
+      },
     },
-    required: ['id'],
-  },
-  {
-    path: 'send_chat_message',
-    method: 'bot/{id}/send_chat_message/',
-    verb: 'POST',
-    name: 'Send chat message',
-    description:
-      "Post a message to the meeting chat as the bot. Requires the bot `id` and `message` text (1–4096 chars). This is how the agent talks back in the call.",
-    risk: 'write',
-    properties: {
-      id: { type: 'string', description: 'The bot id returned by join_meeting.' },
-      message: { type: 'string', description: 'Chat message text (1–4096 characters).' },
-      to: { type: 'string', description: 'Optional recipient (defaults to everyone).' },
-      pin: { type: 'boolean', description: 'Optional — pin the message.' },
-    },
-    required: ['id', 'message'],
-  },
-  {
-    path: 'bot_status',
-    method: 'bot/{id}/',
-    verb: 'GET',
-    name: 'Bot status',
-    description: 'Retrieve a bot — its current status (joining / in_call / done) and recordings. Requires the bot `id`.',
-    risk: 'read',
-    properties: {
-      id: { type: 'string', description: 'The bot id returned by join_meeting.' },
-    },
-    required: ['id'],
-  },
-  {
-    path: 'get_transcript',
-    method: 'transcript/',
-    verb: 'GET',
-    name: 'Get transcript',
-    description:
-      "List the bot's transcript artifact(s). Requires `bot_id`. Each result has a status and, once processing completes, `data.download_url` — a presigned URL to the transcript JSON (words + speaker). The bot must have been created with recording_config.transcript.provider set.",
-    risk: 'read',
-    properties: {
-      bot_id: { type: 'string', description: 'The bot id returned by join_meeting.' },
-    },
-    required: ['bot_id'],
+    required: ['meeting_url'],
   },
 ];
+
+function toVoiceAction(def: VoiceActionDef): NormalizedAction {
+  const binding: ActionBinding = { kind: 'voice', op: def.path };
+  const inputSchema = Object.keys(def.properties).length
+    ? {
+        type: 'object',
+        properties: def.properties,
+        ...(def.required.length ? { required: def.required } : {}),
+      }
+    : null;
+  return {
+    path: def.path,
+    name: def.name,
+    description: def.description,
+    inputSchema,
+    outputSchema: null,
+    risk: def.risk,
+    binding,
+  };
+}
 
 function toAction(def: ChannelActionDef): NormalizedAction {
   const binding: ActionBinding = { kind: 'http', method: def.verb, path: `/${def.method}` };
@@ -692,7 +708,7 @@ export function channelCatalog(platform: string): NormalizedAction[] {
     case 'email':
       return EMAIL_ACTIONS.map(toAction);
     case 'voice':
-      return VOICE_ACTIONS.map(toAction);
+      return VOICE_ACTIONS.map(toVoiceAction);
     default:
       return [];
   }

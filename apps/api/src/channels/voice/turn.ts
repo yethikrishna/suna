@@ -13,7 +13,7 @@
  *    that" when it called ask_kortix, so echoing the same beat back is worse
  *    than silence.
  */
-import { listCallsForSession, promptVoiceAgent } from './runtime';
+import { isCallLive, promptVoiceAgent } from './runtime';
 
 /** Speak at most one progress line per this interval, per session. */
 const STEP_SPEAK_INTERVAL_MS = 25_000;
@@ -21,13 +21,12 @@ const STEP_SPEAK_INTERVAL_MS = 25_000;
 const lastSpokenAt = new Map<string, number>();
 const spokenStepCount = new Map<string, number>();
 
-function liveCallId(sessionId: string): string | null {
-  const calls = listCallsForSession(sessionId);
-  return calls.length > 0 ? calls[0]!.callId : null;
-}
-
-export function hasLiveCall(sessionId: string): boolean {
-  return liveCallId(sessionId) !== null;
+/**
+ * A session's call id IS its session id (runtime.ts's `roomNameForCall`), so
+ * there is nothing to look up — only liveness to ask LiveKit about.
+ */
+export async function hasLiveCall(sessionId: string): Promise<boolean> {
+  return isCallLive(sessionId);
 }
 
 export async function relayTurnStep(
@@ -35,8 +34,8 @@ export async function relayTurnStep(
   title: string,
   _opts: unknown = {},
 ): Promise<boolean> {
-  const callId = liveCallId(sessionId);
-  if (!callId) return false;
+  if (!(await hasLiveCall(sessionId))) return false;
+  const callId = sessionId;
 
   const count = (spokenStepCount.get(sessionId) ?? 0) + 1;
   spokenStepCount.set(sessionId, count);
@@ -49,10 +48,10 @@ export async function relayTurnStep(
   if (!shouldSpeak) return false;
 
   lastSpokenAt.set(sessionId, now);
-  return promptVoiceAgent(
+  return (await promptVoiceAgent(
     callId,
     `[progress] You are still working on the request. Current step: ${title}. Mention this briefly and naturally, in one short sentence, only if it has been a while since you last spoke.`,
-  );
+  )).delivered;
 }
 
 export async function relayTurnAnswer(
@@ -60,13 +59,13 @@ export async function relayTurnAnswer(
   text: string,
   _blocks?: unknown[],
 ): Promise<boolean> {
-  const callId = liveCallId(sessionId);
-  if (!callId) return false;
+  if (!(await hasLiveCall(sessionId))) return false;
+  const callId = sessionId;
   clear(sessionId);
-  return promptVoiceAgent(
+  return (await promptVoiceAgent(
     callId,
     `[result] The work finished. Here is the outcome, which you should now say out loud in your own words, conversationally and briefly: ${text}`,
-  );
+  )).delivered;
 }
 
 export async function relayTurnEnd(
@@ -74,31 +73,31 @@ export async function relayTurnEnd(
   status: 'idle' | 'error' = 'idle',
   errorInfo?: { message?: string },
 ): Promise<boolean> {
-  const callId = liveCallId(sessionId);
-  if (!callId) return false;
+  if (!(await hasLiveCall(sessionId))) return false;
+  const callId = sessionId;
   clear(sessionId);
 
   // A clean end with no answer means relayTurnAnswer already spoke the result;
   // saying anything more would just be noise in the room.
   if (status !== 'error') return false;
 
-  return promptVoiceAgent(
+  return (await promptVoiceAgent(
     callId,
     `[error] That request failed${errorInfo?.message ? `: ${errorInfo.message}` : ''}. Tell them briefly that it didn't work, without reading the error verbatim.`,
-  );
+  )).delivered;
 }
 
 export async function relayTurnQuestion(
   sessionId: string,
   questions: Array<{ question?: string }>,
 ): Promise<{ ok: boolean; answers?: string[][]; error?: string }> {
-  const callId = liveCallId(sessionId);
-  if (!callId) return { ok: false, error: 'no live call' };
+  if (!(await hasLiveCall(sessionId))) return { ok: false, error: 'no live call' };
+  const callId = sessionId;
 
   const text = questions.map((q) => q.question ?? '').filter(Boolean).join(' ');
   if (!text) return { ok: false, error: 'no question' };
 
-  promptVoiceAgent(callId, `[question] Ask the room this, in your own words: ${text}`);
+  void promptVoiceAgent(callId, `[question] Ask the room this, in your own words: ${text}`);
 
   // The answer arrives as speech, which reaches the session through ask_kortix as
   // a NEW turn — there is no way to block here for it, and blocking is exactly
@@ -110,10 +109,10 @@ export async function relayReviewCard(
   sessionId: string,
   item: { title?: string },
 ): Promise<{ ok: boolean; error?: string }> {
-  const callId = liveCallId(sessionId);
-  if (!callId) return { ok: false, error: 'no live call' };
+  if (!(await hasLiveCall(sessionId))) return { ok: false, error: 'no live call' };
+  const callId = sessionId;
   const title = item.title ?? 'a change';
-  promptVoiceAgent(
+  void promptVoiceAgent(
     callId,
     `[review] Mention briefly that ${title} is ready for review, and that the link is in the meeting chat.`,
   );

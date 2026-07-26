@@ -38,11 +38,11 @@ resolve a `CallContext` from room metadata, since there is no room — see
 below).
 
 To actually exercise a call end-to-end you need something in the room to
-trigger dispatch: either point Recall's rendered meeting page at this
-LiveKit server as a client (the real integration — see "How this fits" below)
-or, for a bare smoke test, join the same room name as a human participant
-with any LiveKit client (e.g. the [Agents Playground](https://agents-playground.livekit.io/)
-pointed at your local server) and talk to it.
+trigger dispatch: either open the `/voice/[token]` page (apps/web) pointed at
+this LiveKit server (the real integration), or, for a bare smoke test, join
+the same room name as a human participant with any LiveKit client (e.g. the
+[Agents Playground](https://agents-playground.livekit.io/) pointed at your
+local server) and talk to it.
 
 **Required env vars** (see `src/call-context.ts` for the full explanation of
 why call-specific values come from room metadata, not env vars):

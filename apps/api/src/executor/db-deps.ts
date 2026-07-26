@@ -21,22 +21,20 @@ import { and, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { resolveAgentMailApiKey } from '../channels/agentmail-api';
-import { config } from '../config';
 import {
   loadAgentMailApiKeyForInbox,
   loadAgentMailApiKeyForProject,
   loadAgentMailInstall,
-  loadVoiceInstall,
-  loadVoiceTokenForProject,
   loadSlackInstall,
   loadSlackTokenForProject,
   loadTeamsBotCredentials,
   loadTeamsInstall,
   loadTeamsTenantForProject,
 } from '../channels/install-store';
-import { bridgePageUrl, mintAccessToken, roomNameForCall } from '../channels/voice/livekit';
 import { resolveProjectBotName } from '../channels/voice-identity';
-import { voiceJoinPatch } from '../channels/voice-join';
+import { bridgePageUrl, mintAccessToken, roomNameForCall } from '../channels/voice/livekit';
+import { startCall } from '../channels/voice/runtime';
+import { config } from '../config';
 import { authorize } from '../iam';
 import { agentMayUseConnector } from '../iam/agent-scope';
 import type { ChannelPlatform } from '../projects/connectors';
@@ -361,7 +359,6 @@ async function channelToken(
   }
   if (platform === 'email')
     return resolveAgentMailApiKey(await loadAgentMailApiKeyForProject(projectId, slug));
-  if (platform === 'voice') return loadVoiceTokenForProject(projectId);
   return null;
 }
 
@@ -375,7 +372,6 @@ async function channelInstalled(
   if (platform === 'teams') return (await loadTeamsInstall(projectId).catch(() => null)) != null;
   if (platform === 'email')
     return (await loadAgentMailInstall(projectId, slug).catch(() => null)) != null;
-  if (platform === 'voice') return (await loadVoiceInstall(projectId).catch(() => null)) != null;
   return false;
 }
 
@@ -535,23 +531,6 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
     },
     resolveEmailCredentialForInbox: async (projectId, inboxId) =>
       resolveAgentMailApiKey(await loadAgentMailApiKeyForInbox(projectId, inboxId)),
-    resolveVoiceJoinContext: async (projectId, sessionId) => {
-      if (!sessionId) return null;
-      const botName = await resolveProjectBotName(projectId);
-      // The call id IS the session id (see runtime.ts / routes.ts), so the room
-      // name is derivable without touching the call registry — this stays
-      // decoupled from runtime.ts on purpose, same as it was decoupled from the
-      // old bridge-token module.
-      const room = roomNameForCall(sessionId);
-      const token = await mintAccessToken({
-        room,
-        identity: `recall-bridge-${sessionId}`,
-        canPublish: true, // publishes the meeting's captured audio into the room
-        canSubscribe: true, // plays the worker's TTS audio back into the meeting
-      });
-      const patch = voiceJoinPatch(projectId, sessionId, bridgePageUrl(config.FRONTEND_URL, token));
-      return patch ? { metadata: patch.metadata, outputMedia: patch.outputMedia, botName } : null;
-    },
     loadPolicies: loadConnectorPoliciesFor,
     loadProjectPolicies: loadProjectPoliciesFor,
     loadDefaultMode: loadDefaultModeFor,
@@ -591,6 +570,44 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
     // selector, scoped to this account.
     executeComputerCall: ({ accountId, selector, method, args }) =>
       executeComputerCall({ accountId, selector, method, args }),
+    // Voice channel: `spawn_room` creates the LiveKit room + human join token
+    // (the same logic voice/routes.ts used to inline before it went through
+    // the gateway); `join_gmeet`/`join_zoom` are declared but not implemented
+    // yet, so they fail loud with what to do instead rather than pretending.
+    executeVoiceCall: async ({ projectId, sessionId, op, args }) => {
+      if (op === 'join_gmeet' || op === 'join_zoom') {
+        const platform = op === 'join_gmeet' ? 'Google Meet' : 'Zoom';
+        return {
+          ok: false,
+          kind: 'not_implemented',
+          message: `joining an existing ${platform} is not supported yet — use spawn_room and share the join link instead`,
+        };
+      }
+      if (op !== 'spawn_room') {
+        return { ok: false, kind: 'error', message: `unknown voice action "${op}"` };
+      }
+      if (!sessionId) {
+        return { ok: false, kind: 'error', message: 'spawn_room requires a session' };
+      }
+      const voice = typeof args.voice === 'string' ? args.voice : null;
+      const botName = await resolveProjectBotName(projectId);
+      // The call id IS the session id — one live call per session, and the
+      // join-time LiveKit token minted below carries the same value.
+      const callId = sessionId;
+      // Start the room BEFORE minting the human's join link. If a person opens
+      // the page first it would try to join a room that does not exist yet,
+      // and that join is rejected with nothing to retry against.
+      await startCall({ callId, projectId, sessionId, botName, voice });
+      const room = roomNameForCall(callId);
+      const token = await mintAccessToken({
+        room,
+        identity: `human-${callId}`,
+        canPublish: true,
+        canSubscribe: true,
+      });
+      const joinUrl = bridgePageUrl(config.FRONTEND_URL, token);
+      return { ok: true, data: { call_id: callId, join_url: joinUrl } };
+    },
     fetchImpl: nodeFetch,
     enforcePolicies: true,
   };

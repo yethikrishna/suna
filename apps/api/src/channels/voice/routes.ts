@@ -5,10 +5,11 @@
  * Auth for the MCP route reuses the executor's project-principal resolution
  * rather than inventing a second path: the caller is an in-sandbox agent
  * holding a session-scoped credential, which is exactly what the executor
- * already knows how to identify. That also means `voice_spawn` joins the
- * meeting through the executor gateway, so connector policies, approvals, and
- * the audit trail all apply — a direct Recall call from here would quietly
- * bypass every one of them.
+ * already knows how to identify. That also means `voice_spawn` runs its
+ * chosen action through the executor gateway, so connector policies,
+ * approvals, and the audit trail all apply — a direct LiveKit call from here
+ * would quietly bypass every one of them (see executor/db-deps.ts's
+ * `executeVoiceCall` for the actual room-creation logic).
  *
  * Auth for the `/voice/*` routes below is completely different: the caller is
  * the LiveKit worker process, not a Kortix session, so it authenticates with
@@ -16,16 +17,20 @@
  * the room's metadata (see runtime.ts's `VoiceRoomMetadata`) — never the
  * project-principal auth the MCP route uses.
  */
+import { eq } from 'drizzle-orm';
+import { projects } from '@kortix/db';
 import { createRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
+import { resolveExperimentalFeature } from '../../experimental/features';
+import { db } from '../../shared/db';
 import { dbExecutorRouterDeps } from '../../executor/db-deps';
-import { handleCall } from '../../executor/gateway';
 import { VOICE_CHANNEL_CONNECTOR_SLUG } from '../../executor/channels';
+import { handleCall } from '../../executor/gateway';
 import { supabaseAuth } from '../../middleware/auth';
 import { errors, json, makeOpenApiApp } from '../../openapi';
-import { resolveProjectBotName } from '../voice-identity';
+import { roomNameForCall } from './livekit';
 import { handleVoiceMcp, type VoiceMcpContext } from './mcp';
-import { appendTurn, askKortix, getCall, startCall, type VoiceCall } from './runtime';
+import { appendTurn, askKortix, type VoiceCall } from './runtime';
 import { runCommandInSandbox } from './run-command';
 import { verifyCallApiToken } from './worker-token';
 
@@ -44,6 +49,15 @@ export const voiceMcpRoutes = makeOpenApiApp();
 // are untouched.
 voiceMcpRoutes.use('/:projectId/mcp/voice', supabaseAuth);
 
+async function projectHasVoiceEnabled(projectId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ metadata: projects.metadata })
+    .from(projects)
+    .where(eq(projects.projectId, projectId))
+    .limit(1);
+  return resolveExperimentalFeature(row?.metadata, 'voice');
+}
+
 async function buildContext(c: Context, projectId: string): Promise<VoiceMcpContext | null> {
   const principal = await dbExecutorRouterDeps.resolveProjectPrincipal(c, projectId);
   if (!principal?.sessionId) return null;
@@ -53,46 +67,49 @@ async function buildContext(c: Context, projectId: string): Promise<VoiceMcpCont
   return {
     projectId,
     sessionId,
-    async spawn({ meetingUrl, voice }) {
-      const botName = await resolveProjectBotName(projectId);
+    async spawn({ action, voice, meetingUrl }) {
+      if (!(await projectHasVoiceEnabled(projectId))) {
+        throw new Error('voice is not enabled for this project — turn it on in Settings first');
+      }
 
-      // The call id IS the session id: one live call per session, and it is what
-      // binds the conversation to the thread that spawned it. The join-time
-      // LiveKit token minted at join time carries the same value.
-      const callId = sessionId;
+      const actionPath = action && action.trim() ? action.trim() : 'spawn_room';
 
-      // Start the room BEFORE joining. If the bot arrives first it renders a
-      // bridge page whose room does not exist yet, and the page's join is
-      // rejected with nothing to retry against.
-      await startCall({ callId, projectId, sessionId, botId: null, botName, voice });
-
+      // Route through the executor gateway rather than calling startCall
+      // directly: this is what makes connector policies, approvals, and the
+      // audit trail apply to a voice_spawn the same way they do to every
+      // other connector call. The actual room-creation logic (and the
+      // not-implemented handling for join_gmeet/join_zoom) lives in
+      // executor/db-deps.ts's `executeVoiceCall`.
       const result = await handleCall(dbExecutorRouterDeps.makeGatewayDeps(principal), {
         projectId,
         accountId: principal.accountId,
         subject: principal.subject,
         sessionId,
         connectorSlug: VOICE_CHANNEL_CONNECTOR_SLUG,
-        actionPath: 'join_meeting',
-        args: { meeting_url: meetingUrl },
+        actionPath,
+        args: {
+          ...(voice ? { voice } : {}),
+          ...(meetingUrl ? { meeting_url: meetingUrl } : {}),
+        },
       });
 
       if (result.status !== 'ok') {
         // Surface the gateway's own reason (policy denial, missing connector,
-        // pending approval) rather than a generic failure — the agent can act on
-        // "connector_not_found" and cannot act on "join failed".
+        // not-implemented action, pending approval) rather than a generic
+        // failure — the agent can act on a specific cause and cannot act on
+        // "spawn failed".
         const detail = (result as { reason?: string }).reason ?? result.status;
-        throw new Error(`could not join the meeting: ${detail}`);
+        throw new Error(detail);
       }
 
-      const botId =
-        result.data && typeof result.data === 'object'
-          ? ((result.data as { id?: string }).id ?? null)
-          : null;
+      const data = result.data as { call_id?: unknown; join_url?: unknown } | null;
+      const callId = typeof data?.call_id === 'string' ? data.call_id : null;
+      const joinUrl = typeof data?.join_url === 'string' ? data.join_url : null;
+      if (!callId || !joinUrl) {
+        throw new Error('could not start the call: malformed response from the voice connector');
+      }
 
-      const call = (await import('./runtime')).getCall(callId);
-      if (call) call.botId = botId;
-
-      return { callId, botId };
+      return { callId, joinUrl };
     },
   };
 }
@@ -152,10 +169,22 @@ async function authenticateWorker(
     return { ok: false, status: 401, error: 'Unauthorized' };
   }
 
-  const call = getCall(sessionId);
-  if (!call || call.closed || call.projectId !== projectId) {
-    return { ok: false, status: 404, error: 'call not found' };
-  }
+  // Everything a worker callback needs is already in the request: the HMAC
+  // proves this caller owns this call, and projectId/sessionId are both in the
+  // path — which is all askKortix and runCommandInSandbox use. The call id IS
+  // the session id and the room name derives from it, so there is nothing to
+  // look up. (This used to consult an in-process registry and 404 "call not
+  // found" whenever the callback landed on an API instance other than the one
+  // that ran voice_spawn — i.e. always, on more than one pod.)
+  const call: VoiceCall = {
+    callId: sessionId,
+    projectId,
+    sessionId,
+    voice: 'alloy',
+    room: roomNameForCall(sessionId),
+    startedAt: Date.now(),
+    closed: false,
+  };
 
   return { ok: true, call };
 }

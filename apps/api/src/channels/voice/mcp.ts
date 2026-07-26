@@ -20,7 +20,13 @@
  */
 import { createRoute, z } from '@hono/zod-openapi';
 import { errors, json, makeOpenApiApp } from '../../openapi';
-import { availableVoices, endCall, listCallsForSession, promptVoiceAgent, readTurns } from './runtime';
+import {
+  availableVoices,
+  endCall,
+  isCallLive,
+  promptVoiceAgent,
+  readTurns,
+} from './runtime';
 import { runCommandInSandbox } from './run-command';
 
 type JsonRpcId = string | number | null;
@@ -32,11 +38,27 @@ interface JsonRpcRequest {
   params?: Record<string, unknown>;
 }
 
+/** The `voice_spawn` action surface — what mechanism to start the call with.
+ *  Mirrors the `kortix_voice` channel connector's catalog (executor/channels.ts)
+ *  1:1; `spawn_room` is the only one implemented. */
+const VOICE_SPAWN_ACTIONS = ['spawn_room', 'join_gmeet', 'join_zoom'] as const;
+type VoiceSpawnAction = (typeof VOICE_SPAWN_ACTIONS)[number];
+const DEFAULT_VOICE_SPAWN_ACTION: VoiceSpawnAction = 'spawn_room';
+
 export interface VoiceMcpContext {
   projectId: string;
   sessionId: string;
-  /** Joins a meeting and starts a call bound to this session. */
-  spawn(input: { meetingUrl: string; voice?: string | null }): Promise<{ callId: string; botId: string | null }>;
+  /**
+   * Starts a live call bound to this session via the chosen `action` and
+   * returns a join link. Routes through the executor gateway (connector
+   * policies/approvals/audit) — `action`s other than `spawn_room` are
+   * declared but not implemented and reject with a clear, actionable error.
+   */
+  spawn(input: {
+    action?: string | null;
+    voice?: string | null;
+    meetingUrl?: string | null;
+  }): Promise<{ callId: string; joinUrl: string }>;
 }
 
 const PROTOCOL_VERSION = '2025-06-18';
@@ -47,18 +69,35 @@ function toolDefinitions() {
     {
       name: 'voice_spawn',
       description:
-        'Join a meeting URL with a voice agent bound to THIS session, and return immediately. The call then runs in the background — check in with voice_read. Google Meet, Zoom, and Microsoft Teams links all work.',
+        'Start a live call bound to THIS session and return a join link. `action` picks ' +
+        'the mechanism — "spawn_room" (default, the only one implemented) creates a ' +
+        'Kortix voice room; you cannot open a browser yourself, so send the link to the ' +
+        'person you want to talk to (post it in chat, read it aloud if you have another ' +
+        'channel, etc.) and they open it to join. "join_gmeet" / "join_zoom" are declared ' +
+        'for a future join-an-existing-meeting mechanism and are NOT implemented yet — ' +
+        'calling them returns a clear error telling you to use spawn_room instead. The ' +
+        'call runs in the background once started — check in with voice_read. Returns ' +
+        'immediately.',
       inputSchema: {
         type: 'object',
         properties: {
-          meeting_url: { type: 'string', description: 'Full meeting link.' },
+          action: {
+            type: 'string',
+            enum: [...VOICE_SPAWN_ACTIONS],
+            description: `Which mechanism to start the call with. Defaults to ${DEFAULT_VOICE_SPAWN_ACTION} — the only one implemented today.`,
+          },
           voice: {
             type: 'string',
             enum: voices,
-            description: `Speaking voice. Defaults to ${defaultVoice}.`,
+            description: `Speaking voice (spawn_room only). Defaults to ${defaultVoice}.`,
+          },
+          meeting_url: {
+            type: 'string',
+            description:
+              'Meeting URL for join_gmeet/join_zoom (accepted for forward compatibility — those actions are not implemented yet).',
           },
         },
-        required: ['meeting_url'],
+        required: [],
         additionalProperties: false,
       },
     },
@@ -145,13 +184,13 @@ async function callTool(
 
   switch (name) {
     case 'voice_spawn': {
-      const meetingUrl = String(args.meeting_url ?? '').trim();
-      if (!meetingUrl) return toolError('meeting_url is required');
+      const action = typeof args.action === 'string' && args.action.trim() ? args.action.trim() : null;
       const voice = typeof args.voice === 'string' ? args.voice : null;
-      const { callId, botId } = await ctx.spawn({ meetingUrl, voice });
+      const meetingUrl = typeof args.meeting_url === 'string' ? args.meeting_url : null;
+      const { callId, joinUrl } = await ctx.spawn({ action, voice, meetingUrl });
       return toolText(
-        `Joined. call_id=${callId}. The call runs in the background — poll voice_read with the cursor it returns; it never blocks.`,
-        { call_id: callId, bot_id: botId, cursor: 0 },
+        `Call started. call_id=${callId}. Send this link to the person joining — they open it in a browser: ${joinUrl}. The call runs in the background — poll voice_read with the cursor it returns.`,
+        { call_id: callId, join_url: joinUrl, cursor: 0 },
       );
     }
 
@@ -166,7 +205,7 @@ async function callTool(
       return toolText(rendered || '(nothing new)', {
         turns: page.turns,
         cursor: page.cursor,
-        live: listCallsForSession(ctx.sessionId).some((c) => c.callId === callId),
+        live: await isCallLive(callId),
       });
     }
 
@@ -174,19 +213,20 @@ async function callTool(
       const callId = String(args.call_id ?? '').trim();
       const text = String(args.text ?? '').trim();
       if (!callId || !text) return toolError('call_id and text are required');
-      const delivered = promptVoiceAgent(callId, text);
-      if (!delivered) return toolError(`call ${callId} is not live`);
-      return toolText('Said.', { call_id: callId });
+      const result = await promptVoiceAgent(callId, text);
+      if (!result.delivered) return toolError(`call ${callId}: ${result.reason}`);
+      return toolText('Sent to the call.', { call_id: callId });
     }
 
     case 'run_command': {
       const callId = String(args.call_id ?? '').trim();
       const command = String(args.command ?? '').trim();
       if (!callId || !command) return toolError('call_id and command are required');
-      const call = listCallsForSession(ctx.sessionId).find((c) => c.callId === callId);
-      if (!call) return toolError(`call ${callId} is not live`);
+      // The call id IS the session id, and the sandbox belongs to the session —
+      // so the command target comes from the MCP context, not a call lookup.
+      if (callId !== ctx.sessionId) return toolError(`call ${callId} is not this session's call`);
       try {
-        const result = await runCommandInSandbox(call.sessionId, command);
+        const result = await runCommandInSandbox(ctx.sessionId, command);
         return toolText(result.stdout || '(no output)', {
           call_id: callId,
           stdout: result.stdout,

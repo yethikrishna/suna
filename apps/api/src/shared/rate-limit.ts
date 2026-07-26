@@ -162,6 +162,7 @@ const inviteAcceptLimiter = new TokenBucketRateLimiter('invite_accept');
 const sandboxProxyLimiter = new TokenBucketRateLimiter('sandbox_proxy');
 const publicSessionShareLimiter = new TokenBucketRateLimiter('public_session_share');
 const demoRequestLimiter = new TokenBucketRateLimiter('demo_request');
+const voiceJoinLinkLimiter = new TokenBucketRateLimiter('voice_join_link');
 const checkEmailLimiter = new TokenBucketRateLimiter('check_email');
 const projectWebhookLimiter = new TokenBucketRateLimiter('project_webhook');
 const projectWebhookManifestRefreshLimiter = new TokenBucketRateLimiter('project_webhook_manifest_refresh');
@@ -283,6 +284,38 @@ export function createDemoRequestRateLimitMiddleware() {
 }
 
 /**
+ * Guards the public, unauthenticated `GET /v1/public/voice-join/:token`
+ * endpoint (public-join-routes.ts). The token itself is 256 bits of
+ * `crypto.randomBytes` — brute-forcing it is not a realistic threat on its
+ * own — but this is still the one unauthenticated surface that turns a guess
+ * into a live LiveKit access token, so it's keyed on client IP (not the token:
+ * an attacker looping unique garbage tokens must never get to allocate one
+ * rate-limit bucket per guess) and kept tight, same posture as
+ * `createCheckEmailRateLimitMiddleware`.
+ */
+export function createVoiceJoinLinkRateLimitMiddleware() {
+  return async (c: Context, next: Next) => {
+    const denied = await enforceRateLimit(
+      c,
+      voiceJoinLinkLimiter,
+      clientIp(c),
+      {
+        limit: positiveInt((config as any).KORTIX_VOICE_JOIN_LINK_REQS_PER_MIN, 30),
+        windowMs: 60_000,
+      },
+      {
+        action: `RATE_LIMIT ${c.req.method} ${c.req.path}`,
+        resourceType: 'voice_join_link',
+        resourceId: null,
+        metadata: { limiter: 'voice_join_link' },
+      },
+    );
+    if (denied) return denied;
+    await next();
+  };
+}
+
+/**
  * Guards the public, unauthenticated `POST /v1/access/check-email` endpoint.
  * Its response drives the unified auth flow (sign-in vs registration), which
  * makes it an account-existence oracle by construction — the limiter is what
@@ -352,6 +385,7 @@ export function resetRateLimiters() {
   sandboxProxyLimiter.reset();
   publicSessionShareLimiter.reset();
   demoRequestLimiter.reset();
+  voiceJoinLinkLimiter.reset();
   checkEmailLimiter.reset();
   projectWebhookLimiter.reset();
   projectWebhookManifestRefreshLimiter.reset();

@@ -44,6 +44,7 @@ import {
   sendRoomData,
 } from './livekit';
 import { speakAnswerWhenReady } from './answer-watch';
+import { revokeJoinLinksForCall } from './join-links';
 import { mintCallApiToken } from './worker-token';
 
 /**
@@ -261,6 +262,15 @@ export async function readTurns(
 
 export async function endCall(callId: string): Promise<boolean> {
   await deleteRoom(roomNameForCall(callId));
+  // A join link outliving the call it points at is a link to an empty room —
+  // revoke it here rather than waiting out its TTL, same reasoning as the
+  // room's own emptyTimeout/departureTimeout: the call ending is what really
+  // ends it. Best-effort like `deleteRoom` above: a revoke failure must not
+  // stop `end_call` from reporting the call as ended, since the room is
+  // already gone either way.
+  await revokeJoinLinksForCall(callId).catch((err) =>
+    console.error('[voice] revokeJoinLinksForCall failed', err),
+  );
   return true;
 }
 

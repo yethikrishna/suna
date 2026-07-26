@@ -20,6 +20,20 @@
  * nothing else — it authorises joining one room as one participant, not
  * calling the Kortix API.
  *
+ * The URL's last path segment is now one of TWO shapes, and this page tells
+ * them apart by prefix (`isJoinLinkToken`) before doing anything else:
+ *   - `vjl_...` — a short, ungessable, server-resolved join-link token
+ *     (join-links.ts). This page exchanges it for a freshly-minted LiveKit
+ *     access token + server URL via `getPublicVoiceJoin` (the public,
+ *     unauthenticated `GET /v1/public/voice-join/:token`) and never sees the
+ *     `?url=` query param at all.
+ *   - anything else — the LEGACY shape: the raw LiveKit access token itself,
+ *     with the server URL riding in `?url=`. `voice_spawn` stopped minting
+ *     these (a ~300-char JWT in a URL is fragile in transit — one corrupted
+ *     character breaks the signature with no way to retry), but a link
+ *     already handed out under the old scheme still has to open, so this
+ *     path is kept rather than removed.
+ *
  * Live-tested 2026-07-25 in a real Google Meet-adjacent call (this page open in
  * its own tab, no third-party meeting bot involved): no audible self-echo and
  * barge-in worked, with no explicit echoCancellation/noiseSuppression/
@@ -43,6 +57,7 @@ import {
   type RemoteTrack,
   type TranscriptionSegment,
 } from 'livekit-client';
+import { getPublicVoiceJoin } from '@kortix/sdk';
 
 import { AudioGestureOverlay, ConnectingScreen, EndedScreen, ReconnectingBanner } from './_components/connection-states';
 import { CallControls } from './_components/call-controls';
@@ -50,6 +65,15 @@ import { PresenceRail } from './_components/presence-rail';
 import { RoomHeader } from './_components/room-header';
 import { TranscriptFeed } from './_components/transcript-feed';
 import type { ConnectionPhase, PresenceEntry, TranscriptEntry } from './_components/types';
+
+const JOIN_LINK_TOKEN_PREFIX = 'vjl_';
+
+/** Whether a URL path segment is a short, server-resolved join-link token
+ *  (`vjl_...`) rather than a legacy raw LiveKit access token embedded
+ *  directly in the URL — see the file header. */
+export function isJoinLinkToken(pathSegment: string): boolean {
+  return pathSegment.startsWith(JOIN_LINK_TOKEN_PREFIX);
+}
 
 export default function VoiceBridgePage() {
   const [phase, setPhase] = useState<ConnectionPhase>('connecting');
@@ -64,14 +88,14 @@ export default function VoiceBridgePage() {
   const transcriptMapRef = useRef<Map<string, TranscriptEntry>>(new Map());
 
   useEffect(() => {
-    const token = window.location.pathname.split('/').filter(Boolean).pop() ?? '';
-    // The API mints the LiveKit access token AND tells us which LiveKit deployment
-    // issued it, the same way it used to tell us its own base via `?api=`. Never
-    // infer this from window.location or from an API base — the web origin, the
-    // Kortix API and the LiveKit server are three different hosts in every real
-    // deployment (and the LiveKit URL is a `ws(s)://`, not `http(s)://`, to begin
-    // with).
-    const livekitUrl = (
+    const pathToken = window.location.pathname.split('/').filter(Boolean).pop() ?? '';
+    // LEGACY shape only: the server URL riding in `?url=` (or the build-time
+    // fallback), for a raw-JWT link `voice_spawn` already handed out before it
+    // switched to short join-link tokens. A `vjl_...` token ignores this
+    // entirely — `getPublicVoiceJoin` below returns the server URL instead,
+    // since a query param on a short link would be one more thing to keep in
+    // sync with whichever LiveKit deployment actually issued the token.
+    const legacyLivekitUrl = (
       new URLSearchParams(window.location.search).get('url') ||
       process.env.NEXT_PUBLIC_LIVEKIT_URL ||
       ''
@@ -139,7 +163,24 @@ export default function VoiceBridgePage() {
     };
 
     async function join(): Promise<void> {
-      if (!token || !livekitUrl) {
+      if (!pathToken) {
+        throw new Error('missing LiveKit room token or server URL');
+      }
+
+      // Short join-link token → resolve it server-side for a fresh LiveKit
+      // access token + the server URL that issued it. Anything else is a
+      // legacy link: the path segment IS already the LiveKit access token,
+      // and the server URL came from the `?url=` query param above.
+      let liveKitToken = pathToken;
+      let liveKitUrl = legacyLivekitUrl;
+      if (isJoinLinkToken(pathToken)) {
+        const resolved = await getPublicVoiceJoin(pathToken);
+        if (cancelled) return;
+        liveKitToken = resolved.token;
+        liveKitUrl = resolved.url;
+      }
+
+      if (!liveKitToken || !liveKitUrl) {
         throw new Error('missing LiveKit room token or server URL');
       }
 
@@ -203,7 +244,7 @@ export default function VoiceBridgePage() {
         if (!cancelled) setNeedsGesture(!room.canPlaybackAudio);
       });
 
-      await room.connect(livekitUrl, token);
+      await room.connect(liveKitUrl, liveKitToken);
 
       // Succeeds outright in some browsers; most need the click handler below
       // (autoplay policies block programmatic audio until a user gesture).

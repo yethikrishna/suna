@@ -186,16 +186,25 @@ export async function deleteRoom(room: string): Promise<void> {
 
 /**
  * The join link a human opens directly in their own browser — a plain
- * LiveKit client page. URL shape is fixed by that page
- * (apps/web/src/app/(public)/voice/[token]/page.tsx, out of scope to edit
- * here): the LAST PATH SEGMENT is the raw LiveKit access token itself — not a
- * room name; the token's own grant already encodes which room it joins — and
- * the LiveKit server URL rides in the `url` query param, since the page can't
- * assume it shares an origin with either the API or the frontend that served it.
+ * LiveKit client page (apps/web/src/app/(public)/voice/[token]/page.tsx, out
+ * of scope to edit here beyond what its own file documents). The LAST PATH
+ * SEGMENT is a short, ungessable, server-resolved token (see join-links.ts's
+ * `mintJoinLink`) — NOT a LiveKit access token and NOT a room name. The page
+ * exchanges it for a freshly-minted LiveKit token + server URL via
+ * `GET /v1/public/voice-join/:token` (public-join-routes.ts) rather than
+ * having either one handed to it directly in the URL.
+ *
+ * This used to embed the raw ~300-character signed LiveKit JWT itself (plus
+ * the server URL in a `?url=` query param). That link was fragile by
+ * construction: one character corrupted in transit between minting and the
+ * browser (chat/speech/UI all get to mangle a URL this long) breaks the JWT
+ * signature, and the failure mode is an opaque "could not establish signal
+ * connection: invalid token" with nothing to retry. A short id can't corrupt
+ * the same way, and resolving it server-side means a fresh, short-TTL
+ * credential is minted at OPEN time rather than at spawn time.
  */
-export function bridgePageUrl(frontendUrl: string, token: string): string {
-  const qs = new URLSearchParams({ url: config.LIVEKIT_URL });
-  return `${frontendUrl.replace(/\/+$/, '')}/voice/${encodeURIComponent(token)}?${qs.toString()}`;
+export function joinPageUrl(frontendUrl: string, joinToken: string): string {
+  return `${frontendUrl.replace(/\/+$/, '')}/voice/${encodeURIComponent(joinToken)}`;
 }
 
 /**

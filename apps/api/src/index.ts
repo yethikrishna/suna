@@ -788,6 +788,13 @@ app.route('/v1/setup-links', setupLinksPublicApp); // /v1/setup-links/{secret,co
 import { publicSessionSharesApp } from './public-session-shares';
 app.route('/v1/public/session-shares', publicSessionSharesApp); // /v1/public/session-shares/:shareId[/messages]
 
+// Anonymous resolve step for a `voice_spawn` join link: exchanges the short,
+// ungessable id for a freshly-minted LiveKit access token + server URL. Backs
+// the logged-out `/voice/[token]` page the same way publicSessionSharesApp
+// backs `/share/[shareId]` above — see join-links.ts / public-join-routes.ts.
+import { voiceJoinPublicApp } from './channels/voice/public-join-routes';
+app.route('/v1/public/voice-join', voiceJoinPublicApp); // /v1/public/voice-join/:token
+
 // Setup — local/self-hosted only. Hidden when billing is enabled so the admin
 // surface isn't exposed on managed/cloud deployments.
 if (!config.KORTIX_BILLING_INTERNAL_ENABLED) {

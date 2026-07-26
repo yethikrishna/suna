@@ -32,7 +32,8 @@ import {
   loadTeamsTenantForProject,
 } from '../channels/install-store';
 import { resolveProjectBotName } from '../channels/voice-identity';
-import { bridgePageUrl, mintAccessToken, roomNameForCall } from '../channels/voice/livekit';
+import { joinPageUrl } from '../channels/voice/livekit';
+import { mintJoinLink } from '../channels/voice/join-links';
 import { endCall, isCallLive, promptVoiceAgent, readTurns, startCall } from '../channels/voice/runtime';
 import { config } from '../config';
 import { authorize } from '../iam';
@@ -634,21 +635,19 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
       }
       const voice = typeof args.voice === 'string' ? args.voice : null;
       const botName = await resolveProjectBotName(projectId);
-      // The call id IS the session id — one live call per session, and the
-      // join-time LiveKit token minted below carries the same value.
+      // The call id IS the session id — one live call per session.
       const callId = sessionId;
       // Start the room BEFORE minting the human's join link. If a person opens
       // the page first it would try to join a room that does not exist yet,
       // and that join is rejected with nothing to retry against.
       await startCall({ callId, projectId, sessionId, botName, voice });
-      const room = roomNameForCall(callId);
-      const token = await mintAccessToken({
-        room,
-        identity: `human-${callId}`,
-        canPublish: true,
-        canSubscribe: true,
-      });
-      const joinUrl = bridgePageUrl(config.FRONTEND_URL, token);
+      // Hand out a short, ungessable link that resolves to a freshly-minted
+      // LiveKit access token server-side (public-join-routes.ts), rather than
+      // embedding the ~300-char signed JWT itself in the URL — see
+      // join-links.ts's header for why (a single corrupted character in
+      // transit used to break the signature with no way to retry).
+      const { token: joinToken } = await mintJoinLink({ callId, projectId });
+      const joinUrl = joinPageUrl(config.FRONTEND_URL, joinToken);
       return { ok: true, data: { call_id: callId, join_url: joinUrl } };
     },
     fetchImpl: nodeFetch,

@@ -1146,6 +1146,37 @@ export const voiceCallTurns = kortixSchema.table(
   ],
 );
 
+/**
+ * Short, ungessable join links that resolve server-side to a fresh LiveKit
+ * access token — see `apps/api/src/channels/voice/join-links.ts`. Replaces
+ * handing out the raw ~300-char LiveKit JWT itself in `voice_spawn`'s
+ * `join_url` (fragile in transit: one corrupted character breaks the
+ * signature and the browser gets "invalid token").
+ *
+ * `token_hash` (sha256 of the raw token), never the raw token, is the primary
+ * key — same posture as `project_session_public_shares.token_hash`: a DB dump
+ * should not itself be a bag of live capability tokens.
+ *
+ * DB-backed rather than a stateless encrypted envelope (compare
+ * `setup-links/token.ts`) for the one property a self-contained token cannot
+ * give: revocation. A live call can end while a copy of its link is still
+ * sitting in someone's chat history, and that link must stop working the
+ * moment the call does (`revoked_at`, set by `endCall`) -- not just whenever
+ * its TTL happens to lapse.
+ */
+export const voiceJoinLinks = kortixSchema.table(
+  'voice_join_links',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    callId: text('call_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index('idx_voice_join_links_call').on(table.callId)],
+);
+
 export const teamsPendingUploads = kortixSchema.table(
   'teams_pending_uploads',
   {

@@ -57,8 +57,31 @@ export interface VoiceMcpContext {
   askKortix(request: string): { ok: true } | { ok: false; error: string };
   /** Waits (short, bounded) for a shell command's result in the call's sandbox. */
   runCommand(command: string, cwd?: string): Promise<RunCommandToolResult>;
-  /** Persists one transcript line, either side of the conversation. */
-  postTurn(role: 'user' | 'agent', text: string, speaker?: string | null): Promise<void>;
+  /**
+   * Persists one transcript line. 'user'/'agent' are either side of the spoken
+   * conversation (the worker's own `post_turn` tool, below). 'tool' is this
+   * file's OWN doing — see `callTool`'s `ask_kortix`/`run_command` cases — a
+   * record of what the worker asked Kortix to do, not something the model
+   * asks for directly.
+   */
+  postTurn(role: 'user' | 'agent' | 'tool', text: string, speaker?: string | null): Promise<void>;
+}
+
+/** Keeps a transcript line bounded — this is a permanent DB row, not a live
+ *  render, and `command`/`request` are free text the model (or a human in the
+ *  call) wrote. */
+function truncateForTranscript(text: string, max: number): string {
+  const clean = text.trim();
+  return clean.length > max ? `${clean.slice(0, max)}…` : clean;
+}
+
+/** One line summarizing a `run_command` result for the transcript — never the
+ *  full stdout/stderr (that already went back to the model in the tool result
+ *  above; the transcript just needs to say what ran and how it ended). */
+function summarizeRunCommandOutcome(result: RunCommandToolResult): string {
+  if (result.timedOut) return 'timed out';
+  if (result.exitCode !== null && result.exitCode !== 0) return `exit ${result.exitCode}`;
+  return 'ok';
 }
 
 const PROTOCOL_VERSION = '2025-06-18';
@@ -155,6 +178,12 @@ async function callTool(
       if (!request) return toolError('request is required');
       const result = ctx.askKortix(request);
       if (!result.ok) return toolError(result.error);
+      // Fire-and-forget, same as everything else on this path (see the
+      // interface doc above `postTurn`) — a transcript write must never be
+      // what makes ask_kortix stop returning "the instant it's queued".
+      void ctx
+        .postTurn('tool', truncateForTranscript(`ask_kortix: ${request}`, 500), 'ask_kortix')
+        .catch((err) => console.error('[voice] ask_kortix transcript log failed', err));
       return toolText('Queued — Kortix is working on it. The answer will arrive later as something to say.', {
         queued: true,
       });
@@ -164,8 +193,12 @@ async function callTool(
       const command = String(args.command ?? '').trim();
       if (!command) return toolError('command is required');
       const cwd = typeof args.cwd === 'string' && args.cwd.trim() ? args.cwd.trim() : undefined;
+      const label = truncateForTranscript(`run_command: ${command}`, 400);
       try {
         const result = await ctx.runCommand(command, cwd);
+        void ctx
+          .postTurn('tool', `${label} → ${summarizeRunCommandOutcome(result)}`, 'run_command')
+          .catch((err) => console.error('[voice] run_command transcript log failed', err));
         return toolText(result.stdout || '(no output)', {
           stdout: result.stdout,
           stderr: result.stderr,
@@ -173,7 +206,11 @@ async function callTool(
           timed_out: result.timedOut,
         });
       } catch (err) {
-        return toolError(err instanceof Error ? err.message : String(err));
+        const message = err instanceof Error ? err.message : String(err);
+        void ctx
+          .postTurn('tool', `${label} → failed`, 'run_command')
+          .catch((logErr) => console.error('[voice] run_command transcript log failed', logErr));
+        return toolError(message);
       }
     }
 

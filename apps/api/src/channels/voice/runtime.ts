@@ -210,7 +210,10 @@ export function askKortix(call: VoiceCall, request: string): { ok: true } | { ok
 
 export async function appendTurn(
   call: Pick<VoiceCall, 'callId' | 'projectId' | 'sessionId'>,
-  role: 'user' | 'agent',
+  // 'tool' = a record of an ask_kortix/run_command call the worker made
+  // through the voice MCP (mcp.ts's callTool) — not spoken, but part of what
+  // "what did the voice agent DO" needs to show.
+  role: 'user' | 'agent' | 'tool',
   text: string,
   speaker?: string | null,
 ): Promise<void> {

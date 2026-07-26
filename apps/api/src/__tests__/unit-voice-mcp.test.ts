@@ -69,6 +69,29 @@ describe('voice MCP', () => {
     expect(res.result.content[0].text).toContain('empty request');
   });
 
+  test('ask_kortix logs a tool-role transcript line so "what did the agent DO" is visible', async () => {
+    const seen: { role?: string; text?: string; speaker?: string | null }[] = [];
+    const c = ctx({
+      postTurn: async (role, text, speaker) => {
+        seen.push({ role, text, speaker });
+      },
+    });
+    await call('tools/call', { name: 'ask_kortix', arguments: { request: 'what is the weather' } }, c);
+    expect(seen).toEqual([{ role: 'tool', text: 'ask_kortix: what is the weather', speaker: 'ask_kortix' }]);
+  });
+
+  test('ask_kortix does not log a transcript line when the request was rejected', async () => {
+    const seen: unknown[] = [];
+    const c = ctx({
+      askKortix: () => ({ ok: false, error: 'empty request' }),
+      postTurn: async (role, text, speaker) => {
+        seen.push({ role, text, speaker });
+      },
+    });
+    await call('tools/call', { name: 'ask_kortix', arguments: { request: 'hi' } }, c);
+    expect(seen).toEqual([]);
+  });
+
   test('run_command returns stdout/stderr/exit_code/timed_out', async () => {
     const c = ctx({
       runCommand: async (command) => ({
@@ -110,6 +133,60 @@ describe('voice MCP', () => {
     const res = await call('tools/call', { name: 'run_command', arguments: { command: 'echo hi' } }, c);
     expect(res.result.isError).toBe(true);
     expect(res.result.content[0].text).toContain('sandbox not ready');
+  });
+
+  test('run_command logs a tool-role transcript line summarizing a clean exit', async () => {
+    const seen: { role?: string; text?: string; speaker?: string | null }[] = [];
+    const c = ctx({
+      runCommand: async () => ({ stdout: 'hi', stderr: '', exitCode: 0, timedOut: false }),
+      postTurn: async (role, text, speaker) => {
+        seen.push({ role, text, speaker });
+      },
+    });
+    await call('tools/call', { name: 'run_command', arguments: { command: 'echo hi' } }, c);
+    expect(seen).toEqual([{ role: 'tool', text: 'run_command: echo hi → ok', speaker: 'run_command' }]);
+  });
+
+  test('run_command logs a non-zero exit and a timeout distinctly, not as "ok"', async () => {
+    const seenExit: { text?: string }[] = [];
+    await call(
+      'tools/call',
+      { name: 'run_command', arguments: { command: 'false' } },
+      ctx({
+        runCommand: async () => ({ stdout: '', stderr: '', exitCode: 1, timedOut: false }),
+        postTurn: async (_role, text) => {
+          seenExit.push({ text });
+        },
+      }),
+    );
+    expect(seenExit).toEqual([{ text: 'run_command: false → exit 1' }]);
+
+    const seenTimeout: { text?: string }[] = [];
+    await call(
+      'tools/call',
+      { name: 'run_command', arguments: { command: 'sleep 999' } },
+      ctx({
+        runCommand: async () => ({ stdout: '', stderr: '', exitCode: null, timedOut: true }),
+        postTurn: async (_role, text) => {
+          seenTimeout.push({ text });
+        },
+      }),
+    );
+    expect(seenTimeout).toEqual([{ text: 'run_command: sleep 999 → timed out' }]);
+  });
+
+  test('run_command logs a "failed" transcript line when the tool throws', async () => {
+    const seen: { text?: string }[] = [];
+    const c = ctx({
+      runCommand: async () => {
+        throw new Error('sandbox not ready');
+      },
+      postTurn: async (_role, text) => {
+        seen.push({ text });
+      },
+    });
+    await call('tools/call', { name: 'run_command', arguments: { command: 'echo hi' } }, c);
+    expect(seen).toEqual([{ text: 'run_command: echo hi → failed' }]);
   });
 
   test('post_turn persists a turn and returns immediately', async () => {

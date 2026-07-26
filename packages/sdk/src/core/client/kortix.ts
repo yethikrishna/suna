@@ -825,6 +825,9 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
       /** Compact server-side transcript read (text + tool calls, no tool inputs/outputs) — callable with project-scoped session tokens. */
       transcript: (options?: Parameters<typeof P.getSessionTranscript>[2]) =>
         P.getSessionTranscript(projectId, sessionId, options),
+      /** This session's live voice-call transcript (spoken turns + ask_kortix/run_command calls). */
+      voiceTranscript: (options?: Parameters<typeof P.getVoiceTranscript>[2]) =>
+        P.getVoiceTranscript(projectId, sessionId, options),
 
       /**
        * Resolve THIS handle's own runtime (idempotent): provisions/resumes the

@@ -1134,7 +1134,9 @@ export const voiceCallTurns = kortixSchema.table(
     callId: text('call_id').notNull(),
     projectId: uuid('project_id').notNull(),
     sessionId: text('session_id').notNull(),
-    /** 'user' (a human in the call) | 'agent' (the voice agent speaking). */
+    /** 'user' (a human in the call) | 'agent' (the voice agent speaking) |
+     *  'tool' (an ask_kortix/run_command call the worker made through the
+     *  voice MCP — see mcp.ts's callTool). CHECK constraint enforces this set. */
     role: varchar('role', { length: 16 }).notNull(),
     speaker: text('speaker'),
     text: text('text').notNull(),

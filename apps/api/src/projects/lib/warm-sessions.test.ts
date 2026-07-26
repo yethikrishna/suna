@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  WarmProjectSessionError,
   createWarmProjectSessionCoordinator,
   type WarmProjectSessionRecord,
 } from './warm-sessions';

@@ -60,6 +60,15 @@ export async function resumeStoppedSandbox(row: {
   const now = new Date();
   const runtimeWakeId = crypto.randomUUID();
   const wakeMetadata = { ...(row.metadata ?? {}) };
+  // Carry the prior failure count/error forward instead of erasing it here:
+  // erasing it on every new attempt (the old behavior) is what let a
+  // permanently-dead box look "fresh" to selectPreResumeTargets on every
+  // single retry, forever. It's only cleared on an actual provider-start
+  // SUCCESS below, or bumped again on another failure.
+  const priorWakeFailureCount =
+    typeof wakeMetadata.runtimeWakeFailureCount === 'number'
+      ? wakeMetadata.runtimeWakeFailureCount
+      : 0;
   for (const key of [
     'idleQuiesced',
     'idleQuiescedAt',
@@ -69,8 +78,6 @@ export async function resumeStoppedSandbox(row: {
     'runtimeUnavailableAt',
     'preservedExternalId',
     'needsReprovision',
-    'runtimeWakeError',
-    'runtimeWakeFailedAt',
     'opencodeReadyWaitStartedAt',
     'opencodeReadyWaitReason',
   ])
@@ -122,7 +129,7 @@ export async function resumeStoppedSandbox(row: {
     await db
       .update(sessionSandboxes)
       .set({
-        metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) - 'runtimeWakeStartedAt' - 'runtimeWakeId' - 'runtimeWakeProviderStatus' - 'runtimeWakeError' - 'runtimeWakeFailedAt'`,
+        metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) - 'runtimeWakeStartedAt' - 'runtimeWakeId' - 'runtimeWakeProviderStatus' - 'runtimeWakeError' - 'runtimeWakeFailedAt' - 'runtimeWakeFailureCount'`,
         updatedAt: new Date(),
       })
       .where(
@@ -148,7 +155,11 @@ export async function resumeStoppedSandbox(row: {
       .update(sessionSandboxes)
       .set({
         status: 'stopped',
-        metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) || ${JSON.stringify({ runtimeWakeError: isMissingRuntimeError(err) ? 'missing' : 'start_failed', runtimeWakeFailedAt: new Date().toISOString() })}::jsonb`,
+        metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) || ${JSON.stringify({
+          runtimeWakeError: isMissingRuntimeError(err) ? 'missing' : 'start_failed',
+          runtimeWakeFailedAt: new Date().toISOString(),
+          runtimeWakeFailureCount: priorWakeFailureCount + 1,
+        })}::jsonb`,
         updatedAt: new Date(),
       })
       .where(
@@ -210,6 +221,56 @@ export async function resumeStoppedSandboxByExternalId(externalId: string): Prom
 const preResumeThrottle = new Map<string, number>();
 const PRERESUME_THROTTLE_MS = 30_000;
 
+// A stopped box that keeps failing to resume at the provider is presumed dead
+// (measured in prod: two permanently-dead boxes alone accounted for 367 of 435
+// pre-resume wake attempts in a single hour, retried every ~30s forever).
+// PRERESUME_MAX_CONSECUTIVE_FAILURES gives a box a small, bounded number of
+// speculative tries — enough for a transient blip (one bad provider call) to
+// not immediately blacklist the box — before pre-resume gives up on it for
+// good. This ONLY gates speculative selection (selectPreResumeTargets); a
+// real user's explicit /start (openSession / resumeStoppedSandboxByExternalId)
+// always still attempts the resume regardless of this counter. The counter
+// resets to zero the moment a resume actually succeeds.
+const PRERESUME_MAX_CONSECUTIVE_FAILURES = 3;
+// Exponential backoff from the last failure so the handful of tries allowed
+// under the cap above are spread out rather than burned on the very next
+// 30s pass — a transient failure still gets retried once it's genuinely
+// likely to have cleared.
+const PRERESUME_BACKOFF_BASE_MS = 2 * 60_000;
+const PRERESUME_BACKOFF_MAX_MS = 30 * 60_000;
+// selectPreResumeTargets filters ineligible (recently-failed) candidates out
+// AFTER the DB fetch, so it over-fetches a bit past `limit` to still be able
+// to return `limit` eligible rows when the most-recently-used candidates are
+// dead boxes sitting at the top of the lastUsedAt ordering.
+const PRERESUME_CANDIDATE_OVERFETCH = 10;
+
+function preResumeBackoffMs(failureCount: number): number {
+  const exp = PRERESUME_BACKOFF_BASE_MS * 2 ** Math.max(0, failureCount - 1);
+  return Math.min(exp, PRERESUME_BACKOFF_MAX_MS);
+}
+
+/**
+ * Whether a stopped sandbox is still worth a speculative pre-resume. A box
+ * with no recorded wake failure is always eligible. One that has failed is
+ * gated behind BOTH a hard cap (PRERESUME_MAX_CONSECUTIVE_FAILURES — presumed
+ * dead, excluded from speculation until a real resume succeeds and clears the
+ * counter) and an exponential backoff from its last failure time (so it isn't
+ * re-kicked on the very next 30s pass). Pure — exported for direct testing.
+ */
+export function isPreResumeEligible(
+  metadata: Record<string, unknown> | null | undefined,
+  nowMs = Date.now(),
+): boolean {
+  const meta = metadata ?? {};
+  if (!meta.runtimeWakeError) return true;
+  const failureCount =
+    typeof meta.runtimeWakeFailureCount === 'number' ? meta.runtimeWakeFailureCount : 1;
+  if (failureCount >= PRERESUME_MAX_CONSECUTIVE_FAILURES) return false;
+  const failedAtMs = parseTimestampMs(meta.runtimeWakeFailedAt);
+  if (failedAtMs == null) return true;
+  return nowMs - failedAtMs >= preResumeBackoffMs(failureCount);
+}
+
 /**
  * When a user returns to a project, proactively resume their most-recently-used
  * STOPPED session sandbox(es) so the ~8s in-place resume (VM restart + opencode
@@ -223,9 +284,12 @@ const PRERESUME_THROTTLE_MS = 30_000;
  */
 /**
  * The pre-resume candidates: the user's OWN most-recently-used STOPPED session
- * sandboxes in a project (status='stopped', a provider box still attached).
- * Most-recent-first, capped at `limit`. Pure DB read, no side effects —
- * exported so the selection is testable without provisioning real sandboxes.
+ * sandboxes in a project (status='stopped', a provider box still attached),
+ * excluding any that recently failed to resume (see isPreResumeEligible) —
+ * without that exclusion, a permanently-dead box sorts first on lastUsedAt
+ * forever and gets re-kicked on every pass. Most-recent-first among the
+ * eligible ones, capped at `limit`. Pure DB read, no side effects — exported
+ * so the selection is testable without provisioning real sandboxes.
  */
 export async function selectPreResumeTargets(
   projectId: string,
@@ -241,7 +305,8 @@ export async function selectPreResumeTargets(
     metadata: Record<string, unknown> | null;
   }>
 > {
-  return db
+  const boundedLimit = Math.max(1, limit);
+  const rows = await db
     .select({
       sandboxId: sessionSandboxes.sandboxId,
       sessionId: sessionSandboxes.sessionId,
@@ -261,7 +326,8 @@ export async function selectPreResumeTargets(
       ),
     )
     .orderBy(desc(sessionSandboxes.lastUsedAt))
-    .limit(Math.max(1, limit));
+    .limit(boundedLimit + PRERESUME_CANDIDATE_OVERFETCH);
+  return rows.filter((row) => isPreResumeEligible(row.metadata)).slice(0, boundedLimit);
 }
 
 export function preResumeRecentStoppedSessions(projectId: string, userId?: string | null): void {

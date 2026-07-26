@@ -1,5 +1,6 @@
 import { sessionSandboxes } from '@kortix/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { setContextField } from '../lib/request-context';
 import { type ProviderName, getProvider } from '../platform/providers';
 import { db } from '../shared/db';
 
@@ -82,9 +83,13 @@ export async function discoverExecutionKeepAliveEndpoint(
   // treats null as "no keep-alive endpoint yet" and the DB lease remains
   // authoritative, exactly like `touchProvider`'s own catch below.
   try {
-    const endpoint = await getProvider(row.provider as ProviderName).resolveEndpoint(
-      row.externalId,
-    );
+    const providerGetStart = Date.now();
+    const provider = getProvider(row.provider as ProviderName);
+    const providerGetMs = Date.now() - providerGetStart;
+    const previewLinkStart = Date.now();
+    const endpoint = await provider.resolveEndpoint(row.externalId);
+    setContextField('provider_get_ms', String(providerGetMs));
+    setContextField('preview_link_ms', String(Date.now() - previewLinkStart));
     return keepAliveEndpoint(endpoint.url, endpoint.headers);
   } catch (err) {
     console.warn(
@@ -101,7 +106,13 @@ async function touchProvider(
 ): Promise<ExecutionKeepAliveEndpoint | null> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const endpoint = await getProvider(provider).resolveEndpoint(externalId);
+      const providerGetStart = Date.now();
+      const providerInstance = getProvider(provider);
+      const providerGetMs = Date.now() - providerGetStart;
+      const previewLinkStart = Date.now();
+      const endpoint = await providerInstance.resolveEndpoint(externalId);
+      setContextField('provider_get_ms', String(providerGetMs));
+      setContextField('preview_link_ms', String(Date.now() - previewLinkStart));
       const keepAlive = keepAliveEndpoint(endpoint.url, endpoint.headers);
       const response = await fetch(`${keepAlive.url}/kortix/health`, {
         headers: endpoint.headers,

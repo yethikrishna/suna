@@ -1555,3 +1555,24 @@ installed, imported, and constructed `@kortix/sdk` successfully.
 **Shippable to production: YES** for the SDK surface. Staging deployment,
 live session CRUD, provider execution, and the production release gate remain
 part of the parent release lifecycle.
+
+---
+
+### 2026-07-26 — session `maintenance-staging-codeql` (claim)
+
+Claimed the CodeQL follow-up for the staging maintenance transport. The change
+will remove polynomial URL-normalization behavior without changing the exported
+maintenance functions or their request contract.
+
+The RED regression took 698.62 ms to normalize a 50,000-slash untrusted URL and
+failed its 250 ms bound. The indexed trailing-slash scan completed the same
+request in 0.07 ms.
+
+**Final SDK gates:** `pnpm --filter @kortix/sdk typecheck` exited 0; the full
+suite reported **1188 pass / 0 fail** across 90 files with 5220 assertions; and
+`pnpm --filter @kortix/sdk run smoke:install` built, packed, installed, imported,
+and constructed `@kortix/sdk` successfully.
+
+**Status:** COMPLETE. **Shippable to production: YES** for the SDK change.
+Staging merge, deployment, and live verification remain part of the parent
+maintenance hotfix.

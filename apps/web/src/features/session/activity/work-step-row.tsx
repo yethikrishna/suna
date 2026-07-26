@@ -54,7 +54,10 @@ export function WorkStepRow({
   const failed = (part.state as { status?: string } | undefined)?.status === 'error';
 
   const rowClass = cn(
-    'group/step -mx-1.5 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-sm px-1.5 py-1',
+    // Same clipping fix as the work line: a negative RIGHT margin pushes the
+    // hover background past the parent box, where an overflow-hidden ancestor
+    // shears it off.
+    'group/step -ml-1.5 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-sm py-1 pr-2 pl-1.5',
     'text-left text-xs transition-colors select-none',
     failed
       ? 'text-kortix-red/80 hover:text-kortix-red hover:bg-kortix-red/5'

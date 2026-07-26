@@ -1,5 +1,6 @@
 import { sessionSandboxes } from '@kortix/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { setContextField } from '../lib/request-context';
 import { type ProviderName, getProvider } from '../platform/providers';
 import { db } from '../shared/db';
 
@@ -83,9 +84,13 @@ export async function discoverExecutionKeepAliveEndpoint(
   // treats null as "no keep-alive endpoint yet" and the DB lease remains
   // authoritative.
   try {
-    const endpoint = await getProvider(row.provider as ProviderName).resolveEndpoint(
-      row.externalId,
-    );
+    const providerGetStart = Date.now();
+    const provider = getProvider(row.provider as ProviderName);
+    const providerGetMs = Date.now() - providerGetStart;
+    const previewLinkStart = Date.now();
+    const endpoint = await provider.resolveEndpoint(row.externalId);
+    setContextField('provider_get_ms', String(providerGetMs));
+    setContextField('preview_link_ms', String(Date.now() - previewLinkStart));
     return keepAliveEndpoint(endpoint.url, endpoint.headers);
   } catch (err) {
     console.warn(
@@ -100,8 +105,16 @@ async function resolveKeepAliveEndpoint(
   provider: ProviderName,
   externalId: string,
 ): Promise<ExecutionKeepAliveEndpoint | null> {
+  // Instrumented: preview_link_ms isolates the provider resolveEndpoint cost,
+  // which prior analysis could only infer. Purely additive observability.
   try {
-    const endpoint = await getProvider(provider).resolveEndpoint(externalId);
+    const providerGetStart = Date.now();
+    const providerInstance = getProvider(provider);
+    const providerGetMs = Date.now() - providerGetStart;
+    const previewLinkStart = Date.now();
+    const endpoint = await providerInstance.resolveEndpoint(externalId);
+    setContextField('provider_get_ms', String(providerGetMs));
+    setContextField('preview_link_ms', String(Date.now() - previewLinkStart));
     return keepAliveEndpoint(endpoint.url, endpoint.headers);
   } catch (err) {
     console.warn(

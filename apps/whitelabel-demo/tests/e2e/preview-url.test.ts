@@ -210,7 +210,7 @@ describe('/api/preview-url in direct mode', () => {
     app = await startApp({
       KORTIX_API_KEY: undefined,
       SESSION_SECRET: undefined,
-      NEXT_PUBLIC_KORTIX_API_URL: `${mock.url}/v1`,
+      KORTIX_UPSTREAM: `${mock.url}/v1`,
     });
   }, 30_000);
 

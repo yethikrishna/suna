@@ -29,6 +29,10 @@ import { useOpenCodePendingStore } from '../browser/stores/opencode-pending-stor
 import { setOpenCodeHealth, setSandboxStatus } from '../browser/stores/sandbox-connection-store';
 import { getSandboxUrlForExternalId } from '../browser/stores/server-store';
 import { useSyncStore } from '../browser/stores/sync-store';
+import {
+  beginSessionPromptObservation,
+  endSessionPromptObservation,
+} from '../browser/session-sync/session-sync-registry';
 import { setCurrentRuntime } from '../core/session/current-runtime';
 import {
   isSessionStartError,
@@ -236,11 +240,13 @@ export function sendStateOnError(error: unknown): SendState {
  * message even though the agent completed the turn.
  */
 export function beginRestPromptObservation(sessionId: string): void {
+  beginSessionPromptObservation(sessionId);
   useSyncStore.getState().setStatus(sessionId, { type: 'busy' });
 }
 
 /** Clear the optimistic REST busy state when the prompt never starts or stops. */
 export function endRestPromptObservation(sessionId: string): void {
+  endSessionPromptObservation(sessionId);
   useSyncStore.getState().setStatus(sessionId, { type: 'idle' });
 }
 

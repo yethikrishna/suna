@@ -23,13 +23,8 @@ const testCreditBalance = 100;
 const acpQuestionReconnectDelayMs = Number(
   process.env.E2E_WHITELABEL_ACP_QUESTION_RECONNECT_DELAY_MS ?? 121_000,
 );
-if (
-  !Number.isFinite(acpQuestionReconnectDelayMs) ||
-  acpQuestionReconnectDelayMs < 0
-) {
-  throw new Error(
-    'E2E_WHITELABEL_ACP_QUESTION_RECONNECT_DELAY_MS must be a non-negative number',
-  );
+if (!Number.isFinite(acpQuestionReconnectDelayMs) || acpQuestionReconnectDelayMs < 0) {
+  throw new Error('E2E_WHITELABEL_ACP_QUESTION_RECONNECT_DELAY_MS must be a non-negative number');
 }
 const prompt =
   'Research Marko Kraemer using the available web research tools. Create a PowerPoint presentation about Marko Kraemer and save it under /workspace. Do not ask a clarifying question. Complete the presentation, verify the file, and summarize the result.';
@@ -46,11 +41,16 @@ interface SurfaceEvidence {
   restPromptCount: number;
   toolCards: string[];
   transcript: string;
+  presentationPath: string;
+  presentationBytes: number;
 }
 
 async function answerBetaQuestion(page: Page): Promise<void> {
   await page.getByRole('button', { name: /Beta/ }).last().click();
-  const submitAnswer = page.getByRole('button', { name: 'Submit answer', exact: true });
+  const submitAnswer = page.getByRole('button', {
+    name: 'Submit answer',
+    exact: true,
+  });
   if (await submitAnswer.isVisible().catch(() => false)) await submitAnswer.click();
   await expect(page.getByText('QUESTION_BETA', { exact: true }).last()).toBeVisible({
     timeout: 120_000,
@@ -82,9 +82,53 @@ async function waitForReadySession(
   throw new Error(`Session did not become ready: ${last}`);
 }
 
+async function retryCleanup(label: string, operation: () => Promise<unknown>): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await operation();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
+      }
+    }
+  }
+  throw new Error(`${label} failed after 3 attempts`, { cause: lastError });
+}
+
+async function createParityAuth(email: string): Promise<{
+  user: AuthUser;
+  auth: AuthSession;
+}> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      const user = await createAuthUser(email, { supabaseUrl, password });
+      const auth = await signIn(email, { supabaseUrl, password });
+      return { user, auth };
+    } catch (error) {
+      lastError = error;
+      try {
+        const auth = await signIn(email, { supabaseUrl, password });
+        return { user: auth.user, auth };
+      } catch {
+        if (attempt < 5) {
+          await new Promise((resolve) => setTimeout(resolve, attempt * 2_000));
+        }
+      }
+    }
+  }
+  throw new Error('Parity auth fixture failed after 5 attempts', {
+    cause: lastError,
+  });
+}
+
 async function runSurface(
   page: Page,
   auth: AuthSession,
+  kortix: ReturnType<typeof createScopedKortix>,
   fixture: ProjectFixture,
   testInfo: TestInfo,
 ): Promise<SurfaceEvidence> {
@@ -101,10 +145,9 @@ async function runSurface(
   await page.addInitScript((token) => {
     window.localStorage.setItem('kortix_api_key', token);
   }, auth.access_token);
-  await page.goto(
-    `${whiteLabelBase}/projects/${fixture.projectId}/sessions/${fixture.sessionId}`,
-    { waitUntil: 'domcontentloaded' },
-  );
+  await page.goto(`${whiteLabelBase}/projects/${fixture.projectId}/sessions/${fixture.sessionId}`, {
+    waitUntil: 'domcontentloaded',
+  });
 
   const input = page.getByPlaceholder(/Message the agent/);
   await expect(input).toBeVisible({ timeout: 120_000 });
@@ -116,11 +159,57 @@ async function runSurface(
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible({
     timeout: 30_000,
   });
+  await expect(page.getByText('Agent is working…', { exact: true })).toBeHidden();
   await expect(page.locator('[data-message-role="assistant"]').last()).toBeVisible({
     timeout: 120_000,
   });
   const renderedToolCards = page.locator('[data-slot="tool-call"]');
   await expect(renderedToolCards.first()).toBeVisible({ timeout: 120_000 });
+  await expect(
+    page.locator(
+      '[data-slot="tool-call"][data-tool-status="pending"], [data-slot="tool-call"][data-tool-status="running"]',
+    ),
+  ).toHaveCount(0);
+  await expect(page.locator('main')).toContainText(/\/workspace\/\S+\.pptx\b/i, {
+    timeout: 120_000,
+  });
+  await expect(page.locator('main')).toContainText(/\b\d+\s+slides?\b/i, {
+    timeout: 120_000,
+  });
+
+  const sessionFiles = kortix.session(fixture.projectId, fixture.sessionId).files;
+  let presentationPath = '';
+  await expect
+    .poll(
+      async () => {
+        try {
+          const files = await sessionFiles.list('/workspace');
+          const presentation = files.find(
+            (file) => file.type === 'file' && file.name.toLowerCase().endsWith('.pptx'),
+          );
+          presentationPath = presentation?.absolute || presentation?.path || '';
+          return presentationPath;
+        } catch {
+          return '';
+        }
+      },
+      { timeout: 120_000 },
+    )
+    .toMatch(/\.pptx$/i);
+  let presentationBytes = 0;
+  await expect
+    .poll(
+      async () => {
+        try {
+          presentationBytes = (await sessionFiles.readBlob(presentationPath)).size;
+          return presentationBytes;
+        } catch {
+          return 0;
+        }
+      },
+      { timeout: 120_000 },
+    )
+    .toBeGreaterThan(10_000);
 
   const screenshotPath = testInfo.outputPath(`${fixture.transport}-presentation.png`);
   await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -149,9 +238,7 @@ async function runSurface(
     timeout: 120_000,
   });
   if (fixture.transport === 'acp') {
-    await new Promise((resolve) =>
-      setTimeout(resolve, acpQuestionReconnectDelayMs),
-    );
+    await new Promise((resolve) => setTimeout(resolve, acpQuestionReconnectDelayMs));
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.getByText('Choose one', { exact: true }).last()).toBeVisible({
       timeout: 120_000,
@@ -165,6 +252,8 @@ async function runSurface(
     restPromptCount: restPrompts.length,
     toolCards,
     transcript,
+    presentationPath,
+    presentationBytes,
   };
 }
 
@@ -181,8 +270,7 @@ test.describe.serial('16 — white-label ACP and REST parity', () => {
   test.beforeAll(async ({}, testInfo) => {
     testInfo.setTimeout(40 * 60_000);
     const email = `whitelabel-parity-${Date.now()}-${randomUUID().slice(0, 8)}@example.test`;
-    user = await createAuthUser(email, { supabaseUrl, password });
-    auth = await signIn(email, { supabaseUrl, password });
+    ({ user, auth } = await createParityAuth(email));
     kortix = createScopedKortix({
       backendUrl: apiBase,
       getToken: async () => auth.access_token,
@@ -275,19 +363,29 @@ test.describe.serial('16 — white-label ACP and REST parity', () => {
   test.afterAll(async ({}, testInfo) => {
     testInfo.setTimeout(3 * 60_000);
     if (!keepProjects) {
+      const cleanupErrors: Error[] = [];
       for (const fixture of cleanupFixtures) {
-        await kortix.session(fixture.projectId, fixture.sessionId).delete().catch(() => {});
+        await retryCleanup(`delete session ${fixture.sessionId}`, () =>
+          kortix.session(fixture.projectId, fixture.sessionId).delete(),
+        ).catch((error) => {
+          cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
+        });
       }
-      for (const projectId of new Set(
-        cleanupFixtures.map((fixture) => fixture.projectId),
-      )) {
-        await kortix.project(projectId).archive().catch(() => {});
+      for (const projectId of new Set(cleanupFixtures.map((fixture) => fixture.projectId))) {
+        await retryCleanup(`archive project ${projectId}`, () =>
+          kortix.project(projectId).archive(),
+        ).catch((error) => {
+          cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
+        });
       }
       if (user?.id) {
         await deleteAuthUser(user.id, {
           supabaseUrl,
           envFiles: ['apps/api/.env', 'apps/web/.env'],
         });
+      }
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(cleanupErrors, 'White-label parity cleanup failed');
       }
     }
   });
@@ -297,9 +395,11 @@ test.describe.serial('16 — white-label ACP and REST parity', () => {
   }, testInfo) => {
     const evidence: SurfaceEvidence[] = [];
     for (const fixture of fixtures) {
-      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+      const context = await browser.newContext({
+        viewport: { width: 1440, height: 1000 },
+      });
       const page = await context.newPage();
-      evidence.push(await runSurface(page, auth, fixture, testInfo));
+      evidence.push(await runSurface(page, auth, kortix, fixture, testInfo));
       await context.close();
     }
 
@@ -309,8 +409,12 @@ test.describe.serial('16 — white-label ACP and REST parity', () => {
     expect(acp.restPromptCount).toBe(0);
     expect(rest.acpPromptCount).toBe(0);
     expect(rest.restPromptCount).toBeGreaterThanOrEqual(2);
-    expect(acp.toolCards.length).toBeGreaterThan(0);
-    expect(rest.toolCards.length).toBeGreaterThan(0);
+    expect(acp.toolCards.length).toBeGreaterThanOrEqual(10);
+    expect(rest.toolCards.length).toBeGreaterThanOrEqual(10);
+    expect(
+      Math.min(acp.toolCards.length, rest.toolCards.length) /
+        Math.max(acp.toolCards.length, rest.toolCards.length),
+    ).toBeGreaterThanOrEqual(0.5);
 
     await testInfo.attach('transport-comparison', {
       body: JSON.stringify(
@@ -320,11 +424,15 @@ test.describe.serial('16 — white-label ACP and REST parity', () => {
             acpPromptCount: acp.acpPromptCount,
             restPromptCount: acp.restPromptCount,
             toolCards: acp.toolCards,
+            presentationPath: acp.presentationPath,
+            presentationBytes: acp.presentationBytes,
           },
           rest: {
             acpPromptCount: rest.acpPromptCount,
             restPromptCount: rest.restPromptCount,
             toolCards: rest.toolCards,
+            presentationPath: rest.presentationPath,
+            presentationBytes: rest.presentationBytes,
           },
         },
         null,

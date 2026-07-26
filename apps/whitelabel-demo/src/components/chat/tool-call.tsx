@@ -270,7 +270,10 @@ function QuestionBody({ vm }: { vm: Extract<ToolViewModel, { kind: 'question' }>
 
 function GenericBody({
   vm,
-}: { vm: Extract<ToolViewModel, { kind: 'generic' }>; isError: boolean }) {
+}: {
+  vm: Extract<ToolViewModel, { kind: 'generic' }>;
+  isError: boolean;
+}) {
   return (
     <div className="space-y-2">
       {vm.inputPretty && (
@@ -326,6 +329,7 @@ export function ToolCall({ tool }: { tool: ToolView }) {
   return (
     <Collapsible
       data-slot="tool-call"
+      data-tool-status={tool.status}
       className={cn(
         'rounded-lg border bg-card/50',
         isError ? 'border-destructive/30 bg-destructive/[0.03]' : 'border-border',

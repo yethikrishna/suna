@@ -7,7 +7,7 @@ import { db } from '../../shared/db';
 import { connectorBindingPayloadConflicts } from '../lib/session-connector-bindings';
 import { secretsAllowlistPayloadConflicts } from '../secrets';
 import {
-  originRefConflicts,
+  endUserRefConflicts,
   requireConnectorsConflicts,
   runtimeContextConflicts,
 } from './idempotency-conflicts';
@@ -145,7 +145,7 @@ export async function createSession(
     // session — that would land end-user B's prompts in A's conversation and
     // misattribute usage. Refuse it, mirroring the guards above. (Cross-ACCOUNT
     // key collision is a separate concern — see the account-scope fix.)
-    if (originRefConflicts(existingBody.origin_ref, command.body.origin_ref)) {
+    if (endUserRefConflicts(existingBody, command.body)) {
       return {
         status: 'failed',
         commandId: claimed.row.commandId,

@@ -2,8 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   originRefConflicts,
   requireConnectorsConflicts,
-  runtimeContextConflicts,
-} from './idempotency-conflicts';
+  runtimeContextConflicts, endUserRefConflicts } from './idempotency-conflicts';
 
 describe('originRefConflicts', () => {
   test('same origin_ref → no conflict', () => {
@@ -57,5 +56,30 @@ describe('requireConnectorsConflicts', () => {
   test('absent vs a real requirement → conflict', () => {
     expect(requireConnectorsConflicts(undefined, ['gmail'])).toBe(true);
     expect(requireConnectorsConflicts(['gmail'], undefined)).toBe(true);
+  });
+});
+
+describe('end-user conflict detection reads BOTH spellings', () => {
+  // The rename added `end_user_ref` alongside `origin_ref`. A guard that reads
+  // only the raw legacy key sees `undefined` when the replay uses the new name,
+  // concludes "no conflict", and hands the FIRST end-user's session to the
+  // SECOND — the exact disclosure this guard exists to stop.
+  test('same key, different end-user, mixed spellings → CONFLICT', () => {
+    expect(endUserRefConflicts({ origin_ref: 'alice' }, { end_user_ref: 'bob' })).toBe(true);
+    expect(endUserRefConflicts({ end_user_ref: 'alice' }, { origin_ref: 'bob' })).toBe(true);
+  });
+
+  test('same end-user under different spellings → NO conflict (a legal replay)', () => {
+    expect(endUserRefConflicts({ origin_ref: 'alice' }, { end_user_ref: 'alice' })).toBe(false);
+    expect(endUserRefConflicts({ end_user_ref: 'alice' }, { origin_ref: ' alice ' })).toBe(false);
+  });
+
+  test('neither side names an end-user → NO conflict', () => {
+    expect(endUserRefConflicts({}, {})).toBe(false);
+  });
+
+  test('one side names an end-user and the other does not → CONFLICT', () => {
+    expect(endUserRefConflicts({}, { end_user_ref: 'bob' })).toBe(true);
+    expect(endUserRefConflicts({ origin_ref: 'alice' }, {})).toBe(true);
   });
 });

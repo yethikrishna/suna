@@ -3793,11 +3793,24 @@ export const executorConnectionProfiles = kortixSchema.table(
       table.connectorId,
       table.profileId,
     ),
-    uniqueIndex('idx_executor_connection_profiles_default')
+    // A connector may hold MANY connections (e.g. support@ and sales@ for the
+    // team, plus each member's own). The default marker is therefore scoped PER
+    // OWNER, not per connector: exactly one team default, and at most one default
+    // per member/agent/external owner. Split into two partial indexes so the
+    // project case (owner_id IS NULL, where SQL NULLs would compare distinct)
+    // is still capped at one.
+    uniqueIndex('idx_executor_connection_profiles_default_project')
       .on(table.connectorId)
-      .where(sql`${table.isDefault} = true`),
-    uniqueIndex('idx_executor_connection_profiles_owner')
+      .where(sql`${table.isDefault} = true and ${table.ownerType} = 'project'`),
+    uniqueIndex('idx_executor_connection_profiles_default_owner')
       .on(table.connectorId, table.ownerType, table.ownerId)
+      .where(sql`${table.isDefault} = true and ${table.ownerId} is not null`),
+    // Identity is (connector, owner, LABEL) — the label is the discriminator that
+    // lets one owner hold several connections ("Work", "Personal") while keeping
+    // reconcile idempotent: the same label updates in place, a new label adds a
+    // new connection.
+    uniqueIndex('idx_executor_connection_profiles_owner')
+      .on(table.connectorId, table.ownerType, table.ownerId, table.label)
       .where(sql`${table.ownerId} is not null`),
     index('idx_executor_connection_profiles_project').on(table.projectId),
     index('idx_executor_connection_profiles_connector').on(table.connectorId),

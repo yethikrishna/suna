@@ -259,13 +259,37 @@ manifest grants it no secrets (or not that one), the allowlist can't add it back
 — the session simply gets fewer. Identifiers are validated at create, so a typo
 fails fast rather than silently injecting nothing.
 
-### origin_ref — attribution, not identity
+### origin_ref — a label, not a lever
 
-`origin_ref` records *who* the session is for and hands the sandbox
-`KORTIX_ORIGIN_REF`. It does **not** resolve that user's connectors or secrets by
-itself — pass those explicitly (`connector_bindings`, `secrets`). It exists so
-usage, logs, and the agent can be attributed to your end-user without Kortix ever
-knowing them as a login.
+`origin_ref` records *which of your end-users* a session was started for. It is
+an opaque string you choose; Kortix never resolves it to a login.
+
+**Exactly what it does, today:**
+
+1. **Stored + echoed** on the session (`origin_ref` in every session response).
+2. **Handed to the agent** as the `KORTIX_ORIGIN_REF` sandbox env var, so a
+   prompt/tool can say who it is acting for. (Kortix itself never reads it back.)
+3. **Guards idempotent retries.** Replaying an `Idempotency-Key` with a
+   *different* `origin_ref` is refused with `409 IDEMPOTENCY_ORIGIN_CONFLICT`, so
+   a retry can never hand end-user B the session that belongs to end-user A. This
+   is the one thing that would actually break without it.
+
+**What it does NOT do — do not design around these:**
+
+- **It grants nothing.** It is never an input to an authorization decision. The
+  403 you may hit is about *who may set the field* (backend origin only), not
+  about its value.
+- **It resolves nothing.** It does not pull that user's connectors or secrets —
+  pass those explicitly (`connector_bindings`, `secrets`).
+- **It is not queryable.** There is no index on it and no endpoint filters by it,
+  so "list this end-user's sessions" is not something you can ask Kortix today.
+  Keep your own mapping.
+- **It does not drive billing or usage.** Usage events carry no `origin_ref`, and
+  there are no per-end-user caps — concurrency limits are account-wide. If you
+  need per-user metering or cut-off, meter it in your wrapper.
+
+Treat it as a durable label for correlation and attribution. If you need
+structured per-user context inside the run as well, put it in `runtime_context`.
 
 ---
 

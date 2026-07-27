@@ -10,6 +10,10 @@ import {
   serviceAccounts,
 } from '@kortix/db';
 import { and, desc, eq } from 'drizzle-orm';
+import {
+  canonicalConnectorAlias,
+  publicConnectorAlias,
+} from '../../shared/connector-alias';
 import { db } from '../../shared/db';
 
 export interface ValidatedSessionConnectorBinding {
@@ -34,23 +38,10 @@ export function mayUseLegacyDefaultProfile(hasAnyDurableBinding: boolean): boole
   return !hasAnyDurableBinding;
 }
 
-const PUBLIC_TO_CANONICAL_CONNECTOR_ALIAS: Readonly<Record<string, string>> = {
-  email: 'kortix_email',
-  slack: 'kortix_slack',
-  meet: 'kortix_voice',
-};
-
-export function canonicalConnectorAlias(alias: string): string {
-  return PUBLIC_TO_CANONICAL_CONNECTOR_ALIAS[alias] ?? alias;
-}
-
-export function publicConnectorAlias(alias: string): string {
-  return (
-    Object.entries(PUBLIC_TO_CANONICAL_CONNECTOR_ALIAS).find(
-      ([, canonical]) => canonical === alias,
-    )?.[0] ?? alias
-  );
-}
+// Canonicalization lives in shared/ so pure IAM code can use it without
+// inheriting this module's database dependency. Imported for local use and
+// re-exported so existing importers are unaffected.
+export { canonicalConnectorAlias, publicConnectorAlias };
 
 export async function loadEmailInstallProfileId(
   projectId: string,

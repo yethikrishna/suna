@@ -3812,6 +3812,12 @@ export const executorConnectionProfiles = kortixSchema.table(
     uniqueIndex('idx_executor_connection_profiles_owner')
       .on(table.connectorId, table.ownerType, table.ownerId, table.label)
       .where(sql`${table.ownerId} is not null`),
+    // Project-owned rows carry owner_id NULL, so the index above (partial on
+    // owner_id IS NOT NULL) can't dedupe them. Several TEAM connections per
+    // connector are allowed, distinguished by label — this keeps that set unique.
+    uniqueIndex('idx_executor_connection_profiles_project_label')
+      .on(table.connectorId, table.label)
+      .where(sql`${table.ownerId} is null`),
     index('idx_executor_connection_profiles_project').on(table.projectId),
     index('idx_executor_connection_profiles_connector').on(table.connectorId),
     check(

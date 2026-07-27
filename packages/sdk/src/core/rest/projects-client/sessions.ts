@@ -517,3 +517,24 @@ export async function stopProjectSession(projectId: string, sessionId: string) {
     ),
   );
 }
+
+/**
+ * Change the model a session uses, mid-flight.
+ *
+ * `opencode_model` is set at create; this re-points an existing session. When
+ * the sandbox is live the change takes effect immediately (opencode restarts to
+ * rebuild its config), which ends any in-flight turn. `applied_live: false`
+ * means it was stored and will apply when the sandbox next starts.
+ */
+export async function setProjectSessionModel(
+  projectId: string,
+  sessionId: string,
+  opencodeModel: string,
+): Promise<{ opencode_model: string; applied_live: boolean; detail?: string }> {
+  return unwrap(
+    await backendApi.put<{ opencode_model: string; applied_live: boolean; detail?: string }>(
+      `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/model`,
+      { opencode_model: opencodeModel },
+    ),
+  );
+}

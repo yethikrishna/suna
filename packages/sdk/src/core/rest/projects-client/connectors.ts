@@ -762,3 +762,35 @@ export async function pipedreamFinalize(projectId: string, slug: string) {
     ),
   );
 }
+
+/* ─── Per-connection permissions ──────────────────────────────────────────── */
+
+/**
+ * Rules for ONE connection, keyed by its profile_id.
+ *
+ * A connector can hold several connections (support@, sales@, a member's own
+ * mailbox). These sit between the project and connector scopes: a project rule
+ * still wins, but a connection rule beats the connector default — which is what
+ * lets two mailboxes under one connector carry different permissions.
+ */
+export async function getConnectionPolicies(projectId: string, profileId: string) {
+  return unwrap(
+    await backendApi.get<{ policies: ConnectorPolicyRule[] }>(
+      `/projects/${projectId}/connector-profiles/${encodeURIComponent(profileId)}/policies`,
+    ),
+  );
+}
+
+/** Replaces the whole list — a rule omitted here is deleted, never merged. */
+export async function setConnectionPolicies(
+  projectId: string,
+  profileId: string,
+  policies: ConnectorPolicyRule[],
+) {
+  return unwrap(
+    await backendApi.put<{ ok: boolean }>(
+      `/projects/${projectId}/connector-profiles/${encodeURIComponent(profileId)}/policies`,
+      { policies },
+    ),
+  );
+}

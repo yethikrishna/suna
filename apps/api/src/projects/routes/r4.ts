@@ -6,6 +6,7 @@ import {
   UpdateConnectionProfileCredentialInputSchema,
 } from '@kortix/api-contract';
 import {
+  executorConnectionPolicies,
   executorConnectionProfiles,
   executorConnectors,
   projectSessions,
@@ -85,6 +86,7 @@ import {
   upsertAccountModelPreference,
 } from '../../repositories/model-preferences';
 import { getProjectRoutingPolicy } from '../../repositories/project-routing-policies';
+import { isValidMatcher } from '../../executor/policy';
 import { db } from '../../shared/db';
 import {
   acquireExecutionLease,
@@ -3195,5 +3197,151 @@ projectsApp.openapi(
       },
       202,
     );
+  },
+);
+
+/* ─── Per-CONNECTION permissions ────────────────────────────────────────────
+ *
+ * One connector can hold several connections (support@, sales@, a member's own
+ * mailbox) that warrant DIFFERENT permissions. These rules are keyed by
+ * profile_id and are evaluated between the project and connector scopes: a
+ * project rule still wins (the admin guardrail), but the connection beats the
+ * connector default.
+ *
+ * Authority is the SAME rule as every other profile mutation
+ * (mayMutateConnectionProfile): a member may set rules on their OWN connection;
+ * a team/external connection needs project.connector_profiles.manage. That
+ * stops a member widening a shared connection past the team baseline, and a
+ * miss returns 404 rather than 403 so profile existence is not disclosed.
+ */
+const ConnectionPolicyRuleSchema = z.object({
+  match: z.string().min(1).max(512),
+  action: z.enum(['always_run', 'require_approval', 'block']),
+});
+
+async function loadMutableConnectionProfile(c: any, projectId: string, profileId: string) {
+  const loaded = await loadProjectForUser(c, projectId, 'read');
+  if (!loaded) return null;
+  const mayManageSystemProfiles = await projectCapabilityAllowed(
+    c,
+    loaded.userId,
+    loaded.row.accountId,
+    projectId,
+    PROJECT_ACTIONS.PROJECT_CONNECTOR_PROFILES_MANAGE,
+  );
+  const [profile] = await db
+    .select({
+      profileId: executorConnectionProfiles.profileId,
+      ownerType: executorConnectionProfiles.ownerType,
+      ownerId: executorConnectionProfiles.ownerId,
+    })
+    .from(executorConnectionProfiles)
+    .where(
+      and(
+        eq(executorConnectionProfiles.profileId, profileId),
+        eq(executorConnectionProfiles.projectId, projectId),
+        eq(executorConnectionProfiles.accountId, loaded.row.accountId),
+      ),
+    )
+    .limit(1);
+  if (!profile) return null;
+  if (
+    !mayMutateConnectionProfile(
+      profile,
+      loaded.userId,
+      c.get('authType') === 'service_account',
+      mayManageSystemProfiles,
+    )
+  ) {
+    return null;
+  }
+  return profile;
+}
+
+projectsApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{projectId}/connector-profiles/{profileId}/policies',
+    tags: ['connectors'],
+    summary: "Read one connection's tool-call policies",
+    ...auth,
+    request: { params: z.object({ projectId: z.string(), profileId: z.string().uuid() }) },
+    responses: {
+      200: json(z.object({ policies: z.array(ConnectionPolicyRuleSchema) }), 'Connection policies'),
+      ...errors(403, 404),
+    },
+  }),
+  async (c: any) => {
+    const projectId = c.req.param('projectId');
+    const profileId = c.req.param('profileId');
+    const profile = await loadMutableConnectionProfile(c, projectId, profileId);
+    if (!profile) return c.json({ error: 'Not found' }, 404);
+    const rows = await db
+      .select()
+      .from(executorConnectionPolicies)
+      .where(eq(executorConnectionPolicies.profileId, profileId))
+      .orderBy(executorConnectionPolicies.position);
+    return c.json({ policies: rows.map((r) => ({ match: r.match, action: r.action })) });
+  },
+);
+
+projectsApp.openapi(
+  createRoute({
+    method: 'put',
+    path: '/{projectId}/connector-profiles/{profileId}/policies',
+    tags: ['connectors'],
+    summary: "Replace one connection's tool-call policies",
+    ...auth,
+    request: {
+      params: z.object({ projectId: z.string(), profileId: z.string().uuid() }),
+      body: {
+        content: {
+          'application/json': {
+            schema: z.object({ policies: z.array(ConnectionPolicyRuleSchema) }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: json(z.object({ ok: z.boolean() }), 'Replaced'),
+      ...errors(400, 403, 404),
+    },
+  }),
+  async (c: any) => {
+    const projectId = c.req.param('projectId');
+    const profileId = c.req.param('profileId');
+    const profile = await loadMutableConnectionProfile(c, projectId, profileId);
+    if (!profile) return c.json({ error: 'Not found' }, 404);
+
+    const body = await readBody(c);
+    const parsed = z.object({ policies: z.array(ConnectionPolicyRuleSchema) }).safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message ?? 'invalid policies' }, 400);
+    }
+    // Same matcher validation as the connector scope — an invalid glob/regex
+    // must be rejected at WRITE time, never left to blow up in the call gate.
+    const bad = parsed.data.policies.find((p) => !isValidMatcher(p.match));
+    if (bad) {
+      return c.json({ error: `invalid match pattern: ${bad.match}`, code: 'INVALID_MATCHER' }, 400);
+    }
+
+    // Replace, never merge: the editor sends the full list, so a rule the user
+    // deleted must disappear rather than linger.
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(executorConnectionPolicies)
+        .where(eq(executorConnectionPolicies.profileId, profileId));
+      if (parsed.data.policies.length > 0) {
+        await tx.insert(executorConnectionPolicies).values(
+          parsed.data.policies.map((p, index) => ({
+            profileId,
+            match: p.match,
+            action: p.action,
+            position: index,
+          })),
+        );
+      }
+    });
+    return c.json({ ok: true });
   },
 );

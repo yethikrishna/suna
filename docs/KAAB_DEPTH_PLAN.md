@@ -5,29 +5,58 @@ survived refutation) and a day of shipping against it. Ordered by
 (real user impact × confidence) ÷ effort. Every item cites evidence; anything I
 could not verify is marked as such rather than asserted.
 
-## Phase 0 — the thing that makes every other number untrustworthy
+## Phase 0 — the suite has no venue to run in
 
-**The `apps/api` suite does not run in CI.** `DOTENV_PRIVATE_KEY` is unset, so
-~1757 tests are green-but-vacuous. Three separate files were found broken *on
-main* in a single day:
+**Corrected 2026-07-27 after I got this wrong twice. Read the correction.**
 
-| File | State on main |
-| --- | --- |
-| `unit-preview-auth-principal.test.ts` | 0 ran (fixed → 24, #5583) |
-| `e2e-preview-proxy.test.ts` | 0 ran (fixed → 52 pass / 4 fail, #5583) |
-| `e2e-project-session-contract.test.ts` | 18 pass / **26 fail** — still broken |
+### What is actually true
 
-Two of those cover the sandbox-proxy auth surface, which is exactly where the
-session-isolation fix lives. **Do this first**: every confidence claim below is
-weaker until the suite actually runs.
+`package-tests.yml` triggers on **`pull_request` only** (plus manual dispatch) —
+20 of the last 20 runs were `pull_request`. The `kortix-api` job materializes
+`DOTENV_PRIVATE_KEY` only when `github.event_name != 'pull_request'`, a
+deliberate control added by a pentest the same day:
 
-- Get the decryption key into CI, or make the suite runnable without it.
-- Fix `e2e-project-session-contract` (26 failures, uninvestigated).
-- Decide the 4 `e2e-preview-proxy` failures: they assert a rejected env sync
-  returns 502; current behaviour returns 200. Tests or product — someone who owns
-  that behaviour must choose. Do not force either to green.
-- Add a lint that fails a `mock.module` factory omitting exports the graph needs.
-  That single class of bug silently zeroed two files.
+> exposing DOTENV_PRIVATE_KEY would let a same-repo branch PR read all 80+ prod
+> secrets decryptable with that one key
+
+Both halves are individually correct. Together they mean the condition can never
+be satisfied, so **the env-gated suite never runs anywhere**. This is not
+negligence — it is a security control colliding with a trigger list.
+
+**The fix is small and preserves the security property:** add
+`push: branches: [main]`. PR-head code still never sees the key; the suite gains
+a post-merge venue.
+
+**Risk to weigh first:** locally the suite shows failures under the real CI
+command, but my environment is provably not CI's (see below), so I cannot
+predict whether enabling this turns `main` red. Someone should dry-run it via
+`workflow_dispatch` before wiring the trigger.
+
+### What I got wrong, and why it matters
+
+1. **"26 failures in `e2e-project-session-contract.test.ts`"** — that was my
+   local `KORTIX_BILLING_INTERNAL_ENABLED=true`. With CI's value the file is
+   **44 pass / 0 fail**. I asserted it repeatedly and built a plan section on it.
+2. **"93 failures across the suite"** — I ran `bun test src`, which includes
+   integration and live files that `scripts/test.sh` deliberately excludes.
+3. Even the correct command (`bash scripts/test.sh`) shows 56 local failures
+   while CI is green, which proves my `.env` differs from CI's in more than the
+   billing flag. **Local failure counts from this machine are not evidence about
+   CI** and should not be quoted as such.
+
+The lesson worth keeping: a local test run is evidence about the local
+environment. Treating it as evidence about CI produced a confident, wrong
+priority list.
+
+### Still genuinely true
+
+- Two files (`unit-preview-auth-principal`, `e2e-preview-proxy`) failed to LOAD
+  from incomplete `mock.module` factories — a SyntaxError, environment-independent.
+  Fixed in #5583 (0 → 24 and 0 → 52 tests). That fix stands.
+- `e2e-preview-proxy` still shows 4 failures under CI's billing value, so those
+  are not explained by the env flag. Unresolved.
+- A lint that fails a `mock.module` factory omitting exports the graph needs is
+  still worth adding: that single class of bug zeroed two files silently.
 
 ## Phase 1 — correctness holes the audit confirmed
 

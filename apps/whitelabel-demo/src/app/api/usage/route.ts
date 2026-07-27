@@ -84,13 +84,10 @@ export async function GET(req: NextRequest) {
   // that bill back out per Lumen user, which is the whole point of running as a
   // wrapper. Best-effort: an upstream that cannot group this way must not take
   // the rest of the page down with it.
-  let endUserBills: ReturnType<typeof splitEndUserBills> = { bills: [], unattributedCost: 0 };
-  try {
-    const rollup = await kortix.billing.usageRollup({ groupBy: 'end_user_ref' });
-    endUserBills = splitEndUserBills(rollup.breakdown, markup);
-  } catch {
-    endUserBills = { bills: [], unattributedCost: 0 };
-  }
+  const endUserBills = await kortix.billing
+    .usageRollup({ groupBy: 'end_user_ref' })
+    .then((rollup) => splitEndUserBills(rollup.breakdown, markup))
+    .catch(() => ({ bills: [], unattributedCost: 0 }));
 
   const totals = projects.reduce(
     (acc, p) => {

@@ -294,8 +294,12 @@ export type ConnectionProfile = z.infer<typeof ConnectionProfileSchema>;
 export const ReconcileConnectionProfileInputSchema = z
   .object({
     connector_alias: z.string().regex(/^[a-z][a-z0-9_-]{0,127}$/),
-    owner_type: ConnectionProfileOwnerTypeSchema,
-    owner_id: z.string().trim().min(1).max(512),
+    // `project` = a TEAM-shared connection (several are allowed per connector,
+    // distinguished by label); it takes no owner_id. Every other owner type
+    // requires one. Creating a team connection needs the profiles-manage
+    // capability — enforced at the route.
+    owner_type: z.enum(['project', 'agent', 'member', 'subject', 'external']),
+    owner_id: z.string().trim().min(1).max(512).optional(),
     label: z.string().trim().min(1).max(255),
     metadata: ConnectionProfileMetadataSchema.optional(),
   })

@@ -115,8 +115,12 @@ export interface ConnectionProfile {
 
 export interface ReconcileConnectionProfileInput {
   connector_alias: string;
-  owner_type: 'agent' | 'member' | 'subject' | 'external';
-  owner_id: string;
+  /** `project` = a TEAM-shared connection (several per connector, distinguished
+   *  by `label`), which takes no `owner_id`. Every other owner type needs one. */
+  owner_type: 'project' | 'agent' | 'member' | 'subject' | 'external';
+  owner_id?: string;
+  /** Distinguishes several connections on one connector for the same owner
+   *  ("Support", "Sales", "Work"). Reconciling the same label updates in place. */
   label: string;
   metadata?: Record<string, unknown>;
 }
@@ -382,6 +386,21 @@ export async function activateConnectionProfile(projectId: string, profileId: st
   return unwrap(
     await backendApi.put<{ ok: true }>(
       `/projects/${projectId}/connector-profiles/${profileId}/activate`,
+      {},
+    ),
+  );
+}
+
+/**
+ * Make this the DEFAULT connection for its owner scope — the one a session uses
+ * when it doesn't name a connection explicitly. Defaults are per-owner: one for
+ * the project (team-shared) and one per member, so this only displaces the
+ * previous default within the same scope.
+ */
+export async function setDefaultConnectionProfile(projectId: string, profileId: string) {
+  return unwrap(
+    await backendApi.put<{ ok: true }>(
+      `/projects/${projectId}/connector-profiles/${profileId}/default`,
       {},
     ),
   );

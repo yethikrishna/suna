@@ -127,6 +127,13 @@
       "when": 1785114368302,
       "tag": "20260727010608_exact_trigger_scheduler",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785144061558,
+      "tag": "20260727092101_multi_connections_per_connector",
+      "breakpoints": true
     }
   ]
 }

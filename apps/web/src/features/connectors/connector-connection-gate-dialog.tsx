@@ -55,7 +55,7 @@ export function ConnectorConnectionGateDialog() {
           </Button>
           <Button
             className="gap-2"
-            onClick={() => projectId && connector && connect.mutate()}
+            onClick={() => projectId && connector && connect.mutate(undefined)}
             disabled={connect.isPending || !projectId || !connector}
           >
             {connect.isPending ? <Loading className="size-4" /> : <Lock className="size-4" />}

@@ -63,10 +63,12 @@ export function withPipedreamOverlayEscape(): () => void {
  */
 export function usePipedreamConnectMember(projectId: string, slug: string, onConnected: () => void) {
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input?: { label?: string }) => {
       const profile = await reconcileMemberConnectionProfile(projectId, {
         connector_alias: slug,
-        label: 'Private connection',
+        // The label distinguishes several personal connections on one connector
+        // ("Work", "Personal") — reconciling the same label updates in place.
+        label: input?.label?.trim() || 'Private connection',
       });
       const { token, app } = await pipedreamConnectConnectionProfile(projectId, profile.profile_id);
       if (!token || !app) throw new Error('App connect is not configured');

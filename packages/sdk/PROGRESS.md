@@ -257,7 +257,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B26 | **Do not report an expected warm-session configuration mismatch as a global API error.** The web client catches `WARM_SESSION_CONFIGURATION_MISMATCH` and creates a normal session.                                                                                                                                                                                                                                                               | `src/core/rest/projects-client/sessions.ts` calls `/sessions/warm/claim` with the default `showErrors: true`, so the recoverable `409` still reaches the host error handler.                                                                                                                                | **DONE 2026-07-26** — PR #5529, merge `5c0ae97ec`; SDK tests `1280/0`; deployed US proof observed the typed `409`, normal-session fallback, exact `PONG`, and no global mismatch error                                                                                                      |
 | B27 | **Retry the transient IAM policy read that caused the all-account project query failure.** The projects page can issue one query per account.                                                                                                                                                                                                                                                                                                     | Live US shadow evidence at `2026-07-26T20:03:20Z`: one IAM-backed `GET /projects` returned `500`; the identical retry returned `200` after `1.4s`. The wrapped `DrizzleQueryError` hid the nested PostgreSQL cause from logs.                                                                                  | **DONE 2026-07-26** — PR #5529, merge `5c0ae97ec`; one bounded transient read retry fails closed; wrapped PostgreSQL details are logged; API tests `40/0`; US API rollout completed with `2/2` tasks                                                                                             |
 | B28 | **Keep an explicit project-composer agent selection through asynchronous project-default hydration.**                                                                                                                                                                                                                                                                                                                                               | The deployed US two-test session suite clicked `memory-reflector`, then `useOpenCodeLocal()` changed its selection scope when `defaultAgentName` hydrated to `kortix`. The picker reset to `kortix` for 30 seconds.                                                                                          | **DONE 2026-07-27** — PR #5533, merge `ee45f55fa`; SDK tests `1283/0`, typecheck, packed-install smoke, and deployed US two-test suite `2/2` pass; both sessions returned exact `PONG`, and the mismatch fallback emitted no global error                                                                                                                                    |
-| B29 | **Preserve ACP upstream message boundaries in the projected transcript.**                                                                                                                                                                                                                                                                                                                                                                              | Dev session `ee41f742-9384-4f34-88e7-63ae3d765cae` emitted distinct `session/update.messageId` values for assistant steps, but `src/core/acp/projection.ts` discards `messageId` and appends every text or reasoning chunk to one generated assistant message.                                                                                       | **IN PROGRESS 2026-07-27** — session `acp-message-turns`; RED projection/controller tests, full SDK gates, local ACP browser proof, PR merge, Deploy Dev, and deployed dev proof required                                                                                                                                                 |
+| B29 | **Preserve ACP upstream message boundaries in the projected transcript.**                                                                                                                                                                                                                                                                                                                                                                              | Dev session `ee41f742-9384-4f34-88e7-63ae3d765cae` emitted distinct `session/update.messageId` values for assistant steps, but `src/core/acp/projection.ts` discarded `messageId` and appended every text or reasoning chunk to one generated assistant message.                                                                                      | **DONE 2026-07-27** — implementation `60b06c6e4`; focused projection/controller tests `27/0`, full SDK tests `1299/0`, typecheck, packed-install smoke, supplied-transcript replay, and local ACP Chromium flow pass                                                                                                                                                                                          |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -3332,3 +3332,37 @@ Production routing and production data were unchanged.
 **Status:** COMPLETE.
 
 **Shippable to production: YES.**
+
+---
+
+### 2026-07-27 — session `acp-message-turns` (B29 implementation)
+
+Preserved ACP upstream `messageId` values in the projected transcript.
+
+- User and assistant chunks now retain their upstream message IDs.
+- Text and reasoning chunks now update their owning assistant message.
+- A new upstream assistant message completes the previous assistant message.
+- Late tool updates now find the assistant message that owns the matching
+  `callID`.
+- ACP events without `messageId` still use generated IDs.
+
+TDD and local verification:
+
+- Implementation commit: `60b06c6e41f82d786f24095d366876483af85b68`.
+- Focused projection and controller suite: **27 pass / 0 fail** with **75**
+  assertions.
+- SDK typecheck: exit 0.
+- SDK suite: **1299 pass / 0 fail** with **5756** assertions.
+- SDK packed-install smoke: pass.
+- `git diff --check`: exit 0.
+- Supplied transcript replay produced **1** user message and **18** separate
+  assistant messages.
+- The replay preserved upstream assistant IDs and tool-call ownership.
+- Local Chromium ACP flow: **1 pass / 0 fail** in **58.3 seconds**.
+- The browser flow covered prompt streaming, hard reload, permission response,
+  question response, and the absence of REST `/prompt_async`.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
+and deployed ACP transcript verification remain.

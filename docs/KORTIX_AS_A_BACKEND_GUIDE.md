@@ -281,15 +281,36 @@ an opaque string you choose; Kortix never resolves it to a login.
   about its value.
 - **It resolves nothing.** It does not pull that user's connectors or secrets —
   pass those explicitly (`connector_bindings`, `secrets`).
-- **It is not queryable.** There is no index on it and no endpoint filters by it,
-  so "list this end-user's sessions" is not something you can ask Kortix today.
-  Keep your own mapping.
-- **It does not drive billing or usage.** Usage events carry no `origin_ref`, and
-  there are no per-end-user caps — concurrency limits are account-wide. If you
-  need per-user metering or cut-off, meter it in your wrapper.
+- **It does not list sessions.** No endpoint filters sessions by `origin_ref`, so
+  "show me this end-user's sessions" still needs your own mapping.
 
-Treat it as a durable label for correlation and attribution. If you need
-structured per-user context inside the run as well, put it in `runtime_context`.
+**What it DOES drive — metering and caps:**
+
+```
+GET /v1/usage?origin_ref=user-123     # that end-user's spend (totals + breakdown)
+GET /v1/usage?group_by=origin_ref     # spend per end-user, biggest first
+```
+
+Usage events carry a server-derived copy of `origin_ref`, so per-end-user spend
+is a real query. Two caveats worth knowing:
+
+- **Only backend-session spend is attributed.** Rows written before this shipped,
+  the model playground, and the legacy router path all have a `NULL` `origin_ref`
+  and are *excluded* from `group_by=origin_ref` — they aren't folded into an
+  anonymous bucket that would read as a phantom end-user. The unfiltered totals
+  in `data` still include them, so per-user rows won't sum to the account total.
+- **The value lands in the billing ledger and comes back out of the API**, so use
+  an opaque id — not an email.
+
+For concurrency, `KORTIX_BACKEND_PER_ORIGIN_SESSION_LIMIT` caps how many LIVE
+sessions one end-user may hold (0/unset = off; the account-wide cap always
+applies). Exceeding it returns `429 per_origin_session_limit`. It's a check-then-
+act guard, like the account cap — N parallel creates for one end-user can still
+overshoot slightly, so treat it as a runaway-loop guardrail, not a hard quota.
+
+Treat `origin_ref` as a durable label for correlation, attribution and metering.
+If you need structured per-user context inside the run as well, put it in
+`runtime_context`.
 
 ---
 

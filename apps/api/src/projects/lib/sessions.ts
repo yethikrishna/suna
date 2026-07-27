@@ -108,6 +108,65 @@ export async function countActiveProjectSessions(accountId: string): Promise<num
   return Number(row?.activeCount ?? 0);
 }
 
+/**
+ * Live sessions for ONE of a wrapper's end-users. Backs the per-origin cap: an
+ * account-wide limit is not enough for Kortix-as-a-Backend, where one account
+ * fronts many end-users and any single one could otherwise consume every slot
+ * the whole wrapper has. Served by idx_project_sessions_account_origin_active,
+ * whose predicate mirrors ACTIVE_SESSION_STATUSES.
+ */
+export async function countActiveProjectSessionsForOrigin(
+  accountId: string,
+  originRef: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ activeCount: sql<number>`count(*)::int` })
+    .from(projectSessions)
+    .where(
+      and(
+        eq(projectSessions.accountId, accountId),
+        eq(projectSessions.originRef, originRef),
+        inArray(projectSessions.status, [...ACTIVE_SESSION_STATUSES]),
+      ),
+    )
+    .limit(1);
+  return Number(row?.activeCount ?? 0);
+}
+
+/**
+ * Per-end-user concurrency cap. Opt-in: with the limit unset (or <= 0) this is a
+ * no-op, so nothing changes for deployments that don't want it. Only applies to
+ * sessions that actually carry an origin_ref (i.e. backend-origin ones).
+ *
+ * Same check-then-act race as the account cap — N parallel creates for one
+ * end-user can overshoot — so treat it as a guardrail against runaway loops,
+ * not a hard quota.
+ */
+export async function enforcePerOriginSessionCap(
+  accountId: string,
+  originRef: string | null,
+): Promise<SessionCreateError | null> {
+  const limit = config.KORTIX_BACKEND_PER_ORIGIN_SESSION_LIMIT ?? 0;
+  if (!originRef || limit <= 0) return null;
+  const active = await countActiveProjectSessionsForOrigin(accountId, originRef);
+  if (active < limit) return null;
+  const message = `This end-user already has ${active} active session${active === 1 ? '' : 's'} (limit ${limit}). Finish or stop one before starting another.`;
+  return {
+    status: 429,
+    headers: {
+      'X-RateLimit-Limit': String(limit),
+      'X-RateLimit-Remaining': '0',
+    },
+    body: {
+      error: message,
+      message,
+      code: 'per_origin_session_limit',
+      limit,
+      active_sessions: active,
+    },
+  };
+}
+
 export async function countProvisioningProjectSessions(projectId: string): Promise<number> {
   const [row] = await db
     .select({ provisioningCount: sql<number>`count(*)::int` })
@@ -984,12 +1043,21 @@ export async function createProjectSession(input: {
   // run them concurrently so a warmed create pays a single DB round-trip instead
   // of two serial ones. Error precedence is preserved exactly: the cap (429) is
   // still evaluated/returned before billing (402).
-  const [capResult, billingCheck] = await Promise.all([
+  const [capResult, billingCheck, perOriginCapError] = await Promise.all([
     input.enforceAccountCap !== false
       ? checkConcurrentSessionCap(accountId, userId, input.request)
       : Promise.resolve(null),
     checkBillingActive(accountId),
+    // Per-END-USER cap, alongside the account one: a wrapper account fronts many
+    // end-users, so an account-wide limit alone lets a single end-user (or a
+    // runaway loop acting for one) consume every slot. No-op unless configured
+    // AND the session carries an origin_ref. Joins the existing Promise.all so
+    // it costs no extra round-trip depth.
+    input.enforceAccountCap !== false
+      ? enforcePerOriginSessionCap(accountId, originRef)
+      : Promise.resolve(null),
   ]);
+  if (perOriginCapError) return { error: perOriginCapError };
   if (capResult) {
     responseHeaders = capResult.headers;
     if (capResult.error) return { error: capResult.error };

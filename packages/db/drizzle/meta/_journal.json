@@ -141,6 +141,13 @@
       "when": 1785151590373,
       "tag": "20260727112630_usage_events_origin_ref",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785152081893,
+      "tag": "20260727113441_project_sessions_origin_active_index",
+      "breakpoints": true
     }
   ]
 }

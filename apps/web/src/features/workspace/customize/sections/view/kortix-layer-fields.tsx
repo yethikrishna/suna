@@ -16,6 +16,7 @@ import Hint from '@/components/ui/hint';
 import { cn } from '@/lib/utils';
 import { FieldRow, SectionHeader, Segmented } from './agent-editor-primitives';
 import { GrantSetField, KortixCliField } from './grant-mode-field';
+import { prunePersonalConnectors } from './connectors-personal';
 import { WORKSPACE_MODES, WORKSPACE_MODE_HELP } from './agent-editor-catalog';
 import type { AgentConfigBlock, AgentGrantSetV2 } from '@kortix/sdk';
 
@@ -135,19 +136,13 @@ export function KortixLayerFields({
           <GrantSetField
             value={draft.connectors}
             onChange={(v: AgentGrantSetV2) => {
-              // connectors_personal MUST stay a subset of the grant — the
-              // manifest parser rejects the agent block otherwise, and an
-              // unparseable block breaks session-create for this agent. So
-              // narrowing the grant prunes any personal entry that just lost
-              // it. (The server prunes too; doing it here keeps the UI honest
-              // about what will be saved.)
               set('connectors', v);
-              const personal = draft.connectors_personal;
-              if (!personal?.length || v === 'all') return;
-              const granted = new Set(v === 'none' ? [] : v);
-              const kept = personal.filter((alias) => granted.has(alias));
-              if (kept.length !== personal.length) {
-                set('connectors_personal', kept.length ? kept : undefined);
+              // Narrowing the grant must drop any personal entry that just lost
+              // it — see prunePersonalConnectors for why an invalid pair is not
+              // merely untidy but unloadable.
+              const pruned = prunePersonalConnectors(draft.connectors_personal, v);
+              if (pruned?.length !== draft.connectors_personal?.length) {
+                set('connectors_personal', pruned);
               }
             }}
             options={connectorOptions}

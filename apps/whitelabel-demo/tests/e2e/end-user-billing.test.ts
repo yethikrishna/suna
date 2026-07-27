@@ -54,3 +54,18 @@ describe('splitEndUserBills', () => {
     expect(unattributedCost).toBe(3);
   });
 });
+
+describe('the usage route must narrow the rollup to the caller', () => {
+  // Regression guard. The first version passed only { groupBy: 'end_user_ref' },
+  // which is ACCOUNT-WIDE — any signed-in user could read every other
+  // end-user's id and spend from the main nav. `projects` in the same route was
+  // already scoped to owned projects; this had to be too.
+  test('the route asks upstream for the caller only', async () => {
+    const source = await Bun.file(
+      new URL('../../src/app/api/usage/route.ts', import.meta.url).pathname,
+    ).text();
+    const call = source.slice(source.indexOf('usageRollup'));
+    expect(call).toContain('endUserRef');
+    expect(call.slice(0, 200)).toContain('session.userId');
+  });
+});

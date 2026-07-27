@@ -84,8 +84,15 @@ export async function GET(req: NextRequest) {
   // that bill back out per Lumen user, which is the whole point of running as a
   // wrapper. Best-effort: an upstream that cannot group this way must not take
   // the rest of the page down with it.
+  // NARROWED TO THE CALLER. The account-wide rollup is exactly that —
+  // account-wide — so returning it unfiltered would let any signed-in Lumen user
+  // read every OTHER end-user's id and spend from the main nav. `projects` above
+  // is already scoped to owned projects; this has to be scoped too.
+  //
+  // A real operator dashboard would gate the unnarrowed view behind an operator
+  // role. The demo has no such role, so it shows you your own line only.
   const endUserBills = await kortix.billing
-    .usageRollup({ groupBy: 'end_user_ref' })
+    .usageRollup({ groupBy: 'end_user_ref', endUserRef: session.userId })
     .then((rollup) => splitEndUserBills(rollup.breakdown, markup))
     .catch(() => ({ bills: [], unattributedCost: 0 }));
 

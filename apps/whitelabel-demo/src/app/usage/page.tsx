@@ -157,10 +157,11 @@ function UsageDashboard() {
             {data.by_end_user.length > 0 && (
               <Card className="mt-6 overflow-hidden">
                 <div className="border-b px-4 py-3">
-                  <div className="text-sm font-medium">Charge by end-user</div>
+                  <div className="text-sm font-medium">Your end-user charge</div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
                     Split from one upstream bill using the <code>end_user_ref</code> stamped on each
-                    session.
+                    session. Scoped to you — an operator dashboard would gate the account-wide view
+                    behind an operator role.
                   </div>
                 </div>
                 <table className="w-full text-sm">

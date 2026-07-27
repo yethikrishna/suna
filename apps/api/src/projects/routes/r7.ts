@@ -19,6 +19,18 @@ import { roleAllows } from '../access';
 import { createRoute, z } from '@hono/zod-openapi';
 import { accountGroupMembers, accountGroups, accountMembers, executorConnectors, executorExecutions, projectGroupGrants, projectSessions, sessionSandboxes } from '@kortix/db';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { getCachedAccountTier } from '../../billing/services/entitlements';
+import { tierGrantsAllModels } from '../../billing/services/tiers';
+import { config } from '../../config';
+import {
+  canChangeSessionModel,
+  mayChangeSessionModel,
+  modelChangeNeedsLivePush,
+  validateModelChangeShape,
+} from '../lib/session-model-change';
+import { pushSessionModelToSandbox } from '../lib/sandbox-env-sync';
+import { isModelServableForAccount } from '../../llm-gateway/resolution/default-model';
+import { toOpencodeModelRef } from '../../llm-gateway/resolution/effective';
 import { loadProjectForUser, loadVisibleSession, lookupEmailsByUserIds, parseExpiresAtBody, assertProjectCapability, isUuid, projectCapabilityAllowed, resolveSessionOwnerIdentities } from '../lib/access';
 import { AnyObject, ClaimWarmProjectSessionInputSchema, GroupGrantSchema, OkSchema, SessionCreateAcceptedSchema, SessionCreateInputSchema, SessionSchema, WarmProjectSessionResultSchema, projectsApp } from '../lib/app';
 import { UUID_V4_REGEX, hasOwn, normalizeString, readBody, requestAuditContext, serializeSession } from '../lib/serializers';
@@ -1936,5 +1948,151 @@ projectsApp.openapi(
     const removed = await deleteResourceGrant(grantId, projectId);
     if (!removed) return c.json({ error: 'grant not found' }, 404);
     return c.json({ ok: true });
+  },
+);
+
+/**
+ * Change the model a session uses, mid-flight.
+ *
+ * `opencode_model` was create-only: the sandbox reads `KORTIX_OPENCODE_MODEL`
+ * when opencode builds its config at spawn, and nothing re-pushed it — so a live
+ * box kept its boot model for the rest of the session. The only way to "change"
+ * it was to plant a value through PATCH metadata, which skipped the account
+ * servability check entirely (now blocked; see SERVER_MANAGED_METADATA_KEYS).
+ *
+ * Validates against the SAME resolver the create path uses, persists, then
+ * pushes to the live sandbox. The response says whether it is in effect NOW or
+ * only from the next boot, because those are genuinely different outcomes and
+ * the caller cannot otherwise tell.
+ */
+projectsApp.openapi(
+  createRoute({
+    method: 'put',
+    path: '/{projectId}/sessions/{sessionId}/model',
+    tags: ['sessions'],
+    summary: "Change a running session's model",
+    ...auth,
+    request: {
+      params: z.object({ projectId: z.string(), sessionId: z.string() }),
+      body: {
+        content: {
+          'application/json': {
+            schema: z.object({ opencode_model: z.string().min(1).max(128) }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: json(
+        z.object({
+          opencode_model: z.string(),
+          /** True when a live sandbox took it; false when it applies at next boot. */
+          applied_live: z.boolean(),
+          detail: z.string().optional(),
+        }),
+        'Model changed',
+      ),
+      ...errors(400, 403, 404, 409),
+    },
+  }),
+  async (c: any) => {
+    const projectId = c.req.param('projectId');
+    const sessionId = c.req.param('sessionId');
+    if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+    const loaded = await loadProjectForUser(c, projectId, 'session');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    // A live model change restarts opencode and can terminate the target
+    // session's in-flight turn. Scoped agent tokens therefore need the same
+    // destructive capability as the stop route (no-op for human/PAT tokens).
+    assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_STOP);
+    const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
+    if (!visible) return c.json({ error: 'Not found' }, 404);
+    // Seeing a session is not permission to mutate it: visibility 'project'
+    // makes it readable by every member, but changing the model restarts
+    // opencode and destroys the OWNER's in-flight turn. Same gate as the
+    // sharing and stop routes above.
+    if (!mayChangeSessionModel(visible)) {
+      return c.json(
+        { error: 'Only the session owner or a project manager can change this session model' },
+        403,
+      );
+    }
+
+    const body = await readBody(c);
+    const requested = typeof body?.opencode_model === 'string' ? body.opencode_model : '';
+    const shapeError = validateModelChangeShape(requested);
+    if (shapeError) {
+      return c.json({ error: shapeError.message, code: shapeError.code }, 400);
+    }
+    const stateError = canChangeSessionModel(visible.row.status);
+    if (stateError) {
+      return c.json({ error: stateError.message, code: stateError.code }, 409);
+    }
+
+    // Same servability gate as create — otherwise this endpoint becomes the very
+    // back door the PATCH guard just closed.
+    const trimmed = requested.trim();
+    const freeModelsOnly = config.KORTIX_BILLING_INTERNAL_ENABLED
+      ? !tierGrantsAllModels(await getCachedAccountTier(loaded.row.accountId))
+      : false;
+    const servable = await isModelServableForAccount({
+      userId: loaded.userId,
+      accountId: loaded.row.accountId,
+      projectId,
+      freeModelsOnly,
+      model: trimmed,
+    });
+    if (!servable) {
+      return c.json(
+        {
+          error: `Model "${trimmed}" is not available for this account`,
+          code: 'INVALID_SESSION_MODEL',
+        },
+        400,
+      );
+    }
+
+    const nextModel = toOpencodeModelRef(trimmed);
+    // The session model lives in metadata, not a column (sessions.ts:1102) —
+    // which is precisely why the PATCH metadata back door was dangerous.
+    const currentMetadata = (visible.row.metadata ?? {}) as Record<string, unknown>;
+    const currentModel =
+      typeof currentMetadata.opencode_model === 'string' ? currentMetadata.opencode_model : null;
+    const needsPush = modelChangeNeedsLivePush({
+      current: currentModel,
+      next: nextModel,
+      status: visible.row.status,
+    });
+
+    await db
+      .update(projectSessions)
+      .set({
+        metadata: {
+          ...currentMetadata,
+          opencode_model: nextModel,
+          opencode_model_source: 'explicit',
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(projectSessions.sessionId, sessionId));
+
+    if (!needsPush) {
+      return c.json({
+        opencode_model: nextModel,
+        applied_live: false,
+        detail:
+          currentModel === nextModel
+            ? 'already set to this model'
+            : 'stored — applies when the sandbox next starts',
+      });
+    }
+
+    const push = await pushSessionModelToSandbox({ projectId, sessionId, model: nextModel });
+    return c.json({
+      opencode_model: nextModel,
+      applied_live: push.applied,
+      ...(push.applied ? {} : { detail: `stored, but not pushed: ${push.reason ?? 'unknown'}` }),
+    });
   },
 );

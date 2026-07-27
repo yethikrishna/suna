@@ -359,6 +359,21 @@ export async function activateConnectionProfile(projectId: string, profileId: st
   );
 }
 
+/**
+ * Make this the DEFAULT connection for its owner scope — the one a session uses
+ * when it doesn't name a connection explicitly. Defaults are per-owner: one for
+ * the project (team-shared) and one per member, so this only displaces the
+ * previous default within the same scope.
+ */
+export async function setDefaultConnectionProfile(projectId: string, profileId: string) {
+  return unwrap(
+    await backendApi.put<{ ok: true }>(
+      `/projects/${projectId}/connector-profiles/${profileId}/default`,
+      {},
+    ),
+  );
+}
+
 export async function pipedreamConnectConnectionProfile(
   projectId: string,
   profileId: string,

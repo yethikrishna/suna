@@ -28,6 +28,7 @@ import {
   deleteAgentMailInstall,
   deleteSlackInstall,
   deleteTeamsInstall,
+  listProjectsForWorkspace,
   loadAgentMailInstall,
   loadSlackInstall,
   loadTeamsAppIdForProject,
@@ -1667,6 +1668,19 @@ projectsApp.openapi(
 
     let inbox: Awaited<ReturnType<typeof createAgentMailInbox>>;
     if (existingInboxId && existingEmail) {
+      // Ownership gate (pentest 2026-07-27): before claiming an existing
+      // AgentMail inbox, confirm no OTHER project already owns it. Without this,
+      // a caller with connector.write on their own project could supply a
+      // victim's inbox_id and hijack inbound mail resolution. The scoped delete
+      // in saveAgentMailInstall is defense-in-depth; this 409 is the front gate.
+      const owners = await listProjectsForWorkspace('email', existingInboxId);
+      const foreignOwner = owners.find((id) => id !== projectId);
+      if (foreignOwner) {
+        return c.json(
+          { error: 'AgentMail inbox is already connected to another project' },
+          409,
+        );
+      }
       inbox = {
         inbox_id: existingInboxId,
         email: existingEmail,

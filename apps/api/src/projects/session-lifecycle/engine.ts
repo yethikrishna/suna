@@ -2,6 +2,7 @@ import { executorExecutions, projectSessions, projects, serviceAccounts } from '
 import { and, eq } from 'drizzle-orm';
 import { bindChatThread } from '../../channels/slack/binding';
 import { config } from '../../config';
+import { mayRequeueFailedCreate } from './requeue-policy';
 import { forwardToSandbox } from '../../sandbox-proxy/routes/preview';
 import { db } from '../../shared/db';
 import { connectorBindingPayloadConflicts } from '../lib/session-connector-bindings';
@@ -273,8 +274,16 @@ export async function createSession(
   }
 
   const message = String(result.error?.body?.error ?? result.reason ?? 'Failed to create session');
+  // This is the INLINE path — the queued branch returned above — so `result` is
+  // about to be handed to a waiting caller. Marking it retryable would leave the
+  // command row queued for the drainer as well, and the caller (told by the
+  // guide that a 429/503 is worth retrying) retries with a fresh key: two billed
+  // sandboxes for one intent, same end_user_ref, both running initial_prompt.
   await markCommandFailed(claimed.row.commandId, message, {
-    retryable: result.retryable ?? false,
+    retryable: mayRequeueFailedCreate({
+      answeredSynchronously: true,
+      errorIsRetryable: result.retryable ?? false,
+    }),
     attempts: claimed.row.attempts + 1,
   });
   return { ...result, commandId: claimed.row.commandId };

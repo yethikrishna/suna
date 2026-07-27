@@ -24,6 +24,7 @@ import { tierGrantsAllModels } from '../../billing/services/tiers';
 import { config } from '../../config';
 import {
   canChangeSessionModel,
+  mayChangeSessionModel,
   modelChangeNeedsLivePush,
   validateModelChangeShape,
 } from '../lib/session-model-change';
@@ -2003,6 +2004,16 @@ projectsApp.openapi(
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
     if (!visible) return c.json({ error: 'Not found' }, 404);
+    // Seeing a session is not permission to mutate it: visibility 'project'
+    // makes it readable by every member, but changing the model restarts
+    // opencode and destroys the OWNER's in-flight turn. Same gate as the
+    // sharing and stop routes above.
+    if (!mayChangeSessionModel(visible)) {
+      return c.json(
+        { error: 'Only the session owner or a project manager can change this session model' },
+        403,
+      );
+    }
 
     const body = await readBody(c);
     const requested = typeof body?.opencode_model === 'string' ? body.opencode_model : '';

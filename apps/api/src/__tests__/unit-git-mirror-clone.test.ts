@@ -254,7 +254,10 @@ describe('refreshMirror — partial-clone cleanup on failure', () => {
     try {
       const repoPath = repoCachePath(project);
       await mkdir(repoPath, { recursive: true });
-      await writeFile(join(repoPath, 'not-a-repo.txt'), 'poisoned cache entry\n');
+      await writeFile(join(repoPath, 'not-a-repo.txt'), 'poisoned cache entry\n', {
+        flag: 'wx',
+        mode: 0o600,
+      });
 
       const healedPath = await refreshMirror(project);
 

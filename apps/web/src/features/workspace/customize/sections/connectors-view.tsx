@@ -26,6 +26,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Trash2,
+  Users,
   X,
   Zap,
 } from 'lucide-react';
@@ -1197,12 +1198,16 @@ function ConnectorDetail({
             you control who can use it and review its tools.
           </InfoBanner>
         )}
-        {/* Prominent connect CTA — the first thing you see on an unconnected connector. */}
+        {/* Prominent connect CTA — the first thing you see on an unconnected
+            connector. This is the SHARED (team) connection: everyone on the
+            project uses it. The private, per-user alternative is the banner
+            below — the two are labelled as an explicit either/or so nobody
+            connects a personal account thinking it stays personal. */}
         {connector.authSecret && !connected && !isChannel && (
           <InfoBanner
             tone="info"
-            icon={KeyRound}
-            title={`Connect ${displayName}`}
+            icon={Users}
+            title={`Connect ${displayName} for the whole team`}
             action={
               canWrite ? (
                 <Button
@@ -1212,14 +1217,22 @@ function ConnectorDetail({
                   disabled={isPipedream && reconnect.isPending}
                 >
                   {isPipedream && reconnect.isPending && <Loading className="size-4 shrink-0" />}
-                  {isPipedream ? `Connect ${displayName}` : 'Set credential'}
+                  {isPipedream ? 'Connect for the team' : 'Set shared credential'}
                 </Button>
               ) : undefined
             }
           >
             {isPipedream
-              ? `Authorize your ${displayName} account so the agent and your triggers can use it.`
-              : `Add the credential so the agent and your triggers can use ${displayName}.`}
+              ? `One shared ${displayName} account that everyone on this project uses — the agent and your triggers run on it. To connect your own account instead, use the private option below.`
+              : `One shared credential that everyone on this project uses — the agent and your triggers run on it.`}
+          </InfoBanner>
+        )}
+        {/* Connected + shared: state the scope explicitly, so "Connected" is never
+            mistaken for the user's own private connection. */}
+        {connector.authSecret && connected && !isChannel && !isComputer && (
+          <InfoBanner tone="neutral" icon={Users} title="Shared with the whole team">
+            Everyone on this project uses this {displayName} connection. Your own private connection,
+            if you add one, is separate and stays yours.
           </InfoBanner>
         )}
         {/* A member's own private connection (Pipedream OAuth apps only) — lets a

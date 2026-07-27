@@ -222,6 +222,34 @@ export async function listConnectionProfiles(projectId: string) {
   );
 }
 
+/**
+ * One row of the owner/admin roster. Deliberately NARROWER than
+ * `ConnectionProfile`: it carries identity + status only. `label` and `metadata`
+ * are excluded because they are a member's own annotations on a PRIVATE
+ * connection and can hold personal identifiers a peer manager needn't see.
+ */
+export interface ConnectionRosterEntry {
+  profile_id: string;
+  connector_alias: string;
+  owner_type: 'project' | 'agent' | 'member' | 'subject' | 'external';
+  owner_id: string | null;
+  status: 'active' | 'revoked' | 'error';
+}
+
+/**
+ * Owner/admin read-only roster: WHO has connected each connector in the project
+ * and whether it still works — not just the caller's own connections. Requires
+ * the connector-profiles manage capability. Never returns credentials, and never
+ * a peer's private label/metadata (see ConnectionRosterEntry).
+ */
+export async function listAllConnectionProfiles(projectId: string) {
+  return unwrap(
+    await backendApi.get<{ profiles: ConnectionRosterEntry[] }>(
+      `/projects/${projectId}/connector-profiles/all`,
+    ),
+  );
+}
+
 export async function reconcileConnectionProfile(
   projectId: string,
   input: ReconcileConnectionProfileInput,

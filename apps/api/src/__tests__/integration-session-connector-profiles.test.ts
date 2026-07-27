@@ -5,6 +5,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   accounts,
+  chatInstalls,
   executorConnectionProfiles,
   executorConnectors,
   executorCredentials,
@@ -880,5 +881,44 @@ describe('session connector profile isolation', () => {
       .from(executorConnectionProfiles)
       .where(eq(executorConnectionProfiles.profileId, profileB.profileId));
     expect(afterFinal?.status).toBe('revoked');
+  });
+
+  test('saveAgentMailInstall does not delete another project chat_installs row for the same inbox (pentest 2026-07-27)', async () => {
+    // Regression for the AgentMail inbox hijack. PROJECT_A claims inbox
+    // "shared-inbox". PROJECT_B then claims the SAME inbox. Before the fix,
+    // saveAgentMailInstall ran an unscoped DELETE (platform + workspaceId only)
+    // that wiped PROJECT_A's chat_installs row. With the fix, the DELETE is
+    // scoped to the calling project, so both rows coexist (unique index allows
+    // multiple projects per inbox) and resolveProjectForAgentMailInbox keeps
+    // returning PROJECT_A for PROJECT_A's install.
+    const sharedInbox = 'shared-inbox-hijack-test';
+    await saveAgentMailInstall({
+      projectId: PROJECT_A,
+      profileSlug: 'kortix_email',
+      inboxId: sharedInbox,
+      email: 'shared-a@example.test',
+      displayName: 'A',
+      apiKey: 'agentmail-key',
+    });
+    // PROJECT_B claims the same inbox. This must NOT remove PROJECT_A's row.
+    await saveAgentMailInstall({
+      projectId: PROJECT_B,
+      profileSlug: 'kortix_email',
+      inboxId: sharedInbox,
+      email: 'shared-b@example.test',
+      displayName: 'B',
+      apiKey: 'agentmail-key',
+    });
+
+    const owners = await db
+      .select({ projectId: chatInstalls.projectId })
+      .from(chatInstalls)
+      .where(and(eq(chatInstalls.platform, 'email'), eq(chatInstalls.workspaceId, sharedInbox)));
+    const ownerIds = owners.map((r) => r.projectId).sort();
+    expect(ownerIds).toEqual([PROJECT_A, PROJECT_B].sort());
+
+    // Cleanup so the row does not leak into other tests.
+    await deleteAgentMailInstall(PROJECT_A, 'kortix_email');
+    await deleteAgentMailInstall(PROJECT_B, 'kortix_email');
   });
 });

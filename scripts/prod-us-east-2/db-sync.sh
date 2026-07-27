@@ -606,6 +606,8 @@ SQL
   psql "$source_database_url" -X -q -v ON_ERROR_STOP=1 \
     -c "\\copy (SELECT $credit_account_columns FROM kortix.credit_accounts ORDER BY account_id) TO '$temporary_directory/credit_accounts.csv' WITH (FORMAT csv)"
   psql "$source_database_url" -X -q -v ON_ERROR_STOP=1 \
+    -c "\\copy (SELECT id FROM kortix.credit_ledger ORDER BY id) TO '$temporary_directory/credit_ledger_ids.csv' WITH (FORMAT csv)"
+  psql "$source_database_url" -X -q -v ON_ERROR_STOP=1 \
     -c "\\copy (SELECT session_id, last_used_at, metadata, updated_at FROM kortix.session_sandboxes ORDER BY session_id COLLATE \"C\") TO '$temporary_directory/session_sandboxes.csv' WITH (FORMAT csv)"
   psql "$source_database_url" -X -q -v ON_ERROR_STOP=1 \
     -v shadow_audit_start_at="$SHADOW_AUDIT_START_AT" \
@@ -633,6 +635,9 @@ CREATE TEMP TABLE repair_session_sandboxes (
   metadata jsonb,
   updated_at timestamptz
 ) ON COMMIT DROP;
+CREATE TEMP TABLE repair_credit_ledger_ids (
+  id uuid PRIMARY KEY
+) ON COMMIT DROP;
 CREATE TEMP TABLE repair_audit_event_ids (
   event_id uuid PRIMARY KEY
 ) ON COMMIT DROP;
@@ -641,6 +646,7 @@ SQL
       "$credit_account_columns"
     printf "\\copy repair_api_keys FROM '%s/api_keys.csv' WITH (FORMAT csv)\n" "$temporary_directory"
     printf "\\copy repair_credit_accounts FROM '%s/credit_accounts.csv' WITH (FORMAT csv)\n" "$temporary_directory"
+    printf "\\copy repair_credit_ledger_ids FROM '%s/credit_ledger_ids.csv' WITH (FORMAT csv)\n" "$temporary_directory"
     printf "\\copy repair_session_sandboxes FROM '%s/session_sandboxes.csv' WITH (FORMAT csv)\n" "$temporary_directory"
     printf "\\copy repair_audit_event_ids FROM '%s/audit_event_ids.csv' WITH (FORMAT csv)\n" "$temporary_directory"
     cat <<'SQL'
@@ -652,20 +658,18 @@ WHERE target.key_id = source.key_id
 
 	DO $do$
 DECLARE
-  all_column_list text;
   column_list text;
   source_column_list text;
   target_column_list text;
 BEGIN
   SELECT
-    string_agg(format('%I', attname), ', ' ORDER BY attnum),
     string_agg(format('%I', attname), ', ' ORDER BY attnum)
       FILTER (WHERE attname <> 'account_id'),
     string_agg(format('source.%I', attname), ', ' ORDER BY attnum)
       FILTER (WHERE attname <> 'account_id'),
     string_agg(format('target.%I', attname), ', ' ORDER BY attnum)
       FILTER (WHERE attname <> 'account_id')
-  INTO all_column_list, column_list, source_column_list, target_column_list
+  INTO column_list, source_column_list, target_column_list
   FROM pg_attribute
   WHERE attrelid = 'repair_credit_accounts'::regclass
     AND attnum > 0
@@ -680,18 +684,6 @@ BEGIN
 	    column_list,
 	    source_column_list,
     target_column_list
-  );
-
-  EXECUTE format(
-    'INSERT INTO kortix.credit_accounts (%1$s)
-     SELECT %1$s
-       FROM repair_credit_accounts AS source
-      WHERE NOT EXISTS (
-        SELECT 1
-          FROM kortix.credit_accounts AS target
-         WHERE target.account_id = source.account_id
-      )',
-    all_column_list
   );
 END
 $do$;
@@ -731,6 +723,13 @@ WHERE target.account_id = source.account_id
 	  FROM repair_credit_accounts AS source
 	  WHERE source.account_id = target.account_id
 	);
+
+DELETE FROM kortix.credit_ledger AS target
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM repair_credit_ledger_ids AS source
+  WHERE source.id = target.id
+);
 
 UPDATE kortix.session_sandboxes AS target
 SET

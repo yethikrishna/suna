@@ -321,7 +321,12 @@ function SessionChatInputImpl({
   const prefillFiles = prefill?.files;
   const prefillMode = prefill?.mode;
   useEffect(() => {
-    if (prefillId === undefined || (!prefillText && !prefillFiles?.length)) return;
+    if (
+      prefillId === undefined ||
+      (!prefillText && !prefillFiles?.length && prefillMode !== 'replace')
+    ) {
+      return;
+    }
     setText((current) =>
       prefillMode === 'merge' ? mergeFailedSubmissionText(current, prefillText) : prefillText,
     );

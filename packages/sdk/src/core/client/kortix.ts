@@ -911,7 +911,27 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
       /** Abort the agent's current run in this session. */
       abort: async () => {
         const { opencodeSessionId, runtimeUrl } = await ensureReady();
-        return getClientForUrl(runtimeUrl).session.abort({ sessionID: opencodeSessionId });
+        return getClientForUrl(runtimeUrl).session.abort({
+          sessionID: opencodeSessionId,
+        });
+      },
+      /**
+       * Stage a reversible rollback at one user message on this same canonical
+       * OpenCode session. The next prompt commits the new path.
+       */
+      rewind: async (messageId: string) => {
+        const { opencodeSessionId, runtimeUrl } = await ensureReady();
+        return getClientForUrl(runtimeUrl).session.revert({
+          sessionID: opencodeSessionId,
+          messageID: messageId,
+        });
+      },
+      /** Restore the path removed by `rewind()` before another prompt commits it. */
+      restoreRewind: async () => {
+        const { opencodeSessionId, runtimeUrl } = await ensureReady();
+        return getClientForUrl(runtimeUrl).session.unrevert({
+          sessionID: opencodeSessionId,
+        });
       },
       /**
        * Live SSE stream of THIS session's runtime events (message/part

@@ -9,7 +9,7 @@ import {
   projectSessions,
   serviceAccounts,
 } from '@kortix/db';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../../shared/db';
 
 export interface ValidatedSessionConnectorBinding {
@@ -293,8 +293,6 @@ export async function resolveRequiredMemberConnectorProfiles(input: {
         profileId: executorConnectionProfiles.profileId,
         connectorId: executorConnectionProfiles.connectorId,
         ownerId: executorConnectionProfiles.ownerId,
-        status: executorConnectionProfiles.status,
-        connectorEnabled: executorConnectors.enabled,
       })
       .from(executorConnectionProfiles)
       .innerJoin(
@@ -312,10 +310,21 @@ export async function resolveRequiredMemberConnectorProfiles(input: {
           eq(executorConnectionProfiles.ownerType, 'member'),
           eq(executorConnectionProfiles.ownerId, input.actingUserId),
           eq(executorConnectors.slug, alias),
+          // Filter to USABLE rows in the query, not after LIMIT 1. A member may
+          // now hold several connections on one connector, so fetching an
+          // arbitrary row and then rejecting it would report "connect your
+          // account" while a perfectly good active connection sits right there.
+          eq(executorConnectionProfiles.status, 'active'),
+          eq(executorConnectors.enabled, true),
         ),
       )
+      // Deterministic pick: the member's own DEFAULT wins. Without this, "use my
+      // gmail" would choose arbitrarily between e.g. their "Work" and "Personal"
+      // accounts — i.e. act as the wrong account on a coin flip. Tie-break on
+      // profileId so the choice is stable across calls when no default is set.
+      .orderBy(desc(executorConnectionProfiles.isDefault), executorConnectionProfiles.profileId)
       .limit(1);
-    if (!row || row.status !== 'active' || !row.connectorEnabled) {
+    if (!row) {
       return {
         ok: false,
         connector: publicAlias,

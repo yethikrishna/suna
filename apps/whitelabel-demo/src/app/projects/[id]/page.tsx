@@ -24,6 +24,7 @@ import {
   useVisibleAgents,
   writeStartStash,
 } from '@kortix/sdk/react';
+import { classifySessionStartFailure } from '@/lib/session-start-error';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowUp, Sparkles } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
@@ -56,6 +57,13 @@ function ProjectHome() {
   const ref = useRef<HTMLTextAreaElement>(null);
 
   const [prompt, setPrompt] = useState('');
+  // A connector this end-user must connect THEMSELVES before the session can
+  // start (409 CONNECTOR_CONNECTION_REQUIRED). Shown as a call to action rather
+  // than an error, because it is one.
+  const [connectPrompt, setConnectPrompt] = useState<{
+    connector: string;
+    message: string;
+  } | null>(null);
   const [template, setTemplate] = useState('default');
   const [agent, setAgent] = useState<string | null>(null);
   const [model, setModel] = useState<ModelKey | null>(null);
@@ -96,7 +104,25 @@ function ProjectHome() {
       invalidateSessions(qc, projectId);
       router.push(`/projects/${projectId}/sessions/${sessionId}`);
     },
-    onError: () => toast.error('Could not start a session'),
+    onError: (err: unknown) => {
+      // Two KaaB refusals need opposite responses, and a single generic toast
+      // told the user to fix something they often could not fix.
+      const body =
+        err && typeof err === 'object' && 'body' in err
+          ? ((err as { body?: unknown }).body as Record<string, unknown> | null)
+          : null;
+      const failure = classifySessionStartFailure(body);
+      if (failure.kind === 'connector_connection_required') {
+        setConnectPrompt({ connector: failure.connector, message: failure.message });
+        return;
+      }
+      if (failure.kind === 'require_connectors_backend_origin') {
+        // Developer-facing: the end-user can do nothing about this.
+        toast.error(failure.message, { duration: 10_000 });
+        return;
+      }
+      toast.error(failure.message);
+    },
   });
 
   const launching = start.isPending;
@@ -114,6 +140,32 @@ function ProjectHome() {
             Pick your template, agent, and model, then describe the task.
           </p>
         </div>
+
+        {/* Kortix-as-a-Backend: the session needs THIS end-user's own connection.
+            A call to action, not a failure — they can resolve it themselves,
+            and the previous generic toast gave them nothing to act on. */}
+        {connectPrompt && (
+          <div className="mb-4 rounded-2xl border border-brand/40 bg-brand/5 p-4 text-left">
+            <div className="text-sm font-medium">
+              Connect {connectPrompt.connector} to continue
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">{connectPrompt.message}</p>
+            <div className="mt-3 flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  setConnectPrompt(null);
+                  if (prompt.trim()) start.mutate(prompt);
+                }}
+              >
+                I&apos;ve connected it — retry
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConnectPrompt(null)}>
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div className="rounded-2xl border border-border bg-card shadow-sm transition-colors focus-within:border-ring/60">
           <Textarea

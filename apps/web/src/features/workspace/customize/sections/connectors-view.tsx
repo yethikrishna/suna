@@ -158,6 +158,7 @@ import {
 import { OAuth2ApplicationFields } from './connector-oauth2-application-fields';
 import { OAuth2CredentialFields } from './connector-oauth2-fields';
 import { DiscoverCatalogue } from './discover-catalogue';
+import { connectorConnectionRows } from './view/connector-connections';
 
 const PROVIDER_ICON: Record<AdminConnector['provider'], LucideIcon> = {
   pipedream: Zap,
@@ -930,11 +931,7 @@ function ConnectionsList({
     onChanged();
   };
 
-  // The API scopes this list to the caller: every project-owned connection, plus
-  // only the caller's OWN member connections — never another member's.
-  const rows = (profilesQuery.data?.profiles ?? []).filter(
-    (p) => p.connector_alias === connector.slug && p.owner_type !== 'agent',
-  );
+  const rows = connectorConnectionRows(profilesQuery.data?.profiles, connector.slug);
 
   const copyConnectionId = (profileId: string) => {
     // The Clipboard API is absent in insecure contexts (navigator.clipboard is
@@ -1256,6 +1253,32 @@ function ConnectorDetail({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const displayName = connector.name?.trim() || connector.slug;
+
+  // Which tabs this connector actually has. Pipedream connectors hold many
+  // connections (team + per-member), so they get Connections; everything else
+  // has at most one shared credential, which lives under Connection.
+  const showConnections = isPipedream && !isChannel && !isComputer;
+  const showProfileTab = !isPipedream && !isManaged;
+  const showRoster = showConnections && canManageProfiles;
+  const defaultDetailTab = showConnections
+    ? 'connections'
+    : showProfileTab
+      ? 'profile'
+      : 'permissions';
+
+  // Same query key + filter as ConnectionsList, so the badge can never disagree
+  // with the rows it counts (react-query dedupes the fetch).
+  const detailProfilesQuery = useQuery({
+    queryKey: ['connector-profiles', projectId],
+    queryFn: () => listConnectionProfiles(projectId),
+    staleTime: 30_000,
+    enabled: showConnections,
+  });
+  const connectionCount = connectorConnectionRows(
+    detailProfilesQuery.data?.profiles,
+    connector.slug,
+  ).length;
+
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(displayName);
   useEffect(() => {
@@ -1452,46 +1475,57 @@ function ConnectorDetail({
               : `One shared credential that everyone on this project uses — the agent and your triggers run on it.`}
           </InfoBanner>
         )}
-        {/* Connected + shared: state the scope explicitly, so "Connected" is never
-            mistaken for the user's own private connection. */}
-        {connector.authSecret && connected && !isChannel && !isComputer && (
-          <InfoBanner tone="neutral" icon={Users} title="Shared with the whole team">
-            Everyone on this project uses this {displayName} connection. Your own private connection,
-            if you add one, is separate and stays yours.
-          </InfoBanner>
-        )}
-        {/* Every connection under this connector — the team's shared accounts and
-            this member's own. A connector can hold several of each; the DEFAULT
-            in each scope is what a session uses when it names no connection. */}
-        {isPipedream && !isChannel && !isComputer && (
-          <ConnectionsList
-            projectId={projectId}
-            connector={connector}
-            displayName={displayName}
-            canManageProfiles={canManageProfiles}
-            onChanged={onChanged}
-            onStartSession={startPrivateSession}
-          />
-        )}
-        {isPipedream && !isChannel && !isComputer && canManageProfiles && (
-          <ConnectionRoster
-            projectId={projectId}
-            connectorSlug={connector.slug}
-            displayName={displayName}
-          />
-        )}
-        {/* The sensitive toggle lives under Permissions (it IS a permission
-            default), so Profile only exists when there's a connection to
-            manage — for Pipedream/managed connectors it would be empty. */}
-        <Tabs
-          defaultValue={!isPipedream && !isManaged ? 'profile' : 'permissions'}
-          className="gap-3"
-        >
-          <TabsList>
-            {!isPipedream && !isManaged && <TabsTrigger value="profile">Profile</TabsTrigger>}
-            <TabsTrigger value="permissions">Permissions</TabsTrigger>
+        {/* One tab per question this page answers: what can I use (Connections),
+            what may the agent do with it (Permissions), who on the team has
+            connected their own (Team members). Before this, everything stacked
+            into one long scroll above a lone "Permissions" tab, because the only
+            other trigger — Profile — is hidden for Pipedream connectors. */}
+        <Tabs defaultValue={defaultDetailTab} className="gap-3">
+          <TabsList type="underline" className="flex w-full items-center justify-start">
+            {showConnections && (
+              <TabsTrigger value="connections" className="w-fit flex-none gap-2">
+                Connections
+                {connectionCount > 0 ? (
+                  <Badge variant="secondary" size="sm">
+                    {connectionCount}
+                  </Badge>
+                ) : null}
+              </TabsTrigger>
+            )}
+            {showProfileTab && (
+              <TabsTrigger value="profile" className="w-fit flex-none">
+                Connection
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="permissions" className="w-fit flex-none">
+              Permissions
+            </TabsTrigger>
+            {showRoster && (
+              <TabsTrigger value="roster" className="w-fit flex-none">
+                Team members
+              </TabsTrigger>
+            )}
           </TabsList>
-          {!isPipedream && !isManaged && (
+          {/* Every connection under this connector — the team's shared accounts and
+              this member's own. A connector can hold several of each; the DEFAULT
+              in each scope is what a session uses when it names no connection. */}
+          {showConnections && (
+            <TabsContent value="connections" className="space-y-5">
+              <ConnectionsList
+                projectId={projectId}
+                connector={connector}
+                displayName={displayName}
+                canManageProfiles={canManageProfiles}
+                onChanged={onChanged}
+                onStartSession={startPrivateSession}
+              />
+            </TabsContent>
+          )}
+          {/* The sensitive toggle lives under Permissions (it IS a permission
+              default), so this tab only exists when there's a single shared
+              credential to manage — for Pipedream connectors the Connections
+              tab owns that, and this one would be empty. */}
+          {showProfileTab && (
             <TabsContent value="profile" className="space-y-5">
               {isChannel ? (
                 <ChannelConnectionSection
@@ -1520,6 +1554,15 @@ function ConnectorDetail({
               canWrite={canWrite}
             />
           </TabsContent>
+          {showRoster && (
+            <TabsContent value="roster" className="space-y-5">
+              <ConnectionRoster
+                projectId={projectId}
+                connectorSlug={connector.slug}
+                displayName={displayName}
+              />
+            </TabsContent>
+          )}
         </Tabs>
 
         {canWrite && !isManaged && !isChannel && (

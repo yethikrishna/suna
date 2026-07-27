@@ -476,11 +476,31 @@ export interface ConnectorPolicyRule {
   action: ConnectorPolicyAction;
 }
 
+/** Which policy scope decided an action. Project rules win and cannot be overridden here. */
+export type ConnectorPolicySource = 'project' | 'connector' | 'risk_default' | 'allow_all';
+
+export interface ConnectorEffectivePolicy {
+  /** Connector-relative tool path, e.g. `send_email`. */
+  path: string;
+  action: ConnectorPolicyAction;
+  source: ConnectorPolicySource;
+}
+
 export async function getConnectorPolicies(projectId: string, slug: string) {
   return unwrap(
-    await backendApi.get<{ policies: ConnectorPolicyRule[] }>(
-      `/executor/projects/${projectId}/connectors/${encodeURIComponent(slug)}/policies`,
-    ),
+    await backendApi.get<{
+      policies: ConnectorPolicyRule[];
+      /**
+       * Resolved per tool through the same function the call gate uses. Present
+       * so an editor can show WHICH scope decided — without it a connector rule
+       * that a project-scope rule silently overrules still renders as if it applied.
+       * Older servers omit this; treat as empty.
+       */
+      effective?: ConnectorEffectivePolicy[];
+      /** Project-scope rules, which are evaluated first and win. */
+      project_policies?: ConnectorPolicyRule[];
+      default_mode?: 'risk' | 'allow_all';
+    }>(`/executor/projects/${projectId}/connectors/${encodeURIComponent(slug)}/policies`),
   );
 }
 

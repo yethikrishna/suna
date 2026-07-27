@@ -2954,6 +2954,18 @@ function PermissionsSection({
   const governingRule = (path: string) =>
     rules.find((r) => r.match.trim() && clientMatch(r.match.trim(), path));
 
+  // Tools a PROJECT-scope rule already decides. Project rules are evaluated
+  // before connector rules and cannot be overridden here (executor/policy.ts),
+  // so without this the panel would show a connector rule the runtime ignores.
+  // The server resolves this through the same function the call gate uses.
+  const projectDecided = useMemo(() => {
+    const decided = new Map<string, ConnectorPolicyAction>();
+    for (const entry of policiesQuery.data?.effective ?? []) {
+      if (entry.source === 'project') decided.set(entry.path, entry.action);
+    }
+    return decided;
+  }, [policiesQuery.data]);
+
   // ── Multi-select + bulk apply ──
   const filteredPaths = useMemo(() => filtered.map((t) => t.path), [filtered]);
   const allFilteredSelected =
@@ -3022,6 +3034,19 @@ function PermissionsSection({
           </div>
         ) : null}
       </div>
+      {/* Say it once, up front. A project-scope rule beats everything on this
+          page and cannot be lifted here — silently rendering the losing value
+          is the bug this replaces. */}
+      {projectDecided.size > 0 && (
+        <InfoBanner
+          tone="warning"
+          icon={Lock}
+          title={`${projectDecided.size} ${projectDecided.size === 1 ? 'action is' : 'actions are'} set by a project-wide rule`}
+        >
+          Project rules apply across every connector and are evaluated first, so for those actions
+          whatever you set here is ignored. They are marked below.
+        </InfoBanner>
+      )}
       <div className="bg-popover rounded-md border px-4 py-5">
         <div className="space-y-4">
           <div className="space-y-2">
@@ -3134,6 +3159,7 @@ function PermissionsSection({
                 {filtered.map((t) => {
                   const explicit = perTool[t.path];
                   const ruled = !explicit ? governingRule(t.path) : undefined;
+                  const projectAction = projectDecided.get(t.path);
                   const isOpen = expanded === t.path;
                   const isSel = selected.has(t.path);
                   return (
@@ -3185,6 +3211,19 @@ function PermissionsSection({
                             )}
                           </span>
                         )}
+                        {projectAction && (
+                          <Hint
+                            label={`A project-wide rule sets this to "${POLICY_LABEL[projectAction].label}". Project rules are evaluated first and win — anything you set here is ignored for this tool.`}
+                          >
+                            <Badge variant="outline" size="sm" className="shrink-0 gap-1">
+                              <Lock className="size-3 shrink-0" />
+                              <span className={POLICY_LABEL[projectAction].tint}>
+                                {POLICY_LABEL[projectAction].label}
+                              </span>
+                              by project
+                            </Badge>
+                          </Hint>
+                        )}
                         <ChevronRight
                           className={cn(
                             'size-3 shrink-0 transition',
@@ -3193,11 +3232,16 @@ function PermissionsSection({
                               : 'text-muted-foreground/40 opacity-0 group-hover:opacity-100',
                           )}
                         />
-                        <PermissionPicker
-                          value={explicit ?? 'default'}
-                          onChange={(c) => setChoice(t.path, c)}
-                          readOnly={!canWrite}
-                        />
+                        {/* Still editable — a project rule can be lifted later, and
+                            staging a connector rule for that is legitimate. Dimmed
+                            so it never reads as the thing currently in force. */}
+                        <div className={cn(projectAction && 'opacity-40')}>
+                          <PermissionPicker
+                            value={explicit ?? 'default'}
+                            onChange={(c) => setChoice(t.path, c)}
+                            readOnly={!canWrite}
+                          />
+                        </div>
                       </div>
                       {isOpen && (
                         <div className="bg-muted/20 space-y-3 px-4 pt-1 pb-3">

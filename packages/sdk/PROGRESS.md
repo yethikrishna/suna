@@ -3402,7 +3402,7 @@ TDD evidence:
 SDK gates:
 
 - `pnpm --filter @kortix/sdk typecheck`: exit 0.
-- `pnpm --filter @kortix/sdk test`: **1307 pass / 0 fail**, **5767**
+- `pnpm --filter @kortix/sdk test`: **1309 pass / 0 fail**, **5779**
   assertions across **111** files.
 - `pnpm --filter @kortix/sdk run smoke:install`: packed install and Node ESM
   import passed.
@@ -3420,20 +3420,21 @@ Daemon and web gates:
 
 Local browser proof:
 
-- Playwright ACP runtime canary: **1 pass / 0 fail** in **2.0 minutes**.
+- Playwright ACP runtime canary: **1 pass / 0 fail**. The test ran for **1.6
+  minutes**. Total runtime was **6.8 minutes** including snapshot provisioning.
 - The canary verified Edit, destructive confirmation, `session/revert`,
   transcript truncation, replacement prefill, Restore, `session/unrevert`,
   replacement send, and old-path deletion.
 
 Live local REST and ACP proof used one disposable canonical OpenCode session:
 
-- ACP session: `ses_05b5e3d65ffeYrUK1Sw8z4NKjJ`.
-- ACP rewind message: `msg_fa4a1ef11001gRENX2KXzG75j1`.
+- ACP session: `ses_05b51aa3affeB0XyuUkhYt8L6n`.
+- ACP rewind message: `msg_fa4ae82cc001LquUy2MNmLt5T5`.
 - ACP restore: `true`.
 - ACP replacement: `true`.
 - ACP file result: `ACP_REWIND_REPLACEMENT`.
-- REST session: `ses_05b5e3d65ffeYrUK1Sw8z4NKjJ`.
-- REST rewind message: `msg_fa4a23db50013PFZjV7PNJ8yaR`.
+- REST session: `ses_05b51aa3affeB0XyuUkhYt8L6n`.
+- REST rewind message: `msg_fa4aed6ad001VvRt8OASgvwlmU`.
 - REST restore: `true`.
 - REST replacement: `true`.
 - REST file result: `REST_REWIND_REPLACEMENT`.

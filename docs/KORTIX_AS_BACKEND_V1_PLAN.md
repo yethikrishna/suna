@@ -28,14 +28,14 @@ Connectors are already **user-owned profiles decoupled from the agent** (`execut
 **Kortix authenticates the wrapper; the wrapper vouches for its end-user.** (Stripe-Connect / Twilio-subaccount model.)
 
 - **Caller = any programmatic customer credential** *(REV 3 — shipped in PR #5147; supersedes the SA-only stance below)*: the **account API key / PAT** (`kortix_pat_` — the credential the Tokens UI mints as "Create API key"), a **Service Account** (`kortix_sa_`), or a dedicated account API key (`kortix_`, `apiKeyType='user'`, dormant until issuance ships). All resolve `origin: backend`. **Why the reversal from SA-only:** a fresh service account has *no* IAM policy binding — `createServiceAccount` attaches none, the engine skips membership for SAs, and granting `project.session.start` requires a custom role + per-project token-principal policy, both behind the enterprise-only `rbac` entitlement. SA-only would be dark for every non-enterprise account. The PAT inherits its creator's project membership → works on every tier with zero IAM setup. SA remains the *recommended* credential for enterprise/CI (deny-by-default governance, survives offboarding, independently revocable). Hard exclusions, enforced with regression tests: the **internal sandbox key** (`kortix_sb_`, the `KORTIX_TOKEN` inside every sandbox) and **any agent-scoped token** are never backend — an in-session agent cannot vouch for a phantom end-user.
-- **End-user identity = a parameter, not an auth principal** — the wrapper passes `origin_ref` (its own user id) + that user's `profile_id`s. Kortix records `origin: backend`, resolves *that user's* profiles, attributes usage to `origin_ref`. **End-users never authenticate to Kortix.** Scales to 100k with no per-user login and no subject-identity system.
+- **End-user identity = a parameter, not an auth principal** — the wrapper passes `end_user_ref` (its own user id) + that user's `profile_id`s. Kortix records `origin: backend`, resolves *that user's* profiles, attributes usage to `end_user_ref`. **End-users never authenticate to Kortix.** Scales to 100k with no per-user login and no subject-identity system.
 
 **Developer UX (the whole integration — zero-setup path, any tier):**
 ```
 1. Settings → Tokens → Create API key → paste kortix_pat_… into backend env  (once)
 2. Per end-user: store their credential once → get profile_id                (server-to-server)
 3. POST /sessions  (Bearer kortix_pat_…)
-   { agent_name, origin_ref:"user-123", connector_bindings:{ gmail:{profile_id} } }
+   { agent_name, end_user_ref:"user-123", connector_bindings:{ gmail:{profile_id} } }
 ```
 **Enterprise/CI path (least privilege):** New service account → attach policy (`session.start` + connector-profiles) → same call with `Bearer kortix_sa_…`.
 Base case (shared agent, no per-user connectors) = steps 1–2 only.
@@ -44,7 +44,7 @@ Base case (shared agent, no per-user connectors) = steps 1–2 only.
 
 ## 3. The 3 gaps to build
 
-1. **`origin` as a first-class field + policy gate** (the spine). Today it's informal (`metadata.source='trigger:cron'`). Promote to `origin: user|trigger|schedule|backend` + `origin_ref`, resolved once at create in `sessions.ts`. It gates **which override fields a caller may set** (only `backend` may set connector/secret refs; `user` only model) and **behavior** (approval relay, attribution). Small: column + resolve-at-create + a `canOverride(origin, field)` check.
+1. **`origin` as a first-class field + policy gate** (the spine). Today it's informal (`metadata.source='trigger:cron'`). Promote to `origin: user|trigger|schedule|backend` + `end_user_ref`, resolved once at create in `sessions.ts`. It gates **which override fields a caller may set** (only `backend` may set connector/secret refs; `user` only model) and **behavior** (approval relay, attribution). Small: column + resolve-at-create + a `canOverride(origin, field)` check.
 2. **Secrets by reference** (the one net-new config dim). Merge a referenced secret bundle in **`resolveOwnerRawEnv`** (the hot-push path), not just boot (§4.2). Scope split: `connector`-scope = broker, never in sandbox = always safe; `runtime`-scope enters the sandbox = only safe while the wrapper **proxies chat** (end-users have no raw sandbox access).
 3. **Skills subset** (v2-manifest only, mostly deferred). Intersect a requested subset with each agent's compiled `permission.skill` grant in `buildSessionSandboxEnvVars`. *Selecting* repo skills = clean; *injecting new* skills = untrusted code = out of scope.
 
@@ -62,7 +62,7 @@ Base case (shared agent, no per-user connectors) = steps 1–2 only.
 
 **4.5 Profile revoked mid-session.** End-user disconnects their Gmail while a session is live. *Handling:* the broker fails **closed** — a bound-but-revoked profile returns null, never falls back to the shared default (verified). The wrapper must surface "reconnect".
 
-**4.6 Origin spoofing.** *(updated for REV 3)* No caller may claim `origin: backend` via the body — origin is **derived from the caller's token kind** (`authType` + `apiKeyType` + agent-scope), never accepted from the request. The spoofing surface that matters: the **in-sandbox `KORTIX_TOKEN`** (`apiKey`+`sandbox`) and **agent-scoped tokens** must never resolve backend — enforced with a *positive* `apiKeyType==='user'` check (a missing/unknown type can never be promoted) and an explicit agent-scope exclusion, both regression-tested. `origin_ref` is trusted only from a backend-origin caller; anyone else supplying it gets `403 origin_override_forbidden`. The queued-create path replays the same derivation signals captured at enqueue time, so backpressure can't degrade or upgrade an origin.
+**4.6 Origin spoofing.** *(updated for REV 3)* No caller may claim `origin: backend` via the body — origin is **derived from the caller's token kind** (`authType` + `apiKeyType` + agent-scope), never accepted from the request. The spoofing surface that matters: the **in-sandbox `KORTIX_TOKEN`** (`apiKey`+`sandbox`) and **agent-scoped tokens** must never resolve backend — enforced with a *positive* `apiKeyType==='user'` check (a missing/unknown type can never be promoted) and an explicit agent-scope exclusion, both regression-tested. `end_user_ref` is trusted only from a backend-origin caller; anyone else supplying it gets `403 origin_override_forbidden`. The queued-create path replays the same derivation signals captured at enqueue time, so backpressure can't degrade or upgrade an origin.
 
 **4.7 Model not servable / wrong form.** *Handling:* normalize via `toOpencodeModelRef` and **fail-fast** at create with `isModelServableForAccount` (reuses the request-time resolver) — never silently fall to default.
 
@@ -70,9 +70,9 @@ Base case (shared agent, no per-user connectors) = steps 1–2 only.
 
 **4.9 Warm-pool / snapshot reuse.** A recycled warm sandbox must not carry a prior session's overridden env/secrets. *Verify:* env is (re)pushed per session at boot + hot-push — confirm no residual from the pool image before GA.
 
-**4.10 Per-end-user cost & concurrency.** ✅ **SHIPPED.** Caps were account-level only, so one end-user could exhaust the account cap and block everyone. Now: `usage_events.origin_ref` (server-derived, partial-indexed) with `GET /v1/usage?origin_ref=…` and `group_by=origin_ref`; plus an opt-in per-`origin_ref` live-session cap (`KORTIX_BACKEND_PER_ORIGIN_SESSION_LIMIT` → `429 per_origin_session_limit`) checked alongside the account cap at create. Caveats recorded in the guide: rows predating the column (and all non-session spend) are `NULL` = unattributed and excluded from the rollup, and the cap shares the account cap's check-then-act race, so it is a runaway guard rather than a hard quota.
+**4.10 Per-end-user cost & concurrency.** ✅ **SHIPPED.** Caps were account-level only, so one end-user could exhaust the account cap and block everyone. Now: `usage_events.end_user_ref` (server-derived, partial-indexed) with `GET /v1/usage?end_user_ref=…` and `group_by=end_user_ref`; plus an opt-in per-`end_user_ref` live-session cap (`KORTIX_BACKEND_PER_ORIGIN_SESSION_LIMIT` → `429 per_origin_session_limit`) checked alongside the account cap at create. Caveats recorded in the guide: rows predating the column (and all non-session spend) are `NULL` = unattributed and excluded from the rollup, and the cap shares the account cap's check-then-act race, so it is a runaway guard rather than a hard quota.
 
-**4.11 Trigger/webhook on behalf of an end-user.** A webhook that should run as end-user X needs `origin: trigger` **plus** X's `origin_ref` + profile binding. *Suggest:* let a trigger carry an `origin_ref` + connector bindings so origin and overrides compose — the wrapper's most powerful pattern (event → the right user's session).
+**4.11 Trigger/webhook on behalf of an end-user.** A webhook that should run as end-user X needs `origin: trigger` **plus** X's `end_user_ref` + profile binding. *Suggest:* let a trigger carry an `end_user_ref` + connector bindings so origin and overrides compose — the wrapper's most powerful pattern (event → the right user's session).
 
 ## 5. Build order
 
@@ -88,7 +88,7 @@ Each new contract field needs a schema add + a ke2e route-coverage test (the `.s
 
 1. ~~**All-or-nothing vs inherit-unbound** connector binding (4.1)~~ — ✅ **RESOLVED:** all-or-nothing stays the default; `inherit_unbound: true` is opt-in. See 4.1.
 2. **Runtime-secret overrides**: allow at all in v1, or connector-scope only until untrusted-sandbox hardening exists?
-3. ~~**Native per-`origin_ref` caps/concurrency** (4.10)~~ — ✅ **RESOLVED: built.** Usage is attributed per `origin_ref` on `usage_events` (server-derived, with `?origin_ref=` filter and `group_by=origin_ref`), and `KORTIX_BACKEND_PER_ORIGIN_SESSION_LIMIT` caps live sessions per end-user (opt-in, `429 per_origin_session_limit`). Both denormalize/derive server-side rather than joining on the client-supplied `session_id`, which is spoofable on the legacy router path.
+3. ~~**Native per-`end_user_ref` caps/concurrency** (4.10)~~ — ✅ **RESOLVED: built.** Usage is attributed per `end_user_ref` on `usage_events` (server-derived, with `?end_user_ref=` filter and `group_by=end_user_ref`), and `KORTIX_BACKEND_PER_ORIGIN_SESSION_LIMIT` caps live sessions per end-user (opt-in, `429 per_origin_session_limit`). Both denormalize/derive server-side rather than joining on the client-supplied `session_id`, which is spoofable on the legacy router path.
 
 ## 7. Explicitly out of scope (v1)
 

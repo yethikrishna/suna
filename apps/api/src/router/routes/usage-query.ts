@@ -6,7 +6,7 @@
  * aggregation query.
  */
 
-export type UsageGroupBy = 'model' | 'provider' | 'day' | 'origin_ref';
+export type UsageGroupBy = 'model' | 'provider' | 'day' | 'origin_ref' | 'end_user_ref';
 
 export const USAGE_GROUP_BY_VALUES: readonly UsageGroupBy[] = [
   'model',
@@ -16,6 +16,7 @@ export const USAGE_GROUP_BY_VALUES: readonly UsageGroupBy[] = [
   // origin_ref (all non-backend spend) are excluded from this rollup rather
   // than lumped into a null bucket — see the route's grouping branch.
   'origin_ref',
+  'end_user_ref',
 ];
 
 /** Max length of an origin_ref, mirroring the session-create bound. */
@@ -36,6 +37,8 @@ export function parseUsageQuery(query: {
   start?: string;
   end?: string;
   group_by?: string;
+  end_user_ref?: string;
+  /** @deprecated Renamed to `end_user_ref`; still accepted. */
   origin_ref?: string;
 }): UsageQueryParams {
   const result: UsageQueryParams = {};
@@ -69,13 +72,27 @@ export function parseUsageQuery(query: {
     result.groupBy = query.group_by as UsageGroupBy;
   }
 
-  if (query.origin_ref !== undefined && query.origin_ref !== '') {
-    const originRef = query.origin_ref.trim();
+  // `end_user_ref` is the name; `origin_ref` is the deprecated alias. Both are
+  // accepted; disagreeing values are rejected rather than one silently winning.
+  if (
+    query.end_user_ref !== undefined &&
+    query.origin_ref !== undefined &&
+    query.end_user_ref.trim() !== query.origin_ref.trim()
+  ) {
+    throw new InvalidUsageQueryError(
+      'end_user_ref and its deprecated alias origin_ref disagree — send only end_user_ref',
+    );
+  }
+  const suppliedRef = query.end_user_ref ?? query.origin_ref;
+  if (suppliedRef !== undefined && suppliedRef !== '') {
+    const originRef = suppliedRef.trim();
     if (originRef === '') {
-      throw new InvalidUsageQueryError('origin_ref must not be blank');
+      throw new InvalidUsageQueryError('end_user_ref must not be blank');
     }
     if (originRef.length > ORIGIN_REF_MAX) {
-      throw new InvalidUsageQueryError(`origin_ref must be at most ${ORIGIN_REF_MAX} characters`);
+      throw new InvalidUsageQueryError(
+        `end_user_ref must be at most ${ORIGIN_REF_MAX} characters`,
+      );
     }
     result.originRef = originRef;
   }
@@ -131,7 +148,8 @@ export function mapUsageBreakdownRow(row: UsageBreakdownRow) {
     count: Number(row.count ?? 0),
   };
   if (row.originRef !== undefined) {
-    return { origin_ref: row.originRef, ...totals };
+    // Both keys carry the same value so old readers keep working.
+    return { end_user_ref: row.originRef, origin_ref: row.originRef, ...totals };
   }
   if (row.day !== undefined) {
     return { day: row.day, ...totals };

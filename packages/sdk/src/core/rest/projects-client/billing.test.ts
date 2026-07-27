@@ -207,26 +207,33 @@ test('getUsageRollup GETs /usage with no query when unfiltered', async () => {
   expect(last().method).toBe('GET');
 });
 
-test('getUsageRollup groups by origin_ref so spend is attributable per end-user', async () => {
+test('getUsageRollup groups by end_user_ref so spend is attributable per end-user', async () => {
   nextResponse = {
     status: 200,
     body: {
       data: { total_cost: 3, count: 2 },
       breakdown: [
-        { origin_ref: 'user-a', cost: 2, count: 1 },
-        { origin_ref: 'user-b', cost: 1, count: 1 },
+        { end_user_ref: 'user-a', cost: 2, count: 1 },
+        { end_user_ref: 'user-b', cost: 1, count: 1 },
       ],
     },
   };
-  const result = await getUsageRollup({ groupBy: 'origin_ref', start: '2026-07-01' });
-  expect(last().url).toContain('group_by=origin_ref');
+  const result = await getUsageRollup({ groupBy: 'end_user_ref', start: '2026-07-01' });
+  expect(last().url).toContain('group_by=end_user_ref');
   expect(last().url).toContain('start=2026-07-01');
-  expect(result.breakdown?.map((b) => b.origin_ref)).toEqual(['user-a', 'user-b']);
+  expect(result.breakdown?.map((b) => b.end_user_ref)).toEqual(['user-a', 'user-b']);
 });
 
-test('getUsageRollup narrows to one end-user via origin_ref', async () => {
+test('getUsageRollup narrows to one end-user via endUserRef', async () => {
   nextResponse = { status: 200, body: { data: { total_cost: 2, count: 1 } } };
-  await getUsageRollup({ originRef: 'user-a' });
-  expect(last().url).toContain('origin_ref=user-a');
+  await getUsageRollup({ endUserRef: 'user-a' });
+  expect(last().url).toContain('end_user_ref=user-a');
   expect(last().url).not.toContain('group_by');
+});
+
+test('the deprecated originRef option still works, mapped to the new param', async () => {
+  // Live callers pinned to the old option must keep functioning after the rename.
+  nextResponse = { status: 200, body: { data: { total_cost: 2, count: 1 } } };
+  await getUsageRollup({ originRef: 'legacy-user' });
+  expect(last().url).toContain('end_user_ref=legacy-user');
 });

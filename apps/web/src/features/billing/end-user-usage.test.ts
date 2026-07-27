@@ -44,3 +44,29 @@ describe('toEndUserUsageRows', () => {
     expect(toEndUserUsageRows(undefined)).toEqual([]);
   });
 });
+
+describe('toEndUserUsageRows — end_user_ref / origin_ref alias', () => {
+  const row = (keys: Record<string, unknown>) => ({
+    cost: 1,
+    count: 1,
+    input_tokens: 0,
+    output_tokens: 0,
+    cached_tokens: 0,
+    cache_write_tokens: 0,
+    ...keys,
+  });
+
+  test('reads the new end_user_ref field', () => {
+    expect(toEndUserUsageRows([row({ end_user_ref: 'new' })] as never)[0]?.originRef).toBe('new');
+  });
+
+  test('still reads a server that only sends the deprecated origin_ref', () => {
+    expect(toEndUserUsageRows([row({ origin_ref: 'old' })] as never)[0]?.originRef).toBe('old');
+  });
+
+  test('prefers end_user_ref when a server sends both', () => {
+    const rows = toEndUserUsageRows([row({ end_user_ref: 'new', origin_ref: 'new' })] as never);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.originRef).toBe('new');
+  });
+});

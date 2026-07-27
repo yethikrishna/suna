@@ -2149,6 +2149,20 @@ export const usageEvents = kortixSchema.table(
       .references(() => accounts.accountId, { onDelete: 'cascade' }),
     projectId: uuid('project_id').references(() => projects.projectId, { onDelete: 'set null' }),
     sessionId: text('session_id'),
+    /**
+     * Kortix-as-a-Backend attribution: which of the wrapper's END-USERS this
+     * spend belongs to. A server-derived COPY of project_sessions.origin_ref,
+     * resolved from the session at emit time — never read from a request body.
+     *
+     * Denormalized rather than joined at read time on purpose: the legacy router
+     * path takes session_id from the request (body / X-Session-ID), so joining
+     * usage_events.session_id -> project_sessions would let one end-user's agent
+     * bill spend to another end-user inside the same wrapper account.
+     *
+     * NULL = unattributed (any row written before this column existed, plus
+     * non-session spend like the model playground).
+     */
+    originRef: text('origin_ref'),
     actorUserId: uuid('actor_user_id'),
     provider: text('provider').notNull(),
     model: text('model').notNull(),
@@ -2169,6 +2183,12 @@ export const usageEvents = kortixSchema.table(
     index('idx_usage_events_project_time').on(table.projectId, table.createdAt),
     index('idx_usage_events_session').on(table.sessionId),
     index('idx_usage_events_model').on(table.provider, table.model),
+    // Per-end-user metering: "spend for origin_ref X in a window", and the
+    // group_by=origin_ref rollup. Partial — the vast majority of rows are
+    // non-backend spend with a NULL origin_ref and never match this predicate.
+    index('idx_usage_events_account_origin_time')
+      .on(table.accountId, table.originRef, table.createdAt)
+      .where(sql`${table.originRef} is not null`),
   ],
 );
 

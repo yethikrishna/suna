@@ -258,6 +258,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B27 | **Retry the transient IAM policy read that caused the all-account project query failure.** The projects page can issue one query per account.                                                                                                                                                                                                                                                                                                     | Live US shadow evidence at `2026-07-26T20:03:20Z`: one IAM-backed `GET /projects` returned `500`; the identical retry returned `200` after `1.4s`. The wrapped `DrizzleQueryError` hid the nested PostgreSQL cause from logs.                                                                                  | **DONE 2026-07-26** — PR #5529, merge `5c0ae97ec`; one bounded transient read retry fails closed; wrapped PostgreSQL details are logged; API tests `40/0`; US API rollout completed with `2/2` tasks                                                                                             |
 | B28 | **Keep an explicit project-composer agent selection through asynchronous project-default hydration.**                                                                                                                                                                                                                                                                                                                                               | The deployed US two-test session suite clicked `memory-reflector`, then `useOpenCodeLocal()` changed its selection scope when `defaultAgentName` hydrated to `kortix`. The picker reset to `kortix` for 30 seconds.                                                                                          | **DONE 2026-07-27** — PR #5533, merge `ee45f55fa`; SDK tests `1283/0`, typecheck, packed-install smoke, and deployed US two-test suite `2/2` pass; both sessions returned exact `PONG`, and the mismatch fallback emitted no global error                                                                                                                                    |
 | B29 | **Preserve ACP upstream message boundaries in the projected transcript.**                                                                                                                                                                                                                                                                                                                                                                              | Dev session `ee41f742-9384-4f34-88e7-63ae3d765cae` emitted distinct `session/update.messageId` values for assistant steps, but `src/core/acp/projection.ts` discarded `messageId` and appended every text or reasoning chunk to one generated assistant message.                                                                                      | **DONE 2026-07-27** — implementation `60b06c6e4`; focused projection/controller tests `27/0`, full SDK tests `1299/0`, typecheck, packed-install smoke, supplied-transcript replay, and local ACP Chromium flow pass                                                                                                                                                                                          |
+| B30 | **Expose message-based session rewind and restore through both REST and ACP transports.** Editing an earlier user message must rewind the same canonical session instead of creating a fork. The removed path must remain recoverable until the replacement prompt commits.                                                                                                                                                                      | `apps/web/src/features/session/session-chat.tsx` contains `TODO(session-rewind)`. OpenCode exposes `/session/{sessionID}/revert` and `/unrevert`; ACP has no standard rewind method and needs a Kortix bridge extension plus transcript reload.                                                               | **DONE 2026-07-27** — implementation `eab4eef0f`; SDK, daemon, web, browser, and live REST plus ACP gates pass. PR merge, Deploy Dev, deployed SHA proof, and deployed behavior proof remain release gates |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -3366,3 +3367,80 @@ TDD and local verification:
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
 and deployed ACP transcript verification remain.
+
+---
+
+### 2026-07-27 — session `session-message-revert` (B30 local completion)
+
+Implemented message-based session rewind and restore in `eab4eef0f`.
+
+The implementation keeps one canonical OpenCode session. It does not create a
+fork. Native REST uses `session.revert` and `session.unrevert`. ACP uses the
+Kortix `session/revert` and `session/unrevert` extensions. The daemon forwards
+both ACP extensions to native OpenCode history routes.
+
+ACP transcript replay preserves native OpenCode message IDs. The controller
+resolves an optimistic `acp-user-*` ID to its canonical `msg_*` ID before
+rewind. REST transcript synchronization keeps removed messages hidden until
+cleanup completes. The next accepted prompt commits the replacement path.
+
+`useSession` now exposes `rewindMessageId`, `rewindPending`, `rewindError`,
+`rewind(messageId)`, and `restoreRewind()`. The web session UI adds Edit,
+confirmation, replacement composer prefill, staged-rewind status, and Restore.
+
+TDD evidence:
+
+- RED: the core rewind projection helper did not exist.
+- RED: the ACP client had no revert or unrevert extension methods.
+- RED: ACP transcript replay generated local IDs instead of native `msg_*` IDs.
+- RED: the ACP controller had no reversible rewind state.
+- RED: `useSession` had no provider-agnostic rewind contract.
+- RED: the web message action still contained `TODO(session-rewind)`.
+- GREEN focused SDK, daemon, and web suite: **145 pass / 0 fail**.
+- GREEN ACP controller after optimistic-ID resolution: **20 pass / 0 fail**.
+
+SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit 0.
+- `pnpm --filter @kortix/sdk test`: **1309 pass / 0 fail**, **5779**
+  assertions across **111** files.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed install and Node ESM
+  import passed.
+
+Daemon and web gates:
+
+- `pnpm --filter @kortix/sandbox-agent-server typecheck`: exit 0.
+- `pnpm --filter @kortix/sandbox-agent-server test`: **306 pass / 0 fail**,
+  **739** assertions across **33** files.
+- Web source contract: **5 pass / 0 fail**, **11** assertions.
+- Touched web ESLint: exit 0.
+- Web `tsc --noEmit`: zero errors in the three touched session files. Two
+  existing errors remain in `template-url.test.ts`.
+- `git diff --check`: exit 0.
+
+Local browser proof:
+
+- Playwright ACP runtime canary: **1 pass / 0 fail**. The test ran for **1.6
+  minutes**. Total runtime was **6.8 minutes** including snapshot provisioning.
+- The canary verified Edit, destructive confirmation, `session/revert`,
+  transcript truncation, replacement prefill, Restore, `session/unrevert`,
+  replacement send, and old-path deletion.
+
+Live local REST and ACP proof used one disposable canonical OpenCode session:
+
+- ACP session: `ses_05b51aa3affeB0XyuUkhYt8L6n`.
+- ACP rewind message: `msg_fa4ae82cc001LquUy2MNmLt5T5`.
+- ACP restore: `true`.
+- ACP replacement: `true`.
+- ACP file result: `ACP_REWIND_REPLACEMENT`.
+- REST session: `ses_05b51aa3affeB0XyuUkhYt8L6n`.
+- REST rewind message: `msg_fa4aed6ad001VvRt8OASgvwlmU`.
+- REST restore: `true`.
+- REST replacement: `true`.
+- REST file result: `REST_REWIND_REPLACEMENT`.
+- Smoke result: `PASS`.
+
+**Status:** LOCAL IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
+and deployed REST, ACP, and web verification remain.

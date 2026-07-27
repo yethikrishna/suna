@@ -1,10 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import {
-  applyAcpEnvelope,
-  createAcpProjection,
-  type AcpProjection,
-} from './projection';
+import { applyAcpEnvelope, createAcpProjection, type AcpProjection } from './projection';
 
 function update(
   projection: AcpProjection,
@@ -22,6 +18,28 @@ function update(
 }
 
 describe('ACP to Kortix session projection', () => {
+  test('preserves OpenCode message ids from ACP transcript replay', () => {
+    let state = createAcpProjection('ses_1');
+    state = update(state, 'user_message_chunk', {
+      messageId: 'msg_user_1',
+      content: { type: 'text', text: 'first prompt' },
+    });
+    state = update(state, 'agent_message_chunk', {
+      messageId: 'msg_assistant_1',
+      content: { type: 'text', text: 'first answer' },
+    });
+    state = update(state, 'user_message_chunk', {
+      messageId: 'msg_user_2',
+      content: { type: 'text', text: 'second prompt' },
+    });
+
+    expect(state.messages.map((message) => message.info.id)).toEqual([
+      'msg_user_1',
+      'msg_assistant_1',
+      'msg_user_2',
+    ]);
+  });
+
   test('projects user, thought, assistant, usage, and stop reason', () => {
     let state = createAcpProjection('ses_1');
     state = update(state, 'user_message_chunk', {
@@ -54,13 +72,8 @@ describe('ACP to Kortix session projection', () => {
       },
     });
 
-    expect(state.messages.map((message) => message.info.role)).toEqual([
-      'user',
-      'assistant',
-    ]);
-    expect(state.messages[0]?.parts).toMatchObject([
-      { type: 'text', text: 'hello' },
-    ]);
+    expect(state.messages.map((message) => message.info.role)).toEqual(['user', 'assistant']);
+    expect(state.messages[0]?.parts).toMatchObject([{ type: 'text', text: 'hello' }]);
     expect(state.messages[1]?.parts).toMatchObject([
       { type: 'reasoning', text: 'think more' },
       { type: 'text', text: 'ACP_PONG' },

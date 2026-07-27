@@ -182,6 +182,8 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     transactionsSummary: P.getBillingTransactionsSummary,
     creditBreakdown: P.getBillingCreditBreakdown,
     usageHistory: P.getBillingUsageHistory,
+    /** Usage rollup (/v1/usage) — supports group_by 'end_user_ref' for wrappers. */
+    usageRollup: P.getUsageRollup,
     tierConfigurations: P.getBillingTierConfigurations,
 
     /** Stripe checkout — start a subscription and confirm it post-redirect. */

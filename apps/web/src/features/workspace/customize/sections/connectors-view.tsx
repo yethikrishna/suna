@@ -1265,6 +1265,9 @@ function ConnectorDetail({
     : showProfileTab
       ? 'profile'
       : 'permissions';
+  // Permissions is always present; the other three are conditional.
+  const detailTabCount =
+    1 + (showConnections ? 1 : 0) + (showProfileTab ? 1 : 0) + (showRoster ? 1 : 0);
 
   // Same query key + filter as ConnectionsList, so the badge can never disagree
   // with the rows it counts (react-query dedupes the fetch).
@@ -1481,7 +1484,16 @@ function ConnectorDetail({
             into one long scroll above a lone "Permissions" tab, because the only
             other trigger — Profile — is hidden for Pipedream connectors. */}
         <Tabs defaultValue={defaultDetailTab} className="gap-3">
-          <TabsList type="underline" className="flex w-full items-center justify-start">
+          {/* A single trigger is not a choice — it reads as a broken tab bar.
+              Computer connectors are managed in Computers, so Permissions is
+              all they have left here. */}
+          <TabsList
+            type="underline"
+            className={cn(
+              'flex w-full items-center justify-start',
+              detailTabCount < 2 && 'hidden',
+            )}
+          >
             {showConnections && (
               <TabsTrigger value="connections" className="w-fit flex-none gap-2">
                 Connections

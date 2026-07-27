@@ -974,6 +974,71 @@ describe('resolveRequiredMemberConnectorProfiles (require_connectors)', () => {
     }
   });
 
+  test("picks the member's OWN DEFAULT when they hold several connections on one connector", async () => {
+    // A member may now hold several personal connections on one connector
+    // ("Work", "Personal"). "Use my veyris" must not be a coin flip between them
+    // — the one they marked default wins, deterministically.
+    const SECOND = crypto.randomUUID();
+    await db.insert(executorConnectionProfiles).values({
+      profileId: SECOND,
+      accountId: ACCOUNT_A,
+      projectId: PROJECT_A,
+      connectorId: CONNECTOR_A,
+      ownerType: 'member',
+      ownerId: USER,
+      label: 'My second workspace',
+      isDefault: true,
+    });
+    try {
+      const res = await resolveRequiredMemberConnectorProfiles({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        actingUserId: USER,
+        actingPrincipalIsServiceAccount: false,
+        aliases: ['veyris'],
+      });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.bindings[0]?.profileId).toBe(SECOND);
+    } finally {
+      await db
+        .delete(executorConnectionProfiles)
+        .where(eq(executorConnectionProfiles.profileId, SECOND));
+    }
+  });
+
+  test('skips a REVOKED connection and uses the active one instead of failing closed', async () => {
+    // The lookup must filter to usable rows IN the query. Fetching an arbitrary
+    // row first and then rejecting it would report "connect your account" while
+    // a perfectly good active connection exists.
+    const REVOKED = crypto.randomUUID();
+    await db.insert(executorConnectionProfiles).values({
+      profileId: REVOKED,
+      accountId: ACCOUNT_A,
+      projectId: PROJECT_A,
+      connectorId: CONNECTOR_A,
+      ownerType: 'member',
+      ownerId: USER,
+      label: 'Revoked workspace',
+      status: 'revoked',
+      isDefault: true, // even as the "default", a revoked row must never win
+    });
+    try {
+      const res = await resolveRequiredMemberConnectorProfiles({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        actingUserId: USER,
+        actingPrincipalIsServiceAccount: false,
+        aliases: ['veyris'],
+      });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.bindings[0]?.profileId).toBe(PROFILE_A);
+    } finally {
+      await db
+        .delete(executorConnectionProfiles)
+        .where(eq(executorConnectionProfiles.profileId, REVOKED));
+    }
+  });
+
   test('resolves DISTINCT users to their own member profiles (never each other)', async () => {
     // OTHER_USER owns PROFILE_B for the same connector — must not get USER's.
     const res = await resolveRequiredMemberConnectorProfiles({

@@ -1425,6 +1425,9 @@ function ConnectorDetail({
   // Permissions is always present; the other three are conditional.
   const detailTabCount =
     1 + (showConnections ? 1 : 0) + (showProfileTab ? 1 : 0) + (showRoster ? 1 : 0);
+  const [detailTab, setDetailTab] = useState(defaultDetailTab);
+  // Re-pin when the user switches to a connector whose tab set differs.
+  useEffect(() => setDetailTab(defaultDetailTab), [defaultDetailTab, connector.slug]);
 
   // Same query key + filter as ConnectionsList, so the badge can never disagree
   // with the rows it counts (react-query dedupes the fetch).
@@ -1640,7 +1643,11 @@ function ConnectorDetail({
             connected their own (Team members). Before this, everything stacked
             into one long scroll above a lone "Permissions" tab, because the only
             other trigger — Profile — is hidden for Pipedream connectors. */}
-        <Tabs defaultValue={defaultDetailTab} className="gap-3">
+        <Tabs
+          value={detailTab}
+          onValueChange={setDetailTab}
+          className="gap-3"
+        >
           {/* A single trigger is not a choice — it reads as a broken tab bar.
               Computer connectors are managed in Computers, so Permissions is
               all they have left here. */}
@@ -1721,6 +1728,10 @@ function ConnectorDetail({
               connector={connector}
               onChanged={onChanged}
               canWrite={canWrite}
+              connectionCount={connectionCount}
+              onOpenConnections={
+                showConnections ? () => setDetailTab('connections') : undefined
+              }
             />
           </TabsContent>
           {showRoster && (
@@ -3021,11 +3032,16 @@ function PermissionsSection({
   connector,
   onChanged,
   canWrite = false,
+  connectionCount = 0,
+  onOpenConnections,
 }: {
   projectId: string;
   connector: AdminConnector;
   onChanged: () => void;
   canWrite?: boolean;
+  /** How many connections this connector holds — these rules apply to all of them. */
+  connectionCount?: number;
+  onOpenConnections?: () => void;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
@@ -3191,6 +3207,28 @@ function PermissionsSection({
           </div>
         ) : null}
       </div>
+      {/* These are CONNECTOR-wide. With several connections under one connector
+          people come here looking for per-connection permissions (it is the tab
+          literally called Permissions) and find no way to differ — so point at
+          the place that does it, instead of letting them conclude it is missing. */}
+      {connectionCount > 1 && (
+        <InfoBanner
+          tone="info"
+          icon={Users}
+          title={`Applies to all ${connectionCount} connections`}
+          action={
+            onOpenConnections ? (
+              <Button size="sm" variant="outline" className="shrink-0" onClick={onOpenConnections}>
+                Open Connections
+              </Button>
+            ) : undefined
+          }
+        >
+          To give one connection different permissions — say, one mailbox that may send and another
+          that may only read — open Connections and use “Permissions for this connection” on that
+          row. Anything you set there overrides what you set here, for that connection only.
+        </InfoBanner>
+      )}
       {/* Say it once, up front. A project-scope rule beats everything on this
           page and cannot be lifted here — silently rendering the losing value
           is the bug this replaces. */}

@@ -126,10 +126,63 @@ describe('scopeToIntent — round-trip for the dashboard', () => {
   });
 });
 
+const WRAPPER = 'wrapper-service-account';
+
 describe('session sharing — default private; team-wide or select-members', () => {
   test('owner always sees their own session, regardless of visibility', () => {
     expect(isSessionVisibleTo('private', ALICE, [], { userId: ALICE, groupIds: [] })).toBe(true);
     expect(isSessionVisibleTo('private', ALICE, [], { userId: BOB, groupIds: [] })).toBe(false);
+  });
+
+  // ── Kortix-as-a-Backend isolation ──
+  // Every KaaB session is created by the SAME wrapper credential, so created_by
+  // is identical for every end-user. The ownership short-circuit above therefore
+  // makes every backend session look owned by whoever asks — which, for a token
+  // bound to one end-user's sandbox, is a cross-end-user disclosure. The prompt
+  // that drives that sandbox is untrusted by construction in KaaB.
+  test('a sandbox token cannot reach a DIFFERENT backend session via shared created_by', () => {
+    const wrapper = { userId: WRAPPER, groupIds: [] };
+    expect(
+      isSessionVisibleTo('private', WRAPPER, [], wrapper, {
+        origin: 'backend',
+        sessionId: 'session-of-end-user-b',
+        callerSessionId: 'session-of-end-user-a',
+      }),
+    ).toBe(false);
+  });
+
+  test('a sandbox token still reaches its OWN backend session', () => {
+    expect(
+      isSessionVisibleTo('private', WRAPPER, [], { userId: WRAPPER, groupIds: [] }, {
+        origin: 'backend',
+        sessionId: 'session-a',
+        callerSessionId: 'session-a',
+      }),
+    ).toBe(true);
+  });
+
+  test('the wrapper backend itself (not session-bound) still sees every session it created', () => {
+    // The operator API must keep working — this is the wrapper's own credential,
+    // acting for nobody in particular, so created_by ownership is legitimate.
+    expect(
+      isSessionVisibleTo('private', WRAPPER, [], { userId: WRAPPER, groupIds: [] }, {
+        origin: 'backend',
+        sessionId: 'session-b',
+        callerSessionId: null,
+      }),
+    ).toBe(true);
+  });
+
+  test('interactive sessions are untouched — a sandbox token still lists its siblings', () => {
+    // created_by genuinely IS one person for interactive sessions, so narrowing
+    // here would break `kortix sessions ls` from inside a normal sandbox.
+    expect(
+      isSessionVisibleTo('private', ALICE, [], { userId: ALICE, groupIds: [] }, {
+        origin: 'interactive',
+        sessionId: 'other-session',
+        callerSessionId: 'my-session',
+      }),
+    ).toBe(true);
   });
 
   test('project visibility → every member', () => {

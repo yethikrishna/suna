@@ -131,15 +131,8 @@
     {
       "idx": 18,
       "version": "7",
-      "when": 1785142374760,
-      "tag": "20260727085254_multi_connections_per_connector",
-      "breakpoints": true
-    },
-    {
-      "idx": 19,
-      "version": "7",
-      "when": 1785143196423,
-      "tag": "20260727090636_team_connection_label_uniqueness",
+      "when": 1785144061558,
+      "tag": "20260727092101_multi_connections_per_connector",
       "breakpoints": true
     }
   ]

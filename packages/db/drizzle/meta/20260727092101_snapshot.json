@@ -1,5 +1,5 @@
 {
-  "id": "fe46bd88-12ff-4078-ab3b-065b63ef9ce9",
+  "id": "527abdf1-e848-48a0-8339-248b8f74dcd6",
   "prevId": "b0aad77c-5357-42ab-925d-6bd64499060d",
   "version": "7",
   "dialect": "postgresql",
@@ -4489,8 +4489,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_executor_connection_profiles_owner": {
-          "name": "idx_executor_connection_profiles_owner",
+        "idx_executor_connection_profiles_owner_label": {
+          "name": "idx_executor_connection_profiles_owner_label",
           "columns": [
             {
               "expression": "connector_id",
@@ -4519,6 +4519,28 @@
           ],
           "isUnique": true,
           "where": "\"kortix\".\"executor_connection_profiles\".\"owner_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_executor_connection_profiles_project_label": {
+          "name": "idx_executor_connection_profiles_project_label",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "label",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"kortix\".\"executor_connection_profiles\".\"owner_id\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}

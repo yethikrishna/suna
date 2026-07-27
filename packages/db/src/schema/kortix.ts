@@ -3809,7 +3809,7 @@ export const executorConnectionProfiles = kortixSchema.table(
     // lets one owner hold several connections ("Work", "Personal") while keeping
     // reconcile idempotent: the same label updates in place, a new label adds a
     // new connection.
-    uniqueIndex('idx_executor_connection_profiles_owner')
+    uniqueIndex('idx_executor_connection_profiles_owner_label')
       .on(table.connectorId, table.ownerType, table.ownerId, table.label)
       .where(sql`${table.ownerId} is not null`),
     // Project-owned rows carry owner_id NULL, so the index above (partial on

@@ -84,7 +84,7 @@ mock.module('../shared/preview-ownership', () => ({
   resolveSandboxProjectId: async () => null,
 }));
 
-const { authenticatePreviewPrincipal, extractPreviewToken } = await import('../sandbox-proxy/preview-auth');
+const { authenticatePreviewPrincipal, authenticatePreviewPrincipalDetailed, extractPreviewToken } = await import('../sandbox-proxy/preview-auth');
 const { previewSubdomainAuthCacheKeyForTest } = await import('../sandbox-proxy/subdomain');
 
 beforeEach(() => {
@@ -198,5 +198,26 @@ describe('preview subdomain auth cache key', () => {
     expect(previewSubdomainAuthCacheKeyForTest('sbx', 3000, c)).not.toBe(
       previewSubdomainAuthCacheKeyForTest('sbx', 3000, a),
     );
+  });
+});
+
+describe('authenticatePreviewPrincipalDetailed — session binding', () => {
+  test('a sandbox PAT reports the session it is bound to', async () => {
+    // This is what separates one KaaB end-user from another: every session
+    // shares the wrapper's userId, so only the token's own sessionId can.
+    const p = await authenticatePreviewPrincipalDetailed('kortix_pat_owner', SANDBOX_ID);
+    expect(p?.userId).toBe('pat-user-owner');
+    expect(p).toHaveProperty('sessionId');
+  });
+
+  test('non-PAT credentials report no session binding', async () => {
+    expect((await authenticatePreviewPrincipalDetailed('kortix_sa_owner', SANDBOX_ID))?.sessionId).toBeNull();
+    expect((await authenticatePreviewPrincipalDetailed('kortix_owner', SANDBOX_ID))?.sessionId).toBeNull();
+    expect((await authenticatePreviewPrincipalDetailed('jwt-owner', SANDBOX_ID))?.sessionId).toBeNull();
+  });
+
+  test('the string wrapper still behaves exactly as before', async () => {
+    expect(await authenticatePreviewPrincipal('kortix_pat_owner', SANDBOX_ID)).toBe('pat-user-owner');
+    expect(await authenticatePreviewPrincipal('kortix_pat_bad', SANDBOX_ID)).toBeNull();
   });
 });

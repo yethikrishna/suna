@@ -430,7 +430,7 @@ export async function continueSession(
       return healed ? toTarget(healed) : null;
     },
     send: (externalId, opencodeSessionId) =>
-      postPrompt(externalId, opencodeSessionId, text, userId),
+      postPrompt(externalId, opencodeSessionId, text, userId, sessionId),
   });
 }
 
@@ -746,13 +746,16 @@ async function postPrompt(
   opencodeSessionId: string,
   text: string,
   userId: string,
+  /** The session this prompt is FOR. Passed as the caller binding so the
+   *  isolation guard proves the target matches, rather than being waived. */
+  callerSessionId: string,
 ): Promise<boolean> {
   const body = new TextEncoder().encode(JSON.stringify({ parts: [{ type: 'text', text }] }));
   try {
     const res = await forwardToSandbox(
       externalId,
       DAEMON_PORT,
-      { kind: 'principal', userId },
+      { kind: 'principal', userId, callerSessionId },
       'POST',
       `/session/${encodeURIComponent(opencodeSessionId)}/prompt_async`,
       `?directory=${encodeURIComponent(WORKSPACE)}`,

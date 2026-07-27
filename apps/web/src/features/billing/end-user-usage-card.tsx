@@ -27,6 +27,7 @@ import { getUsageRollup } from '@kortix/sdk';
 import { useQuery } from '@tanstack/react-query';
 import { Copy, Users } from 'lucide-react';
 import { useState } from 'react';
+import { useBillingAccountId } from '@/stores/billing-account-context';
 import { toEndUserUsageRows } from './end-user-usage';
 
 const WINDOWS = [
@@ -62,10 +63,19 @@ function formatUsd(value: number): string {
 export function EndUserUsageCard() {
   const [windowKey, setWindowKey] = useState<(typeof WINDOWS)[number]['key']>('30');
 
+  // Scope to the account being VIEWED, not the caller's default. For a browser
+  // session the server takes the account from this query param, so omitting it
+  // would show your personal spend on a team account's page.
+  const accountId = useBillingAccountId();
+
   const usageQuery = useQuery({
-    queryKey: ['usage', 'origin_ref', windowKey],
+    queryKey: ['usage', 'origin_ref', windowKey, accountId ?? 'default'],
     queryFn: () =>
-      getUsageRollup({ groupBy: 'origin_ref', start: startOfWindow(Number(windowKey)) }),
+      getUsageRollup({
+        groupBy: 'origin_ref',
+        start: startOfWindow(Number(windowKey)),
+        accountId,
+      }),
     staleTime: 60_000,
   });
 

@@ -781,6 +781,14 @@ export interface UsageQueryOptions {
   groupBy?: 'model' | 'provider' | 'day' | 'origin_ref';
   /** Narrow to a single end-user. Applies to the TOTALS as well as the breakdown. */
   originRef?: string;
+  /**
+   * Which account to report on. REQUIRED whenever the caller could be looking at
+   * an account other than their default: for a browser session the server reads
+   * this from the query string, so omitting it silently reports the caller's own
+   * account instead of the one on screen. (Account-scoped tokens ignore it and
+   * always report their own account.)
+   */
+  accountId?: string;
 }
 
 /** Usage rollup for the authenticated account, optionally grouped and narrowed. */
@@ -790,6 +798,7 @@ export async function getUsageRollup(options: UsageQueryOptions = {}): Promise<U
   if (options.end) qs.set('end', options.end);
   if (options.groupBy) qs.set('group_by', options.groupBy);
   if (options.originRef) qs.set('origin_ref', options.originRef);
+  if (options.accountId) qs.set('account_id', options.accountId);
   const query = qs.toString();
   return unwrap(await backendApi.get<UsageRollup>(`/usage${query ? `?${query}` : ''}`));
 }

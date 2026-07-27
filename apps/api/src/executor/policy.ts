@@ -17,8 +17,8 @@
  * The UI exposes only three shapes (`*`, `prefix.*`, exact); the engine supports
  * arbitrary `*` positions for power users authoring kortix.yaml by hand.
  */
-type PolicyAction = 'always_run' | 'require_approval' | 'block';
-type Risk = 'read' | 'write' | 'destructive';
+export type PolicyAction = 'always_run' | 'require_approval' | 'block';
+export type Risk = 'read' | 'write' | 'destructive';
 export type DefaultMode = 'risk' | 'allow_all';
 
 export interface Policy {

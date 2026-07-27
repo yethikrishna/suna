@@ -80,7 +80,7 @@ export async function loadVisibleSession(
    * backend session — every KaaB session shares one `created_by`, so ownership
    * alone cannot separate them. See isSessionVisibleTo.
    */
-  callerSessionId?: string | null,
+  callerSessionId: string | null,
 ): Promise<{
   row: ProjectSessionRow;
   subject: ShareSubject;
@@ -97,7 +97,7 @@ export async function loadVisibleSession(
     !isSessionVisibleTo(row.visibility as 'private' | 'project' | 'restricted', row.createdBy, grants, subject, {
       origin: row.origin ?? null,
       sessionId,
-      callerSessionId: callerSessionId ?? null,
+      callerSessionId,
     })
   ) {
     // A platform-admin bypass already verified for the parent project (see

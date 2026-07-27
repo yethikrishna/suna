@@ -127,11 +127,13 @@ describe('scopeToIntent — round-trip for the dashboard', () => {
 });
 
 const WRAPPER = 'wrapper-service-account';
+// Non-KaaB default: an interactive session, caller not session-bound.
+const INTERACTIVE = { origin: 'interactive', sessionId: 's1', callerSessionId: null };
 
 describe('session sharing — default private; team-wide or select-members', () => {
   test('owner always sees their own session, regardless of visibility', () => {
-    expect(isSessionVisibleTo('private', ALICE, [], { userId: ALICE, groupIds: [] })).toBe(true);
-    expect(isSessionVisibleTo('private', ALICE, [], { userId: BOB, groupIds: [] })).toBe(false);
+    expect(isSessionVisibleTo('private', ALICE, [], { userId: ALICE, groupIds: [] }, INTERACTIVE)).toBe(true);
+    expect(isSessionVisibleTo('private', ALICE, [], { userId: BOB, groupIds: [] }, INTERACTIVE)).toBe(false);
   });
 
   // ── Kortix-as-a-Backend isolation ──
@@ -186,7 +188,7 @@ describe('session sharing — default private; team-wide or select-members', () 
   });
 
   test('project visibility → every member', () => {
-    expect(isSessionVisibleTo('project', ALICE, [], { userId: BOB, groupIds: [] })).toBe(true);
+    expect(isSessionVisibleTo('project', ALICE, [], { userId: BOB, groupIds: [] }, INTERACTIVE)).toBe(true);
   });
 
   test('restricted → owner + member/group grants only', () => {
@@ -194,9 +196,9 @@ describe('session sharing — default private; team-wide or select-members', () 
       { principalType: 'member', principalId: BOB },
       { principalType: 'group', principalId: SALES },
     ];
-    expect(isSessionVisibleTo('restricted', ALICE, grants, { userId: BOB, groupIds: [] })).toBe(true);
-    expect(isSessionVisibleTo('restricted', ALICE, grants, { userId: 'carol', groupIds: [SALES] })).toBe(true);
-    expect(isSessionVisibleTo('restricted', ALICE, grants, { userId: 'carol', groupIds: [] })).toBe(false);
+    expect(isSessionVisibleTo('restricted', ALICE, grants, { userId: BOB, groupIds: [] }, INTERACTIVE)).toBe(true);
+    expect(isSessionVisibleTo('restricted', ALICE, grants, { userId: 'carol', groupIds: [SALES] }, INTERACTIVE)).toBe(true);
+    expect(isSessionVisibleTo('restricted', ALICE, grants, { userId: 'carol', groupIds: [] }, INTERACTIVE)).toBe(false);
   });
 
   test('intent ⇄ visibility round-trips', () => {

@@ -454,8 +454,9 @@ export type PreviewProxyAccess =
       userId: string;
       /** The caller's own session when the credential is bound to one (a sandbox
        *  token). Kortix-as-a-Backend shares ONE userId across every end-user, so
-       *  this is what separates them. */
-      callerSessionId?: string | null;
+       *  this is what separates them. Null means a non-session-bound principal.
+       *  REQUIRED so a new entry point cannot silently omit it and fail open. */
+      callerSessionId: string | null;
     }
   | { kind: 'public_share' };
 
@@ -521,7 +522,7 @@ export async function forwardToSandbox(
     return jsonProxyError({ error: 'sandbox not found' }, 404, origin);
   }
   const userId = principalUserId(access);
-  const callerSessionId = access.kind === 'principal' ? (access.callerSessionId ?? null) : null;
+  const callerSessionId = access.kind === 'principal' ? access.callerSessionId : null;
   if (
     access.kind === 'principal' &&
     !(await canAccessPreviewSandbox({ previewSandboxId: sandboxId, userId }))
@@ -1016,14 +1017,15 @@ export async function resolvePreviewWsUpstream(opts: {
   userId: string;
   remainingPath: string;
   queryString: string;
-  /** The caller's own session when the credential is bound to one. */
-  callerSessionId?: string | null;
+  /** The caller's own session when the credential is bound to one, or null for a
+   *  principal that is not session-bound. REQUIRED — fail closed, never default. */
+  callerSessionId: string | null;
 }): Promise<
   | { ok: true; url: string; headers: Record<string, string> }
   | { ok: false; status: number; message: string }
 > {
   const { sandboxId, userId, remainingPath, queryString } = opts;
-  const callerSessionId = opts.callerSessionId ?? null;
+  const callerSessionId = opts.callerSessionId;
 
   const record = await loadSandbox(sandboxId);
   if (!record) return { ok: false, status: 404, message: 'sandbox not found' };

@@ -79,7 +79,7 @@ export function selectSessionRowsForViewer(input: {
   /** The caller's own session when the credential is bound to one (sandbox
    *  token). Stops a sandbox listing SIBLING backend sessions, which all share
    *  one `created_by`. */
-  callerSessionId?: string | null;
+  callerSessionId: string | null;
   grantsBySession: Map<string, SecretGrant[]>;
   runtimeStatusBySession: Map<string, RuntimeStatus>;
 }): { authorized: boolean; items: SessionInventoryItem[] } {
@@ -103,7 +103,7 @@ export function selectSessionRowsForViewer(input: {
       {
         origin: row.origin ?? null,
         sessionId: row.sessionId,
-        callerSessionId: input.callerSessionId ?? null,
+        callerSessionId: input.callerSessionId,
       },
     );
     return { row, canAccess, runtimeStatus, deletedAt, deletedBy };

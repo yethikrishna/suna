@@ -406,6 +406,7 @@ describe('Preview proxy: websocket upstream resolution', () => {
       userId: TEST_USER_ID,
       remainingPath: '/pty/pty_test/connect',
       queryString: '',
+      callerSessionId: null,
     });
 
     expect(upstream.ok).toBe(true);
@@ -426,6 +427,7 @@ describe('Preview proxy: websocket upstream resolution', () => {
       userId: TEST_USER_ID,
       remainingPath: '/pty/pty_test/connect',
       queryString: '',
+      callerSessionId: null,
     });
 
     expect(upstream.ok).toBe(true);
@@ -451,6 +453,7 @@ describe('Preview proxy: websocket upstream resolution', () => {
       userId: TEST_USER_ID,
       remainingPath: '/kortix/pty/kpty_test/connect',
       queryString: '',
+      callerSessionId: null,
     });
 
     expect(upstream.ok).toBe(true);

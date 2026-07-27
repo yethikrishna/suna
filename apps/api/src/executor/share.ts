@@ -147,7 +147,9 @@ export interface SessionOwnershipContext {
   sessionId: string;
   /** The CALLER's own session, when the credential is bound to one (a sandbox
    *  token). Null for the wrapper's own backend credential, which acts for
-   *  nobody in particular and legitimately sees everything it created. */
+   *  nobody in particular and legitimately sees everything it created.
+   *  REQUIRED — never optional. An omitted binding would default to the
+   *  permissive value and silently reopen the hole on any edge that forgets it. */
   callerSessionId: string | null;
 }
 
@@ -157,14 +159,13 @@ export function isSessionVisibleTo(
   ownerId: string | null,
   grants: SecretGrant[],
   subject: ShareSubject,
-  ownership?: SessionOwnershipContext,
+  ownership: SessionOwnershipContext,
 ): boolean {
   // A sandbox token acts for ONE end-user. It must not reach a sibling backend
   // session just because the wrapper credential created them both. Interactive
   // sessions are deliberately excluded: there created_by really is one person,
   // and narrowing would break `kortix sessions ls` from inside a normal sandbox.
   const sharedCreatorIsMeaningless =
-    ownership != null &&
     ownership.origin === 'backend' &&
     ownership.callerSessionId != null &&
     ownership.callerSessionId !== ownership.sessionId;

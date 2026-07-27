@@ -148,6 +148,13 @@
       "when": 1785152081893,
       "tag": "20260727113441_project_sessions_origin_active_index",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1785160455055,
+      "tag": "20260727135415_connection_policies",
+      "breakpoints": true
     }
   ]
 }

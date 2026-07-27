@@ -26,6 +26,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Trash2,
+  Users,
   X,
   Zap,
 } from 'lucide-react';
@@ -124,7 +125,10 @@ import {
   pipedreamFinalizeConnectionProfile,
   pollConnectionProfileOAuth2DeviceAuthorization,
   putConnectionProfileOAuth2Application,
+  type ConnectionProfile,
+  reconcileConnectionProfile,
   reconcileMemberConnectionProfile,
+  setDefaultConnectionProfile,
   revokeConnectionProfile,
   setConnectorCredential,
   setConnectorName,
@@ -264,10 +268,10 @@ function usePipedreamConnect(projectId: string, slug: string, onConnected: () =>
  */
 function usePipedreamConnectMember(projectId: string, slug: string, onConnected: () => void) {
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input?: { label?: string }) => {
       const profile = await reconcileMemberConnectionProfile(projectId, {
         connector_alias: slug,
-        label: 'Private connection',
+        label: input?.label?.trim() || 'Private connection',
       });
       const { token, app } = await pipedreamConnectConnectionProfile(projectId, profile.profile_id);
       if (!token || !app) throw new Error('App connect is not configured');
@@ -298,6 +302,54 @@ function usePipedreamConnectMember(projectId: string, slug: string, onConnected:
     onSuccess: (res) => {
       if (!res.connected) return;
       successToast('Connected privately — only you can use this');
+      onConnected();
+    },
+    onError: (err: Error) => errorToast(err.message),
+  });
+}
+
+/**
+ * Connect ANOTHER team-shared account under one connector (support@ alongside
+ * sales@). Mints a labelled project-owned connection, then runs that profile's
+ * OAuth handshake — the same per-profile flow the personal connect uses.
+ */
+function usePipedreamConnectTeam(projectId: string, slug: string, onConnected: () => void) {
+  return useMutation({
+    mutationFn: async (input: { label: string }) => {
+      const profile = await reconcileConnectionProfile(projectId, {
+        connector_alias: slug,
+        owner_type: 'project',
+        label: input.label.trim(),
+      });
+      const { token, app } = await pipedreamConnectConnectionProfile(projectId, profile.profile_id);
+      if (!token || !app) throw new Error('App connect is not configured');
+      const pd = createFrontendClient({
+        externalUserId: `${projectId}:${slug}:${profile.profile_id}`,
+        tokenCallback: async () => ({ token, connect_link_url: undefined, expires_at: '' }) as any,
+      });
+      const release = withPipedreamOverlayEscape();
+      let connected = false;
+      try {
+        connected = await new Promise<boolean>((resolve, reject) => {
+          pd.connectAccount({
+            app,
+            token,
+            onSuccess: () => resolve(true),
+            onClose: (status: { successful: boolean }) => resolve(status.successful),
+            onError: (err: unknown) =>
+              reject(new Error((err as Error)?.message || 'Connection cancelled')),
+          });
+        });
+      } finally {
+        release();
+      }
+      if (!connected) return { connected: false };
+      await pipedreamFinalizeConnectionProfile(projectId, profile.profile_id);
+      return { connected: true };
+    },
+    onSuccess: (res) => {
+      if (!res.connected) return;
+      successToast('Team connection added');
       onConnected();
     },
     onError: (err: Error) => errorToast(err.message),
@@ -881,73 +933,293 @@ function ConnectionIdField({ profileId }: { profileId: string }) {
   );
 }
 
-/**
- * A member's OWN private connection for a connector, shown alongside the shared
- * (team) connection. Connect/disconnect here affects only the current user, and
- * the connection resolves only in their own private sessions. Any project member
- * can use it (no editor rights required — the profile is owned by their token).
- */
-function PrivateConnectionBanner({
-  displayName,
-  connected,
-  connecting,
-  disconnecting,
-  onConnect,
+/** One row in the connections list — a single connected account. */
+function ConnectionRow({
+  profile,
+  isMine,
+  canManage,
+  onSetDefault,
   onDisconnect,
   onStartSession,
+  pending,
 }: {
-  displayName: string;
-  connected: boolean;
-  connecting: boolean;
-  disconnecting: boolean;
-  onConnect: () => void;
+  profile: ConnectionProfile;
+  isMine: boolean;
+  canManage: boolean;
+  onSetDefault: () => void;
   onDisconnect: () => void;
-  onStartSession: () => void;
+  onStartSession?: () => void;
+  pending: boolean;
 }) {
-  if (connected) {
-    return (
-      <InfoBanner
-        tone="success"
-        icon={Lock}
-        title="Connected privately — only you"
-        action={
-          <div className="flex shrink-0 items-center gap-2">
-            <Button size="sm" onClick={onStartSession}>
-              Use in a new session
-            </Button>
-            <Button size="sm" variant="ghost" onClick={onDisconnect} disabled={disconnecting}>
-              {disconnecting ? <Loading className="size-4 shrink-0" /> : null}
-              Disconnect
-            </Button>
-          </div>
-        }
-      >
-        Your own {displayName} connection, usable only in your private sessions — separate from the
-        team's shared connection.
-      </InfoBanner>
-    );
-  }
+  const isTeam = profile.owner_type === 'project';
+  const active = profile.status === 'active';
+  // Only the owner of a connection may change it: your own personal connection,
+  // or — for a team connection — a project manager.
+  const mayMutate = isTeam ? canManage : isMine;
   return (
-    <InfoBanner
-      tone="neutral"
-      icon={Lock}
-      title={`Connect ${displayName} just for you`}
-      action={
-        <Button
+    <li className="group bg-popover flex items-center gap-3 rounded-md border px-4 py-2.5 transition-colors">
+      <span
+        className={cn(
+          'flex size-9 shrink-0 items-center justify-center rounded-sm',
+          isTeam ? 'bg-kortix-blue/15' : 'bg-kortix-purple/15',
+        )}
+      >
+        {isTeam ? (
+          <Users className="text-kortix-blue size-5" />
+        ) : (
+          <Lock className="text-kortix-purple size-5" />
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium">{profile.label}</span>
+          {profile.is_default && (
+            <Badge variant="outline" size="xs">
+              Default
+            </Badge>
+          )}
+        </div>
+        <InlineMeta>
+          {isTeam ? 'Shared with the team' : 'Private — only you'}
+          {active ? null : profile.status === 'revoked' ? 'Disconnected' : 'Error'}
+        </InlineMeta>
+      </div>
+      {mayMutate && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0"
+              aria-label={`Actions for ${profile.label}`}
+              disabled={pending}
+            >
+              {pending ? <Loading className="size-4 shrink-0" /> : <ChevronDown className="size-4" />}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-44">
+            {isMine && active && onStartSession && (
+              <DropdownMenuItem onClick={onStartSession}>Use in a new session</DropdownMenuItem>
+            )}
+            {!profile.is_default && active && (
+              <DropdownMenuItem onClick={onSetDefault}>
+                Use by default{isTeam ? ' for the team' : ''}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem variant="destructive" onClick={onDisconnect}>
+              Disconnect
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Every connection under one connector: the team-shared accounts and the current
+ * user's own. A connector can hold several of each (support@ + sales@ for the
+ * team, "Work" + "Personal" for a member) — the DEFAULT in each scope is the one
+ * a session uses when it doesn't name a connection explicitly.
+ */
+function ConnectionsList({
+  projectId,
+  connector,
+  displayName,
+  canManageProfiles,
+  onChanged,
+  onStartSession,
+}: {
+  projectId: string;
+  connector: AdminConnector;
+  displayName: string;
+  canManageProfiles: boolean;
+  onChanged: () => void;
+  onStartSession?: () => void;
+}) {
+  const [addScope, setAddScope] = useState<'project' | 'member' | null>(null);
+  const [labelDraft, setLabelDraft] = useState('');
+  const [confirmDisconnect, setConfirmDisconnect] = useState<ConnectionProfile | null>(null);
+
+  const profilesQuery = useQuery({
+    queryKey: ['connector-profiles', projectId],
+    queryFn: () => listConnectionProfiles(projectId),
+    staleTime: 30_000,
+  });
+  const refresh = () => {
+    void profilesQuery.refetch();
+    onChanged();
+  };
+
+  // The API scopes this list to the caller: every project-owned connection, plus
+  // only the caller's OWN member connections — never another member's.
+  const rows = (profilesQuery.data?.profiles ?? []).filter(
+    (p) => p.connector_alias === connector.slug && p.owner_type !== 'agent',
+  );
+
+  const addTeam = usePipedreamConnectTeam(projectId, connector.slug, () => {
+    setAddScope(null);
+    setLabelDraft('');
+    refresh();
+  });
+  const addMine = usePipedreamConnectMember(projectId, connector.slug, () => {
+    setAddScope(null);
+    setLabelDraft('');
+    refresh();
+  });
+  const setDefault = useMutation({
+    mutationFn: (profileId: string) => setDefaultConnectionProfile(projectId, profileId),
+    onSuccess: () => {
+      successToast('Default connection updated');
+      refresh();
+    },
+    onError: (e: Error) => errorToast(e.message || 'Failed to set the default'),
+  });
+  const disconnect = useMutation({
+    mutationFn: (profileId: string) => revokeConnectionProfile(projectId, profileId),
+    onSuccess: () => {
+      successToast('Disconnected');
+      setConfirmDisconnect(null);
+      refresh();
+    },
+    onError: (e: Error) => errorToast(e.message || 'Failed to disconnect'),
+  });
+
+  const adding = addTeam.isPending || addMine.isPending;
+  const submitAdd = () => {
+    if (!labelDraft.trim()) return;
+    if (addScope === 'project') addTeam.mutate({ label: labelDraft });
+    else addMine.mutate({ label: labelDraft });
+  };
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <Label>Connections</Label>
+        <div className="flex items-center gap-2">
+          {canManageProfiles && (
+            <Button size="sm" variant="secondary" onClick={() => setAddScope('project')}>
+              <Plus className="size-4" />
+              Add team connection
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={() => setAddScope('member')}>
+            <Lock className="size-3.5 shrink-0" />
+            Add my own
+          </Button>
+        </div>
+      </div>
+
+      {profilesQuery.isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-14 rounded-md" />
+          <Skeleton className="h-14 rounded-md" />
+        </div>
+      ) : rows.length === 0 ? (
+        <EmptyState
           size="sm"
-          variant="outline"
-          className="shrink-0 gap-2"
-          onClick={onConnect}
-          disabled={connecting}
-        >
-          {connecting ? <Loading className="size-4 shrink-0" /> : <Lock className="h-4 w-4" />}
-          Connect for just me
-        </Button>
-      }
-    >
-      A private connection only you can use, in your own private sessions — separate from the team's
-      shared {displayName}.
-    </InfoBanner>
+          icon={Plug}
+          title={`No ${displayName} connections yet`}
+          description="Connect a shared account for the team, or your own private one."
+        />
+      ) : (
+        <ul className="space-y-2">
+          {rows.map((profile) => (
+            <ConnectionRow
+              key={profile.profile_id}
+              profile={profile}
+              isMine={profile.owner_type === 'member'}
+              canManage={canManageProfiles}
+              pending={
+                (setDefault.isPending && setDefault.variables === profile.profile_id) ||
+                (disconnect.isPending && disconnect.variables === profile.profile_id)
+              }
+              onSetDefault={() => setDefault.mutate(profile.profile_id)}
+              onDisconnect={() => setConfirmDisconnect(profile)}
+              onStartSession={onStartSession}
+            />
+          ))}
+        </ul>
+      )}
+
+      <Modal
+        open={addScope !== null}
+        onOpenChange={(open) => {
+          if (!open && !adding) {
+            setAddScope(null);
+            setLabelDraft('');
+          }
+        }}
+      >
+        <ModalContent className="lg:max-w-md">
+          <ModalHeader>
+            <ModalTitle>
+              {addScope === 'project' ? `Add a team ${displayName} connection` : `Add your own ${displayName}`}
+            </ModalTitle>
+            <ModalDescription>
+              {addScope === 'project'
+                ? 'Everyone on this project can use it. Name it so people can tell your accounts apart.'
+                : 'Only you can use it, in your own private sessions. Name it to tell your accounts apart.'}
+            </ModalDescription>
+          </ModalHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitAdd();
+            }}
+          >
+            <ModalBody>
+              <Field>
+                <FieldLabel htmlFor="connection-label">Name</FieldLabel>
+                <Input
+                  id="connection-label"
+                  value={labelDraft}
+                  onChange={(e) => setLabelDraft(e.target.value)}
+                  placeholder={addScope === 'project' ? 'Support inbox' : 'Work'}
+                  maxLength={255}
+                  autoFocus
+                />
+                <FieldDescription>
+                  You'll authorize the account in the next step.
+                </FieldDescription>
+              </Field>
+            </ModalBody>
+            <ModalFooter className="sm:justify-between">
+              <Button
+                type="button"
+                variant="outline-ghost"
+                onClick={() => {
+                  setAddScope(null);
+                  setLabelDraft('');
+                }}
+                disabled={adding}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={adding || !labelDraft.trim()}>
+                {adding ? <Loading className="size-4 shrink-0" /> : null}
+                Continue
+              </Button>
+            </ModalFooter>
+          </form>
+        </ModalContent>
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmDisconnect !== null}
+        onOpenChange={(open) => !open && setConfirmDisconnect(null)}
+        title={`Disconnect "${confirmDisconnect?.label ?? ''}"?`}
+        description={
+          confirmDisconnect?.owner_type === 'project'
+            ? 'Everyone on this project loses access to this account. Sessions bound to it will stop working.'
+            : 'Your own connection is removed. Sessions bound to it will stop working.'
+        }
+        confirmLabel="Disconnect"
+        confirmVariant="destructive"
+        isPending={disconnect.isPending}
+        onConfirm={() => confirmDisconnect && disconnect.mutate(confirmDisconnect.profile_id)}
+      />
+    </section>
   );
 }
 
@@ -993,22 +1265,10 @@ function ConnectorDetail({
     (p) => p.connector_alias === connector.slug && p.owner_type === 'member',
   );
   const reconnect = usePipedreamConnect(projectId, connector.slug, onChanged);
-  const privateConnect = usePipedreamConnectMember(projectId, connector.slug, () => {
-    void profilesQuery.refetch();
-    onChanged();
-  });
-  const disconnectPrivate = useMutation({
-    mutationFn: async () => {
-      if (!myPrivateProfile) throw new Error('No private connection');
-      return revokeConnectionProfile(projectId, myPrivateProfile.profile_id);
-    },
-    onSuccess: () => {
-      successToast('Disconnected your private connection');
-      void profilesQuery.refetch();
-      onChanged();
-    },
-    onError: (e: Error) => errorToast(e.message || 'Failed to disconnect'),
-  });
+  // Administering TEAM connections (adding another, changing the team default)
+  // is manager-gated; a member always manages their OWN connections.
+  const canManageProfiles =
+    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_CONNECTOR_PROFILES_MANAGE).allowed === true;
   // Start a new session that uses this member's OWN connection for this connector.
   // `inherit_unbound` keeps the project default for every OTHER connector the agent
   // uses, so binding just this one doesn't null the rest. The session is private by
@@ -1197,12 +1457,16 @@ function ConnectorDetail({
             you control who can use it and review its tools.
           </InfoBanner>
         )}
-        {/* Prominent connect CTA — the first thing you see on an unconnected connector. */}
+        {/* Prominent connect CTA — the first thing you see on an unconnected
+            connector. This is the SHARED (team) connection: everyone on the
+            project uses it. The private, per-user alternative is the banner
+            below — the two are labelled as an explicit either/or so nobody
+            connects a personal account thinking it stays personal. */}
         {connector.authSecret && !connected && !isChannel && (
           <InfoBanner
             tone="info"
-            icon={KeyRound}
-            title={`Connect ${displayName}`}
+            icon={Users}
+            title={`Connect ${displayName} for the whole team`}
             action={
               canWrite ? (
                 <Button
@@ -1212,27 +1476,34 @@ function ConnectorDetail({
                   disabled={isPipedream && reconnect.isPending}
                 >
                   {isPipedream && reconnect.isPending && <Loading className="size-4 shrink-0" />}
-                  {isPipedream ? `Connect ${displayName}` : 'Set credential'}
+                  {isPipedream ? 'Connect for the team' : 'Set shared credential'}
                 </Button>
               ) : undefined
             }
           >
             {isPipedream
-              ? `Authorize your ${displayName} account so the agent and your triggers can use it.`
-              : `Add the credential so the agent and your triggers can use ${displayName}.`}
+              ? `One shared ${displayName} account that everyone on this project uses — the agent and your triggers run on it. To connect your own account instead, use the private option below.`
+              : `One shared credential that everyone on this project uses — the agent and your triggers run on it.`}
           </InfoBanner>
         )}
-        {/* A member's own private connection (Pipedream OAuth apps only) — lets a
-            user bring their OWN account (e.g. their Gmail) without sharing it with
-            the team. Resolves only in that user's private sessions. */}
+        {/* Connected + shared: state the scope explicitly, so "Connected" is never
+            mistaken for the user's own private connection. */}
+        {connector.authSecret && connected && !isChannel && !isComputer && (
+          <InfoBanner tone="neutral" icon={Users} title="Shared with the whole team">
+            Everyone on this project uses this {displayName} connection. Your own private connection,
+            if you add one, is separate and stays yours.
+          </InfoBanner>
+        )}
+        {/* Every connection under this connector — the team's shared accounts and
+            this member's own. A connector can hold several of each; the DEFAULT
+            in each scope is what a session uses when it names no connection. */}
         {isPipedream && !isChannel && !isComputer && (
-          <PrivateConnectionBanner
+          <ConnectionsList
+            projectId={projectId}
+            connector={connector}
             displayName={displayName}
-            connected={!!myPrivateProfile}
-            connecting={privateConnect.isPending}
-            disconnecting={disconnectPrivate.isPending}
-            onConnect={() => privateConnect.mutate()}
-            onDisconnect={() => disconnectPrivate.mutate()}
+            canManageProfiles={canManageProfiles}
+            onChanged={onChanged}
             onStartSession={startPrivateSession}
           />
         )}

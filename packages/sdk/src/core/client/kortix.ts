@@ -408,6 +408,8 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
             P.revokeConnectionProfile(projectId, ...a),
           activate: (...a: DropFirst<Parameters<typeof P.activateConnectionProfile>>) =>
             P.activateConnectionProfile(projectId, ...a),
+          setDefault: (...a: DropFirst<Parameters<typeof P.setDefaultConnectionProfile>>) =>
+            P.setDefaultConnectionProfile(projectId, ...a),
           pipedreamConnect: (
             ...a: DropFirst<Parameters<typeof P.pipedreamConnectConnectionProfile>>
           ) => P.pipedreamConnectConnectionProfile(projectId, ...a),

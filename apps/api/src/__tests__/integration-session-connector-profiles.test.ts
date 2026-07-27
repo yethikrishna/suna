@@ -388,6 +388,34 @@ describe('session connector profile isolation', () => {
     });
   });
 
+  test("an unbound alias NEVER falls back to a member's personal default (wrong-account guard)", async () => {
+    // A connector can hold many connections now, and defaults are PER OWNER — a
+    // member may mark one of their own connections default. The unbound-alias
+    // fallback selects is_default=true, so without an owner_type='project'
+    // filter it could hand a session someone else's PERSONAL connection and act
+    // as the wrong account. Mark USER's own profile default and assert the
+    // fallback still resolves the PROJECT's shared connection.
+    await db
+      .update(executorConnectionProfiles)
+      .set({ isDefault: true })
+      .where(eq(executorConnectionProfiles.profileId, PROFILE_A));
+    try {
+      const resolved = await resolveSessionConnectorProfile({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        sessionId: SESSION_DEFAULT,
+        alias: 'veyris',
+      });
+      expect(resolved?.profileId).toBe(PROFILE_DEFAULT);
+      expect(resolved?.profileId).not.toBe(PROFILE_A);
+    } finally {
+      await db
+        .update(executorConnectionProfiles)
+        .set({ isDefault: false })
+        .where(eq(executorConnectionProfiles.profileId, PROFILE_A));
+    }
+  });
+
   test('a partially bound session fails closed for every unbound connector alias', async () => {
     const boundSessionEmail = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,

@@ -203,8 +203,15 @@ export async function validateSessionConnectorBindings(input: {
       (row.ownerType === 'member' &&
         row.ownerId === input.actingUserId &&
         !input.actingPrincipalIsServiceAccount) ||
-      (row.ownerType === 'project' && row.isDefault) ||
-      (row.ownerType !== 'member' && row.ownerType !== 'project' && input.mayManageSystemProfiles);
+      // ANY project-owned connection may be bound explicitly, not just the
+      // default one: a connector can now hold several TEAM connections (e.g.
+      // support@ and sales@) and naming one by profile_id is exactly how a
+      // caller picks between them. They all belong to this project (the query
+      // above is account+project scoped), so this widens choice, not authority.
+      row.ownerType === 'project' ||
+      // Anything left here is a SYSTEM profile (agent/subject/external) — the
+      // 'project' case is already handled above, so TS has narrowed it out.
+      (row.ownerType !== 'member' && input.mayManageSystemProfiles);
     if (!mayUseProfile) {
       // Deliberately match the cross-project response. A profile id is not an
       // authority, and callers must not be able to probe another member's
@@ -431,6 +438,12 @@ export async function resolveSessionConnectorProfile(input: {
         eq(executorConnectionProfiles.accountId, input.accountId),
         eq(executorConnectionProfiles.projectId, input.projectId),
         eq(executorConnectionProfiles.isDefault, true),
+        // The unbound-alias fallback must ONLY ever reach the PROJECT's shared
+        // default. Defaults are per-owner now (a member can mark one of their own
+        // connections default), so without this filter a session with no explicit
+        // binding could resolve to some member's PERSONAL connection — acting as
+        // the wrong account, across users. Fail to the team connection or nothing.
+        eq(executorConnectionProfiles.ownerType, 'project'),
         eq(executorConnectors.slug, input.alias),
       ),
     )

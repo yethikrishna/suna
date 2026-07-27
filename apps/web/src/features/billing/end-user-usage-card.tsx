@@ -21,13 +21,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { TabsListCompact, TabsTrigger } from '@/components/ui/tabs';
-import { Tabs } from '@/components/ui/tabs';
+import { Tabs, TabsListCompact, TabsTrigger } from '@/components/ui/tabs';
+import { errorToast, successToast } from '@/components/ui/toast';
 import { getUsageRollup } from '@kortix/sdk';
 import { useQuery } from '@tanstack/react-query';
 import { Copy, Users } from 'lucide-react';
 import { useState } from 'react';
-import { errorToast, successToast } from '@/components/ui/toast';
 import { toEndUserUsageRows } from './end-user-usage';
 
 const WINDOWS = [

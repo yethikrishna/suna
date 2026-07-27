@@ -66,6 +66,7 @@ import {
   normalizeString,
 } from './serializers';
 import {
+  canonicalConnectorAlias,
   parseSessionConnectorBindings,
   resolveRequiredMemberConnectorProfiles,
   sessionConnectorBindingsRequirePrivateVisibility,
@@ -886,7 +887,7 @@ export async function createProjectSession(input: {
   if (grantCheckAliases.size > 0) {
     loadedAgentGrant = grantFromLoadedAgents(agentName, loadedAgents);
     for (const alias of grantCheckAliases) {
-      if (!agentMayUseConnector(loadedAgentGrant, alias)) {
+      if (!agentMayUseConnector(loadedAgentGrant, canonicalConnectorAlias(alias))) {
         return {
           error: {
             status: 403,

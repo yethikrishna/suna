@@ -1,3 +1,4 @@
+import { canonicalizeGrantConnectors } from '../iam/agent-scope';
 /**
  * `agents` block parsing for `kortix.yaml` (a legacy v1 project may instead
  * declare `[[agents]]` in `kortix.toml` — both are parsed here).
@@ -328,7 +329,15 @@ export function grantFromLoadedAgents(agentName: string, loaded: LoadedAgents): 
 
   const spec = loaded.specs.find((s) => s.name === agentName && s.enabled);
   if (spec) {
-    return { agent: agentName, kortixCli: spec.kortixCli, connectors: spec.connectors, env: spec.env };
+    // Canonicalize the connector list here so all three gates (catalog, call,
+    // session-create) compare the same spelling — a manifest may say `email` or
+    // `kortix_email` and both must mean the same connector.
+    return canonicalizeGrantConnectors({
+      agent: agentName,
+      kortixCli: spec.kortixCli,
+      connectors: spec.connectors,
+      env: spec.env,
+    });
   }
 
   // The `default` sentinel is non-binding for v1: no agent is ever named

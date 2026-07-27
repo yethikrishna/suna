@@ -193,7 +193,7 @@ describe('KaaB: one wrapper credential, many end-users', () => {
   const select = (callerSessionId: string | null) =>
     selectSessionRowsForViewer({
       rows: [alice, bob],
-      scope: 'mine',
+      scope: 'visible',
       canManageProject: false,
       subject: wrapperSubject,
       grantsBySession: new Map(),
@@ -231,7 +231,7 @@ describe('KaaB: one wrapper credential, many end-users', () => {
     const sibling = row('dddd4444-4444-4444-8444-444444444444', { createdBy: VIEWER_ID });
     const selected = selectSessionRowsForViewer({
       rows: [mine, sibling],
-      scope: 'mine',
+      scope: 'visible',
       canManageProject: false,
       subject,
       grantsBySession: new Map(),

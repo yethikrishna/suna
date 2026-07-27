@@ -878,6 +878,16 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
       setModel: (model: SessionModel | undefined) => {
         _model = model;
       },
+      /**
+       * PERSIST a new model for this session server-side, re-pointing the
+       * running sandbox. Distinct from `setModel`, which only chooses what the
+       * NEXT local `send` asks for and never leaves this handle.
+       *
+       * Restarting the runtime is how the change takes effect, so an in-flight
+       * turn ends. `applied_live` reports whether a running session took it now
+       * or whether it applies at next start.
+       */
+      changeModel: (model: string) => P.setProjectSessionModel(projectId, sessionId, model),
       /** Pick the agent `send` will use for subsequent prompts (until changed). */
       setAgent: (agent: string | undefined) => {
         _agent = agent;

@@ -36,7 +36,7 @@ curl -X POST https://api.kortix.com/v1/projects/<project-id>/sessions \
   -H "Content-Type: application/json" \
   -d '{
     "initial_prompt": "Summarize my new signups",
-    "origin_ref": "your-app-user-123",
+    "end_user_ref": "your-app-user-123",
     "agent_name": "support",
     "opencode_model": "anthropic/claude-opus-4-8",
     "connector_bindings": { "gmail": { "profile_id": "<profile-id>" } },
@@ -44,7 +44,7 @@ curl -X POST https://api.kortix.com/v1/projects/<project-id>/sessions \
   }'
 ```
 
-The `201` response echoes what was applied — `origin: "backend"`, `origin_ref`,
+The `201` response echoes what was applied — `origin: "backend"`, `end_user_ref`,
 `agent_name`, `secrets_allowlist` — so you can confirm it took effect.
 
 ### SDK
@@ -63,7 +63,7 @@ const kortix = createScopedKortix({
 
 const session = await kortix.project(projectId).sessions.create({
   initial_prompt: 'Summarize my new signups',
-  origin_ref: 'your-app-user-123',
+  end_user_ref: 'your-app-user-123',
   agent_name: 'support',
   opencode_model: 'anthropic/claude-opus-4-8',
   connector_bindings: { gmail: { profile_id } },
@@ -95,7 +95,7 @@ internal (no-override) call is byte-identical to a normal session.
 | `opencode_model` | Pin the model for this session (`KORTIX_OPENCODE_MODEL`). | anyone |
 | `runtime_context` | A small non-secret JSON envelope injected as `KORTIX_SESSION_CONTEXT`. | anyone |
 | `connector_bindings` | Map a connector alias → a specific **connection profile** (your end-user's own connected account). The credential is resolved server-side at use time and **never enters the sandbox**. | project manager |
-| `origin_ref` | The end-user this session acts for. Recorded on the session and surfaced to the sandbox as `KORTIX_ORIGIN_REF`. **Attribution only** — not an auth principal. | **backend only** |
+| `end_user_ref` | The end-user this session acts for. Recorded on the session and surfaced to the sandbox as `KORTIX_END_USER_REF`. **Attribution only** — not an auth principal. | **backend only** |
 | `secrets` | Narrow which project secrets (by identifier) this session's sandbox receives. | **backend only** |
 
 ### Model — reference form & validation
@@ -282,18 +282,18 @@ manifest grants it no secrets (or not that one), the allowlist can't add it back
 — the session simply gets fewer. Identifiers are validated at create, so a typo
 fails fast rather than silently injecting nothing.
 
-### origin_ref — a label, not a lever
+### end_user_ref — a label, not a lever
 
-`origin_ref` records *which of your end-users* a session was started for. It is
+`end_user_ref` records *which of your end-users* a session was started for. It is
 an opaque string you choose; Kortix never resolves it to a login.
 
 **Exactly what it does, today:**
 
-1. **Stored + echoed** on the session (`origin_ref` in every session response).
-2. **Handed to the agent** as the `KORTIX_ORIGIN_REF` sandbox env var, so a
+1. **Stored + echoed** on the session (`end_user_ref` in every session response).
+2. **Handed to the agent** as the `KORTIX_END_USER_REF` sandbox env var, so a
    prompt/tool can say who it is acting for. (Kortix itself never reads it back.)
 3. **Guards idempotent retries.** Replaying an `Idempotency-Key` with a
-   *different* `origin_ref` is refused with `409 IDEMPOTENCY_ORIGIN_CONFLICT`, so
+   *different* `end_user_ref` is refused with `409 IDEMPOTENCY_ORIGIN_CONFLICT`, so
    a retry can never hand end-user B the session that belongs to end-user A. This
    is the one thing that would actually break without it.
 
@@ -304,22 +304,22 @@ an opaque string you choose; Kortix never resolves it to a login.
   about its value.
 - **It resolves nothing.** It does not pull that user's connectors or secrets —
   pass those explicitly (`connector_bindings`, `secrets`).
-- **It does not list sessions.** No endpoint filters sessions by `origin_ref`, so
+- **It does not list sessions.** No endpoint filters sessions by `end_user_ref`, so
   "show me this end-user's sessions" still needs your own mapping.
 
 **What it DOES drive — metering and caps:**
 
 ```
-GET /v1/usage?origin_ref=user-123     # that end-user's spend (totals + breakdown)
-GET /v1/usage?group_by=origin_ref     # spend per end-user, biggest first
+GET /v1/usage?end_user_ref=user-123     # that end-user's spend (totals + breakdown)
+GET /v1/usage?group_by=end_user_ref     # spend per end-user, biggest first
 ```
 
-Usage events carry a server-derived copy of `origin_ref`, so per-end-user spend
+Usage events carry a server-derived copy of `end_user_ref`, so per-end-user spend
 is a real query. Two caveats worth knowing:
 
 - **Only backend-session spend is attributed.** Rows written before this shipped,
-  the model playground, and the legacy router path all have a `NULL` `origin_ref`
-  and are *excluded* from `group_by=origin_ref` — they aren't folded into an
+  the model playground, and the legacy router path all have a `NULL` `end_user_ref`
+  and are *excluded* from `group_by=end_user_ref` — they aren't folded into an
   anonymous bucket that would read as a phantom end-user. The unfiltered totals
   in `data` still include them, so per-user rows won't sum to the account total.
 - **The value lands in the billing ledger and comes back out of the API**, so use
@@ -331,7 +331,7 @@ applies). Exceeding it returns `429 per_origin_session_limit`. It's a check-then
 act guard, like the account cap — N parallel creates for one end-user can still
 overshoot slightly, so treat it as a runaway-loop guardrail, not a hard quota.
 
-Treat `origin_ref` as a durable label for correlation, attribution and metering.
+Treat `end_user_ref` as a durable label for correlation, attribution and metering.
 If you need structured per-user context inside the run as well, put it in
 `runtime_context`.
 
@@ -386,7 +386,7 @@ await s.send(prompt);
 
 | Status | Code | Meaning |
 |---|---|---|
-| `403` | `origin_override_forbidden` | A non-backend caller (a human web session, the in-sandbox agent token) tried to set `origin_ref` or `secrets`. Use an API key / service-account bearer. |
+| `403` | `origin_override_forbidden` | A non-backend caller (a human web session, the in-sandbox agent token) tried to set `end_user_ref` or `secrets`. Use an API key / service-account bearer. |
 | `404` | `SECRET_IDENTIFIER_NOT_FOUND` | An allowlisted secret identifier doesn't exist in the project. |
 | `409` | `SECRET_IDENTIFIER_KEY_COLLISION` | Two allowlisted identifiers resolve to the same env var — name only one. |
 | `409` | `IDEMPOTENCY_SECRETS_CONFLICT` / `IDEMPOTENCY_BINDING_CONFLICT` | An `Idempotency-Key` was replayed with a different `secrets` / `connector_bindings` body. Keep the body identical across retries. |
@@ -412,3 +412,18 @@ See also the runnable, end-to-end version of this flow —
 [`packages/sdk/examples/09-kaab-backend-wrapper.ts`](../packages/sdk/examples/09-kaab-backend-wrapper.ts)
 — and the printable one-page guide next to it
 (`packages/sdk/examples/KORTIX-AS-A-BACKEND.pdf`).
+
+
+## A note on the name
+
+`end_user_ref` was called `origin_ref` until 2026-07-27. The old name read as
+"a reference to the origin" (which app) when it means "a reference within the
+origin" (which of your users) — and that ambiguity invited callers to put a
+request id or a tenant there, producing a usage breakdown that looks right and
+bills nobody.
+
+`origin_ref` is still accepted everywhere and always will be: it is a published
+wire field. Sending both is fine when they agree; disagreeing values are
+rejected `400 END_USER_REF_CONFLICT` rather than one silently winning. Sandboxes
+receive both `KORTIX_END_USER_REF` and `KORTIX_ORIGIN_REF`. The database column
+keeps its original name — that is internal and renaming it would buy nothing.

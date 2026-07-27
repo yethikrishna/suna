@@ -8,6 +8,12 @@ export const SESSION_RUNTIME_CONTEXT_ENV_NAME = 'KORTIX_SESSION_CONTEXT';
 
 /** The end-user a backend (KaaB) session acts for — derived server-side from the
  *  validated `origin_ref`, never from caller-supplied env. */
+export const SESSION_END_USER_REF_ENV_NAME = 'KORTIX_END_USER_REF';
+/**
+ * @deprecated Renamed to {@link SESSION_END_USER_REF_ENV_NAME}. Still SET on
+ * every session with the same value — agent code inside sandboxes may already
+ * read it, and that code is not ours to migrate.
+ */
 export const SESSION_ORIGIN_REF_ENV_NAME = 'KORTIX_ORIGIN_REF';
 
 /**
@@ -18,6 +24,7 @@ export const SESSION_ORIGIN_REF_ENV_NAME = 'KORTIX_ORIGIN_REF';
  */
 const SERVER_OWNED_ENV_NAMES = [
   SESSION_RUNTIME_CONTEXT_ENV_NAME,
+  SESSION_END_USER_REF_ENV_NAME,
   SESSION_ORIGIN_REF_ENV_NAME,
 ] as const;
 

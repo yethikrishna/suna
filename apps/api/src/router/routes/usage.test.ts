@@ -249,8 +249,7 @@ describe('usage — origin_ref (per-end-user metering)', () => {
         cost: 0.25,
         count: 2,
       }),
-    ).toEqual({
-      origin_ref: 'user-123',
+    ).toEqual({ end_user_ref: 'user-123', origin_ref: 'user-123',
       input_tokens: 10,
       output_tokens: 5,
       cached_tokens: 0,

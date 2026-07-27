@@ -13,6 +13,9 @@ const API_ROOT = join(CLIENT_ROOT, 'app', 'api');
 const SERVER_ROOT = join(CLIENT_ROOT, 'server');
 const ALLOWED_CLIENT_BFF_ROUTES = [
   '/api/auth',
+  // Connections this wrapper may bind — pre-filtered server-side to team-owned
+  // ones, so the client never sees an unbindable option.
+  '/api/connections',
   '/api/mode',
   '/api/preview-url',
   // Provider-neutral session model control: the upstream field is named after

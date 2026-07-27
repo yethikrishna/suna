@@ -801,56 +801,6 @@ function RailItem({
   );
 }
 
-/**
- * Read-only display of a connector's connection `profile_id` — the id a backend
- * passes in `connector_bindings` (Kortix as a Backend) to run a session AS this
- * connection. Surfaced nowhere else in the product, so we show + copy it here.
- */
-function ConnectionIdField({ profileId }: { profileId: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    // The Clipboard API is absent in insecure contexts (navigator.clipboard is
-    // undefined → a synchronous throw) and writeText can also reject (denied
-    // permission). Guard both so a copy attempt never crashes the handler.
-    const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
-    if (!clipboard) {
-      errorToast('Could not copy — select and copy the ID manually.');
-      return;
-    }
-    clipboard.writeText(profileId).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      },
-      () => errorToast('Could not copy — select and copy the ID manually.'),
-    );
-  };
-  return (
-    <div className="bg-muted/40 rounded-md border px-4 py-3">
-      <div className="flex items-center gap-1.5">
-        <span className="text-muted-foreground text-xs font-medium">Connection ID</span>
-        <Hint label="Use this ID in the backend (connector_bindings) to run a session as this connection — see Kortix as a Backend.">
-          <span className="inline-flex cursor-help">
-            <Info className="text-muted-foreground size-3.5" />
-          </span>
-        </Hint>
-      </div>
-      <div className="mt-1.5 flex items-center gap-2">
-        <code className="min-w-0 flex-1 truncate font-mono text-xs">{profileId}</code>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7 shrink-0"
-          onClick={copy}
-          aria-label="Copy connection ID"
-        >
-          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 /** One row in the connections list — a single connected account. */
 function ConnectionRow({
   profile,
@@ -859,6 +809,7 @@ function ConnectionRow({
   onSetDefault,
   onDisconnect,
   onStartSession,
+  onCopyId,
   pending,
 }: {
   profile: ConnectionProfile;
@@ -867,6 +818,7 @@ function ConnectionRow({
   onSetDefault: () => void;
   onDisconnect: () => void;
   onStartSession?: () => void;
+  onCopyId: (profileId: string) => void;
   pending: boolean;
 }) {
   const isTeam = profile.owner_type === 'project';
@@ -900,36 +852,45 @@ function ConnectionRow({
         <InlineMeta>
           {isTeam ? 'Shared with the team' : 'Private — only you'}
           {active ? null : profile.status === 'revoked' ? 'Disconnected' : 'Error'}
+          {/* Every connection carries its own id — this is what a backend passes
+              in connector_bindings to run as THIS account. Truncated to keep the
+              row readable; the row menu copies the full value. */}
+          <Hint label="Connection ID — use it in the backend (connector_bindings) to run as this connection.">
+            <code className="cursor-help font-mono">{profile.profile_id.slice(0, 8)}…</code>
+          </Hint>
         </InlineMeta>
       </div>
-      {mayMutate && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0"
-              aria-label={`Actions for ${profile.label}`}
-              disabled={pending}
-            >
-              {pending ? <Loading className="size-4 shrink-0" /> : <ChevronDown className="size-4" />}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-44">
-            {isMine && active && onStartSession && (
-              <DropdownMenuItem onClick={onStartSession}>Use in a new session</DropdownMenuItem>
-            )}
-            {!profile.is_default && active && (
-              <DropdownMenuItem onClick={onSetDefault}>
-                Use by default{isTeam ? ' for the team' : ''}
-              </DropdownMenuItem>
-            )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0"
+            aria-label={`Actions for ${profile.label}`}
+            disabled={pending}
+          >
+            {pending ? <Loading className="size-4 shrink-0" /> : <ChevronDown className="size-4" />}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-48">
+          <DropdownMenuItem onClick={() => onCopyId(profile.profile_id)}>
+            Copy connection ID
+          </DropdownMenuItem>
+          {mayMutate && isMine && active && onStartSession && (
+            <DropdownMenuItem onClick={onStartSession}>Use in a new session</DropdownMenuItem>
+          )}
+          {mayMutate && !profile.is_default && active && (
+            <DropdownMenuItem onClick={onSetDefault}>
+              Use by default{isTeam ? ' for the team' : ''}
+            </DropdownMenuItem>
+          )}
+          {mayMutate && (
             <DropdownMenuItem variant="destructive" onClick={onDisconnect}>
               Disconnect
             </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </li>
   );
 }
@@ -974,6 +935,20 @@ function ConnectionsList({
   const rows = (profilesQuery.data?.profiles ?? []).filter(
     (p) => p.connector_alias === connector.slug && p.owner_type !== 'agent',
   );
+
+  const copyConnectionId = (profileId: string) => {
+    // The Clipboard API is absent in insecure contexts (navigator.clipboard is
+    // undefined -> a synchronous throw) and writeText can also reject.
+    const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+    if (!clipboard) {
+      errorToast('Could not copy — open the connection and copy the ID manually.');
+      return;
+    }
+    clipboard.writeText(profileId).then(
+      () => successToast('Connection ID copied'),
+      () => errorToast('Could not copy — open the connection and copy the ID manually.'),
+    );
+  };
 
   const addTeam = usePipedreamConnectTeam(projectId, connector.slug, () => {
     setAddScope(null);
@@ -1055,6 +1030,7 @@ function ConnectionsList({
               onSetDefault={() => setDefault.mutate(profile.profile_id)}
               onDisconnect={() => setConfirmDisconnect(profile)}
               onStartSession={onStartSession}
+              onCopyId={copyConnectionId}
             />
           ))}
         </ul>
@@ -1423,9 +1399,6 @@ function ConnectorDetail({
       </div>
 
       <div className="mt-7 space-y-5">
-        {connected && connectionProfile && !isChannel && !isComputer && (
-          <ConnectionIdField profileId={connectionProfile.profile_id} />
-        )}
         {/* Computer connectors are connected + permissioned in the Computers tab
             (device pairing, per-capability grants, audit) — point management
             there instead of the generic credential / connection / remove UI. */}

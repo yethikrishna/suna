@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
+import Loading from '@/components/ui/loading';
 import {
   CommandGroup,
   CommandInput,
@@ -31,14 +32,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MODEL_SELECTOR_PROVIDER_IDS, ProviderLogo } from '@/features/providers/provider-branding';
 import { useLlmProviderCatalogRevision } from '@/features/workspace/customize/sections/llm-provider/use-live-catalog';
 import { accountStateSelectors, useAccountState } from '@/hooks/billing';
-import { connectedGatewayProviderIdsFromSecretNames } from '@/hooks/opencode/provider-selection';
-import { useModelStore } from '@/hooks/opencode/use-model-store';
-import type { ProviderListResponse } from '@/hooks/opencode/use-opencode-sessions';
+import { connectedGatewayProviderIdsFromSecretNames } from '@kortix/sdk/react';
+import { useModelStore } from '@kortix/sdk/react';
+import type { ProviderListResponse } from '@kortix/sdk/react';
 import { isLlmGatewayEnabled } from '@/lib/llm-gateway';
 import type { ProviderModalTab } from '@/stores/provider-modal-store';
 import { useProviderModalStore } from '@/stores/provider-modal-store';
 import { DEFAULT_MANAGED_MODEL_IDS, PROVIDER_LABELS } from '@kortix/llm-catalog';
-import { getProjectDetail, listProjectSecrets } from '@kortix/sdk/projects-client';
+import { getProjectDetail, listProjectSecrets } from '@kortix/sdk';
 import { useQuery } from '@tanstack/react-query';
 import { shouldShowFreeTag } from './model-tags';
 import type { FlatModel } from './session-chat-input';
@@ -102,9 +103,10 @@ const MANAGED_MODEL_IDS = new Set<string>(DEFAULT_MANAGED_MODEL_IDS);
 // that over parsing the wire id at all. String-splitting `modelID` remains
 // ONLY as a fallback for a stale/older baked catalog that predates the field.
 export function pickerGroupId(model: FlatModel): string {
-  if (model.providerID !== 'kortix' || MANAGED_MODEL_IDS.has(model.modelID)) {
+  if (model.providerID !== 'kortix') {
     return model.providerID;
   }
+  if (MANAGED_MODEL_IDS.has(model.modelID)) return model.provider ?? model.providerID;
   if (model.provider) return model.provider;
   const slash = model.modelID.indexOf('/');
   return slash === -1 ? model.providerID : model.modelID.slice(0, slash);
@@ -152,6 +154,8 @@ export interface ModelSelectorProps {
    */
   unsetLabel?: string;
   disabled?: boolean;
+  /** True while the runtime provider catalog request has not resolved. */
+  modelsLoading?: boolean;
 }
 
 export function ModelSelector({
@@ -161,6 +165,7 @@ export function ModelSelector({
   defaultControls,
   unsetLabel = 'No model',
   disabled = false,
+  modelsLoading = false,
 }: ModelSelectorProps) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const [open, setOpen] = useState(false);
@@ -172,6 +177,7 @@ export function ModelSelector({
     openConnectProvider,
     openUpgrade,
     modal: connectionModal,
+    entitlementsPending,
     showUpgradeOption,
   } = useModelConnectionGate();
 
@@ -411,7 +417,15 @@ export function ModelSelector({
               />
 
               <CommandList className="max-h-[380px]">
-                {grouped.length > 0 ? (
+                {modelsLoading || entitlementsPending ? (
+                  <div
+                    className="flex min-h-32 items-center justify-center"
+                    role="status"
+                    aria-label="Loading models"
+                  >
+                    <Loading className="text-muted-foreground size-4 shrink-0" />
+                  </div>
+                ) : grouped.length > 0 ? (
                   <>
                     {grouped.map((group) => (
                       <CommandGroup

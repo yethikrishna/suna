@@ -6,23 +6,32 @@ import { useCallback, useRef } from 'react';
 
 import { errorToast, loadingToast } from '@/components/ui/toast';
 import { resolveCreateFailure } from '@/hooks/projects/new-session-failure';
+import {
+  buildWarmSessionClaimInput,
+  resolveWarmSessionForSend,
+  shouldFallbackFromWarmClaim,
+} from '@/hooks/projects/warm-session-create';
 import { useProjectCanRun } from '@/hooks/projects/use-project-can-run';
+import { warmProjectSessionKey } from '@/hooks/projects/use-warm-project-session';
 import { isBillingEnabled } from '@/lib/config';
 import { useConnectorGateStore } from '@/stores/connector-gate-store';
 import { useUpgradeDialogStore } from '@/stores/upgrade-dialog-store';
 import { markSessionFresh } from '@kortix/sdk/fresh-sessions';
-import { type SessionConnectorBindings, createProjectSession } from '@kortix/sdk/projects-client';
+import {
+  claimWarmProjectSession,
+  type ProjectSession,
+  type SessionConnectorBindings,
+  createProjectSession,
+} from '@kortix/sdk';
 import { prefetchSessionStart } from '@kortix/sdk/react';
 
 /**
  * The ONE "new empty session" path, shared by every entry point (project shell
  * button, ⌘T/⌘J shortcuts, project sidebar, command palette, home composer).
  *
- * CREATE-FIRST: mint the session id client-side, persist it, and navigate the
- * moment the server confirms (create is a ~15ms insert, so this is still
- * instant). The route bundle prefetch overlaps the create RTT, and `/start`
- * is prefetched the moment the row exists — so provisioning still begins
- * during the navigation, without ever racing the create POST.
+ * The project index supplies its server-owned warm session. Other entry points
+ * mint the session id client-side and persist it before navigation. Both paths
+ * prefetch the route bundle and `/start` before navigation.
  *
  * `onNavigate(sessionId)` runs synchronously right before the push — use it
  * for entry-point-specific side effects (open a tab, close a drawer, timing
@@ -59,7 +68,11 @@ export type NewProjectSessionOpts = {
   };
 };
 
-export function useNewProjectSession(projectId: string | undefined) {
+export function useNewProjectSession(
+  projectId: string | undefined,
+  warmSession?: Pick<ProjectSession, 'session_id'>,
+  resolveWarmSession?: () => Promise<Pick<ProjectSession, 'session_id'> | undefined>,
+) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const creatingRef = useRef(false);
@@ -89,24 +102,56 @@ export function useNewProjectSession(projectId: string | undefined) {
 
       creatingRef.current = true;
 
-      // The API requires a UUIDv4; crypto.randomUUID is available in every
-      // context this app runs (secure context: https + localhost).
-      const sessionId = crypto.randomUUID();
-      markSessionFresh(sessionId); // → instant shell, not the resume loader
-      // Warm the route bundle while the create POST is in flight.
-      router.prefetch(`/projects/${projectId}/sessions/${sessionId}`);
+      const createNormalSession = async () => {
+        const sessionId = crypto.randomUUID();
+        markSessionFresh(sessionId);
+        router.prefetch(`/projects/${projectId}/sessions/${sessionId}`);
+        await loadingToast(
+          'Starting session…',
+          createProjectSession(projectId, {
+            session_id: sessionId,
+            ...opts?.create,
+          }),
+          { success: 'Session started' },
+        );
+        return sessionId;
+      };
 
-      loadingToast(
-        'Starting session…',
-        createProjectSession(projectId, { session_id: sessionId, ...opts?.create }),
-        { success: 'Session started' },
-      )
-        .then(() => {
+      const claimOrCreate = async () => {
+        const selectedWarmSession = await resolveWarmSessionForSend(
+          warmSession,
+          resolveWarmSession,
+        );
+        if (!selectedWarmSession) return createNormalSession();
+
+        router.prefetch(
+          `/projects/${projectId}/sessions/${selectedWarmSession.session_id}`,
+        );
+        try {
+          const claimed = await claimWarmProjectSession(
+            projectId,
+            buildWarmSessionClaimInput(selectedWarmSession, opts?.create),
+          );
+          return claimed.session_id;
+        } catch (error) {
+          if (shouldFallbackFromWarmClaim(error)) {
+            return createNormalSession();
+          }
+          throw error;
+        }
+      };
+
+      claimOrCreate()
+        .then((sessionId) => {
           // The row exists — kick provisioning so it overlaps the navigation.
           prefetchSessionStart(queryClient, projectId, sessionId);
           queryClient.invalidateQueries({ queryKey: ['project-sessions', projectId] });
           opts?.onNavigate?.(sessionId);
           router.push(`/projects/${projectId}/sessions/${sessionId}`);
+          queryClient.removeQueries({
+            queryKey: warmProjectSessionKey(projectId),
+            exact: true,
+          });
         })
         .catch((err) => {
           const code = (err as { code?: string })?.code;
@@ -141,6 +186,8 @@ export function useNewProjectSession(projectId: string | undefined) {
       accountId,
       openUpgradeDialog,
       openConnectorGate,
+      warmSession,
+      resolveWarmSession,
     ],
   );
   startRef.current = startSession;

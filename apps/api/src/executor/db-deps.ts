@@ -1,4 +1,5 @@
 import {
+  executorConnectionPolicies,
   executorConnectionProfiles,
   executorConnectorActions,
   executorConnectorPolicies,
@@ -546,6 +547,7 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
     loadPolicies: loadConnectorPoliciesFor,
     loadProjectPolicies: loadProjectPoliciesFor,
     loadDefaultMode: loadDefaultModeFor,
+    loadConnectionPolicies: loadConnectionPoliciesFor,
     recordExecution: async (rec) => {
       const [row] = await db
         .insert(executorExecutions)
@@ -676,6 +678,16 @@ async function loadConnectorPoliciesFor(connectorId: string): Promise<Policy[]> 
     .from(executorConnectorPolicies)
     .where(eq(executorConnectorPolicies.connectorId, connectorId));
   return rows.map((r) => ({ match: r.match, action: r.action, position: r.position }));
+}
+
+/** Rules attached to ONE connection (profile), the scope between project and connector. */
+async function loadConnectionPoliciesFor(profileId: string): Promise<Policy[]> {
+  const rows = await db
+    .select()
+    .from(executorConnectionPolicies)
+    .where(eq(executorConnectionPolicies.profileId, profileId))
+    .orderBy(executorConnectionPolicies.position);
+  return rows.map((r) => ({ match: r.match, action: r.action as PolicyAction, position: r.position }));
 }
 
 async function loadProjectPoliciesFor(projectId: string): Promise<Policy[]> {

@@ -120,6 +120,7 @@ import {
   getConnectStatus,
   getProjectDetail,
   listAllConnectionProfiles,
+  getConnectionPolicies,
   listConnectionProfiles,
   listConnectors,
   listProjectAccess,
@@ -133,6 +134,7 @@ import {
   pipedreamConnectConnectionProfile,
   pipedreamFinalizeConnectionProfile,
   reconcileConnectionProfile,
+  setConnectionPolicies,
   setDefaultConnectionProfile,
   revokeConnectionProfile,
   setConnectorCredential,
@@ -811,6 +813,7 @@ function ConnectionRow({
   onDisconnect,
   onStartSession,
   onCopyId,
+  onEditPermissions,
   pending,
 }: {
   profile: ConnectionProfile;
@@ -820,6 +823,7 @@ function ConnectionRow({
   onDisconnect: () => void;
   onStartSession?: () => void;
   onCopyId: (profileId: string) => void;
+  onEditPermissions: () => void;
   pending: boolean;
 }) {
   const isTeam = profile.owner_type === 'project';
@@ -874,6 +878,15 @@ function ConnectionRow({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-48">
+          {/* Per-CONNECTION permissions. The connector's own Permissions tab
+              applies to EVERY connection under it; this one applies to just
+              this account, which is what lets support@ and sales@ differ. */}
+          {mayMutate && (
+            <DropdownMenuItem onClick={onEditPermissions}>
+              <ShieldAlert className="size-4 shrink-0" />
+              Permissions for this connection
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => onCopyId(profile.profile_id)}>
             Copy connection ID
           </DropdownMenuItem>
@@ -902,6 +915,139 @@ function ConnectionRow({
  * team, "Work" + "Personal" for a member) — the DEFAULT in each scope is the one
  * a session uses when it doesn't name a connection explicitly.
  */
+
+/**
+ * Permissions for ONE connection.
+ *
+ * The connector's own Permissions tab applies to every connection under it. This
+ * applies to a single account, and sits between the project and connector scopes:
+ * a project rule still wins, but this beats the connector default — which is what
+ * lets support@ be read-only while sales@ may send.
+ */
+function ConnectionPermissionsModal({
+  projectId,
+  profile,
+  tools,
+  displayName,
+  open,
+  onOpenChange,
+}: {
+  projectId: string;
+  profile: ConnectionProfile | null;
+  tools: AdminConnector['actions'];
+  displayName: string;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+}) {
+  const [perTool, setPerTool] = useState<Record<string, ConnectorPolicyAction>>({});
+  const [search, setSearch] = useState('');
+  const [serverSig, setServerSig] = useState('');
+
+  const policiesQuery = useQuery({
+    queryKey: ['connection-policies', projectId, profile?.profile_id],
+    queryFn: () => getConnectionPolicies(projectId, profile!.profile_id),
+    enabled: open && !!profile,
+    staleTime: 15_000,
+  });
+
+  useEffect(() => {
+    if (!policiesQuery.data) return;
+    const next: Record<string, ConnectorPolicyAction> = {};
+    for (const rule of policiesQuery.data.policies) next[rule.match] = rule.action;
+    setPerTool(next);
+    setServerSig(JSON.stringify(next));
+  }, [policiesQuery.data]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      setConnectionPolicies(
+        projectId,
+        profile!.profile_id,
+        Object.entries(perTool).map(([match, action]) => ({ match, action })),
+      ),
+    onSuccess: () => {
+      successToast(`Permissions saved for ${profile?.label ?? 'this connection'}`);
+      onOpenChange(false);
+    },
+    onError: (e: Error) => errorToast(e.message || 'Failed to save permissions'),
+  });
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? tools.filter((t) => t.path.toLowerCase().includes(q)) : tools;
+  }, [tools, search]);
+  const dirty = JSON.stringify(perTool) !== serverSig;
+  const overrideCount = Object.keys(perTool).length;
+
+  return (
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="sm:max-w-2xl">
+        <ModalHeader>
+          <ModalTitle>Permissions for “{profile?.label}”</ModalTitle>
+          <ModalDescription>
+            Applies to this {displayName} connection only. Anything left on Default follows the
+            connector&apos;s own permissions. A project-wide rule still overrides both.
+          </ModalDescription>
+        </ModalHeader>
+        <ModalBody className="space-y-3">
+          {tools.length > 6 && (
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter tools…"
+              className="h-8 text-sm"
+            />
+          )}
+          {policiesQuery.isLoading ? (
+            <div className="text-muted-foreground flex items-center gap-2 px-1 py-6 text-sm">
+              <Loading className="size-4 shrink-0" />
+              Loading permissions…
+            </div>
+          ) : (
+            <div className="max-h-[46vh] overflow-y-auto rounded-md border">
+              {filtered.map((tool) => (
+                <div
+                  key={tool.path}
+                  className="border-border/60 flex items-center gap-2.5 border-t px-3 py-1.5 first:border-t-0"
+                >
+                  <span className="text-foreground min-w-0 flex-1 truncate font-mono text-xs">
+                    {tool.path}
+                  </span>
+                  <PermissionPicker
+                    value={perTool[tool.path] ?? 'default'}
+                    onChange={(choice) =>
+                      setPerTool((current) => {
+                        const next = { ...current };
+                        if (choice === 'default') delete next[tool.path];
+                        else next[tool.path] = choice;
+                        return next;
+                      })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <span className="text-muted-foreground mr-auto text-xs">
+            {overrideCount === 0
+              ? 'No overrides — follows the connector'
+              : `${overrideCount} override${overrideCount === 1 ? '' : 's'}`}
+          </span>
+          <Button variant="outline-ghost" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => save.mutate()} disabled={!dirty || save.isPending}>
+            {save.isPending && <Loading className="size-4 shrink-0" />}
+            Save
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
 function ConnectionsList({
   projectId,
   connector,
@@ -920,6 +1066,7 @@ function ConnectionsList({
   const [addScope, setAddScope] = useState<'project' | 'member' | null>(null);
   const [labelDraft, setLabelDraft] = useState('');
   const [confirmDisconnect, setConfirmDisconnect] = useState<ConnectionProfile | null>(null);
+  const [permissionsFor, setPermissionsFor] = useState<ConnectionProfile | null>(null);
 
   const profilesQuery = useQuery({
     queryKey: ['connector-profiles', projectId],
@@ -1028,6 +1175,7 @@ function ConnectionsList({
               onDisconnect={() => setConfirmDisconnect(profile)}
               onStartSession={onStartSession}
               onCopyId={copyConnectionId}
+              onEditPermissions={() => setPermissionsFor(profile)}
             />
           ))}
         </ul>
@@ -1095,6 +1243,15 @@ function ConnectionsList({
           </form>
         </ModalContent>
       </Modal>
+
+      <ConnectionPermissionsModal
+        projectId={projectId}
+        profile={permissionsFor}
+        tools={connector.actions}
+        displayName={displayName}
+        open={permissionsFor !== null}
+        onOpenChange={(next) => !next && setPermissionsFor(null)}
+      />
 
       <ConfirmDialog
         open={confirmDisconnect !== null}

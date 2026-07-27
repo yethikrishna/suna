@@ -4120,6 +4120,48 @@ export const executorConnectorPolicies = kortixSchema.table(
 );
 
 /**
+ * Per-CONNECTION tool-call policies, keyed by profile_id.
+ *
+ * One connector can hold several connections — support@, sales@, a member's own
+ * mailbox — and they often warrant DIFFERENT permissions. Connector-scoped rules
+ * cannot express that: they are keyed by the connector, so every connection under
+ * it shares one policy.
+ *
+ * Deliberately NOT in executor_connector_policies: sync.ts deletes every row for
+ * a connector and re-inserts from the manifest on each manifest write, so a
+ * DB-authored row there would be destroyed. Deliberately NOT in the manifest
+ * either: a member's private connection can never appear in git, and profile
+ * uuids are not portable across projects.
+ *
+ * Evaluated AFTER project rules (which remain un-overridable) and BEFORE
+ * connector rules, so the more specific scope wins over the connector default.
+ */
+export const executorConnectionPolicies = kortixSchema.table(
+  'executor_connection_policies',
+  {
+    policyId: uuid('policy_id').defaultRandom().primaryKey(),
+    profileId: uuid('profile_id').notNull(),
+    /** Connector-relative glob, same grammar as the connector-scoped rules. */
+    match: varchar('match', { length: 512 }).notNull(),
+    action: executorPolicyActionEnum('action').notNull(),
+    /** Authoring order — evaluated top-to-bottom, first match wins. */
+    position: integer('position').default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_executor_connection_policies_profile').on(table.profileId),
+    // Named explicitly: the derived name would exceed Postgres's 63-char
+    // identifier limit and be silently truncated.
+    foreignKey({
+      columns: [table.profileId],
+      foreignColumns: [executorConnectionProfiles.profileId],
+      name: 'executor_connection_policies_profile_id_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
  * Project-scoped tool-call policies — materialized from top-level [[policies]]
  * in kortix.yaml. Patterns are fully-qualified (`<slug>.<path>` globs) and apply
  * across ALL connectors in the project; evaluated BEFORE any connector-scoped

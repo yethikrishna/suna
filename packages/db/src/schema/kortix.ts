@@ -599,6 +599,17 @@ export const projectSessions = kortixSchema.table(
     index('idx_project_sessions_project').on(table.projectId),
     index('idx_project_sessions_status').on(table.status),
     index('idx_project_sessions_created_by').on(table.createdBy),
+    // Per-END-USER concurrency cap for Kortix-as-a-Backend: COUNT of a single
+    // origin_ref's live sessions, checked on every backend session create.
+    // Partial on the ACTIVE statuses (mirroring ACTIVE_SESSION_STATUSES in
+    // apps/api/src/projects/lib/session-status.ts) and on origin_ref IS NOT
+    // NULL, so it indexes only live backend sessions — a small fraction of the
+    // table, and nothing at all for non-KaaB projects.
+    index('idx_project_sessions_account_origin_active')
+      .on(table.accountId, table.originRef)
+      .where(
+        sql`${table.originRef} is not null and ${table.status} in ('queued','branching','provisioning','running')`,
+      ),
     uniqueIndex('idx_project_sessions_project_branch').on(table.projectId, table.branchName),
     uniqueIndex('idx_project_sessions_tenant_identity').on(
       table.accountId,

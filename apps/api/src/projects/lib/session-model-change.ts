@@ -72,3 +72,16 @@ export function modelChangeNeedsLivePush(input: {
   if (input.current === input.next) return false;
   return input.status === 'running';
 }
+
+/**
+ * May this caller CHANGE the session's model?
+ *
+ * Being able to SEE a session is not permission to mutate it. A
+ * `visibility: 'project'` session is readable by every project member, but
+ * changing its model restarts opencode and destroys the owner's in-flight turn
+ * — so this gates on the same owner-or-manager signal the sharing and stop
+ * routes use (r7.ts:1508, :1689) rather than on visibility.
+ */
+export function mayChangeSessionModel(visible: { canManageSharing: boolean }): boolean {
+  return visible.canManageSharing;
+}

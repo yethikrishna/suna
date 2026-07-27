@@ -45,6 +45,7 @@ import type { ChannelPlatform } from '../projects/connectors';
 import { invalidateProjectMirror } from '../projects/git';
 import { loadProjectForUser } from '../projects/lib/access';
 import {
+  canonicalConnectorAlias,
   publicConnectorAlias,
   resolveSessionConnectorProfile,
 } from '../projects/lib/session-connector-bindings';
@@ -854,7 +855,8 @@ async function listCatalog(p: ExecutorPrincipal): Promise<CatalogConnector[]> {
     // consistent with the call gate, so it never lists a tool it can't invoke.
     // This is the ONLY access gate — connectors are project-wide visible to
     // every human with project access (no per-connector member scoping).
-    if (!agentMayUseConnector(p.agentGrant ?? null, publicConnectorAlias(row.slug))) continue;
+    // Canonical on both sides — the grant is canonicalized at construction.
+    if (!agentMayUseConnector(p.agentGrant ?? null, canonicalConnectorAlias(row.slug))) continue;
     const profile = await resolveSessionConnectorProfile({
       accountId: p.accountId,
       projectId: p.projectId,

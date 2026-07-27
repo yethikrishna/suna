@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   canChangeSessionModel,
+  mayChangeSessionModel,
   modelChangeNeedsLivePush,
   validateModelChangeShape,
 } from './session-model-change';
@@ -55,5 +56,18 @@ describe('modelChangeNeedsLivePush', () => {
     expect(modelChangeNeedsLivePush({ current: null, next: 'c/d', status: 'provisioning' })).toBe(
       false,
     );
+  });
+});
+
+describe('mayChangeSessionModel — visibility is not mutability', () => {
+  test('the session owner may change it', () => {
+    expect(mayChangeSessionModel({ canManageSharing: true })).toBe(true);
+  });
+
+  test('a project member who can merely SEE a shared session may not', () => {
+    // visibility === 'project' makes a session readable by every member, but
+    // changing its model restarts opencode and kills the owner's in-flight
+    // turn. Sharing routes at r7.ts:1508 / :1689 gate on exactly this.
+    expect(mayChangeSessionModel({ canManageSharing: false })).toBe(false);
   });
 });

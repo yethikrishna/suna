@@ -799,8 +799,8 @@ export async function createProjectSession(input: {
   // agent auto-requires the launching user's OWN connection for each — but only
   // for an interactive ('user') session. A backend/service-account session has no
   // single current user and manages connectors explicitly via connector_bindings,
-  // so its agent's personal declaration is not enforced here.
-  const loadedAgents = await loadProjectAgents(project);
+  // so its agent's personal declaration is not enforced here. (`loadedAgents` is
+  // already resolved above — reuse it rather than re-reading the manifest.)
   const agentPersonalConnectors =
     origin === 'user' ? personalConnectorsForAgent(agentName, loadedAgents) : [];
   const effectiveRequireConnectors = Array.from(

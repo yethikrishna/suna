@@ -224,6 +224,29 @@ both mintable with your API key:
    > the first tool call. Use `pipedreamConnect` + `pipedreamFinalize`; the OAuth
    > tokens live in Pipedream's custody, never in Kortix as a raw provider token.
 
+**Picking a SPECIFIC connection.** One connector can hold several connections —
+team-shared accounts (support@, sales@) and each member's own. List them to get
+the id you want:
+
+```bash
+curl -sS "$KORTIX_API_URL/projects/$PROJECT_ID/connector-profiles" \
+  -H "Authorization: Bearer $KORTIX_API_KEY" \
+  | jq '.profiles[] | {label, owner_type, is_default, profile_id}'
+```
+
+(The dashboard shows each connection's id on its row — **⋯ → Copy connection ID**.)
+Then bind that id: `connector_bindings: { gmail: { profile_id: "<id>" } }`.
+
+⚠️ **A backend can only bind TEAM connections.** A member's *private* connection
+(`owner_type: "member"`) is bindable only by that member's own token — a service
+account gets `404 CONNECTOR_PROFILE_NOT_FOUND` (deliberately identical to
+not-found, so an id can't be used to probe who connected what). That is the point
+of "private": it means *runs as me*, and a service account is not a person. If a
+backend needs a particular mailbox, add it as a **team** connection.
+
+Omit `connector_bindings` for an alias and it resolves the team **default** —
+which is what the `Default` badge in the dashboard marks.
+
 > **All-or-nothing binding:** if a session's `connector_bindings` sets *any*
 > alias, every *unbound* alias resolves to null for that session. Bind every
 > connector the agent needs in the one call — **or** pass **`inherit_unbound: true`**

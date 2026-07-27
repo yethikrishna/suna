@@ -158,6 +158,7 @@ import {
 import { OAuth2ApplicationFields } from './connector-oauth2-application-fields';
 import { OAuth2CredentialFields } from './connector-oauth2-fields';
 import { DiscoverCatalogue } from './discover-catalogue';
+import { connectorConnectionRows } from './view/connector-connections';
 
 const PROVIDER_ICON: Record<AdminConnector['provider'], LucideIcon> = {
   pipedream: Zap,
@@ -801,56 +802,6 @@ function RailItem({
   );
 }
 
-/**
- * Read-only display of a connector's connection `profile_id` — the id a backend
- * passes in `connector_bindings` (Kortix as a Backend) to run a session AS this
- * connection. Surfaced nowhere else in the product, so we show + copy it here.
- */
-function ConnectionIdField({ profileId }: { profileId: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    // The Clipboard API is absent in insecure contexts (navigator.clipboard is
-    // undefined → a synchronous throw) and writeText can also reject (denied
-    // permission). Guard both so a copy attempt never crashes the handler.
-    const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
-    if (!clipboard) {
-      errorToast('Could not copy — select and copy the ID manually.');
-      return;
-    }
-    clipboard.writeText(profileId).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      },
-      () => errorToast('Could not copy — select and copy the ID manually.'),
-    );
-  };
-  return (
-    <div className="bg-muted/40 rounded-md border px-4 py-3">
-      <div className="flex items-center gap-1.5">
-        <span className="text-muted-foreground text-xs font-medium">Connection ID</span>
-        <Hint label="Use this ID in the backend (connector_bindings) to run a session as this connection — see Kortix as a Backend.">
-          <span className="inline-flex cursor-help">
-            <Info className="text-muted-foreground size-3.5" />
-          </span>
-        </Hint>
-      </div>
-      <div className="mt-1.5 flex items-center gap-2">
-        <code className="min-w-0 flex-1 truncate font-mono text-xs">{profileId}</code>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7 shrink-0"
-          onClick={copy}
-          aria-label="Copy connection ID"
-        >
-          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 /** One row in the connections list — a single connected account. */
 function ConnectionRow({
   profile,
@@ -859,6 +810,7 @@ function ConnectionRow({
   onSetDefault,
   onDisconnect,
   onStartSession,
+  onCopyId,
   pending,
 }: {
   profile: ConnectionProfile;
@@ -867,6 +819,7 @@ function ConnectionRow({
   onSetDefault: () => void;
   onDisconnect: () => void;
   onStartSession?: () => void;
+  onCopyId: (profileId: string) => void;
   pending: boolean;
 }) {
   const isTeam = profile.owner_type === 'project';
@@ -900,36 +853,45 @@ function ConnectionRow({
         <InlineMeta>
           {isTeam ? 'Shared with the team' : 'Private — only you'}
           {active ? null : profile.status === 'revoked' ? 'Disconnected' : 'Error'}
+          {/* Every connection carries its own id — this is what a backend passes
+              in connector_bindings to run as THIS account. Truncated to keep the
+              row readable; the row menu copies the full value. */}
+          <Hint label="Connection ID — use it in the backend (connector_bindings) to run as this connection.">
+            <code className="cursor-help font-mono">{profile.profile_id.slice(0, 8)}…</code>
+          </Hint>
         </InlineMeta>
       </div>
-      {mayMutate && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0"
-              aria-label={`Actions for ${profile.label}`}
-              disabled={pending}
-            >
-              {pending ? <Loading className="size-4 shrink-0" /> : <ChevronDown className="size-4" />}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-44">
-            {isMine && active && onStartSession && (
-              <DropdownMenuItem onClick={onStartSession}>Use in a new session</DropdownMenuItem>
-            )}
-            {!profile.is_default && active && (
-              <DropdownMenuItem onClick={onSetDefault}>
-                Use by default{isTeam ? ' for the team' : ''}
-              </DropdownMenuItem>
-            )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0"
+            aria-label={`Actions for ${profile.label}`}
+            disabled={pending}
+          >
+            {pending ? <Loading className="size-4 shrink-0" /> : <ChevronDown className="size-4" />}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-48">
+          <DropdownMenuItem onClick={() => onCopyId(profile.profile_id)}>
+            Copy connection ID
+          </DropdownMenuItem>
+          {mayMutate && isMine && active && onStartSession && (
+            <DropdownMenuItem onClick={onStartSession}>Use in a new session</DropdownMenuItem>
+          )}
+          {mayMutate && !profile.is_default && active && (
+            <DropdownMenuItem onClick={onSetDefault}>
+              Use by default{isTeam ? ' for the team' : ''}
+            </DropdownMenuItem>
+          )}
+          {mayMutate && (
             <DropdownMenuItem variant="destructive" onClick={onDisconnect}>
               Disconnect
             </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </li>
   );
 }
@@ -969,11 +931,21 @@ function ConnectionsList({
     onChanged();
   };
 
-  // The API scopes this list to the caller: every project-owned connection, plus
-  // only the caller's OWN member connections — never another member's.
-  const rows = (profilesQuery.data?.profiles ?? []).filter(
-    (p) => p.connector_alias === connector.slug && p.owner_type !== 'agent',
-  );
+  const rows = connectorConnectionRows(profilesQuery.data?.profiles, connector.slug);
+
+  const copyConnectionId = (profileId: string) => {
+    // The Clipboard API is absent in insecure contexts (navigator.clipboard is
+    // undefined -> a synchronous throw) and writeText can also reject.
+    const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+    if (!clipboard) {
+      errorToast('Could not copy — open the connection and copy the ID manually.');
+      return;
+    }
+    clipboard.writeText(profileId).then(
+      () => successToast('Connection ID copied'),
+      () => errorToast('Could not copy — open the connection and copy the ID manually.'),
+    );
+  };
 
   const addTeam = usePipedreamConnectTeam(projectId, connector.slug, () => {
     setAddScope(null);
@@ -1055,6 +1027,7 @@ function ConnectionsList({
               onSetDefault={() => setDefault.mutate(profile.profile_id)}
               onDisconnect={() => setConfirmDisconnect(profile)}
               onStartSession={onStartSession}
+              onCopyId={copyConnectionId}
             />
           ))}
         </ul>
@@ -1280,6 +1253,35 @@ function ConnectorDetail({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const displayName = connector.name?.trim() || connector.slug;
+
+  // Which tabs this connector actually has. Pipedream connectors hold many
+  // connections (team + per-member), so they get Connections; everything else
+  // has at most one shared credential, which lives under Connection.
+  const showConnections = isPipedream && !isChannel && !isComputer;
+  const showProfileTab = !isPipedream && !isManaged;
+  const showRoster = showConnections && canManageProfiles;
+  const defaultDetailTab = showConnections
+    ? 'connections'
+    : showProfileTab
+      ? 'profile'
+      : 'permissions';
+  // Permissions is always present; the other three are conditional.
+  const detailTabCount =
+    1 + (showConnections ? 1 : 0) + (showProfileTab ? 1 : 0) + (showRoster ? 1 : 0);
+
+  // Same query key + filter as ConnectionsList, so the badge can never disagree
+  // with the rows it counts (react-query dedupes the fetch).
+  const detailProfilesQuery = useQuery({
+    queryKey: ['connector-profiles', projectId],
+    queryFn: () => listConnectionProfiles(projectId),
+    staleTime: 30_000,
+    enabled: showConnections,
+  });
+  const connectionCount = connectorConnectionRows(
+    detailProfilesQuery.data?.profiles,
+    connector.slug,
+  ).length;
+
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(displayName);
   useEffect(() => {
@@ -1423,9 +1425,6 @@ function ConnectorDetail({
       </div>
 
       <div className="mt-7 space-y-5">
-        {connected && connectionProfile && !isChannel && !isComputer && (
-          <ConnectionIdField profileId={connectionProfile.profile_id} />
-        )}
         {/* Computer connectors are connected + permissioned in the Computers tab
             (device pairing, per-capability grants, audit) — point management
             there instead of the generic credential / connection / remove UI. */}
@@ -1479,46 +1478,66 @@ function ConnectorDetail({
               : `One shared credential that everyone on this project uses — the agent and your triggers run on it.`}
           </InfoBanner>
         )}
-        {/* Connected + shared: state the scope explicitly, so "Connected" is never
-            mistaken for the user's own private connection. */}
-        {connector.authSecret && connected && !isChannel && !isComputer && (
-          <InfoBanner tone="neutral" icon={Users} title="Shared with the whole team">
-            Everyone on this project uses this {displayName} connection. Your own private connection,
-            if you add one, is separate and stays yours.
-          </InfoBanner>
-        )}
-        {/* Every connection under this connector — the team's shared accounts and
-            this member's own. A connector can hold several of each; the DEFAULT
-            in each scope is what a session uses when it names no connection. */}
-        {isPipedream && !isChannel && !isComputer && (
-          <ConnectionsList
-            projectId={projectId}
-            connector={connector}
-            displayName={displayName}
-            canManageProfiles={canManageProfiles}
-            onChanged={onChanged}
-            onStartSession={startPrivateSession}
-          />
-        )}
-        {isPipedream && !isChannel && !isComputer && canManageProfiles && (
-          <ConnectionRoster
-            projectId={projectId}
-            connectorSlug={connector.slug}
-            displayName={displayName}
-          />
-        )}
-        {/* The sensitive toggle lives under Permissions (it IS a permission
-            default), so Profile only exists when there's a connection to
-            manage — for Pipedream/managed connectors it would be empty. */}
-        <Tabs
-          defaultValue={!isPipedream && !isManaged ? 'profile' : 'permissions'}
-          className="gap-3"
-        >
-          <TabsList>
-            {!isPipedream && !isManaged && <TabsTrigger value="profile">Profile</TabsTrigger>}
-            <TabsTrigger value="permissions">Permissions</TabsTrigger>
+        {/* One tab per question this page answers: what can I use (Connections),
+            what may the agent do with it (Permissions), who on the team has
+            connected their own (Team members). Before this, everything stacked
+            into one long scroll above a lone "Permissions" tab, because the only
+            other trigger — Profile — is hidden for Pipedream connectors. */}
+        <Tabs defaultValue={defaultDetailTab} className="gap-3">
+          {/* A single trigger is not a choice — it reads as a broken tab bar.
+              Computer connectors are managed in Computers, so Permissions is
+              all they have left here. */}
+          <TabsList
+            type="underline"
+            className={cn(
+              'flex w-full items-center justify-start',
+              detailTabCount < 2 && 'hidden',
+            )}
+          >
+            {showConnections && (
+              <TabsTrigger value="connections" className="w-fit flex-none gap-2">
+                Connections
+                {connectionCount > 0 ? (
+                  <Badge variant="secondary" size="sm">
+                    {connectionCount}
+                  </Badge>
+                ) : null}
+              </TabsTrigger>
+            )}
+            {showProfileTab && (
+              <TabsTrigger value="profile" className="w-fit flex-none">
+                Connection
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="permissions" className="w-fit flex-none">
+              Permissions
+            </TabsTrigger>
+            {showRoster && (
+              <TabsTrigger value="roster" className="w-fit flex-none">
+                Team members
+              </TabsTrigger>
+            )}
           </TabsList>
-          {!isPipedream && !isManaged && (
+          {/* Every connection under this connector — the team's shared accounts and
+              this member's own. A connector can hold several of each; the DEFAULT
+              in each scope is what a session uses when it names no connection. */}
+          {showConnections && (
+            <TabsContent value="connections" className="space-y-5">
+              <ConnectionsList
+                projectId={projectId}
+                connector={connector}
+                displayName={displayName}
+                canManageProfiles={canManageProfiles}
+                onChanged={onChanged}
+                onStartSession={startPrivateSession}
+              />
+            </TabsContent>
+          )}
+          {/* The sensitive toggle lives under Permissions (it IS a permission
+              default), so this tab only exists when there's a single shared
+              credential to manage — for Pipedream connectors the Connections
+              tab owns that, and this one would be empty. */}
+          {showProfileTab && (
             <TabsContent value="profile" className="space-y-5">
               {isChannel ? (
                 <ChannelConnectionSection
@@ -1547,6 +1566,15 @@ function ConnectorDetail({
               canWrite={canWrite}
             />
           </TabsContent>
+          {showRoster && (
+            <TabsContent value="roster" className="space-y-5">
+              <ConnectionRoster
+                projectId={projectId}
+                connectorSlug={connector.slug}
+                displayName={displayName}
+              />
+            </TabsContent>
+          )}
         </Tabs>
 
         {canWrite && !isManaged && !isChannel && (

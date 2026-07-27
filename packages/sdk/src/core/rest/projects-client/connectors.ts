@@ -115,8 +115,12 @@ export interface ConnectionProfile {
 
 export interface ReconcileConnectionProfileInput {
   connector_alias: string;
-  owner_type: 'agent' | 'member' | 'subject' | 'external';
-  owner_id: string;
+  /** `project` = a TEAM-shared connection (several per connector, distinguished
+   *  by `label`), which takes no `owner_id`. Every other owner type needs one. */
+  owner_type: 'project' | 'agent' | 'member' | 'subject' | 'external';
+  owner_id?: string;
+  /** Distinguishes several connections on one connector for the same owner
+   *  ("Support", "Sales", "Work"). Reconciling the same label updates in place. */
   label: string;
   metadata?: Record<string, unknown>;
 }

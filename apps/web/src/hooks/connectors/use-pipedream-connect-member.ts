@@ -8,7 +8,7 @@ import {
   pipedreamConnectConnectionProfile,
   pipedreamFinalizeConnectionProfile,
   reconcileMemberConnectionProfile,
-} from '@kortix/sdk/projects-client';
+} from '@kortix/sdk';
 
 const PIPEDREAM_IFRAME_SELECTOR = 'iframe[id^="pipedream-connect-iframe-"]';
 

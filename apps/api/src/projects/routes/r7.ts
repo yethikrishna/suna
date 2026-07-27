@@ -1585,7 +1585,16 @@ projectsApp.openapi(
   // Letting a client forge either via PATCH lets any project member hide
   // another member's session, block its follow-ups, and trip the reaper.
   // See SSR-7 (weekly pentest run #4).
-  const SERVER_MANAGED_METADATA_KEYS = ['deletedAt', 'deletedBy'];
+  // opencode_model is create-only by contract and changed only via
+  // PUT /sessions/{id}/model, which validates it against the account. Planting
+  // it through metadata skipped that check entirely, so a retired or
+  // account-forbidden model could be stored and booted by the next cold provision.
+  const SERVER_MANAGED_METADATA_KEYS = [
+    'deletedAt',
+    'deletedBy',
+    'opencode_model',
+    'opencode_model_source',
+  ];
   const metadataInput = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
     ? (body.metadata as Record<string, unknown>)
     : null;

@@ -69,10 +69,10 @@ export function EndUserUsageCard() {
   const accountId = useBillingAccountId();
 
   const usageQuery = useQuery({
-    queryKey: ['usage', 'origin_ref', windowKey, accountId ?? 'default'],
+    queryKey: ['usage', 'end_user_ref', windowKey, accountId ?? 'default'],
     queryFn: () =>
       getUsageRollup({
-        groupBy: 'origin_ref',
+        groupBy: 'end_user_ref',
         start: startOfWindow(Number(windowKey)),
         accountId,
       }),
@@ -106,7 +106,7 @@ export function EndUserUsageCard() {
         </CardTitle>
         <CardDescription>
           Sessions your backend started on behalf of one of its own users, grouped by the{' '}
-          <code className="text-xs">origin_ref</code> it passed.
+          <code className="text-xs">end_user_ref</code> it passed.
         </CardDescription>
         <CardAction>
           <Tabs value={windowKey} onValueChange={(v) => setWindowKey(v as typeof windowKey)}>

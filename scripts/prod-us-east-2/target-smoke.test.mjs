@@ -61,6 +61,22 @@ test("shadow Terraform permits only immutable ECS task-definition replacement", 
   );
 });
 
+test("US shadow deploy accepts an immutable candidate image tag", () => {
+  assert.match(shadowWorkflow, /image_tag:\s*\n\s*description:/);
+  assert.match(
+    shadowWorkflow,
+    /IMAGE_TAG: \$\{\{ inputs\.image_tag \|\| inputs\.version \}\}/,
+  );
+  assert.match(
+    shadowWorkflow,
+    /"kortix\/kortix-api:\$\{IMAGE_TAG\}"/,
+  );
+  assert.match(
+    shadowWorkflow,
+    /"kortix\/kortix-gateway:\$\{IMAGE_TAG\}"/,
+  );
+});
+
 test("target smoke removes and counts recovery flow state", () => {
   assert.match(
     targetSmokeProgram,

@@ -56,6 +56,8 @@ export interface ProjectSession {
    *  'backend'; a human web session is 'user'. See Kortix-as-a-Backend. */
   origin?: 'user' | 'trigger' | 'schedule' | 'backend' | 'system';
   /** The wrapper's end-user this session acts for (backend origin only). */
+  end_user_ref?: string | null;
+  /** @deprecated Renamed to `end_user_ref`. Echoed with the same value. */
   origin_ref?: string | null;
   /** The per-session secrets allowlist that was applied (identifiers); null = none. */
   secrets_allowlist?: string[] | null;
@@ -123,6 +125,12 @@ export interface CreateProjectSessionInput {
    * session and surfaced to the sandbox as KORTIX_ORIGIN_REF. A non-backend
    * caller supplying it is rejected 403. Attribution only — pass the user's
    * connectors via connector_bindings.
+   */
+  /** Your opaque handle for the END-USER this session acts for. Backend origin only. */
+  end_user_ref?: string;
+  /**
+   * @deprecated Renamed to `end_user_ref`. Still accepted; sending both is fine
+   * only if they agree (disagreeing values are rejected 400).
    */
   origin_ref?: string;
   /**

@@ -1,7 +1,7 @@
 /**
  * Mock Kortix upstream — a tiny `Bun.serve` HTTP server implementing exactly
  * the endpoints `src/app/api/kortix/[...path]/route.ts`,
- * `src/app/api/preview-token/route.ts`, and `src/app/api/usage/route.ts` call
+ * `src/app/api/preview-url/route.ts`, and `src/app/api/usage/route.ts` call
  * out to. Everything is namespaced under `/v1` (matching `KORTIX_UPSTREAM`
  * including its `/v1` suffix, the same shape as `NEXT_PUBLIC_KORTIX_API_URL`).
  *
@@ -22,6 +22,7 @@ export interface RecordedRequest {
   path: string; // pathname + search, e.g. "/v1/projects/proj_1"
   authorization: string | null;
   cookie: string | null;
+  acceptEncoding: string | null;
   contentLength: string | null;
   transferEncoding: string | null;
   body: unknown;
@@ -116,6 +117,7 @@ export function createMockUpstream(expectedAuthToken: string): MockUpstream {
       const method = req.method.toUpperCase();
       const authorization = req.headers.get('authorization');
       const cookie = req.headers.get('cookie');
+      const acceptEncoding = req.headers.get('accept-encoding');
       const contentLength = req.headers.get('content-length');
       const transferEncoding = req.headers.get('transfer-encoding');
 
@@ -136,6 +138,7 @@ export function createMockUpstream(expectedAuthToken: string): MockUpstream {
         path: `${url.pathname}${url.search}`,
         authorization,
         cookie,
+        acceptEncoding,
         contentLength,
         transferEncoding,
         body,
@@ -195,6 +198,36 @@ export function createMockUpstream(expectedAuthToken: string): MockUpstream {
         });
       }
 
+      const sessionStartMatch = p.match(/^projects\/([^/]+)\/sessions\/([^/]+)\/start$/);
+      if (sessionStartMatch && method === 'POST') {
+        const [, projectId, sessionId] = sessionStartMatch;
+        const now = new Date().toISOString();
+        const externalId = `session-${sessionId}`;
+        return Response.json({
+          stage: 'ready',
+          agent_name: 'kortix',
+          retriable: true,
+          runtime_transport: 'rest',
+          runtime_url: `/p/${externalId}/8000`,
+          opencode_session_id: `runtime-${sessionId}`,
+          sandbox: {
+            sandbox_id: sessionId,
+            session_id: sessionId,
+            project_id: projectId,
+            account_id: 'acct_test',
+            provider: 'daytona',
+            external_id: externalId,
+            base_url: `/p/${externalId}/8000`,
+            status: 'active',
+            config: {},
+            metadata: {},
+            last_used_at: now,
+            created_at: now,
+            updated_at: now,
+          },
+        });
+      }
+
       const projectDetailMatch = p.match(/^projects\/([^/]+)$/);
       if (projectDetailMatch) {
         const [, id] = projectDetailMatch;
@@ -226,6 +259,18 @@ export function createMockUpstream(expectedAuthToken: string): MockUpstream {
       }
 
       // ── sandbox runtime proxy: /p/{sandboxId}/{port}/... ───────────────
+      if (/^p\/[^/]+\/8000\/encoding$/.test(p) && method === 'GET') {
+        if (acceptEncoding !== 'identity') {
+          return Response.json(
+            {
+              error: 'wrapper forwarded unsupported response encoding negotiation',
+            },
+            { status: 502 },
+          );
+        }
+        return Response.json({ ok: true });
+      }
+
       const sseMatch = p.match(/^p\/([^/]+)\/(\d+)\/global\/event$/);
       if (sseMatch && method === 'GET') {
         let interval: ReturnType<typeof setInterval> | undefined;

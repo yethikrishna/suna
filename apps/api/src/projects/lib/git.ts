@@ -15,9 +15,12 @@ import { registerPrincipalScopedMemo } from '../../iam/cache-invalidation';
 import { PROJECT_GIT_AUTH_SECRET_NAME, ProjectGitConnectionRow, ProjectGitCredentialRow, ProjectRow, normalizeJsonObject, normalizeString } from './serializers';
 
 // Memoized briefly (positive hits only): this runs on every project-scoped
-// request, and prod pays a cross-region roundtrip per DB statement. A revoked
-// membership lingers for at most one TTL window; a fresh grant is visible
-// immediately because null results are never cached.
+// request. Each DB statement is a fast same-region roundtrip (~3ms measured,
+// not the cross-region cost this comment used to claim), but the same
+// lookup repeats across a burst of parallel requests, so caching still cuts
+// redundant query volume. A revoked membership lingers for at most one TTL
+// window; a fresh grant is visible immediately because null results are
+// never cached.
 const loadAccountMembership = ttlMemo({
   ttlMs: 15_000,
   keyFn: (userId: string, accountId: string) => `${userId}|${accountId}`,
@@ -429,10 +432,7 @@ export function buildConnectionRef(project: ProjectRow, remote: ProjectGitRemote
 
 export async function hasServerManagedGitAuth(project: ProjectRow): Promise<boolean> {
   const remote = getProjectGitRemote(project, await getProjectGitConnection(project.projectId));
-  if (
-    remote.provider === 'github' &&
-    (remote.authMethod === 'github_app' || remote.authMethod === 'managed_shared')
-  ) {
+  if (remote.provider === 'github' && remote.authMethod === 'github_app') {
     return true;
   }
   return false;
@@ -449,10 +449,7 @@ export async function resolveProjectGitAuth(project: ProjectRow): Promise<{
   // exist without access to every repository. Repeated failed token minting
   // adds remote latency to every Git-backed project read. The PAT is internal
   // and is never exported by the API/CLI push-token boundary.
-  if (
-    remote.provider === 'github' &&
-    (remote.managed || remote.authMethod === 'managed_shared')
-  ) {
+  if (remote.provider === 'github' && remote.managed) {
     const pat = managedGithubToken();
     if (pat) {
       return {

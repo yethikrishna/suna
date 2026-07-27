@@ -38,16 +38,7 @@ import {
   saveTeamsInstall,
   updateAgentMailSenderPolicy,
 } from '../../channels/install-store';
-import { previewVoiceB64, speakInMeeting } from '../../channels/meet-tts';
-import {
-  DEFAULT_MEET_BOT_NAME,
-  MEET_VOICES,
-  isMeetVoice,
-  resolveProjectBotName,
-  resolveProjectVoice,
-  setProjectBotName,
-  setProjectVoice,
-} from '../../channels/meet-voices';
+import { setProjectBotName } from '../../channels/voice-identity';
 import { resolveBaseUrl } from '../../channels/slack-manifest';
 import { buildSlackInstallUrl } from '../../channels/slack-oauth';
 import { slackOauthMode } from '../../channels/slack-oauth-mode';
@@ -66,7 +57,8 @@ import {
   relayTurnStep,
 } from '../../channels/turn-relay';
 import { config } from '../../config';
-import { upsertProfileCredential } from '../../executor/credentials';
+import { upsertProfileCredential, upsertProfileOAuth2Credential } from '../../executor/credentials';
+import { revokeProfileOAuth2 } from '../../executor/oauth2-store';
 import {
   finalizePipedreamProfileConnection,
   pipedreamConfigured,
@@ -75,6 +67,7 @@ import {
 import { reconcileChannelConnectors } from '../../executor/sync';
 import { resolveExperimentalFeature } from '../../experimental/features';
 import { PROJECT_ACTIONS } from '../../iam';
+import { setContextField } from '../../lib/request-context';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { gatewayModelCatalog } from '../../llm-gateway/models/catalog-models';
 import { projectPickerCatalog } from '../../llm-gateway/models/picker-catalog';
@@ -93,6 +86,7 @@ import {
 import { getProjectRoutingPolicy } from '../../repositories/project-routing-policies';
 import { db } from '../../shared/db';
 import {
+  acquireExecutionLease,
   discoverExecutionKeepAliveEndpoint,
   releaseExecutionLease,
   renewExecutionLease,
@@ -127,6 +121,7 @@ import {
 import { listProjectSecretsSnapshot } from '../secrets';
 import { reconcileProjectTriggerRuntime } from '../trigger-runtime-catalog';
 import { type ParsedManifest, extractTriggers, loadProjectTriggers } from '../triggers';
+import { turnStreamKindField } from './r4-turn-stream-kind';
 
 // Body keys that change the trigger's *repo manifest* (committed to git). A PATCH
 // whose body touches none of these has nothing to commit, so we skip git entirely
@@ -346,10 +341,7 @@ projectsApp.openapi(
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     if (c.get('authType') === 'service_account') {
-      return c.json(
-        { error: 'Only human members can reconcile personal connector profiles' },
-        403,
-      );
+      return c.json({ error: 'Only human members can reconcile personal connector profiles' }, 403);
     }
     const body = await readBody(c);
     const connectorAlias = canonicalConnectorAlias(
@@ -435,10 +427,7 @@ projectsApp.openapi(
     const connectorAlias = canonicalConnectorAlias(requestedAlias);
     const ownerType = typeof body.owner_type === 'string' ? body.owner_type : 'external';
     if (ownerType === 'member' && c.get('authType') === 'service_account') {
-      return c.json(
-        { error: 'Only human members can reconcile personal connector profiles' },
-        403,
-      );
+      return c.json({ error: 'Only human members can reconcile personal connector profiles' }, 403);
     }
     // Backwards-compatible manager path: a submitted member owner is always
     // rewritten to the caller. Managers may create their own member profile,
@@ -562,18 +551,42 @@ for (const operation of ['credential', 'revoke', 'activate'] as const) {
       }
       if (operation === 'credential') {
         const body = await readBody(c);
-        if (typeof body.value !== 'string' || !body.value) {
-          return c.json({ error: 'value is required' }, 400);
+        const parsed = UpdateConnectionProfileCredentialInputSchema.safeParse(body);
+        if (!parsed.success) {
+          return c.json(
+            {
+              error:
+                body?.oauth2 != null
+                  ? (parsed.error.issues[0]?.message ?? 'invalid OAuth2 credential')
+                  : 'value is required',
+            },
+            400,
+          );
         }
-        await upsertProfileCredential({
-          projectId,
-          connectorId: profile.connectorId,
-          profileId,
-          value: body.value,
-          kind: body.kind === 'connection' ? 'connection' : 'secret',
-          createdBy: loaded.userId,
-        });
+        try {
+          if ('oauth2' in parsed.data) {
+            await upsertProfileOAuth2Credential({
+              projectId,
+              connectorId: profile.connectorId,
+              profileId,
+              oauth2: parsed.data.oauth2,
+              createdBy: loaded.userId,
+            });
+          } else {
+            await upsertProfileCredential({
+              projectId,
+              connectorId: profile.connectorId,
+              profileId,
+              value: parsed.data.value,
+              kind: parsed.data.kind,
+              createdBy: loaded.userId,
+            });
+          }
+        } catch (error) {
+          return c.json({ error: (error as Error).message || 'credential validation failed' }, 400);
+        }
       } else {
+        if (operation === 'revoke') await revokeProfileOAuth2(profileId);
         await db
           .update(executorConnectionProfiles)
           .set({ status: operation === 'revoke' ? 'revoked' : 'active', updatedAt: new Date() })
@@ -889,7 +902,9 @@ projectsApp.openapi(
     const [row] = await db
       .update(projects)
       .set({
-        metadata: paused ? metadataMerge({ triggers_paused: true }) : metadataMerge({}, ['triggers_paused']),
+        metadata: paused
+          ? metadataMerge({ triggers_paused: true })
+          : metadataMerge({}, ['triggers_paused']),
         updatedAt: new Date(),
       })
       .where(eq(projects.projectId, projectId))
@@ -1899,6 +1914,87 @@ function agentMailConnectErrorBody(stage: 'inbox_create' | 'webhook_create', err
   };
 }
 
+// POST /v1/projects/:projectId/execution-lease
+// The sandbox agent reports active OpenCode work through this bounded JSON
+// route. Acquire returns the provider endpoint once. Renew and release each
+// execute one conditional database update.
+projectsApp.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{projectId}/execution-lease',
+    tags: ['projects'],
+    summary: 'POST /:projectId/execution-lease',
+    ...auth,
+    request: {
+      params: z.object({ projectId: z.string() }),
+      body: {
+        content: {
+          'application/json': {
+            schema: z.object({
+              action: z.enum(['acquire', 'renew', 'release']),
+              session_id: z.string().min(1),
+              lease_ttl_seconds: z.number().optional(),
+            }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: json(
+        z
+          .object({
+            ok: z.boolean(),
+            lease_until: z.string().nullable().optional(),
+            provider_url: z.string().nullable().optional(),
+            provider_headers: z.record(z.string(), z.string()).nullable().optional(),
+          })
+          .passthrough(),
+        'Lease operation result',
+      ),
+      ...errors(400, 403),
+    },
+  }),
+  async (c: any) => {
+    const authType = c.get('authType') as string | undefined;
+    const apiKeyType = c.get('apiKeyType') as string | undefined;
+    const accountId = c.get('accountId') as string | undefined;
+    const sandboxId = c.get('sandboxId') as string | undefined;
+    if (
+      authType !== 'apiKey' ||
+      apiKeyType !== 'sandbox' ||
+      !accountId ||
+      !sandboxId
+    ) {
+      return c.json({ error: 'execution lease requires a sandbox token' }, 403);
+    }
+    const projectId = c.req.param('projectId');
+    const body = c.req.valid('json') as {
+      action: 'acquire' | 'renew' | 'release';
+      session_id: string;
+      lease_ttl_seconds?: number;
+    };
+    const target = {
+      sandboxId,
+      sessionId: body.session_id.trim(),
+      projectId,
+      accountId,
+    };
+    if (body.action === 'release') {
+      return c.json({ ok: await releaseExecutionLease(target) });
+    }
+    const result =
+      body.action === 'acquire'
+        ? await acquireExecutionLease(target, body.lease_ttl_seconds)
+        : await renewExecutionLease(target, body.lease_ttl_seconds);
+    return c.json({
+      ok: result.ok,
+      lease_until: result.leaseUntil,
+      provider_url: result.providerUrl,
+      provider_headers: result.providerHeaders,
+    });
+  },
+);
+
 // POST /v1/projects/:projectId/turn-stream
 // Agent-cli relay for the live Slack plan: kind=step appends a checkpoint,
 // kind=answer finalizes the turn's streamed message with the agent's reply.
@@ -1916,25 +2012,84 @@ projectsApp.openapi(
     },
     responses: {
       200: {
-        description: 'Event stream',
-        content: { 'text/event-stream': { schema: z.any() } },
+        description: 'Relay result',
+        content: { 'application/json': { schema: z.any() } },
       },
       ...errors(400, 403, 404),
     },
   }),
   async (c: any) => {
     const projectId = c.req.param('projectId');
+    let body: {
+      session_id?: string;
+      kind?: string;
+      text?: string;
+      detail?: string;
+      output?: string;
+      sources?: Array<{ url?: string; text?: string }>;
+      blocks?: unknown[];
+      status?: string;
+      opencode_session_id?: string;
+      // Turn-end error detail (opencode AssistantMessage.error / session.error),
+      // so Slack can render "out of credits" / rate-limit / the real error.
+      error_name?: string;
+      error_message?: string;
+      error_status?: number;
+      error_retryable?: boolean;
+      error_provider?: string;
+      lease_ttl_seconds?: number;
+    };
+    try {
+      body = (await c.req.json()) as typeof body;
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400);
+    }
+    setContextField('kind', turnStreamKindField(body.kind));
+    const sessionId = body.session_id?.trim();
+    if (!sessionId) {
+      return c.json({ error: 'session_id is required' }, 400);
+    }
 
     // Two valid callers: a project/session-scoped PAT (dashboard, operator, or
     // in-sandbox agent CLI) and the session sandbox's own service credential.
     // Each is scoped back to this projectId before a turn event is accepted.
     const authType = (c as any).get('authType') as string | undefined;
+    const apiKeyType = (c as any).get('apiKeyType') as string | undefined;
+    const legacyExecutionLeaseKind =
+      body.kind === 'execution_heartbeat' ||
+      body.kind === 'execution_lease_release' ||
+      body.kind === 'execution_lease_discover';
+    if (legacyExecutionLeaseKind && (authType !== 'apiKey' || apiKeyType !== 'sandbox')) {
+      return c.json({ error: 'execution lease requires a sandbox token' }, 403);
+    }
     let authenticatedSandboxId: string | null = null;
-    if (authType === 'apiKey' && (c as any).get('apiKeyType') === 'sandbox') {
+    if (authType === 'apiKey' && apiKeyType === 'sandbox') {
       const accountId = (c as any).get('accountId') as string | undefined;
       const sandboxId = (c as any).get('sandboxId') as string | undefined;
       if (!accountId || !sandboxId) {
         return c.json({ error: 'turn-stream requires a sandbox token' }, 403);
+      }
+      if (legacyExecutionLeaseKind) {
+        const target = { sandboxId, sessionId, projectId, accountId };
+        if (body.kind === 'execution_lease_release') {
+          return c.json({ ok: await releaseExecutionLease(target) });
+        }
+        if (body.kind === 'execution_lease_discover') {
+          const provider = await discoverExecutionKeepAliveEndpoint(target);
+          return c.json({
+            ok: provider !== null,
+            provider_url: provider?.url ?? null,
+            provider_headers: provider?.headers ?? null,
+          });
+        }
+        const result = await renewExecutionLease(target, body.lease_ttl_seconds);
+        return c.json({
+          ok: result.ok,
+          lease_until: result.leaseUntil,
+          provider_url: null,
+          provider_headers: null,
+          provider_touched: false,
+        });
       }
       const [sandbox] = await db
         .select({ sandboxId: sessionSandboxes.sandboxId, sessionId: sessionSandboxes.sessionId })
@@ -1962,35 +2117,6 @@ projectsApp.openapi(
         projectId,
         PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE,
       );
-    }
-
-    let body: {
-      session_id?: string;
-      kind?: string;
-      text?: string;
-      detail?: string;
-      output?: string;
-      sources?: Array<{ url?: string; text?: string }>;
-      blocks?: unknown[];
-      status?: string;
-      opencode_session_id?: string;
-      // Turn-end error detail (opencode AssistantMessage.error / session.error),
-      // so Slack can render "out of credits" / rate-limit / the real error.
-      error_name?: string;
-      error_message?: string;
-      error_status?: number;
-      error_retryable?: boolean;
-      error_provider?: string;
-      lease_ttl_seconds?: number;
-    };
-    try {
-      body = (await c.req.json()) as typeof body;
-    } catch {
-      return c.json({ error: 'Invalid JSON body' }, 400);
-    }
-    const sessionId = body.session_id?.trim();
-    if (!sessionId) {
-      return c.json({ error: 'session_id is required' }, 400);
     }
 
     if (authenticatedSandboxId) {
@@ -2021,34 +2147,6 @@ projectsApp.openapi(
       .limit(1);
     if (!turnStreamSession) {
       return c.json({ error: 'Not found' }, 404);
-    }
-
-    if (
-      body.kind === 'execution_heartbeat' ||
-      body.kind === 'execution_lease_release' ||
-      body.kind === 'execution_lease_discover'
-    ) {
-      if (!authenticatedSandboxId)
-        return c.json({ error: 'execution lease requires a sandbox token' }, 403);
-      const target = { sandboxId: authenticatedSandboxId, sessionId, projectId };
-      if (body.kind === 'execution_lease_release')
-        return c.json({ ok: await releaseExecutionLease(target) });
-      if (body.kind === 'execution_lease_discover') {
-        const provider = await discoverExecutionKeepAliveEndpoint(target);
-        return c.json({
-          ok: provider !== null,
-          provider_url: provider?.url ?? null,
-          provider_headers: provider?.headers ?? null,
-        });
-      }
-      const result = await renewExecutionLease(target, body.lease_ttl_seconds);
-      return c.json({
-        ok: result.ok,
-        lease_until: result.leaseUntil,
-        provider_url: result.providerUrl,
-        provider_headers: result.providerHeaders,
-        provider_touched: result.providerUrl !== null,
-      });
     }
 
     // `end` / `turn_end` carry no text — the sandbox observed the opencode turn
@@ -2318,41 +2416,6 @@ projectsApp.openapi(
   },
 );
 
-// GET /v1/projects/:projectId/channels/meet/voices
-// The voice picker: the predefined catalog + the project's current selection,
-// plus whether speaking is wired (ElevenLabs configured).
-projectsApp.openapi(
-  createRoute({
-    method: 'get',
-    path: '/{projectId}/channels/meet/voices',
-    tags: ['channels'],
-    summary: 'GET /:projectId/channels/meet/voices',
-    ...auth,
-    request: { params: z.object({ projectId: z.string() }) },
-    responses: {
-      200: json(z.object({ ok: z.boolean() }).passthrough(), 'Voices'),
-      ...errors(404),
-    },
-  }),
-  async (c: any) => {
-    const projectId = c.req.param('projectId');
-    const loaded = await loadProjectForUser(c, projectId, 'read');
-    if (!loaded) return c.json({ error: 'Not found' }, 404);
-    const [selected, botName] = await Promise.all([
-      resolveProjectVoice(projectId),
-      resolveProjectBotName(projectId),
-    ]);
-    return c.json({
-      ok: true,
-      selected: selected.id,
-      bot_name: botName,
-      default_bot_name: DEFAULT_MEET_BOT_NAME,
-      speak_enabled: Boolean(config.ELEVENLABS_API_KEY),
-      voices: MEET_VOICES.map((v) => ({ id: v.id, name: v.name, desc: v.desc })),
-    });
-  },
-);
-
 // PUT /v1/projects/:projectId/channels/meet/name — set the bot's display name.
 projectsApp.openapi(
   createRoute({
@@ -2387,120 +2450,6 @@ projectsApp.openapi(
     const name = String(body.name ?? body.bot_name ?? '');
     const saved = await setProjectBotName(projectId, name);
     return c.json({ ok: true, bot_name: saved });
-  },
-);
-
-// PUT /v1/projects/:projectId/channels/meet/voice — choose the meeting voice.
-projectsApp.openapi(
-  createRoute({
-    method: 'put',
-    path: '/{projectId}/channels/meet/voice',
-    tags: ['channels'],
-    summary: 'PUT /:projectId/channels/meet/voice',
-    ...auth,
-    request: {
-      params: z.object({ projectId: z.string() }),
-      body: { content: { 'application/json': { schema: AnyObject } } },
-    },
-    responses: {
-      200: json(z.object({ ok: z.boolean(), selected: z.string() }).passthrough(), 'Saved'),
-      ...errors(400, 404),
-    },
-  }),
-  async (c: any) => {
-    const projectId = c.req.param('projectId');
-    // Floor 'read'; project.customize.write is the real gate (choosing the voice
-    // is project customization). Built-in editor/manager hold the leaf.
-    const loaded = await loadProjectForUser(c, projectId, 'read');
-    if (!loaded) return c.json({ error: 'Not found' }, 404);
-    await assertProjectCapability(
-      c,
-      loaded.userId,
-      loaded.row.accountId,
-      projectId,
-      PROJECT_ACTIONS.PROJECT_CUSTOMIZE_WRITE,
-    );
-    const body = await readBody(c);
-    const voiceId = String(body.voice ?? '');
-    if (!isMeetVoice(voiceId)) return c.json({ error: 'unknown voice' }, 400);
-    const voice = await setProjectVoice(projectId, voiceId);
-    return c.json({ ok: true, selected: voice.id });
-  },
-);
-
-// POST /v1/projects/:projectId/channels/meet/voices/:voiceId/preview
-// Returns a base64 MP3 of a stock line in that voice (for the picker's preview).
-projectsApp.openapi(
-  createRoute({
-    method: 'post',
-    path: '/{projectId}/channels/meet/voices/{voiceId}/preview',
-    tags: ['channels'],
-    summary: 'POST /:projectId/channels/meet/voices/:voiceId/preview',
-    ...auth,
-    request: { params: z.object({ projectId: z.string(), voiceId: z.string() }) },
-    responses: {
-      200: json(
-        z.object({ ok: z.boolean(), kind: z.string(), b64: z.string() }).passthrough(),
-        'Preview',
-      ),
-      ...errors(400, 404, 502, 503),
-    },
-  }),
-  async (c: any) => {
-    const projectId = c.req.param('projectId');
-    const loaded = await loadProjectForUser(c, projectId, 'read');
-    if (!loaded) return c.json({ error: 'Not found' }, 404);
-    const voiceId = c.req.param('voiceId');
-    if (!isMeetVoice(voiceId)) return c.json({ error: 'unknown voice' }, 400);
-    const r = await previewVoiceB64(voiceId);
-    if (!r.ok) return c.json({ error: r.error }, r.status as 400 | 404 | 502 | 503);
-    return c.json({ ok: true, kind: 'mp3', b64: r.b64 });
-  },
-);
-
-// POST /v1/projects/:projectId/channels/meet/speak — the bot speaks in the call.
-// Server-side proxy: text → ElevenLabs (project voice) → Recall output_audio.
-// Both keys stay server-side; backs `meet speak`.
-projectsApp.openapi(
-  createRoute({
-    method: 'post',
-    path: '/{projectId}/channels/meet/speak',
-    tags: ['channels'],
-    summary: 'POST /:projectId/channels/meet/speak',
-    ...auth,
-    request: {
-      params: z.object({ projectId: z.string() }),
-      body: { content: { 'application/json': { schema: AnyObject } } },
-    },
-    responses: {
-      200: json(z.object({ ok: z.boolean(), voice: z.string() }).passthrough(), 'Spoken'),
-      ...errors(400, 403, 404, 502, 503),
-    },
-  }),
-  async (c: any) => {
-    const projectId = c.req.param('projectId');
-    const loaded = await loadProjectForUser(c, projectId, 'read');
-    if (!loaded) return c.json({ error: 'Not found' }, 404);
-    // Same reasoning as the Slack upload proxy above: this is a SEND primitive
-    // (makes the meeting bot speak), not a read, so a bare project-read gate is
-    // wrong here too. channel.send is dead/unwired (see audit note removing
-    // CHANNEL_ACTIONS) — reuse the connector-write leaf instead.
-    await assertProjectCapability(
-      c,
-      loaded.userId,
-      loaded.row.accountId,
-      projectId,
-      PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE,
-    );
-    const body = await readBody(c);
-    const botId = String(body.bot_id ?? body.botId ?? '');
-    const text = String(body.text ?? '');
-    const voice = typeof body.voice === 'string' ? body.voice : undefined;
-    if (!botId) return c.json({ error: 'bot_id required' }, 400);
-    if (!text.trim()) return c.json({ error: 'text required' }, 400);
-    const r = await speakInMeeting(projectId, botId, text, voice);
-    if (!r.ok) return c.json({ error: r.error }, r.status as 400 | 404 | 502 | 503);
-    return c.json({ ok: true, voice: r.voice });
   },
 );
 
@@ -2726,8 +2675,7 @@ projectsApp.openapi(
       accountDefault: defaults.account,
       agentDefaults: defaults.agents,
       projectDefault: defaults.projects[projectId] ?? null,
-      resolvedForCaller:
-        resolved.model ?? (freeTier ? null : config.LLM_GATEWAY_DEFAULT_MODEL),
+      resolvedForCaller: resolved.model ?? (freeTier ? null : config.LLM_GATEWAY_DEFAULT_MODEL),
       resolvedSource: resolved.source,
       freeTier,
     });

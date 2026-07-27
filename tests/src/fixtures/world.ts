@@ -12,14 +12,19 @@
 import { Client, type Identity } from '../core/client';
 import type { Env } from '../core/env';
 import { log } from '../core/log';
-import type { CreatedSession, Fixtures, Principal, Principals } from '../core/types';
+import type {
+  CreatedProject,
+  CreatedSession,
+  Fixtures,
+  Principal,
+  Principals,
+} from '../core/types';
 import type { RegisteredFlow } from '../core/flow';
 import { ResourceStack } from './registry';
 import { adminDeleteUser } from './supabase';
 import { provisionMatrix, synthUser, type Provisioned } from './principals';
 import { provisionProject } from './provision';
 import { grantEphemeralPlatformAdmin } from './platform-admin';
-import { RunRepositoryPool } from './repository-pool';
 
 const PUBLIC_DOMAINS = new Set(['system', 'access']);
 
@@ -92,48 +97,31 @@ export async function buildWorld(env: Env, flows: RegisteredFlow[]): Promise<Wor
   const adminClient = new Client(env.apiUrl).as(owner as Identity);
   // Users synthesized mid-run (team members) — deleted in teardownAll.
   const extraUserIds: string[] = [];
+  // One shared read-only project, provisioned at most once per run.
+  let sharedProjectPromise: Promise<CreatedProject> | null = null;
   const sharedStack = new ResourceStack(adminClient);
-  const repositoryPool = new RunRepositoryPool(runId, {
-    async provision() {
-      const name = `e2e-${runId}-pool`;
-      const id = await provisionProject(adminClient, {
-        name,
-        seed_starter: true,
-      });
-      sharedStack.push('project', id);
-      return { project: { id, name } };
-    },
-    async registerProject(input) {
-      const res = await adminClient.post('/v1/projects/provision', {
-        name: input.name,
-        ...(input.accountId ? { account_id: input.accountId } : {}),
-        repository_source_project_id: input.sourceProjectId,
-        default_branch: input.branch,
-      });
-      const body = res.json<any>();
-      const id = body?.project_id;
-      if (res.statusCode !== 201 || typeof id !== 'string' || !id) {
-        throw new Error(
-          `repository pool project registration failed: HTTP ${res.statusCode}: ${res.text()}`,
-        );
-      }
-      return { id, name: input.name };
-    },
-  });
 
   const fixturesFor = (stack: ResourceStack): Fixtures => ({
     name: (slug) => `e2e-${runId}-${slug}`,
     sharedProject() {
-      return repositoryPool.sharedProject();
+      if (!sharedProjectPromise) {
+        sharedProjectPromise = (async () => {
+          const id = await provisionProject(adminClient, { name: `e2e-${runId}-shared` });
+          sharedStack.push('project', id);
+          return { id, name: `e2e-${runId}-shared` } as CreatedProject;
+        })();
+      }
+      return sharedProjectPromise;
     },
     async project(opts) {
       const name = opts?.name ?? `e2e-${runId}-proj-${rand()}`;
-      const project = await repositoryPool.project({
+      const id = await provisionProject(adminClient, {
         name,
-        ...(opts?.accountId ? { accountId: opts.accountId } : {}),
+        ...(opts?.accountId ? { account_id: opts.accountId } : {}),
+        ...(opts?.seed ? { seed_starter: true } : {}),
       });
-      stack.push('project', project.id);
-      return project;
+      stack.push('project', id);
+      return { id, name } as CreatedProject;
     },
     async team(opts) {
       const res = await adminClient.post('/v1/accounts', {
@@ -173,12 +161,13 @@ export async function buildWorld(env: Env, flows: RegisteredFlow[]): Promise<Wor
         },
         async project(o) {
           const name = o?.name ?? `e2e-${runId}-tproj-${rand()}`;
-          const project = await repositoryPool.project({
+          const id = await provisionProject(adminClient, {
             name,
-            accountId,
+            account_id: accountId,
+            ...(o?.seed ? { seed_starter: true } : {}),
           });
-          stack.push('project', project.id);
-          return project;
+          stack.push('project', id);
+          return { id, name } as CreatedProject;
         },
       };
     },
@@ -230,12 +219,7 @@ export async function buildWorld(env: Env, flows: RegisteredFlow[]): Promise<Wor
     newStack: () => new ResourceStack(adminClient),
     makeFixtures: fixturesFor,
     async teardownAll() {
-      let sharedCleanupError: unknown;
-      try {
-        await sharedStack.teardown({ throwOnFailure: true });
-      } catch (err) {
-        sharedCleanupError = err;
-      }
+      await sharedStack.teardown();
       if (revokePlatformAdmin) {
         try {
           await revokePlatformAdmin();
@@ -261,7 +245,6 @@ export async function buildWorld(env: Env, flows: RegisteredFlow[]): Promise<Wor
           log.warn(`teardown user ${uid} failed: ${(err as Error)?.message ?? err}`);
         }
       }
-      if (sharedCleanupError) throw sharedCleanupError;
     },
   };
 }

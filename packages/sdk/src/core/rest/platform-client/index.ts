@@ -19,5 +19,5 @@ export * from './backups';
 export * from './ssh';
 export * from './updates';
 export * from './instance-admin';
-export * from './maintenance';
+export * from './host-boundary';
 export * from './github-app';

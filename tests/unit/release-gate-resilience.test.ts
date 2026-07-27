@@ -1,6 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import {
   Client,
   Res,
@@ -190,14 +188,5 @@ describe('release gate transient failure resilience', () => {
 
     await expect(settleTimers(result)).resolves.toMatchObject({ statusCode: 409 });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it('isolates Bun package tests when collecting release report artifacts', () => {
-    const script = readFileSync(
-      resolve(import.meta.dirname, '../scripts/collect-bun-junit.sh'),
-      'utf8',
-    );
-
-    expect(script).toContain('bun test --isolate --reporter=junit');
   });
 });

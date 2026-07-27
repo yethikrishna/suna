@@ -72,6 +72,7 @@ import {
   validateSessionConnectorBindings,
 } from './session-connector-bindings';
 import { canOverride, resolveSessionOrigin } from './session-origin';
+import { resolveEndUserRef } from './end-user-ref';
 import { resolveSessionSandboxSlug } from './session-sandbox-metadata';
 import {
   buildSessionRuntimeContextEnv,
@@ -672,19 +673,27 @@ export async function createProjectSession(input: {
       },
     };
   }
-  const requestedOriginRef = normalizeString(body.origin_ref);
-  // Gate on whether origin_ref was SUPPLIED (any non-empty string, incl. a
-  // whitespace-only one), not on its trimmed value — otherwise a non-backend
-  // caller could send origin_ref: "   " to slip past the 403, since
-  // normalizeString would null it out.
-  const originRefProvided = typeof body.origin_ref === 'string' && body.origin_ref.length > 0;
+  // Accept `end_user_ref` and its deprecated alias `origin_ref`. Disagreeing
+  // values are rejected rather than silently resolved — picking either would
+  // misattribute every usage row for this session.
+  const endUserRef = resolveEndUserRef(body);
+  if (!endUserRef.ok) {
+    return {
+      error: { status: 400, body: { error: endUserRef.message, code: endUserRef.code } },
+    };
+  }
+  const requestedOriginRef = endUserRef.value;
+  // Gate on whether it was SUPPLIED (any non-empty string, incl. a
+  // whitespace-only one), not on the trimmed value — otherwise a non-backend
+  // caller could send "   " to slip past the 403.
+  const originRefProvided = endUserRef.suppliedUnder !== null;
   if (originRefProvided && !canOverride(origin, 'origin_ref')) {
     return {
       error: {
         status: 403,
         body: {
           error:
-            'origin_ref may only be set by a backend-origin session — authenticate with an API key / PAT or a service-account bearer',
+            'end_user_ref may only be set by a backend-origin session — authenticate with an API key / PAT or a service-account bearer',
           code: 'origin_override_forbidden',
         },
       },

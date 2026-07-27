@@ -40,7 +40,9 @@ const UsageBreakdownItemSchema = z
     day: z.string().optional(),
     provider: z.string().nullable().optional(),
     model: z.string().optional(),
-    /** Present only for group_by=origin_ref (Kortix-as-a-Backend). */
+    /** Present only for group_by=end_user_ref (Kortix-as-a-Backend). */
+    end_user_ref: z.string().optional(),
+    /** @deprecated Renamed to `end_user_ref`; echoed with the same value. */
     origin_ref: z.string().optional(),
     input_tokens: z.number(),
     output_tokens: z.number(),
@@ -62,9 +64,11 @@ const UsageQuerySchema = z
   .object({
     start: z.string().optional(),
     end: z.string().optional(),
-    group_by: z.enum(['model', 'provider', 'day', 'origin_ref']).optional(),
+    group_by: z.enum(['model', 'provider', 'day', 'origin_ref', 'end_user_ref']).optional(),
     account_id: z.string().optional(),
     /** Kortix-as-a-Backend: narrow to a single end-user of the wrapper. */
+    end_user_ref: z.string().optional(),
+    /** @deprecated Renamed to `end_user_ref`; still accepted. */
     origin_ref: z.string().optional(),
   })
   .openapi('UsageQuery');
@@ -93,6 +97,7 @@ usageApp.openapi(
         end: c.req.query('end'),
         group_by: c.req.query('group_by'),
         origin_ref: c.req.query('origin_ref'),
+        end_user_ref: c.req.query('end_user_ref'),
       });
     } catch (err) {
       if (err instanceof InvalidUsageQueryError) {
@@ -129,7 +134,7 @@ usageApp.openapi(
       return c.json({ data });
     }
 
-    if (parsed.groupBy === 'origin_ref') {
+    if (parsed.groupBy === 'origin_ref' || parsed.groupBy === 'end_user_ref') {
       // Only attributed rows participate. Unattributed spend (everything that
       // isn't a backend session — the playground, the legacy router path, and
       // anything written before this column existed) has a NULL origin_ref and

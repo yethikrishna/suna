@@ -556,6 +556,13 @@ export const SessionCreateInputSchema = z
     // Accepted only from a backend-origin caller (an account API key / PAT or a
     // service-account bearer); any other origin supplying it is rejected 403
     // (see resolveSessionOrigin / canOverride).
+    end_user_ref: z.string().trim().min(1).max(256).optional(),
+    /**
+     * @deprecated Renamed to `end_user_ref`. Still accepted, and will stay
+     * accepted — this is a published wire field. Sending both is fine only if
+     * they agree; disagreeing values are rejected 400 END_USER_REF_CONFLICT
+     * rather than silently picking one and misattributing the usage rows.
+     */
     origin_ref: z.string().trim().min(1).max(256).optional(),
     // Backend-only: narrow which project secrets (by identifier) this session's
     // sandbox receives, from the default agent-grant set down to this list. `[]`
@@ -609,6 +616,8 @@ export const ProjectSessionSchema = z.object({
   /** Policy class the session was created under (derived, never client-set). */
   origin: z.enum(['user', 'trigger', 'schedule', 'backend', 'system']),
   /** Backend wrapper's end-user handle; non-null only for backend sessions. */
+  end_user_ref: z.string().nullable(),
+  /** @deprecated Renamed to `end_user_ref`. Echoed with the same value. */
   origin_ref: z.string().nullable(),
   /** Backend-set per-session secrets allowlist (identifiers); null = no narrowing. */
   secrets_allowlist: SessionSecretsAllowlistSchema.nullable(),

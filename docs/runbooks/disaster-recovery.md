@@ -124,6 +124,15 @@ versioning, KMS encryption, and a 35-day lifecycle expiration.
 Customer application data remains outside EKS. Velero protects Kubernetes
 objects and EBS volume snapshots only.
 
+Validation on 2026-07-27 produced these results:
+
+- `BackupStorageLocation/default` reported `Available`.
+- `velero-readiness-full-20260727t2235z` backed up `1,844/1,844` objects.
+- The full backup reported `0` errors and `0` warnings.
+- All `5/5` EBS snapshots reached `completed` and `100%`.
+- A scoped restore recovered the expected ConfigMap value in a mapped
+  throwaway namespace.
+
 ```bash
 CTX=kortix-prod-eks
 

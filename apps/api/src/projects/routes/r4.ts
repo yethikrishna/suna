@@ -161,6 +161,24 @@ interface SlackAuthTest {
 
 const ConnectionProfileViewSchema = ConnectionProfileSchema.openapi('ConnectionProfile');
 
+/**
+ * The owner/admin ROSTER shape — deliberately narrower than ConnectionProfile.
+ * It answers "who has connected this connector, and does it still work?" and
+ * nothing else. `label` and `metadata` are omitted on purpose: they are a
+ * member's own annotations on a PRIVATE connection and can carry personal
+ * identifiers (an email, an inbox id, a workspace id), which a peer manager has
+ * no need to see. Credentials are never in any profile shape.
+ */
+const ConnectionRosterEntrySchema = z
+  .object({
+    profile_id: z.string().uuid(),
+    connector_alias: z.string(),
+    owner_type: z.enum(['project', 'agent', 'member', 'subject', 'external']),
+    owner_id: z.string().nullable(),
+    status: z.enum(['active', 'revoked', 'error']),
+  })
+  .openapi('ConnectionRosterEntry');
+
 function serializeConnectionProfile(row: {
   profileId: string;
   connectorAlias: string;
@@ -317,7 +335,7 @@ projectsApp.openapi(
     ...auth,
     request: { params: z.object({ projectId: z.string() }) },
     responses: {
-      200: json(z.object({ profiles: z.array(ConnectionProfileViewSchema) }), 'Profiles'),
+      200: json(z.object({ profiles: z.array(ConnectionRosterEntrySchema) }), 'Profiles'),
       ...errors(403, 404),
     },
   }),
@@ -325,11 +343,15 @@ projectsApp.openapi(
     const projectId = c.req.param('projectId');
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
-    // A read-only roster of EVERY member's connection for this project — who has
-    // connected which account, and its status. Manage-gated (owner/manager). The
-    // per-caller member scoping the plain list applies is deliberately NOT applied
-    // here; credentials are never in this shape (serializeConnectionProfile omits
-    // them), so it exposes existence + status + label + owner, never a secret.
+    // A read-only roster of EVERY member's connection for this project: WHO has
+    // connected which connector, and whether it still works. Manage-gated
+    // (owner/manager), and deliberately NARROWER than the caller-scoped list —
+    // it returns identity + status ONLY. `label` and `metadata` are excluded on
+    // purpose: they are a member's own annotations on a PRIVATE connection and
+    // can carry personal identifiers (an email, an inbox_id, a workspace id).
+    // The plain list hides other members' profiles entirely, so this route is
+    // the one place peer rows are visible — it must disclose the minimum that
+    // answers "has this person connected?", nothing more.
     const mayManage = await projectCapabilityAllowed(
       c,
       loaded.userId,
@@ -349,10 +371,7 @@ projectsApp.openapi(
         connectorAlias: executorConnectors.slug,
         ownerType: executorConnectionProfiles.ownerType,
         ownerId: executorConnectionProfiles.ownerId,
-        label: executorConnectionProfiles.label,
         status: executorConnectionProfiles.status,
-        isDefault: executorConnectionProfiles.isDefault,
-        metadata: executorConnectionProfiles.metadata,
       })
       .from(executorConnectionProfiles)
       .innerJoin(
@@ -360,7 +379,15 @@ projectsApp.openapi(
         eq(executorConnectors.connectorId, executorConnectionProfiles.connectorId),
       )
       .where(eq(executorConnectionProfiles.projectId, projectId));
-    return c.json({ profiles: rows.map(serializeConnectionProfile) });
+    return c.json({
+      profiles: rows.map((row) => ({
+        profile_id: row.profileId,
+        connector_alias: row.connectorAlias,
+        owner_type: row.ownerType,
+        owner_id: row.ownerId,
+        status: row.status,
+      })),
+    });
   },
 );
 

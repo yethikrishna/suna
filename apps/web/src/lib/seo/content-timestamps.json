@@ -19,10 +19,10 @@
   "docs:host/architecture": "2026-07-22T04:58:51+02:00",
   "docs:host": "2026-07-23T11:33:30+02:00",
   "docs:index": "2026-07-22T04:58:51+02:00",
-  "docs:project/agents": "2026-07-28T22:23:05+02:00",
+  "docs:project/agents": "2026-07-28T22:24:28+02:00",
   "docs:project": "2026-07-22T04:58:51+02:00",
   "docs:project/legacy-toml": "2026-07-22T04:58:51+02:00",
-  "docs:project/manifest": "2026-07-28T22:23:05+02:00",
+  "docs:project/manifest": "2026-07-28T22:24:28+02:00",
   "docs:project/models": "2026-07-22T04:58:51+02:00",
   "docs:project/secrets": "2026-07-22T04:58:51+02:00",
   "docs:quickstart": "2026-07-22T04:58:51+02:00",
@@ -34,6 +34,6 @@
   "docs:sdk/sessions": "2026-07-28T07:36:45+02:00",
   "docs:work/change-requests": "2026-07-22T04:58:51+02:00",
   "docs:work": "2026-07-22T04:58:51+02:00",
-  "docs:work/runtime": "2026-07-28T22:23:05+02:00",
+  "docs:work/runtime": "2026-07-28T22:24:28+02:00",
   "docs:work/sessions": "2026-07-24T10:36:08+02:00"
 }

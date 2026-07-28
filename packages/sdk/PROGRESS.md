@@ -3639,3 +3639,70 @@ Rendered agent selection and provider-row verification remain unexecuted.
 **Feature delivery status: NOT YET.**
 PR merge, Deploy Dev, deployed SHA proof, and deployed protocol verification
 remain.
+
+---
+
+### 2026-07-28 — session `acp-multi-harness` deployed completion
+
+Completed repository delivery and deployed protocol verification.
+
+PR #5749 merged as `239cda8a2c7b8e3862cae5d968224c1baf1d0a02`.
+Its 25 executed checks passed.
+The superseding Deploy Dev run `30402685106` deployed API and frontend commit
+`8e86e27d045b8349eaf7dc9cfba47086e93cfaf8`.
+Git confirmed that the feature merge is an ancestor of that deployed commit.
+
+The first deployed smoke found two environment and restart conditions:
+
+- The dev platform OpenAI key returned `401 invalid_api_key`.
+- A Daytona stop/start changed its preview ingress credential.
+  Another API replica could retain the old credential for five minutes.
+
+The smoke runner now accepts a disposable project model override and an optional
+temporary OpenAI key.
+The local encrypted OpenAI key returned HTTP `200` from `GET /v1/models`.
+PR #5759 added one ACP ingress refresh-and-retry after `401` or `403`.
+It also retries prompt env synchronization after the same authentication
+rejection.
+PR #5759 merged as `35d4063c954176338e809abc4329e43410786122`.
+Its 15 executed checks passed.
+Deploy Dev run `30406252134` completed successfully for that exact SHA.
+`GET https://dev-api.kortix.com/v1/health` reported:
+
+- `environment`: `dev`
+- `version`: `0.11.1-dev.35d4063c`
+- `commit`: `35d4063c954176338e809abc4329e43410786122`
+
+Deployed Daytona protocol smoke against
+`https://dev-api.kortix.com/v1` reported:
+
+- OpenCode: pass.
+- Claude Code: pass.
+- Codex: pass.
+- Pi: pass.
+- Final result: **4/4 harnesses passed**.
+
+Each harness verified its headless prompt, follow-up prompt, transcript reload,
+immutable harness identity, in-place restart, post-restart prompt, and persisted
+ACP identity.
+
+The disposable fixture project was
+`196ff19b-dfa1-4aae-98eb-9fa5138446b6`.
+Cleanup verification found:
+
+- Project status: `archived`.
+- OpenCode, Claude Code, Codex, and Pi session status: `stopped`.
+- Four session sandbox rows: `archived`.
+- Matching sandbox rows: `0`.
+
+The connected-provider row no longer exposes the model-dependent verification
+action.
+The SDK verification route remains compatible.
+The in-app browser runtime exposed no browser.
+Rendered provider-row verification remains unexecuted.
+
+**Status:** COMPLETE.
+
+**Shippable to production: YES.** Local suites, CI, merge, deployed SHA,
+deployed four-harness protocol behavior, restart recovery, and fixture cleanup
+all pass.

@@ -3,12 +3,13 @@ import { isHarnessId } from '@kortix/shared/harnesses';
 import { and, eq } from 'drizzle-orm';
 import type { Context } from 'hono';
 
+import { PROJECT_ACTIONS } from '../../iam';
 import type { ProviderName } from '../../platform/providers';
 import { db } from '../../shared/db';
 import type { AppEnv } from '../../types';
-import { loadProjectForUser, loadVisibleSession } from '../lib/access';
-import { appendAcpEnvelope, loadAcpTranscript } from '../lib/acp-transcript';
+import { assertProjectCapability, loadProjectForUser, loadVisibleSession } from '../lib/access';
 import { createPersistedAcpSseProxy } from '../lib/acp-sse-proxy';
+import { appendAcpEnvelope, loadAcpTranscript } from '../lib/acp-transcript';
 import { projectsApp } from '../lib/app';
 import { syncSandboxEnvForPrompt } from '../lib/sandbox-env-sync';
 import { sandboxRuntimeEndpoint } from '../runtime-inspection';
@@ -19,6 +20,7 @@ type AcpSessionBinding = {
   acpServerId: string;
   runtimeHarness: 'claude' | 'codex' | 'opencode' | 'pi';
   userId: string;
+  canManageSharing: boolean;
 };
 
 function decodedResponseHeaders(upstream: Response): Headers {
@@ -32,12 +34,14 @@ function decodedResponseHeaders(upstream: Response): Headers {
 async function resolveAcpBinding(
   c: Context<AppEnv>,
   action: 'read' | 'session',
+  capability: string,
 ): Promise<AcpSessionBinding | null> {
   const projectId = c.req.param('projectId');
   const sessionId = c.req.param('sessionId');
   if (!projectId || !sessionId) return null;
   const loaded = await loadProjectForUser(c, projectId, action);
   if (!loaded) return null;
+  await assertProjectCapability(c, loaded.userId, loaded.row.accountId, projectId, capability);
   const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
   if (!visible) return null;
   const metadata = (visible.row.metadata ?? {}) as Record<string, unknown>;
@@ -54,11 +58,16 @@ async function resolveAcpBinding(
     acpServerId: metadata.acp_server_id,
     runtimeHarness: metadata.runtime_harness,
     userId: loaded.userId,
+    canManageSharing: visible.canManageSharing,
   };
 }
 
-async function resolveAcpTarget(c: Context<AppEnv>, action: 'read' | 'session') {
-  const binding = await resolveAcpBinding(c, action);
+async function resolveAcpTarget(
+  c: Context<AppEnv>,
+  action: 'read' | 'session',
+  capability: string,
+) {
+  const binding = await resolveAcpBinding(c, action, capability);
   if (!binding) return null;
   const [sandbox] = await db
     .select({
@@ -84,7 +93,7 @@ async function resolveAcpTarget(c: Context<AppEnv>, action: 'read' | 'session') 
 }
 
 projectsApp.get('/:projectId/sessions/:sessionId/acp/transcript', async (c) => {
-  const binding = await resolveAcpBinding(c, 'read');
+  const binding = await resolveAcpBinding(c, 'read', PROJECT_ACTIONS.PROJECT_SESSION_READ);
   if (!binding) return c.json({ error: 'ACP session not found' }, 404);
   const rawAfter = c.req.query('after')?.trim();
   const afterOrdinal = rawAfter ? Number(rawAfter) : 0;
@@ -104,7 +113,15 @@ projectsApp.get('/:projectId/sessions/:sessionId/acp/transcript', async (c) => {
 
 projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp', async (c) => {
   const method = c.req.method.toUpperCase();
-  const target = await resolveAcpTarget(c, method === 'GET' ? 'read' : 'session');
+  const target = await resolveAcpTarget(
+    c,
+    method === 'GET' ? 'read' : 'session',
+    method === 'GET'
+      ? PROJECT_ACTIONS.PROJECT_SESSION_READ
+      : method === 'DELETE'
+        ? PROJECT_ACTIONS.PROJECT_SESSION_STOP
+        : PROJECT_ACTIONS.PROJECT_SESSION_START,
+  );
   if (!target) return c.json({ error: 'ACP session runtime not found' }, 404);
   const upstreamUrl =
     `${target.endpoint.url}/kortix/acp/${encodeURIComponent(target.acpServerId)}` +
@@ -239,6 +256,12 @@ projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp',
     });
   }
 
+  if (!target.canManageSharing) {
+    return c.json(
+      { error: 'Only the session owner or an account owner/admin can stop this session' },
+      403,
+    );
+  }
   const upstream = await fetch(upstreamUrl, {
     method: 'DELETE',
     headers,

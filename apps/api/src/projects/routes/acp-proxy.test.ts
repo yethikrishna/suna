@@ -9,8 +9,19 @@ let upstreamUrl = '';
 let upstreamHeaders = new Headers();
 let syncedProviderHeaders: Record<string, string> | null = null;
 let accessActions: string[] = [];
+let capabilityActions: string[] = [];
+let canManageSharing = true;
 
 mock.module('../lib/access', () => ({
+  assertProjectCapability: async (
+    _c: unknown,
+    _userId: string,
+    _accountId: string,
+    _projectId: string,
+    action: string,
+  ) => {
+    capabilityActions.push(action);
+  },
   loadProjectForUser: async (_c: unknown, _projectId: string, action: string) => {
     accessActions.push(action);
     return {
@@ -27,6 +38,7 @@ mock.module('../lib/access', () => ({
         acp_server_id: SESSION_ID,
       },
     },
+    canManageSharing,
   }),
 }));
 
@@ -77,6 +89,9 @@ const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input, init) => {
   upstreamUrl = String(input);
   upstreamHeaders = new Headers(init?.headers);
+  if (init?.method === 'DELETE') {
+    return new Response(null, { status: 204 });
+  }
   const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
   return Response.json({
     jsonrpc: '2.0',
@@ -94,6 +109,8 @@ beforeEach(() => {
   upstreamHeaders = new Headers();
   syncedProviderHeaders = null;
   accessActions = [];
+  capabilityActions = [];
+  canManageSharing = true;
 });
 
 afterAll(() => {
@@ -116,6 +133,7 @@ test('POST .../acp proxies through the immutable harness route and persists both
 
   expect(response.status).toBe(200);
   expect(accessActions).toEqual(['session']);
+  expect(capabilityActions).toEqual(['project.session.start']);
   expect(upstreamUrl).toBe(`https://sandbox.test/kortix/acp/${SESSION_ID}?agent=codex`);
   expect(upstreamHeaders.get('x-kortix-user-context')).toBe('signed');
   expect(appended).toEqual([
@@ -162,4 +180,28 @@ test('GET transcript retains project read access', async () => {
 
   expect(response.status).toBe(200);
   expect(accessActions).toEqual(['read']);
+  expect(capabilityActions).toEqual(['project.session.read']);
+});
+
+test('DELETE .../acp requires stop capability and session-management authority', async () => {
+  const response = await projectsApp.request(`/${PROJECT_ID}/sessions/${SESSION_ID}/acp`, {
+    method: 'DELETE',
+  });
+
+  expect(response.status).toBe(204);
+  expect(accessActions).toEqual(['session']);
+  expect(capabilityActions).toEqual(['project.session.stop']);
+});
+
+test('DELETE .../acp rejects a visible session that the caller cannot manage', async () => {
+  canManageSharing = false;
+
+  const response = await projectsApp.request(`/${PROJECT_ID}/sessions/${SESSION_ID}/acp`, {
+    method: 'DELETE',
+  });
+
+  expect(response.status).toBe(403);
+  expect(await response.json()).toEqual({
+    error: 'Only the session owner or an account owner/admin can stop this session',
+  });
 });

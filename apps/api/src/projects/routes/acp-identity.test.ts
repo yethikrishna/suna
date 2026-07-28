@@ -5,6 +5,7 @@ const SESSION_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 
 let persistCalls: unknown[] = [];
 let persistError: Error | null = null;
+let capabilityActions: string[] = [];
 
 class TestConflictError extends Error {
   constructor(readonly code: string) {
@@ -13,6 +14,15 @@ class TestConflictError extends Error {
 }
 
 mock.module('../lib/access', () => ({
+  assertProjectCapability: async (
+    _c: unknown,
+    _userId: string,
+    _accountId: string,
+    _projectId: string,
+    action: string,
+  ) => {
+    capabilityActions.push(action);
+  },
   loadProjectForUser: async (_c: unknown, projectId: string) =>
     projectId === PROJECT_ID
       ? { userId: 'user-1', row: { projectId: PROJECT_ID, accountId: 'account-1' } }
@@ -42,6 +52,7 @@ await import('./acp-identity');
 beforeEach(() => {
   persistCalls = [];
   persistError = null;
+  capabilityActions = [];
 });
 
 function putIdentity(body: Record<string, unknown>) {
@@ -60,6 +71,7 @@ test('PUT .../acp-identity persists the immutable server, harness, and protocol 
   });
 
   expect(response.status).toBe(200);
+  expect(capabilityActions).toEqual(['project.session.start']);
   expect(persistCalls).toEqual([
     {
       projectId: PROJECT_ID,

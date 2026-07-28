@@ -1,13 +1,14 @@
-import { HARNESS_IDS, type HarnessId } from '@kortix/shared/harnesses';
 import { createRoute, z } from '@hono/zod-openapi';
+import { HARNESS_IDS, type HarnessId } from '@kortix/shared/harnesses';
 
+import { PROJECT_ACTIONS } from '../../iam';
 import { auth, errors, json } from '../../openapi';
 import { db } from '../../shared/db';
+import { assertProjectCapability, loadProjectForUser, loadVisibleSession } from '../lib/access';
 import {
   AcpSessionIdentityConflictError,
   persistAcpSessionIdentity,
 } from '../lib/acp-session-identity';
-import { loadProjectForUser, loadVisibleSession } from '../lib/access';
 import { projectsApp } from '../lib/app';
 import { UUID_V4_REGEX } from '../lib/serializers';
 
@@ -48,6 +49,13 @@ projectsApp.openapi(
 
     const loaded = await loadProjectForUser(c, projectId, 'session');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_SESSION_START,
+    );
     const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
     if (!visible) return c.json({ error: 'Not found' }, 404);
 

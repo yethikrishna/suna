@@ -34,32 +34,48 @@ export function voiceTranscriptKey(projectId: string | undefined, sessionId: str
 }
 
 interface UseVoiceTranscriptOptions {
-  /** Skip the query entirely (e.g. not the active session / missing ids). */
-  enabled?: boolean;
+  /** Poll only while the active session's Voice panel is visible. */
+  enabled: boolean;
   /** Poll cadence in ms. Default 2.5s; pass `false` to poll once. */
   refetchInterval?: number | false;
-  /** Suppress the global error toast (for an ambient/background mount). */
-  silent?: boolean;
 }
 
 export function useVoiceTranscript(
   projectId: string | undefined,
   sessionId: string | undefined,
-  options?: UseVoiceTranscriptOptions,
+  options: UseVoiceTranscriptOptions,
 ) {
-  const enabled = !!projectId && !!sessionId && (options?.enabled ?? true);
+  const enabled = !!projectId && !!sessionId && options.enabled;
   return useQuery<VoiceTranscript>({
     queryKey: voiceTranscriptKey(projectId, sessionId),
     // `enabled` guards presence, so the `?? ''` fallbacks are never exercised.
     queryFn: () =>
       getVoiceTranscript(projectId ?? '', sessionId ?? '', {
         limit: TRANSCRIPT_LIMIT,
-        showErrors: !options?.silent,
+        showErrors: true,
       }),
     enabled,
     staleTime: 2_000,
-    refetchInterval: options?.refetchInterval ?? VOICE_TRANSCRIPT_REFETCH_MS,
+    refetchInterval: options.refetchInterval ?? VOICE_TRANSCRIPT_REFETCH_MS,
   });
+}
+
+interface VoiceTranscriptVisibility {
+  panelOpen: boolean;
+  voiceView: boolean;
+  visibleLayout: boolean;
+  booting: boolean;
+  transient: boolean;
+}
+
+export function shouldPollVoiceTranscript({
+  panelOpen,
+  voiceView,
+  visibleLayout,
+  booting,
+  transient,
+}: VoiceTranscriptVisibility): boolean {
+  return panelOpen && voiceView && visibleLayout && !booting && !transient;
 }
 
 /** Display label for a turn's speaker column. 'tool' turns carry their own

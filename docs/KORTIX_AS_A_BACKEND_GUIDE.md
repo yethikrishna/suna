@@ -506,12 +506,24 @@ before.
 | `runtime_context` | **no** | Create-only. |
 | `end_user_ref` | **no** | Create-only, and it is what usage attribution keys on. |
 
-**Known limitation.** A mid-session agent switch re-scopes *secrets* but not
-*connectors*: the in-sandbox token's grant is minted once from the create-time
-agent and is not re-minted. A switched agent therefore keeps the boot agent's
-connector authority. Operators who need per-agent connector governance enforced
-on switch can set `KORTIX_ENFORCE_SESSION_AGENT_LOCK=1`, which refuses the
-switch outright.
+**A mid-session agent switch is governed, and the two halves are governed
+differently — on purpose.**
+
+- **Connectors and Kortix CLI actions are re-minted.** The switched-to agent's
+  own grant is written onto the session token before the prompt runs, so it
+  reaches exactly the connectors its manifest entry declares. These gates read
+  the token at *call* time, so re-pointing it re-scopes every subsequent call.
+- **Secrets refuse the switch** (`409 AGENT_SWITCH_REQUIRES_NEW_SESSION`) when
+  the two agents declare different `secrets`. There is nothing to re-scope: by
+  the time the switch is visible, the first agent's secrets are already in the
+  sandbox's env file, in every shell it spawned, and in its own context.
+  Narrowing later cannot un-read them. Agents with the *same* secrets grant
+  switch freely.
+
+If the re-mint cannot be applied, the prompt is refused with
+`503 AGENT_SWITCH_GRANT_UNAPPLIED` rather than run under the previous agent's
+authority. Operators who want *any* agent change refused, regardless of grants,
+can still set `KORTIX_ENFORCE_SESSION_AGENT_LOCK=1`.
 
 ## Session isolation between your end-users
 

@@ -751,6 +751,7 @@ projectsApp.openapi(
     rows.filter((row) => row.visibility === 'restricted').map((row) => row.sessionId),
   );
   const selected = selectSessionRowsForViewer({
+    endUserRefFiltered: endUserRefFilter !== null,
     rows,
     scope,
     canManageProject,

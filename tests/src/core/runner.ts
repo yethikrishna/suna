@@ -12,6 +12,7 @@ import { allFlows, clearRegistry, type RegisteredFlow } from "./flow";
 import { loadEnv, type Env } from "./env";
 import { log } from "./log";
 import { partitionParallelFlows } from "./lanes";
+import { mapWithConcurrency } from "./concurrency";
 import {
   summarize,
   type Assertion,
@@ -208,19 +209,6 @@ function withTimeout<T>(p: Promise<T>, ms: number, id: string): Promise<T> {
   });
 }
 
-async function pool<T, R>(items: T[], concurrency: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let i = 0;
-  const workers = Array.from({ length: Math.min(concurrency, items.length || 1) }, async () => {
-    while (i < items.length) {
-      const idx = i++;
-      results[idx] = await fn(items[idx]);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
 function positiveWorkerCount(value: number | undefined, fallback: number): number {
   if (value === undefined || !Number.isFinite(value)) return fallback;
   return Math.max(1, Math.trunc(value));
@@ -245,7 +233,11 @@ export async function runSuite(opts: RunOptions): Promise<RunResult> {
     if (opts.workers !== undefined) {
       const workers = positiveWorkerCount(opts.workers, 4);
       log.info(`lanes: ${parallelLane.length} parallel flows · ${workers} explicit workers`);
-      out.push(...(await pool(parallelLane, workers, (f) => runOneFlow(f, env, world, routesHit))));
+      out.push(
+        ...(await mapWithConcurrency(parallelLane, workers, (f) =>
+          runOneFlow(f, env, world, routesHit),
+        )),
+      );
     } else {
       const { apiLane, sandboxLane } = partitionParallelFlows(parallelLane);
       const apiWorkers = positiveWorkerCount(
@@ -261,8 +253,10 @@ export async function runSuite(opts: RunOptions): Promise<RunResult> {
           `${sandboxLane.length} sandbox flows × ${sandboxWorkers} workers`,
       );
       const [apiResults, sandboxResults] = await Promise.all([
-        pool(apiLane, apiWorkers, (f) => runOneFlow(f, env, world, routesHit)),
-        pool(sandboxLane, sandboxWorkers, (f) => runOneFlow(f, env, world, routesHit)),
+        mapWithConcurrency(apiLane, apiWorkers, (f) => runOneFlow(f, env, world, routesHit)),
+        mapWithConcurrency(sandboxLane, sandboxWorkers, (f) =>
+          runOneFlow(f, env, world, routesHit),
+        ),
       ]);
       out.push(...apiResults, ...sandboxResults);
     }

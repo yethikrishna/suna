@@ -47,6 +47,7 @@ bun bin/ke2e.ts run --workers 1
 (`KE2E_OWNER_*`, `KE2E_ADMIN_TOKEN`, capabilities, destructive-run guards).
 `KE2E_API_WORKERS` and `KE2E_SANDBOX_WORKERS` set the split-lane defaults.
 An explicit `--workers` value disables split lanes and caps the complete run.
+`KE2E_TEARDOWN_WORKERS` controls user cleanup concurrency. Its default is `4`.
 
 ### Adding a flow
 

@@ -26,6 +26,7 @@ import { provisionMatrix, synthUser, type Provisioned } from './principals';
 import { provisionProject } from './provision';
 import { grantEphemeralPlatformAdmin } from './platform-admin';
 import { createDatabaseProject, deleteDatabaseProject } from './database-project';
+import { mapWithConcurrency } from '../core/concurrency';
 
 const PUBLIC_DOMAINS = new Set(['system', 'access']);
 
@@ -289,13 +290,15 @@ export async function buildWorld(env: Env, flows: RegisteredFlow[]): Promise<Wor
           log.warn(`teardown run account ${acct} failed: ${(err as Error)?.message ?? err}`);
         }
       }
-      for (const uid of [...provisioned.supabaseUserIds, ...extraUserIds]) {
+      const userIds = [...provisioned.supabaseUserIds, ...extraUserIds];
+      const cleanupWorkers = Number(process.env.KE2E_TEARDOWN_WORKERS ?? 4);
+      await mapWithConcurrency(userIds, cleanupWorkers, async (uid) => {
         try {
           await adminDeleteUser(env, uid);
         } catch (err) {
           log.warn(`teardown user ${uid} failed: ${(err as Error)?.message ?? err}`);
         }
-      }
+      });
     },
   };
 }

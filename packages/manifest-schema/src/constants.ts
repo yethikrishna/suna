@@ -18,7 +18,7 @@ export const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 export const ENV_NAME_RE = /^[A-Z_][A-Z0-9_]*$/;
 
 export const TRIGGER_TYPES = ['cron', 'webhook'] as const;
-export { HARNESS_IDS as V3_HARNESS_VALUES } from '@kortix/shared/harnesses';
+export { HARNESS_IDS as V3_HARNESS_VALUES } from '@kortix/shared';
 // Providers a kortix.yaml may declare. `channel` is included because the
 // platform itself writes a `connectors:` entry with `provider: channel` into the
 // manifest when a Slack/email channel is connected (see executor/channel-manifest.ts), so

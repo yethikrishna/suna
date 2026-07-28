@@ -85,6 +85,7 @@ export function serializeSession(
   // display chain instead of a junk title (heals old rows with no backfill).
   const rawAutoName = typeof row.metadata?.name === 'string' ? row.metadata.name : null;
   const autoName = isPlaceholderOpencodeTitle(rawAutoName) ? null : rawAutoName;
+  const canAccess = ctx?.canAccess ?? true;
   return {
     session_id: row.sessionId,
     account_id: row.accountId,
@@ -100,7 +101,10 @@ export function serializeSession(
     agent_name: row.agentName,
     status: row.status,
     error: row.error,
-    metadata: row.metadata ?? {},
+    // A row the caller cannot ACCESS is still listed (scope=project shows a
+    // manager the whole project) but must not carry the session's CONTENT.
+    // metadata holds initial_prompt — the literal text an end-user typed.
+    metadata: canAccess ? (row.metadata ?? {}) : {},
     opencode_sessions: opencodeSessions,
     // Ownership + org-visibility (Phase 2 session sharing).
     created_by: row.createdBy,
@@ -109,15 +113,17 @@ export function serializeSession(
     owner_type: ctx?.ownerType ?? (row.createdBy ? 'unknown' : null),
     visibility: row.visibility,
     origin: row.origin,
-    end_user_ref: row.originRef,
+    // Which END-USER a backend session acts for, and what it may read, are
+    // both session content — withheld on a row the caller cannot open.
+    end_user_ref: canAccess ? row.originRef : null,
     // Deprecated alias, echoed with the same value so wrappers written against
     // the old name keep working. The DB column keeps its original name.
-    origin_ref: row.originRef,
-    secrets_allowlist: row.secretsAllowlist ?? null,
+    origin_ref: canAccess ? row.originRef : null,
+    secrets_allowlist: canAccess ? (row.secretsAllowlist ?? null) : null,
     sharing: visibilityToIntent(row.visibility as 'private' | 'project' | 'restricted', ctx?.grants ?? []),
     is_owner: isOwner,
     can_manage_sharing: isOwner || Boolean(ctx?.canManageProject),
-    can_access: ctx?.canAccess ?? true,
+    can_access: canAccess,
     runtime_status: ctx?.runtimeStatus ?? null,
     deleted_at: ctx?.deletedAt ?? null,
     deleted_by: ctx?.deletedBy ?? null,

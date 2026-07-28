@@ -1,0 +1,70 @@
+import { describe, expect, test } from 'bun:test';
+import { serializeSession } from './serializers';
+
+/**
+ * A row a caller cannot ACCESS must not carry that session's content.
+ *
+ * `GET /sessions?scope=project` deliberately lists rows the caller cannot open
+ * (so a manager sees the whole project), marking each `can_access: false`. The
+ * serializer redacted nothing, so those rows still carried `metadata` — which
+ * holds `initial_prompt`, the literal text an end-user typed — plus the
+ * end-user handle and the session's secret allowlist.
+ */
+const row = (over: Record<string, unknown> = {}) =>
+  ({
+    sessionId: '11111111-1111-4111-8111-111111111111',
+    accountId: 'a',
+    projectId: 'p',
+    branchName: 'b',
+    baseRef: 'main',
+    sandboxProvider: 'daytona',
+    sandboxId: 's',
+    sandboxUrl: null,
+    opencodeSessionId: null,
+    agentName: 'default',
+    status: 'running',
+    error: null,
+    createdBy: 'wrapper',
+    visibility: 'private',
+    origin: 'backend',
+    originRef: 'end-user-alice',
+    secretsAllowlist: ['STRIPE_KEY'],
+    connectorBindingsInheritUnbound: false,
+    metadata: { initial_prompt: 'my private prompt', source: 'backend' },
+    createdAt: new Date('2026-07-21T00:00:00.000Z'),
+    updatedAt: new Date('2026-07-21T00:00:00.000Z'),
+    ...over,
+  }) as never;
+
+describe('serializeSession redaction', () => {
+  test('an inaccessible row carries no metadata, end-user handle, or allowlist', () => {
+    const out = serializeSession(row(), { canAccess: false }) as Record<string, unknown>;
+    expect(out.can_access).toBe(false);
+    expect(out.metadata).toEqual({});
+    expect(out.end_user_ref).toBeNull();
+    expect(out.origin_ref).toBeNull();
+    expect(out.secrets_allowlist).toBeNull();
+  });
+
+  test('an inaccessible row still carries what a listing legitimately needs', () => {
+    // The point of scope=project is that a manager can SEE the session exists,
+    // its status, and when it ran — redaction must not break that.
+    const out = serializeSession(row(), { canAccess: false }) as Record<string, unknown>;
+    expect(out.session_id).toBe('11111111-1111-4111-8111-111111111111');
+    expect(out.status).toBe('running');
+    expect(out.created_by).toBe('wrapper');
+  });
+
+  test('an ACCESSIBLE row is completely unchanged', () => {
+    const out = serializeSession(row(), { canAccess: true }) as Record<string, unknown>;
+    expect(out.metadata).toEqual({ initial_prompt: 'my private prompt', source: 'backend' });
+    expect(out.end_user_ref).toBe('end-user-alice');
+    expect(out.secrets_allowlist).toEqual(['STRIPE_KEY']);
+  });
+
+  test('the default (no ctx) stays accessible — single-session reads are already gated', () => {
+    const out = serializeSession(row()) as Record<string, unknown>;
+    expect(out.can_access).toBe(true);
+    expect(out.end_user_ref).toBe('end-user-alice');
+  });
+});

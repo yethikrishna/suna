@@ -36,8 +36,19 @@ mock.module('../../shared/preview-ownership', () => ({
 mock.module('../../projects/lib/sandbox-env-sync', () => ({
   syncSandboxEnvForPrompt: async () => {},
 }));
+// Same reason as the env sync above: the pre-prompt grant re-mint reads the
+// session's token row, and this file is about DELIVERY dedupe, not grants. It
+// is deliberately NOT a no-op stub of convenience — the real function fails the
+// prompt CLOSED when it cannot read the token (a prompt must never run under an
+// unverified grant), so an unmocked db here turns every delivery test red for a
+// reason that has nothing to do with delivery.
+mock.module('../../projects/lib/session-token-grant', () => ({
+  remintGrantForAgentSwitch: async () => ({ action: 'skip' }),
+  SessionGrantRemintError: class SessionGrantRemintError extends Error {},
+}));
 mock.module('../../projects/opencode-title-capture', () => ({
   scheduleTitleCaptureAfterPrompt: () => {},
+  captureTitleAfterRuntimeEvent: async () => {},
 }));
 mock.module('../../projects/routes/shared', () => ({
   resumeStoppedSandboxByExternalId: async () => true,
@@ -88,7 +99,7 @@ describe('forwardToSandbox — prompt delivery is never double-sent', () => {
   test('a prompt POST that 502s is delivered to the sandbox at most once', async () => {
     queueFetch(new Response('bad gateway', { status: 502 }));
     const res = await forwardToSandbox(
-      'sb-1', 8000, { kind: 'principal', userId: 'u1' },
+      'sb-1', 8000, { kind: 'principal', userId: 'u1', callerSessionId: null },
       'POST', '/session/sess-1/message', '', jsonHeaders(), PROMPT_BODY, 'http://app.local',
     );
     // Exactly ONE upstream attempt — the 502 is passed straight through, never retried.
@@ -99,7 +110,7 @@ describe('forwardToSandbox — prompt delivery is never double-sent', () => {
   test('a prompt POST that succeeds is forwarded once (happy path unchanged)', async () => {
     queueFetch(new Response('{"info":{},"parts":[]}', { status: 200 }));
     const res = await forwardToSandbox(
-      'sb-1', 8000, { kind: 'principal', userId: 'u1' },
+      'sb-1', 8000, { kind: 'principal', userId: 'u1', callerSessionId: null },
       'POST', '/session/sess-1/message', '', jsonHeaders(), PROMPT_BODY, 'http://app.local',
     );
     expect(fetchCalls).toBe(1);
@@ -109,7 +120,7 @@ describe('forwardToSandbox — prompt delivery is never double-sent', () => {
   test('a duplicate inbound prompt under the same Idempotency-Key short-circuits', async () => {
     queueFetch(new Response('{"info":{},"parts":[]}', { status: 200 }));
     const args = [
-      'sb-1', 8000, { kind: 'principal', userId: 'u1' } as const,
+      'sb-1', 8000, { kind: 'principal', userId: 'u1', callerSessionId: null } as const,
       'POST', '/session/sess-1/message', '', jsonHeaders({ 'idempotency-key': 'dup-1' }),
       PROMPT_BODY, 'http://app.local',
     ] as const;
@@ -182,7 +193,7 @@ describe('forwardToSandbox — idempotent GET retry is unchanged', () => {
       new Response('ok', { status: 200 }),
     );
     const res = await forwardToSandbox(
-      'sb-1', 8000, { kind: 'principal', userId: 'u1' },
+      'sb-1', 8000, { kind: 'principal', userId: 'u1', callerSessionId: null },
       'GET', '/session', '', new Headers(), undefined, 'http://app.local',
     );
     expect(fetchCalls).toBe(2);

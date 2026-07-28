@@ -1,9 +1,15 @@
-import { isSessionVisibleTo, loadSessionGrants, resolveShareSubject, type SecretGrant, type ShareSubject } from '../../executor/share';
-import { authorize, assertAuthorized, PROJECT_ACTIONS } from '../../iam';
+import {
+  isSessionTargetVisibleToCaller,
+  isSessionVisibleTo,
+  loadSessionGrants,
+  resolveShareSubject,
+  type SecretGrant,
+  type ShareSubject,
+} from '../../executor/share';
+import { authorize, assertAuthorized } from '../../iam';
 import { deriveRequestContext } from '../../iam/cache';
 import { invalidateIamCacheForUser, registerPrincipalScopedMemo } from '../../iam/cache-invalidation';
 import { auth } from '../../openapi';
-import { preResumeRecentStoppedSessions } from '../routes/shared';
 import { recordAuditEvent } from '../../shared/audit';
 import { db } from '../../shared/db';
 import { isPlatformAdmin } from '../../shared/platform-roles';
@@ -74,6 +80,14 @@ async function loadProjectSessionRow(
 export async function loadVisibleSession(
   loaded: { row: ProjectRow; userId: string; effectiveRole: ProjectRole; adminBypass?: boolean },
   sessionId: string,
+  /**
+   * The CALLER's own session, when the credential is bound to one (a sandbox
+   * token: `c.get('sessionId')`). Null/undefined for a human or for a wrapper's
+   * own backend credential. Required to stop a sandbox reaching a SIBLING
+   * backend session — every KaaB session shares one `created_by`, so ownership
+   * alone cannot separate them. See isSessionVisibleTo.
+   */
+  callerSessionId: string | null,
 ): Promise<{
   row: ProjectSessionRow;
   subject: ShareSubject;
@@ -86,7 +100,13 @@ export async function loadVisibleSession(
   if (!row) return null;
   const subject = await resolveShareSubject(loaded.userId);
   const grants = (await loadSessionGrants([sessionId])).get(sessionId) ?? [];
-  if (!isSessionVisibleTo(row.visibility as 'private' | 'project' | 'restricted', row.createdBy, grants, subject)) {
+  if (
+    !isSessionVisibleTo(row.visibility as 'private' | 'project' | 'restricted', row.createdBy, grants, subject, {
+      origin: row.origin ?? null,
+      sessionId,
+      callerSessionId,
+    })
+  ) {
     // A platform-admin bypass already verified for the parent project (see
     // loadProjectForUser) also covers a session that would otherwise be
     // invisible (private / not-my-grant). Audit every use — this is a real
@@ -127,6 +147,14 @@ export async function loadVisibleSession(
 export async function loadSessionForSharing(
   loaded: { row: ProjectRow; userId: string; effectiveRole: ProjectRole },
   sessionId: string,
+  /**
+   * The CALLER's own session when the credential is bound to one. REQUIRED —
+   * see loadVisibleSession. Sharing is the worst surface to leave unnarrowed:
+   * a public share is UNAUTHENTICATED and its router is mounted before auth,
+   * so minting one against another end-user's session exposes their live app
+   * port and workspace files to anyone holding the URL.
+   */
+  callerSessionId: string | null,
 ): Promise<{
   row: ProjectSessionRow;
   isOwner: boolean;
@@ -135,6 +163,16 @@ export async function loadSessionForSharing(
 } | null> {
   const row = await loadProjectSessionRow(loaded, sessionId);
   if (!row) return null;
+  // Apply only the session-bound KaaB narrowing here. Human project members
+  // must reach the sharing permission check and receive 403 when it rejects
+  // them. Session-content visibility does not govern share management.
+  if (!isSessionTargetVisibleToCaller({
+    origin: row.origin ?? null,
+    sessionId,
+    callerSessionId,
+  })) {
+    return null;
+  }
   const isOwner = row.createdBy === loaded.userId;
   const canManageProject = roleAllows(loaded.effectiveRole, 'manage');
   return { row, isOwner, canManageProject, canManageSharing: isOwner || canManageProject };
@@ -142,8 +180,11 @@ export async function loadSessionForSharing(
 
 
 // Memoized briefly (positive hits only) — same rationale and trade-off as
-// getAccountMembership: runs on every project request, cross-region roundtrip
-// per statement, revocations lag at most one TTL window, grants are instant.
+// getAccountMembership: runs on every project request. Each statement is a
+// fast same-region roundtrip (~3ms measured, not the cross-region cost this
+// comment used to claim), but the same query repeats across a burst of
+// parallel requests, so caching still cuts redundant query volume;
+// revocations lag at most one TTL window, grants are instant.
 const loadProjectMemberRole = ttlMemo({
   ttlMs: 15_000,
   // Key is `${userId}|${projectId}` (userId-first) so a single
@@ -437,52 +478,6 @@ export async function projectCapabilityAllowed(
   return verdict.allowed;
 }
 
-/**
- * The per-capability WRITE leaf that governs editing a given repo path. Agents,
- * skills and commands live under their own directories; everything else is a
- * generic project file. Lets an API edit path (e.g. a marketplace install) gate
- * each touched file on the RIGHT capability — so a custom role that omits
- * `project.skill.write` can't install/modify skills even though it can touch
- * other files.
- */
-export function writeCapabilityForRepoPath(path: string): string {
-  const segments = path.replace(/^\.?\//, '').split('/');
-  if (segments.includes('agent') || segments.includes('agents')) return PROJECT_ACTIONS.PROJECT_AGENT_WRITE;
-  if (segments.includes('skill') || segments.includes('skills')) return PROJECT_ACTIONS.PROJECT_SKILL_WRITE;
-  if (segments.includes('command') || segments.includes('commands')) return PROJECT_ACTIONS.PROJECT_COMMAND_WRITE;
-  return PROJECT_ACTIONS.PROJECT_FILE_WRITE;
-}
-
-/**
- * Gate an API-mediated commit on the per-capability write leaves of the files it
- * touches. A commit that adds an agent requires project.agent.write; one that
- * touches a skill + a generic file requires BOTH project.skill.write AND
- * project.file.write. Threads the acting token so the agent-grant fold fires.
- * (Raw `git push` and daemon-side session commits don't pass through here — that
- * whole-tree boundary is the git-proxy tier.)
- */
-export async function assertCommitCapabilities(
-  c: Context,
-  userId: string,
-  accountId: string,
-  projectId: string,
-  paths: readonly string[],
-): Promise<void> {
-  // Generated bookkeeping files ride along with every install/remove — they're
-  // not a resource a role edits, so don't couple e.g. "install a skill" to also
-  // needing project.file.write for the lock file.
-  const BOOKKEEPING = new Set(['registry-lock.json', 'skills-lock.json']);
-  const capabilities = new Set(
-    paths
-      .filter((p) => !BOOKKEEPING.has(p.replace(/^\.?\//, '').split('/').pop() ?? ''))
-      .map(writeCapabilityForRepoPath),
-  );
-  for (const action of capabilities) {
-    await assertProjectCapability(c, userId, accountId, projectId, action);
-  }
-}
-
-
 // `projects.project_id` is a Postgres `uuid` column, so a malformed id
 // (e.g. a truncated "fda4e35e") makes the lookup throw `invalid input syntax
 // for type uuid` (SQLSTATE 22P02) before any guard runs — surfacing as an
@@ -541,8 +536,10 @@ export async function loadProjectForUser(c: Context, projectId: string, action: 
   const requestCtx = deriveRequestContext(c);
 
   // Membership, project role and the IAM verdict are independent lookups —
-  // overlap them. Every project-scoped request runs this path and each DB
-  // statement costs a cross-region roundtrip in prod, so depth matters.
+  // overlap them. Every project-scoped request runs this path; each DB
+  // statement is a fast same-region roundtrip (~3ms measured, DB and API
+  // both in eu-west-2), but they're serial by default, so running them in
+  // parallel instead of stacked still matters at this call frequency.
   // The engine consults super-admin bypass, direct + group policies,
   // project_groups, AND the legacy account_role / project_members bridges
   // (in non-strict mode), so it's strictly a superset of the old role-only
@@ -639,12 +636,6 @@ export async function loadProjectForUser(c: Context, projectId: string, action: 
   const effectiveRole =
     (accountRole ? effectiveProjectRole(accountRole, projectRole) : projectRole) ?? 'member';
   (c as any).set('accountId', row.accountId);
-
-  if (action !== 'read' || roleAllows(effectiveRole as ProjectRole, 'write')) {
-    // Proactively wake the user's most recently-stopped session(s) so the resume
-    // overlaps their navigation. No-op unless KORTIX_PRERESUME_ENABLED.
-    preResumeRecentStoppedSessions(projectId, userId);
-  }
 
   return {
     row,

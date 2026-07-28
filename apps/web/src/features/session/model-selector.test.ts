@@ -43,9 +43,14 @@ describe('pickerGroupId', () => {
     expect(pickerGroupId(m)).toBe('kortix');
   });
 
-  test('AUTO groups under kortix even though its own explicit provider is "kortix"', () => {
-    const m = model({ providerID: 'kortix', modelID: 'auto', provider: 'kortix' });
-    expect(pickerGroupId(m)).toBe('kortix');
+  test('a branded managed DeepSeek model groups under deepseek for its provider icon', () => {
+    const m = model({
+      providerID: 'kortix',
+      modelID: 'deepseek-v4-flash',
+      provider: 'deepseek',
+    });
+    expect(pickerGroupId(m)).toBe('deepseek');
+    expect(pickerGroupLabel(pickerGroupId(m), m)).toBe('DeepSeek');
   });
 
   test('a codex/<id> model groups under its own `codex` provider, distinct from `openai`', () => {

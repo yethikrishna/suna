@@ -24,6 +24,7 @@ function projectRow(
     projectId: PROJECT_ID,
     accountId: ACCOUNT_ID,
     name: 'Demo Project',
+    sandboxProviderGeneration: 0,
     repoUrl: 'https://github.com/acme/demo',
     defaultBranch: 'main',
     manifestPath: 'kortix.yaml',
@@ -57,6 +58,7 @@ function sessionRow(
     origin: 'user',
     originRef: null,
     secretsAllowlist: null,
+    connectorBindingsInheritUnbound: false,
     metadata: { name: 'Fix the login bug' },
     createdAt: NOW,
     updatedAt: NOW,
@@ -210,6 +212,7 @@ describe('serializeSandboxRow ⇄ ProjectSessionSandboxSchema', () => {
       retriable: false,
       sandbox: serializeSandboxRow(sandboxRow()),
       opencode_session_id: 'ses_abc',
+      runtime_transport: 'acp' as const,
       runtime_url: '/p/sbx-123/8000',
       reason: 'pinned',
     };

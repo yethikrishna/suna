@@ -1,0 +1,340 @@
+---
+title: Kortix as a Backend
+description: Drive Kortix from your own backend on behalf of your end-users — each session brings that user's connectors, model, context, and secrets by reference.
+---
+
+import { Steps, Step } from 'fumadocs-ui/components/steps';
+import { Callout } from 'fumadocs-ui/components/callout';
+
+Run **one** Kortix agent as the backend for **many** of your own end-users. Your
+service holds a single Kortix API key; every session it starts on a user's behalf
+brings *that user's* connectors, model, context, and secrets **by reference**. Your
+end-users never log in to Kortix — you are the tenant, they are yours.
+
+If you have used Stripe Connect or a Twilio subaccount, this is the same shape: a
+platform account that acts for many downstream users, keeping each one's data and
+credentials isolated.
+
+<Callout type="info">
+  Everything here runs from your server with a normal API key. The only step that
+  needs a browser is a user authorizing an OAuth app (e.g. Gmail) — and even that
+  is a link you generate and hand to them.
+</Callout>
+
+## 1. Get an API key
+
+Create a **personal access token** (`kortix_pat_…`) or a **service account**
+(`kortix_sa_…`) from your dashboard. Both authenticate your backend and both make a
+session's origin **`backend`** automatically. See [Authentication](/docs/sdk/auth)
+and [Accounts](/docs/accounts).
+
+```bash
+export KORTIX_API_URL="https://your-kortix-deployment.com/v1"   # API root, including /v1
+export KORTIX_API_KEY="kortix_pat_…"
+export KORTIX_PROJECT_ID="…"
+```
+
+## 2. Start a session on behalf of a user
+
+A session-create call takes a set of **backend overrides** that scope the run to one
+of your end-users. All of them are optional; send only what you need.
+
+<Steps>
+<Step>
+### Call create with the user's overrides
+
+```bash
+curl -X POST "$KORTIX_API_URL/projects/$KORTIX_PROJECT_ID/sessions" \
+  -H "Authorization: Bearer $KORTIX_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{
+    "end_user_ref": "your-app-user-123",
+    "agent_name": "support",
+    "opencode_model": "kortix/claude-opus-4.8",
+    "connector_bindings": { "gmail": { "profile_id": "<profile-id>" } },
+    "secrets": ["STRIPE_KEY"]
+  }'
+```
+</Step>
+<Step>
+### Or with the SDK
+
+```ts
+import { createScopedKortix } from '@kortix/sdk/server';
+
+const kortix = createScopedKortix({
+  backendUrl: process.env.KORTIX_API_URL,
+  getToken: async () => process.env.KORTIX_API_KEY!,
+});
+
+const session = await kortix.project(projectId).sessions.create({
+  end_user_ref: 'your-app-user-123',
+  agent_name: 'support',
+  opencode_model: 'kortix/claude-opus-4.8',
+  connector_bindings: { gmail: { profile_id } },
+  secrets: ['STRIPE_KEY'],
+});
+```
+</Step>
+</Steps>
+
+Use [`@kortix/sdk/server`](/docs/sdk/reference) (`createScopedKortix`) when one
+process serves many users concurrently: each scoped client keeps its own token and
+never races another request's config.
+
+### The override fields
+
+| Field | What it does |
+| --- | --- |
+| `end_user_ref` | An opaque id for *your* end-user. A label, not a lever: it tags the session, reaches the agent as `KORTIX_END_USER_REF`, and blocks an `Idempotency-Key` replay under a *different* end-user. It does **not** resolve that user's connectors or secrets, or grant access. It **is** recorded on every usage event and queryable — see [Per-end-user cost](#per-end-user-cost). Formerly `origin_ref`, which is still accepted. |
+| `connector_bindings` | Map a connector alias → a specific **connection profile** (your end-user's own connected account). Resolved server-side at use time; the credential never enters the sandbox. |
+| `inherit_unbound` | With `connector_bindings` set, keep the project-default fallback for connectors you did *not* bind (instead of all-or-nothing). Only ever inherits the project default. |
+| `secrets` | An allow-list of project secret names to expose to this session. Narrowing only — a session can never see a secret you did not list. |
+| `opencode_model` | The model this session runs, in `provider/model` form. Validated at create; an unservable model fails fast with `400 INVALID_SESSION_MODEL`. |
+| `agent_name` | Which declared agent handles the session. |
+| `runtime_context` | Arbitrary non-secret key/values passed to the run as context. |
+
+
+## Per-end-user cost
+
+Every usage event carries the `end_user_ref` of the session that produced it, so
+you can bill your own users without keeping a parallel ledger.
+
+```bash
+# spend per end-user, biggest first
+curl -sS "$KORTIX_API_URL/usage?group_by=end_user_ref" \
+  -H "Authorization: Bearer $KORTIX_API_KEY"
+
+# one end-user, totals AND breakdown narrowed
+curl -sS "$KORTIX_API_URL/usage?end_user_ref=your-app-user-123" \
+  -H "Authorization: Bearer $KORTIX_API_KEY"
+```
+
+Two things to know:
+
+- Spend with **no** `end_user_ref` — your own dashboard sessions, and anything
+  predating this field — is excluded from the grouped breakdown but still counted
+  in the top-level totals. Per-user rows will not sum to the account total.
+- Grouping is an exact match on the string you sent. `user-1` and `User-1` are two
+  different end-users, so send a canonical id.
+
+The dashboard shows the same data under **Credits → Spend by end-user**.
+
+### Capping one end-user's spend
+
+Metering tells you what an end-user cost. To *stop* one, the operator sets
+`KORTIX_BACKEND_PER_END_USER_SPEND_LIMIT_USD` (with
+`KORTIX_BACKEND_PER_END_USER_SPEND_WINDOW_DAYS`, default 30). Session create then
+returns `429 per_end_user_spend_limit` for an end-user over the ceiling, while
+every other end-user keeps working. Off by default.
+
+It is a runaway guardrail, not a hard quota: the check is check-then-act, so
+concurrent creates can overshoot slightly, and it is evaluated at create — a
+running session is not killed mid-turn.
+
+### List one end-user's sessions
+
+The same handle filters the session list, server-side:
+
+```bash
+curl -sS "$KORTIX_API_URL/projects/$PROJECT_ID/sessions?end_user_ref=your-app-user-123" \
+  -H "Authorization: Bearer $KORTIX_API_KEY"
+```
+
+```ts
+await kortix.project(projectId).sessions.list({ end_user_ref: 'your-app-user-123' });
+```
+
+Every status is included, so completed sessions come back too. The deprecated
+`origin_ref` spelling also works; sending both with different values is a `400`.
+
+## 3. Bring each user's own connector
+
+Store a user's credential **once** through the connection-profile broker, get a
+`profile_id`, and pass it by reference in `connector_bindings`. Kortix resolves the
+credential **server-side** when the agent calls the connector — the secret never
+lands in the sandbox, and one binding can't reach another user's profile. See
+[Connectors](/docs/connect/connectors) for the connector model.
+
+**Static connectors** (`mcp` / `http` / `openapi` / `graphql`) take a credential you
+already hold, so the whole flow is headless:
+
+```ts
+const profile = await kortix.project(projectId).connectors.profiles.reconcile({
+  connector_alias: 'user-mcp',
+  owner_type: 'external',        // = your app's user (not a Kortix member/agent)
+  owner_id: 'your-app-user-123',
+  label: 'MCP for user 123',
+});
+await kortix.project(projectId).connectors.profiles.updateCredential(
+  profile.profile_id, { value: usersOwnToken, kind: 'secret' });
+await kortix.project(projectId).connectors.profiles.activate(profile.profile_id);
+// → bind at create: connector_bindings: { 'user-mcp': { profile_id: profile.profile_id } }
+```
+
+**OAuth apps** (Gmail, Slack, Notion — `provider: pipedream`) have no static token;
+the user authorizes in their browser **once**. Still per-user and API-driven — only
+the consent click is interactive:
+
+```ts
+// 1. mint this user's own profile
+const profile = await kortix.project(projectId).connectors.profiles.reconcile({
+  connector_alias: 'gmail', owner_type: 'external',
+  owner_id: 'your-app-user-123', label: 'Gmail for user 123',
+});
+// 2. get a connect link scoped to THIS user; send them to it
+const { connectUrl } = await kortix.project(projectId)
+  .connectors.profiles.pipedreamConnect(profile.profile_id, {
+    success_redirect_uri: 'https://yourapp.com/connected',
+    error_redirect_uri: 'https://yourapp.com/connect-failed',
+  });
+// → open connectUrl in the user's browser; they consent to Google/Slack/…
+// 3. after they return, finalize (binds their authorized account)
+await kortix.project(projectId).connectors.profiles.pipedreamFinalize(profile.profile_id);
+// → bind by reference exactly like the static case
+```
+
+<Callout type="warn">
+  Never `updateCredential` an OAuth (`pipedream`) profile — the stored value is used
+  as a Pipedream **account id**, not a raw OAuth token, so a pasted provider token
+  silently fails on the first tool call. Use `pipedreamConnect` + `pipedreamFinalize`.
+</Callout>
+
+<Callout type="info">
+  **All-or-nothing binding.** If a session's `connector_bindings` sets *any* alias,
+  every *unbound* alias resolves to null for that session — bind every connector the
+  agent needs in the one call, **or** pass `inherit_unbound: true` to keep the
+  project-default fallback for the unbound aliases (so you can override just one
+  connector without re-binding the rest; it only ever inherits the project *default*,
+  never another user's profile). If a user disconnects mid-session (the profile is
+  revoked), the connector fails closed rather than falling back to a shared account;
+  prompt the user to reconnect.
+</Callout>
+
+## 4. Stream the answer
+
+A session's runtime lives in a per-session sandbox that boots on first use. Await
+readiness, open the stream, then send the prompt:
+
+```ts
+const s = kortix.session(projectId, session.session_id);
+await s.ensureReady();                 // boots/resumes the sandbox
+const stream = s.stream({ onEvent: (e) => { /* render tokens/tools */ } });
+await s.send("Summarize this user's new signups.");
+```
+
+<Callout type="info">
+  The sandbox reaches your API over the network, so streaming works against a hosted
+  deployment out of the box. For a **local** API, expose it with a public tunnel
+  (e.g. cloudflared) — a cloud sandbox can't reach `localhost`.
+</Callout>
+
+A complete, runnable example — create connector → mint the per-user profile → start a
+backend session → stream — ships with the SDK at
+[`examples/09-kaab-backend-wrapper.ts`](/docs/sdk/example).
+
+## Idempotent retries
+
+Always send an `Idempotency-Key` (a UUID you generate once per logical create and
+reuse across that create's retries). A replay returns the same session instead of
+starting a second one. Replaying a key with a **different** body — different
+`connector_bindings`, `secrets`, `end_user_ref`, or `runtime_context` — is refused with
+`409` rather than silently reusing the first session.
+
+## Security model
+
+- **Credentials never enter the sandbox.** `connector_bindings` credentials are
+  broker-resolved server-side at call time; `secrets` are injected as a narrowed
+  allow-list. The agent's machine never holds an app secret.
+- **Bindings can't cross tenants.** A `profile_id` only resolves for the account and
+  project that owns it; a wrong or foreign id is rejected as not-found.
+- **`end_user_ref` is attribution, not authorization.** It labels the session and is
+  handed to the agent as `KORTIX_END_USER_REF`; it never grants access to a user's
+  data on its own, and it resolves no connectors or secrets.
+- **Personal connections stay private.** A session that binds a member's personal
+  connection is forced to `visibility: private` and resolves only for that user.
+
+## Errors you may hit
+
+| Status | Code | Meaning |
+| --- | --- | --- |
+| `400` | `INVALID_SESSION_MODEL` | `opencode_model` isn't servable for this account. |
+| `400` | `INVALID_SESSION_CONNECTOR_BINDINGS` / `INVALID_SESSION_SECRETS` | Malformed overrides, or a secret/binding cap exceeded. |
+| `404` | `CONNECTOR_PROFILE_NOT_FOUND` | The bound `profile_id` doesn't exist for this project (or isn't yours). |
+| `409` | `CONNECTOR_PROFILE_INACTIVE` | The bound profile is revoked or the connector is disabled. |
+| `409` | `IDEMPOTENCY_*_CONFLICT` | An `Idempotency-Key` was replayed with a different body. Keep the body identical across retries. |
+| `403` | `CONNECTOR_NOT_ASSIGNED` | The session's agent isn't granted a connector you named. **The first error most wrappers hit** — list the alias under that agent's `connectors:` in your manifest. |
+| `403` | `REQUIRE_CONNECTORS_INTERACTIVE_ONLY` | `require_connectors` is interactive-only. A backend key acts for no single person — bind an explicit `profile_id` with `connector_bindings`. |
+| `403` | `origin_override_forbidden` | A non-backend caller tried to set `end_user_ref` or `secrets`. |
+| `503` | `AGENT_SWITCH_GRANT_UNAPPLIED` | A mid-session agent switch was legal but its token re-mint could not be written. Retryable. |
+| `409` | `CONNECTOR_CONNECTION_REQUIRED` | Interactive only: the user hasn't connected their own account. The body names which connector. |
+| `409` | `END_USER_REF_CONFLICT` | You sent `end_user_ref` and the deprecated `origin_ref` with different values. On session **create** it is a `409`; on the session **list** filter it is a `400`. |
+| `409` | `IDEMPOTENCY_KEY_CONFLICT` | The key collided with a different operation. Unlike the other idempotency errors, the fix is a **higher-entropy key** — the uniqueness index is global. |
+| `429` | `concurrent_session_limit` / `per_origin_session_limit` | Account-wide, or per-end-user when the operator enables it. Retry with backoff. |
+| `429` | `per_end_user_spend_limit` | This end-user has spent their ceiling inside the rolling window. Body carries `spent_usd`, `limit_usd`, `window_days`. Not retryable until the window rolls or the operator raises the limit. |
+| `402` | `subscription_required` / `insufficient_credits` | Billing — not retryable without operator action. |
+
+## What you can change once a session is running
+
+| Override | Mid-session |
+| --- | --- |
+| `opencode_model` | **Yes** — `PUT /projects/{id}/sessions/{sessionId}/model` |
+| `agent_name` | **Per message** — each prompt names the agent that runs it |
+| `secrets`, `connector_bindings`, `runtime_context`, `end_user_ref` | **No** — set once at create |
+
+### Changing the model
+
+```bash
+curl -sS -X PUT "$KORTIX_API_URL/projects/$PROJECT_ID/sessions/$SESSION_ID/model" \
+  -H "Authorization: Bearer $KORTIX_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"opencode_model":"kortix/claude-opus-4.8"}'
+```
+
+The response carries `applied_live`. `true` means a running sandbox took it now;
+`false` means it applies at next start. **Tell your user which** — someone told
+"model changed" whose next answer comes from the old model has been misled.
+Applying it live restarts the runtime and ends the in-flight turn, so a no-op
+PUT deliberately does not restart.
+
+### Why secrets can't change
+
+`secrets_allowlist` is written once. A mutable allowlist could be narrowed below
+what the sandbox already needs and leave the session unbootable. Start a new
+session to change what it may read.
+
+### Switching agents
+
+Each message names the agent that runs it. A switch to an agent with a
+*different secrets grant* is refused `409 AGENT_SWITCH_REQUIRES_NEW_SESSION` —
+and **retrying cannot succeed**, because re-scoping cannot un-read what the
+session already loaded. Offer a new session, not a retry.
+
+A switch that changes only **connectors** or **Kortix CLI actions** is allowed
+and *re-mints* the session token: the new agent runs with exactly the grant its
+own manifest entry declares. Those gates check the token at call time, so
+re-pointing it works — unlike secrets, which are already in the box. If the
+re-mint cannot be written the prompt is refused (`503
+AGENT_SWITCH_GRANT_UNAPPLIED`) rather than run under the previous agent's
+authority.
+
+## Isolation between your end-users
+
+Every session your backend creates shares one `created_by` — your wrapper
+credential — so ownership alone cannot tell your users apart. The platform
+narrows on the *caller's* session instead: a token bound to end-user A's sandbox
+cannot read, share, or approve on end-user B's session.
+
+Your backend credential is unaffected. It is the operator and still sees
+everything it created.
+
+<Callout type="warn">
+  **Inject `end_user_ref` server-side, from your authenticated session — never
+  accept it from a browser.** A client that can set it can bill another user, or
+  replay their session through a shared `Idempotency-Key`.
+</Callout>
+
+Listing with `?scope=project` includes rows the caller cannot open, marked
+`can_access: false`. Those are redacted — no `metadata` (which holds
+`initial_prompt`), no `end_user_ref`, no `secrets_allowlist`.

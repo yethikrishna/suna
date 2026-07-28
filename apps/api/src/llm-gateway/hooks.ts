@@ -17,7 +17,7 @@ import { isPureHoldRefund, reconcileBillingHold } from './billing-hold-reconcili
 import { validateAccountToken } from '../repositories/account-tokens';
 import { isGatewayKey } from '../shared/crypto';
 import { recordGatewayTrace } from '../shared/gateway-logs';
-import { recordUsageEvent } from '../shared/usage-events';
+import { recordUsageEvent, resolveSessionOriginRef } from '../shared/usage-events';
 import { checkBudget } from './budgets';
 import { resolveDefaultModelForPrincipal } from './resolution/default-model';
 import { validateGatewayKey } from './gateway-keys';
@@ -81,12 +81,9 @@ async function withResolvedTier(principal: AuthedPrincipal): Promise<AuthedPrinc
         return { ...principal, tier, freeModelsOnly: accountIsFreeTierForModels(tier) };
       })()
     : { ...principal, freeModelsOnly: false };
-  // Resolve the account/project/agent-configured default model once, here, so it
-  // travels with the principal (including across the RPC boundary to the
-  // standalone pod) and `auto` resolves to it. freeModelsOnly is already set
-  // above, so the resolver can drop a managed default for free tier. Never let a
-  // resolution hiccup break auth for every LLM call — degrade to the platform
-  // target (undefined) on error.
+  // Resolve the account/project/agent-configured concrete default once, here,
+  // so it travels with the principal across the standalone-gateway RPC boundary.
+  // Never let a resolution error break authentication for every LLM call.
   let defaultModel: string | undefined;
   try {
     defaultModel = await resolveDefaultModelForPrincipal(tiered);
@@ -104,7 +101,10 @@ async function withResolvedTier(principal: AuthedPrincipal): Promise<AuthedPrinc
  * instead of nothing. (A UI notification / email digest is a larger product
  * surface left for a follow-up; see PR description.)
  */
-function logGatewayBudgetWarnings(principal: AuthedPrincipal, warnings: string[] | undefined): void {
+function logGatewayBudgetWarnings(
+  principal: AuthedPrincipal,
+  warnings: string[] | undefined,
+): void {
   if (!warnings?.length) return;
   for (const message of warnings) {
     logger.warn(`[gateway] budget warn threshold reached: ${message}`, {
@@ -133,7 +133,7 @@ export async function authorizeRequest(token: string): Promise<AuthorizeResult> 
     return { ok: false, status: 401, errorCode: 'invalid_token', message: 'Invalid token' };
   }
   try {
-    const billing = await assertBillingActive(principal.accountId);
+    const billing = await assertLlmBillingActive(principal.accountId);
     if (billing?.holdUsd) principal = { ...principal, billingHold: { amountUsd: billing.holdUsd } };
   } catch (err) {
     return {
@@ -168,6 +168,20 @@ export async function authorizeRequest(token: string): Promise<AuthorizeResult> 
 }
 
 /**
+ * Apply the LLM wallet gate only to accounts that can spend wallet credits on
+ * Kortix-managed models. Free-tier wallets fund sandbox compute only.
+ */
+export async function assertLlmBillingActive(
+  accountId: string,
+): Promise<{ holdUsd?: number } | void> {
+  if (config.KORTIX_BILLING_INTERNAL_ENABLED) {
+    const tier = await getCachedAccountTier(accountId);
+    if (accountIsFreeTierForModels(tier)) return;
+  }
+  return assertBillingActive(accountId);
+}
+
+/**
  * Record a usage event (always, for observability, unless it's a pure hold
  * refund with nothing to observe) and settle the wallet.
  *
@@ -184,6 +198,16 @@ export async function authorizeRequest(token: string): Promise<AuthorizeResult> 
 export async function recordGatewayUsage(event: UsageEvent): Promise<void> {
   const pureHoldRefund = isPureHoldRefund(event);
 
+  // KaaB attribution. Safe on THIS path only: the gateway principal's sessionId
+  // comes from the executor token (minted server-side with sessionId =
+  // sandboxId = the project session id), so a caller cannot name someone else's
+  // session and bill them. Best-effort — a lookup failure must never lose the
+  // usage row, which is the billing record.
+  const originRef =
+    pureHoldRefund || !event.sessionId
+      ? null
+      : await resolveSessionOriginRef(event.accountId, event.sessionId).catch(() => null);
+
   const usageEventId = pureHoldRefund
     ? null
     : await recordUsageEvent({
@@ -191,6 +215,7 @@ export async function recordGatewayUsage(event: UsageEvent): Promise<void> {
         actorUserId: event.actorUserId,
         projectId: event.projectId ?? null,
         sessionId: event.sessionId ?? null,
+        originRef,
         provider: event.provider,
         model: event.model,
         route: '/v1/llm/chat/completions',
@@ -285,6 +310,7 @@ export function emitGatewayGenAiSpan(trace: GatewayTrace): void {
         'kortix.upstream_cost_usd': trace.upstreamCost,
         'kortix.provider': trace.provider,
         'kortix.cached_tokens': trace.usage.cachedTokens,
+        'kortix.cache_write_tokens': trace.usage.cacheWriteTokens,
         'kortix.streaming': trace.streaming,
         'kortix.billing_mode': trace.billingMode,
         'kortix.request_id': trace.requestId,
@@ -331,17 +357,14 @@ export async function persistGatewayTrace(trace: GatewayTrace): Promise<void> {
     promptTokens: trace.usage.promptTokens,
     completionTokens: trace.usage.completionTokens,
     cachedTokens: trace.usage.cachedTokens,
+    cacheWriteTokens: trace.usage.cacheWriteTokens,
     upstreamCost: trace.upstreamCost,
     finalCost: trace.finalCost,
     streaming: trace.streaming,
     billingMode: trace.billingMode,
     request: trace.request,
     response: trace.response,
-    // gateway_request_logs has no cache_write_tokens column (unlike
-    // usage_events, which does) — stash it in metadata rather than take on a
-    // schema migration for a purely observational field; the dollar amount
-    // (finalCost/upstreamCost) already reflects the cache-write premium.
-    metadata: { ...trace.metadata, cacheWriteTokens: trace.usage.cacheWriteTokens },
+    metadata: trace.metadata,
   });
   // Non-blocking: never let telemetry delay the caller or affect the trace write.
   emitGatewayGenAiSpan(trace);
@@ -353,7 +376,7 @@ export function createInProcessGatewayHooks(): GatewayHooks {
     authenticate: authenticatePrincipal,
     resolveRoute: resolveGatewayRoute,
     resolveUpstream: resolveCandidates,
-    assertBillingActive,
+    assertBillingActive: assertLlmBillingActive,
     assertBudget: assertGatewayBudget,
     recordUsage: recordGatewayUsage,
     recordTrace: persistGatewayTrace,

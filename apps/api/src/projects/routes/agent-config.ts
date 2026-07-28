@@ -32,16 +32,20 @@ import { projects } from '@kortix/db';
 import {
   type AgentBlockV2,
   type ManifestIssue,
+  SLUG_RE,
   validateAgentMdFrontmatter,
 } from '@kortix/manifest-schema';
 import { eq } from 'drizzle-orm';
 import { PROJECT_ACTIONS } from '../../iam/actions';
 import { auth, errors, json } from '../../openapi';
 import { db } from '../../shared/db';
+import { resolveTemplateBySlug } from '../../snapshots/templates';
 import { readRepoFile } from '../git';
 import { commitMultipleFilesToBranch } from '../git/branches';
 import { assertProjectCapability, loadProjectForUser } from '../lib/access';
+import { extractAgents } from '../agents';
 import { applyAgentBlockV2, applyDefaultAgentV2, readAgentBlockV2 } from '../lib/agent-config-v2';
+import { metadataMerge } from '../lib/metadata-merge';
 import { parseAgentMarkdown, serializeAgentMarkdown } from '../lib/agent-markdown';
 import { projectsApp } from '../lib/app';
 import {
@@ -70,7 +74,15 @@ const GrantSetSchema = z.union([
 const AgentBlockSchema = z
   .object({
     enabled: z.boolean().optional(),
+    sandbox: z.string().min(1).max(128).regex(SLUG_RE).optional(),
     connectors: GrantSetSchema.optional(),
+    // The subset of `connectors` that must resolve to the LAUNCHING USER's own
+    // connection. GET already returns this key verbatim from the manifest, so
+    // omitting it here made `.strict()` reject EVERY save on any project that
+    // declares it — the editor could read the agent but never write it back.
+    // A concrete list only: 'all' would make the agent unstartable for anyone
+    // who hasn't personally connected every one of its connectors.
+    connectors_personal: z.array(z.string().min(1).max(200)).max(500).optional(),
     secrets: GrantSetSchema.optional(),
     skills: GrantSetSchema.optional(),
     kortix_cli: GrantSetSchema.optional(),
@@ -255,13 +267,13 @@ projectsApp.openapi(
       );
     }
 
-    const metadata = {
-      ...((loaded.row.metadata as Record<string, unknown> | null) ?? {}),
-      default_agent: agentName,
-    };
+    // FIX-J: SQL-side atomic merge of ONLY `default_agent`. A git-commit round-trip
+    // sits above between this handler's metadata read and write — the widest lost-
+    // update window — so a whole-object write here could revert a routing pin
+    // activated in that gap. The merge reads the CURRENT row under its own lock.
     await db
       .update(projects)
-      .set({ metadata, updatedAt: new Date() })
+      .set({ metadata: metadataMerge({ default_agent: agentName }), updatedAt: new Date() })
       .where(eq(projects.projectId, projectId));
 
     return c.json({ ok: true, default_agent: agentName });
@@ -323,9 +335,41 @@ projectsApp.openapi(
       );
     }
 
+    if (governanceBlock.sandbox) {
+      try {
+        await resolveTemplateBySlug(await withProjectGitAuth(loaded.row), governanceBlock.sandbox);
+      } catch {
+        return c.json(
+          {
+            error: `Unknown sandbox template "${governanceBlock.sandbox}"`,
+            code: 'invalid_config',
+            issues: [
+              {
+                path: `agents.${agentName}.sandbox`,
+                message: 'must name an available project template or "default".',
+                severity: 'error',
+              },
+            ],
+          },
+          400,
+        );
+      }
+    }
+
     const applied = applyAgentBlockV2(manifest, agentName, governanceBlock);
     if (!applied.ok) {
       return c.json({ error: applied.error, code: 'invalid_config', issues: applied.issues }, 400);
+    }
+
+    // Shape-validate through the REAL parser before committing, exactly as the
+    // scope route does. `validateManifest` (which applyAgentBlockV2 gates on)
+    // does not check `connectors_personal` at all, so without this a save could
+    // commit an agent whose personal set isn't a subset of its grant — a block
+    // that then fails to parse, breaking session-create for that agent.
+    const parsedCheck = extractAgents({ ...manifest, raw: applied.raw });
+    const parseProblem = parsedCheck.errors.find((e) => e.name === agentName);
+    if (parseProblem) {
+      return c.json({ error: parseProblem.error, code: 'invalid_config' }, 400);
     }
 
     // Validate the behavior half (if the request touches it at all) BEFORE

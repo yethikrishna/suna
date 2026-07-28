@@ -16,12 +16,12 @@
 import type { FlatModel } from './model-flatten';
 import { safeSetItem } from '../platform/storage/managed-storage';
 import {
-  AUTO_MODEL_ID,
   DEFAULT_MANAGED_MODEL_IDS,
   MANAGED_FLAGSHIP_MODEL_ID,
 } from '@kortix/llm-catalog';
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { createModelLookup } from './model-lookup';
+import { shouldSetSessionAgentName } from './session-agent-name-guard';
 
 // ============================================================================
 // Types
@@ -46,8 +46,7 @@ export type ModelKey = {
 // The LLM gateway identifies a model by its "wire model" — what opencode sends
 // as `body.model`. Under the kortix gateway provider that is just the modelID
 // (a bare managed id like 'glm-5.2', or a BYOK 'provider/model'). A direct
-// provider model uses 'provider/model'. The synthetic `auto` has no concrete
-// wire form and is never stored as a default.
+// provider model uses 'provider/model'.
 export function modelKeyToWire(model: ModelKey): string {
   if (model.providerID === 'kortix' || model.providerID === 'opencode') return model.modelID;
   return `${model.providerID}/${model.modelID}`;
@@ -213,8 +212,7 @@ const SUBSCRIPTION_PROVIDER_ID = 'codex';
 // or its underlying provider is connected (live, from project secrets). The
 // rest stay one search away. Single source for the managed set lives in
 // @kortix/llm-catalog (mirrors the gateway's managed-ids).
-// Includes the synthetic `auto` entry so it's always offered in the picker.
-const MANAGED_MODEL_IDS = new Set<string>([...DEFAULT_MANAGED_MODEL_IDS, AUTO_MODEL_ID]);
+const MANAGED_MODEL_IDS = new Set<string>(DEFAULT_MANAGED_MODEL_IDS);
 
 // `explicitProvider` (a model's `FlatModel.provider` / `ModelKey.provider`) is
 // the robust path — the gateway now serves it directly, so grouping/gating
@@ -508,6 +506,15 @@ export function useModelStore(
 
   const setSessionAgentName = useCallback((sessionId: string, name: string | undefined) => {
     const s = getStore();
+    // Read-then-write idempotency guard: `setSessionAgentName` writes to a
+    // `useSyncExternalStore`-backed store whose snapshot identity changes on
+    // every write. Without this guard, any render/effect path that re-fires the
+    // setter with the SAME value drives an infinite render loop (React #185,
+    // "Maximum update depth exceeded"). The loop was reported by Better Stack
+    // as `Object.setSessionAgentName` on the co-worker session page (pattern
+    // 351da943…). See `shouldSetSessionAgentName` for the rationale.
+    const current = s.sessionAgentName?.[sessionId];
+    if (!shouldSetSessionAgentName(current, name)) return;
     const next = { ...s.sessionAgentName };
     if (name) {
       next[sessionId] = name;

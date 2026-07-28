@@ -650,17 +650,18 @@ flow(
         );
       r.status(400);
     });
-    await ctx.step("pin to the enabled 'daytona' provider → 200", async () => {
+    await ctx.step("pin to the enabled 'daytona' provider → 200 (immediate, kind:project)", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .patch("/v1/projects/:projectId/sandbox-provider", { provider: "daytona" }, { params: { projectId: p.id } });
-      r.status(200).body().has("$.default_sandbox_provider", "daytona");
+      // FIX-L: the immediate branch is tagged with the kind:'project' discriminant.
+      r.status(200).body().has("$.kind", "project").has("$.default_sandbox_provider", "daytona");
     });
-    await ctx.step("clear the pin (null) → 200", async () => {
+    await ctx.step("clear the pin (null) → 200 (immediate, kind:project)", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .patch("/v1/projects/:projectId/sandbox-provider", { provider: null }, { params: { projectId: p.id } });
-      r.status(200);
+      r.status(200).body().has("$.kind", "project");
     });
     await ctx.step("NONMEMBER → 403/404", async () => {
       const r = await ctx.client
@@ -717,6 +718,130 @@ flow(
         .as(ctx.P.ANON)
         .get("/v1/projects/:projectId/llm-catalog/providers", { params: { projectId: p.id } });
       r.status(401);
+    });
+  },
+);
+
+// PROJ-33 — the sandbox-provider migration poll endpoint. The PATCH prepare
+// branch (switch to a non-default enabled provider) returns a kind:'preparation'
+// body but does NOT flip the active provider; the client polls THIS route until
+// the durable transition reaches a terminal status. Project-read-scoped (rejects
+// cross-project/non-member) and shaped as a PUBLIC projection — it must NEVER
+// leak the lease epoch/holder, raw provider error strings, internal image names,
+// or provider template ids. A fresh project with no transition returns
+// active_provider=null + latest=null (still 200), which is the case exercised
+// here without provisioning a real cross-provider build.
+flow(
+  "PROJ-33",
+  { domain: "projects", routes: ["GET /v1/projects/:projectId/sandbox-provider/transition"] },
+  async (ctx) => {
+    const p = await ctx.fixtures.project();
+    const INTERNAL_LEAK_KEYS = [
+      "lease_epoch",
+      "lease_holder",
+      "last_error",
+      "snapshot_name",
+      "external_template_id",
+      "attempts",
+    ];
+    const assertNoLeak = (item: unknown) => {
+      if (item && typeof item === "object") {
+        for (const k of INTERNAL_LEAK_KEYS) {
+          if (k in (item as Record<string, unknown>)) {
+            throw new Error(`transition view leaked internal field '${k}'`);
+          }
+        }
+      }
+    };
+    await ctx.step("OWNER reads the public transition state → 200 public shape", async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .get("/v1/projects/:projectId/sandbox-provider/transition", { params: { projectId: p.id } });
+      r.status(200).body().exists("$.history");
+      const body = r.json<{
+        active_provider: string | null;
+        latest: unknown;
+        history: unknown[];
+      }>();
+      if (!Object.hasOwn(body, "active_provider")) {
+        throw new Error("transition view omitted active_provider");
+      }
+      assertNoLeak(body.latest);
+      if (Array.isArray(body.history)) body.history.forEach(assertNoLeak);
+    });
+    await ctx.step("unknown project → 404", async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .get("/v1/projects/:projectId/sandbox-provider/transition", {
+          params: { projectId: "00000000-0000-4000-a000-000000000000" },
+        });
+      r.status(404);
+    });
+    await ctx.step("NONMEMBER → 403/404 (cross-project rejection)", async () => {
+      const r = await ctx.client
+        .as(ctx.P.NONMEMBER)
+        .get("/v1/projects/:projectId/sandbox-provider/transition", { params: { projectId: p.id } });
+      r.status([403, 404]);
+    });
+    await ctx.step("ANON → 401", async () => {
+      const r = await ctx.client
+        .as(ctx.P.ANON)
+        .get("/v1/projects/:projectId/sandbox-provider/transition", { params: { projectId: p.id } });
+      r.status(401);
+    });
+  },
+);
+
+// PROJ-34 — the execution lease's auth gate.
+//
+// NOT a voice route: this came in with the API-latency refactor (PR #5490).
+// The in-sandbox agent reports active OpenCode work here, and the route is one
+// of the handful `middleware/auth.ts` lets a SANDBOX token reach
+// (alongside clone-credential / turn-stream / turn-question / llm-catalog /
+// boot-timeline). The acquire/renew/release semantics themselves need a live
+// sandbox token, which a black-box client cannot mint — so what is asserted
+// here is the gate, exactly as GH-11 does for clone-credential: being a
+// perfectly good project principal buys you nothing on a runtime-only route.
+flow(
+  "PROJ-34",
+  { domain: "projects", routes: ["POST /v1/projects/:projectId/execution-lease"] },
+  async (ctx) => {
+    const p = await ctx.fixtures.sharedProject();
+    // A valid body on purpose: the zod validator runs BEFORE the handler, so a
+    // malformed one would 400 and never prove the token check happened at all.
+    // `renew` on a session with no lease is a no-op even if it somehow ran.
+    const body = { action: "renew", session_id: "e2e-no-such-session" };
+
+    await ctx.step("ANON → 401", async () => {
+      const r = await ctx.client
+        .as(ctx.P.ANON)
+        .post("/v1/projects/:projectId/execution-lease", body, { params: { projectId: p.id } });
+      r.status(401);
+    });
+
+    await ctx.step("OWNER user session is not a sandbox token → 403", async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .post("/v1/projects/:projectId/execution-lease", body, { params: { projectId: p.id } });
+      r.status(403);
+    });
+
+    await ctx.step("account PAT is not a sandbox token → 403", async () => {
+      const r = await ctx.client
+        .as(ctx.P.PAT_ACCT)
+        .post("/v1/projects/:projectId/execution-lease", body, { params: { projectId: p.id } });
+      r.status(403);
+    });
+
+    await ctx.step("unknown action → 400 (body validated before the token check)", async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .post(
+          "/v1/projects/:projectId/execution-lease",
+          { action: "steal", session_id: "e2e-no-such-session" },
+          { params: { projectId: p.id } },
+        );
+      r.status(400);
     });
   },
 );

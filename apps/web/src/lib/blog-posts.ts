@@ -278,7 +278,7 @@ const agiReadyArchitecture: BlogPostEntry = {
 kortix_version: 2
 
 project:
-  name: acme-ops
+  name: acme-security-audit
 
 # A tool the agent can use. Credentials stay in the platform,
 # never in this file. The policy decides what needs a human.
@@ -290,10 +290,10 @@ connectors:
 
 # Run work on a schedule — nobody has to kick it off.
 triggers:
-  - slug: weekly-health-report
+  - slug: nightly-access-review
     type: cron
-    cron: "0 0 9 * * 1"
-    prompt: Draft the weekly customer health report for review.`,
+    cron: "0 0 2 * * *"
+    prompt: Audit last night's access logs and flag any out-of-policy connector calls for review.`,
     },
     {
       type: 'p',
@@ -552,12 +552,12 @@ connectors:
     },
     {
       type: 'p',
-      text: 'Because it’s all open, you can read exactly how isolation, review, and credential brokering work — not trust a description. No lock-in: your projects are git repos, your config is plain files, and the platform running them is yours to host.',
+      text: 'Because it’s all open, you can read exactly how isolation, review, and credential brokering work — not trust a description. No lock-in: your projects are git repos, your config is plain files, and the platform running them is yours to host. (If you’re weighing Kortix against personal open-source agents like OpenClaw or Hermes, [personal AI agents vs a company OS](/blog/personal-ai-agents-vs-company-os) draws that line.)',
     },
     { type: 'h2', text: 'It compounds' },
     {
       type: 'p',
-      text: 'Because your whole setup is version-controlled files, none of it resets tomorrow. Every agent you shape, every skill you teach, every tool you connect, every bit of memory your agents carry forward accumulates in the repo and gets more capable week over week. The routine work that used to fill calendars runs quietly in the background, 24/7, and your team spends its time on the decisions that need a human.',
+      text: 'Because your whole setup is version-controlled files, none of it resets tomorrow. Every agent you shape, every skill you teach, every tool you connect, every bit of memory your agents carry forward accumulates in the repo and gets more capable week over week. The routine work that used to fill calendars runs quietly in the background, 24/7, and your team spends its time on the decisions that need a human. For the architecture that makes that compounding safe — state kept out of the model, identity and isolation as first-class, durable review — the [AGI-ready architecture post](/blog/agi-ready-architecture) is the deeper read.',
     },
     {
       type: 'cta',
@@ -623,7 +623,7 @@ const kortixVsClaudeCowork: BlogPostEntry = {
     },
     {
       type: 'callout',
-      text: 'Same agents, [a fraction of the bill](/pricing) — and you can run them on your own infrastructure, even your own GPUs, with your data never leaving your walls.',
+      text: 'Same agents, [a fraction of the bill](/pricing) — and you can run them on your own infrastructure, even your own GPUs, with your data never leaving your walls. For the wider landscape, [the best self-hosted AI agent platforms](/blog/best-self-hosted-ai-agent-platforms) compares Kortix to CrewAI, AutoGen, Dify, LangGraph, and n8n.',
     },
     { type: 'h2', text: 'Side by side' },
     {
@@ -649,7 +649,7 @@ const kortixVsClaudeCowork: BlogPostEntry = {
         {
           dimension: 'Model cost (per 1M output)',
           them: '~$25–30 — frontier only',
-          kortix: '~$4.40 (GLM-5.2) to ~$0.30 (DeepSeek)',
+          kortix: '~$4.40 (GLM-5.2) to ~$0.28 (DeepSeek)',
         },
         {
           dimension: 'Agents, skills & memory shared org-wide',
@@ -1325,7 +1325,7 @@ const kortixVsGlean: BlogPostEntry = {
     },
     {
       type: 'p',
-      text: 'They can coexist, too. Plenty of companies will keep Glean as the search layer and run the work itself on Kortix — agents that read, decide, and act, with the operating layer they need to do it governed as code. If that operating layer is what you’re missing, the [company OS post](/blog/ai-transformation-company-os) and the [secure connector model](/blog/secure-ai-agent-tool-access) are the next reads.',
+      text: 'They can coexist, too. Plenty of companies will keep Glean as the search layer and run the work itself on Kortix — agents that read, decide, and act, with the operating layer they need to do it governed as code. (The desktop side has its own parallel: [how Kortix compares to Claude Cowork](/blog/kortix-vs-claude-cowork).) If that operating layer is what you’re missing, the [company OS post](/blog/ai-transformation-company-os) and the [secure connector model](/blog/secure-ai-agent-tool-access) are the next reads.',
     },
     {
       type: 'cta',

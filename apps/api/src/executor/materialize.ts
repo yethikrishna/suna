@@ -18,8 +18,17 @@ export interface DesiredPolicy {
 }
 
 /** Provider-specific config blob stored on the connector row. */
-export function connectorConfig(spec: ConnectorSpec, openapiServer?: string | null): Record<string, unknown> {
-  const auth = { type: spec.auth.type, in: spec.auth.in, name: spec.auth.name, prefix: spec.auth.prefix };
+export function connectorConfig(
+  spec: ConnectorSpec,
+  openapiServer?: string | null,
+  iconUrl?: string | null,
+): Record<string, unknown> {
+  const auth = {
+    type: spec.auth.type,
+    in: spec.auth.in,
+    name: spec.auth.name,
+    prefix: spec.auth.prefix,
+  };
   const base: Record<string, unknown> = (() => {
     switch (spec.provider) {
       case 'pipedream':
@@ -40,7 +49,7 @@ export function connectorConfig(spec: ConnectorSpec, openapiServer?: string | nu
         // The credential is the platform install token (resolved server-side); the
         // connector carries the platform's API base + its auth placement so
         // authOf()/baseUrlOf() resolve and executeCall attaches the credential.
-        // Slack/email → `Bearer <token>`; meet (Recall.ai) → `Authorization: Token <key>`.
+        // Slack/Teams/email all authenticate with `Bearer <token>`.
         return {
           platform: spec.platform,
           baseUrl: channelApiBase(spec.platform ?? ''),
@@ -58,6 +67,7 @@ export function connectorConfig(spec: ConnectorSpec, openapiServer?: string | nu
   // Sensitive gates the connector's reads too — carried in config so the gateway
   // loader (toGatewayConnector) reads it back when resolving policy.
   if (spec.sensitive) base.sensitive = true;
+  if (iconUrl) base.icon_url = iconUrl;
   // Static request headers, carried alongside `auth` so the gateway loader can
   // hand them to executeCall. Omitted when empty (keeps existing config blobs
   // byte-identical for connectors that declare none). Never secrets — plaintext

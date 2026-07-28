@@ -10,12 +10,13 @@ import type { Session } from '@opencode-ai/sdk/v2/client';
 import { opencodeKeys, useOpenCodeRuntimeReady } from './keys';
 import { unwrap, getLSCache, setLSCache, LS_SESSIONS, canQueryOpenCodeSession } from './shared';
 import { NoCompactionModelError } from './no-compaction-model-error';
+import { SESSION_SYNC_PAGE_SIZE } from '../../core/session-sync/session-sync-controller';
 
 // ============================================================================
 // Session Hooks
 // ============================================================================
 
-export function useOpenCodeSessions() {
+export function useOpenCodeSessions(enabled = true) {
   const runtimeReady = useOpenCodeRuntimeReady();
   // Subscribe to the active runtime sandbox so the query key recomputes the
   // instant the sandbox switches — returning to a warm session hits its cached
@@ -32,7 +33,7 @@ export function useOpenCodeSessions() {
       return sorted;
     },
     placeholderData: () => getLSCache<Session[]>(LS_SESSIONS),
-    enabled: runtimeReady,
+    enabled: runtimeReady && enabled,
     staleTime: 5 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -252,7 +253,10 @@ export function useSummarizeOpenCodeSession() {
       // 2. Try to get model from the session's latest assistant message
       if (!providerID || !modelID) {
         try {
-          const msgs = await client.session.messages({ sessionID: params.sessionId });
+          const msgs = await client.session.messages({
+            sessionID: params.sessionId,
+            limit: SESSION_SYNC_PAGE_SIZE,
+          });
           const allMsgs = (msgs.data ?? []) as Array<{ info: { role: string; providerID?: string; modelID?: string } }>;
           for (let i = allMsgs.length - 1; i >= 0; i--) {
             const m = allMsgs[i].info;

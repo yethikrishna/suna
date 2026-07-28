@@ -23,6 +23,7 @@ import './routes/r2';
 import './routes/r3';
 import './routes/setup-links';
 import './routes/r4';
+import './routes/oauth2-connectors';
 import './routes/r5';
 import './routes/r6';
 import './routes/r7';
@@ -31,7 +32,6 @@ import './routes/r8';
 import './routes/r9';
 import './routes/r10';
 import './routes/r11';
-import './routes/model-defaults';
 import './routes/agent-scope';
 import './routes/agent-config';
 import './routes/gateway';
@@ -65,6 +65,7 @@ export {
 // Trigger + manifest helpers (consumed by channels / executor / the boot
 // sequence in src/index.ts).
 export {
+  drainTriggerExecutionQueue,
   runProjectTriggerSweep,
   resolveGitTriggerActor,
   startProjectTriggerScheduler,

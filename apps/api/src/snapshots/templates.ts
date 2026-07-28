@@ -14,10 +14,30 @@
 
 import { and, eq, isNull, ne, or } from 'drizzle-orm';
 import { sandboxTemplates, projects } from '@kortix/db';
-import { AGENT_BROWSER_VERSION, OPENCODE_VERSION } from '@kortix/shared';
+import {
+  AGENT_BROWSER_VERSION,
+  BUN_SHA256_AMD64,
+  BUN_SHA256_ARM64,
+  BUN_VERSION,
+  CLAUDE_AGENT_ACP_VERSION,
+  CODEX_ACP_VERSION,
+  NODE_VERSION,
+  NPM_VERSION,
+  OPENCODE_VERSION,
+  PI_ACP_VERSION,
+  PI_CODING_AGENT_VERSION,
+  PNPM_SHA256_AMD64,
+  PNPM_SHA256_ARM64,
+  PNPM_VERSION,
+  PYTHON_VERSION,
+  UV_SHA256_AMD64,
+  UV_SHA256_ARM64,
+  UV_VERSION,
+} from '@kortix/shared';
 type DbSandboxTemplate = typeof sandboxTemplates.$inferSelect;
 import { db } from '../shared/db';
 import { isWarmBuildSlug, templateSlugFromBuildSlug } from './ppwarm-names';
+import { metadataMerge } from '../projects/lib/metadata-merge';
 import { readManifest } from '../projects/triggers';
 import { resolveCommitSha, readRepoFile, type GitBackedProject } from '../projects/git';
 import { SANDBOX_VERSION, config } from '../config';
@@ -42,6 +62,10 @@ const AGENT_SRC_DIR = resolve(REPO_ROOT, 'apps/kortix-sandbox-agent-server/src')
 const AGENT_PKG_JSON = resolve(REPO_ROOT, 'apps/kortix-sandbox-agent-server/package.json');
 const ENTRYPOINT_PATH = process.env.KORTIX_SNAPSHOT_ENTRYPOINT_PATH
   || resolve(REPO_ROOT, 'apps/sandbox/entrypoint.sh');
+const OPENCODE_WARMUP_PATH = process.env.KORTIX_SNAPSHOT_OPENCODE_WARMUP_PATH
+  || resolve(REPO_ROOT, 'apps/sandbox/opencode-warmup.sh');
+const MACHINE_DOC_PATH = process.env.KORTIX_SNAPSHOT_MACHINE_DOC_PATH
+  || resolve(REPO_ROOT, 'apps/sandbox/MACHINE.md');
 const SLACK_CLI_SRC_PATH = process.env.KORTIX_SNAPSHOT_SLACK_CLI_PATH
   || resolve(REPO_ROOT, 'apps/sandbox/slack-cli');
 const EXECUTOR_SDK_SRC_PATH = process.env.KORTIX_SNAPSHOT_EXECUTOR_SDK_PATH
@@ -182,7 +206,26 @@ const FINGERPRINT_EXCLUDES = ['node_modules', '.bin', 'dist', '.turbo', '.cache'
 // layer. Chromium's content hash is now stable across agent-source churn — it is
 // fetched at most once per pinned Playwright/agent-browser version and
 // cache-reused for every base rebuild after.
-const RUNTIME_LAYER_VERSION = 'baked-config-deps-binplugin-v29';
+// v30: run the toolchain and daemon as `kortix`, restore the runtime environment
+// when a provider discards image USER/ENV, extract OpenCode cache warming, and
+// bake the platform machine guide at /MACHINE.md.
+// v31: replace remote installer-script execution with versioned release
+// artifacts whose amd64 and arm64 SHA-256 digests live in the runtime manifest.
+// Pin Bun and include every artifact digest in the runtime fingerprint.
+// v32: accept uv's release target metadata in `uv --version`. uv 0.11.30 emits
+// `uv 0.11.30 (x86_64-unknown-linux-gnu)`, so v31's exact comparison failed
+// every cold image build. The version bump invalidates any cached v31 image.
+// v33: the `meet` CLI becomes `voice` and loses `speak` — the agent no longer
+// reads replies aloud one at a time; a realtime model holds the conversation and
+// calls back into the session. This bump MUST roll out before the API-side meet
+// routes are removed: a sandbox baked at =<v32 still runs `meet speak`, and its
+// skill tells it never to fall back to a raw API, so it would report a retired
+// feature as a transient provider failure mid-call.
+// v34: bake exact Claude Code, Codex, and Pi ACP adapter versions. The sandbox
+// daemon can start all four harnesses without a request-time package download.
+// v35: pin Pi's internal 0.x packages to the same version as pi-coding-agent.
+// v36: install Pi with npm because pnpm 11 isolates each global root graph.
+const RUNTIME_LAYER_VERSION = 'verified-runtime-artifacts-v36';
 const DEFAULT_CPU = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_CPU', 2);
 const DEFAULT_MEMORY_GB = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_MEMORY_GB', 4);
 const DEFAULT_DISK_GB = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_DISK_GB', 20);
@@ -818,12 +861,17 @@ async function syncManifestTemplatesForProject(project: GitBackedProject): Promi
     const meta = (projectRow?.metadata ?? {}) as Record<string, unknown>;
     const current = typeof meta.default_sandbox_slug === 'string' ? meta.default_sandbox_slug : null;
     if (current !== validDefault) {
-      const nextMeta = { ...meta };
-      if (validDefault) nextMeta.default_sandbox_slug = validDefault;
-      else delete nextMeta.default_sandbox_slug;
+      // FIX-J: SQL-side atomic merge of ONLY `default_sandbox_slug` (set / delete)
+      // so this manifest-sync write can't revert a routing pin written between the
+      // read above and this write.
       await db
         .update(projects)
-        .set({ metadata: nextMeta, updatedAt: new Date() })
+        .set({
+          metadata: validDefault
+            ? metadataMerge({ default_sandbox_slug: validDefault })
+            : metadataMerge({}, ['default_sandbox_slug']),
+          updatedAt: new Date(),
+        })
         .where(eq(projects.projectId, project.projectId));
     }
   } catch (err) {
@@ -868,6 +916,8 @@ const AGENT_RUNTIME_ARTIFACTS = [
 ];
 const NON_AGENT_RUNTIME_ARTIFACTS = [
   { label: 'kortix-entrypoint', path: ENTRYPOINT_PATH },
+  { label: 'kortix-opencode-warmup', path: OPENCODE_WARMUP_PATH },
+  { label: 'kortix-machine-doc', path: MACHINE_DOC_PATH },
   { label: 'kortix-slack-cli', path: SLACK_CLI_SRC_PATH, excludeNames: FINGERPRINT_EXCLUDES },
   { label: 'kortix-executor-sdk', path: EXECUTOR_SDK_SRC_PATH, excludeNames: FINGERPRINT_EXCLUDES },
   // Only the in-sandbox `kortix executor` closure (NOT the whole apps/cli/src) —
@@ -885,8 +935,19 @@ const NON_AGENT_RUNTIME_ARTIFACTS = [
 // binary), so they belong in BOTH fingerprints. The per-process cache re-walks the
 // actual files on every fresh deploy, so an agent-src change between deploys moves
 // the full fingerprint (drift) while leaving the non-agent fingerprint unchanged.
-const runtimeVersionKey = () => `${SANDBOX_VERSION}:${RUNTIME_LAYER_VERSION}:${OPENCODE_VERSION}:${AGENT_BROWSER_VERSION}`;
-const sandboxVersionStr = () => `${SANDBOX_VERSION}:layer:${RUNTIME_LAYER_VERSION}:ab:${AGENT_BROWSER_VERSION}`;
+const runtimeIntegrityKey = () =>
+  [
+    PNPM_SHA256_AMD64,
+    PNPM_SHA256_ARM64,
+    UV_SHA256_AMD64,
+    UV_SHA256_ARM64,
+    BUN_SHA256_AMD64,
+    BUN_SHA256_ARM64,
+  ].join(':');
+const runtimeVersionKey = () =>
+  `${SANDBOX_VERSION}:${RUNTIME_LAYER_VERSION}:${PNPM_VERSION}:${NODE_VERSION}:${NPM_VERSION}:${UV_VERSION}:${PYTHON_VERSION}:${BUN_VERSION}:${OPENCODE_VERSION}:${CLAUDE_AGENT_ACP_VERSION}:${CODEX_ACP_VERSION}:${PI_ACP_VERSION}:${PI_CODING_AGENT_VERSION}:${AGENT_BROWSER_VERSION}:${runtimeIntegrityKey()}`;
+const sandboxVersionStr = () =>
+  `${SANDBOX_VERSION}:layer:${RUNTIME_LAYER_VERSION}:pnpm:${PNPM_VERSION}:node:${NODE_VERSION}:npm:${NPM_VERSION}:uv:${UV_VERSION}:python:${PYTHON_VERSION}:bun:${BUN_VERSION}:oc:${OPENCODE_VERSION}:claude-acp:${CLAUDE_AGENT_ACP_VERSION}:codex-acp:${CODEX_ACP_VERSION}:pi-acp:${PI_ACP_VERSION}:pi:${PI_CODING_AGENT_VERSION}:ab:${AGENT_BROWSER_VERSION}:integrity:${runtimeIntegrityKey()}`;
 
 let runtimeFingerprintCache: { key: string; value: string } | null = null;
 let runtimeFingerprintInflight: Promise<string> | null = null;

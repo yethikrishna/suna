@@ -1,20 +1,21 @@
 'use client';
 
+import type { AttachedFile } from '@/features/session/session-chat-input';
+
 import { buildNewSessionCreateInput } from '@/features/workspace/project-layout/new-session-create';
 import {
   ProjectHome,
   type ProjectHomeSendOptions,
 } from '@/features/workspace/project-layout/project-home';
-import { ProjectShell } from '@/features/workspace/project-layout/project-shell';
-import type { AttachedFile } from '@/features/session/session-chat-input';
 import { useAccountState } from '@/hooks/billing';
 import { useNewProjectSession } from '@/hooks/projects/use-new-project-session';
 import { useProjectCanRun } from '@/hooks/projects/use-project-can-run';
+import { useWarmProjectSession } from '@/hooks/projects/use-warm-project-session';
 import { isBillingEnabled } from '@/lib/config';
-import { getProjectDetail } from '@kortix/sdk/projects-client';
-import { writeStartStash } from '@kortix/sdk/react';
-import { usePendingFilesStore } from '@/stores/pending-files-store';
+import { usePendingFilesStore } from '@/stores/session-composer-handoff-store';
 import { useUpgradeDialogStore } from '@/stores/upgrade-dialog-store';
+import { getProjectDetail } from '@kortix/sdk';
+import { writeStartStash } from '@kortix/sdk/react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -34,7 +35,12 @@ export default function ProjectIndexPage() {
   const { data: accountState } = useAccountState({ accountId: projectAccountId });
   const openUpgradeDialog = useUpgradeDialogStore((s) => s.openUpgradeDialog);
 
-  const newSession = useNewProjectSession(projectId);
+  const warmSession = useWarmProjectSession(projectId);
+  const newSession = useNewProjectSession(
+    projectId,
+    warmSession.data?.session,
+    warmSession.resolveSession,
+  );
   // Composer sending state: spans Enter → create confirmed → navigation. Reset
   // only on create failure (success navigates this page away).
   const [sending, setSending] = useState(false);
@@ -90,7 +96,7 @@ export default function ProjectIndexPage() {
         onError: () => setSending(false),
         onNavigate: (sessionId) => {
           // `sessionId` here is the route/Kortix session id, not the OpenCode
-          // pin the session page resolves later (`useCanonicalOpenCodeSession`
+          // pin the session page resolves later (`useCanonicalRuntimeSession`
           // /`ensureOpencodeSessionPin` mint a separate id). Stash under the
           // route id via the SDK's canonical `writeStartStash` — the session
           // page's `migrateStash` hands this off onto the resolved pin once it
@@ -111,9 +117,5 @@ export default function ProjectIndexPage() {
     [billingLoading, canRun, projectAccountId, openUpgradeDialog, newSession],
   );
 
-  return (
-    <ProjectShell projectId={projectId}>
-      <ProjectHome projectId={projectId} onSend={handleSend} busy={sending} />
-    </ProjectShell>
-  );
+  return <ProjectHome projectId={projectId} onSend={handleSend} busy={sending} />;
 }

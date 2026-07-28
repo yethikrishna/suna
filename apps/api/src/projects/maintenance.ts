@@ -1,5 +1,5 @@
 import { projectSessions, projects } from '@kortix/db';
-import { and, eq, inArray, lt, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt, ne, sql } from 'drizzle-orm';
 import { tickRunningComputeCharges } from '../billing/services/compute-metering';
 import { db } from '../shared/db';
 import { reconcileStaleBuilds } from '../snapshots/builder';
@@ -128,8 +128,25 @@ export async function sweepExpiredSessionBranches(now = new Date()): Promise<{
         inArray(projectSessions.status, [...TERMINAL_SESSION_STATUSES]),
         lt(projectSessions.updatedAt, cutoff),
         ne(projectSessions.branchName, projects.defaultBranch),
+        // Exclude the two NEVER-deletable classes at the query so they can't
+        // occupy batch slots forever and starve deletable rows: a skipped row
+        // never gets a db.update, so its updatedAt stays < cutoff and it
+        // re-matches every sweep. (1) already-GC'd. (2) open-PR — mirrors
+        // hasOpenPullRequestMarker. The in-loop guards below stay as
+        // defense-in-depth for a marker written AFTER selection.
+        sql`(${projectSessions.metadata}->'branch_gc'->>'deleted_at') IS NULL`,
+        sql`NOT (
+          COALESCE(${projectSessions.metadata}->>'open_pr', 'false') = 'true'
+          OR COALESCE(${projectSessions.metadata}->>'has_open_pr', 'false') = 'true'
+          OR lower(COALESCE(${projectSessions.metadata}->'pull_request'->>'state', '')) = 'open'
+          OR lower(COALESCE(${projectSessions.metadata}->'github_pull_request'->>'state', '')) = 'open'
+          OR lower(COALESCE(${projectSessions.metadata}->'pr'->>'state', '')) = 'open'
+        )`,
       ),
     )
+    // Oldest deletable rows first — deterministic drain so the planner's scan
+    // order can't crowd them out of the batch.
+    .orderBy(asc(projectSessions.updatedAt))
     .limit(GC_BATCH_SIZE);
 
   let deleted = 0;
@@ -276,12 +293,14 @@ export async function runProjectMaintenance(): Promise<void> {
       sweepExpiredSessionBranches(),
       // Billing v2 — partial-bill any active compute sessions that haven't
       // settled in > 1h, so a missed stop hook can't accrue uncharged compute.
+      // Also reconciles `active` sandboxes left with no open compute row (the
+      // close-without-reopen defect — see reconcileMissingComputeSessions).
       tickRunningComputeCharges().catch((err) => {
         console.warn(
           '[project-maintenance] compute tick failed:',
           err instanceof Error ? err.message : err,
         );
-        return { settled: 0 };
+        return { settled: 0, reconciled: 0 };
       }),
       // Heal snapshot build-log rows orphaned at "building" by a process
       // restart/crash, globally across all projects.
@@ -325,6 +344,7 @@ export async function runProjectMaintenance(): Promise<void> {
         branches.deleted ||
         branches.errors ||
         computeTick.settled ||
+        computeTick.reconciled ||
         staleBuilds.closedReady ||
         staleBuilds.closedFailed ||
         snapshotGc.deleted,

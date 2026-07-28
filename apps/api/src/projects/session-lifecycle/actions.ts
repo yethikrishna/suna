@@ -5,8 +5,10 @@ import { getProvider } from '../../platform/providers';
 import { db } from '../../shared/db';
 import { projectSessions, sessionSandboxes } from '@kortix/db';
 import { and, eq } from 'drizzle-orm';
+import { revokeSessionExecutorTokens } from '../../repositories/account-tokens';
 import { withProjectGitAuth } from '../lib/git';
 import { allocateSessionRuntime } from '../lib/session-runtime-allocator';
+import { sandboxSlugFromSessionMetadata } from '../lib/session-sandbox-metadata';
 import { buildSessionSandboxEnvVars, sandboxCallbackUnreachableReason } from '../lib/sessions';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { isMissingRuntimeError } from '../routes/shared';
@@ -18,6 +20,7 @@ import {
   RUNTIME_IDENTITY_ERROR,
   RUNTIME_IDENTITY_UNAVAILABLE,
 } from '../runtime-identity';
+import { prepareInPlaceRestartMetadata } from './readiness-clocks';
 
 export async function deleteSession(input: {
   projectId: string;
@@ -102,6 +105,18 @@ export async function deleteSession(input: {
     console.warn(`[projects] compute pause failed for ${sessionId}:`, err),
   );
 
+  // The provider sandbox is being removed above, so this session's executor
+  // token can never be used legitimately again — but nothing expired it, so it
+  // stayed a valid bearer forever. Awaited (not fire-and-forget) so the
+  // credential is dead before we report the session gone; a failure is logged at
+  // error level rather than failing the delete, since the box is already going.
+  await revokeSessionExecutorTokens(sessionId, accountId).catch((err) => {
+    console.error(
+      `[projects] FAILED to revoke executor tokens for deleted session ${sessionId} — a valid token may outlive its sandbox:`,
+      err,
+    );
+  });
+
   return { ok: true };
 }
 
@@ -181,6 +196,7 @@ export async function restartSession(input: {
       providerName,
       baseRef: session.baseRef ?? loaded.row.defaultBranch,
       agentName: session.agentName ?? 'default',
+      sandboxSlug: sandboxSlugFromSessionMetadata(session.metadata),
       runtimeMetadata,
       sessionMetadata: { ...(session.metadata ?? {}), ...runtimeMetadata },
       buildEnvVars: () =>
@@ -263,16 +279,20 @@ export async function restartSession(input: {
       };
     }
 
+    const restartStartedAt = new Date();
     await db
       .update(sessionSandboxes)
-      .set({ status: 'provisioning', updatedAt: new Date() })
+      .set({
+        status: 'provisioning',
+        metadata: prepareInPlaceRestartMetadata(existingSandbox.metadata, restartStartedAt),
+        updatedAt: restartStartedAt,
+      })
       .where(eq(sessionSandboxes.sandboxId, sessionId));
     await db
       .update(projectSessions)
       .set({
         status: 'provisioning',
         error: null,
-        sandboxUrl: null,
         updatedAt: new Date(),
       })
       .where(eq(projectSessions.sessionId, sessionId));

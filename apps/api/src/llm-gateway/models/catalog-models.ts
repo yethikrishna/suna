@@ -1,14 +1,13 @@
 import {
-  AUTO_MODEL_ID,
   type Catalog,
   type CatalogCost,
   type CatalogModalities,
   type CatalogModel,
   type CatalogReasoningOption,
   catalogModelForWireModel as catalogModelForWireModelCanonical,
-} from "@kortix/llm-catalog";
+} from '@kortix/llm-catalog';
 import { resolveCatalogUpstream } from './provider-registry';
-import { codexModelIds } from "./codex-models";
+import { codexModelIds } from './codex-models';
 import { runtimeModelCatalog } from './runtime-catalog';
 import { RUNTIME_MANAGED_MODELS } from './managed-models';
 
@@ -16,8 +15,7 @@ import { RUNTIME_MANAGED_MODELS } from './managed-models';
 // under `codex/<id>` — kept as one named constant so this file, the sandbox
 // agent server, and the web picker can never drift on the string.
 const CODEX_PROVIDER_ID = 'codex';
-// The real upstream "provider" for every Kortix-managed model (including the
-// synthetic `auto`) — the brand a client should group/label these under.
+// The real upstream "provider" for every Kortix-managed model.
 const KORTIX_PROVIDER_ID = 'kortix';
 
 interface GatewayModel {
@@ -66,15 +64,17 @@ function modelsById(catalog: Catalog): Map<string, CatalogModel> {
 }
 
 function humanize(id: string): string {
-  const tail = id.split("/").pop() ?? id;
-  return tail.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const tail = id.split('/').pop() ?? id;
+  return tail.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function codexName(id: string): string {
   if (!id.startsWith('gpt-')) return humanize(id);
   return id
     .split('-')
-    .map((part, index) => index === 0 ? 'GPT' : index >= 2 ? `${part[0]?.toUpperCase()}${part.slice(1)}` : part)
+    .map((part, index) =>
+      index === 0 ? 'GPT' : index >= 2 ? `${part[0]?.toUpperCase()}${part.slice(1)}` : part,
+    )
     .join('-');
 }
 
@@ -97,15 +97,9 @@ function servedLimit(limit?: { context?: number; input?: number; output?: number
   output: number;
 } {
   return {
-    context:
-      limit?.context && limit.context > 0
-        ? limit.context
-        : DEFAULT_SERVED_LIMIT.context,
+    context: limit?.context && limit.context > 0 ? limit.context : DEFAULT_SERVED_LIMIT.context,
     ...(typeof limit?.input === 'number' && limit.input > 0 ? { input: limit.input } : {}),
-    output:
-      limit?.output && limit.output > 0
-        ? limit.output
-        : DEFAULT_SERVED_LIMIT.output,
+    output: limit?.output && limit.output > 0 ? limit.output : DEFAULT_SERVED_LIMIT.output,
   };
 }
 
@@ -120,9 +114,7 @@ function servedLimit(limit?: { context?: number; input?: number; output?: number
 // no second catalog lookup); `cost`/`modalities`/`structured_output`/
 // `knowledge` ride along so nothing #4995/#5002-adjacent UI needs is dropped
 // between models.dev and opencode's registered model dict.
-function capabilitiesOf(
-  model: CatalogModel | undefined,
-): Omit<GatewayModel, "name" | "provider"> {
+function capabilitiesOf(model: CatalogModel | undefined): Omit<GatewayModel, 'name' | 'provider'> {
   if (model && model.attachment !== undefined) {
     return {
       reasoning: !!model.reasoning,
@@ -188,37 +180,33 @@ export const catalogModelForWireModel = (
 
 export function managedModels(): Record<string, GatewayModel> {
   const out: Record<string, GatewayModel> = {};
-  // RUNTIME_MANAGED_MODELS is already empty when KORTIX_MANAGED_PROVIDER_ENABLED
-  // is off (managed-models.ts) — the loop below is a no-op in that case. AUTO is
-  // "smart routing" over the managed lineup specifically, so it's meaningless
-  // (and confusing in the picker) without it: skip it too on a self-host.
+  // RUNTIME_MANAGED_MODELS is empty when KORTIX_MANAGED_PROVIDER_ENABLED is off.
   if (RUNTIME_MANAGED_MODELS.length === 0) return out;
-  // AUTO is synthetic (not a real model): it accepts images because pickAutoModel
-  // routes image-bearing requests to a vision-capable model. Its window matches
-  // its default target so OpenCode sizes conversations the same. Every managed
-  // model (incl. AUTO) brands as the `kortix` provider — the real "who serves
-  // this" for the picker's grouping (see ModelSelector's `pickerGroupId`).
-  out[AUTO_MODEL_ID] = {
-    name: "Auto",
-    provider: KORTIX_PROVIDER_ID,
-    reasoning: false,
-    tool_call: true,
-    attachment: true,
-    temperature: true,
-    limit: { context: 1_000_000, output: 128_000 },
-  };
   // The managed lineup is curated and its slugs don't all exist on models.dev
   // (z-ai≠zhipuai, dotted vs dashed Claude ids), so vision + limit are explicit
   // on each model. All current managed models support reasoning/tools/temperature.
   for (const m of RUNTIME_MANAGED_MODELS) {
+    const cost = m.pricing
+      ? {
+          input: m.pricing.inputPerMillion,
+          output: m.pricing.outputPerMillion,
+          ...(m.pricing.cachedInputPerMillion != null
+            ? { cache_read: m.pricing.cachedInputPerMillion }
+            : {}),
+          ...(m.pricing.cacheWritePerMillion != null
+            ? { cache_write: m.pricing.cacheWritePerMillion }
+            : {}),
+        }
+      : undefined;
     out[m.id] = {
       name: m.name,
-      provider: KORTIX_PROVIDER_ID,
+      provider: m.providerBrand ?? KORTIX_PROVIDER_ID,
       reasoning: true,
       tool_call: true,
       attachment: m.vision,
       temperature: true,
       limit: m.limit,
+      ...(cost ? { cost } : {}),
     };
   }
   return out;
@@ -229,7 +217,7 @@ export function gatewayModelsAll(
 ): Record<string, GatewayModel> {
   const out: Record<string, GatewayModel> = {};
   for (const provider of catalog.providers) {
-    if (provider.id === "opencode") continue;
+    if (provider.id === 'opencode') continue;
     if (!resolveCatalogUpstream(provider.id)) continue;
     for (const model of provider.models) {
       // BYOK models ARE catalog entries — capabilities come straight from models.dev.

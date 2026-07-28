@@ -117,7 +117,9 @@ priority list.
 
 ## Phase 2 — finish the demo (it is the spec people copy)
 
-Done: `end_user_ref` stamping, charge-by-end-user.
+Done: `end_user_ref` stamping, charge-by-end-user, and a session list scoped to
+the signed-in end-user (forced server-side — the browser cannot ask for another
+end-user's list, and an unfiltered request no longer returns everybody's).
 
 Remaining, in order of what teaches the most:
 

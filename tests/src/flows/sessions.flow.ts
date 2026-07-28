@@ -359,18 +359,18 @@ flow(
     });
 
     await ctx.step(
-      'a project EDITOR who did not create the session cannot list shares → 403',
+      'a project EDITOR who did not create the session cannot list shares → 404',
       async () => {
         const r = await ctx.client
           .as(editor)
           .get('/v1/projects/:projectId/sessions/:sessionId/public-shares', {
             params: { projectId: p.id, sessionId },
           });
-        r.status(403);
+        r.status(404);
       },
     );
     await ctx.step(
-      "a project EDITOR cannot create a share on someone else's session → 403",
+      "a project EDITOR cannot create a share on someone else's session → 404",
       async () => {
         const r = await ctx.client
           .as(editor)
@@ -379,16 +379,16 @@ flow(
             { preview: { port: 3000 } },
             { params: { projectId: p.id, sessionId } },
           );
-        r.status(403);
+        r.status(404);
       },
     );
-    await ctx.step("a project EDITOR cannot revoke someone else's share → 403", async () => {
+    await ctx.step("a project EDITOR cannot revoke someone else's share → 404", async () => {
       const r = await ctx.client
         .as(editor)
         .del('/v1/projects/:projectId/sessions/:sessionId/public-shares/:shareId', {
           params: { projectId: p.id, sessionId, shareId },
         });
-      r.status(403);
+      r.status(404);
     });
 
     await ctx.step(

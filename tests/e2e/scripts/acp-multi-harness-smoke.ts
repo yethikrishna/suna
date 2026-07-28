@@ -68,6 +68,8 @@ const reuseProjectId = process.env.E2E_ACP_MULTI_HARNESS_REUSE_PROJECT_ID?.trim(
 const reuseUserEmail = process.env.E2E_ACP_MULTI_HARNESS_REUSE_EMAIL?.trim() || '';
 const sandboxProvider =
   (process.env.E2E_ACP_MULTI_HARNESS_PROVIDER?.trim() as SandboxProvider | undefined) || undefined;
+const runtimeModel = process.env.E2E_ACP_MULTI_HARNESS_MODEL?.trim() || '';
+const directOpenAiKey = process.env.E2E_ACP_MULTI_HARNESS_OPENAI_API_KEY?.trim() || '';
 const manifest = readFileSync(
   resolve(repoRoot, 'packages/starter/examples/acp-multi-harness/kortix.yaml'),
   'utf8',
@@ -322,6 +324,7 @@ async function verifyHarness(token: string, harness: Harness): Promise<void> {
       agent_name: harness,
       initial_prompt: `Reply with exactly ${firstMarker}`,
       ...(sandboxProvider ? { provider: sandboxProvider } : {}),
+      ...(runtimeModel ? { opencode_model: runtimeModel } : {}),
     },
     201,
   );
@@ -417,7 +420,7 @@ async function verifyHarness(token: string, harness: Harness): Promise<void> {
 async function main(): Promise<void> {
   log(
     'target',
-    `${apiBase} with ${harnesses.join(', ')} on ${sandboxProvider ?? 'the project default provider'}`,
+    `${apiBase} with ${harnesses.join(', ')} on ${sandboxProvider ?? 'the project default provider'} using ${runtimeModel || 'each harness default model'}`,
   );
   assert(
     (reuseProjectId && reuseUserEmail) || (!reuseProjectId && !reuseUserEmail),
@@ -486,6 +489,13 @@ async function main(): Promise<void> {
       `manifest validation failed: ${JSON.stringify(validation.issues)}`,
     );
     await api(token, 'POST', `/executor/projects/${projectId}/connectors/sync`, {});
+    if (directOpenAiKey) {
+      await api(token, 'POST', `/projects/${projectId}/secrets`, {
+        name: 'OPENAI_API_KEY',
+        value: directOpenAiKey,
+      });
+      log('credential', 'seeded temporary OPENAI_API_KEY for this disposable fixture');
+    }
   }
 
   const detail = await waitFor(

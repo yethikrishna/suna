@@ -5,6 +5,7 @@ import type { Context } from 'hono';
 
 import { PROJECT_ACTIONS } from '../../iam';
 import type { ProviderName } from '../../platform/providers';
+import { invalidateSandbox } from '../../sandbox-proxy/backend';
 import { db } from '../../shared/db';
 import type { AppEnv } from '../../types';
 import { assertProjectCapability, loadProjectForUser, loadVisibleSession } from '../lib/access';
@@ -87,9 +88,66 @@ async function resolveAcpTarget(
   if (!endpoint) return null;
   return {
     ...binding,
+    externalId: sandbox.externalId,
     provider: sandbox.provider as ProviderName,
     endpoint,
   };
+}
+
+type AcpTarget = NonNullable<Awaited<ReturnType<typeof resolveAcpTarget>>>;
+
+function acpUpstreamUrl(target: AcpTarget): string {
+  return (
+    `${target.endpoint.url}/kortix/acp/${encodeURIComponent(target.acpServerId)}` +
+    `?agent=${encodeURIComponent(target.runtimeHarness)}`
+  );
+}
+
+async function refreshAcpTargetIngress(target: AcpTarget): Promise<AcpTarget | null> {
+  invalidateSandbox(target.externalId);
+  const endpoint = await sandboxRuntimeEndpoint(target.externalId, target.userId);
+  return endpoint ? { ...target, endpoint } : null;
+}
+
+async function fetchAcpUpstreamWithIngressRefresh(
+  target: AcpTarget,
+  createInit: (target: AcpTarget) => RequestInit,
+): Promise<{ target: AcpTarget; upstream: Response }> {
+  let activeTarget = target;
+  let upstream = await fetch(acpUpstreamUrl(activeTarget), createInit(activeTarget));
+  if (upstream.status !== 401 && upstream.status !== 403) {
+    return { target: activeTarget, upstream };
+  }
+
+  const refreshed = await refreshAcpTargetIngress(activeTarget);
+  if (!refreshed) return { target: activeTarget, upstream };
+  activeTarget = refreshed;
+  upstream = await fetch(acpUpstreamUrl(activeTarget), createInit(activeTarget));
+  return { target: activeTarget, upstream };
+}
+
+async function syncPromptEnvWithIngressRefresh(target: AcpTarget): Promise<AcpTarget> {
+  const sync = (activeTarget: AcpTarget) =>
+    syncSandboxEnvForPrompt({
+      projectId: activeTarget.projectId,
+      sessionId: activeTarget.sessionId,
+      serviceKey: activeTarget.endpoint.serviceKey,
+      previewUrl: activeTarget.endpoint.url,
+      providerHeaders: activeTarget.endpoint.providerHeaders,
+      providerName: activeTarget.provider,
+    });
+
+  try {
+    await sync(target);
+    return target;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/\benv sync failed: (?:401|403)\b/.test(message)) throw error;
+    const refreshed = await refreshAcpTargetIngress(target);
+    if (!refreshed) throw error;
+    await sync(refreshed);
+    return refreshed;
+  }
 }
 
 projectsApp.get('/:projectId/sessions/:sessionId/acp/transcript', async (c) => {
@@ -113,7 +171,7 @@ projectsApp.get('/:projectId/sessions/:sessionId/acp/transcript', async (c) => {
 
 projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp', async (c) => {
   const method = c.req.method.toUpperCase();
-  const target = await resolveAcpTarget(
+  let target = await resolveAcpTarget(
     c,
     method === 'GET' ? 'read' : 'session',
     method === 'GET'
@@ -123,10 +181,6 @@ projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp',
         : PROJECT_ACTIONS.PROJECT_SESSION_START,
   );
   if (!target) return c.json({ error: 'ACP session runtime not found' }, 404);
-  const upstreamUrl =
-    `${target.endpoint.url}/kortix/acp/${encodeURIComponent(target.acpServerId)}` +
-    `?agent=${encodeURIComponent(target.runtimeHarness)}`;
-  const headers = new Headers(target.endpoint.headers);
 
   if (method === 'POST') {
     let envelope: Record<string, unknown>;
@@ -142,14 +196,7 @@ projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp',
 
     if (envelope.method === 'session/prompt') {
       try {
-        await syncSandboxEnvForPrompt({
-          projectId: target.projectId,
-          sessionId: target.sessionId,
-          serviceKey: target.endpoint.serviceKey,
-          previewUrl: target.endpoint.url,
-          providerHeaders: target.endpoint.providerHeaders,
-          providerName: target.provider,
-        });
+        target = await syncPromptEnvWithIngressRefresh(target);
       } catch (error) {
         return c.json(
           {
@@ -168,12 +215,16 @@ projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp',
       direction: 'client_to_agent',
       envelope,
     });
-    headers.set('Content-Type', 'application/json');
-    const upstream = await fetch(upstreamUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(envelope),
-      signal: c.req.raw.signal,
+    const body = JSON.stringify(envelope);
+    const { upstream } = await fetchAcpUpstreamWithIngressRefresh(target, (activeTarget) => {
+      const headers = new Headers(activeTarget.endpoint.headers);
+      headers.set('Content-Type', 'application/json');
+      return {
+        method: 'POST',
+        headers,
+        body,
+        signal: c.req.raw.signal,
+      };
     });
     if (upstream.ok && upstream.status !== 202 && upstream.status !== 204) {
       const body = await upstream.text();
@@ -210,15 +261,18 @@ projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp',
     if (!Number.isSafeInteger(afterOrdinal) || afterOrdinal < 0) {
       return c.json({ error: 'Last-Event-ID must be a non-negative integer' }, 400);
     }
-    headers.set('Accept', 'text/event-stream');
-    // Always replay the active process from its first event. The durable
-    // unique key removes duplicates and the DB ordinal remains monotonic
-    // when a restarted harness begins a new upstream sequence.
-    headers.set('Last-Event-ID', '0');
-    const upstream = await fetch(upstreamUrl, {
-      method: 'GET',
-      headers,
-      signal: c.req.raw.signal,
+    const { upstream } = await fetchAcpUpstreamWithIngressRefresh(target, (activeTarget) => {
+      const headers = new Headers(activeTarget.endpoint.headers);
+      headers.set('Accept', 'text/event-stream');
+      // Always replay the active process from its first event. The durable
+      // unique key removes duplicates and the DB ordinal remains monotonic
+      // when a restarted harness begins a new upstream sequence.
+      headers.set('Last-Event-ID', '0');
+      return {
+        method: 'GET',
+        headers,
+        signal: c.req.raw.signal,
+      };
     });
     if (!upstream.ok || !upstream.body) {
       return new Response(upstream.body, {
@@ -262,11 +316,11 @@ projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp',
       403,
     );
   }
-  const upstream = await fetch(upstreamUrl, {
+  const { upstream } = await fetchAcpUpstreamWithIngressRefresh(target, (activeTarget) => ({
     method: 'DELETE',
-    headers,
+    headers: activeTarget.endpoint.headers,
     signal: c.req.raw.signal,
-  });
+  }));
   return new Response(upstream.body, {
     status: upstream.status,
     headers: decodedResponseHeaders(upstream),

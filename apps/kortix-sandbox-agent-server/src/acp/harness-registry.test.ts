@@ -65,13 +65,15 @@ describe('ACP harness registry', () => {
       HOME: '/home/kortix',
       KORTIX_API_URL: 'https://api.example.test/v1/',
       KORTIX_SANDBOX_TOKEN: 'sandbox-token',
+      KORTIX_LLM_BASE_URL: 'https://api.example.test/v1/llm/',
+      KORTIX_LLM_API_KEY: 'gateway-token',
     }
 
     expect(resolveAcpHarnessLaunchEnv('claude', env)).toMatchObject({
       CLAUDE_CONFIG_DIR: '/home/kortix/.claude',
-      ANTHROPIC_BASE_URL: 'https://api.example.test/v1/router',
-      ANTHROPIC_AUTH_TOKEN: 'sandbox-token',
-      ANTHROPIC_MODEL: 'claude-sonnet-4-6',
+      ANTHROPIC_BASE_URL: 'https://api.example.test/v1/llm',
+      ANTHROPIC_AUTH_TOKEN: 'gateway-token',
+      ANTHROPIC_MODEL: 'claude-sonnet-4.6',
     })
     expect(resolveAcpHarnessLaunchEnv('codex', env)).toMatchObject({
       CODEX_HOME: '/home/kortix/.codex',
@@ -80,13 +82,59 @@ describe('ACP harness registry', () => {
         'https://api.example.test/v1/router/openai',
       ),
     })
+    expect(
+      JSON.parse(resolveAcpHarnessLaunchEnv('codex', env).CODEX_CONFIG!),
+    ).toEqual({
+      model: 'gpt-5.4',
+    })
     expect(resolveAcpHarnessLaunchEnv('pi', env)).toMatchObject({
       PI_CODING_AGENT_DIR: '/home/kortix/.pi/agent',
       PI_TELEMETRY: '0',
       KORTIX_PI_MODELS_JSON: expect.stringContaining(
-        'https://api.example.test/v1/router/openai',
+        'https://api.example.test/v1/llm',
       ),
     })
+    expect(resolveAcpHarnessLaunchEnv('codex', env).DEFAULT_AUTH_REQUEST).toContain(
+      'sandbox-token',
+    )
+    const piModels = JSON.parse(
+      resolveAcpHarnessLaunchEnv('pi', env).KORTIX_PI_MODELS_JSON!,
+    )
+    expect(piModels.providers.kortix).toMatchObject({
+      baseUrl: 'https://api.example.test/v1/llm/v1',
+      api: 'openai-completions',
+      apiKey: '$KORTIX_LLM_API_KEY',
+    })
+    const directGatewayPiModels = JSON.parse(
+      resolveAcpHarnessLaunchEnv('pi', {
+        ...env,
+        KORTIX_LLM_BASE_URL: 'https://gateway.example.test/v1',
+      }).KORTIX_PI_MODELS_JSON!,
+    )
+    expect(directGatewayPiModels.providers.kortix.baseUrl).toBe(
+      'https://gateway.example.test/v1',
+    )
+  })
+
+  test('removes the OpenAI namespace from managed Codex and Pi models', () => {
+    const env = {
+      HOME: '/home/kortix',
+      KORTIX_API_URL: 'https://api.example.test/v1',
+      KORTIX_SANDBOX_TOKEN: 'sandbox-token',
+      KORTIX_RUNTIME_MODEL: 'openai/gpt-5.6-codex',
+    }
+    const codex = resolveAcpHarnessLaunchEnv('codex', env)
+    const pi = resolveAcpHarnessLaunchEnv('pi', env)
+
+    expect(JSON.parse(codex.CODEX_CONFIG!)).toEqual({
+      model: 'gpt-5.6-codex',
+    })
+    expect(JSON.parse(pi.KORTIX_PI_MODELS_JSON!).providers.kortix.models).toEqual([
+      expect.objectContaining({
+        id: 'gpt-5.6-codex',
+        name: 'gpt-5.6-codex',
+      }),
+    ])
   })
 
   test('preserves direct provider credentials', () => {

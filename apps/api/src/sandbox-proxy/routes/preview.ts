@@ -591,6 +591,11 @@ export async function forwardToSandbox(
     incomingHeaders,
     body,
   );
+  const retryBudgetRequest = {
+    method,
+    path: remainingPath,
+    acpPrompt: acpPromptSession !== null,
+  };
   const promptDelivery =
     shouldSyncProjectEnvBeforeProxy(port, method, remainingPath) || acpPromptSession !== null;
 
@@ -892,7 +897,7 @@ export async function forwardToSandbox(
           attemptController.abort(
             new DOMException('proxy attempt connect timeout', 'TimeoutError'),
           ),
-        proxyAttemptTimeoutMs(budgetRemainingMs, { method, path: remainingPath }),
+        proxyAttemptTimeoutMs(budgetRemainingMs, retryBudgetRequest),
       );
       let upstream: Response;
       try {
@@ -1074,7 +1079,7 @@ export async function forwardToSandbox(
       if (
         err instanceof DOMException &&
         err.name === 'TimeoutError' &&
-        isLongTurnCompletionRequest({ method, path: remainingPath })
+        isLongTurnCompletionRequest(retryBudgetRequest)
       ) {
         sawLongTurnTimeout = true;
         break;

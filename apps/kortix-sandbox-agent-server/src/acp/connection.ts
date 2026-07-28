@@ -1,5 +1,6 @@
 import type { Readable, Writable } from 'node:stream'
 import { createInterface } from 'node:readline'
+import { randomUUID } from 'node:crypto'
 
 export type JsonRpcEnvelope = Record<string, unknown> & { jsonrpc: '2.0' }
 
@@ -126,6 +127,7 @@ export class AcpProtocolError extends Error {
 }
 
 export class AcpConnection {
+  readonly instanceId = randomUUID()
   private readonly input: Writable
   private readonly pending = new Map<string, PendingRequest>()
   private readonly pendingClientRequests = new Map<string, PendingClientRequest>()
@@ -141,6 +143,8 @@ export class AcpConnection {
   private writeQueue = Promise.resolve()
   private closed = false
   private initialized = false
+  private initialization: Promise<JsonRpcEnvelope> | null = null
+  private initializationResult: Record<string, unknown> | null = null
 
   constructor(options: {
     input: Writable
@@ -183,8 +187,7 @@ export class AcpConnection {
   async initialize(input: {
     clientInfo: { name: string; version: string }
   }): Promise<Record<string, unknown>> {
-    const result = await this.request(
-      'initialize',
+    const envelope = await this.initializeEnvelope(
       {
         protocolVersion: 1,
         clientCapabilities: {
@@ -195,11 +198,55 @@ export class AcpConnection {
       },
       'kortix:initialize',
     )
+    if (Object.prototype.hasOwnProperty.call(envelope, 'error')) {
+      const error = isObject(envelope.error) ? envelope.error : {}
+      throw new AcpProtocolError(
+        typeof error.message === 'string'
+          ? error.message
+          : 'ACP harness returned an error',
+        typeof error.code === 'number' ? error.code : undefined,
+        error.data,
+      )
+    }
+    const result = envelope.result
     if (!isObject(result) || result.protocolVersion !== 1) {
       throw new AcpProtocolError('ACP harness did not negotiate protocol version 1')
     }
-    this.initialized = true
     return result
+  }
+
+  async initializeEnvelope(
+    params: unknown,
+    id: string | number,
+  ): Promise<JsonRpcEnvelope> {
+    if (this.initializationResult) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: this.initializationResult,
+      }
+    }
+    if (!this.initialization) {
+      this.initialization = this.requestEnvelope('initialize', params, id)
+        .then((envelope) => {
+          if (!Object.prototype.hasOwnProperty.call(envelope, 'error')) {
+            if (!isObject(envelope.result) || envelope.result.protocolVersion !== 1) {
+              throw new AcpProtocolError('ACP harness did not negotiate protocol version 1')
+            }
+            this.initializationResult = envelope.result
+            this.initialized = true
+          }
+          return envelope
+        })
+        .finally(() => {
+          this.initialization = null
+        })
+    }
+    const envelope = await this.initialization
+    return {
+      ...envelope,
+      id,
+    }
   }
 
   async request(
@@ -438,6 +485,7 @@ export class AcpConnection {
     if (this.closed) return
     this.closed = true
     this.initialized = false
+    this.initializationResult = null
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer)
       pending.reject(error)

@@ -188,6 +188,39 @@ describe('release gate transient failure resilience', () => {
     ).toBe(false);
   });
 
+  it('marks an unexpected host-level gateway status for a clean flow retry', () => {
+    const response = capturedResponse(503, {
+      'content-type': 'application/json',
+      'retry-after': '30',
+      'x-maintenance-mode': 'blocking',
+    });
+
+    let error: unknown;
+    try {
+      response.status(200);
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(isKe2eRetryableError(error)).toBe(true);
+  });
+
+  it('does not mark an API contract 503 for retry', () => {
+    const response = capturedResponse(503, {
+      'content-type': 'application/json',
+      'x-request-id': 'request-1',
+    });
+
+    let error: unknown;
+    try {
+      response.status(200);
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(isKe2eRetryableError(error)).toBe(false);
+  });
+
   it('retries an opted-in host-level 502 response', async () => {
     vi.useFakeTimers();
     const fetchMock = vi

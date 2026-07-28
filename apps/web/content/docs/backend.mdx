@@ -121,6 +121,22 @@ Two things to know:
 
 The dashboard shows the same data under **Credits → Spend by end-user**.
 
+### List one end-user's sessions
+
+The same handle filters the session list, server-side:
+
+```bash
+curl -sS "$KORTIX_API_URL/projects/$PROJECT_ID/sessions?end_user_ref=your-app-user-123" \
+  -H "Authorization: Bearer $KORTIX_API_KEY"
+```
+
+```ts
+await kortix.project(projectId).sessions.list({ end_user_ref: 'your-app-user-123' });
+```
+
+Every status is included, so completed sessions come back too. The deprecated
+`origin_ref` spelling also works; sending both with different values is a `400`.
+
 ## 3. Bring each user's own connector
 
 Store a user's credential **once** through the connection-profile broker, get a
@@ -240,7 +256,7 @@ starting a second one. Replaying a key with a **different** body — different
 | `403` | `REQUIRE_CONNECTORS_INTERACTIVE_ONLY` | `require_connectors` is interactive-only. A backend key acts for no single person — bind an explicit `profile_id` with `connector_bindings`. |
 | `403` | `origin_override_forbidden` | A non-backend caller tried to set `end_user_ref` or `secrets`. |
 | `409` | `CONNECTOR_CONNECTION_REQUIRED` | Interactive only: the user hasn't connected their own account. The body names which connector. |
-| `409` | `END_USER_REF_CONFLICT` | You sent `end_user_ref` and the deprecated `origin_ref` with different values. |
+| `409` | `END_USER_REF_CONFLICT` | You sent `end_user_ref` and the deprecated `origin_ref` with different values. On session **create** it is a `409`; on the session **list** filter it is a `400`. |
 | `409` | `IDEMPOTENCY_KEY_CONFLICT` | The key collided with a different operation. Unlike the other idempotency errors, the fix is a **higher-entropy key** — the uniqueness index is global. |
 | `429` | `concurrent_session_limit` / `per_origin_session_limit` | Account-wide, or per-end-user when the operator enables it. Retry with backoff. |
 | `402` | `subscription_required` / `insufficient_credits` | Billing — not retryable without operator action. |

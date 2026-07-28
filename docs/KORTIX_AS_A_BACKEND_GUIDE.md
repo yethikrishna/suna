@@ -313,10 +313,28 @@ an opaque string you choose; Kortix never resolves it to a login.
   about its value.
 - **It resolves nothing.** It does not pull that user's connectors or secrets —
   pass those explicitly (`connector_bindings`, `secrets`).
-- **It does not list sessions.** No endpoint filters sessions by `end_user_ref`, so
-  "show me this end-user's sessions" still needs your own mapping.
 
-**What it DOES drive — metering and caps:**
+**What it DOES drive — listing, metering and caps:**
+
+```
+GET /v1/projects/{projectId}/sessions?end_user_ref=user-123
+```
+
+Returns only the sessions started for that end-user, filtered server-side — you
+do not have to pull the whole project and filter yourself, and the response never
+contains another end-user's rows. It spans every status, so finished sessions
+come back too. In the SDK:
+
+```ts
+await kortix.project(projectId).sessions.list({ end_user_ref: 'user-123' });
+```
+
+The deprecated `?origin_ref=` spelling works too. Sending both with *different*
+values is refused (`400 END_USER_REF_CONFLICT`) rather than one silently winning;
+sending both with the same value is fine. A blank handle is a `400`, not
+"list everything".
+
+**Metering and caps:**
 
 ```
 GET /v1/usage?end_user_ref=user-123     # that end-user's spend (totals + breakdown)

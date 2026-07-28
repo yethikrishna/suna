@@ -176,6 +176,13 @@
       "when": 1785269446728,
       "tag": "20260728201046_add_project_disabled_models",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1785272948205,
+      "tag": "20260728210908_acp_session_envelopes",
+      "breakpoints": true
     }
   ]
 }

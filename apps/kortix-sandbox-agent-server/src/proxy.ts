@@ -120,7 +120,14 @@ export function buildOpencodeApp(
   // a trailing slash doesn't fall through to the reverse proxy.
   // Health bypasses auth — it's how the cloud probes liveness mid-boot.
   const kortixRouter = new Hono()
-  const healthRouter = createHealthRouter(cfg, opencode, bootTime, bootState, staticWebPort)
+  const healthRouter = createHealthRouter(
+    cfg,
+    opencode,
+    bootTime,
+    bootState,
+    staticWebPort,
+    acpRuntime,
+  )
   const refreshRouter = createRefreshRouter(cfg, opencode)
   const abortRouter = createAbortRouter(cfg)
   const envRouter = projectEnv ? createEnvRouter(cfg, opencode, projectEnv) : null

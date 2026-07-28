@@ -1039,6 +1039,28 @@ smoke evidence.
 
 ---
 
+### 2026-07-28 — session `acp-multi-harness` claim
+
+Claimed project-gated ACP multi-harness support.
+
+The existing `acp_runtime` project experiment will become the single rollout
+gate for ACP transport and Claude Code, Codex, OpenCode, and Pi harness
+selection.
+
+The implementation will port the behavioral contract from PR #4510 onto the
+current session-scoped SDK architecture. It will not restore PR #4510's removed
+SDK refactor or host-local runtime logic.
+
+Implementation will follow RED -> GREEN -> REFACTOR.
+Required gates are focused API, SDK, daemon, manifest, and web tests, API and
+SDK typechecks, the full SDK suite, packed-install smoke, local browser proof,
+real multi-harness sandbox proof, PR merge, Deploy Dev, deployed SHA proof, and
+deployed browser plus protocol verification.
+
+**Status:** IN PROGRESS.
+
+---
+
 ### 2026-07-13 — session `personal-session-branch` (abandoned)
 
 Abandoned the personal/group session-branch preference claim by explicit product
@@ -3565,3 +3587,55 @@ the full SDK suite, packed-install smoke, local browser proof, PR merge,
 Deploy Dev, deployed SHA proof, and deployed session-name synchronization.
 
 **Status:** IN PROGRESS.
+
+---
+
+### 2026-07-28 — session `acp-multi-harness` local completion
+
+Implemented project-gated ACP transport and OpenCode, Claude Code, Codex, and Pi
+harness support.
+
+The existing `acp_runtime` experiment is the single rollout gate.
+The visible experiment name is `ACP & Multi-Harness`.
+Project manifests use `kortix_version: 3` runtime profiles and logical agents.
+Project-session ACP identity is immutable.
+ACP envelopes persist in PostgreSQL with database ordinals as SSE cursors.
+Upstream deduplication is scoped by runtime instance.
+Triggers and automations deliver ACP prompts through the durable session
+lifecycle queue.
+
+A cold Daytona snapshot took `379,773 ms`.
+The previous detached initial-prompt delivery stopped after `300,000 ms`.
+The durable queue fix now survives this cold-build window.
+
+Local verification:
+
+- Daemon suite: exit `0`.
+- Daemon typecheck: exit `0`.
+- API ACP tests: **28 pass / 0 fail** with **77** assertions.
+- API typecheck: exit `0`.
+- SDK typecheck: exit `0`.
+- SDK suite: **1347 pass / 0 fail** with **5855** assertions across **113**
+  files.
+- SDK packed-install smoke: pass.
+- Manifest, shared, API-contract, CLI schema, and web helper gates: exit `0`.
+- Route coverage: **507/517** routes, **10** allowlisted, **0** uncovered.
+- `COV-10`: **1/1** passed against `http://localhost:19108/v1`.
+- Real Daytona smoke: **4/4** harnesses passed.
+- Smoke cleanup: OpenCode, Claude Code, Codex, and Pi sessions are `stopped`
+  with `deletedAt`.
+- Touched web ESLint: exit `0`.
+- `git diff --check`: exit `0`.
+
+The connected-provider row no longer renders the model-dependent provider-key
+verification action.
+The backend verification route remains available for existing SDK consumers.
+
+The in-app browser runtime returned no available browsers.
+Rendered agent selection and provider-row verification remain unexecuted.
+
+**SDK shippable to production: YES.**
+
+**Feature delivery status: NOT YET.**
+PR merge, Deploy Dev, deployed SHA proof, and deployed protocol verification
+remain.

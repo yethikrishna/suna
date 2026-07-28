@@ -193,8 +193,10 @@ describe('the browser human (regression: the Supabase sessionId collision)', () 
       maySeeSessionApprovals({
         isManager: true,
         callerSessionId: null,
+        callerUserId: HUMAN,
         targetSessionId: 'sess-xyz',
         targetSessionOrigin: 'backend',
+        targetSessionCreatedBy: WRAPPER,
       }),
     ).toBe(true);
   });

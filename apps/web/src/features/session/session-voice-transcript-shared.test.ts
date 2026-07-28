@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { relativeTurnTime, turnSpeakerLabel, voiceTranscriptKey } from './session-voice-transcript-shared';
+import {
+  relativeTurnTime,
+  shouldPollVoiceTranscript,
+  turnSpeakerLabel,
+  voiceTranscriptKey,
+} from './session-voice-transcript-shared';
 
 describe('turnSpeakerLabel', () => {
   test('a tool-role turn is labeled by its speaker (the tool name)', () => {
@@ -38,4 +43,30 @@ describe('voiceTranscriptKey', () => {
     expect(voiceTranscriptKey('P1', 'S1')).toEqual(['voice-transcript', 'P1', 'S1']);
     expect(voiceTranscriptKey(undefined, undefined)).toEqual(['voice-transcript', '', '']);
   });
+});
+
+describe('shouldPollVoiceTranscript', () => {
+  const visibleVoicePanel = {
+    panelOpen: true,
+    voiceView: true,
+    visibleLayout: true,
+    booting: false,
+    transient: false,
+  };
+
+  test('polls only when the active session Voice panel is visible', () => {
+    expect(shouldPollVoiceTranscript(visibleVoicePanel)).toBe(true);
+  });
+
+  for (const [name, override] of [
+    ['normal session chat', { voiceView: false }],
+    ['closed side panel', { panelOpen: false }],
+    ['inactive session tab', { visibleLayout: false }],
+    ['booting session', { booting: true }],
+    ['transient session', { transient: true }],
+  ] as const) {
+    test(`does not poll for ${name}`, () => {
+      expect(shouldPollVoiceTranscript({ ...visibleVoicePanel, ...override })).toBe(false);
+    });
+  }
 });

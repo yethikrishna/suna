@@ -34,11 +34,15 @@ import { useEffect, useRef } from 'react';
 export function SessionVoiceTranscriptPanel({
   projectId,
   projectSessionId,
+  pollingEnabled,
 }: {
   projectId?: string;
   projectSessionId?: string;
+  pollingEnabled: boolean;
 }) {
-  const { data, isLoading, isError, refetch } = useVoiceTranscript(projectId, projectSessionId);
+  const { data, isLoading, isError, refetch } = useVoiceTranscript(projectId, projectSessionId, {
+    enabled: pollingEnabled,
+  });
   const turns = data?.turns ?? [];
   const live = data?.live ?? false;
 
@@ -56,7 +60,7 @@ export function SessionVoiceTranscriptPanel({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="flex flex-shrink-0 items-center justify-between border-b border-border/60 px-6 py-3">
+      <div className="border-border/60 flex flex-shrink-0 items-center justify-between border-b px-6 py-3">
         <div>
           <h2 className="text-foreground text-sm font-semibold tracking-tight">Voice</h2>
           <p className="text-muted-foreground mt-0.5 text-xs">
@@ -110,7 +114,7 @@ export function SessionVoiceTranscriptPanel({
               <TranscriptRow key={turn.cursor} turn={turn} />
             ))}
             {!live && (
-              <li className="flex items-center justify-center gap-1.5 py-3 text-xs text-muted-foreground">
+              <li className="text-muted-foreground flex items-center justify-center gap-1.5 py-3 text-xs">
                 <PhoneOff className="size-3.5 shrink-0" />
                 Call ended
               </li>

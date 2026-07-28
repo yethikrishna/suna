@@ -84,6 +84,11 @@ export interface Fixtures {
    * secondary rate limit). Mutating flows must use project() for isolation.
    */
   sharedProject(): Promise<CreatedProject>;
+  /**
+   * A single seeded project for flows that create isolated sessions but do not
+   * mutate the project's base branch or project-wide Git configuration.
+   */
+  sharedSeededProject(): Promise<CreatedProject>;
   /** Create a session in a project (provisions a real sandbox). */
   session(project: CreatedProject, opts?: { prompt?: string }): Promise<CreatedSession>;
   /** Mint a fresh run-scoped account-scoped PAT. */

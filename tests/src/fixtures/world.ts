@@ -106,6 +106,7 @@ export async function buildWorld(env: Env, flows: RegisteredFlow[]): Promise<Wor
   let managedProjectCount = 0;
   // One shared read-only project, provisioned at most once per run.
   let sharedProjectPromise: Promise<CreatedProject> | null = null;
+  let sharedSeededProjectPromise: Promise<CreatedProject> | null = null;
   const sharedStack = new ResourceStack(adminClient, deleteDatabaseProjectFixture);
 
   async function createProject(
@@ -152,6 +153,23 @@ export async function buildWorld(env: Env, flows: RegisteredFlow[]): Promise<Wor
         })();
       }
       return sharedProjectPromise;
+    },
+    sharedSeededProject() {
+      if (!sharedSeededProjectPromise) {
+        sharedSeededProjectPromise = (async () => {
+          const id = await provisionProject(adminClient, {
+            name: `e2e-${runId}-shared-seeded`,
+            seed_starter: true,
+          });
+          managedProjectCount++;
+          sharedStack.push('project', id);
+          return {
+            id,
+            name: `e2e-${runId}-shared-seeded`,
+          } as CreatedProject;
+        })();
+      }
+      return sharedSeededProjectPromise;
     },
     async project(opts) {
       return createProject(stack, opts);
@@ -290,6 +308,7 @@ function makeUnavailableFixtures(): Fixtures {
     name: (slug) => slug,
     project: fail as any,
     sharedProject: fail as any,
+    sharedSeededProject: fail as any,
     session: fail as any,
     pat: fail as any,
     team: fail as any,

@@ -131,6 +131,13 @@ export class Res {
   /** Assert the status code (exact or set membership). */
   status(code: number | number[]): this {
     const codes = Array.isArray(code) ? code : [code];
+    if (!codes.includes(this.statusCode) && isKe2eTransientGatewayResponse(this)) {
+      const error = new Error(
+        `transient gateway status ${this.statusCode}; expected [${codes.join(', ')}]`,
+      );
+      (error as any).ke2eRetryable = true;
+      throw error;
+    }
     assert({
       kind: 'status',
       description: `status in [${codes.join(', ')}]`,

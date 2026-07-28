@@ -27,14 +27,14 @@ describe('densityForDetail', () => {
 });
 
 describe('the default reading', () => {
-  test('a reader who has never touched the toggle gets the full history', () => {
-    // The work the agent did IS the product. Folding it away by default made
-    // the transcript read as if less had happened than actually did.
-    expect(DEFAULT_CHAT_DETAIL).toBe('full');
+  test('a reader who has never touched the toggle gets the folded reading', () => {
+    // The resting state is the ask, the answer, the deliverable. The full log
+    // is one click away for anyone who wants it — it is not what you land on.
+    expect(DEFAULT_CHAT_DETAIL).toBe('narrative');
   });
 
-  test('the default renders at detailed density, so nothing is folded at rest', () => {
-    expect(densityForDetail(DEFAULT_CHAT_DETAIL)).toBe('detailed');
+  test('the default renders at simple density, so the transcript is folded at rest', () => {
+    expect(densityForDetail(DEFAULT_CHAT_DETAIL)).toBe('simple');
   });
 
   test('server and pre-hydration client snapshots both start at the default', () => {

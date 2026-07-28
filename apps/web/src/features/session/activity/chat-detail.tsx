@@ -5,16 +5,15 @@
  * optionable".
  *
  * The product decision this encodes: variants A ("Grouped") and C ("Narrative")
- * are not competing designs. They are the two ends of ONE control. A is the
- * resting state — every step the agent took, in order. C is the same turn
- * folded down to the ask, the answer, and the deliverable. Nothing is a
- * different screen, a different route, or a different mode you have to go find;
- * it is one toggle that re-renders the transcript in place.
+ * are not competing designs. They are the two ends of ONE control. C is the
+ * resting state — the ask, the answer, the deliverable. A is what the same turn
+ * looks like when the reader asks for the full history. Nothing is a different
+ * screen, a different route, or a different mode you have to go find; it is one
+ * toggle that re-renders the transcript in place.
  *
- * `'full'` is the default for everyone, including existing users: the work the
- * agent did is the product, and hiding it by default made the transcript read
- * as if less had happened than actually did. Someone who wants the folded
- * reading asks once, and then never again — the choice persists.
+ * `'narrative'` is the default for everyone, including existing users. Someone
+ * who wants the log has to ask once, and then never again — the choice
+ * persists.
  *
  * Deliberately a module-level store rather than React context. The toggle lives
  * in the session header, which mounts from two different shells
@@ -33,7 +32,7 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 export type ChatDetail = 'narrative' | 'full';
 
 /** What a reader who has never touched the toggle sees. */
-export const DEFAULT_CHAT_DETAIL: ChatDetail = 'full';
+export const DEFAULT_CHAT_DETAIL: ChatDetail = 'narrative';
 
 /** Maps the reader-facing knob onto the grouping model's density. */
 export function densityForDetail(detail: ChatDetail): 'simple' | 'detailed' {
@@ -173,8 +172,9 @@ export function useChatDetail(): ChatDetailValue {
  *
  * Deliberately a text button and not a segmented switch: it states what it will
  * DO, not which mode you are in — the transcript already tells you that. At
- * rest (full history) that reads "Hide full history", the offer to simplify;
- * the reader never has to have an opinion before they can start reading.
+ * rest (the folded reading) that is "Show full history", the offer to go
+ * deeper; the reader never has to have an opinion before they can start
+ * reading.
  */
 export function ChatDetailToggle({ className }: { className?: string }) {
   const { detail, toggle } = useChatDetail();

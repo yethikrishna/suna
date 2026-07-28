@@ -1,10 +1,8 @@
-import type { HarnessId } from '@kortix/shared/harnesses';
-
 import { SLUG_RE, V3_HARNESS_VALUES, WORKSPACE_MODES_V2 } from './constants';
 import { type ManifestIssue, isTable, validateGrantList } from './index';
 import type { GrantSetV2, WorkspaceModeV2 } from './index.v2';
 
-export type HarnessV3 = HarnessId;
+export type HarnessV3 = (typeof V3_HARNESS_VALUES)[number];
 
 export interface RuntimeBlockV3 {
   harness: HarnessV3;

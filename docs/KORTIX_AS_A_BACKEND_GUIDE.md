@@ -444,6 +444,11 @@ await s.send(prompt);
 - **Nothing widens.** `secrets` only narrows within the agent's grant;
   `connector_bindings` credentials are broker-resolved server-side and never
   enter the sandbox.
+- **A session's token dies with its sandbox.** The executor token injected into a
+  sandbox is revoked when the session is deleted or the provider reports the box
+  removed — so an exfiltrated token stops working instead of outliving the
+  session that justified it. An *idle stop* deliberately does not revoke: the box
+  can be woken and is still the same container, holding the same token.
 
 See also the runnable, end-to-end version of this flow —
 [`packages/sdk/examples/09-kaab-backend-wrapper.ts`](../packages/sdk/examples/09-kaab-backend-wrapper.ts)

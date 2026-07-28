@@ -133,3 +133,38 @@ describe('maySeeSessionApprovals', () => {
     ).toBe(true);
   });
 });
+
+describe('a service-account bearer may still resolve — deliberately', () => {
+  test('the wrapper backend can relay its end-user approval decision', () => {
+    // In KaaB the end-user has no Kortix identity, so the ONLY path for their
+    // decision to reach this endpoint is relayed by the wrapper's backend.
+    // Refusing service accounts would make require_approval unusable for the
+    // exact product it exists to serve.
+    //
+    // Safe because an agent can never hold an SA bearer: the sandbox gets a
+    // session-bound PAT, the per-agent SA's secret is hashed and DISCARDED at
+    // creation, and /v1/accounts/* is refused for project-scoped tokens.
+    expect(
+      mayResolveApproval({
+        isManager: true,
+        targetSessionOrigin: 'backend',
+        targetSessionCreatedBy: WRAPPER,
+        callerUserId: 'wrapper-service-account-id',
+        callerSessionId: null,
+      }).allowed,
+    ).toBe(true);
+  });
+
+  test('a service account WITHOUT manager rights still cannot resolve', () => {
+    // Allowing the operator is not the same as allowing every non-human caller.
+    expect(
+      mayResolveApproval({
+        isManager: false,
+        targetSessionOrigin: 'backend',
+        targetSessionCreatedBy: WRAPPER,
+        callerUserId: 'some-service-account',
+        callerSessionId: null,
+      }).allowed,
+    ).toBe(false);
+  });
+});

@@ -70,22 +70,29 @@ export function serializeSession(
     deletedBy?: string | null;
   },
 ): ProjectSession {
-  const opencodeSessions = Array.isArray(row.metadata?.opencode_sessions)
-    ? row.metadata.opencode_sessions
-    : [];
+  // Computed BEFORE the metadata-derived fields below, because name,
+  // custom_name and opencode_sessions are all derived FROM metadata — redacting
+  // the metadata object alone would still have leaked the OpenCode-synced title
+  // (which summarises the conversation) and the conversation-tree snapshot.
+  const canAccess = ctx?.canAccess ?? true;
+  const opencodeSessions =
+    canAccess && Array.isArray(row.metadata?.opencode_sessions)
+      ? row.metadata.opencode_sessions
+      : [];
   const isOwner = ctx?.viewerId ? row.createdBy === ctx.viewerId : false;
   // A user-set name (metadata.custom_name) is authoritative and ALWAYS wins
   // over the auto title (metadata.name) mirrored from OpenCode server-side
   // during session reads. `name` is the resolved display value;
   // `custom_name` is exposed separately so clients can tell an override apart
   // from the auto title.
-  const customName = typeof row.metadata?.custom_name === 'string' ? row.metadata.custom_name : null;
+  const customName =
+    canAccess && typeof row.metadata?.custom_name === 'string' ? row.metadata.custom_name : null;
   // Historic rows may carry OpenCode's frozen placeholder ("New session - …")
   // in metadata.name — expose it as untitled so clients fall back to their own
   // display chain instead of a junk title (heals old rows with no backfill).
-  const rawAutoName = typeof row.metadata?.name === 'string' ? row.metadata.name : null;
+  const rawAutoName =
+    canAccess && typeof row.metadata?.name === 'string' ? row.metadata.name : null;
   const autoName = isPlaceholderOpencodeTitle(rawAutoName) ? null : rawAutoName;
-  const canAccess = ctx?.canAccess ?? true;
   return {
     session_id: row.sessionId,
     account_id: row.accountId,

@@ -46,6 +46,36 @@ describe('serializeSession redaction', () => {
     expect(out.secrets_allowlist).toBeNull();
   });
 
+  test('an inaccessible row leaks no CONVERSATION-DERIVED field either', () => {
+    // name / custom_name / opencode_sessions are all computed FROM metadata
+    // before the redaction, so redacting the metadata object alone left the
+    // OpenCode-synced title (which summarises the conversation) and the
+    // conversation-tree snapshot exposed.
+    const out = serializeSession(
+      row({
+        metadata: {
+          initial_prompt: 'secret',
+          name: 'Migrating the payroll database',
+          custom_name: 'Payroll migration',
+          opencode_sessions: [{ id: 'oc1', title: 'Migrating the payroll database' }],
+        },
+      }),
+      { canAccess: false },
+    ) as Record<string, unknown>;
+    expect(out.name).toBeNull();
+    expect(out.custom_name).toBeNull();
+    expect(out.opencode_sessions).toEqual([]);
+  });
+
+  test('an ACCESSIBLE row keeps its title and conversation tree', () => {
+    const out = serializeSession(
+      row({ metadata: { name: 'Migrating the payroll database', opencode_sessions: [{ id: 'oc1' }] } }),
+      { canAccess: true },
+    ) as Record<string, unknown>;
+    expect(out.name).toBe('Migrating the payroll database');
+    expect(out.opencode_sessions).toEqual([{ id: 'oc1' }]);
+  });
+
   test('an inaccessible row still carries what a listing legitimately needs', () => {
     // The point of scope=project is that a manager can SEE the session exists,
     // its status, and when it ran — redaction must not break that.

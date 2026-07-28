@@ -3706,3 +3706,17 @@ Rendered provider-row verification remains unexecuted.
 **Shippable to production: YES.** Local suites, CI, merge, deployed SHA,
 deployed four-harness protocol behavior, restart recovery, and fixture cleanup
 all pass.
+
+---
+
+### 2026-07-28 — session `acp-multi-harness-system-docs` claim
+
+Claimed the multi-harness documentation and agent-discovery follow-up.
+
+The SDK change is documentation-only. It will replace the stale statement that
+ACP uses only OpenCode. It will document the server-selected OpenCode, Claude
+Code, Codex, or Pi harness without changing the public SDK surface.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.

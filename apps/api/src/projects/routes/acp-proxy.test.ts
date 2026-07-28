@@ -11,6 +11,11 @@ let syncedProviderHeaders: Record<string, string> | null = null;
 let accessActions: string[] = [];
 let capabilityActions: string[] = [];
 let canManageSharing = true;
+let endpointCalls = 0;
+let invalidatedSandboxIds: string[] = [];
+let upstreamStatuses: number[] = [];
+let upstreamFetchCount = 0;
+let envSyncStatuses: number[] = [];
 
 mock.module('../lib/access', () => ({
   assertProjectCapability: async (
@@ -57,18 +62,29 @@ mock.module('../../shared/db', () => ({
 }));
 
 mock.module('../runtime-inspection', () => ({
-  sandboxRuntimeEndpoint: async () => ({
-    url: 'https://sandbox.test',
-    headers: { 'x-kortix-user-context': 'signed' },
-    providerHeaders: { 'x-daytona-preview-token': 'preview' },
-    serviceKey: 'service-key',
-  }),
+  sandboxRuntimeEndpoint: async () => {
+    endpointCalls += 1;
+    return {
+      url: 'https://sandbox.test',
+      headers: { 'x-kortix-user-context': 'signed' },
+      providerHeaders: { 'x-daytona-preview-token': 'preview' },
+      serviceKey: 'service-key',
+    };
+  },
+}));
+
+mock.module('../../sandbox-proxy/backend', () => ({
+  invalidateSandbox: (externalId: string) => {
+    invalidatedSandboxIds.push(externalId);
+  },
 }));
 
 mock.module('../lib/sandbox-env-sync', () => ({
   syncSandboxEnvForPrompt: async (input: {
     providerHeaders: Record<string, string>;
   }) => {
+    const status = envSyncStatuses.shift();
+    if (status) throw new Error(`env sync failed: ${status}`);
     syncedProviderHeaders = input.providerHeaders;
   },
 }));
@@ -87,10 +103,21 @@ mock.module('../lib/acp-sse-proxy', () => ({
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input, init) => {
+  upstreamFetchCount += 1;
   upstreamUrl = String(input);
   upstreamHeaders = new Headers(init?.headers);
+  const status = upstreamStatuses.shift();
+  if (status && status !== 200) {
+    return Response.json({ error: 'stale ingress credential' }, { status });
+  }
   if (init?.method === 'DELETE') {
     return new Response(null, { status: 204 });
+  }
+  if (init?.method === 'GET') {
+    return new Response('id: 1\ndata: {"jsonrpc":"2.0","method":"kortix/cursor"}\n\n', {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    });
   }
   const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
   return Response.json({
@@ -111,6 +138,11 @@ beforeEach(() => {
   accessActions = [];
   capabilityActions = [];
   canManageSharing = true;
+  endpointCalls = 0;
+  invalidatedSandboxIds = [];
+  upstreamStatuses = [];
+  upstreamFetchCount = 0;
+  envSyncStatuses = [];
 });
 
 afterAll(() => {
@@ -171,6 +203,64 @@ test('session/prompt syncs env with provider headers and no user context', async
   expect(syncedProviderHeaders).toEqual({
     'x-daytona-preview-token': 'preview',
   });
+});
+
+test('session/prompt refreshes stale ingress credentials when env sync rejects authentication', async () => {
+  envSyncStatuses = [401];
+
+  const response = await projectsApp.request(`/${PROJECT_ID}/sessions/${SESSION_ID}/acp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 'rpc-prompt-retry',
+      method: 'session/prompt',
+      params: { sessionId: 'native-session', prompt: [] },
+    }),
+  });
+
+  expect(response.status).toBe(200);
+  expect(endpointCalls).toBe(2);
+  expect(invalidatedSandboxIds).toEqual(['sandbox-external-1']);
+  expect(syncedProviderHeaders).toEqual({
+    'x-daytona-preview-token': 'preview',
+  });
+});
+
+test('POST .../acp refreshes stale ingress credentials once after an auth rejection', async () => {
+  upstreamStatuses = [401, 200];
+  const request = {
+    jsonrpc: '2.0',
+    id: 'rpc-retry',
+    method: 'initialize',
+    params: { protocolVersion: 1 },
+  };
+
+  const response = await projectsApp.request(`/${PROJECT_ID}/sessions/${SESSION_ID}/acp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+
+  expect(response.status).toBe(200);
+  expect(endpointCalls).toBe(2);
+  expect(upstreamFetchCount).toBe(2);
+  expect(invalidatedSandboxIds).toEqual(['sandbox-external-1']);
+  expect(appended.map((entry) => (entry as { direction: string }).direction)).toEqual([
+    'client_to_agent',
+    'agent_to_client',
+  ]);
+});
+
+test('GET .../acp refreshes stale ingress credentials once after an auth rejection', async () => {
+  upstreamStatuses = [401, 200];
+
+  const response = await projectsApp.request(`/${PROJECT_ID}/sessions/${SESSION_ID}/acp`);
+
+  expect(response.status).toBe(200);
+  expect(endpointCalls).toBe(2);
+  expect(upstreamFetchCount).toBe(2);
+  expect(invalidatedSandboxIds).toEqual(['sandbox-external-1']);
 });
 
 test('GET transcript retains project read access', async () => {

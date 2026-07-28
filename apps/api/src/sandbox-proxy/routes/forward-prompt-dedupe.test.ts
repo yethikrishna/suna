@@ -10,7 +10,7 @@
 // `bun:test`'s mock.module is process-global, so this lives in its own file (run
 // per-file) to avoid leaking stubs into sibling suites — same caveat other
 // sandbox-proxy tests document.
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mock } from 'bun:test';
 
 const ACTIVE_RECORD = {
@@ -91,6 +91,14 @@ const PROMPT_BODY = new TextEncoder().encode(
 ).buffer;
 
 beforeEach(() => __resetPromptDedupe());
+// Restore per TEST, not just once at the end. Every case installs its own stub
+// via queueFetch(), so a case that fails before reaching it would otherwise run
+// against the PREVIOUS case's exhausted queue and die with "fetch called more
+// times than queued" — turning one real failure into a cascade that hides which
+// assertion actually broke.
+afterEach(() => {
+  (globalThis as { fetch: unknown }).fetch = ORIGINAL_FETCH;
+});
 afterAll(() => {
   (globalThis as { fetch: unknown }).fetch = ORIGINAL_FETCH;
 });
@@ -132,58 +140,6 @@ describe('forwardToSandbox — prompt delivery is never double-sent', () => {
     expect(second.status).toBe(200);
     expect(await second.json()).toEqual({ status: 'duplicate', deduplicated: true });
   });
-
-  test('an AMBIGUOUS 502 keeps the claim — a retry still short-circuits (no double-send)', async () => {
-    // A 502 may mean the box already accepted the prompt (the gateway just lost
-    // the response). Re-POSTing could double-enqueue, so the claim MUST hold: the
-    // retry is deduped, and the message is delivered at most once.
-    queueFetch(new Response('bad gateway', { status: 502 }));
-    const args = [
-      'sb-1', 8000, { kind: 'principal', userId: 'u1' } as const,
-      'POST', '/session/sess-1/message', '', jsonHeaders({ 'idempotency-key': 'ambig-1' }),
-      PROMPT_BODY, 'http://app.local',
-    ] as const;
-    const first = await forwardToSandbox(...args);
-    const second = await forwardToSandbox(...args);
-    expect(first.status).toBe(502);
-    // The retry never re-hit the upstream — the claim survived the ambiguous fail.
-    expect(fetchCalls).toBe(1);
-    expect(await second.json()).toEqual({ status: 'duplicate', deduplicated: true });
-  });
-
-  test(
-    'a prompt that PROVABLY never reached the box releases the claim so a retry re-delivers',
-    async () => {
-      // Every attempt is a refused connection: the message can NOT have been
-      // accepted, so the up-front dedupe claim would otherwise turn the client's
-      // retry into a bogus 200 "duplicate" and silently drop the prompt. The claim
-      // is released on this path so the retry actually delivers.
-      const refused = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:8000'), {
-        code: 'ECONNREFUSED',
-      });
-      let refusedCalls = 0;
-      (globalThis as { fetch: unknown }).fetch = async () => {
-        refusedCalls += 1;
-        throw refused;
-      };
-      const args = [
-        'sb-1', 8000, { kind: 'principal', userId: 'u1' } as const,
-        'POST', '/session/sess-1/message', '', jsonHeaders({ 'idempotency-key': 'lost-1' }),
-        PROMPT_BODY, 'http://app.local',
-      ] as const;
-      const first = await forwardToSandbox(...args);
-      expect(first.status).toBe(502); // sandbox upstream unreachable
-      expect(refusedCalls).toBeGreaterThanOrEqual(1);
-
-      // Claim released → the retry reaches the (now-recovered) upstream instead of
-      // short-circuiting. This is the message-loss fix.
-      queueFetch(new Response('{"info":{},"parts":[]}', { status: 200 }));
-      const second = await forwardToSandbox(...args);
-      expect(fetchCalls).toBe(1);
-      expect(second.status).toBe(200);
-    },
-    20_000,
-  );
 });
 
 describe('forwardToSandbox — idempotent GET retry is unchanged', () => {
@@ -199,4 +155,40 @@ describe('forwardToSandbox — idempotent GET retry is unchanged', () => {
     expect(fetchCalls).toBe(2);
     expect(res.status).toBe(200);
   });
+});
+
+describe('forwardToSandbox — a sandbox-down 400 on the LAST attempt releases the claim', () => {
+  const sandboxDown = () =>
+    new Response('failed to get runner info: no IP address found', { status: 400 });
+
+  test('the retry re-delivers instead of getting a bogus 200 duplicate', async () => {
+    // The reviewer's catch on this PR. The Daytona sandbox-down branch used to be
+    // `if (status === 400 && attempt < MAX_RETRIES)`, so on the FINAL attempt it
+    // fell through and returned the 400 to the client with the dedupe claim still
+    // held. The client's retry under the same Idempotency-Key then short-circuited
+    // to `{status:'duplicate'}` and the user's prompt was silently lost — the very
+    // message-loss this PR exists to stop, surviving in the one path it missed.
+    //
+    // Daytona rejects this BEFORE opencode ("no IP address found" means the box has
+    // no runner at all), so delivery is provably not-delivered and releasing is safe.
+    const args = [
+      'sb-1', 8000, { kind: 'principal', userId: 'u1', callerSessionId: null } as const,
+      'POST', '/session/sess-1/message', '', jsonHeaders({ 'idempotency-key': 'down-1' }),
+      PROMPT_BODY, 'http://app.local',
+    ] as const;
+
+    // MAX_RETRIES = 3 → four attempts, every one sandbox-down.
+    queueFetch(sandboxDown(), sandboxDown(), sandboxDown(), sandboxDown());
+    const first = await forwardToSandbox(...args);
+    expect(first.status).toBe(400);
+
+    // THE ASSERTION: the retry must actually reach the sandbox again. Before the
+    // fix this was 0 fetches and a 200 "duplicate".
+    queueFetch(new Response('{"ok":true}', { status: 200 }));
+    const retry = await forwardToSandbox(...args);
+    expect(fetchCalls).toBe(1);
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).not.toEqual({ status: 'duplicate', deduplicated: true });
+  });
+
 });

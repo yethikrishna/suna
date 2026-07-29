@@ -146,8 +146,7 @@ export function SessionScope({ projectId, sessionId }: { projectId: string; sess
               overrides: {
                 agent: agentName,
                 secrets: session.data.secrets_allowlist ?? null,
-                bindings: {},
-              },
+                bindings: {}, runtimeContext: null },
             }}
           />
         </div>

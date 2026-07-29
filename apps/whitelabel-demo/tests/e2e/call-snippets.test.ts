@@ -120,7 +120,7 @@ describe('the create snippet is the request the dialog would send', () => {
     const snippet = callSnippet('session.create', {
       projectId: PROJECT_ID,
       sessionId: SESSION_ID,
-      overrides: { agent: 'support', secrets: ['STRIPE_KEY'], bindings: { slack: 'prof_9' } },
+      overrides: { agent: 'support', secrets: ['STRIPE_KEY'], bindings: { slack: 'prof_9' }, runtimeContext: null },
     });
     expect(snippet.sdk).toContain('"agent_name": "support"');
     expect(snippet.sdk).toContain('"secrets"');
@@ -224,7 +224,7 @@ describe('the create snippet cannot drift from what the app sends', () => {
     // to teach.
     const withLabels = callSnippet('session.create', {
       projectId: 'p1',
-      overrides: { ...NO_OVERRIDES, bindings: { slack: 'prof_9' } },
+      overrides: { ...NO_OVERRIDES, bindings: { slack: 'prof_9' }, runtimeContext: null },
       connectionLabels: { slack: 'Acme Team Slack' },
     });
     const printed = `${withLabels?.sdk ?? ''}${renderHttp(withLabels!.http)}`;

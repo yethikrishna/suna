@@ -85,7 +85,7 @@ describe('readBoundConnections', () => {
     // body and the scope panel have to agree on one metadata key or the
     // Connections row silently reads empty forever.
     const created = buildSessionCreateInput(
-      { agent: null, secrets: null, bindings: { slack: 'prof_9' } },
+      { agent: null, secrets: null, bindings: { slack: 'prof_9' }, runtimeContext: null },
       { sessionId: 's', connectionLabels: { slack: 'Support' } },
     );
     expect(readBoundConnections(created.metadata)).toEqual({ slack: 'Support' });

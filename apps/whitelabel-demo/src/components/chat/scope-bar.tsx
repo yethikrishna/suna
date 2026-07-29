@@ -129,7 +129,7 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
         buildSessionCreateInput(
           // The agent comes along too, or "with this scope" would quietly drop
           // the one part of the scope that is already right.
-          { agent: data?.agent_name ?? null, secrets: nextSecrets, bindings: nextBindings },
+          { agent: data?.agent_name ?? null, secrets: nextSecrets, bindings: nextBindings, runtimeContext: null },
           {
             sessionId: nextId,
             connectionLabels: bindingLabels(choices, nextBindings),

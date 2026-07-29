@@ -179,8 +179,19 @@ mock.module('../shared/db', () => {
 });
 
 mock.module('../shared/preview-ownership', () => ({
-  canAccessSandboxSession: async ({ userId }: { userId?: string }) =>
-    Boolean(userId && mockDbSandbox && mockDbMembership),
+  // Mirrors the REAL narrowing (executor/share.ts): a session-bound caller — a
+  // sandbox token — may reach only its OWN session. Without this the mock
+  // ignored callerSessionId entirely, so a test could pass one and prove
+  // nothing; the WebSocket leg's isolation had no coverage at all.
+  canAccessSandboxSession: async ({
+    userId,
+    sessionId,
+    callerSessionId,
+  }: { userId?: string; sessionId?: string; callerSessionId?: string | null }) => {
+    if (!(userId && mockDbSandbox && mockDbMembership)) return false;
+    if (callerSessionId != null && callerSessionId !== sessionId) return false;
+    return true;
+  },
   canAccessPreviewSandbox: async ({ userId }: { userId?: string }) =>
     Boolean(userId && mockDbSandbox && mockDbMembership),
   resolvePreviewUserContext: async (sandboxId: string, userId?: string) =>
@@ -477,6 +488,38 @@ describe('Preview proxy: websocket upstream resolution', () => {
     if (upstream.ok) {
       expect(upstream.url).toBe('wss://preview.daytona.io/proxy-url/pty/pty_test/connect');
     }
+  });
+
+  test('a sandbox token may open the PTY of its OWN session', async () => {
+    const upstream = await resolvePreviewWsUpstream({
+      sandboxId: TEST_SANDBOX_ID,
+      upstreamPort: 4096,
+      userId: TEST_USER_ID,
+      remainingPath: '/pty/pty_test/connect',
+      queryString: '',
+      // The sandbox's own session id — the legitimate case, which must keep
+      // working or the narrowing has broken the product.
+      callerSessionId: mockDbSandbox?.sessionId ?? null,
+    });
+    expect(upstream.ok).toBe(true);
+  });
+
+  test('a sandbox token may NOT open ANOTHER end-user’s PTY', async () => {
+    // The KaaB isolation property, on the WebSocket leg. Every session a wrapper
+    // creates shares one `created_by`, so ownership alone cannot separate
+    // end-users — the per-session gate is what does, and until now all three
+    // tests here passed `callerSessionId: null`, exercising only the unbound
+    // path. The leg was wired and unproven.
+    const upstream = await resolvePreviewWsUpstream({
+      sandboxId: TEST_SANDBOX_ID,
+      upstreamPort: 4096,
+      userId: TEST_USER_ID,
+      remainingPath: '/pty/pty_test/connect',
+      queryString: '',
+      callerSessionId: '99999999-9999-4999-8999-999999999999',
+    });
+    expect(upstream.ok).toBe(false);
+    if (!upstream.ok) expect(upstream.status).toBe(403);
   });
 
   test('routes Platinum PTY websocket upstreams through the signed agent bridge on 8000', async () => {

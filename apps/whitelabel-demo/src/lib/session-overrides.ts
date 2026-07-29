@@ -24,9 +24,23 @@ export interface SessionOverrides {
   secrets: SecretsAllowlist;
   /** Connector alias -> connection profile id. Empty = bind nothing. */
   bindings: Record<string, string>;
+  /**
+   * Arbitrary non-secret key/values handed to the run as context — the one
+   * documented create override the demo could not exercise, so a wrapper author
+   * had no way to see what the agent actually receives.
+   *
+   * NOT a place for credentials: it is stored on the session and echoed back by
+   * the API, so anything here is readable by anyone who can read the session.
+   */
+  runtimeContext: Record<string, string> | null;
 }
 
-export const NO_OVERRIDES: SessionOverrides = { agent: null, secrets: null, bindings: {} };
+export const NO_OVERRIDES: SessionOverrides = {
+  agent: null,
+  secrets: null,
+  bindings: {},
+  runtimeContext: null,
+};
 
 /** Labels for the connections that were bound, keyed by alias — see
  *  `BOUND_CONNECTIONS_KEY`. */
@@ -67,6 +81,11 @@ export function buildSessionCreateInput(
     // An empty allowlist is a real choice (inject zero project secrets), so the
     // "don't narrow" signal has to be null rather than an empty array.
     ...(overrides.secrets ? { secrets: overrides.secrets } : {}),
+    // Omitted entirely when unset, so a session that declines to pass context is
+    // byte-identical to one from before this existed.
+    ...(overrides.runtimeContext && Object.keys(overrides.runtimeContext).length > 0
+      ? { runtime_context: overrides.runtimeContext }
+      : {}),
     ...(aliases.length > 0
       ? {
           connector_bindings: Object.fromEntries(

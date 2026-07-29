@@ -302,7 +302,7 @@ describe('seedBindingsFromLabels', () => {
     // wrapper recorded at create is the only bridge from a running session to
     // the create body of the next one.
     const created = buildSessionCreateInput(
-      { agent: null, secrets: null, bindings: { gmail: 'p1' } },
+      { agent: null, secrets: null, bindings: { gmail: 'p1' }, runtimeContext: null },
       { sessionId: 's', connectionLabels: { gmail: 'Support' } },
     );
     const { rows } = scopeBarConnectors({
@@ -315,7 +315,7 @@ describe('seedBindingsFromLabels', () => {
 
   test('a label with no label recorded falls back to the profile id it stored', () => {
     const created = buildSessionCreateInput(
-      { agent: null, secrets: null, bindings: { gmail: 'p1' } },
+      { agent: null, secrets: null, bindings: { gmail: 'p1' }, runtimeContext: null },
       { sessionId: 's' },
     );
     const { rows } = scopeBarConnectors({
@@ -338,7 +338,7 @@ describe('seedBindingsFromLabels', () => {
 describe('the draft carried into the next session', () => {
   test('an untouched draft reproduces this session, allowlist and all', () => {
     const body = buildSessionCreateInput(
-      { agent: 'support', secrets: ['STRIPE'], bindings: { gmail: 'p1' } },
+      { agent: 'support', secrets: ['STRIPE'], bindings: { gmail: 'p1' }, runtimeContext: null },
       { sessionId: 'next', connectionLabels: { gmail: 'Support' } },
     );
     expect(body).toMatchObject({
@@ -354,7 +354,7 @@ describe('the draft carried into the next session', () => {
     // `secrets: []` would boot the next session with NO project secrets, which
     // is the opposite of what "same scope as this one" means here.
     const body = buildSessionCreateInput(
-      { agent: null, secrets: null, bindings: {} },
+      { agent: null, secrets: null, bindings: {}, runtimeContext: null },
       { sessionId: 'next' },
     );
     expect(body).not.toHaveProperty('secrets');

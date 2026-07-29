@@ -362,6 +362,11 @@ test('project(id).connectors covers credential-mode/sensitive/policies/pipedream
   await kortix.project('PID123').connectors.setCredentialMode('slack-1', 'shared');
   expect(last().url).toContain('/executor/projects/PID123/connectors/slack-1/credential-mode');
 
+  await kortix.project('PID123').connectors.setAuthorizationStrategy('slack-1', 'user');
+  expect(last().url).toContain(
+    '/executor/projects/PID123/connectors/slack-1/authorization-strategy',
+  );
+
   await kortix.project('PID123').connectors.setSensitive('slack-1', true);
   expect(last().url).toContain('/executor/projects/PID123/connectors/slack-1/sensitive');
 
@@ -389,6 +394,21 @@ test('project(id).connectors covers credential-mode/sensitive/policies/pipedream
   await kortix.project('PID123').connectors.pipedream.finalize('gmail-1');
   expect(last().url).toContain('/executor/projects/PID123/connectors/gmail-1/connect/finalize');
   expect(last().method).toBe('POST');
+});
+
+test('project(id).connectors exposes canonical authorizations with a profiles alias', async () => {
+  await kortix.project('PID123').connectors.authorizations.list();
+  expect(last().url).toContain('/projects/PID123/connector-profiles');
+
+  await kortix.project('PID123').connectors.authorizations.reconcile({
+    connector_alias: 'gmail',
+    owner_type: 'project',
+    label: 'Project Gmail',
+  });
+  expect(last().method).toBe('POST');
+
+  await kortix.project('PID123').connectors.profiles.list();
+  expect(last().url).toContain('/projects/PID123/connector-profiles');
 });
 
 test('kortix.connectStatus hits the top-level connect-status endpoint (not project-scoped)', async () => {

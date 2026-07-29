@@ -293,6 +293,30 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
 
   /** Id-bound handle for a single project: every sub-resource, projectId pre-applied. */
   function project(projectId: string) {
+    const connectorAuthorizations = {
+      list: () => P.listConnectorAuthorizations(projectId),
+      listAll: () => P.listAllConnectorAuthorizations(projectId),
+      reconcile: (...a: DropFirst<Parameters<typeof P.reconcileConnectorAuthorization>>) =>
+        P.reconcileConnectorAuthorization(projectId, ...a),
+      reconcileMember: (
+        ...a: DropFirst<Parameters<typeof P.reconcileMemberConnectorAuthorization>>
+      ) => P.reconcileMemberConnectorAuthorization(projectId, ...a),
+      updateCredential: (
+        ...a: DropFirst<Parameters<typeof P.updateConnectorAuthorizationCredential>>
+      ) => P.updateConnectorAuthorizationCredential(projectId, ...a),
+      revoke: (...a: DropFirst<Parameters<typeof P.revokeConnectorAuthorization>>) =>
+        P.revokeConnectorAuthorization(projectId, ...a),
+      activate: (...a: DropFirst<Parameters<typeof P.activateConnectorAuthorization>>) =>
+        P.activateConnectorAuthorization(projectId, ...a),
+      setDefault: (...a: DropFirst<Parameters<typeof P.setDefaultConnectorAuthorization>>) =>
+        P.setDefaultConnectorAuthorization(projectId, ...a),
+      pipedreamConnect: (
+        ...a: DropFirst<Parameters<typeof P.pipedreamConnectConnectorAuthorization>>
+      ) => P.pipedreamConnectConnectorAuthorization(projectId, ...a),
+      pipedreamFinalize: (
+        ...a: DropFirst<Parameters<typeof P.pipedreamFinalizeConnectorAuthorization>>
+      ) => P.pipedreamFinalizeConnectorAuthorization(projectId, ...a),
+    };
     return {
       get: (opts?: Parameters<typeof P.getProject>[1]) => P.getProject(projectId, opts),
       detail: () => P.getProjectDetail(projectId),
@@ -399,30 +423,9 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
           P.setConnectorCredential(projectId, ...a),
         setSensitive: (...a: DropFirst<Parameters<typeof P.setConnectorSensitive>>) =>
           P.setConnectorSensitive(projectId, ...a),
-        profiles: {
-          list: () => P.listConnectionProfiles(projectId),
-          listAll: () => P.listAllConnectionProfiles(projectId),
-          reconcile: (...a: DropFirst<Parameters<typeof P.reconcileConnectionProfile>>) =>
-            P.reconcileConnectionProfile(projectId, ...a),
-          reconcileMember: (
-            ...a: DropFirst<Parameters<typeof P.reconcileMemberConnectionProfile>>
-          ) => P.reconcileMemberConnectionProfile(projectId, ...a),
-          updateCredential: (
-            ...a: DropFirst<Parameters<typeof P.updateConnectionProfileCredential>>
-          ) => P.updateConnectionProfileCredential(projectId, ...a),
-          revoke: (...a: DropFirst<Parameters<typeof P.revokeConnectionProfile>>) =>
-            P.revokeConnectionProfile(projectId, ...a),
-          activate: (...a: DropFirst<Parameters<typeof P.activateConnectionProfile>>) =>
-            P.activateConnectionProfile(projectId, ...a),
-          setDefault: (...a: DropFirst<Parameters<typeof P.setDefaultConnectionProfile>>) =>
-            P.setDefaultConnectionProfile(projectId, ...a),
-          pipedreamConnect: (
-            ...a: DropFirst<Parameters<typeof P.pipedreamConnectConnectionProfile>>
-          ) => P.pipedreamConnectConnectionProfile(projectId, ...a),
-          pipedreamFinalize: (
-            ...a: DropFirst<Parameters<typeof P.pipedreamFinalizeConnectionProfile>>
-          ) => P.pipedreamFinalizeConnectionProfile(projectId, ...a),
-        },
+        authorizations: connectorAuthorizations,
+        /** @deprecated Use `authorizations`. */
+        profiles: connectorAuthorizations,
         policies: {
           get: (...a: DropFirst<Parameters<typeof P.getConnectorPolicies>>) =>
             P.getConnectorPolicies(projectId, ...a),

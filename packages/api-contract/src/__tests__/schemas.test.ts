@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
   ConnectorAuthorizationStrategySchema,
+  ConnectorAuthorizationMetadataSchema,
+  ConnectorAuthorizationSchema,
+  ReconcileConnectorAuthorizationInputSchema,
+  UpdateConnectorAuthorizationCredentialInputSchema,
   ConnectionProfileMetadataSchema,
   EXPERIMENTAL_FEATURE_KEYS,
   ErrorEnvelopeSchema,
@@ -35,6 +39,34 @@ describe('connector authorization strategy', () => {
     expect(ConnectorAuthorizationStrategySchema.safeParse('both').success).toBe(false);
     expect(ConnectorAuthorizationStrategySchema.safeParse('').success).toBe(false);
     expect(ConnectorAuthorizationStrategySchema.safeParse(undefined).success).toBe(false);
+  });
+});
+
+describe('connector authorization terminology', () => {
+  test('canonical authorization schemas preserve the compatibility wire shape', () => {
+    expect(ConnectorAuthorizationMetadataSchema).toBe(ConnectionProfileMetadataSchema);
+    expect(
+      ConnectorAuthorizationSchema.parse({
+        profile_id: '11111111-2222-4333-8444-555555555555',
+        connector_alias: 'gmail',
+        owner_type: 'project',
+        owner_id: null,
+        label: 'Project Gmail',
+        status: 'active',
+        is_default: true,
+        metadata: {},
+      }),
+    ).toMatchObject({ connector_alias: 'gmail', status: 'active' });
+    expect(
+      ReconcileConnectorAuthorizationInputSchema.parse({
+        connector_alias: 'gmail',
+        owner_type: 'project',
+        label: 'Project Gmail',
+      }),
+    ).toMatchObject({ connector_alias: 'gmail', owner_type: 'project' });
+    expect(
+      UpdateConnectorAuthorizationCredentialInputSchema.parse({ value: 'secret-value' }),
+    ).toEqual({ value: 'secret-value' });
   });
 });
 

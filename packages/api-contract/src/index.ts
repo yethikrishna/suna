@@ -254,9 +254,14 @@ export type ConnectorAuthorizationStrategy = z.infer<
   typeof ConnectorAuthorizationStrategySchema
 >;
 
-export const ConnectionProfileOwnerTypeSchema = z.enum(['agent', 'member', 'subject', 'external']);
-export const ConnectionProfileStatusSchema = z.enum(['active', 'revoked', 'error']);
-export const ConnectionProfileMetadataSchema = z
+export const ConnectorAuthorizationOwnerTypeSchema = z.enum([
+  'agent',
+  'member',
+  'subject',
+  'external',
+]);
+export const ConnectorAuthorizationStatusSchema = z.enum(['active', 'revoked', 'error']);
+export const ConnectorAuthorizationMetadataSchema = z
   .record(
     z
       .string()
@@ -266,7 +271,7 @@ export const ConnectionProfileMetadataSchema = z
           !/(^|[._-])(token|secret|password|credential|api[_-]?key|private[_-]?key|authorization|cookie)([._-]|$)/.test(
             key,
           ),
-        'connection profile metadata is non-secret',
+        'connector authorization metadata is non-secret',
       ),
     SessionRuntimeContextScalarSchema,
   )
@@ -284,19 +289,19 @@ export const ConnectionProfileMetadataSchema = z
       });
     }
   });
-export const ConnectionProfileSchema = z.object({
+export const ConnectorAuthorizationSchema = z.object({
   profile_id: z.string().uuid(),
   connector_alias: z.string(),
   owner_type: z.enum(['project', 'agent', 'member', 'subject', 'external']),
   owner_id: z.string().nullable(),
   label: z.string(),
-  status: ConnectionProfileStatusSchema,
+  status: ConnectorAuthorizationStatusSchema,
   is_default: z.boolean(),
-  metadata: ConnectionProfileMetadataSchema,
+  metadata: ConnectorAuthorizationMetadataSchema,
 });
-export type ConnectionProfile = z.infer<typeof ConnectionProfileSchema>;
+export type ConnectorAuthorization = z.infer<typeof ConnectorAuthorizationSchema>;
 
-export const ReconcileConnectionProfileInputSchema = z
+export const ReconcileConnectorAuthorizationInputSchema = z
   .object({
     connector_alias: z.string().regex(/^[a-z][a-z0-9_-]{0,127}$/),
     // `project` = a TEAM-shared connection (several are allowed per connector,
@@ -306,10 +311,27 @@ export const ReconcileConnectionProfileInputSchema = z
     owner_type: z.enum(['project', 'agent', 'member', 'subject', 'external']),
     owner_id: z.string().trim().min(1).max(512).optional(),
     label: z.string().trim().min(1).max(255),
-    metadata: ConnectionProfileMetadataSchema.optional(),
+    metadata: ConnectorAuthorizationMetadataSchema.optional(),
   })
   .strict();
-export type ReconcileConnectionProfileInput = z.infer<typeof ReconcileConnectionProfileInputSchema>;
+export type ReconcileConnectorAuthorizationInput = z.infer<
+  typeof ReconcileConnectorAuthorizationInputSchema
+>;
+
+/** @deprecated Use `ConnectorAuthorizationOwnerTypeSchema`. */
+export const ConnectionProfileOwnerTypeSchema = ConnectorAuthorizationOwnerTypeSchema;
+/** @deprecated Use `ConnectorAuthorizationStatusSchema`. */
+export const ConnectionProfileStatusSchema = ConnectorAuthorizationStatusSchema;
+/** @deprecated Use `ConnectorAuthorizationMetadataSchema`. */
+export const ConnectionProfileMetadataSchema = ConnectorAuthorizationMetadataSchema;
+/** @deprecated Use `ConnectorAuthorizationSchema`. */
+export const ConnectionProfileSchema = ConnectorAuthorizationSchema;
+/** @deprecated Use `ConnectorAuthorization`. */
+export type ConnectionProfile = ConnectorAuthorization;
+/** @deprecated Use `ReconcileConnectorAuthorizationInputSchema`. */
+export const ReconcileConnectionProfileInputSchema = ReconcileConnectorAuthorizationInputSchema;
+/** @deprecated Use `ReconcileConnectorAuthorizationInput`. */
+export type ReconcileConnectionProfileInput = ReconcileConnectorAuthorizationInput;
 
 export const OAuth2ClientCredentialsSchema = z
   .object({
@@ -504,7 +526,7 @@ export const OAuth2ConnectionStatusSchema = z
   .strict();
 export type OAuth2ConnectionStatus = z.infer<typeof OAuth2ConnectionStatusSchema>;
 
-export const UpdateConnectionProfileCredentialInputSchema = z.union([
+export const UpdateConnectorAuthorizationCredentialInputSchema = z.union([
   z
     .object({
       value: z.string().min(1).max(65536),
@@ -513,9 +535,15 @@ export const UpdateConnectionProfileCredentialInputSchema = z.union([
     .strict(),
   z.object({ oauth2: OAuth2ClientCredentialsSchema }).strict(),
 ]);
-export type UpdateConnectionProfileCredentialInput = z.infer<
-  typeof UpdateConnectionProfileCredentialInputSchema
+export type UpdateConnectorAuthorizationCredentialInput = z.infer<
+  typeof UpdateConnectorAuthorizationCredentialInputSchema
 >;
+/** @deprecated Use `UpdateConnectorAuthorizationCredentialInputSchema`. */
+export const UpdateConnectionProfileCredentialInputSchema =
+  UpdateConnectorAuthorizationCredentialInputSchema;
+/** @deprecated Use `UpdateConnectorAuthorizationCredentialInput`. */
+export type UpdateConnectionProfileCredentialInput =
+  UpdateConnectorAuthorizationCredentialInput;
 
 /** Authoritative public body for POST /v1/projects/:projectId/sessions. */
 export const SessionCreateInputSchema = z

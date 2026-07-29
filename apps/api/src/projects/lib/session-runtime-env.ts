@@ -1,4 +1,6 @@
-import type { RuntimeV2 } from '@kortix/manifest-schema';
+import { HARNESSES, isHarnessId } from '@kortix/shared/harnesses';
+
+import type { CompiledRuntimeConfig } from './compile-runtime-config';
 
 export interface SessionRuntimeEnvInput {
   projectId: string;
@@ -11,7 +13,6 @@ export interface SessionRuntimeEnvInput {
   frontendUrl?: string;
   initialPrompt?: string | null;
   opencodeModel?: string | null;
-  runtimeHarness?: RuntimeV2;
   opencodeProcessTransport: 'acp' | 'rest';
   /** The wrapper's opaque end-user this backend session acts for (Kortix-as-a-
    *  Backend). Surfaced to the sandbox as KORTIX_ORIGIN_REF so the agent knows
@@ -22,9 +23,51 @@ export interface SessionRuntimeEnvInput {
    *  2` project — see `compile-agent-config.ts`. `null`/omitted for a v1
    *  project: no key is emitted, so v1 sandbox env is byte-for-byte unchanged. */
   compiledAgentConfig?: string | null;
+  /** Runtime-neutral v2/v3 launch plan. */
+  compiledRuntimeConfig?: CompiledRuntimeConfig | null;
+  /** Provider-neutral model selected for the runtime. */
+  runtimeModel?: string | null;
+}
+
+export function shouldResolvePlatformDefaultModel(
+  acpRuntimeEnabled: boolean,
+  harness: string | null | undefined,
+): boolean {
+  if (!acpRuntimeEnabled) return true;
+  return !isHarnessId(harness) || !HARNESSES[harness].ownsDefaultModel;
+}
+
+export function runtimeModelForHarness(
+  model: string | null | undefined,
+  harness: string | null | undefined,
+): string | null {
+  const trimmed = model?.trim();
+  if (!trimmed) return null;
+  if (isHarnessId(harness) && HARNESSES[harness].modelNamespacing === 'gateway-prefixed') {
+    return trimmed;
+  }
+  return trimmed.replace(/^kortix\//, '');
 }
 
 export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<string, string> {
+  const compiled = input.compiledRuntimeConfig;
+  const selected =
+    compiled?.agents[input.agentName] ??
+    (input.agentName === 'default' ? compiled?.agents[compiled.defaultAgent] : undefined) ??
+    null;
+  if (compiled?.version === 3 && (!selected || !selected.enabled)) {
+    throw new Error(`ACP agent "${input.agentName}" is not declared and enabled in kortix.yaml`);
+  }
+  const selectedRuntime = selected ? compiled?.runtimes[selected.runtime] : undefined;
+  if (compiled && selected && !selectedRuntime) {
+    throw new Error(
+      `ACP agent "${input.agentName}" references unknown runtime profile "${selected.runtime}"`,
+    );
+  }
+  const harness = selected?.harness ?? 'opencode';
+  const runtimeModel = runtimeModelForHarness(input.runtimeModel ?? input.opencodeModel, harness);
+  const bootstrapOpenCode = !compiled || harness === 'opencode';
+
   return {
     KORTIX_REPO_URL: input.repoUrl,
     KORTIX_DEFAULT_BRANCH: input.baseRef,
@@ -34,7 +77,6 @@ export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<st
     KORTIX_SESSION_ID: input.sessionId,
     KORTIX_SERVICE_PORT: '8000',
     KORTIX_AGENT_NAME: input.agentName,
-    KORTIX_RUNTIME_HARNESS: input.runtimeHarness ?? 'opencode',
     KORTIX_OPENCODE_PROCESS_TRANSPORT: input.opencodeProcessTransport,
     // Both names carry the same value: KORTIX_END_USER_REF is the name, and
     // KORTIX_ORIGIN_REF stays set because agent code inside sandboxes may
@@ -48,12 +90,18 @@ export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<st
     ...(input.frontendUrl ? { KORTIX_FRONTEND_URL: input.frontendUrl } : {}),
     // The sandbox daemon owns OpenCode root creation for every cold session.
     // The API adopts/persists that root; it must not create a competing one.
-    KORTIX_BOOTSTRAP_OPENCODE_SESSION: '1',
+    ...(bootstrapOpenCode ? { KORTIX_BOOTSTRAP_OPENCODE_SESSION: '1' } : {}),
     ...(input.initialPrompt ? { KORTIX_INITIAL_PROMPT: input.initialPrompt } : {}),
-    ...(input.opencodeModel
+    ...(input.opencodeModel ? { KORTIX_OPENCODE_MODEL: input.opencodeModel } : {}),
+    ...(compiled && selected && selectedRuntime
       ? {
-          KORTIX_RUNTIME_MODEL: input.opencodeModel,
-          KORTIX_OPENCODE_MODEL: input.opencodeModel,
+          KORTIX_COMPILED_RUNTIME_PLAN: JSON.stringify(compiled),
+          KORTIX_ACP_SERVER_ID: input.sessionId,
+          KORTIX_RUNTIME_NAME: selected.runtime,
+          KORTIX_RUNTIME_HARNESS: selected.harness,
+          KORTIX_RUNTIME_CONFIG_DIR: selectedRuntime.configDir,
+          ...(runtimeModel ? { KORTIX_RUNTIME_MODEL: runtimeModel } : {}),
+          ...(selected.nativeAgent ? { KORTIX_NATIVE_AGENT: selected.nativeAgent } : {}),
         }
       : {}),
     // The sandbox daemon merges this as the BASE of its own composed opencode

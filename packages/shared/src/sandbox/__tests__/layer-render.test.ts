@@ -23,7 +23,11 @@ import {
   AGENT_BROWSER_VERSION,
   BUN_SHA256_AMD64,
   BUN_SHA256_ARM64,
+  CLAUDE_AGENT_ACP_VERSION,
+  CODEX_ACP_VERSION,
   OPENCODE_VERSION,
+  PI_ACP_VERSION,
+  PI_CODING_AGENT_VERSION,
   PNPM_SHA256_AMD64,
   PNPM_SHA256_ARM64,
   UV_SHA256_AMD64,
@@ -101,13 +105,6 @@ describe('rendered layer (golden)', () => {
 describe('runtime artifact integrity', () => {
   const rendered = kortixToolchainLayer(COMMON);
 
-  test('makes the ACP session pin directory writable by the runtime user', () => {
-    expect(rendered).toContain('/var/run/kortix \\');
-    expect(rendered).toContain(
-      '/home/kortix /var/run/kortix',
-    );
-  });
-
   test('verifies both supported architectures against repository-controlled SHA-256 digests', () => {
     for (const digest of [
       PNPM_SHA256_AMD64,
@@ -129,13 +126,33 @@ describe('runtime artifact integrity', () => {
     expect(rendered).not.toMatch(/curl[^|\n]*\|\s*(?:sh|bash)/);
   });
 
-  test('installs and executes each native runtime CLI during the image build', () => {
+  test('installs and probes each ACP adapter at an exact version', () => {
     expect(rendered).toContain(
-      'pnpm add -g --allow-build=@anthropic-ai/claude-code',
+      `"@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}"`,
     );
-    expect(rendered).toContain('claude --version');
-    expect(rendered).toContain('codex --version');
-    expect(rendered).toContain('pi --version');
+    expect(rendered).toContain(
+      `"@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}"`,
+    );
+    expect(rendered).toContain(`"pi-acp@${PI_ACP_VERSION}"`);
+    expect(rendered).toContain(
+      `"@earendil-works/pi-coding-agent@${PI_CODING_AGENT_VERSION}"`,
+    );
+    expect(rendered).toContain(
+      `"@earendil-works/pi-ai@${PI_CODING_AGENT_VERSION}"`,
+    );
+    expect(rendered).toContain(
+      `"@earendil-works/pi-tui@${PI_CODING_AGENT_VERSION}"`,
+    );
+    expect(rendered).toContain(
+      `"@earendil-works/pi-agent-core@${PI_CODING_AGENT_VERSION}"`,
+    );
+    expect(rendered).toContain(
+      'npm install -g --prefix /home/kortix/.local',
+    );
+    expect(rendered).toContain('command -v claude-agent-acp');
+    expect(rendered).toContain('command -v codex-acp');
+    expect(rendered).toContain('command -v pi-acp');
+    expect(rendered).toContain('command -v pi');
   });
 });
 

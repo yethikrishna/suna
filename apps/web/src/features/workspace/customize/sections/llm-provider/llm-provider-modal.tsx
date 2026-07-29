@@ -227,11 +227,7 @@ export function ProjectProviderModal({
             </TabsContent>
 
             <TabsContent value="models" className="mt-0">
-              <ModelsTab
-                connectedProviders={connectedProviders}
-                search={search}
-                llmGatewayEnabled={llmGatewayEnabled}
-              />
+              <ModelsTab projectId={projectId} search={search} />
             </TabsContent>
           </>
         )}

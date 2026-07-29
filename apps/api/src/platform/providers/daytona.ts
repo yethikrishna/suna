@@ -17,6 +17,7 @@ import {
 import { serviceKeyForExternalId } from '../service-key';
 import { sandboxFrontendBaseUrl } from '../sandbox-frontend-url';
 import { providerAutoStopBackstopMinutes } from './index';
+import { classifyDaytonaState } from './daytona-state';
 import { withTimeout, configuredTimeoutMs } from '../../shared/with-timeout';
 
 // The Daytona SDK's axios client is created with a 24-HOUR timeout (see
@@ -102,6 +103,8 @@ import type {
 // idle-stop / wake detection always reads fresh; start/stop/remove bust the entry.
 const STATUS_CACHE_TTL_MS = 1500;
 const runningStatusCache = new Map<string, number>(); // externalId → cachedAt (ms)
+
+
 
 function isMissingSandboxError(error: unknown): boolean {
   const err = error as
@@ -337,14 +340,13 @@ export class DaytonaProvider implements SandboxProvider {
     try {
       const daytona = getDaytona();
       const sandbox = await withTimeout(daytona.get(externalId), PROVIDER_CALL_TIMEOUT_MS, `Daytona get(${externalId})`);
-      const state = String(sandbox.state ?? '').toLowerCase();
-      if (state.includes('start') || state.includes('running') || state.includes('active')) {
+      const status = classifyDaytonaState(sandbox.state);
+      if (status === 'running') {
         runningStatusCache.set(externalId, Date.now());
         return 'running';
       }
       runningStatusCache.delete(externalId);
-      if (state.includes('stop') || state.includes('archive')) return 'stopped';
-      return 'unknown';
+      return status;
     } catch (err) {
       runningStatusCache.delete(externalId);
       if (isMissingSandboxError(err)) return 'removed';

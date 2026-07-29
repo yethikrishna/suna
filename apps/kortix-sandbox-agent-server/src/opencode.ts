@@ -20,14 +20,6 @@ import {
   resolveOpenCodeTransport,
   type OpenCodeTransport,
 } from './acp/connection'
-import {
-  isolateRuntimeAuthEnv,
-  materializeRuntimeAdapterConfig,
-  resolveRuntimeAdapter,
-  resolveRuntimeHarness,
-  type RuntimeAdapter,
-  type RuntimeHarness,
-} from './acp/runtime-adapter'
 
 const READY_POLL_MS = 100
 const BOOT_READY_POLL_MS = 50
@@ -861,36 +853,25 @@ export type Opencode = {
   getBinaryPath(): string | null
   getState(): OpencodeState
   getTransport(): OpenCodeTransport
-  getRuntimeHarness(): RuntimeHarness
-  getRuntimeAdapter(): RuntimeAdapter
   getAcpConnection(): AcpConnection | null
   markReady(): void
 }
 
 export async function resumeCanonicalAcpSession(
-  connection: Pick<
-    AcpConnection,
-    'request' | 'lastEventId' | 'discardEventsAfter'
-  >,
+  connection: Pick<AcpConnection, 'request'>,
   sessionId: string,
   cwd: string,
-  adapter: Pick<RuntimeAdapter, 'resumeMethod'> = {
-    resumeMethod: 'session/resume',
-  },
 ): Promise<void> {
-  const eventCursor = connection.lastEventId
-  await connection.request(adapter.resumeMethod, {
+  await connection.request('session/resume', {
     sessionId,
     cwd,
     mcpServers: [],
   })
-  if (adapter.resumeMethod === 'session/load') {
-    connection.discardEventsAfter(eventCursor)
-  }
 }
 
 export interface OpencodeSupervisorOptions {
   getCanonicalAcpSessionId?: () => string | null
+  onStartupMark?: (label: string) => void
 }
 
 export function createOpencodeSupervisor(
@@ -909,18 +890,10 @@ export function createOpencodeSupervisor(
   let state: OpencodeState = 'starting'
   let readinessTimer: ReturnType<typeof setTimeout> | null = null
   let opencodeCwd = cfg.workspace
-  let runtimeHarness = resolveRuntimeHarness(process.env)
-  let transport: OpenCodeTransport =
-    runtimeHarness === 'opencode'
-      ? resolveOpenCodeTransport(process.env)
-      : 'acp'
-  let runtimeAdapter = resolveRuntimeAdapter(runtimeHarness, {
-    cwd: opencodeCwd,
-    port: cfg.opencodeInternalPort,
-    env: process.env,
-  })
+  let transport: OpenCodeTransport = resolveOpenCodeTransport(process.env)
   let acpConnection: AcpConnection | null = null
   let nextAcpEventId = 1
+  const startupMark = options.onStartupMark ?? (() => {})
 
   function rememberAcpEventCursor(): void {
     if (!acpConnection) return
@@ -959,10 +932,10 @@ export function createOpencodeSupervisor(
       })
     }
     const baseEnv = currentProjectEnv ? mergeProjectEnv(process.env, currentProjectEnv) : process.env
-    runtimeHarness = resolveRuntimeHarness(baseEnv)
-    const commonEnv: NodeJS.ProcessEnv = {
+    const env: NodeJS.ProcessEnv = applyManagedOpencodeEnv({
       ...baseEnv,
       ...buildGitIdentityEnv(currentCfg),
+      OPENCODE_CONFIG_DIR: currentOpencodeConfigDir,
       // Every non-interactive shell opencode spawns (`bash -c`) sources this,
       // so live project secrets reach the agent's commands without any
       // opencode plugin/config. Interactive shells + terminals get it from the
@@ -970,17 +943,9 @@ export function createOpencodeSupervisor(
       BASH_ENV: AGENT_ENV_SH,
       PORT: undefined,
       APP_PORT: undefined,
-    }
-    const env: NodeJS.ProcessEnv =
-      runtimeHarness === 'opencode'
-        ? applyManagedOpencodeEnv({
-            ...commonEnv,
-            OPENCODE_CONFIG_DIR: currentOpencodeConfigDir,
-          })
-        : isolateRuntimeAuthEnv(runtimeHarness, commonEnv)
+    })
 
-    if (runtimeHarness === 'opencode') materializeOpencodeAuth(env)
-    materializeRuntimeAdapterConfig(runtimeHarness, env)
+    materializeOpencodeAuth(env)
 
     // Withhold provider API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, …) from the
     // opencode process. With any such key in its env, opencode auto-connects a
@@ -990,13 +955,7 @@ export function createOpencodeSupervisor(
     // to strip (Codex/OpenCode subscription auth is excluded — it's already been
     // consumed into auth.json by materializeOpencodeAuth above). This only touches
     // the opencode process env; it doesn't change what the container itself holds.
-    const denyEnv =
-      runtimeHarness === 'opencode'
-        ? (env.KORTIX_OPENCODE_DENY_ENV || '')
-            .split(',')
-            .map((n) => n.trim())
-            .filter(Boolean)
-        : []
+    const denyEnv = (env.KORTIX_OPENCODE_DENY_ENV || '').split(',').map((n) => n.trim()).filter(Boolean)
     let withheld = 0
     for (const name of denyEnv) {
       if (name in env) {
@@ -1016,10 +975,7 @@ export function createOpencodeSupervisor(
       env.OPENCODE_LOG_LEVEL = 'DEBUG'
     }
 
-    const opencodeConfig =
-      runtimeHarness === 'opencode'
-        ? await buildOpencodeConfigContent(baseEnv)
-        : null
+    const opencodeConfig = await buildOpencodeConfigContent(baseEnv)
     if (opencodeConfig) {
       // The assembled config carries the gateway's full model catalog, which is
       // ~400KB — far over Linux's 128KB per-env-var ceiling (MAX_ARG_STRLEN).
@@ -1032,40 +988,20 @@ export function createOpencodeSupervisor(
       delete env.OPENCODE_CONFIG_CONTENT
       logger.info(`[opencode] wrote config (${opencodeConfig.length} bytes) to ${configPath}`)
     }
+    startupMark('runtime-config-ready')
 
     const cwd = ensureCwdExists()
-    transport =
-      runtimeHarness === 'opencode'
-        ? resolveOpenCodeTransport(env)
-        : 'acp'
-    runtimeAdapter = resolveRuntimeAdapter(runtimeHarness, {
+    transport = resolveOpenCodeTransport(env)
+    const launch = buildOpenCodeLaunch(
+      transport,
+      currentCfg.opencodeInternalPort,
       cwd,
-      port: currentCfg.opencodeInternalPort,
-      env,
-    })
-    const launch: {
-      args: string[]
-      stdio:
-        | ['pipe', 'pipe', 'pipe']
-        | ['ignore', 'inherit', 'inherit']
-      env: Record<string, string>
-    } =
-      runtimeHarness === 'opencode' && transport === 'rest'
-        ? buildOpenCodeLaunch(
-            transport,
-            currentCfg.opencodeInternalPort,
-            cwd,
-          )
-        : {
-            ...runtimeAdapter.launch,
-            stdio: ['pipe', 'pipe', 'pipe'],
-          }
-    logger.info('[runtime] spawning', {
+    )
+    logger.info('[opencode] spawning', {
       bin,
       port: currentCfg.opencodeInternalPort,
       cwd,
       transport,
-      harness: runtimeHarness,
     })
     // detached: true makes opencode the leader of its own process group, so
     // stop()/restart() can SIGTERM/SIGKILL the whole group (-pid) instead of
@@ -1075,18 +1011,19 @@ export function createOpencodeSupervisor(
     // freshly-spawned opencode is installing into concurrently — a real path
     // to a torn/corrupted node_modules that then fails every session's first
     // prompt until the sandbox is rebuilt.
-    const proc: ChildProcess = spawn(bin, launch.args, {
+    const proc = spawn(bin, launch.args, {
       cwd,
       env: { ...env, ...launch.env },
       stdio: launch.stdio,
       detached: true,
     })
+    proc.once('spawn', () => startupMark('runtime-process-spawned'))
 
     proc.on('exit', (code, signal) => {
-      logger.warn('[runtime] child exited', { code, signal, harness: runtimeHarness })
+      logger.warn('[opencode] child exited', { code, signal })
       rememberAcpEventCursor()
       acpConnection?.dispose(
-        `${runtimeHarness} ACP exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`,
+        `OpenCode ACP exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`,
       )
       acpConnection = null
       child = null
@@ -1112,8 +1049,7 @@ export function createOpencodeSupervisor(
       }
       const stderr = createInterface({ input: proc.stderr })
       stderr.on('line', (line) => {
-        logger.warn('[runtime-acp] stderr', {
-          harness: runtimeHarness,
+        logger.warn('[opencode-acp] stderr', {
           line: redactAcpDiagnostic(line, env),
         })
       })
@@ -1121,11 +1057,8 @@ export function createOpencodeSupervisor(
         input: proc.stdin,
         output: proc.stdout,
         initialEventId: nextAcpEventId,
-        onDiagnostic: (line) =>
-          logger.warn('[runtime-acp] protocol', {
-            harness: runtimeHarness,
-            line,
-          }),
+        onDiagnostic: (line) => logger.warn('[opencode-acp] protocol', { line }),
+        onFirstOutput: () => startupMark('runtime-acp-first-output'),
       })
       try {
         const initialized = await connection.initialize({
@@ -1134,29 +1067,28 @@ export function createOpencodeSupervisor(
             version: '1',
           },
         })
-        logger.info('[runtime-acp] initialized', {
-          harness: runtimeHarness,
+        logger.info('[opencode-acp] initialized', {
           protocolVersion: initialized.protocolVersion,
         })
+        startupMark('runtime-acp-initialized')
         const canonicalSessionId = options.getCanonicalAcpSessionId?.()
         if (canonicalSessionId) {
           await resumeCanonicalAcpSession(
             connection,
             canonicalSessionId,
             currentCfg.workspace,
-            runtimeAdapter,
           )
-          logger.info('[runtime-acp] resumed canonical session after process start', {
-            harness: runtimeHarness,
+          logger.info('[opencode-acp] resumed canonical session after process start', {
             sessionId: canonicalSessionId,
           })
+          startupMark('runtime-canonical-session-resumed')
         }
         acpConnection = connection
         connection.notifyClient('kortix/runtime_ready', {
           sessionId: canonicalSessionId ?? null,
         })
       } catch (error) {
-        connection.dispose(`${runtimeHarness} ACP initialization failed`)
+        connection.dispose('OpenCode ACP initialization failed')
         acpConnection = null
         if (proc.pid) {
           try {
@@ -1177,7 +1109,6 @@ export function createOpencodeSupervisor(
   }
 
   async function checkReady(): Promise<boolean> {
-    if (transport === 'acp') return runtimeAdapter.isReady(acpConnection)
     return probeOpencodeSessionApi(`http://127.0.0.1:${currentCfg.opencodeInternalPort}`, currentCfg.projectTarget, 2_000)
   }
 
@@ -1202,26 +1133,17 @@ export function createOpencodeSupervisor(
     async start() {
       stopping = false
       state = 'starting'
-      const requested = resolveRuntimeAdapter(runtimeHarness, {
-        cwd: opencodeCwd,
-        port: currentCfg.opencodeInternalPort,
-        env: process.env,
-      }).launch.command
-      const bin =
-        runtimeHarness === 'opencode'
-          ? await detectOpencodeBinary()
-          : await which(requested)
+      const bin = await detectOpencodeBinary()
       if (!bin) {
-        logger.warn('[runtime] binary not found; daemon remains in starting state', {
-          harness: runtimeHarness,
-          command: requested,
-        })
+        logger.warn('[opencode] binary not found on PATH (and /usr/local/bin/opencode-kortix missing); daemon will continue, opencode reports as starting')
         state = 'starting'
         scheduleReadinessProbe()
         return
       }
       binaryPath = bin
+      startupMark('runtime-binary-resolved')
       opencodeCwd = await resolveOpencodeCwd(currentCfg)
+      startupMark('runtime-cwd-resolved')
       try {
         await spawnChild(bin)
       } catch (err) {
@@ -1286,24 +1208,13 @@ export function createOpencodeSupervisor(
       currentCfg = nextCfg
       currentOpencodeConfigDir = nextOpencodeConfigDir
       if (nextProjectEnv) currentProjectEnv = nextProjectEnv
-      const nextEnv = nextProjectEnv
-        ? mergeProjectEnv(process.env, nextProjectEnv)
-        : process.env
-      runtimeHarness = resolveRuntimeHarness(nextEnv)
-      transport =
-        runtimeHarness === 'opencode'
-          ? resolveOpenCodeTransport(nextEnv)
-          : 'acp'
-      runtimeAdapter = resolveRuntimeAdapter(runtimeHarness, {
-        cwd: opencodeCwd,
-        port: nextCfg.opencodeInternalPort,
-        env: nextEnv,
-      })
+      transport = resolveOpenCodeTransport(
+        nextProjectEnv ? mergeProjectEnv(process.env, nextProjectEnv) : process.env,
+      )
       state = 'starting'
       logger.info('[opencode] reconfigured', {
         projectId: nextCfg.projectId,
         opencodeConfigDir: nextOpencodeConfigDir,
-        harness: runtimeHarness,
       })
     },
 
@@ -1325,14 +1236,6 @@ export function createOpencodeSupervisor(
 
     getTransport() {
       return transport
-    },
-
-    getRuntimeHarness() {
-      return runtimeHarness
-    },
-
-    getRuntimeAdapter() {
-      return runtimeAdapter
     },
 
     getAcpConnection() {
@@ -1382,12 +1285,7 @@ export async function waitForOpencodeReady(
   let listeningSeen = false
   while (Date.now() < deadline) {
     if (opencode.getState() === 'ok') return true
-    if (opencode.getTransport() === 'acp') {
-      if (opencode.getAcpConnection()?.ready) {
-        opencode.markReady()
-        return true
-      }
-    } else if (directory) {
+    if (directory) {
       const probe = await probeOpencodeReadiness(opencode.getInternalUrl(), directory, 500)
       if (probe !== 'down' && !listeningSeen) {
         listeningSeen = true

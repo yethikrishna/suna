@@ -27,9 +27,7 @@ import {
   BUN_SHA256_ARM64,
   BUN_VERSION,
   CLAUDE_AGENT_ACP_VERSION,
-  CLAUDE_CODE_VERSION,
   CODEX_ACP_VERSION,
-  CODEX_CLI_VERSION,
   NODE_VERSION,
   NPM_VERSION,
   PI_ACP_VERSION,
@@ -445,8 +443,7 @@ export function kortixToolchainLayer(opts: KortixToolchainLayerOpts): string {
     '    && chmod 0440 /etc/sudoers.d/kortix \\',
     '    && mkdir -p /workspace /opt/kortix /opt/pw-browsers /ephemeral/kortix-master/opencode \\',
     '        /home/kortix/.local/bin /home/kortix/.local/share/pnpm/bin /home/kortix/.bun/bin \\',
-    '        /var/run/kortix \\',
-    '    && chown -R kortix:kortix /workspace /opt/kortix /opt/pw-browsers /ephemeral /home/kortix /var/run/kortix',
+    '    && chown -R kortix:kortix /workspace /opt/kortix /opt/pw-browsers /ephemeral /home/kortix',
     'ENV PNPM_HOME=/home/kortix/.local/share/pnpm \\',
     `    PATH=${KORTIX_USER_PATH_DIRS}:$PATH`,
     'USER kortix',
@@ -572,19 +569,20 @@ export function kortixToolchainLayer(opts: KortixToolchainLayerOpts): string {
     '    && command -v opencode \\',
     '    && opencode --version',
     '',
-    // ACP runtime adapters and their native harness CLIs. Every package uses an
-    // exact repository-controlled pin. The supervisor resolves each executable
-    // to an absolute path before spawn.
-    `RUN pnpm add -g --allow-build=@anthropic-ai/claude-code "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}" "@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}" "pi-acp@${PI_ACP_VERSION}" "@earendil-works/pi-coding-agent@${PI_CODING_AGENT_VERSION}" "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_CLI_VERSION}" \\`,
+    // Install every ACP adapter during image construction. Runtime requests
+    // only start these pinned executables. They never download an npm package.
+    // pnpm 11 gives each global root package an isolated dependency graph.
+    // npm deduplicates Pi's exact internal versions into one compatible graph.
+    `RUN pnpm add -g "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}" "@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}" "pi-acp@${PI_ACP_VERSION}" \\`,
+    `    && npm install -g --prefix /home/kortix/.local "@earendil-works/pi-coding-agent@${PI_CODING_AGENT_VERSION}" "@earendil-works/pi-ai@${PI_CODING_AGENT_VERSION}" "@earendil-works/pi-tui@${PI_CODING_AGENT_VERSION}" "@earendil-works/pi-agent-core@${PI_CODING_AGENT_VERSION}" \\`,
     '    && command -v claude-agent-acp \\',
     '    && command -v codex-acp \\',
     '    && command -v pi-acp \\',
     '    && command -v pi \\',
-    '    && command -v claude \\',
-    '    && command -v codex \\',
-    `    && test "$(claude --version | awk '{print $1}')" = "${CLAUDE_CODE_VERSION}" \\`,
-    `    && test "$(codex --version | awk '{print $2}')" = "${CODEX_CLI_VERSION}" \\`,
-    `    && test "$(pi --version)" = "${PI_CODING_AGENT_VERSION}"`,
+    '    && claude-agent-acp --version \\',
+    '    && codex-acp --version \\',
+    '    && pi-acp --help >/dev/null \\',
+    '    && pi --version',
     '',
     // Bake OpenCode's "one time database migration" at BUILD time. The first time
     // opencode serves, it migrates its sqlite schema — logged as "Performing one

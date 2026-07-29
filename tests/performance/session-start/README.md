@@ -1,9 +1,78 @@
 # Session-start latency benchmark
 
+> **Benchmark scope:** The OpenCode timing stages below measure the v2 REST
+> compatibility path. The v3 runtime contract also supports OpenCode, Claude
+> Code, Codex, and Pi through ACP. Use
+> `tests/e2e/scripts/acp-multi-harness-smoke.ts` for harness acceptance.
+
 End-to-end timing for **creating a session in a project** — the "why does a new
 session take so long" question. Drives the exact client flow the dashboard uses
 against the **running local stack** (real Daytona/Platinum provisioning, real
 opencode boot) and attributes every step a user waits on.
+
+## 2026-07-29 baseline
+
+The current comparable starter-project results are in
+[`results/2026-07-29`](./results/2026-07-29).
+
+Each environment used five Daytona sessions and five Platinum sessions.
+Every session used a `default-cold` image.
+
+| environment | provider | ready p50 | ready p90 | repository p50 | ACP initialize p50 | ACP session p50 |
+|---|---:|---:|---:|---:|---:|---:|
+| production | Daytona | 22.430 s | 46.467 s | 7.764 s | 7.222 s | 768 ms |
+| production | Platinum | 27.279 s | 32.202 s | 6.287 s | 12.973 s | 1.639 s |
+| dev | Daytona | 20.573 s | 47.840 s | 5.974 s | 7.610 s | 698 ms |
+| dev | Platinum | 29.103 s | 33.167 s | 6.923 s | 12.385 s | 1.651 s |
+| local | Daytona | 15.222 s | 17.795 s | 3.978 s | 6.996 s | 820 ms |
+| local | Platinum | 20.728 s | 21.770 s | 2.873 s | 11.977 s | 1.602 s |
+
+The historical `opencode-spawned` mark includes `opencode acp` startup and ACP
+`initialize`. It does not measure only `spawn(2)`.
+
+OpenCode `1.18.7` local process benchmarks isolate this cost:
+
+| HOME state | ACP initialize p50 | `session/new` p50 | total p50 |
+|---|---:|---:|---:|
+| fresh | 7.659 s | 186 ms | 7.841 s |
+| warmed by `opencode serve` | 556 ms | 166 ms | 722 ms |
+| warmed by exact ACP lifecycle | 522 ms | 171 ms | 700 ms |
+| persistent ACP-warmed HOME | 513 ms | 166 ms | 679 ms |
+
+The old `serve` warm-up can warm OpenCode on one persistent local workspace.
+The provider A/B below tests whether an image-baked HOME produces the same
+result in a new guest.
+
+Pi `0.81.1` local results:
+
+| path | p50 |
+|---|---:|
+| fresh `pi --mode rpc` to `get_state` | 439 ms |
+| one-time in-process module import | 372 ms |
+| in-process `createAgentSession()` after import | 2.865 ms |
+| third-party `pi-acp` initialize + `session/new` | 1.635 s |
+
+The third-party adapter starts another Pi process for each ACP session. It does
+not represent the target in-process architecture.
+
+The exact ACP image warm-up A/B used
+`kortix-default-9f0b65e21921`.
+
+| provider | ready | repository | first ACP output | ACP initialize |
+|---|---:|---:|---:|---:|
+| Daytona | 35.997 s | 5.593 s | 23.314 s | 299 ms |
+| Platinum | 41.310 s | 10.749 s | 8.466 s | 631 ms |
+
+Both providers retained the baked OpenCode database under
+`/home/kortix/.local/share/opencode`.
+
+The OpenCode log attributed 21.497 seconds on Daytona and 6.324 seconds on
+Platinum to project configuration loading. Database persistence does not cache
+this process-local work.
+
+The managed runtime path now starts only the selected ACP harness. It no longer
+starts legacy OpenCode before Pi, Codex, Claude, or managed OpenCode. A
+warm-seed adoption stops the inherited legacy OpenCode process.
 
 ## Run
 
@@ -18,6 +87,65 @@ cd tests/performance/session-start
 ./run.sh oclog-probe     # one session + opencode.log + baked-vs-runtime dep versions
 N=5 POLL_MS=250 ./run.sh # knobs: N, POLL_MS, READY_TIMEOUT_MS, PROVIDER, PROJECT_ID, BENCH_EMAIL, BENCH_UID
 ```
+
+Analyze one or more raw boot result files:
+
+```bash
+node analyze-boot-results.mjs \
+  results/2026-07-29/production-starter.json \
+  results/2026-07-29/dev-starter.json \
+  results/2026-07-29/local-starter.json
+```
+
+Run the comparable default starter benchmark against one environment:
+
+```bash
+BENCH_API=https://dev-api.kortix.com \
+BENCH_TOKEN=... \
+BENCH_DB_URL=... \
+BENCH_ACCOUNT_ID=... \
+BENCH_ENVIRONMENT=dev \
+./run-comparable-starter.sh
+```
+
+The wrapper creates one default starter project. It runs Daytona and Platinum
+against the same repository. It records the project, repository, base commit,
+provider, and raw boot timelines. It archives the project on exit.
+
+Inspect the retained OpenCode cache and log after a `BENCH_KEEP=1` run:
+
+```bash
+BENCH_API=http://localhost:8008 \
+BENCH_TOKEN=... \
+BENCH_DB_URL=... \
+BENCH_RESULT=results/2026-07-29/local-baked-acp-a-b.json \
+./inspect-runtime-cache.sh
+```
+
+The inspector creates one short-lived PTY command inside each retained session.
+It saves HOME, database metadata, process state, and the OpenCode log tail.
+
+Benchmark OpenCode and Pi harness startup:
+
+```bash
+node harness-startup-bench.mjs opencode --scenario fresh --runs 3
+node harness-startup-bench.mjs opencode --scenario serve-warmed --runs 3
+node harness-startup-bench.mjs opencode --scenario acp-warmed --runs 3
+node harness-startup-bench.mjs opencode --scenario persistent-acp-warmed --runs 10
+node harness-startup-bench.mjs pi-rpc --runs 15
+node harness-startup-bench.mjs pi-in-process --runs 15
+
+# Install the third-party adapter outside the repository.
+install_dir="$(mktemp -d /tmp/kortix-pi-acp-install.XXXXXX)"
+npm install --prefix "$install_dir" pi-acp@0.0.32
+OPENAI_API_KEY=bench-placeholder \
+  node harness-startup-bench.mjs generic-acp \
+  --command "$install_dir/node_modules/.bin/pi-acp" \
+  --runs 10
+```
+
+`bench-placeholder` only satisfies the adapter's startup auth check.
+The benchmark does not send a model prompt.
 
 Each iteration provisions and deletes a **real cloud sandbox** — keep `N` small.
 `run.sh` resets a throwaway local e2e user's password to sign in; **local dev

@@ -25,6 +25,12 @@ import { SessionStartingLoader } from '@/features/session/session-starting-loade
 import { isUnmaterializedSessionFailure } from '@/features/session/session-terminal-state';
 import { useAccountState } from '@/hooks/billing';
 import { useSandboxConnection } from '@/hooks/platform/use-sandbox-connection';
+import {
+  billingDialogArgs,
+  billingGateCopy,
+  billingStateAllowsRun,
+  resolveBillingState,
+} from '@/lib/billing/billing-gate-state';
 import { isBillingEnabled } from '@/lib/config';
 import { finishSessionTiming, sessionMark } from '@/lib/session-timing';
 import { cn } from '@/lib/utils';
@@ -93,7 +99,14 @@ export default function ProjectSessionPage() {
   const accountLoaded = !!accountState;
   const billingGatePending =
     isBillingEnabled() && !!projectAccountId && (accountStateLoading || !accountLoaded);
-  const noPlan = isBillingEnabled() && accountLoaded && !accountState.credits?.can_run;
+  // ONE resolver for "what is this account's billing situation" (see
+  // lib/billing/billing-gate-state.ts). This used to be `!can_run`, rendered as
+  // `noPlan` with a "Subscribe to Team plan" pitch — which told a Team account
+  // on an ACTIVE $40/mo subscription with a $0.0099 wallet that it had no plan,
+  // while the modal that CTA opened correctly said "Out of credits — your Team
+  // plan and seats are unaffected". `can_run: false` means blocked, not unplanned.
+  const billingState = isBillingEnabled() ? resolveBillingState(accountState) : null;
+  const billingBlocked = isBillingEnabled() && accountLoaded && !billingStateAllowsRun(billingState);
   const { data: projectSessions } = useQuery({
     queryKey: ['project-sessions', projectId],
     queryFn: () => listProjectSessions(projectId),
@@ -111,7 +124,7 @@ export default function ProjectSessionPage() {
   // The default chat engine stays enabled. This hook owns message sync and the
   // question and permission recovery pollers for the root session.
   const session = useSession(projectId, sessionId, {
-    enabled: !!user && !billingGatePending && !noPlan,
+    enabled: !!user && !billingGatePending && !billingBlocked,
     replayStartStash: false,
     initialOpenCodeSessionId,
     runtimeTransport: forceAcp ? 'acp' : undefined,
@@ -172,13 +185,15 @@ export default function ProjectSessionPage() {
     }
   }, [session.switched, sandbox, queryClient, projectId]);
 
-  // The moment we know there's no plan, pop the one Team plan modal.
+  // The moment we know the account is blocked, pop the ONE billing modal — with
+  // the state that produced the block, so the modal shows the same thing the
+  // gate card says (top-up vs subscribe), never the opposite.
   const billingGatedRef = useRef(false);
   useEffect(() => {
-    if (!noPlan || billingGatedRef.current) return;
+    if (!billingBlocked || billingGatedRef.current) return;
     billingGatedRef.current = true;
-    openUpgradeDialog({ reason: 'subscription_required', accountId: projectAccountId });
-  }, [noPlan, openUpgradeDialog, projectAccountId]);
+    openUpgradeDialog(billingDialogArgs(billingState, accountState, projectAccountId));
+  }, [billingBlocked, billingState, accountState, openUpgradeDialog, projectAccountId]);
 
   // ── Crossfade: the instant shell fades out as the real chat fades in ──────
   // A fully-interactive shell (welcome wallpaper + live input) renders at a SINGLE
@@ -214,7 +229,7 @@ export default function ProjectSessionPage() {
   }, [chatReady, sessionId]);
 
   // Terminal/gated states fully REPLACE the content (no chat to fade to).
-  const gated = !authLoading && !!user && noPlan;
+  const gated = !authLoading && !!user && billingBlocked;
   const fatal =
     !authLoading &&
     !!user &&
@@ -292,23 +307,34 @@ export default function ProjectSessionPage() {
     }
 
     if (gated) {
+      const blockedState = billingState && billingState !== 'active' ? billingState : 'no_subscription';
+      const copy = billingGateCopy(blockedState);
+      // The genuinely-no-plan copy keeps its translated strings; the states this
+      // surface used to mislabel get their copy from the shared resolver.
+      const isNoPlan = blockedState === 'no_subscription';
       return (
         <InlineSessionError
-          title={tI18nHardcoded.raw(
-            'autoAppAppProjectsIdSessionsSessionIdPageJsxAttrTitlebf9bba8c',
-          )}
-          message={tI18nHardcoded.raw(
-            'autoAppAppProjectsIdSessionsSessionIdPageJsxAttrMessage93bc2779',
-          )}
+          title={
+            isNoPlan
+              ? tI18nHardcoded.raw('autoAppAppProjectsIdSessionsSessionIdPageJsxAttrTitlebf9bba8c')
+              : copy.title
+          }
+          message={
+            isNoPlan
+              ? tI18nHardcoded.raw('autoAppAppProjectsIdSessionsSessionIdPageJsxAttrMessage93bc2779')
+              : copy.message
+          }
           action={
             <Button
               onClick={() =>
-                openUpgradeDialog({ reason: 'subscription_required', accountId: projectAccountId })
+                openUpgradeDialog(billingDialogArgs(billingState, accountState, projectAccountId))
               }
             >
-              {tI18nHardcoded.raw(
-                'autoAppAppProjectsIdSessionsSessionIdPageJsxTextSubscribe40f5b8e1',
-              )}
+              {isNoPlan
+                ? tI18nHardcoded.raw(
+                    'autoAppAppProjectsIdSessionsSessionIdPageJsxTextSubscribe40f5b8e1',
+                  )
+                : copy.ctaLabel}
             </Button>
           }
         />

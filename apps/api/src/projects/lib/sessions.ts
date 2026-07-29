@@ -488,6 +488,10 @@ export async function buildSessionSandboxEnvVars(input: {
       input.projectId,
       secretsPrincipalUserId,
       grantEnvForSession,
+      // Non-`runtime` rows are delivered as a per-session handle, so the
+      // chokepoint needs the session this env is being built FOR. Without it it
+      // withholds them rather than falling back to plaintext.
+      input.sessionId,
     );
   } catch (err) {
     if (err instanceof AmbiguousSecretGrantError) {

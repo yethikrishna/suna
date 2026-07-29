@@ -3898,3 +3898,21 @@ Final SDK gates:
 
 **Repository delivery shippable to production: NOT YET.** PR merge, Deploy Dev,
 deployed SHA proof, and deployed four-harness verification remain.
+
+---
+
+### 2026-07-29 — session `generic-acp-session-identity` SDK claim
+
+Claimed the preassigned OpenCode session identity compatibility task.
+
+Scope:
+
+- Treat the `/start` response as the authoritative runtime identity.
+- Keep `initialOpenCodeSessionId` as a backward-compatible cache seed.
+- Prevent SDK caches from crossing Kortix `(projectId, sessionId)` boundaries.
+- Prove two sandboxes restored from one snapshot receive distinct OpenCode IDs.
+
+The required `tdd` skill is unavailable in this session.
+The implementation will use the same RED, GREEN, and REFACTOR sequence directly.
+
+**Status:** IN PROGRESS.

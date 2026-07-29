@@ -368,22 +368,27 @@ kortix projects ls`}
         </pre>
       </div>
 
-      <div className="bg-foreground/5 overflow-hidden rounded-lg border text-sm">
-        <div className="px-4 py-2">
-          <span className="font-medium">Using the API</span>
-          <p className="text-muted-foreground mt-0.5 text-xs">
-            The same key is a Bearer credential for the REST API — use it to run Kortix as a
-            backend. Sessions it starts are tracked with a <code>backend</code> origin, and{' '}
-            <code>origin_ref</code> attributes each one to your own end-user.
-          </p>
-        </div>
-        <pre className="bg-foreground text-background overflow-x-auto rounded-t-lg px-4 py-3 font-mono text-xs">
-          {`curl -X POST ${apiBase}/projects/<project-id>/sessions \\
+      <ApiKeyUsageExamples apiBase={apiBase} />
+    </div>
+  );
+}
+
+export function ApiKeyUsageExamples({ apiBase }: { apiBase: string }) {
+  return (
+    <div className="bg-foreground/5 overflow-hidden rounded-lg border text-sm">
+      <div className="px-4 py-2">
+        <span className="font-medium">Using the API</span>
+        <p className="text-muted-foreground mt-0.5 text-xs">
+          The same key is a Bearer credential for the REST API. Store each returned{' '}
+          <code>session_id</code> in your application to query that session later.
+        </p>
+      </div>
+      <pre className="bg-foreground text-background overflow-x-auto rounded-t-lg px-4 py-3 font-mono text-xs">
+        {`curl -X POST ${apiBase}/projects/<project-id>/sessions \\
   -H "Authorization: Bearer <api-key>" \\
   -H "Content-Type: application/json" \\
-  -d '{"initial_prompt": "Summarize new signups", "origin_ref": "your-user-123"}'`}
-        </pre>
-      </div>
+  -d '{"initial_prompt": "Summarize new signups"}'`}
+      </pre>
     </div>
   );
 }

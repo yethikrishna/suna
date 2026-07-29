@@ -3809,3 +3809,46 @@ Cleanup verification:
 **Shippable to production: YES.** Local gates, CI, merge, Deploy Dev, deployed
 SHA, shipped CLI discovery, deployed four-harness behavior, and fixture cleanup
 all pass. The dev managed OpenAI credential remains an environment issue.
+
+---
+
+### 2026-07-29 — session `acp-multi-harness-selector` SDK snapshot claim
+
+Claimed the additive `BillingState` public type-surface snapshot repair.
+
+`origin/main` exports `BillingState` from the root and `./projects-client`
+entry points. The committed snapshot omits both names.
+
+The existing public type-surface test is the RED test.
+The required `tdd` skill is unavailable in this session.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.
+
+---
+
+### 2026-07-29 — session `acp-multi-harness-selector` SDK snapshot completion
+
+Added the additive `BillingState` name to the root and `./projects-client`
+public type-surface snapshots.
+
+TDD evidence:
+
+- RED: `pnpm --filter @kortix/sdk exec bun test
+  src/public-type-surface.test.ts` reported `0 pass`, `1 fail`, and only two
+  additive `BillingState` entries.
+- GREEN: the same focused command reported `1 pass`, `0 fail`, and `2`
+  assertions.
+
+Final SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1356 pass`, `0 fail`, `5929` assertions,
+  `116` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed tarball imported and
+  constructed successfully.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**

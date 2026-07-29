@@ -134,6 +134,7 @@ mockIamEngineAllowAll();
 mockIamMembershipSyncNoop();
 
 mock.module('../projects/git', () => ({
+  MergeConflictError: class MergeConflictError extends Error {},
   isRepoFileNotFoundError: () => false,
   grepRepoFiles: async () => [],
   searchRepoFileNames: async () => [],

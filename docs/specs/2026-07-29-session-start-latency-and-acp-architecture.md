@@ -2,8 +2,8 @@
 
 **Date:** 2026-07-29
 
-**Status:** Measured baseline, cache A/B, selected-harness refactor, and target
-architecture
+**Status:** Measured baseline, canonical ACP starter, selected-harness
+refactor, and target architecture
 
 **Scope:** Daytona, Platinum, local, dev, production, OpenCode, Pi, ACP, and
 repository materialization
@@ -24,6 +24,20 @@ The measured cold path performs two expensive operations:
 2. It starts and initializes a cold OpenCode process.
 
 The sub-one-second target requires both operations to leave the claim path.
+
+New blank projects use one canonical starter:
+
+1. The starter ID is `general-knowledge-worker`.
+2. The manifest uses `kortix_version: 3`.
+3. OpenCode is the default logical agent.
+4. Claude Code, Codex, and Pi are selectable logical agents.
+5. Project creation enables `experimental.acp_runtime`.
+6. The retired `acp-multi-harness` ID maps to the canonical starter.
+
+This consolidation does not reduce provider startup latency by itself.
+
+It makes every new project compatible with commit artifacts and stateful
+runtime slots. It also removes starter selection from the boot architecture.
 
 The multi-harness implementation on `origin/main` had a third problem.
 
@@ -898,6 +912,54 @@ The target budgets are:
 The implementation must pass the stateful restore tests in section 10.5.
 
 A `/kortix/health` response does not prove ACP, PTY, or event-stream liveness.
+
+## 21. Canonical starter and fast-boot contract
+
+`general-knowledge-worker` is the only user starter.
+
+The API and web creation paths use this ID for every blank project.
+
+The CLI creates the same starter without a starter selector.
+
+`minimal` remains an internal base for marketplace project composition.
+
+The retired `acp-multi-harness` input remains an API and SDK compatibility
+alias. The starter loader normalizes it to `general-knowledge-worker`.
+
+The canonical scaffold is also the deterministic snapshot scaffold.
+
+Its rendered repository root remains the input to `stageScaffoldRepo()`.
+
+This preserves the exact-scaffold repository reuse path.
+
+The default agent is `opencode`.
+
+The selected logical agent determines the harness:
+
+| logical agent | runtime profile | harness |
+|---|---|---|
+| `opencode` | `opencode` | OpenCode ACP |
+| `claude` | `claude` | Claude Code ACP |
+| `codex` | `codex` | Codex ACP |
+| `pi` | `pi` | Pi ACP |
+
+All four paths use the same ACP lifecycle boundary.
+
+The fast-boot implementation must key artifacts by commit, runtime digest,
+configuration digest, and selected harness.
+
+The starter consolidation does not enable stateful restore.
+
+The current measured session-ready p50 values remain:
+
+| path | p50 |
+|---|---:|
+| Pi with Daytona repository disk snapshot | 7.784 s |
+| Pi with Platinum exact-commit repository disk image | 9.462 s |
+| Pi with Platinum cold disk snapshot | 12.823 s |
+| OpenCode ACP with Platinum cold disk snapshot | 16.298 s |
+
+The target remains 300 ms p50 and 950 ms p95 for a warm exact-commit claim.
 
 ## 21. Persisted benchmark assets
 

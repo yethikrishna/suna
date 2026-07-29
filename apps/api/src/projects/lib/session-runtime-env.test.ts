@@ -12,19 +12,6 @@ const BASE_INPUT = {
 };
 
 describe('buildSessionRuntimeEnv — KORTIX_COMPILED_AGENT_CONFIG', () => {
-  test('defaults the runtime harness to opencode', () => {
-    const env = buildSessionRuntimeEnv(BASE_INPUT);
-    expect(env.KORTIX_RUNTIME_HARNESS).toBe('opencode');
-  });
-
-  test.each(['opencode', 'claude', 'codex', 'pi'] as const)(
-    'passes the %s runtime harness into the sandbox',
-    (runtimeHarness) => {
-      const env = buildSessionRuntimeEnv({ ...BASE_INPUT, runtimeHarness });
-      expect(env.KORTIX_RUNTIME_HARNESS).toBe(runtimeHarness);
-    },
-  );
-
   test('passes the server-selected OpenCode process transport into the sandbox', () => {
     expect(
       buildSessionRuntimeEnv({
@@ -64,7 +51,6 @@ describe('buildSessionRuntimeEnv — KORTIX_COMPILED_AGENT_CONFIG', () => {
       opencodeModel: 'anthropic/claude-opus-4-8',
     });
     expect(env.KORTIX_OPENCODE_MODEL).toBe('anthropic/claude-opus-4-8');
-    expect(env.KORTIX_RUNTIME_MODEL).toBe('anthropic/claude-opus-4-8');
     expect(env.KORTIX_COMPILED_AGENT_CONFIG).toBe(compiled);
   });
 });

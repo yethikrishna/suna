@@ -239,7 +239,6 @@ mock.module('../projects/git', () => ({
   // straight from git — no manifest ⇒ null ⇒ the v1-shaped projects this suite
   // exercises get no compiled agent config, matching their pre-compiler behavior.
   readManifestFromRepo: async () => null,
-  isRepoFileNotFoundError: () => false,
   invalidateProjectMirror: () => {},
   listBranches: async () => [],
   listCommits: async () => ({ entries: [], nextCursor: null }),
@@ -1741,41 +1740,6 @@ describe('project session API contract', () => {
     expect(sandboxProvisionCalls).toBe(0);
     expect(sessionSandboxRows).toHaveLength(1);
   });
-
-  test.each(['claude', 'codex', 'pi'] as const)(
-    'dashboard start forces ACP transport for the %s runtime',
-    async (runtimeHarness) => {
-      const app = createApp();
-      sessionSandboxRows = [
-        {
-          sandboxId: SESSION_ID,
-          sessionId: SESSION_ID,
-          accountId: ACCOUNT_ID,
-          projectId: PROJECT_ID,
-          provider: 'daytona',
-          externalId: null,
-          baseUrl: null,
-          status: 'provisioning',
-          config: {},
-          metadata: { runtimeHarness },
-          lastUsedAt: null,
-          createdAt: new Date('2026-01-02T00:00:00Z'),
-          updatedAt: new Date('2026-01-02T00:00:00Z'),
-        },
-      ];
-
-      const response = await app.request(
-        `/v1/projects/${PROJECT_ID}/sessions/${SESSION_ID}/start`,
-        { method: 'POST' },
-      );
-
-      expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({
-        stage: 'provisioning',
-        runtime_transport: 'acp',
-      });
-    },
-  );
 
   test('dashboard start retires abandoned no-external-id provisioning rows and reallocates', async () => {
     const app = createApp();

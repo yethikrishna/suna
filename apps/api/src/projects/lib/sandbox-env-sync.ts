@@ -445,10 +445,7 @@ export async function pushSessionModelToSandbox(input: {
       providerHeaders: headers,
       serviceKey,
       snapshot,
-      opencodeEnv: {
-        KORTIX_RUNTIME_MODEL: input.model,
-        KORTIX_OPENCODE_MODEL: input.model,
-      },
+      opencodeEnv: { KORTIX_OPENCODE_MODEL: input.model },
       // Restarts opencode so it rebuilds its config against the new model.
       refreshModels: true,
     });

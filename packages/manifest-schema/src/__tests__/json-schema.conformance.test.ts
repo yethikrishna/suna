@@ -601,7 +601,7 @@ connectors:
     name: 'v2: unknown runtime rejected',
     format: 'yaml',
     valid: false,
-    input: 'kortix_version: 2\ndefault_agent: w\nruntime: unknown\nagents:\n  w: {}\n',
+    input: 'kortix_version: 2\ndefault_agent: w\nruntime: codex\nagents:\n  w: {}\n',
   },
   {
     name: 'v2: runtime opencode accepted',

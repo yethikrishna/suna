@@ -10,8 +10,8 @@
 
 **Status:** Current implementation and operational reference
 
-**Scope:** OpenCode, Claude Code, Codex, and Pi ACP runtimes; the OpenCode REST
-compatibility transport; `@kortix/sdk`; `apps/web`; and `apps/whitelabel-demo`
+**Scope:** OpenCode ACP, the REST compatibility transport, `@kortix/sdk`,
+`apps/web`, and `apps/whitelabel-demo`
 
 The earlier
 [OpenCode ACP canary](../superpowers/specs/2026-07-25-opencode-acp-canary-design.md)
@@ -20,25 +20,23 @@ PR #5477.
 
 ## 1. Executive status
 
-The platform starts the runtime selected by `kortix.yaml` in ACP mode.
-The supported runtime values are `opencode`, `claude`, `codex`, and `pi`.
-An omitted `runtime` selects `opencode`.
+The platform starts OpenCode in ACP mode for every normal project session.
 
 The project experiment does not control the OpenCode process. It controls the
 SDK client transport.
 
 The exact invariant is:
 
-> Every normal sandbox starts one selected ACP runtime. Non-OpenCode runtimes
-> use ACP through the SDK. OpenCode can retain the REST compatibility client.
+> Every normal sandbox starts one `opencode acp` process. The API selects either
+> ACP or REST compatibility for the SDK client. Both transports reach the same
+> OpenCode process.
 
 The normal flow does not start `opencode serve` beside `opencode acp`.
 OpenCode ACP starts its own internal HTTP server on the configured port.
 The REST compatibility client uses that internal server.
 
-The server-side adapter registry lives in
-`apps/kortix-sandbox-agent-server/src/acp/runtime-adapter.ts`.
-Frontend code does not branch on the runtime harness.
+The current implementation supports one runtime harness: OpenCode.
+The architecture does not yet provide a harness registry.
 
 ## 2. Terminology
 
@@ -574,12 +572,11 @@ The following work remains:
    types and clients.
 8. The REST compatibility transport remains implemented and supported.
 9. The sandbox daemon still contains a low-level `opencode serve` launch path.
-10. The sandbox daemon uses a generic runtime adapter.
-    The SDK projection remains OpenCode-compatible.
-11. The ACP projection maps into existing OpenCode-compatible message
+10. The ACP bridge is OpenCode-backed. It is not a generic harness adapter.
+11. The current ACP projection maps into existing OpenCode-compatible message
     and part types.
-12. Claude Code, Codex, and Pi use the ACP path.
-    They do not expose OpenCode REST compatibility routes.
+12. No Pi, Claude, Codex, or other runtime harness is integrated through this
+    path.
 
 These limitations do not permit frontend provider imports.
 All compatibility remains inside the API, daemon, and SDK.
@@ -662,7 +659,7 @@ Then remove:
 - The project REST rollback
 - The low-level `opencode serve` launch path, if operations no longer need it
 
-### Step 5: Add a runtime adapter contract — complete
+### Step 5: Add a runtime adapter contract
 
 Define one server-side adapter contract for:
 
@@ -674,10 +671,9 @@ Define one server-side adapter contract for:
 - Model, mode, and command capabilities
 - Restart and canonical session recovery
 
-The contract supports OpenCode, Claude Code, Codex, and Pi.
-The API emits `KORTIX_RUNTIME_HARNESS`.
-The daemon resolves launch and readiness through the adapter.
-Frontend code has no harness-specific branch.
+Implement OpenCode first.
+Add Pi or another harness as a second implementation.
+Do not add harness-specific branches to frontend code.
 
 ## 19. Key source-file index
 

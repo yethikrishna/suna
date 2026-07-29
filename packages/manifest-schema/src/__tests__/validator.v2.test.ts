@@ -695,19 +695,16 @@ triggers:
 });
 
 describe('validateManifest — kortix_version 2 runtime enum', () => {
-  test.each(['opencode', 'claude', 'codex', 'pi'] as const)(
-    'runtime: %s is accepted',
-    (runtime) => {
-      const { valid } = summarize(`
+  test('runtime: opencode is accepted', () => {
+    const { valid } = summarize(`
 kortix_version: 2
 default_agent: w
-runtime: ${runtime}
+runtime: opencode
 agents:
   w: {}
 `);
-      expect(valid).toBe(true);
-    },
-  );
+    expect(valid).toBe(true);
+  });
 
   test('omitted runtime defaults implicitly (no error)', () => {
     const { valid } = summarize(`
@@ -723,7 +720,7 @@ agents:
     const { errorPaths } = summarize(`
 kortix_version: 2
 default_agent: w
-runtime: unknown
+runtime: codex
 agents:
   w: {}
 `);

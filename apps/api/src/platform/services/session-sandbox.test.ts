@@ -75,7 +75,6 @@ let providerFallbackEnabled = false;
 let providerNamesRequested: string[] = [];
 let providerCreateErrors: Record<string, string | undefined> = {};
 let imageRequests: Array<Record<string, unknown>> = [];
-let insertCalls: Array<{ table: unknown; values: Record<string, unknown> }> = [];
 
 function compile(condition: unknown): { sql: string; params: unknown[] } {
   try {
@@ -110,7 +109,6 @@ mock.module('../../shared/db', () => ({
   db: {
     insert: (table: unknown) => ({
       values: (v: Record<string, unknown>) => {
-        insertCalls.push({ table, values: v });
         const result = {
           returning: async () => (identityConflict && table === sessionSandboxes ? [] : [{ ...v }]),
           onConflictDoNothing: () => result,
@@ -310,7 +308,6 @@ beforeEach(() => {
   providerNamesRequested = [];
   providerCreateErrors = {};
   imageRequests = [];
-  insertCalls = [];
 });
 
 function baseOpts() {
@@ -328,26 +325,6 @@ function baseOpts() {
 }
 
 describe('provisionSessionSandbox — mid-provision delete race', () => {
-  test.each(['opencode', 'claude', 'codex', 'pi'] as const)(
-    'persists runtime harness %s in sandbox metadata',
-    async (runtimeHarness) => {
-      const opened = waitFor((resolve) => {
-        onComputeOpened = resolve;
-      });
-
-      await provisionSessionSandbox({
-        ...baseOpts(),
-        extraEnvVars: { KORTIX_RUNTIME_HARNESS: runtimeHarness },
-      });
-      await opened;
-
-      const inserted = insertCalls.find(
-        (call) => call.table === sessionSandboxes,
-      );
-      expect(inserted?.values.metadata).toMatchObject({ runtimeHarness });
-    },
-  );
-
   test('ACP sessions require the current sandbox runtime identity', async () => {
     const opened = waitFor((resolve) => {
       onComputeOpened = resolve;

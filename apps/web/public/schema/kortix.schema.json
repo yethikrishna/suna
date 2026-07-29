@@ -873,10 +873,7 @@
           "runtime": {
             "type": "string",
             "enum": [
-              "opencode",
-              "claude",
-              "codex",
-              "pi"
+              "opencode"
             ]
           },
           "agents": {

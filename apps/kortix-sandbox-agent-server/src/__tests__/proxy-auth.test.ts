@@ -53,22 +53,13 @@ function baseConfig(over: Partial<Config> = {}): Config {
 
 function fakeOpencode(
   state: 'ok' | 'starting' | 'down' = 'starting',
-  hooks: {
-    restart?: () => void
-    internalUrl?: string
-    runtimeHarness?: 'opencode' | 'claude' | 'codex' | 'pi'
-  } = {},
+  hooks: { restart?: () => void; internalUrl?: string } = {},
 ): Opencode {
   // Loose cast — buildOpencodeApp only touches these three methods.
   return {
     getState: () => state,
     getPid: () => null,
     getInternalUrl: () => hooks.internalUrl ?? 'http://127.0.0.1:1', // unreachable by default
-    getRuntimeHarness: () => hooks.runtimeHarness ?? 'opencode',
-    getRuntimeAdapter: () => ({
-      supportsOpenCodeRest: (hooks.runtimeHarness ?? 'opencode') === 'opencode',
-    }),
-    getAcpConnection: () => null,
     restart: async () => hooks.restart?.(),
   } as unknown as Opencode
 }
@@ -555,31 +546,6 @@ describe('daemon proxy auth gate', () => {
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe('upstream unreachable')
   })
-
-  it.each(['claude', 'codex', 'pi'] as const)(
-    'does not proxy OpenCode REST routes for the %s runtime',
-    async (runtimeHarness) => {
-      const app = buildOpencodeApp(
-        baseConfig(),
-        fakeOpencode('ok', { runtimeHarness }),
-        Date.now(),
-      )
-      const signed = signCtx(
-        { userId: 'u', sandboxId: 's', sandboxRole: 'owner' },
-        TEST_TOKEN,
-      )
-      const res = await app.request('/session/anything', {
-        headers: { [KORTIX_USER_CONTEXT_HEADER]: signed },
-      })
-
-      expect(res.status).toBe(404)
-      expect(await res.json()).toEqual({
-        error: 'runtime REST API is not available',
-        runtime: runtimeHarness,
-        transport: 'acp',
-      })
-    },
-  )
 
   it(
     'fails fast with 502 instead of hanging forever when opencode accepts the connection but never responds',

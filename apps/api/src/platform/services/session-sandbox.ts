@@ -320,13 +320,6 @@ export async function provisionSessionSandbox(opts: {
   // (~100ms each on a warm DB), now ~one round-trip total.
   const sandboxName = `session-${sandboxId.slice(0, 8)}`;
   const llmGatewayEnabled = projectLlmGatewayEnabled(opts.projectMetadata);
-  const runtimeHarness =
-    typeof opts.extraEnvVars?.KORTIX_RUNTIME_HARNESS === 'string' &&
-    ['opencode', 'claude', 'codex', 'pi'].includes(
-      opts.extraEnvVars.KORTIX_RUNTIME_HARNESS,
-    )
-      ? opts.extraEnvVars.KORTIX_RUNTIME_HARNESS
-      : 'opencode';
   const createOrClaimSandboxRow = async () => {
     const inserted = await db
       .insert(sessionSandboxes)
@@ -342,7 +335,6 @@ export async function provisionSessionSandbox(opts: {
         config: {},
         metadata: {
           ...(opts.metadata ?? {}),
-          runtimeHarness,
           initStatus: 'pending',
           initAttempts: 0,
           initMaxAttempts: SANDBOX_INIT_MAX_ATTEMPTS,
@@ -368,12 +360,7 @@ export async function provisionSessionSandbox(opts: {
         // out. Consume their authorization marker atomically so at most one
         // allocator can claim the row and call provider.create(). New code never
         // creates this marker because established identities are fail-closed.
-        metadata: sql`jsonb_set(
-          coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) - 'identityRecoveryAuthorizedAt',
-          '{runtimeHarness}',
-          to_jsonb(${runtimeHarness}::text),
-          true
-        )`,
+        metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) - 'identityRecoveryAuthorizedAt'`,
         updatedAt: new Date(),
       })
       .where(

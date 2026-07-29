@@ -222,7 +222,7 @@ Also stop if the same failure survives three different fixes (use
 | 2 | Strategy-based session authorization | DONE | `profile-auth-cost` | 2026-07-29 | `d9a217dd7d` + `0ae111091e` + `df9586a8b5` + `f8c0cbdf21` + `4630109c7d` + `74a804d14d` + `f9d9746ebb` + `383e501ea3` + `30c607a646` |
 | 3 | Main web session scope | DONE | `profile-auth-cost` | 2026-07-29 | `900e01a723` + `53d7191abb` + `f1b1e00978` |
 | 4 | Remove end-user usage attribution | DONE | `profile-auth-cost` | 2026-07-29 | `f6c14a5d95` + `71b230d933` + `d2871144df` + `c8d8403231` + `3c1e979263` + `c5ad2d3496` |
-| 5 | Unified session costs | NOT STARTED | — | — | — |
+| 5 | Unified session costs | IN PROGRESS | `profile-auth-cost` | 2026-07-29 | — |
 | 6 | White-label and documentation alignment | NOT STARTED | — | — | — |
 | 7 | Local verification | NOT STARTED | — | — | — |
 | 8 | Delivery and dev proof | NOT STARTED | — | — | — |

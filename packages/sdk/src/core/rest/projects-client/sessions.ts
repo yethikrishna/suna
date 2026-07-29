@@ -538,6 +538,53 @@ export async function stopProjectSession(projectId: string, sessionId: string) {
  * rebuild its config), which ends any in-flight turn. `applied_live: false`
  * means it was stored and will apply when the sandbox next starts.
  */
+/** What a re-scope may change, and what it reports back. */
+export interface SessionScopeInput {
+  /**
+   * FULL new allowlist — this REPLACES the previous one. `null` stops narrowing
+   * (fall back to the agent's own grant); `[]` means "no project secrets at
+   * all". Those two are opposite, so the field is optional: omit it to leave
+   * secrets untouched.
+   */
+  secrets?: string[] | null;
+  /** FULL new binding map — REPLACES the previous one. Omit to leave untouched. */
+  connector_bindings?: Record<string, { profile_id: string }>;
+}
+
+export interface SessionScopeResult {
+  secrets_allowlist: string[] | null;
+  connector_bindings: Record<string, { profile_id: string }>;
+  dropped_secrets: string[];
+  added_secrets: string[];
+  dropped_bindings: string[];
+  /**
+   * False when a secret was dropped. Connector bindings resolve server-side at
+   * call time so they take effect immediately, but a secret the agent has
+   * already read stays in its context and in shells it already started —
+   * dropping it stops future DELIVERY, it does not un-read the value. Surface
+   * this rather than reporting a plain success.
+   */
+  retroactive: boolean;
+  detail: string;
+}
+
+/**
+ * Re-scope a RUNNING session. Set semantics: what you send replaces what was
+ * there, and takes effect from the next prompt.
+ */
+export async function setProjectSessionScope(
+  projectId: string,
+  sessionId: string,
+  scope: SessionScopeInput,
+): Promise<SessionScopeResult> {
+  return unwrap(
+    await backendApi.put<SessionScopeResult>(
+      `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/scope`,
+      scope,
+    ),
+  );
+}
+
 export async function setProjectSessionModel(
   projectId: string,
   sessionId: string,

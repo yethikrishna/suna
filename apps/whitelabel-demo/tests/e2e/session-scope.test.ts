@@ -69,13 +69,14 @@ describe('sessionScopeRows', () => {
     );
   });
 
-  test('only the model is changeable now — the badges match the contract', () => {
-    expect(isFixedAtStart('model')).toBe(false);
-    expect(isFixedAtStart('secrets')).toBe(true);
-    expect(isFixedAtStart('connections')).toBe(true);
-    // Per-message, so not frozen — but it has no control on this panel.
-    expect(isFixedAtStart('agent')).toBe(false);
-    expect(rows().filter((r) => r.control !== null).map((r) => r.key)).toEqual(['model']);
+  test('no scope-bar row is frozen any more — the badges match the contract', () => {
+    // `PUT .../scope` made secrets and connections changeable; `runtime_context`
+    // is the one field still fixed at create, which is what keeps that state a
+    // real branch rather than dead code.
+    for (const key of ['model', 'secrets', 'connections', 'agent'] as const) {
+      expect(isFixedAtStart(key)).toBe(false);
+    }
+    expect(isFixedAtStart('runtime_context')).toBe(true);
   });
 });
 

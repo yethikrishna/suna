@@ -129,8 +129,16 @@ export function sessionScopeRows(input: SessionScopeInput): SessionScopeRow[] {
 
 /** The scope rows the mid-session capability map says are frozen. Keeps the
  *  badges from drifting away from the contract they describe. */
-export function isFixedAtStart(key: ScopeRowKey): boolean {
-  if (key === 'connections') return true;
+export function isFixedAtStart(key: keyof typeof MID_SESSION_CAPABILITIES): boolean {
+  // Derived from the capability table, with no hardcoded exception. `connections`
+  // used to be forced true here even though the table had no entry for it — so
+  // the badge and the behaviour could disagree, and did the moment the /scope
+  // route made bindings changeable.
+  //
+  // Typed on the TABLE's keys, not ScopeRowKey: every scope-bar row is now
+  // changeable, so narrowing the parameter to those four would make this
+  // provably always-false and the compiler would (rightly) reject the
+  // comparison. `runtime_context` is the one still-frozen field.
   return MID_SESSION_CAPABILITIES[key] === 'fixed_at_create';
 }
 

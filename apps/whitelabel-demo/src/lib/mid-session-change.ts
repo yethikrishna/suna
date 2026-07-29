@@ -11,10 +11,19 @@
  *   switch to an agent with a DIFFERENT secrets grant is refused
  *   (409 AGENT_SWITCH_REQUIRES_NEW_SESSION), because re-scoping now cannot
  *   un-read what the session's original agent already pulled into the box.
- * - SECRETS — NOT changeable, by design. `secrets_allowlist` is written once at
- *   create and there is no update path anywhere. The server comments are blunt
- *   about why: a mutable allowlist "would leave the session permanently
- *   unbootable" if it were narrowed below what the box already needs.
+ * - SECRETS and CONNECTOR BINDINGS — changeable, with SET semantics:
+ *   `PUT /projects/{id}/sessions/{sid}/scope` REPLACES the list with the one
+ *   sent, and it takes effect from the next prompt (the per-prompt env sync
+ *   already re-resolves and re-pushes the whole set).
+ *
+ *   The two differ in one way the UI must not blur:
+ *     - connector bindings are resolved server-side at CALL time, so a change is
+ *       effective immediately and completely;
+ *     - a dropped SECRET stops being DELIVERED from the next prompt, but the
+ *       value the agent already read is still in its context and in any shell it
+ *       already started. That is why the response carries `retroactive: false`
+ *       — reporting a plain success there would be false assurance, and false
+ *       assurance is how a live credential gets left in place.
  */
 
 import { serverErrorBody } from './api-error-body';
@@ -24,7 +33,17 @@ export type MidSessionCapability = 'changeable' | 'per_prompt' | 'fixed_at_creat
 export const MID_SESSION_CAPABILITIES = {
   model: 'changeable',
   agent: 'per_prompt',
-  secrets: 'fixed_at_create',
+  // Both were 'fixed_at_create' until the /scope route existed. The old comment
+  // justified it with "a mutable allowlist would leave the session permanently
+  // unbootable" — an argument about BOOT that had hardened into a refusal to
+  // change anything at all.
+  secrets: 'changeable',
+  connections: 'changeable',
+  // Genuinely create-only, and the honest reason is different from the one the
+  // secrets entry used to give: `runtime_context` is handed to the run at boot
+  // and there is no route to replace it. Listed so `fixed_at_create` stays a
+  // real state the UI can render rather than a dead branch.
+  runtime_context: 'fixed_at_create',
 } as const satisfies Record<string, MidSessionCapability>;
 
 export type AgentSwitchOutcome =

@@ -438,20 +438,61 @@ If two allowlisted identifiers resolve to the **same env KEY**, create fails
 *because* the allowlist is immutable — an ambiguous grant would throw at boot
 and leave the session permanently unbootable with no way to fix it.
 
-### C6. Prove it cannot be changed mid-session
+### C6. Re-scope it mid-session
 
-There is no route. `secrets_allowlist` is written once at create and nothing
-anywhere updates it — try `PATCH`ing the session metadata and you will find
-`opencode_model` and friends are server-managed keys too.
+`PUT /v1/projects/{projectId}/sessions/{sessionId}/scope` — **SET semantics**.
+What you send replaces the current list, from the next prompt.
 
-**What to do instead: start a new session.** That is not a workaround, it is the
-design. Narrowing later cannot un-read what an earlier turn already pulled into
-the box — the secret is in the sandbox's env file, in every shell the agent
-spawned, and in its own context.
+```bash
+curl -sS -X PUT "$KORTIX_API_URL/projects/$PROJECT_ID/sessions/$SESSION_ID/scope" \
+  -H "Authorization: Bearer $KORTIX_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"secrets":["TEST_KEY_2"]}'
+```
 
-Lumen states this in the UI: session workbench → **Scope** panel, the *Secrets:
-Fixed at start* row (`src/components/workbench/session-scope.tsx`). That panel
-is informational only — there is nothing to click, by design.
+Start the session with `["TEST_KEY_1","TEST_KEY_2"]`, run the `env | grep` check
+from C5, send the call above, prompt again, and re-run the check: `TEST_KEY_1`
+is gone from a **newly spawned** shell.
+
+**Read the response before you believe it revoked anything.** It carries
+`retroactive`, and for a dropped secret that is `false`:
+
+- Forward it is exact — the next prompt's push carries only the new set, and the
+  daemon clears the names it previously knew.
+- Backward it promises nothing — the value the agent already read is still in its
+  context, and in any shell it started *before* the call. `env` in a shell that
+  was already open will still show it.
+
+**If you need real revocation, rotate the secret.** Re-scoping stops delivery; it
+does not unsay a value. A UI that reported this as "revoked" would be false
+assurance, which is why Lumen shows the `detail` string instead.
+
+`[]` and `null` are opposite: `[]` is "no project secrets at all", `null` is
+"stop narrowing, fall back to the agent's grant". Omit the key to leave secrets
+untouched.
+
+The agent's manifest grant is still the ceiling — `403 NOT_IN_AGENT_GRANT` if you
+name something outside it. Narrowing is not a ratchet: you can restore anything
+inside the grant.
+
+**In Lumen:** session workbench → the scope bar under the composer → **Secrets**.
+It is editable now, and the `</> The API call` disclosure beside it shows the
+exact request.
+
+### C7. Re-scope the connectors the same way
+
+```bash
+curl -sS -X PUT "$KORTIX_API_URL/projects/$PROJECT_ID/sessions/$SESSION_ID/scope" \
+  -H "Authorization: Bearer $KORTIX_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"connector_bindings":{"gmail":{"profile_id":"'"$PROFILE_ID"'"}}}'
+```
+
+Same set semantics — an alias you omit is unbound and falls back to the project
+default. Unlike secrets this **is** fully retroactive: a binding is resolved
+server-side on each tool call, so the next call already uses the new one.
+
+Binding authorization is the same as at create: `403` for a profile you may not
+use, including another end-user's. That is deliberate — re-scoping must not be a
+weaker second door to the same table.
 
 ---
 

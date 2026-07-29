@@ -888,6 +888,9 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
        * or whether it applies at next start.
        */
       changeModel: (model: string) => P.setProjectSessionModel(projectId, sessionId, model),
+      /** Re-scope a running session — set semantics; see setProjectSessionScope. */
+      rescope: (scope: P.SessionScopeInput) =>
+        P.setProjectSessionScope(projectId, sessionId, scope),
       /** Pick the agent `send` will use for subsequent prompts (until changed). */
       setAgent: (agent: string | undefined) => {
         _agent = agent;

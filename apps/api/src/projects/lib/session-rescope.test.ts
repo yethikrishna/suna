@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 
 import { rescopeSessionBindings, rescopeSessionSecrets } from './session-rescope';
@@ -132,5 +134,42 @@ describe('rescopeSessionBindings — SET semantics', () => {
       grantedConnectors: 'all',
     });
     expect(result.ok && result.bindings).toEqual({});
+  });
+});
+
+describe('the docs match the contract', () => {
+  const REPO = join(import.meta.dir, '..', '..', '..', '..', '..');
+  const DOCS = [
+    join(REPO, 'docs', 'KORTIX_AS_A_BACKEND_GUIDE.md'),
+    join(REPO, 'apps', 'web', 'content', 'docs', 'backend.mdx'),
+    join(REPO, 'docs', 'KAAB_TESTING_GUIDE.md'),
+  ];
+
+  test('no doc still calls secrets or connector_bindings create-only', () => {
+    // These three said "create-only" for as long as the refusal existed. When the
+    // route landed they became false, and a reader integrating against them would
+    // build a whole new-session flow to work around a limit that is gone.
+    // Docs are the product surface for a backend platform; pin them.
+    for (const path of DOCS) {
+      let text: string;
+      try {
+        text = readFileSync(path, 'utf8');
+      } catch {
+        continue;
+      }
+      for (const line of text.split('\n')) {
+        const claimsFrozen = /create-only|set once at create|cannot be changed mid-session/i.test(
+          line,
+        );
+        if (!claimsFrozen) continue;
+        // `runtime_context` and `end_user_ref` genuinely ARE create-only.
+        const aboutMovableFields = /\bsecrets\b|connector_bindings/.test(line);
+        const alsoNamesFrozenOnes = /runtime_context|end_user_ref/.test(line);
+        expect({ path, line: line.trim().slice(0, 100) }).toMatchObject({
+          path,
+          line: aboutMovableFields && !alsoNamesFrozenOnes ? '<<must not claim frozen>>' : line.trim().slice(0, 100),
+        });
+      }
+    }
   });
 });

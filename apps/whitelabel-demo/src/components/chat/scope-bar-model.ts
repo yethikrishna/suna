@@ -50,12 +50,12 @@ const COPY: Record<ScopeControlKey, { badge: string; note: string }> = {
     note: 'Each message names the agent that runs it, and the composer above picks it. An agent whose SECRET access differs from the one this session booted with is refused — only a new session can run it.',
   },
   secrets: {
-    badge: 'Fixed at start',
-    note: 'The allowlist is written once, when the session starts, and there is no update path. Widening it now would hand the sandbox secrets it booted without; narrowing it could leave the sandbox unable to boot at all.',
+    badge: 'Changeable',
+    note: 'What you set REPLACES the current list, from the next prompt. Dropping one stops it being delivered — it cannot un-read a value the agent already has in its context or in a shell it already started, so rotate it if that matters.',
   },
   connections: {
-    badge: 'Fixed at start',
-    note: 'Bindings are sent with the create and never again. Aliases left unbound keep resolving to the project default, for this session and every session started from here.',
+    badge: 'Changeable',
+    note: 'What you set REPLACES the current bindings. Unlike secrets this is fully retroactive — a binding is resolved server-side on each tool call, so the next call already uses the new one. An alias you unbind falls back to the project default.',
   },
 };
 

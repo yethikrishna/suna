@@ -44,7 +44,12 @@ import { readRepoFile } from '../git';
 import { commitMultipleFilesToBranch } from '../git/branches';
 import { assertProjectCapability, loadProjectForUser } from '../lib/access';
 import { extractAgents } from '../agents';
-import { applyAgentBlockV2, applyDefaultAgentV2, readAgentBlockV2 } from '../lib/agent-config-v2';
+import {
+  applyAgentBlockV2,
+  applyDefaultAgentV2,
+  normalizeRequiredConnectorAliases,
+  readAgentBlockV2,
+} from '../lib/agent-config-v2';
 import { metadataMerge } from '../lib/metadata-merge';
 import { parseAgentMarkdown, serializeAgentMarkdown } from '../lib/agent-markdown';
 import { projectsApp } from '../lib/app';
@@ -76,12 +81,8 @@ const AgentBlockSchema = z
     enabled: z.boolean().optional(),
     sandbox: z.string().min(1).max(128).regex(SLUG_RE).optional(),
     connectors: GrantSetSchema.optional(),
-    // The subset of `connectors` that must resolve to the LAUNCHING USER's own
-    // connection. GET already returns this key verbatim from the manifest, so
-    // omitting it here made `.strict()` reject EVERY save on any project that
-    // declares it — the editor could read the agent but never write it back.
-    // A concrete list only: 'all' would make the agent unstartable for anyone
-    // who hasn't personally connected every one of its connectors.
+    connectors_required: z.array(z.string().trim().min(1).max(200)).max(500).optional(),
+    // Deprecated request alias. The handler normalizes it before serialization.
     connectors_personal: z.array(z.string().min(1).max(200)).max(500).optional(),
     secrets: GrantSetSchema.optional(),
     skills: GrantSetSchema.optional(),
@@ -320,8 +321,15 @@ projectsApp.openapi(
     // (governance side) so an omitted field never serializes as an explicit
     // `null`/`undefined` into the YAML block.
     const { opencode: opencodeDraft, ...governanceRaw } = parsed.data;
+    const normalizedGovernance = normalizeRequiredConnectorAliases(governanceRaw);
+    if (!normalizedGovernance.ok) {
+      return c.json(
+        { error: normalizedGovernance.error, code: 'invalid_body' },
+        400,
+      );
+    }
     const governanceBlock: AgentBlockV2 = {};
-    for (const [key, value] of Object.entries(governanceRaw)) {
+    for (const [key, value] of Object.entries(normalizedGovernance.block)) {
       if (value !== undefined) (governanceBlock as Record<string, unknown>)[key] = value;
     }
 
@@ -361,11 +369,7 @@ projectsApp.openapi(
       return c.json({ error: applied.error, code: 'invalid_config', issues: applied.issues }, 400);
     }
 
-    // Shape-validate through the REAL parser before committing, exactly as the
-    // scope route does. `validateManifest` (which applyAgentBlockV2 gates on)
-    // does not check `connectors_personal` at all, so without this a save could
-    // commit an agent whose personal set isn't a subset of its grant — a block
-    // that then fails to parse, breaking session-create for that agent.
+    // Re-parse through the runtime grant reader before committing.
     const parsedCheck = extractAgents({ ...manifest, raw: applied.raw });
     const parseProblem = parsedCheck.errors.find((e) => e.name === agentName);
     if (parseProblem) {

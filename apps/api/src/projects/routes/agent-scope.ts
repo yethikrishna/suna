@@ -19,7 +19,10 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { auth, errors, json } from '../../openapi';
 import { applyAgentScope, extractAgents } from '../agents';
-import { applyAgentScopeV2 } from '../lib/agent-config-v2';
+import {
+  applyAgentScopeV2,
+  normalizeRequiredConnectorAliases,
+} from '../lib/agent-config-v2';
 import { assertProjectCapability, loadProjectForUser } from '../lib/access';
 import { projectsApp } from '../lib/app';
 import { PROJECT_ACTIONS } from '../../iam';
@@ -32,11 +35,8 @@ const GrantSetSchema = z.union([z.literal('all'), z.array(z.string().min(1).max(
 const AgentScopeBody = z.object({
   env: GrantSetSchema.optional(),
   connectors: GrantSetSchema.optional(),
-  // v2 only: the subset of `connectors` that must resolve to the LAUNCHING
-  // USER's own connection. A concrete list (never the 'all'/'none' sentinels) —
-  // "all connectors are personal" is not a thing you can mean safely, since a
-  // session would then be unstartable for anyone who hasn't connected each one.
-  connectors_personal: z.array(z.string().min(1).max(200)).max(500).optional(),
+  connectors_required: z.array(z.string().trim().min(1).max(200)).max(500).optional(),
+  connectors_personal: z.array(z.string().trim().min(1).max(200)).max(500).optional(),
 });
 
 projectsApp.openapi(
@@ -66,10 +66,18 @@ projectsApp.openapi(
 
     const parsed = AgentScopeBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'Invalid body', code: 'invalid_body' }, 400);
-    const { env, connectors, connectors_personal: connectorsPersonal } = parsed.data;
-    if (env === undefined && connectors === undefined && connectorsPersonal === undefined) {
+    const { env, connectors, connectors_required, connectors_personal } = parsed.data;
+    const normalizedRequired = normalizeRequiredConnectorAliases({
+      connectors_required,
+      connectors_personal,
+    });
+    if (!normalizedRequired.ok) {
+      return c.json({ error: normalizedRequired.error, code: 'invalid_body' }, 400);
+    }
+    const connectorsRequired = normalizedRequired.block.connectors_required as string[] | undefined;
+    if (env === undefined && connectors === undefined && connectorsRequired === undefined) {
       return c.json(
-        { error: 'Provide env, connectors and/or connectors_personal', code: 'nothing_to_update' },
+        { error: 'Provide env, connectors and/or connectors_required', code: 'nothing_to_update' },
         400,
       );
     }
@@ -93,7 +101,7 @@ projectsApp.openapi(
       const applied = applyAgentScopeV2(manifest, agentName, {
         env,
         connectors,
-        connectorsPersonal,
+        connectorsRequired,
       });
       if (!applied.ok) {
         return applied.notFound
@@ -105,12 +113,10 @@ projectsApp.openapi(
       const current = Array.isArray(manifest.raw.agents)
         ? (manifest.raw.agents as Record<string, unknown>[])
         : [];
-      // connectors_personal is a v2 governance field; a v1 `[[agents]]` array
-      // manifest has no place to put it, so say so rather than dropping it.
-      if (connectorsPersonal !== undefined) {
+      if (connectorsRequired !== undefined) {
         return c.json(
           {
-            error: 'connectors_personal requires a v2 (kortix.yaml) manifest',
+            error: 'connectors_required requires a v2 (kortix.yaml) manifest',
             code: 'unsupported_in_v1',
           },
           400,
@@ -142,6 +148,7 @@ projectsApp.openapi(
       agent: agentName,
       env: spec?.env ?? 'all',
       connectors: spec?.connectors ?? [],
+      connectors_required: spec?.connectorsRequired ?? [],
     });
   },
 );

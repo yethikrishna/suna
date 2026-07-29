@@ -535,9 +535,17 @@ function agentBlockV2Schema(): JsonSchemaFragment {
       enabled: { type: 'boolean' },
       sandbox: SLUG_SCHEMA,
       connectors: grantSetSchema(),
-      // A concrete subset of `connectors` that must resolve to the launching
-      // user's OWN connection (a list of aliases — never 'all'/'none').
-      connectors_personal: { type: 'array', items: NON_EMPTY_STRING },
+      connectors_required: {
+        type: 'array',
+        items: NON_EMPTY_STRING,
+        description: 'Connector profile slugs that must resolve before the session starts.',
+      },
+      connectors_personal: {
+        type: 'array',
+        items: NON_EMPTY_STRING,
+        deprecated: true,
+        description: 'Deprecated input alias for connectors_required.',
+      },
       secrets: grantSetSchema(),
       skills: grantSetSchema(),
       kortix_cli: kortixCliGrantSetSchema(2),
@@ -587,6 +595,17 @@ function agentBlockV3Schema(): JsonSchemaFragment {
       },
       enabled: { type: 'boolean' },
       connectors: grantSetSchema(),
+      connectors_required: {
+        type: 'array',
+        items: NON_EMPTY_STRING,
+        description: 'Connector profile slugs that must resolve before the session starts.',
+      },
+      connectors_personal: {
+        type: 'array',
+        items: NON_EMPTY_STRING,
+        deprecated: true,
+        description: 'Deprecated input alias for connectors_required.',
+      },
       secrets: grantSetSchema(),
       skills: grantSetSchema(),
       kortix_cli: kortixCliGrantSetSchema(3),

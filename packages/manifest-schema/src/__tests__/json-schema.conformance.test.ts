@@ -480,6 +480,20 @@ connectors:
     input: 'kortix_version: 2\ndefault_agent: w\nagents:\n  w:\n    secrets: [STRIPE_KEY]\n',
   },
   {
+    name: 'v2: canonical required connector subset accepted',
+    format: 'yaml',
+    valid: true,
+    input:
+      'kortix_version: 2\ndefault_agent: w\nagents:\n  w:\n    connectors: [gmail]\n    connectors_required: [gmail]\n',
+  },
+  {
+    name: 'v2: deprecated required connector input alias accepted',
+    format: 'yaml',
+    valid: true,
+    input:
+      'kortix_version: 2\ndefault_agent: w\nagents:\n  w:\n    connectors: [gmail]\n    connectors_personal: [gmail]\n',
+  },
+  {
     name: 'v2: top-level [env] section unaffected',
     format: 'yaml',
     valid: true,
@@ -723,6 +737,23 @@ describe('JSON Schema documents are themselves valid JSON Schema (ajv compiles t
       type: 'string',
       enum: ['project', 'user'],
       default: 'project',
+    });
+  });
+
+  test('required connector fields publish canonical and deprecated annotations', () => {
+    const agentProperties = (
+      KORTIX_V2_JSON_SCHEMA as {
+        properties: {
+          agents: {
+            additionalProperties: { properties: Record<string, Record<string, unknown>> };
+          };
+        };
+      }
+    ).properties.agents.additionalProperties.properties;
+    expect(agentProperties.connectors_required?.description).toContain('must resolve');
+    expect(agentProperties.connectors_personal).toMatchObject({
+      deprecated: true,
+      description: 'Deprecated input alias for connectors_required.',
     });
   });
 });

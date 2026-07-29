@@ -866,6 +866,83 @@ agents:
   });
 });
 
+describe('validateManifest — kortix_version 2 required connectors', () => {
+  test('accepts the canonical field when every required connector is granted', () => {
+    const { valid, issues } = summarize(`
+kortix_version: 2
+default_agent: w
+agents:
+  w:
+    connectors: [gmail, slack]
+    connectors_required: [gmail]
+`);
+    expect(valid).toBe(true);
+    expect(issues).toEqual([]);
+  });
+
+  test('accepts the deprecated input alias with a warning', () => {
+    const { valid, warningPaths } = summarize(`
+kortix_version: 2
+default_agent: w
+agents:
+  w:
+    connectors: [gmail]
+    connectors_personal: [gmail]
+`);
+    expect(valid).toBe(true);
+    expect(warningPaths).toContain('agents.w.connectors_personal');
+  });
+
+  test('accepts both aliases when their normalized values match', () => {
+    const { valid } = summarize(`
+kortix_version: 2
+default_agent: w
+agents:
+  w:
+    connectors: [gmail, slack]
+    connectors_required: [gmail, slack]
+    connectors_personal: [slack, gmail, gmail]
+`);
+    expect(valid).toBe(true);
+  });
+
+  test('rejects conflicting canonical and deprecated values', () => {
+    const { errorPaths } = summarize(`
+kortix_version: 2
+default_agent: w
+agents:
+  w:
+    connectors: [gmail, slack]
+    connectors_required: [gmail]
+    connectors_personal: [slack]
+`);
+    expect(errorPaths).toContain('agents.w.connectors_personal');
+  });
+
+  test('rejects a required connector outside the resolved connector grant', () => {
+    const { errorPaths } = summarize(`
+kortix_version: 2
+default_agent: w
+agents:
+  w:
+    connectors: [gmail]
+    connectors_required: [slack]
+`);
+    expect(errorPaths).toContain('agents.w.connectors_required');
+  });
+
+  test('rejects required connectors when the connector grant resolves to none', () => {
+    const { errorPaths } = summarize(`
+kortix_version: 2
+default_agent: w
+agents:
+  w:
+    connectors_required: [gmail]
+`);
+    expect(errorPaths).toContain('agents.w.connectors_required');
+  });
+});
+
 describe('validateManifest — kortix_version 2 `skills` governance grant', () => {
   test('an explicit skill-name list is accepted', () => {
     const { valid, errorPaths } = summarize(`

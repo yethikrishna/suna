@@ -58,12 +58,22 @@
               }
             ]
           },
+          "connectors_required": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Connector profile slugs that must resolve before the session starts."
+          },
           "connectors_personal": {
             "type": "array",
             "items": {
               "type": "string",
               "minLength": 1
-            }
+            },
+            "deprecated": true,
+            "description": "Deprecated input alias for connectors_required."
           },
           "secrets": {
             "description": "An allowlist of names, or the \"all\" / \"none\" sentinel.",

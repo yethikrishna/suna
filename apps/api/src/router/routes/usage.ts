@@ -1,10 +1,12 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { usageEvents } from '@kortix/db';
 import { type SQL, and, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { combinedAuth } from '../../middleware/auth';
 import { rejectSandboxTokens } from '../../middleware/reject-sandbox-tokens';
 import { auth, errors, json, makeOpenApiApp } from '../../openapi';
+import { loadProjectForUser } from '../../projects/lib/access';
 import { db } from '../../shared/db';
 import { resolveScopedAccountId } from '../../shared/resolve-account';
 import {
@@ -29,6 +31,24 @@ usageApp.use('*', combinedAuth);
 // reason to read account-wide usage/cost rollups — without this they'd see
 // every project's spend on multi-user accounts. See reject-sandbox-tokens.ts.
 usageApp.use('*', rejectSandboxTokens);
+
+async function resolveSessionCostAccountId(
+  c: Context<AppEnv>,
+  projectId?: string,
+): Promise<string> {
+  const tokenAccountId = c.get('accountId');
+  if (tokenAccountId) return tokenAccountId;
+
+  if (c.req.query('account_id') || !projectId) {
+    return resolveScopedAccountId(c, 'query');
+  }
+
+  const loaded = await loadProjectForUser(c, projectId, 'read');
+  if (!loaded) {
+    throw new HTTPException(404, { message: 'Project not found' });
+  }
+  return loaded.row.accountId;
+}
 
 const UsageTotalsSchema = z
   .object({
@@ -344,8 +364,8 @@ usageApp.openapi(
       throw error;
     }
 
-    const accountId = c.get('accountId') ?? (await resolveScopedAccountId(c, 'query'));
     const projectId = c.req.query('project_id') || undefined;
+    const accountId = await resolveSessionCostAccountId(c, projectId);
     return c.json(
       await listSessionCosts({
         accountId,
@@ -375,10 +395,11 @@ usageApp.openapi(
     },
   }),
   async (c) => {
-    const accountId = c.get('accountId') ?? (await resolveScopedAccountId(c, 'query'));
+    const projectId = c.req.query('project_id') || undefined;
+    const accountId = await resolveSessionCostAccountId(c, projectId);
     const detail = await getSessionCostRecord({
       accountId,
-      projectId: c.req.query('project_id') || undefined,
+      projectId,
       sessionId: c.req.param('sessionId'),
     });
     if (!detail) {

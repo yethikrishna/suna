@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 
 const ACCOUNT_ID = '00000000-0000-4000-a000-000000000001';
 const PROJECT_ID = '00000000-0000-4000-a000-000000000002';
+const SECONDARY_ACCOUNT_ID = '00000000-0000-4000-a000-000000000003';
 const SESSION_ID = 'session-cost-test';
 
 let authType = 'supabase';
@@ -11,6 +12,7 @@ let sandboxId: string | null = null;
 let listInput: Record<string, unknown> | null = null;
 let detailInput: Record<string, unknown> | null = null;
 let detailFound = true;
+let projectAccessInput: { projectId: string; action: string } | null = null;
 
 interface TestContext {
   set(key: string, value: unknown): void;
@@ -68,6 +70,13 @@ mock.module('../../shared/resolve-account', () => ({
   resolveScopedAccountId: async (c: TestContext) => c.req.query('account_id') || ACCOUNT_ID,
 }));
 
+mock.module('../../projects/lib/access', () => ({
+  loadProjectForUser: async (_c: TestContext, projectId: string, action: string) => {
+    projectAccessInput = { projectId, action };
+    return { row: { accountId: SECONDARY_ACCOUNT_ID } };
+  },
+}));
+
 mock.module('../../shared/session-costs', () => ({
   InvalidSessionCostQueryError,
   parseSessionCostListQuery: (input: { limit?: string; offset?: string }) => {
@@ -119,6 +128,7 @@ beforeEach(() => {
   listInput = null;
   detailInput = null;
   detailFound = true;
+  projectAccessInput = null;
 });
 
 describe('GET /v1/usage/session-costs', () => {
@@ -149,6 +159,19 @@ describe('GET /v1/usage/session-costs', () => {
 
     expect(response.status).toBe(200);
     expect(listInput).toMatchObject({ limit: 10, offset: 20 });
+  });
+
+  test('infers the account from an accessible project when account_id is omitted', async () => {
+    const response = await createTestApp().request(
+      `/v1/usage/session-costs?project_id=${PROJECT_ID}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(projectAccessInput).toEqual({ projectId: PROJECT_ID, action: 'read' });
+    expect(listInput).toMatchObject({
+      accountId: SECONDARY_ACCOUNT_ID,
+      projectId: PROJECT_ID,
+    });
   });
 
   test('rejects invalid pagination before querying costs', async () => {
@@ -196,5 +219,19 @@ describe('GET /v1/usage/session-costs/{sessionId}', () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  test('lets session-bound clients address a secondary account through project scope', async () => {
+    const response = await createTestApp().request(
+      `/v1/usage/session-costs/${SESSION_ID}?project_id=${PROJECT_ID}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(projectAccessInput).toEqual({ projectId: PROJECT_ID, action: 'read' });
+    expect(detailInput).toMatchObject({
+      accountId: SECONDARY_ACCOUNT_ID,
+      projectId: PROJECT_ID,
+      sessionId: SESSION_ID,
+    });
   });
 });

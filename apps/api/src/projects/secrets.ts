@@ -525,9 +525,20 @@ export async function listProjectSecretsSnapshotForUser(
   sessionId?: string | null,
 ): Promise<{ env: Record<string, string>; names: string[]; revision: string }> {
   const rows = await listResolvedProjectSecrets(projectId, userId);
-  const { env } = resolveGrantedSecretEnv(rows, grantEnv);
+  const { env, identifiers } = resolveGrantedSecretEnv(rows, grantEnv);
 
-  withholdUndeliverable(rows, env, sessionId ?? null);
+  // Only the GRANTED rows may vote on a shared KEY. Passing the full resolved
+  // set let an UNGRANTED sibling keep a key alive for a denied one: identifiers
+  // A ('denied') and B ('runtime') share KEY X, B is outside the agent grant so
+  // it contributed nothing to `env`, yet it still marked X deliverable — and X
+  // held A's plaintext. A row that could not put a value in the map must not be
+  // able to keep one there.
+  const granted = new Set(identifiers.map((id) => id.toUpperCase()));
+  withholdUndeliverable(
+    rows.filter((row) => granted.has(row.identifier.toUpperCase())),
+    env,
+    sessionId ?? null,
+  );
 
   const names = Object.keys(env).sort();
   return { env, names, revision: projectSecretsRevision(env) };

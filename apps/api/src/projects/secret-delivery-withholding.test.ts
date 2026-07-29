@@ -91,3 +91,29 @@ describe('withholdUndeliverable', () => {
     expect(env).toEqual({ SOMETHING: 'x' });
   });
 });
+
+describe('only GRANTED rows may vote on a shared key (Strix HIGH)', () => {
+  test('an UNGRANTED runtime sibling cannot keep a denied secret alive', () => {
+    // The hole: `env` is produced by resolveGrantedSecretEnv, which drops rows
+    // outside the agent grant. Feeding the FULL row set to the withholding pass
+    // let one of those dropped rows mark a shared KEY deliverable — so the KEY
+    // survived holding the DENIED sibling's plaintext, which is the one value
+    // that must never reach the box.
+    //
+    // The caller now passes only the granted rows. This test models what the
+    // caller is required to hand over.
+    const denied = row('gmaps-primary', 'GMAPS_KEY', { strategy: 'denied' });
+    const ungrantedSibling = row('gmaps-backup', 'GMAPS_KEY', { strategy: 'runtime' });
+    const env = { GMAPS_KEY: denied.value };
+
+    // Only `denied` was granted, so only it is passed in.
+    withholdUndeliverable([denied], env, 'sess-1');
+    expect(env.GMAPS_KEY).toBeUndefined();
+
+    // Sanity: had the ungranted sibling been included, the key would survive —
+    // which is precisely the bug.
+    const envIfBuggy = { GMAPS_KEY: denied.value };
+    withholdUndeliverable([denied, ungrantedSibling], envIfBuggy, 'sess-1');
+    expect(envIfBuggy.GMAPS_KEY).toBe(denied.value);
+  });
+});

@@ -4,6 +4,7 @@ import type { ProjectSessionSandbox, SessionStartResult } from '@kortix/api-cont
 import { auth, json } from '../../openapi';
 import { getProvider, type SandboxStatus } from '../../platform/providers';
 import { db } from '../../shared/db';
+import { enforcePerOriginSessionCap } from '../lib/sessions';
 import { resolveBranchTip } from '../git';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { changeRequests, projectSessions, sessionSandboxes } from '@kortix/db';
@@ -58,6 +59,30 @@ export async function resumeStoppedSandbox(row: {
 }): Promise<boolean> {
   if (!row.externalId) return false;
   if (!(config.ALLOWED_SANDBOX_PROVIDERS as readonly string[]).includes(row.provider)) return false;
+
+  // The per-end-user concurrency cap was enforced only at session CREATE, so it
+  // was bypassable by simply resuming: stop N sessions, resume them all, and one
+  // end-user holds more live sandboxes than the operator allowed. A cap that any
+  // caller can step around by pausing is not a cap.
+  //
+  // Safe to count here: the session being resumed is still `stopped`, which is
+  // NOT in ACTIVE_SESSION_STATUSES, so it cannot count itself.
+  const [sessionRow] = await db
+    .select({ originRef: projectSessions.originRef })
+    .from(projectSessions)
+    .where(eq(projectSessions.sessionId, row.sessionId))
+    .limit(1);
+  const capRefusal = await enforcePerOriginSessionCap(row.accountId, sessionRow?.originRef ?? null);
+  if (capRefusal) {
+    // Returning false degrades to the caller's existing "could not resume" path.
+    // Logged at warn because the surfaced error is a generic unreachable page,
+    // and an operator debugging "why won't this session wake" needs the real
+    // reason to be findable.
+    console.warn(
+      `[projects] resume refused by per-end-user session cap for ${row.sessionId} (end_user_ref=${sessionRow?.originRef ?? 'none'})`,
+    );
+    return false;
+  }
 
   const externalId = row.externalId;
   const now = new Date();

@@ -449,6 +449,7 @@ DB `project_secrets` (AES-256-GCM, key bound to `projectId`, unique `(project_id
 `BILL-7` `POST /billing/deduct {prompt_tokens,completion_tokens,model}` · `POST /billing/deduct-usage {amount,description}` (agent runtime).
 `BILL-8` `POST /billing/webhooks/stripe` (also `/webhook/stripe`) — Stripe sig: missing sig → 400, misconfigured secret → 500. `POST /billing/webhooks/revenuecat` — **Bearer-token auth, bad → 401** (not an in-body sig). Both public, no auth middleware.
 `BILL-9` billing write ops (`create-checkout-session`/`create-per-seat-checkout`/`create-inline-checkout`/`confirm-inline-checkout`/`create-portal-session`/`claim-per-seat`/`cancel-subscription`/`reactivate-subscription`/`schedule-downgrade`/`cancel-scheduled-change`/`purchase-credits`/`auto-topup/configure`) — auth boundary: ANON → 401; non-account-member → 403; account `MEMBER` (`billing.read` only) → 403. They require `billing.write` (OWNER + the `billing_manager` BILLING policy only; ADMIN/AUDITOR/MEMBER denied), enforced by `billing/require-billing-write.ts` (`resolveScopedAccountId` membership check + `assertAuthorized(billing.write)`) — so a non-billing teammate can't subscribe / cancel / top-up on the account's behalf. Reconcile/read ops (`sync-subscription`, `sync-seat-quantity`, `proration-preview`, `checkout-session/:id`, `confirm-checkout-session`) stay member-accessible (membership only). **(finding 2026-06-04 RESOLVED 2026-06-11: the `billing.write` gate now exists in code; the earlier "any member passes" gap is closed.)**
+`COST-1` `GET /usage/session-costs?account_id=&project_id=&limit=&offset=` → authenticated account member; returns every matching session, including zero-cost sessions, as a paginated `{sessions,total,limit,offset,next_offset,reconciliation}` response. Each row combines finalized LLM cost, billed compute cost, owner, project, request, token, model, and compute-duration fields. `limit` defaults to 25 and accepts 1–100; invalid pagination → 400; ANON → 401. `GET /usage/session-costs/:sessionId?account_id=&project_id=` returns the same summary plus `model_usage` and discriminated `ledger_entries`; unknown, foreign, or project-mismatched session → 404. Sandbox tokens are rejected.
 
 ---
 
@@ -629,7 +630,17 @@ Scale: ~500 exported symbols / ~520 route handlers in `apps/api/src` — a tract
 `CONN-15` `GET /executor/projects/:id/discover/integrations[?q&cursor]` → project admin browses the direct integrations.sh catalogue; `GET …/discover/integrations/detail?id=…` → resolves the trusted record's API/MCP/Postman/GraphQL/docs/CLI variants; upstream outage → 502; `NONMEMBER` → 403 before any upstream fetch.
 `CONN-OAUTH2` profile-scoped native OAuth2 routes → save and read a redacted provider-independent application; start Authorization Code with PKCE S256; read status; reject SSRF discovery, unavailable Device Authorization, unknown device sessions, and callback state replay.
 
-**Connector authorization is centralized on the AGENT (2026-07-06).** `PUT /executor/projects/:id/connectors/:slug/sharing` and `PUT …/agent-scope` are both RETIRED (route removed — `CONN-6`'s id is intentionally not reused). A connector is now unconditionally project-wide visible to every project member; the only gate on which agents may call it is the agent's own `connectors` grant (`[[agents]].connectors` in kortix.yaml, enforced by `iam/agent-scope.ts` — see `PROJ-agents` flows), not anything configured per-connector.
+**Connector authorization has three gates.** The agent's `connectors` grant
+selects connector-profile slugs. The connector profile's
+`authorization_strategy` selects `project` or the acting member's `user`
+authorizations. Connector-profile policies apply to every authorization under
+that profile. `connectors_required` is a subset of `connectors`; missing active
+strategy-compatible authorizations return `409
+CONNECTOR_AUTHORIZATION_REQUIRED` before sandbox startup. Session
+`connector_bindings` use connector-profile slug keys and `authorization_id`
+values. `GET /projects/:id/sessions/:sessionId/scope` reads the effective
+secret allowlist and authorization map. `PUT` on the same path replaces each
+supplied scope field without restarting the session.
 
 ---
 
@@ -721,12 +732,17 @@ Scale: ~500 exported symbols / ~520 route handlers in `apps/api/src` — a tract
 
 ## 27. Kortix as a Backend (KaaB) — session-create override contract
 
-Origin is DERIVED from the caller's token kind, never the request body: an account PAT / service-account / user-apiKey ⇒ `origin: backend`; a human web JWT ⇒ `origin: user`; the in-sandbox key and agent-scoped tokens are never backend. Only a backend caller may set the by-reference overrides `origin_ref` and `secrets`. See `docs/KORTIX_AS_A_BACKEND_GUIDE.md`.
+Origin is derived from the caller's token kind, never the request body. An
+account PAT, service account, or user API key resolves to `origin: backend`. A
+human web JWT resolves to `origin: user`. In-sandbox and agent-scoped tokens are
+never backend. Only a backend caller may set the `secrets` override. Customer
+metadata stays in the wrapper's data store. See
+`docs/KORTIX_AS_A_BACKEND_GUIDE.md`.
 
-`KAAB-1` backend PAT `POST /projects/:id/sessions {origin_ref, runtime_context}` → 201; response echoes `origin:"backend"` (derived, not from the body) + `origin_ref`. Overrides omitted = byte-identical to a normal session.
-`KAAB-2` non-backend (user JWT) setting `origin_ref` OR `secrets` → **403 `origin_override_forbidden`** (the field is refused before shape is even considered).
+`KAAB-1` backend PAT `POST /projects/:id/sessions {runtime_context}` → 201; response contains derived `origin:"backend"` and `session_id`.
+`KAAB-2` non-backend user JWT setting `secrets` → **403 `origin_override_forbidden`** before secret validation.
 `KAAB-3` backend `secrets=[unknown]` → **404 `SECRET_IDENTIFIER_NOT_FOUND`**; `secrets=[]` → 201 with `secrets_allowlist:[]` (inject zero project secrets). Narrowing only — never widens beyond the agent's grant.
 `KAAB-4` backend `opencode_model` that isn't servable (retired / not entitled / typo) → **400 `INVALID_SESSION_MODEL`** at create, not a dead turn at prompt time; a bare managed id is normalized to the `kortix/<id>` opencode ref.
 `KAAB-5` backend `runtime_context` with a credential-like key → 400; over the 64-entry / 16 KiB caps → 400 (`INVALID_SESSION_RUNTIME_CONTEXT`).
 `KAAB-6` backend `Idempotency-Key` retry: same key + same body → the SAME `session_id` (no double-create / double-charge); same key + a different `secrets`/`connector_bindings` body → **409** (`IDEMPOTENCY_SECRETS_CONFLICT` / `IDEMPOTENCY_BINDING_CONFLICT`).
-`KAAB-7` backend idempotency IDENTITY guard: same key + a different `origin_ref` (or `runtime_context`) → **409 `IDEMPOTENCY_ORIGIN_CONFLICT`** / `IDEMPOTENCY_CONTEXT_CONFLICT` — within one backend account a wrapper's end-users must never collide on a shared key (cross-end-user session/attribution bleed); a replay whose stored session was soft-deleted → 409 `IDEMPOTENCY_KEY_SESSION_DELETED`; an oversized `Idempotency-Key` header (>255 chars) → **400 `INVALID_IDEMPOTENCY_KEY`** (a clean rejection, not an uncaught btree-overflow 500).
+`KAAB-7` backend idempotency context guard: same key + different `runtime_context` → **409 `IDEMPOTENCY_CONTEXT_CONFLICT`**; a replay whose stored session was soft-deleted → 409 `IDEMPOTENCY_KEY_SESSION_DELETED`; an oversized `Idempotency-Key` header (>255 chars) → **400 `INVALID_IDEMPOTENCY_KEY`**.

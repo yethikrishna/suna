@@ -10,21 +10,14 @@
 //
 // Mocks are process-global (`mock.module`) — run this file in its own
 // `bun test <file>` invocation (as CI does), same caveat as
-// ./sandbox-reaper.test.ts, whose config/provider mock preamble this follows.
+// ../../sandbox-reaper.test.ts.
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
 let drainCalls: Array<{ workerId?: string; limit?: number; availableBefore?: Date }> = [];
 let drainResult = { claimed: 0, succeeded: 0, failed: 0, queued: 0 };
 let errorLogs: Array<{ message: string; context?: Record<string, unknown> }> = [];
 
-mock.module('../config', () => ({
-  config: {
-    KORTIX_SANDBOX_AUTOSTOP_MINUTES: 15,
-    KORTIX_SANDBOX_TRIGGER_AUTOSTOP_MINUTES: 5,
-    ALLOWED_SANDBOX_PROVIDERS: ['daytona'],
-  },
-}));
-mock.module('../lib/logger', () => ({
+mock.module('../../../lib/logger', () => ({
   logger: {
     debug: () => {},
     info: () => {},
@@ -34,16 +27,7 @@ mock.module('../lib/logger', () => ({
     },
   },
 }));
-mock.module('../shared/db', () => ({ db: {} }));
-mock.module('./sandbox-busy-probe', () => ({ probeSandboxBusy: async () => 'unknown' }));
-mock.module('../platform/providers', () => ({ getProvider: () => ({}) }));
-mock.module('../sandbox-proxy', () => ({ invalidateProviderCache: () => {} }));
-mock.module('../billing/services/compute-metering', () => ({
-  pauseComputeSession: async () => {},
-  reopenComputeForSandbox: async () => {},
-  endComputeSession: async () => {},
-}));
-mock.module('./session-lifecycle', () => ({
+mock.module('../engine', () => ({
   drainSessionLifecycleQueue: async (input: {
     workerId?: string;
     limit?: number;
@@ -54,7 +38,7 @@ mock.module('./session-lifecycle', () => ({
   },
 }));
 
-const { reconcileUndeliveredPrompts } = await import('./sandbox-reaper');
+const { reconcileUndeliveredPrompts } = await import('../undelivered-prompts');
 
 beforeEach(() => {
   drainCalls = [];

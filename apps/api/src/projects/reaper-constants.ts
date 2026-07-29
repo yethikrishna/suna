@@ -1,7 +1,7 @@
 /**
- * Shared bounds for the periodic sweeps (sandbox-reaper.ts,
- * compute-billing-invariant.ts). Their own module so the two can import them
- * without a cycle.
+ * Shared bounds for the periodic sweeps (./reaping/*,
+ * ../billing/services/compute-invariant-sweep.ts). Their own module so those
+ * can import them without a cycle.
  */
 
 export const REAP_BATCH_SIZE = 100;

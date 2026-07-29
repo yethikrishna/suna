@@ -4,7 +4,7 @@ import { getProvider } from '../../platform/providers';
 import { db } from '../../shared/db';
 import { projectSessions, sessionSandboxes } from '@kortix/db';
 import { and, eq } from 'drizzle-orm';
-import { isAlreadyNotRunning } from '../sandbox-reaper';
+import { isAlreadyNotRunning } from '../reaping/policy';
 import { invalidateProviderCache } from '../../sandbox-proxy';
 
 /**

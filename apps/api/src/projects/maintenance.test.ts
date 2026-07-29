@@ -59,6 +59,12 @@ let reapAndReconcileSandboxesImpl = async () => ({
   errors: 0,
 });
 
+// The prompt-delivery backstop lives with the command queue it drains, not with
+// the sandbox reaper — maintenance.ts is simply the tick that calls both.
+mock.module('./session-lifecycle/undelivered-prompts', () => ({
+  reconcileUndeliveredPrompts: async () => ({ claimed: 0, succeeded: 0, failed: 0, queued: 0 }),
+}));
+
 mock.module('./sandbox-reaper', () => ({
   reapAndReconcileSandboxes: () => reapAndReconcileSandboxesImpl(),
   reconcileOrphanComputeSessions: async () => ({ checked: 0, closed: 0, errors: 0 }),
@@ -68,7 +74,6 @@ mock.module('./sandbox-reaper', () => ({
     billingClosed: 0,
     errors: 0,
   }),
-  reconcileUndeliveredPrompts: async () => ({ claimed: 0, succeeded: 0, failed: 0, queued: 0 }),
   reapOrphanProviderBoxes: async () => ({ listed: 0, orphans: 0, stopped: 0, errors: 0 }),
   countBillingInvariantViolations: async () => 0,
   // The mirror monitor: evidence-gated billing under-bills SILENTLY when the

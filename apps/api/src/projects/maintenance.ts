@@ -5,6 +5,7 @@ import { db } from '../shared/db';
 import { reconcileStaleBuilds } from '../snapshots/builder';
 import { reconcileSnapshotQuota } from '../snapshots/quota-gc';
 import { type GitBackedProject, deleteRemoteSessionBranch } from './git';
+import { reconcileUndeliveredPrompts } from './session-lifecycle/undelivered-prompts';
 import {
   EMPTY_REAP_RESULT,
   countBillingInvariantViolations,
@@ -13,7 +14,6 @@ import {
   reapOrphanProviderBoxes,
   reconcileOrphanComputeSessions,
   reconcileStuckActiveSessions,
-  reconcileUndeliveredPrompts,
 } from './sandbox-reaper';
 
 const DEFAULT_BRANCH_RETENTION_DAYS = 90;

@@ -33,9 +33,10 @@ export interface StarterFile {
   content: string;
 }
 
-// There is one USER-FACING starter kit: `general-knowledge-worker` (base
-// plumbing + the full consolidated Kortix skill kit). Every new project is
-// scaffolded with it — project creation no longer offers a choice.
+// There are two USER-FACING starter kits:
+// - `general-knowledge-worker`: v2 OpenCode compatibility runtime.
+// - `acp-multi-harness`: the same full skill kit plus v3 runtime profiles for
+//   OpenCode, Claude Code, Codex, and Pi.
 //
 // `minimal` (base only, no domain skills) is kept purely as an INTERNAL
 // building block: the project-clone seed path (`buildProjectSeedFilesFromItem`)
@@ -44,7 +45,11 @@ export interface StarterFile {
 // specialized project template isn't
 // polluted with every general-knowledge skill. It is not surfaced in the
 // create-project UI, mobile, or the `kortix init` prompt.
-export const STARTER_TEMPLATE_IDS = ['minimal', 'general-knowledge-worker'] as const;
+export const STARTER_TEMPLATE_IDS = [
+  'minimal',
+  'general-knowledge-worker',
+  'acp-multi-harness',
+] as const;
 export type StarterTemplateId = (typeof STARTER_TEMPLATE_IDS)[number];
 export const DEFAULT_STARTER_TEMPLATE_ID: StarterTemplateId = 'general-knowledge-worker';
 
@@ -73,8 +78,8 @@ export interface StarterVars {
   projectName: string;
   /** "owner/repo" GitHub identifier. Optional — defaults to "your-org/your-repo". */
   repoFullName?: string;
-  /** Starter kit. Defaults to the one user-facing kit
-   *  (`general-knowledge-worker`). `minimal` is an internal base-only build. */
+  /** Starter kit. Defaults to `general-knowledge-worker`.
+   *  `minimal` is an internal base-only build. */
   template?: StarterTemplateId;
 }
 
@@ -85,6 +90,12 @@ const GENERAL_KNOWLEDGE_WORKER_TEMPLATE_DIR = join(
   '..',
   'templates',
   'general-knowledge-worker',
+);
+const ACP_MULTI_HARNESS_TEMPLATE_DIR = join(
+  import.meta.dir,
+  '..',
+  'templates',
+  'acp-multi-harness',
 );
 const MARKETPLACE_TEMPLATE_DIR = join(import.meta.dir, '..', 'templates', 'marketplace');
 const MANAGED_TEMPLATE_DIR = join(import.meta.dir, '..', 'templates', 'managed');
@@ -159,10 +170,19 @@ export function getStarterFiles(vars: StarterVars): StarterFile[] {
   };
 
   const roots: { name: string; dir: string }[] = [{ name: 'base', dir: BASE_TEMPLATE_DIR }];
-  if (resolvedVars.template === 'general-knowledge-worker') {
+  if (
+    resolvedVars.template === 'general-knowledge-worker' ||
+    resolvedVars.template === 'acp-multi-harness'
+  ) {
     roots.push({
       name: 'general-knowledge-worker',
       dir: GENERAL_KNOWLEDGE_WORKER_TEMPLATE_DIR,
+    });
+  }
+  if (resolvedVars.template === 'acp-multi-harness') {
+    roots.push({
+      name: 'acp-multi-harness',
+      dir: ACP_MULTI_HARNESS_TEMPLATE_DIR,
     });
   }
 
@@ -229,13 +249,15 @@ export function getProjectTemplateFiles(): StarterFile[] {
  * (under `packages/starter/templates/`). Lets the marketplace build a "View
  * source" link for a first-party skill/agent/tool without guessing which
  * template root it came from. Precedence matches the catalog build
- * (base < general-knowledge-worker < managed < marketplace) so an overridden
+ * (base < general-knowledge-worker < acp-multi-harness < managed <
+ * marketplace) so an overridden
  * file resolves to the root that actually wins.
  */
 export function getStarterCatalogSourceMap(): Map<string, string> {
   const roots: Array<{ name: string; dir: string }> = [
     { name: 'base', dir: BASE_TEMPLATE_DIR },
     { name: 'general-knowledge-worker', dir: GENERAL_KNOWLEDGE_WORKER_TEMPLATE_DIR },
+    { name: 'acp-multi-harness', dir: ACP_MULTI_HARNESS_TEMPLATE_DIR },
     { name: 'managed', dir: MANAGED_TEMPLATE_DIR },
     { name: 'marketplace', dir: MARKETPLACE_TEMPLATE_DIR },
   ];

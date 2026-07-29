@@ -20,6 +20,22 @@ The experiment defaults to disabled. Enable it before starting a v3 session.
 The API rejects a v3 session with `ACP_RUNTIME_REQUIRED` while the experiment is
 disabled.
 
+## Create a four-harness test project
+
+In the New Project modal, select **ACP multi-harness** under **Starter**. The
+project creation API scaffolds the v3 manifest below and enables
+`experimental.acp_runtime`.
+
+The CLI can scaffold the same files:
+
+```sh
+kortix init harness-lab --template acp-multi-harness --yes --no-git
+```
+
+The CLI command writes files only. `kortix ship` creates the cloud project.
+Cloud project creation enables `acp_runtime` when it receives
+`starter_template: acp-multi-harness`.
+
 ## Manifest model
 
 Use `kortix_version: 3` for multiple harnesses. `runtimes` declares named
@@ -143,6 +159,13 @@ Credential selection depends on the harness and the model provider.
 Declare direct credential names under `env.required` or `env.optional`. Grant
 them through `agents.<name>.secrets`. Store values in the Kortix Secrets
 Manager. Never put a credential value in `kortix.yaml`.
+
+The Models view supports these project-wide subscription flows:
+
+- Claude Code: run `claude setup-token`, then store the result as
+  `CLAUDE_CODE_OAUTH_TOKEN`.
+- Codex: complete the ChatGPT device authorization. Kortix stores the resulting
+  `CODEX_AUTH_JSON`. Do not create that value manually.
 
 The backend keeps a generic provider verification route for SDK compatibility.
 The connected-provider UI does not expose it. A key can authenticate while the

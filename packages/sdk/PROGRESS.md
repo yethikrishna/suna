@@ -3742,6 +3742,33 @@ Final SDK gates:
 
 **SDK package shippable to production: YES.**
 
+---
+
+### 2026-07-29 — session `acp-runtime-adapters` multi-harness starter claim
+
+Claimed the additive `acp-multi-harness` starter input.
+
+The public `CreateProjectRepoInput` and `ProvisionProjectInput` unions must
+accept the new starter identifier. Existing identifiers remain unchanged.
+
+The required `tdd` skill is unavailable in this session. The work still uses
+RED, GREEN, and REFACTOR.
+
+Required SDK gates are typecheck, the full test suite, and packed-install
+smoke.
+
+Local SDK verification:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1355 pass`, `2 skip`, `0 fail`, and
+  `5925` assertions across `116` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed tarball import and
+  construction passed.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
 **Repository delivery shippable to production: NOT YET.** Main integration,
 PR merge, Deploy Dev, deployed SHA proof, and deployed four-harness verification
 remain.

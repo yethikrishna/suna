@@ -5,7 +5,7 @@ type ProvisionPayload = {
   account_id: string;
   name: string;
   seed_starter: boolean;
-  starter_template: 'minimal' | 'general-knowledge-worker';
+  starter_template: 'minimal' | 'general-knowledge-worker' | 'acp-multi-harness';
   marketplace_items?: string[];
 };
 
@@ -78,8 +78,7 @@ async function openHarness(page: Page) {
   });
   await page.goto(`${baseUrl}/debug/project-create-modal`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('dialog', { name: /new project/i }).waitFor({ state: 'visible', timeout: 30_000 });
-  // One starter kit — every project ships the full skill pack; there's no toggle.
-  await page.getByText(/starter pack/i).first().waitFor({ state: 'visible', timeout: 30_000 });
+  await page.getByTestId('project-create-starter').waitFor({ state: 'visible', timeout: 30_000 });
 }
 
 function defaultMarketplaceItem(name: string, title: string, order: number) {
@@ -161,6 +160,15 @@ async function main() {
       'default payload should use the general-knowledge-worker starter_template',
     );
 
+    await openHarness(page);
+    await page.getByTestId('project-create-starter').click();
+    await page.getByRole('option', { name: 'ACP multi-harness' }).click();
+    const acpPayload = await submitProjectCreate(page, 'acp-multi-harness');
+    assert(
+      acpPayload.starter_template === 'acp-multi-harness',
+      'ACP payload should use the acp-multi-harness starter_template',
+    );
+
     await mockAccounts(page);
     await openHarness(page);
     const accountField = page.getByTestId('project-create-account');
@@ -188,7 +196,9 @@ async function main() {
       'payload should target the account picked in the modal',
     );
 
-    console.log('[project-create-modal] ok: starter template, marketplace item, and account picker payloads verified');
+    console.log(
+      '[project-create-modal] ok: default starter, ACP multi-harness starter, and account picker payloads verified',
+    );
   } finally {
     await browser.close();
   }

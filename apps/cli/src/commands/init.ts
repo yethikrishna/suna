@@ -55,17 +55,18 @@ Pick the local coding tools to wire up. The starter's canonical skill source is
 linked into each native discovery location: .opencode, .claude, .agents, or .pi.
 Codex, Pi, and Cursor also get a root AGENTS.md pointer.
 
-This local tool selection does not select the cloud session harness. Cloud
-sessions use kortix.yaml version 3 runtime profiles after the project enables
-the ACP & Multi-Harness experiment.
+This local tool selection does not select the cloud session harness. Use the
+acp-multi-harness starter for version 3 runtime profiles. Cloud project
+creation enables the ACP & Multi-Harness experiment for that starter.
 
 Options:
   --name <project>     Alias for the positional project-name.
   --primary <agent>    Primary coding agent to wire up (${SUPPORTED_AGENTS.join('|')}).
   --agents <list>      Comma-separated extras to wire up alongside --primary.
                        Example: --agents claude,cursor
-  --template <name>    Starter template: general-knowledge-worker (default, full
-                       skill kit) or minimal (base plumbing only).
+  --template <name>    Starter template: general-knowledge-worker (default),
+                       acp-multi-harness (OpenCode, Claude Code, Codex, Pi), or
+                       minimal (internal base plumbing only).
   --force              Configure the current cloned Kortix repository in place.
                        Requires kortix.yaml (or kortix.toml) and .kortix/opencode.
   --no-git             Don't run \`git init\` in the new project directory.
@@ -304,9 +305,9 @@ export async function runInit(argv: string[]): Promise<number> {
   }
 
   // ── Resolve starter template ────────────────────────────────────────
-  // There's one starter kit — every project scaffolds with the full Kortix
-  // skill kit. The `--template` flag stays as an advanced escape hatch (e.g.
-  // the internal base-only `minimal`), but we no longer prompt for a choice.
+  // The general-purpose starter remains the default. The explicit
+  // acp-multi-harness starter adds the v3 runtime profiles. `minimal` remains
+  // an internal base-only escape hatch.
   const template: StarterTemplateId = flags.template ?? DEFAULT_STARTER_TEMPLATE_ID;
 
   // ── Resolve coding agents (multi-select TUI) ─────────────────────────

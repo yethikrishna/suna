@@ -62,10 +62,6 @@ export interface ProjectSession {
    *  token kind, not the surface. A backend (PAT/service-account) create is
    *  'backend'; a human web session is 'user'. See Kortix-as-a-Backend. */
   origin?: 'user' | 'trigger' | 'schedule' | 'backend' | 'system';
-  /** The wrapper's end-user this session acts for (backend origin only). */
-  end_user_ref?: string | null;
-  /** @deprecated Renamed to `end_user_ref`. Echoed with the same value. */
-  origin_ref?: string | null;
   /** The per-session secrets allowlist that was applied (identifiers); null = none. */
   secrets_allowlist?: string[] | null;
   sharing?: ConnectorSharing | null;
@@ -131,20 +127,6 @@ export interface CreateProjectSessionInput {
    */
   require_connectors?: string[];
   /**
-   * Kortix-as-a-Backend (backend-origin callers only — a PAT / service-account
-   * bearer). The wrapper's opaque end-user this session acts for; recorded on the
-   * session and surfaced to the sandbox as KORTIX_ORIGIN_REF. A non-backend
-   * caller supplying it is rejected 403. Attribution only — pass the user's
-   * connectors via connector_bindings.
-   */
-  /** Your opaque handle for the END-USER this session acts for. Backend origin only. */
-  end_user_ref?: string;
-  /**
-   * @deprecated Renamed to `end_user_ref`. Still accepted; sending both is fine
-   * only if they agree (disagreeing values are rejected 400).
-   */
-  origin_ref?: string;
-  /**
    * Kortix-as-a-Backend (backend-origin callers only). Narrow which project
    * secrets (by identifier) this session's sandbox receives, from the agent's
    * default set down to this list. `[]` = inject zero project secrets. Pure
@@ -182,20 +164,13 @@ export interface ProjectOpenCodeSession {
   archived_at: number | null;
 }
 
-/**
- * @param options.scope - `project` asks for the manager-only full inventory.
- * @param options.end_user_ref - Kortix-as-a-Backend: return only the sessions
- *   this wrapper created for ONE of its end-users. Filtered server-side, so a
- *   wrapper never has to fetch the whole project to answer "show me this
- *   customer's sessions".
- */
+/** @param options.scope - `project` asks for the manager-only full inventory. */
 export async function listProjectSessions(
   projectId: string,
-  options?: { scope?: 'visible' | 'project'; end_user_ref?: string },
+  options?: { scope?: 'visible' | 'project' },
 ) {
   const params = new URLSearchParams();
   if (options?.scope && options.scope !== 'visible') params.set('scope', options.scope);
-  if (options?.end_user_ref) params.set('end_user_ref', options.end_user_ref);
   const query = params.size > 0 ? `?${params}` : '';
   return unwrap(await backendApi.get<ProjectSession[]>(`/projects/${projectId}/sessions${query}`));
 }

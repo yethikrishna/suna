@@ -1,6 +1,7 @@
 import { beforeEach, expect, mock, test } from 'bun:test';
 import { configureKortix } from '../../http/config';
 import { isSessionFresh } from '../../http/fresh-sessions';
+import type { CreateProjectSessionInput, ProjectSession } from './sessions';
 import {
   createProjectSession,
   createSessionPublicShare,
@@ -44,6 +45,9 @@ beforeEach(() => {
 
 configureKortix({ backendUrl: 'http://test.local', getToken: async () => 'tok' });
 const last = () => calls[calls.length - 1];
+
+type IsNever<T> = [T] extends [never] ? true : false;
+type SessionAttributionKey<T> = Extract<keyof T, `${'end_user' | 'origin'}_${'ref'}`>;
 
 test('listProjectSessions hits GET /projects/:id/sessions', async () => {
   nextResponse = { status: 200, body: [] };
@@ -358,17 +362,11 @@ test('setProjectSessionScope replaces connector authorizations with canonical in
   });
 });
 
-test('listProjectSessions filters by end_user_ref, URL-encoding the handle', async () => {
-  // A wrapper's end-user handle is opaque — it can contain anything, including
-  // characters that would otherwise break out of the query string.
-  nextResponse = { status: 200, body: [] };
-  await listProjectSessions('P1', { end_user_ref: 'user@acme.com' });
-  expect(last().url).toContain('/projects/P1/sessions?end_user_ref=user%40acme.com');
-});
+test('session contracts omit usage attribution keys', () => {
+  type ListOptions = NonNullable<Parameters<typeof listProjectSessions>[1]>;
+  const createInput: IsNever<SessionAttributionKey<CreateProjectSessionInput>> = true;
+  const response: IsNever<SessionAttributionKey<ProjectSession>> = true;
+  const listOptions: IsNever<SessionAttributionKey<ListOptions>> = true;
 
-test('listProjectSessions combines scope and end_user_ref', async () => {
-  nextResponse = { status: 200, body: [] };
-  await listProjectSessions('P1', { scope: 'project', end_user_ref: 'u-1' });
-  expect(last().url).toContain('scope=project');
-  expect(last().url).toContain('end_user_ref=u-1');
+  expect([createInput, response, listOptions]).toEqual([true, true, true]);
 });

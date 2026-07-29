@@ -19,7 +19,7 @@ export KORTIX_PROJECT_ID=...                      # the project your agent lives
 
 - The API key is a `kortix_pat_…` token. Every session it starts is recorded
   with `origin: backend`, which is what unlocks the backend-only overrides
-  (`origin_ref`, `secrets`) — see the [Kortix-as-a-Backend
+  (`secrets`) — see the [Kortix-as-a-Backend
   guide](../../../docs/KORTIX_AS_A_BACKEND_GUIDE.md).
 - Some examples read extra env vars (a session id, a connector URL); each file's
   header comment lists what it needs.
@@ -36,7 +36,7 @@ export KORTIX_PROJECT_ID=...                      # the project your agent lives
 | 06 | [`06-files-and-secrets.ts`](06-files-and-secrets.ts) | Session-scoped workspace files + project secrets. | `KORTIX_SESSION_ID=… bun run examples/06-files-and-secrets.ts` |
 | 07 | [`07-vanilla.ts`](07-vanilla.ts) | The whole flow in one framework-free file: list → send → stream. | `bun run examples/07-vanilla.ts "hi"` |
 | 08 | [`08-cdn.html`](08-cdn.html) | The SDK in a browser with **no build step** (ESM via CDN). | open in a browser |
-| 09 | [`09-kaab-backend-wrapper.ts`](09-kaab-backend-wrapper.ts) | **Kortix as a Backend, end to end**: mint a connector → per-user profile → backend-origin session (`origin_ref` + `secrets` + `connector_bindings`) → **stream**. One-shot CLI **and** a multi-tenant SSE service. | `bun run examples/09-kaab-backend-wrapper.ts "Summarize my signups"` |
+| 09 | [`09-kaab-backend-wrapper.ts`](09-kaab-backend-wrapper.ts) | **Kortix as a Backend, end to end**: mint a connector → per-user profile → backend-origin session (`secrets` + `connector_bindings`) → **stream**. One-shot CLI **and** a multi-tenant SSE service. | `bun run examples/09-kaab-backend-wrapper.ts "Summarize my signups"` |
 
 ## Kortix as a Backend
 
@@ -53,7 +53,7 @@ alongside:
 | Var | Effect |
 |-----|--------|
 | `MODE=serve` | Run as a `POST /run {endUserId, prompt}` → SSE service instead of one-shot. |
-| `KAAB_OVERRIDES=off` | Drop the backend-only fields (`origin_ref`, `secrets`) so the connector + session + streaming path still runs against a deployment that doesn't have them yet. |
+| `KAAB_OVERRIDES=off` | Drop backend-only secret narrowing so the connector + session + streaming path still runs against a deployment that does not have it yet. |
 | `KAAB_NO_CONNECTOR=1` | Skip the connector layer (a bare project with no `kortix.yaml`). |
 | `KAAB_CONNECTOR_URL` / `KAAB_AGENT` / `KAAB_MODEL` / `KAAB_SECRET` | Point the demo at your own connector URL / agent / model / secret identifier. |
 

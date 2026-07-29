@@ -38,8 +38,6 @@ Subcommands:
                                     session_id to orchestrate).
                                     Backend overrides (require a backend token —
                                     see docs/KORTIX_AS_A_BACKEND_GUIDE.md):
-                                    --origin-ref <user-id>  attribute to your
-                                      end-user (surfaced as KORTIX_ORIGIN_REF).
                                     --secret <id>           narrow injected
                                       secrets to these identifiers (repeatable).
                                     --no-secrets            inject zero project
@@ -157,11 +155,15 @@ export async function runSessions(argv: string[]): Promise<number> {
     promptFlag = takeFlagValue(rest, ['--prompt', '-p']);
     portFlag = takeFlagValue(rest, ['--port']);
     agentFlag = takeFlagValue(rest, ['--agent']);
-    // Backend/override flags for `sessions new` — parsed for every subcommand so
-    // an unknown flag still errors, but only sessionsNew consumes them.
+    // Backend/override flags for `sessions new`. Other subcommands keep their
+    // positional arguments in `rest`.
     overrides = parseSessionOverrides(rest);
   } catch (err) {
     process.stderr.write(`${status.err((err as Error).message)}\n`);
+    return 2;
+  }
+  if ((sub === 'new' || sub === 'create') && rest.length > 0) {
+    process.stderr.write(`${status.err(`unknown option "${rest[0]}"`)}\n`);
     return 2;
   }
   const ctxOpts = { projectArg: projectFlag, hostArg: hostFlag };
@@ -196,13 +198,10 @@ export async function runSessions(argv: string[]): Promise<number> {
 
 type CtxOpts = { projectArg?: string; hostArg?: string };
 
-/** Start-time override flags for `sessions new`. Model/agent apply to any
- *  caller; origin_ref + secrets are Kortix-as-a-Backend fields the API accepts
- *  only from a backend-origin token (a PAT / service-account bearer) and 403s
- *  otherwise — see docs/KORTIX_AS_A_BACKEND_GUIDE.md. */
+/** Start-time override flags for `sessions new`. Model applies to any caller.
+ * Secrets require a backend-origin token (a PAT or service-account bearer). */
 export type SessionOverrides = {
   model?: string;
-  originRef?: string;
   secrets?: string[];
   connectors?: Record<string, { profile_id: string }>;
   runtimeContext?: Record<string, string>;
@@ -214,8 +213,6 @@ export function parseSessionOverrides(argv: string[]): SessionOverrides {
   const out: SessionOverrides = {};
   const model = takeFlagValue(argv, ['--model']);
   if (model) out.model = model;
-  const originRef = takeFlagValue(argv, ['--origin-ref']);
-  if (originRef) out.originRef = originRef;
   const secrets = takeFlagValues(argv, ['--secret']);
   const noSecrets = takeFlagBool(argv, ['--no-secrets']);
   if (secrets.length && noSecrets) {
@@ -297,7 +294,6 @@ async function sessionsNew(
   // apps/api/src/projects/lib/sessions.ts createProjectSession.
   if (agent) body.agent_name = agent;
   if (overrides.model) body.opencode_model = overrides.model;
-  if (overrides.originRef) body.origin_ref = overrides.originRef;
   if (overrides.secrets !== undefined) body.secrets = overrides.secrets;
   if (overrides.connectors) body.connector_bindings = overrides.connectors;
   if (overrides.runtimeContext) body.runtime_context = overrides.runtimeContext;

@@ -218,7 +218,7 @@ Also stop if the same failure survives three different fixes (use
 | # | Task | Status | Session | Last touched | Commit |
 |---|---|---|---|---|---|
 | 0 | Design and implementation plan | DONE | `profile-auth-cost` | 2026-07-29 | `e70538c802` |
-| 1 | Connector profile contracts | IN PROGRESS | `profile-auth-cost` | 2026-07-29 | — |
+| 1 | Connector profile contracts | DONE | `profile-auth-cost` | 2026-07-29 | `543044a2a6` + `df01b91344` + `6bfc4dcae1` + `3a410eb374` |
 | 2 | Strategy-based session authorization | NOT STARTED | — | — | — |
 | 3 | Main web session scope | NOT STARTED | — | — | — |
 | 4 | Remove end-user usage attribution | NOT STARTED | — | — | — |
@@ -3917,3 +3917,56 @@ Final SDK gates:
 
 **Repository delivery shippable to production: NOT YET.** PR merge, Deploy Dev,
 deployed SHA proof, and deployed four-harness verification remain.
+
+---
+
+### 2026-07-29 — session `profile-auth-cost` Task 1 completion
+
+Completed the connector-profile contract and authorization-strategy foundation.
+
+The manifest, API contract, database schema, API, SDK, and web editor now use
+one exclusive `project` or `user` authorization strategy. Connector-profile
+policies apply to every authorization for that connector profile.
+Authorization-specific policy routes and UI controls are removed.
+
+Deprecated SDK terminology remains exported. Deprecated authorization-policy
+methods fail before they can widen connector-profile policy scope.
+
+TDD evidence:
+
+- Manifest schema suite: `342 pass`, `0 fail`, and `546` assertions.
+- Focused API contract and connector suites: `120 pass`, `0 fail`.
+- API policy suite: `28 pass`, `0 fail`, and `41` assertions.
+- Real Postgres gateway authorization check: `1 pass`, `0 fail`, and `6`
+  assertions.
+- Real Postgres HTTP route check: both removed policy routes returned `404`;
+  `1 pass`, `0 fail`, and `2` assertions.
+- Web policy-ownership source check: `1 pass`, `0 fail`, and `6` assertions.
+- Database schema suite: `60 pass`, `0 fail`, and `101` assertions.
+- `ke2e coverage`: `508/518` routes covered, `10` allowlisted, and `0`
+  uncovered.
+
+Final SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1359 pass`, `2 skip`, `0 fail`, `5944`
+  assertions, and `116` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed tarball import and
+  construction passed.
+
+Other final gates:
+
+- `pnpm --filter kortix-api typecheck`: exit `0`.
+- `pnpm --filter @kortix/db typecheck`: exit `0`.
+- Focused web ESLint: exit `0`.
+- Migration lint: exit `0`.
+- Migration applied to the isolated Postgres database. The
+  `authorization_strategy` enum and column exist.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+**Repository delivery shippable to production: NOT YET.** Tasks 2 through 8,
+PR merge, Deploy Dev, deployed SHA proof, and deployed behavior verification
+remain.

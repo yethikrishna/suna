@@ -47,16 +47,24 @@ export const ABSOLUTE_RUN_CAP_MS = 24 * 3_600_000;
  *
  * 4 hours is deliberately generous — a "ship the generous ceiling first" bet,
  * and the reason this change needs no shadow-mode observation harness:
- *   - it is ~200x the longest turn observed in production, so a turn-start path
- *     we failed to instrument CANNOT kill work that is actually running;
+ *   - it is well above the p99 turn, so a turn-start path we failed to
+ *     instrument is very unlikely to kill work that is actually running;
  *   - it is 66x below the observed 264h worst case, so 11-day zombies become
  *     4-hour ones on day one;
  *   - it binds ONLY when `turn_end` never arrives — i.e. when opencode is
  *     wedged or its watcher died, which is precisely the population being
  *     targeted.
- * TO TIGHTEN LATER: once real `turn_end` delivery rates exist, drop
- * KORTIX_SANDBOX_TURN_GRANT_MINUTES to 60 (or change the default below). No
- * other code has to move.
+ *
+ * KNOWN LIMIT, measured on 30 days of prod usage_events: the turn-length tail
+ * is longer than this grant. Sessionised at a 5-minute LLM-silence gap, p99 is
+ * ~78 min but the MAX is ~8.4h, and roughly 7-18 turns per 30 days exceed 4h.
+ * A turn gets exactly ONE grant — nothing re-extends mid-turn, because extend
+ * fires only on a turn-START POST — so a genuinely long turn CAN be stopped
+ * under it. That tail is small and the alternative was 187 immortal boxes, but
+ * it is a real false-kill risk, not zero. BEFORE TIGHTENING toward 60 min,
+ * add a mid-turn extension driven by a signal the box cannot forge (usage_events
+ * is the obvious one: it is written by the gateway, not the sandbox, so it
+ * satisfies the invariant) — otherwise tightening makes this strictly worse.
  *
  * KILL SWITCH: set KORTIX_SANDBOX_TURN_GRANT_MINUTES=100000 and every extend
  * out-runs the cap, so the LEAST clamps at active_since + 24h and the feature

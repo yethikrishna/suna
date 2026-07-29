@@ -46,7 +46,7 @@ beforeEach(() => {
 });
 
 describe('the constants', () => {
-  test('the generous ceiling is 4h by default — ~200x the longest observed turn', () => {
+  test('the generous ceiling is 4h by default — above p99, below the 264h worst case', () => {
     expect(turnGrantMs()).toBe(4 * 3_600_000);
   });
 

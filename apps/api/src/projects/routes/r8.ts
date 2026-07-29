@@ -22,6 +22,8 @@ import { and, desc, eq } from 'drizzle-orm';
 import { loadProjectForUser, loadVisibleSession, assertProjectCapability } from '../lib/access';
 import { assertAgentScope } from '../../iam/agent-scope';
 import { PROJECT_ACTIONS } from '../../iam';
+import { callerKortixSessionId } from '../lib/caller-session';
+import { sandboxTokenMayActOnSession } from '../lib/sandbox-token-session';
 import { AnyObject, ChangeRequestSchema, SessionStartResultSchema, projectsApp } from '../lib/app';
 import { withProjectGitAuth } from '../lib/git';
 import { UUID_V4_REGEX, normalizeString, readBody } from '../lib/serializers';
@@ -484,6 +486,20 @@ projectsApp.openapi(
       projectId,
       PROJECT_ACTIONS.PROJECT_GITOPS_PUSH,
     );
+
+    // The capability check above is PROJECT-wide, and in Kortix-as-a-Backend the
+    // sandbox's own token holds it — every KaaB session shares the wrapper's
+    // credential, so "may push in this project" is true for every end-user's
+    // agent. Without this, end-user A's sandbox could commit and push end-user
+    // B's working tree to B's branch. A sandbox token acts for exactly one
+    // session (sandbox_id == session_id by construction); bind it to that one.
+    const callerSandboxSessionId = callerKortixSessionId(c);
+    if (
+      callerSandboxSessionId !== null &&
+      !sandboxTokenMayActOnSession(callerSandboxSessionId, sessionId)
+    ) {
+      return c.json({ error: 'sandbox token is not scoped to this session' }, 403);
+    }
 
     const body = await readBody(c);
     const message = normalizeString(body.message) ?? undefined;

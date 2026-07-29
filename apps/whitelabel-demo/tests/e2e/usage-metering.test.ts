@@ -10,7 +10,7 @@
  *
  * The app boots twice — once with no operator configured (the default: the
  * grouped read is narrowed to the caller) and once with
- * `LUMEN_USAGE_OPERATOR_EMAILS=*` (the account-wide view).
+ * `LUMEN_USAGE_SHOW_ACCOUNT_BREAKDOWN=1` (the account-wide view).
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
@@ -221,7 +221,7 @@ describe('/api/usage — per-end-user metering', () => {
     upstream = createUpstream(WRAPPER_KEY);
     const env = { KORTIX_UPSTREAM: `${upstream.url}/v1` };
     app = await startApp(wrapperEnv(env));
-    operatorApp = await startApp(wrapperEnv({ ...env, LUMEN_USAGE_OPERATOR_EMAILS: '*' }));
+    operatorApp = await startApp(wrapperEnv({ ...env, LUMEN_USAGE_SHOW_ACCOUNT_BREAKDOWN: '1' }));
   }, 60_000);
 
   afterAll(async () => {

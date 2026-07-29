@@ -166,12 +166,13 @@ export function UsageEndUserBreakdown({ data }: { data: UsageResponse }) {
           )
         ) : (
           <p className="mt-2">
-            The account total and every other end-user&apos;s row are operator-only — showing them
-            here would let any signed-in user read every other user&apos;s id and spend. The
-            breakdown above is narrowed to you. Set{' '}
-            <code className="font-mono">{data.operatorEnvVar}</code> to your email (or{' '}
-            <code className="font-mono">*</code> on a throwaway demo) to see the account-wide split
-            and the arithmetic behind this caveat.
+            The account total and every other end-user&apos;s row are hidden — showing them here
+            would let any signed-in user read every other user&apos;s id and spend. The breakdown
+            above is narrowed to you. Set{' '}
+            <code className="font-mono">{data.operatorEnvVar}=1</code> to turn the account-wide
+            split on for this whole deployment, and see the arithmetic behind this caveat. It is a
+            deployment switch, not a per-user permission: this demo&apos;s login accepts any email,
+            so an allowlist of addresses would name a user without authenticating one.
           </p>
         )}
       </div>

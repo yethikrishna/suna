@@ -59,12 +59,16 @@ spend, and the breakdown panel stays empty.
 To see it while testing, opt yourself in:
 
 ```bash
-echo 'LUMEN_USAGE_OPERATOR_EMAILS=*' >> apps/whitelabel-demo/.env.local
+echo 'LUMEN_USAGE_SHOW_ACCOUNT_BREAKDOWN=1' >> apps/whitelabel-demo/.env.local
 ```
 
-`*` opts in every signed-in user — correct for a founder poking at a demo, never
-for a deployment with real users on it. A comma-separated email list is the
-narrower form.
+This is a **deployment** switch, not a per-user permission — deliberately. The
+first version allowlisted operator emails, which reads like authorization and
+is not: this demo's login accepts any email with any password, so the "operator
+identity" is a string the visitor typed. Anyone wanting the breakdown could just
+sign in as an allowlisted address. A deployment flag states the real condition
+("this instance is a single-tenant demo") and cannot be bypassed by choosing a
+different email.
 
 Restart after changing it (`pnpm dev` picks up `.env.local` on boot, not per
 request).

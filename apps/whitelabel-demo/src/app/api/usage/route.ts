@@ -59,17 +59,29 @@ export const dynamic = 'force-dynamic';
  * defaults to nobody. `*` opts every signed-in user in — fine for a founder
  * poking at a demo, never for a deployment with real users on it.
  */
-const OPERATOR_ENV_VAR = 'LUMEN_USAGE_OPERATOR_EMAILS';
+const ACCOUNT_VIEW_ENV_VAR = 'LUMEN_USAGE_SHOW_ACCOUNT_BREAKDOWN';
 
-function isOperator(userId: string): boolean {
-  const raw = (process.env[OPERATOR_ENV_VAR] ?? '').trim();
-  if (!raw) return false;
-  if (raw === '*') return true;
-  return raw
-    .split(',')
-    .map((entry) => entry.trim().toLowerCase())
-    .filter((entry) => entry.length > 0)
-    .includes(userId.trim().toLowerCase());
+/**
+ * Whether THIS DEPLOYMENT exposes the account-wide breakdown.
+ *
+ * Deliberately NOT a per-user check. The first cut allowlisted operator emails,
+ * which reads like authorization and is not: this demo's login accepts ANY
+ * email with any password (`checkDemoCredentials`), so `session.userId` is an
+ * unverified string the visitor typed. Anyone who wanted the breakdown could
+ * simply sign in as an allowlisted address — the allowlist named a user without
+ * ever authenticating one.
+ *
+ * A deployment-level switch is the honest shape of the actual statement: "this
+ * instance is a single-tenant demo, so showing every end-user's spend harms
+ * nobody." It cannot be bypassed by choosing a different email, because it does
+ * not consult identity at all. A real product would gate this on a role, which
+ * requires a real user directory — which this demo intentionally does not have.
+ *
+ * Default OFF: the breakdown names other end-users and prices them.
+ */
+function accountBreakdownEnabled(): boolean {
+  const raw = (process.env[ACCOUNT_VIEW_ENV_VAR] ?? '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes';
 }
 
 function upstreamBase(): string {
@@ -118,7 +130,7 @@ export async function GET(req: NextRequest) {
 
   const markup = markupMultiplier();
   const upstream = upstreamBase();
-  const operator = isOperator(session.userId);
+  const operator = accountBreakdownEnabled();
   // listOwnedProjects already UUID-filters, but re-assert at the call site:
   // these ids come from a file and are interpolated into upstream URLs.
   const projectIds = listOwnedProjects(session.userId).filter(isValidProjectId);
@@ -155,7 +167,7 @@ export async function GET(req: NextRequest) {
   // wrapper.
   //
   // The grouped read is narrowed to the caller unless they're an operator (see
-  // isOperator). `mine` is always narrowed and is the same query a wrapper would
+  // accountBreakdownEnabled). `mine` is always narrowed and is the same query a wrapper would
   // run to answer "what does this customer owe me".
   const [grouped, groupedError] = await settle(
     kortix.billing.usageRollup(
@@ -209,7 +221,7 @@ export async function GET(req: NextRequest) {
     unattributed_cost: accountTotal
       ? round2(Math.max(0, accountTotal.rawCost - attributedRaw) + endUserBills.unattributedCost)
       : null,
-    operatorEnvVar: OPERATOR_ENV_VAR,
+    operatorEnvVar: ACCOUNT_VIEW_ENV_VAR,
   };
   return Response.json(payload);
 }

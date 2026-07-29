@@ -220,7 +220,7 @@ Also stop if the same failure survives three different fixes (use
 | 0 | Design and implementation plan | DONE | `profile-auth-cost` | 2026-07-29 | `e70538c802` |
 | 1 | Connector profile contracts | DONE | `profile-auth-cost` | 2026-07-29 | `543044a2a6` + `df01b91344` + `6bfc4dcae1` + `3a410eb374` |
 | 2 | Strategy-based session authorization | DONE | `profile-auth-cost` | 2026-07-29 | `d9a217dd7d` + `0ae111091e` + `df9586a8b5` + `f8c0cbdf21` + `4630109c7d` + `74a804d14d` + `f9d9746ebb` + `383e501ea3` + `30c607a646` |
-| 3 | Main web session scope | IN PROGRESS | `profile-auth-cost` | 2026-07-29 | — |
+| 3 | Main web session scope | DONE | `profile-auth-cost` | 2026-07-29 | `900e01a723` + `53d7191abb` + `f1b1e00978` |
 | 4 | Remove end-user usage attribution | NOT STARTED | — | — | — |
 | 5 | Unified session costs | NOT STARTED | — | — | — |
 | 6 | White-label and documentation alignment | NOT STARTED | — | — | — |
@@ -4025,3 +4025,47 @@ Other final gates:
 **Repository delivery shippable to production: NOT YET.** Tasks 3 through 8,
 PR merge, Deploy Dev, deployed SHA proof, and deployed behavior verification
 remain.
+
+---
+
+### 2026-07-29 — session `profile-auth-cost` Task 3 completion
+
+Completed the main web session-scope control and required-authorization gate.
+
+The home composer, instant shell, and active chat expose one compact scope
+control. The control reads the authoritative secret allowlist and connector
+authorization map. It preserves unrestricted, empty, explicit, and unavailable
+scope states.
+
+New-session scope applies after durable session creation and before runtime
+startup or navigation. Active-session replacement applies to the next prompt or
+tool call. A non-retroactive secret removal warns about values that can remain
+in the current conversation or existing shells.
+
+The required-authorization gate renders every missing connector profile. It
+starts project-owned or user-owned authorization according to connector profile
+strategy. Session creation retries only after every missing authorization
+connects.
+
+TDD evidence:
+
+- Required-authorization gate suite: `12 pass`, `0 fail`, and `40` assertions.
+- Scope model, data, control, toolbar, and creation suite: `46 pass`, `0 fail`,
+  and `89` assertions.
+- New-session scope ordering proves create or claim, authoritative read-back,
+  complete replacement, then startup and navigation.
+
+Other final gates:
+
+- Focused web ESLint: exit `0`.
+- Web TypeScript reports `0` diagnostics in every changed Task 3 file.
+- The full web TypeScript command retains `4` unrelated diagnostics in existing
+  generated-source and template-test files.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.** Task 3 does not change SDK source.
+
+**Repository delivery shippable to production: NOT YET.** Tasks 4 through 8,
+local Chromium verification, PR merge, Deploy Dev, deployed SHA proof, and
+deployed behavior verification remain.

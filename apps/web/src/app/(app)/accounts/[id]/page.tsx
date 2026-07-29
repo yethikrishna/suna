@@ -206,7 +206,11 @@ const NAV_GROUPS: Array<{
 const PANE_META: Partial<Record<AccountSection, { title: string; description: string }>> = {
   members: { title: 'Members', description: 'People with access to this account.' },
   billing: { title: 'Plan', description: 'Plan, wallet, and spend for this account.' },
-  transactions: { title: 'Credits', description: 'Every credit movement on this account.' },
+  transactions: {
+    title: 'Credits',
+    description:
+      'Credit ledger for this account, including grants, purchases, usage, refunds, and adjustments.',
+  },
   tokens: {
     title: 'Tokens',
     description: 'Token policy and machine identities for CI and automations.',

@@ -63,6 +63,7 @@ import { callerKortixSessionId } from '../lib/caller-session';
 import { DEFAULT_AGENT_SENTINEL } from '../agents';
 import { resolveSessionAgentGrant } from '../lib/secret-grant';
 import { rescopeSessionBindings, rescopeSessionSecrets } from '../lib/session-rescope';
+import { validateSessionConnectorBindings } from '../lib/session-connector-bindings';
 import { resolveEndUserRef } from '../lib/end-user-ref';
 import { selectSessionRowsForViewer, type ProjectSessionListScope } from '../lib/session-inventory';
 
@@ -2206,44 +2207,45 @@ projectsApp.openapi(
             eq(projectSessionConnectorBindings.projectId, projectId),
           ),
         );
-      // connector_id comes from the PROFILE, and the profile's account must match
-      // this project's — otherwise a caller could bind another tenant's
-      // connection by id. Same check ensureEmailSessionBinding makes.
-      const profileIds = Object.values(nextBindings);
-      const profiles = profileIds.length
-        ? await db
-            .select({
-              profileId: executorConnectionProfiles.profileId,
-              connectorId: executorConnectionProfiles.connectorId,
-              accountId: executorConnectionProfiles.accountId,
-            })
-            .from(executorConnectionProfiles)
-            .where(inArray(executorConnectionProfiles.profileId, profileIds))
-        : [];
-      const byProfile = new Map(profiles.map((row) => [row.profileId, row]));
-      const rows: Array<typeof projectSessionConnectorBindings.$inferInsert> = [];
-      for (const [alias, profileId] of Object.entries(nextBindings)) {
-        const profile = byProfile.get(profileId);
-        if (!profile || profile.accountId !== loaded.row.accountId) {
-          return c.json(
-            {
-              error: `connection ${profileId} does not exist in this project`,
-              code: 'CONNECTOR_PROFILE_NOT_FOUND',
-            },
-            404,
-          );
-        }
-        rows.push({
-          sessionId,
-          projectId,
-          accountId: loaded.row.accountId,
-          connectorAlias: alias,
-          connectorId: profile.connectorId,
-          profileId,
-          source: 'request',
-          createdBy: loaded.userId,
-        });
+      // Reuse the SAME validator session-create uses. My first version checked
+      // only the alias against the agent grant and that the profile lived in
+      // this account — which let a session owner rebind a granted alias to
+      // ANOTHER end-user's `external` profile and use it on the next tool call.
+      // That is a WRITE path to the very escalation the profile-enumeration fix
+      // closed for reads. The create path already requires
+      // PROJECT_SESSION_BINDINGS_WRITE for non-member profiles and restricts
+      // member-owned ones to their owner; re-scoping must not be a second,
+      // weaker door to the same table.
+      const mayManageSystemProfiles = await projectCapabilityAllowed(
+        c,
+        loaded.userId,
+        loaded.row.accountId,
+        projectId,
+        PROJECT_ACTIONS.PROJECT_SESSION_BINDINGS_WRITE,
+      );
+      const validated = await validateSessionConnectorBindings({
+        accountId: loaded.row.accountId,
+        projectId,
+        actingUserId: loaded.userId,
+        actingPrincipalIsServiceAccount: c.get('authType') === 'service_account',
+        mayManageSystemProfiles,
+        bindings: Object.fromEntries(
+          Object.entries(nextBindings).map(([alias, profileId]) => [alias, { profile_id: profileId }]),
+        ),
+      });
+      if (!validated.ok) {
+        return c.json({ error: validated.error, code: validated.code }, 403);
       }
+      const rows = validated.bindings.map((binding) => ({
+        sessionId,
+        projectId,
+        accountId: loaded.row.accountId,
+        connectorAlias: binding.alias,
+        connectorId: binding.connectorId,
+        profileId: binding.profileId,
+        source: 'request' as const,
+        createdBy: loaded.userId,
+      }));
       if (rows.length > 0) await db.insert(projectSessionConnectorBindings).values(rows);
     }
 

@@ -271,6 +271,66 @@ describe.skipIf(!dockerAvailable)('session_sandboxes anchor guard — real Postg
       ).toBe('t');
     });
 
+    // A witness must survive a park -> park write (stopped -> archived, an error
+    // being reclassified), or restoring an archived box would inherit an anchor
+    // that may already be past its cap and expire the box on the spot.
+    test('the witness survives a park -> park transition', () => {
+      reseed('active');
+      const before = scalar(
+        `SELECT active_since FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`,
+      );
+
+      psql(`UPDATE kortix.session_sandboxes SET status = 'stopped' WHERE sandbox_id = '${BOX}'`);
+      psql(`UPDATE kortix.session_sandboxes SET status = 'archived' WHERE sandbox_id = '${BOX}'`);
+      expect(
+        scalar(`SELECT metadata ? 'stretchParkedAt'
+                  FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`),
+      ).toBe('t');
+
+      psql(`UPDATE kortix.session_sandboxes SET status = 'active' WHERE sandbox_id = '${BOX}'`);
+
+      expect(
+        scalar(`SELECT active_since > '${before}'::timestamptz
+                  FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`),
+      ).toBe('t');
+    });
+
+    // The witness is trigger-owned in BOTH directions: a caller can neither add
+    // one nor delete one to manipulate the anchor.
+    test('a caller cannot DESTROY a witness either', () => {
+      reseed('active');
+      psql(`UPDATE kortix.session_sandboxes SET status = 'stopped' WHERE sandbox_id = '${BOX}'`);
+
+      psql(
+        `UPDATE kortix.session_sandboxes SET metadata = '{}'::jsonb WHERE sandbox_id = '${BOX}'`,
+      );
+
+      expect(
+        scalar(`SELECT metadata ? 'stretchParkedAt'
+                  FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`),
+      ).toBe('t');
+    });
+
+    test('the witness buys exactly ONE re-anchor, then is gone', () => {
+      reseed('active');
+      psql(`UPDATE kortix.session_sandboxes SET status = 'stopped' WHERE sandbox_id = '${BOX}'`);
+      psql(`UPDATE kortix.session_sandboxes SET status = 'active' WHERE sandbox_id = '${BOX}'`);
+      const anchored = scalar(
+        `SELECT active_since FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`,
+      );
+
+      // No park in between this time — a provisioning round trip must not reset.
+      psql(
+        `UPDATE kortix.session_sandboxes SET status = 'provisioning' WHERE sandbox_id = '${BOX}'`,
+      );
+      psql(`UPDATE kortix.session_sandboxes SET status = 'active' WHERE sandbox_id = '${BOX}'`);
+
+      expect(
+        scalar(`SELECT active_since = '${anchored}'::timestamptz
+                  FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`),
+      ).toBe('t');
+    });
+
     test('REGRESSION: flipping out and back a hundred times buys nothing', () => {
       reseed('active');
       const before = scalar(

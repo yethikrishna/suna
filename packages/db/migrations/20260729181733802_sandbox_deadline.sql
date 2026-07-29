@@ -124,25 +124,33 @@ BEGIN
   -- I1, unconditional.
   NEW.active_since := OLD.active_since;
 
+  -- THE WITNESS IS ENTIRELY TRIGGER-OWNED. Whatever the caller put in `metadata`,
+  -- the key is first overwritten with OLD's value (or removed if OLD had none), so
+  -- an application write can neither forge one nor destroy one. Only the two
+  -- branches below may change it: a park sets it, a resume consumes it.
+  IF OLD.metadata ? 'stretchParkedAt' THEN
+    NEW.metadata := coalesce(NEW.metadata, '{}'::jsonb)
+                    || jsonb_build_object('stretchParkedAt', OLD.metadata -> 'stretchParkedAt');
+  ELSE
+    NEW.metadata := coalesce(NEW.metadata, '{}'::jsonb) - 'stretchParkedAt';
+  END IF;
+
   IF OLD.status = 'active'
      AND (NEW.status IN ('stopped', 'error', 'archived')
           OR (NEW.status = 'provisioning' AND NEW.external_id IS NULL)) THEN
     -- A PARK, witnessed while the row still claimed to be running. This is the
-    -- only way the witness is ever created.
-    NEW.metadata := coalesce(NEW.metadata, '{}'::jsonb)
-                    || jsonb_build_object('stretchParkedAt', to_jsonb(now()));
-
-  ELSIF NOT (OLD.status <> 'active' AND NEW.status = 'active') THEN
-    -- Any write that is neither a park nor the re-anchor below cannot leave a
-    -- witness behind — that is what makes the witness unforgeable by callers.
-    NEW.metadata := coalesce(NEW.metadata, '{}'::jsonb) - 'stretchParkedAt';
+    -- only way the witness is ever created. `provisioning` counts only when the
+    -- external box has been RELEASED — that is "the instance is gone", not the
+    -- routine status churn a restart performs.
+    NEW.metadata := NEW.metadata || jsonb_build_object('stretchParkedAt', to_jsonb(now()));
   END IF;
 
   IF OLD.status <> 'active' AND NEW.status = 'active' THEN
     IF OLD.metadata ? 'stretchParkedAt' THEN
-      -- I2: a witnessed park is being resumed → a genuinely new stretch.
+      -- I2: a witnessed park is being resumed → a genuinely new stretch. The
+      -- witness is CONSUMED here, so it can buy exactly one re-anchor.
       NEW.active_since := now();
-      NEW.metadata := coalesce(NEW.metadata, '{}'::jsonb) - 'stretchParkedAt';
+      NEW.metadata := NEW.metadata - 'stretchParkedAt';
     END IF;
     -- I3: floor, never discard. `IS NOT DISTINCT FROM OLD` is the exact test for
     -- "this writer did not state a deadline" (an ORM whole-object UPDATE

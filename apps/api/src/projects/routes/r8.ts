@@ -75,6 +75,12 @@ projectsApp.openapi(
           message: billing.message,
           code: billing.reason,
           balance: billing.balance,
+          // Same discrimination the create/start 402 carries — a resume block on
+          // a paying-but-drained Team account must not read as "no plan".
+          billing_model: billing.billingModel,
+          has_subscription: billing.hasSubscription,
+          billing_state: billing.billingState,
+          account_id: loaded.row.accountId,
         },
         402,
       );

@@ -221,7 +221,7 @@ Also stop if the same failure survives three different fixes (use
 | 1 | Connector profile contracts | DONE | `profile-auth-cost` | 2026-07-29 | `543044a2a6` + `df01b91344` + `6bfc4dcae1` + `3a410eb374` |
 | 2 | Strategy-based session authorization | DONE | `profile-auth-cost` | 2026-07-29 | `d9a217dd7d` + `0ae111091e` + `df9586a8b5` + `f8c0cbdf21` + `4630109c7d` + `74a804d14d` + `f9d9746ebb` + `383e501ea3` + `30c607a646` |
 | 3 | Main web session scope | DONE | `profile-auth-cost` | 2026-07-29 | `900e01a723` + `53d7191abb` + `f1b1e00978` |
-| 4 | Remove end-user usage attribution | IN PROGRESS | `profile-auth-cost` | 2026-07-29 | — |
+| 4 | Remove end-user usage attribution | DONE | `profile-auth-cost` | 2026-07-29 | `f6c14a5d95` + `71b230d933` + `d2871144df` + `c8d8403231` + `3c1e979263` + `c5ad2d3496` |
 | 5 | Unified session costs | NOT STARTED | — | — | — |
 | 6 | White-label and documentation alignment | NOT STARTED | — | — | — |
 | 7 | Local verification | NOT STARTED | — | — | — |
@@ -4069,3 +4069,48 @@ Other final gates:
 **Repository delivery shippable to production: NOT YET.** Tasks 4 through 8,
 local Chromium verification, PR merge, Deploy Dev, deployed SHA proof, and
 deployed behavior verification remain.
+
+---
+
+### 2026-07-29 — session `profile-auth-cost` Task 4 completion
+
+Removed usage attribution from the API, SDK, CLI, and main web app.
+
+Session creation rejects the removed request fields. New session and usage
+records leave the legacy database columns unset. The runtime exports no
+attribution environment variables. Usage rollups support only model, provider,
+and day grouping.
+
+Per-reference concurrency limits, spend limits, idempotency checks, filters,
+grouping, SDK fields, CLI options, and dashboard controls are removed. The
+legacy database columns and indexes remain for a later contract migration.
+White-label and product documentation alignment remains in Task 6.
+
+TDD evidence:
+
+- API contract suite: `54 pass`, `0 fail`, and `112` assertions.
+- Usage-query suite: `16 pass`, `0 fail`, and `23` assertions.
+- API runtime and HTTP suite: `128 pass`, `0 fail`, and `554` assertions.
+- SDK focused contract suite: `46 pass`, `0 fail`, and `114` assertions.
+- CLI focused parser and process suite: `13 pass`, `0 fail`, and `37`
+  assertions.
+- Main web billing suite: `14 pass`, `0 fail`, and `51` assertions.
+
+Final gates:
+
+- `pnpm --filter kortix-api typecheck`: exit `0`.
+- `pnpm --dir packages/sdk typecheck`: exit `0`.
+- `pnpm --dir apps/cli typecheck`: exit `0`.
+- SDK full suite: `1374 pass`, `0 fail`, across `117` files.
+- CLI full suite: `556 pass`, `0 fail`, across `50` files.
+- SDK packed-install smoke test passed.
+- Focused web ESLint: exit `0`.
+- Web TypeScript reports `0` diagnostics in every changed Task 4 file.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+**Repository delivery shippable to production: NOT YET.** Tasks 5 through 8,
+white-label alignment, local HTTP and Chromium verification, PR merge, Deploy
+Dev, deployed SHA proof, and deployed behavior verification remain.

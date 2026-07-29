@@ -10,14 +10,14 @@
  * corpus through both `validateManifest` and this schema (via ajv) and
  * fails CI on any accept/reject disagreement.
  *
- * Three documents are published (see `apps/web/public/schema/` +
+ * Four documents are published (see `apps/web/public/schema/` +
  * `scripts/generate-schema.ts`):
  *
  *   - `kortix.v1.schema.json` — the `[[agents]]`-array / `[[channels]]` shape.
  *   - `kortix.v2.schema.json` — the `agents:`-map, governance-only shape.
- *   - `kortix.schema.json`    — BOTH, dispatched by an `if/then` on
- *     `kortix_version` (const 1 vs const 2), so ONE URL always validates
- *     whichever version a manifest declares.
+ *   - `kortix.v3.schema.json` — ACP runtime profiles and logical agents.
+ *   - `kortix.schema.json`    — all versions, dispatched by `if/then` on
+ *     `kortix_version`, so ONE URL validates every published version.
  *
  * Deliberate scope limits (documented, not bugs — see spec header of
  * `./index.ts` and the conformance test):
@@ -543,10 +543,21 @@ function agentBlockV2Schema(): JsonSchemaFragment {
 function runtimeBlockV3Schema(): JsonSchemaFragment {
   return {
     type: 'object',
+    description:
+      'One ACP runtime profile. The selected harness and resolved profile are immutable when a session starts.',
     required: ['harness'],
     properties: {
-      harness: { type: 'string', enum: [...V3_HARNESS_VALUES] },
-      config_dir: relativePathSchema(),
+      harness: {
+        type: 'string',
+        enum: [...V3_HARNESS_VALUES],
+        description:
+          'Harness implementation for this runtime profile. Supported values select OpenCode, Claude Code, Codex, or Pi.',
+      },
+      config_dir: {
+        ...relativePathSchema(),
+        description:
+          'Optional repository-relative harness configuration directory. The runtime uses the harness-native default when this field is absent.',
+      },
     },
     additionalProperties: false,
   };
@@ -557,8 +568,16 @@ function agentBlockV3Schema(): JsonSchemaFragment {
     type: 'object',
     required: ['runtime'],
     properties: {
-      runtime: NON_EMPTY_STRING,
-      agent: NON_EMPTY_STRING,
+      runtime: {
+        ...NON_EMPTY_STRING,
+        description:
+          'The name of a declared runtime profile. This selection becomes immutable when a session starts.',
+      },
+      agent: {
+        ...NON_EMPTY_STRING,
+        description:
+          'Optional harness-native agent identifier. Omit this field when the selected harness has no named-agent concept.',
+      },
       enabled: { type: 'boolean' },
       connectors: grantSetSchema(),
       secrets: grantSetSchema(),
@@ -655,7 +674,12 @@ export function buildManifestV3Schema(): JsonSchemaFragment {
     $schema: DRAFT,
     $id: `${KORTIX_SCHEMA_BASE_URL}/kortix.v3.schema.json`,
     title: 'Kortix manifest (kortix_version 3)',
-    description: 'ACP runtime profiles and logical agents. Native harness config owns behavior.',
+    description:
+      'ACP & Multi-Harness manifest for OpenCode, Claude Code, Codex, and Pi. ' +
+      'The project must enable the `acp_runtime` experiment before it can start a version 3 session. ' +
+      'Each logical agent selects one declared runtime profile. The selected harness, runtime profile, ' +
+      'and harness-native agent identifier are immutable when a session starts. Native harness ' +
+      'configuration owns model, prompt, permission, and tool behavior.',
     type: 'object',
     required: ['kortix_version', 'default_agent', 'runtimes', 'agents'],
     properties: {
@@ -663,6 +687,8 @@ export function buildManifestV3Schema(): JsonSchemaFragment {
       default_agent: NON_EMPTY_STRING,
       runtimes: {
         type: 'object',
+        description:
+          'Named ACP runtime profiles. Each profile selects one supported harness and its native configuration directory.',
         minProperties: 1,
         propertyNames: { pattern: SLUG_RE.source },
         additionalProperties: runtimeBlockV3Schema(),
@@ -684,9 +710,9 @@ export function buildManifestV3Schema(): JsonSchemaFragment {
 
 /**
  * The combined document: ONE stable URL that validates a manifest of
- * EITHER known version, dispatched by an `if/then` on `kortix_version`
+ * every known version, dispatched by an `if/then` on `kortix_version`
  * (spec ask: "one single validator reference"). Each branch inlines the
- * SAME body a standalone `kortix.v1`/`kortix.v2` document would use (the
+ * SAME body a standalone versioned document would use (the
  * builder functions above are the single source for both), so this document
  * is fully self-contained — no cross-document `$ref` resolution required to
  * validate with it.

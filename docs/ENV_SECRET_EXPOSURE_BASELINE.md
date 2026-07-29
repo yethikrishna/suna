@@ -4,6 +4,12 @@
 proposal here. This exists so the env-var refactor argues from measured facts
 rather than from what the architecture is assumed to do.
 
+**Harness scope:** The `KORTIX_OPENCODE_DENY_ENV` findings below apply to the
+OpenCode compatibility child. Claude Code, Codex, and Pi ACP launch environments
+are resolved separately in `acp/harness-registry.ts`. All four harnesses still
+run inside the same session sandbox, so sandbox-level secret exposure remains
+the shared boundary.
+
 Every claim below is anchored to code I read on `main`. Where the codebase
 already documents its own intent, that comment is quoted rather than paraphrased
 — several of these are deliberate decisions, not oversights, and the refactor has

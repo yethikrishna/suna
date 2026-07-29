@@ -4,6 +4,10 @@ An email-first web studio that runs itself. A client emails in, the **studio**
 agent designs and deploys their website, sends a Stripe link to go live, and
 then makes every future change by email for a small fee — on a heartbeat.
 
+This template uses `kortix_version: 2` and an OpenCode-native `studio` agent.
+You can migrate the logical agent to a version 3 runtime profile after enabling
+**ACP & Multi-Harness**.
+
 ## What you get
 
 - One agent — **studio** — that handles the whole loop: understand the request,

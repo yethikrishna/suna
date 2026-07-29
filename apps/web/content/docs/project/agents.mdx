@@ -39,7 +39,9 @@ agents:
     skills: [code-review]
 ```
 
-Kortix compiles this mapping when it creates the session. The session stores `runtime_name`, `runtime_harness`, and `native_agent`. A later UI agent selection cannot change these values.
+Kortix compiles this mapping when it creates the session. The session returns
+`runtime_harness` and `native_agent`. Its metadata stores `runtime_name` and the
+compiled runtime plan. A later UI agent selection cannot change these values.
 
 ## Version 2 OpenCode agents
 
@@ -65,6 +67,17 @@ grant full access by default. Set specific grants to restrict access. See
 
 A v2 OpenCode skill is a Markdown file at `.kortix/opencode/skills/<name>/SKILL.md`. The `skills` grant controls which skills the agent may load. Version 3 applies the same grant boundary to the selected harness.
 
+Kortix injects managed system skills into the selected harness's native
+discovery path. An agent can also retrieve the deployed source through the CLI:
+
+```sh
+kortix system-skills
+kortix system-skills get kortix-system --full
+```
+
+Codex reads repository skills from `.agents/skills` and instructions from
+`AGENTS.md`. OpenCode, Claude Code, and Pi read their native skill directories.
+
 ## How a session picks its agent
 
 Creating a session accepts `agent_name`. Kortix uses `default_agent` when the field is absent. The selected agent remains fixed for the session.
@@ -76,3 +89,30 @@ New or changed agents and skills reach future sessions only after a
 [change request](/docs/work/change-requests) merges them into the default
 branch. Connect external tools before an agent can use them; see
 [Connectors](/docs/connect/connectors).
+
+## Test each harness
+
+Create one fresh session per logical agent. Use the same deterministic prompt.
+
+```sh
+kortix sessions new --agent opencode --prompt "Reply exactly: OPENCODE_OK" --wait --json
+kortix sessions new --agent claude --prompt "Reply exactly: CLAUDE_OK" --wait --json
+kortix sessions new --agent codex --prompt "Reply exactly: CODEX_OK" --wait --json
+kortix sessions new --agent pi --prompt "Reply exactly: PI_OK" --wait --json
+```
+
+Read each result with `kortix sessions info <session-id> --json` and
+`kortix sessions log <session-id> --json`. Confirm `runtime_harness`, the exact
+reply, and the persisted transcript. Restart the same session and send one more
+prompt to verify immutable runtime identity.
+
+The source checkout includes the complete four-harness protocol smoke:
+
+```sh
+pnpm exec dotenvx run --ignore=MISSING_ENV_FILE \
+  -f apps/api/.env.local -f apps/api/.env -f apps/web/.env \
+  -- bun tests/e2e/scripts/acp-multi-harness-smoke.ts
+```
+
+A generic provider-key check is not acceptance proof. Test the exact harness
+and model with a real prompt.

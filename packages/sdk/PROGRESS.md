@@ -3706,3 +3706,42 @@ Rendered provider-row verification remains unexecuted.
 **Shippable to production: YES.** Local suites, CI, merge, deployed SHA,
 deployed four-harness protocol behavior, restart recovery, and fixture cleanup
 all pass.
+
+---
+
+### 2026-07-28 — session `acp-multi-harness-system-docs` claim
+
+Claimed the multi-harness documentation and agent-discovery follow-up.
+
+The SDK change is documentation-only. It will replace the stale statement that
+ACP uses only OpenCode. It will document the server-selected OpenCode, Claude
+Code, Codex, or Pi harness without changing the public SDK surface.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.
+
+---
+
+### 2026-07-28 — session `acp-multi-harness-system-docs` local completion
+
+Completed the SDK documentation update for the server-selected OpenCode,
+Claude Code, Codex, or Pi harness.
+
+No SDK export or runtime implementation changed.
+
+Final SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1356 pass`, `0 fail`,
+  `5929 expect() calls`, `116 files`.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed tarball imported and
+  constructed successfully.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+**Repository delivery shippable to production: NOT YET.** Main integration,
+PR merge, Deploy Dev, deployed SHA proof, and deployed four-harness verification
+remain.

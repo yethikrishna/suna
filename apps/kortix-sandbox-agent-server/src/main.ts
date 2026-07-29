@@ -26,7 +26,7 @@ import {
 } from './opencode'
 import { relayBootTimelineToApi } from './boot-timeline-relay'
 import { ensureOpencodeConfigDeps } from './opencode-config-deps'
-import { ensureInjectedManagedSkills } from './injected-skills'
+import { ensureInjectedManagedSkills, managedSkillConfigDirs } from './injected-skills'
 import { isSharedSeedBakedRoot, OPENCODE_SEED_BAKED_PIN_PATH } from './opencode-fork-root'
 import { startOpencodeEventLoop, flattenOpencodeError, type QuestionRequest, type OpencodeTurnError } from './opencode-events'
 import { createProjectEnvStore } from './project-env'
@@ -217,10 +217,18 @@ async function main() {
   // first-session `bun install` doesn't re-resolve `^` ranges over the network
   // (a 1.5–6s — sometimes minutes — stall that otherwise gates runtimeReady).
   await ensureOpencodeConfigDeps(opencodeConfigDir)
-  // Overlay the always-latest managed Kortix skills (kortix-cli + the kortix-*
-  // family) so every session has current Kortix context regardless of what the
-  // project repo committed — no project ever goes stale on Kortix internals.
-  await ensureInjectedManagedSkills(opencodeConfigDir)
+  // Overlay the always-latest managed Kortix skills into every native harness
+  // discovery directory. OpenCode always starts for compatibility. The selected
+  // ACP harness must also receive the same live system context.
+  const runtimeConfigDir = process.env.KORTIX_RUNTIME_CONFIG_DIR?.trim() || null
+  for (const configDir of managedSkillConfigDirs({
+    workspace: cfg.workspace,
+    opencodeConfigDir,
+    harness: acpHarness,
+    runtimeConfigDir,
+  })) {
+    await ensureInjectedManagedSkills(configDir)
+  }
   bootMark('config-deps')
 
   // Bind the resolved (possibly project-owned) config dir before the first spawn.

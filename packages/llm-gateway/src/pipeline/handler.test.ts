@@ -1142,6 +1142,7 @@ describe("gateway.chatCompletions — empty-completion failover", () => {
     'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":3}}\n\n' +
     'data: [DONE]\n\n';
   const softRateLimitSse = `data: {"choices":[{"delta":{"content":"${rampRateMessage}"},"finish_reason":null}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":0,"completion_tokens":0}}\n\ndata: [DONE]\n\n`;
+  const validQuotedRateLimitSse = `data: {"choices":[{"delta":{"content":"${rampRateMessage}"},"finish_reason":null}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":20,"total_tokens":32}}\n\ndata: [DONE]\n\n`;
 
   // The ai-sdk engine PARSES an upstream SSE stream (via the real
   // @ai-sdk/openai-compatible provider) and RE-SERIALIZES it through this
@@ -1350,6 +1351,32 @@ describe("gateway.chatCompletions — empty-completion failover", () => {
       errorCode: "upstream_error",
       errorMessage: rampRateMessage,
     });
+  });
+
+  test("streaming: the exact rate-limit sentence with non-zero usage is relayed without retry", async () => {
+    const { hooks, traces } = makeHooks({ resolveUpstream: async () => [managed] });
+    let calls = 0;
+    const fetchImpl: FetchImpl = async () => {
+      calls += 1;
+      return sseResponse(validQuotedRateLimitSse);
+    };
+
+    const res = await createGateway(hooks, { retry: fastRetry }, { fetchImpl }).chatCompletions({
+      authorization: "Bearer good",
+      rawBody: '{"model":"x","stream":true,"messages":[{"role":"user","content":"quote the rate-limit message"}]}',
+    });
+
+    expect(res.status).toBe(200);
+    const text = await new Response(res.body).text();
+    expect(sseText(text)).toEqual({ content: rampRateMessage, finishReason: "stop" });
+    expect(calls).toBe(1);
+    await flush();
+    expect(traces[0]).toMatchObject({
+      ok: true,
+      status: 200,
+      provider: "openrouter",
+    });
+    expect(traces[0].candidatesTried).toEqual(["openrouter"]);
   });
 
   // An otherwise-200 stream that carries a structured `{error:{...}}` frame and no

@@ -219,7 +219,7 @@ Also stop if the same failure survives three different fixes (use
 |---|---|---|---|---|---|
 | 0 | Design and implementation plan | DONE | `profile-auth-cost` | 2026-07-29 | `e70538c802` |
 | 1 | Connector profile contracts | DONE | `profile-auth-cost` | 2026-07-29 | `543044a2a6` + `df01b91344` + `6bfc4dcae1` + `3a410eb374` |
-| 2 | Strategy-based session authorization | IN PROGRESS | `profile-auth-cost` | 2026-07-29 | — |
+| 2 | Strategy-based session authorization | DONE | `profile-auth-cost` | 2026-07-29 | `d9a217dd7d` + `0ae111091e` + `df9586a8b5` + `f8c0cbdf21` + `4630109c7d` + `74a804d14d` + `f9d9746ebb` + `383e501ea3` + `30c607a646` |
 | 3 | Main web session scope | NOT STARTED | — | — | — |
 | 4 | Remove end-user usage attribution | NOT STARTED | — | — | — |
 | 5 | Unified session costs | NOT STARTED | — | — | — |
@@ -3968,5 +3968,60 @@ Other final gates:
 **SDK package shippable to production: YES.**
 
 **Repository delivery shippable to production: NOT YET.** Tasks 2 through 8,
+PR merge, Deploy Dev, deployed SHA proof, and deployed behavior verification
+remain.
+
+---
+
+### 2026-07-29 — session `profile-auth-cost` Task 2 completion
+
+Completed strategy-based session authorization and authoritative session scope.
+
+Session creation, warm-session claim, scope replacement, and connector
+execution enforce the connector profile authorization strategy. Mandatory
+connector profiles fail before sandbox startup with one structured response
+that lists every missing authorization.
+
+Scope read-back returns the effective runtime authorization map. This includes
+strategy-based defaults that do not have durable binding rows. Complete
+replacement disables inherited defaults and applies to the next tool call.
+User authorizations remain private and resolve against the session owner.
+
+TDD evidence:
+
+- API contract suite: `55 pass`, `0 fail`, and `116` assertions.
+- Focused SDK suite: `99 pass`, `0 fail`, and `329` assertions.
+- Real Postgres authorization resolver suite: `35 pass`, `0 fail`, and `78`
+  assertions.
+- Real HTTP authorization and scope suite: `23 pass`, `0 fail`, and `77`
+  assertions.
+- Scope replacement suite: `15 pass`, `0 fail`, and `28` assertions.
+- Session-create and strategy suite: `35 pass`, `0 fail`, and `75`
+  assertions.
+- Read capability gate suite: `3 pass`, `97 filtered`, and `0 fail`.
+- Write capability gate suite: `3 pass`, `95 filtered`, and `0 fail`.
+- `ke2e coverage`: `509/519` routes covered, `10` allowlisted, and `0`
+  uncovered.
+
+Final SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1376 pass`, `0 fail`, `5980`
+  assertions, and `117` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed tarball imported and
+  constructed successfully.
+
+Other final gates:
+
+- `pnpm --filter kortix-api typecheck`: exit `0`.
+- Scope aliases round-trip between public and canonical forms.
+- Explicit empty, partial, inherited, and unrestricted scope states pass real
+  Postgres checks.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+**Repository delivery shippable to production: NOT YET.** Tasks 3 through 8,
 PR merge, Deploy Dev, deployed SHA proof, and deployed behavior verification
 remain.

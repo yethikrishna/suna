@@ -43,6 +43,7 @@ import { agentMayUseConnector } from '../iam/agent-scope';
 import type { ChannelPlatform } from '../projects/connectors';
 import { invalidateProjectMirror } from '../projects/git';
 import { loadProjectForUser } from '../projects/lib/access';
+import { connectorAuthorizationMatchesStrategy } from '../projects/lib/connector-authorization-strategy';
 import {
   canonicalConnectorAlias,
   publicConnectorAlias,
@@ -479,6 +480,7 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
         projectId,
         sessionId: principal.sessionId,
         alias: slug,
+        actingUserId: principal.userId,
       });
       if (!profile || profile.status !== 'active') return null;
       return toGatewayConnector(row, profile);
@@ -704,6 +706,7 @@ export async function loadPipedreamConnector(projectId: string, slug: string) {
       connectorId: executorConnectors.connectorId,
       providerType: executorConnectors.providerType,
       config: executorConnectors.config,
+      authorizationStrategy: executorConnectors.authorizationStrategy,
     })
     .from(executorConnectors)
     .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)))
@@ -711,7 +714,11 @@ export async function loadPipedreamConnector(projectId: string, slug: string) {
   if (!row || row.providerType !== 'pipedream') return null;
   const app = (row.config as any)?.app;
   if (typeof app !== 'string' || !app) return null;
-  return { connectorId: row.connectorId, app };
+  return {
+    connectorId: row.connectorId,
+    app,
+    authorizationStrategy: row.authorizationStrategy,
+  };
 }
 
 export function resolveTokenBoundSessionId(
@@ -851,6 +858,7 @@ async function listCatalog(p: ExecutorPrincipal): Promise<CatalogConnector[]> {
       projectId: p.projectId,
       sessionId: p.sessionId,
       alias: row.slug,
+      actingUserId: p.userId,
     });
     if (!profile || profile.status !== 'active') continue;
     const { hasAuth } = authOf(row);
@@ -1147,12 +1155,21 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
     setConnectorCredentialShared(projectId, slug, input),
   deleteConnectorCredential: async (projectId, slug) => {
     const [row] = await db
-      .select()
+      .select({
+        connectorId: executorConnectors.connectorId,
+        authorizationStrategy: executorConnectors.authorizationStrategy,
+      })
       .from(executorConnectors)
       .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)))
       .limit(1);
     if (!row) return { ok: false as const, error: 'connector not found', status: 404 };
-    // Always the shared credential — `per_user` was removed 2026-07-05.
+    if (row.authorizationStrategy !== 'project') {
+      return {
+        ok: false as const,
+        error: 'Shared credentials require a project authorization strategy',
+        status: 409,
+      };
+    }
     await deleteCredential(row.connectorId, null);
     return { ok: true as const };
   },
@@ -1178,13 +1195,10 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
       slug,
       policies as Parameters<typeof setConnectorPoliciesInManifest>[3],
     ),
-  // `userId` is accepted for interface stability but unused: every connector
-  // resolves the one shared Pipedream external-user binding since `per_user`
-  // (each member's own) was removed 2026-07-05.
   pipedreamConnect: pipedreamConfigured()
     ? async (projectId, slug, _userId, redirects) => {
         const conn = await loadPipedreamConnector(projectId, slug);
-        if (!conn) return null;
+        if (!conn || conn.authorizationStrategy !== 'project') return null;
         const { connectUrl, token } = await pipedreamConnectUrl(
           projectId,
           slug,
@@ -1198,7 +1212,7 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
   pipedreamFinalize: pipedreamConfigured()
     ? async (projectId, slug, _userId) => {
         const conn = await loadPipedreamConnector(projectId, slug);
-        if (!conn) return null;
+        if (!conn || conn.authorizationStrategy !== 'project') return null;
         const r = await finalizePipedreamConnection({
           projectId,
           slug,
@@ -1218,7 +1232,11 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
         if (!conn) return false;
         if (identityId) {
           const [profile] = await db
-            .select({ profileId: executorConnectionProfiles.profileId })
+            .select({
+              profileId: executorConnectionProfiles.profileId,
+              ownerType: executorConnectionProfiles.ownerType,
+              ownerId: executorConnectionProfiles.ownerId,
+            })
             .from(executorConnectionProfiles)
             .where(
               and(
@@ -1228,7 +1246,16 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
               ),
             )
             .limit(1);
-          if (profile) {
+          if (
+            profile &&
+            connectorAuthorizationMatchesStrategy({
+              strategy: conn.authorizationStrategy,
+              ownerType: profile.ownerType,
+              ownerId: profile.ownerId,
+              actingUserId: profile.ownerId ?? '',
+              actingPrincipalIsServiceAccount: false,
+            })
+          ) {
             await finalizePipedreamProfileConnection({
               projectId,
               slug,
@@ -1239,13 +1266,15 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
             });
             return true;
           }
+          return false;
         }
+        if (conn.authorizationStrategy !== 'project') return false;
         await finalizePipedreamConnection({
           projectId,
           slug,
           app: conn.app,
           connectorId: conn.connectorId,
-          userId: identityId ?? null,
+          userId: null,
         });
         return true;
       }

@@ -35,8 +35,8 @@ import { DEFAULT_SANDBOX_SLUG, resolveTemplate } from '../../snapshots/builder';
 import {
   grantFromLoadedAgents,
   loadProjectAgents,
-  personalConnectorsForAgent,
   projectRequiresDeclaredAgents,
+  requiredConnectorsForAgent,
   resolveGovernedAgentGrant,
   sandboxFromLoadedAgents,
 } from '../agents';
@@ -72,7 +72,7 @@ import {
 import {
   canonicalConnectorAlias,
   parseSessionConnectorBindings,
-  resolveRequiredMemberConnectorProfiles,
+  resolveRequiredConnectorProfiles,
   sessionConnectorBindingsRequirePrivateVisibility,
   validateSessionConnectorBindings,
 } from './session-connector-bindings';
@@ -721,10 +721,7 @@ export async function createProjectSession(input: {
   // failing closed. It can only ever inherit the project default (never another
   // owner's profile), so unlike origin_ref/secrets it is NOT origin-gated.
   let inheritUnbound = body.inherit_unbound === true;
-  // Interactive-only: connectors the ACTING USER must have connected themselves
-  // for this session (by alias). Resolved to their own member profile below; a
-  // missing one fails create with CONNECTOR_CONNECTION_REQUIRED so the UI can
-  // prompt them to connect it.
+  const connectorBindingsConfigured = body.connector_bindings !== undefined;
   const requireConnectors: string[] = Array.isArray(body.require_connectors)
     ? body.require_connectors.filter((a): a is string => typeof a === 'string' && a.length > 0)
     : [];
@@ -740,21 +737,6 @@ export async function createProjectSession(input: {
     inSession: input.inSession,
     source: (input.metadata as Record<string, unknown> | undefined)?.source as string | undefined,
   });
-  // require_connectors is interactive-only: it means "resolve THIS user's own
-  // connection", which a backend/service-account session (no single current
-  // user) cannot satisfy — it uses connector_bindings with explicit profile ids.
-  if (requireConnectors.length > 0 && origin !== 'user') {
-    return {
-      error: {
-        status: 403,
-        body: {
-          error:
-            'require_connectors is interactive-only — a backend/service-account session has no single current user; use connector_bindings instead',
-          code: 'REQUIRE_CONNECTORS_INTERACTIVE_ONLY',
-        },
-      },
-    };
-  }
   // Accept `end_user_ref` and its deprecated alias `origin_ref`. Disagreeing
   // values are rejected rather than silently resolved — picking either would
   // misattribute every usage row for this session.
@@ -986,21 +968,13 @@ export async function createProjectSession(input: {
     }
   }
 
-  // Agent-declared personal connectors (connectors_personal): a session with this
-  // agent auto-requires the launching user's OWN connection for each — but only
-  // for an interactive ('user') session. A backend/service-account session has no
-  // single current user and manages connectors explicitly via connector_bindings,
-  // so its agent's personal declaration is not enforced here. (`loadedAgents` is
-  // already resolved above — reuse it rather than re-reading the manifest.)
-  const agentPersonalConnectors =
-    origin === 'user' ? personalConnectorsForAgent(agentName, loadedAgents) : [];
+  const agentRequiredConnectors = requiredConnectorsForAgent(agentName, loadedAgents);
   const effectiveRequireConnectors = Array.from(
-    new Set<string>([...requireConnectors, ...agentPersonalConnectors]),
+    new Set<string>([...requireConnectors, ...agentRequiredConnectors]),
   );
 
   // Every connector this session touches — whether the caller bound it explicitly
-  // (connector_bindings) or it's required as the user's own (require_connectors or
-  // the agent's connectors_personal) — must be granted to the session's agent.
+  // or the agent requires it — must be granted to the session's agent.
   const grantCheckAliases = new Set<string>([
     ...(parsedConnectorBindings.bindings ? Object.keys(parsedConnectorBindings.bindings) : []),
     ...effectiveRequireConnectors,
@@ -1041,34 +1015,32 @@ export async function createProjectSession(input: {
       },
     };
   }
-  // Resolve require_connectors to THE ACTING USER's own member profiles and merge
-  // them into the binding set. A missing/revoked one fails create with a
-  // structured CONNECTOR_CONNECTION_REQUIRED so the UI can prompt a connect.
   if (effectiveRequireConnectors.length > 0) {
-    const required = await resolveRequiredMemberConnectorProfiles({
+    const required = await resolveRequiredConnectorProfiles({
       accountId,
       projectId,
       actingUserId: userId,
       actingPrincipalIsServiceAccount: input.requestingPrincipalType === 'service_account',
       aliases: effectiveRequireConnectors,
+      explicitBindings: validatedConnectorBindings.bindings,
     });
     if (!required.ok) {
       return {
         error: {
           status: 409,
-          body: { error: required.error, code: required.code, connector: required.connector },
+          body: {
+            code: required.code,
+            message: 'Connect the required connector profiles before starting this session.',
+            connector_profiles: required.connectorProfiles,
+          },
         },
       };
     }
-    // Dedupe by alias — an explicit connector_bindings entry for the same alias
-    // wins (it's already validated). Merging member bindings forces the session
-    // private (via the gate below); force inherit_unbound so binding these does
-    // not null the agent's OTHER connectors.
     const boundAliases = new Set(validatedConnectorBindings.bindings.map((b) => b.alias));
     for (const binding of required.bindings) {
       if (!boundAliases.has(binding.alias)) validatedConnectorBindings.bindings.push(binding);
     }
-    inheritUnbound = true;
+    if (!connectorBindingsConfigured) inheritUnbound = true;
   }
   if (
     visibility !== 'private' &&
@@ -1281,6 +1253,7 @@ export async function createProjectSession(input: {
         origin,
         originRef,
         secretsAllowlist,
+        connectorBindingsConfigured,
         connectorBindingsInheritUnbound: inheritUnbound,
         metadata,
         updatedAt: new Date(),

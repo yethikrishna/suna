@@ -29,7 +29,7 @@ import { makeDbGatewayDeps } from '../executor/db-deps';
 import { finalizePipedreamProfileConnection } from '../executor/pipedream';
 import { reconcileEmailConnectionProfiles } from '../executor/sync';
 import {
-  resolveRequiredMemberConnectorProfiles,
+  resolveRequiredConnectorProfiles,
   resolveSessionConnectorProfile,
   sessionConnectorBindingsRequirePrivateVisibility,
   validateSessionConnectorBindings,
@@ -44,6 +44,8 @@ const PROJECT_B = crypto.randomUUID();
 const CONNECTOR_A = crypto.randomUUID();
 const CONNECTOR_B = crypto.randomUUID();
 const EMAIL_CONNECTOR = crypto.randomUUID();
+const MISSING_CONNECTOR_A = crypto.randomUUID();
+const MISSING_CONNECTOR_B = crypto.randomUUID();
 const PROFILE_DEFAULT = crypto.randomUUID();
 const PROFILE_A = crypto.randomUUID();
 const PROFILE_B = crypto.randomUUID();
@@ -98,6 +100,7 @@ beforeAll(async () => {
       name: 'VEYRIS',
       providerType: 'http',
       config: { baseUrl: 'https://veyris.example.test', auth: { type: 'bearer' } },
+      authorizationStrategy: 'user',
     },
     {
       connectorId: CONNECTOR_B,
@@ -116,6 +119,26 @@ beforeAll(async () => {
       name: 'Email',
       providerType: 'channel',
       config: { platform: 'email' },
+    },
+    {
+      connectorId: MISSING_CONNECTOR_A,
+      accountId: ACCOUNT_A,
+      projectId: PROJECT_A,
+      slug: 'missing_one',
+      name: 'Missing one',
+      providerType: 'http',
+      config: { baseUrl: 'https://missing-one.example.test', auth: { type: 'bearer' } },
+      authorizationStrategy: 'project',
+    },
+    {
+      connectorId: MISSING_CONNECTOR_B,
+      accountId: ACCOUNT_A,
+      projectId: PROJECT_A,
+      slug: 'missing_two',
+      name: 'Missing two',
+      providerType: 'http',
+      config: { baseUrl: 'https://missing-two.example.test', auth: { type: 'bearer' } },
+      authorizationStrategy: 'user',
     },
   ]);
   await db.insert(executorConnectorPolicies).values({
@@ -193,6 +216,7 @@ beforeAll(async () => {
       projectId: PROJECT_A,
       branchName: SESSION_A,
       createdBy: USER,
+      connectorBindingsConfigured: true,
     },
     {
       sessionId: SESSION_B,
@@ -200,6 +224,7 @@ beforeAll(async () => {
       projectId: PROJECT_A,
       branchName: SESSION_B,
       createdBy: OTHER_USER,
+      connectorBindingsConfigured: true,
     },
     {
       sessionId: SESSION_DEFAULT,
@@ -215,6 +240,7 @@ beforeAll(async () => {
       branchName: SESSION_IMPERSONATION,
       createdBy: USER,
       visibility: 'private',
+      connectorBindingsConfigured: true,
     },
     {
       sessionId: SESSION_SERVICE_ACCOUNT,
@@ -223,6 +249,7 @@ beforeAll(async () => {
       branchName: SESSION_SERVICE_ACCOUNT,
       createdBy: SERVICE_ACCOUNT,
       visibility: 'private',
+      connectorBindingsConfigured: true,
     },
     {
       sessionId: SESSION_AUTO_EMAIL,
@@ -237,6 +264,7 @@ beforeAll(async () => {
       projectId: PROJECT_A,
       branchName: SESSION_INHERIT_UNBOUND,
       createdBy: USER,
+      connectorBindingsConfigured: true,
       connectorBindingsInheritUnbound: true,
     },
   ]);
@@ -301,7 +329,7 @@ beforeAll(async () => {
       projectId: PROJECT_A,
       connectorAlias: 'veyris',
       connectorId: CONNECTOR_A,
-      profileId: PROFILE_DEFAULT,
+      profileId: PROFILE_A,
       source: 'request',
       createdBy: USER,
     },
@@ -323,9 +351,18 @@ beforeAll(async () => {
       valueEnc: encryptProjectSecret(PROJECT_A, 'workspace-b-capability'),
     },
   ]);
+  await saveAgentMailInstall({
+    projectId: PROJECT_A,
+    profileSlug: 'kortix_email',
+    inboxId: 'profile-test-default-inbox',
+    email: 'default@example.test',
+    displayName: 'Default inbox',
+    apiKey: 'agentmail-key',
+  });
 });
 
 afterAll(async () => {
+  await deleteAgentMailInstall(PROJECT_A, 'kortix_email');
   await db.delete(executorCredentials).where(eq(executorCredentials.connectorId, CONNECTOR_A));
   await db.delete(projectSessions).where(eq(projectSessions.projectId, PROJECT_A));
   await db
@@ -388,7 +425,7 @@ describe('session connector profile isolation', () => {
     ]);
   });
 
-  test('omitted binding resolves only the migrated/default profile', async () => {
+  test("an omitted user-strategy binding resolves the acting member's authorization", async () => {
     const resolved = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
       projectId: PROJECT_A,
@@ -396,23 +433,16 @@ describe('session connector profile isolation', () => {
       alias: 'veyris',
     });
     expect(resolved).toMatchObject({
-      profileId: PROFILE_DEFAULT,
-      isDefault: true,
+      profileId: PROFILE_A,
       source: 'default',
     });
   });
 
-  test("an unbound alias NEVER falls back to a member's personal default (wrong-account guard)", async () => {
-    // A connector can hold many connections now, and defaults are PER OWNER — a
-    // member may mark one of their own connections default. The unbound-alias
-    // fallback selects is_default=true, so without an owner_type='project'
-    // filter it could hand a session someone else's PERSONAL connection and act
-    // as the wrong account. Mark USER's own profile default and assert the
-    // fallback still resolves the PROJECT's shared connection.
+  test("an omitted user-strategy binding never resolves another member's authorization", async () => {
     await db
       .update(executorConnectionProfiles)
       .set({ isDefault: true })
-      .where(eq(executorConnectionProfiles.profileId, PROFILE_A));
+      .where(eq(executorConnectionProfiles.profileId, PROFILE_B));
     try {
       const resolved = await resolveSessionConnectorProfile({
         accountId: ACCOUNT_A,
@@ -420,13 +450,13 @@ describe('session connector profile isolation', () => {
         sessionId: SESSION_DEFAULT,
         alias: 'veyris',
       });
-      expect(resolved?.profileId).toBe(PROFILE_DEFAULT);
-      expect(resolved?.profileId).not.toBe(PROFILE_A);
+      expect(resolved?.profileId).toBe(PROFILE_A);
+      expect(resolved?.profileId).not.toBe(PROFILE_B);
     } finally {
       await db
         .update(executorConnectionProfiles)
         .set({ isDefault: false })
-        .where(eq(executorConnectionProfiles.profileId, PROFILE_A));
+        .where(eq(executorConnectionProfiles.profileId, PROFILE_B));
     }
   });
 
@@ -463,7 +493,7 @@ describe('session connector profile isolation', () => {
       sessionId: SESSION_INHERIT_UNBOUND,
       alias: 'veyris',
     });
-    expect(boundVeyris).toMatchObject({ profileId: PROFILE_DEFAULT, source: 'request' });
+    expect(boundVeyris).toMatchObject({ profileId: PROFILE_A, source: 'request' });
 
     const unboundEmail = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
@@ -499,8 +529,7 @@ describe('session connector profile isolation', () => {
       alias: 'veyris',
     });
     expect(veyris).toMatchObject({
-      profileId: PROFILE_DEFAULT,
-      isDefault: true,
+      profileId: PROFILE_A,
       source: 'default',
     });
   });
@@ -537,7 +566,7 @@ describe('session connector profile isolation', () => {
       actingUserId: USER,
       actingPrincipalIsServiceAccount: false,
       mayManageSystemProfiles: true,
-      bindings: { veyris: { profile_id: FOREIGN_PROFILE } },
+      bindings: { veyris: { authorization_id: FOREIGN_PROFILE } },
     });
     expect(result).toMatchObject({ ok: false, code: 'CONNECTOR_PROFILE_NOT_FOUND' });
   });
@@ -549,7 +578,7 @@ describe('session connector profile isolation', () => {
       actingUserId: USER,
       actingPrincipalIsServiceAccount: false,
       mayManageSystemProfiles: false,
-      bindings: { veyris: { profile_id: PROFILE_A } },
+      bindings: { veyris: { authorization_id: PROFILE_A } },
     });
     expect(result).toMatchObject({
       ok: true,
@@ -566,7 +595,7 @@ describe('session connector profile isolation', () => {
       actingUserId: USER,
       actingPrincipalIsServiceAccount: false,
       mayManageSystemProfiles: true,
-      bindings: { veyris: { profile_id: PROFILE_B } },
+      bindings: { veyris: { authorization_id: PROFILE_B } },
     });
     expect(result).toMatchObject({ ok: false, code: 'CONNECTOR_PROFILE_NOT_FOUND' });
   });
@@ -578,7 +607,7 @@ describe('session connector profile isolation', () => {
       actingUserId: SERVICE_ACCOUNT,
       actingPrincipalIsServiceAccount: true,
       mayManageSystemProfiles: true,
-      bindings: { veyris: { profile_id: PROFILE_SERVICE_ACCOUNT } },
+      bindings: { veyris: { authorization_id: PROFILE_SERVICE_ACCOUNT } },
     });
     expect(result).toMatchObject({ ok: false, code: 'CONNECTOR_PROFILE_NOT_FOUND' });
   });
@@ -603,37 +632,48 @@ describe('session connector profile isolation', () => {
     expect(resolved).toBeNull();
   });
 
-  test('system profiles retain the explicit management capability path', async () => {
-    const denied = await validateSessionConnectorBindings({
-      accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
-      actingUserId: USER,
-      actingPrincipalIsServiceAccount: false,
-      mayManageSystemProfiles: false,
-      bindings: { veyris: { profile_id: PROFILE_DEFAULT } },
-    });
-    expect(denied).toMatchObject({ ok: true });
-
-    const unprivileged = await validateSessionConnectorBindings({
-      accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
-      actingUserId: USER,
-      actingPrincipalIsServiceAccount: false,
-      mayManageSystemProfiles: false,
-      bindings: { veyris: { profile_id: PROFILE_EXTERNAL } },
-    });
-    const privileged = await validateSessionConnectorBindings({
-      accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
-      actingUserId: USER,
-      actingPrincipalIsServiceAccount: false,
-      mayManageSystemProfiles: true,
-      bindings: { veyris: { profile_id: PROFILE_EXTERNAL } },
-    });
-    expect(unprivileged).toMatchObject({ ok: false, code: 'CONNECTOR_PROFILE_NOT_FOUND' });
-    expect(privileged).toMatchObject({ ok: true });
-    if (!privileged.ok) throw new Error('Expected managed profile to validate');
-    expect(sessionConnectorBindingsRequirePrivateVisibility(privileged.bindings)).toBe(false);
+  test('project strategy rejects member and unmanaged system authorizations without a capability bypass', async () => {
+    await db
+      .update(executorConnectors)
+      .set({ authorizationStrategy: 'project' })
+      .where(eq(executorConnectors.connectorId, CONNECTOR_A));
+    try {
+      const projectOwned = await validateSessionConnectorBindings({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        actingUserId: USER,
+        actingPrincipalIsServiceAccount: false,
+        mayManageSystemProfiles: false,
+        bindings: { veyris: { authorization_id: PROFILE_DEFAULT } },
+      });
+      const memberOwned = await validateSessionConnectorBindings({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        actingUserId: USER,
+        actingPrincipalIsServiceAccount: false,
+        mayManageSystemProfiles: true,
+        bindings: { veyris: { authorization_id: PROFILE_A } },
+      });
+      const unmanagedSystem = await validateSessionConnectorBindings({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        actingUserId: USER,
+        actingPrincipalIsServiceAccount: false,
+        mayManageSystemProfiles: true,
+        bindings: { veyris: { authorization_id: PROFILE_EXTERNAL } },
+      });
+      expect(projectOwned).toMatchObject({ ok: true });
+      expect(memberOwned).toMatchObject({ ok: false, code: 'CONNECTOR_PROFILE_NOT_FOUND' });
+      expect(unmanagedSystem).toMatchObject({
+        ok: false,
+        code: 'CONNECTOR_PROFILE_NOT_FOUND',
+      });
+    } finally {
+      await db
+        .update(executorConnectors)
+        .set({ authorizationStrategy: 'user' })
+        .where(eq(executorConnectors.connectorId, CONNECTOR_A));
+    }
   });
 
   test('a personal-profile binding fails closed if the session becomes shared', async () => {
@@ -683,11 +723,60 @@ describe('session connector profile isolation', () => {
       sessionId: SESSION_A,
       alias: 'veyris',
     });
-    expect(resolved?.status).toBe('revoked');
+    expect(resolved).toBeNull();
     await db
       .update(executorConnectionProfiles)
       .set({ status: 'active', updatedAt: new Date() })
       .where(eq(executorConnectionProfiles.profileId, PROFILE_A));
+  });
+
+  test('credential removal takes effect on the next resolution without restart', async () => {
+    await db
+      .delete(executorCredentials)
+      .where(
+        and(
+          eq(executorCredentials.connectorId, CONNECTOR_A),
+          eq(executorCredentials.profileId, PROFILE_A),
+        ),
+      );
+    try {
+      const resolved = await resolveSessionConnectorProfile({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        sessionId: SESSION_A,
+        alias: 'veyris',
+      });
+      expect(resolved).toBeNull();
+    } finally {
+      await upsertProfileCredential({
+        projectId: PROJECT_A,
+        connectorId: CONNECTOR_A,
+        profileId: PROFILE_A,
+        value: 'workspace-a-capability',
+        createdBy: USER,
+      });
+    }
+  });
+
+  test('authorization strategy changes take effect on the next resolution without restart', async () => {
+    await db
+      .update(executorConnectors)
+      .set({ authorizationStrategy: 'project' })
+      .where(eq(executorConnectors.connectorId, CONNECTOR_A));
+    try {
+      const resolved = await resolveSessionConnectorProfile({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        sessionId: SESSION_A,
+        alias: 'veyris',
+      });
+      expect(resolved).toBeNull();
+    } finally {
+      await db
+        .update(executorConnectors)
+        .set({ authorizationStrategy: 'user' })
+        .where(eq(executorConnectors.connectorId, CONNECTOR_A));
+    }
   });
 
   test('Pipedream finalize reads and stores the account under the profile-specific identity', async () => {
@@ -965,10 +1054,10 @@ describe('session connector profile isolation', () => {
   });
 });
 
-describe('resolveRequiredMemberConnectorProfiles (require_connectors)', () => {
+describe('resolveRequiredConnectorProfiles (require_connectors)', () => {
   test("resolves a required connector to the acting user's OWN member profile", async () => {
     // USER owns PROFILE_A, a member profile for the 'veyris' connector.
-    const res = await resolveRequiredMemberConnectorProfiles({
+    const res = await resolveRequiredConnectorProfiles({
       accountId: ACCOUNT_A,
       projectId: PROJECT_A,
       actingUserId: USER,
@@ -1002,8 +1091,15 @@ describe('resolveRequiredMemberConnectorProfiles (require_connectors)', () => {
       label: 'My second workspace',
       isDefault: true,
     });
+    await upsertProfileCredential({
+      projectId: PROJECT_A,
+      connectorId: CONNECTOR_A,
+      profileId: SECOND,
+      value: 'second-workspace-capability',
+      createdBy: USER,
+    });
     try {
-      const res = await resolveRequiredMemberConnectorProfiles({
+      const res = await resolveRequiredConnectorProfiles({
         accountId: ACCOUNT_A,
         projectId: PROJECT_A,
         actingUserId: USER,
@@ -1036,7 +1132,7 @@ describe('resolveRequiredMemberConnectorProfiles (require_connectors)', () => {
       isDefault: true, // even as the "default", a revoked row must never win
     });
     try {
-      const res = await resolveRequiredMemberConnectorProfiles({
+      const res = await resolveRequiredConnectorProfiles({
         accountId: ACCOUNT_A,
         projectId: PROJECT_A,
         actingUserId: USER,
@@ -1054,7 +1150,7 @@ describe('resolveRequiredMemberConnectorProfiles (require_connectors)', () => {
 
   test('resolves DISTINCT users to their own member profiles (never each other)', async () => {
     // OTHER_USER owns PROFILE_B for the same connector — must not get USER's.
-    const res = await resolveRequiredMemberConnectorProfiles({
+    const res = await resolveRequiredConnectorProfiles({
       accountId: ACCOUNT_A,
       projectId: PROJECT_A,
       actingUserId: OTHER_USER,
@@ -1065,24 +1161,57 @@ describe('resolveRequiredMemberConnectorProfiles (require_connectors)', () => {
     if (res.ok) expect(res.bindings[0]?.profileId).toBe(PROFILE_B);
   });
 
-  test('refuses with CONNECTOR_CONNECTION_REQUIRED (naming the public alias) when the user has not connected it', async () => {
-    // USER has no MEMBER profile for kortix_email (only a project-default exists).
-    const res = await resolveRequiredMemberConnectorProfiles({
+  test('returns the missing connector profile contract when no valid authorization exists', async () => {
+    const res = await resolveRequiredConnectorProfiles({
       accountId: ACCOUNT_A,
       projectId: PROJECT_A,
       actingUserId: USER,
       actingPrincipalIsServiceAccount: false,
-      aliases: ['email'], // canonicalizes to kortix_email; reported back as 'email'
+      aliases: ['missing_one'],
     });
     expect(res.ok).toBe(false);
     if (!res.ok) {
-      expect(res.code).toBe('CONNECTOR_CONNECTION_REQUIRED');
-      expect(res.connector).toBe('email');
+      expect(res.code).toBe('CONNECTOR_AUTHORIZATION_REQUIRED');
+      expect(res.connectorProfiles).toEqual([
+        {
+          id: MISSING_CONNECTOR_A,
+          slug: 'missing_one',
+          name: 'Missing one',
+          authorization_strategy: 'project',
+        },
+      ]);
     }
   });
 
-  test('a service account can NEVER satisfy a personal requirement (fails closed)', async () => {
-    const res = await resolveRequiredMemberConnectorProfiles({
+  test('returns every missing connector profile in one response', async () => {
+    const res = await resolveRequiredConnectorProfiles({
+      accountId: ACCOUNT_A,
+      projectId: PROJECT_A,
+      actingUserId: USER,
+      actingPrincipalIsServiceAccount: false,
+      aliases: ['missing_two', 'missing_one', 'missing_two'],
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.connectorProfiles).toEqual([
+        {
+          id: MISSING_CONNECTOR_B,
+          slug: 'missing_two',
+          name: 'Missing two',
+          authorization_strategy: 'user',
+        },
+        {
+          id: MISSING_CONNECTOR_A,
+          slug: 'missing_one',
+          name: 'Missing one',
+          authorization_strategy: 'project',
+        },
+      ]);
+    }
+  });
+
+  test('a service account cannot satisfy a user-strategy requirement', async () => {
+    const res = await resolveRequiredConnectorProfiles({
       accountId: ACCOUNT_A,
       projectId: PROJECT_A,
       actingUserId: SERVICE_ACCOUNT,
@@ -1090,6 +1219,31 @@ describe('resolveRequiredMemberConnectorProfiles (require_connectors)', () => {
       aliases: ['veyris'],
     });
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.code).toBe('CONNECTOR_CONNECTION_REQUIRED');
+    if (!res.ok) expect(res.code).toBe('CONNECTOR_AUTHORIZATION_REQUIRED');
+  });
+
+  test('a service account can satisfy a project-strategy requirement', async () => {
+    await db
+      .update(executorConnectors)
+      .set({ authorizationStrategy: 'project' })
+      .where(eq(executorConnectors.connectorId, CONNECTOR_A));
+    try {
+      const res = await resolveRequiredConnectorProfiles({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        actingUserId: SERVICE_ACCOUNT,
+        actingPrincipalIsServiceAccount: true,
+        aliases: ['veyris'],
+      });
+      expect(res).toMatchObject({
+        ok: true,
+        bindings: [{ alias: 'veyris', profileId: PROFILE_DEFAULT, ownerType: 'project' }],
+      });
+    } finally {
+      await db
+        .update(executorConnectors)
+        .set({ authorizationStrategy: 'user' })
+        .where(eq(executorConnectors.connectorId, CONNECTOR_A));
+    }
   });
 });

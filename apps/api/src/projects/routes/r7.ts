@@ -20,6 +20,7 @@ import { roleAllows } from '../access';
 import { createRoute, z } from '@hono/zod-openapi';
 import { accountGroupMembers, accountGroups, accountMembers, executorConnectors, executorExecutions, projectGroupGrants, projectSessions, sessionSandboxes,
   projectSessionConnectorBindings,
+  serviceAccounts,
 } from '@kortix/db';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { mayResolveApproval, maySeeSessionApprovals } from '../lib/approval-authority';
@@ -43,6 +44,7 @@ import {
   missingRequiredConnectorAuthorizationsForSession,
   resolveEffectiveSessionConnectorBindings,
   sessionHasMemberConnectorBinding,
+  sessionConnectorBindingsRequirePrivateVisibility,
   validateSessionConnectorBindings,
 } from '../lib/session-connector-bindings';
 import { buildSessionTranscriptDigest } from '../lib/session-transcript';
@@ -2252,7 +2254,7 @@ projectsApp.openapi(
       );
     }
 
-    const currentBindings = Object.fromEntries(
+    const currentDurableBindings = Object.fromEntries(
       (
         await db
           .select({
@@ -2267,6 +2269,18 @@ projectsApp.openapi(
             ),
           )
       ).map((row) => [row.alias, row.profileId]),
+    );
+    const currentEffectiveBindings = await resolveEffectiveSessionConnectorBindings({
+      accountId: loaded.row.accountId,
+      projectId,
+      sessionId,
+      grantedConnectors: grant?.connectors,
+    });
+    const currentEffectiveBindingIds = Object.fromEntries(
+      Object.entries(currentEffectiveBindings).map(([alias, binding]) => [
+        alias,
+        binding.authorization_id,
+      ]),
     );
 
     let nextAllowlist = visible.row.secretsAllowlist ?? null;
@@ -2312,7 +2326,7 @@ projectsApp.openapi(
       }
     }
 
-    let nextBindings = currentBindings;
+    let nextBindings = currentDurableBindings;
     let droppedBindings: string[] = [];
     if (wantsBindings) {
       const requested = Object.fromEntries(
@@ -2322,13 +2336,12 @@ projectsApp.openapi(
         ]),
       );
       const decided = rescopeSessionBindings({
-        current: currentBindings,
+        current: currentEffectiveBindingIds,
         requested,
         grantedConnectors: grant?.connectors,
       });
       if (!decided.ok) return c.json({ error: decided.message, code: decided.code }, 403);
       nextBindings = decided.bindings;
-      droppedBindings = decided.dropped;
     }
 
     let bindingRows: Array<{
@@ -2342,11 +2355,23 @@ projectsApp.openapi(
       createdBy: string;
     }> = [];
     if (wantsBindings) {
+      const [ownerServiceAccount] = visible.row.createdBy
+        ? await db
+            .select({ id: serviceAccounts.serviceAccountId })
+            .from(serviceAccounts)
+            .where(
+              and(
+                eq(serviceAccounts.serviceAccountId, visible.row.createdBy),
+                eq(serviceAccounts.accountId, loaded.row.accountId),
+              ),
+            )
+            .limit(1)
+        : [];
       const validated = await validateSessionConnectorBindings({
         accountId: loaded.row.accountId,
         projectId,
-        actingUserId: loaded.userId,
-        actingPrincipalIsServiceAccount: c.get('authType') === 'service_account',
+        actingUserId: visible.row.createdBy ?? '',
+        actingPrincipalIsServiceAccount: ownerServiceAccount !== undefined,
         mayManageSystemProfiles: false,
         bindings: Object.fromEntries(
           Object.entries(nextBindings).map(([alias, authorizationId]) => [
@@ -2357,6 +2382,18 @@ projectsApp.openapi(
       });
       if (!validated.ok) {
         return c.json({ error: validated.error, code: validated.code }, 403);
+      }
+      if (
+        visible.row.visibility !== 'private' &&
+        sessionConnectorBindingsRequirePrivateVisibility(validated.bindings)
+      ) {
+        return c.json(
+          {
+            error: 'A user authorization requires a private session',
+            code: 'PERSONAL_CONNECTOR_PROFILE_REQUIRES_PRIVATE_SESSION',
+          },
+          409,
+        );
       }
       bindingRows = validated.bindings.map((binding) => ({
         sessionId,
@@ -2375,9 +2412,13 @@ projectsApp.openapi(
         updatedAt: Date;
         secretsAllowlist?: string[] | null;
         connectorBindingsConfigured?: boolean;
+        connectorBindingsInheritUnbound?: boolean;
       } = { updatedAt: new Date() };
       if (wantsSecrets) sessionUpdates.secretsAllowlist = nextAllowlist;
-      if (wantsBindings) sessionUpdates.connectorBindingsConfigured = true;
+      if (wantsBindings) {
+        sessionUpdates.connectorBindingsConfigured = true;
+        sessionUpdates.connectorBindingsInheritUnbound = false;
+      }
       await tx
         .update(projectSessions)
         .set(sessionUpdates)
@@ -2404,17 +2445,24 @@ projectsApp.openapi(
       }
     });
 
+    const effectiveBindings = await resolveEffectiveSessionConnectorBindings({
+      accountId: loaded.row.accountId,
+      projectId,
+      sessionId,
+      grantedConnectors: grant?.connectors,
+    });
+    if (wantsBindings) {
+      droppedBindings = Object.keys(currentEffectiveBindings).filter(
+        (alias) => !Object.hasOwn(effectiveBindings, alias),
+      );
+    }
+
     // No push needed: the per-prompt hot sync re-reads secretsAllowlist and
     // re-resolves the whole env on the NEXT prompt, and connector bindings are
     // resolved server-side at call time. Pushing here would race that.
     return c.json({
       secrets_allowlist: nextAllowlist,
-      connector_bindings: Object.fromEntries(
-        Object.entries(nextBindings).map(([alias, authorizationId]) => [
-          alias,
-          { authorization_id: authorizationId },
-        ]),
-      ),
+      connector_bindings: effectiveBindings,
       dropped_secrets: droppedSecrets,
       added_secrets: addedSecrets,
       dropped_bindings: droppedBindings,

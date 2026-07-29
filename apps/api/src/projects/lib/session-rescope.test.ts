@@ -117,6 +117,25 @@ describe('rescopeSessionBindings — SET semantics', () => {
     if (!result.ok) expect(result.offending).toEqual(['zendesk']);
   });
 
+  test('a public alias matches its canonical agent grant alias', () => {
+    expect(
+      rescopeSessionBindings({
+        current: {},
+        requested: {
+          email: '11111111-1111-4111-a111-111111111111',
+        },
+        grantedConnectors: ['kortix_email'],
+      }),
+    ).toEqual({
+      ok: true,
+      bindings: {
+        kortix_email: '11111111-1111-4111-a111-111111111111',
+      },
+      dropped: [],
+      changed: [],
+    });
+  });
+
   test('an empty map unbinds everything', () => {
     const result = rescopeSessionBindings({
       current: { gmail: 'p1' },

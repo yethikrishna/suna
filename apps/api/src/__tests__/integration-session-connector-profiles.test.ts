@@ -486,6 +486,15 @@ describe('session connector profile isolation', () => {
       await resolveEffectiveSessionConnectorBindings({
         accountId: ACCOUNT_A,
         projectId: PROJECT_A,
+        sessionId: SESSION_A,
+        grantedConnectors: [],
+      }),
+    ).toEqual({});
+
+    expect(
+      await resolveEffectiveSessionConnectorBindings({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
         sessionId: SESSION_INHERIT_UNBOUND,
         grantedConnectors: ['veyris', 'email'],
       }),

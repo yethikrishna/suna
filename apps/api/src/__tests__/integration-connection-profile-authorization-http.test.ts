@@ -808,6 +808,129 @@ describe('connection profile owner authorization over HTTP', () => {
     });
   });
 
+  test('scope updates return effective bindings and replace inherited defaults', async () => {
+    const token = await mint(ALICE);
+    const connected = await request(
+      'PUT',
+      `/v1/projects/${PROJECT}/connector-profiles/${ALICE_PROFILE}/credential`,
+      token,
+      { value: 'scope-effective-capability' },
+    );
+    expect(connected.status).toBe(200);
+
+    const secretsOnly = await request(
+      'PUT',
+      `/v1/projects/${PROJECT}/sessions/${DEFAULT_SCOPE_SESSION}/scope`,
+      token,
+      { secrets: [] },
+    );
+    expect(secretsOnly.status).toBe(200);
+    expect(await secretsOnly.json()).toMatchObject({
+      connector_bindings: {
+        personal_data: { authorization_id: ALICE_PROFILE },
+      },
+    });
+
+    await db
+      .update(projectSessions)
+      .set({
+        connectorBindingsConfigured: true,
+        connectorBindingsInheritUnbound: true,
+      })
+      .where(eq(projectSessions.sessionId, DEFAULT_SCOPE_SESSION));
+
+    const replaced = await request(
+      'PUT',
+      `/v1/projects/${PROJECT}/sessions/${DEFAULT_SCOPE_SESSION}/scope`,
+      token,
+      { connector_bindings: {} },
+    );
+    expect(replaced.status).toBe(200);
+    expect(await replaced.json()).toMatchObject({
+      connector_bindings: {},
+      dropped_bindings: ['personal_data'],
+    });
+
+    const readBack = await request(
+      'GET',
+      `/v1/projects/${PROJECT}/sessions/${DEFAULT_SCOPE_SESSION}/scope`,
+      token,
+    );
+    expect(readBack.status).toBe(200);
+    expect(await readBack.json()).toMatchObject({
+      connector_bindings: {},
+    });
+
+    const [session] = await db
+      .select({
+        configured: projectSessions.connectorBindingsConfigured,
+        inheritUnbound: projectSessions.connectorBindingsInheritUnbound,
+      })
+      .from(projectSessions)
+      .where(eq(projectSessions.sessionId, DEFAULT_SCOPE_SESSION));
+    expect(session).toEqual({
+      configured: true,
+      inheritUnbound: false,
+    });
+  });
+
+  test('scope replacement uses the session owner and rejects shared user authorization', async () => {
+    const ownerToken = await mint(ALICE);
+    const connected = await request(
+      'PUT',
+      `/v1/projects/${PROJECT}/connector-profiles/${ALICE_PROFILE}/credential`,
+      ownerToken,
+      { value: 'scope-owner-capability' },
+    );
+    expect(connected.status).toBe(200);
+    const managerToken = await mint(MANAGER);
+
+    try {
+      await db
+        .update(projectSessions)
+        .set({ visibility: 'project' })
+        .where(eq(projectSessions.sessionId, SESSION));
+      const shared = await request(
+        'PUT',
+        `/v1/projects/${PROJECT}/sessions/${SESSION}/scope`,
+        managerToken,
+        {
+          connector_bindings: {
+            personal_data: { authorization_id: ALICE_PROFILE },
+          },
+        },
+      );
+      expect(shared.status).toBe(409);
+      expect(await shared.json()).toMatchObject({
+        code: 'PERSONAL_CONNECTOR_PROFILE_REQUIRES_PRIVATE_SESSION',
+      });
+    } finally {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(projectSessions)
+          .set({
+            visibility: 'private',
+            connectorBindingsConfigured: false,
+            connectorBindingsInheritUnbound: false,
+          })
+          .where(eq(projectSessions.sessionId, SESSION));
+        await tx
+          .delete(projectSessionConnectorBindings)
+          .where(eq(projectSessionConnectorBindings.sessionId, SESSION));
+        await tx.insert(projectSessionConnectorBindings).values({
+          sessionId: SESSION,
+          accountId: ACCOUNT,
+          projectId: PROJECT,
+          connectorAlias: 'personal_data',
+          connectorId: USER_CONNECTOR,
+          profileId: ALICE_PROFILE,
+          source: 'request',
+          createdBy: ALICE,
+        });
+      });
+    }
+  });
+
   test('session scope replacement validates the full request before one atomic write', async () => {
     const token = await mint(ALICE);
     const credential = await request(

@@ -29,6 +29,7 @@ import {
 import type { AccountState } from '@kortix/sdk';
 import { cn } from '@/lib/utils';
 import { BillingAccountProvider } from '@/stores/billing-account-context';
+import { useBillingReturnUrl } from '@/features/billing/billing-return';
 import { useUpgradeDialogStore } from '@/stores/upgrade-dialog-store';
 import { formatCredits } from '@kortix/shared';
 import { CreditCardPlusSolid } from '@mynaui/icons-react';
@@ -65,6 +66,7 @@ export function UpgradePlansModal({
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const createPerSeat = useCreatePerSeatCheckout();
   const openDemo = useRequestDemo();
+  const billingReturnUrl = useBillingReturnUrl();
 
   // Show the top-up view (not the Free-plan pitch) whenever we can tell the
   // account is already a paying/Team account whose wallet ran dry. Prefer the
@@ -95,10 +97,9 @@ export function UpgradePlansModal({
   const canManageBilling = accountState?.can_manage_billing !== false;
 
   const handleSubscribe = () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
     createPerSeat.mutate({
-      success_url: `${origin}/projects?team_signup=success`,
-      cancel_url: typeof window !== 'undefined' ? window.location.href : `${origin}/`,
+      success_url: billingReturnUrl('team_signup'),
+      cancel_url: window.location.href,
     });
   };
 

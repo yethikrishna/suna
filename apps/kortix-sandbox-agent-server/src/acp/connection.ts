@@ -138,6 +138,7 @@ export class AcpConnection {
   private readonly requestTimeoutMs: number
   private readonly maxReplayEvents: number
   private readonly onDiagnostic: (line: string) => void
+  private readonly onFirstOutput: () => void
   private nextRequestId = 1
   private nextEventId: number
   private writeQueue = Promise.resolve()
@@ -145,6 +146,7 @@ export class AcpConnection {
   private initialized = false
   private initialization: Promise<JsonRpcEnvelope> | null = null
   private initializationResult: Record<string, unknown> | null = null
+  private receivedOutput = false
 
   constructor(options: {
     input: Writable
@@ -153,6 +155,7 @@ export class AcpConnection {
     maxReplayEvents?: number
     initialEventId?: number
     onDiagnostic?: (line: string) => void
+    onFirstOutput?: () => void
   }) {
     this.input = options.input
     this.requestTimeoutMs =
@@ -164,9 +167,16 @@ export class AcpConnection {
       throw new Error('initialEventId must be a positive safe integer')
     }
     this.onDiagnostic = options.onDiagnostic ?? (() => {})
+    this.onFirstOutput = options.onFirstOutput ?? (() => {})
 
     const lines = createInterface({ input: options.output })
-    lines.on('line', (line) => this.onLine(line))
+    lines.on('line', (line) => {
+      if (!this.receivedOutput) {
+        this.receivedOutput = true
+        this.onFirstOutput()
+      }
+      this.onLine(line)
+    })
     lines.once('close', () => this.close(new AcpProtocolError('ACP output closed')))
     options.output.once('error', (error) => this.close(error))
     options.input.once('error', (error) => this.close(error))

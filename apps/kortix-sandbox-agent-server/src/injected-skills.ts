@@ -16,6 +16,7 @@ export interface ManagedSkillConfigDirsInput {
   opencodeConfigDir: string
   harness: AcpHarnessId | null
   runtimeConfigDir?: string | null
+  includeOpenCode?: boolean
 }
 
 /**
@@ -26,7 +27,7 @@ export interface ManagedSkillConfigDirsInput {
  * `<workspace>/.agents/skills`, independently of `CODEX_HOME`.
  */
 export function managedSkillConfigDirs(input: ManagedSkillConfigDirsInput): string[] {
-  const dirs = [input.opencodeConfigDir]
+  const dirs = input.includeOpenCode === false ? [] : [input.opencodeConfigDir]
   if (input.harness === 'codex') {
     dirs.push(join(input.workspace, '.agents'))
   } else if (

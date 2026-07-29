@@ -194,6 +194,32 @@ The primary startup sample sets are:
 - `pi-acp-sequential-recheck.json`.
 - `pi-in-process-sequential-recheck.json`.
 
+## Platinum exact-commit repository image
+
+The repository-image A/B uses the same project and commit for cold and image-hit
+samples.
+
+| phase | cold controls | image-hit p50 |
+|---|---:|---:|
+| Image resolution | 2.533s, 2.554s | 105ms |
+| Platinum create | 2.097s, 2.250s | 2.108s |
+| Repository materialization | 2.341s, 2.528s | 39ms |
+| Selected Pi harness boot | 431ms, 431ms | 460ms |
+| Create to runtime ready | 7.928s, 8.734s | 3.863s |
+| ACP `session/new` | 5.357s, 5.107s | 5.270s |
+| **Create to session ready** | **14.223s, 14.222s** | **9.462s** |
+
+The image contains the exact repository checkout.
+
+The image does not contain a running daemon or harness.
+
+The first image build failed after 9m 15.402s.
+
+The retry completed after 10m 10.923s.
+
+See
+[`platinum-warm-rerun-20260729T140943Z`](./results/2026-07-29/platinum-warm-rerun-20260729T140943Z).
+
 ## Run
 
 Prereqs: local stack up (`pnpm dev` → API `:8008`, Supabase `:54321`, Postgres
@@ -205,6 +231,8 @@ cd tests/performance/session-start
 ./run.sh                 # full benchmark (N sessions, default 3)
 ./run.sh boot-probe      # one session + the daemon's in-container boot_timeline
 ./run.sh oclog-probe     # one session + opencode.log + baked-vs-runtime dep versions
+./run.sh session-ready   # one session through ACP model selection, no prompt
+./run.sh first-token     # one session through the first model-generated token
 N=5 POLL_MS=250 ./run.sh # knobs: N, POLL_MS, READY_TIMEOUT_MS, PROVIDER, PROJECT_ID, BENCH_EMAIL, BENCH_UID
 ```
 
@@ -215,6 +243,12 @@ node analyze-boot-results.mjs \
   results/2026-07-29/production-starter.json \
   results/2026-07-29/dev-starter.json \
   results/2026-07-29/local-starter.json
+```
+
+Analyze startup-only records:
+
+```bash
+node analyze-startup-ready.mjs results/2026-07-29/<run>/*.json
 ```
 
 Run the comparable default starter benchmark against one environment:

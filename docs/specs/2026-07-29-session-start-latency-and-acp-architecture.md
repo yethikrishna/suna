@@ -107,6 +107,68 @@ Raw files:
 - `tests/performance/session-start/results/2026-07-29/local-starter.json`
 - `tests/performance/session-start/results/2026-07-29/session-boot-analysis.json`
 
+### 4.1 Platinum exact-commit repository image
+
+The current `kortix-ppwarm-*` path is a repository disk image.
+
+Its key contains:
+
+```text
+project_id
++ template_slug
++ exact_commit_sha
++ base_runtime_snapshot
+```
+
+It is not a daily snapshot.
+
+A commit or runtime identity change creates a different key.
+
+The image contains:
+
+1. The exact repository checkout and `.git`.
+2. Runtime disk files.
+3. Baked dependency and runtime caches.
+
+The image does not contain:
+
+1. VM memory.
+2. A running sandbox daemon.
+3. A running Pi or OpenCode process.
+4. An initialized ACP connection.
+5. A pre-created ACP session.
+
+The provider build uses `capture: 'none'`.
+
+The same project and commit produced two cold controls and five image hits.
+
+| phase | cold controls | image-hit p50 |
+|---|---:|---:|
+| Image resolution | 2.533s, 2.554s | 105ms |
+| Platinum create | 2.097s, 2.250s | 2.108s |
+| Repository materialization | 2.341s, 2.528s | 39ms |
+| Selected Pi harness boot | 431ms, 431ms | 460ms |
+| Create to runtime ready | 7.928s, 8.734s | 3.863s |
+| ACP initialize | 238ms, 221ms | 301ms |
+| ACP `session/new` | 5.357s, 5.107s | 5.270s |
+| **Create to session ready** | **14.223s, 14.222s** | **9.462s** |
+
+All five image-hit sessions used
+`kortix-ppwarm-b941768b-37a8eec1-e516c44c8217`.
+
+The retained guest returned
+`85f0efd3b8232796d6b3cef382481e3fa7857ae4` for
+`git rev-parse HEAD`.
+
+The first image build failed after 9m 15.402s.
+
+Platinum returned no detailed build error.
+
+The retry completed after 10m 10.923s.
+
+The raw records are under
+`tests/performance/session-start/results/2026-07-29/platinum-warm-rerun-20260729T140943Z`.
+
 ## 5. Exact ACP image warm-up A/B
 
 The image build ran ACP `initialize` and `session/new`.
@@ -235,7 +297,7 @@ The selected-harness refactor removes the OpenCode delay from Pi sessions.
 
 It does not remove the `pi-acp` child process created during `session/new`.
 
-## 9. Refresh without restart
+## 9. Repository refresh and runtime reload
 
 The repository already exposes a no-restart workspace refresh:
 
@@ -245,18 +307,65 @@ POST /kortix/refresh?base=1&base_sha=<sha>&restart=0
 
 The refresh route can:
 
-1. Update the repository base.
-2. Preserve the running daemon.
-3. Preserve the running harness process.
-4. Avoid the cold ACP initialization.
+1. Fetch and check out an exact `base_sha`.
+2. Preserve the sandbox daemon.
+3. Preserve the harness process when `restart=0`.
 
-OpenCode ACP does not expose the TUI worker's `SIGUSR2` reload path.
+The route comment says a file watcher applies changes.
 
-OpenCode loads project state by working directory and ACP session operations.
+That statement is not valid for every OpenCode configuration file.
 
-The safe OpenCode design keeps a stable workspace path. It atomically changes
-the filesystem view under that path. It then creates or resumes the canonical
-ACP session.
+OpenCode `1.17.11` ACP exposes these session operations:
+
+1. `session/new`
+2. `session/load`
+3. `session/list`
+4. `session/resume`
+5. `session/close`
+6. `session/fork`
+
+ACP does not expose a configuration refresh or runtime reload method.
+
+OpenCode ACP caches one directory snapshot.
+
+That snapshot contains providers, models, agents, commands, and the default
+model.
+
+The ACP implementation defines `Directory.refresh()`.
+
+No ACP method calls it.
+
+The TUI worker exposes an internal `rpc.reload()`.
+
+That method invalidates configuration and disposes all project instances.
+
+It is a full instance teardown.
+
+It is not an ACP method or a hot configuration refresh.
+
+OpenCode plugin v2 also exposes domain reload operations for agents, catalogs,
+commands, integrations, references, and skills.
+
+These operations reload plugin transform state.
+
+They do not provide a standard ACP runtime reload method.
+
+Use this update policy:
+
+| changed path or state | action before ready |
+|---|---|
+| Ordinary repository source, tests, assets, or data | Exact-SHA checkout; keep the harness |
+| `AGENTS.md` or agent definitions | Dispose and recreate the project instance or restart the harness |
+| `.kortix/opencode/skills/**` or commands | Dispose and recreate the project instance or restart the harness |
+| `.kortix/opencode/opencode.jsonc` or plugins | Restart the harness |
+| Provider catalog, model routing, or harness environment | Restart the harness |
+| Harness binary or runtime digest | Claim a matching seed; do not reuse the incompatible seed |
+
+The first implementation must restart on every configuration-sensitive diff.
+
+A later implementation can use OpenCode domain reloads after live parity tests.
+
+Never mark a session ready with stale runtime configuration.
 
 ## 10. Target architecture
 
@@ -265,7 +374,14 @@ ACP session.
 Create one content-addressed project artifact per accepted commit:
 
 ```text
-artifact key = project_id + commit_sha + runtime_image_fingerprint
+artifact key =
+  project_id
+  + exact_commit_sha
+  + runtime_digest
+  + template_digest
+  + harness
+  + harness_version
+  + harness_config_digest
 ```
 
 The artifact contains:
@@ -276,6 +392,12 @@ The artifact contains:
 4. A verified runtime cache manifest.
 
 Build the artifact asynchronously after each accepted commit.
+
+Use push, merge, and repository webhook events as freshness triggers.
+
+Run a daily reconciliation sweep to recover missed events.
+
+The daily sweep does not replace exact-commit keys.
 
 Do not clone during session claim.
 
@@ -292,6 +414,30 @@ Each slot contains:
 4. Session-independent LLM and executor proxy configuration.
 5. A stable workspace mount point.
 
+### 10.2.1 Fully stateful seed
+
+A fully stateful seed completes these operations before capture:
+
+1. Materialize the exact repository commit.
+2. Start the sandbox daemon.
+3. Start the selected harness.
+4. Complete ACP `initialize`.
+5. Create one blank ACP session.
+6. Load repository agents, skills, commands, plugins, and model state.
+7. Verify ACP events and PTY traffic.
+8. Capture disk and process memory.
+
+Capture occurs before session credentials enter memory.
+
+The seed uses session-independent local LLM and executor proxies.
+
+The claim path injects real credentials into those proxies.
+
+The current sandbox daemon contains dormant seed-adoption code for this model.
+
+The API disabled this path after Platinum restores passed `/kortix/health` while
+ACP or PTY traffic stalled.
+
 ### 10.3 Session claim
 
 The claim path performs only bounded local operations:
@@ -306,6 +452,14 @@ reserve slot
   -> return runtimeReady
 ```
 
+For a stateful seed, `create or reset canonical ACP session` means adopting the
+blank captured session.
+
+It must not call the current third-party Pi `session/new`.
+
+That call starts another Pi process and costs approximately five seconds in the
+Platinum measurements.
+
 Target budget:
 
 | phase | p50 budget | p95 budget |
@@ -318,11 +472,36 @@ Target budget:
 | API and network overhead | 75 ms | 200 ms |
 | **Total** | **300 ms** | **950 ms** |
 
-### 10.4 Miss behavior
+### 10.4 Commit race and miss behavior
 
 The latest commit can miss the artifact cache.
 
-The API must return one explicit state:
+Do not wait for the 10-minute exact-commit build.
+
+Use this fallback:
+
+1. Resolve the requested default-branch SHA.
+2. Claim the newest compatible stateful seed.
+3. Fetch the requested exact SHA.
+4. Create the session branch from that SHA.
+5. Classify the diff from the seed SHA to the requested SHA.
+6. Reload or restart runtime configuration when the diff requires it.
+7. Verify `HEAD == requested_sha`.
+8. Verify the harness and blank ACP session.
+9. Mark the session ready.
+10. Continue the exact-commit seed build asynchronously.
+
+Do not use unqualified `git pull`.
+
+`git pull` follows a moving branch.
+
+Use an exact SHA fetch and checkout.
+
+Collapse queued intermediate builds.
+
+Build only the newest unresolved default-branch tip.
+
+The API must record one explicit artifact state:
 
 1. `ready`: exact commit artifact is attached.
 2. `building`: exact commit artifact is being created.
@@ -330,6 +509,11 @@ The API must return one explicit state:
 4. `failed`: exact artifact creation failed.
 
 The API must not silently attach an older commit.
+
+The API can use an older compatible seed as an acceleration layer.
+
+It must complete the exact-SHA update and runtime reload before it returns
+`ready`.
 
 ### 10.5 Provider implementation
 

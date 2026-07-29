@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
 /**
- * Measure one real starter session from POST /sessions through the first
- * model-generated ACP token.
+ * Measure one real starter session from POST /sessions through ACP session
+ * readiness or the first model-generated ACP token.
  *
  * Required:
  *   BENCH_API         API v1 base, for example http://localhost:8018/v1
@@ -33,6 +33,8 @@
  *   BENCH_SKIP_MODEL_SELECT
  *                     Keep the model selected at session creation. Use this
  *                     when a harness rejects a redundant ACP model update.
+ *   BENCH_STARTUP_ONLY Stop after ACP model selection. Do not dispatch a
+ *                     prompt or call the model gateway.
  *   BENCH_GUEST_NETWORK_PROBE
  *                     Probe the fresh guest-to-API route before ACP when set
  *                     to 1. This intentionally warms that route.
@@ -56,6 +58,7 @@ const provisionApiBase = (
 const keepProject = process.env.BENCH_KEEP_PROJECT === '1';
 const enableAcp = process.env.BENCH_ENABLE_ACP === '1';
 const skipModelSelect = process.env.BENCH_SKIP_MODEL_SELECT === '1';
+const startupOnly = process.env.BENCH_STARTUP_ONLY === '1';
 const provider = process.env.BENCH_PROVIDER?.trim() || undefined;
 const model = process.env.BENCH_MODEL?.trim() || 'kortix/deepseek-v4-flash';
 const modelConfigValue =
@@ -381,13 +384,12 @@ function buildSequentialBreakdown(result) {
     typeof runtimeReady !== 'number' ||
     typeof acpInitialized !== 'number' ||
     typeof acpSessionCreated !== 'number' ||
-    typeof modelSelected !== 'number' ||
-    typeof promptDispatched !== 'number'
+    typeof modelSelected !== 'number'
   ) {
     return null;
   }
 
-  return [
+  const startup = [
     {
       phase: 'create_to_runtime_ready',
       start_ms: 0,
@@ -412,6 +414,10 @@ function buildSequentialBreakdown(result) {
       end_ms: modelSelected,
       duration_ms: rounded(modelSelected - acpSessionCreated),
     },
+  ];
+  if (typeof promptDispatched !== 'number') return startup;
+  return [
+    ...startup,
     {
       phase: 'model_select_to_prompt_dispatch',
       start_ms: modelSelected,
@@ -542,9 +548,10 @@ async function main() {
       : null,
     project_runtime_preparation: projectRuntimePreparation,
     provider: provider ?? null,
+    boundary: startupOnly ? 'session_ready' : 'first_model_token',
     model,
     model_config_value: modelConfigValue,
-    prompt: promptText,
+    prompt: startupOnly ? null : promptText,
     session_id: null,
     runtime_harness: null,
     runtime_transport: null,
@@ -772,47 +779,52 @@ async function main() {
       result.durations_ms.acp_model_select = 0;
     }
     result.cumulative_ms.acp_model_selected = at();
+    result.durations_ms.create_to_runtime_ready =
+      result.cumulative_ms.runtime_ready;
+    result.durations_ms.create_to_session_ready =
+      result.cumulative_ms.acp_model_selected;
 
-    const promptStartedAt = nowMs();
-    result.cumulative_ms.prompt_dispatched = at();
-    const promptComplete = client
-      .prompt(nativeSession.sessionId, [
-        { type: 'text', text: promptText },
-      ])
-      .then((promptResult) => {
-        result.cumulative_ms.prompt_complete = at();
-        result.durations_ms.prompt_total = rounded(nowMs() - promptStartedAt);
-        result.stop_reason = promptResult.stopReason ?? null;
-        result.prompt_result = promptResult;
-        return promptResult;
-      });
+    if (!startupOnly) {
+      const promptStartedAt = nowMs();
+      result.cumulative_ms.prompt_dispatched = at();
+      const promptComplete = client
+        .prompt(nativeSession.sessionId, [
+          { type: 'text', text: promptText },
+        ])
+        .then((promptResult) => {
+          result.cumulative_ms.prompt_complete = at();
+          result.durations_ms.prompt_total = rounded(nowMs() - promptStartedAt);
+          result.stop_reason = promptResult.stopReason ?? null;
+          result.prompt_result = promptResult;
+          return promptResult;
+        });
 
-    await Promise.race([
-      firstModel,
-      promptComplete.then(() => {
-        if (result.cumulative_ms.first_model_token === undefined) {
-          throw new Error('prompt completed without a model text token');
-        }
-      }),
-      Bun.sleep(timeoutMs).then(() => {
-        throw new Error('first model token timed out');
-      }),
-    ]);
-    result.durations_ms.prompt_to_first_model_token = rounded(
-      nowMs() - promptStartedAt,
-    );
-    if (result.cumulative_ms.first_reasoning_token !== undefined) {
-      result.durations_ms.prompt_to_first_reasoning_token = rounded(
-        result.cumulative_ms.first_reasoning_token - result.cumulative_ms.prompt_dispatched,
+      await Promise.race([
+        firstModel,
+        promptComplete.then(() => {
+          if (result.cumulative_ms.first_model_token === undefined) {
+            throw new Error('prompt completed without a model text token');
+          }
+        }),
+        Bun.sleep(timeoutMs).then(() => {
+          throw new Error('first model token timed out');
+        }),
+      ]);
+      result.durations_ms.prompt_to_first_model_token = rounded(
+        nowMs() - promptStartedAt,
       );
-    } else {
-      void firstReasoning;
-    }
+      if (result.cumulative_ms.first_reasoning_token !== undefined) {
+        result.durations_ms.prompt_to_first_reasoning_token = rounded(
+          result.cumulative_ms.first_reasoning_token - result.cumulative_ms.prompt_dispatched,
+        );
+      } else {
+        void firstReasoning;
+      }
 
-    await promptComplete;
-    result.durations_ms.create_to_runtime_ready = result.cumulative_ms.runtime_ready;
-    result.durations_ms.create_to_first_model_token =
-      result.cumulative_ms.first_model_token;
+      await promptComplete;
+      result.durations_ms.create_to_first_model_token =
+        result.cumulative_ms.first_model_token;
+    }
     await collectTelemetry();
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error);

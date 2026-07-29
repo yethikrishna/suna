@@ -152,13 +152,16 @@ flow(
   'CONN-8',
   {
     domain: 'connectors',
+    requires: ['managedGit'],
     routes: [
       'POST /v1/executor/projects/:projectId/connectors',
       'DELETE /v1/executor/projects/:projectId/connectors/:slug',
+      'GET /v1/executor/projects/:projectId/connectors/:slug/config',
     ],
   },
   async (ctx) => {
-    const p = await ctx.fixtures.project();
+    const p = await ctx.fixtures.project({ managedGit: true });
+    const slug = `ke2e-create-only-${Date.now().toString(36)}`;
     await ctx.step('invalid json add → 400', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
@@ -167,15 +170,67 @@ flow(
           raw: true,
           headers: { 'content-type': 'application/json' },
         });
-      r.status([400, 501]);
+      r.status(400);
     });
-    await ctx.step('delete unknown connector → ok/404/400', async () => {
+    await ctx.step('non-boolean create-only flag → 400', async () => {
+      const r = await ctx.client.as(ctx.P.OWNER).post(
+        '/v1/executor/projects/:projectId/connectors',
+        {
+          slug,
+          provider: 'mcp',
+          url: 'https://ke2e.kortix.test/mcp',
+          auth: { type: 'none' },
+          create_only: 'true',
+        },
+        { params: { projectId: p.id } },
+      );
+      r.status(400).body().has('$.error', 'create_only must be a boolean');
+    });
+    await ctx.step('first create-only connector profile succeeds', async () => {
+      const r = await ctx.client.as(ctx.P.OWNER).post(
+        '/v1/executor/projects/:projectId/connectors',
+        {
+          slug,
+          name: 'Original profile',
+          provider: 'mcp',
+          url: 'https://ke2e.kortix.test/mcp',
+          auth: { type: 'none' },
+          create_only: true,
+        },
+        { params: { projectId: p.id } },
+      );
+      r.status(200).body().has('$.ok', true);
+    });
+    await ctx.step('duplicate create-only connector profile → 409', async () => {
+      const r = await ctx.client.as(ctx.P.OWNER).post(
+        '/v1/executor/projects/:projectId/connectors',
+        {
+          slug,
+          name: 'Replacement profile',
+          provider: 'mcp',
+          url: 'https://ke2e.kortix.test/mcp',
+          auth: { type: 'none' },
+          create_only: true,
+        },
+        { params: { projectId: p.id } },
+      );
+      r.status(409);
+    });
+    await ctx.step('duplicate request leaves the original manifest entry unchanged', async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .get('/v1/executor/projects/:projectId/connectors/:slug/config', {
+          params: { projectId: p.id, slug },
+        });
+      r.status(200).body().has('$.name', 'Original profile');
+    });
+    await ctx.step('delete the created connector profile → 200', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .del('/v1/executor/projects/:projectId/connectors/:slug', {
-          params: { projectId: p.id, slug: 'nope' },
+          params: { projectId: p.id, slug },
         });
-      r.status([200, 400, 404, 501]);
+      r.status(200);
     });
   },
 );

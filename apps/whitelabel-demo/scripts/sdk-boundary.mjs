@@ -21,6 +21,10 @@ const ALLOWED_CLIENT_BFF_ROUTES = [
   // Provider-neutral session model control: the upstream field is named after
   // the runtime, so the translation stays server-side and the client says `model`.
   '/api/session-model',
+  // Re-scope a RUNNING session's secrets / connector bindings. A BFF route so
+  // ownership is checked before any id reaches an upstream path and the
+  // wrapper's key never nears the browser.
+  '/api/session-scope',
   '/api/usage',
   // Lists the ACCOUNT's projects so an operator can adopt one into this demo
   // user. Gated on LUMEN_ALLOW_PROJECT_IMPORT and off by default — it is the one

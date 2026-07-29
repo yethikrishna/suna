@@ -180,6 +180,43 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
     />
   );
 
+  // Apply the draft to THIS session. The bar said "Changeable" before this
+  // existed — a badge without the control, which is worse than saying frozen.
+  const applyScope = useMutation({
+    mutationFn: async (secretsList: string[] | null) => {
+      const res = await fetch(
+        `/api/session-scope?projectId=${encodeURIComponent(projectId)}&sessionId=${encodeURIComponent(sessionId)}`,
+        {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ secrets: secretsList }),
+        },
+      );
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        detail?: string;
+        retroactive?: boolean;
+        dropped_secrets?: string[];
+      };
+      if (!res.ok) throw new Error(body.error ?? 'Could not re-scope this session');
+      return body;
+    },
+    onSuccess: (body) => {
+      // Report what actually happened, not a flat "saved". A dropped secret stops
+      // being DELIVERED from the next prompt — the agent may still hold the value
+      // it already read, and saying "revoked" here would be false assurance.
+      const dropped = body.dropped_secrets ?? [];
+      if (dropped.length > 0 && body.retroactive === false) {
+        toast.warning(body.detail ?? 'Applies from the next prompt.', { duration: 8000 });
+      } else {
+        toast.success(body.detail ?? 'Scope updated — applies from the next prompt.');
+      }
+      qc.invalidateQueries({ queryKey: ['session', projectId, sessionId] });
+      setDraftSecrets(null);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const toggleSecret = (identifier: string, on: boolean) => {
     const base = nextSecrets ?? [];
     setDraftSecrets(
@@ -361,6 +398,26 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
             </div>
           )}
         </NextSession>
+        {/* Apply to THIS session. Shown above "start a new session" because it is
+            now the ordinary path — starting fresh is the fallback for the one
+            thing a re-scope cannot do, not the default. */}
+        {draftSecrets !== null && (
+          <div className="mt-2 space-y-1.5 border-t border-border pt-2">
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={applyScope.isPending || issues.length > 0}
+              onClick={() => applyScope.mutate(nextSecrets)}
+            >
+              {applyScope.isPending ? 'Applying…' : 'Apply to this session'}
+            </Button>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Takes effect on the next prompt. Removing one stops it being handed
+              out — it cannot un-read a value the agent already has, so rotate it
+              if you need it truly revoked.
+            </p>
+          </div>
+        )}
         {startAction}
         {/* The call behind the control, next to the control — the demo's job is
             to teach what to send, and re-scoping is the least obvious of these. */}

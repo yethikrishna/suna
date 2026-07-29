@@ -102,18 +102,18 @@ export function sessionScopeRows(input: SessionScopeInput): SessionScopeRow[] {
     {
       key: 'secrets',
       label: 'Secrets',
-      badge: 'Fixed at start',
+      badge: 'Changeable now',
       value: describeSecretsAllowlist(input.secretsAllowlist, agent),
       detail:
         input.secretsAllowlist === null || input.secretsAllowlist === undefined
-          ? 'This session was started without a narrower allowlist, so it gets the agent’s full secret grant. An allowlist can only be set when a session starts — narrowing one mid-flight could leave the session unable to boot.'
-          : 'This allowlist was set when the session started and cannot be widened or narrowed now. Start a new session to change it.',
+          ? 'No narrower allowlist was set, so this session gets the agent’s full secret grant. Set one from the scope bar under the composer — what you send REPLACES the list, from the next prompt.'
+          : 'Change it from the scope bar under the composer. What you send REPLACES this list, from the next prompt. Removing one stops it being handed out, but cannot un-read a value the agent already has — rotate the secret if you need it truly revoked.',
       control: null,
     },
     {
       key: 'connections',
       label: 'Connections',
-      badge: 'Fixed at start',
+      badge: 'Changeable now',
       value:
         bound.length === 0
           ? 'The project default for every connector'
@@ -121,7 +121,7 @@ export function sessionScopeRows(input: SessionScopeInput): SessionScopeRow[] {
       detail:
         bound.length === 0
           ? 'Every connector this agent uses resolves to the project’s default connection. Bind a specific team connection when starting a session to run as that account instead.'
-          : 'Bound when the session started. Connectors not listed here still use the project default. Sessions started from here can only run as a TEAM connection — never a teammate’s private one.',
+          : 'Change these from the scope bar under the composer. Unlike secrets a binding change is fully retroactive — connections resolve server-side on each tool call, so the next call already uses the new one. Only TEAM connections can be bound, never a teammate’s private one.',
       control: null,
     },
   ];

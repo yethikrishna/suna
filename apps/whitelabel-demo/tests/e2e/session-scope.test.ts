@@ -30,8 +30,11 @@ describe('sessionScopeRows', () => {
   });
 
   test('the allowlist reason is specific to whether THIS session has one', () => {
-    expect(row('secrets', { secretsAllowlist: null }).detail).toContain('without a narrower');
-    expect(row('secrets', { secretsAllowlist: ['A'] }).detail).toContain('cannot be widened');
+    // Both cases must say where to change it, and the narrowed one must state
+    // the limit that survives: removing a secret stops DELIVERY, it cannot
+    // un-read what the agent already holds.
+    expect(row('secrets', { secretsAllowlist: null }).detail).toContain('full secret grant');
+    expect(row('secrets', { secretsAllowlist: ['A'] }).detail).toContain('cannot un-read');
   });
 
   test("the agent row names this session's agent, in both directions", () => {
@@ -65,7 +68,7 @@ describe('sessionScopeRows', () => {
 
   test('a bound session is told unbound connectors still fall back to the default', () => {
     expect(row('connections', { boundConnections: { slack: 'Support' } }).detail).toContain(
-      'still use the project default',
+      'retroactive',
     );
   });
 

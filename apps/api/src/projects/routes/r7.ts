@@ -19,7 +19,6 @@ import { roleAllows } from '../access';
 import { createRoute, z } from '@hono/zod-openapi';
 import { accountGroupMembers, accountGroups, accountMembers, executorConnectors, executorExecutions, projectGroupGrants, projectSessions, sessionSandboxes,
   projectSessionConnectorBindings,
-  executorConnectionProfiles,
 } from '@kortix/db';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { mayResolveApproval, maySeeSessionApprovals } from '../lib/approval-authority';

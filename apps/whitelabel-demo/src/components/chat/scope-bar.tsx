@@ -183,13 +183,16 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
   // Apply the draft to THIS session. The bar said "Changeable" before this
   // existed — a badge without the control, which is worse than saying frozen.
   const applyScope = useMutation({
-    mutationFn: async (secretsList: string[] | null) => {
+    mutationFn: async (patch: { secrets?: string[] | null; bindings?: Record<string, string> }) => {
       const res = await fetch(
         `/api/session-scope?projectId=${encodeURIComponent(projectId)}&sessionId=${encodeURIComponent(sessionId)}`,
         {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ secrets: secretsList }),
+          // Only the axis being changed is sent. Omitting a key leaves it
+          // untouched upstream; sending `secrets: null` would be the very
+          // different instruction "stop narrowing".
+          body: JSON.stringify(patch),
         },
       );
       const body = (await res.json().catch(() => ({}))) as {
@@ -197,6 +200,7 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
         detail?: string;
         retroactive?: boolean;
         dropped_secrets?: string[];
+        dropped_bindings?: string[];
       };
       if (!res.ok) throw new Error(body.error ?? 'Could not re-scope this session');
       return body;
@@ -205,6 +209,9 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
       // Report what actually happened, not a flat "saved". A dropped secret stops
       // being DELIVERED from the next prompt — the agent may still hold the value
       // it already read, and saying "revoked" here would be false assurance.
+      // Only a dropped SECRET carries the "cannot un-read" caveat. A dropped
+      // BINDING is fully retroactive, so warning about it would teach a limit
+      // that does not exist there.
       const dropped = body.dropped_secrets ?? [];
       if (dropped.length > 0 && body.retroactive === false) {
         toast.warning(body.detail ?? 'Applies from the next prompt.', { duration: 8000 });
@@ -213,6 +220,7 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
       }
       qc.invalidateQueries({ queryKey: ['session', projectId, sessionId] });
       setDraftSecrets(null);
+      setDraftBindings(undefined);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -407,7 +415,7 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
               size="sm"
               className="w-full"
               disabled={applyScope.isPending || issues.length > 0}
-              onClick={() => applyScope.mutate(nextSecrets)}
+              onClick={() => applyScope.mutate({ secrets: nextSecrets })}
             >
               {applyScope.isPending ? 'Applying…' : 'Apply to this session'}
             </Button>
@@ -479,7 +487,28 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
             onChange={setDraftBindings}
           />
         </NextSession>
+        {/* Same control as secrets, different guarantee: a binding is resolved
+            server-side on every tool call, so this one IS fully effective — the
+            copy must not borrow the secrets caveat. */}
+        {draftBindings !== undefined && (
+          <div className="mt-2 space-y-1.5 border-t border-border pt-2">
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={applyScope.isPending}
+              onClick={() => applyScope.mutate({ bindings: nextBindings })}
+            >
+              {applyScope.isPending ? 'Applying…' : 'Apply to this session'}
+            </Button>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Takes effect on the next tool call — connections resolve
+              server-side, so unlike secrets this change is complete. An alias
+              you unbind falls back to the project default.
+            </p>
+          </div>
+        )}
         {startAction}
+        <CallSnippet id="session.rescope" context={{ projectId, sessionId }} />
       </ScopeChip>
 
       <ScopeChip

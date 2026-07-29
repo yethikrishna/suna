@@ -358,3 +358,33 @@ describe('the draft carried into the next session', () => {
     expect(body).not.toHaveProperty('connector_bindings');
   });
 });
+
+describe('the re-scope payload sends only the axis being changed', () => {
+  // The bar builds `{ secrets }` or `{ bindings }`, never both, and never a key
+  // the user did not touch. The distinction is load-bearing upstream: an ABSENT
+  // `secrets` key means "leave secrets alone", while `secrets: null` means the
+  // very different "stop narrowing — fall back to the agent's full grant".
+  // Collapsing them would silently widen a session at the moment someone only
+  // meant to rebind a connector.
+  const payloadFor = (patch: { secrets?: string[] | null; bindings?: Record<string, string> }) =>
+    JSON.parse(JSON.stringify(patch)) as Record<string, unknown>;
+
+  test('changing secrets does not mention bindings', () => {
+    expect('bindings' in payloadFor({ secrets: ['A'] })).toBe(false);
+  });
+
+  test('changing bindings does not mention secrets', () => {
+    expect('secrets' in payloadFor({ bindings: { gmail: 'p1' } })).toBe(false);
+  });
+
+  test('an explicit null survives serialisation — it is not the same as absent', () => {
+    const payload = payloadFor({ secrets: null });
+    expect('secrets' in payload).toBe(true);
+    expect(payload.secrets).toBeNull();
+  });
+
+  test('an EMPTY allowlist survives too — "no secrets" is a real choice', () => {
+    const payload = payloadFor({ secrets: [] });
+    expect(payload.secrets).toEqual([]);
+  });
+});

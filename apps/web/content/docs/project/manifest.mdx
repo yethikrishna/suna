@@ -381,7 +381,7 @@ v2 is deny-by-default: an omitted `connectors`, `secrets`, `kortix_cli`, or `ski
 
 ## When config changes take effect
 
-- A manifest or `.kortix/opencode/` edit applies only after a change request merges to `main`. Sessions and the trigger sweep read the default branch, not session branches.
+- A manifest or harness-native config edit applies only after a change request merges to `main`. This includes `.kortix/opencode/`, `.claude/`, `.codex/`, and `.pi/`. Sessions and the trigger sweep read the default branch, not session branches.
 - A trigger's cron or webhook change is picked up by the scheduler within seconds of the merge.
 - A sandbox image or hardware change rebuilds the snapshot. The new spec applies on the next session, not the current one.
 - A secret value change in the dashboard resolves at sandbox-create time. It applies on the next session, not a running one.

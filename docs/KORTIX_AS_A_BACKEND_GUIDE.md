@@ -1,5 +1,11 @@
 # Drive Kortix as a Backend
 
+> **Runtime scope.** The public `opencode_model` name remains unchanged for
+> compatibility. In a v3 project, `agent_name` selects an immutable OpenCode,
+> Claude Code, Codex, or Pi runtime profile. The framework-free
+> `session.stream()` and `session.send()` examples below use OpenCode REST.
+> Use `useSession()` or `createAcpSessionController()` for ACP.
+
 Wrap **one** Kortix agent + repo as the backend for **many** of your end-users.
 Your product holds a single Kortix credential; each session you start on behalf
 of a user brings *that user's* connectors, model, context, and secrets **by
@@ -381,6 +387,9 @@ If you need structured per-user context inside the run as well, put it in
 
 ## 4. Stream the answer
 
+This example uses the OpenCode REST compatibility path. It does not select the
+server-owned ACP transport.
+
 ```ts
 const s = kortix.session(projectId, session.session_id);
 await s.ensureReady();               // blocks through the sandbox cold start
@@ -394,7 +403,7 @@ await s.send(prompt);
 ```
 
 - **`ensureReady()` polls the cold start.** A fresh sandbox can take tens of
-  seconds to boot OpenCode; `ensureReady()` long-polls until the runtime is ready
+  seconds to boot; `ensureReady()` long-polls until the runtime is ready
   (default ~3 min) and only then resolves, so `stream()` connects before the
   prompt goes out. Pass `{ readyTimeoutMs }` to wait longer.
 - **Streaming needs the sandbox to reach *your* API.** The sandbox finishes
@@ -502,6 +511,8 @@ curl -sS -X PUT "$KORTIX_API_URL/projects/$PROJECT_ID/sessions/$SESSION_ID/model
 
 Three things worth knowing:
 
+- This live route applies to the OpenCode compatibility process. Start a new
+  Claude Code, Codex, or Pi session to change its model.
 - **`applied_live` is not decoration.** `true` means a running sandbox took it
   now; `false` means it was stored and applies when the session next starts.
   Report the difference to your user — someone told "model changed" whose next
@@ -537,8 +548,8 @@ before.
 
 | Override | Mid-session | Why |
 | --- | --- | --- |
-| `opencode_model` | **yes** — see above | |
-| `agent_name` | **per message** — each prompt names the agent that runs it | A switch to an agent with a *different secrets grant* is refused `409 AGENT_SWITCH_REQUIRES_NEW_SESSION`; retrying cannot succeed, because re-scoping cannot un-read what the session already loaded. |
+| `opencode_model` | **OpenCode only** — see above | Start a new Claude Code, Codex, or Pi session for a different model. |
+| `agent_name` | **OpenCode REST only** | A v3 session keeps its logical agent, runtime profile, harness, and native agent. |
 | `secrets` | **no** | `secrets_allowlist` is written once at create. A mutable allowlist could be narrowed below what the sandbox already needs and leave it unbootable. |
 | `connector_bindings` | **no** | Create-only. Start a new session to bind differently. |
 | `runtime_context` | **no** | Create-only. |

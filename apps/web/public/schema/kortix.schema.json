@@ -1854,12 +1854,14 @@
           },
           "runtimes": {
             "type": "object",
+            "description": "Named ACP runtime profiles. Each profile selects one supported harness and its native configuration directory.",
             "minProperties": 1,
             "propertyNames": {
               "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"
             },
             "additionalProperties": {
               "type": "object",
+              "description": "One ACP runtime profile. The selected harness and resolved profile are immutable when a session starts.",
               "required": [
                 "harness"
               ],
@@ -1871,14 +1873,16 @@
                     "codex",
                     "opencode",
                     "pi"
-                  ]
+                  ],
+                  "description": "Harness implementation for this runtime profile. Supported values select OpenCode, Claude Code, Codex, or Pi."
                 },
                 "config_dir": {
                   "type": "string",
                   "minLength": 1,
                   "not": {
                     "pattern": "^/|(^|/)\\.\\.($|/)"
-                  }
+                  },
+                  "description": "Optional repository-relative harness configuration directory. The runtime uses the harness-native default when this field is absent."
                 }
               },
               "additionalProperties": false
@@ -1898,11 +1902,13 @@
               "properties": {
                 "runtime": {
                   "type": "string",
-                  "minLength": 1
+                  "minLength": 1,
+                  "description": "The name of a declared runtime profile. This selection becomes immutable when a session starts."
                 },
                 "agent": {
                   "type": "string",
-                  "minLength": 1
+                  "minLength": 1,
+                  "description": "Optional harness-native agent identifier. Omit this field when the selected harness has no named-agent concept."
                 },
                 "enabled": {
                   "type": "boolean"

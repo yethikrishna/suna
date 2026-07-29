@@ -101,10 +101,21 @@ script verifies session creation, the headless prompt, a follow-up prompt,
 transcript reload, immutable runtime identity, restart, and a post-restart
 prompt. The default harness set is `opencode,claude,codex,pi`.
 
+Start the local stack first. The command below loads the encrypted API
+environment and the web Supabase anon key without printing either value:
+
+```bash
+pnpm dev
+```
+
+In another shell:
+
 ```bash
 E2E_ACP_MULTI_HARNESS_HARNESSES=codex,pi \
 E2E_ACP_MULTI_HARNESS_PROVIDER=daytona \
-bun tests/e2e/scripts/acp-multi-harness-smoke.ts
+pnpm exec dotenvx run --ignore=MISSING_ENV_FILE \
+  -f apps/api/.env.local -f apps/api/.env -f apps/web/.env \
+  -- bun tests/e2e/scripts/acp-multi-harness-smoke.ts
 ```
 
 The script creates a disposable user and project. It stops every created
@@ -117,6 +128,12 @@ session and archives the project in `finally`.
 | `E2E_ACP_MULTI_HARNESS_MODEL` | Harness default | Explicit session model |
 | `E2E_ACP_MULTI_HARNESS_OPENAI_API_KEY` | Unset | Temporary direct key for the disposable project |
 | `E2E_KEEP_ACP_MULTI_HARNESS_FIXTURE` | `0` | Set to `1` to preserve the fixture for debugging |
+| `E2E_ACP_MULTI_HARNESS_REUSE_PROJECT_ID` | Unset | Reuse an existing test project |
+| `E2E_ACP_MULTI_HARNESS_REUSE_EMAIL` | Unset | Login email for the reused project; both reuse variables are required together |
+
+Do not use the gateway provider verification endpoint as harness acceptance.
+Run the exact harness and model. The smoke must receive a real assistant reply
+and persist the same runtime identity across restart.
 
 ## Note on Unit Tests
 

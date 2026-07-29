@@ -32,7 +32,10 @@ Kortix enforces a concurrent-session limit per account. Exceeding your tier's li
 
 ### Active-turn protection
 
-While an OpenCode turn is `busy` or `retrying`, the sandbox daemon renews a short execution lease with the API every 60 seconds. The lease blocks the idle reaper. Each renewal also touches the provider, so the provider's own inactivity timer cannot hibernate the sandbox mid-run. `session.idle` and `session.error` release the lease.
+While an agent turn is active, the sandbox daemon renews a short execution
+lease with the API every 60 seconds. The lease blocks the idle reaper. Each
+renewal also touches the provider, so the provider cannot hibernate the sandbox
+mid-turn. An idle or failed turn releases the lease.
 
 An open dashboard tab, preview, SSE connection, or health poll does not create a lease. A passive tab cannot keep an idle sandbox alive.
 
@@ -135,13 +138,16 @@ Restart and resume reuse the stored compiled runtime plan. They do not recompile
 
 ## The daemon control surface
 
-The `kortix-agent` binary runs as PID 1's child and fronts OpenCode on `KORTIX_SERVICE_PORT` (`8000`). Every route outside `/kortix/*` requires the HMAC-signed `X-Kortix-User-Context` header, validated against `KORTIX_SANDBOX_TOKEN`.
+The `kortix-agent` binary runs as PID 1's child. It fronts the OpenCode REST
+compatibility process and the ACP process registry on `KORTIX_SERVICE_PORT`
+(`8000`). Every route outside `/kortix/*` requires the HMAC-signed
+`X-Kortix-User-Context` header, validated against `KORTIX_SANDBOX_TOKEN`.
 
 | Path | Purpose |
 | --- | --- |
 | `GET /kortix/health` | Liveness check. Reports runtime, harness, ACP process identity, repo, branch, and commit. |
 | `/kortix/acp/:acp_server_id` | ACP JSON-RPC POST endpoint and SSE event stream. |
-| `POST /kortix/refresh` | Re-pull the session branch and restart OpenCode in place. |
+| `POST /kortix/refresh` | Re-pull the session branch and refresh the compatibility runtime. |
 | `POST /kortix/abort` | Abort the current run. |
 | `POST /kortix/env` | Update the runtime environment. |
 | `/kortix/pty` | Backs the in-dashboard terminal. |
@@ -156,7 +162,7 @@ Every sandbox boots from an image built in two layers. Your Dockerfile defines t
 
 ```
 ┌─────────────────────────────────────────┐
-│  Kortix runtime layer (added on top)    │  ← opencode + kortix-agent + entrypoint
+│  Kortix runtime layer (added on top)    │  ← four harness paths + kortix-agent
 ├─────────────────────────────────────────┤
 │  Your Dockerfile                        │  ← .kortix/Dockerfile
 └─────────────────────────────────────────┘
@@ -187,7 +193,8 @@ Kortix appends this layer on top of your Dockerfile's final stage.
 - pnpm-managed Node.js and npm, plus uv-managed Python 3.
 - A document-tools floor: LibreOffice, Pandoc, and OCR tools.
 - An exact uv-managed Python version exposed as `python` and `python3`. Use `uv run --with <package>` for third-party dependencies.
-- `opencode-ai`, the `bun` runtime, and `agent-browser` with a baked Chromium build.
+- OpenCode, Claude Code ACP, Codex ACP, Pi ACP, and the pinned Pi harness.
+- The `bun` runtime and `agent-browser` with a baked Chromium build.
 - The `kortix-agent` daemon, the `kortix` CLI, and the entrypoint script.
 - `ENV KORTIX_WORKSPACE=/workspace`, `WORKDIR /workspace`, `EXPOSE 8000`, and the entrypoint that starts the daemon.
 

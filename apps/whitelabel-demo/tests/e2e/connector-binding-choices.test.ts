@@ -111,17 +111,17 @@ describe('unavailable reason must not mislabel a shared connection (F4)', () => 
     // system profiles. Calling that "only connected to people's own accounts"
     // is false AND names an action — ask a teammate to share it — that fixes
     // nothing.
-    const choices = selectConnectorBindingChoices([profile('external', 'revoked')], ['gmail']);
+    const choices = selectConnectorBindingChoices([profile('external', 'revoked')]);
     expect(choices[0]?.unavailable).toBe('team_connection_inactive');
   });
 
   test('only a MEMBER-owned connection is genuinely private to one person', () => {
-    const choices = selectConnectorBindingChoices([profile('member', 'revoked')], ['gmail']);
+    const choices = selectConnectorBindingChoices([profile('member', 'revoked')]);
     expect(choices[0]?.unavailable).toBe('private_only');
   });
 
   test('an active team connection is offered, not reported unavailable', () => {
-    const choices = selectConnectorBindingChoices([profile('project')], ['gmail']);
+    const choices = selectConnectorBindingChoices([profile('project')]);
     expect(choices[0]?.unavailable).toBeNull();
     expect(choices[0]?.connections).toHaveLength(1);
   });

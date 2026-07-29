@@ -33,6 +33,48 @@ Reference docs, not this file, for the contract itself:
 
 ---
 
+## Newly reachable from the UI (added after this guide's first draft)
+
+Three surfaces moved out of curl-only and into the app. Each is listed again in
+its own section below; this is the short index.
+
+| Capability | Where | Note |
+| --- | --- | --- |
+| Secret lifecycle — create with a distinct `identifier`, rotate, delete | Settings → Secrets | The identifier/KEY distinction is now visible, and colliding KEYs are flagged BEFORE a create that would 409 |
+| Connector-scoped secrets | Settings → Secrets | Marked, and excluded from the session allowlist — offering one causes `404 SECRET_IDENTIFIER_NOT_FOUND` at create |
+| Spend by end-user | Usage | **Gated.** See the operator note below |
+| Your own spend | Usage | Always visible to the signed-in user |
+| Idempotency replay | Usage | Re-sends the same key and shows replay vs `409 IDEMPOTENCY_*_CONFLICT` |
+| Cap behaviour | Usage | Surfaces `per_origin_session_limit` / `per_end_user_spend_limit` with their real codes |
+| Approvals (`require_approval`) | Session workbench | Approve/deny; `403 APPROVAL_REQUIRES_HUMAN` renders its actual meaning |
+| End-user isolation | Session workbench + `/projects/{id}/sessions` | Shows which end-user this browser acts as |
+
+### The one switch you need for the usage breakdown
+
+The per-end-user breakdown names other end-users and prices them, so returning it
+to any signed-in user would let one customer read every other customer's id and
+spend. It is **default-deny**: with nothing configured you see only your own
+spend, and the breakdown panel stays empty.
+
+To see it while testing, opt yourself in:
+
+```bash
+echo 'LUMEN_USAGE_SHOW_ACCOUNT_BREAKDOWN=1' >> apps/whitelabel-demo/.env.local
+```
+
+This is a **deployment** switch, not a per-user permission — deliberately. The
+first version allowlisted operator emails, which reads like authorization and
+is not: this demo's login accepts any email with any password, so the "operator
+identity" is a string the visitor typed. Anyone wanting the breakdown could just
+sign in as an allowlisted address. A deployment flag states the real condition
+("this instance is a single-tenant demo") and cannot be bypassed by choosing a
+different email.
+
+Restart after changing it (`pnpm dev` picks up `.env.local` on boot, not per
+request).
+
+---
+
 ## A. Setup — Lumen in wrapper mode against dev
 
 ### A1. Get an ACCOUNT-scoped API key

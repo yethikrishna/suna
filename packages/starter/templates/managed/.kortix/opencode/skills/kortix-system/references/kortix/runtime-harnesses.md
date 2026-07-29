@@ -192,8 +192,10 @@ pnpm exec dotenvx run --ignore=MISSING_ENV_FILE \
 ```
 
 The default set is `opencode,claude,codex,pi`. The script creates a disposable
-user and project. It enables `acp_runtime`, pushes the v3 manifest, starts one
-session per harness, and cleans up in `finally`. Run `pnpm dev` first.
+user and provisions the `acp-multi-harness` starter. Project creation enables
+`acp_runtime`. The script starts one session per harness and cleans up the
+managed repository, project rows, account row, and user in `finally`. Run
+`pnpm dev` first.
 
 Use a subset or provider:
 
@@ -218,7 +220,7 @@ Supported options:
 | `E2E_ACP_MULTI_HARNESS_REUSE_EMAIL` | Login email for the reused project. Set it with `E2E_ACP_MULTI_HARNESS_REUSE_PROJECT_ID`. |
 | `E2E_API_URL` | Target API. Defaults to `http://localhost:8008/v1`. |
 | `E2E_SUPABASE_URL` | Target Supabase Auth URL. Defaults to `http://127.0.0.1:54321`. |
-| `E2E_DATABASE_URL` | Optional database URL used to grant test credits. |
+| `E2E_DATABASE_URL` | Database URL override used for test credits and complete fixture cleanup. The script falls back to `DATABASE_URL`. |
 
 Each harness must pass all checks:
 

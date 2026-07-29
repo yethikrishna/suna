@@ -449,7 +449,7 @@ await s.send(prompt);
 | `409` | `CONNECTOR_PROFILE_INACTIVE` | The bound connection is revoked or errored. Reconnect it; a revoked profile fails closed and never silently falls back. |
 | `409` | `IDEMPOTENCY_ORIGIN_CONFLICT` | An `Idempotency-Key` was replayed under a **different** `end_user_ref`. This is the guard that stops one end-user receiving another's session — do not work around it by reusing keys. |
 | `409` | `IDEMPOTENCY_KEY_CONFLICT` | The key collided with a different operation. Remediation is the **opposite** of the other idempotency errors: use a higher-entropy key. The uniqueness index is global. |
-| `409` | `END_USER_REF_CONFLICT` | You sent both `end_user_ref` and the deprecated `origin_ref` with **different** values. Send only `end_user_ref`. |
+| `400` | `END_USER_REF_CONFLICT` | You sent both `end_user_ref` and the deprecated `origin_ref` with **different** values. Send only `end_user_ref`. |
 | `409` | `SESSION_NOT_RUNNING` | You tried to change the model of a terminal session. Nothing would consume it. |
 | `429` | `concurrent_session_limit` / `per_origin_session_limit` | Account-wide, or per-end-user when `KORTIX_BACKEND_PER_ORIGIN_SESSION_LIMIT` is set (defaults to 0 = off). Retry with backoff. |
 | `402` | `subscription_required` / `insufficient_credits` | Billing. Not retryable without operator action. |

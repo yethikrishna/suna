@@ -3913,6 +3913,63 @@ Scope:
 - Prove two sandboxes restored from one snapshot receive distinct OpenCode IDs.
 
 The required `tdd` skill is unavailable in this session.
-The implementation will use the same RED, GREEN, and REFACTOR sequence directly.
+The implementation used the same RED, GREEN, and REFACTOR sequence directly.
 
-**Status:** IN PROGRESS.
+TDD evidence:
+
+- IndexedDB scope RED: the focused test failed because
+  `idb-sync-cache-key` did not exist.
+- IndexedDB scope GREEN: `3 pass`, `0 fail`.
+- Transcript ownership RED: the focused test failed because
+  `resolveSessionCacheOwnerScope` did not exist.
+- Transcript ownership GREEN: `4 pass`, `0 fail`.
+- Runtime switch gate RED: the focused source contract found no sandbox-switch
+  gates in `useSession`.
+- Runtime switch gate GREEN: the focused source contract passed.
+- Runtime-action gate RED: the focused test failed because
+  `isSessionRuntimeActionReady` did not exist.
+- Runtime-action gate GREEN: the focused test passed.
+
+Final SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1381 pass`, `0 fail`, `5970`
+  assertions.
+- `pnpm --filter @kortix/sdk run smoke:install`: the packed tarball installed,
+  imported, and constructed successfully.
+- The public export snapshot did not change.
+
+Related repository gates:
+
+- Starter typecheck: exit `0`.
+- Starter tests: `51 pass`, `0 fail`.
+- CLI typecheck: exit `0`.
+- CLI tests: `553 pass`, `0 fail`.
+- API typecheck: exit `0`.
+- API focused tests: gateway base URL `6 pass`; starter create-repo `12 pass`;
+  provision `10 pass`; scaffold identity `1 pass` with `182` assertions;
+  project-session contract `45 pass` with `363` assertions.
+- Web focused tests: `27 pass`, `0 fail`.
+- Web focused ESLint: exit `0`.
+
+Live local acceptance:
+
+- Evidence:
+  `tests/performance/session-start/results/2026-07-29/opencode-fork-isolation-local-platinum.json`.
+- Provider: Platinum.
+- Result: `PASS 2/2`.
+- Create-to-ready: `21.460 s` and `23.736 s`.
+- `/start` returned distinct OpenCode roots:
+  `ses_050ddca47ffe4r8L0yDak7Fiar` and
+  `ses_050ddd663ffe159AjQGlKxefsg`.
+- `createKortix().session().ensureReady()` matched each `/start` root.
+- Restart preserved each root.
+- Each transcript contained only its own three assistant markers.
+- Fixture cleanup left zero projects and zero users.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+**Repository delivery shippable to production: NOT YET.** PR merge, Deploy Dev,
+deployed SHA proof, and deployed isolation verification remain.

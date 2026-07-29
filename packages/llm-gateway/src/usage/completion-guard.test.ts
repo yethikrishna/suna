@@ -112,12 +112,24 @@ describe('soft upstream failures encoded as assistant content', () => {
     expect(sseMayContainSoftFailure(prefix)).toBe(true);
     expect(sseSoftFailureFrame(prefix)).toBeNull();
 
-    const complete = `${prefix}data: {"choices":[{"delta":{"content":" To ensure system stability, please adjust your client logic to scale requests more smoothly over time."},"finish_reason":null}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n`;
+    const complete = `${prefix}data: {"choices":[{"delta":{"content":" To ensure system stability, please adjust your client logic to scale requests more smoothly over time."},"finish_reason":null}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}\n\ndata: [DONE]\n\n`;
     expect(sseSoftFailureFrame(complete)).toEqual({
       message: RAMP_RATE_MESSAGE,
       code: 429,
       detail: { type: 'soft_rate_limit' },
     });
+  });
+
+  test('does not classify the exact sentence when streaming usage is non-zero', () => {
+    const valid = `data: {"choices":[{"delta":{"content":"${RAMP_RATE_MESSAGE}"},"finish_reason":null}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":20,"total_tokens":32}}\n\ndata: [DONE]\n\n`;
+
+    expect(sseSoftFailureFrame(valid)).toBeNull();
+  });
+
+  test('does not classify the exact sentence when streaming usage is absent', () => {
+    const unverified = `data: {"choices":[{"delta":{"content":"${RAMP_RATE_MESSAGE}"},"finish_reason":null}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n`;
+
+    expect(sseSoftFailureFrame(unverified)).toBeNull();
   });
 
   test('releases normal content as soon as it diverges from the failure prefix', () => {

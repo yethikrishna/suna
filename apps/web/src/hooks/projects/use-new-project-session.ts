@@ -5,24 +5,27 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useRef } from 'react';
 
 import { errorToast, loadingToast } from '@/components/ui/toast';
-import { resolveCreateFailure } from '@/hooks/projects/new-session-failure';
+import {
+  getConnectorAuthorizationRequiredProfiles,
+  resolveCreateFailure,
+} from '@/hooks/projects/new-session-failure';
+import { useProjectCanRun } from '@/hooks/projects/use-project-can-run';
+import { warmProjectSessionKey } from '@/hooks/projects/use-warm-project-session';
 import {
   buildWarmSessionClaimInput,
   resolveWarmSessionForSend,
   shouldFallbackFromWarmClaim,
 } from '@/hooks/projects/warm-session-create';
-import { useProjectCanRun } from '@/hooks/projects/use-project-can-run';
-import { warmProjectSessionKey } from '@/hooks/projects/use-warm-project-session';
 import { isBillingEnabled } from '@/lib/config';
 import { useConnectorGateStore } from '@/stores/connector-gate-store';
 import { useUpgradeDialogStore } from '@/stores/upgrade-dialog-store';
-import { markSessionFresh } from '@kortix/sdk/fresh-sessions';
 import {
   claimWarmProjectSession,
+  createProjectSession,
   type ProjectSession,
   type SessionConnectorBindings,
-  createProjectSession,
 } from '@kortix/sdk';
+import { markSessionFresh } from '@kortix/sdk/fresh-sessions';
 import { prefetchSessionStart } from '@kortix/sdk/react';
 
 /**
@@ -124,9 +127,7 @@ export function useNewProjectSession(
         );
         if (!selectedWarmSession) return createNormalSession();
 
-        router.prefetch(
-          `/projects/${projectId}/sessions/${selectedWarmSession.session_id}`,
-        );
+        router.prefetch(`/projects/${projectId}/sessions/${selectedWarmSession.session_id}`);
         try {
           const claimed = await claimWarmProjectSession(
             projectId,
@@ -159,11 +160,13 @@ export function useNewProjectSession(
           if (action === 'upgrade') {
             openUpgradeDialog({ reason: 'subscription_required', accountId });
           } else if (action === 'connect') {
-            // A required connector isn't connected — open the gate so the user
-            // connects their own account, then re-run this exact create.
-            const connector = (err as { data?: { connector?: string } })?.data?.connector;
-            if (projectId && connector) {
-              openConnectorGate({ projectId, connector, retry: () => startRef.current(opts) });
+            const connectorProfiles = getConnectorAuthorizationRequiredProfiles(err);
+            if (projectId && connectorProfiles) {
+              openConnectorGate({
+                projectId,
+                connectorProfiles,
+                retry: () => startRef.current(opts),
+              });
             } else {
               errorToast(err instanceof Error ? err.message : 'Failed to start session');
             }

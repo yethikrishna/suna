@@ -14,7 +14,7 @@ import { appendAcpEnvelope, loadAcpTranscript } from '../lib/acp-transcript';
 import { projectsApp } from '../lib/app';
 import { syncSandboxEnvForPrompt } from '../lib/sandbox-env-sync';
 import { sandboxRuntimeEndpoint } from '../runtime-inspection';
-import { extendSandboxDeadline, isSandboxAuthored } from '../sandbox-deadline';
+import { isSandboxAuthored, observeTurnStart } from '../sandbox-deadline';
 import {
   type PromptInfo,
   generateSessionTitleFromFirstPrompt,
@@ -222,6 +222,26 @@ projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp',
         );
       }
       titlePrompt = promptInfoFromEnvelope(envelope);
+      // OBSERVE THE TURN START BEFORE RELAYING IT. Same contract as the proxy
+      // edge (sandbox-proxy/routes/preview.ts): this is the ONE observation the
+      // control plane makes of a run beginning, it must never come from the box's
+      // own credential, and at the 24-hour absolute run cap the box must be
+      // REFUSED rather than handed a prompt it is about to be killed mid-way
+      // through. `parkBoxAtRunCap` is left to the reaper here — this route has no
+      // provider handle of its own and the next prompt auto-resumes the box.
+      if (!isSandboxAuthored(c.get('apiKeyType'), c.get('sessionId'))) {
+        const observed = await observeTurnStart({ sessionId: target.sessionId });
+        if (observed === 'at_cap') {
+          return c.json(
+            {
+              error: 'This sandbox has reached its 24-hour continuous run limit and is restarting.',
+              code: 'sandbox_run_cap_reached',
+              retry: true,
+            },
+            503,
+          );
+        }
+      }
     }
 
     await appendAcpEnvelope({
@@ -242,21 +262,6 @@ projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp',
         signal: c.req.raw.signal,
       };
     });
-    if (upstream.ok && titlePrompt) {
-      // A CONTROL-PLANE-OBSERVED turn start: the API relayed this prompt and
-      // the box accepted it. Only such an observation may push the deadline
-      // out, and never when the box authored the request itself. Fire-and-
-      // forget — a deadline write must never fail a user's prompt.
-      const promptSessionId = target.sessionId;
-      if (!isSandboxAuthored(c.get('apiKeyType'), c.get('sessionId'))) {
-        void extendSandboxDeadline({ sessionId: promptSessionId }).catch((err) =>
-          console.warn(
-            `[deadline] extend failed for session ${promptSessionId}:`,
-            err instanceof Error ? err.message : err,
-          ),
-        );
-      }
-    }
     if (upstream.ok && titlePrompt?.text) {
       void generateSessionTitleFromFirstPrompt({
         sessionId: target.sessionId,

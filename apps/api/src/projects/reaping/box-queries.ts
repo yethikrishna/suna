@@ -106,6 +106,37 @@ export async function countReapCandidates(
  * looked at. That silent re-selection IS the starvation bug; one batched UPDATE
  * per pass is what makes coverage a property of the query instead of luck.
  */
+/**
+ * Re-read ONE row's deadline, for the check immediately before a provider stop.
+ *
+ * THE TOCTOU THIS CLOSES: the sweep reads its candidates, then spends a
+ * multi-second provider round-trip per row asking `getStatus`, and only then
+ * decides. A prompt that arrives inside that window extends `deadline_at` — and
+ * the pass, still holding a snapshot from before the round-trip, stopped the box
+ * anyway. The user's turn died on a box the control plane had already agreed to
+ * keep. One extra indexed read per row that is ABOUT TO BE STOPPED (never on the
+ * healthy path) is the whole cost.
+ *
+ * Returns null when the read FAILED or the row is gone — the caller then does
+ * NOT stop (never act on uncertainty; the next pass retries in minutes).
+ */
+export async function reloadDeadlineAt(sandboxId: string): Promise<Date | null> {
+  try {
+    const [row] = await db
+      .select({ deadlineAt: sessionSandboxes.deadlineAt })
+      .from(sessionSandboxes)
+      .where(eq(sessionSandboxes.sandboxId, sandboxId))
+      .limit(1);
+    return row?.deadlineAt ?? null;
+  } catch (err) {
+    console.warn(
+      `[reaper] deadline re-read failed for ${sandboxId}:`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
 export async function markReaperVisited(sandboxIds: string[], now: Date): Promise<void> {
   if (sandboxIds.length === 0) return;
   await db

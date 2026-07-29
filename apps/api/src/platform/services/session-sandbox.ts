@@ -55,6 +55,7 @@ import { resolveAgentGrant } from '../../projects/agents';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { resolveLlmGatewayBaseUrl } from '../../llm-gateway/sandbox-base-url';
 import { RuntimeIdentityConflictError } from '../../projects/runtime-identity-error';
+import { grantWarmPoolLifetime } from '../../projects/sandbox-deadline';
 import { withTimeout, configuredTimeoutMs } from '../../shared/with-timeout';
 import { resolveProjectRuntimeTransport } from '../../experimental/features';
 
@@ -404,6 +405,13 @@ export async function provisionSessionSandbox(opts: {
   ]);
   const [sandbox] = sandboxRows;
   if (!sandbox) throw new RuntimeIdentityConflictError(sandboxId);
+  // A WARM-POOL box is the one box the control plane can never observe again
+  // until somebody claims it: no turns, no LLM calls, no human preview traffic.
+  // Under the bare 20-minute boot floor every warm box was therefore reaped
+  // before it could be handed out, which defeats the whole feature. Grant its
+  // (bounded) lifetime here, at the one moment we know it is warm. No-op for
+  // every other box, and fire-and-forget: the row already carries the floor.
+  void grantWarmPoolLifetime(sandboxId, sandbox.metadata);
   tl.mark('row+tokens');
 
   // provider.sandboxFacingApiOrigin() (optional) lets a same-machine provider

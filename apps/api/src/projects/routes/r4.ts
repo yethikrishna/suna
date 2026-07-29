@@ -101,7 +101,7 @@ import {
   loadProjectForUser,
   projectCapabilityAllowed,
 } from '../lib/access';
-import { shortenSandboxDeadline } from '../sandbox-deadline';
+import { shortenSandboxDeadlineOnTurnEnd } from '../sandbox-deadline';
 import { AnyObject, TriggerSchema, projectsApp } from '../lib/app';
 import { withProjectGitAuth } from '../lib/git';
 import { metadataMerge } from '../lib/metadata-merge';
@@ -2235,7 +2235,15 @@ projectsApp.openapi(
       // exactly why it is safe to trust a payload the sandbox authored, and
       // why it needs no auth gate of its own. This is the "die 15 minutes
       // after the last turn ended" half of the model.
-      void shortenSandboxDeadline(sessionId).catch((err) =>
+      //
+      // But ONLY for a turn that genuinely ended. `session.error` also fires
+      // while opencode is RETRYING (a 429 backoff, a transient upstream 5xx),
+      // and pulling the deadline in to 15 minutes there killed the box mid-turn
+      // on any backoff longer than that — the exact state the deleted execution
+      // lease treated correctly, because it renewed on 'busy' OR 'retry'. The
+      // classifier lives with the write (shortenSandboxDeadlineOnTurnEnd) so it
+      // cannot be re-wired here without it.
+      void shortenSandboxDeadlineOnTurnEnd(sessionId, status, errorInfo).catch((err) =>
         console.warn(
           `[deadline] shorten failed for session ${sessionId}:`,
           err instanceof Error ? err.message : err,

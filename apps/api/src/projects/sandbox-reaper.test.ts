@@ -21,6 +21,15 @@ let orderByExpressions: string[] = [];
 let statusCalls: string[] = [];
 let livenessStamps: Array<{ sandboxId: string; at: Date }> = [];
 
+/**
+ * What the DB returns for the LAST-MOMENT deadline re-read, when it differs from
+ * the value in the pass's snapshot. This is the TOCTOU: the sweep snapshots
+ * candidates, then burns a multi-second provider round-trip per row, and a prompt
+ * arriving inside that window extends `deadline_at` after the snapshot was taken.
+ * `null` models the row being unreadable/gone.
+ */
+let freshDeadlineBySandbox: Record<string, Date | null> = {};
+
 /** Mirrors the ORDER BY the reaper asks Postgres for, so a pass over more rows
  *  than the batch actually rotates instead of re-selecting the same head:
  *  EXPIRED first, then least-recently-visited. The visit stamp is an ISO-8601
@@ -47,6 +56,34 @@ function describeSql(expression: any): string {
       return chunk?.name ?? '';
     })
     .join(' ');
+}
+
+/** Pull the BOUND VALUES out of a drizzle predicate, so the mock can answer a
+ *  single-row lookup with the row that was actually asked for instead of
+ *  whichever row happens to be first. Without this the reaper's last-moment
+ *  deadline re-read (reloadDeadlineAt) is answered from `candidates[0]` and a
+ *  multi-row pass silently tests nothing. */
+function sqlValues(expression: unknown): string[] {
+  const out: string[] = [];
+  const walk = (node: any) => {
+    if (node === null || node === undefined) return;
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    if (typeof node !== 'object') {
+      out.push(String(node));
+      return;
+    }
+    if (Array.isArray(node.queryChunks)) {
+      for (const chunk of node.queryChunks) walk(chunk);
+      return;
+    }
+    const value = node.value;
+    if (typeof value === 'string' || typeof value === 'number') out.push(String(value));
+  };
+  walk(expression);
+  return out;
 }
 
 /** A thenable that also exposes the chainable clause methods, so `await where()`
@@ -94,11 +131,27 @@ mock.module('../shared/db', () => ({
     select: (projection?: Record<string, unknown>) => ({
       from: (table: unknown) => {
         const isCount = !!projection && 'total' in projection;
+        // The last-moment deadline re-read is the only projection that asks for
+        // deadline_at ALONE, and it is keyed by sandbox_id — so answer it with
+        // that row's CURRENT deadline, which is what the TOCTOU tests move under
+        // the reaper's feet.
+        const isDeadlineReread =
+          !!projection && 'deadlineAt' in projection && Object.keys(projection).length === 1;
         const builder: any = {
           innerJoin: () => builder,
           leftJoin: () => builder,
-          where: () => {
+          where: (predicate?: unknown) => {
             if (isCount) return hybrid([{ total: candidates.length }]);
+            if (isDeadlineReread) {
+              const asked = new Set(sqlValues(predicate));
+              const id = [...asked].find((v) => v in freshDeadlineBySandbox);
+              if (id) {
+                const fresh = freshDeadlineBySandbox[id];
+                return hybrid(fresh === null ? [] : [{ deadlineAt: fresh }]);
+              }
+              const row = candidates.find((c) => asked.has(c.sandboxId));
+              return hybrid(row ? [{ deadlineAt: row.deadlineAt }] : []);
+            }
             return hybrid(
               table === sessionSandboxes
                 ? candidates
@@ -206,6 +259,7 @@ beforeEach(() => {
   orderByExpressions = [];
   statusCalls = [];
   livenessStamps = [];
+  freshDeadlineBySandbox = {};
 });
 
 // ── pure decision functions (the money + UX correctness lives here) ──────────
@@ -345,6 +399,63 @@ describe('reapAndReconcileSandboxes — the one rule: deadline_at <= now', () =>
 
     expect((await reapAndReconcileSandboxes(NOW)).stopped).toBe(1);
     expect(stops).toEqual(['ext-1']);
+  });
+
+  // ═══ TOCTOU: the snapshot is stale by a whole provider round-trip ═══
+  // The pass selects candidates, then spends seconds per row in getStatus, and
+  // only then decides — from `row.deadlineAt`, read BEFORE that round-trip. A
+  // prompt (or a human clicking the preview, or a gateway LLM call) landing in
+  // that window extends the box; stopping it anyway kills live work the control
+  // plane had already agreed to keep, and the just-woken box dies on the spot.
+  test('REGRESSION: a prompt arriving DURING the pass saves the box', async () => {
+    candidates = [candidate({ deadlineAt: new Date(NOW.getTime() - HOUR) })];
+    statusByExternal['ext-1'] = 'running';
+    // The extend the prompt performed, invisible to the pass's snapshot.
+    freshDeadlineBySandbox['sb-1'] = new Date(Date.now() + 4 * HOUR);
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(stops).toEqual([]);
+    expect(r.stopped).toBe(0);
+    expect(r.skipped).toBe(1);
+    // Nothing was written: no billing close, no status flip.
+    expect(pausedCompute).toEqual([]);
+    expect(rowUpdates()).toEqual([]);
+  });
+
+  test('a deadline still expired at the last moment is stopped as before', async () => {
+    candidates = [candidate({ deadlineAt: new Date(NOW.getTime() - HOUR) })];
+    statusByExternal['ext-1'] = 'running';
+    freshDeadlineBySandbox['sb-1'] = new Date(Date.now() - 60_000);
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(stops).toEqual(['ext-1']);
+    expect(r.stopped).toBe(1);
+    expect(r.billingClosed).toBe(1);
+  });
+
+  test('an unreadable row is never stopped on a guess', async () => {
+    candidates = [candidate({ deadlineAt: new Date(NOW.getTime() - HOUR) })];
+    statusByExternal['ext-1'] = 'running';
+    freshDeadlineBySandbox['sb-1'] = null; // read failed / row gone
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(stops).toEqual([]);
+    expect(r.skipped).toBe(1);
+  });
+
+  test('the re-read costs nothing on the healthy path — only rows about to die pay', async () => {
+    candidates = [candidate({ deadlineAt: new Date(NOW.getTime() + HOUR) })];
+    statusByExternal['ext-1'] = 'running';
+    // A value that would REVERSE the decision if it were consulted.
+    freshDeadlineBySandbox['sb-1'] = new Date(NOW.getTime() - HOUR);
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(r.skipped).toBe(1);
+    expect(stops).toEqual([]);
   });
 
   test('the sweep asks the provider FIRST — a stopped box is reconciled, never poked', async () => {

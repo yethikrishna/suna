@@ -220,7 +220,7 @@ Also stop if the same failure survives three different fixes (use
 | 0 | Design and implementation plan | DONE | `profile-auth-cost` | 2026-07-29 | `e70538c802` |
 | 1 | Connector profile contracts | DONE | `profile-auth-cost` | 2026-07-29 | `543044a2a6` + `df01b91344` + `6bfc4dcae1` + `3a410eb374` |
 | 2 | Strategy-based session authorization | DONE | `profile-auth-cost` | 2026-07-29 | `d9a217dd7d` + `0ae111091e` + `df9586a8b5` + `f8c0cbdf21` + `4630109c7d` + `74a804d14d` + `f9d9746ebb` + `383e501ea3` + `30c607a646` |
-| 3 | Main web session scope | NOT STARTED | — | — | — |
+| 3 | Main web session scope | IN PROGRESS | `profile-auth-cost` | 2026-07-29 | — |
 | 4 | Remove end-user usage attribution | NOT STARTED | — | — | — |
 | 5 | Unified session costs | NOT STARTED | — | — | — |
 | 6 | White-label and documentation alignment | NOT STARTED | — | — | — |

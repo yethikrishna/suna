@@ -3879,3 +3879,22 @@ Final SDK gates:
 **Status:** COMPLETE.
 
 **SDK package shippable to production: YES.**
+
+---
+
+### 2026-07-29 — session `acp-runtime-adapters` final local verification
+
+The final branch retains the additive `acp-multi-harness` starter input.
+
+Final SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1357 pass`, `0 fail`, `5931`
+  assertions, and `116` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: the packed tarball imported
+  and constructed successfully.
+
+**SDK package shippable to production: YES.**
+
+**Repository delivery shippable to production: NOT YET.** PR merge, Deploy Dev,
+deployed SHA proof, and deployed four-harness verification remain.

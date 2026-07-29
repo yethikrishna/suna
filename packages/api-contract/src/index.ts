@@ -663,21 +663,12 @@ export const SessionCreateInputSchema = z
     metadata: JsonObjectSchema.optional(),
     runtime_context: SessionRuntimeContextSchema.optional(),
     connector_bindings: SessionConnectorBindingsInputSchema.optional(),
-    // When `connector_bindings` is set, binding any alias normally disables the
-    // project-default fallback for every OTHER (unbound) alias ("all-or-nothing").
-    // `inherit_unbound: true` keeps that fallback, so a caller can override just one
-    // connector (e.g. a user's own account) without re-binding the rest. Only ever
-    // inherits the project DEFAULT profile — never another owner's — so it is not
-    // origin-gated (any caller may set it).
+    // When `connector_bindings` is set, unbound aliases fail closed.
+    // `inherit_unbound: true` keeps strategy-based default resolution for them.
     inherit_unbound: z.boolean().optional(),
-    // Interactive-only: require each named connector to resolve to the ACTING
-    // USER's OWN connected account for this session. Like connector_bindings but
-    // BY ALIAS — the server finds the caller's member profile for each. If the
-    // user hasn't connected one, session-create is refused with a structured
-    // CONNECTOR_CONNECTION_REQUIRED (409) naming the connector, so the UI can
-    // prompt them to connect it. Implies inherit_unbound (other connectors keep
-    // their project defaults). Rejected for backend/service-account origin — a
-    // backend caller has no single "current user"; it uses connector_bindings.
+    // Require each named connector profile to resolve an authorization that
+    // matches its project-or-user strategy. Missing authorizations return the
+    // structured CONNECTOR_AUTHORIZATION_REQUIRED response before provisioning.
     require_connectors: z
       .array(z.string().regex(/^[a-z][a-z0-9_-]{0,127}$/, 'connector alias must be a lower-case slug'))
       .max(SESSION_CONNECTOR_BINDINGS_MAX_KEYS)

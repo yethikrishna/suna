@@ -29,6 +29,7 @@ import { makeDbGatewayDeps } from '../executor/db-deps';
 import { finalizePipedreamProfileConnection } from '../executor/pipedream';
 import { reconcileEmailConnectionProfiles } from '../executor/sync';
 import {
+  missingRequiredConnectorAuthorizationsForSession,
   resolveRequiredConnectorProfiles,
   resolveSessionConnectorProfile,
   sessionConnectorBindingsRequirePrivateVisibility,
@@ -771,6 +772,21 @@ describe('session connector profile isolation', () => {
         alias: 'veyris',
       });
       expect(resolved).toBeNull();
+      expect(
+        await missingRequiredConnectorAuthorizationsForSession({
+          accountId: ACCOUNT_A,
+          projectId: PROJECT_A,
+          sessionId: SESSION_A,
+          aliases: ['veyris'],
+        }),
+      ).toEqual([
+        {
+          id: CONNECTOR_A,
+          slug: 'veyris',
+          name: 'VEYRIS',
+          authorization_strategy: 'project',
+        },
+      ]);
     } finally {
       await db
         .update(executorConnectors)

@@ -415,6 +415,7 @@ flow(
       'DELETE /v1/projects/:projectId/sessions/:sessionId/acp',
       'GET /v1/projects/:projectId/sessions/:sessionId/acp',
       'GET /v1/projects/:projectId/sessions/:sessionId/acp/transcript',
+      'GET /v1/projects/:projectId/sessions/:sessionId/scope',
       'POST /v1/projects/:projectId/sessions/:sessionId/acp',
       'PUT /v1/projects/:projectId/connector-profiles/:profileId/default',
       'PUT /v1/projects/:projectId/sessions/:sessionId/acp-identity',
@@ -444,7 +445,12 @@ flow(
       makeDefault.status(404);
     });
 
-    await ctx.step('unknown project blocks ACP identity and model mutations', async () => {
+    await ctx.step('unknown project blocks session scope reads and mutations', async () => {
+      const scopeRead = await owner.get(
+        '/v1/projects/:projectId/sessions/:sessionId/scope',
+        { params: sessionParams },
+      );
+      scopeRead.status(404);
       const identity = await owner.put(
         '/v1/projects/:projectId/sessions/:sessionId/acp-identity',
         {

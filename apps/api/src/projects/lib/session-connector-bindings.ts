@@ -1,4 +1,5 @@
 import {
+  type ConnectorAuthorizationRequiredProfile,
   type SessionConnectorBindings,
   SessionConnectorBindingsInputSchema,
 } from '@kortix/api-contract';
@@ -382,12 +383,7 @@ export type RequiredConnectorResolution =
   | {
       ok: false;
       code: 'CONNECTOR_AUTHORIZATION_REQUIRED';
-      connectorProfiles: Array<{
-        id: string;
-        slug: string;
-        name: string;
-        authorization_strategy: ConnectorAuthorizationStrategy;
-      }>;
+      connectorProfiles: ConnectorAuthorizationRequiredProfile[];
     };
 
 export async function resolveRequiredConnectorProfiles(input: {
@@ -496,6 +492,52 @@ export async function resolveRequiredConnectorProfiles(input: {
     };
   }
   return { ok: true, bindings };
+}
+
+export async function missingRequiredConnectorAuthorizationsForSession(input: {
+  accountId: string;
+  projectId: string;
+  sessionId: string;
+  aliases: readonly string[];
+}): Promise<ConnectorAuthorizationRequiredProfile[]> {
+  const missing: ConnectorAuthorizationRequiredProfile[] = [];
+  const seen = new Set<string>();
+  for (const requestedAlias of input.aliases) {
+    const alias = canonicalConnectorAlias(requestedAlias);
+    if (seen.has(alias)) continue;
+    seen.add(alias);
+    const resolved = await resolveSessionConnectorProfile({
+      accountId: input.accountId,
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+      alias,
+    });
+    if (resolved) continue;
+    const [connector] = await db
+      .select({
+        id: executorConnectors.connectorId,
+        slug: executorConnectors.slug,
+        name: executorConnectors.name,
+        authorizationStrategy: executorConnectors.authorizationStrategy,
+      })
+      .from(executorConnectors)
+      .where(
+        and(
+          eq(executorConnectors.accountId, input.accountId),
+          eq(executorConnectors.projectId, input.projectId),
+          eq(executorConnectors.slug, alias),
+        ),
+      )
+      .limit(1);
+    if (!connector) continue;
+    missing.push({
+      id: connector.id,
+      slug: publicConnectorAlias(connector.slug),
+      name: connector.name,
+      authorization_strategy: connector.authorizationStrategy,
+    });
+  }
+  return missing;
 }
 
 export async function persistSessionConnectorBindings(input: {

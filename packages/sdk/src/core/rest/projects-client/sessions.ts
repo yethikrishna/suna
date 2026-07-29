@@ -120,20 +120,14 @@ export interface CreateProjectSessionInput {
   /** Logical connector alias -> active authorization available to the caller. */
   connector_bindings?: SessionConnectorBindingsInput;
   /**
-   * When `connector_bindings` is set, binding any alias normally disables the
-   * project-default fallback for every OTHER (unbound) alias ("all-or-nothing").
-   * `inherit_unbound: true` keeps that fallback, so you can override just one
-   * connector (e.g. a user's own account) without re-binding the rest. Only ever
-   * inherits the project default — never another owner's profile.
+   * When `connector_bindings` is set, unbound aliases fail closed.
+   * `inherit_unbound: true` keeps strategy-based default resolution for them.
    */
   inherit_unbound?: boolean;
   /**
-   * Interactive-only: connectors the acting user must have connected themselves
-   * for this session (by alias, e.g. `['gmail']`). The server resolves each to
-   * the caller's OWN member profile; if one isn't connected, create fails with a
-   * structured `CONNECTOR_CONNECTION_REQUIRED` naming the connector so a UI can
-   * prompt a connect. Implies `inherit_unbound`. Rejected for backend / service-
-   * account tokens (they have no single "current user" — use `connector_bindings`).
+   * Connector profiles that must resolve a strategy-compatible authorization
+   * before provisioning. Missing authorizations return
+   * `CONNECTOR_AUTHORIZATION_REQUIRED`.
    */
   require_connectors?: string[];
   /**

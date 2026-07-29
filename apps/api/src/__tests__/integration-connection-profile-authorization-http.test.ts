@@ -5,6 +5,11 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   accountMembers,
   accounts,
@@ -54,8 +59,45 @@ const PREEXISTING_SHARE_TOKEN = publicShareToken(PREEXISTING_SHARE);
 const minted: string[] = [];
 let serviceAccountId = '';
 let serviceAccountToken = '';
+let fixtureRoot = '';
+let previousGitCacheDir: string | undefined;
+
+function git(args: string[], cwd: string): void {
+  execFileSync('git', args, {
+    cwd,
+    stdio: 'pipe',
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+  });
+}
 
 beforeAll(async () => {
+  fixtureRoot = await mkdtemp(join(tmpdir(), 'kortix-session-scope-http-'));
+  previousGitCacheDir = process.env.KORTIX_GIT_CACHE_DIR;
+  process.env.KORTIX_GIT_CACHE_DIR = join(fixtureRoot, 'git-cache');
+  const repository = join(fixtureRoot, 'repository');
+  mkdirSync(repository, { recursive: true });
+  git(['init', '-b', 'main'], repository);
+  git(['config', 'user.email', 'session-scope@kortix.test'], repository);
+  git(['config', 'user.name', 'Session Scope Test'], repository);
+  writeFileSync(
+    join(repository, 'kortix.yaml'),
+    [
+      'kortix_version: 2',
+      'default_agent: scope_worker',
+      'project:',
+      '  name: Session scope HTTP',
+      'agents:',
+      '  scope_worker:',
+      '    connectors: all',
+      '    secrets: all',
+      '    kortix_cli: all',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  git(['add', 'kortix.yaml'], repository);
+  git(['commit', '-m', 'initial'], repository);
+
   await db.execute(
     sql`alter table kortix.account_tokens add column if not exists agent_grant jsonb`,
   );
@@ -68,7 +110,8 @@ beforeAll(async () => {
     projectId: PROJECT,
     accountId: ACCOUNT,
     name: 'profile-owner-http',
-    repoUrl: 'https://example.test/profile-owner-http.git',
+    repoUrl: repository,
+    manifestPath: 'kortix.yaml',
   });
   await db.insert(accountMembers).values([
     { accountId: ACCOUNT, userId: MANAGER, accountRole: 'member' },
@@ -245,6 +288,9 @@ afterAll(async () => {
     .where(eq(executorConnectionProfiles.projectId, PROJECT));
   await db.delete(projects).where(eq(projects.projectId, PROJECT));
   await db.delete(accounts).where(eq(accounts.accountId, ACCOUNT));
+  if (previousGitCacheDir === undefined) delete process.env.KORTIX_GIT_CACHE_DIR;
+  else process.env.KORTIX_GIT_CACHE_DIR = previousGitCacheDir;
+  if (fixtureRoot) await rm(fixtureRoot, { recursive: true, force: true });
 });
 
 async function mint(userId: string): Promise<string> {
@@ -707,6 +753,126 @@ describe('connection profile owner authorization over HTTP', () => {
       ok: false,
       status: 403,
     });
+  });
+
+  test('session scope read-back uses canonical authorization identifiers', async () => {
+    const response = await request(
+      'GET',
+      `/v1/projects/${PROJECT}/sessions/${SESSION}/scope`,
+      await mint(ALICE),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      secrets_allowlist: null,
+      connector_bindings: {
+        personal_data: { authorization_id: ALICE_PROFILE },
+      },
+      dropped_secrets: [],
+      added_secrets: [],
+      dropped_bindings: [],
+      retroactive: true,
+    });
+    expect(JSON.stringify(body)).not.toContain('profile_id');
+  });
+
+  test('session scope replacement validates the full request before one atomic write', async () => {
+    const token = await mint(ALICE);
+    const credential = await request(
+      'PUT',
+      `/v1/projects/${PROJECT}/connector-profiles/${ALICE_PROFILE}/credential`,
+      token,
+      { value: 'scope-replacement-capability' },
+    );
+    expect(credential.status).toBe(200);
+
+    try {
+      const rejected = await request(
+        'PUT',
+        `/v1/projects/${PROJECT}/sessions/${SESSION}/scope`,
+        token,
+        {
+          secrets: [],
+          connector_bindings: {
+            personal_data: { authorization_id: BOB_PROFILE },
+          },
+        },
+      );
+      expect(rejected.status).toBe(403);
+      expect(await rejected.json()).toMatchObject({
+        code: 'CONNECTOR_PROFILE_NOT_FOUND',
+      });
+
+      const [unchangedSession] = await db
+        .select({
+          secretsAllowlist: projectSessions.secretsAllowlist,
+          connectorBindingsConfigured: projectSessions.connectorBindingsConfigured,
+        })
+        .from(projectSessions)
+        .where(eq(projectSessions.sessionId, SESSION));
+      expect(unchangedSession).toMatchObject({
+        secretsAllowlist: null,
+        connectorBindingsConfigured: false,
+      });
+      const unchangedBindings = await db
+        .select({ profileId: projectSessionConnectorBindings.profileId })
+        .from(projectSessionConnectorBindings)
+        .where(eq(projectSessionConnectorBindings.sessionId, SESSION));
+      expect(unchangedBindings).toEqual([{ profileId: ALICE_PROFILE }]);
+
+      const replaced = await request(
+        'PUT',
+        `/v1/projects/${PROJECT}/sessions/${SESSION}/scope`,
+        token,
+        { secrets: [], connector_bindings: {} },
+      );
+      expect(replaced.status).toBe(200);
+      expect(await replaced.json()).toMatchObject({
+        secrets_allowlist: [],
+        connector_bindings: {},
+        dropped_bindings: ['personal_data'],
+      });
+      const [replacedSession] = await db
+        .select({
+          secretsAllowlist: projectSessions.secretsAllowlist,
+          connectorBindingsConfigured: projectSessions.connectorBindingsConfigured,
+        })
+        .from(projectSessions)
+        .where(eq(projectSessions.sessionId, SESSION));
+      expect(replacedSession).toMatchObject({
+        secretsAllowlist: [],
+        connectorBindingsConfigured: true,
+      });
+      expect(
+        await db
+          .select()
+          .from(projectSessionConnectorBindings)
+          .where(eq(projectSessionConnectorBindings.sessionId, SESSION)),
+      ).toHaveLength(0);
+    } finally {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(projectSessions)
+          .set({
+            secretsAllowlist: null,
+            connectorBindingsConfigured: false,
+          })
+          .where(eq(projectSessions.sessionId, SESSION));
+        await tx
+          .delete(projectSessionConnectorBindings)
+          .where(eq(projectSessionConnectorBindings.sessionId, SESSION));
+        await tx.insert(projectSessionConnectorBindings).values({
+          sessionId: SESSION,
+          accountId: ACCOUNT,
+          projectId: PROJECT,
+          connectorAlias: 'personal_data',
+          connectorId: USER_CONNECTOR,
+          profileId: ALICE_PROFILE,
+          source: 'request',
+          createdBy: ALICE,
+        });
+      });
+    }
   });
 
   test('authorization-specific policy routes are removed', async () => {

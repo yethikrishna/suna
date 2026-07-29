@@ -13,6 +13,7 @@ import {
   projectTriggerRuntime,
   projects,
   sessionSandboxes,
+  projectSessionConnectorBindings,
 } from '@kortix/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { getCachedAccountTier } from '../../billing/services/entitlements';
@@ -58,6 +59,8 @@ import {
   relayTurnStep,
 } from '../../channels/turn-relay';
 import { setProjectBotName } from '../../channels/voice-identity';
+import { callerKortixSessionId } from '../lib/caller-session';
+import { sessionMayEnumerateProfile } from '../lib/connector-profile-visibility';
 import { config } from '../../config';
 import { upsertProfileCredential, upsertProfileOAuth2Credential } from '../../executor/credentials';
 import { revokeProfileOAuth2 } from '../../executor/oauth2-store';
@@ -210,11 +213,17 @@ function serializeConnectionProfile(row: {
 }
 
 function mayReadConnectionProfile(
-  profile: { ownerType: string; ownerId: string | null; isDefault: boolean },
+  profile: { profileId: string; ownerType: string; ownerId: string | null; isDefault: boolean },
   userId: string,
   actingPrincipalIsServiceAccount: boolean,
   mayManageSystemProfiles: boolean,
+  /** Profile ids the CALLER'S session is bound to, or null when the caller is
+   *  not session-bound. See connector-profile-visibility.ts: a sandbox's token
+   *  carries the WRAPPER's user id, so without this every end-user's agent could
+   *  enumerate every other end-user's connection and then bind it. */
+  sessionBoundProfileIds: ReadonlySet<string> | null,
 ): boolean {
+  if (!sessionMayEnumerateProfile(profile, sessionBoundProfileIds)) return false;
   if (profile.ownerType === 'member') {
     return !actingPrincipalIsServiceAccount && profile.ownerId === userId;
   }
@@ -308,6 +317,23 @@ projectsApp.openapi(
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     const actingPrincipalIsServiceAccount = c.get('authType') === 'service_account';
+    // A sandbox executor token is bound to ONE session. Load what that session was
+    // actually GIVEN so the enumeration below can be narrowed to it. null for
+    // every non-session caller, which leaves the operator's view unchanged.
+    const callerSessionId = callerKortixSessionId(c);
+    let sessionBoundProfileIds: ReadonlySet<string> | null = null;
+    if (callerSessionId) {
+      const bound = await db
+        .select({ profileId: projectSessionConnectorBindings.profileId })
+        .from(projectSessionConnectorBindings)
+        .where(
+          and(
+            eq(projectSessionConnectorBindings.sessionId, callerSessionId),
+            eq(projectSessionConnectorBindings.projectId, projectId),
+          ),
+        );
+      sessionBoundProfileIds = new Set(bound.map((row) => row.profileId));
+    }
     const mayManageSystemProfiles = await projectCapabilityAllowed(
       c,
       loaded.userId,
@@ -340,6 +366,7 @@ projectsApp.openapi(
             loaded.userId,
             actingPrincipalIsServiceAccount,
             mayManageSystemProfiles,
+            sessionBoundProfileIds,
           ),
         )
         .map(serializeConnectionProfile),

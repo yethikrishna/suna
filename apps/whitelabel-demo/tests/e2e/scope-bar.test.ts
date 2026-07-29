@@ -48,13 +48,11 @@ const profile = (over: Record<string, unknown> = {}) =>
 // ── The whole point of the bar: which control may touch THIS session ─────────
 
 describe('scopeControl', () => {
-  test('secrets and connections are never live-editable on a running session', () => {
-    // The single worst outcome for this bar is a switch that looks like it
-    // re-scopes a running session. `secrets` has no update path anywhere, and
-    // `connector_bindings` is accepted at create and never again — so the
-    // component asks this before it decides what to render.
-    expect(scopeControl('secrets').live).toBe(false);
-    expect(scopeControl('connections').live).toBe(false);
+  test('secrets and connections ARE live-editable now', () => {
+    // They were frozen until `PUT .../scope` existed. The bar must offer the
+    // control, because refusing to would now be the UI lying about the platform.
+    expect(scopeControl('secrets').live).toBe(true);
+    expect(scopeControl('connections').live).toBe(true);
   });
 
   test('the model and the per-message agent are the two that can move now', () => {
@@ -62,10 +60,11 @@ describe('scopeControl', () => {
     expect(scopeControl('agent').live).toBe(true);
   });
 
-  test('a frozen row says "fixed at start", so the badge cannot drift from the rule', () => {
-    expect(scopeControl('secrets').badge).toBe('Fixed at start');
-    expect(scopeControl('connections').badge).toBe('Fixed at start');
-    expect(scopeControl('agent').badge).toBe('Per message');
+  test('a changeable row says so, and the badge cannot drift from the rule', () => {
+    // The badge is derived from MID_SESSION_CAPABILITIES, so it moves with the
+    // contract rather than being restated by hand.
+    expect(scopeControl('secrets').badge).toBe('Changeable');
+    expect(scopeControl('connections').badge).toBe('Changeable');
   });
 
   test('the model note does not promise the change takes effect immediately', () => {
@@ -74,19 +73,16 @@ describe('scopeControl', () => {
     expect(scopeControl('model').note).toContain('next time this session starts');
   });
 
-  test('a frozen row explains why THIS session cannot move, not what an allowlist is', () => {
-    // NB: asserting the string EXISTS is not the same as asserting it is shown.
-    // The first cut passed this while the secrets popover rendered only the live
-    // summary, so the frozen explanation was dead copy. The render-site test
-    // below is the one that would have caught it.
-    expect(scopeControl('secrets').note).toContain('no update path');
-    expect(scopeControl('connections').note).toContain('project default');
+  test('the secrets note states the one thing a re-scope cannot do', () => {
+    // Dropping a secret stops DELIVERY; it cannot un-read what the agent has.
+    // Saying "revoked" here would be false assurance.
+    expect(scopeControl('secrets').note).toContain('cannot un-read');
+    // Bindings resolve at call time, so that change IS complete — and the copy
+    // must not blur the two.
+    expect(scopeControl('connections').note).toContain('retroactive');
   });
 
-  test('a frozen row is not LIVE, which is what makes its note get rendered', () => {
-    expect(scopeControl('secrets').live).toBe(false);
-    expect(scopeControl('connections').live).toBe(false);
-    // The model is the one that genuinely moves mid-session.
+  test('the model is live too — every scope-bar row now moves', () => {
     expect(scopeControl('model').live).toBe(true);
   });
 

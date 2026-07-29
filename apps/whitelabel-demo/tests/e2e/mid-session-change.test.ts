@@ -6,12 +6,23 @@ import {
 } from '../../src/lib/mid-session-change';
 
 describe('what can change mid-session', () => {
-  test('model changes, agent is per-prompt, secrets are fixed at create', () => {
-    // Encoded so the UI cannot drift from the server contract: offering a
-    // secrets control would be offering something that cannot work.
+  test('model, secrets and connections change; agent is per-prompt', () => {
+    // Encoded so the UI cannot drift from the server contract. Secrets and
+    // connections were `fixed_at_create` until `PUT .../scope` existed — the
+    // old justification ("a mutable allowlist would leave the session
+    // unbootable") was an argument about BOOT that had hardened into refusing
+    // any change at all.
     expect(MID_SESSION_CAPABILITIES.model).toBe('changeable');
     expect(MID_SESSION_CAPABILITIES.agent).toBe('per_prompt');
-    expect(MID_SESSION_CAPABILITIES.secrets).toBe('fixed_at_create');
+    expect(MID_SESSION_CAPABILITIES.secrets).toBe('changeable');
+    expect(MID_SESSION_CAPABILITIES.connections).toBe('changeable');
+  });
+
+  test('runtime_context is still fixed at create — the state must stay real', () => {
+    // If nothing were frozen, `fixed_at_create` would be a dead branch the UI
+    // could never render, and the next create-only field would have nowhere
+    // honest to live.
+    expect(MID_SESSION_CAPABILITIES.runtime_context).toBe('fixed_at_create');
   });
 });
 

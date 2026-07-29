@@ -299,7 +299,8 @@ starting a second one. Replaying a key with a **different** body — different
 | --- | --- |
 | `opencode_model` | **OpenCode only** — `PUT /projects/{id}/sessions/{sessionId}/model`. Start a new Claude Code, Codex, or Pi session to change its model. |
 | `agent_name` | **OpenCode REST only** — a v3 session keeps its original logical agent and runtime identity. |
-| `secrets`, `connector_bindings`, `runtime_context`, `end_user_ref` | **No** — set once at create |
+| `secrets`, `connector_bindings` | **Yes** — `PUT /projects/{id}/sessions/{sid}/scope`. SET semantics: what you send replaces the current list, from the next prompt. Dropping a secret stops **delivery** — it cannot un-read what the agent already has, so rotate if you need real revocation. Bindings resolve at call time and so ARE fully retroactive. |
+| `runtime_context`, `end_user_ref` | **No** — set once at create |
 
 ### Changing the model
 

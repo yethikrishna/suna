@@ -16,6 +16,7 @@
  * draft whose only button starts a new session with it.
  */
 
+import { CallSnippet } from '@/components/dev/call-snippet';
 import Loading from '@/components/ui/loading';
 
 import {
@@ -361,6 +362,12 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
           )}
         </NextSession>
         {startAction}
+        {/* The call behind the control, next to the control — the demo's job is
+            to teach what to send, and re-scoping is the least obvious of these. */}
+        <CallSnippet
+          id="session.rescope"
+          context={{ projectId, sessionId }}
+        />
       </ScopeChip>
 
       <ScopeChip

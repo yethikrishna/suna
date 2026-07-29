@@ -216,6 +216,7 @@ const ACTIONS: Record<string, CallSnippetId | CallSnippetId[] | Reason> = {
   'kortix.project().connectors.profiles.list()': 'connections.list',
   'kortix.project().sessions.create()': 'session.create',
   'kortix.session().changeModel()': 'session.model',
+  'kortix.session().rescope()': 'session.rescope',
   'kortix.project().sessions.list()': 'sessions.list',
   'kortix.session().restart()': 'session.delete',
   'kortix.session().delete()': 'session.delete',

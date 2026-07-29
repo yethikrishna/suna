@@ -550,10 +550,40 @@ before.
 | --- | --- | --- |
 | `opencode_model` | **OpenCode only** — see above | Start a new Claude Code, Codex, or Pi session for a different model. |
 | `agent_name` | **OpenCode REST only** | A v3 session keeps its logical agent, runtime profile, harness, and native agent. |
-| `secrets` | **no** | `secrets_allowlist` is written once at create. A mutable allowlist could be narrowed below what the sandbox already needs and leave it unbootable. |
-| `connector_bindings` | **no** | Create-only. Start a new session to bind differently. |
+| `secrets` | **yes** — `PUT /projects/{id}/sessions/{sid}/scope` | SET semantics: the list you send REPLACES the current one, from the next prompt. Dropping one stops it being **delivered**; it cannot un-read a value the agent already has (see below). |
+| `connector_bindings` | **yes** — same route | SET semantics, and fully retroactive: a binding is resolved server-side on each tool call, so the next call already uses the new one. |
 | `runtime_context` | **no** | Create-only. |
 | `end_user_ref` | **no** | Create-only, and it is what usage attribution keys on. |
+
+### Re-scoping a running session
+
+```
+PUT /v1/projects/{projectId}/sessions/{sessionId}/scope
+{ "secrets": ["TEST_KEY_2"], "connector_bindings": { "gmail": { "profile_id": "..." } } }
+```
+
+Start a session with `["TEST_KEY_1","TEST_KEY_2"]`, send `["TEST_KEY_2"]`, and from
+the next prompt the session gets only `TEST_KEY_2`.
+
+`[]` and `null` are opposite and both meaningful: `[]` is "no project secrets at
+all", `null` is "stop narrowing — fall back to the agent's own grant". Omit the
+key entirely to leave that axis untouched.
+
+**What it promises, precisely.** Forward it is exact: the next prompt's env push
+carries only the new set, and the daemon clears the names it previously knew, so
+a shell started after the re-scope cannot see a dropped secret. Retroactively it
+promises nothing — a value the agent already read is in its context and in any
+shell it started earlier. The response says which case you are in with
+`retroactive` and a `detail` string. **Rotate a secret you actually need to
+revoke; re-scoping stops delivery, it does not unsay the value.**
+
+Connector bindings are the exception: they are resolved server-side at call time,
+so a change there IS complete immediately.
+
+The agent's manifest grant stays the ceiling. A session may narrow within it and
+restore anything inside it, but never exceed it — otherwise a session-level field
+would make the manifest advisory. `403 NOT_IN_AGENT_GRANT` /
+`403 NOT_GRANTED_CONNECTOR` when it tries.
 
 **A mid-session agent switch is governed, and the two halves are governed
 differently — on purpose.**

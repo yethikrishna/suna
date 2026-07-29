@@ -65,6 +65,7 @@ export const CALL_SNIPPET_IDS = [
   'session.idempotentCreate',
   'session.prompt',
   'session.model',
+  'session.rescope',
   'sessions.list',
   'session.delete',
   'usage.byEndUser',
@@ -361,6 +362,41 @@ function sessionPrompt(ctx: SnippetContext): CallSnippet {
   };
 }
 
+function sessionRescope(ctx: SnippetContext): CallSnippet {
+  const projectId = ctx.projectId ?? PLACEHOLDER.projectId;
+  const sessionId = ctx.sessionId ?? PLACEHOLDER.sessionId;
+  return {
+    id: 'session.rescope',
+    title: 'Re-scope a running session',
+    summary:
+      'SET semantics: what you send REPLACES the current list, from the next prompt.',
+    sdk: [
+      '// Sending [b] after [a, b] means a stops being delivered.',
+      'await kortix.session(projectId, sessionId).rescope({',
+      "  secrets: ['TEST_KEY_2'],",
+      "  connector_bindings: { gmail: { profile_id: 'prof_123' } },",
+      '});',
+    ].join('\n'),
+    http: {
+      kind: 'rest',
+      method: 'PUT',
+      path: `/v1/projects/${projectId}/sessions/${sessionId}/scope`,
+      body: {
+        secrets: ['TEST_KEY_2'],
+        connector_bindings: { gmail: { profile_id: 'prof_123' } },
+      },
+    },
+    // The wrapper chooses the new scope, so nothing here is server-injected —
+    // unlike create, where the proxy stamps end_user_ref.
+    serverInjected: [],
+    notes: [
+      'Dropping a secret stops it being DELIVERED from the next prompt. It cannot un-read a value the agent already has in its context or in a shell it already started — rotate it if that matters. The response says so with `retroactive: false`.',
+      'Connector bindings resolve server-side on each tool call, so a binding change IS fully effective immediately.',
+      'The agent’s manifest grant stays the ceiling: a session may narrow within it and restore anything inside it, never exceed it.',
+    ],
+  };
+}
+
 function sessionModel(ctx: SnippetContext): CallSnippet {
   const model = ctx.model ?? PLACEHOLDER.model;
   const projectId = ctx.projectId ?? PLACEHOLDER.projectId;
@@ -590,6 +626,7 @@ const BUILDERS: Record<CallSnippetId, (ctx: SnippetContext) => CallSnippet> = {
   'session.idempotentCreate': sessionIdempotentCreate,
   'session.prompt': sessionPrompt,
   'session.model': sessionModel,
+  'session.rescope': sessionRescope,
   'sessions.list': sessionsList,
   'session.delete': sessionDelete,
   'usage.byEndUser': usageByEndUser,

@@ -41,6 +41,7 @@ import { UUID_V4_REGEX, hasOwn, normalizeString, readBody, requestAuditContext, 
 import { createProjectSession, sendSessionCreateError, type SessionCreateError } from '../lib/sessions';
 import {
   missingRequiredConnectorAuthorizationsForSession,
+  resolveEffectiveSessionConnectorBindings,
   sessionHasMemberConnectorBinding,
   validateSessionConnectorBindings,
 } from '../lib/session-connector-bindings';
@@ -2108,7 +2109,7 @@ projectsApp.openapi(
     },
     responses: {
       200: json(SessionScopeSchema, 'Current session scope'),
-      ...errors(400, 404),
+      ...errors(400, 404, 409),
     },
   }),
   async (c: any) => {
@@ -2127,26 +2128,35 @@ projectsApp.openapi(
     );
     const visible = await loadVisibleSession(loaded, sessionId, callerKortixSessionId(c));
     if (!visible) return c.json({ error: 'Not found' }, 404);
-    const bindings = await db
-      .select({
-        alias: projectSessionConnectorBindings.connectorAlias,
-        authorizationId: projectSessionConnectorBindings.profileId,
-      })
-      .from(projectSessionConnectorBindings)
-      .where(
-        and(
-          eq(projectSessionConnectorBindings.sessionId, sessionId),
-          eq(projectSessionConnectorBindings.projectId, projectId),
-        ),
+    let grant: Awaited<ReturnType<typeof resolveSessionAgentGrant>>;
+    try {
+      grant = await resolveSessionAgentGrant({
+        projectId,
+        repoUrl: loaded.row.repoUrl,
+        defaultBranch: loaded.row.defaultBranch,
+        manifestPath: loaded.row.manifestPath,
+        sessionAgent: visible.row.agentName ?? DEFAULT_AGENT_SENTINEL,
+      });
+    } catch (err) {
+      return c.json(
+        {
+          error: `could not resolve this agent's grant, so the current scope cannot be determined: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+          code: 'AGENT_GRANT_UNRESOLVED',
+        },
+        409,
       );
+    }
+    const bindings = await resolveEffectiveSessionConnectorBindings({
+      accountId: loaded.row.accountId,
+      projectId,
+      sessionId,
+      grantedConnectors: grant?.connectors,
+    });
     return c.json({
       secrets_allowlist: visible.row.secretsAllowlist ?? null,
-      connector_bindings: Object.fromEntries(
-        bindings.map((row) => [
-          row.alias,
-          { authorization_id: row.authorizationId },
-        ]),
-      ),
+      connector_bindings: bindings,
       dropped_secrets: [],
       added_secrets: [],
       dropped_bindings: [],

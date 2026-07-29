@@ -30,6 +30,7 @@ import { finalizePipedreamProfileConnection } from '../executor/pipedream';
 import { reconcileEmailConnectionProfiles } from '../executor/sync';
 import {
   missingRequiredConnectorAuthorizationsForSession,
+  resolveEffectiveSessionConnectorBindings,
   resolveRequiredConnectorProfiles,
   resolveSessionConnectorProfile,
   sessionConnectorBindingsRequirePrivateVisibility,
@@ -61,6 +62,7 @@ const SESSION_IMPERSONATION = crypto.randomUUID();
 const SESSION_SERVICE_ACCOUNT = crypto.randomUUID();
 const SESSION_AUTO_EMAIL = crypto.randomUUID();
 const SESSION_INHERIT_UNBOUND = crypto.randomUUID();
+const SESSION_EXPLICIT_EMPTY = crypto.randomUUID();
 const USER = crypto.randomUUID();
 const OTHER_USER = crypto.randomUUID();
 const SERVICE_ACCOUNT = crypto.randomUUID();
@@ -268,6 +270,14 @@ beforeAll(async () => {
       connectorBindingsConfigured: true,
       connectorBindingsInheritUnbound: true,
     },
+    {
+      sessionId: SESSION_EXPLICIT_EMPTY,
+      accountId: ACCOUNT_A,
+      projectId: PROJECT_A,
+      branchName: SESSION_EXPLICIT_EMPTY,
+      createdBy: USER,
+      connectorBindingsConfigured: true,
+    },
   ]);
   await db.insert(projectSessionConnectorBindings).values([
     {
@@ -436,6 +446,52 @@ describe('session connector profile isolation', () => {
     expect(resolved).toMatchObject({
       profileId: PROFILE_A,
       source: 'default',
+    });
+  });
+
+  test('effective scope materializes runtime defaults and preserves explicit binding state', async () => {
+    expect(
+      await resolveEffectiveSessionConnectorBindings({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        sessionId: SESSION_DEFAULT,
+        grantedConnectors: ['veyris', 'email'],
+      }),
+    ).toEqual({
+      veyris: { authorization_id: PROFILE_A },
+      email: { authorization_id: EMAIL_PROFILE_DEFAULT },
+    });
+
+    expect(
+      await resolveEffectiveSessionConnectorBindings({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        sessionId: SESSION_EXPLICIT_EMPTY,
+        grantedConnectors: ['veyris', 'email'],
+      }),
+    ).toEqual({});
+
+    expect(
+      await resolveEffectiveSessionConnectorBindings({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        sessionId: SESSION_A,
+        grantedConnectors: ['veyris', 'email'],
+      }),
+    ).toEqual({
+      veyris: { authorization_id: PROFILE_A },
+    });
+
+    expect(
+      await resolveEffectiveSessionConnectorBindings({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        sessionId: SESSION_INHERIT_UNBOUND,
+        grantedConnectors: ['veyris', 'email'],
+      }),
+    ).toEqual({
+      veyris: { authorization_id: PROFILE_A },
+      email: { authorization_id: EMAIL_PROFILE_DEFAULT },
     });
   });
 

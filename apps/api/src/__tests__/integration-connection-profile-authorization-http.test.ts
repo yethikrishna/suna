@@ -54,6 +54,7 @@ const SERVICE_ACCOUNT_PROFILE = crypto.randomUUID();
 const SERVICE_ACCOUNT_PIPEDREAM_PROFILE = crypto.randomUUID();
 const USER_STRATEGY_PROJECT_PROFILE = crypto.randomUUID();
 const SESSION = crypto.randomUUID();
+const DEFAULT_SCOPE_SESSION = crypto.randomUUID();
 const PREEXISTING_SHARE = crypto.randomUUID();
 const PREEXISTING_SHARE_TOKEN = publicShareToken(PREEXISTING_SHARE);
 const minted: string[] = [];
@@ -249,14 +250,24 @@ beforeAll(async () => {
       label: 'Invalid shared OAuth profile',
     },
   ]);
-  await db.insert(projectSessions).values({
-    sessionId: SESSION,
-    accountId: ACCOUNT,
-    projectId: PROJECT,
-    branchName: SESSION,
-    createdBy: ALICE,
-    visibility: 'private',
-  });
+  await db.insert(projectSessions).values([
+    {
+      sessionId: SESSION,
+      accountId: ACCOUNT,
+      projectId: PROJECT,
+      branchName: SESSION,
+      createdBy: ALICE,
+      visibility: 'private',
+    },
+    {
+      sessionId: DEFAULT_SCOPE_SESSION,
+      accountId: ACCOUNT,
+      projectId: PROJECT,
+      branchName: DEFAULT_SCOPE_SESSION,
+      createdBy: ALICE,
+      visibility: 'private',
+    },
+  ]);
   await db.insert(projectSessionConnectorBindings).values({
     sessionId: SESSION,
     accountId: ACCOUNT,
@@ -756,10 +767,19 @@ describe('connection profile owner authorization over HTTP', () => {
   });
 
   test('session scope read-back uses canonical authorization identifiers', async () => {
+    const token = await mint(ALICE);
+    const connected = await request(
+      'PUT',
+      `/v1/projects/${PROJECT}/connector-profiles/${ALICE_PROFILE}/credential`,
+      token,
+      { value: 'scope-read-capability' },
+    );
+    expect(connected.status).toBe(200);
+
     const response = await request(
       'GET',
       `/v1/projects/${PROJECT}/sessions/${SESSION}/scope`,
-      await mint(ALICE),
+      token,
     );
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -774,6 +794,18 @@ describe('connection profile owner authorization over HTTP', () => {
       retroactive: true,
     });
     expect(JSON.stringify(body)).not.toContain('profile_id');
+
+    const effective = await request(
+      'GET',
+      `/v1/projects/${PROJECT}/sessions/${DEFAULT_SCOPE_SESSION}/scope`,
+      token,
+    );
+    expect(effective.status).toBe(200);
+    expect(await effective.json()).toMatchObject({
+      connector_bindings: {
+        personal_data: { authorization_id: ALICE_PROFILE },
+      },
+    });
   });
 
   test('session scope replacement validates the full request before one atomic write', async () => {

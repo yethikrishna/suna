@@ -825,6 +825,57 @@ export async function resolveSessionConnectorProfile(input: {
   };
 }
 
+/**
+ * Return the authorization map that Executor resolves for the session now.
+ *
+ * A session without caller-configured bindings can use strategy-based defaults
+ * without durable binding rows. Read-back must materialize those defaults.
+ * Explicit-only sessions remain explicit-only because
+ * `resolveSessionConnectorProfile` enforces the persisted inheritance state.
+ */
+export async function resolveEffectiveSessionConnectorBindings(input: {
+  accountId: string;
+  projectId: string;
+  sessionId: string;
+  grantedConnectors: string[] | 'all' | undefined;
+}): Promise<SessionConnectorBindings> {
+  const requestedAliases = Array.isArray(input.grantedConnectors)
+    ? input.grantedConnectors
+    : (
+        await db
+          .select({ alias: executorConnectors.slug })
+          .from(executorConnectors)
+          .where(
+            and(
+              eq(executorConnectors.accountId, input.accountId),
+              eq(executorConnectors.projectId, input.projectId),
+              eq(executorConnectors.enabled, true),
+              eq(executorConnectors.status, 'active'),
+            ),
+          )
+          .orderBy(executorConnectors.slug)
+      ).map((row) => row.alias);
+
+  const bindings: SessionConnectorBindings = {};
+  const seen = new Set<string>();
+  for (const requestedAlias of requestedAliases) {
+    const alias = canonicalConnectorAlias(requestedAlias);
+    if (seen.has(alias)) continue;
+    seen.add(alias);
+    const resolved = await resolveSessionConnectorProfile({
+      accountId: input.accountId,
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+      alias,
+    });
+    if (!resolved) continue;
+    bindings[publicConnectorAlias(resolved.alias)] = {
+      authorization_id: resolved.profileId,
+    };
+  }
+  return bindings;
+}
+
 export function canonicalConnectorBindings(value: unknown): string {
   const parsed = parseSessionConnectorBindings(value);
   if (!parsed.ok || !parsed.bindings) return '{}';

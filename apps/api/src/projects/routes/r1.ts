@@ -463,6 +463,11 @@ projectsApp.openapi(
       return c.json({ error: `Unknown or non-cloneable project item "${sourceItemId}"` }, 400);
     }
   }
+  const starterTemplate = normalizeStarterTemplateId(
+    body.starter_template ?? body.starterTemplate,
+  );
+  const acpMultiHarnessStarter =
+    !sourceItemId && starterTemplate === 'acp-multi-harness';
 
   // Managed repo name = a readable slug from the display name + the project's
   // UUID, so managed repos under the shared org NEVER collide (two projects can
@@ -537,6 +542,9 @@ projectsApp.openapi(
         // createProjectSession). Pre-existing projects (this flag absent/false)
         // keep the v1 adopt-to-govern behavior untouched.
         require_declared_agents: true,
+        ...(acpMultiHarnessStarter
+          ? { experimental: { acp_runtime: true } }
+          : {}),
       },
       updatedAt: now,
     })
@@ -597,7 +605,6 @@ projectsApp.openapi(
   // its own files on first `kortix ship`. If seeding fails we roll back the
   // orphan repo + project so we never leave a half-created project behind.
   const seedStarter = body.seed_starter === true || body.seedStarter === true || !!sourceItemId;
-  const starterTemplate = normalizeStarterTemplateId(body.starter_template ?? body.starterTemplate);
   const marketplaceItems = normalizeMarketplaceItems(body.marketplace_items ?? body.marketplaceItems);
   let seeded = false;
   if (seedStarter) {

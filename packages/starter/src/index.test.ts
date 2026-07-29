@@ -18,8 +18,12 @@ function byPath(files: StarterFile[]): Map<string, string> {
 }
 
 describe('STARTER_TEMPLATE_IDS', () => {
-  test('contains the two known templates', () => {
-    expect([...STARTER_TEMPLATE_IDS]).toEqual(['minimal', 'general-knowledge-worker']);
+  test('contains the three known templates', () => {
+    expect([...STARTER_TEMPLATE_IDS]).toEqual([
+      'minimal',
+      'general-knowledge-worker',
+      'acp-multi-harness',
+    ]);
   });
 
   test('default template is the general knowledge worker (base + all domain skills)', () => {
@@ -31,6 +35,7 @@ describe('normalizeStarterTemplateId', () => {
   test('returns a known id unchanged', () => {
     expect(normalizeStarterTemplateId('minimal')).toBe('minimal');
     expect(normalizeStarterTemplateId('general-knowledge-worker')).toBe('general-knowledge-worker');
+    expect(normalizeStarterTemplateId('acp-multi-harness')).toBe('acp-multi-harness');
   });
 
   test('falls back to the default for an unknown string', () => {

@@ -46,33 +46,7 @@ const BASE_STARTER_PATHS = [
   '.kortix/opencode/plugins/opencode-pty/src/plugin/types.ts',
   '.kortix/opencode/plugins/opencode-pty/src/shared/constants.ts',
   '.kortix/opencode/plugins/pty.ts',
-  '.kortix/opencode/skills/kortix-executor/references/executor-sdk.md',
-  '.kortix/opencode/skills/kortix-executor/SKILL.md',
-  '.kortix/opencode/skills/kortix-marketplace/SKILL.md',
-  '.kortix/opencode/skills/kortix-memory/SKILL.md',
-  '.kortix/opencode/skills/kortix-onboarding/SKILL.md',
-  '.kortix/opencode/skills/kortix-slack/SKILL.md',
-  '.kortix/opencode/skills/kortix-system/references/authoring-skills.md',
-  '.kortix/opencode/skills/kortix-system/references/capabilities.md',
-  '.kortix/opencode/skills/kortix-system/references/kortix/change-requests.md',
-  '.kortix/opencode/skills/kortix-system/references/kortix/credentials-and-setup-links.md',
-  '.kortix/opencode/skills/kortix-system/references/kortix/kortix-cli.md',
-  '.kortix/opencode/skills/kortix-system/references/kortix/kortix-yaml.md',
-  '.kortix/opencode/skills/kortix-system/references/kortix/marketplace.md',
-  '.kortix/opencode/skills/kortix-system/references/opencode/agents.md',
-  '.kortix/opencode/skills/kortix-system/references/opencode/commands.md',
-  '.kortix/opencode/skills/kortix-system/references/opencode/mcp-servers.md',
-  '.kortix/opencode/skills/kortix-system/references/opencode/models.md',
-  '.kortix/opencode/skills/kortix-system/references/opencode/overview.md',
-  '.kortix/opencode/skills/kortix-system/references/opencode/permissions.md',
-  '.kortix/opencode/skills/kortix-system/references/opencode/plugins.md',
-  '.kortix/opencode/skills/kortix-system/references/opencode/rules.md',
-  '.kortix/opencode/skills/kortix-system/references/opencode/skills.md',
-  '.kortix/opencode/skills/kortix-system/references/opencode/tools.md',
-  '.kortix/opencode/skills/kortix-system/references/scheduling.md',
-  '.kortix/opencode/skills/kortix-system/SKILL.md',
-  '.kortix/opencode/skills/kortix-teams/SKILL.md',
-  '.kortix/opencode/skills/kortix-voice/SKILL.md',
+  '.kortix/opencode/skills/kortix-cli/SKILL.md',
   '.kortix/opencode/tools/image_search.ts',
   '.kortix/opencode/tools/lib/get-env.ts',
   '.kortix/opencode/tools/memory.ts',
@@ -101,7 +75,10 @@ function setTestAuth(userId = USER_ID, userEmail = 'starter@example.test') {
 
 function getTestAuth() {
   return (
-    (globalThis as any)[TEST_AUTH_KEY] ?? { userId: USER_ID, userEmail: 'starter@example.test' }
+    (globalThis as any)[TEST_AUTH_KEY] ?? {
+      userId: USER_ID,
+      userEmail: 'starter@example.test',
+    }
   );
 }
 
@@ -177,6 +154,7 @@ mock.module('../projects/git', () => ({
   listRepoFiles: async () => [],
   loadProjectConfig: async () => ({ env: { required: [], optional: [] } }),
   readRepoFile: async () => '',
+  isRepoFileNotFoundError: () => false,
   readManifestFromRepo: async () => null,
   invalidateProjectMirror: () => {},
   listBranches: async () => [],
@@ -336,8 +314,21 @@ mock.module('../projects/github', () => ({
     ownerRepoListCalls.push(input);
     return [];
   },
-  listRepositoryBranches: async ({ owner, repo }: { owner: string; repo: string }) => [
-    { name: owner === 'acme' && repo === 'portal' ? 'trunk' : 'main', protected: true },
+  listLinkableGitHubAppInstallations: async () => ({
+    githubLogin: 'github-admin',
+    installations: [],
+  }),
+  listRepositoryBranches: async ({
+    owner,
+    repo,
+  }: {
+    owner: string;
+    repo: string;
+  }) => [
+    {
+      name: owner === 'acme' && repo === 'portal' ? 'trunk' : 'main',
+      protected: true,
+    },
     { name: 'dev', protected: false },
   ],
   isOrgAccount: async () => true,
@@ -356,7 +347,9 @@ mock.module('../shared/supabase', () => ({
   getSupabase: () => ({
     auth: {
       admin: {
-        getUserById: async () => ({ data: { user: { email: 'starter@example.test' } } }),
+        getUserById: async () => ({
+          data: { user: { email: 'starter@example.test' } },
+        }),
       },
     },
   }),
@@ -371,7 +364,11 @@ mock.module('../billing/repositories/credit-accounts', () => ({
     stripeSubscriptionId: 'sub_test',
     stripeSubscriptionStatus: 'active',
   }),
-  getCreditBalance: async () => ({ balance: 1_000_000, granted: 1_000_000, used: 0 }),
+  getCreditBalance: async () => ({
+    balance: 1_000_000,
+    granted: 1_000_000,
+    used: 0,
+  }),
   upsertCreditAccount: async () => {},
   updateCreditAccount: async () => {},
 }));
@@ -610,11 +607,15 @@ describe('create-repo starter scaffold contract', () => {
     expect(new Set(files.map((file) => file.path)).size).toBe(BASE_STARTER_PATHS.length);
     expect(files.every((file) => file.content.trim().length > 0)).toBe(true);
 
-    // The full core ships as source (self-contained): tools, skills, agents.
+    // The repository ships runtime tools, project skills, and agents. Managed
+    // system skills are injected at session boot.
     expect(files.find((file) => file.path === '.kortix/opencode/tools/show.ts')).toBeDefined();
     expect(
-      files.find((file) => file.path === '.kortix/opencode/skills/kortix-system/SKILL.md'),
+      files.find((file) => file.path === '.kortix/opencode/skills/kortix-cli/SKILL.md'),
     ).toBeDefined();
+    expect(
+      files.find((file) => file.path === '.kortix/opencode/skills/kortix-system/SKILL.md'),
+    ).toBeUndefined();
     expect(files.find((file) => file.path === '.kortix/opencode/agents/kortix.md')).toBeDefined();
     // The manifest IS shipped and names the project.
     const manifest = files.find((file) => file.path === 'kortix.yaml');
@@ -636,7 +637,7 @@ describe('create-repo starter scaffold contract', () => {
 
     expect(paths).toEqual(explicitPaths);
     for (const path of BASE_STARTER_PATHS) expect(paths).toContain(path);
-    expect(paths).toContain('.kortix/opencode/skills/account-research/SKILL.md');
+    expect(paths).toContain('.kortix/opencode/skills/agent-browser/SKILL.md');
     expect(paths).toContain('.kortix/opencode/skills/pdf/SKILL.md');
     expect(new Set(paths).size).toBe(paths.length);
     expect(paths.some((path) => path.includes('/agent-tunnel/'))).toBe(false);
@@ -651,7 +652,7 @@ describe('create-repo starter scaffold contract', () => {
     const paths = files.map((file) => file.path);
 
     expect(paths).toEqual(BASE_STARTER_PATHS);
-    expect(paths).not.toContain('.kortix/opencode/skills/account-research/SKILL.md');
+    expect(paths).not.toContain('.kortix/opencode/skills/agent-browser/SKILL.md');
     expect(paths).not.toContain('.kortix/opencode/skills/pdf/SKILL.md');
     expect(new Set(paths).size).toBe(paths.length);
   });
@@ -738,7 +739,9 @@ describe('create-repo starter scaffold contract', () => {
       ownerType: 'Organization',
       repositorySelection: 'selected',
       permissions: { contents: 'write' },
-      metadata: { html_url: 'https://github.com/organizations/acme/settings/installations/84' },
+      metadata: {
+        html_url: 'https://github.com/organizations/acme/settings/installations/84',
+      },
       createdAt: new Date('2026-01-01T00:00:00Z'),
       updatedAt: new Date('2026-01-02T00:00:00Z'),
     });
@@ -755,7 +758,10 @@ describe('create-repo starter scaffold contract', () => {
     });
     expect(installationsBody.installations).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ installation_id: '42', owner_login: 'kortix-org' }),
+        expect.objectContaining({
+          installation_id: '42',
+          owner_login: 'kortix-org',
+        }),
         expect.objectContaining({ installation_id: '84', owner_login: 'acme' }),
       ]),
     );
@@ -935,7 +941,7 @@ describe('create-repo starter scaffold contract', () => {
 
     const committedPaths = commitCalls.map((call) => call.path);
     for (const path of BASE_STARTER_PATHS) expect(committedPaths).toContain(path);
-    expect(committedPaths).toContain('.kortix/opencode/skills/account-research/SKILL.md');
+    expect(committedPaths).toContain('.kortix/opencode/skills/agent-browser/SKILL.md');
     expect(committedPaths).toContain('.kortix/opencode/skills/pdf/SKILL.md');
     expect(commitCalls.every((call) => call.auth?.token === 'installation-token')).toBe(true);
     expect(commitCalls.every((call) => call.branch === 'main')).toBe(true);
@@ -988,6 +994,33 @@ describe('create-repo starter scaffold contract', () => {
     });
   });
 
+  test('commits the ACP multi-harness starter and enables the project experiment', async () => {
+    const app = createApp();
+    const res = await app.request('/v1/projects/create-repo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        account_id: ACCOUNT_ID,
+        name: 'harness-lab',
+        project_name: 'Harness Lab',
+        private: true,
+        starter_template: 'acp-multi-harness',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const committedPaths = commitCalls.map((call) => call.path);
+    expect(committedPaths).toContain('.claude/CLAUDE.md');
+    expect(committedPaths).toContain('.codex/AGENTS.md');
+    expect(committedPaths).toContain('.pi/README.md');
+    expect(commitCalls.find((call) => call.path === 'kortix.yaml')?.content).toContain(
+      'kortix_version: 3',
+    );
+    expect(insertedProject?.metadata).toMatchObject({
+      experimental: { acp_runtime: true },
+    });
+  });
+
   test('commits a selected marketplace project template into the new GitHub repository', async () => {
     const app = createApp();
     const res = await app.request('/v1/projects/create-repo', {
@@ -1004,7 +1037,7 @@ describe('create-repo starter scaffold contract', () => {
 
     expect(res.status).toBe(201);
     expect(commitCalls.map((call) => call.path)).toContain(
-      '.kortix/opencode/skills/account-research/SKILL.md',
+      '.kortix/opencode/skills/agent-browser/SKILL.md',
     );
     expect(commitCalls.find((call) => call.path === 'kortix.yaml')?.content).toContain(
       'name: "Company OS"',

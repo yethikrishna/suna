@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=https://kortix.com/schema/kortix.v3.schema.json
+#
+# ACP multi-harness starter.
+#
+# This project declares four logical agents. Each agent selects one immutable
+# runtime profile. Start a new session when you want to change harnesses.
+#
+# The project creation API enables the `acp_runtime` experiment when this
+# starter is selected.
+kortix_version: 3
+default_agent: opencode
+
+project:
+  name: "{{projectName}}"
+  description: ACP multi-harness test project.
+
+env:
+  required: []
+  optional:
+    - ANTHROPIC_API_KEY
+    - CLAUDE_CODE_OAUTH_TOKEN
+    - OPENAI_API_KEY
+    - CODEX_API_KEY
+
+runtimes:
+  opencode:
+    harness: opencode
+    config_dir: .kortix/opencode
+  claude:
+    harness: claude
+    config_dir: .claude
+  codex:
+    harness: codex
+    config_dir: .codex
+  pi:
+    harness: pi
+    config_dir: .pi
+
+agents:
+  opencode:
+    runtime: opencode
+    agent: kortix
+    connectors: all
+    secrets: all
+    skills: all
+    kortix_cli: all
+  claude:
+    runtime: claude
+    connectors: all
+    secrets: all
+    skills: all
+    kortix_cli: all
+  codex:
+    runtime: codex
+    connectors: all
+    secrets: all
+    skills: all
+    kortix_cli: all
+  pi:
+    runtime: pi
+    connectors: all
+    secrets: all
+    skills: all
+    kortix_cli: all

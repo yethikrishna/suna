@@ -109,9 +109,11 @@ export function ProjectProviderModal({
   const pendingProviderLabel =
     pendingProviderId === 'codex'
       ? 'ChatGPT'
-      : pendingProviderId
-        ? (LLM_PROVIDER_BY_ID.get(pendingProviderId)?.label ?? pendingProviderId)
-        : null;
+      : pendingProviderId === 'claude'
+        ? 'Claude Code'
+        : pendingProviderId
+          ? (LLM_PROVIDER_BY_ID.get(pendingProviderId)?.label ?? pendingProviderId)
+          : null;
 
   const searchPlaceholder =
     activeTab === 'connected'

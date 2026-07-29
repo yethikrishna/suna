@@ -195,7 +195,7 @@ export interface CreateProjectRepoInput {
   installation_id?: string;
   private?: boolean;
   description?: string;
-  starter_template?: 'general-knowledge-worker' | 'minimal';
+  starter_template?: 'general-knowledge-worker' | 'acp-multi-harness' | 'minimal';
   /** Clone a `registry:project` item into the new GitHub repository. */
   source_item_id?: string;
 }
@@ -205,7 +205,7 @@ export interface ProvisionProjectInput {
   name: string;
   /** Seed the managed repo with the Kortix starter so sessions can boot. */
   seed_starter?: boolean;
-  starter_template?: 'general-knowledge-worker' | 'minimal';
+  starter_template?: 'general-knowledge-worker' | 'acp-multi-harness' | 'minimal';
   marketplace_items?: string[];
   /** Clone a `registry:project` marketplace item instead of the blank
    *  starter — e.g. `"kortix-projects:support-agent-kit"`. Implies

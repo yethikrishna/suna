@@ -49,7 +49,10 @@ kortix init my-app
 cd my-app
 ```
 
-`kortix init` creates a project directory with the `general-knowledge-worker` template.
+`kortix init` creates a project directory with the
+`general-knowledge-worker` template by default. Use
+`--template acp-multi-harness` to scaffold OpenCode, Claude Code, Codex, and
+Pi runtime profiles.
 
 To link an existing cloned repo to a project you already created:
 
@@ -187,26 +190,29 @@ A command resolves "the project" in this order:
 
 ### Project scaffold
 
-`kortix init [project-name] [options]` creates a new project directory. It
-writes a v2 `kortix.yaml`, `.kortix/Dockerfile`, and the canonical
-`.kortix/opencode` system-skill source. It can wire OpenCode, Claude Code,
-Codex, Pi, and Cursor for local discovery. It does not write
-`.kortix/link.json` — `kortix ship` or `kortix projects link` create that later.
+`kortix init [project-name] [options]` creates a new project directory. The
+default template writes a v2 `kortix.yaml`. The `acp-multi-harness` template
+writes a v3 `kortix.yaml` with OpenCode, Claude Code, Codex, and Pi runtime
+profiles. Both templates write `.kortix/Dockerfile` and the canonical
+`.kortix/opencode` system-skill source. The command can wire OpenCode, Claude
+Code, Codex, Pi, and Cursor for local discovery. It does not write
+`.kortix/link.json`. `kortix ship` or `kortix projects link` create that file.
 
 | Flag | Meaning |
 | --- | --- |
 | `--name <project>` | Project name. |
 | `--primary <agent>` | Primary agent. |
 | `--agents <csv>` | Local coding-agent integrations to wire up. |
-| `--template <general-knowledge-worker\|minimal>` | Project template. Default: `general-knowledge-worker`. |
+| `--template <general-knowledge-worker\|acp-multi-harness\|minimal>` | Project template. Default: `general-knowledge-worker`. `acp-multi-harness` declares all four ACP harnesses. |
 | `--force` | Configure the current directory in place instead of scaffolding a new one. |
 | `--overwrite` | Overwrite existing files. |
 | `--no-git` | Skip git init. |
 | `-y, --yes` | Don't prompt. |
 
-The local coding-tool selection does not select a cloud session harness. Enable
-the **ACP & Multi-Harness** project experiment and use a v3 manifest runtime
-profile for cloud OpenCode, Claude Code, Codex, or Pi selection.
+The local coding-tool selection does not select a cloud session harness. The
+`acp-multi-harness` starter selects a v3 manifest and enables the **ACP &
+Multi-Harness** project experiment when the cloud project is created. For an
+existing project, enable that experiment before starting a v3 session.
 
 `kortix init` does not include a marketplace picker. Adding a marketplace skill is an agent import: start a session and ask the agent to bring one in.
 

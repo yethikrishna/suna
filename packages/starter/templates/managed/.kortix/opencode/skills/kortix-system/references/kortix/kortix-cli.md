@@ -342,7 +342,13 @@ title. Sorted newest first.
 
 | Command | Effect |
 | --- | --- |
-| `kortix init` | Scaffold a Kortix project in the current directory. Writes a v2 compatibility `kortix.yaml`, `.kortix/Dockerfile`, the canonical skill source, the default agent, and the `kortix-system` skill. For local coding tools, it links `.opencode`, `.claude`, `.agents`, or `.pi` to that source. Codex, Pi, and Cursor also get a root `AGENTS.md` pointer. Cloud sessions can migrate the manifest to v3 and select OpenCode, Claude Code, Codex, or Pi. |
+| `kortix init` | Scaffold a Kortix project. The default `general-knowledge-worker` template writes a v2 OpenCode manifest. `--template acp-multi-harness` writes a v3 manifest with OpenCode, Claude Code, Codex, and Pi profiles. Both write `.kortix/Dockerfile`, the canonical skill source, and the default agent. Local coding-tool wiring remains separate from cloud harness selection. |
+
+Use this command for a local four-harness scaffold:
+
+```sh
+kortix init harness-lab --template acp-multi-harness --yes --no-git
+```
 
 ### System skills
 

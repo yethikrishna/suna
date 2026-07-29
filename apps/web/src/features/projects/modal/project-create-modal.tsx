@@ -67,12 +67,13 @@ import {
   provisionProject,
   type KortixAccount,
   type KortixProject,
+  type ProvisionProjectInput,
 } from '@kortix/sdk';
-import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks/use-debounce';
+import { cn } from '@/lib/utils';
 import { useCurrentAccountStore } from '@/stores/current-account-store';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircleSolid } from '@mynaui/icons-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Boxes, ChevronsUpDown, ExternalLink, Github } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -112,6 +113,7 @@ const githubLinkSchema = z.object({
 type ManagedProjectFormValues = z.infer<typeof managedProjectSchema>;
 type GitHubLinkFormValues = z.infer<typeof githubLinkSchema>;
 type RepositoryMode = 'github-create' | 'github-import' | 'managed';
+type StarterTemplateId = NonNullable<ProvisionProjectInput['starter_template']>;
 
 const REPOSITORY_MODE_DESCRIPTIONS: Record<RepositoryMode, string> = {
   managed: 'Kortix creates and manages a private repository for this project.',
@@ -165,6 +167,9 @@ export const ProjectCreateModal = ({
   // actually picked a non-managed mode, or managed git isn't usable, so the
   // switcher stays reachable.
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [starterTemplate, setStarterTemplate] = useState<StarterTemplateId>(
+    'general-knowledge-worker',
+  );
   const [isConnectingGitHub, setIsConnectingGitHub] = useState(false);
   const [sourceNameApplied, setSourceNameApplied] = useState(false);
   const [repositorySearch, setRepositorySearch] = useState('');
@@ -230,6 +235,7 @@ export const ProjectCreateModal = ({
   function resetAndClose() {
     setMode('managed');
     setAdvancedOpen(false);
+    setStarterTemplate('general-knowledge-worker');
     setSourceNameApplied(false);
     setPickedAccountId(null);
     setPickedTemplateId(null);
@@ -483,7 +489,7 @@ export const ProjectCreateModal = ({
         installation_id: selectedInstallationId,
         name: values.name.trim().replace(/\s+/g, '-'),
         private: true,
-        starter_template: 'general-knowledge-worker',
+        starter_template: starterTemplate,
         source_item_id: effectiveSourceItemId ?? undefined,
       });
       return;
@@ -499,9 +505,7 @@ export const ProjectCreateModal = ({
     createMutation.mutate({
       account_id: effectiveAccountId,
       name: values.name,
-      // One starter kit: every new project ships the full Kortix skill kit (the
-      // general-knowledge-worker template seeds every skill).
-      starter_template: 'general-knowledge-worker',
+      starter_template: starterTemplate,
       marketplace_items: [],
     });
   }
@@ -654,6 +658,34 @@ export const ProjectCreateModal = ({
                       </FormItem>
                     )}
                   />
+
+                  {!cloningFromSource ? (
+                    <div className="space-y-1.5">
+                      <Label>Starter</Label>
+                      <Select
+                        value={starterTemplate}
+                        onValueChange={(value) => setStarterTemplate(value as StarterTemplateId)}
+                        disabled={submitting}
+                      >
+                        <SelectTrigger className="w-full" data-testid="project-create-starter">
+                          <span className="truncate">
+                            {starterTemplate === 'acp-multi-harness'
+                              ? 'ACP multi-harness'
+                              : 'General-purpose'}
+                          </span>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="general-knowledge-worker">General-purpose</SelectItem>
+                          <SelectItem value="acp-multi-harness">ACP multi-harness</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-muted-foreground text-xs text-pretty">
+                        {starterTemplate === 'acp-multi-harness'
+                          ? 'Creates OpenCode, Claude Code, Codex, and Pi agents. ACP is enabled for the project.'
+                          : 'Creates the default OpenCode project with the complete Kortix skill kit.'}
+                      </p>
+                    </div>
+                  ) : null}
 
                   {mode === 'github-create' ? (
                     githubInstallationsQuery.isLoading ? (

@@ -211,6 +211,11 @@ projectsApp.openapi(
       return c.json({ error: `Unknown or non-cloneable project item "${sourceItemId}"` }, 400);
     }
   }
+  const starterTemplate = normalizeStarterTemplateId(
+    body.starter_template ?? body.starterTemplate,
+  );
+  const acpMultiHarnessStarter =
+    !sourceItemId && starterTemplate === 'acp-multi-harness';
 
   const isPrivate = typeof body.private === 'boolean' ? body.private : true;
   const description = normalizeString(body.description);
@@ -279,7 +284,6 @@ projectsApp.openapi(
   // updates the branch tip on every write, so these must be sequential.
   // A partial starter is not a usable project.
   const [ownerLogin, repoSlug] = repo.full_name.split('/');
-  const starterTemplate = normalizeStarterTemplateId(body.starter_template ?? body.starterTemplate);
   const starter = sourceItemId
     ? (await buildProjectSeedFilesFromItem({
         id: sourceItemId,
@@ -324,6 +328,9 @@ projectsApp.openapi(
     name: projectName,
     defaultBranch,
       managed: true,
+    projectMetadata: acpMultiHarnessStarter
+      ? { experimental: { acp_runtime: true } }
+      : undefined,
     // The starter just committed above (buildStarterFiles) ships kortix.yaml
     // (kortix_version 2) — record that path so it's never stale from birth.
     manifestPath: 'kortix.yaml',

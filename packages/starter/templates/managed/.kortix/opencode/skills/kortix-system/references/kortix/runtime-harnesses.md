@@ -20,6 +20,22 @@ The experiment defaults to disabled. Enable it before starting a v3 session.
 The API rejects a v3 session with `ACP_RUNTIME_REQUIRED` while the experiment is
 disabled.
 
+## Create a four-harness test project
+
+In the New Project modal, select **ACP multi-harness** under **Starter**. The
+project creation API scaffolds the v3 manifest below and enables
+`experimental.acp_runtime`.
+
+The CLI can scaffold the same files:
+
+```sh
+kortix init harness-lab --template acp-multi-harness --yes --no-git
+```
+
+The CLI command writes files only. `kortix ship` creates the cloud project.
+Cloud project creation enables `acp_runtime` when it receives
+`starter_template: acp-multi-harness`.
+
 ## Manifest model
 
 Use `kortix_version: 3` for multiple harnesses. `runtimes` declares named
@@ -144,6 +160,13 @@ Declare direct credential names under `env.required` or `env.optional`. Grant
 them through `agents.<name>.secrets`. Store values in the Kortix Secrets
 Manager. Never put a credential value in `kortix.yaml`.
 
+The Models view supports these project-wide subscription flows:
+
+- Claude Code: run `claude setup-token`, then store the result as
+  `CLAUDE_CODE_OAUTH_TOKEN`.
+- Codex: complete the ChatGPT device authorization. Kortix stores the resulting
+  `CODEX_AUTH_JSON`. Do not create that value manually.
+
 The backend keeps a generic provider verification route for SDK compatibility.
 The connected-provider UI does not expose it. A key can authenticate while the
 selected model, region, entitlement, or API dialect still fails. Test the real
@@ -169,8 +192,10 @@ pnpm exec dotenvx run --ignore=MISSING_ENV_FILE \
 ```
 
 The default set is `opencode,claude,codex,pi`. The script creates a disposable
-user and project. It enables `acp_runtime`, pushes the v3 manifest, starts one
-session per harness, and cleans up in `finally`. Run `pnpm dev` first.
+user and provisions the `acp-multi-harness` starter. Project creation enables
+`acp_runtime`. The script starts one session per harness and cleans up the
+managed repository, project rows, account row, and user in `finally`. Run
+`pnpm dev` first.
 
 Use a subset or provider:
 
@@ -195,7 +220,7 @@ Supported options:
 | `E2E_ACP_MULTI_HARNESS_REUSE_EMAIL` | Login email for the reused project. Set it with `E2E_ACP_MULTI_HARNESS_REUSE_PROJECT_ID`. |
 | `E2E_API_URL` | Target API. Defaults to `http://localhost:8008/v1`. |
 | `E2E_SUPABASE_URL` | Target Supabase Auth URL. Defaults to `http://127.0.0.1:54321`. |
-| `E2E_DATABASE_URL` | Optional database URL used to grant test credits. |
+| `E2E_DATABASE_URL` | Database URL override used for test credits and complete fixture cleanup. The script falls back to `DATABASE_URL`. |
 
 Each harness must pass all checks:
 

@@ -25,8 +25,8 @@ Scaffolding is explicit-only: `kortix init` is the one command that creates
 a project directory. An unknown subcommand (`kortix use`, `kortix inti`, …)
 errors with a suggestion — it never scaffolds. Init's choices: which coding
 agent(s) to wire (`--primary`, `--agents`), which starter template
-(`--template minimal|general-knowledge-worker`), and which marketplace
-skills to install (`--marketplace`).
+(`--template general-knowledge-worker|acp-multi-harness|minimal`), and which
+marketplace skills to install (`--marketplace`).
 
 Run `kortix init --help` for the full flag list, or `kortix --help`
 for the full command list (project, auth, work, and resource subcommands —
@@ -54,10 +54,20 @@ each get their native discovery directory linked to
 `.agents` for Codex, and `.pi` for Pi. Codex, Pi, and Cursor also get a root
 `AGENTS.md` pointer.
 
-This local tool choice does not select the cloud session harness. The starter
-uses `kortix_version: 2` and OpenCode REST. Enable **ACP & Multi-Harness**, then
-migrate to `kortix_version: 3` to select OpenCode, Claude Code, Codex, or Pi
-for cloud sessions.
+This local tool choice does not select the cloud session harness.
+
+- `general-knowledge-worker` is the default. It uses `kortix_version: 2` and
+  OpenCode REST.
+- `acp-multi-harness` uses `kortix_version: 3`. It declares OpenCode, Claude
+  Code, Codex, and Pi agents. Project creation enables **ACP &
+  Multi-Harness** automatically.
+- `minimal` is the internal base-only template.
+
+Create a four-harness test project with:
+
+```sh
+kortix init harness-lab --template acp-multi-harness --yes --no-git
+```
 
 Agents can retrieve the deployed platform manual from any harness:
 

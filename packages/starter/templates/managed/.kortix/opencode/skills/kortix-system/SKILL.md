@@ -453,11 +453,12 @@ settings. Dashboard edits to triggers and env round-trip through
 <canonical-schema>
 ## The canonical manifest schema — one URL, always correct
 
-The starter project's `kortix.yaml` is `kortix_version: 2` — check its top
-`# yaml-language-server: $schema=...` line. That URL is the public, versioned
-JSON Schema, generated straight from `@kortix/manifest-schema` (the same
-package that backs `kortix validate` and the CR-merge gate — one source of
-truth, no separate spec to keep in sync by hand):
+Check the top `# yaml-language-server: $schema=...` line in `kortix.yaml`.
+The default general-purpose starter uses `kortix_version: 2`. The selectable
+ACP multi-harness starter uses `kortix_version: 3`. That URL is the public,
+versioned JSON Schema, generated straight from `@kortix/manifest-schema` (the
+same package that backs `kortix validate` and the CR-merge gate — one source
+of truth, no separate spec to keep in sync by hand):
 
 | URL | Covers |
 | --- | --- |
@@ -556,7 +557,9 @@ agents:
   launchable logical agents.
 - Once a project adopts declarative agents, Kortix chat inputs, trigger/channel pickers, and other product UI should fetch agents from the server-side Kortix registry, not directly from the sandbox OpenCode `/app/agents` result.
 - Model lists should follow the same direction: UI fetches the server/LLM-gateway model catalog, not a sandbox-local OpenCode provider list, so connected-provider policy and billing stay server-owned.
-- New projects default to `kortix.yaml` (v2) declarative discovery. Older `kortix.toml` (v1) projects stay in legacy mode until they migrate.
+- New projects use declarative discovery. The default general-purpose starter
+  uses v2. The ACP multi-harness starter uses v3. Older `kortix.toml` (v1)
+  projects stay in legacy mode until they migrate.
 
 **`kortix_cli` — the grantable enum** (project-scoped only; account-level admin actions
 like `member.*` / `billing.*` / `project.create` can NEVER be granted to an agent — nor can

@@ -181,9 +181,9 @@ describe('the docs match the contract', () => {
           line,
         );
         if (!claimsFrozen) continue;
-        // `runtime_context` and `end_user_ref` genuinely ARE create-only.
+        // `runtime_context` genuinely is create-only.
         const aboutMovableFields = /\bsecrets\b|connector_bindings/.test(line);
-        const alsoNamesFrozenOnes = /runtime_context|end_user_ref/.test(line);
+        const alsoNamesFrozenOnes = /runtime_context/.test(line);
         expect({ path, line: line.trim().slice(0, 100) }).toMatchObject({
           path,
           line: aboutMovableFields && !alsoNamesFrozenOnes ? '<<must not claim frozen>>' : line.trim().slice(0, 100),

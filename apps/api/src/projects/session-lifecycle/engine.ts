@@ -9,7 +9,6 @@ import { db } from '../../shared/db';
 import { connectorBindingPayloadConflicts } from '../lib/session-connector-bindings';
 import { secretsAllowlistPayloadConflicts } from '../secrets';
 import {
-  endUserRefConflicts,
   requireConnectorsConflicts,
   runtimeContextConflicts,
 } from './idempotency-conflicts';
@@ -149,26 +148,6 @@ export async function createSession(
         },
       };
     }
-    // Attribution/identity conflict. Within one backend account origin_ref is how
-    // a wrapper distinguishes its end-users, so replaying a key with a different
-    // origin_ref (or runtime_context) must NOT return the first end-user's
-    // session — that would land end-user B's prompts in A's conversation and
-    // misattribute usage. Refuse it, mirroring the guards above. (Cross-ACCOUNT
-    // key collision is a separate concern — see the account-scope fix.)
-    if (endUserRefConflicts(existingBody, command.body)) {
-      return {
-        status: 'failed',
-        commandId: claimed.row.commandId,
-        retryable: false,
-        error: {
-          status: 409,
-          body: {
-            error: 'Idempotency key was already used for a different origin_ref',
-            code: 'IDEMPOTENCY_ORIGIN_CONFLICT',
-          },
-        },
-      };
-    }
     if (runtimeContextConflicts(existingBody.runtime_context, command.body.runtime_context)) {
       return {
         status: 'failed',
@@ -289,7 +268,7 @@ export async function createSession(
   // about to be handed to a waiting caller. Marking it retryable would leave the
   // command row queued for the drainer as well, and the caller (told by the
   // guide that a 429/503 is worth retrying) retries with a fresh key: two billed
-  // sandboxes for one intent, same end_user_ref, both running initial_prompt.
+  // sandboxes for one intent, both running initial_prompt.
   await markCommandFailed(claimed.row.commandId, message, {
     retryable: mayRequeueFailedCreate({
       answeredSynchronously: true,
@@ -691,7 +670,7 @@ async function executeQueuedCreate(
     queuePolicy: 'never',
     postCreate: payload.postCreate,
     // Replay the origin-derivation signals captured at enqueue time so a
-    // queued backend create keeps origin 'backend' (and its origin_ref).
+    // queued backend create keeps origin 'backend'.
     authType: payload.authType,
     apiKeyType: payload.apiKeyType,
     inSession: payload.inSession,

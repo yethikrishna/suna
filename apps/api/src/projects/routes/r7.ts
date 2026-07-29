@@ -78,7 +78,6 @@ import {
   listResolvedProjectSecrets,
   secretKeyCollisionInAllowlist,
 } from '../secrets';
-import { resolveEndUserRef } from '../lib/end-user-ref';
 import { selectSessionRowsForViewer, type ProjectSessionListScope } from '../lib/session-inventory';
 
 function parseBoundedPositiveInt(
@@ -722,10 +721,8 @@ projectsApp.openapi(
     body,
     // Origin is derived from the caller's token kind (service_account / pat /
     // 'user' apiKey → backend), never the body — see resolveSessionOrigin. A
-    // token operating from INSIDE a session stays 'user' so an in-sandbox agent
-    // can't vouch via origin_ref. Keyed on session-binding (`sessionId`, set on
-    // the executor PAT injected into every sandbox) OR an agent grant — NOT the
-    // grant alone, which is null for v1/default agents and would fail open.
+    // token operating from INSIDE a session stays 'user'. This uses the
+    // session-binding (`sessionId`) or an agent grant.
     authType: c.get('authType') as string | undefined,
     apiKeyType: c.get('apiKeyType') as string | undefined,
     inSession: c.get('sessionId') != null || getAgentGrant(c) != null,
@@ -771,16 +768,6 @@ projectsApp.openapi(
         params: z.object({ projectId: z.string() }),
         query: z.object({
           scope: z.enum(['visible', 'project']).optional(),
-          /**
-           * Kortix-as-a-Backend: list only the sessions belonging to ONE of the
-           * wrapper's end-users. Without it a wrapper has no way to answer
-           * "show me this customer's sessions" except by fetching every session
-           * in the project and filtering client-side.
-           *
-           * Accepts the deprecated `origin_ref` spelling too.
-           */
-          end_user_ref: z.string().trim().min(1).max(256).optional(),
-          origin_ref: z.string().trim().min(1).max(256).optional(),
         }),
       },
     responses: {
@@ -791,12 +778,6 @@ projectsApp.openapi(
   async (c) => {
   const projectId = c.req.param('projectId');
   const scope = (c.req.valid('query').scope ?? 'visible') as ProjectSessionListScope;
-  // Same resolver the create path uses, so the filter accepts exactly the
-  // spellings a wrapper is allowed to send a session with — and rejects a
-  // disagreeing pair rather than silently letting one win.
-  const resolvedRef = resolveEndUserRef(c.req.valid('query'));
-  if (!resolvedRef.ok) return c.json({ error: resolvedRef.message, code: resolvedRef.code }, 400);
-  const endUserRefFilter = resolvedRef.value;
 
   const loaded = await loadProjectForUser(c, projectId, 'read');
   if (!loaded) return c.json({ error: 'Not found' }, 404);
@@ -809,9 +790,6 @@ projectsApp.openapi(
       and(
         eq(projectSessions.projectId, projectId),
         eq(projectSessions.accountId, loaded.row.accountId),
-        // Filtered IN THE QUERY, not after: a wrapper listing one end-user must
-        // not have to pull every session in the project to find them.
-        ...(endUserRefFilter ? [eq(projectSessions.originRef, endUserRefFilter)] : []),
       ),
     )
     .orderBy(desc(projectSessions.updatedAt));
@@ -836,7 +814,6 @@ projectsApp.openapi(
     rows.filter((row) => row.visibility === 'restricted').map((row) => row.sessionId),
   );
   const selected = selectSessionRowsForViewer({
-    endUserRefFiltered: endUserRefFilter !== null,
     rows,
     scope,
     canManageProject,

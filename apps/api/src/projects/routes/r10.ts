@@ -121,7 +121,6 @@ async function handleMarketplaceInstallSession(c: any) {
     visibility: 'project',
     // Derive origin from the caller's token kind, same as POST /sessions (r7),
     // so a backend-driven install records origin='backend' rather than 'user'.
-    // No origin_ref is accepted here — the body is composed server-side.
     authType: c.get('authType') as string | undefined,
     apiKeyType: c.get('apiKeyType') as string | undefined,
     inSession: c.get('sessionId') != null || getAgentGrant(c) != null,

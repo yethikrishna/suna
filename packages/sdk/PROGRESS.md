@@ -261,6 +261,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B30 | **Expose message-based session rewind and restore through both REST and ACP transports.** Editing an earlier user message must rewind the same canonical session instead of creating a fork. The removed path must remain recoverable until the replacement prompt commits.                                                                                                                                                                      | `apps/web/src/features/session/session-chat.tsx` contains `TODO(session-rewind)`. OpenCode exposes `/session/{sessionID}/revert` and `/unrevert`; ACP has no standard rewind method and needs a Kortix bridge extension plus transcript reload.                                                               | **DONE 2026-07-27** — implementation `eab4eef0f`; PR #5619 merged as `9e90e8ed7`. Deploy Dev run `30293660760` deployed source `e548c6a8fc9ee1d5a92db66d6feb912d4442ebeb`, which contains the merge. Dev session `7feb4e84-072f-4b71-987f-dc25dd542890` kept canonical OpenCode session `ses_05b075d25ffe7PBkZ632pcVAlW` across ACP and REST rewind, restore, replacement commit, reconnect, and file rollback. ACP produced `DEPLOYED_ACP_REPLACEMENT`; REST produced `DEPLOYED_REST_REPLACEMENT`; cleanup removed `26/26` probe sessions and restored ACP runtime overrides. SDK tests `1309/0`, daemon tests `306/0`, web source contract `5/0`, local ACP Playwright `1/0`, and local real ACP plus REST smoke pass. Shippable to production: **YES** for protocol behavior. Deployed UI interaction remains unverified because Browser discovery returned `[]`. |
 | B31 | **Allow a page-scoped ACP query override and settle completed ACP prompts that contain stale running tools.**                                                                                                                                                                                                                                                                                                                                     | `?acp` has no SDK transport override. Dev session `5322fa59-7a73-4fea-9f1a-9da59c2a0b5a` rendered the final assistant response while an older tool part remained `running`; `hasProjectionBlockers()` then kept the composer busy and blocked the queued prompt.                                                                 | **IMPLEMENTATION COMPLETE 2026-07-27** — implementation `d3544ae14`; focused SDK `40/0`, full SDK `1312/0`, typecheck, packed-install smoke, web routing `5/0`, and touched web ESLint pass. PR #5636, Deploy Dev, deployed SHA proof, and deployed ACP-only proof remain |
 | B32 | **Synchronize generated Kortix session names from both ACP and OpenCode REST runtimes without navigation or refresh.**                                                                                                                                                                                                                                                                                                                           | ACP emits `session_info_update`; OpenCode `/global/event` emits a wrapped `session.updated`. Neither path reliably persisted `metadata.name`, and the sidebar query could stay stale after a completed prompt.                                                                                              | **IMPLEMENTATION COMPLETE 2026-07-28** — ACP and REST title events persist server-side; the SDK refetches list and detail queries through a bounded post-send loop; focused API `78/0`, full SDK `1318/0`, API and SDK typechecks, packed-install smoke, test-harness typecheck, and local ACP plus REST Chromium `1/0` pass. Full API has `3` pre-existing failures reproduced in the primary checkout. PR, Deploy Dev, deployed SHA proof, and deployed UI proof remain. |
+| B33 | **The ACP transcript has no bounded read — a session replays every envelope on open.** OpenCode REST opens on a bounded newest-first page (`SESSION_SYNC_PAGE_SIZE`) and pages backwards through a cursor; ACP has no equivalent, so the ACP path gets slower without limit as a session grows. As ACP becomes the only transport, the bounded-read property is lost with it. | `GET /:projectId/sessions/:sessionId/acp/transcript` (`apps/api/src/projects/routes/acp.ts:160`) and `loadAcpTranscript` (`apps/api/src/projects/lib/acp-transcript.ts`) accept only `after` (forward tailing for gap recovery) — no `before`/`limit`. `useSession` hardcodes `hasOlder: false` / `loadOlder: async () => {}` for ACP (`src/react/use-session.ts:533-535`). **Not a small change:** the projection is a fold over the whole envelope log (`applyAcpEnvelope`), so replaying a suffix yields a wrong projection — open tool calls, session info, and rewind state all live in earlier envelopes. Needs either envelope-range snapshots or a projection checkpoint, then the existing `hasOlder`/`loadOlder` contract plugs into the transcript's scroll-driven autoload unchanged. | OPEN |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -3898,3 +3899,194 @@ Final SDK gates:
 
 **Repository delivery shippable to production: NOT YET.** PR merge, Deploy Dev,
 deployed SHA proof, and deployed four-harness verification remain.
+
+---
+
+### 2026-07-29 — session `generic-acp-session-identity` SDK claim
+
+Claimed the preassigned OpenCode session identity compatibility task.
+
+Scope:
+
+- Treat the `/start` response as the authoritative runtime identity.
+- Keep `initialOpenCodeSessionId` as a backward-compatible cache seed.
+- Prevent SDK caches from crossing Kortix `(projectId, sessionId)` boundaries.
+- Prove two sandboxes restored from one snapshot receive distinct OpenCode IDs.
+
+The required `tdd` skill is unavailable in this session.
+The implementation used the same RED, GREEN, and REFACTOR sequence directly.
+
+TDD evidence:
+
+- IndexedDB scope RED: the focused test failed because
+  `idb-sync-cache-key` did not exist.
+- IndexedDB scope GREEN: `3 pass`, `0 fail`.
+- Transcript ownership RED: the focused test failed because
+  `resolveSessionCacheOwnerScope` did not exist.
+- Transcript ownership GREEN: `4 pass`, `0 fail`.
+- Runtime switch gate RED: the focused source contract found no sandbox-switch
+  gates in `useSession`.
+- Runtime switch gate GREEN: the focused source contract passed.
+- Runtime-action gate RED: the focused test failed because
+  `isSessionRuntimeActionReady` did not exist.
+- Runtime-action gate GREEN: the focused test passed.
+
+Final SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1381 pass`, `0 fail`, `5970`
+  assertions.
+- `pnpm --filter @kortix/sdk run smoke:install`: the packed tarball installed,
+  imported, and constructed successfully.
+- The public export snapshot did not change.
+
+Related repository gates:
+
+- Starter typecheck: exit `0`.
+- Starter tests: `51 pass`, `0 fail`.
+- CLI typecheck: exit `0`.
+- CLI tests: `553 pass`, `0 fail`.
+- API typecheck: exit `0`.
+- API focused tests: gateway base URL `6 pass`; starter create-repo `12 pass`;
+  provision `10 pass`; scaffold identity `1 pass` with `182` assertions;
+  project-session contract `45 pass` with `363` assertions.
+- Web focused tests: `27 pass`, `0 fail`.
+- Web focused ESLint: exit `0`.
+
+Live local acceptance:
+
+- Evidence:
+  `tests/performance/session-start/results/2026-07-29/opencode-fork-isolation-local-platinum.json`.
+- Provider: Platinum.
+- Result: `PASS 2/2`.
+- Create-to-ready: `21.460 s` and `23.736 s`.
+- `/start` returned distinct OpenCode roots:
+  `ses_050ddca47ffe4r8L0yDak7Fiar` and
+  `ses_050ddd663ffe159AjQGlKxefsg`.
+- `createKortix().session().ensureReady()` matched each `/start` root.
+- Restart preserved each root.
+- Each transcript contained only its own three assistant markers.
+- Fixture cleanup left zero projects and zero users.
+
+Rebased local acceptance on `origin/main` `d627167f`:
+
+- Evidence:
+  `tests/performance/session-start/results/2026-07-29/opencode-fork-isolation-local-platinum-rebased.json`.
+- The smoke converted the canonical version 3 starter into a disposable
+  version 2 OpenCode REST fixture through a temporary project-scoped PAT.
+- Result: `PASS 2/2` on Platinum.
+- Create-to-ready: `21.758 s` and `23.266 s`.
+- `/start` returned distinct OpenCode roots:
+  `ses_050be4bb6ffepNq9BLE8kdybL9` and
+  `ses_050be472cffeLbJ7ciXGs8smOL`.
+- The public SDK matched both authoritative `/start` roots.
+- Restart preserved both roots.
+- Each assistant transcript contained only its own three markers.
+- Fixture cleanup left zero projects and zero users.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+**Repository delivery shippable to production: NOT YET.** PR merge, Deploy Dev,
+deployed SHA proof, and deployed isolation verification remain.
+
+---
+
+### 2026-07-29 — session `sdk-inherited-session-defaults` follow-up claim
+
+Claimed the live inherited OpenCode session default compatibility follow-up.
+
+Live dev evidence on merge `7a7bb4f16`:
+
+- Three distinct Platinum sandboxes inherited
+  `ses_050fadf1dffeb2XyPZiu0qloal`.
+- SDK routing kept each user marker in its own sandbox transcript.
+- The first SDK prompt used the stale snapshot model
+  `opencode/big-pickle` and produced no assistant message.
+- A direct prompt with the persisted project-session model
+  `kortix/glm-5.2` unblocked each session.
+- Both sessions then passed follow-up, restart, and post-restart SDK sends.
+
+Scope:
+
+- Resolve the persisted project-session model and agent before a default SDK
+  `send`.
+- Keep explicit per-call and handle-level SDK overrides authoritative.
+- Accept an equal inherited OpenCode ID when sandbox and transcript ownership
+  remain isolated.
+- Make the disposable live smoke tolerate project manifest convergence without
+  hiding product failures.
+
+The required `tdd` skill is unavailable in this session.
+The implementation will use the same RED, GREEN, and REFACTOR sequence
+directly.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
+---
+
+### 2026-07-29 — session `sdk-inherited-session-defaults` follow-up completion
+
+Completed the inherited OpenCode session compatibility fix in `a900fc605`.
+
+The SDK now reads the persisted project-session model and agent before the
+first default OpenCode REST `send()` on a handle. Per-call choices override
+handle choices. Handle choices override persisted defaults. `changeModel()`
+invalidates the cached persisted defaults. A failed defaults read clears the
+cache so the next `send()` retries it.
+
+The live smoke now treats the sandbox as the isolation boundary. It accepts an
+equal snapshot-inherited `opencode_session_id` only when the Kortix sessions,
+sandboxes, and transcripts remain isolated. The session-create helper retries
+only the exact `409 ACP_RUNTIME_REQUIRED` manifest-convergence response.
+
+TDD and focused evidence:
+
+- RED: the inherited-session prompt omitted the persisted model and agent.
+- GREEN: the prompt used `kortix/glm-5.2` and agent `kortix`.
+- RED: `changeModel()` left the old persisted model cached.
+- GREEN: the next prompt used the changed model.
+- Focused SDK client suite: `71 pass`, `0 fail`, `258` assertions.
+- Tests package typecheck: exit `0`.
+
+Final SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1385 pass`, `0 fail`, `5978`
+  assertions across `121` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: the packed tarball installed,
+  imported, and constructed successfully.
+
+Live dev Platinum acceptance:
+
+- Evidence:
+  `tests/performance/session-start/results/2026-07-29/opencode-inherited-pin-dev-platinum.json`.
+- Result: `PASS 2/2`.
+- Create-to-ready: `26.022 s` and `35.169 s`.
+- Two distinct Kortix sessions and Platinum sandboxes inherited
+  `ses_050fadf1dffeb2XyPZiu0qloal`.
+- `createKortix().session().ensureReady()` matched the authoritative `/start`
+  pin for both sandboxes.
+- Both sessions passed first response, follow-up response, restart, and
+  post-restart response using only SDK `send()`.
+- Each transcript contained only its own three assistant markers.
+- Fixture cleanup removed the project, sessions, account, and user.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+Repository delivery evidence:
+
+- PR `#5848` merged as
+  `d6979ad99241ebd8baeb00391dc186ce007b63e1`.
+- All PR checks completed successfully.
+- Deploy Dev run `30487926127` completed successfully for the merge SHA.
+- `https://dev-api.kortix.com/v1/health` reported version
+  `0.11.1-dev.d6979ad9` and commit
+  `d6979ad99241ebd8baeb00391dc186ce007b63e1`.
+
+**Repository delivery shippable to production: YES.**

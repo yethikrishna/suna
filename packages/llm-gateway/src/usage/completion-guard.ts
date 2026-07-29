@@ -71,12 +71,16 @@ const SOFT_RATE_LIMIT_FRAME: SseErrorFrame = {
   detail: { type: 'soft_rate_limit' },
 };
 
-function hasZeroUsage(data: Record<string, unknown>): boolean {
+function tokenUsageValues(data: Record<string, unknown>): unknown[] {
   const usage = data.usage;
-  if (!usage || typeof usage !== 'object') return false;
-  const values = Object.entries(usage as Record<string, unknown>)
+  if (!usage || typeof usage !== 'object') return [];
+  return Object.entries(usage as Record<string, unknown>)
     .filter(([key]) => key.endsWith('_tokens') || key === 'total_tokens')
     .map(([, value]) => value);
+}
+
+function hasZeroUsage(data: Record<string, unknown>): boolean {
+  const values = tokenUsageValues(data);
   return values.length > 0 && values.every((value) => value === 0);
 }
 
@@ -106,12 +110,16 @@ interface SseSoftFailureState {
   text: string;
   ended: boolean;
   incompatibleOutput: boolean;
+  zeroUsageKnown: boolean;
+  zeroUsage: boolean;
 }
 
 function sseSoftFailureState(buffer: string): SseSoftFailureState {
   let text = '';
   let ended = false;
   let incompatibleOutput = false;
+  let zeroUsageKnown = false;
+  let zeroUsage = true;
 
   for (const line of buffer.split('\n')) {
     if (!line.startsWith('data:')) continue;
@@ -122,7 +130,12 @@ function sseSoftFailureState(buffer: string): SseSoftFailureState {
       continue;
     }
     try {
-      const chunk = JSON.parse(payload) as { choices?: unknown };
+      const chunk = JSON.parse(payload) as Record<string, unknown> & { choices?: unknown };
+      const usageValues = tokenUsageValues(chunk);
+      if (usageValues.length > 0) {
+        zeroUsageKnown = true;
+        if (usageValues.some((value) => value !== 0)) zeroUsage = false;
+      }
       if (!Array.isArray(chunk.choices)) continue;
       for (const rawChoice of chunk.choices) {
         if (!rawChoice || typeof rawChoice !== 'object') continue;
@@ -149,7 +162,7 @@ function sseSoftFailureState(buffer: string): SseSoftFailureState {
       // A partial or malformed data line cannot confirm this exact signature.
     }
   }
-  return { text, ended, incompatibleOutput };
+  return { text, ended, incompatibleOutput, zeroUsageKnown, zeroUsage };
 }
 
 /**
@@ -159,13 +172,20 @@ function sseSoftFailureState(buffer: string): SseSoftFailureState {
 export function sseMayContainSoftFailure(buffer: string): boolean {
   const state = sseSoftFailureState(buffer);
   if (state.incompatibleOutput) return false;
+  if (state.zeroUsageKnown && !state.zeroUsage) return false;
   return SOFT_RATE_LIMIT_MESSAGE.startsWith(state.text);
 }
 
 /** Detects the complete soft rate-limit rejection in an SSE completion. */
 export function sseSoftFailureFrame(buffer: string): SseErrorFrame | null {
   const state = sseSoftFailureState(buffer);
-  if (state.incompatibleOutput || !state.ended || state.text !== SOFT_RATE_LIMIT_MESSAGE) {
+  if (
+    state.incompatibleOutput ||
+    !state.ended ||
+    state.text !== SOFT_RATE_LIMIT_MESSAGE ||
+    !state.zeroUsageKnown ||
+    !state.zeroUsage
+  ) {
     return null;
   }
   return SOFT_RATE_LIMIT_FRAME;

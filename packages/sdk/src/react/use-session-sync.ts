@@ -5,6 +5,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import {
   getSessionSyncController,
   loadSessionTranscriptMessages,
+  resetSessionSyncControllersForSession,
   retainSessionSyncController,
 } from '../browser/session-sync/session-sync-registry';
 import {
@@ -13,9 +14,15 @@ import {
   toHydrateEntries,
   writeCachedTranscript,
 } from '../browser/session-sync/session-transcript-cache';
+import {
+  claimSessionCacheOwnership,
+  getSessionCacheOwnership,
+  resolveSessionCacheOwnerScope,
+} from '../browser/session-sync/session-cache-ownership';
 import { useSandboxConnectionStore } from '../browser/stores/sandbox-connection-store';
 import { type MessageWithParts, useSyncStore } from '../browser/stores/sync-store';
 import { canQueryOpenCodeSession } from './use-opencode-sessions';
+import { useCurrentRuntime } from './use-current-runtime';
 
 export { loadSessionTranscriptMessages };
 
@@ -81,14 +88,51 @@ function buildMessages(
  * Returns the current session tail and explicit history-loading state.
  * Network synchronization lives in the framework-free SessionSyncController.
  */
-export function useSessionSync(sessionId: string) {
+interface UseSessionSyncOptions {
+  /**
+   * Stable Kortix `(projectId, sessionId)` scope for disk transcript ownership.
+   * This prevents equal OpenCode ids in different sandboxes from sharing data.
+   */
+  kortixSessionScope?: string;
+  /**
+   * Allow live REST reconciliation against the current runtime.
+   * Set false while `/start` has not switched this Kortix session's sandbox.
+   */
+  networkEnabled?: boolean;
+}
+
+export function useSessionSync(sessionId: string, options: UseSessionSyncOptions = {}) {
+  const { kortixSessionScope, networkEnabled = true } = options;
   const runtimeHealthy = useSandboxConnectionStore((state) => state.healthy === true);
-  const controller = getSessionSyncController(sessionId);
+  const runtimeScope = useCurrentRuntime((state) => state.sandboxId) ?? 'none';
+  const cacheOwnerScope = resolveSessionCacheOwnerScope(runtimeScope, kortixSessionScope);
+  const currentOwner = getSessionCacheOwnership(sessionId);
+  const cacheBelongsToAnotherRuntime =
+    !!sessionId &&
+    cacheOwnerScope !== null &&
+    currentOwner !== null &&
+    currentOwner !== cacheOwnerScope;
+  const readableSessionId = cacheBelongsToAnotherRuntime ? '' : sessionId;
+  const controller = getSessionSyncController(sessionId, undefined, runtimeScope);
   const sync = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
     controller.getSnapshot,
   );
+
+  useEffect(() => {
+    if (!canQueryOpenCodeSession(sessionId) || !cacheOwnerScope) return;
+    const claim = claimSessionCacheOwnership(sessionId, cacheOwnerScope);
+    if (!claim.previousOwnerScope || claim.previousOwnerScope === cacheOwnerScope) {
+      return;
+    }
+    resetSessionSyncControllersForSession(
+      sessionId,
+      runtimeScope === 'none' ? undefined : runtimeScope,
+    );
+    useSyncStore.getState().clearSession(sessionId);
+    messageCache.delete(sessionId);
+  }, [cacheOwnerScope, runtimeScope, sessionId]);
 
   // Paint from disk FIRST, and deliberately without waiting on `runtimeHealthy`.
   // The transcript is settled history; gating it on a woken sandbox is what made
@@ -99,7 +143,7 @@ export function useSessionSync(sessionId: string) {
     if (!canQueryOpenCodeSession(sessionId)) return;
     let cancelled = false;
     void (async () => {
-      const cached = await readCachedTranscript(sessionId);
+      const cached = await readCachedTranscript(sessionId, kortixSessionScope);
       if (cancelled || !cached) return;
       const store = useSyncStore.getState();
       if (
@@ -115,11 +159,18 @@ export function useSessionSync(sessionId: string) {
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [kortixSessionScope, sessionId]);
 
   useEffect(() => {
-    if (!canQueryOpenCodeSession(sessionId) || !runtimeHealthy) return;
-    const release = retainSessionSyncController(sessionId);
+    if (
+      !networkEnabled ||
+      !canQueryOpenCodeSession(sessionId) ||
+      !runtimeHealthy ||
+      runtimeScope === 'none'
+    )
+      return;
+    resetSessionSyncControllersForSession(sessionId, runtimeScope);
+    const release = retainSessionSyncController(sessionId, runtimeScope);
     // Cached messages render immediately. Revalidate one bounded tail so
     // events produced while this route was inactive are not skipped.
     void controller.reconcile('initial');
@@ -127,7 +178,7 @@ export function useSessionSync(sessionId: string) {
       release();
       messageCache.delete(sessionId);
     };
-  }, [controller, runtimeHealthy, sessionId]);
+  }, [controller, networkEnabled, runtimeHealthy, runtimeScope, sessionId]);
 
   // Mirror the tail back to disk as it changes, so the NEXT open of this session
   // has something to paint. Subscribing to the store (rather than reacting to
@@ -144,30 +195,30 @@ export function useSessionSync(sessionId: string) {
       if (state.messages[sessionId] === lastMessages && state.parts === lastParts) return;
       lastMessages = state.messages[sessionId];
       lastParts = state.parts;
-      void writeCachedTranscript(state, sessionId);
+      void writeCachedTranscript(state, sessionId, kortixSessionScope);
     };
     persist(useSyncStore.getState());
     return useSyncStore.subscribe(persist);
-  }, [sessionId]);
+  }, [kortixSessionScope, sessionId]);
 
   const messages = useSyncStore((state) =>
-    buildMessages(sessionId, state.messages[sessionId], state.parts),
+    buildMessages(readableSessionId, state.messages[readableSessionId], state.parts),
   );
 
   const runtimeStatus = useSyncStore(
-    (state) => state.sessionStatus[sessionId] ?? IDLE_STATUS,
+    (state) => state.sessionStatus[readableSessionId] ?? IDLE_STATUS,
   ) as SessionStatus;
   const status =
     sync.isPromptObservedBusy && runtimeStatus.type === 'idle' ? BUSY_STATUS : runtimeStatus;
-  const diffs = useSyncStore((state) => state.diffs[sessionId]) as FileDiff[] | undefined;
-  const todos = useSyncStore((state) => state.todos[sessionId]) as Todo[] | undefined;
+  const diffs = useSyncStore((state) => state.diffs[readableSessionId]) as FileDiff[] | undefined;
+  const todos = useSyncStore((state) => state.todos[readableSessionId]) as Todo[] | undefined;
 
   const isBusy = status.type === 'busy' || status.type === 'retry';
-  const isLoading = !useSyncStore((state) => sessionId in state.messages);
+  const isLoading = !useSyncStore((state) => readableSessionId in state.messages);
 
   useEffect(() => {
-    controller.setBusy(runtimeHealthy && isBusy);
-  }, [controller, isBusy, runtimeHealthy]);
+    controller.setBusy(networkEnabled && runtimeHealthy && isBusy);
+  }, [controller, isBusy, networkEnabled, runtimeHealthy]);
 
   return {
     messages,

@@ -47,6 +47,16 @@ test('session(projectId, sessionId) binds both ids', async () => {
   expect(last().url).toContain('/projects/PID123/sessions/SID456/previews');
 });
 
+test('session(projectId, sessionId).cost binds project scope without starting the runtime', async () => {
+  await kortix.session('PID123', 'SID456').cost();
+
+  expect(calls).toHaveLength(1);
+  expect(last().url).toBe(
+    'http://test.local/usage/session-costs/SID456?project_id=PID123',
+  );
+  expect(last().method).toBe('GET');
+});
+
 test('project(id).session(sid) is the same session handle', async () => {
   await kortix.project('PA').session('SB').get();
   expect(last().url).toContain('/projects/PA/sessions/SB');
@@ -654,6 +664,28 @@ test('kortix.billing.credits covers purchase + auto-topup get/configure', async 
   await kortix.billing.credits.configureAutoTopup({ enabled: true, threshold: 5, amount: 20 });
   expect(last().url).toContain('/billing/auto-topup/configure');
   expect(last().method).toBe('POST');
+});
+
+test('kortix.billing.sessionCosts covers paginated list and detail reads', async () => {
+  await kortix.billing.sessionCosts.list({
+    accountId: 'ACC1',
+    projectId: 'PID1',
+    limit: 20,
+    offset: 0,
+  });
+  expect(last().url).toBe(
+    'http://test.local/usage/session-costs?account_id=ACC1&project_id=PID1&limit=20&offset=0',
+  );
+  expect(last().method).toBe('GET');
+
+  await kortix.billing.sessionCosts.get('SID/1', {
+    accountId: 'ACC1',
+    projectId: 'PID1',
+  });
+  expect(last().url).toBe(
+    'http://test.local/usage/session-costs/SID%2F1?account_id=ACC1&project_id=PID1',
+  );
+  expect(last().method).toBe('GET');
 });
 
 test('kortix.marketplace covers public catalog browse + authed sources CRUD (top-level, not project-scoped)', async () => {

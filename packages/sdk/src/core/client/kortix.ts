@@ -184,6 +184,11 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     usageHistory: P.getBillingUsageHistory,
     /** Usage rollup (/v1/usage), optionally grouped by model, provider, or day. */
     usageRollup: P.getUsageRollup,
+    /** Unified finalized LLM and compute cost by session. */
+    sessionCosts: {
+      list: P.listSessionCosts,
+      get: P.getSessionCostRecord,
+    },
     tierConfigurations: P.getBillingTierConfigurations,
 
     /** Stripe checkout — start a subscription and confirm it post-redirect. */
@@ -798,6 +803,8 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     return {
       // ── lifecycle (Kortix REST) ──────────────────────────────────────────
       get: (opts?: { showErrors?: boolean }) => P.getProjectSession(projectId, sessionId, opts),
+      /** Unified finalized LLM and compute cost for this session. */
+      cost: () => P.getSessionCostRecord(sessionId, { projectId }),
       update: (input: Parameters<typeof P.updateProjectSession>[2]) =>
         P.updateProjectSession(projectId, sessionId, input),
       delete: () => {
@@ -1036,7 +1043,7 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     session,
     /** GitHub App installation + repository linking (account-scoped). */
     github,
-    /** Billing read surface — credits/subscription/tier/transactions (not project-scoped). */
+    /** Billing read surface, including unified session costs. */
     billing,
     /** Public share links for a sandbox port (`/v1/p/share`, sandbox-scoped). */
     sandboxShares,

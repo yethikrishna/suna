@@ -123,7 +123,7 @@ that changes is `import { … } from '@kortix/sdk'`.
 | `02-send-and-stream.ts` | `ensureReady()` → `stream()` → `send()`, live SSE via `narrowChatEvent` | PAT + project + session |
 | `03-server-wrapper.ts` | `createScopedKortix` — per-request isolation for a multi-tenant server | PAT |
 | `04-render-transcript.ts` | render a transcript to text with `classifyTurn` | PAT + project + session |
-| `05-cost-passthrough.ts` | gateway usage / cost data | PAT + project |
+| `05-cost-passthrough.ts` | unified session-cost data | PAT + project |
 | `06-files-and-secrets.ts` | session-scoped workspace files + project secrets | PAT + project + session |
 | `07-vanilla.ts` | **the whole flow in one file** — list → ready → stream → send → classify | PAT + project + session |
 | `08-cdn.html` | the same thing from a `<script>` tag, **no build step, no framework** | bundles built + browser |

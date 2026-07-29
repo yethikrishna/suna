@@ -32,7 +32,7 @@ export KORTIX_PROJECT_ID=...                      # the project your agent lives
 | 02 | [`02-send-and-stream.ts`](02-send-and-stream.ts) | Provision a session, send a prompt, stream the text deltas — no framework. | `KORTIX_SESSION_ID=… bun run examples/02-send-and-stream.ts "hi"` |
 | 03 | [`03-server-wrapper.ts`](03-server-wrapper.ts) | The multi-tenant seam: `createScopedKortix` from `@kortix/sdk/server` (per-request token, no global bleed). | `MODE=serve bun run examples/03-server-wrapper.ts` |
 | 04 | [`04-render-transcript.ts`](04-render-transcript.ts) | Render a session transcript as plain text with `classifyTurn` (`@kortix/sdk/turns`). | `KORTIX_SESSION_ID=… bun run examples/04-render-transcript.ts` |
-| 05 | [`05-cost-passthrough.ts`](05-cost-passthrough.ts) | A marked-up usage table — the shape a backend uses to re-bill its own users. | `KORTIX_SESSION_ID=… bun run examples/05-cost-passthrough.ts` |
+| 05 | [`05-cost-passthrough.ts`](05-cost-passthrough.ts) | A marked-up unified LLM + compute cost table for session-based re-billing. | `KORTIX_PROJECT_ID=… bun run examples/05-cost-passthrough.ts` |
 | 06 | [`06-files-and-secrets.ts`](06-files-and-secrets.ts) | Session-scoped workspace files + project secrets. | `KORTIX_SESSION_ID=… bun run examples/06-files-and-secrets.ts` |
 | 07 | [`07-vanilla.ts`](07-vanilla.ts) | The whole flow in one framework-free file: list → send → stream. | `bun run examples/07-vanilla.ts "hi"` |
 | 08 | [`08-cdn.html`](08-cdn.html) | The SDK in a browser with **no build step** (ESM via CDN). | open in a browser |

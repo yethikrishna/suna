@@ -90,9 +90,6 @@ export async function resumeStoppedSandbox(row: {
   const runtimeWakeId = crypto.randomUUID();
   const wakeMetadata = { ...(row.metadata ?? {}) };
   for (const key of [
-    'idleQuiesced',
-    'idleQuiescedAt',
-    'idleObservedAt',
     'runtimeIdentityState',
     'runtimeUnavailableReason',
     'runtimeUnavailableAt',
@@ -105,7 +102,6 @@ export async function resumeStoppedSandbox(row: {
   ])
     delete wakeMetadata[key];
   Object.assign(wakeMetadata, {
-    lastTurnAt: now.toISOString(),
     runtimeWakeStartedAt: now.toISOString(),
     runtimeWakeId,
     runtimeWakeProviderStatus: 'starting',
@@ -117,10 +113,10 @@ export async function resumeStoppedSandbox(row: {
     .set({
       status: 'active',
       updatedAt: now,
-      // Explicit resume clears the reaper's idle-quiesce marker AND its idle
-      // countdown (idleObservedAt — a stale pre-stop stamp would shut the box
-      // down on the very next pass), and stamps lastTurnAt so the resume opens
-      // a FRESH idle window for the unreachable-box fallback clock too.
+      // Explicit resume clears the stale runtime-identity keys. It stamps NO
+      // liveness timestamp: the box's lifetime is `deadline_at`, and the DB
+      // trigger re-anchors + re-floors it on this very stopped->active
+      // transition. A TypeScript writer here could only get that wrong.
       metadata: wakeMetadata,
     })
     .where(

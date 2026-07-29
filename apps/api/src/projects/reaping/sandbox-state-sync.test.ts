@@ -113,7 +113,6 @@ const write = {
   sandboxId: 'sb-1',
   sessionId: 'sess-1',
   externalId: 'ext-1',
-  quiesce: true,
   now: NOW,
 };
 
@@ -171,16 +170,8 @@ describe('applyStoppedState', () => {
     expect(sandboxUpdate()?.updates.status).toBe('stopped');
   });
 
-  test('quiesce marks the row so passive traffic cannot resurrect it', async () => {
+  test('no caller patch writes no metadata at all', async () => {
     await applyStoppedState(write);
-
-    const rendered = describeSql(sandboxUpdate()?.updates.metadata);
-    expect(rendered).toContain('idleQuiesced');
-    expect(rendered).toContain(NOW.toISOString());
-  });
-
-  test('no quiesce and no patch writes no metadata at all', async () => {
-    await applyStoppedState({ ...write, quiesce: false });
 
     expect(sandboxUpdate()?.updates.metadata).toBeUndefined();
   });
@@ -192,7 +183,6 @@ describe('applyStoppedState', () => {
   test('REGRESSION: the caller patch is MERGED into jsonb, never assigned', async () => {
     await applyStoppedState({
       ...write,
-      quiesce: false,
       metadata: { stopReason: 'manual', stoppedBy: 'user-1' },
     });
 
@@ -205,11 +195,10 @@ describe('applyStoppedState', () => {
     expect(rendered).toContain('stoppedBy');
   });
 
-  test('the quiesce flags and the caller patch land in the same merge', async () => {
+  test('the caller patch is the whole merge', async () => {
     await applyStoppedState({ ...write, metadata: { stopReason: 'manual' } });
 
     const rendered = describeSql(sandboxUpdate()?.updates.metadata);
-    expect(rendered).toContain('idleQuiesced');
     expect(rendered).toContain('stopReason');
   });
 
@@ -224,12 +213,13 @@ describe('applyStoppedState', () => {
 });
 
 describe('reconcileSandboxStoppedByExternalId', () => {
-  test('routes a provider-confirmed stop through the single writer, quiesced', async () => {
+  test('routes a provider-confirmed stop through the single writer', async () => {
     selectedRows = [{ sandboxId: 'sb-1', sessionId: 'sess-1', status: 'active' }];
 
     expect(await reconcileSandboxStoppedByExternalId('ext-1', NOW)).toBe(true);
+    // The money-critical order: settle the meter against the still-active row
+    // BEFORE flipping either status.
     expect(events.indexOf('pause:sb-1')).toBeLessThan(events.indexOf('update:sandbox'));
-    expect(describeSql(sandboxUpdate()?.updates.metadata)).toContain('idleQuiesced');
     expect(cacheInvalidations).toEqual(['ext-1']);
   });
 

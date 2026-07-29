@@ -97,12 +97,6 @@ import {
 } from '../../repositories/project-routing-policies';
 import { db } from '../../shared/db';
 import {
-  acquireExecutionLease,
-  discoverExecutionKeepAliveEndpoint,
-  releaseExecutionLease,
-  renewExecutionLease,
-} from '../execution-lease';
-import {
   assertProjectCapability,
   loadProjectForUser,
   projectCapabilityAllowed,
@@ -2089,82 +2083,6 @@ function agentMailConnectErrorBody(stage: 'inbox_create' | 'webhook_create', err
   };
 }
 
-// POST /v1/projects/:projectId/execution-lease
-// The sandbox agent reports active OpenCode work through this bounded JSON
-// route. Acquire returns the provider endpoint once. Renew and release each
-// execute one conditional database update.
-projectsApp.openapi(
-  createRoute({
-    method: 'post',
-    path: '/{projectId}/execution-lease',
-    tags: ['projects'],
-    summary: 'POST /:projectId/execution-lease',
-    ...auth,
-    request: {
-      params: z.object({ projectId: z.string() }),
-      body: {
-        content: {
-          'application/json': {
-            schema: z.object({
-              action: z.enum(['acquire', 'renew', 'release']),
-              session_id: z.string().min(1),
-              lease_ttl_seconds: z.number().optional(),
-            }),
-          },
-        },
-      },
-    },
-    responses: {
-      200: json(
-        z
-          .object({
-            ok: z.boolean(),
-            lease_until: z.string().nullable().optional(),
-            provider_url: z.string().nullable().optional(),
-            provider_headers: z.record(z.string(), z.string()).nullable().optional(),
-          })
-          .passthrough(),
-        'Lease operation result',
-      ),
-      ...errors(400, 403),
-    },
-  }),
-  async (c: any) => {
-    const authType = c.get('authType') as string | undefined;
-    const apiKeyType = c.get('apiKeyType') as string | undefined;
-    const accountId = c.get('accountId') as string | undefined;
-    const sandboxId = c.get('sandboxId') as string | undefined;
-    if (authType !== 'apiKey' || apiKeyType !== 'sandbox' || !accountId || !sandboxId) {
-      return c.json({ error: 'execution lease requires a sandbox token' }, 403);
-    }
-    const projectId = c.req.param('projectId');
-    const body = c.req.valid('json') as {
-      action: 'acquire' | 'renew' | 'release';
-      session_id: string;
-      lease_ttl_seconds?: number;
-    };
-    const target = {
-      sandboxId,
-      sessionId: body.session_id.trim(),
-      projectId,
-      accountId,
-    };
-    if (body.action === 'release') {
-      return c.json({ ok: await releaseExecutionLease(target) });
-    }
-    const result =
-      body.action === 'acquire'
-        ? await acquireExecutionLease(target, body.lease_ttl_seconds)
-        : await renewExecutionLease(target, body.lease_ttl_seconds);
-    return c.json({
-      ok: result.ok,
-      lease_until: result.leaseUntil,
-      provider_url: result.providerUrl,
-      provider_headers: result.providerHeaders,
-    });
-  },
-);
-
 // POST /v1/projects/:projectId/turn-stream
 // Agent-cli relay for the live Slack plan: kind=step appends a checkpoint,
 // kind=answer finalizes the turn's streamed message with the agent's reply.
@@ -2207,7 +2125,6 @@ projectsApp.openapi(
       error_status?: number;
       error_retryable?: boolean;
       error_provider?: string;
-      lease_ttl_seconds?: number;
     };
     try {
       body = (await c.req.json()) as typeof body;
@@ -2225,13 +2142,6 @@ projectsApp.openapi(
     // Each is scoped back to this projectId before a turn event is accepted.
     const authType = (c as any).get('authType') as string | undefined;
     const apiKeyType = (c as any).get('apiKeyType') as string | undefined;
-    const legacyExecutionLeaseKind =
-      body.kind === 'execution_heartbeat' ||
-      body.kind === 'execution_lease_release' ||
-      body.kind === 'execution_lease_discover';
-    if (legacyExecutionLeaseKind && (authType !== 'apiKey' || apiKeyType !== 'sandbox')) {
-      return c.json({ error: 'execution lease requires a sandbox token' }, 403);
-    }
     let authenticatedSandboxId: string | null = null;
     if (authType === 'apiKey' && apiKeyType === 'sandbox') {
       const accountId = (c as any).get('accountId') as string | undefined;
@@ -2239,28 +2149,10 @@ projectsApp.openapi(
       if (!accountId || !sandboxId) {
         return c.json({ error: 'turn-stream requires a sandbox token' }, 403);
       }
-      if (legacyExecutionLeaseKind) {
-        const target = { sandboxId, sessionId, projectId, accountId };
-        if (body.kind === 'execution_lease_release') {
-          return c.json({ ok: await releaseExecutionLease(target) });
-        }
-        if (body.kind === 'execution_lease_discover') {
-          const provider = await discoverExecutionKeepAliveEndpoint(target);
-          return c.json({
-            ok: provider !== null,
-            provider_url: provider?.url ?? null,
-            provider_headers: provider?.headers ?? null,
-          });
-        }
-        const result = await renewExecutionLease(target, body.lease_ttl_seconds);
-        return c.json({
-          ok: result.ok,
-          lease_until: result.leaseUntil,
-          provider_url: null,
-          provider_headers: null,
-          provider_touched: false,
-        });
-      }
+      // Sandbox images baked before 2026-07-29 still POST the retired
+      // `execution_heartbeat` / `execution_lease_*` kinds here. They fall
+      // through to the generic relay below and get a harmless `{ ok: false }`;
+      // the in-sandbox reporter treated every non-2xx as best-effort anyway.
       const [sandbox] = await db
         .select({ sandboxId: sessionSandboxes.sandboxId, sessionId: sessionSandboxes.sessionId })
         .from(sessionSandboxes)

@@ -192,7 +192,7 @@ Also stop if the same failure survives three different fixes (use
 
 ---
 
-## NOW — active plan: OpenCode ACP canary
+## COMPLETED PLAN — OpenCode ACP canary
 
 - **Plan:** `docs/superpowers/plans/2026-07-25-opencode-acp-canary.md`
 - **Spec:** `docs/superpowers/specs/2026-07-25-opencode-acp-canary-design.md`
@@ -207,6 +207,25 @@ Also stop if the same failure survives three different fixes (use
 | 6 | Existing `useSession` integration | DONE | `acp-opencode-canary` | 2026-07-25 | `951896a44` |
 | 7 | Local parity and rollback proof | DONE | `acp-opencode-canary` | 2026-07-25 | `33900d7f1` |
 | 8 | Delivery and dev proof | DONE | `acp-opencode-canary` | 2026-07-25 | `3a45ab55b` |
+
+---
+
+## NOW — active plan: connector profile authorization and session costs
+
+- **Plan:** `docs/superpowers/plans/2026-07-29-connector-profile-authorization-and-session-costs.md`
+- **Spec:** `docs/superpowers/specs/2026-07-29-connector-profile-authorization-and-session-costs-design.md`
+
+| # | Task | Status | Session | Last touched | Commit |
+|---|---|---|---|---|---|
+| 0 | Design and implementation plan | DONE | `profile-auth-cost` | 2026-07-29 | `e70538c802` |
+| 1 | Connector profile contracts | NOT STARTED | — | — | — |
+| 2 | Strategy-based session authorization | NOT STARTED | — | — | — |
+| 3 | Main web session scope | NOT STARTED | — | — | — |
+| 4 | Remove end-user usage attribution | NOT STARTED | — | — | — |
+| 5 | Unified session costs | NOT STARTED | — | — | — |
+| 6 | White-label and documentation alignment | NOT STARTED | — | — | — |
+| 7 | Local verification | NOT STARTED | — | — | — |
+| 8 | Delivery and dev proof | NOT STARTED | — | — | — |
 
 ---
 

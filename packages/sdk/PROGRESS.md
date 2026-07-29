@@ -3745,3 +3745,67 @@ Final SDK gates:
 **Repository delivery shippable to production: NOT YET.** Main integration,
 PR merge, Deploy Dev, deployed SHA proof, and deployed four-harness verification
 remain.
+
+---
+
+### 2026-07-29 — session `acp-multi-harness-system-docs` deployed completion
+
+Completed repository delivery and deployed verification for the multi-harness
+documentation and agent-discovery follow-up.
+
+Delivery evidence:
+
+- PR #5768 merged as
+  `3b3992fbbae6d71ab3097dfac722fdafc54b02ba`.
+- All required PR checks passed.
+- Deploy Dev run `30411098518` completed with `success`.
+- The run built and published the CLI, API image, and frontend image.
+- `GET https://dev-api.kortix.com/v1/health` returned version
+  `0.11.1-dev.3b3992fb` and the exact merge commit.
+- The `dev-latest` Git tag resolved to the exact merge commit.
+- The shipped macOS arm64 CLI reported
+  `Kortix CLI v0.11.1-dev.3b3992fb`.
+
+Deployed agent-discovery verification:
+
+- `kortix system-skills --host kortix-internal-dev --json` returned 10 system
+  skills.
+- `kortix system-skills get kortix-system --full --json` returned 19 reference
+  files.
+- The deployed `references/kortix/runtime-harnesses.md` file contained OpenCode,
+  Claude Code, Codex, Pi, the real-model rule, and the four-harness smoke command.
+
+Deployed protocol verification used one disposable Platinum project:
+
+- OpenCode: pass.
+- Claude Code: pass.
+- Codex: pass with a temporary direct project `OPENAI_API_KEY`.
+- Pi: pass with the same temporary direct project credential.
+
+Each harness verified its headless prompt, follow-up prompt, transcript reload,
+immutable harness identity, in-place restart, post-restart prompt, and persisted
+ACP identity.
+
+The first Codex attempt proved the dev managed OpenAI credential is invalid.
+The Codex harness reached
+`https://dev-api.kortix.com/v1/router/openai/responses`, which returned
+`401 invalid_api_key`. The exact Codex harness passed after the disposable
+project received a direct OpenAI credential. No generic provider preflight was
+used as acceptance evidence.
+
+Cleanup verification:
+
+- Project status: `archived`.
+- Five session rows: `stopped`.
+- Five sandbox rows: `archived`.
+- Five Platinum sandbox IDs returned `404`.
+- The managed GitHub repository returned `404`.
+- The Supabase test user count was `0`.
+- The test PAT and all five executor tokens were revoked.
+- The temporary `OPENAI_API_KEY` project secret was deleted.
+
+**Status:** COMPLETE.
+
+**Shippable to production: YES.** Local gates, CI, merge, Deploy Dev, deployed
+SHA, shipped CLI discovery, deployed four-harness behavior, and fixture cleanup
+all pass. The dev managed OpenAI credential remains an environment issue.

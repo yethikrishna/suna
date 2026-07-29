@@ -88,7 +88,9 @@ async function openHarness(page: Page) {
     });
   });
   await page.goto(`${baseUrl}/debug/project-create-modal`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('dialog', { name: /new project/i }).waitFor({ state: 'visible', timeout: 30_000 });
+  await page
+    .getByRole('dialog', { name: /new project/i })
+    .waitFor({ state: 'visible', timeout: 30_000 });
   await page.getByTestId('project-create-starter').waitFor({ state: 'visible', timeout: 30_000 });
 }
 
@@ -147,7 +149,9 @@ async function submitProjectCreate(page: Page, name: string): Promise<ProvisionP
 
   const nameField = page.getByRole('textbox', { name: /project name/i });
   if (!(await nameField.isVisible())) {
-    throw new Error(`Project name field is not visible:\n${await page.locator('body').innerText()}`);
+    throw new Error(
+      `Project name field is not visible:\n${await page.locator('body').innerText()}`,
+    );
   }
   await nameField.fill(name);
   const request = page.waitForRequest((req) => req.url().includes('/projects/provision'));
@@ -174,7 +178,10 @@ async function main() {
 
     await openHarness(page);
     const defaultPayload = await submitProjectCreate(page, 'default-full');
-    assert(defaultPayload.account_id === '00000000-0000-4000-a000-000000000101', 'default payload account_id mismatch');
+    assert(
+      defaultPayload.account_id === '00000000-0000-4000-a000-000000000101',
+      'default payload account_id mismatch',
+    );
     assert(defaultPayload.name === 'default-full', 'default payload name mismatch');
     assert(defaultPayload.seed_starter === true, 'default payload should seed starter');
     // One starter kit: every project scaffolds with the full general-knowledge-worker starter.

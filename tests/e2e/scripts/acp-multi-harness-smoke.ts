@@ -1,24 +1,29 @@
 #!/usr/bin/env bun
 
-import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-import { createAcpClient } from '../../../packages/sdk/src/core/acp/client';
+import { createAcpClient } from "../../../packages/sdk/src/core/acp/client";
 import {
   type AcpSessionController,
   createAcpSessionController,
-} from '../../../packages/sdk/src/core/acp/session-controller';
-import { buildProjectAcpEndpoint } from '../../../packages/sdk/src/core/session/runtime-transport';
-import { apiResult, createApiJsonClient } from '../helpers/http';
+} from "../../../packages/sdk/src/core/acp/session-controller";
+import { buildProjectAcpEndpoint } from "../../../packages/sdk/src/core/session/runtime-transport";
+import { apiResult, createApiJsonClient } from "../helpers/http";
 
-type Harness = 'claude' | 'codex' | 'opencode' | 'pi';
-type SandboxProvider = 'daytona' | 'platinum' | 'e2b' | 'local-docker';
+type Harness = "claude" | "codex" | "opencode" | "pi";
+type SandboxProvider = "daytona" | "platinum" | "e2b" | "local-docker";
 
 type Project = {
   project_id: string;
+  account_id: string;
   git_origin_url: string;
+  metadata: {
+    experimental?: Record<string, boolean>;
+  };
+  experimental: Record<string, boolean>;
+  experimental_features: Array<{ key: string; name: string; enabled: boolean }>;
 };
 
 type ProjectDetail = {
@@ -38,7 +43,7 @@ type ProjectSession = {
   session_id: string;
   agent_name: string | null;
   sandbox_provider?: SandboxProvider;
-  runtime_transport?: 'acp' | 'rest';
+  runtime_transport?: "acp" | "rest";
   runtime_harness?: Harness;
   native_agent?: string | null;
   acp_server_id?: string | null;
@@ -46,7 +51,7 @@ type ProjectSession = {
 };
 
 type SessionStart = ProjectSession & {
-  stage: 'provisioning' | 'starting' | 'ready' | 'failed' | 'stopped';
+  stage: "provisioning" | "starting" | "ready" | "failed" | "stopped";
   retriable: boolean;
   error?: string | null;
   sandbox: {
@@ -56,44 +61,55 @@ type SessionStart = ProjectSession & {
   } | null;
 };
 
-const repoRoot = resolve(import.meta.dir, '../../..');
-const apiBase = process.env.E2E_API_URL || 'http://localhost:8008/v1';
-const supabaseUrl = process.env.E2E_SUPABASE_URL || 'http://127.0.0.1:54321';
-const databaseUrl = process.env.E2E_DATABASE_URL || '';
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const anonKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const password = 'AcpMultiHarness123!';
-const keepFixture = process.env.E2E_KEEP_ACP_MULTI_HARNESS_FIXTURE === '1';
-const reuseProjectId = process.env.E2E_ACP_MULTI_HARNESS_REUSE_PROJECT_ID?.trim() || '';
-const reuseUserEmail = process.env.E2E_ACP_MULTI_HARNESS_REUSE_EMAIL?.trim() || '';
+const repoRoot = resolve(import.meta.dir, "../../..");
+const apiBase = process.env.E2E_API_URL || "http://localhost:8008/v1";
+const supabaseUrl = process.env.E2E_SUPABASE_URL || "http://127.0.0.1:54321";
+const databaseUrl =
+  process.env.E2E_DATABASE_URL || process.env.DATABASE_URL || "";
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const anonKey =
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "";
+const password = "AcpMultiHarness123!";
+const keepFixture = process.env.E2E_KEEP_ACP_MULTI_HARNESS_FIXTURE === "1";
+const reuseProjectId =
+  process.env.E2E_ACP_MULTI_HARNESS_REUSE_PROJECT_ID?.trim() || "";
+const reuseUserEmail =
+  process.env.E2E_ACP_MULTI_HARNESS_REUSE_EMAIL?.trim() || "";
 const sandboxProvider =
-  (process.env.E2E_ACP_MULTI_HARNESS_PROVIDER?.trim() as SandboxProvider | undefined) || undefined;
-const runtimeModel = process.env.E2E_ACP_MULTI_HARNESS_MODEL?.trim() || '';
-const directOpenAiKey = process.env.E2E_ACP_MULTI_HARNESS_OPENAI_API_KEY?.trim() || '';
+  (process.env.E2E_ACP_MULTI_HARNESS_PROVIDER?.trim() as
+    SandboxProvider | undefined) || undefined;
+const runtimeModel = process.env.E2E_ACP_MULTI_HARNESS_MODEL?.trim() || "";
+const directOpenAiKey =
+  process.env.E2E_ACP_MULTI_HARNESS_OPENAI_API_KEY?.trim() || "";
 const manifest = readFileSync(
-  resolve(repoRoot, 'packages/starter/examples/acp-multi-harness/kortix.yaml'),
-  'utf8',
+  resolve(repoRoot, "packages/starter/templates/acp-multi-harness/kortix.yaml"),
+  "utf8",
 );
 const api = createApiJsonClient(apiBase);
-const supportedHarnesses: Harness[] = ['opencode', 'claude', 'codex', 'pi'];
+const supportedHarnesses: Harness[] = ["opencode", "claude", "codex", "pi"];
 const requestedHarnesses =
-  process.env.E2E_ACP_MULTI_HARNESS_HARNESSES?.split(',')
+  process.env.E2E_ACP_MULTI_HARNESS_HARNESSES?.split(",")
     .map((value) => value.trim())
     .filter(Boolean) ?? [];
 const invalidHarnesses = requestedHarnesses.filter(
   (value) => !supportedHarnesses.includes(value as Harness),
 );
-assert(invalidHarnesses.length === 0, `Unsupported harnesses: ${invalidHarnesses.join(', ')}`);
+assert(
+  invalidHarnesses.length === 0,
+  `Unsupported harnesses: ${invalidHarnesses.join(", ")}`,
+);
 const harnesses: Harness[] =
   requestedHarnesses.length > 0
     ? requestedHarnesses.map((value) => value as Harness)
     : supportedHarnesses;
 
-let userId = '';
-let userEmail = '';
-let accessToken = '';
-let projectId = '';
-let tempRepo = '';
+let userId = "";
+let userEmail = "";
+let accessToken = "";
+let projectId = "";
+let accountId = "";
 const sessionIds: string[] = [];
 const controllers = new Set<AcpSessionController>();
 
@@ -106,14 +122,14 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 async function createUserAndSignIn(email: string): Promise<string> {
-  assert(serviceRoleKey, 'SUPABASE_SERVICE_ROLE_KEY is required');
-  assert(anonKey, 'SUPABASE_ANON_KEY is required');
+  assert(serviceRoleKey, "SUPABASE_SERVICE_ROLE_KEY is required");
+  assert(anonKey, "SUPABASE_ANON_KEY is required");
   const created = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
-    method: 'POST',
+    method: "POST",
     headers: {
       apikey: serviceRoleKey,
       Authorization: `Bearer ${serviceRoleKey}`,
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       email,
@@ -122,31 +138,40 @@ async function createUserAndSignIn(email: string): Promise<string> {
     }),
   });
   const createdText = await created.text();
-  assert(created.status === 200, `Supabase user create returned ${created.status}: ${createdText}`);
+  assert(
+    created.status === 200,
+    `Supabase user create returned ${created.status}: ${createdText}`,
+  );
   const createdBody = JSON.parse(createdText) as {
     id?: string;
     user?: { id?: string };
   };
-  userId = createdBody.user?.id ?? createdBody.id ?? '';
-  assert(userId, 'Supabase user create returned no user id');
+  userId = createdBody.user?.id ?? createdBody.id ?? "";
+  assert(userId, "Supabase user create returned no user id");
 
   return signIn(email);
 }
 
 async function signIn(email: string): Promise<string> {
-  assert(anonKey, 'SUPABASE_ANON_KEY is required');
-  const signedIn = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: {
-      apikey: anonKey,
-      'Content-Type': 'application/json',
+  assert(anonKey, "SUPABASE_ANON_KEY is required");
+  const signedIn = await fetch(
+    `${supabaseUrl}/auth/v1/token?grant_type=password`,
+    {
+      method: "POST",
+      headers: {
+        apikey: anonKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
     },
-    body: JSON.stringify({ email, password }),
-  });
+  );
   const signedInText = await signedIn.text();
-  assert(signedIn.status === 200, `Supabase sign-in returned ${signedIn.status}: ${signedInText}`);
+  assert(
+    signedIn.status === 200,
+    `Supabase sign-in returned ${signedIn.status}: ${signedInText}`,
+  );
   const session = JSON.parse(signedInText) as { access_token?: string };
-  assert(session.access_token, 'Supabase sign-in returned no access_token');
+  assert(session.access_token, "Supabase sign-in returned no access_token");
   return session.access_token;
 }
 
@@ -163,65 +188,72 @@ async function waitFor<T>(
     value = await read();
   }
   if (!accept(value)) {
-    throw new Error(`${label} timed out: ${JSON.stringify(value).slice(0, 1_000)}`);
+    throw new Error(
+      `${label} timed out: ${JSON.stringify(value).slice(0, 1_000)}`,
+    );
   }
   return value;
 }
 
-function runGit(args: string[], cwd: string): string {
-  const result = Bun.spawnSync(['git', ...args], {
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const stdout = result.stdout.toString().trim();
-  const stderr = result.stderr.toString().trim();
-  if (result.exitCode !== 0) {
-    throw new Error(`git ${args.join(' ')} failed: ${stderr || stdout}`);
-  }
-  return stdout;
-}
-
-function gitAuthArgs(repoUrl: string, token: string): string[] {
-  const url = new URL(repoUrl);
-  const origin = `${url.protocol}//${url.host}`;
-  const value = Buffer.from(`x-access-token:${token}`).toString('base64');
-  return ['-c', `http.${origin}/.extraheader=Authorization: Basic ${value}`];
-}
-
 function seedCredits(accountId: string): void {
   if (!databaseUrl) {
-    log('credits', 'E2E_DATABASE_URL is unset; using the account state from the API');
+    log(
+      "credits",
+      "E2E_DATABASE_URL is unset; using the account state from the API",
+    );
     return;
   }
-  assert(/^[0-9a-f-]{36}$/i.test(accountId), `invalid account id for credit seed: ${accountId}`);
+  assert(
+    /^[0-9a-f-]{36}$/i.test(accountId),
+    `invalid account id for credit seed: ${accountId}`,
+  );
   const sql = `INSERT INTO kortix.credit_accounts (account_id, balance, tier)
     VALUES ('${accountId}', 1000, 'tier_2_20')
     ON CONFLICT (account_id) DO UPDATE SET balance = 1000, tier = 'tier_2_20';`;
-  const result = Bun.spawnSync(['psql', databaseUrl, '-v', 'ON_ERROR_STOP=1', '-c', sql], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  assert(result.exitCode === 0, `credit seed failed: ${result.stderr.toString().trim()}`);
+  const result = Bun.spawnSync(
+    ["psql", databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql],
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+  assert(
+    result.exitCode === 0,
+    `credit seed failed: ${result.stderr.toString().trim()}`,
+  );
 }
 
-async function pushManifest(token: string, repoUrl: string): Promise<void> {
-  tempRepo = mkdtempSync(join(tmpdir(), 'kortix-acp-multi-harness-'));
-  writeFileSync(join(tempRepo, 'kortix.yaml'), manifest);
-  writeFileSync(join(tempRepo, 'README.md'), '# ACP multi-harness smoke fixture\n');
-  runGit(['init', '-b', 'main'], tempRepo);
-  runGit(['config', 'user.name', 'Kortix E2E'], tempRepo);
-  runGit(['config', 'user.email', 'e2e@kortix.ai'], tempRepo);
-  runGit(['add', 'kortix.yaml', 'README.md'], tempRepo);
-  runGit(['commit', '-m', 'Add ACP multi-harness fixture'], tempRepo);
-  runGit(['remote', 'add', 'origin', repoUrl], tempRepo);
-  runGit([...gitAuthArgs(repoUrl, token), 'push', '--set-upstream', 'origin', 'main'], tempRepo);
+function hardDeleteFixtureRows(projectId: string, accountId: string): void {
+  assert(databaseUrl, "DATABASE_URL is required for complete fixture cleanup");
+  assert(
+    /^[0-9a-f-]{36}$/i.test(projectId),
+    `invalid cleanup project id: ${projectId}`,
+  );
+  assert(
+    /^[0-9a-f-]{36}$/i.test(accountId),
+    `invalid cleanup account id: ${accountId}`,
+  );
+  const sql = `BEGIN;
+    DELETE FROM kortix.projects WHERE project_id = '${projectId}';
+    DELETE FROM kortix.accounts WHERE account_id = '${accountId}';
+    COMMIT;`;
+  const result = Bun.spawnSync(
+    ["psql", databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql],
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+  assert(
+    result.exitCode === 0,
+    `fixture row cleanup failed: ${result.stderr.toString().trim()}`,
+  );
 }
 
 function authorizedFetch(token: string): typeof fetch {
   return (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
-    headers.set('Authorization', `Bearer ${token}`);
+    headers.set("Authorization", `Bearer ${token}`);
     return fetch(input, { ...init, headers });
   }) as typeof fetch;
 }
@@ -229,11 +261,13 @@ function authorizedFetch(token: string): typeof fetch {
 function assistantProjectionText(controller: AcpSessionController): string {
   return controller
     .getSnapshot()
-    .projection.messages.filter((message) => message.info.role === 'assistant')
+    .projection.messages.filter((message) => message.info.role === "assistant")
     .flatMap((message) =>
-      message.parts.filter((part) => part.type === 'text').map((part) => part.text),
+      message.parts
+        .filter((part) => part.type === "text")
+        .map((part) => part.text),
     )
-    .join('\n');
+    .join("\n");
 }
 
 function controllerFor(
@@ -241,10 +275,10 @@ function controllerFor(
   sessionId: string,
   start: SessionStart,
 ): AcpSessionController {
-  assert(start.sandbox?.external_id, 'session has no sandbox external_id');
-  assert(start.acp_server_id, 'session has no acp_server_id');
-  assert(start.acp_session_id, 'session has no acp_session_id');
-  assert(start.runtime_harness, 'session has no runtime_harness');
+  assert(start.sandbox?.external_id, "session has no sandbox external_id");
+  assert(start.acp_server_id, "session has no acp_server_id");
+  assert(start.acp_session_id, "session has no acp_session_id");
+  assert(start.runtime_harness, "session has no runtime_harness");
   const client = createAcpClient({
     endpoint: buildProjectAcpEndpoint(apiBase, projectId, sessionId),
     fetch: authorizedFetch(token),
@@ -263,8 +297,15 @@ function controllerFor(
   return controller;
 }
 
-async function readSession(token: string, sessionId: string): Promise<ProjectSession> {
-  return api<ProjectSession>(token, 'GET', `/projects/${projectId}/sessions/${sessionId}`);
+async function readSession(
+  token: string,
+  sessionId: string,
+): Promise<ProjectSession> {
+  return api<ProjectSession>(
+    token,
+    "GET",
+    `/projects/${projectId}/sessions/${sessionId}`,
+  );
 }
 
 async function waitForReady(
@@ -276,20 +317,22 @@ async function waitForReady(
     async () => {
       const result = await api<SessionStart>(
         token,
-        'POST',
+        "POST",
         `/projects/${projectId}/sessions/${sessionId}/start?wait_ms=8000`,
         {},
       );
-      if (result.stage === 'failed') {
-        throw new Error(`${harness} runtime failed: ${result.error || 'unknown error'}`);
+      if (result.stage === "failed") {
+        throw new Error(
+          `${harness} runtime failed: ${result.error || "unknown error"}`,
+        );
       }
       return result;
     },
     (value) =>
-      value.stage === 'ready' &&
-      value.sandbox?.status === 'active' &&
+      value.stage === "ready" &&
+      value.sandbox?.status === "active" &&
       Boolean(value.sandbox.external_id) &&
-      value.runtime_transport === 'acp' &&
+      value.runtime_transport === "acp" &&
       value.runtime_harness === harness &&
       value.acp_server_id === sessionId &&
       Boolean(value.acp_session_id),
@@ -312,12 +355,13 @@ async function waitForMarker(
 }
 
 async function verifyHarness(token: string, harness: Harness): Promise<void> {
+  const expectedNativeAgent = harness === "opencode" ? "kortix" : null;
   const firstMarker = `${harness.toUpperCase()}_FIRST_${Date.now()}`;
   const secondMarker = `${harness.toUpperCase()}_FOLLOWUP_${Date.now()}`;
   const restartMarker = `${harness.toUpperCase()}_RESTART_${Date.now()}`;
   const created = await api<ProjectSession>(
     token,
-    'POST',
+    "POST",
     `/projects/${projectId}/sessions`,
     {
       name: `${harness} ACP smoke`,
@@ -338,7 +382,7 @@ async function verifyHarness(token: string, harness: Harness): Promise<void> {
   const started = await waitForReady(token, sessionId, harness);
   assert(started.agent_name === harness, `${harness}: agent_name changed`);
   assert(
-    started.native_agent === null,
+    started.native_agent === expectedNativeAgent,
     `${harness}: native_agent was not the immutable manifest value`,
   );
   const identity = {
@@ -351,9 +395,19 @@ async function verifyHarness(token: string, harness: Harness): Promise<void> {
 
   const controller = controllerFor(token, sessionId, started);
   await controller.connect();
-  await waitForMarker(controller, firstMarker, `${harness} initial headless response`);
-  await controller.send([{ type: 'text', text: `Reply with exactly ${secondMarker}` }]);
-  await waitForMarker(controller, secondMarker, `${harness} follow-up response`);
+  await waitForMarker(
+    controller,
+    firstMarker,
+    `${harness} initial headless response`,
+  );
+  await controller.send([
+    { type: "text", text: `Reply with exactly ${secondMarker}` },
+  ]);
+  await waitForMarker(
+    controller,
+    secondMarker,
+    `${harness} follow-up response`,
+  );
   controller.close();
   controllers.delete(controller);
 
@@ -370,16 +424,22 @@ async function verifyHarness(token: string, harness: Harness): Promise<void> {
   const immutableAttempt = await apiResult<{ error?: string }>(
     apiBase,
     token,
-    'PATCH',
+    "PATCH",
     `/projects/${projectId}/sessions/${sessionId}`,
-    { agent_name: harness === 'codex' ? 'pi' : 'codex' },
+    { agent_name: harness === "codex" ? "pi" : "codex" },
   );
   assert(
     immutableAttempt.status === 400,
     `${harness}: agent_name mutation returned ${immutableAttempt.status}`,
   );
 
-  await api(token, 'POST', `/projects/${projectId}/sessions/${sessionId}/restart`, {}, 202);
+  await api(
+    token,
+    "POST",
+    `/projects/${projectId}/sessions/${sessionId}/restart`,
+    {},
+    202,
+  );
   const restarted = await waitForReady(token, sessionId, harness);
   assert(
     restarted.runtime_transport === identity.runtime_transport &&
@@ -392,8 +452,14 @@ async function verifyHarness(token: string, harness: Harness): Promise<void> {
 
   const afterRestart = controllerFor(token, sessionId, restarted);
   await afterRestart.connect();
-  await afterRestart.send([{ type: 'text', text: `Reply with exactly ${restartMarker}` }]);
-  await waitForMarker(afterRestart, restartMarker, `${harness} response after restart`);
+  await afterRestart.send([
+    { type: "text", text: `Reply with exactly ${restartMarker}` },
+  ]);
+  await waitForMarker(
+    afterRestart,
+    restartMarker,
+    `${harness} response after restart`,
+  );
   const finalTranscript = assistantProjectionText(afterRestart);
   assert(
     finalTranscript.includes(firstMarker) &&
@@ -419,156 +485,220 @@ async function verifyHarness(token: string, harness: Harness): Promise<void> {
 
 async function main(): Promise<void> {
   log(
-    'target',
-    `${apiBase} with ${harnesses.join(', ')} on ${sandboxProvider ?? 'the project default provider'} using ${runtimeModel || 'each harness default model'}`,
+    "target",
+    `${apiBase} with ${harnesses.join(", ")} on ${sandboxProvider ?? "the project default provider"} using ${runtimeModel || "each harness default model"}`,
   );
   assert(
     (reuseProjectId && reuseUserEmail) || (!reuseProjectId && !reuseUserEmail),
-    'E2E_ACP_MULTI_HARNESS_REUSE_PROJECT_ID and E2E_ACP_MULTI_HARNESS_REUSE_EMAIL must be set together',
+    "E2E_ACP_MULTI_HARNESS_REUSE_PROJECT_ID and E2E_ACP_MULTI_HARNESS_REUSE_EMAIL must be set together",
   );
   const email =
-    reuseUserEmail || `acp-multi-harness-${Date.now()}-${randomUUID().slice(0, 8)}@example.test`;
+    reuseUserEmail ||
+    `acp-multi-harness-${Date.now()}-${randomUUID().slice(0, 8)}@example.test`;
   userEmail = email;
-  accessToken = reuseProjectId ? await signIn(email) : await createUserAndSignIn(email);
+  accessToken = reuseProjectId
+    ? await signIn(email)
+    : await createUserAndSignIn(email);
   const token = accessToken;
 
   if (reuseProjectId) {
     projectId = reuseProjectId;
-    log('fixture', `reusing project=${projectId}`);
+    log("fixture", `reusing project=${projectId}`);
   } else {
-    const accounts = await api<Array<{ account_id: string; personal_account?: boolean }>>(
-      token,
-      'GET',
-      '/accounts',
+    const accounts = await api<
+      Array<{ account_id: string; personal_account?: boolean }>
+    >(token, "GET", "/accounts");
+    const account =
+      accounts.find((item) => item.personal_account) ?? accounts[0];
+    assert(
+      account?.account_id,
+      "No personal account exists for the smoke user",
     );
-    const account = accounts.find((item) => item.personal_account) ?? accounts[0];
-    assert(account?.account_id, 'No personal account exists for the smoke user');
-    seedCredits(account.account_id);
-
-    const pat = await api<{ secret_key: string; token_id: string }>(
-      token,
-      'POST',
-      '/accounts/tokens',
-      { name: `ACP multi-harness ${Date.now()}` },
-      201,
-    );
-    assert(pat.secret_key, 'PAT creation returned no secret_key');
+    accountId = account.account_id;
+    seedCredits(accountId);
 
     const project = await api<Project>(
       token,
-      'POST',
-      '/projects/provision',
+      "POST",
+      "/projects/provision",
       {
-        account_id: account.account_id,
+        account_id: accountId,
         name: `ACP multi-harness ${Date.now()}`,
+        seed_starter: true,
+        starter_template: "acp-multi-harness",
       },
       201,
     );
     projectId = project.project_id;
-    assert(project.git_origin_url, 'Project response has no git_origin_url');
-    await pushManifest(pat.secret_key, project.git_origin_url);
+    assert(
+      project.account_id === accountId,
+      "Project response account_id changed",
+    );
+    assert(project.git_origin_url, "Project response has no git_origin_url");
+    assert(
+      project.metadata.experimental?.acp_runtime === true,
+      "starter project metadata did not enable acp_runtime",
+    );
+    assert(
+      project.experimental.acp_runtime === true,
+      "starter project did not enable acp_runtime",
+    );
+    assert(
+      project.experimental_features.some(
+        (feature) =>
+          feature.key === "acp_runtime" &&
+          feature.name === "ACP & Multi-Harness" &&
+          feature.enabled,
+      ),
+      "starter project did not expose the enabled ACP & Multi-Harness feature",
+    );
 
-    await waitFor(
+    const seededManifest = await waitFor(
       () =>
         api<{ content?: string }>(
           token,
-          'GET',
+          "GET",
           `/projects/${projectId}/files/content?path=kortix.yaml`,
         ),
-      (value) => value.content?.includes('kortix_version: 3') === true,
-      'v3 manifest mirror',
+      (value) => value.content?.includes("kortix_version: 3") === true,
+      "seeded ACP multi-harness manifest",
     );
     const validation = await api<{ valid: boolean; issues: unknown[] }>(
       token,
-      'POST',
+      "POST",
       `/projects/${projectId}/manifest/validate`,
-      { raw: manifest, format: 'yaml' },
+      { raw: seededManifest.content ?? manifest, format: "yaml" },
     );
     assert(
       validation.valid && validation.issues.length === 0,
       `manifest validation failed: ${JSON.stringify(validation.issues)}`,
     );
-    await api(token, 'POST', `/executor/projects/${projectId}/connectors/sync`, {});
+    await api(
+      token,
+      "POST",
+      `/executor/projects/${projectId}/connectors/sync`,
+      {},
+    );
     if (directOpenAiKey) {
-      await api(token, 'POST', `/projects/${projectId}/secrets`, {
-        name: 'OPENAI_API_KEY',
+      await api(token, "POST", `/projects/${projectId}/secrets`, {
+        name: "OPENAI_API_KEY",
         value: directOpenAiKey,
       });
-      log('credential', 'seeded temporary OPENAI_API_KEY for this disposable fixture');
+      log(
+        "credential",
+        "seeded temporary OPENAI_API_KEY for this disposable fixture",
+      );
     }
   }
 
   const detail = await waitFor(
-    () => api<ProjectDetail>(token, 'GET', `/projects/${projectId}/detail`),
+    () => api<ProjectDetail>(token, "GET", `/projects/${projectId}/detail`),
     (value) =>
       harnesses.every((harness) =>
         value.config.agents.some(
           (agent) =>
-            agent.name === harness && agent.runtime === harness && agent.harness === harness,
+            agent.name === harness &&
+            agent.runtime === harness &&
+            agent.harness === harness,
         ),
       ),
-    'four-agent runtime catalog',
+    "four-agent runtime catalog",
   );
   assert(
-    (detail.config.default_agent ?? detail.config.open_code_default_agent) === 'opencode',
+    (detail.config.default_agent ?? detail.config.open_code_default_agent) ===
+      "opencode",
     `unexpected default_agent: ${detail.config.default_agent ?? detail.config.open_code_default_agent}`,
   );
 
-  const enabled = await api<{
-    experimental: Record<string, boolean>;
-    experimental_features: Array<{ key: string; name: string; enabled: boolean }>;
-  }>(token, 'PATCH', `/projects/${projectId}/experimental`, {
-    feature: 'acp_runtime',
-    enabled: true,
-  });
-  assert(enabled.experimental.acp_runtime === true, 'acp_runtime did not enable');
+  const enabled = reuseProjectId
+    ? await api<Project>(
+        token,
+        "PATCH",
+        `/projects/${projectId}/experimental`,
+        {
+          feature: "acp_runtime",
+          enabled: true,
+        },
+      )
+    : await api<Project>(token, "GET", `/projects/${projectId}`);
+  assert(
+    enabled.experimental.acp_runtime === true,
+    "acp_runtime did not enable",
+  );
   assert(
     enabled.experimental_features.some(
       (feature) =>
-        feature.key === 'acp_runtime' && feature.name === 'ACP & Multi-Harness' && feature.enabled,
+        feature.key === "acp_runtime" &&
+        feature.name === "ACP & Multi-Harness" &&
+        feature.enabled,
     ),
-    'experimental catalog did not expose ACP & Multi-Harness',
+    "experimental catalog did not expose ACP & Multi-Harness",
   );
 
   for (const harness of harnesses) {
     await verifyHarness(token, harness);
   }
-  log('result', `PASS ${harnesses.length}/${harnesses.length} harnesses`);
-  log('fixture', `project=${projectId}`);
+  log("result", `PASS ${harnesses.length}/${harnesses.length} harnesses`);
+  log("fixture", `project=${projectId}`);
 }
 
 async function cleanup(): Promise<void> {
   for (const controller of controllers) controller.close();
   controllers.clear();
   if (keepFixture) {
-    log('fixture', `kept project=${projectId} sessions=${sessionIds.join(',')}`);
-    log('login', `email=${userEmail} password=${password}`);
+    log(
+      "fixture",
+      `kept project=${projectId} sessions=${sessionIds.join(",")}`,
+    );
+    log("login", `email=${userEmail} password=${password}`);
   } else if (accessToken && projectId) {
     for (const sessionId of sessionIds) {
-      await apiResult(
+      const stopped = await apiResult(
         apiBase,
         accessToken,
-        'DELETE',
+        "DELETE",
         `/projects/${projectId}/sessions/${sessionId}`,
-      ).catch(() => {});
+      );
+      assert(
+        stopped.status === 200 || stopped.status === 404,
+        `session cleanup returned ${stopped.status} for ${sessionId}`,
+      );
     }
     if (!reuseProjectId) {
-      await apiResult(apiBase, accessToken, 'DELETE', `/projects/${projectId}`).catch(() => {});
+      const purged = await apiResult<{ repo_deleted?: boolean }>(
+        apiBase,
+        accessToken,
+        "DELETE",
+        `/projects/${projectId}?purge=true`,
+      );
+      assert(purged.status === 200, `project purge returned ${purged.status}`);
+      assert(
+        purged.json?.repo_deleted === true,
+        "project purge did not delete the managed repo",
+      );
+      hardDeleteFixtureRows(projectId, accountId);
     }
   }
   if (!keepFixture && !reuseProjectId && userId && serviceRoleKey) {
-    await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
-      method: 'DELETE',
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
+    const deletedUser = await fetch(
+      `${supabaseUrl}/auth/v1/admin/users/${userId}`,
+      {
+        method: "DELETE",
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
       },
-    }).catch(() => {});
+    );
+    assert(
+      deletedUser.status === 200 ||
+        deletedUser.status === 204 ||
+        deletedUser.status === 404,
+      `Supabase user cleanup returned ${deletedUser.status}: ${await deletedUser.text()}`,
+    );
   }
-  if (tempRepo) {
-    rmSync(tempRepo, { recursive: true, force: true });
-    log('temp', `removed ${basename(tempRepo)}`);
-  }
+  if (!keepFixture && !reuseProjectId && projectId && accountId)
+    log("cleanup", "removed project, sessions, account, and user");
 }
 
 try {

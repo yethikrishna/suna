@@ -217,11 +217,27 @@ export async function pauseComputeSession(sandboxId: string, windowEnd?: Date): 
     windowEnd && !Number.isNaN(windowEnd.getTime()) && windowEnd.getTime() < now.getTime()
       ? windowEnd
       : now;
+  await closeComputeWindow(row, 'stopped', billThrough);
+}
+
+/**
+ * THE ONLY writer of `sandbox_compute_sessions.ended_at`.
+ *
+ * `ended_at` is what every downstream reader treats as "this window is closed
+ * and will never accrue again" — `getOpenComputeSession` keys off `IS NULL`, the
+ * usage rollup in projects/routes/gateway.ts coalesces to it, and the reimburse
+ * script bounds refunds by it. Two independent writers is how a window ends up
+ * settled to one instant and stamped with another. Settling and stamping happen
+ * here, in that order, or not at all; the two exported closers differ only in
+ * the terminal state they record.
+ */
+async function closeComputeWindow(
+  row: typeof sandboxComputeSessions.$inferSelect,
+  state: 'stopped' | 'finalized',
+  billThrough: Date,
+): Promise<void> {
   await settleComputeWindow(row, billThrough);
-  await updateComputeSession(row.id, {
-    state: 'stopped',
-    endedAt: billThrough.toISOString(),
-  });
+  await updateComputeSession(row.id, { state, endedAt: billThrough.toISOString() });
 }
 
 /**
@@ -300,12 +316,7 @@ export async function endComputeSession(sandboxId: string): Promise<void> {
   const row = await getOpenComputeSession(sandboxId);
   if (!row) return;
 
-  const now = new Date();
-  await settleComputeWindow(row, now);
-  await updateComputeSession(row.id, {
-    state: 'finalized',
-    endedAt: now.toISOString(),
-  });
+  await closeComputeWindow(row, 'finalized', new Date());
 }
 
 export interface ReconcileMissingComputeResult {

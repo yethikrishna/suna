@@ -22,30 +22,66 @@ export function mergeMetadata(patch: Record<string, unknown>) {
   return sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`;
 }
 
-export async function reconcileRowToStopped(
-  row: { sandboxId: string; sessionId: string; externalId: string },
-  now: Date,
-  quiesce: boolean,
-): Promise<void> {
-  // Close billing FIRST (computes the wall-clock delta against the still-active
-  // metering row), then flip status, so the final window is billed correctly.
-  await pauseComputeSession(row.sandboxId).catch((err) =>
-    console.warn(`[reaper] pauseComputeSession failed for ${row.sandboxId}:`, err instanceof Error ? err.message : err),
+export interface StoppedStateWrite {
+  sandboxId: string;
+  sessionId: string;
+  externalId: string | null;
+  /** Mark an idle/provider-confirmed stop so passive traffic can't resurrect it
+   *  (only an explicit open / new turn clears the flag). */
+  quiesce: boolean;
+  /** Extra keys to record about WHY it stopped. Merged, never assigned. */
+  metadata?: Record<string, unknown>;
+  now?: Date;
+}
+
+/**
+ * THE stop write. Every path that parks a sandbox — the reaper's idle stop, the
+ * reaper's provider-confirmed reconcile, the webhook ingress, the user's manual
+ * stop — goes through this one function.
+ *
+ * It exists because the procedure used to be copy-pasted three times and had
+ * already drifted: two copies merged the metadata patch into the jsonb column,
+ * the third assigned a whole object built from a row read moments earlier, which
+ * silently dropped anything a concurrent writer had put there in between (the
+ * `runtimeWakeId` fence and the `lastAliveAt` liveness stamp the billing clamp
+ * depends on both live in that column). And the money-critical step order —
+ * settle the meter against the still-active row BEFORE flipping the status —
+ * was recorded as a comment repeated in each copy. A comment is not a mechanism;
+ * a single function is.
+ *
+ * So, in order, and nowhere else:
+ *   1. close the compute window while the row still says `active`, so the final
+ *      window is settled against the state it was actually billed under;
+ *   2. flip `session_sandboxes` and `project_sessions` in ONE transaction, so
+ *      there is no window where the box is parked but the session still claims
+ *      to be running (and no way for a caller to do one and forget the other);
+ *   3. drop the proxy's provider cache.
+ * Metadata is ALWAYS a jsonb merge — this module has no whole-object writer.
+ */
+export async function applyStoppedState(write: StoppedStateWrite): Promise<void> {
+  const now = write.now ?? new Date();
+  await pauseComputeSession(write.sandboxId).catch((err) =>
+    console.warn(`[reaper] pauseComputeSession failed for ${write.sandboxId}:`, err instanceof Error ? err.message : err),
   );
-  const meta = buildIdleStopMetadata({ quiesce, nowIso: now.toISOString() });
-  await db
-    .update(sessionSandboxes)
-    .set({
-      status: 'stopped',
-      updatedAt: now,
-      ...(Object.keys(meta).length ? { metadata: mergeMetadata(meta) } : {}),
-    })
-    .where(eq(sessionSandboxes.sandboxId, row.sandboxId));
-  await db
-    .update(projectSessions)
-    .set({ status: 'stopped', updatedAt: now })
-    .where(eq(projectSessions.sessionId, row.sessionId));
-  invalidateProviderCache(row.externalId);
+  const patch = {
+    ...buildIdleStopMetadata({ quiesce: write.quiesce, nowIso: now.toISOString() }),
+    ...(write.metadata ?? {}),
+  };
+  await db.transaction(async (tx) => {
+    await tx
+      .update(sessionSandboxes)
+      .set({
+        status: 'stopped',
+        updatedAt: now,
+        ...(Object.keys(patch).length ? { metadata: mergeMetadata(patch) } : {}),
+      })
+      .where(eq(sessionSandboxes.sandboxId, write.sandboxId));
+    await tx
+      .update(projectSessions)
+      .set({ status: 'stopped', updatedAt: now })
+      .where(eq(projectSessions.sessionId, write.sessionId));
+  });
+  if (write.externalId) invalidateProviderCache(write.externalId);
 }
 
 /**
@@ -60,18 +96,16 @@ export async function reconcileSandboxStoppedByExternalId(externalId: string, no
     .limit(1);
   if (!row) return false;
   if (row.status === 'stopped' || row.status === 'archived') return false;
-  await pauseComputeSession(row.sandboxId).catch((err) =>
-    console.warn(`[reaper] pauseComputeSession failed for ${row.sandboxId}:`, err instanceof Error ? err.message : err),
-  );
   // Quiesce: a provider-confirmed stop must stay stopped — passive /v1/p traffic
   // (markSandboxUsed heal / wakeSandbox) must not resurrect it. Cleared on an
   // explicit open / real turn.
-  await db
-    .update(sessionSandboxes)
-    .set({ status: 'stopped', updatedAt: now, metadata: mergeMetadata(buildIdleStopMetadata({ quiesce: true, nowIso: now.toISOString() })) })
-    .where(eq(sessionSandboxes.sandboxId, row.sandboxId));
-  await db.update(projectSessions).set({ status: 'stopped', updatedAt: now }).where(eq(projectSessions.sessionId, row.sessionId));
-  invalidateProviderCache(externalId);
+  await applyStoppedState({
+    sandboxId: row.sandboxId,
+    sessionId: row.sessionId,
+    externalId,
+    quiesce: true,
+    now,
+  });
   return true;
 }
 

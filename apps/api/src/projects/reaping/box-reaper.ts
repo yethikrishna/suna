@@ -49,7 +49,7 @@ import {
   provenActivityAt,
   triggerAutoStopTtlMs,
 } from './policy';
-import { reconcileRowToStopped } from './sandbox-state-sync';
+import { applyStoppedState } from './sandbox-state-sync';
 import { reapRunningBox } from './running-box';
 import {
   countReapCandidates,
@@ -230,7 +230,13 @@ export async function reapAndReconcileSandboxes(now = new Date()): Promise<ReapR
             // (or a webhook/reaper stop) must NOT be resurrected by passive /v1/p
             // traffic (markSandboxUsed heals unflagged stopped rows). It comes
             // back only on an explicit open / real turn, which clears the flag.
-            await reconcileRowToStopped(row, now, /* quiesce */ true);
+            await applyStoppedState({
+              sandboxId: row.sandboxId,
+              sessionId: row.sessionId,
+              externalId: row.externalId,
+              quiesce: true,
+              now,
+            });
             result.reconciled += 1;
             result.billingClosed += 1;
             break;

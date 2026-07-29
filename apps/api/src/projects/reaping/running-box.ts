@@ -14,7 +14,7 @@ import {
   isAlreadyNotRunning,
   isLifecycleTransitionInProgress,
 } from './policy';
-import { mergeMetadata, reconcileRowToStopped } from './sandbox-state-sync';
+import { applyStoppedState, mergeMetadata } from './sandbox-state-sync';
 
 export type RunningBoxOutcome = 'stopped' | 'busyVetoed' | 'idleArmed' | 'skipped' | 'errors';
 
@@ -78,6 +78,12 @@ export async function reapRunningBox(
     }
     // Already stopped/gone on the provider side is success — reconcile.
   }
-  await reconcileRowToStopped(row, now, /* quiesce */ true);
+  await applyStoppedState({
+    sandboxId: row.sandboxId,
+    sessionId: row.sessionId,
+    externalId: row.externalId,
+    quiesce: true,
+    now,
+  });
   return 'stopped';
 }

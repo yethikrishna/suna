@@ -222,7 +222,7 @@ Also stop if the same failure survives three different fixes (use
 | 2 | Strategy-based session authorization | DONE | `profile-auth-cost` | 2026-07-29 | `d9a217dd7d` + `0ae111091e` + `df9586a8b5` + `f8c0cbdf21` + `4630109c7d` + `74a804d14d` + `f9d9746ebb` + `383e501ea3` + `30c607a646` |
 | 3 | Main web session scope | DONE | `profile-auth-cost` | 2026-07-29 | `900e01a723` + `53d7191abb` + `f1b1e00978` |
 | 4 | Remove end-user usage attribution | DONE | `profile-auth-cost` | 2026-07-29 | `f6c14a5d95` + `71b230d933` + `d2871144df` + `c8d8403231` + `3c1e979263` + `c5ad2d3496` |
-| 5 | Unified session costs | IN PROGRESS | `profile-auth-cost` | 2026-07-29 | — |
+| 5 | Unified session costs | DONE | `profile-auth-cost` | 2026-07-29 | `98fa46b098` + `12201bcc3d` + `54af8a9821` + `894df98893` + `428e18eaf0` |
 | 6 | White-label and documentation alignment | NOT STARTED | — | — | — |
 | 7 | Local verification | NOT STARTED | — | — | — |
 | 8 | Delivery and dev proof | NOT STARTED | — | — | — |
@@ -4114,3 +4114,49 @@ Final gates:
 **Repository delivery shippable to production: NOT YET.** Tasks 5 through 8,
 white-label alignment, local HTTP and Chromium verification, PR merge, Deploy
 Dev, deployed SHA proof, and deployed behavior verification remain.
+
+---
+
+### 2026-07-29 — session `profile-auth-cost` Task 5 completion
+
+Added unified finalized LLM and billed compute cost records for every project
+session. Account and optional project filters support pagination. Detail
+responses include owner identity, model usage, mixed ledger entries, and
+unassigned-cost reconciliation.
+
+The SDK exposes `billing.sessionCosts.list`, `billing.sessionCosts.get`, and
+`session(projectId, sessionId).cost()`. Project-scoped requests infer the
+authorized account, including secondary accounts.
+
+The account Usage pane shows session costs before the existing credit ledger.
+It preserves sub-cent precision, reports zero-dollar unassigned activity, and
+keeps valid cost data visible if the optional project catalog fails.
+
+TDD evidence:
+
+- API focused suite: `21 pass`, `0 fail`, and `46` assertions.
+- SDK focused suite: `75 pass`, `0 fail`, and `271` assertions.
+- Main web focused suite: `17 pass`, `0 fail`, and `58` assertions.
+
+Final SDK gates:
+
+- `pnpm --dir packages/sdk exec tsc --noEmit --pretty false`: exit `0`.
+- Full SDK suite: `1379 pass`, `0 fail`, and `6034` assertions across `118`
+  files.
+- Packed-install smoke test passed.
+
+Other final gates:
+
+- `pnpm --dir apps/api typecheck`: exit `0`.
+- Focused web ESLint: exit `0`.
+- Web TypeScript reports `0` diagnostics in every changed Task 5 file.
+- The full web TypeScript command retains `4` unrelated diagnostics in
+  generated-source and template-test files.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+**Repository delivery shippable to production: NOT YET.** Tasks 6 through 8,
+local HTTP and Chromium verification, PR merge, Deploy Dev, deployed SHA proof,
+and deployed behavior verification remain.

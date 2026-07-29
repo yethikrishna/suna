@@ -3809,3 +3809,19 @@ Cleanup verification:
 **Shippable to production: YES.** Local gates, CI, merge, Deploy Dev, deployed
 SHA, shipped CLI discovery, deployed four-harness behavior, and fixture cleanup
 all pass. The dev managed OpenAI credential remains an environment issue.
+
+---
+
+### 2026-07-29 — session `acp-multi-harness-selector` SDK snapshot claim
+
+Claimed the additive `BillingState` public type-surface snapshot repair.
+
+`origin/main` exports `BillingState` from the root and `./projects-client`
+entry points. The committed snapshot omits both names.
+
+The existing public type-surface test is the RED test.
+The required `tdd` skill is unavailable in this session.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.

@@ -33,10 +33,12 @@ export async function GET(req: NextRequest) {
   if (!apiKey) return Response.json({ connectors: [] });
 
   const session = getRequestSession(req);
-  if (!session) return Response.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!session)
+    return Response.json({ error: 'Not authenticated' }, { status: 401 });
 
   const limited = consumeRateLimit(session.userId);
-  if (!limited.ok) return Response.json({ error: 'Rate limited' }, { status: 429 });
+  if (!limited.ok)
+    return Response.json({ error: 'Rate limited' }, { status: 429 });
 
   const url = new URL(req.url);
   const projectId = url.searchParams.get('projectId') ?? '';
@@ -58,7 +60,9 @@ export async function GET(req: NextRequest) {
   });
 
   try {
-    const result = await kortix.project(projectId).connectors.profiles.list();
+    const result = await kortix
+      .project(projectId)
+      .connectors.authorizations.list();
     const connectors = selectConnectorBindingChoices(result?.profiles).filter(
       (choice) => !connector || choice.alias === connector,
     );

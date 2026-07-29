@@ -15,7 +15,7 @@ import type { ConnectionProfile } from '@kortix/sdk';
  * an error message.
  */
 export interface BindableConnection {
-  profileId: string;
+  authorizationId: string;
   connectorAlias: string;
   label: string;
   isDefault: boolean;
@@ -28,7 +28,8 @@ export interface BindableConnection {
  * credential cannot connect on an end-user's behalf, and `require_connectors`
  * — the interactive flow that would — is refused for it outright.
  */
-export type ConnectorBindingUnavailable = 'private_only' | 'team_connection_inactive';
+export type ConnectorBindingUnavailable =
+  'private_only' | 'team_connection_inactive';
 
 export interface ConnectorBindingChoice {
   alias: string;
@@ -52,7 +53,7 @@ export function selectBindableConnections(
         profile.status === 'active',
     )
     .map((profile) => ({
-      profileId: profile.profile_id,
+      authorizationId: profile.profile_id,
       connectorAlias: profile.connector_alias,
       label: profile.label,
       isDefault: profile.is_default,
@@ -80,13 +81,14 @@ export function selectBindableConnections(
 export function selectConnectorBindingChoices(
   profiles: ConnectionProfile[] | undefined,
 ): ConnectorBindingChoice[] {
-  const aliases = [...new Set((profiles ?? []).map((profile) => profile.connector_alias))].sort(
-    (a, b) => a.localeCompare(b),
-  );
+  const aliases = [
+    ...new Set((profiles ?? []).map((profile) => profile.connector_alias)),
+  ].sort((a, b) => a.localeCompare(b));
 
   return aliases.map((alias) => {
     const connections = selectBindableConnections(profiles, alias);
-    if (connections.length > 0) return { alias, connections, unavailable: null };
+    if (connections.length > 0)
+      return { alias, connections, unavailable: null };
     // A revoked/errored TEAM connection is a different ask than a private one:
     // the team connection exists and needs reconnecting, rather than never
     // having been shared. Same actor either way — a teammate.
@@ -98,12 +100,16 @@ export function selectConnectorBindingChoices(
     // AND names an action — "ask a teammate to share it" — that resolves
     // nothing. Channel/inbox installs mint `external` profiles, so this is a
     // shape that really occurs, not a hypothetical.
-    const forAlias = (profiles ?? []).filter((p) => p.connector_alias === alias);
+    const forAlias = (profiles ?? []).filter(
+      (p) => p.connector_alias === alias,
+    );
     const hasNonMemberProfile = forAlias.some((p) => p.owner_type !== 'member');
     return {
       alias,
       connections,
-      unavailable: hasNonMemberProfile ? 'team_connection_inactive' : 'private_only',
+      unavailable: hasNonMemberProfile
+        ? 'team_connection_inactive'
+        : 'private_only',
     };
   });
 }

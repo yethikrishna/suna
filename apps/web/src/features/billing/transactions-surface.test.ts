@@ -7,19 +7,21 @@ const transactionsTabPath = join(webSource, 'features/accounts/settings/transact
 const accountPagePath = join(webSource, 'app/(app)/accounts/[id]/page.tsx');
 
 describe('account credit transactions surface', () => {
-  test('renders only the credit ledger', () => {
+  test('renders session costs first and keeps the credit ledger available', () => {
     const source = readFileSync(transactionsTabPath, 'utf8');
 
+    expect(source).toContain('defaultValue="session-costs"');
+    expect(source).toContain('Session costs');
+    expect(source).toContain('<SessionCostExplorer />');
+    expect(source).toContain('Credit ledger');
     expect(source).toContain('<CreditTransactions />');
-    expect(source.match(/^import /gm)).toHaveLength(1);
-    expect(source.match(/<[A-Z][A-Za-z]+ \/>/g)).toEqual(['<CreditTransactions />']);
   });
 
-  test('describes the complete account credit ledger', () => {
+  test('describes session costs and exposes them when internal billing is disabled', () => {
     const source = readFileSync(accountPagePath, 'utf8');
 
-    expect(source).toContain(
-      'Credit ledger for this account, including grants, purchases, usage, refunds, and adjustments.',
-    );
+    expect(source).toContain('Session costs and credit ledger for this account.');
+    expect(source).toContain('transactions: canWriteAccount === true,');
+    expect(source).not.toContain('transactions: canWriteAccount === true && billingActive');
   });
 });

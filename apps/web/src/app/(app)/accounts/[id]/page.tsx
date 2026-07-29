@@ -188,7 +188,7 @@ const NAV_GROUPS: Array<{
     label: 'Billing',
     items: [
       { id: 'billing', label: 'Plan', icon: CreditCard },
-      { id: 'transactions', label: 'Credits', icon: Coins },
+      { id: 'transactions', label: 'Usage', icon: Coins },
     ],
   },
   {
@@ -207,9 +207,8 @@ const PANE_META: Partial<Record<AccountSection, { title: string; description: st
   members: { title: 'Members', description: 'People with access to this account.' },
   billing: { title: 'Plan', description: 'Plan, wallet, and spend for this account.' },
   transactions: {
-    title: 'Credits',
-    description:
-      'Credit ledger for this account, including grants, purchases, usage, refunds, and adjustments.',
+    title: 'Usage',
+    description: 'Session costs and credit ledger for this account.',
   },
   tokens: {
     title: 'Tokens',
@@ -345,9 +344,8 @@ export default function AccountSettingsPage() {
   const tabParam = (rawTab === 'overview' ? 'billing' : rawTab) as AccountSection | null;
   const requestedTab: AccountSection =
     tabParam && (VALID_TABS as readonly string[]).includes(tabParam) ? tabParam : 'members';
-  // Self-host billing-disabled: no Stripe/credit ledger to show — see
-  // isBillingEnabled() (mirrors the backend's KORTIX_BILLING_INTERNAL_ENABLED)
-  // instead of only checking permission.
+  // Self-host billing-disabled: no Stripe plan controls to show. Session costs
+  // remain available because they do not require the internal billing engine.
   const billingActive = isBillingEnabled();
 
   // Which rail items this caller can see. Mirrors the per-section gates the
@@ -359,7 +357,7 @@ export default function AccountSettingsPage() {
     roles: canManageRoles === true,
     identity: canWriteAccount === true,
     billing: canWriteAccount === true && billingActive,
-    transactions: canWriteAccount === true && billingActive,
+    transactions: canWriteAccount === true,
     git: canWriteAccount === true,
     tokens: canWriteAccount === true,
     audit: canReadAudit === true,

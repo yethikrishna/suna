@@ -4,6 +4,7 @@ import type { ProjectSessionSandbox, SessionStartResult } from '@kortix/api-cont
 import { auth, json } from '../../openapi';
 import { getProvider, type SandboxStatus } from '../../platform/providers';
 import { db } from '../../shared/db';
+import { logSafe } from '../../shared/log-safe';
 import { enforcePerOriginSessionCap } from '../lib/sessions';
 import { resolveBranchTip } from '../git';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
@@ -79,7 +80,7 @@ export async function resumeStoppedSandbox(row: {
     // and an operator debugging "why won't this session wake" needs the real
     // reason to be findable.
     console.warn(
-      `[projects] resume refused by per-end-user session cap for ${row.sessionId} (end_user_ref=${sessionRow?.originRef ?? 'none'})`,
+      `[projects] resume refused by per-end-user session cap for ${row.sessionId} (end_user_ref=${logSafe(sessionRow?.originRef)})`,
     );
     return false;
   }

@@ -787,7 +787,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       },
       responses: {
         200: json(OkSchema, 'Credential set'),
-        ...errors(400, 403, 501),
+        ...errors(400, 403, 404, 409, 501),
       },
     }),
     // Manual parse kept: original returns `invalid_json` and a `value is
@@ -825,7 +825,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       }
       return result.ok
         ? c.json({ ok: true })
-        : c.json({ error: result.error }, result.status as 400);
+        : c.json({ error: result.error }, result.status as 400 | 404 | 409);
     },
   );
 
@@ -840,7 +840,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       request: { params: ProjectSlugParam },
       responses: {
         200: json(OkSchema, 'Disconnected'),
-        ...errors(403, 404, 501),
+        ...errors(403, 404, 409, 501),
       },
     }),
     async (c: any) => {
@@ -853,7 +853,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const result = await deps.deleteConnectorCredential(projectId, slug, admin.userId);
       return result.ok
         ? c.json({ ok: true })
-        : c.json({ error: result.error }, result.status as 404);
+        : c.json({ error: result.error }, result.status as 404 | 409);
     },
   );
 

@@ -265,26 +265,39 @@ export async function deleteConnectorFromManifest(
   return { ok: true };
 }
 
-/** Set the SHARED credential value (userId null) — the only credential a
- *  connector has since `per_user` was removed 2026-07-05. */
+/** Set a project-owned connector authorization credential. */
 export async function setConnectorCredentialShared(
   projectId: string,
   slug: string,
   input: UpdateConnectorAuthorizationCredentialInput,
 ): Promise<CrudResult> {
-  const connectorId = await connectorIdFor(projectId, slug);
-  if (!connectorId) return { ok: false, error: 'connector not found', status: 404 };
+  const [connector] = await db
+    .select({
+      connectorId: executorConnectors.connectorId,
+      authorizationStrategy: executorConnectors.authorizationStrategy,
+    })
+    .from(executorConnectors)
+    .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)))
+    .limit(1);
+  if (!connector) return { ok: false, error: 'connector not found', status: 404 };
+  if (connector.authorizationStrategy !== 'project') {
+    return {
+      ok: false,
+      error: 'Shared credentials require a project authorization strategy',
+      status: 409,
+    };
+  }
   if ('oauth2' in input) {
     await upsertOAuth2Credential({
       projectId,
-      connectorId,
+      connectorId: connector.connectorId,
       userId: null,
       oauth2: input.oauth2,
     });
   } else {
     await upsertCredential({
       projectId,
-      connectorId,
+      connectorId: connector.connectorId,
       userId: null,
       value: input.value,
       kind: input.kind,

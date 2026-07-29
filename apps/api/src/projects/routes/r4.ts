@@ -106,6 +106,12 @@ import {
   projectCapabilityAllowed,
 } from '../lib/access';
 import { AnyObject, TriggerSchema, projectsApp } from '../lib/app';
+import {
+  connectorAuthorizationMatchesStrategy,
+  isTrustedManagedChannelAuthorization,
+  type ConnectorAuthorizationOwnerType,
+  type ConnectorAuthorizationStrategy,
+} from '../lib/connector-authorization-strategy';
 import { withProjectGitAuth } from '../lib/git';
 import { metadataMerge } from '../lib/metadata-merge';
 import { sandboxTokenMayActOnSession } from '../lib/sandbox-token-session';
@@ -213,10 +219,18 @@ function serializeConnectionProfile(row: {
 }
 
 function mayReadConnectionProfile(
-  profile: { profileId: string; ownerType: string; ownerId: string | null; isDefault: boolean },
+  profile: {
+    profileId: string;
+    ownerType: ConnectorAuthorizationOwnerType;
+    ownerId: string | null;
+    isDefault: boolean;
+    metadata: Record<string, unknown>;
+    authorizationStrategy: ConnectorAuthorizationStrategy;
+    providerType: string;
+    connectorConfig: Record<string, unknown>;
+  },
   userId: string,
   actingPrincipalIsServiceAccount: boolean,
-  mayManageSystemProfiles: boolean,
   /** Profile ids the CALLER'S session is bound to, or null when the caller is
    *  not session-bound. See connector-profile-visibility.ts: a sandbox's token
    *  carries the WRAPPER's user id, so without this every end-user's agent could
@@ -224,27 +238,57 @@ function mayReadConnectionProfile(
   sessionBoundProfileIds: ReadonlySet<string> | null,
 ): boolean {
   if (!sessionMayEnumerateProfile(profile, sessionBoundProfileIds)) return false;
-  if (profile.ownerType === 'member') {
-    return !actingPrincipalIsServiceAccount && profile.ownerId === userId;
-  }
-  // EVERY project-owned connection is readable by the project, not just the
-  // default one — a connector can now hold several TEAM connections (support@,
-  // sales@) and members must be able to see and pick between them. This is
-  // metadata only (label/status/owner); credentials are never in this shape.
-  if (profile.ownerType === 'project') return true;
-  return mayManageSystemProfiles;
+  return connectorAuthorizationMatchesStrategy({
+    strategy: profile.authorizationStrategy,
+    ownerType: profile.ownerType,
+    ownerId: profile.ownerId,
+    actingUserId: userId,
+    actingPrincipalIsServiceAccount,
+    trustedManagedSystem: isTrustedManagedChannelAuthorization({
+      providerType: profile.providerType,
+      platform:
+        typeof profile.connectorConfig.platform === 'string'
+          ? profile.connectorConfig.platform
+          : null,
+      ownerType: profile.ownerType,
+      ownerId: profile.ownerId,
+      metadata: profile.metadata,
+    }),
+  });
 }
 
 function mayMutateConnectionProfile(
-  profile: { ownerType: string; ownerId: string | null },
+  profile: {
+    ownerType: ConnectorAuthorizationOwnerType;
+    ownerId: string | null;
+    metadata: Record<string, unknown>;
+    authorizationStrategy: ConnectorAuthorizationStrategy;
+    providerType: string;
+    connectorConfig: Record<string, unknown>;
+  },
   userId: string,
   actingPrincipalIsServiceAccount: boolean,
   mayManageSystemProfiles: boolean,
 ): boolean {
-  if (profile.ownerType === 'member') {
-    return !actingPrincipalIsServiceAccount && profile.ownerId === userId;
-  }
-  return mayManageSystemProfiles;
+  const strategyMatches = connectorAuthorizationMatchesStrategy({
+    strategy: profile.authorizationStrategy,
+    ownerType: profile.ownerType,
+    ownerId: profile.ownerId,
+    actingUserId: userId,
+    actingPrincipalIsServiceAccount,
+    trustedManagedSystem: isTrustedManagedChannelAuthorization({
+      providerType: profile.providerType,
+      platform:
+        typeof profile.connectorConfig.platform === 'string'
+          ? profile.connectorConfig.platform
+          : null,
+      ownerType: profile.ownerType,
+      ownerId: profile.ownerId,
+      metadata: profile.metadata,
+    }),
+  });
+  if (!strategyMatches) return false;
+  return profile.authorizationStrategy === 'user' || mayManageSystemProfiles;
 }
 
 async function reconcileConnectionProfileRow(input: {
@@ -334,13 +378,6 @@ projectsApp.openapi(
         );
       sessionBoundProfileIds = new Set(bound.map((row) => row.profileId));
     }
-    const mayManageSystemProfiles = await projectCapabilityAllowed(
-      c,
-      loaded.userId,
-      loaded.row.accountId,
-      projectId,
-      PROJECT_ACTIONS.PROJECT_CONNECTOR_PROFILES_MANAGE,
-    );
     const rows = await db
       .select({
         profileId: executorConnectionProfiles.profileId,
@@ -351,6 +388,9 @@ projectsApp.openapi(
         status: executorConnectionProfiles.status,
         isDefault: executorConnectionProfiles.isDefault,
         metadata: executorConnectionProfiles.metadata,
+        authorizationStrategy: executorConnectors.authorizationStrategy,
+        providerType: executorConnectors.providerType,
+        connectorConfig: executorConnectors.config,
       })
       .from(executorConnectionProfiles)
       .innerJoin(
@@ -365,7 +405,6 @@ projectsApp.openapi(
             profile,
             loaded.userId,
             actingPrincipalIsServiceAccount,
-            mayManageSystemProfiles,
             sessionBoundProfileIds,
           ),
         )
@@ -500,6 +539,7 @@ projectsApp.openapi(
       .select({
         connectorId: executorConnectors.connectorId,
         providerType: executorConnectors.providerType,
+        authorizationStrategy: executorConnectors.authorizationStrategy,
       })
       .from(executorConnectors)
       .where(
@@ -514,6 +554,15 @@ projectsApp.openapi(
     if (connector.providerType === 'channel') {
       return c.json(
         { error: 'Channel profiles are reconciled from verified channel installations' },
+        409,
+      );
+    }
+    if (connector.authorizationStrategy !== 'user') {
+      return c.json(
+        {
+          error: 'This connector uses project-owned authorizations',
+          code: 'CONNECTOR_AUTHORIZATION_STRATEGY_MISMATCH',
+        },
         409,
       );
     }
@@ -610,6 +659,7 @@ projectsApp.openapi(
       .select({
         connectorId: executorConnectors.connectorId,
         providerType: executorConnectors.providerType,
+        authorizationStrategy: executorConnectors.authorizationStrategy,
       })
       .from(executorConnectors)
       .where(
@@ -627,12 +677,30 @@ projectsApp.openapi(
         409,
       );
     }
+    const normalizedOwnerId = ownerType === 'project' ? null : ownerId;
+    if (
+      !connectorAuthorizationMatchesStrategy({
+        strategy: connector.authorizationStrategy,
+        ownerType: ownerType as ConnectorAuthorizationOwnerType,
+        ownerId: normalizedOwnerId,
+        actingUserId: loaded.userId,
+        actingPrincipalIsServiceAccount: c.get('authType') === 'service_account',
+      })
+    ) {
+      return c.json(
+        {
+          error: `This connector uses ${connector.authorizationStrategy}-owned authorizations`,
+          code: 'CONNECTOR_AUTHORIZATION_STRATEGY_MISMATCH',
+        },
+        409,
+      );
+    }
     const { profile, created } = await reconcileConnectionProfileRow({
       accountId: loaded.row.accountId,
       projectId,
       connectorId: connector.connectorId,
       ownerType: ownerType as 'project' | 'agent' | 'member' | 'subject' | 'external',
-      ownerId: ownerType === 'project' ? null : ownerId,
+      ownerId: normalizedOwnerId,
       label,
       metadata,
       createdBy: loaded.userId,
@@ -687,8 +755,20 @@ for (const operation of ['credential', 'revoke', 'activate', 'default'] as const
           connectorId: executorConnectionProfiles.connectorId,
           ownerType: executorConnectionProfiles.ownerType,
           ownerId: executorConnectionProfiles.ownerId,
+          metadata: executorConnectionProfiles.metadata,
+          authorizationStrategy: executorConnectors.authorizationStrategy,
+          providerType: executorConnectors.providerType,
+          connectorConfig: executorConnectors.config,
         })
         .from(executorConnectionProfiles)
+        .innerJoin(
+          executorConnectors,
+          and(
+            eq(executorConnectors.connectorId, executorConnectionProfiles.connectorId),
+            eq(executorConnectors.accountId, executorConnectionProfiles.accountId),
+            eq(executorConnectors.projectId, executorConnectionProfiles.projectId),
+          ),
+        )
         .where(
           and(
             eq(executorConnectionProfiles.profileId, profileId),
@@ -831,9 +911,11 @@ for (const operation of ['connect', 'connect/finalize'] as const) {
           ownerType: executorConnectionProfiles.ownerType,
           ownerId: executorConnectionProfiles.ownerId,
           isDefault: executorConnectionProfiles.isDefault,
+          metadata: executorConnectionProfiles.metadata,
           connectorAlias: executorConnectors.slug,
           providerType: executorConnectors.providerType,
           connectorConfig: executorConnectors.config,
+          authorizationStrategy: executorConnectors.authorizationStrategy,
         })
         .from(executorConnectionProfiles)
         .innerJoin(

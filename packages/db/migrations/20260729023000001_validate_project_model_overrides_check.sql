@@ -5,7 +5,7 @@ set lock_timeout = '2s';
 set statement_timeout = '30s';
 
 -- Expand step 2/2: validate the NOT VALID CHECK constraint added in the previous
--- migration (20260729013229262_add_project_model_overrides.sql). VALIDATE
+-- migration (20260729023000000_add_project_model_overrides.sql). VALIDATE
 -- CONSTRAINT takes only a SHARE UPDATE EXCLUSIVE lock (does not block reads/
 -- writes) and every existing row already satisfies it trivially (the column's
 -- own DEFAULT is '{}', a valid jsonb object), so this completes near-instantly

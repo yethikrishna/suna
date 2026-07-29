@@ -470,15 +470,16 @@ export async function provisionSessionSandbox(opts: {
           }
         : {}),
     },
-    // Idle lifecycle: each provider's NATIVE auto-stop is the primary stop
-    // mechanism. We pass NO explicit autoStopInterval for a normal session so the
-    // provider applies its own policy: Daytona → daytonaLifecycle()
-    // (KORTIX_SANDBOX_AUTOSTOP_MINUTES); Platinum → the same idle timeout (see
-    // platinum.ts). Platinum NO LONGER forces persistent — the CH resume-freeze
+    // Idle lifecycle: we pass NO explicit autoStopInterval for a normal session,
+    // so each provider gets its native idle timer set from
+    // providerAutoStopBackstopMinutes() (Daytona → daytonaLifecycle(); Platinum →
+    // auto_stop_minutes). That timer is a LAST-RESORT backstop for a box this API
+    // can no longer reach — 12h, deliberately far above any real turn, because it
+    // sees only inbound traffic and nothing resets it during a local tool run.
+    // The primary stop is `deadline_at` (projects/sandbox-deadline.ts), enforced
+    // by the reaper. Platinum NO LONGER forces persistent — the CH resume-freeze
     // that required autoStop=0 is FIXED (verified ~2.3s stop→resume), so it
-    // idle-stops + CoW-resumes natively rather than depending on the maintenance
-    // reaper (whose outage let Platinum boxes run 24/7 and flood the host). The
-    // reaper stays as a secondary backstop only.
+    // idle-stops + CoW-resumes natively too.
   };
 
   // Detach the actual provisioning — the API caller navigates immediately

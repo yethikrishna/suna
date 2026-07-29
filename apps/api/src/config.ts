@@ -548,6 +548,16 @@ const envSchema = z.object({
   KORTIX_SANDBOX_TRIGGER_AUTOSTOP_MINUTES: optInt(5),
   KORTIX_SANDBOX_AUTOARCHIVE_MINUTES: optInt(720), // 12 hours
   KORTIX_SANDBOX_AUTODELETE_MINUTES: optInt(-1), // never auto-delete
+  // The PROVIDER-NATIVE idle timer (Daytona autoStopInterval / Platinum
+  // auto_stop_minutes) — a LAST-RESORT backstop for boxes this API can no
+  // longer reach, NOT the primary stop. It used to be derived from
+  // KORTIX_SANDBOX_AUTOSTOP_MINUTES above, which welded an idle-policy knob to
+  // a provider-safety knob; see providerAutoStopBackstopMinutes() in
+  // platform/providers/index.ts for why the two must move independently.
+  // Unrelated to AUTOARCHIVE_MINUTES despite the shared 720: that one is
+  // measured from the moment a box STOPS, this one from its last inbound
+  // request while running.
+  KORTIX_SANDBOX_PROVIDER_AUTOSTOP_MINUTES: optInt(720), // 12 hours
 
   // ── Internal Service Key (auto-generated if missing — never fails) ───────
   INTERNAL_SERVICE_KEY: optStr,
@@ -1038,6 +1048,7 @@ export const config = {
   KORTIX_SANDBOX_TRIGGER_AUTOSTOP_MINUTES: env.KORTIX_SANDBOX_TRIGGER_AUTOSTOP_MINUTES,
   KORTIX_SANDBOX_AUTOARCHIVE_MINUTES: env.KORTIX_SANDBOX_AUTOARCHIVE_MINUTES,
   KORTIX_SANDBOX_AUTODELETE_MINUTES: env.KORTIX_SANDBOX_AUTODELETE_MINUTES,
+  KORTIX_SANDBOX_PROVIDER_AUTOSTOP_MINUTES: env.KORTIX_SANDBOX_PROVIDER_AUTOSTOP_MINUTES,
 
   PLATINUM_API_KEY: env.PLATINUM_API_KEY,
   PLATINUM_API_URL: env.PLATINUM_API_URL,

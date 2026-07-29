@@ -3,6 +3,7 @@
 import Loading from '@/components/ui/loading';
 
 import { ApiKeyGate } from '@/components/api-key-gate';
+import { ImportProjectsDialog } from '@/components/import-projects-dialog';
 import { ModeBadge } from '@/components/mode-badge';
 import { BrandMark } from '@/components/brand-mark';
 import { LoginGate } from '@/components/login-gate';
@@ -119,7 +120,11 @@ function Dashboard({
               Each project is a git repo. Open one to run an agent against it.
             </p>
           </div>
-          <CreateProjectDialog />
+          <div className="flex items-center gap-1">
+            {/* Gated + hidden by default — see server/project-adoption.ts. */}
+            <ImportProjectsDialog />
+            <CreateProjectDialog />
+          </div>
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">

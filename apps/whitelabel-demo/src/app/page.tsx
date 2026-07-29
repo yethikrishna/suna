@@ -3,6 +3,7 @@
 import Loading from '@/components/ui/loading';
 
 import { ApiKeyGate } from '@/components/api-key-gate';
+import { ModeBadge } from '@/components/mode-badge';
 import { BrandMark } from '@/components/brand-mark';
 import { LoginGate } from '@/components/login-gate';
 import { Button } from '@/components/ui/button';
@@ -82,7 +83,13 @@ function Dashboard({
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-5 py-3">
-          <BrandMark />
+          <div className="flex items-center gap-2">
+            <BrandMark />
+            {/* The two integration shapes behave differently and the difference
+                is otherwise invisible — which makes every other observation on
+                this page ambiguous. */}
+            <ModeBadge wrapperMode={wrapperMode} />
+          </div>
           <div className="flex items-center gap-1">
             {wrapperMode ? (
               <Link href="/usage">

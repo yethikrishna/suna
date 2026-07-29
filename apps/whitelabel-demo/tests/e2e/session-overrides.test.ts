@@ -115,7 +115,7 @@ describe('buildSessionCreateInput', () => {
 
   test('everything at once composes into one body', () => {
     const input = buildSessionCreateInput(
-      { agent: 'support', secrets: ['STRIPE_KEY'], bindings: { slack: 'prof_9' } },
+      { agent: 'support', secrets: ['STRIPE_KEY'], bindings: { slack: 'prof_9' }, runtimeContext: null },
       { sessionId: SESSION_ID, name: 'Refund a customer', sandboxSlug: 'python' },
     );
     expect(input).toEqual({
@@ -128,5 +128,28 @@ describe('buildSessionCreateInput', () => {
       inherit_unbound: true,
       metadata: { [BOUND_CONNECTIONS_KEY]: { slack: 'prof_9' } },
     });
+  });
+});
+
+describe('runtime_context', () => {
+  test('is sent when set — the one documented override the demo could not exercise', () => {
+    const body = buildSessionCreateInput(
+      { ...NO_OVERRIDES, runtimeContext: { plan: 'pro', locale: 'en-GB' } },
+      { sessionId: 's1' },
+    );
+    expect(body.runtime_context).toEqual({ plan: 'pro', locale: 'en-GB' });
+  });
+
+  test('is OMITTED when unset, so an untouched session is byte-identical to before', () => {
+    const body = buildSessionCreateInput(NO_OVERRIDES, { sessionId: 's1' });
+    expect('runtime_context' in body).toBe(false);
+  });
+
+  test('an EMPTY map is omitted too — sending {} would claim context that is not there', () => {
+    const body = buildSessionCreateInput(
+      { ...NO_OVERRIDES, runtimeContext: {} },
+      { sessionId: 's1' },
+    );
+    expect('runtime_context' in body).toBe(false);
   });
 });

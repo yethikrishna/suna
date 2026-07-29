@@ -115,4 +115,16 @@ describe('managedSkillConfigDirs', () => {
       }),
     ).toEqual(['/workspace/.kortix/opencode'])
   })
+
+  it('excludes the OpenCode directory from a non-OpenCode harness boot', () => {
+    expect(
+      managedSkillConfigDirs({
+        workspace: '/workspace',
+        opencodeConfigDir: '/workspace/.kortix/opencode',
+        harness: 'pi',
+        runtimeConfigDir: '.pi',
+        includeOpenCode: false,
+      }),
+    ).toEqual(['/workspace/.pi'])
+  })
 })

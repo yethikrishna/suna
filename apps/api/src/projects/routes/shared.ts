@@ -730,6 +730,11 @@ export async function openSession(args: {
   } catch {
     providerStatus = 'unknown';
   }
+  let observedRuntimeHealth: Awaited<ReturnType<typeof inspectSandboxRuntime>> = null;
+  if (providerStatus === 'unknown') {
+    observedRuntimeHealth = await inspectSandboxRuntime(row.externalId, loaded.userId);
+    if (observedRuntimeHealth) providerStatus = 'running';
+  }
 
   if (providerStatus === 'removed') {
     if (removedRuntimeStillInGrace(row)) {
@@ -859,7 +864,8 @@ export async function openSession(args: {
   if (managedAcpIdentity) {
     const expectedServerId = managedAcpIdentity.acpServerId;
     const expectedHarness = managedAcpIdentity.runtimeHarness;
-    const health = await inspectSandboxRuntime(runningExternalId, loaded.userId);
+    const health =
+      observedRuntimeHealth ?? (await inspectSandboxRuntime(runningExternalId, loaded.userId));
     const identityMatches =
       !!expectedServerId &&
       !!expectedHarness &&

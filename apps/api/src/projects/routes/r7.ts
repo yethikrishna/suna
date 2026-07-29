@@ -44,6 +44,7 @@ import {
   claimAvailableWarmProjectSession,
   discardAvailableWarmProjectSession,
   findAvailableWarmProjectSession,
+  withWarmProjectSessionLock,
 } from '../lib/warm-session-store';
 import { refreshWarmSessionWorkspace } from '../lib/warm-session-workspace';
 import {
@@ -236,6 +237,7 @@ projectsApp.openapi(
     };
     const configuration = resolvedWarmSessionConfiguration(loaded.row);
     const coordinator = createWarmProjectSessionCoordinator({
+      exclusive: (operation) => withWarmProjectSessionLock(scope, operation),
       findAvailable: () => findAvailableWarmProjectSession(scope),
       discard: (sessionId, metadata) =>
         discardAvailableWarmProjectSession(scope, sessionId, metadata),

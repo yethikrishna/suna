@@ -1287,6 +1287,8 @@ export async function createProjectSession(input: {
         baseRef,
         sandboxProvider: providerName,
         sandboxId: sessionId,
+        // Do not set opencodeSessionId during wrapper-session creation.
+        // Runtime root discovery persists it only after OpenCode creates its root.
         agentName,
         status: 'provisioning',
         // Sessions are private to their creator by default; share via the

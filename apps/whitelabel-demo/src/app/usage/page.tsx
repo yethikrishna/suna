@@ -14,6 +14,7 @@
  */
 
 import { BrandMark } from '@/components/brand-mark';
+import { CallSnippet } from '@/components/dev/call-snippet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -144,6 +145,14 @@ function UsageDashboard() {
             </div>
 
             <UsageEndUserBreakdown data={data} />
+
+            {/* The two reads behind the numbers above: the split, and one
+                customer's line. Both run server-side — a browser cannot reach
+                /usage at all (src/server/policy.ts is deny-by-default). */}
+            <div className="mt-3 space-y-1">
+              <CallSnippet id="usage.byEndUser" />
+              <CallSnippet id="usage.forEndUser" context={{ endUserRef: data.endUserRef }} />
+            </div>
 
             <div className="mt-8">
               <h2 className="text-sm font-semibold tracking-tight">Guardrails</h2>

@@ -17,6 +17,7 @@
 import Loading from '@/components/ui/loading';
 
 import { AgentPicker } from '@/components/chat/agent-picker';
+import { CallSnippet } from '@/components/dev/call-snippet';
 import {
   ConnectorBindingFields,
   bindingLabels,
@@ -257,6 +258,19 @@ function NewSessionForm({
           />
         </section>
       )}
+
+      {/* The dialog IS the create body — so show the body it currently builds,
+          updating as the switches move, rather than describing it. */}
+      <CallSnippet
+        id="session.create"
+        context={{
+          projectId,
+          overrides,
+          // Same labels the submit path passes, so the snippet cannot print a
+          // different body than the button sends.
+          connectionLabels: bindingLabels(connectors.data?.connectors ?? [], bindings),
+        }}
+      />
 
       <DialogFooter>
         <Button variant="ghost" onClick={onDone} disabled={start.isPending}>

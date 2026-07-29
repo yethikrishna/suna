@@ -23,15 +23,11 @@ describe('new project git provider default', () => {
     expect(source).not.toContain('rounded-2xl');
   });
 
-  test('offers the general-purpose and ACP multi-harness starter choices', () => {
-    expect(source).toContain(
-      "useState<StarterTemplateId>(\n    'general-knowledge-worker',\n  )",
-    );
-    expect(source).toContain('General-purpose');
-    expect(source).toContain('ACP multi-harness');
-    expect(source).toContain('value="acp-multi-harness"');
-    expect(source).toContain('starter_template: starterTemplate');
-    expect(source).toContain('data-testid="project-create-starter"');
+  test('uses one generic starter without a starter selector', () => {
+    expect(source).not.toContain('StarterTemplateId');
+    expect(source).not.toContain('ACP multi-harness');
+    expect(source).not.toContain('data-testid="project-create-starter"');
+    expect(source).toContain("starter_template: 'general-knowledge-worker'");
   });
 
   test('does not mistake the managed PAT import fallback for a GitHub App installation', () => {

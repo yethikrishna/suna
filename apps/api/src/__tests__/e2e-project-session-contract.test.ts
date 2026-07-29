@@ -39,6 +39,7 @@ let sandboxProvisionCalls = 0;
 let providerStartCalls = 0;
 let providerStatus = 'stopped';
 let providerStatusAfterStart: string | null = null;
+let providerStatusSessionMetadataUpdate: Record<string, unknown> | null = null;
 let providerStartError: Error | null = null;
 let providerStartGate: Promise<void> | null = null;
 let releaseProviderStart: (() => void) | null = null;
@@ -97,6 +98,7 @@ function resetState() {
   providerStartCalls = 0;
   providerStatus = 'stopped';
   providerStatusAfterStart = null;
+  providerStatusSessionMetadataUpdate = null;
   providerStartError = null;
   providerStartGate = null;
   releaseProviderStart = null;
@@ -366,7 +368,18 @@ mock.module('../platform/providers', () => ({
     }
   },
   getProvider: () => ({
-    getStatus: async () => providerStatus,
+    getStatus: async () => {
+      if (providerStatusSessionMetadataUpdate && sessionRow) {
+        sessionRow = {
+          ...sessionRow,
+          metadata: {
+            ...(sessionRow.metadata ?? {}),
+            ...providerStatusSessionMetadataUpdate,
+          },
+        };
+      }
+      return providerStatus;
+    },
     start: async () => {
       providerStartCalls += 1;
       if (providerStartError) throw providerStartError;
@@ -1739,6 +1752,55 @@ describe('project session API contract', () => {
     });
     expect(sandboxProvisionCalls).toBe(0);
     expect(sessionSandboxRows).toHaveLength(1);
+  });
+
+  test('dashboard start returns ACP identity persisted while startSession runs', async () => {
+    const app = createApp();
+    sessionRow = {
+      ...sessionRow!,
+      sandboxProvider: 'platinum',
+      status: 'running',
+      metadata: {
+        runtime_transport: 'acp',
+        runtime_harness: 'codex',
+        acp_server_id: SESSION_ID,
+        native_agent: 'codex',
+      },
+    };
+    sessionSandboxRows = [
+      {
+        sandboxId: SESSION_ID,
+        sessionId: SESSION_ID,
+        accountId: ACCOUNT_ID,
+        projectId: PROJECT_ID,
+        provider: 'platinum',
+        externalId: 'box-acp-identity',
+        baseUrl: null,
+        status: 'active',
+        config: {},
+        metadata: {},
+        lastUsedAt: null,
+        createdAt: new Date('2026-01-02T00:00:00Z'),
+        updatedAt: new Date('2026-01-02T00:00:00Z'),
+      },
+    ];
+    providerStatus = 'running';
+    providerStatusSessionMetadataUpdate = {
+      acp_session_id: 'codex-native-created-during-start',
+    };
+
+    const response = await app.request(
+      `/v1/projects/${PROJECT_ID}/sessions/${SESSION_ID}/start`,
+      { method: 'POST' },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      runtime_transport: 'acp',
+      runtime_harness: 'codex',
+      acp_server_id: SESSION_ID,
+      acp_session_id: 'codex-native-created-during-start',
+    });
   });
 
   test('dashboard start retires abandoned no-external-id provisioning rows and reallocates', async () => {

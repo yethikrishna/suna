@@ -700,6 +700,10 @@ export const projectSessions = kortixSchema.table(
     // env is (today's agent-grant set) ∩ (this allowlist), enforced at BOTH boot
     // and hot-push. null = no restriction (byte-identical to pre-KaaB behavior).
     secretsAllowlist: jsonb('secrets_allowlist').$type<string[]>(),
+    // Distinguishes omitted connector_bindings from an explicit replacement.
+    connectorBindingsConfigured: boolean('connector_bindings_configured')
+      .default(false)
+      .notNull(),
     // When a session sets `connector_bindings`, binding ANY alias normally
     // suppresses the project-default fallback for every OTHER (unbound) alias —
     // "all-or-nothing" (see resolveSessionConnectorProfile). This opts the session

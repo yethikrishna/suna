@@ -155,6 +155,18 @@ describe('connector profiles', () => {
   });
 });
 
+describe('project session connector bindings', () => {
+  test('store whether connector bindings were configured explicitly', () => {
+    const column = getTableConfig(projectSessions).columns.find(
+      (candidate) => candidate.name === 'connector_bindings_configured',
+    );
+
+    expect(column).toBeDefined();
+    expect(column?.notNull).toBe(true);
+    expect(column?.default).toBe(false);
+  });
+});
+
 describe('sandbox compute provider attribution', () => {
   test('compute windows persist the provider and index it with start time', () => {
     expect(columnNames(sandboxComputeSessions)).toContain('provider');

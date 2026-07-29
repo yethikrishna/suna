@@ -402,3 +402,74 @@ Keep the harness initialized before a user requests a session.
 Use commit artifacts and writable overlays instead of repository clone.
 
 Build Pi in-process behind the same ACP contract.
+
+## 15. Post-deploy dev proof
+
+Dev API commit `7935cd9360afbd8f182ba6ac1dd12d0b3fdb6d3e` contains the
+selected-harness change.
+
+The live API returned:
+
+```text
+status=ok
+version=0.11.1-dev.7935cd93
+environment=dev
+```
+
+The first Daytona Pi session missed the snapshot cache.
+
+| phase | elapsed |
+|---|---:|
+| Row and tokens | 499 ms |
+| Snapshot cache resolution | 341.853 s |
+| Daytona create | 1.237 s |
+| Host provision total | 343.589 s |
+| Guest repository materialization | 5.418 s |
+| Pi ACP initialization after repository | 132 ms |
+| Guest ACP ready | 5.575 s |
+
+The first chat request used `kortix/glm-5.2`.
+
+It returned `503` after the API's 25-second processing deadline.
+
+The second Daytona Pi session hit the snapshot cache.
+
+| phase | elapsed |
+|---|---:|
+| Row and tokens | 658 ms |
+| Snapshot cache resolution | 94 ms |
+| Daytona create | 1.569 s |
+| Host provision total | 2.320 s |
+| Guest repository materialization | 15 ms |
+| Pi ACP initialization after repository | 136 ms |
+| Guest ACP ready | 183 ms |
+
+The second chat lifecycle used `kortix/deepseek-v4-flash`.
+
+It passed the initial response, follow-up, transcript reload, restart, and
+post-restart response.
+
+The live daemon reported:
+
+```text
+runtimeReady=true
+runtime_harness=pi
+opencode=down
+opencode_pid=null
+runtime-acp-initialized=183ms
+```
+
+The guest repository returned the same SHA for `HEAD` and remote `main`:
+
+```text
+8de781b942a3154dfd23ed7918ada8ae97f7c4a9
+```
+
+The raw record is
+`tests/performance/session-start/results/2026-07-29/dev-pi-post-deploy.json`.
+
+The result isolates three separate costs:
+
+1. ACP is a protocol. It does not remove provider or repository latency.
+2. Selected Pi removes the OpenCode process from the readiness path.
+3. Exact artifact cache hits remove snapshot build and repository clone costs.

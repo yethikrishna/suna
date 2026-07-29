@@ -45,7 +45,7 @@ my-project/
     └── opencode/                      ← OpenCode native config dir
         ├── opencode.jsonc             ← runtime config (providers, plugins, MCP servers, …)
         ├── agents/{kortix,memory-reflector}.md
-        └── skills/kortix-system/SKILL.md (+ references and bundled skills)
+        └── skills/kortix-cli/SKILL.md (+ the artifact skill floor)
 ```
 
 The local coding tools you wire up (`--primary`/`--agents`, default Codex)

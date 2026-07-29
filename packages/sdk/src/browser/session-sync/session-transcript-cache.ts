@@ -75,8 +75,11 @@ export function shouldHydrateFromCache(input: {
  * usable entry — the caller then simply waits for the runtime, exactly as
  * before this cache existed.
  */
-export async function readCachedTranscript(sessionId: string): Promise<CachedTranscript | null> {
-  const cached = await loadSessionFromIDB(sessionId);
+export async function readCachedTranscript(
+  sessionId: string,
+  kortixSessionScope?: string,
+): Promise<CachedTranscript | null> {
+  const cached = await loadSessionFromIDB(sessionId, kortixSessionScope);
   if (!cached || !Array.isArray(cached.messages) || cached.messages.length === 0) return null;
   return { messages: cached.messages, parts: cached.parts ?? {} };
 }
@@ -85,8 +88,9 @@ export async function readCachedTranscript(sessionId: string): Promise<CachedTra
 export function writeCachedTranscript(
   state: TranscriptStoreSlice,
   sessionId: string,
+  kortixSessionScope?: string,
 ): Promise<void> {
   const transcript = selectSessionTranscript(state, sessionId);
   if (!transcript) return Promise.resolve();
-  return saveSessionToIDB(sessionId, transcript.messages, transcript.parts);
+  return saveSessionToIDB(sessionId, transcript.messages, transcript.parts, kortixSessionScope);
 }

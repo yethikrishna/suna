@@ -28,9 +28,9 @@ const TEST_AUTH_KEY = '__KORTIX_E2E_AUTH__';
 // tools/plugins. Optional skills (agent-browser and knowledge-work skills) are
 // marketplace installable instead.
 const BASE_STARTER_PATHS = [
-  '.gitignore',
   '.claude/CLAUDE.md',
   '.codex/AGENTS.md',
+  '.gitignore',
   '.kortix/memory/MEMORY.md',
   '.kortix/opencode/agents/kortix.md',
   '.kortix/opencode/agents/memory-reflector.md',

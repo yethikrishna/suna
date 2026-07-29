@@ -14,8 +14,7 @@ makes an initial commit.
 ## Usage
 
 ```sh
-kortix init                  # interactive flow: pick a name + template,
-                              # wire up coding agents, install marketplace skills
+kortix init                  # interactive flow: pick a name and wire local coding agents
 kortix init my-project       # use the given name
 kortix ship                  # create the cloud project (first run) + push your code
 kortix self-host start       # run your own Kortix Cloud from Docker images
@@ -23,10 +22,8 @@ kortix self-host start       # run your own Kortix Cloud from Docker images
 
 Scaffolding is explicit-only: `kortix init` is the one command that creates
 a project directory. An unknown subcommand (`kortix use`, `kortix inti`, …)
-errors with a suggestion — it never scaffolds. Init's choices: which coding
-agent(s) to wire (`--primary`, `--agents`), which starter template
-(`--template general-knowledge-worker|acp-multi-harness|minimal`), and which
-marketplace skills to install (`--marketplace`).
+errors with a suggestion — it never scaffolds. Init asks which local coding
+agents to wire through `--primary` and `--agents`.
 
 Run `kortix init --help` for the full flag list, or `kortix --help`
 for the full command list (project, auth, work, and resource subcommands —
@@ -39,7 +36,10 @@ my-project/
 ├── .git/                              ← initialized on the `main` branch
 ├── .gitignore
 ├── README.md
-├── kortix.yaml                        ← project manifest (agents: map, triggers, sandbox)
+├── kortix.yaml                        ← v3 manifest with four runtime profiles
+├── .claude/CLAUDE.md                  ← Claude Code runtime instructions
+├── .codex/AGENTS.md                   ← Codex runtime instructions
+├── .pi/README.md                      ← Pi runtime instructions
 └── .kortix/
     ├── memory/MEMORY.md               ← project-wide memory for agents
     └── opencode/                      ← OpenCode native config dir
@@ -49,24 +49,21 @@ my-project/
 ```
 
 The local coding tools you wire up (`--primary`/`--agents`, default Codex)
-each get their native discovery directory linked to
-`.kortix/opencode/` — `.opencode` for OpenCode, `.claude` for Claude Code,
-`.agents` for Codex, and `.pi` for Pi. Codex, Pi, and Cursor also get a root
-`AGENTS.md` pointer.
+receive native discovery links to the canonical `.kortix/opencode` source.
+OpenCode uses `.opencode`. Claude Code uses `.claude/skills`,
+`.claude/agents`, and `.claude/commands`. Codex uses `.agents`. Pi uses
+`.pi/skills`. Codex, Pi, and Cursor also get a root `AGENTS.md` pointer.
 
 This local tool choice does not select the cloud session harness.
 
-- `general-knowledge-worker` is the default. It uses `kortix_version: 2` and
-  OpenCode REST.
-- `acp-multi-harness` uses `kortix_version: 3`. It declares OpenCode, Claude
-  Code, Codex, and Pi agents. Project creation enables **ACP &
-  Multi-Harness** automatically.
-- `minimal` is the internal base-only template.
+The one public starter uses `kortix_version: 3`. It declares OpenCode, Claude
+Code, Codex, and Pi agents. Cloud project creation enables **ACP &
+Multi-Harness** automatically.
 
 Create a four-harness test project with:
 
 ```sh
-kortix init harness-lab --template acp-multi-harness --yes --no-git
+kortix init harness-lab --yes --no-git
 ```
 
 Agents can retrieve the deployed platform manual from any harness:

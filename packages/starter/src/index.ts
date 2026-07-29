@@ -39,7 +39,7 @@ export interface StarterFile {
 //
 // `minimal` (base only, no domain skills) is kept purely as an INTERNAL
 // building block: the project-clone seed path (`buildProjectSeedFilesFromItem`)
-// uses it to lay down the v2 compatibility floor and canonical skill source
+// uses it to lay down the v3 runtime floor and canonical skill source
 // before a `registry:project`'s own skills/agents are layered on top, so a
 // specialized project template isn't
 // polluted with every general-knowledge skill. It is not surfaced in the

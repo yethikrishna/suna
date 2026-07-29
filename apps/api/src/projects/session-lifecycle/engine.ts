@@ -855,6 +855,10 @@ async function postAcpPrompt(input: {
           kind: 'principal',
           userId: input.userId,
           callerSessionId: input.projectSessionId,
+          // The API is delivering this prompt (trigger, cron, Slack, email,
+          // CLI, mobile), so it is a control-plane OBSERVATION and may extend
+          // the deadline. forwardToSandbox does that once the box accepts it.
+          sandboxAuthored: false,
         },
         method,
         route,
@@ -883,7 +887,7 @@ async function postPrompt(
     const res = await forwardToSandbox(
       externalId,
       DAEMON_PORT,
-      { kind: 'principal', userId, callerSessionId },
+      { kind: 'principal', userId, callerSessionId, sandboxAuthored: false },
       'POST',
       `/session/${encodeURIComponent(opencodeSessionId)}/prompt_async`,
       `?directory=${encodeURIComponent(WORKSPACE)}`,

@@ -101,6 +101,7 @@ import {
   loadProjectForUser,
   projectCapabilityAllowed,
 } from '../lib/access';
+import { shortenSandboxDeadline } from '../sandbox-deadline';
 import { AnyObject, TriggerSchema, projectsApp } from '../lib/app';
 import { withProjectGitAuth } from '../lib/git';
 import { metadataMerge } from '../lib/metadata-merge';
@@ -2229,6 +2230,17 @@ projectsApp.openapi(
               providerID: typeof body.error_provider === 'string' ? body.error_provider : undefined,
             }
           : undefined;
+      // SANDBOX-REPORTED turn end. `shortenSandboxDeadline` is LEAST-only, so
+      // it is structurally incapable of EXTENDING the box's life — which is
+      // exactly why it is safe to trust a payload the sandbox authored, and
+      // why it needs no auth gate of its own. This is the "die 15 minutes
+      // after the last turn ended" half of the model.
+      void shortenSandboxDeadline(sessionId).catch((err) =>
+        console.warn(
+          `[deadline] shorten failed for session ${sessionId}:`,
+          err instanceof Error ? err.message : err,
+        ),
+      );
       const ok = await relayTurnEnd(sessionId, status, errorInfo);
       return c.json({ ok });
     }

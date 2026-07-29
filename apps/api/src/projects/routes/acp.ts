@@ -13,6 +13,7 @@ import { createPersistedAcpSseProxy } from '../lib/acp-sse-proxy';
 import { appendAcpEnvelope, loadAcpTranscript } from '../lib/acp-transcript';
 import { projectsApp } from '../lib/app';
 import { syncSandboxEnvForPrompt } from '../lib/sandbox-env-sync';
+import { extendSandboxDeadline } from '../sandbox-deadline';
 import { sandboxRuntimeEndpoint } from '../runtime-inspection';
 import {
   type PromptInfo,
@@ -241,6 +242,21 @@ projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp',
         signal: c.req.raw.signal,
       };
     });
+    if (upstream.ok && titlePrompt) {
+      // A CONTROL-PLANE-OBSERVED turn start: the API relayed this prompt and
+      // the box accepted it. Only such an observation may push the deadline
+      // out, and never when the box authored the request itself. Fire-and-
+      // forget — a deadline write must never fail a user's prompt.
+      const promptSessionId = target.sessionId;
+      if (c.get('apiKeyType') !== 'sandbox') {
+        void extendSandboxDeadline({ sessionId: promptSessionId }).catch((err) =>
+          console.warn(
+            `[deadline] extend failed for session ${promptSessionId}:`,
+            err instanceof Error ? err.message : err,
+          ),
+        );
+      }
+    }
     if (upstream.ok && titlePrompt?.text) {
       void generateSessionTitleFromFirstPrompt({
         sessionId: target.sessionId,

@@ -26,6 +26,7 @@ export interface ReapCandidate {
   provider: ProviderName;
   externalId: string;
   metadata: Record<string, unknown> | null;
+  deadlineAt: Date;
   createdAt: Date;
 }
 
@@ -35,14 +36,16 @@ export function reapCandidatePredicate() {
 }
 
 /**
- * One batch of candidates, least-recently-visited first.
+ * One batch of candidates: EXPIRED first, then least-recently-visited.
  *
  * ROTATION, NOT STARVATION: the candidate set is capped at REAP_BATCH_SIZE so a
  * pass can't stampede the provider, but before 2026-07-29 the query had no
  * ORDER BY — Postgres returned an arbitrary 100 of 279 matching prod rows, so
  * ~179 rows were structurally unreachable by the reaper FOREVER while
  * `tickRunningComputeCharges` kept settling their full wall-clock delta. The
- * ORDER BY below makes the cap a rotation instead.
+ * rotation key below makes the cap FAIR; the leading `deadline_at <= now()`
+ * key makes it also CORRECT, because a batch saturated with healthy rows can no
+ * longer defer the one row that is actually over its deadline.
  */
 export async function selectReapCandidates(
   predicate: ReturnType<typeof reapCandidatePredicate>,
@@ -55,15 +58,21 @@ export async function selectReapCandidates(
       provider: sessionSandboxes.provider,
       externalId: sessionSandboxes.externalId,
       metadata: sessionSandboxes.metadata,
+      deadlineAt: sessionSandboxes.deadlineAt,
       createdAt: sessionSandboxes.createdAt,
     })
     .from(sessionSandboxes)
     .where(predicate)
-    // Least-recently-visited first, so the sweep rotates rather than starving.
-    // `reaperVisitedAt` is always written by `toISOString()`, so lexicographic
-    // text order IS chronological order — no cast, so a hand-edited value can
-    // never make the whole sweep throw.
-    .orderBy(sql`${sessionSandboxes.metadata}->>'reaperVisitedAt' asc nulls first`)
+    .orderBy(
+      // Expired rows always win the batch — the whole point of the sweep.
+      sql`(${sessionSandboxes.deadlineAt} <= now()) desc`,
+      // Then least-recently-visited, so the RECONCILE half of the sweep (asking
+      // the provider its real state for every active row) still rotates rather
+      // than starving. `reaperVisitedAt` is always written by `toISOString()`,
+      // so lexicographic text order IS chronological order — no cast, so a
+      // hand-edited value can never make the whole sweep throw.
+      sql`${sessionSandboxes.metadata}->>'reaperVisitedAt' asc nulls first`,
+    )
     .limit(reapBatchSize())) as ReapCandidate[];
 }
 

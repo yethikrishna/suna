@@ -46,6 +46,7 @@ import {
 } from './box-queries';
 import { decideReconcile } from './policy';
 import { applyStoppedState } from './sandbox-state-sync';
+import { stopExpiredBox } from './stop-box';
 
 export interface ReapResult {
   candidates: number; // rows this pass actually examined (capped by the batch)
@@ -110,10 +111,18 @@ export async function reapAndReconcileSandboxes(now = new Date()): Promise<ReapR
               err instanceof Error ? err.message : err,
             ),
           );
-          // TODO(deadline): the next commit reads `row.deadlineAt` here. Until
-          // the column exists a running box is left alone — which is exactly
-          // what production already did (the idle-stop path never once fired).
-          result.skipped += 1;
+          // THE ONE RULE. `deadline_at` is pushed out only by a
+          // control-plane-OBSERVED turn start and pulled in by a
+          // sandbox-reported turn end, so this comparison is the whole
+          // decision — no probe, no lease, no activity clock, no ceiling
+          // arithmetic, and nothing the box itself can influence upward.
+          if (row.deadlineAt.getTime() > now.getTime()) {
+            result.skipped += 1;
+            continue;
+          }
+          const outcome = await stopExpiredBox(row, now);
+          result[outcome] += 1;
+          if (outcome === 'stopped') result.billingClosed += 1;
           continue;
         }
 

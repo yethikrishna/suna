@@ -22,13 +22,18 @@ let statusCalls: string[] = [];
 let livenessStamps: Array<{ sandboxId: string; at: Date }> = [];
 
 /** Mirrors the ORDER BY the reaper asks Postgres for, so a pass over more rows
- *  than the batch actually rotates instead of re-selecting the same head. Both
- *  keys are ISO-8601 UTC strings, where lexicographic order IS chronological
- *  order, and a missing key sorts first (SQL `nulls first`). */
-function applyOrder(rows: any[]): any[] {
-  const key = (r: any) =>
+ *  than the batch actually rotates instead of re-selecting the same head:
+ *  EXPIRED first, then least-recently-visited. The visit stamp is an ISO-8601
+ *  UTC string, where lexicographic order IS chronological order, and a missing
+ *  key sorts first (SQL `nulls first`). */
+function applyOrder(rows: any[], now: Date = NOW): any[] {
+  const visited = (r: any) =>
     'startedAt' in r ? String(r.startedAt ?? '') : String(r.metadata?.reaperVisitedAt ?? '');
-  return [...rows].sort((a, b) => key(a).localeCompare(key(b)));
+  const expired = (r: any) =>
+    r?.deadlineAt instanceof Date && r.deadlineAt.getTime() <= now.getTime() ? 0 : 1;
+  return [...rows].sort(
+    (a, b) => expired(a) - expired(b) || visited(a).localeCompare(visited(b)),
+  );
 }
 
 /** Flatten a drizzle SQL expression to its literal text so a test can assert
@@ -50,8 +55,8 @@ function hybrid(rows: any[], throwOnGroupBy = false): any {
   const p: any = Promise.resolve(rows);
   p.limit = (n?: number) =>
     hybrid(typeof n === 'number' ? rows.slice(0, n) : rows, throwOnGroupBy);
-  p.orderBy = (expression?: unknown) => {
-    orderByExpressions.push(describeSql(expression));
+  p.orderBy = (...expressions: unknown[]) => {
+    for (const expression of expressions) orderByExpressions.push(describeSql(expression));
     return hybrid(applyOrder(rows), throwOnGroupBy);
   };
   p.groupBy = async () => {
@@ -236,21 +241,49 @@ function candidate(over: Partial<any> = {}) {
     provider: 'daytona',
     externalId: 'ext-1',
     metadata: null,
+    // Healthy by default: a live deadline. Tests that want a kill set it.
+    deadlineAt: new Date(NOW.getTime() + HOUR),
     createdAt: new Date(NOW.getTime() - 2 * HOUR),
     ...over,
   };
 }
 
-describe('reapAndReconcileSandboxes', () => {
-  // A running box is LEFT ALONE by this commit. The three mechanisms that used
-  // to judge it — the execution lease, the busy probe, and the arm/disarm idle
-  // machine — were all fed by timestamps the SANDBOX ITSELF wrote, so a wedged
-  // box renewed its own reprieve forever. Deleting them is not a behaviour
-  // regression: `metadata.idleObservedAt` was null on 100% of active prod rows,
-  // which means the idle-stop path had never once fired in production. The
-  // deadline that replaces them lands in the next commit.
-  test('a running box is skipped, and its liveness is stamped for billing', async () => {
-    candidates = [candidate()];
+describe('reapAndReconcileSandboxes — the one rule: deadline_at <= now', () => {
+  // ═══ THE REGRESSION THIS EXISTS TO KILL ═══
+  // Prod 2026-07-29: 187 running boxes, 156 with zero LLM usage_events, oldest
+  // 264 HOURS. Three mechanisms — an execution lease the box renewed itself, a
+  // busy probe answered by that same wedged daemon, and an activity clock the
+  // lease renewal stamped — each vetoed the stop, and all three were written by
+  // the subject of the judgement. The box forged the evidence used to judge it.
+  test('REGRESSION: a WEDGED box with no observed turn dies at the ceiling', async () => {
+    candidates = [
+      candidate({
+        // 264h old, exactly the observed worst case, and still claiming to be
+        // busy via the metadata the old code trusted.
+        createdAt: new Date(NOW.getTime() - 264 * HOUR),
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          executionLeaseUntil: new Date(NOW.getTime() + 60_000).toISOString(),
+          lastTurnAt: NOW.toISOString(),
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(r.stopped).toBe(1);
+    expect(r.billingClosed).toBe(1);
+    expect(stops).toEqual(['ext-1']);
+    // Billing is settled against the still-active row before the flip.
+    expect(pausedCompute).toEqual(['sb-1']);
+    expect(cacheInvalidations).toEqual(['ext-1']);
+    expect(updateCalls.some((c) => c.table === sessionSandboxes && c.updates.status === 'stopped')).toBe(true);
+    expect(updateCalls.some((c) => c.table === projectSessions && c.updates.status === 'stopped')).toBe(true);
+  });
+
+  test('a box with an observed turn SURVIVES — its deadline is still ahead', async () => {
+    candidates = [candidate({ deadlineAt: new Date(NOW.getTime() + 4 * HOUR) })];
     statusByExternal['ext-1'] = 'running';
 
     const r = await reapAndReconcileSandboxes(NOW);
@@ -258,40 +291,76 @@ describe('reapAndReconcileSandboxes', () => {
     expect(r.skipped).toBe(1);
     expect(r.stopped).toBe(0);
     expect(stops).toEqual([]);
-    // The billing clamp depends on this stamp and nothing else may write it.
+    expect(pausedCompute).toEqual([]);
+    // The liveness stamp the merged billing clamp depends on is still written.
     expect(livenessStamps).toEqual([{ sandboxId: 'sb-1', at: NOW }]);
-    expect(rowUpdates()).toEqual([]);
   });
 
-  test('never asks the sandbox anything about itself', async () => {
+  test('the deadline is the WHOLE decision — the box is never consulted', async () => {
+    // Identical rows; only the deadline differs. Metadata that used to veto a
+    // stop (a live lease, a fresh lastTurnAt) is present on the doomed one and
+    // changes nothing.
     candidates = [
-      candidate({ metadata: { executionLeaseUntil: new Date(NOW.getTime() + 60_000).toISOString() } }),
+      candidate({
+        sandboxId: 'sb-live',
+        sessionId: 'sess-live',
+        externalId: 'ext-live',
+        deadlineAt: new Date(NOW.getTime() + 1),
+      }),
+      candidate({
+        sandboxId: 'sb-dead',
+        sessionId: 'sess-dead',
+        externalId: 'ext-dead',
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          executionLeaseUntil: new Date(NOW.getTime() + 3 * HOUR).toISOString(),
+          lastTurnAt: NOW.toISOString(),
+          idleObservedAt: null,
+        },
+      }),
     ];
-    statusByExternal['ext-1'] = 'running';
+    statusByExternal['ext-live'] = 'running';
+    statusByExternal['ext-dead'] = 'running';
 
     const r = await reapAndReconcileSandboxes(NOW);
 
-    // A stale lease left over on the row is inert — nothing reads it.
+    expect(stops).toEqual(['ext-dead']);
+    expect(r.stopped).toBe(1);
     expect(r.skipped).toBe(1);
-    expect(rowUpdates()).toEqual([]);
   });
 
-  test('reconciles a box the provider already stopped — no stop call', async () => {
-    candidates = [candidate()];
+  test('exactly at the deadline is expired (<=, not <)', async () => {
+    candidates = [candidate({ deadlineAt: NOW })];
+    statusByExternal['ext-1'] = 'running';
+
+    expect((await reapAndReconcileSandboxes(NOW)).stopped).toBe(1);
+  });
+
+  // An unclaimed warm box used to be exempt from the idle TTL entirely, so it
+  // burned until the 240-min ceiling. It now dies at its 20-minute boot floor
+  // like anything else nobody prompted.
+  test('an expired WARM box is stopped like any other', async () => {
+    candidates = [candidate({ deadlineAt: new Date(NOW.getTime() - 60_000) })];
+    statusByExternal['ext-1'] = 'running';
+
+    expect((await reapAndReconcileSandboxes(NOW)).stopped).toBe(1);
+    expect(stops).toEqual(['ext-1']);
+  });
+
+  test('the sweep asks the provider FIRST — a stopped box is reconciled, never poked', async () => {
+    candidates = [candidate({ deadlineAt: new Date(NOW.getTime() - HOUR) })];
     statusByExternal['ext-1'] = 'stopped';
 
     const r = await reapAndReconcileSandboxes(NOW);
 
     expect(r.reconciled).toBe(1);
     expect(r.billingClosed).toBe(1);
-    expect(stops).toEqual([]); // never poke a stopped box
+    expect(stops).toEqual([]);
     expect(pausedCompute).toEqual(['sb-1']);
-    expect(updateCalls.some((c) => c.table === sessionSandboxes && c.updates.status === 'stopped')).toBe(true);
-    expect(updateCalls.some((c) => c.table === projectSessions && c.updates.status === 'stopped')).toBe(true);
   });
 
-  test('does not act on transient unknown provider state', async () => {
-    candidates = [candidate()];
+  test('never acts on transient unknown provider state, expired or not', async () => {
+    candidates = [candidate({ deadlineAt: new Date(NOW.getTime() - HOUR) })];
     statusByExternal['ext-1'] = 'unknown';
 
     const r = await reapAndReconcileSandboxes(NOW);
@@ -315,7 +384,47 @@ describe('reapAndReconcileSandboxes', () => {
       runtimeIdentityState: 'unavailable',
       preservedExternalId: 'ext-1',
     });
-    expect(stops).toEqual([]); // never poke a removed box
+    expect(stops).toEqual([]);
+  });
+
+  test('a failed provider.stop closes NOTHING — no status flip, no billing close', async () => {
+    candidates = [candidate({ deadlineAt: new Date(NOW.getTime() - HOUR) })];
+    statusByExternal['ext-1'] = 'running';
+    stopErrorByExternal['ext-1'] = new Error('provider unavailable');
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(r.errors).toBe(1);
+    expect(r.stopped).toBe(0);
+    expect(r.billingClosed).toBe(0);
+    expect(pausedCompute).toEqual([]);
+    expect(
+      updateCalls.some((c) => c.table === sessionSandboxes && c.updates.status === 'stopped'),
+    ).toBe(false);
+  });
+
+  test('already stopped provider-side is success, not an error', async () => {
+    candidates = [candidate({ deadlineAt: new Date(NOW.getTime() - HOUR) })];
+    statusByExternal['ext-1'] = 'running';
+    stopErrorByExternal['ext-1'] = new Error('Sandbox is already stopped');
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(r.stopped).toBe(1);
+    expect(r.errors).toBe(0);
+    expect(pausedCompute).toEqual(['sb-1']);
+  });
+
+  test('a lifecycle transition in progress defers rather than fighting the wake', async () => {
+    candidates = [candidate({ deadlineAt: new Date(NOW.getTime() - HOUR) })];
+    statusByExternal['ext-1'] = 'running';
+    stopErrorByExternal['ext-1'] = new Error('state change in progress');
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(r.skipped).toBe(1);
+    expect(r.stopped).toBe(0);
+    expect(pausedCompute).toEqual([]);
   });
 });
 
@@ -434,6 +543,9 @@ describe('the batch cap rotates and cannot starve a row', () => {
 
     expect(orderByExpressions.some((e) => e.includes('reaperVisitedAt'))).toBe(true);
     expect(orderByExpressions.some((e) => e.includes('nulls first'))).toBe(true);
+    // Expired rows must win the batch, or a backlog of healthy rows could defer
+    // the one row that is actually over its deadline, forever.
+    expect(orderByExpressions.some((e) => e.includes('deadline_at') && e.includes('desc'))).toBe(true);
   });
 
   test('every examined row is stamped, including ones the pass deliberately left alone', async () => {

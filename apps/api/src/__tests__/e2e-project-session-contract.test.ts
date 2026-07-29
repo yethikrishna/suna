@@ -55,7 +55,13 @@ let opencodeEnsureReason: 'unchanged' | 'healed' | 'not_ready' | 'unreachable' =
 let activeSessionCount = 0;
 let sessionRow: typeof projectSessions.$inferSelect | null;
 let lastSessionListWhere: unknown = null;
-let sessionSandboxRows: Array<typeof sessionSandboxes.$inferSelect>;
+// `active_since` / `deadline_at` are assigned by a DB trigger, never by
+// application code, so these HTTP-contract fixtures deliberately omit them —
+// none of the routes under test reads either column (only the reaper does, and
+// it has its own suite).
+type SandboxRowFixture = Omit<typeof sessionSandboxes.$inferSelect, 'activeSince' | 'deadlineAt'> &
+  Partial<Pick<typeof sessionSandboxes.$inferSelect, 'activeSince' | 'deadlineAt'>>;
+let sessionSandboxRows: Array<SandboxRowFixture>;
 let secretRows: Array<typeof projectSecrets.$inferSelect>;
 let runtimeContextRows: Array<typeof projectSessionRuntimeContexts.$inferSelect>;
 let secretValues: Map<string, string>;

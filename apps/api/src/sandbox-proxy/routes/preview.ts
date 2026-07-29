@@ -13,6 +13,7 @@ import {
   remintGrantForAgentSwitch,
 } from '../../projects/lib/session-token-grant';
 import { scheduleOpencodeSnapshotSync } from '../../projects/opencode-session-snapshot';
+import { extendSandboxDeadline, isTurnStartRequest } from '../../projects/sandbox-deadline';
 import { resumeStoppedSandboxByExternalId } from '../../projects/routes/shared';
 import {
   extractPromptInfo,
@@ -39,8 +40,16 @@ import { claimPromptDelivery, promptDeliveryKey, releasePromptDelivery } from '.
 import { carriesSessionData } from '../session-data-ports';
 
 // `userId` is set by combinedAuth (mounted in ../index.ts) before this route.
+// `apiKeyType` is read to decide whether a request may extend the sandbox's
+// deadline: a box holds a credential that authenticates perfectly well, and a
+// request it authors itself must never be able to prolong its own life.
 const preview = new Hono<{
-  Variables: { userId: string; userEmail: string; sessionId?: string };
+  Variables: {
+    userId: string;
+    userEmail: string;
+    sessionId?: string;
+    apiKeyType?: 'user' | 'sandbox';
+  };
 }>();
 
 // Hop-by-hop + caller-controlled headers we never forward upstream. Auth is
@@ -500,6 +509,12 @@ export type PreviewProxyAccess =
        *  this is what separates them. Null means a non-session-bound principal.
        *  REQUIRED so a new entry point cannot silently omit it and fail open. */
       callerSessionId: string | null;
+      /** True when the SANDBOX ITSELF authored this request (it holds a
+       *  credential that produces a perfectly valid principal). Such a request
+       *  may never extend the box's deadline — that is the self-renewal this
+       *  design exists to delete. REQUIRED, same reasoning as callerSessionId:
+       *  a new entry point must not be able to omit it and fail open. */
+      sandboxAuthored: boolean;
     }
   | { kind: 'public_share' };
 
@@ -1038,6 +1053,24 @@ export async function forwardToSandbox(
 
       // Got an HTTP response → sandbox is alive, pass it through with CORS.
       void markSandboxUsed(sandboxId);
+      // A CONTROL-PLANE-OBSERVED turn start: the API itself watched this
+      // request go to the box and be accepted. That is the ONLY kind of event
+      // allowed to push the deadline out, and never when the sandbox authored
+      // the request itself. Fire-and-forget — a deadline write must never fail
+      // a user's prompt; a lost extend is bounded by the 20-minute boot floor
+      // plus a wake.
+      if (
+        upstream.ok &&
+        !(access.kind === 'principal' && access.sandboxAuthored) &&
+        isTurnStartRequest(upstreamPort, method, remainingPath)
+      ) {
+        void extendSandboxDeadline({ externalId: sandboxId }).catch((err) =>
+          console.warn(
+            `[deadline] extend failed for sandbox ${sandboxId}:`,
+            err instanceof Error ? err.message : err,
+          ),
+        );
+      }
       if (acpPromptSession && upstream.ok) {
         const prompt = extractPromptInfo(body, incomingHeaders);
         if (userId && prompt.text) {
@@ -1272,7 +1305,12 @@ preview.all('/:sandboxId/:port/*', async (c) => {
   return forwardToSandbox(
     sandboxId,
     port,
-    { kind: 'principal', userId, callerSessionId: c.get('sessionId') ?? null },
+    {
+      kind: 'principal',
+      userId,
+      callerSessionId: c.get('sessionId') ?? null,
+      sandboxAuthored: c.get('apiKeyType') === 'sandbox',
+    },
     method,
     remainingPath,
     queryString,

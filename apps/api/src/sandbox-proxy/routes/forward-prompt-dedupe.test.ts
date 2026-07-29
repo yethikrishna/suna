@@ -112,7 +112,7 @@ describe('forwardToSandbox — prompt delivery is never double-sent', () => {
     const res = await forwardToSandbox(
       'sb-1',
       8000,
-      { kind: 'principal', userId: 'u1', callerSessionId: null },
+      { kind: 'principal', userId: 'u1', callerSessionId: null, sandboxAuthored: false },
       'POST',
       '/session/sess-1/message',
       '',
@@ -130,7 +130,7 @@ describe('forwardToSandbox — prompt delivery is never double-sent', () => {
     const res = await forwardToSandbox(
       'sb-1',
       8000,
-      { kind: 'principal', userId: 'u1', callerSessionId: null },
+      { kind: 'principal', userId: 'u1', callerSessionId: null, sandboxAuthored: false },
       'POST',
       '/session/sess-1/message',
       '',
@@ -147,7 +147,7 @@ describe('forwardToSandbox — prompt delivery is never double-sent', () => {
     const args = [
       'sb-1',
       8000,
-      { kind: 'principal', userId: 'u1', callerSessionId: null } as const,
+      { kind: 'principal', userId: 'u1', callerSessionId: null, sandboxAuthored: false } as const,
       'POST',
       '/session/sess-1/message',
       '',
@@ -171,7 +171,7 @@ describe('forwardToSandbox — idempotent GET retry is unchanged', () => {
     const res = await forwardToSandbox(
       'sb-1',
       8000,
-      { kind: 'principal', userId: 'u1', callerSessionId: null },
+      { kind: 'principal', userId: 'u1', callerSessionId: null, sandboxAuthored: false },
       'GET',
       '/session',
       '',
@@ -201,7 +201,7 @@ describe('forwardToSandbox — a sandbox-down 400 on the LAST attempt releases t
     const args = [
       'sb-1',
       8000,
-      { kind: 'principal', userId: 'u1', callerSessionId: null } as const,
+      { kind: 'principal', userId: 'u1', callerSessionId: null, sandboxAuthored: false } as const,
       'POST',
       '/session/sess-1/message',
       '',

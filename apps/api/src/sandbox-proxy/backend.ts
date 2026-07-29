@@ -20,7 +20,7 @@
  * own status mapping on top so the same resolver serves HTTP and WebSocket.
  */
 
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, gt, ne, sql } from 'drizzle-orm';
 import { projectSessions, sessionSandboxes } from '@kortix/db';
 import { config } from '../config';
 import {
@@ -301,15 +301,24 @@ export async function markSandboxUsed(sandboxId: string): Promise<void> {
       .set({ lastUsedAt: now, updatedAt: now })
       .where(eq(sessionSandboxes.sandboxId, row.sandboxId));
 
-    // TODO(deadline): the next commit gates this heal on `deadline_at > now()`.
     // Passive proxy traffic (an open tab polling opencode, a background stream
-    // reconnect) must NOT heal a deliberately-stopped box back to active — that
-    // resurrection is exactly what kept boxes alive forever.
+    // reconnect) must NOT heal a deliberately-stopped box back to active —
+    // that resurrection is what produced 1,597 phantom-active compute rows.
+    // `deadline_at > now()` is the gate, and it strictly beats the
+    // `idleQuiesced` boolean it replaces: a reaper-stopped box has an EXPIRED
+    // deadline BY CONSTRUCTION so the heal is refused for exactly the same
+    // rows, and additionally a box stopped by a transient provider blip while
+    // its deadline is still live IS healed — which the flag got wrong.
     if (['error', 'stopped'].includes(row.status)) {
       await db
         .update(sessionSandboxes)
         .set({ status: 'active', lastUsedAt: now, updatedAt: now })
-        .where(eq(sessionSandboxes.sandboxId, row.sandboxId));
+        .where(
+          and(
+            eq(sessionSandboxes.sandboxId, row.sandboxId),
+            gt(sessionSandboxes.deadlineAt, now),
+          ),
+        );
     }
 
     await db

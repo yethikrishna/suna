@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useRef } from 'react';
 
 import { errorToast, loadingToast } from '@/components/ui/toast';
+import { createScopedSession } from '@/features/session/scope/create-scoped-session';
+import type { SessionScopeCommit } from '@/features/session/scope/session-scope-model';
 import {
   getConnectorAuthorizationRequiredProfiles,
   resolveCreateFailure,
@@ -22,8 +24,10 @@ import { useUpgradeDialogStore } from '@/stores/upgrade-dialog-store';
 import {
   claimWarmProjectSession,
   createProjectSession,
+  getProjectSessionScope,
   type ProjectSession,
   type SessionConnectorBindings,
+  setProjectSessionScope,
 } from '@kortix/sdk';
 import { markSessionFresh } from '@kortix/sdk/fresh-sessions';
 import { prefetchSessionStart } from '@kortix/sdk/react';
@@ -62,6 +66,7 @@ import { prefetchSessionStart } from '@kortix/sdk/react';
 export type NewProjectSessionOpts = {
   onNavigate?: (sessionId: string) => void;
   onError?: () => void;
+  scope?: SessionScopeCommit;
   create?: {
     sandbox_slug?: string;
     agent_name?: string;
@@ -142,8 +147,14 @@ export function useNewProjectSession(
         }
       };
 
-      claimOrCreate()
-        .then((sessionId) => {
+      createScopedSession({
+        create: claimOrCreate,
+        draft: opts?.scope?.draft,
+        availability: opts?.scope?.availability,
+        readScope: (sessionId) => getProjectSessionScope(projectId, sessionId),
+        replaceScope: (sessionId, replacement) =>
+          setProjectSessionScope(projectId, sessionId, replacement),
+        onReady: (sessionId) => {
           // The row exists — kick provisioning so it overlaps the navigation.
           prefetchSessionStart(queryClient, projectId, sessionId);
           queryClient.invalidateQueries({ queryKey: ['project-sessions', projectId] });
@@ -153,7 +164,8 @@ export function useNewProjectSession(
             queryKey: warmProjectSessionKey(projectId),
             exact: true,
           });
-        })
+        },
+      })
         .catch((err) => {
           const code = (err as { code?: string })?.code;
           const action = resolveCreateFailure(code);

@@ -60,6 +60,7 @@ function sessionRow(
     originRef: null,
     secretsAllowlist: null,
     connectorBindingsInheritUnbound: false,
+    connectorBindingsConfigured: false,
     metadata: { name: 'Fix the login bug' },
     createdAt: NOW,
     updatedAt: NOW,

@@ -32,6 +32,7 @@ function row(
     originRef: null,
     secretsAllowlist: null,
     connectorBindingsInheritUnbound: false,
+    connectorBindingsConfigured: false,
     metadata: {},
     createdAt: new Date('2026-07-21T00:00:00.000Z'),
     updatedAt: new Date('2026-07-21T00:00:00.000Z'),

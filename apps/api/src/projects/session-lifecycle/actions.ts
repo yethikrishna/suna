@@ -103,9 +103,17 @@ export async function deleteSession(input: {
     }
   }
 
-  void pauseComputeSession(sessionId).catch((err) =>
-    console.warn(`[projects] compute pause failed for ${sessionId}:`, err),
-  );
+  // Keyed by SANDBOX id — `getOpenComputeSession` matches on
+  // sandbox_compute_sessions.sandbox_id, so the sessionId this used to pass
+  // matched nothing and the delete silently left the meter open, accruing
+  // wall-clock on a box we had just asked the provider to remove. The
+  // billing-invariant sweep (sandbox-reaper.ts reconcileOrphanComputeSessions)
+  // is the backstop for this whole class; this is the fast path.
+  if (sandbox) {
+    void pauseComputeSession(sandbox.sandboxId).catch((err) =>
+      console.warn(`[projects] compute pause failed for sandbox ${sandbox.sandboxId}:`, err),
+    );
+  }
 
   // The provider sandbox is being removed above, so this session's executor
   // token can never be used legitimately again — but nothing expired it, so it

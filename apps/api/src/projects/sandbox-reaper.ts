@@ -31,29 +31,78 @@
  * billed while stopped" an invariant rather than a best-effort.
  */
 
-import { and, eq, gt, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { accounts, projectSessions, sessionSandboxes } from '@kortix/db';
 import { logger } from '../lib/logger';
 import { db } from '../shared/db';
 import { getProvider, type ProviderName, type SandboxStatus } from '../platform/providers';
 import { invalidateProviderCache } from '../sandbox-proxy';
-import { pauseComputeSession } from '../billing/services/compute-metering';
+import { markComputeSessionAlive, pauseComputeSession } from '../billing/services/compute-metering';
+import { computeLivenessGraceMs } from '../billing/services/compute-liveness';
 import { probeSandboxBusy } from './sandbox-busy-probe';
 import { ACTIVE_SESSION_STATUSES } from './lib/session-status';
 import { config } from '../config';
 import { hasActiveExecutionLease } from './execution-lease';
 import { preserveEstablishedRuntime } from './runtime-identity';
 import { revokeSessionExecutorTokens } from '../repositories/account-tokens';
+import {
+  REAP_BATCH_SIZE,
+  REAP_CONCURRENCY,
+  positiveEnvInt,
+  reapBatchSize,
+} from './reaper-constants';
 
-export const REAP_BATCH_SIZE = 100;
-const REAP_CONCURRENCY = 6;
+export { REAP_BATCH_SIZE, reapBatchSize };
+export {
+  type ComputeCloseReason,
+  type OrphanComputeResult,
+  computeCloseWindowEnd,
+  decideComputeClose,
+  hasFailedRuntimeStart,
+  reconcileOrphanComputeSessions,
+} from './compute-billing-invariant';
+
 const DEFAULT_AUTOSTOP_MINUTES = 15;
 const DEFAULT_TRIGGER_AUTOSTOP_MINUTES = 5;
+/** Absolute ceiling: no box survives this long without PROVEN activity. */
+const DEFAULT_HARD_STOP_MINUTES = 240;
 
 /** The single knob for "how long with no real turn before we stop a box". */
 export function autoStopTtlMs(): number {
   const min = Math.max(1, config.KORTIX_SANDBOX_AUTOSTOP_MINUTES || DEFAULT_AUTOSTOP_MINUTES);
   return min * 60_000;
+}
+
+/**
+ * THE BACKSTOP — the answer to "a box must NEVER run 24/7 when it is not in use".
+ *
+ * Every other liveness signal the reaper trusts is written by the box itself:
+ * `metadata.lastTurnAt` and `metadata.executionLeaseUntil` are stamped by the
+ * in-sandbox agent's heartbeat (execution-lease.ts `writeExecutionLease`, renewed
+ * every 60s while it believes ANY opencode session is 'busy' OR 'retry'), and the
+ * busy probe asks that same wedged daemon. A retry loop, a dropped opencode event
+ * subscription, or any daemon wedge therefore renews its own reprieve forever —
+ * measured live 2026-07-29: 188 of 279 active prod boxes held a live execution
+ * lease, 182 of them older than 12h, and `metadata.idleObservedAt` was a JSON
+ * null on EVERY row platform-wide because the lease veto returns before the arm
+ * write and every lease renew force-nulls it. The idle-TTL stop path had never
+ * fired in production, not once.
+ *
+ * So the ceiling below deliberately consults ONLY evidence the box cannot forge:
+ * the sandbox row's creation time and real `usage_events` rows (see
+ * `provenActivityAt`). Past this ceiling the box is stopped regardless of the
+ * lease, regardless of the busy probe. A probe veto must never be unbounded.
+ */
+export function hardStopCeilingMs(): number {
+  return Math.max(
+    autoStopTtlMs(),
+    positiveEnvInt('KORTIX_SANDBOX_HARD_STOP_MINUTES', DEFAULT_HARD_STOP_MINUTES) * 60_000,
+  );
+}
+
+/** Kill switch for the absolute ceiling. Default ON — enforcement is the default. */
+export function hardStopEnabled(): boolean {
+  return process.env.KORTIX_SANDBOX_HARD_STOP_ENABLED !== 'false';
 }
 
 /** Shorter idle window for trigger-fired boxes — no human is waiting on them,
@@ -117,6 +166,12 @@ export function decideReconcile(providerStatus: SandboxStatus): ReconcileAction 
   // Provider already stopped/archived it (its own auto-stop, an admin, or a
   // webhook we missed) but our row still says active — reconcile + close billing.
   if (providerStatus === 'stopped') return 'reconcile-stopped';
+  // TERMINAL — the box is dead and will never run again (Daytona `error`,
+  // Platinum `failed`). Until 2026-07-29 this arrived here as 'unknown' and was
+  // treated as transient uncertainty forever, so the row stayed `active` and its
+  // compute window billed wall-clock against a box that had not existed for
+  // weeks. A terminal state is as actionable as a stop: reconcile and close.
+  if (providerStatus === 'terminal') return 'reconcile-stopped';
   return 'none';
 }
 
@@ -138,6 +193,52 @@ export function lastMeaningfulAt(row: {
     return stamped.getTime() >= row.createdAt.getTime() ? stamped : row.createdAt;
   }
   return row.createdAt;
+}
+
+/**
+ * The UNFORGEABLE activity clock, and the only input to the absolute ceiling.
+ *
+ * `lastMeaningfulAt` above reads `metadata.lastTurnAt`, which the in-sandbox
+ * agent rewrites to `now` on every 60s execution-lease renew — so a wedged box
+ * keeps its own activity clock permanently fresh and can never age out. This
+ * function reads only signals the box cannot write to:
+ *
+ *   - `createdAt` — when WE provisioned the row, and
+ *   - the newest `usage_events` row for the session — a real LLM call, written
+ *     by the gateway on the API side.
+ *
+ * A box with no LLM call since it was created is not running an agent turn, no
+ * matter what its own daemon reports.
+ */
+export function provenActivityAt(
+  row: { createdAt: Date },
+  lastUsageAt: Date | null,
+): Date {
+  if (lastUsageAt && !Number.isNaN(lastUsageAt.getTime()) && lastUsageAt.getTime() > row.createdAt.getTime()) {
+    return lastUsageAt;
+  }
+  return row.createdAt;
+}
+
+/**
+ * The absolute stop decision. True → stop the box NOW, bypassing the execution
+ * lease and the busy probe. `provenActivityAt` must come from
+ * `provenActivityAt()` above; passing a box-authored timestamp here would
+ * reintroduce the exact unbounded-veto bug this exists to kill.
+ * Pure so the money semantics are exhaustively unit-tested.
+ */
+export function decideHardStop(input: {
+  provenActivityAt: Date | null;
+  now: Date;
+  ceilingMs: number;
+  enabled?: boolean;
+}): boolean {
+  const { provenActivityAt: proven, now, ceilingMs } = input;
+  // Never act on uncertainty: a failed usage lookup yields null and must not
+  // stop anything (the caller passes null in that case, deliberately).
+  if (input.enabled === false || !proven) return false;
+  if (Number.isNaN(proven.getTime()) || proven.getTime() > now.getTime()) return false;
+  return now.getTime() - proven.getTime() >= ceilingMs;
 }
 
 function isLifecycleTransitionInProgress(err: unknown): boolean {
@@ -208,15 +309,34 @@ async function reconcileRowToStopped(row: ReapCandidate, now: Date, quiesce: boo
 }
 
 export interface ReapResult {
-  candidates: number;
+  candidates: number;   // rows this pass actually examined (capped by the batch)
+  matching: number;     // rows matching the candidate predicate platform-wide
+  deferred: number;     // matching - candidates: rotated to a later pass, NOT starved
   stopped: number;      // we issued a provider.stop() for an idle box
+  hardStopped: number;  // stopped by the ABSOLUTE ceiling (lease/probe bypassed)
   reconciled: number;   // provider already not-running; we synced our row
   billingClosed: number;
   skipped: number;
+  warmSkipped: number;  // unclaimed warm-pool box, exempt from the idle TTL only
   busyVetoed: number;   // idle-by-clock but the box itself reported a running turn
   idleArmed: number;    // first probe-confirmed idle observation — TTL countdown started
   errors: number;
 }
+
+export const EMPTY_REAP_RESULT: ReapResult = {
+  candidates: 0,
+  matching: 0,
+  deferred: 0,
+  stopped: 0,
+  hardStopped: 0,
+  reconciled: 0,
+  billingClosed: 0,
+  skipped: 0,
+  warmSkipped: 0,
+  busyVetoed: 0,
+  idleArmed: 0,
+  errors: 0,
+};
 
 type RunningBoxOutcome = 'stopped' | 'busyVetoed' | 'idleArmed' | 'skipped' | 'errors';
 
@@ -228,9 +348,11 @@ type RunningBoxOutcome = 'stopped' | 'busyVetoed' | 'idleArmed' | 'skipped' | 'e
  * (never act on uncertainty).
  *
  * `bypassBusyProbe` skips the busy check entirely and goes straight to the
- * stop. Set ONLY for the orphan-account sweep below — the account that owns
- * the box no longer exists, so there is no customer whose in-flight turn a
- * busy-probe veto would be protecting. Never set for a live account.
+ * stop. Set for exactly two cases: the orphan-account sweep below (the account
+ * that owns the box no longer exists, so there is no customer whose in-flight
+ * turn a busy-probe veto would be protecting), and the ABSOLUTE ceiling
+ * (`decideHardStop`) — a box with no proven activity for the ceiling is not in
+ * use, and letting its own daemon veto that forever is the 24/7 bug itself.
  */
 async function reapRunningBox(
   row: ReapCandidate,
@@ -329,11 +451,32 @@ async function loadOrphanAccountIds(accountIds: string[]): Promise<Set<string> |
  * keeps the full lease + busy-probe protection unchanged. Gated by
  * KORTIX_ORPHAN_ACCOUNT_REAP_ENABLED (default on); a failed account lookup
  * fails safe to "no orphans this pass" rather than guessing.
+ *
+ * ROTATION, NOT STARVATION: the candidate set is capped at REAP_BATCH_SIZE so a
+ * pass can't stampede the provider, but before 2026-07-29 the query had no
+ * ORDER BY — Postgres returned an arbitrary (in practice heap-order, and stable
+ * because the rows this pass never writes to never move) 100 of 279 matching
+ * prod rows, so ~179 rows were structurally unreachable by the reaper FOREVER
+ * while `tickRunningComputeCharges` kept settling their full wall-clock delta.
+ * The cap was symmetric only in intent: money always accrued, reaping never
+ * happened. The ORDER BY below makes the cap a rotation instead: least-recently-
+ * visited first, and EVERY row the pass looks at is stamped `reaperVisitedAt`
+ * (including the ones it decides to leave alone), so a row cannot be skipped
+ * twice in a row while another is visited twice. Full coverage in
+ * ceil(matching / REAP_BATCH_SIZE) passes, and `deferred` makes the backlog
+ * visible instead of silent.
  */
 export async function reapAndReconcileSandboxes(now = new Date()): Promise<ReapResult> {
   const ttlMs = autoStopTtlMs();
   const triggerTtlMs = triggerAutoStopTtlMs();
+  const ceilingMs = hardStopCeilingMs();
+  const ceilingEnabled = hardStopEnabled();
   const orphanAccountBypassEnabled = process.env.KORTIX_ORPHAN_ACCOUNT_REAP_ENABLED !== 'false';
+
+  const candidatePredicate = and(
+    eq(sessionSandboxes.status, 'active'),
+    isNotNull(sessionSandboxes.externalId),
+  );
 
   const rows = (await db
     .select({
@@ -353,14 +496,18 @@ export async function reapAndReconcileSandboxes(now = new Date()): Promise<ReapR
       projectSessions,
       eq(projectSessions.sessionId, sessionSandboxes.sessionId),
     )
-    .where(and(
-      eq(sessionSandboxes.status, 'active'),
-      isNotNull(sessionSandboxes.externalId),
-    ))
-    .limit(REAP_BATCH_SIZE)) as ReapCandidate[];
+    .where(candidatePredicate)
+    // Least-recently-visited first. `reaperVisitedAt` is always written by
+    // `toISOString()`, so lexicographic text order IS chronological order — no
+    // cast, so a hand-edited value can never make the whole sweep throw.
+    .orderBy(sql`${sessionSandboxes.metadata}->>'reaperVisitedAt' asc nulls first`)
+    .limit(reapBatchSize())) as ReapCandidate[];
 
-  const result: ReapResult = { candidates: rows.length, stopped: 0, reconciled: 0, billingClosed: 0, skipped: 0, busyVetoed: 0, idleArmed: 0, errors: 0 };
+  const result: ReapResult = { ...EMPTY_REAP_RESULT, candidates: rows.length, matching: rows.length };
   if (rows.length === 0) return result;
+
+  result.matching = await countReapCandidates(candidatePredicate, rows.length);
+  result.deferred = Math.max(0, result.matching - rows.length);
 
   // Batched fallback signal: last LLM call per session (indexed usage_events).
   // Only consulted for boxes the probe can't reach; null = the lookup itself
@@ -381,7 +528,26 @@ export async function reapAndReconcileSandboxes(now = new Date()): Promise<ReapR
     while (cursor < rows.length) {
       const row = rows[cursor++];
       try {
-        if (row.warmState === 'available') {
+        // The ABSOLUTE ceiling, computed from unforgeable evidence only. A
+        // failed usage lookup yields null → no hard stop this pass (fail safe).
+        const proven =
+          lastUsageBySession === null
+            ? null
+            : provenActivityAt(row, lastUsageBySession.get(row.sessionId) ?? null);
+        const hardStop = decideHardStop({
+          provenActivityAt: proven,
+          now,
+          ceilingMs,
+          enabled: ceilingEnabled,
+        });
+
+        // An unclaimed warm-pool box has never had a prompt, so the idle TTL
+        // would stop it the moment it was baked — it is exempt from that, but
+        // NOT from the ceiling. A warm box nobody claimed within the ceiling is
+        // pure billed dead time (measured live: warm 'available' boxes holding
+        // OPEN compute rows while the reaper skipped them outright).
+        if (row.warmState === 'available' && !hardStop) {
+          result.warmSkipped += 1;
           result.skipped += 1;
           continue;
         }
@@ -389,10 +555,23 @@ export async function reapAndReconcileSandboxes(now = new Date()): Promise<ReapR
         const providerStatus: SandboxStatus = await getProvider(row.provider).getStatus(row.externalId);
 
         if (providerStatus === 'running') {
+          // A CONTROL-PLANE observation that this box is alive — the only thing
+          // that lets its compute window keep billing. Absence of this stamp is
+          // what stops the meter automatically (billing/services/compute-liveness.ts),
+          // so it must be recorded here and nowhere the sandbox itself can reach.
+          await markComputeSessionAlive(row.sandboxId, now).catch((err) =>
+            console.warn(
+              `[reaper] liveness stamp failed for ${row.sandboxId}:`,
+              err instanceof Error ? err.message : err,
+            ),
+          );
           const isOrphanAccount = !!row.accountId && orphanAccountIds !== null && orphanAccountIds.has(row.accountId);
           if (isOrphanAccount) orphanCandidates += 1;
 
-          if (!isOrphanAccount && hasActiveExecutionLease(row.metadata, now)) {
+          // The execution lease is written by the box's OWN heartbeat and is
+          // renewed forever by a wedged/retrying daemon — it may defer a stop,
+          // never prevent one past the ceiling.
+          if (!isOrphanAccount && !hardStop && hasActiveExecutionLease(row.metadata, now)) {
             result.busyVetoed += 1;
             continue;
           }
@@ -406,12 +585,21 @@ export async function reapAndReconcileSandboxes(now = new Date()): Promise<ReapR
             now,
             ttlMs: isTriggerSession(row.metadata) ? triggerTtlMs : ttlMs,
             fallbackLastMeaningful,
-            bypassBusyProbe: isOrphanAccount,
+            bypassBusyProbe: isOrphanAccount || hardStop,
           });
           result[outcome] += 1;
           if (outcome === 'stopped') {
             result.billingClosed += 1;
             if (isOrphanAccount) orphanStopped += 1;
+            if (hardStop) {
+              result.hardStopped += 1;
+              logger.warn('[reaper] ABSOLUTE CEILING stop — no proven activity within the ceiling', {
+                sandbox_id: row.sandboxId,
+                proven_idle_ms: proven ? now.getTime() - proven.getTime() : null,
+                ceiling_ms: ceilingMs,
+                had_execution_lease: hasActiveExecutionLease(row.metadata, now),
+              });
+            }
           }
           continue;
         }
@@ -448,10 +636,56 @@ export async function reapAndReconcileSandboxes(now = new Date()): Promise<ReapR
   };
 
   await Promise.all(Array.from({ length: Math.min(REAP_CONCURRENCY, rows.length) }, worker));
+  // Rotate the batch window. Stamped for EVERY row this pass examined — a row
+  // the pass deliberately left alone (busy-vetoed, warm, waiting out its TTL,
+  // provider-unknown) must still go to the back of the queue, otherwise it
+  // re-wins the batch every pass and the rows behind it never get looked at.
+  // That silent re-selection IS the starvation bug; one batched UPDATE per pass
+  // is what makes coverage a property of the query instead of luck.
+  await markReaperVisited(rows.map((r) => r.sandboxId), now);
   if (orphanCandidates > 0) {
     console.log('[reaper] orphan-account sweep', { candidates: orphanCandidates, stopped: orphanStopped });
   }
+  if (result.deferred > 0) {
+    console.log('[reaper] batch saturated — remaining rows rotate to the next pass', {
+      matching: result.matching,
+      examined: result.candidates,
+      deferred: result.deferred,
+    });
+  }
   return result;
+}
+
+/**
+ * Total rows matching the candidate predicate, so a saturated batch is visible
+ * (`deferred`) instead of silent. Degrades to the batch size on failure —
+ * observability must never be able to break the sweep itself.
+ */
+async function countReapCandidates(predicate: ReturnType<typeof and>, fallback: number): Promise<number> {
+  try {
+    const [row] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(sessionSandboxes)
+      .innerJoin(projectSessions, eq(projectSessions.sessionId, sessionSandboxes.sessionId))
+      .where(predicate);
+    const total = Number(row?.total);
+    return Number.isFinite(total) ? total : fallback;
+  } catch (err) {
+    console.warn('[reaper] candidate count failed:', err instanceof Error ? err.message : err);
+    return fallback;
+  }
+}
+
+/** Stamp the rotation cursor for a whole batch in one statement. */
+async function markReaperVisited(sandboxIds: string[], now: Date): Promise<void> {
+  if (sandboxIds.length === 0) return;
+  await db
+    .update(sessionSandboxes)
+    .set({ metadata: mergeMetadata({ reaperVisitedAt: now.toISOString() }) })
+    .where(inArray(sessionSandboxes.sandboxId, sandboxIds))
+    .catch((err) =>
+      console.warn('[reaper] visit stamp failed:', err instanceof Error ? err.message : err),
+    );
 }
 
 /**
@@ -481,60 +715,6 @@ async function loadLastUsageBySession(sessionIds: string[]): Promise<Map<string,
     console.warn('[reaper] usage-activity lookup failed — failing safe (no stops this cycle):', err instanceof Error ? err.message : err);
     return null;
   }
-}
-
-/**
- * Billing safety net: an `active` compute session whose box is NOT actually
- * running is over-billing. The reaper pass above closes billing for boxes it
- * sees, but a compute row can outlive its session_sandbox row (deleted/migrated)
- * or be left active after the box was reconciled stopped elsewhere. This pass
- * resolves every still-open metering row against the PROVIDER's real state and
- * closes any that are not running. Deterministic; idempotent.
- */
-export async function reconcileOrphanComputeSessions(): Promise<{ checked: number; closed: number; errors: number }> {
-  const { sandboxComputeSessions } = await import('@kortix/db');
-  // Join the metering row to its sandbox to recover provider + externalId.
-  const rows = await db
-    .select({
-      computeId: sandboxComputeSessions.id,
-      sandboxId: sandboxComputeSessions.sandboxId,
-      sbStatus: sessionSandboxes.status,
-      provider: sessionSandboxes.provider,
-      externalId: sessionSandboxes.externalId,
-    })
-    .from(sandboxComputeSessions)
-    .leftJoin(sessionSandboxes, eq(sessionSandboxes.sandboxId, sandboxComputeSessions.sandboxId))
-    .where(eq(sandboxComputeSessions.state, 'active'))
-    .limit(REAP_BATCH_SIZE);
-
-  let closed = 0;
-  let errors = 0;
-  let cursor = 0;
-  const worker = async () => {
-    while (cursor < rows.length) {
-      const row = rows[cursor++];
-      try {
-        // No sandbox row, or no external id → the box can't be billed; close it.
-        if (!row.externalId || !row.provider) {
-          await pauseComputeSession(row.sandboxId);
-          closed += 1;
-          continue;
-        }
-        // The reaper pass already closes billing for boxes whose row is still
-        // active; here we only need to catch rows whose box is NOT running.
-        const status = await getProvider(row.provider as ProviderName).getStatus(row.externalId);
-        if (status === 'stopped' || status === 'removed') {
-          await pauseComputeSession(row.sandboxId);
-          closed += 1;
-        }
-      } catch (err) {
-        errors += 1;
-        console.warn(`[reaper] orphan-compute reconcile failed for ${row.sandboxId}:`, err instanceof Error ? err.message : err);
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(REAP_CONCURRENCY, rows.length) }, worker));
-  return { checked: rows.length, closed, errors };
 }
 
 const STUCK_SESSION_BATCH = 200;
@@ -591,6 +771,9 @@ export async function reconcileStuckActiveSessions(
         sql`not exists (select 1 from ${usageEvents} u where u.session_id = ${projectSessions.sessionId} and u.created_at > ${cutoff.toISOString()})`,
       ),
     )
+    // Oldest-stuck first: an unordered LIMIT is how a row stays outside every
+    // batch forever while still counting against the account's session cap.
+    .orderBy(asc(projectSessions.updatedAt))
     .limit(STUCK_SESSION_BATCH);
 
   const result = { candidates: candidates.length, reconciled: 0, billingClosed: 0, errors: 0 };
@@ -749,6 +932,35 @@ export async function countBillingInvariantViolations(): Promise<number> {
     .where(and(
       eq(sandboxComputeSessions.state, 'active'),
       sql`(${sessionSandboxes.status} IS NULL OR ${sessionSandboxes.status} <> 'active')`,
+    ));
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * THE OTHER FAIL DIRECTION. Billing is now gated on control-plane liveness
+ * evidence (billing/services/compute-liveness.ts), and that trade has a cost:
+ * under wall-clock accrual an outage OVER-bills loudly (customers complain);
+ * under evidence-gated accrual the same outage UNDER-bills silently, which is
+ * strictly worse to operate because nothing tells you.
+ *
+ * So this counts the mirror invariant: sandboxes we still believe are `active`
+ * whose open window has NOT been observed alive inside the grace, i.e. windows
+ * that have quietly stopped earning. In steady state the reaper re-stamps every
+ * visited row well inside the grace, so this is ~0. A rising value means the
+ * reaper is starved or dead and revenue is draining away in silence — page on
+ * it exactly like BILLING INVARIANT VIOLATED. Two monitors, one per direction.
+ */
+export async function countStaleLivenessWindows(now = new Date()): Promise<number> {
+  const { sandboxComputeSessions } = await import('@kortix/db');
+  const cutoff = new Date(now.getTime() - computeLivenessGraceMs()).toISOString();
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(sandboxComputeSessions)
+    .innerJoin(sessionSandboxes, eq(sessionSandboxes.sandboxId, sandboxComputeSessions.sandboxId))
+    .where(and(
+      eq(sandboxComputeSessions.state, 'active'),
+      eq(sessionSandboxes.status, 'active'),
+      sql`coalesce(${sandboxComputeSessions.metadata}->>'lastAliveAt', ${sandboxComputeSessions.startedAt}::text) < ${cutoff}`,
     ));
   return Number(row?.n ?? 0);
 }

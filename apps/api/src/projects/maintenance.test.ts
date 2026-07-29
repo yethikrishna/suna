@@ -17,6 +17,10 @@ mock.module('../shared/db', () => ({
       from: () => ({
         innerJoin: () => ({
           where: () => ({
+            // The branch sweep orders before it limits (deterministic drain, so
+            // the planner's scan order can't crowd rows out of the batch), so
+            // the stub has to be chainable through orderBy as well as limit.
+            orderBy: () => ({ limit: async () => [] }),
             limit: async () => [],
           }),
         }),
@@ -67,6 +71,23 @@ mock.module('./sandbox-reaper', () => ({
   reconcileUndeliveredPrompts: async () => ({ claimed: 0, succeeded: 0, failed: 0, queued: 0 }),
   reapOrphanProviderBoxes: async () => ({ listed: 0, orphans: 0, stopped: 0, errors: 0 }),
   countBillingInvariantViolations: async () => 0,
+  // The mirror monitor: evidence-gated billing under-bills SILENTLY when the
+  // reaper is starved, where wall-clock billing over-billed loudly.
+  countStaleLivenessWindows: async () => 0,
+  EMPTY_REAP_RESULT: {
+    candidates: 0,
+    matching: 0,
+    deferred: 0,
+    stopped: 0,
+    hardStopped: 0,
+    reconciled: 0,
+    billingClosed: 0,
+    skipped: 0,
+    warmSkipped: 0,
+    busyVetoed: 0,
+    idleArmed: 0,
+    errors: 0,
+  },
 }));
 
 const { shouldForceResetStaleLock, runProjectMaintenance, __isMaintenanceRunningForTest } =

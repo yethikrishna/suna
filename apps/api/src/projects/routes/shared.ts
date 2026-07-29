@@ -1,4 +1,4 @@
-import { reopenComputeForSandbox } from '../../billing/services/compute-metering';
+import { pauseComputeSession, reopenComputeForSandbox } from '../../billing/services/compute-metering';
 import { config, type SandboxProviderName } from '../../config';
 import type { ProjectSessionSandbox, SessionStartResult } from '@kortix/api-contract';
 import { auth, json } from '../../openapi';
@@ -171,6 +171,18 @@ export async function resumeStoppedSandbox(row: {
       .set({ status: 'stopped', updatedAt: new Date() })
       .where(eq(projectSessions.sessionId, row.sessionId))
       .catch(() => {});
+    // The meter was opened optimistically above, BEFORE provider.start() had
+    // resolved. This branch is the proof it never came up, so the window must
+    // close here — reverting the two status rows and leaving the meter running
+    // is how a box that failed to start in 134ms went on accruing wall-clock
+    // (observed in prod 2026-07-29). The billing-invariant sweep would also
+    // catch it, but a leak this deterministic should not wait for a sweep.
+    await pauseComputeSession(row.sandboxId).catch((pauseErr) =>
+      console.warn(
+        `[projects] compute pause after failed wake failed for ${row.sandboxId}:`,
+        pauseErr,
+      ),
+    );
   });
   return true;
 }

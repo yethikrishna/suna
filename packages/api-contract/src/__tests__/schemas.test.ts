@@ -133,8 +133,6 @@ function sessionFixture(overrides: Record<string, unknown> = {}) {
     owner_email: null,
     visibility: 'private',
     origin: 'user',
-    end_user_ref: null,
-  origin_ref: null,
     secrets_allowlist: null,
     sharing: { mode: 'private', ownerId: '' },
     is_owner: true,
@@ -838,31 +836,25 @@ describe('native OAuth2 lifecycle schemas', () => {
   });
 });
 
-describe('end_user_ref accepts its deprecated origin_ref alias', () => {
-  test('either spelling parses; the response carries both', () => {
-    expect(() => SessionCreateInputSchema.parse({ end_user_ref: 'u1' })).not.toThrow();
-    expect(() => SessionCreateInputSchema.parse({ origin_ref: 'u1' })).not.toThrow();
-    expect(() =>
-      SessionCreateInputSchema.parse({ end_user_ref: 'u1', origin_ref: 'u1' }),
-    ).not.toThrow();
+describe('removed usage-attribution fields', () => {
+  test('rejects usage-attribution fields in session-create input', () => {
+    expect(SessionCreateInputSchema.safeParse({ end_user_ref: 'customer-1' }).success).toBe(false);
+    expect(SessionCreateInputSchema.safeParse({ origin_ref: 'customer-1' }).success).toBe(false);
   });
 
-  test('the new name is bounded exactly like the alias', () => {
-    expect(() => SessionCreateInputSchema.parse({ end_user_ref: 'x'.repeat(257) })).toThrow();
-    expect(() => SessionCreateInputSchema.parse({ end_user_ref: '   ' })).toThrow();
+  test('rejects usage-attribution fields in serialized sessions', () => {
+    expect(ProjectSessionSchema.strict().safeParse(sessionFixture()).success).toBe(true);
+    expect(
+      ProjectSessionSchema.strict().safeParse(sessionFixture({ end_user_ref: 'customer-1' }))
+        .success,
+    ).toBe(false);
+    expect(
+      ProjectSessionSchema.strict().safeParse(sessionFixture({ origin_ref: 'customer-1' })).success,
+    ).toBe(false);
   });
 });
 
-describe('SessionCreateInputSchema backend overrides (origin_ref + secrets bounds)', () => {
-  test('origin_ref: trims, accepts a normal handle, rejects >256 chars and whitespace-only', () => {
-    expect(SessionCreateInputSchema.safeParse({ origin_ref: 'tenant-42' }).success).toBe(true);
-    expect(SessionCreateInputSchema.safeParse({ origin_ref: 'x'.repeat(257) }).success).toBe(false);
-    expect(SessionCreateInputSchema.safeParse({ origin_ref: '   ' }).success).toBe(false);
-    expect(SessionCreateInputSchema.parse({ origin_ref: '  tenant-7  ' }).origin_ref).toBe(
-      'tenant-7',
-    );
-  });
-
+describe('SessionCreateInputSchema backend secret bounds', () => {
   test('secrets: accepts an identifier list and [] (narrow to zero), rejects an over-long list', () => {
     expect(
       SessionCreateInputSchema.safeParse({ secrets: ['GMAIL_TOKEN', 'STRIPE_KEY'] }).success,

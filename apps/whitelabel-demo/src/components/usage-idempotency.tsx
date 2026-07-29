@@ -15,6 +15,7 @@
  * stops someone reusing one key per user, or per channel, forever.
  */
 
+import { CallSnippet } from '@/components/dev/call-snippet';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ProbeAttempts, ProbeBusy, ProbeError, ProbeVerdictBanner, useProbe } from '@/components/usage-probe';
@@ -68,6 +69,20 @@ export function UsageIdempotency({ projectId }: { projectId: string | null }) {
         Each run creates one real session (the replay should not create a second — that is the
         thing being checked).
       </p>
+
+      {/* The header this whole control is about is invisible in the request
+          body, so the snippet is the only place it can be read. After a run it
+          carries the key that was actually sent, not an example one. */}
+      <div className="mt-2">
+        <CallSnippet
+          id="session.idempotentCreate"
+          context={{
+            projectId: projectId ?? undefined,
+            endUserRef: probe.data?.endUserRef,
+            idempotencyKey: probe.data?.attempts[0]?.idempotencyKey,
+          }}
+        />
+      </div>
 
       {probe.isPending && <ProbeBusy label="Sending two creates under one key…" />}
       {probe.error && <ProbeError message={probe.error.message} />}

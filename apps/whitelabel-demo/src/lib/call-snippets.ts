@@ -45,17 +45,34 @@ const PLACEHOLDER = {
   identifier: '{identifier}',
   envKey: '{ENV_KEY}',
   model: 'anthropic/claude-sonnet-4-5',
+  projectName: 'Acme workspace',
+  idempotencyKey: 'lumen-probe-{uuid}',
 } as const;
 
+/**
+ * Every KaaB action this app performs, in the order a wrapper author meets
+ * them: provision a project, see what may be bound to a session, start one,
+ * talk to it, read what it cost, end it, and manage the secrets behind it.
+ *
+ * An action the app performs with no id here is an action whose call the demo
+ * hides — `tests/e2e/call-snippets-coverage.test.ts` reads the app's own source
+ * to make that a test failure rather than an omission nobody notices.
+ */
 export const CALL_SNIPPET_IDS = [
+  'project.provision',
+  'connections.list',
   'session.create',
+  'session.idempotentCreate',
   'session.prompt',
   'session.model',
   'sessions.list',
+  'session.delete',
   'usage.byEndUser',
   'usage.forEndUser',
+  'usage.projectSessions',
   'approval.resolve',
   'secret.upsert',
+  'secret.delete',
 ] as const;
 
 export type CallSnippetId = (typeof CALL_SNIPPET_IDS)[number];
@@ -80,6 +97,14 @@ export interface SnippetContext {
   /** The model a mid-session change would move to. */
   model?: string | null;
   executionId?: string;
+  /** The project name a provision would send, when the field is filled in. */
+  projectName?: string;
+  /**
+   * The `Idempotency-Key` a retry-safe create rides under. Server-minted, like
+   * `end_user_ref` — a browser that could choose it could aim a replay at
+   * another end-user's session, so this is only ever a key the SERVER made.
+   */
+  idempotencyKey?: string | null;
   /**
    * A secret's addressable parts. There is deliberately NO `value` field: this
    * type is the boundary that keeps secret material out of every snippet.
@@ -95,7 +120,15 @@ export interface SnippetContext {
  * to hold.
  */
 export type HttpForm =
-  | { kind: 'rest'; method: string; path: string; body?: unknown }
+  | {
+      kind: 'rest';
+      method: string;
+      path: string;
+      /** Request headers beyond authorization — `Idempotency-Key` is the one
+       *  call whose whole behaviour lives in a header rather than a body. */
+      headers?: string[];
+      body?: unknown;
+    }
   | { kind: 'runtime'; summary: string };
 
 export interface CallSnippet {
@@ -114,6 +147,18 @@ export interface CallSnippet {
   serverInjected: string[];
   /** The things the two forms above would otherwise imply wrongly. */
   notes: string[];
+  /**
+   * True when the SDK block is the SERVER route's own code rather than the
+   * browser's call.
+   *
+   * The distinction is load-bearing: a browser block must never contain
+   * `end_user_ref` (the proxy refuses a client that names one, 403), while a
+   * server block MUST stamp it — that is what makes the whole scheme work.
+   * Without this flag a blanket "no end_user_ref in the SDK block" rule deleted
+   * the field from a server-route example, teaching the exact forgery the rule
+   * exists to prevent.
+   */
+  serverSideBlock?: boolean;
 }
 
 function json(value: unknown): string {
@@ -135,7 +180,7 @@ function query(params: Record<string, string>): string {
  */
 export function renderHttp(form: HttpForm): string {
   if (form.kind === 'runtime') return form.summary;
-  const lines = [`${form.method} ${form.path}`, AUTHORIZATION_HEADER];
+  const lines = [`${form.method} ${form.path}`, AUTHORIZATION_HEADER, ...(form.headers ?? [])];
   if (form.body === undefined) return lines.join('\n');
   lines.push('Content-Type: application/json', '', json(form.body));
   return lines.join('\n');
@@ -147,6 +192,57 @@ export function isCopyableHttp(form: HttpForm): boolean {
 }
 
 // ── The calls ────────────────────────────────────────────────────────────────
+
+function projectProvision(ctx: SnippetContext): CallSnippet {
+  const name = ctx.projectName?.trim() || PLACEHOLDER.projectName;
+  const body = { name, seed_starter: true };
+
+  return {
+    id: 'project.provision',
+    title: 'Provision a project',
+    summary: 'The one create path a wrapper can attribute to the end user who asked for it.',
+    sdk: [
+      `await kortix.projects.provision(${json(body)});`,
+      '',
+      '// The other half of the same rule: the list comes back filtered to the',
+      '// projects THIS end user provisioned, so the two calls are one feature.',
+      'await kortix.projects.list();',
+    ].join('\n'),
+    http: {
+      kind: 'rest',
+      method: 'POST',
+      path: '/v1/projects/provision',
+      body,
+    },
+    serverInjected: [],
+    notes: [
+      'Plain `POST /v1/projects` is refused 403 in wrapper mode (`src/server/policy.ts`). Provision is the path the proxy can hang ownership off: it records the returned project id against the signed-in end user, and every later `projects/{id}/…` call is checked against that record.',
+      '`GET /v1/projects` is filtered on the way back to the projects that end user provisioned. The wrapper\'s key can see the whole account, so without that filter one signed-in user would read every other one\'s projects.',
+      '`seed_starter: true` seeds a managed git repo server-side, so the project boots with no GitHub account and no repo name to choose. It provisions real infrastructure and can take a while — the SDK allows it 120s.',
+    ],
+  };
+}
+
+function connectionsList(ctx: SnippetContext): CallSnippet {
+  return {
+    id: 'connections.list',
+    title: 'List the connections a session may bind',
+    summary: 'What the picker is made of — and why some connectors have nothing to pick.',
+    sdk: 'await kortix.project(projectId).connectors.profiles.list();',
+    http: {
+      kind: 'rest',
+      method: 'GET',
+      path: `/v1/projects/${ctx.projectId ?? PLACEHOLDER.projectId}/connector-profiles`,
+    },
+    serverInjected: [],
+    notes: [
+      'Runs SERVER-side (`src/app/api/connections/route.ts`), and the browser never gets the raw reply: `selectBindableConnections` narrows it first, so the picker cannot offer an option that would fail at create.',
+      'Only TEAM connections (`owner_type: "project"`, `status: "active"`) survive that filter. A wrapper acts under one credential for many end users and has no personal upstream identity, so a connection a member authorized for themselves is not its to spend — and a revoked one binds fine and then fails at the first tool call.',
+      'An alias with nothing bindable is still returned, carrying its reason, so the picker can say "a teammate has to share this one" instead of pretending the connector does not exist. There is deliberately no "connect it yourself" button: the interactive flow that would is refused 403 REQUIRE_CONNECTORS_INTERACTIVE_ONLY for a wrapper credential.',
+      'The chosen `profile_id` is spent at CREATE, in `connector_bindings` — no route rebinds a running session.',
+    ],
+  };
+}
 
 function sessionCreate(ctx: SnippetContext): CallSnippet {
   const sessionId = ctx.sessionId ?? PLACEHOLDER.sessionId;
@@ -183,6 +279,55 @@ function sessionCreate(ctx: SnippetContext): CallSnippet {
       '`secrets` lists secret IDENTIFIERS, not env KEYs. Two identifiers may share one KEY, and naming both in one create is refused 409 SECRET_IDENTIFIER_KEY_COLLISION.',
       '`inherit_unbound: true` accompanies any binding so the aliases nobody chose keep their project default instead of being switched off.',
       'The create body also accepts the session model, under a field named after the session runtime — the same field `changeModel()` writes on a running session.',
+    ],
+  };
+}
+
+function sessionIdempotentCreate(ctx: SnippetContext): CallSnippet {
+  const key = ctx.idempotencyKey ?? PLACEHOLDER.idempotencyKey;
+  // The probe's own body (`src/app/api/usage/route.ts`): `runtime_context` is
+  // the smallest field that can differ between two creates without a secret or
+  // a connector having to exist, which is what makes the conflict half of this
+  // demonstrable on any project.
+  const body = {
+    end_user_ref: ctx.endUserRef ?? PLACEHOLDER.endUserRef,
+    runtime_context: { lumen_probe: 'first' },
+  };
+
+  return {
+    id: 'session.idempotentCreate',
+    serverSideBlock: true,
+    title: 'Retry a create without double-charging',
+    summary: 'One key on both attempts: the replay returns the first session instead of a second.',
+    sdk: [
+      '// No SDK method carries this header today, so the retry-safe create is',
+      "// the server route's own request: `attemptCreate` sets the key and",
+      "// `forwardKortixRequest` substitutes the wrapper's API key for",
+      '// Authorization (src/app/api/usage/route.ts).',
+      'const key = `lumen-probe-${randomUUID()}`;',
+      '',
+      '// SERVER-side code, so it DOES stamp end_user_ref — that is this layer\'s',
+      '// job. Only the browser is forbidden from setting it.',
+      "const body = { end_user_ref: endUserRef, runtime_context: { lumen_probe: 'first' } };",
+      '',
+      '// Same key, same body — the second call must NOT provision a sandbox.',
+      'const first = await attemptCreate({ projectId, body, idempotencyKey: key });',
+      'const replay = await attemptCreate({ projectId, body, idempotencyKey: key });',
+      'const safe = replay.sessionId === first.sessionId;',
+    ].join('\n'),
+    http: {
+      kind: 'rest',
+      method: 'POST',
+      path: `/v1/projects/${ctx.projectId ?? PLACEHOLDER.projectId}/sessions`,
+      headers: [`Idempotency-Key: ${key}`],
+      body,
+    },
+    serverInjected: ['end_user_ref', 'Idempotency-Key'],
+    notes: [
+      'The key is minted SERVER-side and reused across both attempts. A browser that could choose it could aim a replay at another end-user’s session — which is why the same route stamps `end_user_ref` from the verified session, and why a replay carrying a different one is refused 409 IDEMPOTENCY_ORIGIN_CONFLICT.',
+      'Same key + the SAME body returns the FIRST session id. A create buys real compute, so a blind retry after a timeout is otherwise a second sandbox and a second charge on the same end-user’s bill.',
+      'Same key + a DIFFERENT body is refused 409 rather than handed the first session, because that session was built from other inputs: `runtime_context` gives IDEMPOTENCY_CONTEXT_CONFLICT, `secrets` IDEMPOTENCY_SECRETS_CONFLICT, `connector_bindings` IDEMPOTENCY_BINDING_CONFLICT.',
+      'So a key belongs to one create ATTEMPT — mint it fresh, reuse it only while retrying that attempt. One key per user or per channel conflicts with itself the moment the overrides change.',
     ],
   };
 }
@@ -274,6 +419,36 @@ function sessionsList(ctx: SnippetContext): CallSnippet {
   };
 }
 
+function sessionDelete(ctx: SnippetContext): CallSnippet {
+  const projectId = ctx.projectId ?? PLACEHOLDER.projectId;
+  const sessionId = ctx.sessionId ?? PLACEHOLDER.sessionId;
+
+  return {
+    id: 'session.delete',
+    title: 'Restart or delete a session',
+    summary: 'The two ways a session ends — one keeps the sandbox, one destroys it.',
+    sdk: [
+      '// Reboots the runtime, keeps the session and its sandbox identity.',
+      'await kortix.session(projectId, sessionId).restart();',
+      '',
+      '// Destroys the session and the sandbox behind it. Not recoverable.',
+      'await kortix.session(projectId, sessionId).delete();',
+    ].join('\n'),
+    http: {
+      kind: 'rest',
+      method: 'DELETE',
+      path: `/v1/projects/${projectId}/sessions/${sessionId}`,
+    },
+    serverInjected: [],
+    notes: [
+      `Restart is a separate call — \`POST /v1/projects/${projectId}/sessions/${sessionId}/restart\`. It keeps the sandbox, so a session that came up wrong recovers without losing its transcript, but it still ends whatever turn was in flight.`,
+      'Both calls clear the SDK\'s cached runtime for these ids first (`forgetReady()`), so no later handle can resolve a sandbox that has been replaced or destroyed.',
+      'Ownership is the only thing standing between one end user and another\'s session here: the upstream key could delete any session in the account, and the proxy is what checks this caller provisioned this project (`src/server/policy.ts`).',
+      'Deleting is not a refund. Spend is metered into its own event log with the end-user ref copied onto every row, so `GET /v1/usage` still bills this session after the session row is gone — the rollup reads the meter, not the sessions that still exist.',
+    ],
+  };
+}
+
 function usageByEndUser(): CallSnippet {
   return {
     id: 'usage.byEndUser',
@@ -309,6 +484,26 @@ function usageForEndUser(ctx: SnippetContext): CallSnippet {
     notes: [
       'Narrowing applies to the TOTALS as well as the breakdown, so this is one end-user’s bill rather than the account’s total with one row highlighted.',
       'The ref is the signed-in identity, taken from the verified session server-side — the same value the proxy stamps on session creates, which is what makes the two numbers comparable.',
+    ],
+  };
+}
+
+function usageProjectSessions(ctx: SnippetContext): CallSnippet {
+  return {
+    id: 'usage.projectSessions',
+    title: 'Read every session’s cost in a project',
+    summary: 'The un-narrowed counterpart to the session list — every end-user’s sessions, priced.',
+    sdk: 'await kortix.project(projectId).gateway.sessions();',
+    http: {
+      kind: 'rest',
+      method: 'GET',
+      path: `/v1/projects/${ctx.projectId ?? PLACEHOLDER.projectId}/gateway/sessions`,
+    },
+    serverInjected: [],
+    notes: [
+      'Not narrowed to anybody. `sessions.list` is the same project read with the proxy rewriting `end_user_ref` onto it, and this one has no such rewrite — which is why it runs SERVER-side in `/api/usage` and only the rows for projects the caller provisioned come back.',
+      'Costs here are the ACCOUNT’s raw cost, per session. This app multiplies each row by `COST_MARKUP` before it reaches the browser, so the two numbers on screen are "what Kortix charged" and "what this wrapper would charge".',
+      'These per-session rows and the per-end-user rollup are different reads of the same spend: this one groups by session, `GET /v1/usage?group_by=end_user_ref` groups by customer. Only the second one answers "who owes what".',
     ],
   };
 }
@@ -362,15 +557,47 @@ function secretUpsert(ctx: SnippetContext): CallSnippet {
   };
 }
 
+function secretDelete(ctx: SnippetContext): CallSnippet {
+  const identifier = ctx.secret?.identifier ?? PLACEHOLDER.identifier;
+  const name = ctx.secret?.name ?? PLACEHOLDER.envKey;
+
+  return {
+    id: 'secret.delete',
+    title: 'Delete a secret',
+    summary: 'Removes the identifier, not the grants that name it.',
+    sdk: `await kortix.project(projectId).secrets.remove('${identifier}');`,
+    http: {
+      kind: 'rest',
+      method: 'DELETE',
+      path: `/v1/projects/${ctx.projectId ?? PLACEHOLDER.projectId}/secrets/${encodeURIComponent(
+        identifier,
+      )}`,
+    },
+    serverInjected: [],
+    notes: [
+      `Addressed by IDENTIFIER — url-encoded, since an identifier is free text — not by the env KEY. Several identifiers may store the same KEY (\`${name}\` here), so deleting by KEY would be ambiguous about which row to remove.`,
+      'The value is gone and cannot be recovered. Nothing in this call renders it: the delete path needs the handle only, which is why deleting is the one secret operation with no value anywhere near it.',
+      'Nothing that NAMES this identifier is rewritten by the delete. A later session create whose `secrets` allowlist still names it is refused 404 SECRET_IDENTIFIER_NOT_FOUND, so the identifier has to come out of the lists that name it too.',
+      'Sessions already running keep what they booted with: their agent was started with the old environment and a live process cannot have its environment rewritten — the same reason a rotation reaches them late.',
+    ],
+  };
+}
+
 const BUILDERS: Record<CallSnippetId, (ctx: SnippetContext) => CallSnippet> = {
+  'project.provision': projectProvision,
+  'connections.list': connectionsList,
   'session.create': sessionCreate,
+  'session.idempotentCreate': sessionIdempotentCreate,
   'session.prompt': sessionPrompt,
   'session.model': sessionModel,
   'sessions.list': sessionsList,
+  'session.delete': sessionDelete,
   'usage.byEndUser': usageByEndUser,
   'usage.forEndUser': usageForEndUser,
+  'usage.projectSessions': usageProjectSessions,
   'approval.resolve': approvalResolve,
   'secret.upsert': secretUpsert,
+  'secret.delete': secretDelete,
 };
 
 /** One action's snippet, filled in with whatever the screen actually knows. */

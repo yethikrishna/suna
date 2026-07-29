@@ -191,6 +191,17 @@ function UsageDashboard() {
 
             <h2 className="mt-8 text-sm font-semibold tracking-tight">Per-session cost</h2>
 
+            {/* The read behind this table — one project at a time, whoever
+                started the sessions. The path is filled in with the first
+                project below; the un-narrowed counterpart to the session list
+                a signed-in browser gets. */}
+            <div className="mt-1">
+              <CallSnippet
+                id="usage.projectSessions"
+                context={{ projectId: data.projects[0]?.projectId }}
+              />
+            </div>
+
             {data.projects.length === 0 && (
               <Card className="mt-3 p-8 text-center text-sm text-muted-foreground">
                 No projects yet — usage will show up here once you&apos;ve run a session.

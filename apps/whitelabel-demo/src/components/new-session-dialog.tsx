@@ -256,6 +256,9 @@ function NewSessionForm({
             value={bindings}
             onChange={setBindings}
           />
+          {/* Where the options in that picker come from — including why an
+              alias can be listed with nothing to choose. */}
+          <CallSnippet id="connections.list" context={{ projectId }} />
         </section>
       )}
 

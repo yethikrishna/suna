@@ -13,8 +13,12 @@ import {
   remintGrantForAgentSwitch,
 } from '../../projects/lib/session-token-grant';
 import { scheduleOpencodeSnapshotSync } from '../../projects/opencode-session-snapshot';
-import { extendSandboxDeadline, isTurnStartRequest } from '../../projects/sandbox-deadline';
 import { resumeStoppedSandboxByExternalId } from '../../projects/routes/shared';
+import {
+  extendSandboxDeadline,
+  isSandboxAuthored,
+  isTurnStartRequest,
+} from '../../projects/sandbox-deadline';
 import {
   extractPromptInfo,
   generateSessionTitleFromFirstPrompt,
@@ -1309,7 +1313,7 @@ preview.all('/:sandboxId/:port/*', async (c) => {
       kind: 'principal',
       userId,
       callerSessionId: c.get('sessionId') ?? null,
-      sandboxAuthored: c.get('apiKeyType') === 'sandbox',
+      sandboxAuthored: isSandboxAuthored(c.get('apiKeyType'), c.get('sessionId')),
     },
     method,
     remainingPath,

@@ -13,8 +13,8 @@ import { createPersistedAcpSseProxy } from '../lib/acp-sse-proxy';
 import { appendAcpEnvelope, loadAcpTranscript } from '../lib/acp-transcript';
 import { projectsApp } from '../lib/app';
 import { syncSandboxEnvForPrompt } from '../lib/sandbox-env-sync';
-import { extendSandboxDeadline } from '../sandbox-deadline';
 import { sandboxRuntimeEndpoint } from '../runtime-inspection';
+import { extendSandboxDeadline, isSandboxAuthored } from '../sandbox-deadline';
 import {
   type PromptInfo,
   generateSessionTitleFromFirstPrompt,
@@ -248,7 +248,7 @@ projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp',
       // out, and never when the box authored the request itself. Fire-and-
       // forget — a deadline write must never fail a user's prompt.
       const promptSessionId = target.sessionId;
-      if (c.get('apiKeyType') !== 'sandbox') {
+      if (!isSandboxAuthored(c.get('apiKeyType'), c.get('sessionId'))) {
         void extendSandboxDeadline({ sessionId: promptSessionId }).catch((err) =>
           console.warn(
             `[deadline] extend failed for session ${promptSessionId}:`,

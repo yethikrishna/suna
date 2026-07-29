@@ -263,6 +263,21 @@ export async function wakeSandbox(externalId: string): Promise<void> {
   try {
     const record = await loadSandbox(externalId);
     if (!record) return;
+    // Same gate as the markSandboxUsed heal, applied to the PROVIDER start. A
+    // reaper-stopped box has an EXPIRED deadline by construction, so starting
+    // it here would resurrect it at the provider while the heal below refuses
+    // to return the row to 'active' — and the reaper only ever examines active
+    // rows. That leaves a box RUNNING, unreapable and unbilled: strictly worse
+    // than the zombie this design deletes.
+    const [live] = await db
+      .select({ deadlineAt: sessionSandboxes.deadlineAt })
+      .from(sessionSandboxes)
+      .where(eq(sessionSandboxes.sandboxId, record.sandboxId))
+      .limit(1);
+    if (!live || live.deadlineAt.getTime() <= Date.now()) {
+      console.log(`[PREVIEW] Wake refused for expired sandbox ${externalId}`);
+      return;
+    }
     await getProvider(record.provider as ProviderName).ensureRunning(externalId);
     console.log(`[PREVIEW] Wake-up triggered for sandbox ${externalId}`);
   } catch (e) {

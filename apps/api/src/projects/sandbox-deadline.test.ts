@@ -34,6 +34,7 @@ const {
   ABSOLUTE_RUN_CAP_MS,
   extendSandboxDeadline,
   idleGraceMs,
+  isSandboxAuthored,
   isTurnStartRequest,
   shortenSandboxDeadline,
   turnGrantMs,
@@ -180,5 +181,32 @@ describe('isTurnStartRequest — what the control plane counts as OBSERVING a ru
     expect(isTurnStartRequest(AGENT, 'POST', '/session')).toBe(false);
     expect(isTurnStartRequest(AGENT, 'POST', '/kortix/acpx')).toBe(false);
     expect(isTurnStartRequest(AGENT, 'POST', '/session/abc/prompt_asyncx')).toBe(false);
+  });
+});
+
+// The box holds TWO credentials that authenticate perfectly well. If either one
+// is classified as a control-plane observation, the sandbox can renew its own
+// deadline forever and the self-granted lease this design deletes is rebuilt.
+describe('isSandboxAuthored — the box may never extend its own life', () => {
+  test('the kortix_sb_ sandbox token is sandbox-authored', () => {
+    expect(isSandboxAuthored('sandbox', null)).toBe(true);
+  });
+
+  test('a SESSION-SCOPED PAT is sandbox-authored even though apiKeyType is unset', () => {
+    // KORTIX_CLI_TOKEN / KORTIX_EXECUTOR_TOKEN: injected into every box and used
+    // by the in-box `kortix` CLI. Its auth branch never sets apiKeyType, so a
+    // gate testing apiKeyType alone let the box hold itself open indefinitely.
+    expect(isSandboxAuthored(undefined, 'session-abc')).toBe(true);
+    expect(isSandboxAuthored(null, 'session-abc')).toBe(true);
+    expect(isSandboxAuthored('user', 'session-abc')).toBe(true);
+  });
+
+  test('a real user credential is NOT sandbox-authored and may extend', () => {
+    // Browser JWT and a non-session-bound personal PAT both resolve sessionId
+    // to null, so a human prompting from the UI or their laptop CLI still
+    // pushes the deadline out.
+    expect(isSandboxAuthored(undefined, null)).toBe(false);
+    expect(isSandboxAuthored('user', null)).toBe(false);
+    expect(isSandboxAuthored(undefined, undefined)).toBe(false);
   });
 });

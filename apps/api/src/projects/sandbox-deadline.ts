@@ -125,6 +125,30 @@ export async function shortenSandboxDeadline(
      WHERE s.session_id = ${sessionId} AND s.status = 'active'`);
 }
 
+/**
+ * Did the SANDBOX ITSELF author this request? Such a request may never extend
+ * the box's deadline — that is the self-renewal this design deletes.
+ *
+ * Two credentials reach the control plane from inside a box, and BOTH must be
+ * caught:
+ *   - `kortix_sb_…`, the sandbox token, which sets apiKeyType 'sandbox';
+ *   - a SESSION-SCOPED PAT (`kortix_pat_…`, injected as KORTIX_CLI_TOKEN /
+ *     KORTIX_EXECUTOR_TOKEN and used by the in-box `kortix` CLI), whose auth
+ *     branch never sets apiKeyType at all.
+ * Testing apiKeyType alone therefore lets the box renew itself forever with its
+ * own CLI token. A non-null session binding is the reliable signal: every
+ * non-session-bound auth branch resolves sessionId to null.
+ *
+ * Single definition on purpose — the path-based and subdomain proxy edges once
+ * carried divergent copies, and the weaker one failed open.
+ */
+export function isSandboxAuthored(
+  apiKeyType: string | undefined | null,
+  sessionId: string | undefined | null,
+): boolean {
+  return apiKeyType === 'sandbox' || (sessionId ?? null) !== null;
+}
+
 /** opencode's own port, and the in-box agent that reverse-proxies to it. */
 const OPENCODE_PORT = 4096;
 const AGENT_PORT = 8000;

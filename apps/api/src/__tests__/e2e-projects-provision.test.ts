@@ -134,6 +134,7 @@ mockIamEngineAllowAll();
 mockIamMembershipSyncNoop();
 
 mock.module('../projects/git', () => ({
+  MergeConflictError: class MergeConflictError extends Error {},
   isRepoFileNotFoundError: () => false,
   grepRepoFiles: async () => [],
   searchRepoFileNames: async () => [],
@@ -419,6 +420,7 @@ describe('POST /v1/projects/provision (managed git)', () => {
           auth: { method: 'github_app', installation_id: INSTALL_ID },
           owner: REPO_OWNER,
         },
+        experimental: { acp_runtime: true },
       },
     });
     expect(grantedProjectRole).toMatchObject({
@@ -536,7 +538,7 @@ describe('POST /v1/projects/provision (managed git)', () => {
     expect(updatedProjectSets[0]?.metadata).toHaveProperty('queryChunks');
   });
 
-  test('enables ACP when provisioning the multi-harness starter', async () => {
+  test('keeps the deprecated multi-harness starter id as an ACP-enabled alias', async () => {
     const app = createApp();
     const res = await app.request('/v1/projects/provision', {
       method: 'POST',

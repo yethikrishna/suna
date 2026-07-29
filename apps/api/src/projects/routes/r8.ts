@@ -101,9 +101,14 @@ projectsApp.openapi(
       sessionId,
       waitMs,
     });
+    const [freshSession] = await db
+      .select({ metadata: projectSessions.metadata })
+      .from(projectSessions)
+      .where(eq(projectSessions.sessionId, sessionId))
+      .limit(1);
     const sessionMetadata =
-      visible.row.metadata && typeof visible.row.metadata === 'object'
-        ? (visible.row.metadata as Record<string, unknown>)
+      freshSession?.metadata && typeof freshSession.metadata === 'object'
+        ? (freshSession.metadata as Record<string, unknown>)
         : {};
     const boundTransport =
       sessionMetadata.runtime_transport === 'acp' || sessionMetadata.runtime_transport === 'rest'

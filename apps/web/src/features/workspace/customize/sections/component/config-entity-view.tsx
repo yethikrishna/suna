@@ -32,6 +32,8 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, Copy, type LucideIcon, Plus } from 'lucide-react';
 import { type ReactNode, useMemo, useState } from 'react';
 
+import { configEntitySourcePath } from './config-entity-source-path';
+
 export type ConfigEntity = { name: string; path: string; description: string | null };
 
 const SKELETON_ROWS = ['a', 'b', 'c', 'd', 'e'];
@@ -731,7 +733,7 @@ function EntityDetail<T extends ConfigEntity>({
   const configure = useConfigureThread(projectId);
   const fileQuery = useQuery({
     queryKey: ['project-file-source', projectId, entity.path],
-    queryFn: () => readProjectFile(projectId, entity.path),
+    queryFn: () => readProjectFile(projectId, configEntitySourcePath(entity.path)),
     staleTime: 30_000,
   });
 

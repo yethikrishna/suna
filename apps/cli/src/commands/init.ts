@@ -25,11 +25,11 @@ function agentSublabel(agent: CodingAgent): string {
     case 'opencode':
       return 'symlink .opencode → .kortix/opencode';
     case 'claude':
-      return 'symlink .claude → .kortix/opencode';
+      return 'link .claude skills, agents, and commands';
     case 'codex':
       return 'symlink .agents → .kortix/opencode + AGENTS.md';
     case 'pi':
-      return 'symlink .pi → .kortix/opencode + AGENTS.md';
+      return 'link .pi/skills + AGENTS.md';
     case 'cursor':
       return 'AGENTS.md (read natively — no rule file)';
     default:
@@ -52,21 +52,19 @@ Arguments:
                        in. Prompted if omitted.
 
 Pick the local coding tools to wire up. The starter's canonical skill source is
-linked into each native discovery location: .opencode, .claude, .agents, or .pi.
+linked into each native discovery location. Harness-native runtime files remain
+in .claude, .codex, and .pi.
 Codex, Pi, and Cursor also get a root AGENTS.md pointer.
 
-This local tool selection does not select the cloud session harness. Use the
-acp-multi-harness starter for version 3 runtime profiles. Cloud project
-creation enables the ACP & Multi-Harness experiment for that starter.
+This local tool selection does not select the cloud session harness. Every
+new project includes OpenCode, Claude Code, Codex, and Pi runtime profiles.
+Select the logical agent when you create a cloud session.
 
 Options:
   --name <project>     Alias for the positional project-name.
   --primary <agent>    Primary coding agent to wire up (${SUPPORTED_AGENTS.join('|')}).
   --agents <list>      Comma-separated extras to wire up alongside --primary.
                        Example: --agents claude,cursor
-  --template <name>    Starter template: general-knowledge-worker (default),
-                       acp-multi-harness (OpenCode, Claude Code, Codex, Pi), or
-                       minimal (internal base plumbing only).
   --force              Configure the current cloned Kortix repository in place.
                        Requires kortix.yaml (or kortix.toml) and .kortix/opencode.
   --no-git             Don't run \`git init\` in the new project directory.
@@ -305,9 +303,8 @@ export async function runInit(argv: string[]): Promise<number> {
   }
 
   // ── Resolve starter template ────────────────────────────────────────
-  // The general-purpose starter remains the default. The explicit
-  // acp-multi-harness starter adds the v3 runtime profiles. `minimal` remains
-  // an internal base-only escape hatch.
+  // One public starter exists. Keep parsing historical template values for
+  // scripts and API compatibility. Do not expose them as product choices.
   const template: StarterTemplateId = flags.template ?? DEFAULT_STARTER_TEMPLATE_ID;
 
   // ── Resolve coding agents (multi-select TUI) ─────────────────────────

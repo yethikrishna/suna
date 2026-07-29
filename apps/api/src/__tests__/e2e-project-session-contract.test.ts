@@ -14,6 +14,7 @@ import type { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import type { SandboxRuntimeHealth } from '../projects/runtime-inspection';
 import { mockIamEngineAllowAll, mockIamMembershipSyncNoop } from './helpers/iam-mocks';
 
 const USER_ID = '00000000-0000-4000-a000-000000000001';
@@ -39,9 +40,11 @@ let sandboxProvisionCalls = 0;
 let providerStartCalls = 0;
 let providerStatus = 'stopped';
 let providerStatusAfterStart: string | null = null;
+let providerStatusSessionMetadataUpdate: Record<string, unknown> | null = null;
 let providerStartError: Error | null = null;
 let providerStartGate: Promise<void> | null = null;
 let releaseProviderStart: (() => void) | null = null;
+let runtimeInspectionHealth: SandboxRuntimeHealth | null = null;
 let providerRecoveryCalls = 0;
 let providerRecoveryEnabled = false;
 let providerRecoveryStatus: 'running' | 'recovering' | 'unavailable' = 'unavailable';
@@ -97,9 +100,11 @@ function resetState() {
   providerStartCalls = 0;
   providerStatus = 'stopped';
   providerStatusAfterStart = null;
+  providerStatusSessionMetadataUpdate = null;
   providerStartError = null;
   providerStartGate = null;
   releaseProviderStart = null;
+  runtimeInspectionHealth = null;
   providerRecoveryCalls = 0;
   providerRecoveryEnabled = false;
   providerRecoveryStatus = 'unavailable';
@@ -220,6 +225,7 @@ mock.module('../middleware/auth', () => ({
 }));
 
 mock.module('../projects/git', () => ({
+  MergeConflictError: class MergeConflictError extends Error {},
   createRemoteSessionBranch: async () => {
     branchCreateCalls += 1;
   },
@@ -366,7 +372,18 @@ mock.module('../platform/providers', () => ({
     }
   },
   getProvider: () => ({
-    getStatus: async () => providerStatus,
+    getStatus: async () => {
+      if (providerStatusSessionMetadataUpdate && sessionRow) {
+        sessionRow = {
+          ...sessionRow,
+          metadata: {
+            ...(sessionRow.metadata ?? {}),
+            ...providerStatusSessionMetadataUpdate,
+          },
+        };
+      }
+      return providerStatus;
+    },
     start: async () => {
       providerStartCalls += 1;
       if (providerStartError) throw providerStartError;
@@ -385,6 +402,12 @@ mock.module('../platform/providers', () => ({
         }
       : {}),
   }),
+}));
+
+const realRuntimeInspection = await import('../projects/runtime-inspection');
+mock.module('../projects/runtime-inspection', () => ({
+  ...realRuntimeInspection,
+  inspectSandboxRuntime: async () => runtimeInspectionHealth,
 }));
 
 mock.module('../projects/opencode-mapping', () => ({
@@ -1752,6 +1775,55 @@ describe('project session API contract', () => {
     expect(sessionSandboxRows).toHaveLength(1);
   });
 
+  test('dashboard start returns ACP identity persisted while startSession runs', async () => {
+    const app = createApp();
+    sessionRow = {
+      ...sessionRow!,
+      sandboxProvider: 'platinum',
+      status: 'running',
+      metadata: {
+        runtime_transport: 'acp',
+        runtime_harness: 'codex',
+        acp_server_id: SESSION_ID,
+        native_agent: 'codex',
+      },
+    };
+    sessionSandboxRows = [
+      {
+        sandboxId: SESSION_ID,
+        sessionId: SESSION_ID,
+        accountId: ACCOUNT_ID,
+        projectId: PROJECT_ID,
+        provider: 'platinum',
+        externalId: 'box-acp-identity',
+        baseUrl: null,
+        status: 'active',
+        config: {},
+        metadata: {},
+        lastUsedAt: null,
+        createdAt: new Date('2026-01-02T00:00:00Z'),
+        updatedAt: new Date('2026-01-02T00:00:00Z'),
+      },
+    ];
+    providerStatus = 'running';
+    providerStatusSessionMetadataUpdate = {
+      acp_session_id: 'codex-native-created-during-start',
+    };
+
+    const response = await app.request(
+      `/v1/projects/${PROJECT_ID}/sessions/${SESSION_ID}/start`,
+      { method: 'POST' },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      runtime_transport: 'acp',
+      runtime_harness: 'codex',
+      acp_server_id: SESSION_ID,
+      acp_session_id: 'codex-native-created-during-start',
+    });
+  });
+
   test('dashboard start retires abandoned no-external-id provisioning rows and reallocates', async () => {
     const app = createApp();
     sessionRow = {
@@ -1978,7 +2050,7 @@ describe('project session API contract', () => {
     expect(sessionSandboxRows[0]?.externalId).toBe('box-stuck-stopped');
   });
 
-  test('dashboard start preserves an old active row whose provider status stays unknown', async () => {
+  test('dashboard start trusts live runtime health when the provider status stays unknown', async () => {
     const app = createApp();
     sessionRow = {
       ...sessionRow!,
@@ -2007,16 +2079,23 @@ describe('project session API contract', () => {
       },
     ];
     providerStatus = 'unknown';
+    runtimeInspectionHealth = {
+      runtime: 'opencode-rest',
+      runtimeReady: true,
+      acpServerId: null,
+      runtimeHarness: null,
+      bootError: null,
+    };
 
     const res = await app.request(`/v1/projects/${PROJECT_ID}/sessions/${SESSION_ID}/start`, {
       method: 'POST',
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
-      stage: 'failed',
+      stage: 'ready',
       retriable: false,
-      reason: 'runtime_identity_unavailable',
-      sandbox: { external_id: 'box-status-unknown', status: 'stopped' },
+      reason: 'unchanged',
+      sandbox: { external_id: 'box-status-unknown', status: 'active' },
     });
 
     expect(providerStartCalls).toBe(0);
@@ -2566,6 +2645,52 @@ describe('project session API contract', () => {
     });
   });
 
+  test('restart trusts live runtime health when the provider status stays unknown', async () => {
+    const app = createApp();
+    sessionRow = {
+      ...sessionRow!,
+      status: 'running',
+      opencodeSessionId: 'ses_root_existing',
+    };
+    sessionSandboxRows = [
+      {
+        sandboxId: SESSION_ID,
+        sessionId: SESSION_ID,
+        accountId: ACCOUNT_ID,
+        projectId: PROJECT_ID,
+        provider: 'platinum',
+        externalId: 'box-restarted-status-unknown',
+        baseUrl: null,
+        status: 'active',
+        config: {},
+        metadata: {},
+        lastUsedAt: null,
+        createdAt: new Date('2026-01-02T00:00:00Z'),
+        updatedAt: new Date('2026-01-02T00:00:00Z'),
+      },
+    ];
+    providerStatus = 'unknown';
+    runtimeInspectionHealth = {
+      runtime: 'opencode-rest',
+      runtimeReady: true,
+      acpServerId: null,
+      runtimeHarness: null,
+      bootError: null,
+    };
+
+    const res = await app.request(`/v1/projects/${PROJECT_ID}/sessions/${SESSION_ID}/restart`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(202);
+    await flushUntil(() => sessionRow?.status === 'running');
+    expect(providerStartCalls).toBe(1);
+    expect(sessionRow?.status).toBe('running');
+    expect(sessionSandboxRows[0]).toMatchObject({
+      externalId: 'box-restarted-status-unknown',
+      status: 'active',
+    });
+  });
+
   test('restart preserves identity when provider accepts start but then reports removed', async () => {
     const app = createApp();
     sessionRow = {
@@ -2786,9 +2911,11 @@ describe('project session API contract', () => {
     expect(body.sandbox_provider).toBe('daytona');
     expect(body.base_ref).toBe('dev');
     expect(body.status).toBe('provisioning');
+    expect(body.opencode_session_id).toBeNull();
     expect(body.name).toBe('Contract session');
     expect(branchCreateCalls).toBe(1);
     expect(sessionRow?.baseRef).toBe('dev');
+    expect(sessionRow?.opencodeSessionId).toBeNull();
 
     await flushUntil(() => sandboxProvisionCalls === 1);
     expect(sandboxProvisionCalls).toBe(1);

@@ -84,7 +84,7 @@ const runtimeModel = process.env.E2E_ACP_MULTI_HARNESS_MODEL?.trim() || "";
 const directOpenAiKey =
   process.env.E2E_ACP_MULTI_HARNESS_OPENAI_API_KEY?.trim() || "";
 const manifest = readFileSync(
-  resolve(repoRoot, "packages/starter/templates/acp-multi-harness/kortix.yaml"),
+  resolve(repoRoot, "packages/starter/templates/base/kortix.yaml"),
   "utf8",
 );
 const api = createApiJsonClient(apiBase);
@@ -523,9 +523,8 @@ async function main(): Promise<void> {
       "/projects/provision",
       {
         account_id: accountId,
-        name: `ACP multi-harness ${Date.now()}`,
+        name: `Multi-harness ${Date.now()}`,
         seed_starter: true,
-        starter_template: "acp-multi-harness",
       },
       201,
     );

@@ -16,25 +16,26 @@ The project experiment key is `acp_runtime`. The visible name is
 - Enabled: the project uses ACP. A `kortix_version: 3` manifest can select any
   supported harness.
 
-The experiment defaults to disabled. Enable it before starting a v3 session.
-The API rejects a v3 session with `ACP_RUNTIME_REQUIRED` while the experiment is
-disabled.
+New generic projects enable the experiment automatically. Existing projects
+keep their current experiment state. Enable it before starting a v3 session in
+an existing project. The API rejects a v3 session with
+`ACP_RUNTIME_REQUIRED` while the experiment is disabled.
 
 ## Create a four-harness test project
 
-In the New Project modal, select **ACP multi-harness** under **Starter**. The
-project creation API scaffolds the v3 manifest below and enables
-`experimental.acp_runtime`.
+The New Project modal has one starter. The project creation API scaffolds the
+v3 manifest below and enables `experimental.acp_runtime`.
 
 The CLI can scaffold the same files:
 
 ```sh
-kortix init harness-lab --template acp-multi-harness --yes --no-git
+kortix init harness-lab --yes --no-git
 ```
 
 The CLI command writes files only. `kortix ship` creates the cloud project.
-Cloud project creation enables `acp_runtime` when it receives
-`starter_template: acp-multi-harness`.
+Cloud project creation enables `acp_runtime` for the generic starter.
+`acp-multi-harness` remains an accepted compatibility alias for older API and
+SDK clients. It produces the same files.
 
 ## Manifest model
 
@@ -192,7 +193,7 @@ pnpm exec dotenvx run --ignore=MISSING_ENV_FILE \
 ```
 
 The default set is `opencode,claude,codex,pi`. The script creates a disposable
-user and provisions the `acp-multi-harness` starter. Project creation enables
+user and provisions the generic starter. Project creation enables
 `acp_runtime`. The script starts one session per harness and cleans up the
 managed repository, project rows, account row, and user in `finally`. Run
 `pnpm dev` first.

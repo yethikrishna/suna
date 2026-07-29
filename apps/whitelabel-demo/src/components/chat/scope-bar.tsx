@@ -57,6 +57,7 @@ import {
   SECRET_MEMBERSHIP_LABEL,
   START_NEW_SESSION_ACTION,
   classifyTypedIdentifier,
+  hasScopeDraft,
   scopeBarConnectors,
   scopeBarSecrets,
   scopeControl,
@@ -411,7 +412,7 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
         {/* Apply to THIS session. Shown above "start a new session" because it is
             now the ordinary path — starting fresh is the fallback for the one
             thing a re-scope cannot do, not the default. */}
-        {draftSecrets !== undefined && (
+        {hasScopeDraft(draftSecrets) && (
           <div className="mt-2 space-y-1.5 border-t border-border pt-2">
             <Button
               size="sm"
@@ -494,7 +495,7 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
         {/* Same control as secrets, different guarantee: a binding is resolved
             server-side on every tool call, so this one IS fully effective — the
             copy must not borrow the secrets caveat. */}
-        {draftBindings !== undefined && (
+        {hasScopeDraft(draftBindings) && (
           <div className="mt-2 space-y-1.5 border-t border-border pt-2">
             <Button
               size="sm"

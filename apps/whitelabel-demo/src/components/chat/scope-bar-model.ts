@@ -339,3 +339,20 @@ export function seedBindingsFromLabels(rows: ScopeBarConnector[]): Record<string
   }
   return bindings;
 }
+
+/**
+ * Has the user actually drafted a change worth applying?
+ *
+ * The draft states are three-valued and easy to get wrong:
+ *   `undefined` — untouched, so there is nothing to apply
+ *   `null`      — deliberately "stop narrowing" (a real, applicable change)
+ *   `string[]`  — an explicit list, including `[]` for "no project secrets"
+ *
+ * The first version tested `draft !== null`, which is TRUE for the untouched
+ * `undefined` — so the Apply button rendered from first paint, above a list the
+ * user had not edited. Every one of `null`, `[]` and a populated list is a real
+ * change; only `undefined` is not.
+ */
+export function hasScopeDraft<T>(draft: T | undefined): draft is T {
+  return draft !== undefined;
+}

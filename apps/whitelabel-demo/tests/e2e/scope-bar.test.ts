@@ -8,6 +8,7 @@ import {
   classifyTypedIdentifier,
   scopeBarConnectors,
   scopeBarSecrets,
+  hasScopeDraft,
   scopeControl,
   scopeDraftIssues,
   seedBindingsFromLabels,
@@ -386,5 +387,31 @@ describe('the re-scope payload sends only the axis being changed', () => {
   test('an EMPTY allowlist survives too — "no secrets" is a real choice', () => {
     const payload = payloadFor({ secrets: [] });
     expect(payload.secrets).toEqual([]);
+  });
+});
+
+describe('hasScopeDraft — when the Apply button may appear', () => {
+  test('untouched means nothing to apply', () => {
+    // The bug: the first version tested `draft !== null`, and the untouched
+    // value is `undefined`. `undefined !== null` is true, so Apply rendered from
+    // first paint — above a list the user had no way to edit yet.
+    expect(hasScopeDraft(undefined)).toBe(false);
+  });
+
+  test('an explicit null IS a change — "stop narrowing"', () => {
+    // Opposite of untouched: it hands the session the agent's full grant.
+    expect(hasScopeDraft(null)).toBe(true);
+  });
+
+  test('an EMPTY list is a change — "no project secrets at all"', () => {
+    expect(hasScopeDraft([])).toBe(true);
+  });
+
+  test('a populated list is a change', () => {
+    expect(hasScopeDraft(['TEST_KEY_2'])).toBe(true);
+  });
+
+  test('an empty bindings map is a change — it unbinds everything', () => {
+    expect(hasScopeDraft({})).toBe(true);
   });
 });

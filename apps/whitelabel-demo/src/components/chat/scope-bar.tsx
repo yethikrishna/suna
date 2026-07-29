@@ -57,6 +57,7 @@ import {
   SECRET_MEMBERSHIP_LABEL,
   START_NEW_SESSION_ACTION,
   classifyTypedIdentifier,
+  hasScopeDraft,
   scopeBarConnectors,
   scopeBarSecrets,
   scopeControl,
@@ -211,8 +212,6 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
   // Read off the capability map rather than hardcoded: if either of these ever
   // became changeable in place, the draft-and-restart affordance would be the
   // wrong shape and should disappear rather than quietly misdescribe the rule.
-  const secretsFixed = !scopeControl('secrets').live;
-  const connectionsFixed = !scopeControl('connections').live;
 
   // Offering "start a new session with this scope" against a secret list that
   // failed to load would either send an allowlist nothing verified or refuse it
@@ -309,10 +308,14 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
         </div>
 
         <NextSession
-          label="Change what the next session may read"
-          // No draft editor without the list it edits: a start built on a list
+          label="Change what this session may read"
+          // No draft editor without the list it edits: a change built on a list
           // that failed to load would name identifiers nobody verified.
-          show={secretsFixed && !secrets.isError}
+          //
+          // NOT gated on `secretsFixed` any more. It was, and when secrets became
+          // changeable that flag went false and took the ONLY editing controls
+          // with it — the popover said "Changeable" over a read-only list.
+          show={!secrets.isError}
         >
           <div className="flex items-center justify-between gap-3">
             <Label htmlFor="scope-bar-narrow" className="text-xs font-normal">
@@ -326,7 +329,7 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
           </div>
           {nextSecrets === null ? (
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              Off, the next session gets its agent&apos;s full secret grant — the same as this one.
+              Off, this session gets its agent&apos;s full secret grant — no narrowing at all.
             </p>
           ) : (
             <div className="space-y-2">
@@ -409,7 +412,7 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
         {/* Apply to THIS session. Shown above "start a new session" because it is
             now the ordinary path — starting fresh is the fallback for the one
             thing a re-scope cannot do, not the default. */}
-        {draftSecrets !== null && (
+        {hasScopeDraft(draftSecrets) && (
           <div className="mt-2 space-y-1.5 border-t border-border pt-2">
             <Button
               size="sm"
@@ -475,8 +478,10 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
         </div>
 
         <NextSession
-          label="Bind different accounts for the next session"
-          show={connectionsFixed && choices.some((choice) => choice.connections.length > 0)}
+          label="Bind different accounts for this session"
+          // Same fix as secrets: gating on `connectionsFixed` hid the picker the
+          // moment bindings became changeable, so the popover offered nothing.
+          show={choices.some((choice) => choice.connections.length > 0)}
         >
           <ConnectorBindingFields
             // Only the aliases with something to bind — the unavailable ones
@@ -490,7 +495,7 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
         {/* Same control as secrets, different guarantee: a binding is resolved
             server-side on every tool call, so this one IS fully effective — the
             copy must not borrow the secrets caveat. */}
-        {draftBindings !== undefined && (
+        {hasScopeDraft(draftBindings) && (
           <div className="mt-2 space-y-1.5 border-t border-border pt-2">
             <Button
               size="sm"

@@ -219,7 +219,7 @@ Also stop if the same failure survives three different fixes (use
 |---|---|---|---|---|---|
 | 0 | Design and implementation plan | DONE | `profile-auth-cost` | 2026-07-29 | `e70538c802` |
 | 1 | Connector profile contracts | DONE | `profile-auth-cost` | 2026-07-29 | `543044a2a6` + `df01b91344` + `6bfc4dcae1` + `3a410eb374` |
-| 2 | Strategy-based session authorization | NOT STARTED | — | — | — |
+| 2 | Strategy-based session authorization | IN PROGRESS | `profile-auth-cost` | 2026-07-29 | — |
 | 3 | Main web session scope | NOT STARTED | — | — | — |
 | 4 | Remove end-user usage attribution | NOT STARTED | — | — | — |
 | 5 | Unified session costs | NOT STARTED | — | — | — |

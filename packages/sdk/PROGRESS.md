@@ -3967,6 +3967,22 @@ Live local acceptance:
 - Each transcript contained only its own three assistant markers.
 - Fixture cleanup left zero projects and zero users.
 
+Rebased local acceptance on `origin/main` `d627167f`:
+
+- Evidence:
+  `tests/performance/session-start/results/2026-07-29/opencode-fork-isolation-local-platinum-rebased.json`.
+- The smoke converted the canonical version 3 starter into a disposable
+  version 2 OpenCode REST fixture through a temporary project-scoped PAT.
+- Result: `PASS 2/2` on Platinum.
+- Create-to-ready: `21.758 s` and `23.266 s`.
+- `/start` returned distinct OpenCode roots:
+  `ses_050be4bb6ffepNq9BLE8kdybL9` and
+  `ses_050be472cffeLbJ7ciXGs8smOL`.
+- The public SDK matched both authoritative `/start` roots.
+- Restart preserved both roots.
+- Each assistant transcript contained only its own three markers.
+- Fixture cleanup left zero projects and zero users.
+
 **Status:** COMPLETE.
 
 **SDK package shippable to production: YES.**

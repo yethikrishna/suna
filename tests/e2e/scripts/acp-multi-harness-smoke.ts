@@ -230,24 +230,36 @@ function seedCredits(accountId: string): void {
   assert(result.exitCode === 0, `credit seed failed: ${result.stderr.toString().trim()}`);
 }
 
-function runGit(args: string[], authHeader: string, cwd?: string): void {
-  const result = Bun.spawnSync(['git', '-c', `http.extraHeader=${authHeader}`, ...args], {
+function runGit(args: string[], cwd?: string): void {
+  const result = Bun.spawnSync(['git', ...args], {
     cwd,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
     stdout: 'pipe',
     stderr: 'pipe',
   });
-  assert(result.exitCode === 0, `git ${args[0]} failed: ${result.stderr.toString().trim()}`);
+  const stderr = result.stderr
+    .toString()
+    .trim()
+    .replace(/https:\/\/[^@\s]+@/g, 'https://[credentials]@');
+  assert(result.exitCode === 0, `git ${args[0]} failed: ${stderr}`);
 }
 
-function rewriteProjectAsOpenCodeRestFixture(project: Project, token: string): void {
+async function rewriteProjectAsOpenCodeRestFixture(project: Project, token: string): Promise<void> {
   const checkout = mkdtempSync(resolve(tmpdir(), 'kortix-opencode-rest-fixture-'));
-  const authHeader = `Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString(
-    'base64',
-  )}`;
+  const credential = await api<{ token_id: string; secret_key: string }>(
+    token,
+    'POST',
+    `/projects/${project.project_id}/cli-token`,
+    { name: 'OpenCode REST isolation smoke' },
+    201,
+  );
+  const authenticatedOrigin = new URL(project.git_origin_url);
+  authenticatedOrigin.username = 'x-access-token';
+  authenticatedOrigin.password = credential.secret_key;
   try {
-    runGit(['clone', '--depth', '1', project.git_origin_url, checkout], authHeader);
+    runGit(['clone', '--depth', '1', authenticatedOrigin.toString(), checkout]);
     writeFileSync(resolve(checkout, 'kortix.yaml'), legacyOpenCodeManifest);
-    runGit(['add', 'kortix.yaml'], authHeader, checkout);
+    runGit(['add', 'kortix.yaml'], checkout);
     runGit(
       [
         '-c',
@@ -258,12 +270,18 @@ function rewriteProjectAsOpenCodeRestFixture(project: Project, token: string): v
         '-m',
         'test: use OpenCode REST compatibility manifest',
       ],
-      authHeader,
       checkout,
     );
-    runGit(['push', 'origin', 'HEAD'], authHeader, checkout);
+    runGit(['push', authenticatedOrigin.toString(), 'HEAD'], checkout);
   } finally {
     rmSync(checkout, { recursive: true, force: true });
+    const revoked = await apiResult(
+      apiBase,
+      token,
+      'DELETE',
+      `/projects/${project.project_id}/cli-token/${credential.token_id}`,
+    );
+    assert(revoked.status === 200, `temporary project token revoke returned ${revoked.status}`);
   }
 }
 
@@ -773,7 +791,7 @@ async function main(): Promise<void> {
       'starter project did not expose the expected ACP & Multi-Harness state',
     );
     if (assertOpenCodeForkIsolation) {
-      rewriteProjectAsOpenCodeRestFixture(project, token);
+      await rewriteProjectAsOpenCodeRestFixture(project, token);
     }
 
     const seededManifestResult = await waitFor(

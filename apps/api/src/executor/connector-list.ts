@@ -11,6 +11,7 @@ export interface AdminConnectorCandidate {
   sensitive: boolean;
   actions: AdminConnectorView['actions'];
   requiresAuth: boolean;
+  requestAuthType: AdminConnectorView['requestAuthType'];
 }
 
 export function buildAdminConnectorViews(
@@ -28,6 +29,7 @@ export function buildAdminConnectorViews(
     authorizationStrategy: candidate.authorizationStrategy,
     sensitive: candidate.sensitive,
     actions: candidate.actions,
+    requestAuthType: candidate.requestAuthType,
     authSecret: candidate.requiresAuth ? 'credential' : null,
     secretSet: candidate.requiresAuth ? connectedSlugs.has(candidate.slug) : true,
   }));

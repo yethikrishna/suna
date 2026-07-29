@@ -19,10 +19,7 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { auth, errors, json } from '../../openapi';
 import { applyAgentScope, extractAgents } from '../agents';
-import {
-  applyAgentScopeV2,
-  normalizeRequiredConnectorAliases,
-} from '../lib/agent-config-v2';
+import { applyAgentScopeV2, normalizeRequiredConnectorAliases } from '../lib/agent-config-v2';
 import { assertProjectCapability, loadProjectForUser } from '../lib/access';
 import { projectsApp } from '../lib/app';
 import { PROJECT_ACTIONS } from '../../iam';
@@ -50,7 +47,10 @@ projectsApp.openapi(
       params: z.object({ projectId: z.string(), agentName: z.string() }),
       body: { content: { 'application/json': { schema: AgentScopeBody } } },
     },
-    responses: { 200: json(z.any(), 'Updated agent scope'), ...errors(400, 403, 404) },
+    responses: {
+      200: json(z.any(), 'Updated agent scope'),
+      ...errors(400, 403, 404, 409, 502),
+    },
   }),
   async (c: any) => {
     const projectId = c.req.param('projectId');
@@ -62,7 +62,13 @@ projectsApp.openapi(
     // 'manage' → project.write, so unchecking agent.write did nothing here.
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
-    await assertProjectCapability(c, loaded.userId, loaded.row.accountId, projectId, PROJECT_ACTIONS.PROJECT_AGENT_WRITE);
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_AGENT_WRITE,
+    );
 
     const parsed = AgentScopeBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'Invalid body', code: 'invalid_body' }, 400);
@@ -139,7 +145,7 @@ projectsApp.openapi(
       `chore: scope agent ${agentName} (secrets/connectors)`,
     );
     if ('error' in committed) {
-      return c.json({ error: committed.error }, (committed.status as 400) ?? 400);
+      return c.json({ error: committed.error }, committed.status as 400 | 409 | 502);
     }
 
     const spec = check.specs.find((s) => s.name === agentName);

@@ -40,17 +40,16 @@ import { PROJECT_ACTIONS } from '../../iam/actions';
 import { auth, errors, json } from '../../openapi';
 import { db } from '../../shared/db';
 import { resolveTemplateBySlug } from '../../snapshots/templates';
-import { readRepoFile } from '../git';
-import { commitMultipleFilesToBranch } from '../git/branches';
-import { assertProjectCapability, loadProjectForUser } from '../lib/access';
 import { extractAgents } from '../agents';
+import { readRepoFile } from '../git';
+import { GitFileRevisionConflictError, commitMultipleFilesToBranch } from '../git/branches';
+import { assertProjectCapability, loadProjectForUser } from '../lib/access';
 import {
   applyAgentBlockV2,
   applyDefaultAgentV2,
   normalizeRequiredConnectorAliases,
   readAgentBlockV2,
 } from '../lib/agent-config-v2';
-import { metadataMerge } from '../lib/metadata-merge';
 import { parseAgentMarkdown, serializeAgentMarkdown } from '../lib/agent-markdown';
 import { projectsApp } from '../lib/app';
 import {
@@ -59,6 +58,7 @@ import {
   agentMarkdownPath,
 } from '../lib/compile-agent-config';
 import { withProjectGitAuth } from '../lib/git';
+import { metadataMerge } from '../lib/metadata-merge';
 import { loadManifestForEdit } from '../lib/triggers';
 import { MANIFEST_FILENAME, serializeManifest } from '../triggers';
 
@@ -180,7 +180,11 @@ projectsApp.openapi(
     let block: (AgentBlockV2 & { opencode?: Record<string, unknown> }) | null = read.block;
     if (read.schemaVersion === 2) {
       const mdPath = agentMarkdownPath(manifest.raw, agentName);
-      const { frontmatter, body } = await readAgentMarkdown(loaded.row, loaded.row.defaultBranch, mdPath);
+      const { frontmatter, body } = await readAgentMarkdown(
+        loaded.row,
+        loaded.row.defaultBranch,
+        mdPath,
+      );
       const opencode = pickBehaviorFields(frontmatter);
       if (body.trim()) opencode.prompt = body;
       block = { ...(read.block ?? {}), opencode };
@@ -216,7 +220,7 @@ projectsApp.openapi(
     },
     responses: {
       200: json(DefaultAgentResponseSchema, 'Updated project default agent'),
-      ...errors(400, 403, 404),
+      ...errors(400, 403, 404, 409, 502),
     },
   }),
   async (c: any) => {
@@ -233,7 +237,10 @@ projectsApp.openapi(
 
     const parsed = DefaultAgentBodySchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
-      return c.json({ error: 'Invalid body', code: 'invalid_body', issues: parsed.error.issues }, 400);
+      return c.json(
+        { error: 'Invalid body', code: 'invalid_body', issues: parsed.error.issues },
+        400,
+      );
     }
     const agentName = parsed.data.agent.trim();
 
@@ -260,8 +267,19 @@ projectsApp.openapi(
         files: [{ path: manifestPath, content: serializeManifest(manifest) }],
         message: `chore: set default agent to ${agentName}`,
         branch: loaded.row.defaultBranch,
+        expectedFileRevision:
+          manifest.revision === undefined
+            ? undefined
+            : {
+                path: manifestPath,
+                sha: manifest.revision,
+                candidatePaths: manifest.candidatePaths,
+              },
       });
     } catch (error) {
+      if (error instanceof GitFileRevisionConflictError) {
+        return c.json({ error: error.message }, 409);
+      }
       return c.json(
         { error: `Failed to commit default agent: ${(error as Error).message || String(error)}` },
         502,
@@ -297,7 +315,10 @@ projectsApp.openapi(
       params: z.object({ projectId: z.string(), agentName: z.string() }),
       body: { content: { 'application/json': { schema: AgentBlockSchema } } },
     },
-    responses: { 200: json(z.any(), 'Updated agent config'), ...errors(400, 403, 404) },
+    responses: {
+      200: json(z.any(), 'Updated agent config'),
+      ...errors(400, 403, 404, 409, 502),
+    },
   }),
   async (c: any) => {
     const projectId = c.req.param('projectId');
@@ -314,7 +335,10 @@ projectsApp.openapi(
 
     const parsed = AgentBlockSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
-      return c.json({ error: 'Invalid body', code: 'invalid_body', issues: parsed.error.issues }, 400);
+      return c.json(
+        { error: 'Invalid body', code: 'invalid_body', issues: parsed.error.issues },
+        400,
+      );
     }
 
     // Split the wire body into its two homes. Drop undefined keys
@@ -323,10 +347,7 @@ projectsApp.openapi(
     const { opencode: opencodeDraft, ...governanceRaw } = parsed.data;
     const normalizedGovernance = normalizeRequiredConnectorAliases(governanceRaw);
     if (!normalizedGovernance.ok) {
-      return c.json(
-        { error: normalizedGovernance.error, code: 'invalid_body' },
-        400,
-      );
+      return c.json({ error: normalizedGovernance.error, code: 'invalid_body' }, 400);
     }
     const governanceBlock: AgentBlockV2 = {};
     for (const [key, value] of Object.entries(normalizedGovernance.block)) {
@@ -432,8 +453,19 @@ projectsApp.openapi(
         files,
         message,
         branch: loaded.row.defaultBranch,
+        expectedFileRevision:
+          manifest.revision === undefined
+            ? undefined
+            : {
+                path: manifestPath,
+                sha: manifest.revision,
+                candidatePaths: manifest.candidatePaths,
+              },
       });
     } catch (err) {
+      if (err instanceof GitFileRevisionConflictError) {
+        return c.json({ error: err.message }, 409);
+      }
       return c.json(
         { error: `Failed to commit agent config: ${(err as Error).message || String(err)}` },
         502,

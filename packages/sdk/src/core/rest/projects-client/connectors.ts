@@ -21,7 +21,14 @@ export interface AdminConnector {
   slug: string;
   name: string;
   provider:
-    'pipedream' | 'mcp' | 'openapi' | 'postman' | 'graphql' | 'http' | 'channel' | 'computer';
+    | 'pipedream'
+    | 'mcp'
+    | 'openapi'
+    | 'postman'
+    | 'graphql'
+    | 'http'
+    | 'channel'
+    | 'computer';
   platform?: 'slack' | 'email' | null;
   /** Provider icon materialized during connector synchronization. */
   iconUrl?: string | null;
@@ -33,6 +40,8 @@ export interface AdminConnector {
   credentialMode: 'shared';
   /** Exclusive owner model for authorizations under this connector profile. */
   authorizationStrategy: ConnectorAuthorizationStrategy;
+  /** Authentication shape required when a member adds a private credential. */
+  requestAuthType?: ConnectorRequestAuthType;
   /** Marked sensitive — its reads gate too (require_approval by default). */
   sensitive: boolean;
   actions: ConnectorAction[];
@@ -66,7 +75,15 @@ export type DiscoveredAuthScheme =
   | 'asap'
   | 'unknown';
 export type ConnectorRequestAuthType =
-  'none' | 'bearer' | 'basic' | 'custom' | 'api_key' | 'oauth1' | 'hmac' | 'aws_sigv4' | 'mtls';
+  | 'none'
+  | 'bearer'
+  | 'basic'
+  | 'custom'
+  | 'api_key'
+  | 'oauth1'
+  | 'hmac'
+  | 'aws_sigv4'
+  | 'mtls';
 export interface ExecutableConnectorAuth {
   type: ConnectorRequestAuthType;
   in: 'header' | 'query' | 'cookie';
@@ -144,8 +161,7 @@ export interface ReconcileMemberConnectorAuthorizationInput {
 }
 
 /** @deprecated Use `ReconcileMemberConnectorAuthorizationInput`. */
-export type ReconcileMemberConnectionProfileInput =
-  ReconcileMemberConnectorAuthorizationInput;
+export type ReconcileMemberConnectionProfileInput = ReconcileMemberConnectorAuthorizationInput;
 
 export interface ConnectorAuthorizationConnectInput {
   success_redirect_uri?: string;
@@ -160,7 +176,11 @@ export interface OAuth2ClientCredentials {
   token_url: string;
   client_id: string;
   token_endpoint_auth_method:
-    'none' | 'client_secret_post' | 'client_secret_basic' | 'client_secret_jwt' | 'private_key_jwt';
+    | 'none'
+    | 'client_secret_post'
+    | 'client_secret_basic'
+    | 'client_secret_jwt'
+    | 'private_key_jwt';
   client_secret?: string;
   private_key?: string;
   certificate_thumbprint?: string;
@@ -170,7 +190,11 @@ export interface OAuth2ClientCredentials {
 }
 
 export type OAuth2TokenEndpointAuthMethod =
-  'none' | 'client_secret_basic' | 'client_secret_post' | 'client_secret_jwt' | 'private_key_jwt';
+  | 'none'
+  | 'client_secret_basic'
+  | 'client_secret_post'
+  | 'client_secret_jwt'
+  | 'private_key_jwt';
 
 export interface OAuth2ApplicationInput {
   discovery_url?: string;
@@ -189,10 +213,8 @@ export interface OAuth2ApplicationInput {
   token_params?: Record<string, string>;
 }
 
-export interface OAuth2ApplicationView extends Omit<
-  OAuth2ApplicationInput,
-  'client_secret' | 'private_key'
-> {
+export interface OAuth2ApplicationView
+  extends Omit<OAuth2ApplicationInput, 'client_secret' | 'private_key'> {
   has_client_secret: boolean;
   has_private_key: boolean;
 }
@@ -229,7 +251,8 @@ export interface OAuth2ConnectionStatus {
 }
 
 export type ConnectorAuthorizationCredentialInput =
-  { value: string; kind?: 'secret' | 'connection' } | { oauth2: OAuth2ClientCredentials };
+  | { value: string; kind?: 'secret' | 'connection' }
+  | { oauth2: OAuth2ClientCredentials };
 
 /** @deprecated Use `ConnectorAuthorizationCredentialInput`. */
 export type ConnectionProfileCredentialInput = ConnectorAuthorizationCredentialInput;
@@ -359,8 +382,7 @@ export async function putConnectorAuthorizationOAuth2Application(
 }
 
 /** @deprecated Use `putConnectorAuthorizationOAuth2Application`. */
-export const putConnectionProfileOAuth2Application =
-  putConnectorAuthorizationOAuth2Application;
+export const putConnectionProfileOAuth2Application = putConnectorAuthorizationOAuth2Application;
 
 export async function getConnectorAuthorizationOAuth2Application(
   projectId: string,
@@ -374,8 +396,7 @@ export async function getConnectorAuthorizationOAuth2Application(
 }
 
 /** @deprecated Use `getConnectorAuthorizationOAuth2Application`. */
-export const getConnectionProfileOAuth2Application =
-  getConnectorAuthorizationOAuth2Application;
+export const getConnectionProfileOAuth2Application = getConnectorAuthorizationOAuth2Application;
 
 export async function discoverConnectorAuthorizationOAuth2(
   projectId: string,
@@ -462,10 +483,7 @@ export async function getConnectorAuthorizationOAuth2Status(
 /** @deprecated Use `getConnectorAuthorizationOAuth2Status`. */
 export const getConnectionProfileOAuth2Status = getConnectorAuthorizationOAuth2Status;
 
-export async function revokeConnectorAuthorization(
-  projectId: string,
-  authorizationId: string,
-) {
+export async function revokeConnectorAuthorization(projectId: string, authorizationId: string) {
   return unwrap(
     await backendApi.put<{ ok: true }>(
       `/projects/${projectId}/connector-profiles/${authorizationId}/revoke`,
@@ -477,10 +495,7 @@ export async function revokeConnectorAuthorization(
 /** @deprecated Use `revokeConnectorAuthorization`. */
 export const revokeConnectionProfile = revokeConnectorAuthorization;
 
-export async function activateConnectorAuthorization(
-  projectId: string,
-  authorizationId: string,
-) {
+export async function activateConnectorAuthorization(projectId: string, authorizationId: string) {
   return unwrap(
     await backendApi.put<{ ok: true }>(
       `/projects/${projectId}/connector-profiles/${authorizationId}/activate`,
@@ -498,10 +513,7 @@ export const activateConnectionProfile = activateConnectorAuthorization;
  * the project (team-shared) and one per member, so this only displaces the
  * previous default within the same scope.
  */
-export async function setDefaultConnectorAuthorization(
-  projectId: string,
-  authorizationId: string,
-) {
+export async function setDefaultConnectorAuthorization(projectId: string, authorizationId: string) {
   return unwrap(
     await backendApi.put<{ ok: true }>(
       `/projects/${projectId}/connector-profiles/${authorizationId}/default`,
@@ -543,8 +555,7 @@ export async function pipedreamFinalizeConnectorAuthorization(
 }
 
 /** @deprecated Use `pipedreamFinalizeConnectorAuthorization`. */
-export const pipedreamFinalizeConnectionProfile =
-  pipedreamFinalizeConnectorAuthorization;
+export const pipedreamFinalizeConnectionProfile = pipedreamFinalizeConnectorAuthorization;
 
 export async function listConnectors(projectId: string) {
   return unwrap(
@@ -734,6 +745,8 @@ export interface ConnectorDraftInput {
   slug: string;
   name?: string;
   provider: AdminConnector['provider'];
+  /** Refuse to update an existing slug. The API returns HTTP 409 on conflict. */
+  create_only?: boolean;
   platform?: 'slack' | 'email';
   app?: string;
   account?: string;

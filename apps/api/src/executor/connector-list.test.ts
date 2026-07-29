@@ -14,14 +14,13 @@ describe('buildAdminConnectorViews', () => {
       sensitive: false,
       actions: [],
       requiresAuth: true,
+      requestAuthType: slug === 'one' ? ('hmac' as const) : ('bearer' as const),
     }));
 
     const result = buildAdminConnectorViews(candidates, new Set(['two']));
 
     expect(result.map((connector) => connector.secretSet)).toEqual([false, true]);
-    expect(result.map((connector) => connector.authorizationStrategy)).toEqual([
-      'project',
-      'user',
-    ]);
+    expect(result.map((connector) => connector.authorizationStrategy)).toEqual(['project', 'user']);
+    expect(result.map((connector) => connector.requestAuthType)).toEqual(['hmac', 'bearer']);
   });
 });

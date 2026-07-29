@@ -1,52 +1,52 @@
 import { beforeEach, expect, mock, test } from 'bun:test';
 import { configureKortix } from '../../http/config';
 import {
-  activateConnectorAuthorization,
   activateConnectionProfile,
+  activateConnectorAuthorization,
   createConnector,
-  discoverConnectorAuth,
-  discoverConnectionProfileOAuth2,
   deleteConnector,
-  getConnectStatus,
-  getConnectionPolicies,
-  getDiscoverIntegration,
-  getConnectorConfig,
-  getConnectorPolicies,
-  getConnectionProfileOAuth2Application,
-  getConnectionProfileOAuth2Status,
+  discoverConnectionProfileOAuth2,
+  discoverConnectorAuth,
   ensureProjectConnectorAuthorization,
   ensureProjectConnectorProfile,
-  listConnectorAuthorizations,
+  getConnectStatus,
+  getConnectionPolicies,
+  getConnectionProfileOAuth2Application,
+  getConnectionProfileOAuth2Status,
+  getConnectorConfig,
+  getConnectorPolicies,
+  getDiscoverIntegration,
   listConnectionProfiles,
+  listConnectorAuthorizations,
   listConnectors,
   listDiscoverIntegrations,
   listPipedreamApps,
   pipedreamConnect,
-  pipedreamConnectConnectorAuthorization,
   pipedreamConnectConnectionProfile,
+  pipedreamConnectConnectorAuthorization,
   pipedreamFinalize,
-  pipedreamFinalizeConnectorAuthorization,
   pipedreamFinalizeConnectionProfile,
+  pipedreamFinalizeConnectorAuthorization,
   pollConnectionProfileOAuth2DeviceAuthorization,
   putConnectionProfileOAuth2Application,
-  reconcileConnectorAuthorization,
   reconcileConnectionProfile,
+  reconcileConnectorAuthorization,
   reconcileMemberConnectionProfile,
-  revokeConnectorAuthorization,
   revokeConnectionProfile,
-  setDefaultConnectorAuthorization,
+  revokeConnectorAuthorization,
   setConnectionPolicies,
+  setConnectorAuthorizationStrategy,
   setConnectorCredential,
   setConnectorCredentialMode,
-  setConnectorAuthorizationStrategy,
   setConnectorName,
   setConnectorPolicies,
   setConnectorSensitive,
-  syncConnectors,
+  setDefaultConnectorAuthorization,
   startConnectionProfileOAuth2Authorization,
   startConnectionProfileOAuth2DeviceAuthorization,
-  updateConnectorAuthorizationCredential,
+  syncConnectors,
   updateConnectionProfileCredential,
+  updateConnectorAuthorizationCredential,
 } from './connectors';
 
 let calls: { url: string; method: string; body: unknown }[] = [];
@@ -194,9 +194,7 @@ test('deprecated authorization policy methods fail before widening policy scope'
     'Use getConnectorPolicies(projectId, slug)',
   );
   await expect(
-    setConnectionPolicies('P1', 'authorization-1', [
-      { match: 'send_email', action: 'block' },
-    ]),
+    setConnectionPolicies('P1', 'authorization-1', [{ match: 'send_email', action: 'block' }]),
   ).rejects.toThrow('Use setConnectorPolicies(projectId, slug, policies)');
   expect(calls).toHaveLength(0);
 });
@@ -210,11 +208,30 @@ const postmanDraftTypecheck: import('./connectors').ConnectorDraftInput = {
 void postmanDraftTypecheck;
 
 test('listConnectors GETs the project connectors list', async () => {
-  nextResponse = { status: 200, body: { connectors: [] } };
+  nextResponse = {
+    status: 200,
+    body: {
+      connectors: [
+        {
+          slug: 'signed-api',
+          name: 'Signed API',
+          provider: 'http',
+          status: 'active',
+          credentialMode: 'shared',
+          authorizationStrategy: 'user',
+          requestAuthType: 'hmac',
+          sensitive: false,
+          actions: [],
+          authSecret: 'credential',
+          secretSet: false,
+        },
+      ],
+    },
+  };
   const result = await listConnectors('P1');
   expect(last().url).toContain('/executor/projects/P1/connectors');
   expect(last().method).toBe('GET');
-  expect(result).toEqual({ connectors: [] });
+  expect(result.connectors[0]?.requestAuthType).toBe('hmac');
 });
 
 test('listConnectors throws on a failed response', async () => {
@@ -378,10 +395,11 @@ test('pipedreamConnect POSTs an empty body to the connect endpoint', async () =>
 
 test('createConnector POSTs the draft as the raw body', async () => {
   nextResponse = { status: 200, body: { ok: true } };
-  const draft = {
+  const draft: import('./connectors').ConnectorDraftInput = {
     slug: 'my-http',
     provider: 'http' as const,
     url: 'https://example.com',
+    create_only: true,
   };
   await createConnector('P1', draft);
   expect(last().url).toContain('/executor/projects/P1/connectors');

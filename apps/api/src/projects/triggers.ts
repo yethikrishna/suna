@@ -204,6 +204,10 @@ export interface ParsedManifest {
    *  for a synthesized one) — e.g. `kortix.yaml` or `kortix.toml`. Lets the
    *  commit path write to the exact same file, honoring `.yml` and custom dirs. */
   path: string;
+  /** Git blob SHA observed with this manifest, or null when the file was absent. */
+  revision?: string | null;
+  /** Logical manifest files in winner-priority order. */
+  candidatePaths?: string[];
 }
 
 /** Result of `loadProjectTriggers` — same shape callers got pre-refactor. */
@@ -229,7 +233,7 @@ export async function readManifest(
   project: GitBackedProject,
   opts?: { rethrowReadErrors?: boolean },
 ): Promise<ParsedManifest | null> {
-  let found: { path: string; content: string } | null;
+  let found: Awaited<ReturnType<typeof readManifestFromRepo>>;
   try {
     // manifest_path can still say kortix.toml (an older project, or a stale
     // default) even when the file actually on disk is kortix.yaml — so we
@@ -252,7 +256,13 @@ export async function readManifest(
     return null;
   }
   if (!found) return null;
-  return parseManifestString(found.content, manifestFormatForPath(found.path), found.path);
+  return parseManifestString(
+    found.content,
+    manifestFormatForPath(found.path),
+    found.path,
+    found.sha,
+    found.candidatePaths,
+  );
 }
 
 /**
@@ -293,6 +303,9 @@ export function synthesizeBlankManifest(project: {
   name?: string;
   manifestPath?: string | null;
 }): ParsedManifest {
+  const candidatePaths = manifestCandidatePaths(project.manifestPath ?? undefined).map(
+    (candidate) => candidate.path,
+  );
   return {
     schemaVersion: 2,
     raw: {
@@ -310,7 +323,9 @@ export function synthesizeBlankManifest(project: {
       },
     },
     format: 'yaml',
-    path: manifestCandidatePaths(project.manifestPath ?? undefined)[0].path,
+    path: candidatePaths[0] ?? MANIFEST_FILENAME_YAML,
+    revision: null,
+    candidatePaths,
   };
 }
 
@@ -324,6 +339,8 @@ export function parseManifestString(
   raw: string,
   format: ManifestFormat = 'toml',
   path: string = format === 'yaml' ? MANIFEST_FILENAME_YAML : MANIFEST_FILENAME,
+  revision?: string | null,
+  candidatePaths?: string[],
 ): ParsedManifest {
   const parsed = parseManifestText(raw, format);
   const version =
@@ -342,7 +359,15 @@ export function parseManifestString(
     );
   }
 
-  return { schemaVersion: Math.floor(version), raw: parsed, format, path };
+  const manifest: ParsedManifest = {
+    schemaVersion: Math.floor(version),
+    raw: parsed,
+    format,
+    path,
+  };
+  if (revision !== undefined) manifest.revision = revision;
+  if (candidatePaths !== undefined) manifest.candidatePaths = candidatePaths;
+  return manifest;
 }
 
 /** Serialize a parsed manifest back to text (in its own format) for committing. */

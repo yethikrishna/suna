@@ -13,6 +13,7 @@ import { executorConnectors, projects } from '@kortix/db';
 import type { UpdateConnectorAuthorizationCredentialInput } from '@kortix/api-contract';
 import { db } from '../shared/db';
 import { commitManifest, loadManifestForEdit } from '../projects/index';
+import { withProjectGitAuth } from '../projects/lib/git';
 import {
   extractConnectors,
   RESERVED_CONNECTOR_SLUGS,
@@ -38,6 +39,8 @@ export interface ConnectorDraft {
   slug: string;
   name?: string;
   provider: 'pipedream' | 'mcp' | 'openapi' | 'postman' | 'graphql' | 'http' | 'channel';
+  /** Refuse to update an existing slug. */
+  create_only?: boolean;
   platform?: 'slack' | 'email';
   app?: string;
   account?: string;
@@ -198,9 +201,27 @@ export async function upsertConnectorInManifest(
     };
   }
 
+  let gitProject: Awaited<ReturnType<typeof withProjectGitAuth>>;
+  try {
+    gitProject = await withProjectGitAuth(row);
+  } catch (e) {
+    return { ok: false, error: (e as Error).message || 'failed to read manifest', status: 400 };
+  }
+
+  const result = await upsertConnectorInManifestWithRevision(gitProject, draft);
+  if (!result.ok) return result;
+
+  const sync = await syncProjectConnectors(projectId, accountId);
+  return { ok: true, sync };
+}
+
+async function upsertConnectorInManifestWithRevision(
+  project: Awaited<ReturnType<typeof withProjectGitAuth>>,
+  draft: ConnectorDraft,
+): Promise<CrudResult> {
   let manifest;
   try {
-    manifest = await loadManifestForEdit(row);
+    manifest = await loadManifestForEdit(project);
   } catch (e) {
     return { ok: false, error: (e as Error).message || 'failed to read manifest', status: 400 };
   }
@@ -209,6 +230,13 @@ export async function upsertConnectorInManifest(
     ? (manifest.raw.connectors as Record<string, unknown>[])
     : [];
   const idx = current.findIndex((c) => c?.slug === draft.slug);
+  if (idx >= 0 && draft.create_only === true) {
+    return {
+      ok: false,
+      error: `Connector profile slug "${draft.slug}" already exists`,
+      status: 409,
+    };
+  }
   const entry = mergeConnectorDraftEntry(draft, idx >= 0 ? current[idx] : undefined);
   if (idx >= 0) {
     current[idx] = entry;
@@ -222,14 +250,13 @@ export async function upsertConnectorInManifest(
   if (err) return { ok: false, error: err.error, status: 400 };
 
   const committed = await commitManifest(
-    row,
+    project,
     manifest,
     `chore: ${idx >= 0 ? 'update' : 'add'} connector ${draft.slug}`,
   );
   if ('error' in committed) return { ok: false, error: committed.error, status: committed.status };
 
-  const sync = await syncProjectConnectors(projectId, accountId);
-  return { ok: true, sync };
+  return { ok: true };
 }
 
 export async function deleteConnectorFromManifest(

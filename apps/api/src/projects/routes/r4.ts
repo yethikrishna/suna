@@ -175,8 +175,7 @@ interface SlackAuthTest {
 }
 
 // Keep the existing OpenAPI component id for generated-client compatibility.
-const ConnectorAuthorizationViewSchema =
-  ConnectorAuthorizationSchema.openapi('ConnectionProfile');
+const ConnectorAuthorizationViewSchema = ConnectorAuthorizationSchema.openapi('ConnectionProfile');
 
 /**
  * The owner/admin roster shape is narrower than ConnectorAuthorization.
@@ -1044,7 +1043,7 @@ projectsApp.openapi(
     },
     responses: {
       201: json(TriggerSchema, 'The created trigger'),
-      ...errors(400, 404, 409),
+      ...errors(400, 404, 409, 502),
     },
   }),
   async (c: any) => {
@@ -1106,7 +1105,7 @@ projectsApp.openapi(
     const next = upsertTriggerInManifest(manifest, draftToSpec(draft, manifest.path));
     const result = await commitManifest(loaded.row, next, `chore: add trigger ${draft.slug}`);
     if ('error' in result) {
-      return c.json({ error: result.error }, result.status as 400 | 502);
+      return c.json({ error: result.error }, result.status as 400 | 409 | 502);
     }
     await reconcileProjectTriggerRuntime(projectId, extractTriggers(next).specs);
 
@@ -1192,7 +1191,7 @@ projectsApp.openapi(
     },
     responses: {
       200: json(z.any(), 'OK'),
-      ...errors(400, 404),
+      ...errors(400, 404, 409, 502),
     },
   }),
   async (c: any) => {
@@ -1258,7 +1257,7 @@ projectsApp.openapi(
       const next = upsertTriggerInManifest(manifest, draftToSpec(draft, manifest.path));
       const result = await commitManifest(loaded.row, next, `chore: update trigger ${slug}`);
       if ('error' in result) {
-        return c.json({ error: result.error }, result.status as 400 | 502);
+        return c.json({ error: result.error }, result.status as 400 | 409 | 502);
       }
       await reconcileProjectTriggerRuntime(projectId, extractTriggers(next).specs);
     }
@@ -1281,7 +1280,7 @@ projectsApp.openapi(
     },
     responses: {
       200: json(z.any(), 'OK'),
-      ...errors(400, 404),
+      ...errors(400, 404, 409, 502),
     },
   }),
   async (c: any) => {
@@ -1314,7 +1313,7 @@ projectsApp.openapi(
     const next = removeTriggerFromManifest(manifest, slug);
     const result = await commitManifest(loaded.row, next, `chore: delete trigger ${slug}`);
     if ('error' in result) {
-      return c.json({ error: result.error }, result.status as 400 | 502);
+      return c.json({ error: result.error }, result.status as 400 | 409 | 502);
     }
 
     // Drop runtime state too — a re-created trigger of the same slug should

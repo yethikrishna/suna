@@ -995,7 +995,7 @@ async function listConnectors(projectId: string): Promise<AdminConnectorView[]> 
     if (credentialConnectorIds.has(row.connectorId)) connectedSlugs.add(row.slug);
   }
   const candidates = conns.map((row) => {
-    const { hasAuth } = authOf(row);
+    const { auth, hasAuth } = authOf(row);
     const config = row.config as { icon_url?: unknown; sensitive?: unknown } | null;
     return {
       slug: row.slug,
@@ -1013,6 +1013,7 @@ async function listConnectors(projectId: string): Promise<AdminConnectorView[]> 
         risk: a.risk,
         inputSchema: a.inputSchema ?? null,
       })),
+      requestAuthType: auth.type,
       requiresAuth: hasAuth,
     };
   });

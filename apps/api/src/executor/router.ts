@@ -27,6 +27,7 @@ import { agentMayUseConnector } from '../iam/agent-scope';
 import { canonicalConnectorAlias } from '../projects/lib/session-connector-bindings';
 import { auth, errors, json, makeOpenApiApp } from '../openapi';
 import type { ConnectorAuthDiscovery } from './auth-discovery';
+import type { ExecutorAuth } from './execute';
 import { type GatewayDeps, handleCall } from './gateway';
 
 // ── Response schemas ─────────────────────────────────────────────────────────
@@ -65,6 +66,17 @@ const ConnectorsResponseSchema = z
 const AdminConnectorSchema = CatalogConnectorSchema.extend({
   credentialMode: z.literal('shared'),
   authorizationStrategy: z.enum(['project', 'user']),
+  requestAuthType: z.enum([
+    'none',
+    'bearer',
+    'basic',
+    'custom',
+    'api_key',
+    'oauth1',
+    'hmac',
+    'aws_sigv4',
+    'mtls',
+  ]),
   sensitive: z.boolean(),
   authSecret: z.string().nullable(),
   secretSet: z.boolean(),
@@ -133,6 +145,8 @@ export interface AdminConnectorView extends CatalogConnector {
    *  own) was removed 2026-07-05. */
   credentialMode: 'shared';
   authorizationStrategy: 'project' | 'user';
+  /** Authentication shape required when a member adds a private credential. */
+  requestAuthType: ExecutorAuth['type'];
   /** Marked sensitive — its reads gate too (require_approval by default). */
   sensitive: boolean;
   /** Whether the shared credential is set. */
@@ -714,7 +728,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       },
       responses: {
         200: json(CrudOkSchema, 'Created/updated'),
-        ...errors(400, 403, 501),
+        ...errors(400, 403, 409, 501, 502),
       },
     }),
     // Manual parse kept: the connector draft is an opaque record validated
@@ -730,6 +744,9 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       } catch {
         return c.json({ error: 'invalid_json' }, 400);
       }
+      if (body?.create_only !== undefined && typeof body.create_only !== 'boolean') {
+        return c.json({ error: 'create_only must be a boolean' }, 400);
+      }
       let authDiscovery: ConnectorAuthDiscovery | undefined;
       if (body.auth === undefined && deps.discoverConnectorAuth) {
         authDiscovery = await deps.discoverConnectorAuth(projectId, body);
@@ -738,7 +755,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const result = await deps.createConnector(projectId, admin.accountId, body);
       return result.ok
         ? c.json({ ok: true, sync: result.sync, authDiscovery })
-        : c.json({ error: result.error }, result.status as 400);
+        : c.json({ error: result.error }, result.status as 400 | 409 | 502);
     },
   );
 
@@ -753,7 +770,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       request: { params: ProjectSlugParam },
       responses: {
         200: json(OkSchema, 'Deleted'),
-        ...errors(400, 403, 501),
+        ...errors(400, 403, 409, 501, 502),
       },
     }),
     async (c: any) => {
@@ -765,7 +782,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const result = await deps.deleteConnector(projectId, slug);
       return result.ok
         ? c.json({ ok: true })
-        : c.json({ error: result.error }, result.status as 400);
+        : c.json({ error: result.error }, result.status as 400 | 409 | 502);
     },
   );
 
@@ -953,7 +970,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       },
       responses: {
         200: json(CrudOkSchema, 'Mode updated'),
-        ...errors(400, 403, 404, 501),
+        ...errors(400, 403, 404, 409, 501, 502),
       },
     }),
     async (c: any) => {
@@ -984,7 +1001,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const result = await deps.setCredentialMode(projectId, admin.accountId, slug, mode);
       return result.ok
         ? c.json({ ok: true, sync: result.sync })
-        : c.json({ error: result.error }, result.status as 400);
+        : c.json({ error: result.error }, result.status as 400 | 409 | 502);
     },
   );
 
@@ -1002,7 +1019,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       },
       responses: {
         200: json(CrudOkSchema, 'Authorization strategy updated'),
-        ...errors(400, 403, 404, 501),
+        ...errors(400, 403, 404, 409, 501, 502),
       },
     }),
     async (c: any) => {
@@ -1021,10 +1038,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       }
       const authorizationStrategy = body?.authorization_strategy;
       if (authorizationStrategy !== 'project' && authorizationStrategy !== 'user') {
-        return c.json(
-          { error: 'authorization_strategy must be "project" or "user"' },
-          400,
-        );
+        return c.json({ error: 'authorization_strategy must be "project" or "user"' }, 400);
       }
       const result = await deps.setAuthorizationStrategy(
         projectId,
@@ -1034,7 +1048,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       );
       return result.ok
         ? c.json({ ok: true, sync: result.sync })
-        : c.json({ error: result.error }, result.status as 400);
+        : c.json({ error: result.error }, result.status as 400 | 409 | 502);
     },
   );
 
@@ -1052,7 +1066,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       },
       responses: {
         200: json(CrudOkSchema, 'Sensitive flag updated'),
-        ...errors(400, 403, 404, 501),
+        ...errors(400, 403, 404, 409, 501, 502),
       },
     }),
     async (c: any) => {
@@ -1073,7 +1087,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const result = await deps.setSensitive(projectId, admin.accountId, slug, body.sensitive);
       return result.ok
         ? c.json({ ok: true, sync: result.sync })
-        : c.json({ error: result.error }, result.status as 400);
+        : c.json({ error: result.error }, result.status as 400 | 409 | 502);
     },
   );
 
@@ -1091,7 +1105,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       },
       responses: {
         200: json(CrudOkSchema, 'Renamed'),
-        ...errors(400, 403, 404, 501),
+        ...errors(400, 403, 404, 409, 501, 502),
       },
     }),
     async (c: any) => {
@@ -1111,7 +1125,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const result = await deps.setConnectorName(projectId, admin.accountId, slug, name);
       return result.ok
         ? c.json({ ok: true, sync: result.sync })
-        : c.json({ error: result.error }, result.status as 400);
+        : c.json({ error: result.error }, result.status as 400 | 409 | 502);
     },
   );
 
@@ -1182,7 +1196,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       },
       responses: {
         200: json(CrudOkSchema, 'Policies updated'),
-        ...errors(400, 403, 404, 501),
+        ...errors(400, 403, 404, 409, 501, 502),
       },
     }),
     async (c: any) => {
@@ -1203,7 +1217,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       const result = await deps.setConnectorPolicies(projectId, admin.accountId, slug, policies);
       return result.ok
         ? c.json({ ok: true, sync: result.sync })
-        : c.json({ error: result.error }, result.status as 400);
+        : c.json({ error: result.error }, result.status as 400 | 409 | 502);
     },
   );
 
@@ -1308,7 +1322,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       },
       responses: {
         200: json(CrudOkSchema, 'Policies replaced'),
-        ...errors(400, 403, 501),
+        ...errors(400, 403, 409, 501, 502),
       },
     }),
     // Manual parse kept: original does per-policy validation with indexed error
@@ -1348,7 +1362,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       );
       return result.ok
         ? c.json({ ok: true, sync: result.sync })
-        : c.json({ error: result.error }, result.status as 400);
+        : c.json({ error: result.error }, result.status as 400 | 409 | 502);
     },
   );
 

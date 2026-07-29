@@ -487,4 +487,22 @@ describe('connection profile owner authorization over HTTP', () => {
       status: 403,
     });
   });
+
+  test('authorization-specific policy routes are removed', async () => {
+    const token = await mint(ALICE);
+    const read = await request(
+      'GET',
+      `/v1/projects/${PROJECT}/connector-profiles/${ALICE_PROFILE}/policies`,
+      token,
+    );
+    expect(read.status).toBe(404);
+
+    const replace = await request(
+      'PUT',
+      `/v1/projects/${PROJECT}/connector-profiles/${ALICE_PROFILE}/policies`,
+      token,
+      { policies: [{ match: '*', action: 'always_run' }] },
+    );
+    expect(replace.status).toBe(404);
+  });
 });

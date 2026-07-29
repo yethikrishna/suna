@@ -18,8 +18,8 @@
  */
 import { type OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import {
-  UpdateConnectionProfileCredentialInputSchema,
-  type UpdateConnectionProfileCredentialInput,
+  UpdateConnectorAuthorizationCredentialInputSchema,
+  type UpdateConnectorAuthorizationCredentialInput,
 } from '@kortix/api-contract';
 import type { AgentGrant } from '@kortix/db';
 import type { Context } from 'hono';
@@ -204,7 +204,7 @@ export interface ExecutorRouterDeps {
   setConnectorCredential?(
     projectId: string,
     slug: string,
-    input: UpdateConnectionProfileCredentialInput,
+    input: UpdateConnectorAuthorizationCredentialInput,
   ): Promise<CrudOutcome>;
   /** `userId` is accepted for back-compat but unused — a connector has exactly
    *  one (shared) credential since `per_user` was removed 2026-07-05. */
@@ -781,7 +781,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
         params: ProjectSlugParam,
         body: {
           content: {
-            'application/json': { schema: UpdateConnectionProfileCredentialInputSchema },
+            'application/json': { schema: UpdateConnectorAuthorizationCredentialInputSchema },
           },
         },
       },
@@ -805,7 +805,7 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
       } catch {
         return c.json({ error: 'invalid_json' }, 400);
       }
-      const parsed = UpdateConnectionProfileCredentialInputSchema.safeParse(body);
+      const parsed = UpdateConnectorAuthorizationCredentialInputSchema.safeParse(body);
       if (!parsed.success) {
         return c.json(
           {

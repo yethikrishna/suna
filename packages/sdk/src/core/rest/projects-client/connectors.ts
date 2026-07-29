@@ -647,6 +647,40 @@ export async function setConnectorPolicies(
   );
 }
 
+async function connectorAliasForAuthorization(
+  projectId: string,
+  authorizationId: string,
+): Promise<string> {
+  const { profiles } = await listConnectorAuthorizations(projectId);
+  const authorization = profiles.find((profile) => profile.profile_id === authorizationId);
+  if (!authorization) {
+    throw new Error(`Connector authorization not found: ${authorizationId}`);
+  }
+  return authorization.connector_alias;
+}
+
+/**
+ * @deprecated Policies apply to a connector profile, not one authorization.
+ * Use `getConnectorPolicies(projectId, slug)`.
+ */
+export async function getConnectionPolicies(projectId: string, authorizationId: string) {
+  const slug = await connectorAliasForAuthorization(projectId, authorizationId);
+  return getConnectorPolicies(projectId, slug);
+}
+
+/**
+ * @deprecated Policies apply to a connector profile, not one authorization.
+ * Use `setConnectorPolicies(projectId, slug, policies)`.
+ */
+export async function setConnectionPolicies(
+  projectId: string,
+  authorizationId: string,
+  policies: ConnectorPolicyRule[],
+) {
+  const slug = await connectorAliasForAuthorization(projectId, authorizationId);
+  return setConnectorPolicies(projectId, slug, policies);
+}
+
 /** The editable connection config for an existing connector (kortix.yaml = source of truth). */
 export interface ConnectorConfig {
   slug: string;
@@ -892,38 +926,6 @@ export async function pipedreamFinalize(projectId: string, slug: string) {
     await backendApi.post<{ connected: boolean; accountId?: string }>(
       `/executor/projects/${projectId}/connectors/${encodeURIComponent(slug)}/connect/finalize`,
       {},
-    ),
-  );
-}
-
-/* ─── Per-connection permissions ──────────────────────────────────────────── */
-
-/**
- * Rules for ONE connection, keyed by its profile_id.
- *
- * A connector can hold several connections (support@, sales@, a member's own
- * mailbox). These sit between the project and connector scopes: a project rule
- * still wins, but a connection rule beats the connector default — which is what
- * lets two mailboxes under one connector carry different permissions.
- */
-export async function getConnectionPolicies(projectId: string, profileId: string) {
-  return unwrap(
-    await backendApi.get<{ policies: ConnectorPolicyRule[] }>(
-      `/projects/${projectId}/connector-profiles/${encodeURIComponent(profileId)}/policies`,
-    ),
-  );
-}
-
-/** Replaces the whole list — a rule omitted here is deleted, never merged. */
-export async function setConnectionPolicies(
-  projectId: string,
-  profileId: string,
-  policies: ConnectorPolicyRule[],
-) {
-  return unwrap(
-    await backendApi.put<{ ok: boolean }>(
-      `/projects/${projectId}/connector-profiles/${encodeURIComponent(profileId)}/policies`,
-      { policies },
     ),
   );
 }

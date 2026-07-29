@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 527,
+  "count": 518,
   "routes": [
     {
       "method": "GET",
@@ -735,6 +735,10 @@
       "path": "/v1/executor/projects/:projectId/connectors/:slug"
     },
     {
+      "method": "PUT",
+      "path": "/v1/executor/projects/:projectId/connectors/:slug/authorization-strategy"
+    },
+    {
       "method": "GET",
       "path": "/v1/executor/projects/:projectId/connectors/:slug/config"
     },
@@ -1307,14 +1311,6 @@
       "path": "/v1/projects/:projectId/connector-profiles/:profileId/oauth2/status"
     },
     {
-      "method": "GET",
-      "path": "/v1/projects/:projectId/connector-profiles/:profileId/policies"
-    },
-    {
-      "method": "PUT",
-      "path": "/v1/projects/:projectId/connector-profiles/:profileId/policies"
-    },
-    {
       "method": "PUT",
       "path": "/v1/projects/:projectId/connector-profiles/:profileId/revoke"
     },
@@ -1700,6 +1696,10 @@
     },
     {
       "method": "PUT",
+      "path": "/v1/projects/:projectId/sessions/:sessionId/scope"
+    },
+    {
+      "method": "PUT",
       "path": "/v1/projects/:projectId/sessions/:sessionId/sharing"
     },
     {
@@ -1893,42 +1893,6 @@
     {
       "method": "POST",
       "path": "/v1/setup-links/secret/:token"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/setup/bootstrap-owner"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/setup/health"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/setup/install-status"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/setup/sandbox-providers"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/setup/setup-complete"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/setup/setup-status"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/setup/setup-wizard-step"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/setup/setup-wizard-step"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/setup/status"
     },
     {
       "method": "GET",

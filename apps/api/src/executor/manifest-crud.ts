@@ -10,7 +10,7 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { executorConnectors, projects } from '@kortix/db';
-import type { UpdateConnectionProfileCredentialInput } from '@kortix/api-contract';
+import type { UpdateConnectorAuthorizationCredentialInput } from '@kortix/api-contract';
 import { db } from '../shared/db';
 import { commitManifest, loadManifestForEdit } from '../projects/index';
 import {
@@ -270,7 +270,7 @@ export async function deleteConnectorFromManifest(
 export async function setConnectorCredentialShared(
   projectId: string,
   slug: string,
-  input: UpdateConnectionProfileCredentialInput,
+  input: UpdateConnectorAuthorizationCredentialInput,
 ): Promise<CrudResult> {
   const connectorId = await connectorIdFor(projectId, slug);
   if (!connectorId) return { ok: false, error: 'connector not found', status: 404 };

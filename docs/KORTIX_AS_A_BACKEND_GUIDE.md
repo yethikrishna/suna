@@ -526,23 +526,21 @@ The model is validated against the same servability check as create, so an
 unentitled or retired id fails fast with `400 INVALID_SESSION_MODEL` rather than
 becoming a dead turn later.
 
-## Per-connection permissions
+## Connector-profile permissions
 
-One connector can hold several connections — `support@`, `sales@`, a member's
-own mailbox — and they often warrant different permissions. Policy resolves in
-this order:
+Policies belong to the connector profile. Every authorization for that
+connector profile uses the same policy. Policy resolves in this order:
 
 ```
 project rules   → un-overridable (the admin guardrail)
-connection      → beats the connector default
-connector       → the fallback
+connector       → the connector-profile rules
 risk default    → read runs, write/destructive asks
 ```
 
-So `support@` can be read-only while `sales@` may send, under one `gmail`
-connector. Set it in the dashboard: **Connections → ⋯ → Permissions for this
-connection**. A connector with no connection-level rule behaves exactly as
-before.
+Create separate connector profiles when two authorizations need different
+policies. Give each connector profile its own slug and policy. The
+authorization strategy then selects either a project authorization or a user
+authorization for that connector profile.
 
 ## What a wrapper CANNOT change mid-session
 

@@ -270,8 +270,8 @@ flow(
   },
 );
 
-// Admin: connector-policy mutations — credential mode, display name, and the
-// per-tool/per-pattern call policies. All three gate on project.connector.write
+// Admin: connector-profile mutations — credential mode, authorization strategy,
+// display name, and per-tool/per-pattern policies. All four gate on project.connector.write
 // (resolveAdmin), validate their body BEFORE looking up the connector (so an
 // invalid mode/name/policy is a 400 even against an unknown slug), and 404 an
 // unknown connector once the body is well-formed.
@@ -281,6 +281,7 @@ flow(
     domain: 'connectors',
     routes: [
       'PUT /v1/executor/projects/:projectId/connectors/:slug/credential-mode',
+      'PUT /v1/executor/projects/:projectId/connectors/:slug/authorization-strategy',
       'PUT /v1/executor/projects/:projectId/connectors/:slug/name',
       'PUT /v1/executor/projects/:projectId/connectors/:slug/policies',
     ],
@@ -304,6 +305,27 @@ flow(
         .put(
           '/v1/executor/projects/:projectId/connectors/:slug/credential-mode',
           { mode: 'shared' },
+          { params: { projectId: p.id, slug: 'nope' } },
+        );
+      r.status(404);
+    });
+
+    await ctx.step('authorization strategy: unsupported value → 400', async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .put(
+          '/v1/executor/projects/:projectId/connectors/:slug/authorization-strategy',
+          { authorization_strategy: 'both' },
+          { params: { projectId: p.id, slug: 'nope' } },
+        );
+      r.status(400);
+    });
+    await ctx.step('authorization strategy: valid value but unknown connector → 404', async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .put(
+          '/v1/executor/projects/:projectId/connectors/:slug/authorization-strategy',
+          { authorization_strategy: 'user' },
           { params: { projectId: p.id, slug: 'nope' } },
         );
       r.status(404);

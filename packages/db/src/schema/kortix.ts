@@ -4392,21 +4392,11 @@ export const executorConnectorPolicies = kortixSchema.table(
 );
 
 /**
- * Per-CONNECTION tool-call policies, keyed by profile_id.
+ * Legacy authorization-policy storage.
  *
- * One connector can hold several connections — support@, sales@, a member's own
- * mailbox — and they often warrant DIFFERENT permissions. Connector-scoped rules
- * cannot express that: they are keyed by the connector, so every connection under
- * it shares one policy.
- *
- * Deliberately NOT in executor_connector_policies: sync.ts deletes every row for
- * a connector and re-inserts from the manifest on each manifest write, so a
- * DB-authored row there would be destroyed. Deliberately NOT in the manifest
- * either: a member's private connection can never appear in git, and profile
- * uuids are not portable across projects.
- *
- * Evaluated AFTER project rules (which remain un-overridable) and BEFORE
- * connector rules, so the more specific scope wins over the connector default.
+ * The runtime does not read or write this table. Connector-profile policies
+ * live in executor_connector_policies. Keep this table until a later contract
+ * migration removes the stored rows and physical schema.
  */
 export const executorConnectionPolicies = kortixSchema.table(
   'executor_connection_policies',

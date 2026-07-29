@@ -711,6 +711,7 @@ function writeEvidence(evidence: HarnessEvidence[]): void {
   if (!resultPath) return;
   const absolutePath = resolve(repoRoot, resultPath);
   mkdirSync(dirname(absolutePath), { recursive: true });
+  // lgtm[js/http-to-file-access] This local benchmark artifact contains non-secret API timing and session identity evidence.
   writeFileSync(
     absolutePath,
     `${JSON.stringify(

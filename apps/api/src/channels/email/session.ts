@@ -194,7 +194,7 @@ async function createThreadSession(
       base_ref: project.defaultBranch,
       agent_name: 'default',
       connector_bindings: {
-        email: { profile_id: emailProfileId },
+        email: { authorization_id: emailProfileId },
       },
     },
     enforceAccountCap: false,

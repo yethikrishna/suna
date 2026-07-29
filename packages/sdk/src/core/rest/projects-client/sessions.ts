@@ -85,9 +85,21 @@ export interface ProjectSession {
 export type SessionRuntimeContextScalar = string | number | boolean | null;
 export type SessionRuntimeContext = Record<string, SessionRuntimeContextScalar>;
 export interface SessionConnectorBinding {
-  profile_id: string;
+  authorization_id: string;
 }
 export type SessionConnectorBindings = Record<string, SessionConnectorBinding>;
+export type SessionConnectorBindingInput =
+  | {
+      authorization_id: string;
+      /** @deprecated Use `authorization_id`. Equal dual IDs remain accepted. */
+      profile_id?: string;
+    }
+  | {
+      authorization_id?: never;
+      /** @deprecated Use `authorization_id`. */
+      profile_id: string;
+    };
+export type SessionConnectorBindingsInput = Record<string, SessionConnectorBindingInput>;
 
 /** Public body for POST /projects/:projectId/sessions. */
 export interface CreateProjectSessionInput {
@@ -105,10 +117,8 @@ export interface CreateProjectSessionInput {
   metadata?: Record<string, unknown>;
   /** Persisted and injected as one non-secret KORTIX_SESSION_CONTEXT JSON envelope. */
   runtime_context?: SessionRuntimeContext;
-  /** Logical connector alias -> active profile available to the caller: their
-   * own member profile, a project default, or an operator-managed profile when
-   * the caller holds the management capability. */
-  connector_bindings?: SessionConnectorBindings;
+  /** Logical connector alias -> active authorization available to the caller. */
+  connector_bindings?: SessionConnectorBindingsInput;
   /**
    * When `connector_bindings` is set, binding any alias normally disables the
    * project-default fallback for every OTHER (unbound) alias ("all-or-nothing").
@@ -548,12 +558,12 @@ export interface SessionScopeInput {
    */
   secrets?: string[] | null;
   /** FULL new binding map — REPLACES the previous one. Omit to leave untouched. */
-  connector_bindings?: Record<string, { profile_id: string }>;
+  connector_bindings?: SessionConnectorBindingsInput;
 }
 
-export interface SessionScopeResult {
+export interface SessionScope {
   secrets_allowlist: string[] | null;
-  connector_bindings: Record<string, { profile_id: string }>;
+  connector_bindings: SessionConnectorBindings;
   dropped_secrets: string[];
   added_secrets: string[];
   dropped_bindings: string[];
@@ -568,6 +578,20 @@ export interface SessionScopeResult {
   detail: string;
 }
 
+/** @deprecated Use `SessionScope`. */
+export type SessionScopeResult = SessionScope;
+
+export async function getProjectSessionScope(
+  projectId: string,
+  sessionId: string,
+): Promise<SessionScope> {
+  return unwrap(
+    await backendApi.get<SessionScope>(
+      `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/scope`,
+    ),
+  );
+}
+
 /**
  * Re-scope a RUNNING session. Set semantics: what you send replaces what was
  * there, and takes effect from the next prompt.
@@ -576,9 +600,9 @@ export async function setProjectSessionScope(
   projectId: string,
   sessionId: string,
   scope: SessionScopeInput,
-): Promise<SessionScopeResult> {
+): Promise<SessionScope> {
   return unwrap(
-    await backendApi.put<SessionScopeResult>(
+    await backendApi.put<SessionScope>(
       `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/scope`,
       scope,
     ),

@@ -17,9 +17,16 @@ import {
   ProjectSessionSchema,
   ReconcileConnectionProfileInputSchema,
   SecretSchema,
+  ConnectorAuthorizationRequiredErrorSchema,
+  ConnectorAuthorizationRequiredProfileSchema,
+  SessionConnectorBindingInputSchema,
+  SessionConnectorBindingSchema,
+  SessionConnectorBindingsInputSchema,
   SessionConnectorBindingsSchema,
   SessionCreateAcceptedSchema,
   SessionCreateInputSchema,
+  SessionScopeInputSchema,
+  SessionScopeSchema,
   SessionRuntimeContextSchema,
   SessionStartResultSchema,
   SharingIntentSchema,
@@ -581,19 +588,62 @@ describe('SessionCreateInputSchema runtime_context', () => {
 describe('session connector profile contracts', () => {
   const profileId = '11111111-1111-4111-a111-111111111111';
 
-  test('accepts typed connector bindings and rejects escape hatches', () => {
+  test('normalizes canonical, deprecated, and equal dual binding input', () => {
     expect(
-      SessionCreateInputSchema.safeParse({
-        connector_bindings: { veyris: { profile_id: profileId } },
+      SessionConnectorBindingInputSchema.parse({ authorization_id: profileId }),
+    ).toEqual({ authorization_id: profileId });
+    expect(SessionConnectorBindingInputSchema.parse({ profile_id: profileId })).toEqual({
+      authorization_id: profileId,
+    });
+    expect(
+      SessionConnectorBindingInputSchema.parse({
+        authorization_id: profileId,
+        profile_id: profileId,
+      }),
+    ).toEqual({ authorization_id: profileId });
+  });
+
+  test('rejects missing, conflicting, and unknown binding input', () => {
+    expect(SessionConnectorBindingInputSchema.safeParse({}).success).toBe(false);
+    expect(
+      SessionConnectorBindingInputSchema.safeParse({
+        authorization_id: profileId,
+        profile_id: '22222222-2222-4222-8222-222222222222',
       }).success,
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      SessionConnectorBindingInputSchema.safeParse({
+        authorization_id: profileId,
+        credential: 'secret',
+      }).success,
+    ).toBe(false);
+  });
+
+  test('emits only canonical connector binding output', () => {
+    expect(SessionConnectorBindingSchema.parse({ authorization_id: profileId })).toEqual({
+      authorization_id: profileId,
+    });
+    expect(SessionConnectorBindingSchema.safeParse({ profile_id: profileId }).success).toBe(false);
     expect(
       SessionConnectorBindingsSchema.safeParse({
+        veyris: { authorization_id: profileId, profile_id: profileId },
+      }).success,
+    ).toBe(false);
+  });
+
+  test('normalizes connector binding maps before session creation', () => {
+    expect(
+      SessionCreateInputSchema.parse({
+        connector_bindings: { veyris: { profile_id: profileId } },
+      }).connector_bindings,
+    ).toEqual({ veyris: { authorization_id: profileId } });
+    expect(
+      SessionConnectorBindingsInputSchema.safeParse({
         veyris: { profile_id: profileId, credential: 'secret' },
       }).success,
     ).toBe(false);
     expect(
-      SessionConnectorBindingsSchema.safeParse({
+      SessionConnectorBindingsInputSchema.safeParse({
         VEYRIS: { profile_id: profileId },
       }).success,
     ).toBe(false);
@@ -603,7 +653,7 @@ describe('session connector profile contracts', () => {
     const tooMany = Object.fromEntries(
       Array.from({ length: 65 }, (_, index) => [`connector_${index}`, { profile_id: profileId }]),
     );
-    expect(SessionConnectorBindingsSchema.safeParse(tooMany).success).toBe(false);
+    expect(SessionConnectorBindingsInputSchema.safeParse(tooMany).success).toBe(false);
     expect(ConnectionProfileMetadataSchema.safeParse({ access_token: 'nope' }).success).toBe(false);
     expect(ConnectionProfileMetadataSchema.safeParse({ payload: 'é'.repeat(9_000) }).success).toBe(
       false,
@@ -646,6 +696,69 @@ describe('session connector profile contracts', () => {
           token_endpoint_auth_method: 'client_secret_post',
           client_secret: 'client-secret',
         },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('session scope contracts', () => {
+  const authorizationId = '11111111-1111-4111-a111-111111111111';
+
+  test('normalizes deprecated binding input and rejects an empty replacement', () => {
+    expect(
+      SessionScopeInputSchema.parse({
+        connector_bindings: { gmail: { profile_id: authorizationId } },
+      }),
+    ).toEqual({
+      connector_bindings: { gmail: { authorization_id: authorizationId } },
+    });
+    expect(SessionScopeInputSchema.safeParse({}).success).toBe(false);
+    expect(SessionScopeInputSchema.safeParse({ secret_values: [] }).success).toBe(false);
+  });
+
+  test('emits only authorization_id in authoritative scope output', () => {
+    const value = {
+      secrets_allowlist: ['GMAIL_TOKEN'],
+      connector_bindings: { gmail: { authorization_id: authorizationId } },
+      dropped_secrets: [],
+      added_secrets: ['GMAIL_TOKEN'],
+      dropped_bindings: [],
+      retroactive: true,
+      detail: 'Applies from the next prompt.',
+    };
+    expect(SessionScopeSchema.parse(value)).toEqual(value);
+    expect(
+      SessionScopeSchema.safeParse({
+        ...value,
+        connector_bindings: { gmail: { profile_id: authorizationId } },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('connector authorization required contracts', () => {
+  const profile = {
+    id: '11111111-1111-4111-a111-111111111111',
+    slug: 'gmail-read',
+    name: 'Gmail read only',
+    authorization_strategy: 'user' as const,
+  };
+
+  test('accepts the public missing-profile shape', () => {
+    expect(ConnectorAuthorizationRequiredProfileSchema.parse(profile)).toEqual(profile);
+  });
+
+  test('accepts the structured session-create conflict and rejects extra fields', () => {
+    const value = {
+      code: 'CONNECTOR_AUTHORIZATION_REQUIRED' as const,
+      message: 'Connect the required connector profiles before starting this session.',
+      connector_profiles: [profile],
+    };
+    expect(ConnectorAuthorizationRequiredErrorSchema.parse(value)).toEqual(value);
+    expect(
+      ConnectorAuthorizationRequiredErrorSchema.safeParse({
+        ...value,
+        connector_profiles: [{ ...profile, authorization_id: profile.id }],
       }).success,
     ).toBe(false);
   });

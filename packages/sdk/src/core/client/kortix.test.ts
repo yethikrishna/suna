@@ -52,6 +52,27 @@ test('project(id).session(sid) is the same session handle', async () => {
   expect(last().url).toContain('/projects/PA/sessions/SB');
 });
 
+test('session(...).scope reads the authoritative session scope', async () => {
+  await kortix.session('PID123', 'SID456').scope();
+  expect(last().url).toBe('http://test.local/projects/PID123/sessions/SID456/scope');
+  expect(last().method).toBe('GET');
+});
+
+test('session(...).rescope writes canonical connector authorization bindings', async () => {
+  await kortix.session('PID123', 'SID456').rescope({
+    connector_bindings: {
+      gmail: { authorization_id: 'AUTH-1' },
+    },
+  });
+  expect(last().url).toBe('http://test.local/projects/PID123/sessions/SID456/scope');
+  expect(last().method).toBe('PUT');
+  expect(last().body).toEqual({
+    connector_bindings: {
+      gmail: { authorization_id: 'AUTH-1' },
+    },
+  });
+});
+
 test('project(id).sessions.list forwards manager inventory scope', async () => {
   await kortix.project('PID123').sessions.list({ scope: 'project' });
   expect(last().url).toContain('/projects/PID123/sessions?scope=project');

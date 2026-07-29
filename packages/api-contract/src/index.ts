@@ -4,8 +4,8 @@
  * Zod schemas + inferred TS types describing EXACTLY what apps/api serializes
  * onto the wire today. The API serializers
  * (apps/api/src/projects/lib/serializers.ts et al) are the behavioral source
- * of truth; these schemas are purely descriptive — nothing here validates
- * requests or reshapes responses.
+ * of truth. Response schemas are descriptive. Request schemas validate public
+ * input and can normalize deprecated input aliases to canonical fields.
  *
  * The contract is enforced two ways:
  *   1. compile time — serializer return types in apps/api are annotated with
@@ -200,23 +200,72 @@ export const SessionRuntimeContextSchema = z
 export type SessionRuntimeContext = z.infer<typeof SessionRuntimeContextSchema>;
 
 export const SESSION_CONNECTOR_BINDINGS_MAX_KEYS = 64;
+const SessionConnectorBindingAliasSchema = z
+  .string()
+  .regex(
+    /^[a-z][a-z0-9_-]{0,127}$/,
+    'connector binding aliases must be lower-case connector slugs',
+  );
+
+export const SessionConnectorBindingInputSchema = z
+  .object({
+    authorization_id: z.string().uuid().optional(),
+    profile_id: z.string().uuid().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.authorization_id && !value.profile_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['authorization_id'],
+        message: 'authorization_id is required',
+      });
+    }
+    if (
+      value.authorization_id &&
+      value.profile_id &&
+      value.authorization_id !== value.profile_id
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['profile_id'],
+        message: 'authorization_id and profile_id must match',
+      });
+    }
+  })
+  .transform((value) => ({
+    authorization_id: value.authorization_id ?? value.profile_id!,
+  }));
+export type SessionConnectorBindingInput = z.input<
+  typeof SessionConnectorBindingInputSchema
+>;
+
 export const SessionConnectorBindingSchema = z
   .object({
-    profile_id: z.string().uuid(),
+    authorization_id: z.string().uuid(),
   })
   .strict();
 export type SessionConnectorBinding = z.infer<typeof SessionConnectorBindingSchema>;
 
-export const SessionConnectorBindingsSchema = z
+export const SessionConnectorBindingsInputSchema = z
   .record(
-    z
-      .string()
-      .regex(
-        /^[a-z][a-z0-9_-]{0,127}$/,
-        'connector binding aliases must be lower-case connector slugs',
-      ),
-    SessionConnectorBindingSchema,
+    SessionConnectorBindingAliasSchema,
+    SessionConnectorBindingInputSchema,
   )
+  .superRefine((value, ctx) => {
+    if (Object.keys(value).length > SESSION_CONNECTOR_BINDINGS_MAX_KEYS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `connector_bindings may contain at most ${SESSION_CONNECTOR_BINDINGS_MAX_KEYS} entries`,
+      });
+    }
+  });
+export type SessionConnectorBindingsInput = z.input<
+  typeof SessionConnectorBindingsInputSchema
+>;
+
+export const SessionConnectorBindingsSchema = z
+  .record(SessionConnectorBindingAliasSchema, SessionConnectorBindingSchema)
   .superRefine((value, ctx) => {
     if (Object.keys(value).length > SESSION_CONNECTOR_BINDINGS_MAX_KEYS) {
       ctx.addIssue({
@@ -252,6 +301,54 @@ export type SessionSecretsAllowlist = z.infer<typeof SessionSecretsAllowlistSche
 export const ConnectorAuthorizationStrategySchema = z.enum(['project', 'user']);
 export type ConnectorAuthorizationStrategy = z.infer<
   typeof ConnectorAuthorizationStrategySchema
+>;
+
+export const SessionScopeInputSchema = z
+  .object({
+    secrets: SessionSecretsAllowlistSchema.nullable().optional(),
+    connector_bindings: SessionConnectorBindingsInputSchema.optional(),
+  })
+  .strict()
+  .refine(
+    (value) => Object.hasOwn(value, 'secrets') || Object.hasOwn(value, 'connector_bindings'),
+    'Supply `secrets`, `connector_bindings`, or both',
+  );
+export type SessionScopeInput = z.input<typeof SessionScopeInputSchema>;
+
+export const SessionScopeSchema = z
+  .object({
+    secrets_allowlist: SessionSecretsAllowlistSchema.nullable(),
+    connector_bindings: SessionConnectorBindingsSchema,
+    dropped_secrets: z.array(z.string()),
+    added_secrets: z.array(z.string()),
+    dropped_bindings: z.array(z.string()),
+    retroactive: z.boolean(),
+    detail: z.string(),
+  })
+  .strict();
+export type SessionScope = z.infer<typeof SessionScopeSchema>;
+
+export const ConnectorAuthorizationRequiredProfileSchema = z
+  .object({
+    id: z.string().uuid(),
+    slug: z.string().regex(/^[a-z][a-z0-9_-]{0,127}$/),
+    name: z.string().min(1),
+    authorization_strategy: ConnectorAuthorizationStrategySchema,
+  })
+  .strict();
+export type ConnectorAuthorizationRequiredProfile = z.infer<
+  typeof ConnectorAuthorizationRequiredProfileSchema
+>;
+
+export const ConnectorAuthorizationRequiredErrorSchema = z
+  .object({
+    code: z.literal('CONNECTOR_AUTHORIZATION_REQUIRED'),
+    message: z.string().min(1),
+    connector_profiles: z.array(ConnectorAuthorizationRequiredProfileSchema).min(1),
+  })
+  .strict();
+export type ConnectorAuthorizationRequiredError = z.infer<
+  typeof ConnectorAuthorizationRequiredErrorSchema
 >;
 
 export const ConnectorAuthorizationOwnerTypeSchema = z.enum([
@@ -565,7 +662,7 @@ export const SessionCreateInputSchema = z
     branch_already_created: z.boolean().optional(),
     metadata: JsonObjectSchema.optional(),
     runtime_context: SessionRuntimeContextSchema.optional(),
-    connector_bindings: SessionConnectorBindingsSchema.optional(),
+    connector_bindings: SessionConnectorBindingsInputSchema.optional(),
     // When `connector_bindings` is set, binding any alias normally disables the
     // project-default fallback for every OTHER (unbound) alias ("all-or-nothing").
     // `inherit_unbound: true` keeps that fallback, so a caller can override just one

@@ -8,6 +8,7 @@ import {
   deleteProjectSession,
   ensureWarmProjectSession,
   getProjectSession,
+  getProjectSessionScope,
   getSessionAudit,
   getSessionPreviewCandidates,
   getSessionTranscript,
@@ -16,6 +17,7 @@ import {
   listSessionPublicShares,
   restartProjectSession,
   revokeSessionPublicShare,
+  setProjectSessionScope,
   setProjectSessionSharing,
   stopProjectSession,
   updateProjectSession,
@@ -130,6 +132,34 @@ test('createProjectSession serializes non-secret runtime_context unchanged', asy
       licensed: true,
       risk_score: 0.5,
       optional: null,
+    },
+  });
+});
+
+test('createProjectSession serializes canonical connector authorization bindings', async () => {
+  nextResponse = { status: 200, body: { session_id: 'NEW-BINDING', name: null } };
+  await createProjectSession('P1', {
+    connector_bindings: {
+      gmail: { authorization_id: 'AUTH-1' },
+    },
+  });
+  expect(last().body).toEqual({
+    connector_bindings: {
+      gmail: { authorization_id: 'AUTH-1' },
+    },
+  });
+});
+
+test('createProjectSession retains deprecated profile_id input compatibility', async () => {
+  nextResponse = { status: 200, body: { session_id: 'NEW-LEGACY-BINDING', name: null } };
+  await createProjectSession('P1', {
+    connector_bindings: {
+      gmail: { profile_id: 'AUTH-1' },
+    },
+  });
+  expect(last().body).toEqual({
+    connector_bindings: {
+      gmail: { profile_id: 'AUTH-1' },
     },
   });
 });
@@ -281,6 +311,51 @@ test('stopProjectSession POSTs to /stop', async () => {
   expect(last().url).toContain('/projects/P1/sessions/S1/stop');
   expect(last().method).toBe('POST');
   expect(result.status).toBe('stopped');
+});
+
+test('getProjectSessionScope reads canonical session scope', async () => {
+  const scope = {
+    secrets_allowlist: ['GMAIL_TOKEN'],
+    connector_bindings: { gmail: { authorization_id: 'AUTH-1' } },
+    dropped_secrets: [],
+    added_secrets: [],
+    dropped_bindings: [],
+    retroactive: true,
+    detail: 'Current session scope.',
+  };
+  nextResponse = { status: 200, body: scope };
+  const result = await getProjectSessionScope('P1', 'S1');
+  expect(last().url).toBe('http://test.local/projects/P1/sessions/S1/scope');
+  expect(last().method).toBe('GET');
+  expect(result).toEqual(scope);
+});
+
+test('setProjectSessionScope replaces connector authorizations with canonical input', async () => {
+  nextResponse = {
+    status: 200,
+    body: {
+      secrets_allowlist: [],
+      connector_bindings: { gmail: { authorization_id: 'AUTH-2' } },
+      dropped_secrets: [],
+      added_secrets: [],
+      dropped_bindings: [],
+      retroactive: true,
+      detail: 'Applies from the next prompt.',
+    },
+  };
+  const result = await setProjectSessionScope('P1', 'S1', {
+    secrets: [],
+    connector_bindings: { gmail: { authorization_id: 'AUTH-2' } },
+  });
+  expect(last().url).toBe('http://test.local/projects/P1/sessions/S1/scope');
+  expect(last().method).toBe('PUT');
+  expect(last().body).toEqual({
+    secrets: [],
+    connector_bindings: { gmail: { authorization_id: 'AUTH-2' } },
+  });
+  expect(result.connector_bindings).toEqual({
+    gmail: { authorization_id: 'AUTH-2' },
+  });
 });
 
 test('listProjectSessions filters by end_user_ref, URL-encoding the handle', async () => {

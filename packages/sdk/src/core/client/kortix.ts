@@ -892,8 +892,10 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
        * Restarting the runtime is how the change takes effect, so an in-flight
        * turn ends. `applied_live` reports whether a running session took it now
        * or whether it applies at next start.
-       */
+      */
       changeModel: (model: string) => P.setProjectSessionModel(projectId, sessionId, model),
+      /** Read the authoritative secret allowlist and connector authorizations. */
+      scope: () => P.getProjectSessionScope(projectId, sessionId),
       /** Re-scope a running session — set semantics; see setProjectSessionScope. */
       rescope: (scope: P.SessionScopeInput) =>
         P.setProjectSessionScope(projectId, sessionId, scope),

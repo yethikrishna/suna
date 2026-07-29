@@ -189,64 +189,16 @@ test('canonical authorization methods preserve the compatibility route contract'
   expect(last().url).toContain('/connector-profiles/authorization-1/connect/finalize');
 });
 
-test('deprecated authorization policy methods resolve the connector profile', async () => {
-  globalThis.fetch = mock(
-    async (url: unknown, opts: { method?: string; body?: string } = {}) => {
-      const request = {
-        url: String(url),
-        method: opts.method ?? 'GET',
-        body: opts.body ? JSON.parse(opts.body) : undefined,
-      };
-      calls.push(request);
-      const body = request.url.endsWith('/connector-profiles')
-        ? {
-            profiles: [
-              {
-                profile_id: 'authorization-1',
-                connector_alias: 'gmail',
-                owner_type: 'project',
-                owner_id: null,
-                label: 'Project Gmail',
-                status: 'active',
-                is_default: true,
-                metadata: {},
-              },
-            ],
-          }
-        : request.method === 'GET'
-          ? { policies: [{ match: 'send_email', action: 'block' }] }
-          : { ok: true };
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    },
-  ) as unknown as typeof fetch;
-
-  expect(await getConnectionPolicies('P1', 'authorization-1')).toMatchObject({
-    policies: [{ match: 'send_email', action: 'block' }],
-  });
-  expect(calls.map((call) => call.url)).toEqual([
-    'http://test.local/projects/P1/connector-profiles',
-    'http://test.local/executor/projects/P1/connectors/gmail/policies',
-  ]);
-
-  calls = [];
-  await setConnectionPolicies('P1', 'authorization-1', [
-    { match: 'send_email', action: 'block' },
-  ]);
-  expect(calls).toEqual([
-    {
-      url: 'http://test.local/projects/P1/connector-profiles',
-      method: 'GET',
-      body: undefined,
-    },
-    {
-      url: 'http://test.local/executor/projects/P1/connectors/gmail/policies',
-      method: 'PUT',
-      body: { policies: [{ match: 'send_email', action: 'block' }] },
-    },
-  ]);
+test('deprecated authorization policy methods fail before widening policy scope', async () => {
+  await expect(getConnectionPolicies('P1', 'authorization-1')).rejects.toThrow(
+    'Use getConnectorPolicies(projectId, slug)',
+  );
+  await expect(
+    setConnectionPolicies('P1', 'authorization-1', [
+      { match: 'send_email', action: 'block' },
+    ]),
+  ).rejects.toThrow('Use setConnectorPolicies(projectId, slug, policies)');
+  expect(calls).toHaveLength(0);
 });
 
 const postmanDraftTypecheck: import('./connectors').ConnectorDraftInput = {

@@ -7,6 +7,7 @@ import {
   accounts,
   chatInstalls,
   executorConnectionProfiles,
+  executorConnectorPolicies,
   executorConnectors,
   executorCredentials,
   projectSessionConnectorBindings,
@@ -117,6 +118,12 @@ beforeAll(async () => {
       config: { platform: 'email' },
     },
   ]);
+  await db.insert(executorConnectorPolicies).values({
+    connectorId: CONNECTOR_A,
+    match: '*',
+    action: 'block',
+    position: 0,
+  });
   await db.insert(executorConnectionProfiles).values([
     {
       profileId: PROFILE_DEFAULT,
@@ -373,6 +380,12 @@ describe('session connector profile isolation', () => {
     if (!connectorA || !connectorB) throw new Error('Expected both gateway connectors');
     expect(await depsA.resolveCredential(connectorA, null)).toBe('workspace-a-capability');
     expect(await depsB.resolveCredential(connectorB, null)).toBe('workspace-b-capability');
+    expect(await depsA.loadPolicies(connectorA.connectorId)).toEqual([
+      { match: '*', action: 'block', position: 0 },
+    ]);
+    expect(await depsB.loadPolicies(connectorB.connectorId)).toEqual([
+      { match: '*', action: 'block', position: 0 },
+    ]);
   });
 
   test('omitted binding resolves only the migrated/default profile', async () => {

@@ -647,25 +647,17 @@ export async function setConnectorPolicies(
   );
 }
 
-async function connectorAliasForAuthorization(
-  projectId: string,
-  authorizationId: string,
-): Promise<string> {
-  const { profiles } = await listConnectorAuthorizations(projectId);
-  const authorization = profiles.find((profile) => profile.profile_id === authorizationId);
-  if (!authorization) {
-    throw new Error(`Connector authorization not found: ${authorizationId}`);
-  }
-  return authorization.connector_alias;
-}
-
 /**
  * @deprecated Policies apply to a connector profile, not one authorization.
  * Use `getConnectorPolicies(projectId, slug)`.
  */
-export async function getConnectionPolicies(projectId: string, authorizationId: string) {
-  const slug = await connectorAliasForAuthorization(projectId, authorizationId);
-  return getConnectorPolicies(projectId, slug);
+export async function getConnectionPolicies(
+  _projectId: string,
+  _authorizationId: string,
+): Promise<{ policies: ConnectorPolicyRule[] }> {
+  throw new Error(
+    'Authorization-specific policies were removed. Use getConnectorPolicies(projectId, slug).',
+  );
 }
 
 /**
@@ -673,12 +665,13 @@ export async function getConnectionPolicies(projectId: string, authorizationId: 
  * Use `setConnectorPolicies(projectId, slug, policies)`.
  */
 export async function setConnectionPolicies(
-  projectId: string,
-  authorizationId: string,
-  policies: ConnectorPolicyRule[],
-) {
-  const slug = await connectorAliasForAuthorization(projectId, authorizationId);
-  return setConnectorPolicies(projectId, slug, policies);
+  _projectId: string,
+  _authorizationId: string,
+  _policies: ConnectorPolicyRule[],
+): Promise<{ ok: boolean }> {
+  throw new Error(
+    'Authorization-specific policies were removed. Use setConnectorPolicies(projectId, slug, policies).',
+  );
 }
 
 /** The editable connection config for an existing connector (kortix.yaml = source of truth). */

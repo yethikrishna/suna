@@ -21,6 +21,7 @@
 
 import Loading from '@/components/ui/loading';
 
+import { CallSnippet } from '@/components/dev/call-snippet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { serverErrorBody } from '@/lib/api-error-body';
@@ -107,6 +108,14 @@ export function SessionIsolationPanel({ projectId }: { projectId: string }) {
           reachable from that second account, because a wrapper user only ever sees the projects
           they provisioned themselves.
         </p>
+        {/* The rewrite described above, as the request it produces — the query
+            param is on the wire, but the browser is not what puts it there. */}
+        <div className="mt-1.5">
+          <CallSnippet
+            id="sessions.list"
+            context={{ projectId, endUserRef: endUser.data?.userId }}
+          />
+        </div>
       </div>
 
       <ForgedReadProbe projectId={projectId} signedInAs={endUser.data?.userId ?? null} />

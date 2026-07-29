@@ -11,9 +11,11 @@
  * why THIS session cannot move rather than restating the rule in the abstract.
  */
 
+import { CallSnippet } from '@/components/dev/call-snippet';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ModelSwitcher } from '@/components/workbench/model-switcher';
+import type { CallSnippetId } from '@/lib/call-snippets';
 import { kortix } from '@/lib/kortix';
 import { qk } from '@/lib/query-keys';
 import { isFixedAtStart, readBoundConnections, sessionScopeIsReadable, sessionScopeRows, type ScopeRowKey } from '@/lib/session-scope';
@@ -25,6 +27,16 @@ const ICONS: Record<ScopeRowKey, typeof Lock> = {
   agent: Repeat,
   secrets: Lock,
   connections: Plug,
+};
+
+/**
+ * The call that MOVES a row — only the two rows that can still move have one.
+ * The frozen rows share the create call below, because the honest answer to
+ * "how do I change this?" is "you don't, you start a session".
+ */
+const ROW_CALL: Partial<Record<ScopeRowKey, CallSnippetId>> = {
+  model: 'session.model',
+  agent: 'session.prompt',
 };
 
 export function SessionScope({ projectId, sessionId }: { projectId: string; sessionId: string }) {
@@ -63,6 +75,9 @@ export function SessionScope({ projectId, sessionId }: { projectId: string; sess
     );
   }
 
+  // Read once, out here: the readability check above narrows `session.data`,
+  // and that narrowing does not survive into the row callbacks below.
+  const agentName = session.data.agent_name ?? null;
   const rows = sessionScopeRows({
     agentName: session.data.agent_name,
     // null = never narrowed, which is the opposite of an empty allowlist.
@@ -99,10 +114,44 @@ export function SessionScope({ projectId, sessionId }: { projectId: string; sess
                 <div className="mt-0.5 break-words font-mono text-xs">{row.value}</div>
               )}
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{row.detail}</p>
+              {ROW_CALL[row.key] && (
+                <div className="-ml-2 mt-1">
+                  <CallSnippet
+                    id={ROW_CALL[row.key]!}
+                    context={{ projectId, sessionId, agent: agentName }}
+                  />
+                </div>
+              )}
             </div>
           </div>
         );
       })}
+
+      {/* Everything frozen above was decided in ONE request. Showing it here is
+          the difference between "you can't change this" and "here is where it
+          was chosen" — filled in from what this session actually reports, so it
+          is this session's call rather than an example of one. */}
+      <div className="rounded-md border border-dashed border-border px-3 py-2.5">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          The frozen rows were fixed by the call that opened this session. The agent and the
+          allowlist below are read back from the session; connector bindings are not — the platform
+          accepts them at create and never serializes them, which is why Lumen keeps its own record.
+        </p>
+        <div className="-ml-2 mt-1">
+          <CallSnippet
+            id="session.create"
+            context={{
+              projectId,
+              sessionId,
+              overrides: {
+                agent: agentName,
+                secrets: session.data.secrets_allowlist ?? null,
+                bindings: {},
+              },
+            }}
+          />
+        </div>
+      </div>
     </div>
   );
 }

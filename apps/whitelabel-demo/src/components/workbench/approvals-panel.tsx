@@ -18,6 +18,7 @@
 
 import Loading from '@/components/ui/loading';
 
+import { CallSnippet } from '@/components/dev/call-snippet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -192,6 +193,13 @@ export function SessionApprovals({
             </div>
           );
         })}
+
+        {/* The decision these three buttons send, on the execution id that is
+            actually waiting — the scope is the part people get wrong. */}
+        <CallSnippet
+          id="approval.resolve"
+          context={{ projectId, executionId: view.pending[0]?.executionId }}
+        />
 
         {failure && (
           <div

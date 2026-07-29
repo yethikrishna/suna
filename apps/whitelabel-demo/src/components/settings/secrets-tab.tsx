@@ -2,6 +2,7 @@
 
 import Loading from '@/components/ui/loading';
 
+import { CallSnippet } from '@/components/dev/call-snippet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -21,7 +22,11 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { kortix } from '@/lib/kortix';
 import { qk } from '@/lib/query-keys';
-import { collidingIdentifiers, pendingKeyCollision } from '@/lib/secret-collisions';
+import {
+  collidingIdentifiers,
+  normalizeSecretKey,
+  pendingKeyCollision,
+} from '@/lib/secret-collisions';
 import { scopeExplanation, secretScope } from '@/lib/secret-scope';
 import {
   type SecretWriteIntent,
@@ -216,6 +221,25 @@ export function SecretsTab({ projectId }: { projectId: string }) {
             </Button>
           </div>
         </form>
+
+        {/* Create and rotate are one call, and the snippet takes the identifier
+            and the KEY only — the typed value is never rendered anywhere. */}
+        <div className="mt-3">
+          <CallSnippet
+            id="secret.upsert"
+            context={{
+              projectId,
+              // normalizeSecretKey, not raw trim — the upsert uppercases the KEY
+              // before sending, and KEY collisions are adjudicated on the
+              // uppercased value. A snippet whose whole job is teaching the
+              // identifier-vs-KEY distinction must not print the wrong KEY.
+              secret: {
+                identifier: draftIdentifier || undefined,
+                name: name.trim() ? normalizeSecretKey(name) : undefined,
+              },
+            }}
+          />
+        </div>
       </Card>
 
       <Card className="divide-y divide-border p-0">

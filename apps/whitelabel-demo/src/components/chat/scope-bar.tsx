@@ -149,37 +149,6 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
     },
   });
 
-  // Every chip is a claim about what this session may reach, and a half-loaded
-  // one reads as a narrower session than it is ("None" before the list arrives).
-  // Hold the whole bar rather than animating through a wrong answer.
-  if (session.isLoading || secrets.isLoading || connectors.isLoading) {
-    return <div className="mt-2 h-6" aria-hidden />;
-  }
-  if (!data) {
-    return (
-      <p className="mt-2 text-center text-[11px] text-muted-foreground">
-        This session&apos;s scope could not be read just now.
-      </p>
-    );
-  }
-
-  // Read off the capability map rather than hardcoded: if either of these ever
-  // became changeable in place, the draft-and-restart affordance would be the
-  // wrong shape and should disappear rather than quietly misdescribe the rule.
-  const secretsFixed = !scopeControl('secrets').live;
-  const connectionsFixed = !scopeControl('connections').live;
-
-  // Offering "start a new session with this scope" against a secret list that
-  // failed to load would either send an allowlist nothing verified or refuse it
-  // with a reason that is only an artefact of the failed read.
-  const startAction = secrets.isError ? null : (
-    <StartWithScope
-      issues={issues.map((issue) => issue.message)}
-      pending={start.isPending}
-      onStart={() => start.mutate()}
-    />
-  );
-
   // Apply the draft to THIS session. The bar said "Changeable" before this
   // existed — a badge without the control, which is worse than saying frozen.
   const applyScope = useMutation({
@@ -224,6 +193,37 @@ export function ScopeBar({ projectId, sessionId }: { projectId: string; sessionI
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  // Every chip is a claim about what this session may reach, and a half-loaded
+  // one reads as a narrower session than it is ("None" before the list arrives).
+  // Hold the whole bar rather than animating through a wrong answer.
+  if (session.isLoading || secrets.isLoading || connectors.isLoading) {
+    return <div className="mt-2 h-6" aria-hidden />;
+  }
+  if (!data) {
+    return (
+      <p className="mt-2 text-center text-[11px] text-muted-foreground">
+        This session&apos;s scope could not be read just now.
+      </p>
+    );
+  }
+
+  // Read off the capability map rather than hardcoded: if either of these ever
+  // became changeable in place, the draft-and-restart affordance would be the
+  // wrong shape and should disappear rather than quietly misdescribe the rule.
+  const secretsFixed = !scopeControl('secrets').live;
+  const connectionsFixed = !scopeControl('connections').live;
+
+  // Offering "start a new session with this scope" against a secret list that
+  // failed to load would either send an allowlist nothing verified or refuse it
+  // with a reason that is only an artefact of the failed read.
+  const startAction = secrets.isError ? null : (
+    <StartWithScope
+      issues={issues.map((issue) => issue.message)}
+      pending={start.isPending}
+      onStart={() => start.mutate()}
+    />
+  );
 
   const toggleSecret = (identifier: string, on: boolean) => {
     const base = nextSecrets ?? [];

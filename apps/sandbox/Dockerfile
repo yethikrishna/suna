@@ -174,6 +174,29 @@ RUN OPENCODE_VERSION="$(node -e "console.log(require('/tmp/kortix-runtime-versio
     && command -v opencode \
     && opencode --version
 
+RUN CLAUDE_AGENT_ACP_VERSION="$(node -e "console.log(require('/tmp/kortix-runtime-versions.json').claudeAgentAcp)")" \
+    && CODEX_ACP_VERSION="$(node -e "console.log(require('/tmp/kortix-runtime-versions.json').codexAcp)")" \
+    && PI_ACP_VERSION="$(node -e "console.log(require('/tmp/kortix-runtime-versions.json').piAcp)")" \
+    && PI_CODING_AGENT_VERSION="$(node -e "console.log(require('/tmp/kortix-runtime-versions.json').piCodingAgent)")" \
+    && CLAUDE_CODE_VERSION="$(node -e "console.log(require('/tmp/kortix-runtime-versions.json').claudeCode)")" \
+    && CODEX_CLI_VERSION="$(node -e "console.log(require('/tmp/kortix-runtime-versions.json').codexCli)")" \
+    && pnpm add -g --allow-build=@anthropic-ai/claude-code \
+         "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}" \
+         "@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}" \
+         "pi-acp@${PI_ACP_VERSION}" \
+         "@earendil-works/pi-coding-agent@${PI_CODING_AGENT_VERSION}" \
+         "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+         "@openai/codex@${CODEX_CLI_VERSION}" \
+    && command -v claude-agent-acp \
+    && command -v codex-acp \
+    && command -v pi-acp \
+    && command -v pi \
+    && command -v claude \
+    && command -v codex \
+    && test "$(claude --version | awk '{print $1}')" = "${CLAUDE_CODE_VERSION}" \
+    && test "$(codex --version | awk '{print $2}')" = "${CODEX_CLI_VERSION}" \
+    && test "$(pi --version)" = "${PI_CODING_AGENT_VERSION}"
+
 RUN BUN_VERSION="$(node -e "console.log(require('/tmp/kortix-runtime-versions.json').bun)")" \
     && BUN_SHA256_AMD64="$(node -e "console.log(require('/tmp/kortix-runtime-versions.json').bunSha256Amd64)")" \
     && BUN_SHA256_ARM64="$(node -e "console.log(require('/tmp/kortix-runtime-versions.json').bunSha256Arm64)")" \
@@ -218,7 +241,8 @@ COPY packages/executor-sdk/ /opt/kortix/packages/executor-sdk/
 RUN chmod +x /usr/local/bin/kortix-agent /usr/local/bin/kortix /usr/local/bin/kortix-entrypoint /opt/kortix/apps/sandbox/slack-cli/install-shims.sh \
     && bash /opt/kortix/apps/sandbox/slack-cli/install-shims.sh /opt/kortix/apps/sandbox/slack-cli \
     && kortix --version \
-    && chown -R kortix:kortix /opt/kortix /workspace /ephemeral
+    && mkdir -p /var/run/kortix \
+    && chown -R kortix:kortix /opt/kortix /workspace /ephemeral /var/run/kortix
 
 # Platform-owned secret delivery. The daemon writes live project secrets to
 # /dev/shm/kortix/agent-env.sh (tmpfs — never on the persisted disk); these

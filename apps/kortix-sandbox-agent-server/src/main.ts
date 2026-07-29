@@ -20,6 +20,7 @@ import {
   hasKortixLlmGateway,
   OPENCODE_HOME,
   refreshGatewayCatalogFile,
+  resumeCanonicalAcpSession,
   scheduleCatalogWarm,
   waitForOpencodeReady,
   type Opencode,
@@ -55,6 +56,8 @@ import {
 // prompts into the same opencode conversation instead of opening a fresh
 // session with no context.
 export const OPENCODE_SESSION_PIN_PATH = '/var/run/kortix/opencode-session-id'
+const INITIAL_RUNTIME_PROMPT_PIN_PATH =
+  '/var/run/kortix/initial-runtime-prompt-delivered'
 const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
   'deepseek-v4-flash-free',
   'mimo-v2.5-free',
@@ -360,6 +363,27 @@ function armSeedAdoption(
           await configureRepoCredentialHelper(cfg2, cfg2.projectTarget).catch(() => {})
         }
       }
+      const previousHarness = opencode.getRuntimeHarness()
+      const adoptedConfigDir = await resolveOpencodeConfigDir(cfg2)
+      opencode.reconfigure(cfg2, adoptedConfigDir)
+      const adoptedHarness = opencode.getRuntimeHarness()
+      if (adoptedHarness !== previousHarness) {
+        // A warm seed always captures OpenCode. A fork that selects another
+        // runtime must replace that process and discard the seed's OpenCode
+        // session pin before it creates its own ACP session.
+        try {
+          unlinkSync(OPENCODE_SESSION_PIN_PATH)
+        } catch {}
+        try {
+          unlinkSync(INITIAL_RUNTIME_PROMPT_PIN_PATH)
+        } catch {}
+        clearSeedBakedMarker()
+        await opencode.restart()
+        logger.info('[seed] replaced captured runtime for adopted session', {
+          previousHarness,
+          adoptedHarness,
+        })
+      }
       await startSessionRuntime(opencode, cfg2, bootState, bootMark)
       logger.info('[seed] adoption complete', { adoptMs: Date.now() - t0, timeline: bootState.timeline })
     })()
@@ -382,6 +406,33 @@ async function startSessionRuntime(
   bootState: SandboxBootState,
   bootMark: (label: string) => void,
 ): Promise<void> {
+  if (opencode.getRuntimeHarness() !== 'opencode') {
+    await maybeCreateInitialOpencodeSession(opencode, bootState, bootMark).catch(
+      (err) => {
+        bootState.initialOpenCodeSessionError =
+          err instanceof Error ? err.message : String(err)
+        logger.warn('[boot] initial ACP runtime session setup failed', err)
+      },
+    )
+    if (bootState.initialOpenCodeSessionId) {
+      opencode.markReady()
+      bootMark('runtime-ready')
+      logger.info('[boot] ACP runtime ready via initial session', {
+        harness: opencode.getRuntimeHarness(),
+        runtimePid: opencode.getPid(),
+        timeline: bootState.timeline,
+      })
+      relayBootTimelineToApi(bootState.timeline)
+      return
+    }
+    const ready = await waitForOpencodeReady(opencode)
+    if (ready) {
+      bootMark('runtime-ready')
+      relayBootTimelineToApi(bootState.timeline)
+    }
+    return
+  }
+
   const leaseContext = executionLeaseContextFromEnv()
   const executionLease = leaseContext ? new ExecutionLeaseReporter(leaseContext) : null
   const onSessionStatus = (opencodeSessionId: string, status: string) => {
@@ -794,6 +845,16 @@ async function maybeCreateInitialOpencodeSession(
   const bootstrapSession = (process.env.KORTIX_BOOTSTRAP_OPENCODE_SESSION ?? '').trim() === '1'
   if (!prompt && !bootstrapSession) return
 
+  if (opencode.getRuntimeHarness() !== 'opencode') {
+    await maybeCreateInitialGenericAcpSession(
+      opencode,
+      bootState,
+      bootMark,
+      prompt,
+    )
+    return
+  }
+
   const baseUrl = opencode.getInternalUrl()
   const workspace = process.env.KORTIX_WORKSPACE || '/workspace'
 
@@ -891,6 +952,44 @@ async function maybeCreateInitialOpencodeSession(
     logger.info('[boot] opencode root ready (bootstrap, no prompt)', { sessionId })
   }
   bootMark('opencode-session-created')
+}
+
+async function maybeCreateInitialGenericAcpSession(
+  opencode: Opencode,
+  bootState: SandboxBootState,
+  bootMark: (label: string) => void,
+  prompt: string,
+): Promise<void> {
+  const workspace = process.env.KORTIX_WORKSPACE || '/workspace'
+  const pinned = readPinnedOpencodeSessionId()
+  let sessionId: string
+  if (pinned) {
+    await resumeInitialOpenCodeSession(opencode, pinned, workspace)
+    sessionId = pinned
+  } else {
+    const session = await createInitialOpenCodeSession(opencode, workspace)
+    sessionId = session.id
+  }
+
+  pinOpencodeSessionFile(sessionId)
+  bootState.initialOpenCodeSessionId = sessionId
+  bootMark('runtime-session-created')
+  void relayBootstrapPinToApi(sessionId)
+
+  const promptDelivered = existsSync(INITIAL_RUNTIME_PROMPT_PIN_PATH)
+  if (prompt && !promptDelivered) {
+    await deliverInitialOpenCodePrompt(
+      opencode,
+      sessionId,
+      workspace,
+      buildInitialPromptBody(prompt),
+    )
+    writeFileSync(INITIAL_RUNTIME_PROMPT_PIN_PATH, sessionId, 'utf8')
+    logger.info('[boot] initial ACP runtime prompt delivered', {
+      harness: opencode.getRuntimeHarness(),
+      sessionId,
+    })
+  }
 }
 
 /** Best-effort write of the canonical opencode root id to the well-known pin
@@ -1143,11 +1242,12 @@ export async function resumeInitialOpenCodeSession(
   workspace: string,
 ): Promise<void> {
   if (opencode.getTransport() !== 'acp') return
-  await requireAcpConnection(opencode).request('session/resume', {
+  await resumeCanonicalAcpSession(
+    requireAcpConnection(opencode),
     sessionId,
-    cwd: workspace,
-    mcpServers: [],
-  })
+    workspace,
+    opencode.getRuntimeAdapter(),
+  )
 }
 
 export async function deliverInitialOpenCodePrompt(
@@ -1158,14 +1258,14 @@ export async function deliverInitialOpenCodePrompt(
 ): Promise<void> {
   if (opencode.getTransport() === 'acp') {
     const connection = requireAcpConnection(opencode)
-    if (prompt.model) {
+    if (opencode.getRuntimeHarness() === 'opencode' && prompt.model) {
       await connection.request('session/set_config_option', {
         sessionId,
         configId: 'model',
         value: `${prompt.model.providerID}/${prompt.model.modelID}`,
       })
     }
-    if (prompt.agent) {
+    if (opencode.getRuntimeHarness() === 'opencode' && prompt.agent) {
       await connection.request('session/set_config_option', {
         sessionId,
         configId: 'mode',

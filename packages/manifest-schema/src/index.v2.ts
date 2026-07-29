@@ -55,8 +55,8 @@ export type AgentModeV2 = 'primary' | 'subagent' | 'all';
 /** Kortix governance field — validated only in this phase; enforcement is Phase 4. */
 export type WorkspaceModeV2 = 'runtime' | 'read' | 'branch';
 
-/** The only legal `runtime` today; reserved so `runtime: claude` is a one-line project change later. */
-export type RuntimeV2 = 'opencode';
+/** The server-side ACP runtime selected for new project sessions. */
+export type RuntimeV2 = (typeof V2_RUNTIME_VALUES)[number];
 
 /** `$defs.PermissionActionConfig` in the OpenCode config schema. */
 export type PermissionActionV2 = 'ask' | 'allow' | 'deny';

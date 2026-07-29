@@ -101,6 +101,13 @@ describe('rendered layer (golden)', () => {
 describe('runtime artifact integrity', () => {
   const rendered = kortixToolchainLayer(COMMON);
 
+  test('makes the ACP session pin directory writable by the runtime user', () => {
+    expect(rendered).toContain('/var/run/kortix \\');
+    expect(rendered).toContain(
+      '/home/kortix /var/run/kortix',
+    );
+  });
+
   test('verifies both supported architectures against repository-controlled SHA-256 digests', () => {
     for (const digest of [
       PNPM_SHA256_AMD64,
@@ -120,6 +127,15 @@ describe('runtime artifact integrity', () => {
     expect(rendered).not.toContain('astral.sh/uv/');
     expect(rendered).not.toContain('bun.com/install');
     expect(rendered).not.toMatch(/curl[^|\n]*\|\s*(?:sh|bash)/);
+  });
+
+  test('installs and executes each native runtime CLI during the image build', () => {
+    expect(rendered).toContain(
+      'pnpm add -g --allow-build=@anthropic-ai/claude-code',
+    );
+    expect(rendered).toContain('claude --version');
+    expect(rendered).toContain('codex --version');
+    expect(rendered).toContain('pi --version');
   });
 });
 

@@ -30,7 +30,12 @@ describe('standalone gateway /v1/messages mounting', () => {
       }),
     });
 
-  for (const path of ['/v1/messages', '/v1/llm/messages', '/v1/openai/messages']) {
+  for (const path of [
+    '/v1/messages',
+    '/v1/llm/messages',
+    '/v1/llm/v1/messages',
+    '/v1/openai/messages',
+  ]) {
     test(`${path} is registered and speaks the Anthropic error envelope`, async () => {
       const res = await post(path);
       expect(res.status).toBe(401);

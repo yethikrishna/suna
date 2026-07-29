@@ -1,3 +1,5 @@
+import type { RuntimeV2 } from '@kortix/manifest-schema';
+
 export interface SessionRuntimeEnvInput {
   projectId: string;
   sessionId: string;
@@ -9,6 +11,7 @@ export interface SessionRuntimeEnvInput {
   frontendUrl?: string;
   initialPrompt?: string | null;
   opencodeModel?: string | null;
+  runtimeHarness?: RuntimeV2;
   opencodeProcessTransport: 'acp' | 'rest';
   /** The wrapper's opaque end-user this backend session acts for (Kortix-as-a-
    *  Backend). Surfaced to the sandbox as KORTIX_ORIGIN_REF so the agent knows
@@ -31,6 +34,7 @@ export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<st
     KORTIX_SESSION_ID: input.sessionId,
     KORTIX_SERVICE_PORT: '8000',
     KORTIX_AGENT_NAME: input.agentName,
+    KORTIX_RUNTIME_HARNESS: input.runtimeHarness ?? 'opencode',
     KORTIX_OPENCODE_PROCESS_TRANSPORT: input.opencodeProcessTransport,
     // Both names carry the same value: KORTIX_END_USER_REF is the name, and
     // KORTIX_ORIGIN_REF stays set because agent code inside sandboxes may
@@ -46,7 +50,12 @@ export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<st
     // The API adopts/persists that root; it must not create a competing one.
     KORTIX_BOOTSTRAP_OPENCODE_SESSION: '1',
     ...(input.initialPrompt ? { KORTIX_INITIAL_PROMPT: input.initialPrompt } : {}),
-    ...(input.opencodeModel ? { KORTIX_OPENCODE_MODEL: input.opencodeModel } : {}),
+    ...(input.opencodeModel
+      ? {
+          KORTIX_RUNTIME_MODEL: input.opencodeModel,
+          KORTIX_OPENCODE_MODEL: input.opencodeModel,
+        }
+      : {}),
     // The sandbox daemon merges this as the BASE of its own composed opencode
     // config (executor MCP / gateway provider / Slack overlays still apply on
     // top — see apps/kortix-sandbox-agent-server/src/opencode.ts). Per-call

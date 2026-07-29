@@ -115,6 +115,7 @@ export function createHealthRouter(
       daemon: 'ok',
       status,
       runtimeReady,
+      runtime_harness: opencode.getRuntimeHarness?.() ?? 'opencode',
       opencode: opencodeState,
       uptime_s: Math.floor((Date.now() - bootTime) / 1000),
       opencode_pid: opencode.getPid(),

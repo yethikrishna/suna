@@ -17,6 +17,7 @@ const OPENCODE_RUNTIME_ENV_NAMES = new Set([
   // The session's model. opencode reads this when it builds its config at spawn
   // (opencode.ts), so accepting it here + restarting is what makes a mid-session
   // model change take effect on a box that is already up.
+  'KORTIX_RUNTIME_MODEL',
   'KORTIX_OPENCODE_MODEL',
 ])
 

@@ -38,6 +38,7 @@ import {
   manifestFormatForPath,
   parseManifestText,
   validateAgentMdFrontmatter,
+  V2_RUNTIME_VALUES,
   type AgentBlockV2,
   type GrantSetV2,
   type ManifestIssue,
@@ -384,16 +385,43 @@ function applySkillsGovernance(
 export async function resolveCompiledAgentConfigForSession(
   project: GitBackedProject,
 ): Promise<string | null> {
+  return (await resolveSessionRuntimeConfigForSession(project)).compiledAgentConfig;
+}
+
+export interface ResolvedSessionRuntimeConfig {
+  runtime: RuntimeV2;
+  compiledAgentConfig: string | null;
+}
+
+/**
+ * Resolve the server-side runtime harness from the v2 manifest.
+ * Non-OpenCode runtimes do not compile OpenCode agent files.
+ */
+export async function resolveSessionRuntimeConfigForSession(
+  project: GitBackedProject,
+): Promise<ResolvedSessionRuntimeConfig> {
+  const fallback: ResolvedSessionRuntimeConfig = {
+    runtime: 'opencode',
+    compiledAgentConfig: null,
+  };
   try {
     const candidates = manifestCandidatePaths(project.manifestPath).map((c) => c.path);
     const found = await readManifestFromRepo(project, candidates, project.defaultBranch);
-    if (!found) return null;
+    if (!found) return fallback;
 
     const format = manifestFormatForPath(found.path);
     const raw = parseManifestText(found.content, format);
-    if (manifestSchemaVersion(raw) !== 2) return null;
+    if (manifestSchemaVersion(raw) !== 2) return fallback;
 
     const v2 = raw as unknown as ManifestV2;
+    const runtime = v2.runtime ?? 'opencode';
+    if (!(V2_RUNTIME_VALUES as readonly string[]).includes(runtime)) {
+      throw new Error(`Unsupported runtime "${String(runtime)}"`);
+    }
+    if (runtime !== 'opencode') {
+      return { runtime, compiledAgentConfig: null };
+    }
+
     const agents =
       v2.agents && typeof v2.agents === 'object' && !Array.isArray(v2.agents) ? v2.agents : {};
 
@@ -411,12 +439,15 @@ export async function resolveCompiledAgentConfigForSession(
       }),
     );
 
-    const compiled = compileAgentConfig(raw, 'opencode', agentMdFiles);
-    return compiled ? JSON.stringify(compiled) : null;
+    const compiled = compileAgentConfig(raw, runtime, agentMdFiles);
+    return {
+      runtime,
+      compiledAgentConfig: compiled ? JSON.stringify(compiled) : null,
+    };
   } catch (err) {
     console.warn(
-      `[compile-agent-config] project ${project.projectId}: compile failed, session boots without a compiled agent config: ${(err as Error).message}`,
+      `[compile-agent-config] project ${project.projectId}: runtime resolution failed, session uses opencode without a compiled agent config: ${(err as Error).message}`,
     );
-    return null;
+    return fallback;
   }
 }

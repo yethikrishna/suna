@@ -47,6 +47,17 @@ function usageRoute(service: ProxyServiceConfig, subPath: string): string {
   return `/v1/${service.name}${subPath}`;
 }
 
+export function normalizeProxySubPath(
+  serviceName: string,
+  subPath: string,
+): string {
+  // The Anthropic SDK treats ANTHROPIC_BASE_URL as a gateway root and appends
+  // /v1/messages. The existing proxy route is /anthropic/messages.
+  return serviceName === 'anthropic' && subPath === '/v1/messages'
+    ? '/messages'
+    : subPath;
+}
+
 // === Core Proxy Handler ===
 //
 // Three authentication/billing modes:
@@ -65,7 +76,11 @@ export async function handleProxy(c: any, service: ProxyServiceConfig, prefix: s
   const prefixStr = `/${prefix}`;
   // Find the prefix anywhere in the path (handles mount-point prefixing by Hono)
   const prefixIdx = fullPath.indexOf(prefixStr);
-  const subPath = prefixIdx !== -1 ? fullPath.slice(prefixIdx + prefixStr.length) || '/' : '/';
+  const rawSubPath =
+    prefixIdx !== -1
+      ? fullPath.slice(prefixIdx + prefixStr.length) || '/'
+      : '/';
+  const subPath = normalizeProxySubPath(service.name, rawSubPath);
   const queryString = new URL(c.req.url).search;
   const method = c.req.method;
 

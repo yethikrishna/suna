@@ -69,6 +69,15 @@ export type ListResult =
   | { ok: true; sessions: OpencodeSessionLite[] }
   | { ok: false; reason: 'no_key' | 'not_ready' | 'unreachable' };
 
+type RuntimeHealthResult =
+  | {
+      ok: true;
+      runtimeHarness: string;
+      runtimeReady: boolean;
+      sessionId: string | null;
+    }
+  | { ok: false; reason: 'no_key' | 'not_ready' | 'unreachable' };
+
 /** List the sandbox's OpenCode sessions (server-side, via the signed proxy). */
 export async function listSandboxOpencodeSessions(
   externalId: string,
@@ -107,6 +116,39 @@ export async function listSandboxOpencodeSessions(
   }
 }
 
+async function readSandboxRuntimeHealth(
+  externalId: string,
+  userId: string | undefined,
+): Promise<RuntimeHealthResult> {
+  try {
+    const ep = await sandboxOpencodeEndpoint(externalId, userId);
+    if (!ep) return { ok: false, reason: 'no_key' };
+    const res = await fetch(`${ep.url}/kortix/health`, {
+      method: 'GET',
+      headers: sandboxRuntimeRequestHeaders(ep.headers),
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (res.status === 503) return { ok: false, reason: 'not_ready' };
+    if (!res.ok) return { ok: false, reason: 'unreachable' };
+    const data = (await res.json()) as Record<string, unknown>;
+    return {
+      ok: true,
+      runtimeHarness:
+        typeof data.runtime_harness === 'string'
+          ? data.runtime_harness
+          : 'opencode',
+      runtimeReady: data.runtimeReady === true,
+      sessionId:
+        typeof data.opencode_session_id === 'string' &&
+        data.opencode_session_id.length > 0
+          ? data.opencode_session_id
+          : null,
+    };
+  } catch {
+    return { ok: false, reason: 'unreachable' };
+  }
+}
+
 export type EnsureReason =
   | 'unchanged'
   | 'healed'
@@ -138,16 +180,35 @@ export async function ensureOpencodeSessionPin(input: {
   const { projectId, sessionId, accountId, externalId, userId, currentPin } = input;
 
   const listed = await listSandboxOpencodeSessions(externalId, userId);
-  if (!listed.ok) {
-    return {
-      pin: currentPin,
-      changed: false,
-      reason: listed.reason === 'not_ready' ? 'not_ready' : 'unreachable',
-    };
+  let sessions: OpencodeSessionLite[] | undefined;
+  let resolved: string | null;
+  if (listed.ok) {
+    sessions = listed.sessions;
+    resolved = resolveRootSessionId({ pinnedRootId: currentPin, sessions });
+  } else {
+    // Claude Code, Codex, and Pi expose ACP through the daemon. They do not
+    // expose OpenCode's REST `/session` list. The daemon health payload carries
+    // the same canonical session pin for these runtimes.
+    const health = await readSandboxRuntimeHealth(externalId, userId);
+    if (!health.ok) {
+      const reason =
+        listed.reason === 'not_ready' || health.reason === 'not_ready'
+          ? 'not_ready'
+          : 'unreachable';
+      return { pin: currentPin, changed: false, reason };
+    }
+    if (health.runtimeHarness === 'opencode') {
+      return {
+        pin: currentPin,
+        changed: false,
+        reason: listed.reason === 'not_ready' ? 'not_ready' : 'unreachable',
+      };
+    }
+    if (!health.runtimeReady || !health.sessionId) {
+      return { pin: currentPin, changed: false, reason: 'not_ready' };
+    }
+    resolved = health.sessionId;
   }
-
-  let sessions = listed.sessions;
-  let resolved = resolveRootSessionId({ pinnedRootId: currentPin, sessions });
 
   if (!resolved) {
     return { pin: currentPin, changed: false, reason: 'not_ready', sessions };

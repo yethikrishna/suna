@@ -394,6 +394,24 @@ describe('ACP NDJSON connection', () => {
     ])
   })
 
+  test('discards internal recovery events and restores the event cursor', async () => {
+    const harness = createHarness()
+    const events: JsonRpcEnvelope[] = []
+    harness.connection.notifyClient('before')
+    const checkpoint = harness.connection.lastEventId
+    harness.connection.notifyClient('replayed-history')
+
+    harness.connection.discardEventsAfter(checkpoint)
+    harness.connection.subscribe(0, (event) => events.push(event.envelope))
+    harness.connection.notifyClient('after')
+
+    expect(events).toEqual([
+      { jsonrpc: '2.0', method: 'before' },
+      { jsonrpc: '2.0', method: 'after' },
+    ])
+    expect(harness.connection.lastEventId).toBe(checkpoint + 1)
+  })
+
   test('redacts credential values from diagnostics', () => {
     expect(
       redactAcpDiagnostic('failed token-secret-123', {

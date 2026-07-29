@@ -28,6 +28,7 @@ const {
   agentMarkdownPath,
   compileAgentConfig,
   resolveCompiledAgentConfigForSession,
+  resolveSessionRuntimeConfigForSession,
 } = await import('./compile-agent-config');
 type OpencodeConfig = Awaited<ReturnType<typeof compileAgentConfig>> & object;
 
@@ -521,5 +522,41 @@ agents:
       '.kortix/opencode/agents/support.md': supportMd('mode: bogus', 'Body.'),
     };
     expect(await resolveCompiledAgentConfigForSession(PROJECT)).toBeNull();
+  });
+});
+
+describe('resolveSessionRuntimeConfigForSession', () => {
+  test.each(['claude', 'codex', 'pi'] as const)(
+    'resolves runtime %s without compiling OpenCode agent files',
+    async (runtime) => {
+      manifestFile = {
+        path: 'kortix.yaml',
+        content: GOVERNANCE_FIXTURE.replace(
+          'default_agent: support',
+          `default_agent: support\nruntime: ${runtime}`,
+        ),
+      };
+      readRepoFileCalls = [];
+
+      await expect(resolveSessionRuntimeConfigForSession(PROJECT)).resolves.toEqual({
+        runtime,
+        compiledAgentConfig: null,
+      });
+      expect(readRepoFileCalls).toEqual([]);
+    },
+  );
+
+  test('defaults an omitted runtime to opencode and compiles its agent files', async () => {
+    manifestFile = { path: 'kortix.yaml', content: GOVERNANCE_FIXTURE };
+    mdFileContent = {
+      '.kortix/opencode/agents/support.md': 'Support body.',
+      '.kortix/opencode/agents/pr-bot.md': 'PR bot body.',
+    };
+    readRepoFileCalls = [];
+
+    const result = await resolveSessionRuntimeConfigForSession(PROJECT);
+    expect(result.runtime).toBe('opencode');
+    expect(result.compiledAgentConfig).not.toBeNull();
+    expect(readRepoFileCalls).toHaveLength(2);
   });
 });

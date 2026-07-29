@@ -50,7 +50,7 @@ import {
   parseSessionSecretsAllowlist,
   secretKeyCollisionInAllowlist,
 } from '../secrets';
-import { resolveCompiledAgentConfigForSession } from './compile-agent-config';
+import { resolveSessionRuntimeConfigForSession } from './compile-agent-config';
 import { withProjectGitAuth } from './git';
 import { resolveSessionProvider } from './provider-precedence';
 import { RESERVED_SANDBOX_ENV_NAMES, isReservedSandboxEnvName } from './sandbox-env-names';
@@ -341,14 +341,17 @@ export async function buildSessionSandboxEnvVars(input: {
   // same `defaultBranch` presence as the `agents:` grant resolution below
   // (both need git context; optional call sites that omit it get neither).
   let compiledAgentConfig: string | null = null;
+  let runtimeHarness: 'opencode' | 'claude' | 'codex' | 'pi' = 'opencode';
   if (input.defaultBranch) {
-    compiledAgentConfig = await resolveCompiledAgentConfigForSession({
+    const resolvedRuntime = await resolveSessionRuntimeConfigForSession({
       projectId: input.projectId,
       repoUrl: input.repoUrl,
       defaultBranch: input.defaultBranch,
       manifestPath: input.manifestPath ?? 'kortix.yaml',
       gitAuthToken: null,
-    }).catch(() => null);
+    }).catch(() => ({ runtime: 'opencode' as const, compiledAgentConfig: null }));
+    runtimeHarness = resolvedRuntime.runtime;
+    compiledAgentConfig = resolvedRuntime.compiledAgentConfig;
 
     // Per-agent secret scoping: an agent declared in `agents:` with a `secrets`
     // allowlist receives ONLY those IDENTIFIERS — so a narrowly-scoped agent
@@ -501,6 +504,7 @@ export async function buildSessionSandboxEnvVars(input: {
       // platform resolution. The sandbox uses it for the first OpenCode turn
       // and as the session's OpenCode config default.
       opencodeModel: input.opencodeModel,
+      runtimeHarness,
       // OpenCode ACP starts its internal REST server. Existing REST clients
       // continue to work while the project experiment selects the ACP client.
       opencodeProcessTransport: 'acp',

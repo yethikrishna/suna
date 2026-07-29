@@ -232,6 +232,7 @@ export function buildServer(): GatewayServer {
 
   app.post('/v1/messages', messages);
   app.post('/v1/llm/messages', messages);
+  app.post('/v1/llm/v1/messages', messages);
   app.post('/v1/openai/messages', messages);
 
   const models = (c: { req: { header: (k: string) => string | undefined } }) =>

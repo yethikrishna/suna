@@ -11,6 +11,7 @@ import {
   verifyKortixUserContext,
 } from '../kortix-user-context'
 import { logger } from '../logger'
+import type { RuntimeHarness } from '../acp/runtime-adapter'
 
 const encoder = new TextEncoder()
 const ALLOWED_SESSION_METHODS = new Set([
@@ -89,6 +90,7 @@ export function createAcpRouter(
   getConnection: () => AcpConnection | null,
   getCanonicalSessionId: () => string | null,
   history?: AcpSessionHistory,
+  getRuntimeHarness: () => RuntimeHarness = () => 'opencode',
 ): Hono {
   const router = new Hono()
 
@@ -142,6 +144,7 @@ export function createAcpRouter(
 
     try {
       const envelope = parseJsonRpcEnvelope(await c.req.json())
+      const runtimeHarness = getRuntimeHarness()
       if ('method' in envelope) {
         if (!ALLOWED_SESSION_METHODS.has(envelope.method as string)) {
           return c.json({ error: 'ACP method is not allowed' }, 405)
@@ -157,7 +160,7 @@ export function createAcpRouter(
           (envelope.method === 'session/revert' || envelope.method === 'session/unrevert') &&
           Object.prototype.hasOwnProperty.call(envelope, 'id')
         ) {
-          if (!history) {
+          if (!history || runtimeHarness !== 'opencode') {
             return c.json({ error: 'ACP session history is not available' }, 503)
           }
           if (
@@ -191,7 +194,12 @@ export function createAcpRouter(
           }
         }
       }
-      await connection.post(envelope)
+      const forwardedEnvelope =
+        runtimeHarness === 'pi' &&
+        envelope.method === 'session/resume'
+          ? { ...envelope, method: 'session/load' }
+          : envelope
+      await connection.post(forwardedEnvelope)
       return c.body(null, 202)
     } catch (error) {
       const status = error instanceof AcpProtocolError ? 502 : 400

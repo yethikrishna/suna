@@ -19,9 +19,15 @@ import {
   BUN_SHA256_AMD64,
   BUN_SHA256_ARM64,
   BUN_VERSION,
+  CLAUDE_AGENT_ACP_VERSION,
+  CLAUDE_CODE_VERSION,
+  CODEX_ACP_VERSION,
+  CODEX_CLI_VERSION,
   NODE_VERSION,
   NPM_VERSION,
   OPENCODE_VERSION,
+  PI_ACP_VERSION,
+  PI_CODING_AGENT_VERSION,
   PNPM_SHA256_AMD64,
   PNPM_SHA256_ARM64,
   PNPM_VERSION,
@@ -217,7 +223,7 @@ const FINGERPRINT_EXCLUDES = ['node_modules', '.bin', 'dist', '.turbo', '.cache'
 // routes are removed: a sandbox baked at =<v32 still runs `meet speak`, and its
 // skill tells it never to fall back to a raw API, so it would report a retired
 // feature as a transient provider failure mid-call.
-const RUNTIME_LAYER_VERSION = 'verified-runtime-artifacts-v33';
+const RUNTIME_LAYER_VERSION = 'verified-runtime-artifacts-v40';
 const DEFAULT_CPU = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_CPU', 2);
 const DEFAULT_MEMORY_GB = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_MEMORY_GB', 4);
 const DEFAULT_DISK_GB = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_DISK_GB', 20);
@@ -937,9 +943,9 @@ const runtimeIntegrityKey = () =>
     BUN_SHA256_ARM64,
   ].join(':');
 const runtimeVersionKey = () =>
-  `${SANDBOX_VERSION}:${RUNTIME_LAYER_VERSION}:${PNPM_VERSION}:${NODE_VERSION}:${NPM_VERSION}:${UV_VERSION}:${PYTHON_VERSION}:${BUN_VERSION}:${OPENCODE_VERSION}:${AGENT_BROWSER_VERSION}:${runtimeIntegrityKey()}`;
+  `${SANDBOX_VERSION}:${RUNTIME_LAYER_VERSION}:${PNPM_VERSION}:${NODE_VERSION}:${NPM_VERSION}:${UV_VERSION}:${PYTHON_VERSION}:${BUN_VERSION}:${OPENCODE_VERSION}:${CLAUDE_AGENT_ACP_VERSION}:${CODEX_ACP_VERSION}:${PI_ACP_VERSION}:${PI_CODING_AGENT_VERSION}:${CLAUDE_CODE_VERSION}:${CODEX_CLI_VERSION}:${AGENT_BROWSER_VERSION}:${runtimeIntegrityKey()}`;
 const sandboxVersionStr = () =>
-  `${SANDBOX_VERSION}:layer:${RUNTIME_LAYER_VERSION}:pnpm:${PNPM_VERSION}:node:${NODE_VERSION}:npm:${NPM_VERSION}:uv:${UV_VERSION}:python:${PYTHON_VERSION}:bun:${BUN_VERSION}:oc:${OPENCODE_VERSION}:ab:${AGENT_BROWSER_VERSION}:integrity:${runtimeIntegrityKey()}`;
+  `${SANDBOX_VERSION}:layer:${RUNTIME_LAYER_VERSION}:pnpm:${PNPM_VERSION}:node:${NODE_VERSION}:npm:${NPM_VERSION}:uv:${UV_VERSION}:python:${PYTHON_VERSION}:bun:${BUN_VERSION}:oc:${OPENCODE_VERSION}:claude-acp:${CLAUDE_AGENT_ACP_VERSION}:codex-acp:${CODEX_ACP_VERSION}:pi-acp:${PI_ACP_VERSION}:pi:${PI_CODING_AGENT_VERSION}:claude:${CLAUDE_CODE_VERSION}:codex:${CODEX_CLI_VERSION}:ab:${AGENT_BROWSER_VERSION}:integrity:${runtimeIntegrityKey()}`;
 
 let runtimeFingerprintCache: { key: string; value: string } | null = null;
 let runtimeFingerprintInflight: Promise<string> | null = null;

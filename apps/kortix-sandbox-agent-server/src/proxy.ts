@@ -134,6 +134,7 @@ export function buildOpencodeApp(
     () => opencode.getAcpConnection(),
     () => bootState.initialOpenCodeSessionId ?? null,
     createOpenCodeSessionHistory(cfg, () => opencode.getInternalUrl()),
+    () => opencode.getRuntimeHarness?.() ?? 'opencode',
   )
   kortixRouter.route('/health', healthRouter)
   kortixRouter.route('/health/', healthRouter)
@@ -216,6 +217,16 @@ export function buildOpencodeApp(
   // attempting a fetch — surfaces the situation clearly to the client and
   // prevents noisy ECONNREFUSED loops.
   app.all('*', async (c) => {
+    if (opencode.getRuntimeAdapter?.()?.supportsOpenCodeRest === false) {
+      return c.json(
+        {
+          error: 'runtime REST API is not available',
+          runtime: opencode.getRuntimeHarness?.() ?? 'opencode',
+          transport: 'acp',
+        },
+        404,
+      )
+    }
     if (bootState.repoMaterializationError) {
       return c.json(
         {

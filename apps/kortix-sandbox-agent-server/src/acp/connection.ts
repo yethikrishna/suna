@@ -176,6 +176,21 @@ export class AcpConnection {
     return this.nextEventId - 1
   }
 
+  /**
+   * Remove replay events emitted by an internal recovery request.
+   *
+   * The supervisor calls this before it exposes a replacement connection.
+   */
+  discardEventsAfter(eventId: number): void {
+    if (!Number.isSafeInteger(eventId) || eventId < 0) {
+      throw new Error('eventId must be a non-negative safe integer')
+    }
+    for (let index = this.replay.length - 1; index >= 0; index--) {
+      if (this.replay[index]!.id > eventId) this.replay.splice(index, 1)
+    }
+    this.nextEventId = eventId + 1
+  }
+
   async initialize(input: {
     clientInfo: { name: string; version: string }
   }): Promise<Record<string, unknown>> {

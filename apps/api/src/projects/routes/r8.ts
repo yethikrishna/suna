@@ -89,10 +89,36 @@ projectsApp.openapi(
     const waitMsRaw = Number(c.req.query('wait_ms'));
     const waitMs = Number.isFinite(waitMsRaw) && waitMsRaw > 0 ? Math.min(waitMsRaw, 8000) : 0;
     const result = await startSession({ source: 'ui', loaded, visible, projectId, sessionId, waitMs });
+    const [runtimeRow] = await db
+      .select({ metadata: sessionSandboxes.metadata })
+      .from(sessionSandboxes)
+      .where(
+        and(
+          eq(sessionSandboxes.projectId, projectId),
+          eq(sessionSandboxes.sessionId, sessionId),
+        ),
+      )
+      .limit(1);
+    const runtimeMetadata =
+      runtimeRow?.metadata &&
+      typeof runtimeRow.metadata === 'object' &&
+      !Array.isArray(runtimeRow.metadata)
+        ? (runtimeRow.metadata as Record<string, unknown>)
+        : {};
+    const runtimeHarness =
+      typeof runtimeMetadata.runtimeHarness === 'string' &&
+      ['opencode', 'claude', 'codex', 'pi'].includes(
+        runtimeMetadata.runtimeHarness,
+      )
+        ? runtimeMetadata.runtimeHarness
+        : 'opencode';
     return c.json(
       {
         ...result.start,
-        runtime_transport: resolveProjectRuntimeTransport(loaded.row.metadata),
+        runtime_transport:
+          runtimeHarness === 'opencode'
+            ? resolveProjectRuntimeTransport(loaded.row.metadata)
+            : 'acp',
       },
       200,
     );

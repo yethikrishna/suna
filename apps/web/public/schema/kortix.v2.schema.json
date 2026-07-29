@@ -20,7 +20,10 @@
     "runtime": {
       "type": "string",
       "enum": [
-        "opencode"
+        "opencode",
+        "claude",
+        "codex",
+        "pi"
       ]
     },
     "agents": {

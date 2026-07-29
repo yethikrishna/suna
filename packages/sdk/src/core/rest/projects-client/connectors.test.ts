@@ -28,6 +28,7 @@ import {
   revokeConnectionProfile,
   setConnectorCredential,
   setConnectorCredentialMode,
+  setConnectorAuthorizationStrategy,
   setConnectorName,
   setConnectorPolicies,
   setConnectorSensitive,
@@ -131,6 +132,7 @@ const postmanDraftTypecheck: import('./connectors').ConnectorDraftInput = {
   slug: 'hubspot',
   provider: 'postman',
   spec: 'https://github.com/HubSpot/HubSpot-public-api-spec-collection',
+  authorization_strategy: 'user',
 };
 void postmanDraftTypecheck;
 
@@ -183,6 +185,16 @@ test('setConnectorCredentialMode PUTs { mode }', async () => {
   expect(last().url).toContain('/executor/projects/P1/connectors/slack/credential-mode');
   expect(last().method).toBe('PUT');
   expect(last().body).toEqual({ mode: 'shared' });
+});
+
+test('setConnectorAuthorizationStrategy PUTs one exclusive strategy', async () => {
+  nextResponse = { status: 200, body: { ok: true } };
+  await setConnectorAuthorizationStrategy('P1', 'gmail-read', 'user');
+  expect(last().url).toContain(
+    '/executor/projects/P1/connectors/gmail-read/authorization-strategy',
+  );
+  expect(last().method).toBe('PUT');
+  expect(last().body).toEqual({ authorization_strategy: 'user' });
 });
 
 test('setConnectorSensitive PUTs { sensitive }', async () => {

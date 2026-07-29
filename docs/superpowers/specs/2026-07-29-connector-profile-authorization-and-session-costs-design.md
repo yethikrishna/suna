@@ -73,8 +73,8 @@ app = "gmail"
 authorization_strategy = "user"
 
 [[connectors.policies]]
-action = "search_email"
-effect = "allow"
+match = "search_email"
+action = "always_run"
 ```
 
 The parser and serializer preserve:

@@ -392,6 +392,9 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
           P.setConnectorName(projectId, ...a),
         setCredentialMode: (...a: DropFirst<Parameters<typeof P.setConnectorCredentialMode>>) =>
           P.setConnectorCredentialMode(projectId, ...a),
+        setAuthorizationStrategy: (
+          ...a: DropFirst<Parameters<typeof P.setConnectorAuthorizationStrategy>>
+        ) => P.setConnectorAuthorizationStrategy(projectId, ...a),
         setCredential: (...a: DropFirst<Parameters<typeof P.setConnectorCredential>>) =>
           P.setConnectorCredential(projectId, ...a),
         setSensitive: (...a: DropFirst<Parameters<typeof P.setConnectorSensitive>>) =>

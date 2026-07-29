@@ -7,6 +7,7 @@ export interface AdminConnectorCandidate {
   platform: string | null;
   iconUrl: string | null;
   status: string;
+  authorizationStrategy: 'project' | 'user';
   sensitive: boolean;
   actions: AdminConnectorView['actions'];
   requiresAuth: boolean;
@@ -24,6 +25,7 @@ export function buildAdminConnectorViews(
     iconUrl: candidate.iconUrl,
     status: candidate.status,
     credentialMode: 'shared' as const,
+    authorizationStrategy: candidate.authorizationStrategy,
     sensitive: candidate.sensitive,
     actions: candidate.actions,
     authSecret: candidate.requiresAuth ? 'credential' : null,

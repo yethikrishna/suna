@@ -3975,6 +3975,11 @@ export const executorCredentialModeEnum = kortixSchema.enum('executor_credential
   'per_user',
 ]);
 
+export const executorConnectorAuthorizationStrategyEnum = kortixSchema.enum(
+  'executor_connector_authorization_strategy',
+  ['project', 'user'],
+);
+
 export const executorConnectors = kortixSchema.table(
   'executor_connectors',
   {
@@ -4011,6 +4016,12 @@ export const executorConnectors = kortixSchema.table(
      *  doc comment for why `per_user` is gone but the enum literal lingers. A
      *  DB CHECK constraint (added by the removal migration) enforces `shared`. */
     credentialMode: executorCredentialModeEnum('credential_mode').default('shared').notNull(),
+    /** Exclusive authorization owner model for this connector profile. */
+    authorizationStrategy: executorConnectorAuthorizationStrategyEnum(
+      'authorization_strategy',
+    )
+      .default('project')
+      .notNull(),
     /** Hash over config+auth — skip catalog re-sync when unchanged. */
     manifestHash: varchar('manifest_hash', { length: 64 }),
     status: executorConnectorStatusEnum('status').default('active').notNull(),

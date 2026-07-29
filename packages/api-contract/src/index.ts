@@ -249,6 +249,11 @@ export const SessionSecretsAllowlistSchema = z
   );
 export type SessionSecretsAllowlist = z.infer<typeof SessionSecretsAllowlistSchema>;
 
+export const ConnectorAuthorizationStrategySchema = z.enum(['project', 'user']);
+export type ConnectorAuthorizationStrategy = z.infer<
+  typeof ConnectorAuthorizationStrategySchema
+>;
+
 export const ConnectionProfileOwnerTypeSchema = z.enum(['agent', 'member', 'subject', 'external']);
 export const ConnectionProfileStatusSchema = z.enum(['active', 'revoked', 'error']);
 export const ConnectionProfileMetadataSchema = z

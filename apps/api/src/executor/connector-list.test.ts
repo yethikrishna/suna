@@ -10,6 +10,7 @@ describe('buildAdminConnectorViews', () => {
       platform: null,
       iconUrl: null,
       status: 'active',
+      authorizationStrategy: slug === 'one' ? ('project' as const) : ('user' as const),
       sensitive: false,
       actions: [],
       requiresAuth: true,
@@ -18,5 +19,9 @@ describe('buildAdminConnectorViews', () => {
     const result = buildAdminConnectorViews(candidates, new Set(['two']));
 
     expect(result.map((connector) => connector.secretSet)).toEqual([false, true]);
+    expect(result.map((connector) => connector.authorizationStrategy)).toEqual([
+      'project',
+      'user',
+    ]);
   });
 });

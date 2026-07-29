@@ -62,8 +62,15 @@ const ConnectorsResponseSchema = z
   .object({ connectors: z.array(CatalogConnectorSchema) })
   .openapi('ExecutorConnectors');
 
+const AdminConnectorSchema = CatalogConnectorSchema.extend({
+  credentialMode: z.literal('shared'),
+  authorizationStrategy: z.enum(['project', 'user']),
+  sensitive: z.boolean(),
+  authSecret: z.string().nullable(),
+  secretSet: z.boolean(),
+}).openapi('ExecutorAdminConnector');
 const AdminConnectorsResponseSchema = z
-  .object({ connectors: z.array(CatalogConnectorSchema) })
+  .object({ connectors: z.array(AdminConnectorSchema) })
   .openapi('ExecutorAdminConnectors');
 
 // /call returns one of several envelopes by status; model permissively.
@@ -125,6 +132,7 @@ export interface AdminConnectorView extends CatalogConnector {
   /** Credential storage mode. Always `shared` — `per_user` (each member's
    *  own) was removed 2026-07-05. */
   credentialMode: 'shared';
+  authorizationStrategy: 'project' | 'user';
   /** Marked sensitive — its reads gate too (require_approval by default). */
   sensitive: boolean;
   /** Whether the shared credential is set. */
@@ -210,6 +218,13 @@ export interface ExecutorRouterDeps {
     slug: string,
     mode: 'shared',
   ): Promise<CrudOutcome>;
+  /** Set the exclusive authorization owner model for this connector profile. */
+  setAuthorizationStrategy?(
+    projectId: string,
+    accountId: string,
+    slug: string,
+    authorizationStrategy: 'project' | 'user',
+  ): Promise<CrudOutcome>;
   /** Toggle a connector's `sensitive` flag (gate reads too) in kortix.yaml + re-sync. */
   setSensitive?(
     projectId: string,
@@ -235,9 +250,11 @@ export interface ExecutorRouterDeps {
     slug: string,
   ): Promise<{
     slug: string;
+    name: string;
     provider: string;
     platform?: string | null;
     credentialMode: 'shared';
+    authorizationStrategy: 'project' | 'user';
     app: string | null;
     account: string | null;
     url: string | null;
@@ -965,6 +982,56 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
         );
       }
       const result = await deps.setCredentialMode(projectId, admin.accountId, slug, mode);
+      return result.ok
+        ? c.json({ ok: true, sync: result.sync })
+        : c.json({ error: result.error }, result.status as 400);
+    },
+  );
+
+  // ── Admin: connector-profile authorization strategy ─────────────────────
+  app.openapi(
+    createRoute({
+      method: 'put',
+      path: '/projects/{projectId}/connectors/{slug}/authorization-strategy',
+      tags: ['executor'],
+      summary: "Set a connector profile's authorization strategy",
+      ...auth,
+      request: {
+        params: ProjectSlugParam,
+        body: { content: { 'application/json': { schema: OpaqueSchema } } },
+      },
+      responses: {
+        200: json(CrudOkSchema, 'Authorization strategy updated'),
+        ...errors(400, 403, 404, 501),
+      },
+    }),
+    async (c: any) => {
+      const projectId = c.req.param('projectId');
+      const slug = c.req.param('slug');
+      const admin = await deps.resolveAdmin(c, projectId);
+      if (!admin) return c.json({ error: 'forbidden' }, 403);
+      if (!deps.setAuthorizationStrategy) {
+        return featureNotSupportedResponse(c, 'connector_authorization_strategy');
+      }
+      let body: any;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: 'invalid_json' }, 400);
+      }
+      const authorizationStrategy = body?.authorization_strategy;
+      if (authorizationStrategy !== 'project' && authorizationStrategy !== 'user') {
+        return c.json(
+          { error: 'authorization_strategy must be "project" or "user"' },
+          400,
+        );
+      }
+      const result = await deps.setAuthorizationStrategy(
+        projectId,
+        admin.accountId,
+        slug,
+        authorizationStrategy,
+      );
       return result.ok
         ? c.json({ ok: true, sync: result.sync })
         : c.json({ error: result.error }, result.status as 400);

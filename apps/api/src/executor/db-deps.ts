@@ -71,6 +71,7 @@ import {
   getConnectorPoliciesFromManifest,
   getProjectPoliciesFromManifest,
   setConnectorCredentialModeInManifest,
+  setConnectorAuthorizationStrategyInManifest,
   setConnectorCredentialShared,
   setConnectorNameInManifest,
   setConnectorPoliciesInManifest,
@@ -1007,6 +1008,7 @@ async function listConnectors(projectId: string): Promise<AdminConnectorView[]> 
       platform: channelPlatform(row.config),
       iconUrl: typeof config?.icon_url === 'string' ? config.icon_url : null,
       status: row.status,
+      authorizationStrategy: row.authorizationStrategy,
       sensitive: config?.sensitive === true,
       actions: (actionsByConnector.get(row.connectorId) ?? []).map((a) => ({
         path: a.path,
@@ -1119,9 +1121,11 @@ async function getConnectorConfig(
   const { auth } = authOf(row);
   return {
     slug: row.slug,
+    name: row.name,
     provider: row.providerType,
     platform: channelPlatform(row.config) as ChannelPlatform | null,
     credentialMode: 'shared',
+    authorizationStrategy: row.authorizationStrategy,
     app: cfg.app ?? null,
     account: cfg.account ?? null,
     url: cfg.url ?? null,
@@ -1166,6 +1170,13 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
   },
   setCredentialMode: (projectId, accountId, slug, mode) =>
     setConnectorCredentialModeInManifest(projectId, accountId, slug, mode),
+  setAuthorizationStrategy: (projectId, accountId, slug, authorizationStrategy) =>
+    setConnectorAuthorizationStrategyInManifest(
+      projectId,
+      accountId,
+      slug,
+      authorizationStrategy,
+    ),
   setSensitive: (projectId, accountId, slug, sensitive) =>
     setConnectorSensitiveInManifest(projectId, accountId, slug, sensitive),
   setConnectorName: (projectId, accountId, slug, name) =>

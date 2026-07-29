@@ -472,6 +472,61 @@ connectors:
   });
 });
 
+describe('validateManifest — connector authorization strategy', () => {
+  test('accepts project and user connector profiles for the same provider app', () => {
+    const { valid, errorPaths } = summarize(`
+kortix_version: 2
+default_agent: worker
+agents:
+  worker: {}
+connectors:
+  - slug: gmail-read
+    name: Gmail read only
+    provider: pipedream
+    app: gmail
+    authorization_strategy: project
+  - slug: gmail-send
+    name: Gmail send
+    provider: pipedream
+    app: gmail
+    authorization_strategy: user
+`);
+    expect(valid).toBe(true);
+    expect(errorPaths).toEqual([]);
+  });
+
+  test('rejects a both authorization strategy', () => {
+    const { valid, errorPaths } = summarize(`
+kortix_version: 2
+default_agent: worker
+agents:
+  worker: {}
+connectors:
+  - slug: gmail
+    provider: pipedream
+    app: gmail
+    authorization_strategy: both
+`);
+    expect(valid).toBe(false);
+    expect(errorPaths).toContain('connectors[0].authorization_strategy');
+  });
+
+  test('defaults an omitted authorization strategy without a warning', () => {
+    const { valid, issues } = summarize(`
+kortix_version: 2
+default_agent: worker
+agents:
+  worker: {}
+connectors:
+  - slug: gmail
+    provider: pipedream
+    app: gmail
+`);
+    expect(valid).toBe(true);
+    expect(issues.find((issue) => issue.path === 'connectors[0].authorization_strategy')).toBeUndefined();
+  });
+});
+
 // The connector-side agent gate (`[[connectors]].agent_scope`) was removed
 // 2026-07 (wave-2 of the agent-first cut, docs/specs/
 // 2026-07-05-agent-first-config-unification.md §2.5): connector access is now

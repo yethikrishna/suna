@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  ConnectorAuthorizationStrategySchema,
   ConnectionProfileMetadataSchema,
   EXPERIMENTAL_FEATURE_KEYS,
   ErrorEnvelopeSchema,
@@ -26,6 +27,16 @@ import {
 } from '../index';
 
 const NOW = '2026-07-01T12:00:00.000Z';
+
+describe('connector authorization strategy', () => {
+  test('accepts exactly project or user', () => {
+    expect(ConnectorAuthorizationStrategySchema.parse('project')).toBe('project');
+    expect(ConnectorAuthorizationStrategySchema.parse('user')).toBe('user');
+    expect(ConnectorAuthorizationStrategySchema.safeParse('both').success).toBe(false);
+    expect(ConnectorAuthorizationStrategySchema.safeParse('').success).toBe(false);
+    expect(ConnectorAuthorizationStrategySchema.safeParse(undefined).success).toBe(false);
+  });
+});
 
 function projectFixture(overrides: Record<string, unknown> = {}) {
   return {

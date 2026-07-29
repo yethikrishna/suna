@@ -550,6 +550,7 @@ async function upsertConnector(
     enabled: spec.enabled,
     authSecret,
     credentialMode,
+    authorizationStrategy: spec.authorizationStrategy,
     manifestHash,
     status,
     lastError: catalog?.error ?? null,
@@ -591,7 +592,9 @@ async function upsertConnector(
     connectorId = created!.connectorId;
   }
 
-  await ensureDefaultProfile({ projectId, connectorId });
+  if (spec.authorizationStrategy === 'project') {
+    await ensureDefaultProfile({ projectId, connectorId });
+  }
 
   // Actions only change when the catalog was re-resolved — leave them in place
   // on a cheap reconcile.

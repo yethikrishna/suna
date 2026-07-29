@@ -19,6 +19,7 @@ import {
   RESERVED_SLUG_PROVIDERS,
   type ConnectorPolicySpec,
   type ConnectorPolicyAction,
+  type ConnectorAuthorizationStrategy,
   type ConnectorSpec,
 } from '../projects/connectors';
 import { isValidMatcher } from './policy';
@@ -49,6 +50,8 @@ export interface ConnectorDraft {
    *  removed 2026-07-05) — accepted for back-compat callers but never emitted
    *  into the manifest, since `shared` is already the implicit default. */
   credential?: 'shared';
+  /** Exclusive owner model for authorizations under this connector profile. */
+  authorization_strategy?: ConnectorAuthorizationStrategy;
   auth?: {
     type?:
       | 'none'
@@ -79,6 +82,9 @@ export type CrudResult =
 function draftToEntry(d: ConnectorDraft): Record<string, unknown> {
   const entry: Record<string, unknown> = { slug: d.slug, provider: d.provider };
   if (d.name) entry.name = d.name;
+  if (d.authorization_strategy) {
+    entry.authorization_strategy = d.authorization_strategy;
+  }
   // `shared` is the only mode and the implicit default — never emit `credential`.
   if (d.provider === 'pipedream') {
     if (d.app) entry.app = d.app;
@@ -112,6 +118,29 @@ function draftToEntry(d: ConnectorDraft): Record<string, unknown> {
   // instead of committing an unusable manifest. Omit when empty so the
   // manifest stays minimal (same rule as `sensitive`).
   if (d.headers && Object.keys(d.headers).length > 0) entry.headers = { ...d.headers };
+  return entry;
+}
+
+/** Build the manifest entry for an upsert without dropping fields owned by
+ * other connector-profile controls. */
+export function mergeConnectorDraftEntry(
+  draft: ConnectorDraft,
+  previous?: Record<string, unknown>,
+): Record<string, unknown> {
+  const entry = draftToEntry(draft);
+  if (!previous) return entry;
+  if (previous.policies !== undefined) entry.policies = previous.policies;
+  if (draft.headers === undefined && previous.headers !== undefined) {
+    entry.headers = previous.headers;
+  }
+  if (
+    draft.authorization_strategy === undefined &&
+    previous.authorization_strategy !== undefined
+  ) {
+    entry.authorization_strategy = previous.authorization_strategy;
+  }
+  if (previous.enabled !== undefined) entry.enabled = previous.enabled;
+  if (entry.name === undefined && previous.name !== undefined) entry.name = previous.name;
   return entry;
 }
 
@@ -176,24 +205,12 @@ export async function upsertConnectorInManifest(
     return { ok: false, error: (e as Error).message || 'failed to read manifest', status: 400 };
   }
 
-  const entry = draftToEntry(draft);
   const current = Array.isArray(manifest.raw.connectors)
     ? (manifest.raw.connectors as Record<string, unknown>[])
     : [];
   const idx = current.findIndex((c) => c?.slug === draft.slug);
+  const entry = mergeConnectorDraftEntry(draft, idx >= 0 ? current[idx] : undefined);
   if (idx >= 0) {
-    // Updating in place: carry over fields the connection draft doesn't own —
-    // per-tool policies, the enabled flag, and the display name (when the draft
-    // omits it) — so editing the connection never clobbers permissions or rename.
-    const prev = current[idx]!;
-    if (prev.policies !== undefined) entry.policies = prev.policies;
-    // A draft that doesn't mention `headers` keeps the ones already declared —
-    // same carry-over rule as policies/enabled/name, so editing the connection
-    // from a form that doesn't own the header table can't silently drop it.
-    // (Send `headers: {}` to clear them.)
-    if (draft.headers === undefined && prev.headers !== undefined) entry.headers = prev.headers;
-    if (prev.enabled !== undefined) entry.enabled = prev.enabled;
-    if (entry.name === undefined && prev.name !== undefined) entry.name = prev.name;
     current[idx] = entry;
   } else {
     current.push(entry);
@@ -323,6 +340,48 @@ export async function setConnectorCredentialModeInManifest(
   return { ok: true, sync };
 }
 
+/** Set the exclusive authorization owner model for one connector profile. */
+export async function setConnectorAuthorizationStrategyInManifest(
+  projectId: string,
+  accountId: string,
+  slug: string,
+  authorizationStrategy: ConnectorAuthorizationStrategy,
+): Promise<CrudResult> {
+  const row = await loadRow(projectId);
+  if (!row) return { ok: false, error: 'project not found', status: 404 };
+
+  let manifest;
+  try {
+    manifest = await loadManifestForEdit(row);
+  } catch (e) {
+    return { ok: false, error: (e as Error).message || 'failed to read manifest', status: 400 };
+  }
+
+  const current = Array.isArray(manifest.raw.connectors)
+    ? (manifest.raw.connectors as Record<string, unknown>[])
+    : [];
+  const entry = current.find((candidate) => candidate?.slug === slug);
+  if (!entry) return { ok: false, error: 'connector not found', status: 404 };
+  entry.authorization_strategy = authorizationStrategy;
+  manifest.raw.connectors = current;
+
+  const parsed = extractConnectors(manifest);
+  const error = parsed.errors.find((candidate) => candidate.slug === slug);
+  if (error) return { ok: false, error: error.error, status: 400 };
+
+  const committed = await commitManifest(
+    row,
+    manifest,
+    `chore: set ${slug} authorization strategy to ${authorizationStrategy}`,
+  );
+  if ('error' in committed) {
+    return { ok: false, error: committed.error, status: committed.status };
+  }
+
+  const sync = await syncProjectConnectors(projectId, accountId);
+  return { ok: true, sync };
+}
+
 /**
  * Toggle a connector's `sensitive` flag in kortix.yaml, commit, re-sync. A
  * sensitive connector gates its reads too (every action defaults to
@@ -419,9 +478,11 @@ export async function setConnectorNameInManifest(
 /** The editable connection config — same fields the "Add connector" form sets. */
 export interface ConnectorConfigView {
   slug: string;
+  name: string;
   provider: ConnectorSpec['provider'];
   platform: ConnectorSpec['platform'];
   credentialMode: 'shared';
+  authorizationStrategy: ConnectorAuthorizationStrategy;
   app: string | null;
   account: string | null;
   url: string | null;
@@ -465,9 +526,11 @@ export async function getConnectorConfigFromManifest(
   if (!spec) return null;
   return {
     slug: spec.slug,
+    name: spec.name,
     provider: spec.provider,
     platform: spec.platform,
     credentialMode: spec.credentialMode,
+    authorizationStrategy: spec.authorizationStrategy,
     app: spec.app,
     account: spec.account,
     url: spec.url,

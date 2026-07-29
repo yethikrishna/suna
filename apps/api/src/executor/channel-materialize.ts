@@ -37,6 +37,7 @@ function channelSpec(
     enabled: true,
     provider: 'channel',
     credentialMode: 'shared',
+    authorizationStrategy: 'project',
     // Email is sensitive by default — reading a private inbox is an exfiltration
     // surface, so its actions ask before running (silence per-session with "allow
     // for session"). Slack/meet aren't gated by default.

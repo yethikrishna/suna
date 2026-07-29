@@ -15,6 +15,8 @@ export interface ConnectorAction {
   inputSchema: Record<string, unknown> | null;
 }
 
+export type ConnectorAuthorizationStrategy = 'project' | 'user';
+
 export interface AdminConnector {
   slug: string;
   name: string;
@@ -29,6 +31,8 @@ export interface AdminConnector {
    *  unification.md §2.5). A `shared` connector with no credential set
    *  (`secretSet: false`) needs reconnecting. */
   credentialMode: 'shared';
+  /** Exclusive owner model for authorizations under this connector profile. */
+  authorizationStrategy: ConnectorAuthorizationStrategy;
   /** Marked sensitive — its reads gate too (require_approval by default). */
   sensitive: boolean;
   actions: ConnectorAction[];
@@ -459,6 +463,19 @@ export async function setConnectorCredentialMode(projectId: string, slug: string
   );
 }
 
+export async function setConnectorAuthorizationStrategy(
+  projectId: string,
+  slug: string,
+  authorizationStrategy: ConnectorAuthorizationStrategy,
+) {
+  return unwrap(
+    await backendApi.put<{ ok: boolean; sync?: ConnectorSyncResult }>(
+      `/executor/projects/${projectId}/connectors/${encodeURIComponent(slug)}/authorization-strategy`,
+      { authorization_strategy: authorizationStrategy },
+    ),
+  );
+}
+
 /** Toggle a connector's `sensitive` flag — sensitive connectors gate reads too
  *  (every action defaults to require_approval unless a policy opens it). */
 export async function setConnectorSensitive(projectId: string, slug: string, sensitive: boolean) {
@@ -520,9 +537,11 @@ export async function setConnectorPolicies(
 /** The editable connection config for an existing connector (kortix.yaml = source of truth). */
 export interface ConnectorConfig {
   slug: string;
+  name: string;
   provider: AdminConnector['provider'];
   platform: 'slack' | 'email' | null;
   credentialMode: 'shared';
+  authorizationStrategy: ConnectorAuthorizationStrategy;
   app: string | null;
   account: string | null;
   url: string | null;
@@ -586,6 +605,7 @@ export interface ConnectorDraftInput {
   /** Credential storage mode. `shared` is the only mode (`per_user` was
    *  removed 2026-07-05). */
   credential?: 'shared';
+  authorization_strategy?: ConnectorAuthorizationStrategy;
   auth?: {
     type?: ConnectorRequestAuthType;
     in?: 'header' | 'query' | 'cookie';

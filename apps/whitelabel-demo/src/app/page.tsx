@@ -5,6 +5,7 @@ import Loading from '@/components/ui/loading';
 import { ApiKeyGate } from '@/components/api-key-gate';
 import { ModeBadge } from '@/components/mode-badge';
 import { BrandMark } from '@/components/brand-mark';
+import { CallSnippet } from '@/components/dev/call-snippet';
 import { LoginGate } from '@/components/login-gate';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -215,6 +216,11 @@ function CreateProjectDialog() {
               onChange={(e) => setName(e.target.value)}
               placeholder="My website"
             />
+          </div>
+          {/* The first call a wrapper ever makes, and the only project-create
+              path it may use — so it belongs on the button that makes it. */}
+          <div className="mt-3">
+            <CallSnippet id="project.provision" context={{ projectName: name }} />
           </div>
           <DialogFooter className="mt-4">
             <Button type="submit" disabled={!name.trim() || create.isPending}>

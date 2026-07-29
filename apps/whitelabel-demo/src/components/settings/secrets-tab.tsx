@@ -398,6 +398,7 @@ function SecretRow({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <DeleteSecretDialog
+            projectId={projectId}
             identifier={secret.identifier}
             name={name}
             scope={scope}
@@ -509,12 +510,14 @@ function SecretRow({
 }
 
 function DeleteSecretDialog({
+  projectId,
   identifier,
   name,
   scope,
   pending,
   onConfirm,
 }: {
+  projectId: string;
   identifier: string;
   name: string;
   scope: ReturnType<typeof secretScope>;
@@ -548,6 +551,10 @@ function DeleteSecretDialog({
           </DialogDescription>
         </DialogHeader>
         <p className="text-xs text-muted-foreground">{ALLOWLIST_IS_CREATE_ONLY}</p>
+        {/* The delete addresses the identifier, and the identifier is exactly
+            what the confirmation is about — so the call belongs on the confirm
+            step, where it can be read before anything is irreversible. */}
+        <CallSnippet id="secret.delete" context={{ projectId, secret: { identifier, name } }} />
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>
             Cancel

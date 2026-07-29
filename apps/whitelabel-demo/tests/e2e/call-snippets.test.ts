@@ -104,7 +104,14 @@ describe('end_user_ref is shown as server-injected', () => {
   test('nothing claims the server injects a field it does not', () => {
     // The badge is a security claim; it belongs only on calls the proxy touches.
     const injected = callSnippets().filter((s) => s.serverInjected.length > 0).map((s) => s.id);
-    expect(injected.sort()).toEqual(['session.create', 'sessions.list', 'usage.forEndUser']);
+    expect(injected.sort()).toEqual([
+      'session.create',
+      // Two of them: `end_user_ref`, and the `Idempotency-Key` the server mints
+      // so a browser cannot aim a replay at somebody else's session.
+      'session.idempotentCreate',
+      'sessions.list',
+      'usage.forEndUser',
+    ]);
   });
 });
 

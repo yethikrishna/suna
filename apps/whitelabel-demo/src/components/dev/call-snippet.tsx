@@ -12,6 +12,10 @@
  * Both blocks are copy-pasteable, and neither ever carries real credentials:
  * the bearer is always the `$KORTIX_API_KEY` placeholder and secret values are
  * never rendered at all (`src/lib/call-snippets.ts` has nowhere to put one).
+ *
+ * Colouring is presentation and nothing else. The tokenizer
+ * (`src/lib/syntax-highlight.ts`) only ever slices the snippet, so this file
+ * holds the class per token role and no logic about what a token is.
  */
 
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +32,7 @@ import {
   isCopyableHttp,
   renderHttp,
 } from '@/lib/call-snippets';
+import { type SnippetLanguage, type TokenKind, highlight } from '@/lib/syntax-highlight';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, Code2, Copy } from 'lucide-react';
 import { useState } from 'react';
@@ -60,7 +65,7 @@ export function CallSnippet({
         <div className="mt-1.5 space-y-3 rounded-md border border-border bg-muted/30 p-3">
           <p className="text-xs leading-relaxed text-muted-foreground">{snippet.summary}</p>
 
-          <Block label="SDK" caption="What this app runs." code={snippet.sdk} />
+          <Block label="SDK" caption="What this app runs." code={snippet.sdk} language="ts" />
 
           <Block
             label="HTTP"
@@ -70,6 +75,7 @@ export function CallSnippet({
                 : 'Not a REST call.'
             }
             code={http}
+            language="http"
             copyable={isCopyableHttp(snippet.http)}
           />
 
@@ -108,15 +114,35 @@ export function CallSnippet({
   );
 }
 
+/**
+ * Colour per token role, from the theme tokens `globals.css` already defines —
+ * no palette of its own, so both themes stay correct for free. The values a
+ * wrapper author retypes (strings, numbers) carry the brand tint; the structure
+ * they read past (braces, commas, comments) recedes.
+ */
+const TOKEN_CLASS: Record<TokenKind, string> = {
+  plain: '',
+  punctuation: 'text-muted-foreground',
+  comment: 'text-muted-foreground italic',
+  keyword: 'text-brand',
+  string: 'text-brand/80',
+  number: 'text-brand/70',
+  property: 'text-foreground',
+  method: 'text-brand font-medium',
+  path: 'text-foreground',
+};
+
 function Block({
   label,
   caption,
   code,
+  language,
   copyable = true,
 }: {
   label: string;
   caption: string;
   code: string;
+  language: SnippetLanguage;
   copyable?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
@@ -147,8 +173,17 @@ function Block({
         )}
       </div>
       {copyable ? (
-        <pre className="mt-1 overflow-x-auto rounded-md border border-border bg-background p-2.5 text-[11px] leading-relaxed scrollbar-thin">
-          <code>{code}</code>
+        <pre className="mt-1 overflow-x-auto rounded-md border border-border bg-background p-2.5 text-[11px] leading-relaxed text-foreground/80 scrollbar-thin">
+          {/* Spans are slices of `code` in order — the copy button above still
+              writes `code` itself, so what lands in an editor is byte for byte
+              what this block shows (src/lib/syntax-highlight.ts). */}
+          <code>
+            {highlight(code, language).map((token, i) => (
+              <span key={i} className={TOKEN_CLASS[token.kind]}>
+                {token.text}
+              </span>
+            ))}
+          </code>
         </pre>
       ) : (
         // Prose, not a code block: there is no path to copy, and printing one

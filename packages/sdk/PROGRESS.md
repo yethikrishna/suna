@@ -4667,3 +4667,26 @@ faithful `u,a,u,a,u,a,u,a,u,a×9,u,u,u,u`); that call cannot distinguish this
 change from HEAD, because the ordering fix is a no-op on every session in this DB.
 
 **SDK package shippable to production: YES.**
+
+---
+
+### 2026-07-30 — session `ci-runtime-gates` CLI SDK-boundary restoration claim
+
+Claimed the regression created when the runtime-default revert restored the
+host-local CLI transport after the earlier SDK-only rewrite.
+
+Scope:
+
+- Restore the CLI to the published `@kortix/sdk` surface.
+- Keep OpenCode REST as the default runtime.
+- Preserve existing CLI commands and output contracts.
+- Repair the current session API contract failures separately from SDK code.
+
+The required `tdd` skill is unavailable in this session. The work will use the
+same RED, GREEN, and REFACTOR sequence directly.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**

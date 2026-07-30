@@ -20,6 +20,12 @@ const PROJECT_ID = '00000000-0000-4000-a000-000000000201';
 const MANIFEST_PATH = 'kortix.yaml';
 const TEST_AUTH_KEY = '__KORTIX_E2E_AUTH__';
 
+process.env.DAYTONA_API_KEY = 'test-daytona-key';
+process.env.DAYTONA_SERVER_URL = 'https://daytona.example.test';
+process.env.DAYTONA_TARGET = 'test-target';
+process.env.KORTIX_URL = 'https://api.example.test';
+process.env.LLM_GATEWAY_ENABLED = 'true';
+
 // ─── In-memory git mock ─────────────────────────────────────────────────────
 // Every git read/write goes through this map so a test's "commitFile" is
 // observable by the very next "listRepoFiles" / "readRepoFile" call. That
@@ -156,7 +162,11 @@ mock.module('../projects/git', () => ({
   getDiffBetweenShas: async () => ({ files: [], diff: '' }),
   previewMerge: async () => ({ canMerge: true, conflicts: [] }),
   mergeBranches: async () => ({ mergedSha: 'a'.repeat(40) }),
-  commitFileToBranch: async () => ({ commitSha: 'a'.repeat(40) }),
+  commitFileToBranch: async (_project: unknown, opts: { path: string; content: string; message: string }) => {
+    repoFiles.set(opts.path, opts.content);
+    commitCalls.push({ path: opts.path, message: opts.message });
+    return { commitSha: 'a'.repeat(40) };
+  },
   deleteRemoteSessionBranch: async () => undefined,
   diffStat: async () => ({ files: [], additions: 0, deletions: 0 }),
   getFileAtRef: async () => null,
@@ -248,6 +258,20 @@ mock.module('../projects/github', () => ({
   addCollaborator: async () => undefined,
   getBranchCommitSha: async () => 'a'.repeat(40),
   createBranchRef: async () => undefined,
+}));
+
+const realProjectGit = await import('../projects/lib/git');
+mock.module('../projects/lib/git', () => ({
+  ...realProjectGit,
+  resolveProjectGitAuth: async () => ({
+    auth: { token: 'test-git-token', source: 'project_credential' },
+    authSource: 'project_credential',
+  }),
+  withProjectGitAuth: async (project: Record<string, unknown>) => ({
+    ...project,
+    gitAuthToken: 'test-git-token',
+    gitAuthHeaders: {},
+  }),
 }));
 
 mock.module('../platform/services/session-sandbox', () => ({
@@ -1148,7 +1172,10 @@ describe('git-backed triggers — runtime fire paths', () => {
 
   test('manual fire without overrides resolves the project model and selected agent before provisioning', async () => {
     modelDefaults.projects[PROJECT_ID] = 'glm-5.2';
-    projectRow.metadata = { default_agent: 'asana-refresher' };
+    projectRow.metadata = {
+      default_agent: 'asana-refresher',
+      experimental: { llm_gateway: true },
+    };
     seedManifest(cronEntry({
       slug: 'daily',
       name: 'Daily',

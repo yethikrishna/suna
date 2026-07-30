@@ -28,10 +28,12 @@ const PROJECT_SA_TOKEN = 'kortix_sa_backend_wrapper';
 const ORIGINAL_KORTIX_GITHUB_OWNER = process.env.KORTIX_GITHUB_OWNER;
 const ORIGINAL_API_KEY_SECRET = process.env.API_KEY_SECRET;
 const ORIGINAL_KORTIX_URL = process.env.KORTIX_URL;
+const ORIGINAL_ALLOWED_SANDBOX_PROVIDERS = process.env.ALLOWED_SANDBOX_PROVIDERS;
 
 process.env.KORTIX_GITHUB_OWNER = TEST_GITHUB_OWNER;
 process.env.API_KEY_SECRET = 'test-project-secret-key-material-32-bytes';
 process.env.KORTIX_URL = 'https://api.test.kortix.local';
+process.env.ALLOWED_SANDBOX_PROVIDERS = 'daytona,platinum,e2b';
 
 let branchCreateCalls = 0;
 let sandboxProvisionCalls = 0;
@@ -900,6 +902,11 @@ describe('project session API contract', () => {
       delete process.env.KORTIX_URL;
     } else {
       process.env.KORTIX_URL = ORIGINAL_KORTIX_URL;
+    }
+    if (ORIGINAL_ALLOWED_SANDBOX_PROVIDERS === undefined) {
+      delete process.env.ALLOWED_SANDBOX_PROVIDERS;
+    } else {
+      process.env.ALLOWED_SANDBOX_PROVIDERS = ORIGINAL_ALLOWED_SANDBOX_PROVIDERS;
     }
   });
 

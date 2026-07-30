@@ -4216,6 +4216,31 @@ and deployed OpenCode REST verification.
 
 ---
 
+### 2026-07-30 — session `opencode-rest-title-preview-reliability` claim
+
+Claimed the OpenCode REST session-title reconciliation regression reported on
+PR #5901.
+
+Scope:
+
+- Reconcile a persisted server title when an existing session with messages is
+  opened after the original post-send refresh window ended.
+- Keep the bounded post-send refresh and the server-owned `metadata.name`
+  contract.
+- Fix the related API preview lookup separately without adding SDK transport
+  behavior.
+
+The required `tdd` skill is unavailable in this session. The work will use the
+same RED, GREEN, and REFACTOR sequence directly.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
+---
+
 ### 2026-07-30 — session `opencode-rest-rollback` post-merge verification
 
 Re-ran the rollback gates after merging current `origin/main` into the worktree.

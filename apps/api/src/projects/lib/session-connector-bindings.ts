@@ -382,8 +382,15 @@ export type RequiredConnectorResolution =
   | { ok: true; bindings: ValidatedSessionConnectorBinding[] }
   | {
       ok: false;
+      code: 'REQUIRED_CONNECTOR_PROFILE_UNAVAILABLE';
+      alias: string;
+      connectorProfiles?: never;
+    }
+  | {
+      ok: false;
       code: 'CONNECTOR_AUTHORIZATION_REQUIRED';
       connectorProfiles: ConnectorAuthorizationRequiredProfile[];
+      alias?: never;
     };
 
 export async function resolveRequiredConnectorProfiles(input: {
@@ -395,7 +402,7 @@ export async function resolveRequiredConnectorProfiles(input: {
   explicitBindings?: readonly ValidatedSessionConnectorBinding[];
 }): Promise<RequiredConnectorResolution> {
   const bindings: ValidatedSessionConnectorBinding[] = [];
-  const missing: Extract<RequiredConnectorResolution, { ok: false }>['connectorProfiles'] = [];
+  const missing: ConnectorAuthorizationRequiredProfile[] = [];
   const seen = new Set<string>();
   const explicitlyBound = new Set(input.explicitBindings?.map((binding) => binding.alias) ?? []);
   for (const requestedAlias of input.aliases) {
@@ -424,7 +431,13 @@ export async function resolveRequiredConnectorProfiles(input: {
         ),
       )
       .limit(1);
-    if (!connectorRow) continue;
+    if (!connectorRow) {
+      return {
+        ok: false,
+        code: 'REQUIRED_CONNECTOR_PROFILE_UNAVAILABLE',
+        alias: publicConnectorAlias(alias),
+      };
+    }
     const connector: ConnectorAuthorizationRow = connectorRow;
     const profileRows = connector.enabled && connector.status === 'active'
       ? await db

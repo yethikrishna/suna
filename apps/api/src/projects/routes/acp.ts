@@ -12,8 +12,10 @@ import { assertProjectCapability, loadProjectForUser, loadVisibleSession } from 
 import { createPersistedAcpSseProxy } from '../lib/acp-sse-proxy';
 import { appendAcpEnvelope, loadAcpTranscript } from '../lib/acp-transcript';
 import { projectsApp } from '../lib/app';
+import { callerKortixSessionId } from '../lib/caller-session';
 import { syncSandboxEnvForPrompt } from '../lib/sandbox-env-sync';
 import { sandboxRuntimeEndpoint } from '../runtime-inspection';
+import { isSandboxAuthored, observeTurnStart } from '../sandbox-deadline';
 import {
   type PromptInfo,
   generateSessionTitleFromFirstPrompt,
@@ -221,6 +223,32 @@ projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp',
         );
       }
       titlePrompt = promptInfoFromEnvelope(envelope);
+      // OBSERVE THE TURN START BEFORE RELAYING IT. Same contract as the proxy
+      // edge (sandbox-proxy/routes/preview.ts): this is the ONE observation the
+      // control plane makes of a run beginning, it must never come from the box's
+      // own credential, and at the 24-hour absolute run cap the box must be
+      // REFUSED rather than handed a prompt it is about to be killed mid-way
+      // through. `parkBoxAtRunCap` is left to the reaper here — this route has no
+      // provider handle of its own and the next prompt auto-resumes the box.
+      // `callerKortixSessionId`, NEVER the raw `c.get('sessionId')`. This route
+      // is mounted under `supabaseAuth`, which sets that context var to the
+      // SUPABASE AUTH SESSION id (which browser login is this) for every human.
+      // Reading it raw made `isSandboxAuthored` true for every browser user, so
+      // this observation — the ONLY deadline extension an ACP session has, and
+      // the at-cap refusal — was dead code for the entire web product.
+      if (!isSandboxAuthored(c.get('apiKeyType'), callerKortixSessionId(c))) {
+        const observed = await observeTurnStart({ sessionId: target.sessionId });
+        if (observed === 'at_cap') {
+          return c.json(
+            {
+              error: 'This sandbox has reached its 24-hour continuous run limit and is restarting.',
+              code: 'sandbox_run_cap_reached',
+              retry: true,
+            },
+            503,
+          );
+        }
+      }
     }
 
     await appendAcpEnvelope({

@@ -327,7 +327,6 @@ export async function runProjectMaintenance(): Promise<void> {
     ]);
     const hadAction = Boolean(
       idle.stopped ||
-        idle.hardStopped ||
         idle.reconciled ||
         idle.errors ||
         orphanCompute.closed ||
@@ -368,19 +367,17 @@ export async function runProjectMaintenance(): Promise<void> {
     // wire an alert on its absence for N cycles instead of trusting silence.
     // Every counter that a silent regression would hide. `deferred` is the one
     // that mattered most: an unordered LIMIT left ~179 of 279 prod rows
-    // permanently outside the sweep and NOTHING said so for weeks. `hard_stopped`
-    // counts boxes killed by the absolute ceiling — a persistently non-zero
-    // value means the normal idle path is broken again.
+    // permanently outside the sweep and NOTHING said so for weeks. `idle_stopped`
+    // is now the number that matters: it counts boxes stopped because their
+    // deadline passed, and a flat zero over a busy hour means the deadline is
+    // not being enforced.
     console.log(
       '[project-maintenance] heartbeat',
       `idle_candidates=${idle.candidates}`,
       `idle_matching=${idle.matching}`,
       `idle_deferred=${idle.deferred}`,
       `idle_stopped=${idle.stopped}`,
-      `idle_hard_stopped=${idle.hardStopped}`,
-      `idle_armed=${idle.idleArmed}`,
-      `idle_busy_vetoed=${idle.busyVetoed}`,
-      `idle_warm_skipped=${idle.warmSkipped}`,
+      `idle_skipped=${idle.skipped}`,
       `compute_rows_closed=${orphanCompute.closed}`,
       `action=${hadAction}`,
     );

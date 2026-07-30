@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { config } from '../../config';
 import { getTraceHeaders } from '../../lib/request-context';
 import type { ProviderName } from '../../platform/providers';
+import { callerKortixSessionId } from '../../projects/lib/caller-session';
 import { syncSandboxEnvForPrompt } from '../../projects/lib/sandbox-env-sync';
 import {
   AgentSecretGrantMismatchError,
@@ -14,6 +15,15 @@ import {
 } from '../../projects/lib/session-token-grant';
 import { scheduleOpencodeSnapshotSync } from '../../projects/opencode-session-snapshot';
 import { resumeStoppedSandboxByExternalId } from '../../projects/routes/shared';
+import {
+  createExtendThrottle,
+  extendSandboxDeadline,
+  isPreviewUseObservation,
+  isSandboxAuthored,
+  isTurnStartRequest,
+  observeTurnStart,
+  previewGrantMs,
+} from '../../projects/sandbox-deadline';
 import {
   extractPromptInfo,
   generateSessionTitleFromFirstPrompt,
@@ -39,8 +49,16 @@ import { claimPromptDelivery, promptDeliveryKey, releasePromptDelivery } from '.
 import { carriesSessionData } from '../session-data-ports';
 
 // `userId` is set by combinedAuth (mounted in ../index.ts) before this route.
+// `apiKeyType` is read to decide whether a request may extend the sandbox's
+// deadline: a box holds a credential that authenticates perfectly well, and a
+// request it authors itself must never be able to prolong its own life.
 const preview = new Hono<{
-  Variables: { userId: string; userEmail: string; sessionId?: string };
+  Variables: {
+    userId: string;
+    userEmail: string;
+    sessionId?: string;
+    apiKeyType?: 'user' | 'sandbox';
+  };
 }>();
 
 // Hop-by-hop + caller-controlled headers we never forward upstream. Auth is
@@ -73,6 +91,12 @@ function jsonProxyError(body: Record<string, unknown>, status: number, origin?: 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : String(error || fallback);
 }
+
+// One deadline write per minute per box for HUMAN preview traffic. Mirrors
+// SANDBOX_TOUCH_INTERVAL_MS in ../backend.ts, for the same reason: a single page
+// load is hundreds of requests and the extend is monotone, so collapsing them
+// loses nothing.
+const previewUseThrottle = createExtendThrottle(60_000);
 
 const RETRYABLE_ENV_SYNC_NETWORK_ERROR_RE =
   /\b(operation timed out|timeout|aborterror|unable to connect|connection refused|econnrefused|econnreset|socket hang up)\b/i;
@@ -500,6 +524,12 @@ export type PreviewProxyAccess =
        *  this is what separates them. Null means a non-session-bound principal.
        *  REQUIRED so a new entry point cannot silently omit it and fail open. */
       callerSessionId: string | null;
+      /** True when the SANDBOX ITSELF authored this request (it holds a
+       *  credential that produces a perfectly valid principal). Such a request
+       *  may never extend the box's deadline — that is the self-renewal this
+       *  design exists to delete. REQUIRED, same reasoning as callerSessionId:
+       *  a new entry point must not be able to omit it and fail open. */
+      sandboxAuthored: boolean;
     }
   | { kind: 'public_share' };
 
@@ -522,19 +552,36 @@ function principalUserId(access: PreviewProxyAccess): string {
 const SANDBOX_AGENT_PORT = 8000;
 
 /**
- * Should the data-path proxy WAKE a stopped box instead of 503ing it? Only when a
- * real user (principal) is actively hitting the OpenCode daemon (port 8000) — never
- * on passive asset/preview traffic or non-user (service) access. That gate is what
- * lets the runtime path auto-resume like `/start` WITHOUT fighting the reaper's
- * idle-quiesce "don't resurrect on passive traffic" policy. Pure + exported so the
- * gate is unit-tested without provisioning a sandbox.
+ * Should the data-path proxy WAKE a stopped box instead of 503ing it?
+ *
+ * Two cases, and the difference between them is the whole point:
+ *
+ *  - A real user (principal) hitting the OpenCode daemon (port 8000). Always
+ *    resumes, as it always has — that is what lets the runtime path auto-resume
+ *    like `/start`.
+ *  - A real user LOADING A PREVIEW PAGE. `browserNavigation` is the load-bearing
+ *    condition: a top-level document / iframe load is a human explicitly opening
+ *    the app, which is the same class of intent as clicking into the session. An
+ *    asset fetch, an XHR poll or a background stream reconnect is NOT, and must
+ *    still 503 — passive resurrection is what produced 1,597 phantom-active
+ *    compute rows. Without this branch a user whose dev server had been parked
+ *    could never get it back through the preview at all, only by prompting the
+ *    agent, which is the "preview ports cannot auto-resume" regression.
+ *
+ * Never for a request the SANDBOX authored (it holds a credential that resolves
+ * to a perfectly valid principal), and never for a non-user (service/share)
+ * caller. Pure + exported so the gate is unit-tested without provisioning a box.
  */
 export function shouldAutoResumeStoppedSandbox(
   status: string,
   upstreamPort: number,
   accessKind: string,
+  opts: { sandboxAuthored?: boolean; browserNavigation?: boolean } = {},
 ): boolean {
-  return status === 'stopped' && upstreamPort === SANDBOX_AGENT_PORT && accessKind === 'principal';
+  if (status !== 'stopped' || accessKind !== 'principal') return false;
+  if (opts.sandboxAuthored) return false;
+  if (upstreamPort === SANDBOX_AGENT_PORT) return true;
+  return opts.browserNavigation === true && !carriesSessionData(upstreamPort);
 }
 export async function forwardToSandbox(
   sandboxId: string,
@@ -585,6 +632,11 @@ export async function forwardToSandbox(
   // to Daytona, which likewise skips it on the direct 4096 opencode path.
   const ingressRequest = { port, path: remainingPath, transport: 'http' as const };
   const upstreamPort = routeSandboxIngress(record, ingressRequest).effectivePort;
+  // Did the BOX author this request? It holds two credentials that authenticate
+  // perfectly well, and every deadline decision below — the turn-start
+  // observation, the preview-use extend, the auto-resume — must exclude them or
+  // the self-renewing lease this design deletes is rebuilt through the proxy.
+  const sandboxAuthored = access.kind === 'principal' && access.sandboxAuthored;
   const acpPromptSession = acpPromptSessionId(
     method,
     upstreamPort,
@@ -630,10 +682,17 @@ export async function forwardToSandbox(
     // rather than dead-end with a manual-Restart card. This closes the stale-ready
     // gap: /start settles 'ready', the reaper idle-stops the box, and the client's
     // next runtime call used to 503 forever. resumeStoppedSandboxByExternalId is
-    // idempotent, clears the reaper's idle-quiesce marker, and its DB conditional
-    // lock de-dupes the concurrent session.list retries (one provider start). Gated
-    // so passive asset/preview traffic still 503s — we don't fight idle-quiesce.
-    if (shouldAutoResumeStoppedSandbox(record.status, upstreamPort, access.kind)) {
+    // idempotent and its DB conditional lock de-dupes the concurrent session.list
+    // retries (one provider start). A human LOADING a preview page resumes too —
+    // otherwise a parked dev server could only be recovered by prompting the agent
+    // — while passive asset/XHR traffic still 503s, so nothing is resurrected by a
+    // background tab. See shouldAutoResumeStoppedSandbox.
+    if (
+      shouldAutoResumeStoppedSandbox(record.status, upstreamPort, access.kind, {
+        sandboxAuthored,
+        browserNavigation: isBrowserNavigation(incomingHeaders),
+      })
+    ) {
       const resumeExternalId = record.externalId;
       await resumeStoppedSandboxByExternalId(resumeExternalId).catch((err) => {
         console.warn(`[sandbox-proxy] auto-resume failed for ${resumeExternalId}:`, err);
@@ -656,6 +715,57 @@ export async function forwardToSandbox(
     }
   }
   const serviceKey = record.serviceKey;
+
+  // OBSERVE THE TURN START **BEFORE** FORWARDING IT.
+  //
+  // Two reasons this is here and awaited rather than fire-and-forget after the
+  // response, which is where it used to be:
+  //
+  //  1. At the 24-hour absolute run cap the grant clamps to `active_since + 24h`
+  //     — already in the past — so the old ordering ACCEPTED the prompt and let
+  //     the reaper stop the box seconds later, mid-work, swallowing the user's
+  //     message. Accepting work you are about to kill is worse than refusing it.
+  //     Refuse, park the box so the retry re-anchors a fresh stretch, and say so
+  //     in a machine-readable body.
+  //  2. Before the dedupe claim, so a refusal does not burn the caller's
+  //     Idempotency-Key and turn their retry into a bogus 200 "duplicate".
+  //
+  // A lost/failed observation fails OPEN (see observeTurnStart) — the deadline is
+  // still bounded by the DB CHECK, and refusing a prompt on uncertainty is far
+  // worse than granting one turn too many.
+  if (!sandboxAuthored && isTurnStartRequest(upstreamPort, method, remainingPath)) {
+    const observed = await observeTurnStart({ externalId: sandboxId });
+    if (observed === 'at_cap') {
+      const capped = {
+        sandboxId: record.sandboxId,
+        sessionId: record.sessionId,
+        externalId: record.externalId,
+        provider: record.provider as ProviderName,
+      };
+      // Dynamic import: the reaper's stop path reaches back into this module's
+      // own package (invalidateProviderCache), and a static edge here would be a
+      // real cycle. This branch is rare by construction — once per 24h of
+      // continuous work — so the one-time load cost is irrelevant.
+      void import('../../projects/reaping/stop-box')
+        .then((m) => m.parkBoxAtRunCap(capped))
+        .catch((err) =>
+          console.warn(
+            `[deadline] run-cap park could not be scheduled for ${sandboxId}:`,
+            err instanceof Error ? err.message : err,
+          ),
+        );
+      console.warn(`[PREVIEW] Refused turn on sandbox ${sandboxId}: 24h run cap reached`);
+      return jsonProxyError(
+        {
+          error: 'This sandbox has reached its 24-hour continuous run limit and is restarting.',
+          code: 'sandbox_run_cap_reached',
+          retry: true,
+        },
+        503,
+        origin,
+      );
+    }
+  }
 
   // Dedupe prompt delivery up-front. REST and ACP prompt POSTs are the only
   // mutating, non-idempotent calls here. Claim a stable key before the retry
@@ -1038,6 +1148,33 @@ export async function forwardToSandbox(
 
       // Got an HTTP response → sandbox is alive, pass it through with CORS.
       void markSandboxUsed(sandboxId);
+      // A HUMAN IS USING THIS BOX'S PREVIEW. The turn-start observation already
+      // happened before the forward (see above); this is the other
+      // control-plane-observed signal: an authenticated account member driving
+      // the dev server the agent just built. The API watched the whole request,
+      // so it cannot be forged by the box, and without it a user clicking through
+      // their own app watched it die 15 minutes after the last AGENT turn — a
+      // worse regression than the zombie boxes this design deletes.
+      //
+      // Throttled to one write per minute per box: a page load is 200 requests
+      // and every extend is monotone, so the other 199 would land on the value
+      // the first already produced.
+      if (
+        upstream.ok &&
+        isPreviewUseObservation({
+          isPrincipal: access.kind === 'principal',
+          sandboxAuthored,
+          upstreamPort,
+        }) &&
+        previewUseThrottle.take(sandboxId)
+      ) {
+        void extendSandboxDeadline({ externalId: sandboxId }, previewGrantMs()).catch((err) =>
+          console.warn(
+            `[deadline] preview-use extend failed for sandbox ${sandboxId}:`,
+            err instanceof Error ? err.message : err,
+          ),
+        );
+      }
       if (acpPromptSession && upstream.ok) {
         const prompt = extractPromptInfo(body, incomingHeaders);
         if (userId && prompt.text) {
@@ -1272,7 +1409,19 @@ preview.all('/:sandboxId/:port/*', async (c) => {
   return forwardToSandbox(
     sandboxId,
     port,
-    { kind: 'principal', userId, callerSessionId: c.get('sessionId') ?? null },
+    {
+      kind: 'principal',
+      userId,
+      callerSessionId: c.get('sessionId') ?? null,
+      // `callerKortixSessionId`, NEVER the raw context var. `combinedAuth`'s
+      // local JWT fast path leaves `sessionId` unset for a browser, but its
+      // NETWORK-FALLBACK branch (taken whenever JWKS has not warmed, and
+      // permanently if JWKS resolution is broken) sets it to the SUPABASE AUTH
+      // SESSION id. Reading it raw made every human in that window look
+      // sandbox-authored: no turn-start extend, no preview-use extend, and no
+      // auto-resume of a parked box from the UI.
+      sandboxAuthored: isSandboxAuthored(c.get('apiKeyType'), callerKortixSessionId(c)),
+    },
     method,
     remainingPath,
     queryString,

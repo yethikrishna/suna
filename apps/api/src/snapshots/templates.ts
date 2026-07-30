@@ -51,7 +51,10 @@ import {
   SANDBOX_SPEC_LIMITS,
 } from './dockerfile-layer';
 import { computeSnapshotHash } from './hash';
-import { buildRuntimeArtifactFingerprint } from './runtime-fingerprint';
+import {
+  buildRuntimeArtifactFingerprint,
+  cliExecutorRuntimeArtifacts,
+} from './runtime-fingerprint';
 import { getSandboxProvider, type SandboxProviderAdapter } from './providers';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,19 +95,7 @@ const EXECUTOR_SDK_SRC_PATH = process.env.KORTIX_SNAPSHOT_EXECUTOR_SDK_PATH
 // stale in-sandbox executor. packages/starter (scaffolding) and packages/
 // manifest-schema (only reached by laptop-side `ship`/`validate`) are likewise
 // never in the sandbox and are deliberately not fingerprinted.
-const CLI_SRC_DIR = resolve(REPO_ROOT, 'apps/cli/src');
-// The in-sandbox `kortix executor` closure (see comment above). Relative to
-// CLI_SRC_DIR; the guard test keeps this in sync with the real import graph.
-const CLI_EXECUTOR_CLOSURE = [
-  'executor',
-  'commands/executor.ts',
-  'api/auth.ts',
-  'api/client.ts',
-  'api/config.ts',
-  'api/sandbox-env.ts',
-  'project-link.ts',
-] as const;
-const CLI_PKG_JSON = resolve(REPO_ROOT, 'apps/cli/package.json');
+const CLI_ROOT = resolve(REPO_ROOT, 'apps/cli');
 const FINGERPRINT_EXCLUDES = ['node_modules', '.bin', 'dist', '.turbo', '.cache'] as const;
 
 // Bump when the rendered Kortix Dockerfile layer changes (the Dockerfile text
@@ -225,7 +216,9 @@ const FINGERPRINT_EXCLUDES = ['node_modules', '.bin', 'dist', '.turbo', '.cache'
 // daemon can start all four harnesses without a request-time package download.
 // v35: pin Pi's internal 0.x packages to the same version as pi-coding-agent.
 // v36: install Pi with npm because pnpm 11 isolates each global root graph.
-const RUNTIME_LAYER_VERSION = 'verified-runtime-artifacts-v36';
+// v37: require a source digest beside the compiled sandbox CLI. This invalidates
+// the poisoned v36 snapshot whose new source identity contained an old binary.
+const RUNTIME_LAYER_VERSION = 'verified-runtime-artifacts-v37';
 const DEFAULT_CPU = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_CPU', 2);
 const DEFAULT_MEMORY_GB = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_MEMORY_GB', 4);
 const DEFAULT_DISK_GB = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_DISK_GB', 20);
@@ -921,14 +914,9 @@ const NON_AGENT_RUNTIME_ARTIFACTS = [
   { label: 'kortix-slack-cli', path: SLACK_CLI_SRC_PATH, excludeNames: FINGERPRINT_EXCLUDES },
   { label: 'kortix-executor-sdk', path: EXECUTOR_SDK_SRC_PATH, excludeNames: FINGERPRINT_EXCLUDES },
   // Only the in-sandbox `kortix executor` closure (NOT the whole apps/cli/src) —
-  // see CLI_EXECUTOR_CLOSURE. Labels carry the relative path so two files can't
-  // collide, and the set is sorted by label in buildRuntimeArtifactFingerprint.
-  ...CLI_EXECUTOR_CLOSURE.map((rel) => ({
-    label: `kortix-cli-${rel}`,
-    path: join(CLI_SRC_DIR, rel),
-    excludeNames: FINGERPRINT_EXCLUDES,
-  })),
-  { label: 'kortix-cli-pkg', path: CLI_PKG_JSON },
+  // see CLI_EXECUTOR_RUNTIME_FILES in @kortix/shared. Labels carry the relative
+  // path so two files cannot collide.
+  ...cliExecutorRuntimeArtifacts(CLI_ROOT),
 ];
 // Both version strings fold in the layer/opencode/browser/sandbox constants — all
 // NON-agent inputs (bumped when the layer/opencode/browser change, not the agent

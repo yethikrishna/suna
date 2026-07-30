@@ -1,6 +1,5 @@
 'use client';
 
-import { InteractiveDemoSection } from '@/components/home/interactive-demo-section';
 import { KortixLogo } from '@/components/sidebar/kortix-logo';
 import { Badge } from '@/components/ui/badge';
 import { Icon } from '@/features/icon/icon';
@@ -13,6 +12,7 @@ import {
   DeviceMobileIcon as Smartphone,
   TerminalIcon as Terminal,
 } from '@phosphor-icons/react';
+import Image from 'next/image';
 import Link from 'next/link';
 import type { ComponentType, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
@@ -230,10 +230,42 @@ const SDK_LINES = [
   'await session.send("Draft the renewal for Acme", { agent: "go-to-market" });',
 ];
 
+const SHOWCASE_POSTER = '/media/showcase/kortix-showcase-poster.jpg';
+
+/** Recorded in the real product: a project, its connectors, agents, skills and
+ *  schedules, then a session researching on a cloud computer and returning a
+ *  finished deck. */
+function WebSurface() {
+  return (
+    <div className="bg-card relative h-full w-full">
+      <video
+        className="h-full w-full object-contain motion-reduce:hidden"
+        poster={SHOWCASE_POSTER}
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        aria-label="Kortix in the browser: connect apps, manage agents and skills, and an agent returning a finished pitch deck"
+      >
+        <source src="/media/showcase/kortix-showcase-1920.webm" type="video/webm" />
+        <source src="/media/showcase/kortix-showcase-1920.mp4" type="video/mp4" />
+      </video>
+      <Image
+        src={SHOWCASE_POSTER}
+        alt="Kortix in the browser, showing a project and its files"
+        fill
+        sizes="(max-width: 1024px) 100vw, 1100px"
+        className="hidden object-contain motion-reduce:block"
+      />
+    </div>
+  );
+}
+
 function SurfacePanel({ surface }: { surface: SurfaceId }) {
   switch (surface) {
     case 'web':
-      return <InteractiveDemoSection embedded />;
+      return <WebSurface />;
     case 'slack':
       return <ChatSurface brand="slack" />;
     case 'teams':

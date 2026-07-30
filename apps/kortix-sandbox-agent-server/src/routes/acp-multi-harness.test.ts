@@ -206,9 +206,6 @@ describe('multi-harness ACP HTTP bridge', () => {
       }),
     })
     expect(initialized.status).toBe(200)
-    expect(
-      initialized.headers.get('x-kortix-acp-runtime-instance'),
-    ).toMatch(/^[0-9a-f-]{36}$/)
     expect(await initialized.json()).toMatchObject({
       id: 1,
       result: { protocolVersion: 1 },
@@ -239,30 +236,6 @@ describe('multi-harness ACP HTTP bridge', () => {
     expect(removed.status).toBe(204)
     expect(runtime.list()).toEqual([])
     expect(pidIsAlive(pid as number)).toBe(false)
-  })
-
-  test('creates a managed harness from the first SSE GET', async () => {
-    const runtime = createRuntime()
-    const app = createAcpRouter(
-      config(),
-      () => null,
-      () => 'opencode-session',
-      undefined,
-      runtime,
-    )
-
-    const stream = await request(app, '/server-get?agent=codex', {
-      headers: {
-        accept: 'text/event-stream',
-        'last-event-id': '0',
-      },
-    })
-
-    expect(stream.status).toBe(200)
-    expect(runtime.list()).toMatchObject([
-      { serverId: 'server-get', harness: 'codex' },
-    ])
-    await stream.body?.cancel()
   })
 
   test('carries an agent request and client response without blocking the prompt', async () => {

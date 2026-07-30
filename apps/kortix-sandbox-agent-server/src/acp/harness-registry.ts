@@ -121,33 +121,12 @@ function nativeConfigEnv(
 
 function managedGateway(
   env: NodeJS.ProcessEnv,
-): { baseUrl: string; token: string } | null {
-  const baseUrl = env.KORTIX_LLM_BASE_URL?.trim().replace(/\/+$/, '')
-  const token = env.KORTIX_LLM_API_KEY?.trim()
-  return baseUrl && token ? { baseUrl, token } : null
-}
-
-function managedOpenAiProxy(
-  env: NodeJS.ProcessEnv,
-): { baseUrl: string; token: string } | null {
+): { apiUrl: string; token: string } | null {
   const apiUrl = env.KORTIX_API_URL?.trim().replace(/\/+$/, '')
-  const token = (env.KORTIX_SANDBOX_TOKEN || env.KORTIX_TOKEN)?.trim()
-  return apiUrl && token
-    ? { baseUrl: `${apiUrl}/router/openai`, token }
-    : null
-}
-
-function openAiModelId(
-  model: string | undefined,
-  fallback: string,
-): string {
-  return (model?.trim() || fallback)
-    .replace(/^kortix\//, '')
-    .replace(/^(?:openai|codex)\//, '')
-}
-
-function piOpenAiBaseUrl(baseUrl: string): string {
-  return baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`
+  const token = (
+    env.KORTIX_SANDBOX_TOKEN || env.KORTIX_TOKEN
+  )?.trim()
+  return apiUrl && token ? { apiUrl, token } : null
 }
 
 export function resolveAcpHarnessLaunchEnv(
@@ -173,10 +152,10 @@ export function resolveAcpHarnessLaunchEnv(
     return {
       ...native,
       IS_SANDBOX: '1',
-      ANTHROPIC_BASE_URL: gateway.baseUrl,
+      ANTHROPIC_BASE_URL: `${gateway.apiUrl}/router`,
       ANTHROPIC_AUTH_TOKEN: gateway.token,
       ANTHROPIC_MODEL:
-        env.KORTIX_RUNTIME_MODEL?.trim() || 'claude-sonnet-4.6',
+        env.KORTIX_RUNTIME_MODEL?.trim() || 'claude-sonnet-4-6',
     }
   }
 
@@ -190,8 +169,7 @@ export function resolveAcpHarnessLaunchEnv(
         }),
       }
     }
-    const proxy = managedOpenAiProxy(env)
-    if (!proxy) {
+    if (!gateway) {
       return {
         ...native,
         NO_BROWSER: '1',
@@ -201,16 +179,17 @@ export function resolveAcpHarnessLaunchEnv(
       ...native,
       NO_BROWSER: '1',
       CODEX_CONFIG: JSON.stringify({
-        model: openAiModelId(env.KORTIX_RUNTIME_MODEL, 'gpt-5.4'),
+        model:
+          env.KORTIX_RUNTIME_MODEL?.trim() || 'openai/gpt-5.4',
       }),
       DEFAULT_AUTH_REQUEST: JSON.stringify({
         methodId: 'gateway',
         _meta: {
           gateway: {
-            baseUrl: proxy.baseUrl,
+            baseUrl: `${gateway.apiUrl}/router/openai`,
             providerName: 'Kortix Gateway',
             headers: {
-              Authorization: `Bearer ${proxy.token}`,
+              Authorization: `Bearer ${gateway.token}`,
             },
           },
         },
@@ -220,7 +199,7 @@ export function resolveAcpHarnessLaunchEnv(
 
   const directOpenAiKey = env.OPENAI_API_KEY || env.CODEX_API_KEY
   if (directOpenAiKey) {
-    const model = openAiModelId(env.KORTIX_RUNTIME_MODEL, 'gpt-5.4')
+    const model = env.KORTIX_RUNTIME_MODEL?.trim() || 'gpt-5.4'
     return {
       ...native,
       PI_TELEMETRY: '0',
@@ -249,42 +228,13 @@ export function resolveAcpHarnessLaunchEnv(
     }
   }
 
-  if (gateway) {
-    const model = openAiModelId(env.KORTIX_RUNTIME_MODEL, 'gpt-5.4')
-    return {
-      ...native,
-      PI_TELEMETRY: '0',
-      KORTIX_PI_MODELS_JSON: JSON.stringify({
-        providers: {
-          kortix: {
-            baseUrl: piOpenAiBaseUrl(gateway.baseUrl),
-            api: 'openai-completions',
-            apiKey: '$KORTIX_LLM_API_KEY',
-            authHeader: true,
-            models: [
-              {
-                id: model,
-                name: model,
-                reasoning: true,
-                input: ['text', 'image'],
-                contextWindow: 400000,
-                maxTokens: 128000,
-              },
-            ],
-          },
-        },
-      }),
-    }
-  }
-
-  const proxy = managedOpenAiProxy(env)
-  if (!proxy) {
+  if (!gateway) {
     return {
       ...native,
       PI_TELEMETRY: '0',
     }
   }
-  const model = openAiModelId(env.KORTIX_RUNTIME_MODEL, 'gpt-5.4')
+  const model = env.KORTIX_RUNTIME_MODEL?.trim() || 'gpt-5.4'
   const tokenReference = env.KORTIX_SANDBOX_TOKEN
     ? '$KORTIX_SANDBOX_TOKEN'
     : '$KORTIX_TOKEN'
@@ -294,7 +244,7 @@ export function resolveAcpHarnessLaunchEnv(
     KORTIX_PI_MODELS_JSON: JSON.stringify({
       providers: {
         kortix: {
-          baseUrl: proxy.baseUrl,
+          baseUrl: `${gateway.apiUrl}/router/openai`,
           api: 'openai-responses',
           apiKey: tokenReference,
           authHeader: true,

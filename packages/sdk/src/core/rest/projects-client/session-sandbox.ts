@@ -6,8 +6,6 @@ import { setSessionRuntime } from "../../session/session-runtime-registry";
 import { getSandboxUrlForExternalId } from "../../session/server-store/url-helpers";
 import type { ProjectSession } from "./sessions";
 
-type SessionRuntimeHarness = 'claude' | 'codex' | 'opencode' | 'pi';
-
 // ---------------------------------------------------------------------------
 // Session sandbox — runtime row in `kortix.session_sandboxes`. Separate from
 // the legacy /instances sandbox table (`kortix.sandboxes`); no billing or
@@ -47,10 +45,6 @@ export interface SessionStartResult {
   opencode_session_id: string | null;
   /** Server-selected session client transport. Missing means legacy REST. */
   runtime_transport?: 'acp' | 'rest';
-  runtime_harness?: SessionRuntimeHarness;
-  native_agent?: string | null;
-  acp_server_id?: string | null;
-  acp_session_id?: string | null;
   /**
    * Relative proxy path for this session's OpenCode runtime (port 8000), composed
    * against the configured backendUrl. The server owns the proxy scheme; the SDK
@@ -74,9 +68,7 @@ export function projectSessionStartSeed(
     session.status !== "running" ||
     !session.sandbox_provider ||
     !session.sandbox_url ||
-    (session.runtime_transport === "acp"
-      ? !session.acp_server_id
-      : !session.opencode_session_id)
+    !session.opencode_session_id
   ) {
     return null;
   }
@@ -111,11 +103,6 @@ export function projectSessionStartSeed(
       updated_at: session.updated_at,
     },
     opencode_session_id: session.opencode_session_id,
-    runtime_transport: session.runtime_transport,
-    runtime_harness: session.runtime_harness,
-    native_agent: session.native_agent,
-    acp_server_id: session.acp_server_id,
-    acp_session_id: session.acp_session_id,
     runtime_url: session.sandbox_url,
   };
 }

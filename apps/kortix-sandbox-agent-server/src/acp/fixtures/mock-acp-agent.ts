@@ -1,24 +1,23 @@
-import { createInterface } from 'node:readline';
+import { createInterface } from 'node:readline'
 
-const lines = createInterface({ input: process.stdin });
+const lines = createInterface({ input: process.stdin })
 const pendingPrompts = new Map<
   string | number,
   { promptId: string | number; sessionId: unknown }
->();
-let initialized = false;
+>()
 
 lines.on('line', (line) => {
   const envelope = JSON.parse(line) as {
-    id?: string | number;
-    method?: string;
-    params?: Record<string, unknown>;
-  };
-  if (envelope.id === undefined) return;
+    id?: string | number
+    method?: string
+    params?: Record<string, unknown>
+  }
+  if (envelope.id === undefined) return
 
   if (!envelope.method) {
-    const pending = pendingPrompts.get(envelope.id);
-    if (!pending) return;
-    pendingPrompts.delete(envelope.id);
+    const pending = pendingPrompts.get(envelope.id)
+    if (!pending) return
+    pendingPrompts.delete(envelope.id)
     process.stdout.write(
       `${JSON.stringify({
         jsonrpc: '2.0',
@@ -34,33 +33,18 @@ lines.on('line', (line) => {
           },
         },
       })}\n`,
-    );
+    )
     process.stdout.write(
       `${JSON.stringify({
         jsonrpc: '2.0',
         id: pending.promptId,
         result: { stopReason: 'end_turn' },
       })}\n`,
-    );
-    return;
+    )
+    return
   }
 
   if (envelope.method === 'initialize') {
-    if (initialized) {
-      process.stdout.write(
-        `${JSON.stringify({
-          jsonrpc: '2.0',
-          id: envelope.id,
-          error: {
-            code: -32603,
-            message: 'Internal error',
-            data: { details: 'Already initialized' },
-          },
-        })}\n`,
-      );
-      return;
-    }
-    initialized = true;
     process.stdout.write(
       `${JSON.stringify({
         jsonrpc: '2.0',
@@ -70,25 +54,27 @@ lines.on('line', (line) => {
           agentInfo: { name: 'Mock ACP harness', version: '1.0.0' },
         },
       })}\n`,
-    );
-    return;
+    )
+    return
   }
 
   if (envelope.method === 'session/prompt') {
-    const prompt = Array.isArray(envelope.params?.prompt) ? envelope.params.prompt : [];
+    const prompt = Array.isArray(envelope.params?.prompt)
+      ? envelope.params.prompt
+      : []
     const requestPermission = prompt.some(
       (block) =>
         typeof block === 'object' &&
         block !== null &&
         'text' in block &&
         block.text === 'request permission',
-    );
+    )
     if (requestPermission) {
-      const requestId = `permission:${envelope.id}`;
+      const requestId = `permission:${envelope.id}`
       pendingPrompts.set(requestId, {
         promptId: envelope.id,
         sessionId: envelope.params?.sessionId,
-      });
+      })
       process.stdout.write(
         `${JSON.stringify({
           jsonrpc: '2.0',
@@ -110,8 +96,8 @@ lines.on('line', (line) => {
             ],
           },
         })}\n`,
-      );
-      return;
+      )
+      return
     }
 
     process.stdout.write(
@@ -126,7 +112,7 @@ lines.on('line', (line) => {
           },
         },
       })}\n`,
-    );
+    )
   }
 
   process.stdout.write(
@@ -138,5 +124,5 @@ lines.on('line', (line) => {
           ? { sessionId: 'mock-session' }
           : { stopReason: 'end_turn' },
     })}\n`,
-  );
-});
+  )
+})

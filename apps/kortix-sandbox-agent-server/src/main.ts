@@ -48,12 +48,8 @@ import {
   createQuestionResponseHandler,
   publishQuestionRequest,
 } from './acp/questions'
-import {
-  createAcpHarnessRegistry,
-  parseAcpHarnessId,
-} from './acp/harness-registry'
+import { createAcpHarnessRegistry } from './acp/harness-registry'
 import { AcpRuntime } from './acp/runtime'
-import { adoptManagedAcpRuntime } from './acp/adoption'
 
 // Pin file for the opencode session created from KORTIX_INITIAL_PROMPT.
 // Webhook follow-ups (e.g. Slack thread replies) read this to deliver new
@@ -70,23 +66,14 @@ const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
 async function main() {
   const bootTime = Date.now()
   const cfg = loadConfig()
-  const acpHarness = parseAcpHarnessId(process.env.KORTIX_RUNTIME_HARNESS)
-  const acpServerId =
-    (process.env.KORTIX_ACP_SERVER_ID ?? '').trim() ||
-    (acpHarness ? (process.env.KORTIX_SESSION_ID ?? '').trim() : '')
-  const managedAcp = !!acpHarness && !!acpServerId
   const prompt = (process.env.KORTIX_INITIAL_PROMPT ?? '').trim()
   const bootstrapSession = (process.env.KORTIX_BOOTSTRAP_OPENCODE_SESSION ?? '').trim() === '1'
   const bootState: SandboxBootState = {
     repoMaterializationError: null,
     timeline: [],
-    initialOpenCodeSessionRequired: !managedAcp && (prompt.length > 0 || bootstrapSession),
+    initialOpenCodeSessionRequired: prompt.length > 0 || bootstrapSession,
     initialOpenCodeSessionId: null,
     initialOpenCodeSessionError: null,
-    acpHarness,
-    acpServerId: acpServerId || null,
-    acpRuntimeReady: false,
-    acpRuntimeError: null,
   }
   // In-container boot timeline (ms since process start). Surfaced via
   // /kortix/health so the dashboard can attribute post-create boot latency.
@@ -255,22 +242,6 @@ async function main() {
   }
   bootMark('opencode-spawned')
 
-  if (!bootState.repoMaterializationError && acpHarness && acpServerId) {
-    try {
-      await acpRuntime.getOrCreate(acpServerId, acpHarness)
-      bootState.acpRuntimeReady = true
-      bootMark('acp-process-spawned')
-      logger.info('[boot] selected ACP harness spawned', {
-        acpServerId,
-        acpHarness,
-      })
-    } catch (error) {
-      bootState.acpRuntimeError =
-        error instanceof Error ? error.message : String(error)
-      logger.error('[boot] selected ACP harness failed to spawn', error)
-    }
-  }
-
   // If the image shipped without its baked catalog, opencode just booted on the
   // minimal model set (see loadGatewayCatalog). Repair the file in the
   // background so the next opencode start has the full picker — deliberately
@@ -365,7 +336,7 @@ async function main() {
       }
       logger.info('[seed] capture-ready; awaiting session adoption', { timeline: bootState.timeline })
     })()
-    armSeedAdoption(opencode, server, acpRuntime, bootState, bootMark)
+    armSeedAdoption(opencode, server, bootState, bootMark)
     return
   }
 
@@ -380,7 +351,6 @@ async function main() {
 function armSeedAdoption(
   opencode: ReturnType<typeof createOpencodeSupervisor>,
   server: ReturnType<typeof startProxy>,
-  acpRuntime: AcpRuntime,
   bootState: SandboxBootState,
   bootMark: (label: string) => void,
 ): void {
@@ -412,13 +382,7 @@ function armSeedAdoption(
           await configureRepoCredentialHelper(cfg2, cfg2.projectTarget).catch(() => {})
         }
       }
-      const managedAcp = await adoptManagedAcpRuntime(bootState, acpRuntime)
-      if (managedAcp) {
-        if (bootState.acpRuntimeReady) bootMark('acp-process-spawned')
-        relayBootTimelineToApi(bootState.timeline)
-      } else {
-        await startSessionRuntime(opencode, cfg2, bootState, bootMark)
-      }
+      await startSessionRuntime(opencode, cfg2, bootState, bootMark)
       logger.info('[seed] adoption complete', { adoptMs: Date.now() - t0, timeline: bootState.timeline })
     })()
   }
@@ -799,13 +763,7 @@ async function runWarmSeedMode(
         )
         bootMark('adopt-opencode-restarted')
       }
-      const managedAcp = await adoptManagedAcpRuntime(bootState, acpRuntime)
-      if (managedAcp) {
-        if (bootState.acpRuntimeReady) bootMark('acp-process-spawned')
-        relayBootTimelineToApi(bootState.timeline)
-      } else {
-        await startSessionRuntime(opencode, cfg2, bootState, bootMark)
-      }
+      await startSessionRuntime(opencode, cfg2, bootState, bootMark)
       logger.info('[seed] fork adoption complete', { adoptMs: Date.now() - t0, hotSwapped, timeline: bootState.timeline })
     })()
   }

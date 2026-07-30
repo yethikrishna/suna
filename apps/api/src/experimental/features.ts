@@ -130,9 +130,9 @@ const FEATURES: readonly ExperimentalFeatureDef[] = [
   },
   {
     key: 'acp_runtime',
-    name: 'ACP & Multi-Harness',
+    name: 'ACP Runtime',
     description:
-      'Use ACP with OpenCode, Claude Code, Codex, and Pi. Disable this experiment to use the compatibility transport.',
+      'Use the Agent Client Protocol for this project session interface. Disable this experiment to use the compatibility transport.',
     stability: 'experimental',
     available: () => true,
     platformDefault: () => false,

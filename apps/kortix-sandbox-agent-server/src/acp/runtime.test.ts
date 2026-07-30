@@ -85,16 +85,6 @@ describe('multi-harness ACP runtime', () => {
       id: 1,
       result: { protocolVersion: 1 },
     })
-    const reconnected = await instance.post({
-      jsonrpc: '2.0',
-      id: 'browser-initialize',
-      method: 'initialize',
-      params: { protocolVersion: 1, clientCapabilities: { terminal: true } },
-    })
-    expect(reconnected).toMatchObject({
-      id: 'browser-initialize',
-      result: { protocolVersion: 1 },
-    })
 
     const events: unknown[] = []
     instance.connection.subscribe(0, (event) => events.push(event.envelope))

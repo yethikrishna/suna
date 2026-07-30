@@ -174,7 +174,7 @@ export function createAcpRouter(
       }
       return existing
     }
-    if (!runtime || !harness) return null
+    if (!runtime || !harness || harness === 'opencode') return null
     return runtime.getOrCreate(serverId, harness)
   }
 
@@ -208,7 +208,6 @@ export function createAcpRouter(
         harness,
       )
       if (managed) {
-        c.header('X-Kortix-ACP-Runtime-Instance', managed.connection.instanceId)
         const response = await managed.post(envelope)
         return response ? c.json(response) : c.body(null, 202)
       }
@@ -233,7 +232,6 @@ export function createAcpRouter(
       )
       if (target.error) return target.error
       const connection = target.connection
-      c.header('X-Kortix-ACP-Runtime-Instance', connection.instanceId)
 
       if ('method' in envelope) {
         if (!ALLOWED_SESSION_METHODS.has(envelope.method as string)) {
@@ -298,7 +296,7 @@ export function createAcpRouter(
     }
   })
 
-  router.get('/:serverId', async (c) => {
+  router.get('/:serverId', (c) => {
     const rawAgent = c.req.query('agent')
     const harness = parseAcpHarnessId(rawAgent)
     if (rawAgent && !harness) {
@@ -308,21 +306,7 @@ export function createAcpRouter(
       )
     }
 
-    let managed: AcpRuntimeProcess | null
-    try {
-      managed = await resolveRuntimeProcess(
-        c.req.param('serverId'),
-        harness,
-      )
-    } catch (error) {
-      if (error instanceof AcpHarnessConflictError) {
-        return c.json({ error: error.message }, 409)
-      }
-      if (error instanceof AcpUpstreamError) {
-        return c.json({ error: error.message }, 502)
-      }
-      return c.json({ error: errorMessage(error) }, 400)
-    }
+    const managed = runtime?.get(c.req.param('serverId'))
     const target = managed
       ? { connection: managed.connection }
       : getOpenCodeConnection(c.req.param('serverId'))
@@ -399,7 +383,6 @@ export function createAcpRouter(
         Connection: 'keep-alive',
         'Content-Type': 'text/event-stream',
         'X-Accel-Buffering': 'no',
-        'X-Kortix-ACP-Runtime-Instance': connection.instanceId,
       },
     })
   })

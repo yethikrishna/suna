@@ -176,13 +176,10 @@ describe('buildExperimentalCatalog', () => {
     }
   });
 
-  test('the ACP experiment represents ACP and multi-harness routing', () => {
+  test('the ACP experiment description is provider-neutral', () => {
     const acp = findCatalogFeature('acp_runtime');
-    expect(acp.name).toBe('ACP & Multi-Harness');
-    expect(acp.description).toContain('OpenCode');
-    expect(acp.description).toContain('Claude Code');
-    expect(acp.description).toContain('Codex');
-    expect(acp.description).toContain('Pi');
+    expect(acp.description).not.toMatch(/opencode/i);
+    expect(acp.description).toContain('compatibility transport');
   });
 });
 

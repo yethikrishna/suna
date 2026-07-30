@@ -195,12 +195,6 @@ export class AcpRuntimeProcess {
       'id',
     )
     if (hasMethod && hasId) {
-      if (envelope.method === 'initialize') {
-        return this.connection.initializeEnvelope(
-          envelope.params,
-          envelope.id as string | number,
-        )
-      }
       return this.connection.requestEnvelope(
         envelope.method as string,
         envelope.params,

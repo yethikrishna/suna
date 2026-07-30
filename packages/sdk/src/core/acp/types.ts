@@ -39,19 +39,6 @@ export type AcpStreamEvent = {
   envelope: AcpEnvelope;
 };
 
-export type AcpStoredEnvelope = {
-  ordinal: number;
-  direction: 'client_to_agent' | 'agent_to_client';
-  streamEventId: number | null;
-  envelope: AcpEnvelope;
-  createdAt: string;
-};
-
-export type AcpTranscript = {
-  runtime_id: string;
-  envelopes: AcpStoredEnvelope[];
-};
-
 export type AcpStreamHandle = {
   close(): void;
   readonly lastEventId: number;

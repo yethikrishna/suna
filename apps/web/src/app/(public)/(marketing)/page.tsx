@@ -13,6 +13,7 @@ import {
   ProblemSection,
 } from '@/features/marketing/company-os-sections';
 import Hero from '@/features/marketing/hero';
+import { StackSection } from '@/features/marketing/landing/stack-section';
 import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
 import Security from '@/features/marketing/security/security';
 import WhyKortix from '@/features/marketing/why-kortix';
@@ -53,7 +54,12 @@ export default function Home() {
 
         <SectionDivider />
 
-        {/* 2. Your whole company, as files — the interactive repo explorer */}
+        {/* 2. The stack — what an AI workforce is made of, and that all of it is yours */}
+        <StackSection />
+
+        <SectionDivider />
+
+        {/* 3. Your whole company, as files — the interactive repo explorer */}
         <CompanyAsCodeSection />
 
         <SectionDivider />

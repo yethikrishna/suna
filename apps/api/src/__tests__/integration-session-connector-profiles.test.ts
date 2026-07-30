@@ -860,6 +860,17 @@ describe('session connector profile isolation', () => {
     }
   });
 
+  test('required connector checks reject an unavailable connector profile', async () => {
+    await expect(
+      missingRequiredConnectorAuthorizationsForSession({
+        accountId: ACCOUNT_A,
+        projectId: PROJECT_A,
+        sessionId: SESSION_A,
+        aliases: ['unavailable_connector'],
+      }),
+    ).rejects.toThrow('Required connector profile "unavailable_connector" is unavailable');
+  });
+
   test('Pipedream finalize reads and stores the account under the profile-specific identity', async () => {
     const realFetch = globalThis.fetch;
     let accountsUrl = '';

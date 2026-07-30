@@ -1,28 +1,13 @@
 'use client';
 
-import { Reveal } from '@/components/home/reveal';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/marketing/button';
-import KortixGrid from '@/components/ui/marketing/gridder';
 import { Separator } from '@/components/ui/separator';
-import { useRequestDemo } from '@/features/contact/request-demo-provider';
-import { CliInstallSection } from '@/features/marketing/cli-install-section';
-import {
-  CompanyAsCodeSection,
-  HowItRunsSection,
-  ProblemSection,
-} from '@/features/marketing/company-os-sections';
+import { CompanyAsCodeSection } from '@/features/marketing/company-os-sections';
 import Hero from '@/features/marketing/hero';
+import { CtaSection } from '@/features/marketing/landing/cta-section';
+import { DepartmentsSection } from '@/features/marketing/landing/departments-section';
 import { StackSection } from '@/features/marketing/landing/stack-section';
-import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
-import Security from '@/features/marketing/security/security';
-import WhyKortix from '@/features/marketing/why-kortix';
-import { useAuth } from '@/features/providers/auth-provider';
-import { trackCtaSignup } from '@/lib/analytics/gtm';
-import { ArrowRightIcon as HiArrowRight } from '@phosphor-icons/react';
-import { latestProjectPath } from '@/lib/onboarding/last-project-cookie';
-import { useTranslations } from 'next-intl';
-import { useCallback } from 'react';
+import { TrustSection } from '@/features/marketing/landing/trust-section';
+import { WorkforceSection } from '@/features/marketing/landing/workforce-section';
 
 function SectionDivider() {
   return (
@@ -32,116 +17,47 @@ function SectionDivider() {
   );
 }
 
+/**
+ * One claim per section, each carried by a real artifact rather than an
+ * explanation. Order answers, in sequence: what is it, what is it made of,
+ * what does it do for my team, where does the work live, how does it scale,
+ * can I trust it, start.
+ */
 export default function Home() {
-  const { user } = useAuth();
-  const openDemo = useRequestDemo();
-  const tHardcodedUi = useTranslations('hardcodedUi');
-  const tHome = useCallback(
-    (key: string) => tHardcodedUi.raw(`appHomePage.${key}`),
-    [tHardcodedUi],
-  );
-
-  const handleLaunch = useCallback(() => {
-    trackCtaSignup();
-    window.location.href = user ? latestProjectPath(user?.id) : '/auth';
-  }, [user]);
-
   return (
-    <>
-      <div className="bg-background relative">
-        {/* 1. Hero — the AI command center, every surface */}
-        <Hero />
+    <div className="bg-background relative">
+      {/* 1 · What it is — and the product actually running */}
+      <Hero />
 
-        <SectionDivider />
+      <SectionDivider />
 
-        {/* 2. The stack — what an AI workforce is made of, and that all of it is yours */}
-        <StackSection />
+      {/* 2 · What it is made of, and that every layer is yours */}
+      <StackSection />
 
-        <SectionDivider />
+      <SectionDivider />
 
-        {/* 3. Your whole company, as files — the interactive repo explorer */}
-        <CompanyAsCodeSection />
+      {/* 3 · What it does for each team — the ask, and the artifact returned */}
+      <DepartmentsSection />
 
-        <SectionDivider />
+      <SectionDivider />
 
-        {/* 3. From a request to finished work — the how-it-works scroll */}
-        <HowItWorks />
+      {/* 4 · Where the work lives: the repo that is the company */}
+      <CompanyAsCodeSection />
 
-        <SectionDivider />
+      <SectionDivider />
 
-        {/* 4. CLI install — a terminal-native way to get started */}
-        <CliInstallSection />
+      {/* 5 · How it scales: many isolated machines, one reviewed main */}
+      <WorkforceSection />
 
-        <SectionDivider />
+      <SectionDivider />
 
-        {/* 5. A workforce, one shared main */}
-        <HowItRunsSection />
+      {/* 6 · Why it survives a security review */}
+      <TrustSection />
 
-        <SectionDivider />
+      <SectionDivider />
 
-        {/* 6. The 1% vs the 99% — shared with everyone */}
-        <ProblemSection />
-
-        <SectionDivider />
-
-        {/* 7. Open & yours */}
-        <WhyKortix />
-
-        <SectionDivider />
-
-        {/* 8. Enterprise & security */}
-        <Security />
-
-        <SectionDivider />
-
-        {/* 9. CTA — run your whole company from one repo you own */}
-        <section id="cta" className="relative mx-auto max-w-6xl px-6 py-16 sm:py-24 lg:px-0">
-          <Reveal>
-            <div className="border-border bg-card relative overflow-hidden rounded-sm border text-center">
-              <div className="flex grid-cols-12 flex-col-reverse gap-2 md:grid">
-                <div className="col-span-4 flex flex-col items-start justify-start space-y-4 p-6 *:text-left">
-                  <div className="space-y-2">
-                    <Badge variant="kortix" className="rounded">
-                      {tHome('ctaBadge')}
-                    </Badge>
-                    <h2 className="text-foreground text-2xl leading-tight font-medium tracking-tight sm:text-3xl">
-                      {tHome('line331JsxTextGiveYourCompanyAWorkforce')}
-                    </h2>
-                    <p className="text-muted-foreground mt-4 text-sm leading-relaxed">
-                      {tHome('line334JsxTextFreeToSelfHostManagedCloudFrom20')}
-                    </p>
-                  </div>
-
-                  <p className="text-muted-foreground text-xs tracking-wider">
-                    {tHome('line342JsxTextOpenSourceSSORBACOnPremNoLock')}
-                  </p>
-
-                  <div className="mt-auto grid w-full grid-cols-1 gap-2">
-                    <Button size="lg" className="w-full" onClick={handleLaunch}>
-                      {tHome('line337JsxTextGetStarted')}
-                      <HiArrowRight className="size-4" />
-                    </Button>
-                    <Button
-                      size="lg"
-                      className="w-full"
-                      variant="accent"
-                      onClick={() => openDemo()}
-                    >
-                      {tHome('line338JsxTextTalkToSales')}
-                    </Button>
-                  </div>
-                </div>
-                <div className="col-span-1 hidden md:block" />
-                <div className="col-span-7 mask-y-from-90% mask-x-from-90%">
-                  <KortixGrid count={58} seed={4228} />
-                </div>
-              </div>
-            </div>
-          </Reveal>
-        </section>
-
-        <div className="h-24 sm:h-28" />
-      </div>
-    </>
+      {/* 7 · Start */}
+      <CtaSection />
+    </div>
   );
 }

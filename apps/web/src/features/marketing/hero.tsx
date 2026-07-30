@@ -1,24 +1,20 @@
+'use client';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/marketing/button';
-import { KortixLetterField } from '@/components/ui/marketing/kortix-letter-field';
 import { WallpaperBackground } from '@/components/ui/wallpaper-background';
 import { useRequestDemo } from '@/features/contact/request-demo-provider';
 import { HeroSurfaces } from '@/features/marketing/hero-surfaces';
+import { hero } from '@/features/marketing/landing/content';
 import { useAuth } from '@/features/providers/auth-provider';
 import { trackCtaSignup } from '@/lib/analytics/gtm';
-import { ArrowRightIcon as HiArrowRight } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
-import { useCallback } from 'react';
 import { latestProjectPath } from '@/lib/onboarding/last-project-cookie';
+import { ArrowRightIcon } from '@phosphor-icons/react';
+import { useCallback } from 'react';
 
 const Hero = () => {
   const { user } = useAuth();
   const openDemo = useRequestDemo();
-  const tHardcodedUi = useTranslations('hardcodedUi');
-  const tHome = useCallback(
-    (key: string) => tHardcodedUi.raw(`appHomePage.${key}`),
-    [tHardcodedUi],
-  );
 
   const handleLaunch = useCallback(() => {
     trackCtaSignup();
@@ -28,41 +24,41 @@ const Hero = () => {
   return (
     <section id="hero" className="relative overflow-hidden px-6 pt-32 pb-12 sm:py-36">
       <div
-        className="pointer-events-none absolute inset-0 z-0 mask-y-to-95%"
+        className="inset-0 z-0 hidden mask-t-from-70% lg:absolute"
         aria-hidden
         data-a11y-decorative
       >
-        <KortixLetterField seed={3382} />
-      </div>
-      <div className="inset-0 z-0 hidden mask-t-from-70% lg:absolute">
         <WallpaperBackground wallpaperId="brandmark" />
       </div>
 
-      <div className="z-20">
-        <section className="mx-auto w-full max-w-6xl">
+      <div className="relative z-20">
+        <div className="mx-auto w-full max-w-6xl">
           <Badge variant="kortix" className="rounded">
-            {tHome('heroEyebrow')}
+            {hero.eyebrow}
           </Badge>
-          <h1 className="text-foreground mt-6 text-4xl font-medium tracking-tight text-balance sm:text-5xl lg:text-6xl">
-            {tHome('heroCommandCenter')}
+
+          <h1 className="text-foreground mt-6 max-w-4xl text-4xl font-medium tracking-tight text-balance sm:text-5xl lg:text-6xl">
+            {hero.title}
           </h1>
-          <p className="text-muted-foreground mt-5 text-xl font-normal tracking-tight text-balance sm:text-2xl">
-            {tHome('heroAiWorkforce')}
-          </p>
-          <p className="text-muted-foreground mt-5 max-w-xl text-base leading-relaxed">
-            {tHome('heroDescription')}
+
+          <p className="text-muted-foreground mt-5 max-w-2xl text-lg leading-relaxed text-balance sm:text-xl">
+            {hero.sub}
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
             <Button size="xl" onClick={handleLaunch}>
-              {tHome('startBuildingCta')}
-              <HiArrowRight className="size-4" />
+              {hero.ctaPrimary}
+              <ArrowRightIcon className="size-4" />
             </Button>
             <Button size="xl" variant="secondary" onClick={() => openDemo()}>
-              {tHome('line149JsxTextTalkToSales')}
+              {hero.ctaSecondary}
             </Button>
           </div>
-        </section>
+
+          <p className="text-muted-foreground/70 mt-6 font-mono text-[11px] tracking-wide">
+            {hero.trust}
+          </p>
+        </div>
 
         <div id="demo" className="relative z-10 mx-auto mt-14 max-w-6xl scroll-mt-24 sm:mt-20">
           <HeroSurfaces />

@@ -4,7 +4,6 @@ import {
   getCurrentRuntimeDbSandboxId,
   getCurrentRuntimeSandboxId,
   getCurrentRuntimeUrl,
-  runtimeServesOpenCodeRest,
   setCurrentRuntime,
 } from './current-runtime';
 
@@ -133,50 +132,4 @@ test('getState returns the same live state object shape used by the getters', ()
   expect(state.url).toBe(getCurrentRuntimeUrl());
   expect(state.sandboxId).toBe(getCurrentRuntimeSandboxId());
   expect(state.dbSandboxId).toBe(getCurrentRuntimeDbSandboxId());
-  expect(state.servesOpenCodeRest).toBe(runtimeServesOpenCodeRest());
-});
-
-test('a runtime bound without an explicit capability serves OpenCode REST', () => {
-  setCurrentRuntime('http://a.local', 'sb-a', 'db-a');
-
-  expect(runtimeServesOpenCodeRest()).toBe(true);
-  expect(currentRuntimeStore.getState().servesOpenCodeRest).toBe(true);
-});
-
-test('a runtime bound as serving no OpenCode REST reads back false', () => {
-  setCurrentRuntime('http://a.local', 'sb-a', 'db-a', { servesOpenCodeRest: false });
-
-  expect(runtimeServesOpenCodeRest()).toBe(false);
-  expect(currentRuntimeStore.getState().servesOpenCodeRest).toBe(false);
-});
-
-test('clearing the runtime restores the OpenCode REST capability default', () => {
-  setCurrentRuntime('http://a.local', 'sb-a', 'db-a', { servesOpenCodeRest: false });
-  setCurrentRuntime(null);
-
-  expect(runtimeServesOpenCodeRest()).toBe(true);
-});
-
-test('changing only the OpenCode REST capability bumps version and notifies listeners', () => {
-  setCurrentRuntime('http://a.local', 'sb-a', 'db-a');
-  const v1 = currentRuntimeStore.getState().version;
-  let notifications = 0;
-  const unsubscribe = currentRuntimeStore.subscribe(() => {
-    notifications++;
-  });
-
-  setCurrentRuntime('http://a.local', 'sb-a', 'db-a', { servesOpenCodeRest: false });
-
-  expect(currentRuntimeStore.getState().version).toBe(v1 + 1);
-  expect(notifications).toBe(1);
-  unsubscribe();
-});
-
-test('re-binding the identical runtime and capability is a no-op', () => {
-  setCurrentRuntime('http://a.local', 'sb-a', 'db-a', { servesOpenCodeRest: false });
-  const v1 = currentRuntimeStore.getState().version;
-
-  setCurrentRuntime('http://a.local', 'sb-a', 'db-a', { servesOpenCodeRest: false });
-
-  expect(currentRuntimeStore.getState().version).toBe(v1);
 });

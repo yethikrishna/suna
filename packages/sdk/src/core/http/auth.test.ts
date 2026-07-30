@@ -88,19 +88,6 @@ test('does NOT impose a default timeout on an ACP session stream', () => {
 	expect(isStreamingRequest('http://sbx.test/kortix/acpish/ses_1')).toBe(false);
 });
 
-test('does NOT impose a default timeout on the managed project ACP endpoint', () => {
-	const url = 'http://api.test/v1/projects/p1/sessions/s1/acp';
-	expect(isStreamingRequest(url)).toBe(true);
-	expect(withDefaultTimeout(url, undefined)).toBeUndefined();
-	expect(withDefaultTimeout(`${url}?agent=opencode`, undefined)).toBeUndefined();
-});
-
-test('keeps the default timeout on the bounded ACP transcript read', () => {
-	const url = 'http://api.test/v1/projects/p1/sessions/s1/acp/transcript';
-	expect(isStreamingRequest(url)).toBe(false);
-	expect(withDefaultTimeout(url, undefined)).toBeInstanceOf(AbortSignal);
-});
-
 test('composes a caller-supplied signal with the default timeout on a non-streaming request', () => {
 	const controller = new AbortController();
 	controller.abort();

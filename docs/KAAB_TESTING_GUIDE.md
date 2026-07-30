@@ -1,9 +1,8 @@
 # Testing Kortix-as-a-Backend by hand
 
-> **Runtime scope.** The OpenCode message and model steps below test the v2 REST
-> compatibility path. A v3 project selects OpenCode, Claude Code, Codex, or Pi
-> through its logical agent. Use
-> `tests/e2e/scripts/acp-multi-harness-smoke.ts` for v3 harness acceptance.
+> **Runtime scope.** The OpenCode message and model steps below test the
+> `kortix_version: 2` REST compatibility path, which is the shipped runtime. ACP
+> and multi-harness are experimental, unreleased, and off by default.
 
 A sit-down testing script. Every capability KaaB ships today, as a numbered
 recipe: the exact command, and the exact result that means it worked.

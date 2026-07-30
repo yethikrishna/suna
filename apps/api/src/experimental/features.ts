@@ -132,7 +132,7 @@ const FEATURES: readonly ExperimentalFeatureDef[] = [
     key: 'acp_runtime',
     name: 'ACP & Multi-Harness',
     description:
-      'Run this project over ACP instead of the OpenCode compatibility transport. ACP is the transport for every harness. WHICH harness a session runs is declared by the project manifest (kortix_version 3 runtime profiles) and gated separately: OpenCode is stable, while Claude Code, Codex, and Pi start only where an operator enabled them.',
+      'NOT READY — do not enable. An unfinished, unreleased runtime transport, kept behind this switch for internal development only. Turning it on can break sessions in this project. Every supported project runs OpenCode over its REST compatibility transport.',
     stability: 'experimental',
     // Always listable, and deliberately NOT gated on KORTIX_ACP_RUNTIME. The
     // env var moves the fleet default; availability decides whether a project

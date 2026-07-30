@@ -214,19 +214,16 @@ describe('buildExperimentalCatalog', () => {
     }
   });
 
-  test('the ACP experiment represents ACP and multi-harness routing', () => {
+  test('the ACP experiment tells the user it is not ready', () => {
     const acp = findCatalogFeature('acp_runtime');
     expect(acp.name).toBe('ACP & Multi-Harness');
+    expect(acp.stability).toBe('experimental');
+    expect(acp.description).toContain('NOT READY');
+    expect(acp.description).toContain('unreleased');
     expect(acp.description).toContain('OpenCode');
-    expect(acp.description).toContain('Claude Code');
-    expect(acp.description).toContain('Codex');
-    expect(acp.description).toContain('Pi');
-  });
-
-  test('the ACP experiment does not itself promise an experimental harness', () => {
-    const acp = findCatalogFeature('acp_runtime');
-    expect(acp.description).toContain('stable');
-    expect(acp.description).toContain('operator');
+    // The copy must never advertise a selectable harness.
+    expect(acp.description).not.toContain('Claude Code');
+    expect(acp.description).not.toContain('Codex');
   });
 
   test('enabling ACP never enables an experimental harness by itself', () => {

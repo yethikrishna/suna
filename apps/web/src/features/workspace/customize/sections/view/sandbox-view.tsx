@@ -20,7 +20,7 @@ import { errorToast, successToast } from '@/components/ui/toast';
 import { Icon } from '@/features/icon/icon';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
-import { useProjectManifestUpgrade } from '@/features/workspace/customize/migrate-to-v2/manifest-version';
+import { useProjectManifestVersion } from '@/features/workspace/customize/migrate-to-v2/manifest-version';
 import CustomizeSectionWrapper from '@/features/workspace/customize/sections/component/section-wrapper';
 import { useSandboxRecovery } from '@/features/workspace/project-sidebar/footer/project-sandbox-alert';
 import {
@@ -456,7 +456,7 @@ function TemplateRow({
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
-  const manifest = useProjectManifestUpgrade(projectId);
+  const { version: manifestVersion } = useProjectManifestVersion(projectId);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const templateId = template.template_id ?? null;
   const requireTemplateId = () => {
@@ -493,7 +493,9 @@ function TemplateRow({
       ? 'platform'
       : template.source === 'ui'
         ? 'UI'
-        : (manifest.manifestFilename ?? 'manifest');
+        : manifestVersion === 2
+          ? 'kortix.yaml'
+          : 'kortix.toml';
   const stateInfo = describeState(template.provider_state || template.daytona_state);
 
   return (
@@ -607,7 +609,7 @@ export function SandboxView({ projectId }: { projectId: string }) {
     queryFn: () => getProject(projectId),
     staleTime: 20_000,
   });
-  const manifest = useProjectManifestUpgrade(projectId);
+  const { version: manifestVersion } = useProjectManifestVersion(projectId);
   const canManage = projectQuery.data?.effective_project_role === 'manager';
 
   const tI18nHardcoded = useTranslations('hardcodedUi');
@@ -712,15 +714,17 @@ export function SandboxView({ projectId }: { projectId: string }) {
               {tI18nHardcoded.raw(
                 'autoComponentsProjectsSandboxSnapshotCardJsxTextAtBootAdd8305ffcd',
               )}{' '}
-              <code className="font-mono">
-                {manifest.isGovernanceFirst ? 'sandbox.templates' : '[[sandbox.templates]]'}
-              </code>
-              {manifest.manifestFilename ? (
+              {manifestVersion === 2 ? (
                 <>
-                  {' in '}
-                  <code className="font-mono">{manifest.manifestFilename}</code>
+                  <code className="font-mono">sandbox.templates</code> in{' '}
+                  <code className="font-mono">kortix.yaml</code>
                 </>
-              ) : null}
+              ) : (
+                <>
+                  <code className="font-mono">[[sandbox.templates]]</code> in{' '}
+                  <code className="font-mono">kortix.toml</code>
+                </>
+              )}
               .
             </p>
 

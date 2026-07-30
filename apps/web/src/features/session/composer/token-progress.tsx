@@ -1,7 +1,7 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
 import { useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 
 import { ProgressRing } from '@/components/ui/progress-ring';
 import { STATUS_TEXT } from '@/components/ui/status';
@@ -28,55 +28,22 @@ interface TokenProgressProps {
   onContextClick?: () => void;
 }
 
-export interface TokenBreakdown {
-  /**
-   * Everything the conversation currently occupies. Equal to the provider's own
-   * `totalTokens`: the SDK's ACP projection reconciles the five components
-   * against it before they reach here (`reportedTokens` in
-   * `packages/sdk/src/core/acp/projection.ts`), so summing them is exact for
-   * every provider — including the ones that bill thinking inside `output`.
-   */
-  total: number;
-  input: number;
-  output: number;
-  /** Thinking. Real spend and real context — shown, never folded away. */
-  reasoning: number;
-  /** Cache reads plus writes. The bulk of a long conversation's occupancy. */
-  cached: number;
-}
-
-const EMPTY_BREAKDOWN: TokenBreakdown = {
-  total: 0,
-  input: 0,
-  output: 0,
-  reasoning: 0,
-  cached: 0,
-};
-
-export function getLastAssistantTokenBreakdown(
-  messages: MessageWithParts[] | undefined,
-): TokenBreakdown {
-  if (!messages) return EMPTY_BREAKDOWN;
+export function getLastAssistantTokenTotal(messages: MessageWithParts[] | undefined): number {
+  if (!messages) return 0;
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
     if (msg.info.role !== 'assistant') continue;
     const t = (msg.info as any).tokens;
     if (!t) continue;
-    const breakdown: TokenBreakdown = {
-      input: t.input ?? 0,
-      output: t.output ?? 0,
-      reasoning: t.reasoning ?? 0,
-      cached: (t.cache?.read ?? 0) + (t.cache?.write ?? 0),
-      total: 0,
-    };
-    breakdown.total = breakdown.input + breakdown.output + breakdown.reasoning + breakdown.cached;
-    if (breakdown.total > 0) return breakdown;
+    const total =
+      (t.input ?? 0) +
+      (t.output ?? 0) +
+      (t.reasoning ?? 0) +
+      (t.cache?.read ?? 0) +
+      (t.cache?.write ?? 0);
+    if (total > 0) return total;
   }
-  return EMPTY_BREAKDOWN;
-}
-
-export function getLastAssistantTokenTotal(messages: MessageWithParts[] | undefined): number {
-  return getLastAssistantTokenBreakdown(messages).total;
+  return 0;
 }
 
 export function getContextLimit(
@@ -92,15 +59,9 @@ export function getContextLimit(
   return 200000;
 }
 
-export function TokenProgress({
-  messages,
-  models,
-  selectedModel,
-  onContextClick,
-}: TokenProgressProps) {
+export function TokenProgress({ messages, models, selectedModel, onContextClick }: TokenProgressProps) {
   const tHardcodedUi = useTranslations('hardcodedUi');
-  const breakdown = useMemo(() => getLastAssistantTokenBreakdown(messages), [messages]);
-  const contextTokens = breakdown.total;
+  const contextTokens = useMemo(() => getLastAssistantTokenTotal(messages), [messages]);
   const contextLimit = useMemo(
     () => getContextLimit(models, selectedModel),
     [models, selectedModel],
@@ -152,25 +113,6 @@ export function TokenProgress({
               {Math.round(ratio * 100)}
               {tHardcodedUi.raw('componentsSessionSessionChatInput.line737JsxTextUsed')}
             </div>
-            {contextTokens > 0 && (
-              <div className="space-y-0.5 border-t border-border/60 pt-1 text-muted-foreground">
-                {(
-                  [
-                    ['Cached', breakdown.cached],
-                    ['Input', breakdown.input],
-                    ['Thinking', breakdown.reasoning],
-                    ['Output', breakdown.output],
-                  ] as const
-                )
-                  .filter(([, value]) => value > 0)
-                  .map(([label, value]) => (
-                    <div key={label} className="flex justify-between gap-3">
-                      <span>{label}</span>
-                      <span className="tabular-nums">{value.toLocaleString()}</span>
-                    </div>
-                  ))}
-              </div>
-            )}
           </div>
         </TooltipContent>
       </Tooltip>

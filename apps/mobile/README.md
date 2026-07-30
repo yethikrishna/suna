@@ -8,23 +8,15 @@
 >
 > ### Why it is stale
 >
-> The platform is moving to **ACP as the single runtime transport**, with
-> `@kortix/sdk` as the only way any host reaches the Kortix API. This app
-> predates both decisions:
+> `@kortix/sdk` is the only way any host may reach the Kortix API. This app
+> predates that rule:
 >
-> - **Zero ACP support.** `grep -rn 'acp\|ACP' apps/mobile/lib apps/mobile/app`
->   returns no matches. Every runtime call here speaks the OpenCode REST API.
 > - **~2,800 LOC of hand-rolled OpenCode REST client** under
 >   `apps/mobile/lib/opencode/`, rather than consuming the SDK.
-> - **Session navigation is keyed on the OpenCode REST session pin**
->   (`apps/mobile/app/projects/[id].tsx`). A managed-ACP session never has one,
->   so those screens cannot resolve a session at all.
 > - It groups models by `providerName`, which is always `"Kortix"` under the
 >   gateway, so its model list disagrees with the web app's.
 >
-> **Consequence: this app does not work against managed-ACP projects**, which are
-> the default for new work. It was not broken by a recent change — it was never
-> migrated.
+> It was not broken by a recent change — it was never migrated.
 >
 > ### What reconsolidation requires
 >

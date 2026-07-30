@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { getClient } from '../../core/runtime/client';
-import { opencodeKeys, useOpenCodeRestReady } from './keys';
+import { opencodeKeys, useOpenCodeRuntimeReady } from './keys';
 import type { Skill, ToolListItem } from './keys';
 import { unwrap } from './shared';
 
@@ -11,7 +11,7 @@ import { unwrap } from './shared';
 // ============================================================================
 
 export function useOpenCodeToolIds() {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   return useQuery<string[]>({
     queryKey: opencodeKeys.toolIds(),
     queryFn: async () => {
@@ -26,7 +26,7 @@ export function useOpenCodeToolIds() {
 }
 
 export function useOpenCodeTools(providerID: string, modelID: string) {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   return useQuery<ToolListItem[]>({
     queryKey: opencodeKeys.tools(providerID, modelID),
     queryFn: async () => {
@@ -45,7 +45,7 @@ export function useOpenCodeTools(providerID: string, modelID: string) {
 // ============================================================================
 
 export function useOpenCodeSkills() {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   return useQuery<Skill[]>({
     queryKey: opencodeKeys.skills(),
     queryFn: async () => {

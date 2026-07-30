@@ -7,7 +7,7 @@ import { markSessionFresh } from '../../core/http/fresh-sessions';
 import { useOpenCodeCompactionStore } from '../../browser/stores/opencode-compaction-store';
 import { useCurrentRuntime } from '../use-current-runtime';
 import type { Session } from '@opencode-ai/sdk/v2/client';
-import { opencodeKeys, useOpenCodeRestReady } from './keys';
+import { opencodeKeys, useOpenCodeRuntimeReady } from './keys';
 import { unwrap, getLSCache, setLSCache, LS_SESSIONS, canQueryOpenCodeSession } from './shared';
 import { NoCompactionModelError } from './no-compaction-model-error';
 import { SESSION_SYNC_PAGE_SIZE } from '../../core/session-sync/session-sync-controller';
@@ -17,7 +17,7 @@ import { SESSION_SYNC_PAGE_SIZE } from '../../core/session-sync/session-sync-con
 // ============================================================================
 
 export function useOpenCodeSessions(enabled = true) {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   // Subscribe to the active runtime sandbox so the query key recomputes the
   // instant the sandbox switches — returning to a warm session hits its cached
   // list rather than refetching from scratch.
@@ -53,7 +53,7 @@ export function useOpenCodeSessions(enabled = true) {
 
 export function useOpenCodeSession(sessionId: string) {
   const queryClient = useQueryClient();
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   const canQuerySession = canQueryOpenCodeSession(sessionId);
   return useQuery<Session>({
     queryKey: opencodeKeys.runtimeSession(sessionId),
@@ -194,7 +194,7 @@ export function useUpdateOpenCodeSession() {
 }
 
 export function useOpenCodeSessionDiff(sessionId: string) {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   const canQuerySession = canQueryOpenCodeSession(sessionId);
   return useQuery({
     queryKey: ['opencode', 'session-diff', sessionId],
@@ -209,7 +209,7 @@ export function useOpenCodeSessionDiff(sessionId: string) {
 }
 
 export function useOpenCodeSessionTodo(sessionId: string) {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   const canQuerySession = canQueryOpenCodeSession(sessionId);
   return useQuery({
     queryKey: ['opencode', 'session-todo', sessionId],

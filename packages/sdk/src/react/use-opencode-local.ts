@@ -282,11 +282,6 @@ export function useOpenCodeLocal({
   const modelStore = useModelStore(flatModels, {
     connectedProviderIds,
     freeTier: providerMode === 'gateway' && !!freeTier,
-    // `flatModels` IS the whole served catalog here (`flattenModels` over the
-    // project's model-picker provider list), so this is the one surface allowed
-    // to purge persisted picks the project no longer offers. Without it a stale
-    // id survives every server-side fix and gets replayed into each new session.
-    reconcileAgainstCatalog: true,
   });
 
   // ---- Model validation: a model is valid only if it's in the flattened list,

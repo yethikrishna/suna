@@ -4,7 +4,7 @@ import type { Agent } from '@opencode-ai/sdk/v2/client';
 import { useQuery } from '@tanstack/react-query';
 import { type ProjectConfigSummary, getProjectDetail } from '../../core/rest/projects-client';
 import { getClient } from '../../core/runtime/client';
-import { opencodeKeys, useOpenCodeRestReady } from './keys';
+import { opencodeKeys, useOpenCodeRuntimeReady } from './keys';
 import { CACHE_SCOPE_GLOBAL, LS_AGENTS, getLSCache, setLSCache, unwrap } from './shared';
 
 /**
@@ -30,23 +30,11 @@ export { useVisibleAgents } from '../use-visible-agents';
  * truth: it returns declarative `kortix.yaml` `agents:` entries for adopted
  * projects and OpenCode file discovery for legacy projects. Without `projectId`,
  * this falls back to the sandbox OpenCode runtime.
- *
- * Pass `enabled: false` when the consumer has no project in scope. The sandbox
- * fallback resolves its runtime from AMBIENT state (`useOpenCodeRestReady`
- * stays true after leaving a session), so a project-less caller would otherwise
- * read the roster of whatever sandbox happens to be connected — global, not
- * session-scoped, and a wasted in-box request on an ACP runtime that serves no
- * OpenCode REST at all.
  */
-export function useOpenCodeAgents(options?: {
-  directory?: string;
-  projectId?: string | null;
-  enabled?: boolean;
-}) {
+export function useOpenCodeAgents(options?: { directory?: string; projectId?: string | null }) {
   const directory = options?.directory;
   const projectId = options?.projectId ?? null;
-  const optedOut = options?.enabled === false;
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   const cacheScope = projectId
     ? `project:${projectId}`
     : directory
@@ -81,7 +69,7 @@ export function useOpenCodeAgents(options?: {
       return agents;
     },
     placeholderData: () => getLSCache<RuntimeAgent[]>(LS_AGENTS, cacheScope),
-    enabled: !optedOut && (projectId ? true : runtimeReady),
+    enabled: projectId ? true : runtimeReady,
     staleTime: projectId ? 30_000 : Number.POSITIVE_INFINITY,
     gcTime: 10 * 60 * 1000,
   });
@@ -119,7 +107,7 @@ function projectConfigAgentToOpenCodeAgent(
 }
 
 export function useOpenCodeAgent(agentName: string) {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   return useQuery<Agent | undefined>({
     queryKey: [...opencodeKeys.agents(), agentName],
     queryFn: async () => {

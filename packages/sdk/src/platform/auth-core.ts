@@ -56,26 +56,12 @@ export const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
 
 /**
  * Long-lived streaming calls reached through the auth fetch injection point.
- * OpenCode REST uses `/global/event`. ACP uses the in-sandbox bridge
- * `/kortix/acp/:acpServerId` and the managed platform endpoint
- * `/projects/:projectId/sessions/:sessionId/acp`. Every one of these callers
- * manages its own abort, timeout, and reconnect lifecycle.
- *
- * The managed endpoint carries BOTH the SSE stream (`GET`) and every JSON-RPC
- * request (`POST`), including `session/prompt`, which stays open for as long as
- * the turn runs. A blanket 30s abort there cut the stream every 30 seconds and
- * failed any turn longer than 30 seconds, while the server still recorded the
- * result. `AcpClient` imposes its own per-method deadline instead
- * (`DEFAULT_REQUEST_TIMEOUT_MS`, and unbounded for `session/prompt`).
- *
- * `/acp/transcript` is a bounded JSON read and deliberately keeps the default
- * timeout — only a path ending in `/acp` is treated as streaming.
+ * OpenCode REST uses `/global/event`. ACP uses `/kortix/acp/:sessionId`.
+ * Both callers manage their own abort and reconnect lifecycle.
  */
 export function isStreamingRequest(input: RequestInfo | URL): boolean {
 	const url = input instanceof Request ? input.url : String(input);
-	if (url.includes('/global/event') || url.includes('/kortix/acp/')) return true;
-	const path = url.split('#')[0].split('?')[0];
-	return path.endsWith('/acp');
+	return url.includes('/global/event') || url.includes('/kortix/acp/');
 }
 
 /**

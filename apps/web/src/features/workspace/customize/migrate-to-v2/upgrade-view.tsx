@@ -29,8 +29,8 @@ import { ArrowUpCircle, CircleCheckBig } from 'lucide-react';
 import { useState } from 'react';
 
 import CustomizeSectionWrapper from '../sections/component/section-wrapper';
-import type { ManifestUpgradeState } from './manifest-version';
-import { useProjectManifestUpgrade } from './manifest-version';
+import type { ManifestVersion } from './manifest-version';
+import { useProjectManifestVersion } from './manifest-version';
 import { type ProjectUpgrade, applicableUpgrades, buildOneOffUpgradePrompt } from './upgrade-defs';
 import { useRunUpgrade } from './use-run-upgrade';
 
@@ -38,13 +38,13 @@ import { useRunUpgrade } from './use-run-upgrade';
  *  renderToStaticMarkup. Local textarea state is fine; the network side
  *  lives in the `UpgradesView` wrapper below. */
 export function UpgradesViewContent({
-  upgrade,
+  version,
   onRun,
   pending,
   canWrite = false,
 }: {
-  /** The server's manifest verdict. `null` = the read hasn't resolved yet. */
-  upgrade: ManifestUpgradeState | null;
+  /** `null` = the manifest read hasn't resolved yet. */
+  version: ManifestVersion | null;
   onRun: (prompt: string) => void;
   pending: boolean;
   /** When false, the Run action buttons are hidden — the upgrade explanation
@@ -52,16 +52,7 @@ export function UpgradesViewContent({
   canWrite?: boolean;
 }) {
   const [oneOff, setOneOff] = useState('');
-  // A null verdict (read in flight) and an unknown version (manifest absent or
-  // unreadable) both render placeholders — neither an upgrade row nor an
-  // "up to date" claim, because neither is a fact yet.
-  const upgrades =
-    upgrade === null || upgrade.version === null
-      ? null
-      : applicableUpgrades({
-          manifestMigrationOffered: upgrade.migrationOffered,
-          manifestTargetVersion: upgrade.targetVersion,
-        });
+  const upgrades = version === null ? null : applicableUpgrades({ manifestVersion: version });
 
   return (
     <CustomizeSectionWrapper
@@ -85,9 +76,9 @@ export function UpgradesViewContent({
           />
         ) : (
           <ul className="space-y-2">
-            {upgrades.map((entry: ProjectUpgrade) => (
+            {upgrades.map((upgrade: ProjectUpgrade) => (
               <li
-                key={entry.id}
+                key={upgrade.id}
                 className="border-kortix-base/30 bg-kortix-base/[0.06] shadow-kortix-base/20 flex items-center gap-3 rounded-md border px-4 py-3 shadow-md transition-colors hover:border-kortix-base/45 hover:bg-kortix-base/[0.09]"
               >
                 <span className="bg-kortix-base/15 ring-kortix-base/25 flex size-9 shrink-0 items-center justify-center rounded-sm ring-1 ring-inset">
@@ -96,14 +87,14 @@ export function UpgradesViewContent({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <p className="text-foreground text-sm font-medium text-balance">
-                      {entry.title}
+                      {upgrade.title}
                     </p>
                     <Badge variant="kortix" size="xs" className="shrink-0">
                       Recommended
                     </Badge>
                   </div>
                   <p className="text-muted-foreground mt-0.5 text-xs text-pretty">
-                    {entry.description}
+                    {upgrade.description}
                   </p>
                 </div>
                 {canWrite ? (
@@ -111,7 +102,7 @@ export function UpgradesViewContent({
                     size="sm"
                     className="shrink-0"
                     disabled={pending}
-                    onClick={() => onRun(entry.prompt)}
+                    onClick={() => onRun(upgrade.prompt)}
                   >
                     {pending ? <Loading className="size-3.5 shrink-0" /> : null}
                     Run
@@ -158,12 +149,12 @@ export function UpgradesViewContent({
 }
 
 export function UpgradesView({ projectId }: { projectId: string }) {
-  const { isLoading, ...upgrade } = useProjectManifestUpgrade(projectId);
+  const { version } = useProjectManifestVersion(projectId);
   const run = useRunUpgrade(projectId);
   const canWrite = useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_WRITE).allowed === true;
   return (
     <UpgradesViewContent
-      upgrade={isLoading ? null : upgrade}
+      version={version}
       onRun={run.start}
       pending={run.pending}
       canWrite={canWrite}

@@ -18,7 +18,7 @@ import {
   MANAGED_FLAGSHIP_MODEL_ID,
   defaultEnabledModelIds,
 } from '@kortix/llm-catalog';
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { safeSetItem } from '../platform/storage/managed-storage';
 import type { FlatModel } from './model-flatten';
 import { createModelLookup } from './model-lookup';
@@ -169,124 +169,6 @@ export function seedGlobalDefaultFromServer(model: ModelKey | undefined): void {
   setStore({ ...s, globalDefault: model });
 }
 
-// ============================================================================
-// Catalog reconciliation — a persisted pick must never outlive the catalog
-// ============================================================================
-
-/**
- * Whether the served catalog OFFERS a model key.
- *
- * `enabled` is the server's own per-project answer (`GET
- * /projects/:id/model-picker`), so `false` means the project does not offer it
- * and the gateway would refuse it. `undefined` means this catalog carries no
- * enablement answer at all, which must read as "no opinion", never as "off".
- */
-function offeredKeys(catalog: FlatModel[]): { served: Set<string>; enabled: Set<string> } {
-  const served = new Set<string>();
-  const enabled = new Set<string>();
-  for (const model of catalog) {
-    const key = `${model.providerID}:${model.modelID}`;
-    served.add(key);
-    if (model.enabled !== false) enabled.add(key);
-  }
-  return { served, enabled };
-}
-
-function sameModelKey(a: ModelKey | undefined, b: ModelKey | undefined): boolean {
-  if (!a || !b) return a === b;
-  return a.providerID === b.providerID && a.modelID === b.modelID;
-}
-
-function pruneModelSlots(
-  slots: Record<string, ModelKey | undefined> | undefined,
-  keep: (model: ModelKey) => boolean,
-): { next: Record<string, ModelKey | undefined> | undefined; changed: boolean } {
-  if (!slots) return { next: slots, changed: false };
-  const next: Record<string, ModelKey | undefined> = {};
-  let changed = false;
-  for (const [slot, model] of Object.entries(slots)) {
-    if (!model || keep(model)) {
-      if (model) next[slot] = model;
-      else changed = true;
-      continue;
-    }
-    changed = true;
-  }
-  return { next, changed };
-}
-
-/**
- * The persisted store with every selection the served catalog no longer offers
- * removed, or `null` when nothing had to change.
- *
- * This is the fix for a stale pick outliving every server-side change: the read
- * chain already SKIPS an invalid id (`isModelValid`), but it never removed one,
- * so `recent[0]` stayed the first thing every newly opened session tried and a
- * dead id survived indefinitely in localStorage.
- *
- * Two grades of "not offered", handled differently on purpose:
- *
- *   - **absent from the catalog** — structurally dead (a renamed or withdrawn
- *     id). Dropped from `recent`, `user`, and every selection slot.
- *   - **served with `enabled: false`** — the project stopped offering it. Its
- *     selection slots and `recent` entry are dropped so it cannot become active,
- *     and a stale `show` pin goes (it loses to the server answer anyway), but a
- *     `hide` pin is KEPT: that is user intent, and it must survive the model
- *     being re-enabled.
- *
- * Returns `null` for an EMPTY catalog. A catalog that has not loaded yet says
- * nothing about what is offered, and purging against it would wipe every
- * preference on a cold start.
- */
-export function reconcilePersistedModels(
-  store: ModelStore,
-  catalog: FlatModel[],
-): ModelStore | null {
-  if (catalog.length === 0) return null;
-  const { served, enabled } = offeredKeys(catalog);
-  const keyOf = (model: ModelKey) => `${model.providerID}:${model.modelID}`;
-  const isOffered = (model: ModelKey) => enabled.has(keyOf(model));
-  const isServed = (model: ModelKey) => served.has(keyOf(model));
-
-  const recent = store.recent.filter(isOffered);
-  const user = store.user.filter((entry) =>
-    entry.visibility === 'hide' ? isServed(entry) : isOffered(entry),
-  );
-  const selected = pruneModelSlots(store.selectedModel, isOffered);
-  const session = pruneModelSlots(store.sessionModel, isOffered);
-  const globalDefault =
-    store.globalDefault && !isOffered(store.globalDefault) ? undefined : store.globalDefault;
-
-  const changed =
-    recent.length !== store.recent.length ||
-    user.length !== store.user.length ||
-    selected.changed ||
-    session.changed ||
-    !sameModelKey(globalDefault, store.globalDefault);
-  if (!changed) return null;
-
-  return {
-    ...store,
-    recent,
-    user,
-    selectedModel: selected.next,
-    sessionModel: session.next,
-    globalDefault,
-  };
-}
-
-/**
- * Apply `reconcilePersistedModels` to the live store. Returns whether anything
- * changed; a no-op never writes, so this is safe to call on every catalog
- * resolution without driving a render loop.
- */
-export function reconcileModelStoreAgainstCatalog(catalog: FlatModel[]): boolean {
-  const next = reconcilePersistedModels(getStore(), catalog);
-  if (!next) return false;
-  setStore(next);
-  return true;
-}
-
 /**
  * Non-hook API to explicitly set the global default model.
  * Use when the user explicitly picks a model as their account default.
@@ -356,22 +238,6 @@ function subProviderOf(modelID: string, explicitProvider?: string): string {
  * their sub-provider being connected) without its display-curation half
  * (the "latest per family" / flagship-only default view) — a model can be
  * fully usable while `isVisible` still hides it by default.
- *
- * THE SERVER IS THE SOURCE OF TRUTH. `FlatModel.enabled` is resolved by
- * `GET /projects/:id/model-picker` over a catalog the API has ALREADY filtered
- * by plan entitlement (`freeManagedOnly` drops every managed model) and by
- * which BYOK providers the project has connected — and the gateway refuses
- * anything it reports as off. When a model carries that flag, it is the whole
- * answer and the client-side derivation below is skipped entirely. Re-deriving
- * entitlement from a locally guessed `freeTier` is what let the composer show
- * "No model connected" and revert a pick the server had already accepted
- * (`PUT /sessions/:id/model` → 200, `applied_live: true`): the client's rule
- * ignores `KORTIX_BILLING_INTERNAL_ENABLED`, so on any deployment with internal
- * billing off (self-host, local dev) it disagreed with the API by construction.
- *
- * `connectedProviderIds`/`freeTier` remain for catalogs that carry NO server
- * answer (`enabled: undefined` — anything but `/model-picker`, e.g. a raw
- * provider list), which must not read as "refuse everything".
  */
 export function hasUsableModel(
   allModels: FlatModel[],
@@ -380,7 +246,6 @@ export function hasUsableModel(
   const connectedProviderIds = opts.connectedProviderIds;
   const freeTier = opts.freeTier ?? false;
   return allModels.some((m) => {
-    if (m.enabled !== undefined) return m.enabled;
     if (m.providerID !== MANAGED_GATEWAY_PROVIDER_ID) {
       // Native/direct provider models: flattenModels only includes models
       // from CONNECTED providers, so presence here already means usable.
@@ -447,27 +312,12 @@ export function useModelStore(
      * keeps its existing meaning (what's actually rendered/iterated).
      */
     catalogModels?: FlatModel[];
-    /**
-     * Drop persisted selections the served catalog no longer offers
-     * (`reconcilePersistedModels`).
-     *
-     * Opt-in, and only for a surface that passes the WHOLE served catalog: a
-     * narrowed list (one provider, a search result) would read as "everything
-     * else is gone" and purge preferences it knows nothing about.
-     */
-    reconcileAgainstCatalog?: boolean;
   },
 ) {
   const store = useSyncExternalStore(subscribe, getStore, getStore);
   const connectedProviderIds = opts?.connectedProviderIds;
   const freeTier = opts?.freeTier ?? false;
   const catalogModels = opts?.catalogModels ?? allModels;
-  const reconcileAgainstCatalog = opts?.reconcileAgainstCatalog ?? false;
-
-  useEffect(() => {
-    if (!reconcileAgainstCatalog) return;
-    reconcileModelStoreAgainstCatalog(catalogModels);
-  }, [reconcileAgainstCatalog, catalogModels]);
 
   // Compute latest set
   const latestSet = useMemo(() => computeLatestSet(catalogModels), [catalogModels]);
@@ -488,18 +338,6 @@ export function useModelStore(
       const key = `${model.providerID}:${model.modelID}`;
       const state = visibilityMap.get(key);
       if (state === 'hide') return false;
-      // SERVER ANSWER FIRST. `/model-picker` stamps `enabled` on every model it
-      // serves, resolved over a catalog the API already narrowed by plan
-      // entitlement and connected BYOK providers, using the SAME
-      // newest-per-family rule this function's curation half re-implements
-      // (`resolveEnablement` → `defaultEnabledFromCatalog` →
-      // `defaultEnabledModelIds`). Reading it here is what keeps every surface
-      // (session picker, command palette, Manage models) and the gateway on one
-      // answer. A server `false` beats a stale `show` pin — the gateway would
-      // refuse the request anyway. Everything below stays for catalogs that
-      // carry no server answer.
-      const served = modelByKey.get(key);
-      if (served?.enabled !== undefined) return served.enabled;
       // Gateway (kortix) models. The catalog is namespaced `<provider>/<model>`,
       // and connection is AUTHORITATIVE — it overrides any stale `show` pin, so a
       // disconnected provider's models disappear (even ones you'd used) and a

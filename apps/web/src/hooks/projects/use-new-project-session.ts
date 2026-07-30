@@ -1,11 +1,16 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
-import { useCallback, useRef } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef } from 'react';
 
 import { errorToast, loadingToast } from '@/components/ui/toast';
 import { resolveCreateFailure } from '@/hooks/projects/new-session-failure';
+import {
+  NEW_SESSION_GUARD_MAX_MS,
+  hasLandedOnNewSession,
+  useNewSessionGuardStore,
+} from '@/hooks/projects/new-session-guard';
 import {
   buildWarmSessionClaimInput,
   resolveWarmSessionForSend,
@@ -45,6 +50,11 @@ import { prefetchSessionStart } from '@kortix/sdk/react';
  *
  * `create` carries create-time overrides (e.g. a chosen `sandbox_slug`)
  * straight to the persist POST.
+ *
+ * Activation is guarded per project by `new-session-guard.ts` and held until the
+ * navigation lands, so hammering the control creates exactly ONE session. Bind
+ * `useIsCreatingProjectSession(projectId)` to the control's `disabled` so the
+ * guard is visible as well as enforced.
  */
 /**
  * Options for a new-session start.
@@ -74,17 +84,39 @@ export function useNewProjectSession(
   resolveWarmSession?: () => Promise<Pick<ProjectSession, 'session_id'> | undefined>,
 ) {
   const router = useRouter();
+  const pathname = usePathname();
   const queryClient = useQueryClient();
-  const creatingRef = useRef(false);
   const { canRun, isLoading: billingLoading, accountId } = useProjectCanRun(projectId);
   const openUpgradeDialog = useUpgradeDialogStore((state) => state.openUpgradeDialog);
   const openConnectorGate = useConnectorGateStore((state) => state.openConnectorGate);
   // A ref so the connect-to-start gate's `retry` re-invokes the LATEST create fn.
   const startRef = useRef<(opts?: NewProjectSessionOpts) => void>(() => {});
+  // The guard is module state, not a ref: the project shell mounts this hook
+  // three times (sidebar button, shell shortcuts, command palette) and all of
+  // them must share ONE in-flight claim. See new-session-guard.ts.
+  const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const release = useCallback(() => {
+    if (releaseTimerRef.current) {
+      clearTimeout(releaseTimerRef.current);
+      releaseTimerRef.current = null;
+    }
+    if (projectId) useNewSessionGuardStore.getState().settle(projectId);
+  }, [projectId]);
+
+  // Hold the claim until the navigation LANDS. Releasing when the create POST
+  // resolves (~130ms) is what let 10 rapid clicks mint 8 sessions.
+  const pendingMap = useNewSessionGuardStore((state) => state.pending);
+  useEffect(() => {
+    if (!projectId) return;
+    if (hasLandedOnNewSession(pendingMap, projectId, pathname)) release();
+  }, [pendingMap, projectId, pathname, release]);
+  useEffect(() => () => {
+    if (releaseTimerRef.current) clearTimeout(releaseTimerRef.current);
+  }, []);
 
   const startSession = useCallback(
     (opts?: NewProjectSessionOpts) => {
-      if (!projectId || creatingRef.current) {
+      if (!projectId) {
         opts?.onError?.();
         return;
       }
@@ -100,7 +132,13 @@ export function useNewProjectSession(
         return;
       }
 
-      creatingRef.current = true;
+      // ONE claim per project. A second activation while the first create is
+      // still settling is a no-op, not a second session.
+      if (!useNewSessionGuardStore.getState().begin(projectId)) {
+        opts?.onError?.();
+        return;
+      }
+      releaseTimerRef.current = setTimeout(release, NEW_SESSION_GUARD_MAX_MS);
 
       const createNormalSession = async () => {
         const sessionId = crypto.randomUUID();
@@ -148,6 +186,9 @@ export function useNewProjectSession(
 
       claimOrCreate()
         .then((sessionId) => {
+          // Keep the claim engaged through the navigation: the effect above
+          // releases it once the browser is actually showing this session.
+          useNewSessionGuardStore.getState().target(projectId, sessionId);
           // The row exists — kick provisioning so it overlaps the navigation.
           prefetchSessionStart(queryClient, projectId, sessionId);
           queryClient.invalidateQueries({ queryKey: ['project-sessions', projectId] });
@@ -176,10 +217,10 @@ export function useNewProjectSession(
             errorToast(err instanceof Error ? err.message : 'Failed to start session');
           }
           // 'silent': the global 429 handler already surfaced the session cap.
+          // No navigation happened, so release the claim now — the user stays
+          // where they are and must be able to try again immediately.
+          release();
           opts?.onError?.();
-        })
-        .finally(() => {
-          creatingRef.current = false;
         });
     },
     [
@@ -193,6 +234,7 @@ export function useNewProjectSession(
       openConnectorGate,
       warmSession,
       resolveWarmSession,
+      release,
     ],
   );
   startRef.current = startSession;

@@ -1,7 +1,6 @@
 "use client";
 
 import { SquareKanban, X } from "lucide-react";
-import { useParams } from "next/navigation";
 import { SessionChat } from "@/features/session/session-chat";
 import {
 	Dialog,
@@ -23,12 +22,6 @@ export function SubSessionModal({
 	sessionId,
 	title,
 }: SubSessionModalProps) {
-	// Every caller is a tool renderer deep inside a project session route, and
-	// none of them carries the project id. Read it from the route instead of
-	// threading a prop through six call sites: without it the inner SessionChat's
-	// agent roster falls back to the AMBIENT sandbox `GET /agent`, which a managed
-	// ACP runtime does not serve.
-	const routeParams = useParams<{ id?: string }>();
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent
@@ -64,7 +57,6 @@ export function SubSessionModal({
 				<div className="flex-1 min-h-0 overflow-hidden">
 			<SessionChat
 					sessionId={sessionId}
-					projectId={routeParams?.id}
 					hideHeader
 					readOnly
 					initialScrollTop

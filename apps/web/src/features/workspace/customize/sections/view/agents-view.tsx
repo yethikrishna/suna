@@ -15,10 +15,9 @@ import { AgentHarnessIcon } from '@/features/session/composer/agent-harness-icon
 import { ModelSelector } from '@/features/session/model-selector';
 import { flattenModels } from '@/features/session/session-chat-input';
 import {
-  type ManifestUpgradeState,
-  manifestScopeLabel,
-  manifestUpgradeState,
-  useProjectManifestUpgrade,
+  detectManifestVersion,
+  type ManifestVersion,
+  useProjectManifestVersion,
 } from '@/features/workspace/customize/migrate-to-v2/manifest-version';
 import { ConfigEntityView } from '@/features/workspace/customize/sections/component/config-entity-view';
 import { AgentConfigEditor } from '@/features/workspace/customize/sections/view/agent-editor';
@@ -66,7 +65,7 @@ export function AgentsView({ projectId }: { projectId: string }) {
       )}
       renderTriggerLabel={(agent) => (
         <span className="flex min-w-0 items-center gap-2">
-          <AgentHarnessIcon harness={agent.harness} />
+          <AgentHarnessIcon projectId={projectId} harness={agent.harness} />
           <span className="truncate">{agent.name}</span>
         </span>
       )}
@@ -86,13 +85,21 @@ export function AgentsView({ projectId }: { projectId: string }) {
       renderDetailTitle={(agent) => agent.name}
       renderDetailMeta={(agent, config) => (
         <>
-          <AgentHarnessIcon harness={agent.harness} />
+          <AgentHarnessIcon projectId={projectId} harness={agent.harness} />
           {agent.mode ? (
             <Badge variant="outline" size="sm" className="text-muted-foreground font-medium">
               {formatMode(agent.mode)}
             </Badge>
           ) : null}
-          {agent.source ? <AgentSourceBadge source={agent.source} config={config} /> : null}
+          {agent.source ? (
+            <Badge variant="outline" size="sm" className="text-muted-foreground font-mono">
+              {agent.source === 'opencode'
+                ? 'OpenCode'
+                : detectManifestVersion(config.manifest_raw) === 2
+                  ? 'kortix.yaml'
+                  : 'kortix.toml'}
+            </Badge>
+          ) : null}
           {config.open_code_default_agent === agent.name ? (
             <Badge variant="outline" size="sm" className="text-muted-foreground gap-1 font-medium">
               <StarSolid className="text-kortix-orange size-3.5 shrink-0" />
@@ -136,7 +143,7 @@ function DefaultAgentSelector({
   canWrite: boolean;
 }) {
   const queryClient = useQueryClient();
-  const isV2 = manifestUpgradeState(config).isGovernanceFirst;
+  const isV2 = detectManifestVersion(config.manifest_raw) === 2;
   const availableAgents = toArray(config.agents).filter((agent) => agent.enabled !== false);
   const current = config.open_code_default_agent;
   const mutation = useMutation({
@@ -175,7 +182,7 @@ function DefaultAgentSelector({
             {availableAgents.map((agent) => (
               <SelectItem key={agent.name} value={agent.name}>
                 <span className="flex min-w-0 items-center gap-2">
-                  <AgentHarnessIcon harness={agent.harness} />
+                  <AgentHarnessIcon projectId={projectId} harness={agent.harness} />
                   <span className="truncate">{agent.name}</span>
                 </span>
               </SelectItem>
@@ -374,7 +381,7 @@ function AgentScopeCard({
   scope: NonNullable<Agent['scope']>;
 }) {
   const queryClient = useQueryClient();
-  const manifest = useProjectManifestUpgrade(projectId);
+  const { version: manifestVersion } = useProjectManifestVersion(projectId);
   const accessQuery = useQuery({
     queryKey: ['project-access', projectId],
     queryFn: () => listProjectAccess(projectId),
@@ -434,7 +441,7 @@ function AgentScopeCard({
   if (!canManage) {
     return (
       <div className="border-border/60 bg-muted/20 space-y-2.5 rounded-lg border p-4">
-        <ScopeHeader manifest={manifest} />
+        <ScopeHeader manifestVersion={manifestVersion} />
         <ScopeRow label="Secrets" value={scope.env} />
         <ScopeRow label="Connectors" value={scope.connectors} />
         <ScopeRow label="CLI" value={scope.kortix_cli} />
@@ -449,7 +456,7 @@ function AgentScopeCard({
 
   return (
     <div className="border-border/60 bg-muted/20 space-y-4 rounded-lg border p-4">
-      <ScopeHeader manifest={manifest} />
+      <ScopeHeader manifestVersion={manifestVersion} />
       <ScopeEditor
         key={`env-${editorNonce}`}
         label="Secrets"
@@ -471,13 +478,9 @@ function AgentScopeCard({
       <ScopeRow label="CLI" value={scope.kortix_cli} />
       <div className="border-border/50 flex items-center justify-between gap-3 border-t pt-3">
         <p className="text-muted-foreground/60 text-[11px] leading-relaxed">
-          Members assigned to this agent inherit exactly these secrets &amp; connectors.
-          {manifest.manifestFilename ? (
-            <>
-              {' Saved to '}
-              <span className="font-mono">{manifest.manifestFilename}</span>.
-            </>
-          ) : null}
+          Members assigned to this agent inherit exactly these secrets &amp; connectors. Saved to{' '}
+          <span className="font-mono">{manifestVersion === 2 ? 'kortix.yaml' : 'kortix.toml'}</span>
+          .
         </p>
         <div className="flex shrink-0 items-center gap-2">
           {dirty && (
@@ -510,48 +513,15 @@ function AgentScopeCard({
   );
 }
 
-/** The badge names the manifest file the SERVER read and its agent-declaration
- *  shape. It renders no badge at all when the version is unknown — claiming
- *  `kortix.toml [[agents]]` for an unread manifest was the same wrong default
- *  that produced the false v1 upgrade prompt. */
-function ScopeHeader({ manifest }: { manifest: ManifestUpgradeState }) {
-  const label = manifestScopeLabel(manifest);
+function ScopeHeader({ manifestVersion }: { manifestVersion: ManifestVersion | null }) {
   return (
     <div className="flex items-center gap-2">
       <ShieldCheck className="text-muted-foreground/70 size-3.5 shrink-0" />
       <span className="text-foreground/80 text-xs font-medium">Access scope</span>
-      {label ? (
-        <Badge variant="muted" size="xs" className="font-mono">
-          {label}
-        </Badge>
-      ) : null}
-    </div>
-  );
-}
-
-/** Where this agent is declared. `kortix.toml`/`kortix.yaml` comes from the
- *  server's manifest verdict — never inferred from the raw manifest text — and
- *  the badge is omitted entirely when the server could not read it. */
-function AgentSourceBadge({
-  source,
-  config,
-}: {
-  source: NonNullable<Agent['source']>;
-  config: ProjectConfigSummary;
-}) {
-  if (source === 'opencode') {
-    return (
-      <Badge variant="outline" size="sm" className="text-muted-foreground font-mono">
-        OpenCode
+      <Badge variant="muted" size="xs" className="font-mono">
+        {manifestVersion === 2 ? 'kortix.yaml agents:' : 'kortix.toml [[agents]]'}
       </Badge>
-    );
-  }
-  const filename = manifestUpgradeState(config).manifestFilename;
-  if (!filename) return null;
-  return (
-    <Badge variant="outline" size="sm" className="text-muted-foreground font-mono">
-      {filename}
-    </Badge>
+    </div>
   );
 }
 

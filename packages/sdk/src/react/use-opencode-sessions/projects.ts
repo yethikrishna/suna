@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getClient } from '../../core/runtime/client';
 import type { Project, Path as PathInfo } from '@opencode-ai/sdk/v2/client';
-import { opencodeKeys, useOpenCodeRestReady } from './keys';
+import { opencodeKeys, useOpenCodeRuntimeReady } from './keys';
 import { unwrap } from './shared';
 
 // ============================================================================
@@ -11,7 +11,7 @@ import { unwrap } from './shared';
 // ============================================================================
 
 export function useOpenCodeProjects() {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   return useQuery<Project[]>({
     queryKey: opencodeKeys.projects(),
     queryFn: async () => {
@@ -26,7 +26,7 @@ export function useOpenCodeProjects() {
 }
 
 export function useOpenCodeCurrentProject() {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   return useQuery<Project>({
     queryKey: opencodeKeys.currentProject(),
     queryFn: async () => {
@@ -45,7 +45,7 @@ export function useOpenCodeCurrentProject() {
 // ============================================================================
 
 export function useOpenCodePathInfo() {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   return useQuery<PathInfo>({
     queryKey: opencodeKeys.pathInfo(),
     queryFn: async () => {

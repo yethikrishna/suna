@@ -3,7 +3,7 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { getClient } from '../../core/runtime/client';
 import type { Command } from '@opencode-ai/sdk/v2/client';
-import { opencodeKeys, useOpenCodeRestReady } from './keys';
+import { opencodeKeys, useOpenCodeRuntimeReady } from './keys';
 import { unwrap, getLSCache, setLSCache, LS_COMMANDS } from './shared';
 
 // ============================================================================
@@ -11,7 +11,7 @@ import { unwrap, getLSCache, setLSCache, LS_COMMANDS } from './shared';
 // ============================================================================
 
 export function useOpenCodeCommands() {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   return useQuery<Command[]>({
     queryKey: opencodeKeys.commands(),
     queryFn: async () => {

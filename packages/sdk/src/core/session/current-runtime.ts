@@ -22,16 +22,6 @@ export interface CurrentRuntimeState {
    *  scoped APIs like per-sandbox API keys that key on the DB row, not the
    *  external id (which the backend would mistake for the primary key). */
   dbSandboxId: string | null;
-  /**
-   * Whether the bound sandbox serves an OpenCode REST API. `false` for a managed
-   * ACP session, whose daemon never starts the compatibility server — so
-   * `/command`, `/session`, `/project/current`, `/global/config`, `/agent`, and
-   * `/skill` will never answer, no matter how long a client waits or retries.
-   *
-   * Defaults to `true`: OpenCode REST is the legacy runtime, so a caller that
-   * does not know the transport keeps the behaviour it has always had.
-   */
-  servesOpenCodeRest: boolean;
   version: number;
 }
 
@@ -39,7 +29,6 @@ let state: CurrentRuntimeState = {
   url: null,
   sandboxId: null,
   dbSandboxId: null,
-  servesOpenCodeRest: true,
   version: 0,
 };
 
@@ -67,17 +56,10 @@ export function setCurrentRuntime(
   url: string | null,
   sandboxId: string | null = null,
   dbSandboxId: string | null = null,
-  options?: { servesOpenCodeRest?: boolean },
 ): void {
-  const servesOpenCodeRest = options?.servesOpenCodeRest ?? true;
-  if (
-    state.url === url &&
-    state.sandboxId === sandboxId &&
-    state.dbSandboxId === dbSandboxId &&
-    state.servesOpenCodeRest === servesOpenCodeRest
-  )
+  if (state.url === url && state.sandboxId === sandboxId && state.dbSandboxId === dbSandboxId)
     return;
-  state = { url, sandboxId, dbSandboxId, servesOpenCodeRest, version: state.version + 1 };
+  state = { url, sandboxId, dbSandboxId, version: state.version + 1 };
   for (const listener of listeners) listener();
 }
 
@@ -94,13 +76,4 @@ export function getCurrentRuntimeSandboxId(): string | null {
 /** Read the current runtime DB sandbox id (platform `sandbox_id`) outside React. */
 export function getCurrentRuntimeDbSandboxId(): string | null {
   return state.dbSandboxId;
-}
-
-/**
- * Whether the bound runtime serves OpenCode REST — the non-React guard for any
- * imperative OpenCode REST call. `getClient()` only proves a URL is pinned; it
- * cannot prove anything answers on the other side.
- */
-export function runtimeServesOpenCodeRest(): boolean {
-  return state.servesOpenCodeRest;
 }

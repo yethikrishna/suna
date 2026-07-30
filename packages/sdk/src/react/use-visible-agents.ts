@@ -32,15 +32,10 @@ function hideProjectOnly(a: RuntimeAgent): boolean {
  * Pass `projectId` for a SERVER-SIDE fetch (the project config is source of
  * truth, works before any sandbox runtime exists) — preferred for selectors.
  * Pass `directory` to scope the sandbox-runtime fetch to a project instead.
- * Pass `enabled: false` when neither is in scope: the sandbox fallback resolves
- * its runtime from AMBIENT state, so a project-less caller otherwise reads the
- * roster of whatever sandbox happens to be connected — and an ACP runtime serves
- * no `GET /agent` at all. Forwarded verbatim to `useOpenCodeAgents`.
  */
 export function useVisibleAgents(options?: {
   directory?: string;
   projectId?: string | null;
-  enabled?: boolean;
 }): RuntimeAgent[] {
   const { data: agents = [] } = useOpenCodeAgents(options);
   return useMemo(
@@ -56,7 +51,6 @@ export function useVisibleAgents(options?: {
 export function useAllVisibleAgents(options?: {
   directory?: string;
   projectId?: string | null;
-  enabled?: boolean;
 }): RuntimeAgent[] {
   const { data: agents = [] } = useOpenCodeAgents(options);
   return useMemo(() => agents.filter((a) => !a.hidden && !hideProjectOnly(a)), [agents]);

@@ -16,7 +16,6 @@ export * from './change-requests';
 export * from './sessions';
 export * from './triggers';
 export * from './session-sandbox';
-export * from './session-acp-identity';
 export * from './model-defaults';
 export * from './model-enablement';
 export * from './agent-scope';
@@ -49,3 +48,4 @@ export type {
   ProjectGitConnection,
   ProjectFileEntry,
 } from './shared';
+export * from './session-acp-identity';

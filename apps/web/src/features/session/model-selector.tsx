@@ -37,7 +37,7 @@ import { getProjectDetail } from '@kortix/sdk';
 import type { ProviderListResponse } from '@kortix/sdk/react';
 import { useQuery } from '@tanstack/react-query';
 import { resolveAvailableSelectedModel } from './model-availability';
-import { pickerGroupId, pickerGroupLabel, pickerRowSubtitle } from './model-grouping';
+import { pickerGroupId, pickerGroupLabel } from './model-grouping';
 import { shouldShowFreeTag } from './model-tags';
 import type { FlatModel } from './session-chat-input';
 import { useModelConnectionGate } from './use-model-connection-gate';
@@ -374,16 +374,12 @@ export function ModelSelector({
                           availableSelectedModel?.modelID === model.modelID;
 
                         const isFree = shouldShowFreeTag(model);
-                        const displayModelID = pickerRowSubtitle(group.providerID, model);
-                        // The row's own brand mark. `provider` is the REAL
-                        // upstream ('deepseek', 'anthropic', …) and is a BRAND
-                        // field only — `pickerGroupId` deliberately ignores it
-                        // for managed models so they stay one "Kortix" group.
-                        // Rendering it here is what keeps a managed model's
-                        // brand legible without letting it fracture the group:
-                        // the Kortix section reads as Kortix, and DeepSeek V4
-                        // Flash still shows the DeepSeek mark inside it.
-                        const rowBrandID = model.provider ?? group.providerID;
+                        // Under a BYOK provider group the `<provider>/` prefix is
+                        // redundant — show just the bare model id.
+                        const displayModelID =
+                          group.providerID !== model.providerID && model.modelID.includes('/')
+                            ? model.modelID.slice(model.modelID.indexOf('/') + 1)
+                            : model.modelID;
 
                         return (
                           <CommandItem
@@ -392,12 +388,6 @@ export function ModelSelector({
                             className={cn('!pl-3', isSelected && 'bg-foreground/[0.06]')}
                             onSelect={() => handleSelect(model)}
                           >
-                            <ProviderLogo
-                              providerID={rowBrandID}
-                              name={model.modelName}
-                              size="small"
-                              className="size-5 rounded-sm"
-                            />
                             <div className="min-w-0 flex-1 py-0.5">
                               <div
                                 className={cn(

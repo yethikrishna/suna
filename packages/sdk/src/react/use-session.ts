@@ -20,9 +20,8 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { resolveSessionCommands } from '../core/acp/available-commands';
 import { getClient, RuntimeNotReadyError } from '../core/runtime/client';
 import {
   commitSessionRewind,
@@ -56,12 +55,11 @@ import { formatOpenCodeRuntimeError } from '../core/http/opencode-errors';
 import { extractGatewayErrorDetails } from '../core/turns/errors';
 import { useCanonicalOpenCodeSession } from './use-canonical-opencode-session';
 import { useAcpSessionRuntime } from './use-acp-session-runtime';
-import { isSessionRuntimeActionReady, resolveSessionMountId } from './session-runtime-identity';
+import { isSessionRuntimeActionReady } from './session-runtime-identity';
 import { resolveSessionBusy } from './session-busy';
 import { useOpenCodeEventStream } from './use-opencode-events';
 import type { ModelKey } from './use-model-store';
 import { formatModelString } from './use-opencode-local';
-import { useModelDefaults } from './use-model-defaults';
 import { useProjectConfig } from './use-project-config';
 import { useProjectModels } from './use-project-models';
 import { usePermissionSelfHeal } from './use-permission-self-heal';
@@ -82,7 +80,6 @@ import {
   replyToQuestion,
   useAbortOpenCodeSession,
   useExecuteOpenCodeCommand,
-  useOpenCodeCommands,
   useSendOpenCodeMessage,
   type PromptPart,
 } from './use-opencode-sessions';
@@ -438,11 +435,9 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
   const runtimePolicy = createSessionRuntimePolicy(
     startData?.runtime_transport,
     runtimeTransportOverride,
-    { acpServerId: startData?.acp_server_id ?? null },
   );
   const runtimeTransport = runtimePolicy.transport;
   const usesAcp = runtimePolicy.useAcp;
-  const servesOpenCodeRest = runtimePolicy.servesOpenCodeRest;
 
   // 2. Point the SDK's runtime at this session's sandbox once ready. Track WHICH
   // sandbox we switched to (not a bare bool) so navigating between sessions (this
@@ -452,26 +447,18 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
   // separate per-session client to keep in sync.
   const [switchedSandboxId, setSwitchedSandboxId] = useState<string | null>(null);
   useEffect(() => {
-    if (!startReady || !sandbox?.external_id) return;
+    if (!startReady || !sandbox?.external_id || switchedSandboxId === sandbox.sandbox_id) return;
     // Point the app's runtime at THIS session's box — no global "switch", just set
     // the current runtime url. Every read (getClient, the SSE stream, files/
     // terminal/git) resolves through it. `stage==='ready'` is server-proven, so the
     // health effect below seeds connected+healthy with no client poll.
-    //
-    // Bind the OpenCode REST capability WITH the url, in the same write: every
-    // OpenCode REST hook wakes on the url, so two writes would leave a gap in
-    // which they all fire one in-box request against a managed ACP box. Called
-    // unconditionally rather than behind the `switchedSandboxId` guard so a
-    // capability that resolves after the first ready poll still corrects itself
-    // — `setCurrentRuntime` is a no-op when nothing moved.
     setCurrentRuntime(
       getSandboxUrlForExternalId(sandbox.external_id),
       sandbox.external_id,
       sandbox.sandbox_id,
-      { servesOpenCodeRest },
     );
-    if (switchedSandboxId !== sandbox.sandbox_id) setSwitchedSandboxId(sandbox.sandbox_id);
-  }, [startReady, sandbox, switchedSandboxId, servesOpenCodeRest]);
+    setSwitchedSandboxId(sandbox.sandbox_id);
+  }, [startReady, sandbox, switchedSandboxId]);
   // Clear the current runtime when this session view unmounts.
   useEffect(() => () => setCurrentRuntime(null), []);
 
@@ -506,37 +493,6 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
   const { rootSessionId } = canonicalSession;
   const ocSessionId = rootSessionId ?? '';
   const runtimeUrl = sandbox?.external_id ? getSandboxUrlForExternalId(sandbox.external_id) : null;
-  // `/start` is the ONE authority on this session's harness-native ACP id, and
-  // the cached copy goes stale the moment this browser mints one: the mint is a
-  // runtime call, so nothing refreshes `/start`. Any later ACP controller then
-  // reads "no harness session yet" and mints ANOTHER conversation, which the
-  // platform rejects with a 409 and the controller adopts — one leaked harness
-  // conversation per mount. Correct the cache the instant the platform settles
-  // the id (or re-read it when a conflict proves the cache is behind), so every
-  // subsequent controller does `session/load` and never `session/new`.
-  const applyAcpIdentity = useCallback(
-    (acpSessionId: string | null) => {
-      const key = sessionStartKey(projectId, sessionId);
-      if (!acpSessionId) {
-        void queryClient.invalidateQueries({ queryKey: key });
-        return;
-      }
-      queryClient.setQueryData<SessionStartResult | null>(key, (previous) =>
-        !previous || previous.acp_session_id === acpSessionId
-          ? previous
-          : { ...previous, acp_session_id: acpSessionId },
-      );
-    },
-    [queryClient, projectId, sessionId],
-  );
-  // The server-resolved default (project -> account -> platform), as the wire id
-  // the harness would be asked to select. Used ONLY to recover from a model the
-  // harness rejects, so nothing here can hardcode a model id.
-  const modelDefaults = useModelDefaults(projectId);
-  const serverDefaultModel = useMemo(() => {
-    const key = modelDefaults.resolveDefaultFor(undefined);
-    return key ? formatModelString(key) : null;
-  }, [modelDefaults.resolveDefaultFor]);
   const acpRuntime = useAcpSessionRuntime({
     projectId,
     runtimeUrl,
@@ -546,8 +502,6 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     runtimeHarness: startData?.runtime_harness ?? null,
     nativeAgent: startData?.native_agent ?? null,
     legacySessionId: rootSessionId,
-    onAcpIdentitySettled: applyAcpIdentity,
-    serverDefaultModel,
     enabled: enabled && switched && usesAcp,
   });
   const acpSessionTitle = readAcpSessionTitle(acpRuntime.projection.sessionInfo);
@@ -663,32 +617,12 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     usesAcp,
     opencodeSessionId: rootSessionId,
   });
-  const chatSessionId = resolveSessionMountId({
-    usesAcp,
-    sessionId,
-    opencodeSessionId: rootSessionId ?? null,
-  });
 
   // 7. Server-side capabilities + per-session picks (all pre-runtime — no sandbox).
   const models = useProjectModels(projectId);
   const agents = useVisibleAgents({ projectId });
   const config = useProjectConfig(projectId);
   const picks = useSessionPicks(sessionId);
-
-  // Slash commands, resolved from whichever runtime actually serves them. The
-  // REST list self-disables on a runtime that serves no OpenCode REST (see
-  // `useOpenCodeRestReady`), so this issues NO in-box request on managed ACP;
-  // the list comes off the ACP `available_commands_update` projection instead.
-  const restCommands = useOpenCodeCommands();
-  const runtimeCommands = useMemo(
-    () =>
-      resolveSessionCommands({
-        servesOpenCodeRest,
-        rest: restCommands.data,
-        advertised: acpRuntime.projection.availableCommands,
-      }),
-    [servesOpenCodeRest, restCommands.data, acpRuntime.projection.availableCommands],
-  );
 
   // 8. Mutations.
   const sendMutation = useSendOpenCodeMessage();
@@ -942,16 +876,6 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     sessionId,
     /** Canonical OpenCode root id, or null while resolving. */
     opencodeSessionId: rootSessionId ?? null,
-    /**
-     * The id a host mounts its chat surface on, or null until the runtime has an
-     * identity. REST → the server-owned OpenCode session pin; managed ACP → the
-     * durable Kortix session id, because ACP never mints an OpenCode pin.
-     *
-     * Read this instead of deriving a mount id from `opencodeSessionId`: that
-     * derivation is transport-dependent, and a host that makes it renders an
-     * empty shell for the whole life of every ACP session.
-     */
-    chatSessionId,
     /** Server-selected SDK client transport. */
     runtimeTransport,
     /** Runtime sessions available for legacy deep-link selection.
@@ -960,15 +884,6 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     runtimeSessionsLoading: canonicalSession.isLoading,
     runtimeSessionsListed: canonicalSession.listed,
     runtimeError: runtimeSessionError,
-    /**
-     * A model this session could not select, and what runs instead — or null.
-     *
-     * NON-FATAL and deliberately separate from `runtimeError`: an unresolvable
-     * model leaves the session open and the composer usable, so a host renders
-     * this inline. Routing it through `runtimeError` is what replaced the whole
-     * chat surface with a full-page "OpenCode failed to load" card.
-     */
-    modelNotice: usesAcp ? acpRuntime.modelNotice : null,
 
     // live data
     messages,
@@ -1026,19 +941,7 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     models,
     agents,
     defaultAgent: config?.default_agent ?? config?.open_code_default_agent ?? null,
-    /** Commands DECLARED in the project repo (name/path/description). */
     commands: config?.commands ?? [],
-    /**
-     * Slash commands this session's runtime actually offers, in the published
-     * `Command` shape a composer palette renders.
-     *
-     * Transport-resolved and therefore the only correct source for a live
-     * session: OpenCode REST `GET /command` for a REST runtime, the ACP
-     * `available_commands_update` projection for a managed ACP runtime, which
-     * serves no OpenCode REST at all. A host that calls `useOpenCodeCommands`
-     * directly gets an empty list on every ACP session.
-     */
-    runtimeCommands,
     picks,
 
     // actions

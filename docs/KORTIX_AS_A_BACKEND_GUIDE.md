@@ -1,10 +1,9 @@
 # Drive Kortix as a Backend
 
 > **Runtime scope.** The public `opencode_model` name remains unchanged for
-> compatibility. In a v3 project, `agent_name` selects an immutable OpenCode,
-> Claude Code, Codex, or Pi runtime profile. The framework-free
-> `session.stream()` and `session.send()` examples below use OpenCode REST.
-> Use `useSession()` or `createAcpSessionController()` for ACP.
+> compatibility. Every session runs OpenCode over its REST compatibility
+> interface. Prefer `useSession()` in React over the framework-free
+> `session.stream()` / `session.send()` examples below.
 
 Wrap **one** Kortix agent + repo as the backend for **many** of your end-users.
 Your product holds a single Kortix credential; each session you start on behalf
@@ -387,8 +386,7 @@ If you need structured per-user context inside the run as well, put it in
 
 ## 4. Stream the answer
 
-This example uses the OpenCode REST compatibility path. It does not select the
-server-owned ACP transport.
+This example uses the OpenCode REST compatibility path.
 
 ```ts
 const s = kortix.session(projectId, session.session_id);

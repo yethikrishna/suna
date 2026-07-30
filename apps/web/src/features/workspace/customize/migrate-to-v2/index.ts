@@ -1,10 +1,9 @@
 export { MIGRATE_TO_V2_PROMPT } from './migration-prompt';
 export {
-  manifestScopeLabel,
-  manifestUpgradeState,
-  useProjectManifestUpgrade,
-  type ManifestUpgradeState,
-  type ProjectManifestUpgrade,
+  detectManifestVersion,
+  useProjectManifestVersion,
+  type ManifestVersion,
+  type ProjectManifestVersionState,
 } from './manifest-version';
 export { useMigrateToV2, buildMigrateToV2Stash, type MigrateToV2 } from './use-migrate-to-v2';
 export { useRunUpgrade, buildUpgradeStash, type RunUpgrade } from './use-run-upgrade';

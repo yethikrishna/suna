@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getClient } from '../../core/runtime/client';
 import { useKortixRouteProjectId } from '../route-project';
-import { opencodeKeys, useOpenCodeRestReady } from './keys';
+import { opencodeKeys, useOpenCodeRuntimeReady } from './keys';
 import type { ProviderListResponse } from './keys';
 import { unwrap, getLSCache, setLSCache, LS_PROVIDERS, CACHE_SCOPE_GLOBAL } from './shared';
 import {
@@ -30,7 +30,7 @@ import { shouldLoadProjectModelPicker } from './provider-load-plan';
 export { GATEWAY_PROVIDER_IDS };
 
 export function useOpenCodeProviders() {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   const projectId = useKortixRouteProjectId();
   const projectDetailQuery = useQuery({
     queryKey: ['project-detail', projectId],

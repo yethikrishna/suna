@@ -15,7 +15,6 @@ import {
   deriveSubdomainOpts,
   getActiveOpenCodeUrl,
 } from '../browser/stores/server-store';
-import { runtimeServesOpenCodeRest } from '../core/session/current-runtime';
 import type { SubdomainUrlOptions } from '../core/session/url';
 import {
   buildStaticFileHealthPreviewUrl,
@@ -23,7 +22,7 @@ import {
   hasPreviewTarget,
 } from '../core/session/url';
 import { useCurrentRuntime } from './use-current-runtime';
-import { opencodeKeys, useOpenCodeRestReady } from './use-opencode-sessions/keys';
+import { opencodeKeys, useOpenCodeRuntimeReady } from './use-opencode-sessions/keys';
 
 interface RuntimeResult<T> {
   data?: T;
@@ -41,30 +40,11 @@ function unwrapRuntimeResult<T>(result: RuntimeResult<T>): T {
   return result.data as T;
 }
 
-/**
- * Reject an imperative OpenCode REST read on a runtime that serves none.
- *
- * `getClient()` only proves a runtime URL is pinned; it cannot prove anything
- * answers on the other side. A managed ACP sandbox is healthy and pinned and
- * still answers `/project/current`, `/path`, and `/global/config` with an
- * error — forever, because its daemon never starts the compatibility server.
- * Rejecting here keeps the failure shape callers already handle (a rejected
- * promise) while sending no request at all. `async` on each caller below is
- * load-bearing: a synchronous throw from a function typed `Promise<T>` escapes
- * `.then(...)`/`.catch(...)` chains, so it must surface as a rejection.
- */
-function requireOpenCodeRest(): void {
-  if (runtimeServesOpenCodeRest()) return;
-  throw new Error('This session runtime serves no OpenCode REST API');
-}
-
-export async function getRuntimeProjectInfo(): Promise<RuntimeProjectInfo> {
-  requireOpenCodeRest();
+export function getRuntimeProjectInfo(): Promise<RuntimeProjectInfo> {
   return getClient().project.current().then(unwrapRuntimeResult);
 }
 
-export async function getRuntimePathInfo(): Promise<RuntimePathInfo> {
-  requireOpenCodeRest();
+export function getRuntimePathInfo(): Promise<RuntimePathInfo> {
   return getClient().path.get().then(unwrapRuntimeResult);
 }
 
@@ -107,8 +87,7 @@ export function setRuntimeProviderApiKey(
   }).then(unwrapRuntimeResult);
 }
 
-export async function getRuntimeConfig(): Promise<Config> {
-  requireOpenCodeRest();
+export function getRuntimeConfig(): Promise<Config> {
   return getClient().global.config.get().then(unwrapRuntimeResult);
 }
 
@@ -183,7 +162,7 @@ export function getActiveStaticFileHealthUrl(): string {
 }
 
 export function useRuntimeProjectInfo(options?: { enabled?: boolean }) {
-  const runtimeReady = useOpenCodeRestReady();
+  const runtimeReady = useOpenCodeRuntimeReady();
   return useQuery<RuntimeProjectInfo>({
     queryKey: opencodeKeys.currentProject(),
     queryFn: getRuntimeProjectInfo,

@@ -60,13 +60,8 @@ import {
   type TrackedMention,
 } from '@/features/session/session-chat-input';
 import { SessionContextModal } from '@/features/session/session-context-modal';
-import {
-  SessionModelNotice,
-  SessionRetryDisplay,
-  TurnErrorDisplay,
-} from '@/features/session/session-error-banner';
+import { SessionRetryDisplay, TurnErrorDisplay } from '@/features/session/session-error-banner';
 import { SessionWelcome } from '@/features/session/session-welcome';
-import { resolveTurnBusy } from '@/features/session/turn-busy';
 import { GridFileCard } from './grid-file-card';
 
 import { AnimatedThinkingText } from '@/components/ui/animated-thinking-text';
@@ -210,7 +205,6 @@ import {
 import { SandboxUrlDetector } from './sandbox-url-detector';
 import { sessionComposerReadiness } from './session-composer-readiness';
 import { captureTurnScrollAnchor, restoreTurnScrollAnchor } from './session-history-scroll';
-import { resolveSessionChatContentState } from './session-load-state';
 import { shouldLoadOlderHistory } from './session-older-autoload';
 
 // ============================================================================
@@ -3587,13 +3581,7 @@ export function SessionChat({
     { refetchInterval: 5_000 },
   );
   const hasPendingApproval = (approvalAudit?.actions ?? []).some(isPendingAction);
-  // Slash commands come from the SDK's transport-resolved list: OpenCode REST
-  // `GET /command` on a REST runtime, the ACP `available_commands_update`
-  // projection on a managed ACP runtime (which serves no OpenCode REST at all).
-  // `useRuntimeCommands()` remains the source for a read-only child session that
-  // has no SDK session state of its own.
-  const { data: restCommands } = useRuntimeCommands();
-  const commands = sessionState ? sessionState.runtimeCommands : restCommands;
+  const { data: commands } = useRuntimeCommands();
   const { data: providers, isLoading: providersLoading } = useRuntimeProviders();
   const { data: allSessions } = useRuntimeSessions();
   const { data: config } = useRuntimeConfig();
@@ -3929,15 +3917,8 @@ export function SessionChat({
   // Matching the reference: session status is the PRIMARY source of truth.
   // hasIncompleteAssistant only matters while the server also says busy
   // (prevents the idle→incomplete race). pendingSendInFlight covers the
-  // gap between user send and server ack, and `isSending` covers this
-  // client's own outbound prompt, which never returns over the runtime's
-  // agent→client stream.
-  const effectiveBusy = resolveTurnBusy({
-    serverBusy: isServerBusy,
-    sending: sessionState?.isSending ?? false,
-    pendingSendInFlight,
-    compacting: isOptimisticCompacting,
-  });
+  // gap between user send and server ack.
+  const effectiveBusy = isServerBusy || pendingSendInFlight || isOptimisticCompacting;
 
   // Short visual fade (300ms) — matches the reference's 260ms delay-hide.
   // Goes true immediately, stays visible briefly after going idle so the
@@ -5350,26 +5331,13 @@ export function SessionChat({
   // therefore reports isLoading=false) or the lookup is in flight, we know
   // nothing yet — so we must show the loading state, not the error. This is what
   // stops the "This session is not accessible right now." flash on boot.
+  const sessionResolved = runtimeReady && sessionFetched;
   const composerReadiness = sessionComposerReadiness({ runtimeReady });
+  const isNotFound = !session && sessionResolved && !optimisticPrompt;
   // Everything that isn't "we have content" and isn't the terminal not-found
   // state is loading — including the boot window where the query is still
-  // disabled (isLoading=false) waiting on the runtime. `useRuntimeSession` is an
-  // OpenCode REST read, so it can only answer for a session OpenCode REST owns;
-  // `resolveSessionChatContentState` decides which authority applies.
-  const { loading: isDataLoading, notFound: isNotFound } = resolveSessionChatContentState({
-    sdk: sessionState
-      ? {
-          chatSessionId: sessionState.chatSessionId,
-          opencodeSessionId: sessionState.opencodeSessionId,
-          ready: sessionState.phase === 'ready',
-        }
-      : null,
-    runtimeSessionResolved: !!session,
-    runtimeSessionFetched: sessionFetched,
-    runtimeReady,
-    hasMessages: !!hasMessages,
-    hasOptimisticPrompt: !!optimisticPrompt,
-  });
+  // disabled (isLoading=false) waiting on the runtime.
+  const isDataLoading = !session && !isNotFound && !hasMessages && !optimisticPrompt;
   const showOptimistic = !!optimisticPrompt && !hasMessages;
   const isTransitioningFromWelcome = !prevHasChatContentRef.current && hasChatContent;
   // The welcome wallpaper is the EMPTY-STATE backdrop for a *resolved* session.
@@ -5667,11 +5635,6 @@ export function SessionChat({
 
                 {/* Busy indicator when no turns yet but session is busy */}
                 {commandError && <TurnErrorDisplay error={commandError} className="mt-2" />}
-                {/* A model the harness would not select is a per-session
-                    condition, not a dead runtime — it renders HERE, inline
-                    above the live composer, and never as the page-level
-                    "OpenCode failed to load" card. */}
-                <SessionModelNotice notice={sessionState?.modelNotice} className="mt-2" />
                 {!showOptimistic && isBusy && turns.length === 0 && <AssistantPendingRow />}
               </div>
               {/* Spacer — ensures the last message can scroll to the top of

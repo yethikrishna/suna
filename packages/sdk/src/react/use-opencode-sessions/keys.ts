@@ -154,25 +154,3 @@ export function useOpenCodeRuntimeReady() {
   const hasUrl = !!(runtimeUrl || getActiveOpenCodeUrl());
   return connectedHealthy && hasUrl;
 }
-
-/**
- * Whether an OpenCode REST read can succeed against the bound runtime.
- *
- * Strictly narrower than `useOpenCodeRuntimeReady`, and the two must stay
- * separate. `useOpenCodeRuntimeReady` answers "is this session's sandbox up?" —
- * hosts gate their COMPOSER on it, so widening it to include the REST capability
- * permanently disables the composer on every managed ACP session. This one
- * answers "will `/command`, `/session`, `/project/current`, `/global/config`,
- * `/agent`, `/skill` answer?", which on a managed ACP sandbox is never: its
- * daemon skips `opencode.start()`
- * (`apps/kortix-sandbox-agent-server/src/main.ts`), so those routes are served
- * by nothing. Reading them anyway is what produced 7+ consecutive
- * `/8000/session?limit=10000` failures per session view.
- *
- * Every OpenCode REST hook in this package gates on THIS one.
- */
-export function useOpenCodeRestReady() {
-  const runtimeReady = useOpenCodeRuntimeReady();
-  const servesOpenCodeRest = useCurrentRuntime((s) => s.servesOpenCodeRest);
-  return runtimeReady && servesOpenCodeRest;
-}

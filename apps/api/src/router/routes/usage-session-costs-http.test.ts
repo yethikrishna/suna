@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 const ACCOUNT_ID = '00000000-0000-4000-a000-000000000001';
 const PROJECT_ID = '00000000-0000-4000-a000-000000000002';
 const SECONDARY_ACCOUNT_ID = '00000000-0000-4000-a000-000000000003';
+const USER_ID = '00000000-0000-4000-a000-000000000004';
 const SESSION_ID = 'session-cost-test';
 
 let authType = 'supabase';
@@ -13,6 +14,13 @@ let listInput: Record<string, unknown> | null = null;
 let detailInput: Record<string, unknown> | null = null;
 let detailFound = true;
 let projectAccessInput: { projectId: string; action: string } | null = null;
+let projectCapabilityInput: {
+  userId: string;
+  accountId: string;
+  projectId: string;
+  action: string;
+} | null = null;
+let projectCapabilityDenied = false;
 
 interface TestContext {
   set(key: string, value: unknown): void;
@@ -59,7 +67,7 @@ class InvalidSessionCostQueryError extends Error {}
 
 mock.module('../../middleware/auth', () => ({
   combinedAuth: async (c: TestContext, next: () => Promise<void>) => {
-    c.set('userId', ACCOUNT_ID);
+    c.set('userId', USER_ID);
     c.set('authType', authType);
     if (sandboxId) c.set('sandboxId', sandboxId);
     await next();
@@ -73,7 +81,19 @@ mock.module('../../shared/resolve-account', () => ({
 mock.module('../../projects/lib/access', () => ({
   loadProjectForUser: async (_c: TestContext, projectId: string, action: string) => {
     projectAccessInput = { projectId, action };
-    return { row: { accountId: SECONDARY_ACCOUNT_ID } };
+    return { userId: USER_ID, row: { accountId: SECONDARY_ACCOUNT_ID } };
+  },
+  assertProjectCapability: async (
+    _c: TestContext,
+    userId: string,
+    accountId: string,
+    projectId: string,
+    action: string,
+  ) => {
+    projectCapabilityInput = { userId, accountId, projectId, action };
+    if (projectCapabilityDenied) {
+      throw new HTTPException(403, { message: 'Forbidden' });
+    }
   },
 }));
 
@@ -129,6 +149,8 @@ beforeEach(() => {
   detailInput = null;
   detailFound = true;
   projectAccessInput = null;
+  projectCapabilityInput = null;
+  projectCapabilityDenied = false;
 });
 
 describe('GET /v1/usage/session-costs', () => {
@@ -168,10 +190,33 @@ describe('GET /v1/usage/session-costs', () => {
 
     expect(response.status).toBe(200);
     expect(projectAccessInput).toEqual({ projectId: PROJECT_ID, action: 'read' });
+    expect(projectCapabilityInput).toEqual({
+      userId: USER_ID,
+      accountId: SECONDARY_ACCOUNT_ID,
+      projectId: PROJECT_ID,
+      action: 'project.gateway.spend.read',
+    });
     expect(listInput).toMatchObject({
       accountId: SECONDARY_ACCOUNT_ID,
       projectId: PROJECT_ID,
     });
+  });
+
+  test('denies project-scoped costs without the spend capability', async () => {
+    projectCapabilityDenied = true;
+
+    const response = await createTestApp().request(
+      `/v1/usage/session-costs?project_id=${PROJECT_ID}`,
+    );
+
+    expect(response.status).toBe(403);
+    expect(projectCapabilityInput).toEqual({
+      userId: USER_ID,
+      accountId: SECONDARY_ACCOUNT_ID,
+      projectId: PROJECT_ID,
+      action: 'project.gateway.spend.read',
+    });
+    expect(listInput).toBeNull();
   });
 
   test('rejects invalid pagination before querying costs', async () => {
@@ -228,10 +273,27 @@ describe('GET /v1/usage/session-costs/{sessionId}', () => {
 
     expect(response.status).toBe(200);
     expect(projectAccessInput).toEqual({ projectId: PROJECT_ID, action: 'read' });
+    expect(projectCapabilityInput).toEqual({
+      userId: USER_ID,
+      accountId: SECONDARY_ACCOUNT_ID,
+      projectId: PROJECT_ID,
+      action: 'project.gateway.spend.read',
+    });
     expect(detailInput).toMatchObject({
       accountId: SECONDARY_ACCOUNT_ID,
       projectId: PROJECT_ID,
       sessionId: SESSION_ID,
     });
+  });
+
+  test('denies project-scoped detail without the spend capability', async () => {
+    projectCapabilityDenied = true;
+
+    const response = await createTestApp().request(
+      `/v1/usage/session-costs/${SESSION_ID}?project_id=${PROJECT_ID}`,
+    );
+
+    expect(response.status).toBe(403);
+    expect(detailInput).toBeNull();
   });
 });

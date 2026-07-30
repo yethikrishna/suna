@@ -3,10 +3,11 @@ import { usageEvents } from '@kortix/db';
 import { type SQL, and, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { PROJECT_ACTIONS } from '../../iam/actions';
 import { combinedAuth } from '../../middleware/auth';
 import { rejectSandboxTokens } from '../../middleware/reject-sandbox-tokens';
 import { auth, errors, json, makeOpenApiApp } from '../../openapi';
-import { loadProjectForUser } from '../../projects/lib/access';
+import { assertProjectCapability, loadProjectForUser } from '../../projects/lib/access';
 import { db } from '../../shared/db';
 import { resolveScopedAccountId } from '../../shared/resolve-account';
 import {
@@ -47,6 +48,13 @@ async function resolveSessionCostAccountId(
   if (!loaded) {
     throw new HTTPException(404, { message: 'Project not found' });
   }
+  await assertProjectCapability(
+    c,
+    loaded.userId,
+    loaded.row.accountId,
+    projectId,
+    PROJECT_ACTIONS.PROJECT_GATEWAY_SPEND_READ,
+  );
   return loaded.row.accountId;
 }
 

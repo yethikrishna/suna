@@ -805,6 +805,7 @@ function ActiveSessionChat({
         <SessionChat
           key={chatSessionId}
           sessionId={chatSessionId}
+          projectSessionId={sessionId}
           projectId={projectId}
           sessionState={chatSessionId === sessionState.opencodeSessionId ? sessionState : undefined}
         />

@@ -36,6 +36,7 @@ import { PROJECT_ACTIONS, VALID_ACTIONS } from '../iam/actions';
 import type { GitBackedProject } from './git';
 import type { AgentGrant } from '@kortix/db';
 import { resolveGrantSet, SLUG_RE, type GrantSetV2 } from '@kortix/manifest-schema';
+import { normalizeRequiredConnectorAliases } from './lib/agent-config-v2';
 
 const MANIFEST_FILENAME = 'kortix.toml';
 
@@ -85,10 +86,8 @@ export interface AgentSpec {
   enabled: boolean;
   /** Which connector profiles (by slug) this agent may use. `[]` = none (default). */
   connectors: GrantSet;
-  /** Subset of `connectors` that must resolve to the LAUNCHING USER's OWN member
-   *  connection (v2 `connectors_personal`). A session with this agent auto-requires
-   *  these — like the caller passing require_connectors. Omitted/[] = none. */
-  connectorsPersonal?: string[];
+  /** Connector profiles that must resolve before the session starts. */
+  connectorsRequired?: string[];
   /** Kortix CLI/API powers (project-scoped iam actions). `[]` = none (default). */
   kortixCli: GrantSet;
   /** Project-secret IDENTIFIERS (project_secrets.identifier, not raw env-var
@@ -410,21 +409,17 @@ export function sandboxFromLoadedAgents(agentName: string, loaded: LoadedAgents)
 }
 
 /**
- * The connector aliases this agent declares as PERSONAL (`connectors_personal`) —
- * a session started with the agent must resolve each to the launching user's OWN
- * connection. Mirrors grantFromLoadedAgents' agent resolution (a concrete name,
- * or the `default` sentinel → the manifest's `default_agent`). Returns [] when the
- * project has no per-agent governance, or the agent isn't found/enabled, or it
- * declares none. v1 agents never set connectorsPersonal, so this is always [].
+ * Resolve the connector profiles that the selected agent requires at session
+ * start. The connector profile controls which authorization owner is valid.
  */
-export function personalConnectorsForAgent(agentName: string, loaded: LoadedAgents): string[] {
+export function requiredConnectorsForAgent(agentName: string, loaded: LoadedAgents): string[] {
   if (loaded.specs.length === 0 && loaded.errors.length === 0) return [];
   const spec =
     loaded.specs.find((s) => s.name === agentName && s.enabled) ??
     (agentName === DEFAULT_AGENT_SENTINEL && loaded.defaultAgent
       ? loaded.specs.find((s) => s.name === loaded.defaultAgent && s.enabled)
       : undefined);
-  return spec?.connectorsPersonal ?? [];
+  return spec?.connectorsRequired ?? [];
 }
 
 /**
@@ -591,6 +586,7 @@ export function manifestHashForAgent(spec: AgentSpec): string {
   const canonical = JSON.stringify({
     enabled: spec.enabled,
     connectors: spec.connectors,
+    connectorsRequired: spec.connectorsRequired,
     kortixCli: spec.kortixCli,
     env: spec.env,
     file: spec.file,
@@ -673,6 +669,9 @@ function parseAgentEntryV2(name: string, block: unknown, filename: string): Pars
     return err(name, `agents.${name} must be a table/object`);
   }
   const row = block as Record<string, unknown>;
+  const normalizedRequired = normalizeRequiredConnectorAliases(row);
+  if (!normalizedRequired.ok) return err(name, `agents.${name}.${normalizedRequired.error}`);
+  const normalizedRow = normalizedRequired.block;
 
   // v2's `enabled` is a top-level Kortix-governance boolean (validated
   // upstream by manifest-schema); only a literal `false` disables. Behavior
@@ -685,40 +684,31 @@ function parseAgentEntryV2(name: string, block: unknown, filename: string): Pars
   // which the session model-resolution chain already treats as "fall through
   // to account/platform" — the compiler (compile-agent-config.ts) is what
   // actually resolves a per-agent model now, straight from that same `.md`.
-  const enabled = row.enabled !== false;
+  const enabled = normalizedRow.enabled !== false;
   const file: string | null = null;
   const model: string | null = null;
   const sandbox =
-    typeof row.sandbox === 'string' && row.sandbox.trim() ? row.sandbox.trim() : null;
+    typeof normalizedRow.sandbox === 'string' && normalizedRow.sandbox.trim()
+      ? normalizedRow.sandbox.trim()
+      : null;
 
-  const connectorsResolved = resolveGrantSet(row.connectors, 'none');
+  const connectorsResolved = resolveGrantSet(normalizedRow.connectors, 'none');
 
-  // connectors_personal: a concrete subset of the connectors grant that must
-  // resolve to the launching user's OWN connection. Deny-by-default (omitted → []).
-  let connectorsPersonal: string[] = [];
-  if (row.connectors_personal !== undefined && row.connectors_personal !== null) {
-    if (
-      !Array.isArray(row.connectors_personal) ||
-      !row.connectors_personal.every((a) => typeof a === 'string')
-    ) {
-      return err(name, `agents.${name}.connectors_personal must be a list of connector names`);
-    }
-    connectorsPersonal = Array.from(new Set(row.connectors_personal as string[]));
-    // An ungranted connector can never be personally required (it isn't usable at
-    // all), so connectors_personal must be a subset of the connectors grant.
+  const connectorsRequired = (normalizedRow.connectors_required as string[] | undefined) ?? [];
+  if (connectorsRequired.length > 0) {
     if (connectorsResolved !== 'all') {
       const granted = new Set<string>(connectorsResolved === 'none' ? [] : connectorsResolved);
-      const notGranted = connectorsPersonal.filter((alias) => !granted.has(alias));
+      const notGranted = connectorsRequired.filter((slug) => !granted.has(slug));
       if (notGranted.length > 0) {
         return err(
           name,
-          `agents.${name}.connectors_personal must be a subset of connectors — not granted: ${notGranted.join(', ')}`,
+          `agents.${name}.connectors_required must be a subset of connectors — not granted: ${notGranted.join(', ')}`,
         );
       }
     }
   }
 
-  const kortixResolved = resolveGrantSet(row.kortix_cli, 'none');
+  const kortixResolved = resolveGrantSet(normalizedRow.kortix_cli, 'none');
   if (Array.isArray(kortixResolved)) {
     for (const action of kortixResolved) {
       const problem = validateKortixAction(action);
@@ -730,7 +720,7 @@ function parseAgentEntryV2(name: string, block: unknown, filename: string): Pars
   // shape as connectors/kortix_cli, same deny-by-default resolution — mapped
   // onto AgentSpec's `env` field, which the rest of the pipeline (secret
   // scoping in sessions.ts, `agentMayUseEnv`) already consumes.
-  const secretsResolved = resolveGrantSet(row.secrets, 'none');
+  const secretsResolved = resolveGrantSet(normalizedRow.secrets, 'none');
 
   return {
     ok: true,
@@ -739,7 +729,7 @@ function parseAgentEntryV2(name: string, block: unknown, filename: string): Pars
       path: `${filename}#agents.${name}`,
       enabled,
       connectors: toGrantSet(connectorsResolved),
-      connectorsPersonal,
+      connectorsRequired,
       kortixCli: toGrantSet(kortixResolved),
       env: toGrantSet(secretsResolved),
       file,

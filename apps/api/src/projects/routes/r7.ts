@@ -1,4 +1,5 @@
 import { isCallLive, readTurns } from '../../channels/voice/runtime';
+import { SessionScopeInputSchema, SessionScopeSchema } from '@kortix/api-contract';
 import { recordSessionToolApproval } from '../../executor/db-deps';
 import { loadSessionGrants, parseSharingIntent, resolveShareSubject, setSessionSharing } from '../../executor/share';
 import {
@@ -20,6 +21,7 @@ import { roleAllows } from '../access';
 import { createRoute, z } from '@hono/zod-openapi';
 import { accountGroupMembers, accountGroups, accountMembers, executorConnectors, executorExecutions, projectGroupGrants, projectSessions, sessionSandboxes,
   projectSessionConnectorBindings,
+  serviceAccounts,
 } from '@kortix/db';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { mayResolveApproval, maySeeSessionApprovals } from '../lib/approval-authority';
@@ -39,7 +41,13 @@ import { loadProjectForUser, loadVisibleSession, lookupEmailsByUserIds, parseExp
 import { AnyObject, ClaimWarmProjectSessionInputSchema, GroupGrantSchema, OkSchema, SessionCreateAcceptedSchema, SessionCreateInputSchema, SessionSchema, WarmProjectSessionResultSchema, projectsApp } from '../lib/app';
 import { UUID_V4_REGEX, hasOwn, normalizeString, readBody, requestAuditContext, serializeSession } from '../lib/serializers';
 import { createProjectSession, sendSessionCreateError, type SessionCreateError } from '../lib/sessions';
-import { sessionHasMemberConnectorBinding } from '../lib/session-connector-bindings';
+import {
+  missingRequiredConnectorAuthorizationsForSession,
+  resolveEffectiveSessionConnectorBindings,
+  sessionHasMemberConnectorBinding,
+  sessionConnectorBindingsRequirePrivateVisibility,
+  validateSessionConnectorBindings,
+} from '../lib/session-connector-bindings';
 import { buildSessionTranscriptDigest } from '../lib/session-transcript';
 import {
   claimAvailableWarmProjectSession,
@@ -61,11 +69,17 @@ import {
 import { requireEntitlement } from '../../accounts/iam/helpers';
 import { accountHasEntitlement } from '../../billing/services/entitlements';
 import { callerKortixSessionId } from '../lib/caller-session';
-import { DEFAULT_AGENT_SENTINEL } from '../agents';
+import {
+  DEFAULT_AGENT_SENTINEL,
+  loadProjectAgents,
+  requiredConnectorsForAgent,
+} from '../agents';
 import { resolveSessionAgentGrant } from '../lib/secret-grant';
 import { rescopeSessionBindings, rescopeSessionSecrets } from '../lib/session-rescope';
-import { validateSessionConnectorBindings } from '../lib/session-connector-bindings';
-import { resolveEndUserRef } from '../lib/end-user-ref';
+import {
+  listResolvedProjectSecrets,
+  secretKeyCollisionInAllowlist,
+} from '../secrets';
 import { selectSessionRowsForViewer, type ProjectSessionListScope } from '../lib/session-inventory';
 
 function parseBoundedPositiveInt(
@@ -207,6 +221,40 @@ function resolvedWarmSessionConfiguration(project: {
   };
 }
 
+async function missingWarmSessionAuthorizations(
+  project: Parameters<typeof loadProjectAgents>[0] & {
+    accountId: string;
+    projectId: string;
+  },
+  session: { sessionId: string; agentName: string | null },
+) {
+  const loadedAgents = await loadProjectAgents(project);
+  const required = requiredConnectorsForAgent(
+    session.agentName ?? DEFAULT_AGENT_SENTINEL,
+    loadedAgents,
+  );
+  if (required.length === 0) return [];
+  return missingRequiredConnectorAuthorizationsForSession({
+    accountId: project.accountId,
+    projectId: project.projectId,
+    sessionId: session.sessionId,
+    aliases: required,
+  });
+}
+
+function connectorAuthorizationRequiredError(
+  connectorProfiles: Awaited<ReturnType<typeof missingWarmSessionAuthorizations>>,
+): SessionCreateError {
+  return {
+    status: 409,
+    body: {
+      code: 'CONNECTOR_AUTHORIZATION_REQUIRED',
+      message: 'Connect the required connector profiles before starting this session.',
+      connector_profiles: connectorProfiles,
+    },
+  };
+}
+
 // POST /v1/projects/:projectId/sessions/warm
 
 projectsApp.openapi(
@@ -274,6 +322,27 @@ projectsApp.openapi(
 
     try {
       const ensured = await coordinator.ensure(configuration);
+      if (ensured.reused) {
+        const missing = await missingWarmSessionAuthorizations(loaded.row, ensured.session);
+        if (missing.length > 0) {
+          const currentMarker =
+            ensured.session.metadata?.warm_session &&
+            typeof ensured.session.metadata.warm_session === 'object' &&
+            !Array.isArray(ensured.session.metadata.warm_session)
+              ? ensured.session.metadata.warm_session
+              : {};
+          await discardAvailableWarmProjectSession(scope, ensured.session.sessionId, {
+            ...(ensured.session.metadata ?? {}),
+            warm_session: {
+              ...currentMarker,
+              state: 'discarded',
+              discarded_at: new Date().toISOString(),
+              discard_reason: 'connector_authorization_invalid',
+            },
+          });
+          return sendSessionCreateError(c, connectorAuthorizationRequiredError(missing));
+        }
+      }
       const workspaceRefresh = ensured.reused
         ? await refreshWarmSessionWorkspace(
             loaded.row,
@@ -349,6 +418,14 @@ projectsApp.openapi(
         throw new Error('Claim cannot create a warm session');
       },
     });
+
+    const candidate = await findAvailableWarmProjectSession(scope);
+    if (candidate?.sessionId === sessionId) {
+      const missing = await missingWarmSessionAuthorizations(loaded.row, candidate);
+      if (missing.length > 0) {
+        return sendSessionCreateError(c, connectorAuthorizationRequiredError(missing));
+      }
+    }
 
     try {
       const claimed = await coordinator.claim({
@@ -647,10 +724,8 @@ projectsApp.openapi(
     body,
     // Origin is derived from the caller's token kind (service_account / pat /
     // 'user' apiKey → backend), never the body — see resolveSessionOrigin. A
-    // token operating from INSIDE a session stays 'user' so an in-sandbox agent
-    // can't vouch via origin_ref. Keyed on session-binding (`sessionId`, set on
-    // the executor PAT injected into every sandbox) OR an agent grant — NOT the
-    // grant alone, which is null for v1/default agents and would fail open.
+    // token operating from INSIDE a session stays 'user'. This uses the
+    // session-binding (`sessionId`) or an agent grant.
     authType: c.get('authType') as string | undefined,
     apiKeyType: c.get('apiKeyType') as string | undefined,
     inSession: c.get('sessionId') != null || getAgentGrant(c) != null,
@@ -696,16 +771,6 @@ projectsApp.openapi(
         params: z.object({ projectId: z.string() }),
         query: z.object({
           scope: z.enum(['visible', 'project']).optional(),
-          /**
-           * Kortix-as-a-Backend: list only the sessions belonging to ONE of the
-           * wrapper's end-users. Without it a wrapper has no way to answer
-           * "show me this customer's sessions" except by fetching every session
-           * in the project and filtering client-side.
-           *
-           * Accepts the deprecated `origin_ref` spelling too.
-           */
-          end_user_ref: z.string().trim().min(1).max(256).optional(),
-          origin_ref: z.string().trim().min(1).max(256).optional(),
         }),
       },
     responses: {
@@ -716,12 +781,6 @@ projectsApp.openapi(
   async (c) => {
   const projectId = c.req.param('projectId');
   const scope = (c.req.valid('query').scope ?? 'visible') as ProjectSessionListScope;
-  // Same resolver the create path uses, so the filter accepts exactly the
-  // spellings a wrapper is allowed to send a session with — and rejects a
-  // disagreeing pair rather than silently letting one win.
-  const resolvedRef = resolveEndUserRef(c.req.valid('query'));
-  if (!resolvedRef.ok) return c.json({ error: resolvedRef.message, code: resolvedRef.code }, 400);
-  const endUserRefFilter = resolvedRef.value;
 
   const loaded = await loadProjectForUser(c, projectId, 'read');
   if (!loaded) return c.json({ error: 'Not found' }, 404);
@@ -734,9 +793,6 @@ projectsApp.openapi(
       and(
         eq(projectSessions.projectId, projectId),
         eq(projectSessions.accountId, loaded.row.accountId),
-        // Filtered IN THE QUERY, not after: a wrapper listing one end-user must
-        // not have to pull every session in the project to find them.
-        ...(endUserRefFilter ? [eq(projectSessions.originRef, endUserRefFilter)] : []),
       ),
     )
     .orderBy(desc(projectSessions.updatedAt));
@@ -761,7 +817,6 @@ projectsApp.openapi(
     rows.filter((row) => row.visibility === 'restricted').map((row) => row.sessionId),
   );
   const selected = selectSessionRowsForViewer({
-    endUserRefFiltered: endUserRefFilter !== null,
     rows,
     scope,
     canManageProject,
@@ -1978,19 +2033,77 @@ projectsApp.openapi(
 );
 
 /**
- * Change the model a session uses, mid-flight.
- *
- * `opencode_model` was create-only: the sandbox reads `KORTIX_OPENCODE_MODEL`
- * when opencode builds its config at spawn, and nothing re-pushed it — so a live
- * box kept its boot model for the rest of the session. The only way to "change"
- * it was to plant a value through PATCH metadata, which skipped the account
- * servability check entirely (now blocked; see SERVER_MANAGED_METADATA_KEYS).
- *
- * Validates against the SAME resolver the create path uses, persists, then
- * pushes to the live sandbox. The response says whether it is in effect NOW or
- * only from the next boot, because those are genuinely different outcomes and
- * the caller cannot otherwise tell.
+ * Read the server-authoritative session scope.
  */
+projectsApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{projectId}/sessions/{sessionId}/scope',
+    tags: ['sessions'],
+    summary: "Read a session's secret and connector authorization scope",
+    ...auth,
+    request: {
+      params: z.object({ projectId: z.string(), sessionId: z.string() }),
+    },
+    responses: {
+      200: json(SessionScopeSchema, 'Current session scope'),
+      ...errors(400, 404, 409),
+    },
+  }),
+  async (c: any) => {
+    const projectId = c.req.param('projectId');
+    const sessionId = c.req.param('sessionId');
+    if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+    const loaded = await loadProjectForUser(c, projectId, 'read');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_SESSION_READ,
+    );
+    const visible = await loadVisibleSession(loaded, sessionId, callerKortixSessionId(c));
+    if (!visible) return c.json({ error: 'Not found' }, 404);
+    let grant: Awaited<ReturnType<typeof resolveSessionAgentGrant>>;
+    try {
+      grant = await resolveSessionAgentGrant({
+        projectId,
+        repoUrl: loaded.row.repoUrl,
+        defaultBranch: loaded.row.defaultBranch,
+        manifestPath: loaded.row.manifestPath,
+        sessionAgent: visible.row.agentName ?? DEFAULT_AGENT_SENTINEL,
+      });
+    } catch (err) {
+      return c.json(
+        {
+          error: `could not resolve this agent's grant, so the current scope cannot be determined: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+          code: 'AGENT_GRANT_UNRESOLVED',
+        },
+        409,
+      );
+    }
+    const bindings = await resolveEffectiveSessionConnectorBindings({
+      accountId: loaded.row.accountId,
+      projectId,
+      sessionId,
+      grantedConnectors: grant?.connectors,
+    });
+    return c.json({
+      secrets_allowlist: visible.row.secretsAllowlist ?? null,
+      connector_bindings: bindings,
+      dropped_secrets: [],
+      added_secrets: [],
+      dropped_bindings: [],
+      retroactive: true,
+      detail: 'Current session scope.',
+    });
+  },
+);
+
 projectsApp.openapi(
   createRoute({
     method: 'put',
@@ -2003,36 +2116,13 @@ projectsApp.openapi(
       body: {
         content: {
           'application/json': {
-            schema: z.object({
-              /** FULL new allowlist — this REPLACES the previous one. `null`
-               *  stops narrowing (fall back to the agent grant); `[]` is "no
-               *  project secrets at all", which is the opposite. */
-              secrets: z.array(z.string()).nullable().optional(),
-              /** FULL new binding map — REPLACES the previous one. */
-              connector_bindings: z
-                .record(z.string(), z.object({ profile_id: z.string() }))
-                .optional(),
-            }),
+            schema: SessionScopeInputSchema,
           },
         },
       },
     },
     responses: {
-      200: json(
-        z.object({
-          secrets_allowlist: z.array(z.string()).nullable(),
-          connector_bindings: z.record(z.string(), z.object({ profile_id: z.string() })),
-          dropped_secrets: z.array(z.string()),
-          added_secrets: z.array(z.string()),
-          dropped_bindings: z.array(z.string()),
-          /** What the caller must tell their user. Dropping a secret stops it
-           *  being delivered from the next prompt; it cannot un-read what the
-           *  agent already has. */
-          retroactive: z.boolean(),
-          detail: z.string(),
-        }),
-        'Session re-scoped',
-      ),
+      200: json(SessionScopeSchema, 'Session re-scoped'),
       ...errors(400, 403, 404, 409),
     },
   }),
@@ -2043,8 +2133,13 @@ projectsApp.openapi(
 
     const loaded = await loadProjectForUser(c, projectId, 'session');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
-    // Re-scoping changes what the agent may read and reach. Same destructive
-    // capability as the stop/model routes for a scoped agent token.
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_SESSION_STOP,
+    );
     assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_STOP);
     const visible = await loadVisibleSession(loaded, sessionId, callerKortixSessionId(c));
     if (!visible) return c.json({ error: 'Not found' }, 404);
@@ -2057,16 +2152,19 @@ projectsApp.openapi(
       );
     }
 
-    const body = await readBody(c);
-    const wantsSecrets = body !== null && typeof body === 'object' && 'secrets' in body;
-    const wantsBindings =
-      body !== null && typeof body === 'object' && 'connector_bindings' in body;
-    if (!wantsSecrets && !wantsBindings) {
+    const parsedBody = SessionScopeInputSchema.safeParse(await readBody(c));
+    if (!parsedBody.success) {
       return c.json(
-        { error: 'Supply `secrets`, `connector_bindings`, or both', code: 'NOTHING_TO_RESCOPE' },
+        {
+          error: parsedBody.error.issues.map((issue) => issue.message).join('; '),
+          code: 'INVALID_SESSION_SCOPE',
+        },
         400,
       );
     }
+    const body = parsedBody.data;
+    const wantsSecrets = Object.hasOwn(body, 'secrets');
+    const wantsBindings = Object.hasOwn(body, 'connector_bindings');
 
     // The agent grant is the ceiling for both axes. Resolved from the agent this
     // session actually runs, and fail-closed: if it cannot be established, the
@@ -2092,7 +2190,7 @@ projectsApp.openapi(
       );
     }
 
-    const currentBindings = Object.fromEntries(
+    const currentDurableBindings = Object.fromEntries(
       (
         await db
           .select({
@@ -2108,6 +2206,18 @@ projectsApp.openapi(
           )
       ).map((row) => [row.alias, row.profileId]),
     );
+    const currentEffectiveBindings = await resolveEffectiveSessionConnectorBindings({
+      accountId: loaded.row.accountId,
+      projectId,
+      sessionId,
+      grantedConnectors: grant?.connectors,
+    });
+    const currentEffectiveBindingIds = Object.fromEntries(
+      Object.entries(currentEffectiveBindings).map(([alias, binding]) => [
+        alias,
+        binding.authorization_id,
+      ]),
+    );
 
     let nextAllowlist = visible.row.secretsAllowlist ?? null;
     let droppedSecrets: string[] = [];
@@ -2122,79 +2232,106 @@ projectsApp.openapi(
       nextAllowlist = decided.allowlist;
       droppedSecrets = decided.dropped;
       addedSecrets = decided.added;
+      if (nextAllowlist !== null && nextAllowlist.length > 0) {
+        const availableSecrets = await listResolvedProjectSecrets(projectId, loaded.userId);
+        const available = new Set(
+          availableSecrets.map((secret) => secret.identifier.toUpperCase()),
+        );
+        const unavailable = nextAllowlist.filter(
+          (identifier) => !available.has(identifier.toUpperCase()),
+        );
+        if (unavailable.length > 0) {
+          return c.json(
+            {
+              error: `secret identifier is not available: ${unavailable.join(', ')}`,
+              code: 'SECRET_IDENTIFIER_NOT_AVAILABLE',
+            },
+            403,
+          );
+        }
+        const collision = secretKeyCollisionInAllowlist(availableSecrets, nextAllowlist);
+        if (collision) {
+          return c.json(
+            {
+              error: `secrets allowlist names multiple identifiers for env key "${collision.key}": ${collision.identifiers.join(', ')}`,
+              code: 'SECRET_IDENTIFIER_KEY_COLLISION',
+            },
+            409,
+          );
+        }
+      }
     }
 
-    let nextBindings = currentBindings;
+    let nextBindings = currentDurableBindings;
     let droppedBindings: string[] = [];
     if (wantsBindings) {
       const requested = Object.fromEntries(
-        Object.entries(
-          (body.connector_bindings ?? {}) as Record<string, { profile_id?: unknown }>,
-        ).map(([alias, value]) => [
+        Object.entries(body.connector_bindings ?? {}).map(([alias, value]) => [
           alias,
-          typeof value?.profile_id === 'string' ? value.profile_id : '',
+          value.authorization_id,
         ]),
       );
       const decided = rescopeSessionBindings({
-        current: currentBindings,
+        current: currentEffectiveBindingIds,
         requested,
         grantedConnectors: grant?.connectors,
       });
       if (!decided.ok) return c.json({ error: decided.message, code: decided.code }, 403);
       nextBindings = decided.bindings;
-      droppedBindings = decided.dropped;
     }
 
-    if (wantsSecrets) {
-      await db
-        .update(projectSessions)
-        .set({ secretsAllowlist: nextAllowlist, updatedAt: new Date() })
-        .where(
-          and(eq(projectSessions.sessionId, sessionId), eq(projectSessions.projectId, projectId)),
-        );
-    }
-
+    let bindingRows: Array<{
+      sessionId: string;
+      projectId: string;
+      accountId: string;
+      connectorAlias: string;
+      connectorId: string;
+      profileId: string;
+      source: 'request';
+      createdBy: string;
+    }> = [];
     if (wantsBindings) {
-      // Replace wholesale: the map supplied IS the new set, so a binding the
-      // caller omitted must stop existing rather than linger.
-      await db
-        .delete(projectSessionConnectorBindings)
-        .where(
-          and(
-            eq(projectSessionConnectorBindings.sessionId, sessionId),
-            eq(projectSessionConnectorBindings.projectId, projectId),
-          ),
-        );
-      // Reuse the SAME validator session-create uses. My first version checked
-      // only the alias against the agent grant and that the profile lived in
-      // this account — which let a session owner rebind a granted alias to
-      // ANOTHER end-user's `external` profile and use it on the next tool call.
-      // That is a WRITE path to the very escalation the profile-enumeration fix
-      // closed for reads. The create path already requires
-      // PROJECT_SESSION_BINDINGS_WRITE for non-member profiles and restricts
-      // member-owned ones to their owner; re-scoping must not be a second,
-      // weaker door to the same table.
-      const mayManageSystemProfiles = await projectCapabilityAllowed(
-        c,
-        loaded.userId,
-        loaded.row.accountId,
-        projectId,
-        PROJECT_ACTIONS.PROJECT_SESSION_BINDINGS_WRITE,
-      );
+      const [ownerServiceAccount] = visible.row.createdBy
+        ? await db
+            .select({ id: serviceAccounts.serviceAccountId })
+            .from(serviceAccounts)
+            .where(
+              and(
+                eq(serviceAccounts.serviceAccountId, visible.row.createdBy),
+                eq(serviceAccounts.accountId, loaded.row.accountId),
+              ),
+            )
+            .limit(1)
+        : [];
       const validated = await validateSessionConnectorBindings({
         accountId: loaded.row.accountId,
         projectId,
-        actingUserId: loaded.userId,
-        actingPrincipalIsServiceAccount: c.get('authType') === 'service_account',
-        mayManageSystemProfiles,
+        actingUserId: visible.row.createdBy ?? '',
+        actingPrincipalIsServiceAccount: ownerServiceAccount !== undefined,
+        mayManageSystemProfiles: false,
         bindings: Object.fromEntries(
-          Object.entries(nextBindings).map(([alias, profileId]) => [alias, { profile_id: profileId }]),
+          Object.entries(nextBindings).map(([alias, authorizationId]) => [
+            alias,
+            { authorization_id: authorizationId },
+          ]),
         ),
       });
       if (!validated.ok) {
         return c.json({ error: validated.error, code: validated.code }, 403);
       }
-      const rows = validated.bindings.map((binding) => ({
+      if (
+        visible.row.visibility !== 'private' &&
+        sessionConnectorBindingsRequirePrivateVisibility(validated.bindings)
+      ) {
+        return c.json(
+          {
+            error: 'A user authorization requires a private session',
+            code: 'PERSONAL_CONNECTOR_PROFILE_REQUIRES_PRIVATE_SESSION',
+          },
+          409,
+        );
+      }
+      bindingRows = validated.bindings.map((binding) => ({
         sessionId,
         projectId,
         accountId: loaded.row.accountId,
@@ -2204,7 +2341,56 @@ projectsApp.openapi(
         source: 'request' as const,
         createdBy: loaded.userId,
       }));
-      if (rows.length > 0) await db.insert(projectSessionConnectorBindings).values(rows);
+    }
+
+    await db.transaction(async (tx) => {
+      const sessionUpdates: {
+        updatedAt: Date;
+        secretsAllowlist?: string[] | null;
+        connectorBindingsConfigured?: boolean;
+        connectorBindingsInheritUnbound?: boolean;
+      } = { updatedAt: new Date() };
+      if (wantsSecrets) sessionUpdates.secretsAllowlist = nextAllowlist;
+      if (wantsBindings) {
+        sessionUpdates.connectorBindingsConfigured = true;
+        sessionUpdates.connectorBindingsInheritUnbound = false;
+      }
+      await tx
+        .update(projectSessions)
+        .set(sessionUpdates)
+        .where(
+          and(
+            eq(projectSessions.sessionId, sessionId),
+            eq(projectSessions.projectId, projectId),
+            eq(projectSessions.accountId, loaded.row.accountId),
+          ),
+        );
+      if (wantsBindings) {
+        await tx
+          .delete(projectSessionConnectorBindings)
+          .where(
+            and(
+              eq(projectSessionConnectorBindings.sessionId, sessionId),
+              eq(projectSessionConnectorBindings.projectId, projectId),
+              eq(projectSessionConnectorBindings.accountId, loaded.row.accountId),
+            ),
+          );
+        if (bindingRows.length > 0) {
+          await tx.insert(projectSessionConnectorBindings).values(bindingRows);
+        }
+      }
+    });
+
+    const effectiveBindings = await resolveEffectiveSessionConnectorBindings({
+      accountId: loaded.row.accountId,
+      projectId,
+      sessionId,
+      grantedConnectors: grant?.connectors,
+    });
+    if (wantsBindings) {
+      droppedBindings = Object.keys(currentEffectiveBindings).filter(
+        (alias) => !Object.hasOwn(effectiveBindings, alias),
+      );
     }
 
     // No push needed: the per-prompt hot sync re-reads secretsAllowlist and
@@ -2212,9 +2398,7 @@ projectsApp.openapi(
     // resolved server-side at call time. Pushing here would race that.
     return c.json({
       secrets_allowlist: nextAllowlist,
-      connector_bindings: Object.fromEntries(
-        Object.entries(nextBindings).map(([alias, profileId]) => [alias, { profile_id: profileId }]),
-      ),
+      connector_bindings: effectiveBindings,
       dropped_secrets: droppedSecrets,
       added_secrets: addedSecrets,
       dropped_bindings: droppedBindings,
@@ -2230,6 +2414,20 @@ projectsApp.openapi(
   },
 );
 
+/**
+ * Change the model a session uses, mid-flight.
+ *
+ * `opencode_model` was create-only: the sandbox reads `KORTIX_OPENCODE_MODEL`
+ * when opencode builds its config at spawn, and nothing re-pushed it — so a live
+ * box kept its boot model for the rest of the session. The only way to "change"
+ * it was to plant a value through PATCH metadata, which skipped the account
+ * servability check entirely (now blocked; see SERVER_MANAGED_METADATA_KEYS).
+ *
+ * Validates against the SAME resolver the create path uses, persists, then
+ * pushes to the live sandbox. The response says whether it is in effect NOW or
+ * only from the next boot, because those are genuinely different outcomes and
+ * the caller cannot otherwise tell.
+ */
 projectsApp.openapi(
   createRoute({
     method: 'put',

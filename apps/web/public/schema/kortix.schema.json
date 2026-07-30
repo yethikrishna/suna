@@ -383,6 +383,10 @@
                   "type": "string",
                   "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"
                 },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "provider": {
                   "type": "string",
                   "enum": [
@@ -430,6 +434,14 @@
                   ]
                 },
                 "credential": {},
+                "authorization_strategy": {
+                  "type": "string",
+                  "enum": [
+                    "project",
+                    "user"
+                  ],
+                  "default": "project"
+                },
                 "agent_scope": {},
                 "auth": {
                   "type": "object",
@@ -911,12 +923,22 @@
                     }
                   ]
                 },
+                "connectors_required": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": "Connector profile slugs that must resolve before the session starts."
+                },
                 "connectors_personal": {
                   "type": "array",
                   "items": {
                     "type": "string",
                     "minLength": 1
-                  }
+                  },
+                  "deprecated": true,
+                  "description": "Deprecated input alias for connectors_required."
                 },
                 "secrets": {
                   "description": "An allowlist of names, or the \"all\" / \"none\" sentinel.",
@@ -1378,6 +1400,10 @@
                   "type": "string",
                   "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"
                 },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "provider": {
                   "type": "string",
                   "enum": [
@@ -1426,6 +1452,14 @@
                 },
                 "credential": {
                   "const": "shared"
+                },
+                "authorization_strategy": {
+                  "type": "string",
+                  "enum": [
+                    "project",
+                    "user"
+                  ],
+                  "default": "project"
                 },
                 "agent_scope": false,
                 "auth": {
@@ -1932,6 +1966,23 @@
                     }
                   ]
                 },
+                "connectors_required": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": "Connector profile slugs that must resolve before the session starts."
+                },
+                "connectors_personal": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "deprecated": true,
+                  "description": "Deprecated input alias for connectors_required."
+                },
                 "secrets": {
                   "description": "An allowlist of names, or the \"all\" / \"none\" sentinel.",
                   "oneOf": [
@@ -2379,6 +2430,10 @@
                   "type": "string",
                   "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"
                 },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "provider": {
                   "type": "string",
                   "enum": [
@@ -2427,6 +2482,14 @@
                 },
                 "credential": {
                   "const": "shared"
+                },
+                "authorization_strategy": {
+                  "type": "string",
+                  "enum": [
+                    "project",
+                    "user"
+                  ],
+                  "default": "project"
                 },
                 "agent_scope": false,
                 "auth": {

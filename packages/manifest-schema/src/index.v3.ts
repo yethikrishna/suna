@@ -1,6 +1,10 @@
 import { SLUG_RE, V3_HARNESS_VALUES, WORKSPACE_MODES_V2 } from './constants';
 import { type ManifestIssue, isTable, validateGrantList } from './index';
-import type { GrantSetV2, WorkspaceModeV2 } from './index.v2';
+import {
+  type GrantSetV2,
+  type WorkspaceModeV2,
+  validateRequiredConnectorFields,
+} from './index.v2';
 
 export type HarnessV3 = (typeof V3_HARNESS_VALUES)[number];
 
@@ -14,6 +18,9 @@ export interface AgentBlockV3 {
   agent?: string;
   enabled?: boolean;
   connectors?: GrantSetV2;
+  connectors_required?: string[];
+  /** @deprecated Input alias for `connectors_required`. */
+  connectors_personal?: string[];
   secrets?: GrantSetV2;
   skills?: GrantSetV2;
   kortix_cli?: GrantSetV2;
@@ -162,6 +169,7 @@ export function validateAgentsV3(
     }
     if (raw.enabled === false) disabledNames.push(name);
     validateGrantList(raw.connectors, `${where}.connectors`, 'connectors', issues, false, 3);
+    validateRequiredConnectorFields(raw, where, issues, 3);
     validateGrantList(raw.secrets, `${where}.secrets`, 'secrets', issues, false, 3);
     validateGrantList(raw.skills, `${where}.skills`, 'skills', issues, false, 3);
     validateGrantList(raw.kortix_cli, `${where}.kortix_cli`, 'kortix_cli', issues, true, 3);
@@ -182,6 +190,8 @@ export function validateAgentsV3(
       'agent',
       'enabled',
       'connectors',
+      'connectors_required',
+      'connectors_personal',
       'secrets',
       'skills',
       'kortix_cli',

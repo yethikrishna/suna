@@ -46,6 +46,7 @@ import {
   QuestionPrompt,
   type QuestionPromptHandle,
 } from '@/features/session/question-prompt';
+import { SessionScopeToolbar } from '@/features/session/scope/session-scope-toolbar';
 import {
   isInvisibleActivityPart,
   isNoGroupActivityTool,
@@ -3400,6 +3401,8 @@ function SessionTurn({
 
 interface SessionChatProps {
   sessionId: string;
+  /** Durable Kortix project session id used by project-session APIs. */
+  projectSessionId?: string;
   /** Complete SDK state for the root session. Omit for a read-only child session. */
   sessionState?: UseSessionResult;
   /** Project id lets agent pickers use the server-side project manifest/catalog. */
@@ -3418,6 +3421,7 @@ interface SessionChatProps {
 
 export function SessionChat({
   sessionId,
+  projectSessionId,
   sessionState,
   projectId,
   boundAgentName,
@@ -5236,6 +5240,19 @@ export function SessionChat({
   }, []);
 
   const chatCommands = useMemo(() => commands || [], [commands]);
+  const sessionScopeAgentName = lockedAgentName ?? local.agent.current?.name;
+
+  const chatToolbarSlot = useMemo(
+    () =>
+      projectId && projectSessionId ? (
+        <SessionScopeToolbar
+          projectId={projectId}
+          sessionId={projectSessionId}
+          agentName={sessionScopeAgentName}
+        />
+      ) : undefined,
+    [projectId, projectSessionId, sessionScopeAgentName],
+  );
 
   const chatInputSlot = useMemo(
     () => (
@@ -5790,6 +5807,7 @@ export function SessionChat({
             questionCanAct={questionAction.canAct}
             onQuestionAction={handleQuestionAction}
             inputSlot={chatInputSlot}
+            toolbarSlot={chatToolbarSlot}
             // The shell can now render on a cached transcript alone, i.e. before
             // the sandbox answers — so sending has to be gated separately from
             // reading. See sessionComposerReadiness.

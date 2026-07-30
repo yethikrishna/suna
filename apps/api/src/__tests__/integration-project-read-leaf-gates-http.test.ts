@@ -104,6 +104,7 @@ const CASES: Case[] = [
   { name: 'project session detail', leaf: PROJECT_ACTIONS.PROJECT_SESSION_READ, path: () => `/v1/projects/${PROJECT}/sessions/${crypto.randomUUID()}` },
   { name: 'project session transcript', leaf: PROJECT_ACTIONS.PROJECT_SESSION_READ, path: () => `/v1/projects/${PROJECT}/sessions/${crypto.randomUUID()}/transcript` },
   { name: 'project session audit', leaf: PROJECT_ACTIONS.PROJECT_SESSION_READ, path: () => `/v1/projects/${PROJECT}/sessions/${crypto.randomUUID()}/audit` },
+  { name: 'project session scope', leaf: PROJECT_ACTIONS.PROJECT_SESSION_READ, path: () => `/v1/projects/${PROJECT}/sessions/${crypto.randomUUID()}/scope` },
   { name: 'ACP session transcript', leaf: PROJECT_ACTIONS.PROJECT_SESSION_READ, path: () => `/v1/projects/${PROJECT}/sessions/${crypto.randomUUID()}/acp/transcript` },
   { name: 'ACP session event stream', leaf: PROJECT_ACTIONS.PROJECT_SESSION_READ, path: () => `/v1/projects/${PROJECT}/sessions/${crypto.randomUUID()}/acp` },
   { name: 'project access list', leaf: PROJECT_ACTIONS.PROJECT_MEMBERS_READ, path: () => `/v1/projects/${PROJECT}/access` },

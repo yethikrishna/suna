@@ -53,4 +53,14 @@ describe('buildSessionRuntimeEnv — KORTIX_COMPILED_AGENT_CONFIG', () => {
     expect(env.KORTIX_OPENCODE_MODEL).toBe('anthropic/claude-opus-4-8');
     expect(env.KORTIX_COMPILED_AGENT_CONFIG).toBe(compiled);
   });
+
+  test('ignores legacy attribution input and emits no attribution variables', () => {
+    const env = buildSessionRuntimeEnv({
+      ...BASE_INPUT,
+      originRef: 'legacy-reference',
+    } as Parameters<typeof buildSessionRuntimeEnv>[0]);
+
+    expect(env).not.toHaveProperty('KORTIX_END_USER_REF');
+    expect(env).not.toHaveProperty('KORTIX_ORIGIN_REF');
+  });
 });

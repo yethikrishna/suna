@@ -700,6 +700,10 @@ export const projectSessions = kortixSchema.table(
     // env is (today's agent-grant set) ∩ (this allowlist), enforced at BOTH boot
     // and hot-push. null = no restriction (byte-identical to pre-KaaB behavior).
     secretsAllowlist: jsonb('secrets_allowlist').$type<string[]>(),
+    // Distinguishes omitted connector_bindings from an explicit replacement.
+    connectorBindingsConfigured: boolean('connector_bindings_configured')
+      .default(false)
+      .notNull(),
     // When a session sets `connector_bindings`, binding ANY alias normally
     // suppresses the project-default fallback for every OTHER (unbound) alias —
     // "all-or-nothing" (see resolveSessionConnectorProfile). This opts the session
@@ -3987,6 +3991,11 @@ export const executorCredentialModeEnum = kortixSchema.enum('executor_credential
   'per_user',
 ]);
 
+export const executorConnectorAuthorizationStrategyEnum = kortixSchema.enum(
+  'executor_connector_authorization_strategy',
+  ['project', 'user'],
+);
+
 export const executorConnectors = kortixSchema.table(
   'executor_connectors',
   {
@@ -4023,6 +4032,12 @@ export const executorConnectors = kortixSchema.table(
      *  doc comment for why `per_user` is gone but the enum literal lingers. A
      *  DB CHECK constraint (added by the removal migration) enforces `shared`. */
     credentialMode: executorCredentialModeEnum('credential_mode').default('shared').notNull(),
+    /** Exclusive authorization owner model for this connector profile. */
+    authorizationStrategy: executorConnectorAuthorizationStrategyEnum(
+      'authorization_strategy',
+    )
+      .default('project')
+      .notNull(),
     /** Hash over config+auth — skip catalog re-sync when unchanged. */
     manifestHash: varchar('manifest_hash', { length: 64 }),
     status: executorConnectorStatusEnum('status').default('active').notNull(),
@@ -4415,21 +4430,11 @@ export const executorConnectorPolicies = kortixSchema.table(
 );
 
 /**
- * Per-CONNECTION tool-call policies, keyed by profile_id.
+ * Legacy authorization-policy storage.
  *
- * One connector can hold several connections — support@, sales@, a member's own
- * mailbox — and they often warrant DIFFERENT permissions. Connector-scoped rules
- * cannot express that: they are keyed by the connector, so every connection under
- * it shares one policy.
- *
- * Deliberately NOT in executor_connector_policies: sync.ts deletes every row for
- * a connector and re-inserts from the manifest on each manifest write, so a
- * DB-authored row there would be destroyed. Deliberately NOT in the manifest
- * either: a member's private connection can never appear in git, and profile
- * uuids are not portable across projects.
- *
- * Evaluated AFTER project rules (which remain un-overridable) and BEFORE
- * connector rules, so the more specific scope wins over the connector default.
+ * The runtime does not read or write this table. Connector-profile policies
+ * live in executor_connector_policies. Keep this table until a later contract
+ * migration removes the stored rows and physical schema.
  */
 export const executorConnectionPolicies = kortixSchema.table(
   'executor_connection_policies',

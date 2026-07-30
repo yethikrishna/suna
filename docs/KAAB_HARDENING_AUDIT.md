@@ -1,5 +1,11 @@
 # KaaB hardening audit
 
+> **Historical and superseded.** This audit records earlier contracts and
+> defects. Customer-reference usage attribution and per-reference limits no
+> longer exist. Use
+> [Drive Kortix as a Backend](./KORTIX_AS_A_BACKEND_GUIDE.md) for current
+> integration guidance.
+
 > **Historical audit scope.** This audit predates v3 multi-harness delivery.
 > OpenCode-specific findings remain compatibility evidence. They do not define
 > Claude Code, Codex, or Pi runtime behavior.

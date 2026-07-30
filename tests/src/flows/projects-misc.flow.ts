@@ -101,7 +101,6 @@ flow(
     });
   },
 );
-
 // PROJ-11 — onboarding state. PATCH {completed:true|false} flips
 // metadata.onboarding_completed_at and echoes the serialized project (200).
 flow(
@@ -965,4 +964,3 @@ flow(
     });
   },
 );
-

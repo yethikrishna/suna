@@ -411,16 +411,16 @@ flow(
   {
     domain: 'coverage',
     routes: [
-      'GET /v1/projects/:projectId/connector-profiles/:profileId/policies',
       'GET /v1/projects/:projectId/connector-profiles/all',
       'DELETE /v1/projects/:projectId/sessions/:sessionId/acp',
       'GET /v1/projects/:projectId/sessions/:sessionId/acp',
       'GET /v1/projects/:projectId/sessions/:sessionId/acp/transcript',
+      'GET /v1/projects/:projectId/sessions/:sessionId/scope',
       'POST /v1/projects/:projectId/sessions/:sessionId/acp',
       'PUT /v1/projects/:projectId/connector-profiles/:profileId/default',
-      'PUT /v1/projects/:projectId/connector-profiles/:profileId/policies',
       'PUT /v1/projects/:projectId/sessions/:sessionId/acp-identity',
       'PUT /v1/projects/:projectId/sessions/:sessionId/model',
+      'PUT /v1/projects/:projectId/sessions/:sessionId/scope',
     ],
   },
   async (ctx) => {
@@ -429,12 +429,7 @@ flow(
     const profileParams = { ...projectParams, profileId: ZERO_UUID };
     const sessionParams = { ...projectParams, sessionId: ZERO_UUID };
 
-    await ctx.step('unknown project hides connector profile reads', async () => {
-      const policies = await owner.get(
-        '/v1/projects/:projectId/connector-profiles/:profileId/policies',
-        { params: profileParams },
-      );
-      policies.status(404);
+    await ctx.step('unknown project hides the connector authorization roster', async () => {
       const roster = await owner.get('/v1/projects/:projectId/connector-profiles/all', {
         params: projectParams,
       });
@@ -448,15 +443,14 @@ flow(
         { params: profileParams },
       );
       makeDefault.status(404);
-      const policies = await owner.put(
-        '/v1/projects/:projectId/connector-profiles/:profileId/policies',
-        { policies: [] },
-        { params: profileParams },
-      );
-      policies.status(404);
     });
 
-    await ctx.step('unknown project blocks ACP identity and model mutations', async () => {
+    await ctx.step('unknown project blocks session scope reads and mutations', async () => {
+      const scopeRead = await owner.get(
+        '/v1/projects/:projectId/sessions/:sessionId/scope',
+        { params: sessionParams },
+      );
+      scopeRead.status(404);
       const identity = await owner.put(
         '/v1/projects/:projectId/sessions/:sessionId/acp-identity',
         {
@@ -473,6 +467,12 @@ flow(
         { params: sessionParams },
       );
       model.status(404);
+      const scope = await owner.put(
+        '/v1/projects/:projectId/sessions/:sessionId/scope',
+        { secrets: [] },
+        { params: sessionParams },
+      );
+      scope.status(404);
     });
 
     await ctx.step('unknown project hides managed ACP routes', async () => {

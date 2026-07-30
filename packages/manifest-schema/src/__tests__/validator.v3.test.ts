@@ -31,6 +31,7 @@ agents:
     agent: reviewer
     skills: [code-review]
     connectors: [github]
+    connectors_required: [github]
 `;
 
 function errors(input: string): string[] {
@@ -117,6 +118,35 @@ agents:
     expect(errors(VALID.replace('default_agent: kortix', 'default_agent: missing'))).toContain(
       'default_agent',
     );
+  });
+
+  test('accepts the deprecated required-connector alias with a warning', () => {
+    const result = validateManifest(
+      VALID.replace('connectors_required: [github]', 'connectors_personal: [github]'),
+      'yaml',
+    );
+    expect(result.valid).toBe(true);
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({
+        path: 'agents.reviewer.connectors_personal',
+        severity: 'warning',
+      }),
+    );
+  });
+
+  test('rejects conflicting aliases and required connectors outside the grant', () => {
+    const conflict = errors(
+      VALID.replace(
+        'connectors_required: [github]',
+        'connectors_required: [github]\n    connectors_personal: [slack]',
+      ),
+    );
+    expect(conflict).toContain('agents.reviewer.connectors_personal');
+
+    const outsideGrant = errors(
+      VALID.replace('connectors_required: [github]', 'connectors_required: [slack]'),
+    );
+    expect(outsideGrant).toContain('agents.reviewer.connectors_required');
   });
 
   test('publishes matching standalone and combined JSON schemas', () => {

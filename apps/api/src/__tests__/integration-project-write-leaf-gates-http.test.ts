@@ -131,6 +131,15 @@ const CASES: WCase[] = [
     denyGrant: [A.PROJECT_SESSION_START], allowGrant: [A.PROJECT_SESSION_START, A.PROJECT_SESSION_STOP],
   },
   {
+    name: 'session scope replacement (leaf session.stop)',
+    leaf: A.PROJECT_SESSION_STOP, method: 'PUT',
+    path: () => `/v1/projects/${PROJECT}/sessions/${sid()}/scope`,
+    body: { connector_bindings: {} },
+    tier: 'member',
+    denyGrant: [A.PROJECT_SESSION_START],
+    allowGrant: [A.PROJECT_SESSION_START, A.PROJECT_SESSION_STOP],
+  },
+  {
     name: 'ACP session message (leaf session.start)',
     leaf: A.PROJECT_SESSION_START, method: 'POST',
     path: () => `/v1/projects/${PROJECT}/sessions/${sid()}/acp`,

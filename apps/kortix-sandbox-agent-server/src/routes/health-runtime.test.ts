@@ -10,7 +10,7 @@ test('reports selected ACP harness readiness independently from OpenCode REST', 
       sandboxToken: 'token',
     } as never,
     {
-      getState: () => 'starting',
+      getState: () => 'down',
       getPid: () => null,
     } as never,
     Date.now(),

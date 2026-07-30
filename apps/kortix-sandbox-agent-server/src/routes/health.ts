@@ -148,9 +148,7 @@ export function createHealthRouter(
       acp_ready: managedAcp ? runtimeReady : false,
       acp_busy: acpProcess?.busy ?? false,
       runtime_pid: acpProcess?.pid ?? null,
-      // Managed ACP sessions do not start the legacy OpenCode supervisor.
-      // Its unstarted internal state is "starting", which is misleading here.
-      opencode: managedAcp ? 'down' : opencodeState,
+      opencode: opencodeState,
       uptime_s: Math.floor((Date.now() - bootTime) / 1000),
       opencode_pid: opencode.getPid(),
       // Static web server (preview/static files). The bound port when up, else

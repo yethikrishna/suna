@@ -67,13 +67,6 @@ const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
   'north-mini-code-free',
 ])
 
-export function usesManagedAcpRuntime(
-  harness: string | null,
-  serverId: string,
-): boolean {
-  return Boolean(harness && serverId.trim())
-}
-
 async function main() {
   const bootTime = Date.now()
   const cfg = loadConfig()
@@ -81,7 +74,7 @@ async function main() {
   const acpServerId =
     (process.env.KORTIX_ACP_SERVER_ID ?? '').trim() ||
     (acpHarness ? (process.env.KORTIX_SESSION_ID ?? '').trim() : '')
-  const managedAcp = usesManagedAcpRuntime(acpHarness, acpServerId)
+  const managedAcp = !!acpHarness && !!acpServerId
   const prompt = (process.env.KORTIX_INITIAL_PROMPT ?? '').trim()
   const bootstrapSession = (process.env.KORTIX_BOOTSTRAP_OPENCODE_SESSION ?? '').trim() === '1'
   const bootState: SandboxBootState = {
@@ -175,14 +168,11 @@ async function main() {
   // exactly equivalent to constructing it late.
   const opencode = createOpencodeSupervisor(cfg, cfg.defaultOpencodeConfigDir, projectEnv, {
     getCanonicalAcpSessionId: readPinnedOpencodeSessionId,
-    onStartupMark: bootMark,
   })
   const acpRuntime = new AcpRuntime({
     registry: createAcpHarnessRegistry(process.env),
     cwd: cfg.workspace,
     projectEnv,
-    initializeOnCreate: true,
-    onStartupMark: bootMark,
   })
   const server = startProxy(
     cfg,
@@ -216,35 +206,35 @@ async function main() {
     scheduleHistoryBackfill(cfg, cfg.projectTarget)
   }
 
-  const prepareOpenCodeConfig = !managedAcp || acpHarness === 'opencode'
-  const opencodeConfigDir = prepareOpenCodeConfig
-    ? await resolveOpencodeConfigDir(cfg)
-    : cfg.defaultOpencodeConfigDir
-  if (prepareOpenCodeConfig) {
-    logger.info('[boot] resolved opencode config dir', {
-      opencodeConfigDir,
-      usingProjectConfig: opencodeConfigDir !== cfg.defaultOpencodeConfigDir,
-    })
-    // Satisfy the config dir's npm deps offline before an OpenCode harness
-    // starts. Non-OpenCode harnesses do not pay this cost.
-    await ensureOpencodeConfigDeps(opencodeConfigDir)
-  }
+  const opencodeConfigDir = await resolveOpencodeConfigDir(cfg)
+  logger.info('[boot] resolved opencode config dir', {
+    opencodeConfigDir,
+    usingProjectConfig: opencodeConfigDir !== cfg.defaultOpencodeConfigDir,
+  })
+
+  // Satisfy the config dir's npm deps offline before opencode boots, so its
+  // first-session `bun install` doesn't re-resolve `^` ranges over the network
+  // (a 1.5–6s — sometimes minutes — stall that otherwise gates runtimeReady).
+  await ensureOpencodeConfigDeps(opencodeConfigDir)
   // Overlay the always-latest managed Kortix skills into every native harness
-  // discovery directory. A managed session receives only its selected harness.
+  // discovery directory. OpenCode always starts for compatibility. The selected
+  // ACP harness must also receive the same live system context.
   const runtimeConfigDir = process.env.KORTIX_RUNTIME_CONFIG_DIR?.trim() || null
   for (const configDir of managedSkillConfigDirs({
     workspace: cfg.workspace,
     opencodeConfigDir,
     harness: acpHarness,
     runtimeConfigDir,
-    includeOpenCode: prepareOpenCodeConfig,
   })) {
     await ensureInjectedManagedSkills(configDir)
   }
-  bootMark(managedAcp ? 'selected-harness-config-ready' : 'config-deps')
+  bootMark('config-deps')
+
+  // Bind the resolved (possibly project-owned) config dir before the first spawn.
+  opencode.reconfigure(cfg, opencodeConfigDir, projectEnv)
 
   if (bootState.repoMaterializationError) {
-    logger.warn('[boot] skipping runtime readiness because repo materialization failed')
+    logger.warn('[boot] skipping opencode readiness because repo materialization failed')
   } else {
     // Now that the repo exists, pin the credential helper repo-locally too, so
     // `git push` authenticates regardless of the invoking shell's HOME (the
@@ -254,27 +244,23 @@ async function main() {
         err: err instanceof Error ? err.message : String(err),
       })
     })
-    if (!managedAcp) {
-      // Bind the resolved project config before the legacy compatibility
-      // process starts. Managed ACP sessions start only the selected harness.
-      opencode.reconfigure(cfg, opencodeConfigDir, projectEnv)
-      await opencode.start().catch((err) => {
-        logger.warn('[boot] opencode.start() rejected', {
-          err: err instanceof Error ? err.message : String(err),
-        })
+    await opencode.start().catch((err) => {
+      // opencode.start() throws only on a hard spawn failure; the supervisor
+      // self-retries on transient issues. Log + continue: the proxy will 503
+      // until the supervisor reports ready.
+      logger.warn('[boot] opencode.start() rejected', {
+        err: err instanceof Error ? err.message : String(err),
       })
-      bootMark('opencode-spawned')
-    } else {
-      bootMark('opencode-skipped')
-    }
+    })
   }
+  bootMark('opencode-spawned')
 
   if (!bootState.repoMaterializationError && acpHarness && acpServerId) {
     try {
       await acpRuntime.getOrCreate(acpServerId, acpHarness)
       bootState.acpRuntimeReady = true
-      bootMark('acp-runtime-ready')
-      logger.info('[boot] selected ACP harness initialized', {
+      bootMark('acp-process-spawned')
+      logger.info('[boot] selected ACP harness spawned', {
         acpServerId,
         acpHarness,
       })
@@ -290,17 +276,12 @@ async function main() {
   // background so the next opencode start has the full picker — deliberately
   // AFTER the spawn and without a restart, because the whole point is that a
   // ~400KB cross-region catalog fetch never gates a session boot again.
-  if (
-    prepareOpenCodeConfig &&
-    catalogIsDegraded(process.env.KORTIX_LLM_CATALOG_FILE)
-  ) {
+  if (catalogIsDegraded(process.env.KORTIX_LLM_CATALOG_FILE)) {
     scheduleCatalogWarm(process.env.KORTIX_LLM_BASE_URL, process.env.KORTIX_LLM_API_KEY)
   }
 
-  logger.info('[boot] proxy up; runtime bootstrap complete', {
+  logger.info('[boot] proxy up; waiting for opencode readiness in background', {
     servicePort: cfg.servicePort,
-    managedAcp,
-    acpHarness,
   })
 
   if (bootState.repoMaterializationError) return
@@ -388,11 +369,7 @@ async function main() {
     return
   }
 
-  if (managedAcp) {
-    relayBootTimelineToApi(bootState.timeline)
-  } else {
-    void startSessionRuntime(opencode, cfg, bootState, bootMark)
-  }
+  void startSessionRuntime(opencode, cfg, bootState, bootMark)
 }
 
 // Adopt a forked session inside a warm-seed clone. The repo is already baked —
@@ -437,13 +414,7 @@ function armSeedAdoption(
       }
       const managedAcp = await adoptManagedAcpRuntime(bootState, acpRuntime)
       if (managedAcp) {
-        await opencode.stop().catch((error) =>
-          logger.warn('[seed] legacy OpenCode stop failed', {
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        )
-        bootMark('opencode-stopped')
-        if (bootState.acpRuntimeReady) bootMark('acp-runtime-ready')
+        if (bootState.acpRuntimeReady) bootMark('acp-process-spawned')
         relayBootTimelineToApi(bootState.timeline)
       } else {
         await startSessionRuntime(opencode, cfg2, bootState, bootMark)
@@ -660,7 +631,6 @@ async function runWarmSeedMode(
 
   const opencode = createOpencodeSupervisor(cfg, opencodeConfigDir, projectEnv, {
     getCanonicalAcpSessionId: readPinnedOpencodeSessionId,
-    onStartupMark: bootMark,
   })
   await opencode.start().catch((err) => logger.warn('[seed] opencode.start() rejected', { err: err instanceof Error ? err.message : String(err) }))
   bootMark('seed-opencode-spawned')
@@ -668,8 +638,6 @@ async function runWarmSeedMode(
     registry: createAcpHarnessRegistry(process.env),
     cwd: cfg.workspace,
     projectEnv,
-    initializeOnCreate: true,
-    onStartupMark: bootMark,
   })
   const server = startProxy(
     cfg,
@@ -753,25 +721,6 @@ async function runWarmSeedMode(
         }
       }
 
-      const managedAcp = await adoptManagedAcpRuntime(bootState, acpRuntime)
-      if (managedAcp) {
-        await opencode.stop().catch((error) =>
-          logger.warn('[seed] legacy OpenCode stop failed', {
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        )
-        bootMark('opencode-stopped')
-        if (bootState.acpRuntimeReady) bootMark('acp-runtime-ready')
-        relayBootTimelineToApi(bootState.timeline)
-        logger.info('[seed] fork adoption complete', {
-          adoptMs: Date.now() - t0,
-          selectedHarness: bootState.acpHarness,
-          opencodeRestarted: false,
-          timeline: bootState.timeline,
-        })
-        return
-      }
-
       // The seed opencode process is started before adoption, when it has no
       // session-scoped Executor/CLI/LLM env and may have started before the
       // project config dir exists. Restart it after adopting the fork env + repo so
@@ -850,7 +799,13 @@ async function runWarmSeedMode(
         )
         bootMark('adopt-opencode-restarted')
       }
-      await startSessionRuntime(opencode, cfg2, bootState, bootMark)
+      const managedAcp = await adoptManagedAcpRuntime(bootState, acpRuntime)
+      if (managedAcp) {
+        if (bootState.acpRuntimeReady) bootMark('acp-process-spawned')
+        relayBootTimelineToApi(bootState.timeline)
+      } else {
+        await startSessionRuntime(opencode, cfg2, bootState, bootMark)
+      }
       logger.info('[seed] fork adoption complete', { adoptMs: Date.now() - t0, hotSwapped, timeline: bootState.timeline })
     })()
   }
@@ -933,7 +888,6 @@ async function maybeCreateInitialOpencodeSession(
     // A turn interrupted by the restart left a part stuck "running"; finalize it
     // so a client streaming this root sees the turn end instead of spinning.
     if (existing.lastTurnIncomplete) await abortOpencodeTurn(baseUrl, workspace, sessionId)
-    bootMark('runtime-session-resume-requested')
     await resumeInitialOpenCodeSession(opencode, sessionId, workspace)
   } else {
     logger.info('[boot] creating initial opencode session', {
@@ -941,7 +895,6 @@ async function maybeCreateInitialOpencodeSession(
       hasPrompt: prompt.length > 0,
       workspace,
     })
-    bootMark('runtime-session-new-requested')
     const session = await createInitialOpenCodeSession(opencode, workspace)
     if (!session.id) throw new Error('opencode session create returned no id')
     sessionId = session.id
@@ -1217,8 +1170,6 @@ export async function createInitialOpenCodeSession(
   workspace: string,
 ): Promise<{ id: string }> {
   if (opencode.getTransport() === 'acp') {
-    // This mark separates ACP process initialization from the first canonical
-    // session. Cold-start attribution needs both values.
     const result = await requireAcpConnection(opencode).request('session/new', {
       cwd: workspace,
       mcpServers: [],

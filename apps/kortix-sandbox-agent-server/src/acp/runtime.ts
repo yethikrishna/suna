@@ -105,8 +105,6 @@ export class AcpRuntimeProcess {
       cwd: string
       env: NodeJS.ProcessEnv
       requestTimeoutMs?: number
-      initializeOnStart?: boolean
-      onStartupMark?: (label: string) => void
       onUnexpectedExit(process: AcpRuntimeProcess): void
     },
   ) {
@@ -139,8 +137,6 @@ export class AcpRuntimeProcess {
           harness: descriptor.id,
           line,
         }),
-      onFirstOutput: () =>
-        options.onStartupMark?.('runtime-acp-first-output'),
     })
 
     const stderr = createInterface({ input: this.child.stderr })
@@ -152,20 +148,9 @@ export class AcpRuntimeProcess {
       })
     })
 
-    const spawned = new Promise<void>((resolve, reject) => {
+    this.started = new Promise<void>((resolve, reject) => {
       this.child.once('spawn', resolve)
       this.child.once('error', reject)
-    })
-    this.started = spawned.then(async () => {
-      options.onStartupMark?.('runtime-process-spawned')
-      if (!options.initializeOnStart) return
-      await this.connection.initialize({
-        clientInfo: {
-          name: 'kortix-sandbox-agent-server',
-          version: '1',
-        },
-      })
-      options.onStartupMark?.('runtime-acp-initialized')
     })
 
     this.child.once('error', (error) => {
@@ -282,8 +267,6 @@ export class AcpRuntime {
       projectEnv?: ProjectEnvStore
       baseEnv?: NodeJS.ProcessEnv
       requestTimeoutMs?: number
-      initializeOnCreate?: boolean
-      onStartupMark?: (label: string) => void
     },
   ) {}
 
@@ -366,8 +349,6 @@ export class AcpRuntime {
         cwd: this.options.cwd,
         env,
         requestTimeoutMs: this.options.requestTimeoutMs,
-        initializeOnStart: this.options.initializeOnCreate,
-        onStartupMark: this.options.onStartupMark,
         onUnexpectedExit: (exited) => {
           if (this.instances.get(serverId) === exited) {
             this.instances.delete(serverId)

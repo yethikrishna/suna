@@ -123,37 +123,6 @@ describe('multi-harness ACP runtime', () => {
     ])
   })
 
-  test('can initialize a boot-selected harness before getOrCreate resolves', async () => {
-    const fixture = join(import.meta.dir, 'fixtures/mock-acp-agent.ts')
-    const marks: string[] = []
-    const runtime = new AcpRuntime({
-      registry: new Map([
-        [
-          'pi',
-          {
-            id: 'pi',
-            displayName: 'Mock Pi',
-            adapter: 'test',
-            launch: { command: process.execPath, args: [fixture] },
-          },
-        ],
-      ]),
-      cwd: import.meta.dir,
-      initializeOnCreate: true,
-      onStartupMark: (label) => marks.push(label),
-    })
-    runtimes.push(runtime)
-
-    const instance = await runtime.getOrCreate('boot-selected', 'pi')
-
-    expect(instance.connection.ready).toBe(true)
-    expect(marks).toEqual([
-      'runtime-process-spawned',
-      'runtime-acp-first-output',
-      'runtime-acp-initialized',
-    ])
-  })
-
   test('serializes concurrent creation and rejects harness reuse conflicts', async () => {
     const runtime = createRuntime()
     const [first, second] = await Promise.all([

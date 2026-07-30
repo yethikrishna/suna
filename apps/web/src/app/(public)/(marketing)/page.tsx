@@ -2,7 +2,8 @@
 
 import { Separator } from '@/components/ui/separator';
 import Hero from '@/features/marketing/hero';
-import { FlowSection } from '@/features/marketing/landing/flow-section';
+import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
+import { LogoStrip } from '@/features/marketing/landing/logo-strip';
 import { StackSection } from '@/features/marketing/landing/stack-section';
 
 function SectionDivider() {
@@ -14,8 +15,9 @@ function SectionDivider() {
 }
 
 /**
- * Rebuilt section by section. Only what is finished ships; the previous
- * sections stay in the tree and come back once each is reworked.
+ * Rebuilt section by section, following the hero → logo strip → section rhythm.
+ * Only what is finished ships; the remaining sections stay in the tree until
+ * each is reworked.
  */
 export default function Home() {
   return (
@@ -23,15 +25,18 @@ export default function Home() {
       {/* 1 · What it is — and the product actually running */}
       <Hero />
 
+      {/* transition: the models it runs and the tools it connects */}
+      <LogoStrip />
+
       <SectionDivider />
 
-      {/* 2 · Every layer an AI workforce needs, unified */}
+      {/* 2 · From a request to finished work — the original scroll-pinned section */}
+      <HowItWorks />
+
+      <SectionDivider />
+
+      {/* 3 · Every layer an AI workforce needs, unified */}
       <StackSection />
-
-      <SectionDivider />
-
-      {/* 3 · From a request to finished work — pinned, one step per viewport */}
-      <FlowSection />
     </div>
   );
 }

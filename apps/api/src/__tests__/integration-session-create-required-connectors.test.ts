@@ -4,14 +4,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  accounts,
-  executorConnectors,
-  projectSessions,
-  projects,
-  type Project,
-} from '@kortix/db';
+import { type Project, accounts, executorConnectors, projectSessions, projects } from '@kortix/db';
 import { and, eq } from 'drizzle-orm';
+import { loadProjectAgents } from '../projects/agents';
 import { createProjectSession } from '../projects/lib/sessions';
 import { db } from '../shared/db';
 
@@ -53,7 +48,6 @@ beforeAll(async () => {
       'agents:',
       '  support:',
       '    connectors: [project_records, user_records]',
-      '    connectors_required: [project_records, user_records]',
       '',
     ].join('\n'),
     'utf8',
@@ -105,6 +99,23 @@ beforeAll(async () => {
       authorizationStrategy: 'user',
     },
   ]);
+
+  await loadProjectAgents(project);
+  writeFileSync(
+    join(repository, 'kortix.yaml'),
+    [
+      'kortix_version: 2',
+      'default_agent: support',
+      'agents:',
+      '  support:',
+      '    connectors: [project_records, user_records]',
+      '    connectors_required: [project_records, user_records]',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  git(['add', 'kortix.yaml'], repository);
+  git(['commit', '-m', 'require connectors'], repository);
 });
 
 afterAll(async () => {
@@ -156,10 +167,7 @@ describe('createProjectSession required connector authorization gate', () => {
       .select({ sessionId: projectSessions.sessionId })
       .from(projectSessions)
       .where(
-        and(
-          eq(projectSessions.projectId, PROJECT_ID),
-          eq(projectSessions.sessionId, SESSION_ID),
-        ),
+        and(eq(projectSessions.projectId, PROJECT_ID), eq(projectSessions.sessionId, SESSION_ID)),
       );
     expect(rows).toEqual([]);
   });

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { loadProjectAgents, requiredConnectorsForAgent } from '../agents';
+import { refreshMirror } from './mirror';
 import type { GitBackedProject } from './types';
 
 const exec = promisify(execFile);
@@ -33,6 +34,13 @@ async function writeManifest(required: boolean): Promise<void> {
       '',
     ].join('\n'),
   );
+}
+
+async function pushRequiredManifest(): Promise<void> {
+  await writeManifest(true);
+  await git(['add', 'kortix.yaml'], repositoryPath);
+  await git(['commit', '-m', 'require connector'], repositoryPath);
+  await git(['push', 'origin', 'main'], repositoryPath);
 }
 
 beforeEach(async () => {
@@ -78,15 +86,22 @@ describe('manifest refresh', () => {
     const initial = await loadProjectAgents(project);
     expect(requiredConnectorsForAgent('support', initial)).toEqual([]);
 
-    await writeManifest(true);
-    await git(['add', 'kortix.yaml'], repositoryPath);
-    await git(['commit', '-m', 'require connector'], repositoryPath);
-    await git(['push', 'origin', 'main'], repositoryPath);
+    await pushRequiredManifest();
 
     const cached = await loadProjectAgents(project);
     expect(requiredConnectorsForAgent('support', cached)).toEqual([]);
 
-    const refreshed = await loadProjectAgents(project, { forceRefresh: true } as never);
+    const refreshed = await loadProjectAgents(project, { forceRefresh: true });
+    expect(requiredConnectorsForAgent('support', refreshed)).toEqual(['required-check']);
+  });
+
+  test('a forced refresh remains forced when a cached refresh already holds the lock', async () => {
+    await loadProjectAgents(project);
+    await pushRequiredManifest();
+
+    await Promise.all([refreshMirror(project), refreshMirror(project, true)]);
+
+    const refreshed = await loadProjectAgents(project);
     expect(requiredConnectorsForAgent('support', refreshed)).toEqual(['required-check']);
   });
 });

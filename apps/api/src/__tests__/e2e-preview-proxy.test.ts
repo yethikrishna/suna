@@ -120,7 +120,14 @@ mock.module('../shared/db', () => {
         // (a field the sandbox-row query shape shares), which would otherwise
         // misclassify it as a sandbox-table query and starve resolveOwnerRawEnv.
         const isProjectSessionQuery = fieldKeys.includes('createdBy');
+        // `wakeSandbox`'s deadline probe: a one-column projection of
+        // session_sandboxes. It must be classified BEFORE the loose sandbox
+        // check and served a LIVE deadline, otherwise every wake in this file is
+        // refused as expired and the auto-wake/retry assertions all fail. The
+        // refusal path itself is covered in sandbox-proxy/wake-deadline-guard.test.ts.
+        const isDeadlineProbe = fieldKeys.length === 1 && fieldKeys[0] === 'deadlineAt';
         const isSandboxQuery =
+          !isDeadlineProbe &&
           !isProjectSessionQuery &&
           fieldKeys.some((key) =>
             [
@@ -138,6 +145,11 @@ mock.module('../shared/db', () => {
 
         const rowsFor = (ordered = false): any[] => {
           if (isProjectSessionQuery) return [{ createdBy: TEST_USER_ID }];
+          if (isDeadlineProbe) {
+            return mockSandboxRows().length === 0
+              ? []
+              : [{ deadlineAt: new Date(Date.now() + 60 * 60_000) }];
+          }
           if (isSandboxQuery) {
             const rows = mockSandboxRows();
             return ordered ? sortPreferredSandboxRows(rows) : rows;
@@ -342,6 +354,18 @@ mock.module('../projects/opencode-session-snapshot', () => ({
   },
 }));
 
+// The proxy owns two of the four title hooks. Keep the REAL prompt extraction
+// (that is the part the proxy actually decides) and capture only the generator
+// call, whose own idempotency/CAS is covered by unit + integration tests.
+let mockTitleCalls: Array<Record<string, unknown>> = [];
+const realTitleGenerate = await import('../projects/session-title-generate');
+mock.module('../projects/session-title-generate', () => ({
+  ...realTitleGenerate,
+  generateSessionTitleFromFirstPrompt: async (input: Record<string, unknown>) => {
+    mockTitleCalls.push(input);
+  },
+}));
+
 // Override global fetch for proxy requests
 const originalFetch = globalThis.fetch;
 function mockFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
@@ -463,6 +487,7 @@ beforeEach(() => {
   mockDbUpdateCalls = [];
   mockResolvedPreviewPorts = [];
   mockSnapshotSyncCalls = [];
+  mockTitleCalls = [];
 
   // Install mock fetch
   globalThis.fetch = mockFetch as any;
@@ -824,6 +849,119 @@ describe('Preview proxy: forwarding', () => {
     expect(mockFetchCalls[1].url).toBe(
       'https://preview.daytona.io/proxy-url/session/ses_123/prompt_async?directory=%2Fworkspace',
     );
+  });
+
+  test('titles from a REST prompt_async body, with the model the user picked for the turn', async () => {
+    mockFetchResponses = [
+      { status: 200, body: '{"ok":true,"changed":true,"revision":"rev"}' },
+      { status: 204, body: '' },
+    ];
+    const app = createProxyTestApp();
+    const res = await app.request(`/v1/p/${TEST_SANDBOX_ID}/8000/session/ses_123/prompt_async`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        parts: [{ type: 'text', text: 'set up the MS Graph connector' }],
+        model: { providerID: 'kortix', modelID: 'codex/gpt-5.6-sol' },
+      }),
+    });
+
+    expect(res.status).toBe(204);
+    expect(mockTitleCalls).toEqual([
+      {
+        sessionId: mockDbSandbox.sessionId,
+        projectId: TEST_PROJECT_ID,
+        accountId: mockDbSandbox.accountId,
+        userId: TEST_USER_ID,
+        firstPromptText: 'set up the MS Graph connector',
+        modelHint: 'codex/gpt-5.6-sol',
+      },
+    ]);
+  });
+
+  test('does not title a prompt body that carries no text', async () => {
+    mockFetchResponses = [
+      { status: 200, body: '{"ok":true,"changed":true,"revision":"rev"}' },
+      { status: 204, body: '' },
+    ];
+    const app = createProxyTestApp();
+    const res = await app.request(`/v1/p/${TEST_SANDBOX_ID}/8000/session/ses_123/prompt_async`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parts: [{ type: 'image', url: 'x' }] }),
+    });
+
+    expect(res.status).toBe(204);
+    expect(mockTitleCalls).toEqual([]);
+  });
+
+  test('titles from an accepted ACP session prompt', async () => {
+    mockFetchResponses = [{ status: 202, body: '' }];
+    const app = createProxyTestApp();
+
+    const res = await app.request(`/v1/p/${TEST_SANDBOX_ID}/8000/kortix/acp/ses_123`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'prompt-3',
+        method: 'session/prompt',
+        params: { sessionId: 'ses_123', prompt: [{ type: 'text', text: 'Research Marko' }] },
+      }),
+    });
+
+    expect(res.status).toBe(202);
+    expect(mockTitleCalls).toHaveLength(1);
+    expect(mockTitleCalls[0]!.firstPromptText).toBe('Research Marko');
+  });
+
+  test('titles a MANAGED ACP prompt, whose harness sessionId differs from the route id', async () => {
+    // The route id is the ACP SERVER binding (the project session); the
+    // envelope's params.sessionId is the harness-issued session, which
+    // persistAcpSessionIdentity forbids from equalling it. Requiring the two to
+    // match made every managed ACP prompt invisible to this hook.
+    mockFetchResponses = [{ status: 202, body: '' }];
+    const app = createProxyTestApp();
+
+    const res = await app.request(
+      `/v1/p/${TEST_SANDBOX_ID}/8000/kortix/acp/${mockDbSandbox.sessionId}`,
+      {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'prompt-5',
+          method: 'session/prompt',
+          params: {
+            sessionId: 'acp_harness_session_9',
+            prompt: [{ type: 'text', text: 'Research Marko' }],
+          },
+        }),
+      },
+    );
+
+    expect(res.status).toBe(202);
+    expect(mockTitleCalls).toHaveLength(1);
+    expect(mockTitleCalls[0]!.firstPromptText).toBe('Research Marko');
+  });
+
+  test('a rejected ACP session prompt is not titled', async () => {
+    mockFetchResponses = [{ status: 502, body: 'bad gateway' }];
+    const app = createProxyTestApp();
+
+    const res = await app.request(`/v1/p/${TEST_SANDBOX_ID}/8000/kortix/acp/ses_123`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'prompt-4',
+        method: 'session/prompt',
+        params: { sessionId: 'ses_123', prompt: [{ type: 'text', text: 'Research Marko' }] },
+      }),
+    });
+
+    expect(res.status).toBe(502);
+    expect(mockTitleCalls).toEqual([]);
   });
 
   test('schedules a deferred opencode_sessions snapshot sync after an accepted ACP session prompt', async () => {

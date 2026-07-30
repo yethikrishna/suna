@@ -91,7 +91,13 @@ async function openHarness(page: Page) {
   await page
     .getByRole('dialog', { name: /new project/i })
     .waitFor({ state: 'visible', timeout: 30_000 });
-  await page.getByTestId('project-create-starter').waitFor({ state: 'visible', timeout: 30_000 });
+  await page
+    .getByRole('textbox', { name: /project name/i })
+    .waitFor({ state: 'visible', timeout: 30_000 });
+  assert(
+    (await page.getByTestId('project-create-starter').count()) === 0,
+    'project creation should not show a starter selector',
+  );
 }
 
 async function newHarnessPage(browser: Browser): Promise<Page> {
@@ -193,19 +199,6 @@ async function main() {
     await page.close();
     page = await newHarnessPage(browser);
     await openHarness(page);
-    await page.getByTestId('project-create-starter').click();
-    const acpOption = page.getByRole('option', { name: 'ACP multi-harness' });
-    await acpOption.click();
-    await acpOption.waitFor({ state: 'hidden' });
-    const acpPayload = await submitProjectCreate(page, 'acp-multi-harness');
-    assert(
-      acpPayload.starter_template === 'acp-multi-harness',
-      'ACP payload should use the acp-multi-harness starter_template',
-    );
-
-    await page.close();
-    page = await newHarnessPage(browser);
-    await openHarness(page);
     const accountField = page.getByTestId('project-create-account');
     await accountField.waitFor({ state: 'visible', timeout: 30_000 });
     assert(
@@ -236,7 +229,7 @@ async function main() {
     );
 
     console.log(
-      '[project-create-modal] ok: default starter, ACP multi-harness starter, and account picker payloads verified',
+      '[project-create-modal] ok: one generic starter and account picker payloads verified',
     );
   } finally {
     await browser.close();

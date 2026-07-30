@@ -342,12 +342,12 @@ title. Sorted newest first.
 
 | Command | Effect |
 | --- | --- |
-| `kortix init` | Scaffold a Kortix project. The default `general-knowledge-worker` template writes a v2 OpenCode manifest. `--template acp-multi-harness` writes a v3 manifest with OpenCode, Claude Code, Codex, and Pi profiles. Both write `.kortix/Dockerfile`, the canonical skill source, and the default agent. Local coding-tool wiring remains separate from cloud harness selection. |
+| `kortix init` | Scaffold one general-purpose Kortix project. It writes a v3 manifest with OpenCode, Claude Code, Codex, and Pi profiles, the canonical skill source, and the default agents. Local coding-tool wiring remains separate from cloud harness selection. |
 
 Use this command for a local four-harness scaffold:
 
 ```sh
-kortix init harness-lab --template acp-multi-harness --yes --no-git
+kortix init harness-lab --yes --no-git
 ```
 
 ### System skills
@@ -534,6 +534,6 @@ warns.
 - `change-requests.md` (alongside this file) — full CR data model,
   lifecycle, REST API, and the "MUST open a CR" agent mandate.
 - `kortix.yaml` — the manifest the dashboard + the CLI both read.
-- `.kortix/Dockerfile` — your sandbox base image.
+- `.kortix/Dockerfile` — an optional custom sandbox image when `kortix.yaml` declares it.
 - `.kortix/link.json` — current dir's binding to a remote project
   (project_id + host).

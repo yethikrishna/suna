@@ -702,7 +702,8 @@ export function buildManifestV3Schema(): JsonSchemaFragment {
     title: 'Kortix manifest (kortix_version 3)',
     description:
       'ACP & Multi-Harness manifest for OpenCode, Claude Code, Codex, and Pi. ' +
-      'The project must enable the `acp_runtime` experiment before it can start a version 3 session. ' +
+      'New generic projects enable the `acp_runtime` experiment automatically. Existing projects ' +
+      'must enable it before they can start a version 3 session. ' +
       'Each logical agent selects one declared runtime profile. The selected harness, runtime profile, ' +
       'and harness-native agent identifier are immutable when a session starts. Native harness ' +
       'configuration owns model, prompt, permission, and tool behavior.',

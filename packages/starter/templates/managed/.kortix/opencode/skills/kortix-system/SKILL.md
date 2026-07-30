@@ -13,19 +13,19 @@ served fresh by the CLI,
 so their instructions always match the platform version you're running on (no
 re-install, no image re-bake):
 
-- `kortix skills` — list the Kortix system skills.
-- `kortix skills get <name>` — print one skill's current SKILL.md body.
-- `kortix skills get <name> --full` — also include its referenced files.
+- `kortix system-skills` — list the Kortix system skills.
+- `kortix system-skills get <name>` — print one skill's current SKILL.md body.
+- `kortix system-skills get <name> --full` — also include its referenced files.
 
-(On a newer CLI the same command is also spelled `kortix system-skills`; both
-work. Optional, non-system skills are marketplace items, not system skills —
-browse them with `kortix marketplace list --type skill`.)
+`kortix skills` is a permanent compatibility alias. Optional, non-system
+skills are marketplace items. Browse them with
+`kortix marketplace list --type skill`.
 
 Before answering anything about Kortix internals — the executor/connectors,
 project memory, Slack/channels, reaching a connected computer, or sending a
-notetaker into a meeting — load the matching skill with `kortix skills get
-<name>` and follow it. Prefer this over any stale local copy; the CLI reflects
-the platform you're actually on.
+notetaker into a meeting — load the matching skill with
+`kortix system-skills get <name>` and follow it. Prefer this over any stale
+local copy. The CLI reflects the deployed platform.
 </live-skills>
 
 <overview>
@@ -43,8 +43,9 @@ the manifest.
 `kortix_version: 2` runs OpenCode. `kortix_version: 3` declares named
 `runtimes` and lets each logical agent select OpenCode, Claude Code, Codex, or
 Pi through `agents.<name>.runtime`. Version 3 requires the project experiment
-`acp_runtime`, shown as **ACP & Multi-Harness**. The experiment defaults to
-disabled. A disabled project uses the OpenCode REST compatibility transport.
+`acp_runtime`, shown as **ACP & Multi-Harness**. New generic projects enable
+it automatically. Existing projects keep their experiment state. A disabled
+project uses the OpenCode REST compatibility transport.
 
 Legacy v1 projects and v2 projects keep OpenCode-native discovery. Their
 `.kortix/opencode/` directory can also drive a local `opencode` run.
@@ -433,7 +434,7 @@ The boundary between project config and runtime config:
 
 | Surface | Owner | File | Read by |
 | --- | --- | --- | --- |
-| Kortix config | Kortix | `kortix.yaml` + `.kortix/Dockerfile` | Kortix platform |
+| Kortix config | Kortix | `kortix.yaml` + optional custom sandbox files | Kortix platform |
 | OpenCode native config | OpenCode | `.kortix/opencode/` | OpenCode |
 | Claude Code native config | Claude Code | v3 runtime `config_dir`, normally `.claude` | Claude Code |
 | Codex native config | Codex | v3 runtime `config_dir`, normally `.codex`; repo skills in `.agents/skills` | Codex |
@@ -618,7 +619,7 @@ to see the full enum.
   projects, secrets, env, sessions, triggers, cr, init, update,
   uninstall), every flag, every env var the CLI reads. Includes the
   project-scoped token model and what the CLI can do **from inside a
-  session sandbox** (where `KORTIX_SANDBOX_TOKEN` + `KORTIX_API_URL` are
+  session sandbox** (where `KORTIX_CLI_TOKEN` + `KORTIX_API_URL` are
   pre-injected so `kortix sessions ls`, `kortix secrets set FOO=bar`,
   `kortix cr ls` all work out of the box). Load this when you want to
   drive the Kortix cloud from a terminal or agent.
@@ -649,7 +650,7 @@ to see the full enum.
   `env:`, `sandbox:`); every `triggers:` field (cron +
   webhook, incl. `session_mode` and the project-wide `triggers_paused`
   kill-switch), the prompt template variables, the secrets contract, the
-  `apps:` deployment surface, schema versioning, common gotchas, and a
+  schema versioning, common gotchas, and a
   legacy note on the v1 `kortix.toml` TOML format. Load this when
   editing or debugging the manifest.
 </reference>
@@ -783,8 +784,9 @@ Things that surprise people:
   Centralized in the manifest now, parsed as `triggers:`.
 - **Kortix-owned files live in `.kortix/` at the repo root.** The
   `Dockerfile` and `opencode/` config dir sit under there to keep the
-  root clean. Both paths are declared in `kortix.yaml`
-  (`sandbox: dockerfile`, `opencode: config_dir`) — relocate freely.
+  root clean. Version 2 declares the OpenCode path through
+  `opencode.config_dir`. Version 3 declares each path through
+  `runtimes.<name>.config_dir`.
 - **Harness behavior remains runtime-native.** In v2, skills, commands, tools,
   plugins, MCP, providers, and agent prompts remain OpenCode config. In v3,
   place equivalent behavior in the selected harness's `config_dir`. Declaring

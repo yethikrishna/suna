@@ -131,11 +131,12 @@ function isMissingSandboxError(error: unknown): boolean {
  * local-dev and ephemeral-env sessions are the dominant leak source, and the
  * idle sweep can't see boxes it has no DB row for.
  *
- *  - autoStopInterval: idle → stop (compute billing ends). CLAMPED to >= 1 so a
- *    box is NEVER created persistent. BACKSTOP only: Daytona's idle signal is
- *    "no inbound requests", blind to local tool runs, so it must sit well above
- *    the reaper's activity-aware TTL (providerAutoStopBackstopMinutes) or it
- *    kills working boxes.
+ *  - autoStopInterval: idle → stop. CLAMPED to >= 1 so a box is NEVER created
+ *    persistent. BACKSTOP only: Daytona's idle signal is "no inbound requests",
+ *    blind to local tool runs, so it must sit well above the longest real turn or
+ *    it kills working boxes. Sized by providerAutoStopBackstopMinutes(), which is
+ *    that policy and nothing else — it used to double as the billing clamp's
+ *    grace, which is why it was pinned 12x too low to be safe here.
  *  - autoArchiveInterval: stopped → archived to cold storage after a few days
  *    (cheap, still resumable). Until then the stopped box stays warm-resumable.
  *  - autoDeleteInterval: -1 by default → NEVER auto-delete. An idle box is

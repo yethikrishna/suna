@@ -192,7 +192,7 @@ Also stop if the same failure survives three different fixes (use
 
 ---
 
-## COMPLETED PLAN — OpenCode ACP canary
+## NOW — active plan: OpenCode ACP canary
 
 - **Plan:** `docs/superpowers/plans/2026-07-25-opencode-acp-canary.md`
 - **Spec:** `docs/superpowers/specs/2026-07-25-opencode-acp-canary-design.md`
@@ -207,25 +207,6 @@ Also stop if the same failure survives three different fixes (use
 | 6 | Existing `useSession` integration | DONE | `acp-opencode-canary` | 2026-07-25 | `951896a44` |
 | 7 | Local parity and rollback proof | DONE | `acp-opencode-canary` | 2026-07-25 | `33900d7f1` |
 | 8 | Delivery and dev proof | DONE | `acp-opencode-canary` | 2026-07-25 | `3a45ab55b` |
-
----
-
-## NOW — active plan: connector profile authorization and session costs
-
-- **Plan:** `docs/superpowers/plans/2026-07-29-connector-profile-authorization-and-session-costs.md`
-- **Spec:** `docs/superpowers/specs/2026-07-29-connector-profile-authorization-and-session-costs-design.md`
-
-| # | Task | Status | Session | Last touched | Commit |
-|---|---|---|---|---|---|
-| 0 | Design and implementation plan | DONE | `profile-auth-cost` | 2026-07-29 | `e70538c802` |
-| 1 | Connector profile contracts | DONE | `profile-auth-cost` | 2026-07-29 | `543044a2a6` + `df01b91344` + `6bfc4dcae1` + `3a410eb374` |
-| 2 | Strategy-based session authorization | DONE | `profile-auth-cost` | 2026-07-29 | `d9a217dd7d` + `0ae111091e` + `df9586a8b5` + `f8c0cbdf21` + `4630109c7d` + `74a804d14d` + `f9d9746ebb` + `383e501ea3` + `30c607a646` |
-| 3 | Main web session scope | DONE | `profile-auth-cost` | 2026-07-29 | `900e01a723` + `53d7191abb` + `f1b1e00978` |
-| 4 | Remove end-user usage attribution | DONE | `profile-auth-cost` | 2026-07-29 | `f6c14a5d95` + `71b230d933` + `d2871144df` + `c8d8403231` + `3c1e979263` + `c5ad2d3496` |
-| 5 | Unified session costs | DONE | `profile-auth-cost` | 2026-07-29 | `98fa46b098` + `12201bcc3d` + `54af8a9821` + `894df98893` + `428e18eaf0` |
-| 6 | White-label and documentation alignment | IN PROGRESS | `profile-auth-cost` | 2026-07-29 | — |
-| 7 | Local verification | NOT STARTED | — | — | — |
-| 8 | Delivery and dev proof | NOT STARTED | — | — | — |
 
 ---
 
@@ -280,6 +261,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B30 | **Expose message-based session rewind and restore through both REST and ACP transports.** Editing an earlier user message must rewind the same canonical session instead of creating a fork. The removed path must remain recoverable until the replacement prompt commits.                                                                                                                                                                      | `apps/web/src/features/session/session-chat.tsx` contains `TODO(session-rewind)`. OpenCode exposes `/session/{sessionID}/revert` and `/unrevert`; ACP has no standard rewind method and needs a Kortix bridge extension plus transcript reload.                                                               | **DONE 2026-07-27** — implementation `eab4eef0f`; PR #5619 merged as `9e90e8ed7`. Deploy Dev run `30293660760` deployed source `e548c6a8fc9ee1d5a92db66d6feb912d4442ebeb`, which contains the merge. Dev session `7feb4e84-072f-4b71-987f-dc25dd542890` kept canonical OpenCode session `ses_05b075d25ffe7PBkZ632pcVAlW` across ACP and REST rewind, restore, replacement commit, reconnect, and file rollback. ACP produced `DEPLOYED_ACP_REPLACEMENT`; REST produced `DEPLOYED_REST_REPLACEMENT`; cleanup removed `26/26` probe sessions and restored ACP runtime overrides. SDK tests `1309/0`, daemon tests `306/0`, web source contract `5/0`, local ACP Playwright `1/0`, and local real ACP plus REST smoke pass. Shippable to production: **YES** for protocol behavior. Deployed UI interaction remains unverified because Browser discovery returned `[]`. |
 | B31 | **Allow a page-scoped ACP query override and settle completed ACP prompts that contain stale running tools.**                                                                                                                                                                                                                                                                                                                                     | `?acp` has no SDK transport override. Dev session `5322fa59-7a73-4fea-9f1a-9da59c2a0b5a` rendered the final assistant response while an older tool part remained `running`; `hasProjectionBlockers()` then kept the composer busy and blocked the queued prompt.                                                                 | **IMPLEMENTATION COMPLETE 2026-07-27** — implementation `d3544ae14`; focused SDK `40/0`, full SDK `1312/0`, typecheck, packed-install smoke, web routing `5/0`, and touched web ESLint pass. PR #5636, Deploy Dev, deployed SHA proof, and deployed ACP-only proof remain |
 | B32 | **Synchronize generated Kortix session names from both ACP and OpenCode REST runtimes without navigation or refresh.**                                                                                                                                                                                                                                                                                                                           | ACP emits `session_info_update`; OpenCode `/global/event` emits a wrapped `session.updated`. Neither path reliably persisted `metadata.name`, and the sidebar query could stay stale after a completed prompt.                                                                                              | **IMPLEMENTATION COMPLETE 2026-07-28** — ACP and REST title events persist server-side; the SDK refetches list and detail queries through a bounded post-send loop; focused API `78/0`, full SDK `1318/0`, API and SDK typechecks, packed-install smoke, test-harness typecheck, and local ACP plus REST Chromium `1/0` pass. Full API has `3` pre-existing failures reproduced in the primary checkout. PR, Deploy Dev, deployed SHA proof, and deployed UI proof remain. |
+| B33 | **The ACP transcript has no bounded read — a session replays every envelope on open.** OpenCode REST opens on a bounded newest-first page (`SESSION_SYNC_PAGE_SIZE`) and pages backwards through a cursor; ACP has no equivalent, so the ACP path gets slower without limit as a session grows. As ACP becomes the only transport, the bounded-read property is lost with it. | `GET /:projectId/sessions/:sessionId/acp/transcript` (`apps/api/src/projects/routes/acp.ts:160`) and `loadAcpTranscript` (`apps/api/src/projects/lib/acp-transcript.ts`) accept only `after` (forward tailing for gap recovery) — no `before`/`limit`. `useSession` hardcodes `hasOlder: false` / `loadOlder: async () => {}` for ACP (`src/react/use-session.ts:533-535`). **Not a small change:** the projection is a fold over the whole envelope log (`applyAcpEnvelope`), so replaying a suffix yields a wrong projection — open tool calls, session info, and rewind state all live in earlier envelopes. Needs either envelope-range snapshots or a projection checkpoint, then the existing `hasOlder`/`loadOlder` contract plugs into the transcript's scroll-driven autoload unchanged. | OPEN |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -3920,243 +3902,191 @@ deployed SHA proof, and deployed four-harness verification remain.
 
 ---
 
-### 2026-07-29 — session `profile-auth-cost` Task 1 completion
+### 2026-07-29 — session `generic-acp-session-identity` SDK claim
 
-Completed the connector-profile contract and authorization-strategy foundation.
+Claimed the preassigned OpenCode session identity compatibility task.
 
-The manifest, API contract, database schema, API, SDK, and web editor now use
-one exclusive `project` or `user` authorization strategy. Connector-profile
-policies apply to every authorization for that connector profile.
-Authorization-specific policy routes and UI controls are removed.
+Scope:
 
-Deprecated SDK terminology remains exported. Deprecated authorization-policy
-methods fail before they can widen connector-profile policy scope.
+- Treat the `/start` response as the authoritative runtime identity.
+- Keep `initialOpenCodeSessionId` as a backward-compatible cache seed.
+- Prevent SDK caches from crossing Kortix `(projectId, sessionId)` boundaries.
+- Prove two sandboxes restored from one snapshot receive distinct OpenCode IDs.
+
+The required `tdd` skill is unavailable in this session.
+The implementation used the same RED, GREEN, and REFACTOR sequence directly.
 
 TDD evidence:
 
-- Manifest schema suite: `342 pass`, `0 fail`, and `546` assertions.
-- Focused API contract and connector suites: `120 pass`, `0 fail`.
-- API policy suite: `28 pass`, `0 fail`, and `41` assertions.
-- Real Postgres gateway authorization check: `1 pass`, `0 fail`, and `6`
-  assertions.
-- Real Postgres HTTP route check: both removed policy routes returned `404`;
-  `1 pass`, `0 fail`, and `2` assertions.
-- Web policy-ownership source check: `1 pass`, `0 fail`, and `6` assertions.
-- Database schema suite: `60 pass`, `0 fail`, and `101` assertions.
-- `ke2e coverage`: `508/518` routes covered, `10` allowlisted, and `0`
-  uncovered.
+- IndexedDB scope RED: the focused test failed because
+  `idb-sync-cache-key` did not exist.
+- IndexedDB scope GREEN: `3 pass`, `0 fail`.
+- Transcript ownership RED: the focused test failed because
+  `resolveSessionCacheOwnerScope` did not exist.
+- Transcript ownership GREEN: `4 pass`, `0 fail`.
+- Runtime switch gate RED: the focused source contract found no sandbox-switch
+  gates in `useSession`.
+- Runtime switch gate GREEN: the focused source contract passed.
+- Runtime-action gate RED: the focused test failed because
+  `isSessionRuntimeActionReady` did not exist.
+- Runtime-action gate GREEN: the focused test passed.
 
 Final SDK gates:
 
 - `pnpm --filter @kortix/sdk typecheck`: exit `0`.
-- `pnpm --filter @kortix/sdk test`: `1359 pass`, `2 skip`, `0 fail`, `5944`
-  assertions, and `116` files.
-- `pnpm --filter @kortix/sdk run smoke:install`: packed tarball import and
-  construction passed.
+- `pnpm --filter @kortix/sdk test`: `1381 pass`, `0 fail`, `5970`
+  assertions.
+- `pnpm --filter @kortix/sdk run smoke:install`: the packed tarball installed,
+  imported, and constructed successfully.
+- The public export snapshot did not change.
 
-Other final gates:
+Related repository gates:
 
-- `pnpm --filter kortix-api typecheck`: exit `0`.
-- `pnpm --filter @kortix/db typecheck`: exit `0`.
-- Focused web ESLint: exit `0`.
-- Migration lint: exit `0`.
-- Migration applied to the isolated Postgres database. The
-  `authorization_strategy` enum and column exist.
+- Starter typecheck: exit `0`.
+- Starter tests: `51 pass`, `0 fail`.
+- CLI typecheck: exit `0`.
+- CLI tests: `553 pass`, `0 fail`.
+- API typecheck: exit `0`.
+- API focused tests: gateway base URL `6 pass`; starter create-repo `12 pass`;
+  provision `10 pass`; scaffold identity `1 pass` with `182` assertions;
+  project-session contract `45 pass` with `363` assertions.
+- Web focused tests: `27 pass`, `0 fail`.
+- Web focused ESLint: exit `0`.
+
+Live local acceptance:
+
+- Evidence:
+  `tests/performance/session-start/results/2026-07-29/opencode-fork-isolation-local-platinum.json`.
+- Provider: Platinum.
+- Result: `PASS 2/2`.
+- Create-to-ready: `21.460 s` and `23.736 s`.
+- `/start` returned distinct OpenCode roots:
+  `ses_050ddca47ffe4r8L0yDak7Fiar` and
+  `ses_050ddd663ffe159AjQGlKxefsg`.
+- `createKortix().session().ensureReady()` matched each `/start` root.
+- Restart preserved each root.
+- Each transcript contained only its own three assistant markers.
+- Fixture cleanup left zero projects and zero users.
+
+Rebased local acceptance on `origin/main` `d627167f`:
+
+- Evidence:
+  `tests/performance/session-start/results/2026-07-29/opencode-fork-isolation-local-platinum-rebased.json`.
+- The smoke converted the canonical version 3 starter into a disposable
+  version 2 OpenCode REST fixture through a temporary project-scoped PAT.
+- Result: `PASS 2/2` on Platinum.
+- Create-to-ready: `21.758 s` and `23.266 s`.
+- `/start` returned distinct OpenCode roots:
+  `ses_050be4bb6ffepNq9BLE8kdybL9` and
+  `ses_050be472cffeLbJ7ciXGs8smOL`.
+- The public SDK matched both authoritative `/start` roots.
+- Restart preserved both roots.
+- Each assistant transcript contained only its own three markers.
+- Fixture cleanup left zero projects and zero users.
 
 **Status:** COMPLETE.
 
 **SDK package shippable to production: YES.**
 
-**Repository delivery shippable to production: NOT YET.** Tasks 2 through 8,
-PR merge, Deploy Dev, deployed SHA proof, and deployed behavior verification
-remain.
+**Repository delivery shippable to production: NOT YET.** PR merge, Deploy Dev,
+deployed SHA proof, and deployed isolation verification remain.
 
 ---
 
-### 2026-07-29 — session `profile-auth-cost` Task 2 completion
+### 2026-07-29 — session `sdk-inherited-session-defaults` follow-up claim
 
-Completed strategy-based session authorization and authoritative session scope.
+Claimed the live inherited OpenCode session default compatibility follow-up.
 
-Session creation, warm-session claim, scope replacement, and connector
-execution enforce the connector profile authorization strategy. Mandatory
-connector profiles fail before sandbox startup with one structured response
-that lists every missing authorization.
+Live dev evidence on merge `7a7bb4f16`:
 
-Scope read-back returns the effective runtime authorization map. This includes
-strategy-based defaults that do not have durable binding rows. Complete
-replacement disables inherited defaults and applies to the next tool call.
-User authorizations remain private and resolve against the session owner.
+- Three distinct Platinum sandboxes inherited
+  `ses_050fadf1dffeb2XyPZiu0qloal`.
+- SDK routing kept each user marker in its own sandbox transcript.
+- The first SDK prompt used the stale snapshot model
+  `opencode/big-pickle` and produced no assistant message.
+- A direct prompt with the persisted project-session model
+  `kortix/glm-5.2` unblocked each session.
+- Both sessions then passed follow-up, restart, and post-restart SDK sends.
 
-TDD evidence:
+Scope:
 
-- API contract suite: `55 pass`, `0 fail`, and `116` assertions.
-- Focused SDK suite: `99 pass`, `0 fail`, and `329` assertions.
-- Real Postgres authorization resolver suite: `35 pass`, `0 fail`, and `78`
-  assertions.
-- Real HTTP authorization and scope suite: `23 pass`, `0 fail`, and `77`
-  assertions.
-- Scope replacement suite: `15 pass`, `0 fail`, and `28` assertions.
-- Session-create and strategy suite: `35 pass`, `0 fail`, and `75`
-  assertions.
-- Read capability gate suite: `3 pass`, `97 filtered`, and `0 fail`.
-- Write capability gate suite: `3 pass`, `95 filtered`, and `0 fail`.
-- `ke2e coverage`: `509/519` routes covered, `10` allowlisted, and `0`
-  uncovered.
+- Resolve the persisted project-session model and agent before a default SDK
+  `send`.
+- Keep explicit per-call and handle-level SDK overrides authoritative.
+- Accept an equal inherited OpenCode ID when sandbox and transcript ownership
+  remain isolated.
+- Make the disposable live smoke tolerate project manifest convergence without
+  hiding product failures.
+
+The required `tdd` skill is unavailable in this session.
+The implementation will use the same RED, GREEN, and REFACTOR sequence
+directly.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
+---
+
+### 2026-07-29 — session `sdk-inherited-session-defaults` follow-up completion
+
+Completed the inherited OpenCode session compatibility fix in `a900fc605`.
+
+The SDK now reads the persisted project-session model and agent before the
+first default OpenCode REST `send()` on a handle. Per-call choices override
+handle choices. Handle choices override persisted defaults. `changeModel()`
+invalidates the cached persisted defaults. A failed defaults read clears the
+cache so the next `send()` retries it.
+
+The live smoke now treats the sandbox as the isolation boundary. It accepts an
+equal snapshot-inherited `opencode_session_id` only when the Kortix sessions,
+sandboxes, and transcripts remain isolated. The session-create helper retries
+only the exact `409 ACP_RUNTIME_REQUIRED` manifest-convergence response.
+
+TDD and focused evidence:
+
+- RED: the inherited-session prompt omitted the persisted model and agent.
+- GREEN: the prompt used `kortix/glm-5.2` and agent `kortix`.
+- RED: `changeModel()` left the old persisted model cached.
+- GREEN: the next prompt used the changed model.
+- Focused SDK client suite: `71 pass`, `0 fail`, `258` assertions.
+- Tests package typecheck: exit `0`.
 
 Final SDK gates:
 
 - `pnpm --filter @kortix/sdk typecheck`: exit `0`.
-- `pnpm --filter @kortix/sdk test`: `1376 pass`, `0 fail`, `5980`
-  assertions, and `117` files.
-- `pnpm --filter @kortix/sdk run smoke:install`: packed tarball imported and
-  constructed successfully.
+- `pnpm --filter @kortix/sdk test`: `1385 pass`, `0 fail`, `5978`
+  assertions across `121` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: the packed tarball installed,
+  imported, and constructed successfully.
 
-Other final gates:
+Live dev Platinum acceptance:
 
-- `pnpm --filter kortix-api typecheck`: exit `0`.
-- Scope aliases round-trip between public and canonical forms.
-- Explicit empty, partial, inherited, and unrestricted scope states pass real
-  Postgres checks.
-
-**Status:** COMPLETE.
-
-**SDK package shippable to production: YES.**
-
-**Repository delivery shippable to production: NOT YET.** Tasks 3 through 8,
-PR merge, Deploy Dev, deployed SHA proof, and deployed behavior verification
-remain.
-
----
-
-### 2026-07-29 — session `profile-auth-cost` Task 3 completion
-
-Completed the main web session-scope control and required-authorization gate.
-
-The home composer, instant shell, and active chat expose one compact scope
-control. The control reads the authoritative secret allowlist and connector
-authorization map. It preserves unrestricted, empty, explicit, and unavailable
-scope states.
-
-New-session scope applies after durable session creation and before runtime
-startup or navigation. Active-session replacement applies to the next prompt or
-tool call. A non-retroactive secret removal warns about values that can remain
-in the current conversation or existing shells.
-
-The required-authorization gate renders every missing connector profile. It
-starts project-owned or user-owned authorization according to connector profile
-strategy. Session creation retries only after every missing authorization
-connects.
-
-TDD evidence:
-
-- Required-authorization gate suite: `12 pass`, `0 fail`, and `40` assertions.
-- Scope model, data, control, toolbar, and creation suite: `46 pass`, `0 fail`,
-  and `89` assertions.
-- New-session scope ordering proves create or claim, authoritative read-back,
-  complete replacement, then startup and navigation.
-
-Other final gates:
-
-- Focused web ESLint: exit `0`.
-- Web TypeScript reports `0` diagnostics in every changed Task 3 file.
-- The full web TypeScript command retains `4` unrelated diagnostics in existing
-  generated-source and template-test files.
-
-**Status:** COMPLETE.
-
-**SDK package shippable to production: YES.** Task 3 does not change SDK source.
-
-**Repository delivery shippable to production: NOT YET.** Tasks 4 through 8,
-local Chromium verification, PR merge, Deploy Dev, deployed SHA proof, and
-deployed behavior verification remain.
-
----
-
-### 2026-07-29 — session `profile-auth-cost` Task 4 completion
-
-Removed usage attribution from the API, SDK, CLI, and main web app.
-
-Session creation rejects the removed request fields. New session and usage
-records leave the legacy database columns unset. The runtime exports no
-attribution environment variables. Usage rollups support only model, provider,
-and day grouping.
-
-Per-reference concurrency limits, spend limits, idempotency checks, filters,
-grouping, SDK fields, CLI options, and dashboard controls are removed. The
-legacy database columns and indexes remain for a later contract migration.
-White-label and product documentation alignment remains in Task 6.
-
-TDD evidence:
-
-- API contract suite: `54 pass`, `0 fail`, and `112` assertions.
-- Usage-query suite: `16 pass`, `0 fail`, and `23` assertions.
-- API runtime and HTTP suite: `128 pass`, `0 fail`, and `554` assertions.
-- SDK focused contract suite: `46 pass`, `0 fail`, and `114` assertions.
-- CLI focused parser and process suite: `13 pass`, `0 fail`, and `37`
-  assertions.
-- Main web billing suite: `14 pass`, `0 fail`, and `51` assertions.
-
-Final gates:
-
-- `pnpm --filter kortix-api typecheck`: exit `0`.
-- `pnpm --dir packages/sdk typecheck`: exit `0`.
-- `pnpm --dir apps/cli typecheck`: exit `0`.
-- SDK full suite: `1374 pass`, `0 fail`, across `117` files.
-- CLI full suite: `556 pass`, `0 fail`, across `50` files.
-- SDK packed-install smoke test passed.
-- Focused web ESLint: exit `0`.
-- Web TypeScript reports `0` diagnostics in every changed Task 4 file.
+- Evidence:
+  `tests/performance/session-start/results/2026-07-29/opencode-inherited-pin-dev-platinum.json`.
+- Result: `PASS 2/2`.
+- Create-to-ready: `26.022 s` and `35.169 s`.
+- Two distinct Kortix sessions and Platinum sandboxes inherited
+  `ses_050fadf1dffeb2XyPZiu0qloal`.
+- `createKortix().session().ensureReady()` matched the authoritative `/start`
+  pin for both sandboxes.
+- Both sessions passed first response, follow-up response, restart, and
+  post-restart response using only SDK `send()`.
+- Each transcript contained only its own three assistant markers.
+- Fixture cleanup removed the project, sessions, account, and user.
 
 **Status:** COMPLETE.
 
 **SDK package shippable to production: YES.**
 
-**Repository delivery shippable to production: NOT YET.** Tasks 5 through 8,
-white-label alignment, local HTTP and Chromium verification, PR merge, Deploy
-Dev, deployed SHA proof, and deployed behavior verification remain.
+Repository delivery evidence:
 
----
+- PR `#5848` merged as
+  `d6979ad99241ebd8baeb00391dc186ce007b63e1`.
+- All PR checks completed successfully.
+- Deploy Dev run `30487926127` completed successfully for the merge SHA.
+- `https://dev-api.kortix.com/v1/health` reported version
+  `0.11.1-dev.d6979ad9` and commit
+  `d6979ad99241ebd8baeb00391dc186ce007b63e1`.
 
-### 2026-07-29 — session `profile-auth-cost` Task 5 completion
-
-Added unified finalized LLM and billed compute cost records for every project
-session. Account and optional project filters support pagination. Detail
-responses include owner identity, model usage, mixed ledger entries, and
-unassigned-cost reconciliation.
-
-The SDK exposes `billing.sessionCosts.list`, `billing.sessionCosts.get`, and
-`session(projectId, sessionId).cost()`. Project-scoped requests infer the
-authorized account, including secondary accounts.
-
-The account Usage pane shows session costs before the existing credit ledger.
-It preserves sub-cent precision, reports zero-dollar unassigned activity, and
-keeps valid cost data visible if the optional project catalog fails.
-
-TDD evidence:
-
-- API focused suite: `21 pass`, `0 fail`, and `46` assertions.
-- SDK focused suite: `75 pass`, `0 fail`, and `271` assertions.
-- Main web focused suite: `17 pass`, `0 fail`, and `58` assertions.
-
-Final SDK gates:
-
-- `pnpm --dir packages/sdk exec tsc --noEmit --pretty false`: exit `0`.
-- Full SDK suite: `1379 pass`, `0 fail`, and `6034` assertions across `118`
-  files.
-- Packed-install smoke test passed.
-
-Other final gates:
-
-- `pnpm --dir apps/api typecheck`: exit `0`.
-- Focused web ESLint: exit `0`.
-- Web TypeScript reports `0` diagnostics in every changed Task 5 file.
-- The full web TypeScript command retains `4` unrelated diagnostics in
-  generated-source and template-test files.
-
-**Status:** COMPLETE.
-
-**SDK package shippable to production: YES.**
-
-**Repository delivery shippable to production: NOT YET.** Tasks 6 through 8,
-local HTTP and Chromium verification, PR merge, Deploy Dev, deployed SHA proof,
-and deployed behavior verification remain.
+**Repository delivery shippable to production: YES.**

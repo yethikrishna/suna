@@ -16,6 +16,7 @@ import { createProjectSession } from '../lib/sessions';
 import { persistAcpSessionIdentity } from '../lib/acp-session-identity';
 import { appendAcpEnvelope } from '../lib/acp-transcript';
 import { openSession } from '../routes/shared';
+import { generateSessionTitleFromFirstPrompt } from '../session-title-generate';
 import { resolveProjectAutomationActor } from './actor';
 import { awaitTerminalStage } from './await-stage';
 import { sessionBackpressureState } from './backpressure';
@@ -364,6 +365,18 @@ export async function continueSession(
     console.warn('[session-lifecycle] no actor for follow-up delivery', { sessionId });
     return 'pending';
   }
+
+  // Server-side delivery is the FIRST prompt for any session created without
+  // one (email, warm/UI sessions a trigger later reuses). Titling here rather
+  // than at the transport makes it identical for REST and ACP; already-titled
+  // sessions no-op.
+  void generateSessionTitleFromFirstPrompt({
+    sessionId,
+    projectId: session.projectId,
+    accountId: session.accountId,
+    userId,
+    firstPromptText: text,
+  });
 
   const [project] = await db
     .select()
@@ -821,6 +834,10 @@ async function postAcpPrompt(input: {
           kind: 'principal',
           userId: input.userId,
           callerSessionId: input.projectSessionId,
+          // The API is delivering this prompt (trigger, cron, Slack, email,
+          // CLI, mobile), so it is a control-plane OBSERVATION and may extend
+          // the deadline. forwardToSandbox does that once the box accepts it.
+          sandboxAuthored: false,
         },
         method,
         route,
@@ -849,7 +866,7 @@ async function postPrompt(
     const res = await forwardToSandbox(
       externalId,
       DAEMON_PORT,
-      { kind: 'principal', userId, callerSessionId },
+      { kind: 'principal', userId, callerSessionId, sandboxAuthored: false },
       'POST',
       `/session/${encodeURIComponent(opencodeSessionId)}/prompt_async`,
       `?directory=${encodeURIComponent(WORKSPACE)}`,

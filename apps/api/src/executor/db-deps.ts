@@ -34,6 +34,7 @@ import {
 import { resolveProjectBotName } from '../channels/voice-identity';
 import { joinPageUrl } from '../channels/voice/livekit';
 import { mintJoinLink } from '../channels/voice/join-links';
+import { approvalPageUrl } from '../setup-links/token';
 import { endCall, isCallLive, promptVoiceAgent, startCall } from '../channels/voice/runtime';
 import { readTranscriptForAgent } from '../channels/voice/transcript-read';
 import { kortixSay } from '../channels/voice/utterance';
@@ -95,6 +96,7 @@ import {
   type EffectiveResolveResult,
   type Policy,
   type PolicyAction,
+  parseStoredConditions,
   resolveEffectiveAction,
 } from './policy';
 import type {
@@ -550,6 +552,8 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
     loadPolicies: loadConnectorPoliciesFor,
     loadProjectPolicies: loadProjectPoliciesFor,
     loadDefaultMode: loadDefaultModeFor,
+    mintApprovalLink: ({ projectId, executionId, sessionId }) =>
+      approvalPageUrl(projectId, executionId, sessionId, config.FRONTEND_URL),
     recordExecution: async (rec) => {
       const [row] = await db
         .insert(executorExecutions)
@@ -679,7 +683,13 @@ async function loadConnectorPoliciesFor(connectorId: string): Promise<Policy[]> 
     .select()
     .from(executorConnectorPolicies)
     .where(eq(executorConnectorPolicies.connectorId, connectorId));
-  return rows.map((r) => ({ match: r.match, action: r.action, position: r.position }));
+  return rows.map((r) => ({
+    match: r.match,
+    action: r.action,
+    position: r.position,
+    // Conditions are re-validated on READ, never trusted from storage.
+    ...parseStoredConditions(r.conditions),
+  }));
 }
 
 async function loadProjectPoliciesFor(projectId: string): Promise<Policy[]> {
@@ -687,7 +697,12 @@ async function loadProjectPoliciesFor(projectId: string): Promise<Policy[]> {
     .select()
     .from(executorProjectPolicies)
     .where(eq(executorProjectPolicies.projectId, projectId));
-  return rows.map((r) => ({ match: r.match, action: r.action, position: r.position }));
+  return rows.map((r) => ({
+    match: r.match,
+    action: r.action,
+    position: r.position,
+    ...parseStoredConditions(r.conditions),
+  }));
 }
 
 async function loadDefaultModeFor(projectId: string): Promise<DefaultMode> {

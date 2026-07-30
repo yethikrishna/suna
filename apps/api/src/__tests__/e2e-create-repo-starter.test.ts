@@ -28,6 +28,8 @@ const TEST_AUTH_KEY = '__KORTIX_E2E_AUTH__';
 // tools/plugins. Optional skills (agent-browser and knowledge-work skills) are
 // marketplace installable instead.
 const BASE_STARTER_PATHS = [
+  '.claude/CLAUDE.md',
+  '.codex/AGENTS.md',
   '.gitignore',
   '.kortix/memory/MEMORY.md',
   '.kortix/opencode/agents/kortix.md',
@@ -53,6 +55,7 @@ const BASE_STARTER_PATHS = [
   '.kortix/opencode/tools/scrape_webpage.ts',
   '.kortix/opencode/tools/show.ts',
   '.kortix/opencode/tools/web_search.ts',
+  '.pi/README.md',
   'kortix.yaml',
   'README.md',
 ];
@@ -147,6 +150,7 @@ mock.module('../middleware/auth', () => ({
 }));
 
 mock.module('../projects/git', () => ({
+  MergeConflictError: class MergeConflictError extends Error {},
   grepRepoFiles: async () => [],
   searchRepoFileNames: async () => [],
   createRemoteSessionBranch: async () => undefined,
@@ -968,6 +972,7 @@ describe('create-repo starter scaffold contract', () => {
           private: true,
           auth_source: 'app_installation',
         },
+        experimental: { acp_runtime: true },
       },
     });
     expect(gitConnectionRows).toContainEqual(
@@ -994,7 +999,7 @@ describe('create-repo starter scaffold contract', () => {
     });
   });
 
-  test('commits the ACP multi-harness starter and enables the project experiment', async () => {
+  test('keeps the deprecated multi-harness starter id as an ACP-enabled alias', async () => {
     const app = createApp();
     const res = await app.request('/v1/projects/create-repo', {
       method: 'POST',

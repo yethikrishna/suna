@@ -22,6 +22,7 @@ import {
   RUNTIME_IDENTITY_ERROR,
   RUNTIME_IDENTITY_UNAVAILABLE,
 } from '../runtime-identity';
+import { inspectSandboxRuntime } from '../runtime-inspection';
 import { prepareInPlaceRestartMetadata } from './readiness-clocks';
 
 export async function deleteSession(input: {
@@ -319,10 +320,15 @@ export async function restartSession(input: {
         // Remove any link resolved while the sandbox was stopped.
         invalidateProviderCache(externalId);
         // A provider may acknowledge start before discovering that the backing
-        // runtime is gone (observed live with Platinum: POST start succeeded,
-        // the next GET returned removed). Never mark the DB running from command
-        // acceptance alone; verify provider truth first.
+        // runtime is gone. A confirmed `removed` status starts recovery.
+        // `unknown` remains non-terminal because it does not prove runtime loss.
         let verifiedStatus = await provider.getStatus(externalId).catch(() => 'unknown' as const);
+        if (
+          verifiedStatus === 'unknown' &&
+          (await inspectSandboxRuntime(externalId, loaded.userId))
+        ) {
+          verifiedStatus = 'running';
+        }
         for (
           let attempt = 1;
           verifiedStatus !== 'running' && verifiedStatus !== 'removed' && attempt < 15;
@@ -330,6 +336,12 @@ export async function restartSession(input: {
         ) {
           await Bun.sleep(1_000);
           verifiedStatus = await provider.getStatus(externalId).catch(() => 'unknown' as const);
+          if (
+            verifiedStatus === 'unknown' &&
+            (await inspectSandboxRuntime(externalId, loaded.userId))
+          ) {
+            verifiedStatus = 'running';
+          }
         }
         if (verifiedStatus === 'removed') {
           const claim = await claimInPlaceRuntimeRecovery(existingSandbox);
@@ -346,10 +358,17 @@ export async function restartSession(input: {
           }
           return;
         }
-        if (verifiedStatus !== 'running') {
+        if (verifiedStatus !== 'running' && verifiedStatus !== 'unknown') {
           throw new Error(
             `Sandbox ${externalId} did not reach running after restart (provider status: ${verifiedStatus})`,
           );
+        }
+        if (verifiedStatus === 'unknown') {
+          logger.warn('[projects] restart provider status stayed unknown; runtime polling continues', {
+            session_id: sessionId,
+            project_id: projectId,
+            external_id: externalId,
+          });
         }
         await db
           .update(sessionSandboxes)

@@ -15,7 +15,6 @@ import { invalidateProviderCache } from '../../sandbox-proxy';
 import { pauseComputeSession } from '../../billing/services/compute-metering';
 import { revokeSessionExecutorTokens } from '../../repositories/account-tokens';
 import { preserveEstablishedRuntime } from '../runtime-identity';
-import { buildIdleStopMetadata } from './policy';
 
 /** Merge keys into a jsonb metadata column without clobbering siblings. */
 export function mergeMetadata(patch: Record<string, unknown>) {
@@ -26,9 +25,6 @@ export interface StoppedStateWrite {
   sandboxId: string;
   sessionId: string;
   externalId: string | null;
-  /** Mark an idle/provider-confirmed stop so passive traffic can't resurrect it
-   *  (only an explicit open / new turn clears the flag). */
-  quiesce: boolean;
   /** Extra keys to record about WHY it stopped. Merged, never assigned. */
   metadata?: Record<string, unknown>;
   now?: Date;
@@ -63,10 +59,7 @@ export async function applyStoppedState(write: StoppedStateWrite): Promise<void>
   await pauseComputeSession(write.sandboxId).catch((err) =>
     console.warn(`[reaper] pauseComputeSession failed for ${write.sandboxId}:`, err instanceof Error ? err.message : err),
   );
-  const patch = {
-    ...buildIdleStopMetadata({ quiesce: write.quiesce, nowIso: now.toISOString() }),
-    ...(write.metadata ?? {}),
-  };
+  const patch = { ...(write.metadata ?? {}) };
   await db.transaction(async (tx) => {
     await tx
       .update(sessionSandboxes)
@@ -96,14 +89,14 @@ export async function reconcileSandboxStoppedByExternalId(externalId: string, no
     .limit(1);
   if (!row) return false;
   if (row.status === 'stopped' || row.status === 'archived') return false;
-  // Quiesce: a provider-confirmed stop must stay stopped — passive /v1/p traffic
-  // (markSandboxUsed heal / wakeSandbox) must not resurrect it. Cleared on an
-  // explicit open / real turn.
+  // A stopped box stays stopped: passive /v1/p traffic (markSandboxUsed heal /
+  // wakeSandbox) must not resurrect it. That used to need an `idleQuiesced`
+  // flag written here; the heal now refuses any row whose deadline has passed —
+  // the same rows, one fewer piece of state.
   await applyStoppedState({
     sandboxId: row.sandboxId,
     sessionId: row.sessionId,
     externalId,
-    quiesce: true,
     now,
   });
   return true;

@@ -73,15 +73,11 @@ export async function stopSession(input: {
   // do exactly that (projects/routes/shared.ts clears and sets the
   // `runtimeWakeId` wake fence), and the compute clamp's `lastAliveAt` stamp
   // lives one table over for the same reason. Merged, never assigned.
-  //
-  // Not quiesced: a manual stop is resumable by the user who asked for it,
-  // unlike an idle/provider-confirmed stop which must resist passive traffic.
   const now = new Date();
   await applyStoppedState({
     sandboxId: sandbox.sandboxId,
     sessionId,
     externalId: sandbox.externalId,
-    quiesce: false,
     metadata: { stoppedAt: now.toISOString(), stoppedBy: userId, stopReason: 'manual' },
     now,
   });

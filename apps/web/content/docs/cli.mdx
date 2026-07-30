@@ -50,9 +50,8 @@ cd my-app
 ```
 
 `kortix init` creates a project directory with the
-`general-knowledge-worker` template by default. Use
-`--template acp-multi-harness` to scaffold OpenCode, Claude Code, Codex, and
-Pi runtime profiles.
+general-purpose starter. It includes OpenCode, Claude Code, Codex, and Pi
+runtime profiles.
 
 To link an existing cloned repo to a project you already created:
 
@@ -191,11 +190,11 @@ A command resolves "the project" in this order:
 ### Project scaffold
 
 `kortix init [project-name] [options]` creates a new project directory. The
-default template writes a v2 `kortix.yaml`. The `acp-multi-harness` template
-writes a v3 `kortix.yaml` with OpenCode, Claude Code, Codex, and Pi runtime
-profiles. Both templates write `.kortix/Dockerfile` and the canonical
-`.kortix/opencode` system-skill source. The command can wire OpenCode, Claude
-Code, Codex, Pi, and Cursor for local discovery. It does not write
+starter writes a v3 `kortix.yaml` with OpenCode, Claude Code, Codex, and Pi
+runtime profiles. It writes the canonical `.kortix/opencode` system-skill
+source. The command can wire OpenCode, Claude Code, Codex, Pi, and Cursor for
+local discovery. Claude Code and Pi keep their real runtime directories. The
+CLI adds native discovery links inside them. The command does not write
 `.kortix/link.json`. `kortix ship` or `kortix projects link` create that file.
 
 | Flag | Meaning |
@@ -203,16 +202,14 @@ Code, Codex, Pi, and Cursor for local discovery. It does not write
 | `--name <project>` | Project name. |
 | `--primary <agent>` | Primary agent. |
 | `--agents <csv>` | Local coding-agent integrations to wire up. |
-| `--template <general-knowledge-worker\|acp-multi-harness\|minimal>` | Project template. Default: `general-knowledge-worker`. `acp-multi-harness` declares all four ACP harnesses. |
 | `--force` | Configure the current directory in place instead of scaffolding a new one. |
 | `--overwrite` | Overwrite existing files. |
 | `--no-git` | Skip git init. |
 | `-y, --yes` | Don't prompt. |
 
-The local coding-tool selection does not select a cloud session harness. The
-`acp-multi-harness` starter selects a v3 manifest and enables the **ACP &
-Multi-Harness** project experiment when the cloud project is created. For an
-existing project, enable that experiment before starting a v3 session.
+The local coding-tool selection does not select a cloud session harness.
+Cloud project creation enables **ACP & Multi-Harness** for the starter. An
+existing project keeps its current experiment state.
 
 `kortix init` does not include a marketplace picker. Adding a marketplace skill is an agent import: start a session and ask the agent to bring one in.
 
@@ -405,7 +402,7 @@ The in-sandbox agent's interface to every connector. Every call is checked, reso
 | --- | --- |
 | `kortix executor discover "<intent>"` | Search tools by natural-language intent. |
 | `kortix executor describe <connector>.<action>` | Show a tool's input schema. |
-| `kortix executor call <connector> <action> '<json-args>'` | Run a tool. |
+| `kortix executor call <connector>.<action> '<json-args>'` | Run a tool. The legacy split form remains supported. |
 | `kortix executor add <slug> --provider pipedream --app <app>` | Add a connector immediately, then connect it. |
 | `kortix executor rm <slug>` | Remove a connector from the project. |
 | `kortix executor connect <slug>` | Mint a connect link for a human. |

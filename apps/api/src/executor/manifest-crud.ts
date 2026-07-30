@@ -1,3 +1,5 @@
+import type { UpdateConnectorAuthorizationCredentialInput } from '@kortix/api-contract';
+import { executorConnectors, projects } from '@kortix/db';
 /**
  * Connector CRUD that round-trips `kortix.yaml` — the web UI "Add connector"
  * flow (mirrors triggers). The manifest holds the connector definition.
@@ -9,31 +11,29 @@
  * docs/specs/executor.md §3, §5–6.
  */
 import { and, eq } from 'drizzle-orm';
-import { executorConnectors, projects } from '@kortix/db';
-import type { UpdateConnectorAuthorizationCredentialInput } from '@kortix/api-contract';
-import { db } from '../shared/db';
+import { resolveExperimentalFeature } from '../experimental/features';
+import {
+  type ConnectorAuthorizationStrategy,
+  type ConnectorPolicyAction,
+  type ConnectorPolicySpec,
+  type ConnectorSpec,
+  RESERVED_CONNECTOR_SLUGS,
+  RESERVED_SLUG_PROVIDERS,
+  extractConnectors,
+} from '../projects/connectors';
 import { commitManifest, loadManifestForEdit } from '../projects/index';
 import { withProjectGitAuth } from '../projects/lib/git';
 import {
-  extractConnectors,
-  RESERVED_CONNECTOR_SLUGS,
-  RESERVED_SLUG_PROVIDERS,
-  type ConnectorPolicySpec,
-  type ConnectorPolicyAction,
-  type ConnectorAuthorizationStrategy,
-  type ConnectorSpec,
-} from '../projects/connectors';
-import { isValidMatcher } from './policy';
-import {
+  type DefaultMode,
+  type ProjectPolicySpec,
   extractProjectPolicies,
   projectPoliciesToTomlEntries,
   projectPolicySettingsToToml,
-  type ProjectPolicySpec,
-  type DefaultMode,
 } from '../projects/policies';
-import { syncProjectConnectors, type SyncResult } from './sync';
+import { db } from '../shared/db';
 import { upsertCredential, upsertOAuth2Credential } from './credentials';
-import { resolveExperimentalFeature } from '../experimental/features';
+import { areValidConditions, isValidMatcher } from './policy';
+import { type SyncResult, syncProjectConnectors } from './sync';
 
 export interface ConnectorDraft {
   slug: string;
@@ -722,6 +722,17 @@ export async function setProjectPoliciesInManifest(
       return {
         ok: false,
         error: `policy #${i + 1}: \`action\` must be always_run | require_approval | block`,
+        status: 400,
+      };
+    }
+    // Also checked at the route, re-checked here because this is the function
+    // that WRITES kortix.yaml — a bad condition committed to the manifest would
+    // come back on every sync, and an unevaluable rule silently loses its
+    // restriction rather than failing loudly.
+    if (p.conditions !== undefined && p.conditions !== null && !areValidConditions(p.conditions)) {
+      return {
+        ok: false,
+        error: `policy #${i + 1}: invalid \`conditions\``,
         status: 400,
       };
     }

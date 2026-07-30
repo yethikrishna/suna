@@ -143,10 +143,12 @@ const envSchema = z.object({
   // Global background-worker switch. API-only and migration-shadow deployments
   // keep request handling active while disabling every recurring write loop.
   KORTIX_WORKERS_ENABLED: optBoolTrue,
-  // Kortix-owned session titles: on a session's first prompt, generate the
-  // title ourselves via the internal LLM gateway (using the session's own
-  // model) instead of relying on the harness summarizer. On by default; the
-  // kill-switch falls the whole path back to the OpenCode title sync.
+  // Kortix-owned session titles: the moment a session's first prompt text is
+  // known server-side (at create when it carries one, else on the first HTTP
+  // prompt), generate the title ourselves via the internal LLM gateway instead
+  // of relying on the harness summarizer. On by default; the kill-switch
+  // disables title generation entirely — nothing else writes `metadata.name`,
+  // so sessions then stay untitled and clients fall back to their display chain.
   SESSION_TITLE_GENERATION_ENABLED: optBoolTrue,
   // Per-project model enablement: when on, the gateway rejects a model a project
   // has disabled and the picker hides it. On by default (empty disabled-set =
@@ -546,6 +548,16 @@ const envSchema = z.object({
   KORTIX_SANDBOX_TRIGGER_AUTOSTOP_MINUTES: optInt(5),
   KORTIX_SANDBOX_AUTOARCHIVE_MINUTES: optInt(720), // 12 hours
   KORTIX_SANDBOX_AUTODELETE_MINUTES: optInt(-1), // never auto-delete
+  // The PROVIDER-NATIVE idle timer (Daytona autoStopInterval / Platinum
+  // auto_stop_minutes) — a LAST-RESORT backstop for boxes this API can no
+  // longer reach, NOT the primary stop. It used to be derived from
+  // KORTIX_SANDBOX_AUTOSTOP_MINUTES above, which welded an idle-policy knob to
+  // a provider-safety knob; see providerAutoStopBackstopMinutes() in
+  // platform/providers/index.ts for why the two must move independently.
+  // Unrelated to AUTOARCHIVE_MINUTES despite the shared 720: that one is
+  // measured from the moment a box STOPS, this one from its last inbound
+  // request while running.
+  KORTIX_SANDBOX_PROVIDER_AUTOSTOP_MINUTES: optInt(720), // 12 hours
 
   // ── Internal Service Key (auto-generated if missing — never fails) ───────
   INTERNAL_SERVICE_KEY: optStr,
@@ -1028,6 +1040,7 @@ export const config = {
   KORTIX_SANDBOX_TRIGGER_AUTOSTOP_MINUTES: env.KORTIX_SANDBOX_TRIGGER_AUTOSTOP_MINUTES,
   KORTIX_SANDBOX_AUTOARCHIVE_MINUTES: env.KORTIX_SANDBOX_AUTOARCHIVE_MINUTES,
   KORTIX_SANDBOX_AUTODELETE_MINUTES: env.KORTIX_SANDBOX_AUTODELETE_MINUTES,
+  KORTIX_SANDBOX_PROVIDER_AUTOSTOP_MINUTES: env.KORTIX_SANDBOX_PROVIDER_AUTOSTOP_MINUTES,
 
   PLATINUM_API_KEY: env.PLATINUM_API_KEY,
   PLATINUM_API_URL: env.PLATINUM_API_URL,

@@ -19,9 +19,9 @@ project (git repo + kortix.yaml)
                            └─ change request ──> merge ──> default branch
 ```
 
-The default v2 project uses OpenCode REST. A v3 project uses ACP runtime
-profiles for OpenCode, Claude Code, Codex, or Pi. The runtime profile is
-immutable for one session.
+New projects use a v3 manifest with ACP runtime profiles for OpenCode, Claude
+Code, Codex, and Pi. Existing v1 and v2 projects keep their OpenCode
+compatibility behavior. The runtime profile is immutable for one session.
 
 <Cards>
   <Card title="Quickstart" href="/docs/quickstart">Create a project, start a session, and merge your first change request.</Card>

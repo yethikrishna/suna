@@ -256,8 +256,8 @@ export const stack = {
     {
       id: 'computer',
       name: 'Agent Computer',
-      body: 'Every agent gets its own computer — a microVM-isolated Linux machine, pre-set-up with your repo, tools and dependencies. It can install, run and break anything. Nothing to configure, no local machine required.',
-      chips: ['microVM isolated', 'Pre-configured', 'Thousands in parallel'],
+      body: 'Every agent gets its own computer — its own isolated Linux machine, pre-set-up with your repo, tools and dependencies. It can install, run and break anything. Nothing to configure, no local machine required.',
+      chips: ['One machine per session', 'Pre-configured', 'Thousands in parallel'],
     },
     {
       id: 'context',

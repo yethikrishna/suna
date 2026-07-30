@@ -242,7 +242,7 @@ export const review = {
     {
       id: 'sandbox',
       k: 'It gets its own computer',
-      v: 'A fresh fire boots a microVM-isolated machine on its own branch, the same as a session you start by hand. Nothing it installs or breaks touches another session.',
+      v: 'A fresh fire boots its own isolated machine on its own branch, the same as a session you start by hand. Nothing it installs or breaks touches another session.',
     },
     {
       id: 'cr',

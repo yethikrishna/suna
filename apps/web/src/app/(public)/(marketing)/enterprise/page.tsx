@@ -42,6 +42,24 @@ const DIFFERENTIATORS = [
   },
 ] as const;
 
+/**
+ * Copy for these keys lives in `translations/*.json` under
+ * `hardcodedUi.appHomeEnterprisePage`.
+ *
+ * ACCURACY GATE on `checklistSecretsDescription`: do NOT restore "never visible
+ * to the model". A granted runtime secret is a real env value inside the
+ * session, readable by any command the agent runs — see
+ * `docs/ENV_SECRET_EXPOSURE_BASELINE.md`. The two true, narrower claims are the
+ * ones in the string today: CONNECTOR credentials are brokered server-side and
+ * never enter the machine, and delivery of a runtime secret is gated by the
+ * role of the person who started the session intersected with the agent grant.
+ * Do NOT restore "scoped per person / per group" either — retired by migration
+ * `20260706_secrets_v2_identifier_model.sql`.
+ *
+ * Same rule for isolation copy on this page: the default sandbox provider runs
+ * containers, not microVMs, so write "its own isolated machine". "microVM" is
+ * only accurate where the provider is Platinum.
+ */
 const CHECKLIST = [
   {
     titleKey: 'checklistSamlTitle',

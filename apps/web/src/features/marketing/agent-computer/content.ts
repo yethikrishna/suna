@@ -8,8 +8,16 @@
  * Voice rules: the `comms` skill.
  * ACCURACY GATE for this page specifically:
  *  - Say "agent computer" / "cloud computer" / "sandbox". NEVER "container".
- *  - The only sanctioned numbers on this page are "3,000+ apps" and "microVM".
- *    No benchmarks, no latency, no uptime, no customer names.
+ *  - "3,000+ apps" is the only sanctioned number. No benchmarks, no latency,
+ *    no uptime, no customer names.
+ *  - NEVER claim blanket "microVM isolation". Platinum is a Cloud Hypervisor
+ *    microVM; Daytona, the default provider, is not. Write "its own isolated
+ *    machine" and name the provider where the distinction matters — the same
+ *    rule `features/marketing/security-page/content.ts` follows.
+ *  - NEVER write that a secret is "never shown to the model". A granted runtime
+ *    secret is a real env value in the session, readable by any command the
+ *    agent runs (docs/ENV_SECRET_EXPOSURE_BASELINE.md). CONNECTOR credentials
+ *    are the ones that never enter the machine.
  *  - Never claim a certification. Never name a licence — "open source" and stop.
  *  - Nothing merges itself: work reaches `main` through a change request a
  *    person approves. Never write "deploys" for an agent's output.
@@ -18,15 +26,15 @@
 export const hero = {
   eyebrow: 'Agent computer',
   title: 'Every session gets its own computer.',
-  sub: 'Start a session and a microVM-isolated Linux machine boots, clones your project repo, and cuts a fresh branch named after that session. The agent gets the whole machine. Only what it commits survives.',
+  sub: 'Start a session and its own isolated Linux machine boots, clones your project repo, and cuts a fresh branch named after that session. The agent gets the whole machine. Only what it commits survives.',
   ctaPrimary: 'Start a session',
   ctaPrimaryHref: '/auth',
   ctaSecondary: 'Read the docs',
   ctaSecondaryHref: '/docs',
-  microline: 'microVM isolated · Pre-configured · Nothing runs on your laptop',
+  microline: 'One machine per session · Pre-configured · Nothing runs on your laptop',
   /** Four mono facts under the fold. Every value has to be defensible. */
   specs: [
-    { k: 'Isolation', v: 'microVM' },
+    { k: 'Isolation', v: 'One machine per session' },
     { k: 'Boots with', v: 'Your repo, tools, dependencies' },
     { k: 'Agent harness', v: 'OpenCode' },
     { k: 'Work lands via', v: 'Change request to main' },
@@ -41,7 +49,7 @@ export const boot = {
     {
       n: '00',
       title: 'The machine comes up',
-      body: 'A Linux machine boots from the sandbox image your project declares. It is isolated at the microVM boundary: its own kernel, its own filesystem, its own network.',
+      body: 'A Linux machine boots from the sandbox image your project declares. It is its own isolated machine: its own filesystem, its own process table, its own network. Nothing is shared with another session.',
     },
     {
       n: '01',
@@ -195,14 +203,14 @@ export const isolation = {
   sub: 'A machine an agent can do anything on is only safe if the walls are real. They are enforced below the agent, not asked of it.',
   rows: [
     {
-      id: 'microvm',
-      k: 'microVM boundary',
-      v: 'Every session gets its own kernel. Sessions never share a filesystem, a process table, or a network namespace with another session.',
+      id: 'machine',
+      k: 'One machine per session',
+      v: 'Sessions never share a filesystem, a process table, or a network namespace. On Kortix’s own Platinum compute the boundary is a Cloud Hypervisor microVM; Daytona and E2B are also supported, and we will tell you which one you are on.',
     },
     {
       id: 'secrets',
-      k: 'Secrets injected at runtime',
-      v: 'Credentials are encrypted at rest and injected into the machine when it boots. They are never shown to the model and never written to logs.',
+      k: 'Two gates on every secret',
+      v: 'A runtime secret reaches a session only through the intersection of the agent’s declared grant and the role of the person who started it. Once delivered it is a real environment value, because that is how a tool uses it — we would rather say so than call it invisible.',
     },
     {
       id: 'connectors',

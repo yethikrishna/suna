@@ -45,10 +45,11 @@ function SectionDivider(): ReactNode {
  * other page: a session is a machine.
  *
  * Copy lives in `features/marketing/agent-computer/content.ts` and is governed
- * by the `comms` skill. Two rules bite hardest here: never write "container"
- * (the nouns are "agent computer", "cloud computer", "sandbox"), and never
- * invent a number — "3,000+ apps" and "microVM" are the only sanctioned ones on
- * this page.
+ * by the `comms` skill. Three rules bite hardest here: never write "container"
+ * (the nouns are "agent computer", "cloud computer", "sandbox"); never invent a
+ * number ("3,000+ apps" is the only sanctioned one); and never claim blanket
+ * "microVM isolation" or a secret "the model never sees" — see the accuracy
+ * gate at the top of `content.ts`.
  */
 export default function AgentComputerPage(): ReactNode {
   return (
@@ -174,9 +175,22 @@ export default function AgentComputerPage(): ReactNode {
         <SectionHeading eyebrow={declared.eyebrow} title={declared.title} sub={declared.sub} />
 
         <Reveal delay={0.06}>
+          {/* `min-w-0` on every column: a grid item defaults to `min-width:auto`,
+              so the `overflow-x-auto` scroller inside CodePanel would otherwise
+              widen the page instead of scrolling itself. */}
           <div className="mt-10 grid gap-4 lg:grid-cols-2">
-            <CodePanel title={declared.yaml.title} lines={declared.yaml.lines} lang="yaml" />
-            <CodePanel title={declared.shell.title} lines={declared.shell.lines} lang="sh" />
+            <CodePanel
+              title={declared.yaml.title}
+              lines={declared.yaml.lines}
+              lang="yaml"
+              className="min-w-0"
+            />
+            <CodePanel
+              title={declared.shell.title}
+              lines={declared.shell.lines}
+              lang="sh"
+              className="min-w-0"
+            />
           </div>
         </Reveal>
 
@@ -200,12 +214,13 @@ export default function AgentComputerPage(): ReactNode {
       <section id="files" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={files.eyebrow} title={files.title} sub={files.sub} />
 
+        {/* `min-w-0` on both columns — see the note on the `declared` grid. */}
         <div className="mt-10 grid gap-4 lg:grid-cols-12">
-          <Reveal delay={0.06} className="lg:col-span-8">
+          <Reveal delay={0.06} className="min-w-0 lg:col-span-8">
             <FileTree />
           </Reveal>
 
-          <Reveal delay={0.1} className="lg:col-span-4">
+          <Reveal delay={0.1} className="min-w-0 lg:col-span-4">
             <div className="grid h-full gap-4">
               {files.points.map((point) => (
                 <div

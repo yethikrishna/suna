@@ -47,7 +47,7 @@ export const STEPS: Step[] = [
     bullets: [
       '3,000+ apps in a click, plus MCP, OpenAPI, GraphQL and raw HTTP',
       'Credentials stay brokered by Kortix and never enter a session',
-      'Scope every tool per project, per agent, per person',
+      'Scope every tool per project, per agent, per connector',
     ],
   },
   {
@@ -82,7 +82,7 @@ export const STEPS: Step[] = [
     label: 'Agent Computer',
     title: 'Every session gets its own computer.',
     description:
-      'A microVM-isolated Linux machine, pre-configured with your repo and tools. Nothing to set up, no local machine involved.',
+      'Its own isolated Linux machine, pre-configured with your repo and tools. Nothing to set up, no local machine involved.',
     bullets: [
       'Its own git branch, so every change is versioned and reversible',
       'The agent can install, run and break anything — only commits survive',
@@ -110,9 +110,9 @@ export const STEPS: Step[] = [
     description:
       'SSO, groups and role-based access come built in, with per-resource permissions for people and agents.',
     bullets: [
-      'Secrets encrypted, injected at runtime, never shown to the model',
+      'Connector credentials brokered server-side, so they never enter the machine',
       'Full audit trail, with approval gates on the actions that matter',
-      'Self-host in your VPC, on-prem or air-gapped · SOC 2 Type II in progress',
+      'Self-host in your VPC or on-prem · SOC 2 Type II in progress',
     ],
   },
 ];

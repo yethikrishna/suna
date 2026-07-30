@@ -26,19 +26,42 @@ const COUNT = CARDS.length;
  * RADIUS_Y is much smaller than RADIUS_X, so the arc is a wide shallow ellipse
  * that fits inside one viewport instead of a circle that would push the outer
  * cards off the bottom of the screen.
+ *
+ * Cards are anchored by their own centre (`translate(-50%, -50%)`) on the
+ * centre line of the deck box, so the deck is centred by layout rather than by
+ * a hand-tuned top offset.
  */
-const ANGLE_STEP = 9;
-const RADIUS_X = 1080;
+const ANGLE_STEP = 10;
+const RADIUS_X = 1200;
 const RADIUS_Y = 620;
 /**
- * Cards stay fully opaque out to `FADE_EDGE - FADE_SPAN` slots so they occlude
- * each other like a real deck; only the outermost pair fades, which hides the
- * wrap-around jump at ±COUNT/2 and lets the deck read as endless.
+ * Every card except the head drops below the centre line, so the raw arc is
+ * bottom-heavy: its ink runs from -h/2 at the head to roughly +h/2 + drop at
+ * the last legible neighbour. `ARC_LIFT` raises the whole wheel by half of that
+ * excess, which puts the deck's optical centre back on the box's centre line.
+ * Measured at 1440x900: it equalises the gap above and below the deck to <20px.
  */
-const FADE_EDGE = 4.2;
-const FADE_SPAN = 1.2;
+const ARC_LIFT = 11;
+/**
+ * Emphasis falloff. The head card is the subject: full size, fully opaque,
+ * unblurred, upright. The first neighbour already loses ~28% of its size and
+ * more than half its opacity, so the eye has exactly one place to land.
+ */
+const NEIGHBOUR_SCALE_DROP = 0.28;
+const OUTER_SCALE_DROP = 0.1;
+const NEIGHBOUR_FADE_DROP = 0.58;
+const OUTER_FADE_DROP = 0.14;
+/** Blur per slot of distance, capped, so neighbours read as context not copy. */
+const BLUR_PER_SLOT = 1.8;
+const BLUR_MAX_SLOTS = 3;
+/**
+ * Cards past `FADE_EDGE` are gone entirely, which hides the wrap-around jump at
+ * ±COUNT/2 and lets the deck read as endless.
+ */
+const FADE_EDGE = 4;
+const FADE_SPAN = 1;
 /** Total scroll length of the pinned track. Pinned travel is this minus 100vh. */
-const TRACK_VH = 360;
+const TRACK_VH = 400;
 
 const clamp01 = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
 
@@ -48,20 +71,34 @@ function wrapOffset(raw: number): number {
   return ((((raw + half) % COUNT) + COUNT) % COUNT) - half;
 }
 
+/**
+ * Ease the fractional part of `head` so the wheel dwells on whole slots and
+ * crosses between them quickly. Without this the head card is almost never
+ * upright, which is what made no single card read as the subject. The quintic
+ * curve holds the head within 0.05 slots of upright for ~63% of the travel, so
+ * a reader who stops anywhere is almost always looking at a settled card.
+ */
+function settle(raw: number): number {
+  const base = Math.floor(raw);
+  const f = raw - base;
+  const eased = f < 0.5 ? 16 * f ** 5 : 1 - (-2 * f + 2) ** 5 / 2;
+  return base + eased;
+}
+
 function ThreadMock({ card }: { card: UseCase }) {
   return (
     <div className="border-border bg-background/70 mt-auto rounded-sm border">
       <div className="flex gap-2.5 px-3 py-2.5">
-        <span className="text-muted-foreground/60 mt-px shrink-0 font-mono text-[9px] tracking-widest uppercase">
+        <span className="text-muted-foreground/70 mt-px shrink-0 font-mono text-[10px] tracking-widest uppercase">
           {useCases.askLabel}
         </span>
-        <p className="text-foreground/70 text-[12px] leading-snug">{card.ask}</p>
+        <p className="text-foreground/75 text-[13px] leading-snug">{card.ask}</p>
       </div>
       <div className="border-border/70 flex gap-2.5 border-t px-3 py-2.5">
-        <span className="text-muted-foreground/60 mt-px shrink-0 font-mono text-[9px] tracking-widest uppercase">
+        <span className="text-muted-foreground/70 mt-px shrink-0 font-mono text-[10px] tracking-widest uppercase">
           {useCases.artifactLabel}
         </span>
-        <p className="text-foreground font-mono text-[11px] leading-snug break-words">
+        <p className="text-foreground font-mono text-[12px] leading-snug break-words">
           {card.artifact}
         </p>
       </div>
@@ -86,7 +123,7 @@ function UseCaseCard({ card, index, active }: { card: UseCase; index: number; ac
       </div>
       <h3
         className={cn(
-          'mt-4 text-[17px] leading-snug font-medium tracking-tight text-balance',
+          'mt-4 text-[19px] leading-snug font-medium tracking-tight text-balance',
           active ? 'text-foreground' : 'text-foreground/85',
         )}
       >
@@ -172,7 +209,7 @@ export function UseCaseWheel(): ReactNode {
 
       const span = track.offsetHeight - window.innerHeight;
       const progress = span <= 0 ? 0 : clamp01(-track.getBoundingClientRect().top / span);
-      const head = progress * (COUNT - 1);
+      const head = settle(progress * (COUNT - 1));
 
       // Narrow screens get a tighter fan so the outer cards stay on screen.
       const spread = Math.min(1, window.innerWidth / 1280);
@@ -194,12 +231,20 @@ export function UseCaseWheel(): ReactNode {
         const theta = offset * ANGLE_STEP;
         const rad = (theta * Math.PI) / 180;
         const x = Math.sin(rad) * RADIUS_X * spread;
-        const y = (1 - Math.cos(rad)) * RADIUS_Y;
-        const scale = 1 - Math.min(distance, 5) * 0.05;
-        const fade = clamp01((FADE_EDGE - distance) / FADE_SPAN);
+        const y = (1 - Math.cos(rad)) * RADIUS_Y - ARC_LIFT;
 
-        el.style.transform = `translate(-50%, 0) translate(${x.toFixed(2)}px, ${y.toFixed(2)}px) rotate(${theta.toFixed(2)}deg) scale(${scale.toFixed(3)})`;
+        // Two-piece falloff: a hard step out to the first neighbour, then a
+        // gentle taper. The step is what makes the head card the subject.
+        const near = Math.min(distance, 1);
+        const far = Math.max(0, Math.min(distance, FADE_EDGE) - 1);
+        const scale = 1 - near * NEIGHBOUR_SCALE_DROP - far * OUTER_SCALE_DROP;
+        const dim = 1 - near * NEIGHBOUR_FADE_DROP - far * OUTER_FADE_DROP;
+        const fade = Math.min(clamp01(dim), clamp01((FADE_EDGE - distance) / FADE_SPAN));
+        const blur = Math.min(distance, BLUR_MAX_SLOTS) * BLUR_PER_SLOT;
+
+        el.style.transform = `translate(-50%, -50%) translate(${x.toFixed(2)}px, ${y.toFixed(2)}px) rotate(${theta.toFixed(2)}deg) scale(${scale.toFixed(3)})`;
         el.style.opacity = fade.toFixed(3);
+        el.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : 'none';
         el.style.zIndex = String(50 - Math.round(distance * 8));
         el.style.visibility = fade > 0 ? 'visible' : 'hidden';
       }
@@ -255,8 +300,10 @@ export function UseCaseWheel(): ReactNode {
             }
           />
 
+          {/* `flex-1` claims every pixel under the header; the cards hang off the
+              vertical midpoint of this box, so the deck is centred by layout. */}
           <div
-            className="relative mx-auto my-auto h-[540px] w-full"
+            className="relative mx-auto w-full flex-1"
             data-active-index={activeIndex}
             // Softens the point where the deck runs off the left and right edges,
             // so the wheel reads as endless instead of clipped.
@@ -275,10 +322,10 @@ export function UseCaseWheel(): ReactNode {
                 data-active={index === activeIndex ? 'true' : 'false'}
                 className={cn(
                   CARD_SHELL,
-                  'absolute top-6 left-1/2 h-[330px] w-[290px] will-change-transform sm:h-[344px] sm:w-[352px]',
-                  'shadow-xs data-[active=true]:shadow-lg',
+                  'absolute top-1/2 left-1/2 h-[330px] w-[290px] will-change-transform sm:h-[320px] sm:w-[360px]',
+                  'shadow-none data-[active=true]:shadow-2xl data-[active=true]:border-foreground/20',
                 )}
-                style={{ transform: 'translate(-50%, 0)' }}
+                style={{ transform: 'translate(-50%, -50%)' }}
               >
                 <UseCaseCard card={card} index={index} active={index === activeIndex} />
               </article>

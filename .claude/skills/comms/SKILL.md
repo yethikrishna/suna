@@ -234,7 +234,8 @@ exactly.
 | Deploy (an agent's output) | Open a change request; ship | Work lands through a reviewed merge to `main`. |
 | No-code | Feels as simple as chat, with code underneath | Depth under the surface, not a ceiling. |
 | Vendor / we host your AI | Open, self-hostable, yours down to the metal | We don't rent your company back to you. |
-| The go-to / the leading / #1 | 20,000+ GitHub stars | State the fact, not the superlative. |
+| The go-to / #1 / the best | 20,000+ GitHub stars | State the fact, not the superlative. |
+| *(exception)* | **"the leading open-source alternative"** IS sanctioned — decided 2026-07-31 and used in the hero. It rests on the star count; cite that if challenged. No other superlative is allowed, and never extend it to "the best" or "#1". |
 | Source-available; Elastic License; Apache 2.0; MIT | open source (and stop there) | Never name a license in public copy. |
 | more powerful · fully extensible · seamless · revolutionary · unlock productivity · next-gen · AI-powered magic · transformative | a concrete mechanism | Banned hype. |
 

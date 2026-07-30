@@ -169,7 +169,7 @@ export const reach = {
     {
       id: 'secrets',
       k: 'Secrets are named, not shown',
-      v: 'An agent’s block lists the secrets it may use by name. The values are encrypted, injected at runtime, and never shown to the model or written to a log.',
+      v: 'An agent’s block lists the secrets it may use by name — identifiers, never values. A session receives only the intersection of that grant and the role of whoever started it.',
     },
     {
       id: 'escalate',

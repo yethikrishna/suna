@@ -33,7 +33,7 @@ export function StepSecurity() {
       />
 
       <div className="space-y-3">
-        <Panel title="Secrets" count="never shown to the model">
+        <Panel title="Secrets" count="granted, not pasted">
           {SECRETS.map((s) => (
             <Row
               key={s.name}

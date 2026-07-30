@@ -60,7 +60,7 @@ Every one of these is a real resource: spelled out in the repo, managed in an in
 - **Agents** — markdown personas with a prompt and a tightly scoped reach into tools and resources. Installable in one click. Able to rewrite themselves.
 - **Skills** — the part that compounds. Markdown plus scripts that encode how the company gets specific work done. They live in the repo and ride into every session.
 - **Connectors** — wire up everything once: thousands of apps in a click, plus MCP, OpenAPI, GraphQL, raw HTTP. The sandbox sees all of it through a single proxy with one scoped token instead of a drawer full of keys.
-- **Secrets** — encrypted, scoped per person and per group, pushed into the sandbox without ever showing their face, enforceable down at the network. Keys, OAuth, model credentials, one governed place.
+- **Secrets** — encrypted, scoped per project, granted per agent, and a session only ever gets the intersection of that grant and the role of whoever started it. Connector credentials never enter the box at all: the sandbox holds one scoped token and the real key is resolved server-side. Keys, OAuth, model credentials, one governed place.
 - **Channels** — Slack, Teams, Telegram, WhatsApp, SMS, email. One click stands up a bot that starts sessions from wherever your people already are.
 - **Triggers** — cron and webhook. Fire a session every morning, or boot one the instant something happens.
 - **Sessions** — owned by whoever or whatever started them. You see yours; change the filter to see more. A real API and SDK underneath.
@@ -78,7 +78,7 @@ You can run thousands of agents on the same configuration at the same time, each
 
 The thing runs without you. The main branch is always up. Triggers go off in the night. And any agent, on your laptop or in the cloud, can edit its own configuration and propose the change — so the system files patches against itself, all of it tracked, and the company gets better at being a company over time instead of staying frozen on the day you set it up.
 
-It's built to survive a security review, not slip past one. MicroVM isolation. Egress and credentials controlled at the network. A real account/user/group model where every agent, skill, file, secret, trigger, channel, and connector answers to who is allowed to touch it. Hard gates that make an agent stop and wait for a person before it does something that matters.
+It's built to survive a security review, not slip past one. Every session on its own isolated machine, destroyed when it's done. Connector credentials brokered server-side so they never reach that machine at all. A real account/user/group model where every agent, skill, file, secret, trigger, channel, and connector answers to who is allowed to touch it. Hard gates that make an agent stop and wait for a person before it does something that matters.
 
 And it's yours all the way down. Any model. Your own keys, or the ChatGPT, Claude, or Cursor subscription you already pay for. Our cloud, your servers, or fully on-prem. Everything is files, ready to walk out the door the day you want them to. The labs are paid to lock you in. We only make money if you'd stay anyway.
 

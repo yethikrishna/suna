@@ -132,7 +132,7 @@ export const thread = {
     {
       n: '01',
       title: 'A session starts',
-      body: 'Kortix cuts a branch and boots a microVM-isolated cloud computer, exactly as it would for a session started from the dashboard or the CLI. You get a reaction on your own message, not a bot post saying “on it”.',
+      body: 'Kortix cuts a branch and boots its own isolated cloud computer, exactly as it would for a session started from the dashboard or the CLI. You get a reaction on your own message, not a bot post saying “on it”.',
     },
     {
       n: '02',

@@ -45,6 +45,14 @@ const MARKETING_SOURCES = {
   marketplace: 'apps/web/src/app/(public)/(marketing)/marketplace/page.tsx',
   support: 'apps/web/src/app/(public)/(marketing)/support/page.tsx',
   legal: 'apps/web/src/app/(public)/(seo)/legal/page.tsx',
+  'agent-computer': 'apps/web/src/app/(public)/(marketing)/agent-computer/page.tsx',
+  'agents-and-skills': 'apps/web/src/app/(public)/(marketing)/agents-and-skills/page.tsx',
+  automations: 'apps/web/src/app/(public)/(marketing)/automations/page.tsx',
+  channels: 'apps/web/src/app/(public)/(marketing)/channels/page.tsx',
+  'company-as-code': 'apps/web/src/app/(public)/(marketing)/company-as-code/page.tsx',
+  integrations: 'apps/web/src/app/(public)/(marketing)/integrations/page.tsx',
+  security: 'apps/web/src/app/(public)/(marketing)/security/page.tsx',
+  'self-hosted': 'apps/web/src/app/(public)/(marketing)/self-hosted/page.tsx',
 };
 
 function gitAvailable() {

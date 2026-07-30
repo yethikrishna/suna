@@ -46,10 +46,10 @@ describe('selectConnectorBindingChoices', () => {
   test('a bindable connection wins over any unbindable sibling on the same alias', () => {
     const [choice] = selectConnectorBindingChoices([
       profile({ profile_id: 'mine', owner_type: 'member', owner_id: 'u1' }),
-      profile({ profile_id: 'team', label: 'Team inbox' }),
+      profile({ profile_id: 'project', label: 'Project inbox' }),
     ]);
     expect(choice!.unavailable).toBeNull();
-    expect(choice!.connections.map((c) => c.authorizationId)).toEqual(['team']);
+    expect(choice!.connections.map((c) => c.authorizationId)).toEqual(['project']);
   });
 
   test('no profiles is no connectors, not a crash', () => {

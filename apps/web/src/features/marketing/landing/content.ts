@@ -21,7 +21,7 @@ export const heroVariants = [
     id: 'category',
     label: 'Category (recommended)',
     title: 'The open-source AI Management System',
-    sub: 'Connect the tools your company already runs on, ask in plain language, and agents do the work on their own computers — then hand back the finished thing for you to approve.',
+    sub: 'Your agents, their skills, your company memory and every integration in one platform. Any model, your keys, self-hosted or managed cloud.',
   },
   {
     id: 'category-workforce',
@@ -44,15 +44,15 @@ export const heroVariants = [
 ] as const;
 
 /** The eyebrow renders as a row with the two competitor marks, so its parts
- *  live separately. "more extensible" is a fact (open source, self-hostable,
- *  any model); avoid "better", which is an unverifiable superlative. */
+ *  live separately. "leading" is the one superlative we use, and it rests on
+ *  20,000+ GitHub stars — cite that number if the claim is ever challenged.
+ *  Never add "better"; extensibility belongs in the sub, as a fact. */
 export const heroEyebrow = {
-  lead: 'The open-source alternative to',
+  lead: 'The leading open-source alternative to',
   rivals: [
     { id: 'cowork', icon: 'Claude', label: 'Claude Cowork' },
     { id: 'chatgpt-work', icon: 'OpenAI', label: 'ChatGPT Work' },
   ],
-  tail: '— and fully extensible',
 } as const;
 
 export const hero = {

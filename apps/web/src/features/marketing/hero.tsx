@@ -30,9 +30,7 @@ function RivalEyebrow() {
             <span className="text-foreground font-medium">{r.label}</span>
           </span>
         );
-      })}
-      <span className="text-muted-foreground/70">{heroEyebrow.tail}</span>
-    </div>
+      })}    </div>
   );
 }
 

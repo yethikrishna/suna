@@ -186,16 +186,7 @@ export default function SelfHostedPage(): ReactNode {
             {firstRun.asks.items.map((item, i) => (
               <li
                 key={item.n}
-                className={cn(
-                  'border-border flex flex-col p-6 sm:p-7',
-                  // 3-up at lg, 2-up at sm: rule on every cell that is not the
-                  // first of its row at that breakpoint.
-                  i > 0 && 'border-t sm:border-t-0',
-                  i % 2 === 1 && 'sm:border-l',
-                  i > 1 && 'sm:border-t',
-                  i % 3 === 0 ? 'lg:border-l-0' : 'lg:border-l',
-                  i > 2 ? 'lg:border-t' : 'lg:border-t-0',
-                )}
+                className={cn('border-border flex flex-col p-6 sm:p-7', GRID_6_RULES[i])}
               >
                 <span className="text-muted-foreground/45 font-mono text-xs tracking-widest tabular-nums">
                   {item.n}

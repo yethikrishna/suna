@@ -112,6 +112,9 @@ export const agent = {
       '    connectors: [github]',
       '    secrets: [GITHUB_AGENT_TOKEN]',
       '    kortix_cli: [project.cr.open]',
+      '',
+      '# a grant you leave out resolves to none.',
+      '# there is no implicit access. grant explicitly.',
     ],
   },
   notes: [
@@ -131,9 +134,9 @@ export const reach = {
     lines: [
       '---',
       'description: "Reflects on recent project activity and',
-      '  curates `.kortix/memory/` — the project brain. Runs on a',
+      '  curates .kortix/memory/ — the project brain. Runs on a',
       '  cron and ends every run by opening a single change',
-      '  request titled `memory: …`."',
+      '  request."',
       'mode: primary',
       'permission:',
       '  edit: allow',

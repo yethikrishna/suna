@@ -68,7 +68,7 @@ export const productMenu: NavMenu = {
         {
           name: 'Channels',
           href: '/channels',
-          description: 'Slack, Teams, Email, WhatsApp and more',
+          description: 'Slack threads that start real sessions',
         },
         {
           name: 'Agents & Skills',

@@ -190,7 +190,7 @@ exactly.
 - **Skill** — markdown plus scripts that encode how the company does a specific job; lives in the repo and rides into every session. The part that compounds.
 - **Connector** — one-click reach into 3,000+ apps, plus MCP, OpenAPI, GraphQL, and raw HTTP, brokered server-side through one scoped token. Noun = "connector"; verb = "connect." Not "plugin" or "integration."
 - **Secret** — an encrypted, per-person/per-group credential injected into sandboxes at runtime, never shown to the model or logs, enforceable at the network.
-- **Channel** — a chat surface (Slack, Teams, Telegram, WhatsApp, SMS, email) where one click stands up a bot that starts sessions where people already are.
+- **Channel** — a chat surface where a bot starts sessions where people already are. The manifest enum is CLOSED: `slack`, `teams`, `email`, `voice` (`packages/manifest-schema/src/constants.ts` → `CHANNEL_PLATFORMS`). Only **Slack** is live; **Teams** is behind an operator switch (`TEAMS_CHANNEL_ENABLED` defaults false); **email** and **voice** are experimental (`platformDefault: () => false`). **Telegram, WhatsApp, SMS and Discord are NOT channels** — do not list them. Do not claim "one click": install needs Slack OAuth env, and the bot must still be invited and @-mentioned.
 - **Trigger** — a cron schedule or signed webhook that spawns sessions automatically.
 - **Memory** — the living company brain: plain files today, a system that compounds what it learns over time. In external copy, not "vector database."
 

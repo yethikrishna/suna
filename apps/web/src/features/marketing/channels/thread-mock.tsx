@@ -47,14 +47,17 @@ export function ThreadMock(): ReactNode {
   const { mock } = thread;
 
   return (
-    <figure className="border-border bg-card overflow-hidden rounded-sm border">
+    <figure className="border-border bg-card flex h-full flex-col overflow-hidden rounded-sm border">
       {/* channel header */}
       <div className="border-border flex items-center gap-3 border-b px-5 py-3.5 sm:px-6">
         <Icon.Slack className="size-4 shrink-0" />
         <span className="text-muted-foreground font-mono text-xs">{mock.channel}</span>
       </div>
 
-      <div className="px-5 py-5 sm:px-6 sm:py-6">
+      {/* `justify-between` rather than a fixed height: the thread sits at the
+          top and the decision at the bottom, so the card fills its column
+          beside the four-step list without inventing empty space in between. */}
+      <div className="flex min-h-0 flex-1 flex-col justify-between px-5 py-5 sm:px-6 sm:py-6">
         <ul className="grid gap-5">
           {mock.turns.map((turn) => (
             <li key={turn.id} className="flex items-start gap-3">

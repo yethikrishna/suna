@@ -120,8 +120,8 @@ export const commands = {
   },
   notes: [
     'Tokens are stored per host, so switching hosts switches the account and the default project with it.',
-    '`kortix self-host start` registers the selfhost host for you and makes it active.',
-    'Override for one command instead of switching: pass `--host selfhost`.',
+    'kortix self-host start registers the selfhost host for you and makes it active.',
+    'Override for one command instead of switching: pass --host selfhost.',
   ],
 } as const;
 
@@ -179,7 +179,7 @@ export const firstRun = {
       'A fresh RSA keypair for SAML, so SSO has a key the day you turn it on',
       'The whole docker-compose.yml and .env, written at mode 0600',
     ],
-    note: 'Everything the CLI generates is rotatable later with `kortix self-host env rotate`, and every value is visible with `kortix self-host env ls`, masked unless you ask for `--show`.',
+    note: 'Everything the CLI generates is rotatable later with kortix self-host env rotate, and every value is visible with kortix self-host env ls, masked unless you ask for --show.',
   },
   after: 'GitHub and your model key are not asked here on purpose. Both are set in the dashboard after the stack is up — GitHub at Settings → Git, the model key in the model picker.',
 } as const;

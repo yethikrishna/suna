@@ -135,7 +135,9 @@ export default function ChannelsPage(): ReactNode {
 
         <div className="mt-10 grid gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="lg:col-span-7">
-            <ThreadMock />
+            <div className="h-full">
+              <ThreadMock />
+            </div>
           </Reveal>
 
           <Reveal delay={0.1} className="lg:col-span-5">
@@ -333,7 +335,7 @@ export default function ChannelsPage(): ReactNode {
         </div>
 
         <Reveal delay={0.14}>
-          <Button size="lg" variant="secondary" asChild className="mt-6">
+          <Button size="lg" variant="secondary" asChild className="mt-6 w-fit">
             <Link href={custom.ctaHref}>{custom.ctaLabel}</Link>
           </Button>
         </Reveal>

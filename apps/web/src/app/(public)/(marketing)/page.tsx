@@ -4,7 +4,6 @@ import { Separator } from '@/components/ui/separator';
 import Hero from '@/features/marketing/hero';
 import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
 import { LogoStrip } from '@/features/marketing/landing/logo-strip';
-import { StackSection } from '@/features/marketing/landing/stack-section';
 
 function SectionDivider() {
   return (
@@ -30,13 +29,8 @@ export default function Home() {
 
       <SectionDivider />
 
-      {/* 2 · From a request to finished work — the original scroll-pinned section */}
+      {/* 2 · The platform, layer by layer — scroll-pinned */}
       <HowItWorks />
-
-      <SectionDivider />
-
-      {/* 3 · Every layer an AI workforce needs, unified */}
-      <StackSection />
     </div>
   );
 }

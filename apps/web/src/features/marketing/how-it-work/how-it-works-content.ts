@@ -1,13 +1,31 @@
 /**
- * Scroll-synced "How it works" section.
+ * Scroll-synced platform section. Each step is one layer of the stack, in the
+ * order a reader needs them: your tools first, then the model, the harness that
+ * drives it, the machine it runs on, the plane you operate it from, and the
+ * governance around all of it.
  *
- *   01 Connect → wire company tools once
- *   02 Ask     → anyone requests an outcome in plain language
- *   03 Work    → each task runs in its own secure sandbox
- *   04 Review  → finished work returns for human approval
- *   05 Skills  → good workflows become reusable skill files
- *   06 Memory  → the company learns and compounds on its own
+ *   01 Context & Connections → every tool your company runs on, connected once
+ *   02 Large Language Models → any model, your keys, or your own hardware
+ *   03 Agentic Harness       → planning and tool use, powered by OpenCode
+ *   04 Agent Computer        → one isolated machine and git branch per session
+ *   05 Control Plane         → one place to run and watch all of it
+ *   06 Security & Governance → permissions, secrets, audit, self-hosting
+ *
+ * Three bullets per step, each a fact rather than a claim. `id` values are
+ * consumed by `StepShowcaseFor` in how-it-works.tsx.
  */
+
+/**
+ * Kept here rather than in `translations/*.json`: the section changed from a
+ * request-to-finished-work walkthrough into the platform layers, and the seven
+ * non-English locales still hold the old translated heading. Local copy avoids
+ * shipping a heading that contradicts the section in every other language.
+ */
+export const SECTION = {
+  title: 'Every layer an AI workforce needs — unified.',
+  description:
+    'Most tools hand you one layer and rent you the rest. Kortix is all of them: your tools, any model, the harness, the machine it runs on, and the governance around it. Open source, running wherever you put it.',
+} as const;
 
 export type Step = {
   id: string;
@@ -22,85 +40,79 @@ export const STEPS: Step[] = [
   {
     id: 'connect',
     step: '01',
-    label: 'Connect',
-    title: 'Connect your tools once.',
+    label: 'Context & Connections',
+    title: 'Every tool your company runs on.',
     description:
-      'Wire up Slack, docs, tickets, CRM, databases, and code with scoped access — once, for the whole company.',
+      'Connect Slack, docs, tickets, CRM, databases and code once — for the whole company, with scoped access.',
     bullets: [
-      '3,000+ apps, plus MCP, OpenAPI, GraphQL, and HTTP',
-      'Credentials stay brokered by Kortix, never copied into a session',
-      'Scope each tool per project, per agent, per person',
-      'Admins set what can run, what asks first, and what stays blocked',
+      '3,000+ apps in a click, plus MCP, OpenAPI, GraphQL and raw HTTP',
+      'Credentials stay brokered by Kortix and never enter a session',
+      'Scope every tool per project, per agent, per person',
     ],
   },
   {
     id: 'ask',
     step: '02',
-    label: 'Ask',
-    title: 'Ask for the outcome.',
+    label: 'Large Language Models',
+    title: 'Run any model. Keep your keys.',
     description:
-      'Anyone on the team describes what they need in plain language — from Slack, Teams, the web, or their phone.',
+      'Kortix is model-agnostic, so every agent uses the best model for the job and you switch as they improve.',
     bullets: [
-      'No prompt-engineering course before the first useful task',
-      'Ask for a report, brief, dashboard, reply, app, or change',
-      'Every surface starts the same underlying kind of work',
-      'Follow-up messages keep the context instead of starting over',
-    ],
-  },
-  {
-    id: 'work',
-    step: '03',
-    label: 'Work',
-    title: 'It works in a safe sandbox.',
-    description:
-      'Each task runs in its own isolated machine with scoped permissions, its own files, and a full audit trail.',
-    bullets: [
-      'Every session gets its own isolated sandbox and branch',
-      'Agents use connected tools without ever holding raw keys',
-      'Long-running work keeps going after you close the tab',
-      'Every important action stays logged, reviewable, or approval-gated',
-    ],
-  },
-  {
-    id: 'review',
-    step: '04',
-    label: 'Review',
-    title: 'Review what comes back.',
-    description:
-      'Kortix returns finished work — a report, deck, dashboard, app, reply, or a change request you approve.',
-    bullets: [
-      'People stay in control before anything important ships',
-      'Files, diffs, and results open right in the workspace',
-      'Change requests make every edit auditable before it reaches main',
-      'Approved work becomes part of the company',
+      'Bring your own API key from any provider',
+      'Or the ChatGPT, Claude or Cursor subscription you already pay for',
+      'Or your own models, running on your own hardware',
     ],
   },
   {
     id: 'skills',
-    step: '05',
-    label: 'Skills',
-    title: 'Save the workflow as a skill.',
+    step: '03',
+    label: 'Agentic Harness',
+    title: 'The part that turns a model into an agent.',
     description:
-      'The best way to do a job becomes a reusable skill file — so the next person, and every agent, starts from a stronger place.',
+      'Planning, tool use and multi-step runs it actually finishes — powered by OpenCode, and fully customizable.',
     bullets: [
-      'Capture repeatable know-how in simple files',
-      'Attach skills to the agents that need them',
-      'Improve them through the same reviewable change flow',
-      'One person levels up the whole company overnight',
+      'How your agents think is a file in your repo you can edit',
+      'Skills encode how your company does a job, reused every session',
+      'Not locked in: the harness is open source, like the rest of it',
+    ],
+  },
+  {
+    id: 'work',
+    step: '04',
+    label: 'Agent Computer',
+    title: 'Every session gets its own computer.',
+    description:
+      'A microVM-isolated Linux machine, pre-configured with your repo and tools. Nothing to set up, no local machine involved.',
+    bullets: [
+      'Its own git branch, so every change is versioned and reversible',
+      'The agent can install, run and break anything — only commits survive',
+      'Thousands run in parallel with no crossover between them',
+    ],
+  },
+  {
+    id: 'review',
+    step: '05',
+    label: 'Control Plane',
+    title: 'One place to run all of it.',
+    description:
+      'Configure, deploy, watch and operate every agent across the organization — and reach it from wherever your team already works.',
+    bullets: [
+      'Web, Slack, Teams, mobile, CLI and API all start the same work',
+      'Cron and signed webhooks start sessions without anyone asking',
+      'Work lands on main only through a change request a human approves',
     ],
   },
   {
     id: 'memory',
     step: '06',
-    label: 'Memory',
-    title: 'It learns by itself.',
+    label: 'Security & Governance',
+    title: 'Built to survive a security review.',
     description:
-      'Every session adds to a shared memory — people, docs, decisions, context — so the next one starts smarter. The company gets sharper on its own.',
+      'SSO, groups and role-based access come built in, with per-resource permissions for people and agents.',
     bullets: [
-      'Relevant projects, people, and decisions carry forward',
-      'Agents stop asking the same setup questions twice',
-      'Memory is shared by everyone and inspectable as files',
-      'Your company compounds what it learns, every run',
+      'Secrets encrypted, injected at runtime, never shown to the model',
+      'Full audit trail, with approval gates on the actions that matter',
+      'Self-host in your VPC, on-prem or air-gapped · SOC 2 Type II in progress',
     ],
   },
 ];

@@ -32,38 +32,34 @@ export const trust = {
   eyebrow: 'Security & trust',
   /** Rendered one line each, so the headline breaks the same way at every width. */
   titleLines: [
-    'Engineering is moving',
-    'to the cloud. Make it',
-    'a cloud you can trust.',
+    'Giving agents real access',
+    'is the easy part. Trusting',
+    'them with it is the work.',
   ],
-  sub: "The blocker isn't capability. It's security, governance, and trust.",
-  ctaLabel: 'More about security',
+  sub: 'Every session runs on its own isolated machine, with credentials it never sees, and lands nothing without a person approving it.',
+  ctaLabel: 'How Kortix is secured',
   ctaHref: '/enterprise',
   /** Exactly three. No HIPAA, no ISO — we do not hold them. */
   badges: [
     { id: 'soc2-type-1', line1: 'SOC 2', line2: 'TYPE I', state: 'In progress' },
     { id: 'soc2-type-2', line1: 'SOC 2', line2: 'TYPE II', state: 'In progress' },
-    // GDPR is a compliance posture we hold, not a third-party certification
-    // that is pending — it carries no "in progress" state.
     { id: 'gdpr', line1: 'GDPR', line2: '', state: '' },
   ],
-  /** SOC 2 is not held yet, so those two badges carry "In progress". Never
-   *  upgrade a state string here before the report actually lands. */
   columns: [
     {
       id: 'approve',
-      title: 'Humans approve',
-      body: 'Work reaches main only through a change request a person reviews and approves. Nothing merges itself.',
+      title: 'Nothing merges itself',
+      body: 'Work reaches main only through a change request a person reads and approves. Agents propose; people decide.',
     },
     {
-      id: 'audit',
-      title: 'One auditable layer',
-      body: 'Every session and every scheduled run is centrally logged, traceable and reviewable.',
+      id: 'keys',
+      title: 'The agent never holds your keys',
+      body: 'Credentials stay encrypted and scoped per person and group, injected into the machine at runtime. The model never sees them, and they never reach a log.',
     },
     {
       id: 'deploy',
-      title: 'Deploy inside your infrastructure',
-      body: 'Kortix Cloud, your own VPC, on-prem or fully air-gapped. Code, data, integrations and policies stay yours.',
+      title: 'Yours, down to the metal',
+      body: 'Kortix Cloud, your own VPC, on-prem or fully air-gapped. It is open source, so you can read every line of what you are trusting.',
     },
   ],
 } as const;

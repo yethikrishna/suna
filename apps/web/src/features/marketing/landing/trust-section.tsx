@@ -157,7 +157,7 @@ export function TrustSection(): ReactNode {
               <Button
                 size="sm"
                 asChild
-                className="mt-8 bg-white text-[#0a0a0a] hover:bg-white/90"
+                className="mt-8 w-fit bg-white text-[#0a0a0a] hover:bg-white/90"
               >
                 <Link href={trust.ctaHref}>{trust.ctaLabel}</Link>
               </Button>

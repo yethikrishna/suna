@@ -45,28 +45,28 @@ import {
   type ProjectSession,
   type ProjectSessionStatus,
 } from '@kortix/sdk';
-import { Pencil, Share, TrashSolid } from '@mynaui/icons-react';
+import {
+  ArrowCounterClockwiseIcon as RotateCcw,
+  ArrowSquareOutIcon as ExternalLink,
+  CalendarDotsIcon as CalendarClock,
+  CaretDownIcon as ChevronDown,
+  ChatIcon as MessageSquare,
+  DotsThreeIcon as MoreHorizontal,
+  EnvelopeIcon as Mail,
+  GitBranchIcon as GitBranch,
+  MagnifyingGlassIcon as Search,
+  PencilSimpleIcon,
+  PlusIcon as Plus,
+  ShareNetworkIcon as Share,
+  SquareIcon as Square,
+  TrashIcon as TrashSolid,
+  WarningIcon as AlertTriangle,
+  WebhooksLogoIcon as Webhook,
+} from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNowStrict } from 'date-fns';
-import {
-  AlertTriangle,
-  CalendarClock,
-  ChevronDown,
-  ExternalLink,
-  GitBranch,
-  Mail,
-  MessageSquare,
-  MoreHorizontal,
-  Plus,
-  RotateCcw,
-  Search,
-  Square,
-  Webhook,
-  type LucideIcon,
-} from 'lucide-react';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
-import type { IconType } from 'react-icons/lib';
+import { useMemo, useState, type ComponentType } from 'react';
 
 import {
   filterProjectSessions,
@@ -77,7 +77,7 @@ import {
   type ProjectSessionsFilter,
 } from './project-sessions-helpers';
 
-const SOURCE_ICONS: Record<SessionSourceKind, LucideIcon | IconType> = {
+const SOURCE_ICONS: Record<SessionSourceKind, ComponentType<{ className?: string }>> = {
   chat: MessageSquare,
   slack: Icon.Slack,
   telegram: Icon.Telegram,
@@ -355,7 +355,7 @@ function SessionRow({
                   <DropdownMenuContent align="end" className="w-44">
                     {hasLifecycleActions ? (
                       <DropdownMenuItem onSelect={() => onRename(session.session_id, title)}>
-                        <Pencil />
+                        <PencilSimpleIcon />
                         Rename
                       </DropdownMenuItem>
                     ) : null}

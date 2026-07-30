@@ -11,8 +11,16 @@ import {
   type DiscoverIntegrationVariant,
   type PipedreamApp,
 } from '@kortix/sdk';
+import {
+  CubeIcon as Boxes,
+  CaretRightIcon as ChevronRight,
+  ArrowSquareOutIcon as ExternalLink,
+  GlobeIcon as Globe,
+  PlusIcon as Plus,
+  MagnifyingGlassIcon as Search,
+  LightningIcon as Zap,
+} from '@phosphor-icons/react';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
-import { Boxes, ChevronRight, ExternalLink, Globe, Plus, Search, Zap } from 'lucide-react';
 import Image from 'next/image';
 import { useState } from 'react';
 

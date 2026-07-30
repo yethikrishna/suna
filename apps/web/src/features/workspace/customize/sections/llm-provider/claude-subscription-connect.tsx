@@ -10,7 +10,7 @@ import { errorToast, successToast } from '@/components/ui/toast';
 import { ProviderLogo } from '@/features/providers/provider-branding';
 import { upsertProjectSecret } from '@kortix/sdk';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, ShieldCheck } from 'lucide-react';
+import { ArrowSquareOutIcon as ExternalLink, ShieldCheckIcon as ShieldCheck } from '@phosphor-icons/react';
 import { type FormEvent, useState } from 'react';
 
 import { CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME } from './constants';

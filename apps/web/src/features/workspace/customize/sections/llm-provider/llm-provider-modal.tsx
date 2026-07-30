@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { warningToast } from '@/components/ui/toast';
 import { LLM_PROVIDER_BY_ID } from '@/lib/llm-providers';
 import { cn } from '@/lib/utils';
-import { Search } from '@mynaui/icons-react';
+import { MagnifyingGlassIcon as Search } from '@phosphor-icons/react';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { CatalogTab } from './catalog-tab';

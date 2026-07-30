@@ -4,29 +4,28 @@ import { useTranslations } from 'next-intl';
 
 import { cn } from '@/lib/utils';
 import {
-  AlertCircle,
-  AlertTriangle,
-  ArrowRight,
-  Bold,
-  Check,
-  ChevronsUpDown,
-  Copy,
-  Download,
-  FolderGit2,
-  HelpCircle,
-  Info,
-  Loader2,
-  Mail,
-  MoreHorizontal,
-  Plus,
-  Search,
-  Settings,
-  Star,
-  Trash2,
-  TriangleAlert,
-  Users,
-  X,
-} from 'lucide-react';
+  WarningCircleIcon as AlertCircle,
+  WarningIcon as AlertTriangle,
+  ArrowRightIcon as ArrowRight,
+  TextBIcon as Bold,
+  CheckIcon as Check,
+  CaretUpDownIcon as ChevronsUpDown,
+  CopyIcon as Copy,
+  DownloadIcon as Download,
+  GitBranchIcon as FolderGit2,
+  QuestionIcon as HelpCircle,
+  InfoIcon as Info,
+  EnvelopeIcon as Mail,
+  DotsThreeIcon as MoreHorizontal,
+  PlusIcon as Plus,
+  MagnifyingGlassIcon as Search,
+  GearSixIcon as Settings,
+  StarIcon as Star,
+  TrashIcon as Trash2,
+  WarningIcon as TriangleAlert,
+  UsersIcon as Users,
+  XIcon as X,
+} from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 
 import {
@@ -167,8 +166,16 @@ import {
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { UserAvatar } from '@/components/ui/user-avatar';
+import Loading from '@/components/ui/loading';
 import { EmptyState } from '@/features/layout/section/empty-state';
-import { Cable, Plug, Radio, Zap } from 'lucide-react';
+import {
+  PlugsConnectedIcon as Cable,
+  PlugIcon as Plug,
+  RadioIcon as Radio,
+  LightningIcon as Zap,
+} from '@phosphor-icons/react';
+
+import { IconsSection } from './icons-section';
 
 const BRAND_COLORS = [
   { name: 'Black', hex: '#000000', oklch: 'oklch(0 0 0)', light: false },
@@ -622,6 +629,7 @@ const TOC_SECTIONS = [
   },
   { id: 'anti-patterns', label: 'Anti-Patterns' },
   { id: 'usage', label: 'Usage' },
+  { id: 'icons', label: 'Icons' },
 ] as const;
 
 /* All section IDs flattened for intersection observer */
@@ -1533,7 +1541,7 @@ export default function BrandPage() {
                           )}
                         </Button>
                         <Button>
-                          <Loader2 className="size-4 animate-spin" /> Loading
+                          <Loading className="size-4" /> Loading
                         </Button>
                       </div>
                     </div>
@@ -3768,6 +3776,8 @@ export default function BrandPage() {
                 </div>
               </div>
             </section>
+
+            <IconsSection />
           </div>
         </div>
       </div>

@@ -1,7 +1,6 @@
 'use client';
 
-import { Config } from '@mynaui/icons-react';
-import { FolderOpen } from 'lucide-react';
+import { GearSixIcon as Config, FolderOpenIcon as FolderOpen } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 import { useCallback, useEffect } from 'react';
@@ -57,13 +56,13 @@ export function ProjectCustomizeNavItem() {
         onClick={onClick}
         isActive={customizeOpen}
         tooltip="Customize"
-        className="text-sm! font-medium [&_svg]:size-4! flex items-center justify-between group/customize-button"
+        className="group/customize-button flex items-center justify-between text-sm! font-medium [&_svg]:size-4!"
       >
         <span className="flex items-center gap-2">
           <Config />
           Customize
         </span>
-        <KbdGroup className='opacity-0 group-hover/customize-button:opacity-100 transition-opacity duration-50'>
+        <KbdGroup className="opacity-0 transition-opacity duration-50 group-hover/customize-button:opacity-100">
           <Kbd>{isMac ? '⌘' : 'Ctrl'}</Kbd>
           <Kbd>,</Kbd>
         </KbdGroup>
@@ -111,7 +110,7 @@ export function ProjectFilesNavItem() {
         asChild
         isActive={isActive}
         tooltip="Files"
-        className="text-sm! font-medium [&_svg]:size-4! flex items-center gap-2"
+        className="flex items-center gap-2 text-sm! font-medium [&_svg]:size-4!"
       >
         <Link href={`/projects/${projectId}/files`} prefetch onClick={handleClick}>
           <FolderOpen />

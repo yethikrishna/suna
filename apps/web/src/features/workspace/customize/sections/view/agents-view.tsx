@@ -36,9 +36,16 @@ import {
   updateProjectDefaultAgent,
 } from '@kortix/sdk';
 import { useModelDefaults, useRuntimeProviders } from '@kortix/sdk/react';
-import { StarSolid } from '@mynaui/icons-react';
+import {
+  RobotIcon as Bot,
+  CheckIcon as Check,
+  ShieldCheckIcon as ShieldCheck,
+  SparkleIcon as Sparkles,
+  StarIcon as StarSolid,
+  UserIcon as User,
+  UsersIcon as Users,
+} from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, Check, ShieldCheck, Sparkles, User, Users } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 type Agent = ProjectConfigSummary['agents'][number];
@@ -78,7 +85,7 @@ export function AgentsView({ projectId }: { projectId: string }) {
             </Badge>
           ) : null}
           {config.open_code_default_agent === agent.name ? (
-            <StarSolid className="text-kortix-orange size-4 shrink-0 fill-current" />
+            <StarSolid weight="fill" className="text-kortix-orange size-4 shrink-0 fill-current" />
           ) : null}
         </>
       )}
@@ -102,7 +109,7 @@ export function AgentsView({ projectId }: { projectId: string }) {
           ) : null}
           {config.open_code_default_agent === agent.name ? (
             <Badge variant="outline" size="sm" className="text-muted-foreground gap-1 font-medium">
-              <StarSolid className="text-kortix-orange size-3.5 shrink-0" />
+              <StarSolid weight="fill" className="text-kortix-orange size-3.5 shrink-0" />
               Default
             </Badge>
           ) : null}

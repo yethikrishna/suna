@@ -9,7 +9,7 @@
 **The open-source alternative to Claude Cowork and ChatGPT Work.**
 
 [![GitHub stars](https://img.shields.io/github/stars/kortix-ai/suna?style=flat&color=111111&label=Stars)](https://github.com/kortix-ai/suna/stargazers)
-[![Version](https://img.shields.io/badge/version-0.10.16-111111.svg)](VERSION)
+[![Release](https://img.shields.io/github/v/release/kortix-ai/suna?style=flat&color=111111&label=Release)](https://github.com/kortix-ai/suna/releases/latest)
 [![Docs](https://img.shields.io/badge/Docs-kortix.com%2Fdocs-111111.svg)](https://kortix.com/docs)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-111111.svg)](#contributing)
 
@@ -17,7 +17,7 @@
 
 <br />
 
-<img src="apps/web/public/images/landing-showcase/platform/01-command-center.png" alt="The Kortix command center" width="900" />
+<img src="apps/web/public/images/readme/kortix-showcase.gif" alt="Connect 3,000+ apps, ask for a pitch deck, and watch an agent research it on a cloud computer and return the PDF and PPTX" width="900" />
 
 </div>
 

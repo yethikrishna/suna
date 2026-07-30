@@ -73,3 +73,26 @@ describe('every isSandboxAuthored call site resolves the session id safely', () 
     ]);
   });
 });
+
+// Two of the four observations are single fire-and-forget lines whose BEHAVIOUR is
+// unit-tested but whose WIRING was not: both could be deleted outright and the
+// whole 4,800-test suite stayed green. Deleting either silently removes a grant
+// nothing else provides — the warm-pool grant IS the only life a warm box gets,
+// and the turn-end shorten is the only thing that ever pulls a deadline IN.
+describe('the fire-and-forget deadline wirings are actually wired', () => {
+  for (const [file, call] of [
+    ['platform/services/session-sandbox.ts', 'grantWarmPoolLifetime('],
+    ['projects/routes/r4.ts', 'shortenSandboxDeadlineOnTurnEnd('],
+  ] as const) {
+    test(`${file} still calls ${call})`, async () => {
+      const source = await Bun.file(join(API_SRC, file)).text();
+      // Not the import line: an unused import type-checks clean under
+      // `noUnusedLocals: false` and would let the wiring vanish unnoticed.
+      const callSites = source
+        .split('\n')
+        .filter((line) => line.includes(call) && !line.trimStart().startsWith('import'));
+
+      expect(callSites.length).toBeGreaterThan(0);
+    });
+  }
+});

@@ -1,4 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { sandboxEnvValue } from './sandbox-env.ts';
@@ -394,19 +395,42 @@ export function validateHostName(name: string): void {
 
 // ─── Internal ─────────────────────────────────────────────────────────────
 
-/** RFC1918 + link-local + CGNAT IPv4 — never routable on the public internet. */
-function isPrivateIPv4(h: string): boolean {
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
-  if (!m) return false;
-  const [a, b] = [Number(m[1]), Number(m[2])];
-  if (a > 255 || b > 255 || Number(m[3]) > 255 || Number(m[4]) > 255) return false;
+/** Loopback, RFC1918, link-local, and CGNAT IPv4 ranges. */
+function isPrivateIPv4(host: string): boolean {
+  const [a, b] = host.split('.').map(Number);
   return (
+    a === 0 || // unspecified 0.0.0.0/8
     a === 10 || // 10.0.0.0/8
     a === 127 || // loopback
     (a === 172 && b >= 16 && b <= 31) || // 172.16.0.0/12
     (a === 192 && b === 168) || // 192.168.0.0/16
     (a === 169 && b === 254) || // 169.254.0.0/16 link-local
     (a === 100 && b >= 64 && b <= 127) // 100.64.0.0/10 CGNAT
+  );
+}
+
+/** Loopback, unspecified, unique-local, link-local, and mapped private IPv4. */
+function isPrivateIPv6(host: string): boolean {
+  if (host === '::' || host === '::1') return true;
+
+  // WHATWG URL parsing canonicalizes `::ffff:192.168.1.50` to
+  // `::ffff:c0a8:132`. Recover the mapped IPv4 before applying its ranges.
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(host);
+  if (mapped) {
+    const value = Number.parseInt(mapped[1], 16) * 0x10000 + Number.parseInt(mapped[2], 16);
+    const ipv4 = [
+      (value >>> 24) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 8) & 0xff,
+      value & 0xff,
+    ].join('.');
+    return isPrivateIPv4(ipv4);
+  }
+
+  const firstHextet = Number.parseInt(host.split(':', 1)[0], 16);
+  return (
+    (firstHextet >= 0xfc00 && firstHextet <= 0xfdff) || // fc00::/7 unique-local
+    (firstHextet >= 0xfe80 && firstHextet <= 0xfebf) // fe80::/10 link-local
   );
 }
 
@@ -422,14 +446,17 @@ function isPrivateIPv4(h: string): boolean {
  * None of those can present a public certificate, so upgrading them to https
  * cannot succeed — it only replaces a working request with an opaque failure.
  */
-function isPrivateHostname(h: string): boolean {
-  const host = h.replace(/^\[|\]$/g, '').toLowerCase();
-  if (host === 'localhost' || host === '0.0.0.0' || host === '::1') return true;
-  if (isPrivateIPv4(host)) return true;
-  // IPv6 unique-local (fc00::/7) and link-local (fe80::/10).
-  if (/^f[cd][0-9a-f]{2}:/.test(host) || /^fe[89ab][0-9a-f]:/.test(host)) return true;
-  // No dot at all → a single-label name: a container/service/mDNS host, never
-  // a public FQDN.
+function isPrivateHostname(rawHost: string): boolean {
+  const host = rawHost
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '')
+    .toLowerCase();
+  const ipFamily = isIP(host);
+  if (ipFamily === 4) return isPrivateIPv4(host);
+  if (ipFamily === 6) return isPrivateIPv6(host);
+  if (host === 'localhost') return true;
+
+  // A non-IP name without a dot is a container/service name, not a public FQDN.
   if (!host.includes('.')) return true;
   return (
     host.endsWith('.localhost') ||

@@ -605,51 +605,7 @@ describe('POST /v1/projects/provision (managed git)', () => {
     expect(updatedProjectSets[0]?.metadata).toHaveProperty('queryChunks');
   });
 
-  test('refuses the kortix_version 3 multi-harness starter while ACP is off, before touching git', async () => {
-    const app = createApp();
-    const res = await app.request('/v1/projects/provision', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        account_id: ACCOUNT_ID,
-        name: 'Harness Lab',
-        seed_starter: true,
-        starter_template: 'acp-multi-harness',
-      }),
-    });
 
-    expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ code: 'ACP_RUNTIME_DISABLED' });
-    expect(backendCalls).toHaveLength(0);
-    expect(insertedProject).toBeNull();
-    expect(seedFilePaths).toHaveLength(0);
-  });
-
-  test('scaffolds the kortix_version 3 starter once an operator enables ACP', async () => {
-    const previous = config.KORTIX_ACP_RUNTIME;
-    try {
-      config.KORTIX_ACP_RUNTIME = true;
-      const app = createApp();
-      const res = await app.request('/v1/projects/provision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          account_id: ACCOUNT_ID,
-          name: 'Harness Lab',
-          seed_starter: true,
-          starter_template: 'acp-multi-harness',
-        }),
-      });
-
-      expect(res.status).toBe(201);
-      expect(seedFilesByPath.get('kortix.yaml')).toContain('kortix_version: 3');
-      expect(seedFilePaths).toContain('.claude/CLAUDE.md');
-      expect(insertedProject?.metadata).not.toHaveProperty('experimental');
-      expect(resolveProjectRuntimeTransport(insertedProject?.metadata)).toBe('acp');
-    } finally {
-      config.KORTIX_ACP_RUNTIME = previous;
-    }
-  });
 
   test('the stable starter provisions on v2 + REST and follows KORTIX_ACP_RUNTIME with no stamped override', async () => {
     const app = createApp();

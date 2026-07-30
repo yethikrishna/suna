@@ -1,5 +1,5 @@
 {
-  "id": "cc9b8dea-06f9-4d9c-ba8e-86a87c1e3fb6",
+  "id": "b436d3f5-cfeb-441e-82e7-21b6c023efdb",
   "prevId": "ebd50b84-3904-4862-959f-2a8f56b0814c",
   "version": "7",
   "dialect": "postgresql",
@@ -4520,6 +4520,12 @@
           "notNull": true,
           "default": 0
         },
+        "conditions": {
+          "name": "conditions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -5164,6 +5170,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "conditions": {
+          "name": "conditions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -6279,6 +6291,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "conditions": {
+          "name": "conditions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -14132,20 +14150,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "active_since": {
-          "name": "active_since",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "deadline_at": {
-          "name": "deadline_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         },
         "created_at": {
           "name": "created_at",

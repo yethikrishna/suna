@@ -101,7 +101,7 @@ describe.skipIf(!dockerAvailable)('session_sandboxes anchor guard — real Postg
     // exist (the ALTER that adds the columns, and the backfill). The trigger
     // function and the CHECK — the load-bearing objects — are taken verbatim.
     const migration = await Bun.file(
-      resolve(import.meta.dir, '..', 'migrations', '20260729181733802_sandbox_deadline.sql'),
+      resolve(import.meta.dir, '..', 'migrations', '20260730000452547_sandbox_deadline.sql'),
     ).text();
     const triggerAndCheck = migration.slice(migration.indexOf('CREATE OR REPLACE FUNCTION'));
     if (!triggerAndCheck.includes('session_sandboxes_deadline_within_cap')) {

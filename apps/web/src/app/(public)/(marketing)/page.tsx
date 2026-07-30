@@ -4,6 +4,7 @@ import { Separator } from '@/components/ui/separator';
 import Hero from '@/features/marketing/hero';
 import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
 import { LogoStrip } from '@/features/marketing/landing/logo-strip';
+import { TrustSection } from '@/features/marketing/landing/trust-section';
 
 function SectionDivider() {
   return (
@@ -31,6 +32,11 @@ export default function Home() {
 
       {/* 2 · The platform, layer by layer — scroll-pinned */}
       <HowItWorks />
+
+      <SectionDivider />
+
+      {/* 3 · Why it is safe to run — and exactly where we stand on certification */}
+      <TrustSection />
     </div>
   );
 }

@@ -18,6 +18,55 @@ export const hero = {
   trust: 'Open source · Any model, your keys · Self-host, VPC, or on-prem',
 } as const;
 
+/**
+ * Trust / security block.
+ *
+ * ACCURACY GATE: Kortix holds NONE of these certifications. Every badge renders
+ * de-emphasised and carries an explicit "In progress" state, and the row carries
+ * `badgesNote` verbatim. Never write "compliant", "certified", or "we are SOC 2"
+ * here — the `comms` skill forbids claiming a certification we do not hold.
+ * Adding a badge to `badges` without holding the certification is a copy bug.
+ */
+export const trust = {
+  eyebrow: 'Security & trust',
+  /** Rendered one line each, so the headline breaks the same way at every width. */
+  titleLines: [
+    'Engineering is moving',
+    'to the cloud. Make it',
+    'a cloud you can trust.',
+  ],
+  sub: "The blocker isn't capability. It's security, governance, and trust.",
+  ctaLabel: 'More about security',
+  ctaHref: '/enterprise',
+  /** Exactly three. No HIPAA, no ISO — we do not hold them. */
+  badges: [
+    { id: 'soc2-type-1', line1: 'SOC 2', line2: 'TYPE I', state: 'In progress' },
+    { id: 'soc2-type-2', line1: 'SOC 2', line2: 'TYPE II', state: 'In progress' },
+    // GDPR is a compliance posture we hold, not a third-party certification
+    // that is pending — it carries no "in progress" state.
+    { id: 'gdpr', line1: 'GDPR', line2: '', state: '' },
+  ],
+  /** SOC 2 is not held yet, so those two badges carry "In progress". Never
+   *  upgrade a state string here before the report actually lands. */
+  columns: [
+    {
+      id: 'approve',
+      title: 'Humans approve',
+      body: 'Work reaches main only through a change request a person reviews and approves. Nothing merges itself.',
+    },
+    {
+      id: 'audit',
+      title: 'One auditable layer',
+      body: 'Every session and every scheduled run is centrally logged, traceable and reviewable.',
+    },
+    {
+      id: 'deploy',
+      title: 'Deploy inside your infrastructure',
+      body: 'Kortix Cloud, your own VPC, on-prem or fully air-gapped. Code, data, integrations and policies stay yours.',
+    },
+  ],
+} as const;
+
 export type StackLayerId =
   | 'models'
   | 'harness'

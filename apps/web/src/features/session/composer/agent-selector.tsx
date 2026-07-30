@@ -12,11 +12,12 @@ import {
   CommandPopoverContent,
   CommandPopoverTrigger,
 } from '@/components/ui/command';
-import Hint from '@/components/ui/hint';
+import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { RuntimeAgent } from '@kortix/sdk/react';
 import { Check, ChevronDown } from 'lucide-react';
-import { AgentHarnessIcon } from './agent-harness-icon';
+import { getAgentHarnessLabel } from './agent-selector-label';
 
 // ============================================================================
 // Agent Selector
@@ -74,17 +75,47 @@ export function AgentSelector({
 
   const currentAgent = primaryAgents.find((a) => a.name === selectedAgent) || primaryAgents[0];
   const displayName = currentAgent?.name || 'Agent';
+  const currentHarnessLabel = getAgentHarnessLabel(currentAgent?.harness);
 
   return (
     // When locked we keep the trigger hoverable (no native `disabled`, which
     // would suppress hover) but gate the popover shut, so the tooltip can still
     // explain WHY the agent can't be switched mid-session.
     <CommandPopover open={open} onOpenChange={(next) => setOpen(disabled ? false : next)}>
-      <Hint
-        side="top"
-        className="max-w-[240px]"
-        label={
-          disabled ? (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <CommandPopoverTrigger>
+            <button
+              type="button"
+              aria-disabled={disabled || undefined}
+              aria-label={tHardcodedUi.raw(
+                'componentsSessionSessionChatInput.line211JsxAttrAriaLabelAgentPicker',
+              )}
+              className={cn(
+                'text-muted-foreground hover:text-foreground hover:bg-muted inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-xs font-medium capitalize transition-colors duration-200',
+                flash && 'bg-primary/10 text-foreground',
+                open && 'bg-muted text-foreground',
+                disabled &&
+                  'hover:text-muted-foreground cursor-not-allowed opacity-70 hover:bg-transparent',
+              )}
+            >
+              <span className="max-w-[100px] truncate">{displayName}</span>
+              {currentHarnessLabel && (
+                <span className="text-muted-foreground/60 hidden max-w-[88px] truncate sm:inline">
+                  {currentHarnessLabel}
+                </span>
+              )}
+              <ChevronDown
+                className={cn(
+                  'size-3 opacity-50 transition-transform duration-200',
+                  open && 'rotate-180',
+                )}
+              />
+            </button>
+          </CommandPopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[240px]">
+          {disabled ? (
             <p>
               {
                 "This agent is set when the session starts and can't be changed here. Start a new session to use a different agent."
@@ -97,34 +128,9 @@ export function AgentSelector({
                 Tab
               </kbd>
             </p>
-          )
-        }
-      >
-        <CommandPopoverTrigger>
-          <button
-            type="button"
-            aria-disabled={disabled || undefined}
-            aria-label={tHardcodedUi.raw(
-              'componentsSessionSessionChatInput.line211JsxAttrAriaLabelAgentPicker',
-            )}
-            className={cn(
-              'text-muted-foreground hover:text-foreground hover:bg-muted inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-xs font-medium capitalize transition-[color,background-color,transform] duration-200 active:scale-[0.96]',
-              flash && 'bg-primary/10 text-foreground',
-              open && 'bg-muted text-foreground',
-              disabled &&
-                'hover:text-muted-foreground cursor-not-allowed opacity-70 hover:bg-transparent',
-            )}
-          >
-            <span className="max-w-[100px] truncate">{displayName}</span>
-            <ChevronDown
-              className={cn(
-                'size-3 opacity-50 transition-transform duration-200',
-                open && 'rotate-180',
-              )}
-            />
-          </button>
-        </CommandPopoverTrigger>
-      </Hint>
+          )}
+        </TooltipContent>
+      </Tooltip>
 
       <CommandPopoverContent side="top" align="start" sideOffset={8} className="w-[300px]">
         <CommandInput
@@ -143,6 +149,7 @@ export function AgentSelector({
               {filteredPrimary.map((agent) => {
                 const isSelected =
                   selectedAgent === agent.name || (!selectedAgent && agent === primaryAgents[0]);
+                const harnessLabel = getAgentHarnessLabel(agent.harness);
                 return (
                   <CommandItem
                     key={agent.name}
@@ -154,8 +161,8 @@ export function AgentSelector({
                       setOpen(false);
                     }}
                   >
-                    <AgentHarnessIcon harness={agent.harness} />
                     <div className="min-w-0 flex-1 py-0.5">
+                      <div className="flex min-w-0 items-center gap-2">
                       <div
                         className={cn(
                           'truncate text-sm leading-tight capitalize',
@@ -165,6 +172,12 @@ export function AgentSelector({
                         )}
                       >
                         {agent.name}
+                      </div>
+                        {harnessLabel && (
+                          <Badge variant="outline" size="xs" className="shrink-0 normal-case">
+                            {harnessLabel}
+                          </Badge>
+                        )}
                       </div>
                       {agent.description && (
                         <p className="text-muted-foreground/55 mt-1 truncate text-xs leading-snug">

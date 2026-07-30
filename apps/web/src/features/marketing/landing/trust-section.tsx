@@ -38,10 +38,10 @@ function MetallicMark() {
           scale={0.8}
           image="/shaders/heatmap-mark.svg"
           frame={407072.499999992}
-          colors={['var(--kortix-orange)', '#fafafa', '#242424']}
+          colors={['#d18b19', '#fafafa', '#242424']}
           colorBack="#ffffff00"
           className="shrink-0"
-          style={{ height: '620px', width: '740px' }}
+          style={{ height: '760px', width: '900px' }}
         />
       </ShaderSafe>
     </div>

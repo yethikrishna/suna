@@ -22,6 +22,7 @@ const MARKETING_ROUTES = ['/', '/legal', '/support'];
 // marketing site itself is deactivated.
 const SELF_HOST_MARKETING_ONLY = [
   '/about',
+  '/agent-computer',
   '/careers',
   '/blog',
   '/changelog',
@@ -58,6 +59,7 @@ const PUBLIC_ROUTES = [
   '/docs', // Product documentation (Fumadocs) should be public
   '/credits-explained', // Credits explained page should be public
   '/about', // About page should be public
+  '/agent-computer', // Agent computer marketing page should be public
   '/careers', // Careers page should be public
   '/changelog', // Public release notes (sourced from GitHub Releases)
   '/blog', // Public blog (MDX posts under content/blog) should be public

@@ -4034,9 +4034,44 @@ The required `tdd` skill is unavailable in this session.
 The implementation will use the same RED, GREEN, and REFACTOR sequence
 directly.
 
-**Status:** IN PROGRESS.
+The current CLI command router already used the SDK-backed runtime modules. The
+revert left two orphaned host-local transport files and three orphaned tests.
+Removing those files restores the enforced SDK boundary without changing the
+current command surface.
 
-**SDK package shippable to production: NOT YET.**
+```
+RED    pnpm --filter @kortix/cli lint:sdk-boundary
+       → 18 violations
+GREEN  pnpm --filter @kortix/cli lint:sdk-boundary
+       → 0 violations
+       pnpm --filter @kortix/cli test
+       → 636 pass, 0 fail, 2,068 assertions
+       exact packages-and-apps CI command
+       → exit 0
+       pnpm --filter @kortix/sdk typecheck
+       → exit 0
+       pnpm --filter @kortix/sdk test
+       → 1,412 pass, 2 skip, 0 fail, 6,128 assertions
+       pnpm --filter @kortix/sdk smoke:install
+       → packed tarball imports and constructs; exit 0
+```
+
+The separate API test bootstrap repair also passes:
+
+```
+bun test --isolate --env-file=scripts/test.env \
+  src/__tests__/e2e-project-session-contract.test.ts
+→ 52 pass, 0 fail, 367 assertions
+
+pnpm --filter kortix-api test
+→ 5,028 pass, 57 skip, 0 fail, 20,369 assertions
+```
+
+No SDK source, export, public type, snapshot, dependency, or version changed.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
 
 ---
 
@@ -4267,3 +4302,464 @@ Current repository evidence:
 **Repository delivery shippable to production: NOT YET.** The user explicitly
 withheld authorization to merge or push `main`. Delivery stops at the verified
 worktree merge commit.
+---
+
+### Session — bugbash: the model picker's entitlement rule disagreed with the server
+
+**Claimed and finished:** `hasUsableModel` + `isVisible` in
+`src/react/use-model-store.ts`, and the `PUT .../sessions/:id/model` response
+type in `src/core/rest/projects-client/sessions.ts`. Nothing on the Now chain.
+
+**The bug.** A user picked a model and nothing happened: the picker trigger kept
+reading "No model" and the composer kept showing "No model connected — connect
+one to start chatting". Reproduced on the live local stack against a free-tier
+account (`tier_key: 'free'`, 2 monthly credits) where the API happily served the
+managed lineup and accepted the pick (`PUT .../model` → `200`,
+`applied_live: true`).
+
+Cause: the client re-derived plan entitlement instead of reading the server's
+answer. `hasUsableModel` gated managed models on a locally computed `freeTier`
+(from `/billing/account-state`'s `tier_key`), and `isVisible` did the same. The
+server's rule is not that: `/model-picker` applies entitlement only when
+`KORTIX_BILLING_INTERNAL_ENABLED` is on, and it stamps the resolved answer on
+every model as `enabled`. With internal billing off — self-host, and this local
+stack, where `GET /v1/billing/config` returns `{"billing_disabled":true}` — free
+tier IS entitled to every managed model, so the two disagreed by construction and
+the client threw away a selection the server had accepted
+(`resolveAvailableSelectedModel` → `isSelectableModel` → `hasUsableModel`).
+
+Fix: both functions now return the server's `enabled` flag whenever a model
+carries one, and only fall back to the `connectedProviderIds`/`freeTier`
+derivation for catalogs that carry no server answer. Not a loosened gate — on a
+cloud free tier `/model-picker` omits managed models from the payload entirely
+(`gatewayModelCatalog(projectId, { freeManagedOnly: true })` serves
+`byokAndCodex` only), and `resolveCandidates` still throws
+`plan_upgrade_required` at request time.
+
+Also: `setProjectSessionModel` now returns `SessionModelChangeResult` carrying
+`push_failed?: true` — a live push that was REQUIRED and FAILED (row written,
+running harness still on the old model). `applied_live: false` alone could not
+express it: that is also the benign answer for a session with no live sandbox.
+
+**Evidence.** RED then GREEN, both pasted in the session: reverting the two
+`enabled` reads fails 9 tests across `use-model-store.test.ts` and
+`model-flatten.test.ts`; restoring them passes 26. In a real browser on
+`/projects/<id>` the trigger reads `"No model"` with 1 "No model connected" node
+before the fix and `"GLM 5.2"` with 0 such nodes after.
+`pnpm --filter @kortix/sdk typecheck` clean, `test` 1428 pass / 0 fail.
+`public-type-surface.snapshot.json` regenerated — additive, one new type.
+
+**Discovered, NOT fixed (appended to Backlog below):** on a composer with no
+`sessionId` and no loaded agent (project home), `setModel` in
+`use-opencode-local.ts` has no slot to persist an explicit pick — it writes only
+`visibility` and `recent`, both of which lose to `serverDefaultKey` in the read
+chain. So on that surface the trigger still does not move when a model is picked,
+for a completely different reason than the entitlement bug above. Reported to the
+user rather than fixed, to keep this change reviewable.
+
+**SDK package shippable to production: YES.**
+
+---
+
+### Session — bugbash: an unresolvable model was treated as a dead runtime
+
+**Claimed and finished:** the new `src/core/acp/model-fallback.ts`, the model
+preflight in `src/core/acp/session-controller.ts`, `modelNotice` on
+`AcpSessionControllerSnapshot` / `useAcpSessionRuntime` / `useSession`, and catalog
+reconciliation in `src/react/use-model-store.ts`. Nothing on the Now chain.
+
+**Defect A — a `-32602` "model not found" killed the whole session surface.**
+`session/set_config_option` with `optionId: 'model'` answers
+`-32602 {"message":"Invalid params: model not found: <id>"}` when the id is not in
+the harness's own option list. `executeSend` rethrew it, `executeSend`'s catch
+patched `error` onto the snapshot, `useSession` republished it as `runtimeError`,
+and the session page rendered a full-page **"OpenCode failed to load"** card with a
+Restart button — over a session whose sandbox and stream were both healthy.
+`session/prompt` was never sent, so the user's message was undeliverable, and the
+client abandoned the connection and reconnect-looped `initialize` + `session/load`.
+
+Fix: `applyModelOption` recovers instead of throwing. The replacement comes only
+from what the harness advertises (`configOptions[id='model'].options`), preferring
+the session's active model, then the server default, then the first advertised
+option — no model id is hardcoded anywhere in the path. Every candidate must share
+the requested id's **routing namespace**, so a managed `kortix/*` pick is never
+rewritten to a BYOK `anthropic/*` id: that would move the user off the Kortix
+gateway and its credits metering. With no safe replacement the harness keeps its
+own selection, the prompt still goes out, and the user is told which model is
+running. A rejected id is recorded in `rejectedModels` and never attempted again,
+which is what stops the loop. Non-model `-32602`s and every other error still
+throw.
+
+**Defect B — a stale persisted pick outlived every server-side fix.**
+`localStorage['opencode-model-store-v1']` kept `recent`, `user` visibility pins and
+the per-session/per-agent/global selection slots forever. The read chain SKIPPED an
+invalid id (`isModelValid`) but never removed one, so `recent[0]` stayed the first
+thing every newly opened session tried. `reconcilePersistedModels` now drops every
+selection the served catalog does not offer, split two ways: absent from the
+catalog → dropped everywhere; served with `enabled: false` → dropped from `recent`
+and every selection slot and from a stale `show` pin, but a `hide` pin is kept
+(user intent, and it must survive re-enablement). It returns `null` for an EMPTY
+catalog so a cold start cannot wipe every preference, and it runs only from
+`useOpenCodeLocal`, the one surface that passes the whole served catalog.
+
+**Evidence.** RED first, both defects: `bun test src/core/acp/session-controller.test.ts`
+failed 8 of 8 new tests with `AcpRpcError: Invalid params: model not found:
+kortix/anthropic/claude-sonnet-5` thrown out of `executeSend`;
+`reconcilePersistedModels` did not exist. GREEN after: `bun test src` → **1465
+pass, 0 fail, 122 files**. `typecheck` clean. `smoke:install` packed, installed and
+imported the tarball. Both public-surface snapshots regenerated — **additive only,
+11 new names, zero removals or renames**.
+
+Live, on the local stack (`web :14100`, `api :14108`, project
+`d85c8cfa-256b-4215-b3d0-57fe6b13a2e4`, harness `opencode`, real Platinum sandbox).
+The harness rejection was injected by rewriting the wire `value` of
+`session/set_config_option` in the page, so the harness returned a REAL `-32602`.
+
+- Pre-fix (`ba9c4d99-…`): `main` innerText = `OpenCode failed to load / Invalid
+  params: model not found: kortix/anthropic/claude-sonnet-5-bugbash-missing /
+  Restart session`, `document.querySelector('textarea')` → **null**. Envelopes:
+  `set_config_option(model)` → `ERROR` → `initialize`, `initialize`,
+  `session/load`, `session/load`. **No `session/prompt` at all.**
+- Post-fix (`d662351f-…`): no failure heading, no Restart button, composer present
+  and enabled, user message rendered, and one inline
+  `[data-session-model-notice="model-not-found"]` node. Envelopes:
+  `set_config_option(model)` → `ERROR`, ONE fallback `set_config_option(model)` →
+  `ERROR`, `set_config_option(mode)` → OK, **`session/prompt`**, `session/update`,
+  result. No further `set_config_option` on any later send.
+
+**Not verified live:** the copy guard for `harnessModel === requestedModel` landed
+after the last live run (unit-tested only) — the API process on :14108 exited
+mid-verification, from work outside this change, and this session does not restart
+the stack.
+
+**SDK package shippable to production: YES.**
+
+### 2026-07-30 — session `bugbash-acp-rest-honesty`
+
+Two independent defects, both proven live. No plan task claimed — a bug fix, not a
+`Now` chain step.
+
+**SDK change (1 file + its test):** `useOpenCodeAgents` gains an optional
+`enabled?: boolean`. Additive only — no rename, no removal, `version` untouched
+(`0.3.0`). The sandbox fallback (`client.app.agents()` → in-box `GET /agent`)
+resolves its runtime from AMBIENT state, so a project-less caller reads whatever
+sandbox is still connected — global, not session-scoped, and served by nothing at
+all on an ACP runtime. `enabled: false` lets such a caller opt out instead.
+`apps/web`'s command palette was that caller (`command-palette.tsx:397` called the
+hook with no `projectId` while its five siblings all pass one); it now passes
+`{ projectId, enabled: !!projectId }`.
+
+Outside the SDK: the sandbox daemon's proxy catch-all answered
+`503 {"error":"opencode not ready","opencode":"starting"}` under managed ACP, where
+`opencode.start()` is never called and `markReady()` is therefore unreachable — a
+permanent state advertised as a boot phase. Now `404 {"error":"opencode rest is not
+served for this runtime","runtime":"acp","harness":<id>}`, which every retry path in
+the stack treats as terminal (`messages.ts:98` returns null for a non-408/429 4xx,
+already locked by `messages.test.ts:340`).
+
+**Verified**
+
+```
+pnpm --filter @kortix/sdk typecheck                      → exit 0
+pnpm --filter @kortix/sdk test                           → 1481 pass, 0 fail, 122 files
+bun test src/react/use-opencode-sessions/agents.test.ts  → 9 pass, 0 fail (RED first: 2 fail)
+apps/kortix-sandbox-agent-server: bun test src/__tests__ → 293 pass, 0 fail
+apps/kortix-sandbox-agent-server: bun tsc --noEmit       → exit 0
+apps/web: bun test src/features/workspace/command-palette.test.ts → 3 pass, 0 fail
+```
+
+**Not verified:** no deployed dev run — this session does not own the stack. The
+palette's no-project branch is asserted at the source level plus by the hook's own
+`enabled` unit tests, not by a live browser network trace.
+
+**SDK package shippable to production: YES.**
+
+---
+
+### Session — bugbash: a manifest the server could not read was reported as "v1, upgrade now"
+
+**Claimed and finished:** `ProjectManifestVerdict`, `ManifestUnknownReason`,
+`ManifestMigrationOffer`, `manifestMigrationOffer()`, and the
+`ProjectConfigSummary.manifest_version` field in
+`src/core/rest/projects-client/projects.ts`, plus the type re-exports in
+`src/index.ts`. Nothing on the Now chain.
+
+**The bug.** Every project in the local stack showed a sidebar banner reading
+**"Upgrade to v2 — This project still runs the v1 kortix.toml"**, including
+freshly provisioned v3 projects. The predicate lived in `apps/web`
+(`customize/migrate-to-v2/manifest-version.ts:22-26`): it regex-sniffed
+`kortix_version` out of `config.manifest_raw` and returned `1` for a falsy or
+non-matching string. Four distinct "unknown" cases therefore rendered as
+"legacy, needs migrating" — no manifest text, unparseable text, text with no
+`kortix_version`, and a config blanked by IAM. It also clamped every version
+`>= 2` to `2`, so v3 was indistinguishable from v2 and the copy advertised a
+destination (v2) that was not the platform's latest.
+
+The manifest is self-describing: `kortix_version` is `required` with a `const`
+in each of `kortix.v1/v2/v3.schema.json`. Nothing needed inferring. The API now
+reads it (`apps/api/src/projects/lib/manifest-verdict.ts`) and returns
+`config.manifest_version` — `version`, `latest_version`, `migration_offered`,
+`target_version`, `unknown_reason`, `path`. Unknown stays unknown: `version`
+is `null`, `migration_offered` is `false`, and the surfaces render nothing.
+
+The SDK's part is the type and `manifestMigrationOffer()`, which fails closed on
+every ambiguous input — absent config, an API too old to send the field, a null
+version, or `migration_offered: true` with no `target_version`. That last guard
+matters because the target version is what the button label interpolates, so an
+offer without one must not render at all rather than render "Upgrade to vnull".
+
+**Verified**
+
+```
+bun run typecheck                                        → exit 0
+bun test src/core/rest/projects-client/projects.test.ts  → 14 pass, 0 fail (RED first: SyntaxError, export missing)
+bun test src/core/rest/projects-client/                  → 248 pass, 0 fail
+bun test src/package-exports.test.ts src/index.isomorphic.test.ts → 69 pass, 0 fail
+bun run smoke:install                                    → install smoke test passed
+bun test (full)                                          → 1506 pass, 15 fail
+```
+
+The 15 failures are pre-existing and not ours: restoring the baseline
+`projects.test.ts` and re-running the full suite reproduces the same 15
+(`use-opencode-sessions/**`, `core/session/**`, `core/stream/**` — a concurrent
+session's in-flight work, fenced off from this change). Baseline is 1501 pass /
+15 fail; the +5 is exactly the five tests added here. No test of ours fails in
+the full run.
+
+**Not verified:** no deployed dev run — this session does not own the release
+path. A genuine v1 `kortix.toml` project was not exercised live because no local
+project has one; the v1 → target 2 rule is covered by unit tests on the server
+resolver plus a live response-rewrite that proved the client renders exactly the
+verdict it is given.
+
+**SDK package shippable to production: YES.**
+
+### 2026-07-30 — session `bugbash-acp-rest-capability`
+
+Managed ACP serves NO OpenCode REST API (its daemon skips `opencode.start()` —
+`apps/kortix-sandbox-agent-server/src/main.ts:262-272`), yet every OpenCode REST
+hook in this package fired anyway because they all gated on "sandbox healthy +
+url pinned". Live capture on session `fcfd1f38-…`, sandbox
+`sbx_01KYR7C97JFC6TP04AJHXFH8KT`: `/8000/kortix/health` → 200
+(`runtimeReady:true`, `acp_ready:true`) while `/8000/project/current`,
+`/8000/global/config`, `/8000/command`, `/8000/session`, `/8000/agent`,
+`/8000/skill` → `503 {"error":"opencode not ready","opencode":"starting"}`. No
+plan task claimed — a bug fix.
+
+**The capability, threaded end to end (additive only, `version` untouched at `0.3.0`):**
+
+- `core/session/runtime-transport.ts` — `SessionRuntimePolicy` gains
+  `servesOpenCodeRest`; `createSessionRuntimePolicy` gains an optional third
+  argument `{ acpServerId }`. `false` exactly when transport is `acp` AND an
+  `acp_server_id` exists — the same managed-ACP predicate as
+  `readManagedAcpSessionIdentity` (`apps/api/src/projects/runtime-inspection.ts:24`)
+  and `usesManagedAcpRuntime` (the daemon's `proxy.ts`). A LEGACY ACP session (no
+  `acp_server_id`) still runs the compatibility server, so it keeps REST.
+- `core/session/current-runtime.ts` — `CurrentRuntimeState.servesOpenCodeRest`
+  (defaults `true`), a 4th optional `setCurrentRuntime` argument, and the
+  non-React reader `runtimeServesOpenCodeRest()`. This module is internal (absent
+  from both public-surface snapshots), so the new required field is not a
+  published-type change.
+- `react/use-opencode-sessions/keys.ts` — NEW `useOpenCodeRestReady()`.
+  **`useOpenCodeRuntimeReady` is deliberately unchanged.** Collapsing the two is
+  a real regression, found by driving the real UI: `apps/web`'s
+  `session-chat.tsx:3562` feeds `useRuntimeReady()` into
+  `sessionComposerReadiness`, so widening it left the composer permanently
+  disabled ("Waking this session up…") on every managed ACP session. The split is
+  locked by `use-opencode-sessions/rest-gate-invariant.test.ts`, which was
+  verified to go RED when `commands.ts` is put back on the wide gate.
+- Nine REST modules now gate on `useOpenCodeRestReady`: `agents`, `commands`,
+  `mcp`, `projects`, `providers`, `sessions`, `tools`, `use-opencode-config`,
+  `runtime-actions`. That kills the `/8000/session?limit=10000` storm at the
+  source — no request instead of a terminal status to interpret.
+- `react/runtime-actions.ts` — `getRuntimeProjectInfo`/`getRuntimePathInfo`/
+  `getRuntimeConfig` reject locally via `requireOpenCodeRest()`. They are now
+  `async` on purpose: a sync throw from a `Promise<T>`-typed function escapes
+  `.then/.catch`.
+- `core/acp/available-commands.ts` — NEW. `acpAvailableCommandsToCommands` maps
+  ACP `available_commands_update` payloads onto the published `Command` shape;
+  `resolveSessionCommands` picks REST-vs-ACP. `template` is always `''` (never a
+  non-string) because `apps/web`'s `detectCommandFromText` calls `.trim()` on it.
+- `react/use-session.ts` — passes `acpServerId` into the policy, binds
+  `servesOpenCodeRest` in the SAME `setCurrentRuntime` write as the url (two
+  writes leave a gap in which every REST hook fires once), and returns the new
+  `runtimeCommands`. `commands` (project-declared) is unchanged.
+- `react/use-visible-agents.ts` — both option types gain `enabled?: boolean`
+  (already forwarded at runtime; only the type blocked it).
+
+Both public-surface snapshots were regenerated. The diff is entirely ADDITIVE and
+also carries two CONCURRENT sessions' names, not just this one's: mine are
+`acpAvailableCommandsToCommands`, `resolveSessionCommands`,
+`useOpenCodeRestReady`; theirs are `manifestMigrationOffer`,
+`ManifestMigrationOffer`, `ManifestUnknownReason`, `ProjectManifestVerdict`,
+`persistProjectSessionAcpIdentity`, `ProjectSessionAcpIdentity`.
+
+**Verified**
+
+```
+pnpm --filter @kortix/sdk typecheck   → exit 0
+pnpm --filter @kortix/sdk test        → 1535 pass, 0 fail, 129 files (from 1481/122)
+pnpm --filter @kortix/sdk smoke:install → ✔ install smoke test passed
+RED first: runtime-transport/current-runtime/available-commands/keys-rest-capability
+           /commands-transport → 11 pass, 9 fail, 2 errors
+           keys-rest-capability after the gate split → 3 pass, 4 fail
+```
+
+Live, on the reported managed-ACP session (web :14100 / api :14108):
+45 fetch/xhr requests, ALL 200. Exactly ONE sandbox path in the whole page —
+`/8000/kortix/health`. `/8000/session`, `/8000/command`, `/8000/project/current`,
+`/8000/global/config`, `/8000/agent`, `/8000/skill`: **0 hits each, 0 × 503**.
+Agent selector populated (`opencode, claude, codex, memory-reflector, pi`) from
+`/projects/:id/detail`. Slash palette populated from the ACP stream:
+`/customize-opencode`, `/init guided AGENTS.md setup`,
+`/review review changes [commit|branch|pr]…`. Composer enabled.
+
+**Not verified:** no new sandbox could be provisioned during this session — the
+Platinum provider left two `provisioning` rows with no `external_id` for 60
+consecutive `/start` polls — so the fix is proven on a sandbox baked BEFORE it,
+which is the stronger case (the client sends nothing regardless of what the box
+answers). The pre-first-message composer (`composer-chat-input.tsx:90`) still has
+no command source before a session exists; it degrades to an empty palette, same
+as today.
+
+**SDK package shippable to production: YES.**
+
+---
+
+## CLI routed onto the SDK — `persistProjectSessionAcpIdentity` made public
+
+**Scope in this package: ONE line of source.** `apps/cli` was rewritten to consume
+only `@kortix/sdk` (it previously hand-rolled an OpenCode REST client and never
+imported the SDK at all). Everything the CLI needed already existed on the public
+surface except one function.
+
+**Change:** `src/core/rest/projects-client/index.ts` now re-exports
+`./session-acp-identity`, making `persistProjectSessionAcpIdentity` +
+`ProjectSessionAcpIdentity` public. The module and its test already existed; only
+the barrel omitted it, so the sole consumer was
+`src/react/use-acp-session-runtime.ts` reaching in by deep path. A non-React host
+that creates an ACP session must claim the harness-native id the controller mints
+(`persistAcpSessionId`) or the next invocation starts a second conversation on the
+same box — there was no public way to do that.
+
+Additive only: no rename, no removal, no signature change. Not a new subpath, so
+the three-synchronized-edits rule does not apply. `package.json` untouched —
+`version` still `0.3.0`.
+
+`src/public-surface.snapshot.json` regenerated with `UPDATE_SURFACE_SNAPSHOT=1`.
+The diff is 7 insertions, 0 deletions. Two are mine
+(`persistProjectSessionAcpIdentity`, once for `.` and once for
+`./projects-client`). The other five —`acpAvailableCommandsToCommands`,
+`manifestMigrationOffer`, `resolveSessionCommands`, `useOpenCodeRestReady` —
+belong to concurrent sessions whose exports were already in the working tree
+un-snapshotted; regenerating recorded them too. Nothing was removed.
+
+Also added `src/core/runtime/pty.public.test.ts`: two cases locking that
+`getKortixPtyWebSocketUrl` resolves outside a browser (wss for https, ws for a
+local http base). The CLI's `sessions shell` now drives the SDK PTY client from
+Bun, and the snapshot only proves the export exists, not that it runs without a
+`window`. No source change was needed — `kortixPty` was already public via
+`core/runtime/client`.
+
+```
+bun test src/core/rest/projects-client/session-acp-identity.test.ts → 2 pass, 0 fail
+bun test src/core/runtime/pty.public.test.ts                        → 2 pass, 0 fail
+bun test src/public-surface.test.ts src/package-exports.test.ts \
+         src/index.isomorphic.test.ts                              → 70 pass, 0 fail
+bun test (full)                                                    → 1522 pass, 15 fail
+bun run typecheck                                                  → 6 errors, ALL in src/core/acp/projection.ts
+bun run smoke:install                                              → FAILS, blocked by the same file
+```
+
+**The 15 test failures and both gate failures are NOT from this change.** They sit
+in a concurrent session's in-flight refactor of `src/core/acp/projection.ts`
+(+255/-59, adding `replaying`/`anchorMessageId` to the `replay` type without yet
+updating every construction site) plus the already-known
+`use-opencode-sessions/**` + `core/session/server-store/**` set that PROGRESS.md
+records as the 15-failure baseline. My one-line barrel export cannot produce a
+`TS2554 Expected 2 arguments` in `projection.ts`. `typecheck` and `smoke:install`
+will go green for this change as soon as that refactor compiles; they cannot be
+re-run to green from here without editing a fenced file.
+
+**SDK package shippable to production: NOT YET — blocked on the concurrent
+`core/acp/projection.ts` refactor compiling.** This change on its own is
+shippable: additive, tested, snapshot reviewed, `version` untouched.
+
+---
+
+### Session — ACP transcript order + token meter (worktree `bugbash`, NOT committed)
+
+Claimed nothing in **Now**; this is Backlog `B38`/`B39` plus `B40`–`B42` appended as
+found. Files: `src/core/acp/projection.ts` (+ its test), and outside this package
+`apps/api/src/shared/compact-transcript.ts` and
+`apps/web/src/features/session/composer/token-progress.tsx` (+ their tests).
+**`version` untouched** (`packages/sdk/package.json` unmodified, still `0.3.0`).
+Both files already carried a concurrent agent's uncommitted replay-dedup work
+(`longestSegment`, `opensSegment`, `clearSegments`, `pendingText`, monotonic tool
+status — none present at HEAD); this work sits on top of it and `git diff HEAD`
+for those two files is NOT this session's delta alone.
+
+```
+RED  bun test src/core/acp/projection.test.ts        → 34 pass, 7 fail
+     (then, after the first fix attempt)             → 41 pass, 1 fail
+RED  apps/api … compact-transcript.test.ts           → 14 pass, 4 fail; then 18 pass, 1 fail
+RED  apps/web … token-progress.test.ts               → SyntaxError: no export getLastAssistantTokenBreakdown
+
+pnpm --filter @kortix/sdk typecheck        → clean
+pnpm --filter @kortix/sdk test            → 1550 pass, 0 fail, 130 files (from 1535/129)
+pnpm --filter @kortix/sdk smoke:install   → ✔ install smoke test passed
+apps/api  bun test --isolate compact-transcript + public-session-share-view → 37 pass, 0 fail
+apps/web  bun test token-progress.test.ts → 12 pass, 0 fail; eslint clean; tsc: 0 errors in my files
+biome: 3 errors, all pre-existing `noExplicitAny` (identical set at HEAD)
+```
+
+Real-data evidence, my delta isolated (the concurrent agent's work kept, only my
+three mechanisms disabled in a copy):
+
+- Ordering, dev `6a7b3c29-…` attaching at its `session/load` (ordinal 509):
+  before `a,u,a,u,a,u,a,u,u` (last answer at the head); after
+  `u,a,u,a,u,a,u,a,u` with the unanswered trailing prompt last. Folding the same
+  log twice is byte-identical.
+- Ordering, all 241 ACP sessions in the local DB: **0 changed**. The fix only
+  fires when a replay introduces a message the projection never saw, which no
+  full-log fold in this DB does — every session's live phase saw its own prompts.
+- Reference log `10533f77-…` (2,088 envelopes, 11 replays): still **12 messages /
+  21 tool calls** in BOTH folds, byte-identical on a second fold.
+- Meter, all 138 sessions with a real `totalTokens`: 128 unchanged, 9 corrected
+  (over-reported, e.g. 10913→10904 truth 10904; 19563→19675 truth 19675), 1
+  corrected from 0 (34207). 7 still read 0 — see `B40`.
+- Back-to-back-replay concatenation (`"The build is green.The build is green."`)
+  **closed** in the API fold: it never reset `activeMessageId` on an attach, so a
+  second replay continued the first's segment instead of opening a new one. The
+  SDK fold already reset it.
+
+**Not verified:** no browser run — chrome-devtools MCP is not in this agent's
+tool set. Proven at the fold/state level and against the live API
+(`GET /v1/projects/514f25cd-…/sessions/fcfd1f38-…/transcript` → 200, 22 messages,
+faithful `u,a,u,a,u,a,u,a,u,a×9,u,u,u,u`); that call cannot distinguish this
+change from HEAD, because the ordering fix is a no-op on every session in this DB.
+
+**SDK package shippable to production: YES.**
+
+---
+
+### 2026-07-30 — session `ci-runtime-gates` CLI SDK-boundary restoration claim
+
+Claimed the regression created when the runtime-default revert restored the
+host-local CLI transport after the earlier SDK-only rewrite.
+
+Scope:
+
+- Restore the CLI to the published `@kortix/sdk` surface.
+- Keep OpenCode REST as the default runtime.
+- Preserve existing CLI commands and output contracts.
+- Repair the current session API contract failures separately from SDK code.
+
+The required `tdd` skill is unavailable in this session. The work will use the
+same RED, GREEN, and REFACTOR sequence directly.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**

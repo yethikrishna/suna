@@ -30,7 +30,10 @@ import { projectSessionMetadataMerge } from './lib/session-metadata-merge';
 // fails the request it hangs off.
 
 const MAX_TITLE_LENGTH = 64;
-const TITLE_MAX_TOKENS = 24;
+// OpenAI-compatible reasoning models count hidden reasoning and visible text
+// against the same output ceiling. A 24-token ceiling let the managed
+// DeepSeek fallback spend every token on reasoning and return empty content.
+const TITLE_MAX_TOKENS = 256;
 
 /** Upper bound on the prompt text a title is derived from — and therefore on
  *  the `title_source` a create stores for its own later fallback hooks. */
@@ -165,15 +168,7 @@ async function generateViaGateway(
   authorization: string,
   promptText: string,
 ): Promise<string | null> {
-  const rawBody = JSON.stringify({
-    model,
-    stream: false,
-    max_tokens: TITLE_MAX_TOKENS,
-    messages: [
-      { role: 'system', content: TITLE_SYSTEM_PROMPT },
-      { role: 'user', content: promptText.slice(0, TITLE_SOURCE_MAX_CHARS) },
-    ],
-  });
+  const rawBody = JSON.stringify(buildSessionTitleRequestBody(model, promptText));
   const gateway = await internalGateway();
   const res = await gateway.chatCompletions({ authorization, rawBody });
   if (!res.ok) {
@@ -184,6 +179,18 @@ async function generateViaGateway(
     choices?: Array<{ message?: { content?: unknown } }>;
   } | null;
   return contentToString(data?.choices?.[0]?.message?.content);
+}
+
+export function buildSessionTitleRequestBody(model: string, promptText: string) {
+  return {
+    model,
+    stream: false,
+    max_tokens: TITLE_MAX_TOKENS,
+    messages: [
+      { role: 'system', content: TITLE_SYSTEM_PROMPT },
+      { role: 'user', content: promptText.slice(0, TITLE_SOURCE_MAX_CHARS) },
+    ],
+  };
 }
 
 async function loadRow(sessionId: string, projectId: string): Promise<ProjectSessionRow | null> {

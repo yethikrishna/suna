@@ -42,7 +42,6 @@ import { AnyObject, ClaimWarmProjectSessionInputSchema, GroupGrantSchema, OkSche
 import { UUID_V4_REGEX, hasOwn, normalizeString, readBody, requestAuditContext, serializeSession } from '../lib/serializers';
 import { createProjectSession, sendSessionCreateError, type SessionCreateError } from '../lib/sessions';
 import {
-  missingRequiredConnectorAuthorizationsForSession,
   resolveEffectiveSessionConnectorBindings,
   sessionHasMemberConnectorBinding,
   sessionConnectorBindingsRequirePrivateVisibility,
@@ -69,11 +68,7 @@ import {
 import { requireEntitlement } from '../../accounts/iam/helpers';
 import { accountHasEntitlement } from '../../billing/services/entitlements';
 import { callerKortixSessionId } from '../lib/caller-session';
-import {
-  DEFAULT_AGENT_SENTINEL,
-  loadProjectAgents,
-  requiredConnectorsForAgent,
-} from '../agents';
+import { DEFAULT_AGENT_SENTINEL } from '../agents';
 import { resolveSessionAgentGrant } from '../lib/secret-grant';
 import { rescopeSessionBindings, rescopeSessionSecrets } from '../lib/session-rescope';
 import {
@@ -81,6 +76,7 @@ import {
   secretKeyCollisionInAllowlist,
 } from '../secrets';
 import { selectSessionRowsForViewer, type ProjectSessionListScope } from '../lib/session-inventory';
+import { missingWarmSessionAuthorizations } from '../lib/warm-session-authorizations';
 
 function parseBoundedPositiveInt(
   raw: string | undefined,
@@ -219,27 +215,6 @@ function resolvedWarmSessionConfiguration(project: {
     sandboxSlug:
       normalizeString(metadata.default_sandbox_slug) ?? DEFAULT_SANDBOX_SLUG,
   };
-}
-
-async function missingWarmSessionAuthorizations(
-  project: Parameters<typeof loadProjectAgents>[0] & {
-    accountId: string;
-    projectId: string;
-  },
-  session: { sessionId: string; agentName: string | null },
-) {
-  const loadedAgents = await loadProjectAgents(project);
-  const required = requiredConnectorsForAgent(
-    session.agentName ?? DEFAULT_AGENT_SENTINEL,
-    loadedAgents,
-  );
-  if (required.length === 0) return [];
-  return missingRequiredConnectorAuthorizationsForSession({
-    accountId: project.accountId,
-    projectId: project.projectId,
-    sessionId: session.sessionId,
-    aliases: required,
-  });
 }
 
 function connectorAuthorizationRequiredError(

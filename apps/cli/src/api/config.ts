@@ -394,14 +394,49 @@ export function validateHostName(name: string): void {
 
 // ─── Internal ─────────────────────────────────────────────────────────────
 
-function isLocalHostname(h: string): boolean {
+/** RFC1918 + link-local + CGNAT IPv4 — never routable on the public internet. */
+function isPrivateIPv4(h: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  if (a > 255 || b > 255 || Number(m[3]) > 255 || Number(m[4]) > 255) return false;
   return (
-    h === 'localhost' ||
-    h === '127.0.0.1' ||
-    h === '0.0.0.0' ||
-    h === '::1' ||
-    h === '[::1]' ||
-    h.endsWith('.localhost')
+    a === 10 || // 10.0.0.0/8
+    a === 127 || // loopback
+    (a === 172 && b >= 16 && b <= 31) || // 172.16.0.0/12
+    (a === 192 && b === 168) || // 192.168.0.0/16
+    (a === 169 && b === 254) || // 169.254.0.0/16 link-local
+    (a === 100 && b >= 64 && b <= 127) // 100.64.0.0/10 CGNAT
+  );
+}
+
+/**
+ * Is this host unreachable from the public internet — i.e. somewhere plain
+ * `http` is the legitimate, intended scheme?
+ *
+ * Loopback is the obvious case, but a self-host reaches its own API over any of:
+ *   - a container/service name on a private network — `http://kortix-api:8000`
+ *     (single-label: a public FQDN always has a dot)
+ *   - a LAN or VPC address — `http://192.168.1.50:8000`, `http://10.2.0.7:8000`
+ *   - a private DNS suffix — `.local`, `.internal`, `.lan`, `.home.arpa`
+ * None of those can present a public certificate, so upgrading them to https
+ * cannot succeed — it only replaces a working request with an opaque failure.
+ */
+function isPrivateHostname(h: string): boolean {
+  const host = h.replace(/^\[|\]$/g, '').toLowerCase();
+  if (host === 'localhost' || host === '0.0.0.0' || host === '::1') return true;
+  if (isPrivateIPv4(host)) return true;
+  // IPv6 unique-local (fc00::/7) and link-local (fe80::/10).
+  if (/^f[cd][0-9a-f]{2}:/.test(host) || /^fe[89ab][0-9a-f]:/.test(host)) return true;
+  // No dot at all → a single-label name: a container/service/mDNS host, never
+  // a public FQDN.
+  if (!host.includes('.')) return true;
+  return (
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal') ||
+    host.endsWith('.lan') ||
+    host.endsWith('.home.arpa')
   );
 }
 
@@ -412,11 +447,18 @@ function isLocalHostname(h: string): boolean {
  * by the API" even after a successful browser login (and the same drop breaks
  * the sandbox proxy, which reads the stored base directly). Upgrade any REMOTE
  * http base to https; localhost / self-host (legitimately plain http) stay put.
+ *
+ * "Self-host" is why the predicate is `isPrivateHostname` and not just
+ * loopback: a compose deployment talks to its API as `http://kortix-api:8000`
+ * or `http://192.168.x.y:8000`, and forcing https there turns a working
+ * cleartext request into a TLS handshake against a non-TLS port — which
+ * surfaces only as an unexplained "Unable to connect", with no hint that the
+ * CLI rewrote the scheme.
  */
 export function secureRemoteBase(base: string): string {
   try {
     const u = new URL(base);
-    if (u.protocol === 'http:' && !isLocalHostname(u.hostname)) {
+    if (u.protocol === 'http:' && !isPrivateHostname(u.hostname)) {
       u.protocol = 'https:';
       return u.toString().replace(/\/$/, '');
     }

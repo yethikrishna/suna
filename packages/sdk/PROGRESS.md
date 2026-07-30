@@ -4230,14 +4230,29 @@ Scope:
 - Fix the related API preview lookup separately without adding SDK transport
   behavior.
 
-The required `tdd` skill is unavailable in this session. The work will use the
-same RED, GREEN, and REFACTOR sequence directly.
+The required `tdd` skill is unavailable in this session. The work used the same
+RED, GREEN, and REFACTOR sequence directly.
 
-Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+RED:
 
-**Status:** IN PROGRESS.
+- `bun test src/react/session-title-sync.test.ts`: failed because
+  `reconcileHydratedSessionTitle` was not exported.
 
-**SDK package shippable to production: NOT YET.**
+GREEN:
+
+- `bun test src/react/session-title-sync.test.ts`: `2 pass`, `0 fail`.
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1347 pass`, `0 fail`, `116 files`.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed tarballs installed,
+  imported, and constructed successfully.
+
+Live browser proof loaded a titleless cached session with one hydrated user
+message. The sidebar changed from `New session` to `User Says Yo` without
+navigation. The browser observed four list reads and two detail reads.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
 
 ---
 

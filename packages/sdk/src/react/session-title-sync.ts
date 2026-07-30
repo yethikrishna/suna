@@ -92,3 +92,21 @@ export async function refreshSessionTitleQueryUntilResolved(
   }
   return false;
 }
+
+/**
+ * Reconcile a server-generated title after the conversation hydrates.
+ *
+ * This also covers an existing session opened after the original post-send
+ * refresh window ended. Empty conversations never poll.
+ */
+export async function reconcileHydratedSessionTitle(
+  queryClient: SessionTitleQueryClient,
+  projectId: string,
+  sessionId: string,
+  userMessageCount: number,
+  options: SessionTitleRefreshOptions = {},
+): Promise<boolean> {
+  if (userMessageCount <= 0) return false;
+  if (cachedSessionHasTitle(queryClient, projectId, sessionId)) return true;
+  return refreshSessionTitleQueryUntilResolved(queryClient, projectId, sessionId, options);
+}

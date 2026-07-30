@@ -64,7 +64,7 @@ import { useRuntimePhase } from './use-runtime-phase';
 import { clearStartStash, readStartStash } from './session-start-stash';
 import { useSessionPicks } from './use-session-picks';
 import { useSessionSync } from './use-session-sync';
-import { refreshSessionTitleQueryUntilResolved } from './session-title-sync';
+import { reconcileHydratedSessionTitle } from './session-title-sync';
 import { useVisibleAgents } from './use-visible-agents';
 import {
   rejectQuestion as rejectQuestionApi,
@@ -553,6 +553,20 @@ export function useSession(
     () => messages.filter((m) => m.info.role === 'user').length,
     [messages],
   );
+  useEffect(() => {
+    if (!chatEngine || userMsgCount <= 0) return;
+    titleRefreshAbortRef.current?.abort();
+    const controller = new AbortController();
+    titleRefreshAbortRef.current = controller;
+    void reconcileHydratedSessionTitle(queryClient, projectId, sessionId, userMsgCount, {
+      signal: controller.signal,
+    }).finally(() => {
+      if (titleRefreshAbortRef.current === controller) {
+        titleRefreshAbortRef.current = null;
+      }
+    });
+    return () => controller.abort();
+  }, [chatEngine, projectId, queryClient, sessionId, userMsgCount]);
   const [sendState, setSendState] = useState<SendState>(IDLE_SEND_STATE);
   const pending = sendState.pending;
   const pendingBaseCount = useRef(0);
@@ -577,16 +591,6 @@ export function useSession(
     },
   ): Promise<void> => {
     if (!runtimeActionReady) throw new RuntimeNotReadyError();
-    titleRefreshAbortRef.current?.abort();
-    const titleRefreshAbort = new AbortController();
-    titleRefreshAbortRef.current = titleRefreshAbort;
-    void refreshSessionTitleQueryUntilResolved(queryClient, projectId, sessionId, {
-      signal: titleRefreshAbort.signal,
-    }).finally(() => {
-      if (titleRefreshAbortRef.current === titleRefreshAbort) {
-        titleRefreshAbortRef.current = null;
-      }
-    });
     const model = override?.model ?? picks.model;
     const agent = override?.agent ?? picks.agent;
     const variant = override?.variant;

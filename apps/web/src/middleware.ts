@@ -23,6 +23,11 @@ const MARKETING_ROUTES = ['/', '/legal', '/support'];
 const SELF_HOST_MARKETING_ONLY = [
   '/about',
   '/agent-computer',
+  '/agents-and-skills',
+  '/automations',
+  '/channels',
+  '/self-hosted',
+  '/company-as-code',
   '/careers',
   '/blog',
   '/changelog',
@@ -60,6 +65,11 @@ const PUBLIC_ROUTES = [
   '/credits-explained', // Credits explained page should be public
   '/about', // About page should be public
   '/agent-computer', // Agent computer marketing page should be public
+  '/agents-and-skills', // marketing page should be public
+  '/automations', // marketing page should be public
+  '/channels', // marketing page should be public
+  '/self-hosted', // marketing page should be public
+  '/company-as-code', // marketing page should be public
   '/careers', // Careers page should be public
   '/changelog', // Public release notes (sourced from GitHub Releases)
   '/blog', // Public blog (MDX posts under content/blog) should be public

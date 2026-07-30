@@ -9,13 +9,59 @@
  * a licence. Never claim a certification we do not hold.
  */
 
+/**
+ * Hero variants. The product pitch — what Kortix IS — not a use-case pitch.
+ * Anchored on the README's opening: "The open-source AI Management System".
+ *
+ * Append `?hero=1` (or 2, 3, 4) to the URL to preview an alternative; the
+ * selector is dev-only and renders nothing in production.
+ */
+export const heroVariants = [
+  {
+    id: 'management-system',
+    label: 'Category-first (README)',
+    eyebrow: 'The open-source AI Management System',
+    title: 'Command your AI workforce from one repo you own',
+    sub: 'Your agents, their skills, your company memory and every connector in one git repo. Any model, your keys, self-hosted or managed cloud.',
+  },
+  {
+    id: 'alternative',
+    label: 'Comparative',
+    eyebrow: 'The open-source AI Management System',
+    title: 'The open-source alternative to Claude Cowork and ChatGPT Work',
+    sub: 'Same finished work, except the agents, skills and memory are files in a git repo you own — running any model, on your infrastructure or ours.',
+  },
+  {
+    id: 'own-it',
+    label: 'Ownership-first',
+    eyebrow: 'The open-source AI Management System',
+    title: 'An AI workforce your company actually owns',
+    sub: 'Agents work on real cloud computers, land work through a change request you approve, and everything they know stays in your repo.',
+  },
+  {
+    id: 'workforce',
+    label: 'Outcome-first (current)',
+    eyebrow: 'The open-source AI Management System',
+    title: 'Give your company a workforce that does the work',
+    sub: 'Connect the tools you already run on. Ask in plain language. Agents work on real computers and hand back finished work.',
+  },
+] as const;
+
 export const hero = {
-  eyebrow: 'The open-source AI Management System',
-  title: 'Give your company a workforce that does the work',
-  sub: 'Connect the tools you already run on. Ask in plain language. Agents work on real computers and hand back finished work.',
+  ...heroVariants[0],
   ctaPrimary: 'Get started',
   ctaSecondary: 'Request demo',
   trust: 'Open source · Any model, your keys · Self-host, VPC, or on-prem',
+} as const;
+
+/** Closing CTA. Same block the page has always ended with. */
+export const cta = {
+  badge: 'Get started',
+  title: 'Run your whole company from one repo you own.',
+  sub: 'Start with one job, connect the tools it needs, and let your team reach it from Slack, the web, or the CLI. Self-host for free, or managed cloud from $20 / seat + usage.',
+  trust: 'Open source · SSO, RBAC & on-prem · Any model, your keys · No lock-in',
+  ctaPrimary: 'Get started',
+  ctaSecondary: 'Request demo',
 } as const;
 
 /**
@@ -62,6 +108,120 @@ export const trust = {
       body: 'Kortix Cloud, your own VPC, on-prem or fully air-gapped. It is open source, so you can read every line of what you are trusting.',
     },
   ],
+} as const;
+
+export type UseCase = {
+  id: string;
+  /** Department. Rendered mono + uppercase; it is the only differentiator. */
+  tag: string;
+  /** One line, bold. The job the agent does for that team. */
+  headline: string;
+  /** One sentence. How it does it. */
+  body: string;
+  /** What a person types into the thread. */
+  ask: string;
+  /** What lands back: a file name, a change request, or a counted result. */
+  artifact: string;
+};
+
+/**
+ * The use-case wheel — ten teams, one per card, rendered on a scroll-driven arc.
+ *
+ * ACCURACY GATE: every counterparty named in a thread line is a fictional
+ * placeholder (Northwind, Globex, Initech, Umbrella, Vandelay). Never swap one
+ * for a real customer, prospect, or vendor — we neither name customers nor have
+ * permission to. Numbers and file names are illustrative and must stay plausible
+ * rather than impressive; they are read as examples, not as published results.
+ */
+export const useCases = {
+  eyebrow: 'Any job, any team',
+  title: 'It picks up work from every team and runs it start to finish.',
+  sub: 'Engineering, finance, legal, support — same agents, same isolated machines, same review before anything lands.',
+  /** Micro-labels on the thread mock inside each card. */
+  askLabel: 'Ask',
+  artifactLabel: 'Back',
+  cards: [
+    {
+      id: 'engineering',
+      tag: 'Engineering',
+      headline: 'Fixes the bug, opens the change request.',
+      body: 'It reproduces the failure on its own machine, writes the patch, runs the suite, and leaves you a diff to read.',
+      ask: 'Checkout 500s on expired cards. Fix it.',
+      artifact: 'session/fix-checkout · 4 files · tests pass · awaiting review',
+    },
+    {
+      id: 'finance',
+      tag: 'Finance',
+      headline: 'Closes the month while you sleep.',
+      body: 'It reconciles the payout ledger against the bank, chases what is unpaid, and leaves the workbook ready to sign off.',
+      ask: 'Close July. Flag anything that does not reconcile.',
+      artifact: 'stripe-payouts-2026-07.csv · 14 invoices chased · Vandelay 31 days late',
+    },
+    {
+      id: 'sales',
+      tag: 'Sales',
+      headline: 'Keeps the pipeline honest.',
+      body: 'It reads the calls and the CRM together, then separates the deals that actually moved from the ones that only look alive.',
+      ask: 'What really moved this week?',
+      artifact: '7 deals advanced · 2 slipped · at risk: Northwind, Globex',
+    },
+    {
+      id: 'marketing',
+      tag: 'Marketing',
+      headline: 'Turns the changelog into the launch.',
+      body: 'It reads what actually shipped, then drafts the post, the deck and the thread in your voice, ready for you to edit.',
+      ask: 'Ship the v0.11 launch off the changelog.',
+      artifact: 'launch-post.md · launch-deck.pptx · 6 social drafts',
+    },
+    {
+      id: 'support',
+      tag: 'Support',
+      headline: 'Triages the queue before standup.',
+      body: 'It reads every ticket that came in overnight, labels and merges the duplicates, and escalates only what needs a person.',
+      ask: 'Triage the overnight queue.',
+      artifact: '38 tickets triaged · 11 duplicates merged · 6 escalated',
+    },
+    {
+      id: 'recruiting',
+      tag: 'Recruiting',
+      headline: 'Screens every applicant the same way.',
+      body: 'It runs each application against the same written rubric and shows its reasoning, so the shortlist is comparable.',
+      ask: 'Screen the 42 backend applicants against the rubric.',
+      artifact: '42 screened · 9 shortlisted · scorecards.xlsx',
+    },
+    {
+      id: 'data',
+      tag: 'Data',
+      headline: 'Answers the question with the actual numbers.',
+      body: 'It writes the query, runs it against the warehouse, sanity-checks the result, and hands back the sheet instead of a guess.',
+      ask: 'Did Q2 retention improve for the self-serve cohort?',
+      artifact: 'q2-cohort-retention.xlsx · +4.1pp vs Q1',
+    },
+    {
+      id: 'legal',
+      tag: 'Legal',
+      headline: 'Reads the contract you do not have time to read.',
+      body: 'It diffs an incoming agreement against your standard terms and marks every clause that drifts, with the reason.',
+      ask: 'Redline the Initech MSA against our template.',
+      artifact: '4 non-standard clauses flagged · initech-msa-redline.docx',
+    },
+    {
+      id: 'ops',
+      tag: 'Ops',
+      headline: 'Watches the things nobody remembers to watch.',
+      body: 'It runs on a schedule across vendors, renewals, seats and spend, and speaks up only when something needs a decision.',
+      ask: 'Anything expiring in the next 30 days?',
+      artifact: '3 renewals due · Umbrella auto-renews Aug 12 · vendor-review.md',
+    },
+    {
+      id: 'exec',
+      tag: 'Exec',
+      headline: 'Has the brief ready before you ask.',
+      body: 'It pulls the week out of the systems your teams already work in and hands you one page on Monday morning.',
+      ask: 'What do I need to know before Monday?',
+      artifact: 'weekly-brief-2026-07-27.pdf · 5 decisions pending',
+    },
+  ] satisfies readonly UseCase[],
 } as const;
 
 export type StackLayerId =

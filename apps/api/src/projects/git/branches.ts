@@ -408,8 +408,13 @@ export async function commitMultipleFilesToBranch(
       throw new Error('git commit-tree did not return a commit SHA');
 
     try {
+      const pushArgs = ['push'];
+      if (expectedFileRevision) {
+        pushArgs.push(`--force-with-lease=refs/heads/${branch}:${parentSha ?? ''}`);
+      }
+      pushArgs.push('origin', `${commitSha}:refs/heads/${branch}`);
       await runGit(
-        ['push', 'origin', `${commitSha}:refs/heads/${branch}`],
+        pushArgs,
         repoPath,
         true,
         project.gitAuthToken,

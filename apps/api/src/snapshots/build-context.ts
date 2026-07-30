@@ -12,7 +12,7 @@
  * snapshots/providers/daytona.ts (Daytona) + snapshots/providers/platinum.ts.
  */
 
-import { copyFile, cp, mkdir, mkdtemp, rm, stat, writeFile as writeFileFs } from 'node:fs/promises';
+import { copyFile, cp, mkdir, mkdtemp, rename, rm, stat, writeFile as writeFileFs } from 'node:fs/promises';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -776,6 +776,8 @@ async function stageScaffoldRepo(contextDir: string): Promise<void> {
   await g(['config', 'user.email', 'noreply@kortix.ai'], work);
   await g(['add', '-A'], work);
   await g(['commit', '-m', 'chore: scaffold Kortix project'], work);
-  await g(['clone', '--bare', '-q', work, join(contextDir, 'scaffold.git')], contextDir);
+  const scaffoldGit = join(contextDir, 'scaffold.git');
+  await rename(join(work, '.git'), scaffoldGit);
+  await g(['--git-dir', scaffoldGit, 'config', 'core.bare', 'true'], contextDir);
   await rm(work, { recursive: true, force: true });
 }

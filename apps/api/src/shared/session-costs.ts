@@ -619,7 +619,7 @@ async function loadLedgerEntries(
       .select({
         id: sandboxComputeSessions.id,
         startedAt: sandboxComputeSessions.startedAt,
-        endedAt: sandboxComputeSessions.endedAt,
+        closedAt: sandboxComputeSessions.endedAt,
         billedThroughAt: sandboxComputeSessions.lastBilledAt,
         cost: sandboxComputeSessions.costUsd,
         provider: sandboxComputeSessions.provider,
@@ -658,7 +658,7 @@ async function loadLedgerEntries(
     kind: 'compute',
     id: row.id,
     started_at: requiredIsoValue(row.startedAt),
-    ended_at: isoValue(row.endedAt),
+    ended_at: isoValue(row.closedAt),
     billed_through_at: requiredIsoValue(row.billedThroughAt),
     cost: numberValue(row.cost),
     provider: row.provider,

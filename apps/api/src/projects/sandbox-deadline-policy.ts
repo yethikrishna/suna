@@ -38,9 +38,25 @@ export const ABSOLUTE_RUN_CAP_MS = 24 * 3_600_000;
  * re-extends the box, so a genuinely long turn keeps its box for as long as it
  * keeps talking to a model, bounded only by ABSOLUTE_RUN_CAP_MS.
  *
+ * THE KNOWN GAP: a turn that makes NO gateway LLM call for four hours. That is
+ * not a long turn — a long turn keeps talking to a model and keeps extending —
+ * it is a BLOCKED one: the agent is waiting on a permission prompt or a
+ * `question` the user has not answered. There is no observation for that today,
+ * because the in-box relay that would report it (`relayQuestion` /
+ * `relayTurnEndToApi` in kortix-sandbox-agent-server) returns early unless the
+ * box has Slack context, so for a web session apps/api never learns a question is
+ * pending. The browser's own traffic while the user reads the prompt lands on
+ * port 8000/4096, which `isPreviewUseObservation` deliberately excludes. So a
+ * prompt left unanswered for more than four hours loses its box, and with it the
+ * in-flight turn (the box auto-resumes on the answer, but opencode restarts cold
+ * and its pending question is gone). Ungating that relay — and giving the control
+ * plane a real "a question is pending" observation — is the fix, and it is a
+ * change to the sandbox agent, not to this file.
+ *
  * KILL SWITCH: set KORTIX_SANDBOX_TURN_GRANT_MINUTES=100000 and every extend
  * out-runs the cap, so the LEAST clamps at active_since + 24h and the feature
- * is effectively neutralised without a rollback.
+ * is effectively neutralised without a rollback. That is also the mitigation for
+ * the gap above if it turns out to bite real sessions before the relay lands.
  */
 export function turnGrantMs(): number {
   return positiveEnvInt('KORTIX_SANDBOX_TURN_GRANT_MINUTES', 240) * 60_000;

@@ -106,13 +106,13 @@ export function isConnectorProfileSlugAvailable(
 }
 
 export function proposeConnectorProfileSlug(
-  appSlug: string,
+  displayName: string,
   existingSlugs: readonly string[],
 ): string {
-  const base = normalizeConnectorProfileSlug(appSlug) || 'connector';
+  const base = normalizeConnectorProfileSlug(displayName) || 'connector';
   if (isConnectorProfileSlugAvailable(base, existingSlugs)) return base;
 
-  for (let index = 2; ; index += 1) {
+  for (let index = 1; ; index += 1) {
     const suffix = `-${index}`;
     const stem = base
       .slice(0, MAX_CONNECTOR_PROFILE_SLUG_LENGTH - suffix.length)
@@ -120,6 +120,20 @@ export function proposeConnectorProfileSlug(
     const candidate = `${stem}${suffix}`;
     if (isConnectorProfileSlugAvailable(candidate, existingSlugs)) return candidate;
   }
+}
+
+export function connectorProfileSlugAfterNameChange({
+  displayName,
+  currentSlug,
+  existingSlugs,
+  slugEdited,
+}: {
+  displayName: string;
+  currentSlug: string;
+  existingSlugs: readonly string[];
+  slugEdited: boolean;
+}): string {
+  return slugEdited ? currentSlug : proposeConnectorProfileSlug(displayName, existingSlugs);
 }
 
 export function buildEmailConnectorProfileSlug(baseInput: string, uniqueId: string): string {

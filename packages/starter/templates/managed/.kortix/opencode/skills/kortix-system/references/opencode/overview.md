@@ -3,8 +3,7 @@
 OpenCode is the Kortix session runtime. Version 2 uses OpenCode REST. This
 directory is the complete OpenCode reference.
 
-When a project selects OpenCode, the same `.kortix/opencode/` config directory
-can drive both surfaces:
+The same `.kortix/opencode/` config directory drives both surfaces:
 
 - **Remote** — when a Kortix session boots, the platform points OpenCode
   at this dir via `OPENCODE_CONFIG_DIR=.kortix/opencode` and launches

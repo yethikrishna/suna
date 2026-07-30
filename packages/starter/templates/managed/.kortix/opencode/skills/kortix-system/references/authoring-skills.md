@@ -181,11 +181,10 @@ Two complementary checks — do both:
    Read any error and fix it before moving on. Don't validate
    mid-authoring — wait until the files are final.
 
-2. **Runtime check.** Start a fresh session with the target harness. Confirm
-   `SKILL.md` is uppercase, the frontmatter has `name` and `description`, the
-   name matches the directory, and the name is unique. Ask the harness to list
-   or load the skill. For OpenCode, also check `permission.skill` rules in
-   `opencode.jsonc`.
+2. **Runtime check.** Start a fresh session. Confirm `SKILL.md` is uppercase,
+   the frontmatter has `name` and `description`, the name matches the
+   directory, and the name is unique. Ask the agent to list or load the skill.
+   Also check `permission.skill` rules in `opencode.jsonc`.
 
 ## Make it land and shareable
 

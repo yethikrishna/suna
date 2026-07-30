@@ -9,6 +9,7 @@ import {
 } from '@kortix/db';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+
 import { mockIamEngineAllowAll, mockIamMembershipSyncNoop } from './helpers/iam-mocks';
 
 const USER_ID = '00000000-0000-4000-a000-000000000001';
@@ -159,6 +160,7 @@ mock.module('../projects/git', () => ({
   readManifestFromRepo: async () => null,
   invalidateProjectMirror: () => {},
   listBranches: async () => [],
+  remoteBranchExists: async () => true,
   listCommits: async () => ({ entries: [], nextCursor: null }),
   getCommit: async () => null,
   getCommitDiff: async () => null,
@@ -971,6 +973,8 @@ describe('create-repo starter scaffold contract', () => {
         },
       },
     });
+    // The default starter uses only the version 2 OpenCode REST contract.
+    expect(insertedProject?.metadata).not.toHaveProperty('experimental');
     expect(gitConnectionRows).toContainEqual(
       expect.objectContaining({
         projectId: PROJECT_ID,

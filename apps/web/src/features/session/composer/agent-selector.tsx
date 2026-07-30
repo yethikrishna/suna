@@ -22,6 +22,7 @@ import { CaretDownIcon, Check } from '@phosphor-icons/react';
 // ============================================================================
 
 export function AgentSelector({
+  projectId,
   agents,
   selectedAgent,
   onSelect,

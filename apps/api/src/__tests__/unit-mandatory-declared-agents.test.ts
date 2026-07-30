@@ -16,6 +16,17 @@ import { DEFAULT_STARTER_TEMPLATE_ID, getStarterFiles } from '@kortix/starter';
 import { extractAgents, projectRequiresDeclaredAgents, resolveGovernedAgentGrant } from '../projects/agents';
 import { KNOWN_SCHEMA_VERSION, parseManifestString } from '../projects/triggers';
 
+/**
+ * The manifest's own `default_agent`, asserted present. Every starter assertion
+ * below is written against this instead of a hardcoded agent name, so the guard
+ * survives a change of which starter (or which schema version) ships by default.
+ */
+function declaredDefaultAgent(loaded: ReturnType<typeof extractAgents>): string {
+  const name = loaded.defaultAgent;
+  expect(typeof name).toBe('string');
+  return name as string;
+}
+
 function loadAgents(body: string) {
   return extractAgents(parseManifestString(`kortix_version = ${KNOWN_SCHEMA_VERSION}\n[project]\nname="t"\n${body}`));
 }
@@ -278,6 +289,10 @@ describe('resolveGovernedAgentGrant — the actual shipped starter satisfies its
     const manifest = parseManifestString(manifestFile!.content, 'yaml', 'kortix.yaml');
     expect(manifest.schemaVersion).toBe(2);
     const loaded = extractAgents(manifest);
+    expect(loaded.errors).toEqual([]);
+    // The manifest must name a default agent, and must declare it.
+    const declaredDefault = declaredDefaultAgent(loaded);
+    expect(loaded.specs.map((spec) => spec.name)).toContain(declaredDefault);
 
     // Mirrors r1.ts /projects/provision exactly: subject=true (the metadata
     // stamp), and no project.metadata.default_agent mirror set yet.
@@ -288,6 +303,9 @@ describe('resolveGovernedAgentGrant — the actual shipped starter satisfies its
 
     expect(governed.ok).toBe(true);
     if (!governed.ok) return;
+    // The default agent is the one a new user drives from the UI with no
+    // configuration, so it must carry the full grant — a narrowed default is a
+    // silently crippled first session.
     expect(governed.grant).toEqual({
       agent: 'kortix',
       connectors: 'all',

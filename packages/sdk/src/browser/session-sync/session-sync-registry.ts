@@ -1,14 +1,14 @@
 import type { Message, Part, SessionStatus } from '@opencode-ai/sdk/v2/client';
-import { useSyncStore } from '../stores/sync-store';
 import { getClient } from '../../core/runtime/client';
-import { getCurrentRuntimeSandboxId } from '../../core/session/current-runtime';
 import {
   SessionSyncController,
-  loadCompleteSessionHistory,
   type SessionSyncPage,
   type SessionSyncReason,
   type SessionSyncTelemetryEvent,
+  loadCompleteSessionHistory,
 } from '../../core/session-sync/session-sync-controller';
+import { getCurrentRuntimeSandboxId } from '../../core/session/current-runtime';
+import { useSyncStore } from '../stores/sync-store';
 
 interface MessagesResponse {
   data?: Array<{ info: Message; parts: Part[] }>;

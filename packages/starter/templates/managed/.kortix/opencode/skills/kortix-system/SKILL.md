@@ -232,10 +232,8 @@ sessions after a change request merges (`<change-requests>` below) —
 writing it on a session branch makes it available to that session only.
 
 `.kortix/opencode/skills` is the canonical git source for Kortix-managed
-skills. At sandbox boot, Kortix projects the managed skills into the selected
-harness's native discovery path. OpenCode reads `<config_dir>/skills`, Claude
-Code reads `<config_dir>/skills`, Codex reads `.agents/skills`, and Pi reads
-`<config_dir>/skills`. See `<runtime-harnesses>`.
+skills, and OpenCode's own discovery path. At sandbox boot, Kortix force-writes
+the latest managed system skills into it, so a stale committed copy never wins.
 
 **Full reference:** `.kortix/opencode/skills/kortix-system/references/authoring-skills.md`
 — the complete spec (all frontmatter fields, naming regex, the

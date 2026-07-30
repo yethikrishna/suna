@@ -6,7 +6,7 @@ This project runs OpenCode through its REST API.
 
 OpenCode can use Kortix-managed models or project provider credentials.
 
-Use the project Models view to connect credentials. Do not commit credentials.
+## Verify the project
 
 ## Test the runtime
 

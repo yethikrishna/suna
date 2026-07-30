@@ -350,8 +350,7 @@ kortix init my-project --yes --no-git
 
 ### System skills
 
-System skills are the live agent manual for the deployed Kortix host. The
-command works from every runtime harness.
+System skills are the live agent manual for the deployed Kortix host.
 
 | Command | Effect |
 | --- | --- |

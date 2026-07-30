@@ -25,6 +25,7 @@ import {
   type Opencode,
 } from './opencode'
 import { relayBootTimelineToApi } from './boot-timeline-relay'
+import { repairOpencodeConfigDir } from './apple-double'
 import { ensureOpencodeConfigDeps } from './opencode-config-deps'
 import { ensureInjectedManagedSkills } from './injected-skills'
 import { isSharedSeedBakedRoot, OPENCODE_SEED_BAKED_PIN_PATH } from './opencode-fork-root'
@@ -514,6 +515,7 @@ async function runWarmSeedMode(
   const opencodeConfigDir = materialized
     ? await resolveOpencodeConfigDir(cfg)
     : cfg.defaultOpencodeConfigDir
+  await repairOpencodeConfigDir(opencodeConfigDir)
   await ensureOpencodeConfigDeps(opencodeConfigDir).catch(() => {})
 
   // Warm-fork NO-RESTART path (opt-in KORTIX_LLM_HOTSWAP=1; stateful warm
@@ -640,6 +642,7 @@ async function runWarmSeedMode(
       const adoptedOpencodeConfigDir = bootState.repoMaterializationError
         ? cfg2.defaultOpencodeConfigDir
         : await resolveOpencodeConfigDir(cfg2)
+      await repairOpencodeConfigDir(adoptedOpencodeConfigDir)
       await ensureOpencodeConfigDeps(adoptedOpencodeConfigDir).catch((err) =>
         logger.warn('[seed] adoption config deps failed', { err: (err as Error).message }),
       )

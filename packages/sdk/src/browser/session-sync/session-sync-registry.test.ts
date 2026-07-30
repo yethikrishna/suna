@@ -10,8 +10,8 @@ import {
   noteSessionSyncEvent,
   prefetchSessionSyncOnce,
   readSessionMessagePage,
-  resetSessionSyncControllersForSession,
   resetSessionSyncControllers,
+  resetSessionSyncControllersForSession,
   retainSessionSyncController,
 } from './session-sync-registry';
 
@@ -204,5 +204,11 @@ describe('REST prompt observation events', () => {
       properties: { sessionID: sessionId, error: { name: 'RuntimeError' } },
     });
     expect(controller.getSnapshot().isPromptObservedBusy).toBe(false);
+  });
+
+  test('ignores an event with no properties instead of throwing', () => {
+    expect(() =>
+      noteSessionSyncEvent({ type: 'sync' } as unknown as { type?: string; properties: unknown }),
+    ).not.toThrow();
   });
 });

@@ -3,6 +3,12 @@
 import type { Message, Part, SessionStatus, Todo } from '@opencode-ai/sdk/v2/client';
 import { useEffect, useSyncExternalStore } from 'react';
 import {
+  claimSessionCacheOwnership,
+  getSessionCacheOwnership,
+  resolveSessionCacheOwnerScope,
+  sessionCacheOwnerScopesConflict,
+} from '../browser/session-sync/session-cache-ownership';
+import {
   getSessionSyncController,
   loadSessionTranscriptMessages,
   resetSessionSyncControllersForSession,
@@ -14,16 +20,10 @@ import {
   toHydrateEntries,
   writeCachedTranscript,
 } from '../browser/session-sync/session-transcript-cache';
-import {
-  claimSessionCacheOwnership,
-  getSessionCacheOwnership,
-  resolveSessionCacheOwnerScope,
-  sessionCacheOwnerScopesConflict,
-} from '../browser/session-sync/session-cache-ownership';
 import { useSandboxConnectionStore } from '../browser/stores/sandbox-connection-store';
 import { type MessageWithParts, useSyncStore } from '../browser/stores/sync-store';
-import { canQueryOpenCodeSession } from './use-opencode-sessions';
 import { useCurrentRuntime } from './use-current-runtime';
+import { canQueryOpenCodeSession } from './use-opencode-sessions';
 
 export { loadSessionTranscriptMessages };
 

@@ -1,18 +1,25 @@
 /**
- * Tracks which session currently owns each bare OpenCode session id in the
+ * Tracks which sandbox currently owns each bare OpenCode session id in the
  * compatibility sync store. OpenCode ids are local to a sandbox. A restored
  * snapshot can therefore expose the same id from two different sandboxes.
  *
- * `kortix:<projectId>/<sessionId>` is authoritative because that consumer
- * knows the platform session. `runtime:<sandboxId>` is a fallback for a
- * standalone consumer that only knows the active runtime.
+ * Two kinds of owner scope exist, and the difference matters:
  *
- * These scope kinds can describe the same active session. They must not evict
- * each other. Two scopes of the same kind still conflict when their values
- * differ.
+ *  - `kortix:<projectId>/<sessionId>` — AUTHORITATIVE. The consumer was told
+ *    which Kortix session it is reading, so it survives a sandbox replacement
+ *    for that session (the transcript is not wiped when the box is re-created).
+ *  - `runtime:<sandboxId>` — FALLBACK, for a standalone consumer that was given
+ *    nothing but a bare OpenCode id.
+ *
+ * The two kinds must never be read as a disagreement. They describe the SAME
+ * session from two consumers that simply know different amounts about it, and
+ * both live in the one active runtime. Treating that as a collision made the
+ * two hooks evict each other: whichever claimed last owned the id, and the
+ * other one read an empty transcript for the rest of the page's life.
  */
 
 const owners = new Map<string, string>();
+
 const AUTHORITATIVE_PREFIX = 'kortix:';
 
 function isAuthoritative(ownerScope: string): boolean {
@@ -28,12 +35,17 @@ export function resolveSessionCacheOwnerScope(
   return `runtime:${runtimeScope}`;
 }
 
-export function sessionCacheOwnerScopesConflict(
-  first: string | null,
-  second: string | null,
-): boolean {
-  if (!first || !second || first === second) return false;
-  return isAuthoritative(first) === isAuthoritative(second);
+/**
+ * Do two owner scopes name genuinely DIFFERENT owners of the same OpenCode id
+ * — i.e. is the cached data for this id foreign to the asking consumer?
+ *
+ * Only two scopes of the same KIND can disagree. That is the real case this
+ * module exists to catch: another sandbox (or another Kortix session) reusing
+ * an OpenCode id. A fallback scope never contradicts an authoritative one.
+ */
+export function sessionCacheOwnerScopesConflict(a: string | null, b: string | null): boolean {
+  if (!a || !b || a === b) return false;
+  return isAuthoritative(a) === isAuthoritative(b);
 }
 
 export function getSessionCacheOwnership(sessionId: string): string | null {
@@ -48,6 +60,8 @@ export function claimSessionCacheOwnership(
   if (previousOwnerScope === ownerScope) {
     return { changed: false, previousOwnerScope };
   }
+  // A fallback claim never displaces an authoritative one — the consumer that
+  // knows which Kortix session this is stays the owner of record.
   if (
     previousOwnerScope !== null &&
     !isAuthoritative(ownerScope) &&

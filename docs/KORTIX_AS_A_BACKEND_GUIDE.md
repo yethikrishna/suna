@@ -2,6 +2,11 @@
 
 Use a Kortix API key to create and manage project sessions from your server.
 
+> **Runtime scope.** The public `opencode_model` name remains unchanged for
+> compatibility. Every session runs OpenCode over its REST compatibility
+> interface. Prefer `useSession()` in React over the framework-free
+> `session.stream()` / `session.send()` examples below.
+
 Each session has one Kortix owner. Each session also has one project and one
 unified cost record.
 

@@ -161,6 +161,8 @@ export function getStarterFiles(vars: StarterVars): StarterFile[] {
     template: normalizeStarterTemplateId(vars.template),
   };
 
+  // Later roots win (`byPath.set`), so the general-knowledge-worker layer may
+  // override a base file of the same path.
   const roots: { name: string; dir: string }[] = [{ name: 'base', dir: BASE_TEMPLATE_DIR }];
   if (resolvedVars.template !== 'minimal') {
     roots.push({

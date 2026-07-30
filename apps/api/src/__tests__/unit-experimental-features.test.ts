@@ -9,7 +9,6 @@ import {
   resolveExperimentalFeatures,
 } from '../experimental/features';
 import { projectLlmGatewayEnabled } from '../llm-gateway/enablement';
-
 function findCatalogFeature(key: string) {
   const feature = buildExperimentalCatalog({}).find((f) => f.key === key);
   if (!feature) throw new Error(`Missing experimental feature: ${key}`);

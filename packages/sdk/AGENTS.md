@@ -106,8 +106,9 @@ Follow the grain. Almost every feature is this shape:
 
 - **Session-scoped, never global.** See above. Never resolve a runtime from
   ambient state.
-- **Harness/provider-agnostic.** Sandbox provider and runtime harness are
-  server-side concerns. Host code must not branch on either.
+- **Session-scoped and provider-agnostic.** The sandbox provider is a server-side
+  concern. Every session uses OpenCode REST. Host code must not add a second
+  transport.
 - **Hosts never import `@opencode-ai/sdk`.** Not `apps/web`, not the demo. If a
   host needs runtime access, it goes through `session.runtime`.
 - **Hosts never raw-`fetch` the Kortix API.** If the SDK doesn't expose it, add it

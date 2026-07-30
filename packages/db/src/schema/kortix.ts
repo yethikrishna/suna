@@ -1614,6 +1614,18 @@ export const sessionSandboxes = kortixSchema.table(
     config: jsonb('config').default({}).$type<Record<string, unknown>>(),
     metadata: jsonb('metadata').default({}).$type<Record<string, unknown>>(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    // Start of this box's CURRENT continuous running stretch, and the anchor
+    // operand of the 24h cap. Assigned ONLY by the DB trigger
+    // kortix.session_sandboxes_anchor_guard(), which carries it forward on EVERY
+    // application UPDATE in EVERY status and re-anchors a new stretch only when
+    // resuming a park it witnessed itself. Never write this from TypeScript — a
+    // constraint on a difference whose left operand a caller can slide forward
+    // is a suggestion, not a bound.
+    activeSince: timestamp('active_since', { withTimezone: true }).defaultNow().notNull(),
+    // When the control plane stops this box. Single TS writer:
+    // apps/api/src/projects/sandbox-deadline.ts. Bounded by a DB CHECK at
+    // active_since + 24h.
+    deadlineAt: timestamp('deadline_at', { withTimezone: true }).defaultNow().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

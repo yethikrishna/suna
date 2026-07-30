@@ -76,6 +76,8 @@ function sandboxRow(
     accountId: ACCOUNT_ID,
     projectId: PROJECT_ID,
     provider: 'platinum',
+    activeSince: NOW,
+    deadlineAt: NOW,
     externalId: 'sbx-123',
     baseUrl: 'https://sbx-123.proxy.kortix.com',
     status: 'active',

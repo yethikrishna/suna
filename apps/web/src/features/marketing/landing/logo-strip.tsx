@@ -22,7 +22,7 @@ function Row({ label, keys }: { label: string; keys: IconKey[] }) {
           const Glyph = Icon[key] as ((p: { className?: string }) => ReactNode) | undefined;
           if (!Glyph) return null;
           return (
-            <span key={key} className="opacity-55 transition-opacity hover:opacity-100">
+            <span key={key} className="opacity-100">
               <Glyph className="size-6" />
             </span>
           );

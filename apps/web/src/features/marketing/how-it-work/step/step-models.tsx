@@ -1,68 +1,65 @@
 'use client';
 
-import type { ReactNode } from 'react';
-import { Card } from '@/components/ui/card';
+import { PageHead, Panel, Row, StatusDot } from '@/components/home/interactive-demo/primitives';
 import { Icon } from '@/features/icon/icon';
+import type { ReactNode } from 'react';
+import { WebPanelWrapper } from '../web-panel-wrapper';
 
 type IconKey = keyof typeof Icon;
 
-const PROVIDERS: { key: IconKey; name: string; note: string }[] = [
-  { key: 'Claude', name: 'Claude', note: 'Opus · Sonnet' },
-  { key: 'OpenAI', name: 'OpenAI', note: 'GPT · Codex' },
-  { key: 'Gemini', name: 'Gemini', note: 'Pro · Flash' },
+const PROVIDERS: { key: IconKey; name: string; models: string; on: boolean }[] = [
+  { key: 'Claude', name: 'Anthropic', models: 'Opus · Sonnet · Haiku', on: true },
+  { key: 'OpenAI', name: 'OpenAI', models: 'GPT · Codex', on: true },
+  { key: 'Gemini', name: 'Google', models: 'Gemini Pro · Flash', on: true },
 ];
 
-const SOURCES = [
-  'Your own API key',
-  'The subscription you already pay for',
-  'Your own models, on your hardware',
+const KEYS = [
+  { label: 'Your own API key', detail: 'any provider' },
+  { label: 'The subscription you already pay for', detail: 'ChatGPT · Claude · Cursor' },
+  { label: 'Your own models', detail: 'on your hardware' },
 ];
 
-/** Layer 02 — the point is that the model slot is yours to fill. */
+/** Layer 02 — the model slot is yours to fill, and billing follows your keys. */
 export function StepModels() {
   return (
-    <Card className="flex h-full w-full flex-col gap-5 p-6">
-      <div>
-        <p className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
-          Model
-        </p>
-        <div className="mt-3 space-y-2">
+    <WebPanelWrapper activeTab="models">
+      <PageHead title="Models" sub="Any provider. Switch as they improve." />
+
+      <div className="space-y-3">
+        <Panel title="Connected" count="3">
           {PROVIDERS.map((p) => {
-            const Glyph = Icon[p.key] as ((p: { className?: string }) => ReactNode) | undefined;
+            const Glyph = Icon[p.key] as ((x: { className?: string }) => ReactNode) | undefined;
             return (
-              <div
+              <Row
                 key={p.name}
-                className="border-border bg-background flex items-center gap-3 rounded-sm border px-3 py-2.5"
-              >
-                {Glyph ? <Glyph className="size-5 shrink-0" /> : null}
-                <span className="text-foreground text-sm font-medium">{p.name}</span>
-                <span className="text-muted-foreground/70 ml-auto font-mono text-[11px]">
-                  {p.note}
-                </span>
-              </div>
+                leading={
+                  <span className="border-border bg-background flex size-8 items-center justify-center rounded-md border">
+                    {Glyph ? <Glyph className="size-4" /> : null}
+                  </span>
+                }
+                title={p.name}
+                subtitle={p.models}
+                trailing={<StatusDot on={p.on} />}
+              />
             );
           })}
-          <div className="border-border text-muted-foreground rounded-sm border border-dashed px-3 py-2.5 text-center font-mono text-[11px]">
-            + any other provider
-          </div>
-        </div>
-      </div>
+        </Panel>
 
-      <div className="border-border mt-auto border-t pt-4">
-        <p className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
-          Billed through
-        </p>
-        <ul className="mt-2.5 space-y-1.5">
-          {SOURCES.map((s) => (
-            <li key={s} className="text-muted-foreground flex gap-2 text-[13px] leading-relaxed">
-              <span aria-hidden className="text-muted-foreground/40">
-                ·
-              </span>
-              <span>{s}</span>
-            </li>
+        <Panel title="Billed through">
+          {KEYS.map((k) => (
+            <Row
+              key={k.label}
+              leading={
+                <span className="border-border text-muted-foreground flex size-8 items-center justify-center rounded-md border font-mono text-[10px]">
+                  key
+                </span>
+              }
+              title={k.label}
+              subtitle={k.detail}
+            />
           ))}
-        </ul>
+        </Panel>
       </div>
-    </Card>
+    </WebPanelWrapper>
   );
 }

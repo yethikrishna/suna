@@ -1,51 +1,81 @@
 'use client';
 
-import { Card } from '@/components/ui/card';
+import { PageHead, Panel, Row } from '@/components/home/interactive-demo/primitives';
+import { Badge } from '@/components/ui/badge';
 import { Icon } from '@/features/icon/icon';
+import { WebPanelWrapper } from '../web-panel-wrapper';
 
-const CONFIG = [
+const CONFIG: { line: string; muted?: boolean }[] = [
   { line: '# .kortix/opencode/agents/kortix.md', muted: true },
-  { line: '---', muted: true },
-  { line: 'model: auto', muted: false },
-  { line: 'tools: [read, edit, bash, web, connectors]', muted: false },
-  { line: 'permissions:', muted: false },
-  { line: '  bash: ask', muted: false },
-  { line: '  edit: allow', muted: false },
-  { line: 'skills: [presentations, xlsx, website-building]', muted: false },
-  { line: '---', muted: true },
-  { line: 'You are a Kortix general knowledge worker…', muted: true },
+  { line: 'model: auto' },
+  { line: 'tools: [read, edit, bash, web, connectors]' },
+  { line: 'permissions:' },
+  { line: '  bash: ask' },
+  { line: '  edit: allow' },
+  { line: 'skills: [presentations, xlsx, website-building]' },
 ];
 
-/** Layer 03 — credit OpenCode plainly, and show that the harness is a file. */
+const CAPABILITIES = [
+  { title: 'Planning', sub: 'breaks a request into steps it finishes' },
+  { title: 'Tool use', sub: 'reads, edits, runs, fetches, calls connectors' },
+  { title: 'Permissions', sub: 'what runs freely, what stops to ask' },
+];
+
+/** Layer 03 — credit OpenCode plainly, and show the harness is an editable file. */
 export function StepHarness() {
   return (
-    <Card className="flex h-full w-full flex-col gap-4 p-6">
-      <div className="border-border flex items-center gap-3 border-b pb-4">
-        <span className="border-border bg-background flex size-11 shrink-0 items-center justify-center rounded-sm border">
-          <Icon.OpenCode className="size-6" />
-        </span>
-        <div>
-          <p className="text-foreground text-sm font-medium">Powered by OpenCode</p>
-          <p className="text-muted-foreground text-xs">Open source · swap or fork it</p>
-        </div>
-      </div>
+    <WebPanelWrapper activeTab="agents">
+      <PageHead
+        title="Agent harness"
+        sub="Powered by OpenCode."
+        action={
+          <Badge variant="kortix" className="rounded">
+            Open source
+          </Badge>
+        }
+      />
 
-      <div className="bg-foreground overflow-hidden rounded-sm p-4">
-        <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed">
-          <code>
-            {CONFIG.map((c) => (
-              <div key={c.line} className={c.muted ? 'text-background/40' : 'text-background/85'}>
-                {c.line}
-              </div>
-            ))}
-          </code>
-        </pre>
-      </div>
+      <div className="space-y-3">
+        <Panel
+          title="kortix"
+          count="primary"
+          action={
+            <span className="border-border bg-background flex size-7 items-center justify-center rounded-md border">
+              <Icon.OpenCode className="size-4" />
+            </span>
+          }
+        >
+          <div className="bg-background px-4 py-3">
+            <pre className="overflow-x-auto font-mono text-[11.5px] leading-[1.75]">
+              <code>
+                {CONFIG.map((c) => (
+                  <div
+                    key={c.line}
+                    className={c.muted ? 'text-muted-foreground/55' : 'text-foreground/85'}
+                  >
+                    {c.line}
+                  </div>
+                ))}
+              </code>
+            </pre>
+          </div>
+        </Panel>
 
-      <p className="text-muted-foreground mt-auto text-[13px] leading-relaxed">
-        The harness is a file in your repo. Change how an agent plans, what it may run, and which
-        skills it carries — then review it like any other change.
-      </p>
-    </Card>
+        <Panel title="What the harness does">
+          {CAPABILITIES.map((c) => (
+            <Row
+              key={c.title}
+              leading={
+                <span className="border-border text-muted-foreground flex size-8 items-center justify-center rounded-md border font-mono text-[10px]">
+                  ⌘
+                </span>
+              }
+              title={c.title}
+              subtitle={c.sub}
+            />
+          ))}
+        </Panel>
+      </div>
+    </WebPanelWrapper>
   );
 }

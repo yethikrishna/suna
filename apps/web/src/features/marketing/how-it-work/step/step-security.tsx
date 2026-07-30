@@ -1,67 +1,85 @@
 'use client';
 
-import { Card } from '@/components/ui/card';
+import { PageHead, Panel, Row, StatusDot } from '@/components/home/interactive-demo/primitives';
+import { Badge } from '@/components/ui/badge';
+import { WebPanelWrapper } from '../web-panel-wrapper';
 
-const VAULT = ['stripe/live', 'gmail/oauth', 'aws/deploy-key', 'slack/bot-token'];
+const SECRETS = [
+  { name: 'STRIPE_API_KEY', scope: 'finance · 2 agents' },
+  { name: 'GMAIL_OAUTH', scope: 'per person' },
+  { name: 'AWS_DEPLOY_KEY', scope: 'platform group' },
+];
 
-const ROLES = [
-  { who: 'Owner', can: 'everything' },
-  { who: 'Member', can: 'own sessions, shared skills' },
-  { who: 'Agent · go-to-market', can: 'slack, hubspot, gmail' },
+const PRINCIPALS = [
+  { who: 'Owner', can: 'everything', on: true },
+  { who: 'Member', can: 'own sessions · shared skills', on: true },
+  { who: 'Agent · go-to-market', can: 'slack, hubspot, gmail', on: true },
 ];
 
 const DEPLOY = ['Kortix Cloud', 'Your VPC', 'On-prem', 'Air-gapped'];
 
-/** Layer 06 — three concrete mechanisms rather than a list of acronyms. */
+/** Layer 06 — the mechanisms, not a wall of acronyms. */
 export function StepSecurity() {
   return (
-    <Card className="flex h-full w-full flex-col gap-4 p-6">
-      <div>
-        <p className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
-          Secrets · injected at runtime, never seen by the model
-        </p>
-        <div className="bg-foreground mt-2.5 rounded-sm p-3">
-          {VAULT.map((v) => (
-            <div key={v} className="flex items-center justify-between py-0.5">
-              <span className="text-background/80 font-mono text-[11px]">vault://{v}</span>
-              <span className="text-background/30 font-mono text-[11px]">••••••••</span>
-            </div>
-          ))}
-        </div>
-      </div>
+    <WebPanelWrapper activeTab="security">
+      <PageHead
+        title="Security & governance"
+        sub="People and agents answer to the same permissions."
+        action={
+          <Badge variant="kortix" className="rounded">
+            SSO · RBAC
+          </Badge>
+        }
+      />
 
-      <div>
-        <p className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
-          Permissions · people and agents
-        </p>
-        <div className="mt-2.5 space-y-1.5">
-          {ROLES.map((r) => (
-            <div
-              key={r.who}
-              className="border-border bg-background flex items-center justify-between gap-3 rounded-sm border px-3 py-2"
-            >
-              <span className="text-foreground text-[13px] font-medium">{r.who}</span>
-              <span className="text-muted-foreground/80 font-mono text-[11px]">{r.can}</span>
-            </div>
+      <div className="space-y-3">
+        <Panel title="Secrets" count="never shown to the model">
+          {SECRETS.map((s) => (
+            <Row
+              key={s.name}
+              leading={
+                <span className="border-border text-muted-foreground flex size-8 items-center justify-center rounded-md border font-mono text-[10px]">
+                  •••
+                </span>
+              }
+              title={<span className="font-mono text-[12.5px]">{s.name}</span>}
+              subtitle={s.scope}
+              trailing={
+                <span className="text-muted-foreground font-mono text-[11px]">encrypted</span>
+              }
+            />
           ))}
-        </div>
-      </div>
+        </Panel>
 
-      <div className="border-border mt-auto border-t pt-4">
-        <p className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
-          Runs where you put it
-        </p>
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {DEPLOY.map((d) => (
-            <span
-              key={d}
-              className="border-border text-muted-foreground rounded-sm border px-2.5 py-1 font-mono text-[11px]"
-            >
-              {d}
-            </span>
+        <Panel title="Who can do what">
+          {PRINCIPALS.map((p) => (
+            <Row
+              key={p.who}
+              leading={
+                <span className="border-border bg-background text-muted-foreground flex size-8 items-center justify-center rounded-md border text-xs font-semibold">
+                  {p.who.startsWith('Agent') ? 'A' : p.who[0]}
+                </span>
+              }
+              title={p.who}
+              subtitle={p.can}
+              trailing={<StatusDot on={p.on} />}
+            />
           ))}
-        </div>
+        </Panel>
+
+        <Panel title="Runs where you put it">
+          <div className="flex flex-wrap gap-1.5 px-4 py-3">
+            {DEPLOY.map((d) => (
+              <span
+                key={d}
+                className="border-border text-muted-foreground rounded-md border px-2.5 py-1 font-mono text-[11px]"
+              >
+                {d}
+              </span>
+            ))}
+          </div>
+        </Panel>
       </div>
-    </Card>
+    </WebPanelWrapper>
   );
 }

@@ -122,23 +122,64 @@ function PersonAvatar({ initial }: { initial: string }) {
   );
 }
 
-function MorningBrief() {
-  return (
-    <div className="space-y-1.5">
-      <p className="text-foreground font-medium">Here's what changed since Monday:</p>
-      <ul className="space-y-1">
-        <li>· 14 PRs merged · 3 need your review</li>
-        <li>· Stripe revenue +$3,482</li>
-        <li>· 2 enterprise leads replied</li>
-        <li>· Renewal drafted for Acme — waiting on sign-off</li>
-      </ul>
-      <p>Want the full report?</p>
-    </div>
-  );
-}
+
+/** Pick an ask and the thread answers — the surface is meant to be poked at,
+ *  not read. Each reply is the kind of artifact the agent actually returns. */
+const CHAT_ASKS = [
+  {
+    id: 'brief',
+    ask: 'what changed in our repo since Monday?',
+    reply: (
+      <div className="space-y-1.5">
+        <p className="text-foreground font-medium">Here&rsquo;s what changed since Monday:</p>
+        <ul className="space-y-1">
+          <li>· 14 PRs merged · 3 need your review</li>
+          <li>· Stripe revenue +$3,482</li>
+          <li>· Renewal drafted for Northwind — waiting on sign-off</li>
+        </ul>
+      </div>
+    ),
+  },
+  {
+    id: 'pipeline',
+    ask: 'what moved in the pipeline this week?',
+    reply: (
+      <div className="space-y-1.5">
+        <p className="text-foreground font-medium">7 deals advanced, 2 slipped.</p>
+        <ul className="space-y-1">
+          <li>· Northwind → Proposal ($120k)</li>
+          <li>· Globex → Negotiation ($90k)</li>
+          <li>· At risk: Initech, Umbrella — no activity in 14 days</li>
+        </ul>
+      </div>
+    ),
+  },
+  {
+    id: 'deck',
+    ask: 'turn this week\u2019s changelog into a launch deck',
+    reply: (
+      <div className="space-y-2">
+        <p className="text-foreground font-medium">Done — 10 slides, grounded in your docs.</p>
+        <div className="flex flex-wrap gap-1.5">
+          {['launch-deck.pptx', 'launch-post.md'].map((f) => (
+            <span
+              key={f}
+              className="border-border text-muted-foreground rounded-sm border px-2 py-0.5 font-mono text-[11px]"
+            >
+              {f}
+            </span>
+          ))}
+        </div>
+      </div>
+    ),
+  },
+] as const;
 
 function ChatSurface({ brand }: { brand: 'slack' | 'teams' }) {
   const BrandIcon = brand === 'slack' ? Icon.Slack : Icon.MicrosoftTeams;
+  const [askId, setAskId] = useState<(typeof CHAT_ASKS)[number]['id']>('brief');
+  const active = CHAT_ASKS.find((a) => a.id === askId) ?? CHAT_ASKS[0];
+
   return (
     <div className="bg-background flex h-full flex-col">
       <div className="border-border flex items-center justify-between border-b px-4 py-3">
@@ -156,16 +197,34 @@ function ChatSurface({ brand }: { brand: 'slack' | 'teams' }) {
 
       <div className="flex flex-1 flex-col justify-end gap-5 overflow-y-auto p-5">
         <ChatBubble name="Marko" avatar={<PersonAvatar initial="M" />}>
-          @Kortix what changed in our repo since Monday?
+          <span className="text-foreground/70">@Kortix</span> {active.ask}
         </ChatBubble>
         <ChatBubble name="Kortix" app avatar={<KortixAvatar />}>
-          <MorningBrief />
+          {active.reply}
         </ChatBubble>
       </div>
 
       <div className="border-border border-t p-3">
-        <div className="border-border text-muted-foreground/70 rounded-lg border px-3 py-2 text-sm">
-          Message Kortix…
+        <p className="text-muted-foreground/60 mb-2 px-0.5 font-mono text-[10px] tracking-widest uppercase">
+          Try another
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {CHAT_ASKS.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => setAskId(a.id)}
+              aria-pressed={a.id === askId}
+              className={cn(
+                'duration-fast border-border rounded-full border px-2.5 py-1 text-left text-xs transition-colors',
+                a.id === askId
+                  ? 'bg-foreground text-background border-transparent'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]',
+              )}
+            >
+              {a.ask}
+            </button>
+          ))}
         </div>
       </div>
     </div>

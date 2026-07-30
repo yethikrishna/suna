@@ -4034,9 +4034,44 @@ The required `tdd` skill is unavailable in this session.
 The implementation will use the same RED, GREEN, and REFACTOR sequence
 directly.
 
-**Status:** IN PROGRESS.
+The current CLI command router already used the SDK-backed runtime modules. The
+revert left two orphaned host-local transport files and three orphaned tests.
+Removing those files restores the enforced SDK boundary without changing the
+current command surface.
 
-**SDK package shippable to production: NOT YET.**
+```
+RED    pnpm --filter @kortix/cli lint:sdk-boundary
+       → 18 violations
+GREEN  pnpm --filter @kortix/cli lint:sdk-boundary
+       → 0 violations
+       pnpm --filter @kortix/cli test
+       → 636 pass, 0 fail, 2,068 assertions
+       exact packages-and-apps CI command
+       → exit 0
+       pnpm --filter @kortix/sdk typecheck
+       → exit 0
+       pnpm --filter @kortix/sdk test
+       → 1,412 pass, 2 skip, 0 fail, 6,128 assertions
+       pnpm --filter @kortix/sdk smoke:install
+       → packed tarball imports and constructs; exit 0
+```
+
+The separate API test bootstrap repair also passes:
+
+```
+bun test --isolate --env-file=scripts/test.env \
+  src/__tests__/e2e-project-session-contract.test.ts
+→ 52 pass, 0 fail, 367 assertions
+
+pnpm --filter kortix-api test
+→ 5,028 pass, 57 skip, 0 fail, 20,369 assertions
+```
+
+No SDK source, export, public type, snapshot, dependency, or version changed.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
 
 ---
 
@@ -4667,3 +4702,26 @@ faithful `u,a,u,a,u,a,u,a,u,a×9,u,u,u,u`); that call cannot distinguish this
 change from HEAD, because the ordering fix is a no-op on every session in this DB.
 
 **SDK package shippable to production: YES.**
+
+---
+
+### 2026-07-30 — session `ci-runtime-gates` CLI SDK-boundary restoration claim
+
+Claimed the regression created when the runtime-default revert restored the
+host-local CLI transport after the earlier SDK-only rewrite.
+
+Scope:
+
+- Restore the CLI to the published `@kortix/sdk` surface.
+- Keep OpenCode REST as the default runtime.
+- Preserve existing CLI commands and output contracts.
+- Repair the current session API contract failures separately from SDK code.
+
+The required `tdd` skill is unavailable in this session. The work will use the
+same RED, GREEN, and REFACTOR sequence directly.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**

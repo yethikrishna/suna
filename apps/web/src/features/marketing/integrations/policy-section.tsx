@@ -66,23 +66,27 @@ function PauseTimeline() {
           <li
             key={step.id}
             className={cn(
-              'border-border relative px-6 py-6 sm:px-8',
+              'border-border px-6 py-6 sm:px-8',
               i > 0 && 'border-t sm:border-t-0 sm:border-l',
             )}
           >
-            {/* the rail: a hairline through the middle of each beat */}
-            <span
-              aria-hidden
-              className="bg-border absolute top-[2.35rem] right-0 left-0 hidden h-px sm:block"
-            />
-            <span
-              aria-hidden
-              className={cn(
-                'relative z-10 flex size-3 items-center justify-center rounded-full',
-                i === 1 ? 'bg-kortix-yellow' : 'bg-foreground/25',
-              )}
-            />
-            <p className="text-muted-foreground relative z-10 mt-4 font-mono text-[10px] tracking-widest uppercase">
+            {/* The rail runs through the centre of every dot and bleeds past the
+                cell padding so the three beats read as one line. The card's
+                `overflow-hidden` clips it at the outer edge. */}
+            <div className="relative flex items-center">
+              <span
+                aria-hidden
+                className="bg-border absolute top-1/2 -right-6 -left-6 hidden h-px sm:-right-8 sm:-left-8 sm:block"
+              />
+              <span
+                aria-hidden
+                className={cn(
+                  'relative z-10 size-3 rounded-full',
+                  i === 1 ? 'bg-kortix-yellow' : 'bg-foreground/25',
+                )}
+              />
+            </div>
+            <p className="text-muted-foreground mt-4 font-mono text-[10px] tracking-widest uppercase">
               {step.mono}
             </p>
             <p className="text-foreground mt-2 text-sm leading-relaxed">{step.label}</p>

@@ -181,6 +181,10 @@ name = "support"
 connectors = ["zendesk", "gmail"]
 
 [[agents]]
+name = "recruiting"
+connectors = ["greenhouse", "gmail"]
+
+[[agents]]
 name = "reporting"
 connectors = ["warehouse"]`,
   codeNote:

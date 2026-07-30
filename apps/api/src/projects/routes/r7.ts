@@ -42,6 +42,7 @@ import { AnyObject, ClaimWarmProjectSessionInputSchema, GroupGrantSchema, OkSche
 import { UUID_V4_REGEX, hasOwn, normalizeString, readBody, requestAuditContext, serializeSession } from '../lib/serializers';
 import { createProjectSession, sendSessionCreateError, type SessionCreateError } from '../lib/sessions';
 import {
+  RequiredConnectorProfileUnavailableError,
   resolveEffectiveSessionConnectorBindings,
   sessionHasMemberConnectorBinding,
   sessionConnectorBindingsRequirePrivateVisibility,
@@ -230,6 +231,18 @@ function connectorAuthorizationRequiredError(
   };
 }
 
+function unavailableRequiredConnectorError(
+  error: RequiredConnectorProfileUnavailableError,
+): SessionCreateError {
+  return {
+    status: 409,
+    body: {
+      error: error.message,
+      code: error.code,
+    },
+  };
+}
+
 // POST /v1/projects/:projectId/sessions/warm
 
 projectsApp.openapi(
@@ -336,6 +349,9 @@ projectsApp.openapi(
         200,
       );
     } catch (error) {
+      if (error instanceof RequiredConnectorProfileUnavailableError) {
+        return sendSessionCreateError(c, unavailableRequiredConnectorError(error));
+      }
       if (error instanceof WarmSessionCreateFailure) {
         return sendSessionCreateError(c, error.detail);
       }
@@ -394,15 +410,15 @@ projectsApp.openapi(
       },
     });
 
-    const candidate = await findAvailableWarmProjectSession(scope);
-    if (candidate?.sessionId === sessionId) {
-      const missing = await missingWarmSessionAuthorizations(loaded.row, candidate);
-      if (missing.length > 0) {
-        return sendSessionCreateError(c, connectorAuthorizationRequiredError(missing));
-      }
-    }
-
     try {
+      const candidate = await findAvailableWarmProjectSession(scope);
+      if (candidate?.sessionId === sessionId) {
+        const missing = await missingWarmSessionAuthorizations(loaded.row, candidate);
+        if (missing.length > 0) {
+          return sendSessionCreateError(c, connectorAuthorizationRequiredError(missing));
+        }
+      }
+
       const claimed = await coordinator.claim({
         sessionId,
         agentName: normalizeString(body.agent_name) ?? undefined,
@@ -416,6 +432,9 @@ projectsApp.openapi(
         200,
       );
     } catch (error) {
+      if (error instanceof RequiredConnectorProfileUnavailableError) {
+        return sendSessionCreateError(c, unavailableRequiredConnectorError(error));
+      }
       if (error instanceof WarmProjectSessionError) {
         return c.json({ error: error.message, code: error.code }, error.status as 409);
       }

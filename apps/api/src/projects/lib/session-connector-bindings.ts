@@ -393,6 +393,15 @@ export type RequiredConnectorResolution =
       alias?: never;
     };
 
+export class RequiredConnectorProfileUnavailableError extends Error {
+  readonly code = 'REQUIRED_CONNECTOR_PROFILE_UNAVAILABLE';
+
+  constructor(readonly alias: string) {
+    super(`Required connector profile "${alias}" is unavailable`);
+    this.name = 'RequiredConnectorProfileUnavailableError';
+  }
+}
+
 export async function resolveRequiredConnectorProfiles(input: {
   accountId: string;
   projectId: string;
@@ -542,7 +551,9 @@ export async function missingRequiredConnectorAuthorizationsForSession(input: {
         ),
       )
       .limit(1);
-    if (!connector) continue;
+    if (!connector) {
+      throw new RequiredConnectorProfileUnavailableError(publicConnectorAlias(alias));
+    }
     missing.push({
       id: connector.id,
       slug: publicConnectorAlias(connector.slug),

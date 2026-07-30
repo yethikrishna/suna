@@ -8,26 +8,26 @@ import { useInView } from 'motion/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SECTION, STEPS, type Step } from './how-it-works-content';
 import { Step2ConnectCli } from './step/step-2-connect-cli';
-import { Step3BuildCli } from './step/step-3-build-cli';
 import { Step4ShipCli } from './step/step-4-ship-cli';
 import { Step5RunCli } from './step/step-5-run-cli';
-import { Step6OwnCli } from './step/step-6-own-cli';
-import { StepAskCli } from './step/step-ask-cli';
+import { StepHarness } from './step/step-harness';
+import { StepModels } from './step/step-models';
+import { StepSecurity } from './step/step-security';
 
 function StepShowcaseFor({ step }: { step: Step }) {
   switch (step.id) {
     case 'connect':
       return <Step2ConnectCli />;
     case 'ask':
-      return <StepAskCli />;
+      return <StepModels />;
     case 'work':
       return <Step5RunCli />;
     case 'review':
       return <Step4ShipCli />;
     case 'skills':
-      return <Step3BuildCli />;
+      return <StepHarness />;
     case 'memory':
-      return <Step6OwnCli />;
+      return <StepSecurity />;
     default:
       return <StepShowcase step={step} />;
   }

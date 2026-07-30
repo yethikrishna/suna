@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { Icon } from '@/features/icon/icon';
 
 type IconKey = keyof typeof Icon;
@@ -18,7 +19,7 @@ function Row({ label, keys }: { label: string; keys: IconKey[] }) {
       </span>
       <div className="flex flex-wrap items-center justify-center gap-x-7 gap-y-4">
         {keys.map((key) => {
-          const Glyph = Icon[key] as ((p: { className?: string }) => JSX.Element) | undefined;
+          const Glyph = Icon[key] as ((p: { className?: string }) => ReactNode) | undefined;
           if (!Glyph) return null;
           return (
             <span key={key} className="opacity-55 transition-opacity hover:opacity-100">

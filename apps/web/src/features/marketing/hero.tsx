@@ -22,7 +22,7 @@ const Hero = () => {
   }, [user]);
 
   return (
-    <section id="hero" className="relative overflow-hidden px-6 pt-32 pb-12 sm:py-36">
+    <section id="hero" className="relative overflow-hidden px-6 pt-28 pb-10 sm:pt-32 sm:pb-14">
       <div
         className="inset-0 z-0 hidden mask-t-from-70% lg:absolute"
         aria-hidden
@@ -37,32 +37,35 @@ const Hero = () => {
             {hero.eyebrow}
           </Badge>
 
-          <h1 className="text-foreground mt-6 max-w-4xl text-4xl font-medium tracking-tight text-balance sm:text-5xl lg:text-6xl">
+          <h1 className="text-foreground mt-5 max-w-3xl text-4xl font-medium tracking-tight text-balance sm:text-5xl">
             {hero.title}
           </h1>
 
-          <p className="text-muted-foreground mt-5 max-w-2xl text-lg leading-relaxed text-balance sm:text-xl">
-            {hero.sub}
-          </p>
+          {/* sub on the left, actions on the right — keeps the fold short */}
+          <div className="mt-6 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between lg:gap-10">
+            <p className="text-muted-foreground max-w-xl text-base leading-relaxed sm:text-lg">
+              {hero.sub}
+            </p>
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Button size="xl" onClick={handleLaunch}>
-              {hero.ctaPrimary}
-              <ArrowRightIcon className="size-4" />
-            </Button>
-            <Button size="xl" variant="secondary" onClick={() => openDemo()}>
-              {hero.ctaSecondary}
-            </Button>
+            <div className="flex shrink-0 flex-wrap gap-3">
+              <Button size="lg" onClick={handleLaunch}>
+                {hero.ctaPrimary}
+                <ArrowRightIcon className="size-4" />
+              </Button>
+              <Button size="lg" variant="secondary" onClick={() => openDemo()}>
+                {hero.ctaSecondary}
+              </Button>
+            </div>
           </div>
-
-          <p className="text-muted-foreground/70 mt-6 font-mono text-[11px] tracking-wide">
-            {hero.trust}
-          </p>
         </div>
 
-        <div id="demo" className="relative z-10 mx-auto mt-14 max-w-6xl scroll-mt-24 sm:mt-20">
+        <div id="demo" className="relative z-10 mx-auto mt-10 max-w-6xl scroll-mt-24 sm:mt-12">
           <HeroSurfaces />
         </div>
+
+        <p className="text-muted-foreground/60 mx-auto mt-6 max-w-6xl text-center font-mono text-[11px] tracking-wide">
+          {hero.trust}
+        </p>
       </div>
     </section>
   );

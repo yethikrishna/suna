@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { Reveal } from '@/components/home/reveal';
 import { Badge } from '@/components/ui/badge';
 import { Icon } from '@/features/icon/icon';
@@ -13,7 +14,7 @@ function LayerLogos({ logos, chips }: { logos?: readonly string[]; chips?: reado
   return (
     <div className="flex flex-wrap items-center gap-2">
       {logos?.map((key) => {
-        const Glyph = Icon[key as IconKey] as ((p: { className?: string }) => JSX.Element) | undefined;
+        const Glyph = Icon[key as IconKey] as ((p: { className?: string }) => ReactNode) | undefined;
         if (!Glyph) return null;
         return (
           <span

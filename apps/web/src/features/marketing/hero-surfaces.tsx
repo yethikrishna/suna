@@ -1,6 +1,7 @@
 'use client';
 
 import { KortixLogo } from '@/components/sidebar/kortix-logo';
+import { CliSurface, SdkSurface, SurfaceLink } from '@/features/marketing/landing/code-panels';
 import { Badge } from '@/components/ui/badge';
 import { Icon } from '@/features/icon/icon';
 import { KORTIX_CLI_INSTALL_COMMAND } from '@/lib/kortix-cli';
@@ -239,7 +240,7 @@ function WebSurface() {
   return (
     <div className="bg-card relative h-full w-full">
       <video
-        className="h-full w-full object-cover motion-reduce:hidden"
+        className="h-full w-full object-cover object-top motion-reduce:hidden"
         poster={SHOWCASE_POSTER}
         autoPlay
         muted
@@ -274,30 +275,12 @@ function SurfacePanel({ surface }: { surface: SurfaceId }) {
       return <MobileSurface />;
     case 'cli':
       return (
-        <div className="relative h-full">
-          <CodeWindow title="kortix — terminal" lines={CLI_LINES} />
-          <Link
-            href="/#cli"
-            className="border-border bg-card/90 text-foreground hover:bg-foreground/[0.04] duration-fast absolute right-4 bottom-4 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium shadow-sm backdrop-blur transition-colors"
-          >
-            Get started with the CLI
-            <ArrowUpRight className="size-3.5" />
-          </Link>
-        </div>
+        <CliSurface
+          cta={<SurfaceLink href="/docs/reference/cli">Full CLI reference</SurfaceLink>}
+        />
       );
     case 'sdk':
-      return (
-        <div className="relative h-full">
-          <CodeWindow title="renewal.ts" lines={SDK_LINES} />
-          <Link
-            href="/docs/sdk"
-            className="border-border bg-card/90 text-foreground hover:bg-foreground/[0.04] duration-fast absolute right-4 bottom-4 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium shadow-sm backdrop-blur transition-colors"
-          >
-            View the SDK docs
-            <ArrowUpRight className="size-3.5" />
-          </Link>
-        </div>
-      );
+      return <SdkSurface cta={<SurfaceLink href="/docs/sdk">Read the SDK docs</SurfaceLink>} />;
   }
 }
 
@@ -319,7 +302,14 @@ export function HeroSurfaces() {
 
   return (
     <div className="w-full">
-      <div className="flex w-full [scrollbar-width:none] gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden">
+      {/* The frame is shorter than the 16:10 recording and anchored to the top,
+          so the product bleeds off the fold instead of eating a whole screen. */}
+      <div className="border-border bg-card h-[300px] overflow-hidden rounded-xl border sm:h-[380px] lg:h-[440px]">
+        <SurfacePanel surface={active} />
+      </div>
+
+      {/* surfaces sit under the frame: a quiet list of where it runs */}
+      <div className="mt-4 flex w-full flex-wrap items-center justify-center gap-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {SURFACES.map((s) => {
           const isActive = s.id === active;
           return (
@@ -329,23 +319,17 @@ export function HeroSurfaces() {
               onClick={() => setActive(s.id)}
               aria-current={isActive ? 'true' : undefined}
               className={cn(
-                'duration-fast flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors',
+                'duration-fast flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] transition-colors',
                 isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]',
+                  ? 'bg-foreground/[0.06] text-foreground font-medium'
+                  : 'text-muted-foreground/70 hover:text-foreground hover:bg-foreground/[0.03]',
               )}
             >
-              <s.icon className="size-4" />
+              <s.icon className="size-3.5" />
               {s.label}
             </button>
           );
         })}
-      </div>
-
-      {/* 16:10 matches the recording, so the video fills the frame edge to edge
-          instead of sitting letterboxed inside a fixed height. */}
-      <div className="border-border bg-card mt-3 aspect-[16/10] min-h-[420px] overflow-hidden rounded-xl border">
-        <SurfacePanel surface={active} />
       </div>
     </div>
   );

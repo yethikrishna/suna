@@ -5,13 +5,12 @@ import { WallpaperBackground } from '@/components/ui/wallpaper-background';
 import { useRequestDemo } from '@/features/contact/request-demo-provider';
 import { HeroSurfaces } from '@/features/marketing/hero-surfaces';
 import { Icon } from '@/features/icon/icon';
-import { hero, heroEyebrow, heroVariants } from '@/features/marketing/landing/content';
+import { hero, heroEyebrow } from '@/features/marketing/landing/content';
 import { useAuth } from '@/features/providers/auth-provider';
 import { trackCtaSignup } from '@/lib/analytics/gtm';
 import { latestProjectPath } from '@/lib/onboarding/last-project-cookie';
-import { cn } from '@/lib/utils';
 import { ArrowRightIcon } from '@phosphor-icons/react';
-import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback } from 'react';
 
 /** Anchors the product against the two things a reader already knows, with
  *  their marks, so "AI Management System" lands without a paragraph first. */
@@ -38,21 +37,6 @@ const Hero = () => {
   const { user } = useAuth();
   const openDemo = useRequestDemo();
 
-  // Dev-only variant preview: ?hero=0..3 swaps the headline so alternatives can
-  // be compared in place. Renders nothing in production.
-  type HeroCopy = { id: string; title: string; sub: string };
-  const [variant, setVariant] = useState<HeroCopy>(hero);
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'production') return;
-    const apply = () => {
-      const i = Number(new URLSearchParams(window.location.search).get('hero'));
-      setVariant(Number.isInteger(i) && heroVariants[i] ? { ...hero, ...heroVariants[i] } : hero);
-    };
-    apply();
-    window.addEventListener('popstate', apply);
-    return () => window.removeEventListener('popstate', apply);
-  }, []);
-
   const handleLaunch = useCallback(() => {
     trackCtaSignup();
     window.location.href = user ? latestProjectPath(user?.id) : '/auth';
@@ -73,22 +57,22 @@ const Hero = () => {
           <RivalEyebrow />
 
           <h1 className="text-foreground mt-5 max-w-3xl text-4xl font-medium tracking-tight text-balance sm:text-5xl">
-            {variant.title}
+            {hero.title}
           </h1>
 
           {/* sub on the left, actions on the right — keeps the fold short */}
           <div className="mt-6 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between lg:gap-10">
             <p className="text-muted-foreground max-w-xl text-base leading-relaxed sm:text-lg">
-              {variant.sub}
+              {hero.sub}
             </p>
 
             <div className="flex shrink-0 flex-wrap gap-3">
+              <Button size="lg" variant="secondary" onClick={() => openDemo()}>
+                {hero.ctaSecondary}
+              </Button>
               <Button size="lg" onClick={handleLaunch}>
                 {hero.ctaPrimary}
                 <ArrowRightIcon className="size-4" />
-              </Button>
-              <Button size="lg" variant="secondary" onClick={() => openDemo()}>
-                {hero.ctaSecondary}
               </Button>
             </div>
           </div>
@@ -101,28 +85,6 @@ const Hero = () => {
         <p className="text-muted-foreground/60 mx-auto mt-6 max-w-6xl text-center font-mono text-[11px] tracking-wide">
           {hero.trust}
         </p>
-
-        {process.env.NODE_ENV !== 'production' && (
-          <div className="mx-auto mt-6 flex max-w-6xl flex-wrap items-center justify-center gap-1.5">
-            <span className="text-muted-foreground/40 font-mono text-[10px] tracking-widest uppercase">
-              Hero variant
-            </span>
-            {heroVariants.map((v, i) => (
-              <a
-                key={v.id}
-                href={`/?hero=${i}`}
-                className={cn(
-                  'border-border rounded-full border px-2.5 py-1 font-mono text-[10px] transition-colors',
-                  v.id === variant.id
-                    ? 'bg-foreground text-background border-transparent'
-                    : 'text-muted-foreground/70 hover:text-foreground',
-                )}
-              >
-                {v.label}
-              </a>
-            ))}
-          </div>
-        )}
       </div>
     </section>
   );

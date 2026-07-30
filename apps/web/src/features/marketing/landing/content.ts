@@ -16,32 +16,13 @@
  * Append `?hero=1` (or 2, 3, 4) to the URL to preview an alternative; the
  * selector is dev-only and renders nothing in production.
  */
-export const heroVariants = [
-  {
-    id: 'category',
-    label: 'Category (recommended)',
-    title: 'The open-source AI Management System',
-    sub: 'Your agents, their skills, your company memory and every integration in one platform. Any model, your keys, self-hosted or managed cloud.',
-  },
-  {
-    id: 'category-workforce',
-    label: 'Category + workforce',
-    title: 'The AI Management System for your whole company',
-    sub: 'One place to run a workforce of agents: connect every tool once, ask in plain language, and review what comes back. Open source, any model, yours to host.',
-  },
-  {
-    id: 'own-it',
-    label: 'Ownership-first',
-    title: 'An AI workforce your company actually owns',
-    sub: 'Agents work on their own computers, use credentials they never see, and land nothing without a person approving it. Open source, any model, anywhere.',
-  },
-  {
-    id: 'workforce',
-    label: 'Outcome-first (previous)',
-    title: 'Give your company a workforce that does the work',
-    sub: 'Connect the tools you already run on. Ask in plain language. Agents work on real computers and hand back finished work.',
-  },
-] as const;
+export const hero = {
+  title: 'The open-source AI Management System',
+  sub: 'Your agents, their skills, your company memory and every integration in one platform. Any model, your keys, self-hosted or managed cloud.',
+  ctaPrimary: 'Get started',
+  ctaSecondary: 'Request demo',
+  trust: 'Open source · Any model, your keys · Self-host, VPC, or on-prem',
+} as const;
 
 /** The eyebrow renders as a row with the two competitor marks, so its parts
  *  live separately. "leading" is the one superlative we use, and it rests on
@@ -55,12 +36,7 @@ export const heroEyebrow = {
   ],
 } as const;
 
-export const hero = {
-  ...heroVariants[0],
-  ctaPrimary: 'Get started',
-  ctaSecondary: 'Request demo',
-  trust: 'Open source · Any model, your keys · Self-host, VPC, or on-prem',
-} as const;
+
 
 /** Closing CTA. Same block the page has always ended with. */
 export const cta = {

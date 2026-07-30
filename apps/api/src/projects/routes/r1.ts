@@ -21,7 +21,6 @@ import {
   verifyGitHubInstallationAdmin,
 } from '../github';
 import { getProjectSecretValue } from '../secrets';
-import { acpStarterRefusal } from '../lib/acp-runtime-gate';
 import { normalizeStarterTemplateId } from '../starter';
 import {
   buildProjectSeedFiles,
@@ -472,15 +471,6 @@ projectsApp.openapi(
   const starterTemplate = normalizeStarterTemplateId(
     body.starter_template ?? body.starterTemplate,
   );
-  // A kortix_version 3 scaffold is only reachable where an operator turned ACP
-  // on. Refused BEFORE any upstream repo or DB row exists, so a REST deployment
-  // never ends up owning a project that cannot start a session. See
-  // ../lib/acp-runtime-gate.
-  if (!sourceItemId) {
-    const acpRefusal = acpStarterRefusal(starterTemplate);
-    if (acpRefusal) return c.json(acpRefusal.body, acpRefusal.status);
-  }
-
   // Managed repo name = a readable slug from the display name + the project's
   // UUID, so managed repos under the shared org NEVER collide (two projects can
   // share a name). We generate the project id up front to bake it into the repo

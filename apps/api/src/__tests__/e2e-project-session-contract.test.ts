@@ -10,7 +10,7 @@ import {
   projects,
   sessionSandboxes,
 } from '@kortix/db';
-import { EXPERIMENTAL_STARTER_TEMPLATE_ID, getStarterFiles } from '@kortix/starter';
+
 import type { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
@@ -905,15 +905,31 @@ function createApp() {
   return app;
 }
 
-function experimentalStarterManifest(): string {
-  const files = getStarterFiles({
-    projectName: 'Contract Project',
-    repoFullName: `${TEST_GITHUB_OWNER}/contract-project`,
-    template: EXPERIMENTAL_STARTER_TEMPLATE_ID,
-  });
-  const manifest = files.find((file) => file.path === 'kortix.yaml');
-  if (!manifest) throw new Error('experimental starter scaffolds no kortix.yaml');
-  return manifest.content;
+/**
+ * A HAND-AUTHORED kortix_version 3 manifest — the only way a v3 project exists.
+ *
+ * No starter scaffolds v3 any more (one starter, kortix_version 2), but v3
+ * PARSING is deliberately retained for a manifest a user writes themselves. That
+ * is exactly the input the two tests below are about: a v3 manifest still has to
+ * be refused `409 ACP_RUNTIME_REQUIRED` unless the project opted into the ACP
+ * experiment, and must never be quietly downgraded onto REST. Authored inline
+ * rather than scaffolded so the contract does not depend on a starter that no
+ * longer emits it.
+ */
+function v3Manifest(): string {
+  // `runtime:` is not optional here: without it compileRuntimeConfig logs
+  // `references unknown runtime profile "undefined"`, produces no v3 runtime
+  // binding, and session create answers 201 on REST — the gate under test would
+  // silently never run.
+  return `kortix_version: 3
+default_agent: opencode
+runtimes:
+  opencode:
+    harness: opencode
+agents:
+  opencode:
+    runtime: opencode
+`;
 }
 
 /** Poll until predicate holds (or timeout) — robustly flushes the
@@ -3130,7 +3146,7 @@ describe('project session API contract', () => {
     const previous = config.KORTIX_ACP_RUNTIME;
     try {
       config.KORTIX_ACP_RUNTIME = false;
-      manifestFixture = { path: 'kortix.yaml', content: experimentalStarterManifest() };
+      manifestFixture = { path: 'kortix.yaml', content: v3Manifest() };
       sessionRow = null;
       const app = createApp();
       const res = await app.request(`/v1/projects/${PROJECT_ID}/sessions`, {
@@ -3152,7 +3168,7 @@ describe('project session API contract', () => {
     const previous = config.KORTIX_ACP_RUNTIME;
     try {
       config.KORTIX_ACP_RUNTIME = false;
-      manifestFixture = { path: 'kortix.yaml', content: experimentalStarterManifest() };
+      manifestFixture = { path: 'kortix.yaml', content: v3Manifest() };
       projectRow.metadata = {
         ...(projectRow.metadata as Record<string, unknown>),
         experimental: { acp_runtime: true },

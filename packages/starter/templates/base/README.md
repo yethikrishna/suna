@@ -1,11 +1,11 @@
 # {{projectName}}
 
-This project runs the OpenCode harness. `kortix.yaml` declares
-`kortix_version: 2`, the stable manifest schema.
+This project runs the OpenCode runtime. `kortix.yaml` declares
+`kortix_version: 2`, the current manifest schema.
 
 ## Authentication
 
-OpenCode uses Kortix-managed models or project provider credentials. Use the
+The runtime uses Kortix-managed models or project provider credentials. Use the
 project Models view to connect credentials. Do not commit credentials.
 
 ## Verify the project
@@ -16,12 +16,6 @@ project Models view to connect credentials. Do not commit credentials.
 
 A provider availability check does not prove prompt execution. Test the exact
 model that the project will use.
-
-## Other harnesses
-
-Claude Code, Codex, and Pi run on `kortix_version: 3`, which is EXPERIMENTAL and
-not fully released. Create a project from the experimental multi-harness starter
-to use them.
 
 Run `kortix system-skills get kortix-system --full` for the current platform
 instructions. Run `kortix schema --version 2` for the exact manifest schema.

@@ -141,10 +141,14 @@ Two ways to enable it:
 
 A session binds its transport at create time and never changes it. Flipping either switch affects the next session, never a running one.
 
-Two related gates are separate on purpose:
+### What `kortix_version: 3` depends on
 
-- `KORTIX_ENABLED_HARNESSES` decides **which** harness a manifest may launch (default: OpenCode only). ACP on with an empty allowlist still runs OpenCode alone. See [the manifest](/docs/project/manifest).
-- A `kortix_version: 3` manifest has no REST path. Creating a session in a v3 project without the ACP experiment returns `409 ACP_RUNTIME_REQUIRED` instead of silently running REST against a v3 runtime plan. Projects scaffolded from the experimental multi-harness starter are therefore created with the experiment already on.
+`kortix_version: 2` is the stable manifest. It runs OpenCode, over REST or ACP. `kortix_version: 3` adds multi-harness runtime profiles, is unfinished, and runs **only** over ACP. So v3 follows the same switch:
+
+- New projects scaffold `kortix_version: 2`. That is the default starter, and it does not change with the flag.
+- With `KORTIX_ACP_RUNTIME=false`, asking to scaffold the experimental multi-harness starter returns `409 ACP_RUNTIME_DISABLED`. The refusal happens before any repository is created — Kortix does not hand you a project that could never start a session, and does not silently substitute the v2 starter you did not ask for.
+- Creating a session in a project whose repository already declares `kortix_version: 3`, without the ACP experiment, returns `409 ACP_RUNTIME_REQUIRED`. Turn the experiment on for that project to run it.
+- `KORTIX_ENABLED_HARNESSES` is a separate gate: it decides **which** harness a v3 manifest may launch (default: OpenCode only). ACP on with an empty allowlist still runs OpenCode alone. See [the manifest](/docs/project/manifest).
 
 The runtime uses three session identifiers.
 

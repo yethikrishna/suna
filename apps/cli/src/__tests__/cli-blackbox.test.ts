@@ -559,12 +559,14 @@ describe('kortix CLI black-box behavior', () => {
 
     expect(result.code).toBe(0);
     const root = join(tmp, 'default-project');
-    expect(readFileSync(join(root, '.claude', 'CLAUDE.md'), 'utf8')).toContain(
-      'Claude Code runtime',
-    );
-    expect(readFileSync(join(root, '.pi', 'README.md'), 'utf8')).toContain('Pi runtime');
+    expect(readFileSync(join(root, 'kortix.yaml'), 'utf8')).toContain('kortix_version: 2');
+    // Local tool wiring links the canonical skill source; the starter commits no
+    // harness-native runtime file of its own.
     expect(lstatSync(join(root, '.claude', 'skills')).isSymbolicLink()).toBe(true);
     expect(lstatSync(join(root, '.pi', 'skills')).isSymbolicLink()).toBe(true);
+    expect(existsSync(join(root, '.claude', 'CLAUDE.md'))).toBe(false);
+    expect(existsSync(join(root, '.codex', 'AGENTS.md'))).toBe(false);
+    expect(existsSync(join(root, '.pi', 'README.md'))).toBe(false);
     expect(existsSync(join(root, '.kortix', 'opencode', 'skills', 'kortix-cli', 'SKILL.md'))).toBe(true);
     // Managed / served-live skills still aren't committed into the repo.
     expect(existsSync(join(root, '.kortix', 'opencode', 'skills', 'kortix-computer', 'SKILL.md'))).toBe(false);
@@ -584,11 +586,12 @@ describe('kortix CLI black-box behavior', () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toMatch(
-      /Every\s+new project includes OpenCode, Claude Code, Codex, and Pi runtime profiles\./,
+      /Every\s+new project runs OpenCode, declared as kortix_version 2 in kortix\.yaml\./,
     );
     expect(result.stdout).not.toContain('--template');
     expect(result.stdout).not.toContain('acp-multi-harness');
     expect(result.stdout).not.toContain('minimal');
+    expect(result.stdout).not.toContain('runtime profiles');
   });
 
   test('init accepts the historical general-knowledge-worker template value', async () => {

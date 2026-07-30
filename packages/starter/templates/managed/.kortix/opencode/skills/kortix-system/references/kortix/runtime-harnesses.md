@@ -38,23 +38,20 @@ current experiment state. Enable it before starting a v3 session in an existing
 project. The API rejects a v3 session with `ACP_RUNTIME_REQUIRED` while the
 experiment is disabled.
 
-## The two starters
+## The one starter
 
-| Starter id | Manifest | Harnesses | Status |
-| --- | --- | --- | --- |
-| `general-knowledge-worker` | `kortix_version: 2` | OpenCode | stable, the default |
-| `acp-multi-harness` | `kortix_version: 3` | OpenCode, Claude Code, Codex, Pi | experimental |
+| Starter id | Manifest | Runtime |
+| --- | --- | --- |
+| `general-knowledge-worker` | `kortix_version: 2` | OpenCode |
 
-An absent or unrecognized `starter_template` resolves to the stable starter. A
-project reaches the multi-harness path only when a caller asks for
-`acp-multi-harness` by name.
+It is the only starter. `acp-multi-harness` is a deprecated alias that scaffolds
+the same files, and an absent or unrecognized `starter_template` resolves to the
+same starter. The starter scaffolds no `.claude`, `.codex`, or `.pi` directory.
 
-The stable starter scaffolds no `.claude`, `.codex`, or `.pi` directory. The
-experimental starter adds those three plus the v3 manifest.
+### Create a multi-harness test project
 
-### Create a four-harness test project
-
-Pass the experimental starter id explicitly:
+No starter writes a v3 manifest. Scaffold the project, then edit `kortix.yaml`
+into the v3 shape shown below and add each harness's config directory by hand:
 
 ```sh
 kortix init harness-lab --yes --no-git
@@ -219,7 +216,8 @@ pnpm exec dotenvx run --ignore=MISSING_ENV_FILE \
 ```
 
 The default set is `opencode,claude,codex,pi`. The script creates a disposable
-user and provisions the experimental multi-harness starter. Project creation
+user and provisions the one starter, which is v2 — a non-OpenCode harness needs a
+v3 manifest written into the project first. Project creation
 enables `acp_runtime`. The deployment must also list every harness under test in
 `KORTIX_ENABLED_HARNESSES`, or each non-OpenCode session start returns
 `HARNESS_NOT_ENABLED`. The script starts one session per harness and cleans up the

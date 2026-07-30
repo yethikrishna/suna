@@ -11,7 +11,6 @@ import { createTemplate, deleteTemplate, getTemplateById, TemplateNotFoundError,
 import { managedGithubToken } from '../git-backends';
 import { commitFile, createRepo, getFileSha } from '../github';
 import { buildProjectSeedFilesFromItem } from '../seed-files';
-import { acpStarterRefusal } from '../lib/acp-runtime-gate';
 import { buildStarterFiles, normalizeStarterTemplateId } from '../starter';
 import { createRoute, z } from '@hono/zod-openapi';
 import { enforceProjectQuota, loadProjectForUser, resolveProjectAccount, assertProjectCapability } from '../lib/access';
@@ -269,14 +268,6 @@ projectsApp.openapi(
   const starterTemplate = normalizeStarterTemplateId(
     body.starter_template ?? body.starterTemplate,
   );
-  // Same rule as /projects/provision (routes/r1.ts): a kortix_version 3 scaffold
-  // is only reachable where an operator turned ACP on, and it is refused before
-  // anything upstream exists. See ../lib/acp-runtime-gate.
-  if (!sourceItemId) {
-    const acpRefusal = acpStarterRefusal(starterTemplate);
-    if (acpRefusal) return c.json(acpRefusal.body, acpRefusal.status);
-  }
-
   const isPrivate = typeof body.private === 'boolean' ? body.private : true;
   const description = normalizeString(body.description);
 

@@ -15,15 +15,15 @@ import { afterAll, beforeAll, beforeEach, expect, mock, test } from 'bun:test';
 import { accountMembers, accounts, projectMembers, projects } from '@kortix/db';
 import { eq } from 'drizzle-orm';
 import * as realRequestContext from '../lib/request-context';
+import * as realEnvSync from '../projects/lib/sandbox-env-sync';
+import * as realGrant from '../projects/lib/session-token-grant';
+import * as realSnapshot from '../projects/opencode-session-snapshot';
+import * as realShared from '../projects/routes/shared';
 // Spread the real modules and override only what this test must control: these
 // modules have OTHER exports the surrounding graph imports, and a bare stub
 // makes bun fail the whole file on a missing export.
 import * as realBackend from '../sandbox-proxy/backend';
-import * as realEnvSync from '../projects/lib/sandbox-env-sync';
-import * as realGrant from '../projects/lib/session-token-grant';
 import * as realOwnership from '../shared/preview-ownership';
-import * as realShared from '../projects/routes/shared';
-import * as realSnapshot from '../projects/opencode-session-snapshot';
 
 const ACCOUNT = crypto.randomUUID();
 const PROJECT = crypto.randomUUID();

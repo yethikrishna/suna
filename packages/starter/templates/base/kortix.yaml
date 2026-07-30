@@ -3,16 +3,14 @@
 # Kortix project manifest. This file is the source of truth for project-wide
 # configuration stored with the repository.
 #
-# Version 2 is the STABLE schema. It runs one harness: OpenCode. Agent identity,
-# governance, and runtime behavior live in this one `agents:` map plus each
-# agent's own `.kortix/opencode/agents/<name>.md`.
-#
-# Version 3 adds ACP runtime profiles for Claude Code, Codex, and Pi. It is
-# EXPERIMENTAL and not fully released. Create a project from the experimental
-# multi-harness starter to use it.
+# Version 2 is the current schema. It runs one runtime: OpenCode. Agent
+# identity, governance, and behavior live in this one `agents:` map plus each
+# agent's own `.kortix/opencode/agents/<name>.md`. Run
+# `kortix schema --version 2` for the exact field list.
 kortix_version: 2
 
-# The logical agent used when a session or trigger does not name one.
+# The agent used when a session or trigger does not name one. It must resolve to
+# an agent declared below.
 default_agent: kortix
 
 # The only runtime this schema version supports.

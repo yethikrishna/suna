@@ -9,6 +9,9 @@ import {
 } from '@kortix/db';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+
+import { config } from '../config';
+import { resolveProjectRuntimeTransport } from '../experimental/features';
 import { mockIamEngineAllowAll, mockIamMembershipSyncNoop } from './helpers/iam-mocks';
 
 const USER_ID = '00000000-0000-4000-a000-000000000001';
@@ -1005,7 +1008,7 @@ describe('create-repo starter scaffold contract', () => {
     });
   });
 
-  test('the experimental multi-harness starter scaffolds v3 and every native harness config', async () => {
+  test('refuses the experimental multi-harness starter while ACP is off, before creating the repo', async () => {
     const app = createApp();
     const res = await app.request('/v1/projects/create-repo', {
       method: 'POST',
@@ -1019,17 +1022,42 @@ describe('create-repo starter scaffold contract', () => {
       }),
     });
 
-    expect(res.status).toBe(201);
-    const committedPaths = commitCalls.map((call) => call.path);
-    expect(committedPaths).toContain('.claude/CLAUDE.md');
-    expect(committedPaths).toContain('.codex/AGENTS.md');
-    expect(committedPaths).toContain('.pi/README.md');
-    expect(commitCalls.find((call) => call.path === 'kortix.yaml')?.content).toContain(
-      'kortix_version: 3',
-    );
-    expect(insertedProject?.metadata).toMatchObject({
-      experimental: { acp_runtime: true },
-    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: 'ACP_RUNTIME_DISABLED' });
+    expect(commitCalls).toHaveLength(0);
+    expect(insertedProject).toBeNull();
+  });
+
+  test('the experimental multi-harness starter scaffolds v3 once an operator enables ACP', async () => {
+    const previous = config.KORTIX_ACP_RUNTIME;
+    try {
+      config.KORTIX_ACP_RUNTIME = true;
+      const app = createApp();
+      const res = await app.request('/v1/projects/create-repo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          account_id: ACCOUNT_ID,
+          name: 'harness-lab',
+          project_name: 'Harness Lab',
+          private: true,
+          starter_template: 'acp-multi-harness',
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const committedPaths = commitCalls.map((call) => call.path);
+      expect(committedPaths).toContain('.claude/CLAUDE.md');
+      expect(committedPaths).toContain('.codex/AGENTS.md');
+      expect(committedPaths).toContain('.pi/README.md');
+      expect(commitCalls.find((call) => call.path === 'kortix.yaml')?.content).toContain(
+        'kortix_version: 3',
+      );
+      expect(insertedProject?.metadata).not.toHaveProperty('experimental');
+      expect(resolveProjectRuntimeTransport(insertedProject?.metadata)).toBe('acp');
+    } finally {
+      config.KORTIX_ACP_RUNTIME = previous;
+    }
   });
 
   test('the stable starter commits kortix_version 2 and no experimental harness config', async () => {

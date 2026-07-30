@@ -1,9 +1,17 @@
+import { projectSessions } from '@kortix/db';
+import { isHarnessId } from '@kortix/shared/harnesses';
+import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { config } from '../../config';
 import { PROJECT_ACTIONS, authorize } from '../../iam';
 import { getTraceHeaders } from '../../lib/request-context';
 import type { ProviderName } from '../../platform/providers';
+import {
+  type ForeignAgentModeSwitch,
+  foreignAgentModeSwitch,
+  isAcpModeConfigChange,
+} from '../../projects/lib/acp-agent-mode';
 import { callerKortixSessionId } from '../../projects/lib/caller-session';
 import { syncSandboxEnvForPrompt } from '../../projects/lib/sandbox-env-sync';
 import {
@@ -29,6 +37,7 @@ import {
   extractPromptInfo,
   generateSessionTitleFromFirstPrompt,
 } from '../../projects/session-title-generate';
+import { db } from '../../shared/db';
 import { KORTIX_USER_CONTEXT_HEADER } from '../../shared/kortix-user-context';
 import { canAccessPreviewSandbox, canAccessSandboxSession } from '../../shared/preview-ownership';
 import {
@@ -371,6 +380,73 @@ function acpPromptSessionId(
   }
 }
 
+/**
+ * The ACP envelope this request carries, when it is one this proxy path can
+ * relay into the daemon's ACP endpoint. Null for everything else.
+ *
+ * `/v1/p/<external_id>/8000/kortix/acp/<server_id>` reaches the SAME daemon
+ * endpoint as the managed route in projects/routes/acp.ts, so it is a complete
+ * bypass of that route's checks. Verified live 2026-07-30: a
+ * `session/set_config_option` posted here was relayed to the harness and changed
+ * its mode. Every WHO-RUNS check on the managed route has to exist here too.
+ */
+function acpEnvelopeFromProxyBody(
+  method: string,
+  upstreamPort: number,
+  path: string,
+  incomingHeaders: Headers,
+  body: ArrayBuffer | undefined,
+): Record<string, unknown> | null {
+  if (method.toUpperCase() !== 'POST' || upstreamPort !== SANDBOX_AGENT_PORT || !body) {
+    return null;
+  }
+  if (!incomingHeaders.get('content-type')?.toLowerCase().includes('application/json')) {
+    return null;
+  }
+  if (!/^\/kortix\/acp\/[^/?#]+(?:$|[/?#])/.test(path)) return null;
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(body));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Refuse an ACP `mode` change that names an agent other than the one this session
+ * committed to. Same rule and same 409 as the managed route — see
+ * projects/lib/acp-agent-mode.ts for why, and for why only OpenCode is policed.
+ *
+ * The session lookup is paid ONLY on a real `mode` change, which is rare: a
+ * prompt, a model change or any other relayed method returns before it.
+ */
+async function foreignAgentModeSwitchOnProxy(
+  sessionId: string,
+  envelope: Record<string, unknown>,
+): Promise<ForeignAgentModeSwitch | null> {
+  if (!isAcpModeConfigChange(envelope)) return null;
+  const [row] = await db
+    .select({ metadata: projectSessions.metadata })
+    .from(projectSessions)
+    .where(eq(projectSessions.sessionId, sessionId))
+    .limit(1);
+  const metadata = (row?.metadata ?? {}) as Record<string, unknown>;
+  // An unreadable/absent session row leaves the harness unknown. Do NOT guess:
+  // an unknown harness is not provably OpenCode, and refusing every mode change
+  // on a row we cannot read would break Claude/Codex permission changes for a
+  // reason unrelated to agent identity. The managed route and the box-side guard
+  // still cover this envelope.
+  if (!isHarnessId(metadata.runtime_harness)) return null;
+  return foreignAgentModeSwitch(
+    {
+      runtimeHarness: metadata.runtime_harness,
+      nativeAgent: typeof metadata.native_agent === 'string' ? metadata.native_agent : null,
+    },
+    envelope,
+  );
+}
+
 // True only when a fetch failure PROVES nothing reached the box: the upstream
 // actively refused the connection (nothing was ever accepted). Any other thrown
 // error — timeout, abort, connection reset mid-flight — is ambiguous: the
@@ -652,6 +728,30 @@ export async function forwardToSandbox(
   };
   const promptDelivery =
     shouldSyncProjectEnvBeforeProxy(port, method, remainingPath) || acpPromptSession !== null;
+
+  // WHO RUNS, on this edge too. Placed before the dedupe claim and the forward
+  // loop so a refusal neither burns the caller's Idempotency-Key nor reaches the
+  // box. See foreignAgentModeSwitchOnProxy.
+  const proxiedAcpEnvelope = acpEnvelopeFromProxyBody(
+    method,
+    upstreamPort,
+    remainingPath,
+    incomingHeaders,
+    body,
+  );
+  if (proxiedAcpEnvelope) {
+    const foreignAgent = await foreignAgentModeSwitchOnProxy(record.sessionId, proxiedAcpEnvelope);
+    if (foreignAgent) {
+      console.warn(
+        `[PREVIEW] Refused ACP mode switch on ${sandboxId}: '${foreignAgent.requestedAgent}' != committed '${foreignAgent.expectedAgent}'`,
+      );
+      return agentSwitchConflictResponse(
+        foreignAgent.expectedAgent,
+        foreignAgent.requestedAgent,
+        origin,
+      );
+    }
+  }
 
   // The daemon port serves the session's OpenCode conversation + owner-synced
   // secrets; gate it on SESSION visibility (mirrors loadVisibleSession on the

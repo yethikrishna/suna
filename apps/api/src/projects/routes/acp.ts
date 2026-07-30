@@ -9,6 +9,7 @@ import { invalidateSandbox } from '../../sandbox-proxy/backend';
 import { db } from '../../shared/db';
 import type { AppEnv } from '../../types';
 import { assertProjectCapability, loadProjectForUser, loadVisibleSession } from '../lib/access';
+import { foreignAgentModeSwitch } from '../lib/acp-agent-mode';
 import { createPersistedAcpSseProxy } from '../lib/acp-sse-proxy';
 import { appendAcpEnvelope, loadAcpTranscript } from '../lib/acp-transcript';
 import { projectsApp } from '../lib/app';
@@ -37,68 +38,6 @@ type AcpSessionBinding = {
   userId: string;
   canManageSharing: boolean;
 };
-
-/**
- * Would this envelope re-point the session's ACTING AGENT?
- *
- * `session/set_config_option` is the one relayed method that can change WHO
- * runs, and the API used to forward it verbatim (only `session/prompt` was ever
- * inspected). On OpenCode the `mode` option selects the harness AGENT — the
- * built-ins `build` / `plan` plus every project agent declared `mode: primary`,
- * which is what a marketplace template installs. That harness agent IS the
- * Kortix identity `account_tokens.agent_grant` was minted for, and the connector
- * / Kortix-CLI / secret gates read that row at CALL time
- * (executor/router.ts, iam/engine-v2.ts, secrets/strategy.ts). So relaying a
- * foreign `mode` runs agent B for the rest of the session under agent A's grant
- * — the escalation projects/lib/session-token-grant.ts documents.
- *
- * Refused rather than re-minted, matching the REST path's existing
- * agent-immutability contract (409 AGENT_SWITCH_REQUIRES_NEW_SESSION, see
- * sandbox-proxy/routes/preview.ts): a re-mint can re-scope connectors and CLI
- * powers, but it cannot un-read the secrets agent A already pulled into the
- * box's env, its shells and its context. There is no per-turn ACP re-mint hook
- * to hang one on either — the mode persists for the session, not the turn.
- *
- * PER-HARNESS RULE. Only OpenCode is policed:
- *   - `opencode` — `mode` is the agent. ENFORCE against the committed one.
- *   - `claude` — `mode` is the PERMISSION mode (`default`, `acceptEdits`,
- *     `plan`, `bypassPermissions`). The acting agent is fixed by the harness
- *     config dir at process launch and no mode value moves it.
- *   - `codex` — `mode` is the approval preset (`agent`, `agent-full-access`).
- *     Same reasoning.
- *   - `pi` — advertises no `mode` option at all.
- * Policing the value on those three would 409 an ordinary permission change,
- * which is a legitimate user action and not a privilege change at all. The value
- * alone cannot be classified ("plan" is BOTH an OpenCode agent and a Claude
- * permission mode), so the decision is made from `runtime_harness`, which the
- * session fixed at create and a caller cannot influence.
- *
- * A session with NO committed native agent is not policed either: its Kortix
- * agent is not an OpenCode agent, so the only reachable modes are OpenCode's own
- * built-ins, which carry no grant. That is also the only shape a legitimate
- * `build` ⇄ `plan` switch can have — the product's own clients send `mode` ONLY
- * as the committed native agent (sdk session-controller.ts,
- * session-lifecycle/headless-acp.ts), so nothing the product does is refused.
- */
-export function foreignAgentModeSwitch(
-  binding: Pick<AcpSessionBinding, 'runtimeHarness' | 'nativeAgent'>,
-  envelope: Record<string, unknown>,
-): { expectedAgent: string; requestedAgent: string } | null {
-  if (binding.runtimeHarness !== 'opencode') return null;
-  const committed = binding.nativeAgent?.trim();
-  if (!committed) return null;
-  if (envelope.method !== 'session/set_config_option') return null;
-  const params =
-    envelope.params && typeof envelope.params === 'object' && !Array.isArray(envelope.params)
-      ? (envelope.params as Record<string, unknown>)
-      : {};
-  if (params.configId !== 'mode') return null;
-  const requested = typeof params.value === 'string' ? params.value.trim() : '';
-  if (requested === committed) return null;
-  // A non-string value cannot prove it names the committed agent. Refuse rather
-  // than pass it through and hope the harness rejects it.
-  return { expectedAgent: committed, requestedAgent: requested || String(params.value) };
-}
 
 function decodedResponseHeaders(upstream: Response): Headers {
   const headers = new Headers(upstream.headers);

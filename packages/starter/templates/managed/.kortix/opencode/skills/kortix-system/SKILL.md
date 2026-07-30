@@ -40,12 +40,15 @@ Kortix-specific settings go in `kortix.yaml`. Harness-specific behavior stays in
 the selected native config directory. Do not copy harness-native behavior into
 the manifest.
 
-`kortix_version: 2` runs OpenCode, and only OpenCode. `kortix_version: 3`
-declares named `runtimes` and lets each logical agent select OpenCode, Claude
-Code, Codex, or Pi through `agents.<name>.runtime`. Version 3 requires the
-project experiment `acp_runtime`, shown as **ACP & Multi-Harness**. New projects
-enable it automatically. Existing projects keep their experiment state. A
-disabled project uses the OpenCode REST compatibility transport.
+`kortix_version: 2` runs OpenCode, and only OpenCode. It is what the one starter
+scaffolds, so it is what every new project gets. `kortix_version: 3` declares
+named `runtimes` and lets each logical agent select OpenCode, Claude Code,
+Codex, or Pi through `agents.<name>.runtime`. No starter scaffolds a v3
+manifest — a project reaches v3 only by editing `kortix.yaml` directly. Version
+3 requires the project experiment `acp_runtime`, shown as **ACP &
+Multi-Harness**. New projects enable it automatically. Existing projects keep
+their experiment state. A disabled project uses the OpenCode REST compatibility
+transport.
 
 OpenCode is the only STABLE harness. Claude Code, Codex, and Pi are
 experimental: a v3 manifest may declare them, but a session starts on one only
@@ -461,8 +464,8 @@ settings. Dashboard edits to triggers and env round-trip through
 ## The canonical manifest schema — one URL, always correct
 
 Check the top `# yaml-language-server: $schema=...` line in `kortix.yaml`.
-The default general-purpose starter uses `kortix_version: 2`. The selectable
-ACP multi-harness starter uses `kortix_version: 3`. That URL is the public,
+The one starter uses `kortix_version: 2`; a v3 manifest is hand-authored.
+That URL is the public,
 versioned JSON Schema, generated straight from `@kortix/manifest-schema` (the
 same package that backs `kortix validate` and the CR-merge gate — one source
 of truth, no separate spec to keep in sync by hand):
@@ -564,9 +567,8 @@ agents:
   launchable logical agents.
 - Once a project adopts declarative agents, Kortix chat inputs, trigger/channel pickers, and other product UI should fetch agents from the server-side Kortix registry, not directly from the sandbox OpenCode `/app/agents` result.
 - Model lists should follow the same direction: UI fetches the server/LLM-gateway model catalog, not a sandbox-local OpenCode provider list, so connected-provider policy and billing stay server-owned.
-- New projects use declarative discovery. The default general-purpose starter
-  uses v2. The ACP multi-harness starter uses v3. Older `kortix.toml` (v1)
-  projects stay in legacy mode until they migrate.
+- New projects use declarative discovery. The one starter uses v2. Older
+  `kortix.toml` (v1) projects stay in legacy mode until they migrate.
 
 **`kortix_cli` — the grantable enum** (project-scoped only; account-level admin actions
 like `member.*` / `billing.*` / `project.create` can NEVER be granted to an agent — nor can
@@ -662,8 +664,8 @@ to see the full enum.
 </reference>
 
 <reference path=".kortix/opencode/skills/kortix-system/references/kortix/runtime-harnesses.md">
-  ACP and multi-harness reference. Covers the `acp_runtime` experiment, the two
-  starters (stable v2 OpenCode vs experimental v3 multi-harness), the
+  ACP and multi-harness reference. Covers the `acp_runtime` experiment, the
+  single OpenCode-native starter, the
   `KORTIX_ENABLED_HARNESSES` operator gate and `HARNESS_NOT_ENABLED`,
   `kortix_version: 3`, OpenCode/Claude Code/Codex/Pi runtime profiles,
   native config and system-skill discovery, harness-specific credentials,

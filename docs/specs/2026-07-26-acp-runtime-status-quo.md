@@ -5,6 +5,10 @@
 > OpenCode, Claude Code, Codex, and Pi harness selection. Use
 > `docs/superpowers/specs/2026-07-28-acp-multi-harness-design.md` and the current
 > `kortix-system` runtime-harness reference for the active contract.
+>
+> **`KORTIX_OPENCODE_TRANSPORT` no longer exists.** Every `KORTIX_OPENCODE_TRANSPORT=acp`
+> below is dead. The operator switch is now `KORTIX_ACP_RUNTIME` (boolean,
+> default `false`) — see `apps/web/content/docs/work/runtime.mdx`.
 
 **Date:** 2026-07-26
 

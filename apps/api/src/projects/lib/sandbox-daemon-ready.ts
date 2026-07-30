@@ -59,11 +59,19 @@ export function shouldWaitForOpencodeReady(args: {
   // the change flags. This is the case `opencodeState !== 'ok'` was really
   // reaching for; `'down'` is what it over-matched.
   if (args.opencodeState === 'starting') return true;
-  // Anything else ('down', or a state we do not recognise) is only worth
-  // waiting on when the daemon actually restarted opencode: `stop()` sets
-  // `'down'` and `start()` only advances it once the readiness probe runs, so
-  // the daemon can answer `'down'` in the moment right after `restart()`.
-  return args.refreshModels && (args.projectEnvChanged || args.opencodeEnvChanged);
+  // `'down'` is worth waiting on ONLY when the daemon actually restarted
+  // opencode: `stop()` sets `'down'` and `start()` only advances it once the
+  // readiness probe runs, so the daemon can legitimately answer `'down'` in the
+  // moment right after `restart()`. Without a restart, `'down'` is the
+  // permanent steady state of a managed-ACP session and there is nothing coming.
+  if (args.opencodeState === 'down') {
+    return args.refreshModels && (args.projectEnvChanged || args.opencodeEnvChanged);
+  }
+  // No state reported at all (older daemon build, or a parse failure): never
+  // wait. This keeps the predicate a STRICT SUBSET of the condition it replaced
+  // (`opencodeState && opencodeState !== 'ok'`, which also skipped a null
+  // state), so this change can only ever remove a wait, never add one.
+  return false;
 }
 
 /**

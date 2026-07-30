@@ -91,14 +91,39 @@ describe('shouldWaitForOpencodeReady', () => {
     ).toBe(true);
   });
 
-  test('an unknown/absent state is not on its own a reason to wait', () => {
-    expect(
-      shouldWaitForOpencodeReady({
-        refreshModels: true,
-        projectEnvChanged: false,
-        opencodeEnvChanged: false,
-        opencodeState: null,
-      }),
-    ).toBe(false);
+  test('an unknown/absent state never waits, so this stays a strict subset of the old condition', () => {
+    for (const projectEnvChanged of [false, true]) {
+      expect(
+        shouldWaitForOpencodeReady({
+          refreshModels: true,
+          projectEnvChanged,
+          opencodeEnvChanged: false,
+          opencodeState: null,
+        }),
+      ).toBe(false);
+    }
+  });
+
+  // The condition this replaced was `opencodeState && opencodeState !== 'ok'`.
+  // Pin that the new predicate never waits where the old one did not — a
+  // regression here would mean ADDING latency somewhere instead of removing it.
+  test('never waits where the replaced condition would not have', () => {
+    const states = ['ok', 'starting', 'down', 'weird', null] as const;
+    for (const opencodeState of states) {
+      for (const refreshModels of [false, true]) {
+        for (const projectEnvChanged of [false, true]) {
+          for (const opencodeEnvChanged of [false, true]) {
+            const legacyWouldWait = Boolean(opencodeState) && opencodeState !== 'ok';
+            const now = shouldWaitForOpencodeReady({
+              refreshModels,
+              projectEnvChanged,
+              opencodeEnvChanged,
+              opencodeState,
+            });
+            if (now) expect(legacyWouldWait).toBe(true);
+          }
+        }
+      }
+    }
   });
 });

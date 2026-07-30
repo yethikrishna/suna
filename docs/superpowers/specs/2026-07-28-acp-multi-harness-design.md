@@ -25,10 +25,19 @@ Resolution: the project's explicit choice wins over `KORTIX_ACP_RUNTIME`;
 default is off — otherwise every project already on ACP, including v3-manifest
 projects that cannot run REST, would silently fall back and break.
 
-`POST /projects/provision` and `POST /projects/create-repo` stamp
-`experimental.acp_runtime: true` only when the scaffolded starter declares
-`kortix_version: 3`, because v3 has no REST path. Every other new project stores
-no override and follows the fleet default.
+`POST /projects/provision` and `POST /projects/create-repo` write NO
+`experimental` block. This matches `origin/prod`, where
+`git show origin/prod:apps/api/src/projects/routes/r1.ts | grep acp_runtime`
+returns nothing. A new project states no opinion and follows the fleet default.
+
+v3 acceptance follows the same switch. `projects/lib/acp-runtime-gate.ts`
+refuses a v3 starter scaffold with `409 ACP_RUNTIME_DISABLED` while
+`KORTIX_ACP_RUNTIME` is off, before any upstream repo or DB row exists. v3 is
+therefore not scaffolded, not defaulted to (the default starter is
+`general-knowledge-worker`, `kortix_version: 2`), and not offered as a migration
+target (`MIGRATIONS` in `projects/lib/manifest-verdict.ts` holds only `1 -> 2`).
+A repo that declares v3 itself still parses; it refuses at session create with
+`409 ACP_RUNTIME_REQUIRED`.
 
 `KORTIX_ACP_RUNTIME` does not change the sandbox process:
 `KORTIX_OPENCODE_PROCESS_TRANSPORT` stays pinned to `acp`

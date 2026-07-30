@@ -96,7 +96,7 @@ import {
   PencilSimpleIcon,
   PlayIcon as Play,
   PlayIcon as PlaySolid,
-  ArrowsClockwiseIcon as RefreshCw,
+  ArrowClockwiseIcon as RefreshCw,
   MagnifyingGlassIcon as Search,
   TimerIcon as Timer,
   TrashIcon as TrashSolid,

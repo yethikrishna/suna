@@ -11,7 +11,7 @@ import { useDeploymentCliInstallCommand } from '@/lib/use-deployment-cli-install
 import { getProjectDetail, type KortixProject, type ProjectGitConnection } from '@kortix/sdk';
 import { useQuery } from '@tanstack/react-query';
 import {
-  ArrowsClockwiseIcon as RefreshCw,
+  ArrowClockwiseIcon as RefreshCw,
   ArrowSquareOutIcon as ExternalLink,
   CheckIcon as Check,
   CopyIcon as Copy,

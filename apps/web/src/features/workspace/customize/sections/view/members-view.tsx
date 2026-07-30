@@ -14,7 +14,7 @@ import {
   ChatIcon as MessageSquare,
   PlugIcon as Plug,
   PlusIcon as Plus,
-  ArrowsClockwiseIcon as RefreshCw,
+  ArrowClockwiseIcon as RefreshCw,
   ShieldIcon as Shield,
   SparkleIcon as Sparkles,
   UserIcon as User,

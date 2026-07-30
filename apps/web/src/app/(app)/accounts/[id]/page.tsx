@@ -15,7 +15,7 @@ import {
   EnvelopeIcon as Mail,
   DotsThreeIcon as MoreHorizontal,
   NetworkIcon as Network,
-  ArrowsClockwiseIcon as RefreshCw,
+  ArrowClockwiseIcon as RefreshCw,
   ScrollIcon as ScrollText,
   PlugsIcon as Unplug,
 } from '@phosphor-icons/react';

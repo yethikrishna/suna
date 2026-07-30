@@ -18,7 +18,7 @@ import {
   PencilSimpleIcon,
   PlugIcon as Plug,
   PlusIcon as Plus,
-  ArrowsClockwiseIcon as RefreshCw,
+  ArrowClockwiseIcon as RefreshCw,
   MagnifyingGlassIcon as Search,
   ShieldWarningIcon as ShieldAlert,
   ShieldCheckIcon as ShieldCheck,

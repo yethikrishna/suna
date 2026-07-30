@@ -30,10 +30,12 @@ const PROJECT_EXECUTOR_PAT = 'kortix_pat_executor_sandbox';
 const ORIGINAL_KORTIX_GITHUB_OWNER = process.env.KORTIX_GITHUB_OWNER;
 const ORIGINAL_API_KEY_SECRET = process.env.API_KEY_SECRET;
 const ORIGINAL_KORTIX_URL = process.env.KORTIX_URL;
+const ORIGINAL_ALLOWED_SANDBOX_PROVIDERS = process.env.ALLOWED_SANDBOX_PROVIDERS;
 
 process.env.KORTIX_GITHUB_OWNER = TEST_GITHUB_OWNER;
 process.env.API_KEY_SECRET = 'test-project-secret-key-material-32-bytes';
 process.env.KORTIX_URL = 'https://api.test.kortix.local';
+process.env.ALLOWED_SANDBOX_PROVIDERS = 'daytona,platinum';
 
 let branchCreateCalls = 0;
 let sandboxProvisionCalls = 0;
@@ -926,6 +928,11 @@ describe('project session API contract', () => {
     } else {
       process.env.KORTIX_URL = ORIGINAL_KORTIX_URL;
     }
+    if (ORIGINAL_ALLOWED_SANDBOX_PROVIDERS === undefined) {
+      delete process.env.ALLOWED_SANDBOX_PROVIDERS;
+    } else {
+      process.env.ALLOWED_SANDBOX_PROVIDERS = ORIGINAL_ALLOWED_SANDBOX_PROVIDERS;
+    }
   });
 
   beforeEach(() => resetState());
@@ -1721,55 +1728,6 @@ describe('project session API contract', () => {
     expect(sessionSandboxRows).toHaveLength(1);
   });
 
-  test('dashboard start returns ACP identity persisted while startSession runs', async () => {
-    const app = createApp();
-    sessionRow = {
-      ...sessionRow!,
-      sandboxProvider: 'platinum',
-      status: 'running',
-      metadata: {
-        runtime_transport: 'acp',
-        runtime_harness: 'codex',
-        acp_server_id: SESSION_ID,
-        native_agent: 'codex',
-      },
-    };
-    sessionSandboxRows = [
-      {
-        sandboxId: SESSION_ID,
-        sessionId: SESSION_ID,
-        accountId: ACCOUNT_ID,
-        projectId: PROJECT_ID,
-        provider: 'platinum',
-        externalId: 'box-acp-identity',
-        baseUrl: null,
-        status: 'active',
-        config: {},
-        metadata: {},
-        lastUsedAt: null,
-        createdAt: new Date('2026-01-02T00:00:00Z'),
-        updatedAt: new Date('2026-01-02T00:00:00Z'),
-      },
-    ];
-    providerStatus = 'running';
-    providerStatusSessionMetadataUpdate = {
-      acp_session_id: 'codex-native-created-during-start',
-    };
-
-    const response = await app.request(
-      `/v1/projects/${PROJECT_ID}/sessions/${SESSION_ID}/start`,
-      { method: 'POST' },
-    );
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      runtime_transport: 'acp',
-      runtime_harness: 'codex',
-      acp_server_id: SESSION_ID,
-      acp_session_id: 'codex-native-created-during-start',
-    });
-  });
-
   test('dashboard start retires abandoned no-external-id provisioning rows and reallocates', async () => {
     const app = createApp();
     sessionRow = {
@@ -2026,10 +1984,7 @@ describe('project session API contract', () => {
     ];
     providerStatus = 'unknown';
     runtimeInspectionHealth = {
-      runtime: 'opencode-rest',
       runtimeReady: true,
-      acpServerId: null,
-      runtimeHarness: null,
       bootError: null,
     };
 
@@ -2617,10 +2572,7 @@ describe('project session API contract', () => {
     ];
     providerStatus = 'unknown';
     runtimeInspectionHealth = {
-      runtime: 'opencode-rest',
       runtimeReady: true,
-      acpServerId: null,
-      runtimeHarness: null,
       bootError: null,
     };
 

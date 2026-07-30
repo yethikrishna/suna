@@ -1,8 +1,7 @@
 # KaaB hardening audit
 
-> **Historical audit scope.** This audit predates v3 multi-harness delivery.
-> OpenCode-specific findings remain compatibility evidence. They do not define
-> Claude Code, Codex, or Pi runtime behavior.
+> **Historical audit scope.** The OpenCode REST findings remain compatibility
+> evidence.
 
 Method: a 35-agent adversarial audit of every Kortix-as-a-Backend edge case
 (plan `docs/KORTIX_AS_BACKEND_V1_PLAN.md` §4.1–4.11) against current `main` plus

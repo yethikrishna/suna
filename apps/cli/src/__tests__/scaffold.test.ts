@@ -100,24 +100,6 @@ describe('applyScaffold', () => {
     expect(walk(dir)).toEqual(base);
   });
 
-  test('ACP multi-harness template writes every native harness configuration', () => {
-    const result = applyScaffold({
-      repoRoot: dir,
-      projectName: 'Harness Lab',
-      template: 'acp-multi-harness',
-    });
-
-    for (const path of ['.claude/CLAUDE.md', '.codex/AGENTS.md', '.pi/README.md']) {
-      expect(result.written).toContain(path);
-    }
-    const manifest = readFileSync(join(dir, 'kortix.yaml'), 'utf8');
-    expect(manifest).toContain('kortix_version: 3');
-    expect(manifest).toContain('harness: opencode');
-    expect(manifest).toContain('harness: claude');
-    expect(manifest).toContain('harness: codex');
-    expect(manifest).toContain('harness: pi');
-  });
-
   test('preserveExisting leaves prior files alone, fills in the rest', () => {
     // Pre-seed shipped files we expect to be preserved.
     mkdirSync(join(dir, '.kortix/opencode/agents'), { recursive: true });

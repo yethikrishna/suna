@@ -420,7 +420,6 @@ describe('POST /v1/projects/provision (managed git)', () => {
           auth: { method: 'github_app', installation_id: INSTALL_ID },
           owner: REPO_OWNER,
         },
-        experimental: { acp_runtime: true },
       },
     });
     expect(grantedProjectRole).toMatchObject({
@@ -536,29 +535,6 @@ describe('POST /v1/projects/provision (managed git)', () => {
     // must now stamp the mirror at creation time.
     expect(updatedProjectSets).toHaveLength(1);
     expect(updatedProjectSets[0]?.metadata).toHaveProperty('queryChunks');
-  });
-
-  test('keeps the deprecated multi-harness starter id as an ACP-enabled alias', async () => {
-    const app = createApp();
-    const res = await app.request('/v1/projects/provision', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        account_id: ACCOUNT_ID,
-        name: 'Harness Lab',
-        seed_starter: true,
-        starter_template: 'acp-multi-harness',
-      }),
-    });
-
-    expect(res.status).toBe(201);
-    expect(seedFilePaths).toContain('.claude/CLAUDE.md');
-    expect(seedFilePaths).toContain('.codex/AGENTS.md');
-    expect(seedFilePaths).toContain('.pi/README.md');
-    expect(seedFilesByPath.get('kortix.yaml')).toContain('kortix_version: 3');
-    expect(insertedProject?.metadata).toMatchObject({
-      experimental: { acp_runtime: true },
-    });
   });
 
   test('returns 503 when managed git is not configured', async () => {

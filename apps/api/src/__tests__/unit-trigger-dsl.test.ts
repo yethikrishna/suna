@@ -51,12 +51,11 @@ describe('kortix manifest — schema versioning', () => {
     expect(parsed.schemaVersion).toBe(2);
   });
 
-  // The ceiling is KNOWN_SCHEMA_VERSION in packages/manifest-schema — now 3, so
-  // v3 parses. What must stay true is that anything ABOVE the ceiling is refused
-  // rather than silently half-understood, so this pins v3-ok / v4-rejected.
+  // V2 is the current ceiling. V3 must stay rejected because it represented the
+  // removed multi-harness runtime contract.
   test('the current ceiling parses and anything above it is still rejected', () => {
-    expect(parseManifestString(`kortix_version = 3\n${MIN_PROJECT}`).schemaVersion).toBe(3);
-    expect(() => parseManifestString(`kortix_version = 4\n${MIN_PROJECT}`)).toThrow(/schema version 4/);
+    expect(parseManifestString(`kortix_version = 2\n${MIN_PROJECT}`).schemaVersion).toBe(2);
+    expect(() => parseManifestString(`kortix_version = 3\n${MIN_PROJECT}`)).toThrow(/schema version 3/);
   });
 
   test('serialize always emits kortix_version as the first key', () => {

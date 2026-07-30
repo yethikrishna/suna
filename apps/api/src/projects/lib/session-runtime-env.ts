@@ -9,7 +9,6 @@ export interface SessionRuntimeEnvInput {
   frontendUrl?: string;
   initialPrompt?: string | null;
   opencodeModel?: string | null;
-  opencodeProcessTransport: 'acp' | 'rest';
   /** The wrapper's opaque end-user this backend session acts for (Kortix-as-a-
    *  Backend). Surfaced to the sandbox as KORTIX_ORIGIN_REF so the agent knows
    *  WHO it's acting for — attribution only, never an auth principal. Null/absent
@@ -31,7 +30,6 @@ export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<st
     KORTIX_SESSION_ID: input.sessionId,
     KORTIX_SERVICE_PORT: '8000',
     KORTIX_AGENT_NAME: input.agentName,
-    KORTIX_OPENCODE_PROCESS_TRANSPORT: input.opencodeProcessTransport,
     // Both names carry the same value: KORTIX_END_USER_REF is the name, and
     // KORTIX_ORIGIN_REF stays set because agent code inside sandboxes may
     // already read it and we cannot migrate other people's code.

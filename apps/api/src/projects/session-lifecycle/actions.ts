@@ -12,6 +12,7 @@ import { sandboxSlugFromSessionMetadata } from '../lib/session-sandbox-metadata'
 import { buildSessionSandboxEnvVars, sandboxCallbackUnreachableReason } from '../lib/sessions';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { isMissingRuntimeError } from '../routes/shared';
+import { invalidateProviderCache } from '../../sandbox-proxy';
 import {
   claimInPlaceRuntimeRecovery,
   markInPlaceRuntimeRecoveryAccepted,
@@ -309,7 +310,11 @@ export async function restartSession(input: {
     void (async () => {
       try {
         await provider.stop(externalId).catch(() => {});
+        invalidateProviderCache(externalId);
         await provider.start(externalId);
+        // Provider ingress credentials can change on every stop/start cycle.
+        // Remove any link resolved while the sandbox was stopped.
+        invalidateProviderCache(externalId);
         // A provider may acknowledge start before discovering that the backing
         // runtime is gone. A confirmed `removed` status starts recovery.
         // `unknown` remains non-terminal because it does not prove runtime loss.

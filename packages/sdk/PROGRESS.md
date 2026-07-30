@@ -4028,6 +4028,57 @@ directly.
 
 ---
 
+### 2026-07-30 — session `opencode-rest-rollback` completion
+
+Removed the ACP SDK client, projection, controller, runtime transport selector,
+React runtime hook, public types, and package exports. `useSession` now owns one
+OpenCode REST lifecycle. The current session cache, transcript hydration,
+default-model resolution, reconnect, and session-switch behavior remain.
+
+Public-surface decision:
+
+- ACP exports are removed intentionally.
+- The user requested complete ACP removal.
+- The public value and type snapshots record the removal.
+- No compatibility alias remains.
+
+Final SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1318 pass`, `0 fail`, `5781`
+  assertions across `113` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: the packed tarball installed,
+  imported, and constructed successfully.
+- Public value and type surface snapshots pass.
+- The framework-free import-graph checks pass.
+
+Related REST rollback gates:
+
+- Manifest schema: typecheck passed; V2 suite passed.
+- Starter: typecheck passed; `48 pass`, `0 fail`.
+- API contract: typecheck passed; `45 pass`, `0 fail`.
+- Shared runtime versions: typecheck passed; `269 pass`, `0 fail`.
+- Sandbox agent server: typecheck passed; `267 pass`, `0 fail`.
+- CLI: typecheck passed; `556 pass`, `0 fail`.
+- Web: `2424 pass`, `0 fail`; affected-file ESLint passed.
+- White-label demo: `335 pass`, `3 skip`, `0 fail`; production build passed.
+- Test-harness typecheck: exit `0`.
+- Authenticated local curl: `25 pass`, `0 fail`; V2 validation returned
+  `valid:true`; V3 returned `valid:false`; all five former ACP session routes
+  returned `404`; a real OpenCode REST prompt returned `PONG`.
+- Local Chromium OpenCode REST session chat: `2 pass`, `0 fail`. The browser
+  used `/prompt_async` and `/global/event`, rendered `PONG`, sent no ACP
+  requests, and completed Files navigation plus warm-session fallback.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+**Repository delivery shippable to production: NOT YET.** The branch merge,
+direct `main` push, Deploy Dev SHA proof, and deployed REST verification remain.
+
+---
+
 ### 2026-07-29 — session `sdk-inherited-session-defaults` follow-up completion
 
 Completed the inherited OpenCode session compatibility fix in `a900fc605`.

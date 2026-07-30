@@ -5,6 +5,7 @@ import {
   getSessionCacheOwnership,
   resolveSessionCacheOwnerScope,
   resetSessionCacheOwnership,
+  sessionCacheOwnerScopesConflict,
 } from './session-cache-ownership';
 
 beforeEach(() => {
@@ -44,5 +45,37 @@ describe('OpenCode session cache ownership', () => {
       changed: false,
       previousOwnerScope: 'sandbox-a',
     });
+  });
+
+  test('does not treat authoritative and fallback scopes as different owners', () => {
+    expect(
+      sessionCacheOwnerScopesConflict(
+        'kortix:project-a/session-a',
+        'runtime:sandbox-a',
+      ),
+    ).toBe(false);
+    expect(
+      sessionCacheOwnerScopesConflict(
+        'kortix:project-a/session-a',
+        'kortix:project-b/session-b',
+      ),
+    ).toBe(true);
+    expect(
+      sessionCacheOwnerScopesConflict(
+        'runtime:sandbox-a',
+        'runtime:sandbox-b',
+      ),
+    ).toBe(true);
+  });
+
+  test('does not let a fallback consumer displace an authoritative owner', () => {
+    claimSessionCacheOwnership('ses_shared', 'kortix:project-a/session-a');
+    expect(claimSessionCacheOwnership('ses_shared', 'runtime:sandbox-a')).toEqual({
+      changed: false,
+      previousOwnerScope: 'kortix:project-a/session-a',
+    });
+    expect(getSessionCacheOwnership('ses_shared')).toBe(
+      'kortix:project-a/session-a',
+    );
   });
 });

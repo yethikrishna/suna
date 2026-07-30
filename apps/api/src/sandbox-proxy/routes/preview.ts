@@ -338,38 +338,6 @@ function shouldSyncProjectEnvBeforeProxy(port: number, method: string, path: str
   return /^\/session\/[^/]+\/(?:prompt_async|message)(?:$|[/?#])/.test(path);
 }
 
-// ACP prompt delivery shares the runtime URL with its GET event stream.
-// Inspect the JSON-RPC envelope before applying prompt deduplication.
-function acpPromptSessionId(
-  method: string,
-  upstreamPort: number,
-  path: string,
-  incomingHeaders: Headers,
-  body: ArrayBuffer | undefined,
-): string | null {
-  if (method.toUpperCase() !== 'POST' || upstreamPort !== SANDBOX_AGENT_PORT || !body) {
-    return null;
-  }
-  if (!incomingHeaders.get('content-type')?.toLowerCase().includes('application/json')) {
-    return null;
-  }
-  const match = path.match(/^\/kortix\/acp\/([^/?#]+)(?:$|[/?#])/);
-  if (!match) return null;
-  try {
-    const routeSessionId = decodeURIComponent(match[1]);
-    const envelope = JSON.parse(new TextDecoder().decode(body)) as { method?: unknown };
-    // Keyed on the ROUTE id — the ACP server binding, which for a managed ACP
-    // session is the project session itself. The envelope's `params.sessionId`
-    // is the HARNESS-issued session, which persistAcpSessionIdentity forbids
-    // from equalling the server id: requiring the two to match made this return
-    // null for every managed ACP prompt, silently disabling prompt dedupe, the
-    // retry budget, the snapshot sync and titling on that path.
-    return envelope.method === 'session/prompt' ? routeSessionId : null;
-  } catch {
-    return null;
-  }
-}
-
 // True only when a fetch failure PROVES nothing reached the box: the upstream
 // actively refused the connection (nothing was ever accepted). Any other thrown
 // error — timeout, abort, connection reset mid-flight — is ambiguous: the
@@ -637,15 +605,7 @@ export async function forwardToSandbox(
   // observation, the preview-use extend, the auto-resume — must exclude them or
   // the self-renewing lease this design deletes is rebuilt through the proxy.
   const sandboxAuthored = access.kind === 'principal' && access.sandboxAuthored;
-  const acpPromptSession = acpPromptSessionId(
-    method,
-    upstreamPort,
-    remainingPath,
-    incomingHeaders,
-    body,
-  );
-  const promptDelivery =
-    shouldSyncProjectEnvBeforeProxy(port, method, remainingPath) || acpPromptSession !== null;
+  const promptDelivery = shouldSyncProjectEnvBeforeProxy(port, method, remainingPath);
 
   // The daemon port serves the session's OpenCode conversation + owner-synced
   // secrets; gate it on SESSION visibility (mirrors loadVisibleSession on the
@@ -762,8 +722,7 @@ export async function forwardToSandbox(
     }
   }
 
-  // Dedupe prompt delivery up-front. REST and ACP prompt POSTs are the only
-  // mutating, non-idempotent calls here. Claim a stable key before the retry
+  // Dedupe OpenCode prompt delivery up-front. Claim a stable key before the retry
   // loop so a duplicate inbound prompt cannot enqueue the user message twice.
   //
   // The key is held in an OUTER binding so the give-up path below can release it
@@ -1169,25 +1128,6 @@ export async function forwardToSandbox(
             err instanceof Error ? err.message : err,
           ),
         );
-      }
-      if (acpPromptSession && upstream.ok) {
-        const prompt = extractPromptInfo(body, incomingHeaders);
-        if (userId && prompt.text) {
-          void generateSessionTitleFromFirstPrompt({
-            sessionId: record.sessionId,
-            projectId: record.projectId,
-            accountId: record.accountId,
-            userId,
-            firstPromptText: prompt.text,
-            modelHint: prompt.model ?? undefined,
-          });
-        }
-        scheduleOpencodeSnapshotSync({
-          sessionId: record.sessionId,
-          projectId: record.projectId,
-          externalId: record.externalId,
-          userId: userId || undefined,
-        });
       }
       const respHeaders = clientResponseHeaders(upstream.headers, origin);
       return new Response(upstream.body, {

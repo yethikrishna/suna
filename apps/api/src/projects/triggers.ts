@@ -73,7 +73,7 @@ export const KNOWN_SCHEMA_VERSION = 1;
  * instead of reading the agent's declared grant (the runtime-wiring gap
  * fixed by docs/specs/2026-07-05-agent-first-config-unification.md §2.1/§2.2 —
  * `extractAgents` in `./agents.ts` is the v2-aware consumer). A version above
- * this ceiling is genuinely unknown to the platform and still refused.
+ * this ceiling is genuinely unknown to the platform and remains refused.
  */
 export const MAX_SCHEMA_VERSION = 2;
 
@@ -503,8 +503,13 @@ interface ParseErr {
   error: GitTriggerParseError;
 }
 
-function parseTriggerEntry(entry: unknown, index: number, filename: string = MANIFEST_FILENAME): ParseOk | ParseErr {
-  const err = (slug: string, message: string): ParseErr => makeTriggerError(slug, message, filename);
+function parseTriggerEntry(
+  entry: unknown,
+  index: number,
+  filename: string = MANIFEST_FILENAME,
+): ParseOk | ParseErr {
+  const err = (slug: string, message: string): ParseErr =>
+    makeTriggerError(slug, message, filename);
 
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
     return err('(invalid)', `[[triggers]] entry #${index + 1} is not a table`);
@@ -747,7 +752,11 @@ function coerceBool(value: unknown, fallback: boolean): boolean {
   return fallback;
 }
 
-function makeTriggerError(slug: string, message: string, filename: string = MANIFEST_FILENAME): ParseErr {
+function makeTriggerError(
+  slug: string,
+  message: string,
+  filename: string = MANIFEST_FILENAME,
+): ParseErr {
   return {
     ok: false,
     error: { slug, path: `${filename}#triggers.${slug}`, error: message },

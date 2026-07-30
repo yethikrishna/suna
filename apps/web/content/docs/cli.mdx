@@ -97,8 +97,7 @@ To attach your local OpenCode client to the sandbox instead, run:
 kortix sessions connect
 ```
 
-This command attaches to the OpenCode REST compatibility process. It does not
-attach a local Claude Code, Codex, or Pi client to the selected ACP process.
+This command attaches to the OpenCode REST process.
 
 To open a raw shell in the sandbox, with no agent involved, run:
 
@@ -207,9 +206,7 @@ CLI adds native discovery links inside them. The command does not write
 | `--no-git` | Skip git init. |
 | `-y, --yes` | Don't prompt. |
 
-The local coding-tool selection does not select a cloud session harness.
-Cloud project creation enables **ACP & Multi-Harness** for the starter. An
-existing project keeps its current experiment state.
+The local coding-tool selection does not change the cloud OpenCode runtime.
 
 `kortix init` does not include a marketplace picker. Adding a marketplace skill is an agent import: start a session and ask the agent to bring one in.
 
@@ -378,7 +375,7 @@ Options: `--query <text>`, `--type <type>`, `--source <source>`, `--host <name>`
 ### System skills
 
 The Kortix system skills are the platform's own documentation. They cover
-sessions, sandboxes, ACP, all four runtime harnesses, the executor, memory, and
+sessions, sandboxes, OpenCode, the executor, memory, and
 channels. The API serves them live, so they match the deployed host version.
 The binary and a token are enough for an agent to retrieve this context.
 

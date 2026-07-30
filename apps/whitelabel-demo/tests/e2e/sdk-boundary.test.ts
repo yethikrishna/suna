@@ -99,11 +99,9 @@ describe('white-label SDK boundary', () => {
     const files = listWhiteLabelTestFiles();
 
     expect(files.some((path) => path.endsWith('/tests/e2e/proxy.test.ts'))).toBe(true);
-    expect(
-      files.some((path) =>
-        path.endsWith('/tests/e2e/specs/16-whitelabel-acp-rest-parity.spec.ts'),
-      ),
-    ).toBe(true);
+    expect(files.some((path) => path.endsWith('/tests/e2e/specs/13-sdk-only-session.spec.ts'))).toBe(
+      true,
+    );
   });
 
   test('project settings render the server-provided experimental catalog', () => {
@@ -114,6 +112,5 @@ describe('white-label SDK boundary', () => {
 
     expect(source).toContain('experimental_features');
     expect(source).toContain('.updateExperimentalFeature(');
-    expect(source).not.toContain("'acp_runtime'");
   });
 });

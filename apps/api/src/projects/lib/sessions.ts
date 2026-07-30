@@ -569,9 +569,6 @@ export async function buildSessionSandboxEnvVars(input: {
       // platform resolution. The sandbox uses it for the first OpenCode turn
       // and as the session's OpenCode config default.
       opencodeModel: input.opencodeModel,
-      // OpenCode ACP starts its internal REST server. Existing REST clients
-      // continue to work while the project experiment selects the ACP client.
-      opencodeProcessTransport: 'acp',
       // Backend-vouched end-user (KaaB) → KORTIX_ORIGIN_REF in the sandbox.
       originRef: sessionKaabRow?.originRef ?? null,
       compiledAgentConfig,
@@ -1435,7 +1432,7 @@ export async function createProjectSession(input: {
             error: message,
             // Merge, never re-write the create-time snapshot: by the time
             // provisioning fails the row may already carry a generated title,
-            // acp_session_id, remote_branch or the start timeline.
+            // remote_branch or the start timeline.
             metadata: projectSessionMetadataMerge({ provisioning_error: message }),
             updatedAt: new Date(),
           })

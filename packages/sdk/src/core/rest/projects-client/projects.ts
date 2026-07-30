@@ -20,7 +20,6 @@ export type ExperimentalFeatureKey =
   | 'agentmail_email'
   | 'voice'
   | 'llm_gateway'
-  | 'acp_runtime'
   | 'review_center';
 
 /** One experimental feature as described by the API catalog. */
@@ -189,7 +188,7 @@ export interface CreateProjectRepoInput {
   installation_id?: string;
   private?: boolean;
   description?: string;
-  starter_template?: 'general-knowledge-worker' | 'acp-multi-harness' | 'minimal';
+  starter_template?: 'general-knowledge-worker' | 'minimal';
   /** Clone a `registry:project` item into the new GitHub repository. */
   source_item_id?: string;
 }
@@ -199,7 +198,7 @@ export interface ProvisionProjectInput {
   name: string;
   /** Seed the managed repo with the Kortix starter so sessions can boot. */
   seed_starter?: boolean;
-  starter_template?: 'general-knowledge-worker' | 'acp-multi-harness' | 'minimal';
+  starter_template?: 'general-knowledge-worker' | 'minimal';
   marketplace_items?: string[];
   /** Clone a `registry:project` marketplace item instead of the blank
    *  starter — e.g. `"kortix-projects:support-agent-kit"`. Implies

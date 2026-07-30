@@ -1,7 +1,7 @@
 # Suna → opencode migration — status & handoff
 
 > **Historical compatibility scope.** This handoff migrates legacy Suna state
-> into the OpenCode REST format. It does not define the current v3 ACP runtime
+> into the OpenCode REST format. It does not define the current V2 runtime
 > contract for Claude Code, Codex, or Pi.
 
 User-triggered, ECS-native (runs in the API via the durable runner, like the

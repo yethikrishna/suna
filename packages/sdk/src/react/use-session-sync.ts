@@ -18,6 +18,7 @@ import {
   claimSessionCacheOwnership,
   getSessionCacheOwnership,
   resolveSessionCacheOwnerScope,
+  sessionCacheOwnerScopesConflict,
 } from '../browser/session-sync/session-cache-ownership';
 import { useSandboxConnectionStore } from '../browser/stores/sandbox-connection-store';
 import { type MessageWithParts, useSyncStore } from '../browser/stores/sync-store';
@@ -108,10 +109,7 @@ export function useSessionSync(sessionId: string, options: UseSessionSyncOptions
   const cacheOwnerScope = resolveSessionCacheOwnerScope(runtimeScope, kortixSessionScope);
   const currentOwner = getSessionCacheOwnership(sessionId);
   const cacheBelongsToAnotherRuntime =
-    !!sessionId &&
-    cacheOwnerScope !== null &&
-    currentOwner !== null &&
-    currentOwner !== cacheOwnerScope;
+    !!sessionId && sessionCacheOwnerScopesConflict(currentOwner, cacheOwnerScope);
   const readableSessionId = cacheBelongsToAnotherRuntime ? '' : sessionId;
   const controller = getSessionSyncController(sessionId, undefined, runtimeScope);
   const sync = useSyncExternalStore(
@@ -123,7 +121,7 @@ export function useSessionSync(sessionId: string, options: UseSessionSyncOptions
   useEffect(() => {
     if (!canQueryOpenCodeSession(sessionId) || !cacheOwnerScope) return;
     const claim = claimSessionCacheOwnership(sessionId, cacheOwnerScope);
-    if (!claim.previousOwnerScope || claim.previousOwnerScope === cacheOwnerScope) {
+    if (!sessionCacheOwnerScopesConflict(claim.previousOwnerScope, cacheOwnerScope)) {
       return;
     }
     resetSessionSyncControllersForSession(

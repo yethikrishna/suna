@@ -46,27 +46,15 @@ very file is one of its `references/`.)
 
 ## Where skills live in Kortix
 
-In a version 2 project, OpenCode skills use:
+OpenCode project skills use:
 
 ```
 .kortix/opencode/skills/<name>/SKILL.md
 ```
 
-In version 3, author a project skill in the selected harness's native discovery
-directory:
-
-| Harness | Project skill path |
-| --- | --- |
-| OpenCode | `<config_dir>/skills/<name>/SKILL.md` |
-| Claude Code | `<config_dir>/skills/<name>/SKILL.md` |
-| Codex | `.agents/skills/<name>/SKILL.md` |
-| Pi | `<config_dir>/skills/<name>/SKILL.md` or `.agents/skills/<name>/SKILL.md` |
-
 The directory name **must equal** the `name` in the frontmatter. Kortix-managed
-system skills remain sourced from `.kortix/opencode/skills` and the sandbox
-injects their deployed copy into the selected harness path. Optional
-project-owned skills are git files. Place them in each harness path that must
-discover them.
+system skills and project-owned skills are sourced from
+`.kortix/opencode/skills`.
 
 OpenCode lists every discovered skill in the `skill` tool description and
 loads the body on demand when the agent calls it. Two consequences worth

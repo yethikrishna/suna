@@ -51,7 +51,6 @@ function projectFixture(overrides: Record<string, unknown> = {}) {
       agentmail_email: false,
       voice: false,
       llm_gateway: true,
-      acp_runtime: false,
       review_center: false,
     },
     experimental_features: [],
@@ -428,7 +427,6 @@ describe('envelopes', () => {
       'agentmail_email',
       'voice',
       'llm_gateway',
-      'acp_runtime',
       'review_center',
     ]);
   });

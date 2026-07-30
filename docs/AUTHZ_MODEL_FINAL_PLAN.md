@@ -1,11 +1,7 @@
 # The final, enterprise-ready authorization model — plan
 
-> **Superseded runtime status on 2026-07-28.** This plan preserves the
-> authorization design record. Its section 6 OpenCode-only status is no longer
-> current. The implemented contract uses `kortix_version: 3`, `runtimes`,
-> `agents.<name>.runtime`, the `acp_runtime` project experiment, and OpenCode,
-> Claude Code, Codex, or Pi. Use
-> `docs/superpowers/specs/2026-07-28-acp-multi-harness-design.md`.
+> This plan preserves the authorization design record. Session runtime uses
+> OpenCode REST and `kortix_version: 2`.
 
 Source: founder notes ("CLEAR ACCESS / AUTHORISATION MODEL IS NEEDED. THAT IS 100% FINAL &
 ENTERPRISE READY."). This doc maps every ask to the **current code state** and lays out a
@@ -205,7 +201,7 @@ give access to the appropriate allowed Kortix scopes."
 "Skills we can move server-side for discovery (perplexity computer style) for authorization
 control (need to modify opencode?)."
 
-**Current state.** The CLI scaffolds multi-harness symlinks (`.claude`/`.codex`/`.agents` →
+**Current state.** The CLI scaffolds local coding-tool symlinks (`.claude`/`.codex`/`.agents` →
 `.kortix/opencode`), but the **session runtime is hardcoded to opencode** (`createOpencodeSupervisor`
 always spawns `opencode serve`; token mint assumes an opencode "executor session"). Skills are
 **file-based** (cloned at boot, discovered for IAM grants at build time) — no server-side skill

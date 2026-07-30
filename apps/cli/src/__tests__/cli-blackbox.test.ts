@@ -664,10 +664,6 @@ console.log(JSON.stringify({ cmd, args, body }));
 
     expect(result.code).toBe(0);
     const root = join(tmp, 'default-project');
-    expect(readFileSync(join(root, '.claude', 'CLAUDE.md'), 'utf8')).toContain(
-      'Claude Code runtime',
-    );
-    expect(readFileSync(join(root, '.pi', 'README.md'), 'utf8')).toContain('Pi runtime');
     expect(lstatSync(join(root, '.claude', 'skills')).isSymbolicLink()).toBe(true);
     expect(lstatSync(join(root, '.pi', 'skills')).isSymbolicLink()).toBe(true);
     expect(existsSync(join(root, '.kortix', 'opencode', 'skills', 'kortix-cli', 'SKILL.md'))).toBe(true);
@@ -688,9 +684,7 @@ console.log(JSON.stringify({ cmd, args, body }));
     const result = await runCli(['init', '--help']);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toMatch(
-      /Every\s+new project includes OpenCode, Claude Code, Codex, and Pi runtime profiles\./,
-    );
+    expect(result.stdout).toContain('cloud OpenCode REST runtime');
     expect(result.stdout).not.toContain('--template');
     expect(result.stdout).not.toContain('acp-multi-harness');
     expect(result.stdout).not.toContain('minimal');

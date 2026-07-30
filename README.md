@@ -17,7 +17,7 @@
 
 <br />
 
-<img src="apps/web/public/images/readme/kortix-showcase.gif" alt="Connect 3,000+ apps, ask for a pitch deck, and watch an agent research it on a cloud computer and return the PDF and PPTX" width="900" />
+<img src="apps/web/public/media/showcase/kortix-showcase.gif" alt="Ask a project for real work, connect 3,000+ apps, manage agents, skills and schedules, then watch an agent research on a cloud computer and return a finished pitch deck" width="900" />
 
 </div>
 

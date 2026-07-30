@@ -109,6 +109,15 @@ export function warmPoolGrantMs(): number {
  * Granted on a sandbox-REPORTED terminal turn end: "die after 15 minutes of
  * inactivity". Reuses KORTIX_SANDBOX_AUTOSTOP_MINUTES, which is ALREADY 15 in
  * kortix-prod-env, so production needs no config change to get this behaviour.
+ *
+ * REACH, STATED HONESTLY: this is an OPTIMISATION, not the bound. It fires only
+ * when the box actually reports a turn end, and today the in-box relay that
+ * carries that report (`relayTurnEndToApi` in kortix-sandbox-agent-server) returns
+ * early unless the box has Slack context — so for a plain web session the tail is
+ * NOT 15 minutes, it is whatever the turn grant left (up to 4 hours). What
+ * actually bounds every box is `deadline_at` itself plus ABSOLUTE_RUN_CAP_MS;
+ * ungating the relay is a separate change to the sandbox agent, and until it
+ * lands the savings from this function apply to Slack-backed sessions only.
  */
 export function idleGraceMs(): number {
   return Math.max(1, config.KORTIX_SANDBOX_AUTOSTOP_MINUTES || 15) * 60_000;

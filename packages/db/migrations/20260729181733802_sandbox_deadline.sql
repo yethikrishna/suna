@@ -32,10 +32,14 @@ set statement_timeout = '30s';
 --     boxes acquire a bounded lifetime they never asked for and the new reaper
 --     will stop them when it passes.
 -- That is the intended, safe direction: an old pod's box gets a deadline instead
--- of immortality, and it can never be given LESS life than the floor. The
--- trigger raises no exceptions on any path (every value it derives is clamped
--- under the CHECK before it returns), so it cannot turn an old-pod write into an
--- error. Nothing is dropped or narrowed, so a rollback to the previous API is
+-- of immortality, and it can never be given LESS life than the floor — not even
+-- when its anchor is older than the whole cap, which is what I4 below repairs.
+-- The trigger raises no exceptions on any path: every deadline it derives is
+-- clamped under the CHECK before it returns, and every metadata value it touches
+-- is normalised to an OBJECT first (a jsonb SCALAR would otherwise raise 22023
+-- on `- 'key'`, and a jsonb ARRAY would silently append instead of setting one).
+-- So it cannot turn an old-pod write into an error, whatever that pod sends in
+-- `metadata`. Nothing is dropped or narrowed, so a rollback to the previous API is
 -- safe with the columns still in place (and they must NEVER be rolled back —
 -- dropping a NOT NULL column while any instance still writes it turns a bad
 -- deploy into an outage).
@@ -82,11 +86,19 @@ UPDATE "kortix"."session_sandboxes"
 --      with the external box released), and it STRIPS that key on every other
 --      write so application code cannot pre-seed it. A re-anchor happens only if
 --      that witness is present, and consumes it. What remains, stated plainly:
---      a reset still requires writing a park status FROM an active row, which in
---      this codebase happens only in reaping/sandbox-state-sync.ts
---      applyStoppedState — after a provider stop, and closing the compute window
---      as it goes. Requiring more than that would mean asking the provider from
---      inside a trigger. What is closed is every OTHER transition.
+--      a reset still requires writing a park status FROM an active row. The
+--      writers that do that are enumerated honestly, because two of them do NOT
+--      involve a provider stop: reaping/sandbox-state-sync.ts applyStoppedState
+--      (after a real provider stop, closing the compute window as it goes),
+--      routes/shared.ts, session-lifecycle/actions.ts, sandbox-proxy/backend.ts
+--      markSandboxErrored (status 'error' on a provider 400) and
+--      runtime-identity.ts preserveEstablishedRuntime (status 'stopped' on a
+--      provider 'removed' report the reaper itself calls possibly transient).
+--      So the bound this delivers is "a re-anchor costs a control-plane write
+--      that claims the box is no longer running", not "a re-anchor costs a
+--      provider stop". Requiring the latter would mean asking the provider from
+--      inside a trigger. What is closed is every OTHER transition, in particular
+--      the `provisioning` flips application code performs routinely.
 --
 --  I3  A STATUS FLIP NEVER DISCARDS A LIVE GRANT. The first version replaced the
 --      deadline with the 20-minute boot floor on any flip that did not itself
@@ -94,6 +106,12 @@ UPDATE "kortix"."session_sandboxes"
 --      clause requires `deadline_at > now()`, i.e. it fired precisely when there
 --      WAS a live grant to throw away. A box mid-turn with 3h50m left came back
 --      from a transient blip with 20 minutes. The floor is now a floor: GREATEST.
+--
+--  I4  A ROW IS NEVER RETURNED TO 'active' ALREADY EXPIRED. See the branch
+--      itself for why an unwitnessed park with a stale anchor was otherwise
+--      un-resumable — it is the one case where I2's witness requirement and I3's
+--      cap clamp combined into a deadline in the past, which refused the user's
+--      first prompt on the entire back catalogue of parked sessions.
 CREATE OR REPLACE FUNCTION "kortix"."session_sandboxes_anchor_guard"()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -102,6 +120,14 @@ DECLARE
   -- stated is left exactly as written, so the CHECK stays reachable for the
   -- future-writer bug it exists to surface.
   derived boolean := false;
+  -- `metadata` is NULLABLE in production and carries free-form jsonb, so it is
+  -- not guaranteed to be an OBJECT. `- 'key'` on a jsonb SCALAR raises 22023
+  -- ("cannot delete from scalar") and `|| jsonb_build_object(...)` on a jsonb
+  -- ARRAY silently APPENDS instead of setting a key, which would swallow the
+  -- witness. Normalising to an object up front keeps the promise made above —
+  -- that this trigger cannot turn any write, including an old pod's, into an
+  -- error — for every jsonb value a caller can actually send.
+  meta jsonb;
 BEGIN
   IF TG_OP = 'INSERT' THEN
     NEW.active_since := now();
@@ -117,7 +143,12 @@ BEGIN
     END IF;
     -- A fresh row has no park to remember, and an INSERT must not be able to
     -- carry in a forged witness that buys a free re-anchor on its first flip.
-    NEW.metadata := coalesce(NEW.metadata, '{}'::jsonb) - 'stretchParkedAt';
+    -- A non-object metadata is left EXACTLY as the caller sent it (it cannot
+    -- contain a witness, so there is nothing to strip and nothing to gain by
+    -- rewriting a caller's value).
+    IF jsonb_typeof(NEW.metadata) = 'object' THEN
+      NEW.metadata := NEW.metadata - 'stretchParkedAt';
+    END IF;
     RETURN NEW;
   END IF;
 
@@ -128,12 +159,13 @@ BEGIN
   -- the key is first overwritten with OLD's value (or removed if OLD had none), so
   -- an application write can neither forge one nor destroy one. Only the two
   -- branches below may change it: a park sets it, a resume consumes it.
-  IF OLD.metadata ? 'stretchParkedAt' THEN
-    NEW.metadata := coalesce(NEW.metadata, '{}'::jsonb)
-                    || jsonb_build_object('stretchParkedAt', OLD.metadata -> 'stretchParkedAt');
+  meta := CASE WHEN jsonb_typeof(NEW.metadata) = 'object' THEN NEW.metadata ELSE '{}'::jsonb END;
+  IF jsonb_typeof(OLD.metadata) = 'object' AND OLD.metadata ? 'stretchParkedAt' THEN
+    meta := meta || jsonb_build_object('stretchParkedAt', OLD.metadata -> 'stretchParkedAt');
   ELSE
-    NEW.metadata := coalesce(NEW.metadata, '{}'::jsonb) - 'stretchParkedAt';
+    meta := meta - 'stretchParkedAt';
   END IF;
+  NEW.metadata := meta;
 
   IF OLD.status = 'active'
      AND (NEW.status IN ('stopped', 'error', 'archived')
@@ -146,11 +178,36 @@ BEGIN
   END IF;
 
   IF OLD.status <> 'active' AND NEW.status = 'active' THEN
-    IF OLD.metadata ? 'stretchParkedAt' THEN
+    IF jsonb_typeof(OLD.metadata) = 'object' AND OLD.metadata ? 'stretchParkedAt' THEN
       -- I2: a witnessed park is being resumed → a genuinely new stretch. The
       -- witness is CONSUMED here, so it can buy exactly one re-anchor.
       NEW.active_since := now();
       NEW.metadata := NEW.metadata - 'stretchParkedAt';
+    ELSIF NEW.active_since + interval '24 hours' < now() + interval '20 minutes' THEN
+      -- I4  A ROW MAY NEVER BE RETURNED TO 'active' ALREADY EXPIRED. Without
+      --     this, an UNWITNESSED park with an anchor older than the cap is
+      --     un-resumable: I3's floor is computed, then clamped to
+      --     `active_since + 24h`, which is ALREADY IN THE PAST — so the row goes
+      --     active with a dead deadline, the reaper stops the box the proxy just
+      --     started, and the user's first prompt is refused
+      --     `sandbox_run_cap_reached` for a session that never ran 24 hours.
+      --     Reproduced on real PostgreSQL: resume of a pre-deploy 'stopped' row
+      --     25h after the migration yields `deadline_at - now() = -01:00:00`, and
+      --     no grant can lift it (LEAST clamps every one back under the cap).
+      --     That hits the ENTIRE back catalogue of parked sessions, because
+      --     `ADD COLUMN active_since DEFAULT now()` anchors every pre-existing
+      --     row at migration time and step (2) backfills a deadline only for
+      --     active/provisioning rows — so no pre-deploy park can carry a witness.
+      --
+      --     This does NOT reopen I2. Reaching this branch requires being
+      --     non-active AND carrying an anchor within 20 minutes of the 24-hour
+      --     cap, and a box that genuinely ran that long was already stopped by
+      --     the reaper at `deadline_at <= active_since + 24h`. The rapid
+      --     status churn I2 exists to close — `provisioning` round-trips from
+      --     identity recovery and in-place restart, all far inside the cap —
+      --     still buys exactly nothing. What is granted here is the boot floor
+      --     on a row that had no legal future deadline at all.
+      NEW.active_since := now();
     END IF;
     -- I3: floor, never discard. `IS NOT DISTINCT FROM OLD` is the exact test for
     -- "this writer did not state a deadline" (an ORM whole-object UPDATE

@@ -16,7 +16,9 @@ const {
   createExtendThrottle,
   idleGraceMs,
   isPreviewUseObservation,
+  isSandboxAuthored,
   isTerminalTurnEnd,
+  isTurnStartRequest,
   isWarmPoolBox,
   llmActivityGrantMs,
   previewGrantMs,
@@ -241,5 +243,66 @@ describe('createExtendThrottle — one write per window, not one per request', (
     // Every entry above expired at 1_001; one more write past that sweeps them.
     expect(t.take('sb-final', 10_000)).toBe(true);
     expect(t.take('sb-0', 10_000)).toBe(true);
+  });
+});
+
+// The two most security-relevant classifiers in the file, which it advertises as
+// exhaustively tested and previously did not touch at all: both survived mutation.
+describe('isSandboxAuthored — provenance is decided by the CREDENTIAL', () => {
+  test('an unauthenticated-shaped caller with no credential is not the box', () => {
+    expect(isSandboxAuthored(undefined, undefined)).toBe(false);
+    expect(isSandboxAuthored(null, null)).toBe(false);
+  });
+
+  test('the sandbox API-key type is the box', () => {
+    expect(isSandboxAuthored('sandbox', null)).toBe(true);
+  });
+
+  // ═══ THE SECOND CREDENTIAL ═══ every box also carries a session-scoped
+  // kortix_pat_ (KORTIX_CLI_TOKEN / KORTIX_EXECUTOR_TOKEN). Its auth branch never
+  // sets apiKeyType, so a gate keyed on TYPE ALONE failed open on the path-based
+  // proxy edge — the one the in-box CLI actually uses.
+  test('a SESSION-SCOPED credential is the box even though apiKeyType is unset', () => {
+    expect(isSandboxAuthored(undefined, 'sess-1')).toBe(true);
+  });
+
+  // The corollary, and the reason every CALL SITE must resolve the session id
+  // through `callerKortixSessionId`: this function cannot tell a Kortix session
+  // binding from a Supabase auth session, so it treats any non-null value as the
+  // box. Passing a browser's auth session here reads every human as a sandbox.
+  test('it cannot distinguish which KIND of session id it was handed', () => {
+    expect(isSandboxAuthored('user', 'any-non-null-session-id')).toBe(true);
+  });
+});
+
+describe('isTurnStartRequest', () => {
+  test('a prompt POST on the agent or opencode port starts a turn', () => {
+    expect(isTurnStartRequest(8000, 'POST', '/session/abc/prompt_async')).toBe(true);
+    expect(isTurnStartRequest(4096, 'POST', '/session/abc/message')).toBe(true);
+    expect(isTurnStartRequest(8000, 'POST', '/session/abc/command')).toBe(true);
+    expect(isTurnStartRequest(8000, 'POST', '/session/abc/summarize')).toBe(true);
+    expect(isTurnStartRequest(8000, 'POST', '/kortix/acp/xyz')).toBe(true);
+  });
+
+  // Passive polling must never extend a box — that is the deleted lease, rebuilt.
+  test('a GET never starts a turn, on any port or path', () => {
+    expect(isTurnStartRequest(8000, 'GET', '/session/abc/prompt_async')).toBe(false);
+    expect(isTurnStartRequest(4096, 'GET', '/session/abc/message')).toBe(false);
+    expect(isTurnStartRequest(8000, 'HEAD', '/kortix/acp/xyz')).toBe(false);
+  });
+
+  test('a dev-server port is never a turn start, whatever the path looks like', () => {
+    expect(isTurnStartRequest(3000, 'POST', '/session/abc/prompt_async')).toBe(false);
+    expect(isTurnStartRequest(8080, 'POST', '/kortix/acp/xyz')).toBe(false);
+  });
+
+  test('the in-box dynamic-port nesting prefix is stripped before matching', () => {
+    expect(isTurnStartRequest(8000, 'POST', '/proxy/4096/session/abc/prompt_async')).toBe(true);
+  });
+
+  test('a neighbouring session path is not a turn start', () => {
+    expect(isTurnStartRequest(8000, 'POST', '/session/abc')).toBe(false);
+    expect(isTurnStartRequest(8000, 'POST', '/session/abc/prompt_asyncx')).toBe(false);
+    expect(isTurnStartRequest(8000, 'POST', '/health')).toBe(false);
   });
 });

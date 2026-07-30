@@ -12,6 +12,7 @@ import { assertProjectCapability, loadProjectForUser, loadVisibleSession } from 
 import { createPersistedAcpSseProxy } from '../lib/acp-sse-proxy';
 import { appendAcpEnvelope, loadAcpTranscript } from '../lib/acp-transcript';
 import { projectsApp } from '../lib/app';
+import { callerKortixSessionId } from '../lib/caller-session';
 import { syncSandboxEnvForPrompt } from '../lib/sandbox-env-sync';
 import { sandboxRuntimeEndpoint } from '../runtime-inspection';
 import { isSandboxAuthored, observeTurnStart } from '../sandbox-deadline';
@@ -229,7 +230,13 @@ projectsApp.on(['GET', 'POST', 'DELETE'], '/:projectId/sessions/:sessionId/acp',
       // REFUSED rather than handed a prompt it is about to be killed mid-way
       // through. `parkBoxAtRunCap` is left to the reaper here — this route has no
       // provider handle of its own and the next prompt auto-resumes the box.
-      if (!isSandboxAuthored(c.get('apiKeyType'), c.get('sessionId'))) {
+      // `callerKortixSessionId`, NEVER the raw `c.get('sessionId')`. This route
+      // is mounted under `supabaseAuth`, which sets that context var to the
+      // SUPABASE AUTH SESSION id (which browser login is this) for every human.
+      // Reading it raw made `isSandboxAuthored` true for every browser user, so
+      // this observation — the ONLY deadline extension an ACP session has, and
+      // the at-cap refusal — was dead code for the entire web product.
+      if (!isSandboxAuthored(c.get('apiKeyType'), callerKortixSessionId(c))) {
         const observed = await observeTurnStart({ sessionId: target.sessionId });
         if (observed === 'at_cap') {
           return c.json(

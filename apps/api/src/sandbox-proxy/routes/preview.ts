@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { config } from '../../config';
 import { getTraceHeaders } from '../../lib/request-context';
 import type { ProviderName } from '../../platform/providers';
+import { callerKortixSessionId } from '../../projects/lib/caller-session';
 import { syncSandboxEnvForPrompt } from '../../projects/lib/sandbox-env-sync';
 import {
   AgentSecretGrantMismatchError,
@@ -1412,7 +1413,14 @@ preview.all('/:sandboxId/:port/*', async (c) => {
       kind: 'principal',
       userId,
       callerSessionId: c.get('sessionId') ?? null,
-      sandboxAuthored: isSandboxAuthored(c.get('apiKeyType'), c.get('sessionId')),
+      // `callerKortixSessionId`, NEVER the raw context var. `combinedAuth`'s
+      // local JWT fast path leaves `sessionId` unset for a browser, but its
+      // NETWORK-FALLBACK branch (taken whenever JWKS has not warmed, and
+      // permanently if JWKS resolution is broken) sets it to the SUPABASE AUTH
+      // SESSION id. Reading it raw made every human in that window look
+      // sandbox-authored: no turn-start extend, no preview-use extend, and no
+      // auto-resume of a parked box from the UI.
+      sandboxAuthored: isSandboxAuthored(c.get('apiKeyType'), callerKortixSessionId(c)),
     },
     method,
     remainingPath,

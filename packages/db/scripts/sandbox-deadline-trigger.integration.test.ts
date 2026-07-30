@@ -118,7 +118,10 @@ describe.skipIf(!dockerAvailable)('session_sandboxes anchor guard — real Postg
         external_id text,
         provider text NOT NULL,
         status kortix.session_sandbox_status NOT NULL DEFAULT 'provisioning',
-        metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+        -- NULLABLE, exactly as in production (schema/kortix.ts:
+        -- jsonb('metadata').default({}) with no .notNull()). Declaring it NOT NULL
+        -- here hid the whole class of non-object metadata defects below.
+        metadata jsonb DEFAULT '{}'::jsonb,
         active_since timestamptz NOT NULL DEFAULT now(),
         deadline_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
@@ -402,6 +405,69 @@ describe.skipIf(!dockerAvailable)('session_sandboxes anchor guard — real Postg
     });
   });
 
+  // `metadata` is NULLABLE free-form jsonb in production. The trigger must not
+  // raise on ANY value a caller can send — the migration header promises exactly
+  // that, and `- 'key'` on a jsonb SCALAR raises 22023 while `|| object` on a
+  // jsonb ARRAY appends instead of setting a key, silently swallowing the witness.
+  describe('metadata is not guaranteed to be an object', () => {
+    for (const [label, value] of [
+      ['a jsonb null scalar', `'null'::jsonb`],
+      ['a jsonb string scalar', `'"x"'::jsonb`],
+      ['a jsonb number scalar', `'7'::jsonb`],
+      ['a jsonb array', `'[1,2]'::jsonb`],
+      ['SQL NULL', 'NULL'],
+    ] as const) {
+      test(`REGRESSION: ${label} never raises`, () => {
+        reseed('active');
+        const written = psql(
+          `\\set VERBOSITY verbose
+           UPDATE kortix.session_sandboxes SET metadata = ${value}
+            WHERE sandbox_id = '${BOX}';`,
+          true,
+        );
+
+        expect(written.exitCode).toBe(0);
+        expect(written.output).not.toContain('22023');
+      });
+    }
+
+    // A park -> resume must still re-anchor when the caller sent a non-object on
+    // the way through: the witness lives in the row, not in the caller's payload.
+    test('a non-object metadata cannot destroy the witness', () => {
+      reseed('active');
+      psql(`UPDATE kortix.session_sandboxes SET status = 'stopped' WHERE sandbox_id = '${BOX}'`);
+      const before = scalar(
+        `SELECT active_since FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`,
+      );
+      psql(`UPDATE kortix.session_sandboxes SET metadata = '[1,2]'::jsonb
+             WHERE sandbox_id = '${BOX}'`);
+      psql(`UPDATE kortix.session_sandboxes SET status = 'active' WHERE sandbox_id = '${BOX}'`);
+
+      expect(
+        scalar(`SELECT active_since > '${before}'::timestamptz
+                  FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`),
+      ).toBe('t');
+    });
+
+    // Nor forge one: a jsonb ARRAY whose elements include the key name makes the
+    // bare `?` containment operator answer true.
+    test('an array naming the witness key cannot forge one', () => {
+      reseed('active');
+      const before = scalar(
+        `SELECT active_since FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`,
+      );
+      psql(`UPDATE kortix.session_sandboxes
+               SET status = 'provisioning', metadata = '["stretchParkedAt"]'::jsonb
+             WHERE sandbox_id = '${BOX}'`);
+      psql(`UPDATE kortix.session_sandboxes SET status = 'active' WHERE sandbox_id = '${BOX}'`);
+
+      expect(
+        scalar(`SELECT active_since = '${before}'::timestamptz
+                  FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`),
+      ).toBe('t');
+    });
+  });
+
   describe('I3 — a status flip floors the deadline, never discards a live grant', () => {
     // ═══ THE GRANT-EATER ═══ markSandboxUsed's heal writes status='active' with
     // `WHERE deadline_at > now()` and states no deadline of its own. The first
@@ -448,8 +514,11 @@ describe.skipIf(!dockerAvailable)('session_sandboxes anchor guard — real Postg
     });
 
     // Carrying a live grant across a flip late in a stretch must not raise 23514
-    // and 500 a path whose whole job is to recover a box.
-    test('the trigger clamps its OWN floor under the cap instead of raising 23514', () => {
+    // and 500 a path whose whole job is to recover a box. (Since I4 the anchor is
+    // also refreshed on this path, so the clamp is belt-and-braces rather than
+    // the thing doing the work — what is asserted is the OUTCOME: no 23514, and
+    // the row still satisfies the cap.)
+    test('a flip at the very edge of the cap succeeds instead of raising 23514', () => {
       reseed('active', "interval '4 hours'");
       // Age the stretch to 23h55m by rebuilding the row with an old anchor: the
       // only writer that can set an old anchor is the INSERT branch, so park and
@@ -484,6 +553,88 @@ describe.skipIf(!dockerAvailable)('session_sandboxes anchor guard — real Postg
     // The CHECK must stay REACHABLE — it exists to catch a future writer that
     // computes a deadline past the cap, and a blanket clamp would hide exactly
     // that class of bug.
+    // I4. The one case where I2's witness requirement and I3's cap clamp combined
+    // into a row that goes 'active' ALREADY EXPIRED — so the reaper stops the box
+    // the proxy just started and the user's first prompt is refused
+    // `sandbox_run_cap_reached` for a session that never ran 24 hours.
+    test('REGRESSION: an UNWITNESSED park with a stale anchor still resumes LIVE', () => {
+      reseed('active');
+      // Park from `provisioning` with the external box intact — a real transition
+      // (session-sandbox.ts, preserveEstablishedRuntime) that mints no witness.
+      psql(
+        `UPDATE kortix.session_sandboxes SET status = 'provisioning' WHERE sandbox_id = '${BOX}'`,
+      );
+      psql(`UPDATE kortix.session_sandboxes SET status = 'stopped' WHERE sandbox_id = '${BOX}'`);
+      // 25 hours pass while the row sits parked. Constructing "time passed" is the
+      // only thing done with the trigger off; the resume below runs with it live.
+      psql(`
+        ALTER TABLE kortix.session_sandboxes DISABLE TRIGGER trg_session_sandboxes_anchor_guard;
+        UPDATE kortix.session_sandboxes
+           SET active_since = now() - interval '25 hours',
+               deadline_at  = now() - interval '25 hours'
+         WHERE sandbox_id = '${BOX}';
+        ALTER TABLE kortix.session_sandboxes ENABLE TRIGGER trg_session_sandboxes_anchor_guard;
+      `);
+      expect(
+        scalar(`SELECT metadata ? 'stretchParkedAt'
+                  FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`),
+      ).toBe('f');
+
+      // Exactly what resumeStoppedSandbox writes: status, updated_at, metadata.
+      // Never deadline_at.
+      psql(`UPDATE kortix.session_sandboxes
+               SET status = 'active', updated_at = now(), metadata = metadata
+             WHERE sandbox_id = '${BOX}'`);
+
+      expect(
+        scalar(`SELECT deadline_at > now()
+                  FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`),
+      ).toBe('t');
+      expect(
+        scalar(`SELECT deadline_at BETWEEN now() + interval '19 minutes'
+                                      AND now() + interval '21 minutes'
+                  FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`),
+      ).toBe('t');
+    });
+
+    // The same row, one step further: the grant the API would then issue must
+    // actually land in the future, because that RETURNING is what decides
+    // 'granted' vs 'at_cap' (and therefore whether the prompt is refused).
+    test('REGRESSION: a turn grant on that resumed row reports live, not at_cap', () => {
+      const live = psql(
+        `UPDATE kortix.session_sandboxes s
+            SET deadline_at = LEAST(
+                  s.active_since + make_interval(secs => 86400),
+                  GREATEST(s.deadline_at, now() + make_interval(secs => 14400)))
+          WHERE s.sandbox_id = '${BOX}' AND s.status IN ('active', 'provisioning')
+         RETURNING (s.deadline_at > now()) AS live`,
+        false,
+        ['-t', '-A'],
+      ).output;
+
+      expect(live).toContain('t');
+      expect(live).not.toContain('f');
+    });
+
+    // I4 must not become a general re-anchor: churn INSIDE the cap still buys
+    // nothing, which is the whole of I2.
+    test('I4 does not reopen I2 — churn inside the cap still buys no re-anchor', () => {
+      reseed('active');
+      psql(`
+        ALTER TABLE kortix.session_sandboxes DISABLE TRIGGER trg_session_sandboxes_anchor_guard;
+        UPDATE kortix.session_sandboxes SET active_since = now() - interval '12 hours'
+         WHERE sandbox_id = '${BOX}';
+        ALTER TABLE kortix.session_sandboxes ENABLE TRIGGER trg_session_sandboxes_anchor_guard;
+        UPDATE kortix.session_sandboxes SET status = 'provisioning' WHERE sandbox_id = '${BOX}';
+        UPDATE kortix.session_sandboxes SET status = 'active'       WHERE sandbox_id = '${BOX}';
+      `);
+
+      expect(
+        scalar(`SELECT now() - active_since > interval '11 hours'
+                  FROM kortix.session_sandboxes WHERE sandbox_id = '${BOX}'`),
+      ).toBe('t');
+    });
+
     test('a caller stating a deadline past the cap still gets 23514', () => {
       reseed('active');
       const rejected = psql(

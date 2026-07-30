@@ -535,3 +535,136 @@ describe('ACP to Kortix session projection', () => {
     expect(state.messages[1]?.info.id).toBe('msg_assistant_2');
   });
 });
+
+describe('ACP turn liveness', () => {
+  function prompt(projection: AcpProjection, id: string, text: string) {
+    return applyAcpEnvelope(projection, {
+      jsonrpc: '2.0',
+      id,
+      method: 'session/prompt',
+      params: { sessionId: 'ses_1', prompt: [{ type: 'text', text }] },
+    });
+  }
+
+  function response(projection: AcpProjection, id: string, result: Record<string, unknown>) {
+    return applyAcpEnvelope(projection, { jsonrpc: '2.0', id, result });
+  }
+
+  test('history replayed without a terminal prompt response settles the turn', () => {
+    let state = createAcpProjection('ses_1');
+    state = update(state, 'user_message_chunk', {
+      content: { type: 'text', text: 'onboard me' },
+    });
+    state = update(state, 'agent_thought_chunk', {
+      content: { type: 'text', text: 'reading the repo' },
+    });
+    state = update(state, 'tool_call', {
+      toolCallId: 'call_1',
+      title: 'read',
+      kind: 'read',
+      status: 'pending',
+    });
+    state = update(state, 'tool_call_update', {
+      toolCallId: 'call_1',
+      status: 'completed',
+      rawOutput: { output: 'ok' },
+    });
+    state = update(state, 'agent_message_chunk', {
+      content: { type: 'text', text: 'here is the summary' },
+    });
+
+    expect(state.status).toEqual({ type: 'idle' });
+    expect(state.pendingPrompts).toEqual([]);
+  });
+
+  test('a completed turn re-emitted as fresh session/update history stays settled', () => {
+    let state = createAcpProjection('ses_1');
+    state = prompt(state, '1785365003374', 'onboard me');
+    state = update(state, 'agent_message_chunk', {
+      content: { type: 'text', text: 'here is the summary' },
+    });
+    state = response(state, '1785365003374', {
+      stopReason: 'end_turn',
+      usage: { inputTokens: 1670, outputTokens: 241 },
+    });
+
+    expect(state.status).toEqual({ type: 'idle' });
+
+    state = update(state, 'user_message_chunk', {
+      content: { type: 'text', text: 'onboard me' },
+    });
+    state = update(state, 'agent_thought_chunk', {
+      content: { type: 'text', text: 'reading the repo' },
+    });
+    state = update(state, 'agent_message_chunk', {
+      content: { type: 'text', text: 'here is the summary' },
+    });
+
+    expect(state.status).toEqual({ type: 'idle' });
+    expect(state.pendingPrompts).toEqual([]);
+  });
+
+  test('an unanswered session/prompt marks the turn active until its response arrives', () => {
+    let state = prompt(createAcpProjection('ses_1'), 'prompt-1', 'build the deck');
+
+    expect(state.status).toEqual({ type: 'busy' });
+    expect(state.pendingPrompts).toEqual(['prompt-1']);
+
+    state = update(state, 'agent_message_chunk', {
+      content: { type: 'text', text: 'working' },
+    });
+
+    expect(state.status).toEqual({ type: 'busy' });
+
+    state = response(state, 'prompt-1', { stopReason: 'end_turn' });
+
+    expect(state.status).toEqual({ type: 'idle' });
+    expect(state.pendingPrompts).toEqual([]);
+  });
+
+  test('a prompt that never answered settles when a client re-attaches to the runtime', () => {
+    let state = prompt(createAcpProjection('ses_1'), 'prompt-1', 'build the deck');
+    state = update(state, 'agent_thought_chunk', {
+      content: { type: 'text', text: 'thinking' },
+    });
+
+    expect(state.status).toEqual({ type: 'busy' });
+
+    state = applyAcpEnvelope(state, {
+      jsonrpc: '2.0',
+      id: 'init-1',
+      method: 'initialize',
+      params: { protocolVersion: 1 },
+    });
+
+    expect(state.status).toEqual({ type: 'idle' });
+    expect(state.pendingPrompts).toEqual([]);
+  });
+
+  test('a prompt rejected with a JSON-RPC error settles the turn', () => {
+    let state = prompt(createAcpProjection('ses_1'), 'prompt-1', 'build the deck');
+    state = applyAcpEnvelope(state, {
+      jsonrpc: '2.0',
+      id: 'prompt-1',
+      error: { code: -32603, message: 'harness crashed' },
+    });
+
+    expect(state.status).toEqual({ type: 'idle' });
+    expect(state.pendingPrompts).toEqual([]);
+  });
+
+  test('two overlapping prompts stay active until both answer', () => {
+    let state = prompt(createAcpProjection('ses_1'), 'prompt-1', 'first');
+    state = prompt(state, 'prompt-2', 'second');
+
+    expect(state.pendingPrompts).toEqual(['prompt-1', 'prompt-2']);
+
+    state = response(state, 'prompt-1', { stopReason: 'end_turn' });
+
+    expect(state.status).toEqual({ type: 'busy' });
+
+    state = response(state, 'prompt-2', { stopReason: 'end_turn' });
+
+    expect(state.status).toEqual({ type: 'idle' });
+  });
+});

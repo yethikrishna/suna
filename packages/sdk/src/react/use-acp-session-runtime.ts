@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 
 import {
   type AcpContentBlock,
@@ -24,6 +24,7 @@ const EMPTY_SNAPSHOT: AcpSessionControllerSnapshot = {
   projection: createAcpProjection(''),
   configOptions: [],
   rewind: null,
+  modelNotice: null,
 };
 const noopSubscribe = () => () => {};
 
@@ -43,7 +44,48 @@ type AcpSessionRuntimeControllerInput = {
   runtimeHarness: SessionRuntimeHarness | null;
   nativeAgent?: string | null;
   legacySessionId?: string | null;
+  /**
+   * Report the harness-native session id the platform now stores for this
+   * session, or `null` when a conflict proves it stores one this browser has
+   * not read yet.
+   *
+   * A caller uses it to correct its own copy of `acpSessionId` — otherwise the
+   * copy that said "no harness session yet" stays stale for the whole tab, and
+   * every later controller for this session mints ANOTHER throwaway harness
+   * conversation before adopting the stored one.
+   */
+  onAcpIdentitySettled?: (acpSessionId: string | null) => void;
+  /**
+   * The platform/server default model, read only when a requested model is
+   * rejected. A getter so learning it never rebuilds the controller (which would
+   * close the live stream) — see `AcpSessionControllerOptions`.
+   */
+  getServerDefaultModel?: () => string | null | undefined;
 };
+
+/** One session's write-once harness-native identity, as this hook knows it. */
+export interface AcpRuntimeIdentity {
+  sessionId: string;
+  acpSessionId: string | null;
+}
+
+/**
+ * Fold an incoming `(sessionId, acpSessionId)` pair into the known identity.
+ *
+ * The harness-native id is write-once per Kortix session, so a `null` from a
+ * momentarily-stale read must not erase a known id — but it must NEVER carry
+ * across sessions: reusing another session's harness conversation is the worst
+ * failure this layer has. Returns `current` unchanged when nothing moved, so a
+ * caller can use reference equality to decide whether anything must rebuild.
+ */
+export function nextAcpIdentity(
+  current: AcpRuntimeIdentity,
+  incoming: AcpRuntimeIdentity,
+): AcpRuntimeIdentity {
+  if (current.sessionId !== incoming.sessionId) return incoming;
+  if (!incoming.acpSessionId || incoming.acpSessionId === current.acpSessionId) return current;
+  return incoming;
+}
 
 export function createAcpSessionRuntimeController(
   input: AcpSessionRuntimeControllerInput,
@@ -63,7 +105,9 @@ export function createAcpSessionRuntimeController(
       : null;
   }
   if (!input.runtimeHarness || !input.acpServerId) return null;
+  const getServerDefaultModel = input.getServerDefaultModel;
   return factory({
+    ...(getServerDefaultModel ? { getServerDefaultModel } : {}),
     endpoint: buildProjectAcpEndpoint(
       platformConfig().backendUrl,
       input.projectId,
@@ -75,12 +119,28 @@ export function createAcpSessionRuntimeController(
     acpSessionId: input.acpSessionId,
     runtimeHarness: input.runtimeHarness,
     nativeAgent: input.nativeAgent,
+    // Return the stored id so the controller adopts the platform's answer. A
+    // 409 conflict propagates unchanged: its body carries the winning
+    // `acp_session_id`, which the controller reads and adopts.
     persistAcpSessionId: async (acpSessionId) => {
-      await persistProjectSessionAcpIdentity(input.projectId, input.sessionId, {
-        acp_server_id: input.acpServerId as string,
-        runtime_harness: input.runtimeHarness as SessionRuntimeHarness,
-        acp_session_id: acpSessionId,
-      });
+      let identity: Awaited<ReturnType<typeof persistProjectSessionAcpIdentity>>;
+      try {
+        identity = await persistProjectSessionAcpIdentity(input.projectId, input.sessionId, {
+          acp_server_id: input.acpServerId as string,
+          runtime_harness: input.runtimeHarness as SessionRuntimeHarness,
+          acp_session_id: acpSessionId,
+        });
+      } catch (error) {
+        // The claim lost. The platform already stores an id, and the controller
+        // reads the winner off this error and adopts it — but this browser's
+        // copy of `acpSessionId` is now provably stale, so tell the caller to
+        // re-read it rather than mint again on the next mount.
+        input.onAcpIdentitySettled?.(null);
+        throw error;
+      }
+      const settled = identity?.acp_session_id ?? acpSessionId;
+      input.onAcpIdentitySettled?.(settled);
+      return settled;
     },
   });
 }
@@ -97,13 +157,55 @@ export function useAcpSessionRuntime(input: {
   nativeAgent?: string | null;
   /** Existing ACP sessions without immutable multi-harness metadata. */
   legacySessionId?: string | null;
+  /** Correct the caller's copy of `acpSessionId` once the platform settles it. */
+  onAcpIdentitySettled?: (acpSessionId: string | null) => void;
+  /** Wire model id of the platform/server default, for model-not-found recovery. */
+  serverDefaultModel?: string | null;
   enabled: boolean;
 }) {
+  // Read the write-once harness-native id through a ref, and keep it OUT of the
+  // memo below. Two things follow, and both are required:
+  //
+  // 1. LEARNING the id must not rebuild the controller. The id arrives late for
+  //    a session this browser just minted (the caller writes it back through
+  //    `onAcpIdentitySettled`), and a rebuild closes the live stream — mid-turn.
+  // 2. A genuine rebuild (remount, new runtime url) must still use the FRESHEST
+  //    known id, so it calls `session/load` and never mints a second harness
+  //    conversation that the platform then has to reject with a 409.
+  //
+  // Writing a ref during render is safe here only because the fold is monotone
+  // and derived purely from props: a render React discards can only write the
+  // same immutable id (or nothing). `nextAcpIdentity` drops the id whenever the
+  // session changes, so a reused hook instance can never bind session B's
+  // controller to session A's harness conversation.
+  const identityRef = useRef<AcpRuntimeIdentity>({
+    sessionId: input.sessionId,
+    acpSessionId: input.acpSessionId,
+  });
+  identityRef.current = nextAcpIdentity(identityRef.current, {
+    sessionId: input.sessionId,
+    acpSessionId: input.acpSessionId,
+  });
+  const acpSessionId = identityRef.current.acpSessionId;
+  // Stable indirection so a caller may pass an inline callback without it
+  // becoming a reason to rebuild the controller.
+  const settledRef = useRef(input.onAcpIdentitySettled);
+  settledRef.current = input.onAcpIdentitySettled;
+  // Same reason as `settledRef`: the server default resolves after this
+  // controller is built, and rebuilding to learn it would close the live stream.
+  const serverDefaultModelRef = useRef(input.serverDefaultModel);
+  serverDefaultModelRef.current = input.serverDefaultModel;
+
   const controller = useMemo(
-    () => createAcpSessionRuntimeController(input),
+    () =>
+      createAcpSessionRuntimeController({
+        ...input,
+        acpSessionId,
+        onAcpIdentitySettled: (settled) => settledRef.current?.(settled),
+        getServerDefaultModel: () => serverDefaultModelRef.current,
+      }),
     [
       input.acpServerId,
-      input.acpSessionId,
       input.legacySessionId,
       input.nativeAgent,
       input.projectId,

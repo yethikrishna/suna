@@ -48,6 +48,18 @@ export interface ApiResponse<T = any> {
  */
 export const FEATURE_NOT_SUPPORTED_CODE = 'feature_not_supported';
 
+/**
+ * Stable error code the platform API returns (HTTP 409) when a second writer
+ * tries to claim a harness-native ACP session id after one is already stored.
+ * The response body carries the WINNING `acp_session_id`, and the ACP session
+ * controller adopts it — so the conflict is a handled, recovered outcome, not a
+ * failure. `makeRequest` therefore keeps it out of the global `onError` hook
+ * (which a host wires to its toast + Sentry path) while still returning the
+ * `ApiError` so the controller can read the winner off it. Must stay in sync
+ * with `apps/api/src/projects/lib/acp-session-identity.ts`.
+ */
+const ACP_SESSION_ID_CONFLICT_CODE = 'ACP_SESSION_ID_CONFLICT';
+
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -283,7 +295,13 @@ async function makeRequest<T = any>(
       const isFeatureNotSupported =
         response.status === 501 && errorData?.code === FEATURE_NOT_SUPPORTED_CODE;
 
-      if (showErrors && !isFeatureNotSupported) {
+      // Expected, self-healing ACP identity race — see
+      // ACP_SESSION_ID_CONFLICT_CODE. Only this typed code is silent; any other
+      // 409 is a genuine conflict and still reports.
+      const isAcpSessionIdConflict =
+        response.status === 409 && errorData?.code === ACP_SESSION_ID_CONFLICT_CODE;
+
+      if (showErrors && !isFeatureNotSupported && !isAcpSessionIdConflict) {
         platformConfig().onError?.(error, errorContext);
       }
 

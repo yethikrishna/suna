@@ -2,12 +2,12 @@
 
 import { useTranslations } from 'next-intl';
 
-import { AlertCircle, Loader2, CreditCard, Zap } from 'lucide-react';
+import { AlertCircle, Info, Loader2, CreditCard, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { InfoBanner } from '@/components/ui/info-banner';
 import { useAccountSettingsModalStore } from '@/stores/account-settings-modal-store';
-import type { KortixSendError } from '@kortix/sdk/react';
+import type { AcpModelNotice, KortixSendError } from '@kortix/sdk/react';
 
 // ============================================================================
 // Abort detection — user-initiated stops get a lowkey treatment
@@ -255,6 +255,41 @@ export function TurnErrorDisplay({ errorText, errorDetails, error, className }: 
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * An unavailable model, explained inline.
+ *
+ * This is the non-fatal half of the model-not-found fix. The harness rejecting
+ * `session/set_config_option` used to reach the page as a runtime error, which
+ * replaced the entire session with a full-page "OpenCode failed to load" card
+ * and a Restart button — for a session that was healthy and a condition the
+ * runtime had already recovered from. It belongs here instead: same inline card
+ * shape as `TurnErrorDisplay`, muted tone, no action, sitting under the
+ * transcript with the composer still live above it.
+ */
+export function SessionModelNotice({
+  notice,
+  className,
+}: {
+  notice: AcpModelNotice | null | undefined;
+  className?: string;
+}) {
+  if (!notice) return null;
+  return (
+    <div
+      data-session-model-notice={notice.reason}
+      className={cn(
+        'flex items-start gap-2 px-3 py-2 rounded-2xl border',
+        'bg-muted/40 dark:bg-muted/30',
+        'border-border/60',
+        className,
+      )}
+    >
+      <Info className="size-3.5 mt-0.5 flex-shrink-0 text-muted-foreground/70" />
+      <p className="text-muted-foreground min-w-0 flex-1 break-words text-xs">{notice.message}</p>
     </div>
   );
 }

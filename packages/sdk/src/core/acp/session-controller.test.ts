@@ -1,7 +1,25 @@
 import { describe, expect, test } from 'bun:test';
 
-import { type AcpSessionClient, createAcpSessionController } from './session-controller';
-import { type AcpEnvelope, type AcpStreamEvent, AcpTransportError } from './types';
+import {
+  type AcpSessionClient,
+  type AcpSessionControllerOptions,
+  createAcpSessionController,
+} from './session-controller';
+import { type AcpEnvelope, AcpRpcError, type AcpStreamEvent, AcpTransportError } from './types';
+
+/**
+ * Compile-time proof that widening `persistAcpSessionId` to
+ * `Promise<string | void>` is not a breaking change: an already-published
+ * `Promise<void>` implementation still satisfies the option.
+ */
+function legacyVoidPersist(
+  persisted: string[],
+): AcpSessionControllerOptions['persistAcpSessionId'] {
+  const claim = async (sessionId: string): Promise<void> => {
+    persisted.push(sessionId);
+  };
+  return claim;
+}
 
 function harness() {
   const calls: Array<{ method: string; args: unknown[] }> = [];
@@ -233,6 +251,180 @@ describe('ACP session controller', () => {
       method: 'prompt',
       args: ['codex-native-1', [{ type: 'text', text: 'ping' }]],
     });
+  });
+
+  test("adopts the winner's harness session when the identity claim conflicts", async () => {
+    const h = harness();
+    Object.assign(h.client, {
+      async initialize() {
+        h.calls.push({ method: 'initialize', args: [] });
+        return { protocolVersion: 1 };
+      },
+      async newSession(input: { cwd: string; mcpServers?: unknown[] }) {
+        h.calls.push({ method: 'newSession', args: [input] });
+        return { sessionId: 'B' };
+      },
+    });
+    const controller = createAcpSessionController({
+      sessionId: 'project-session-1',
+      acpServerId: 'project-session-1',
+      acpSessionId: null,
+      runtimeHarness: 'codex',
+      persistAcpSessionId: async () => {
+        throw Object.assign(
+          new Error('acp_session_id is immutable after the first successful session/new response'),
+          {
+            status: 409,
+            details: { code: 'ACP_SESSION_ID_CONFLICT', acp_session_id: 'A' },
+          },
+        );
+      },
+      client: h.client,
+    } as never);
+
+    await controller.connect();
+
+    expect({
+      ready: controller.getSnapshot().ready,
+      connection: controller.getSnapshot().connection,
+      error: controller.getSnapshot().error,
+    }).toEqual({ ready: true, connection: 'open', error: null });
+    expect(h.calls.filter((call) => call.method === 'loadSession')).toEqual([
+      { method: 'loadSession', args: [{ sessionId: 'A', cwd: '/workspace' }] },
+    ]);
+
+    await controller.send([{ type: 'text', text: 'ping' }]);
+
+    expect(h.calls).toContainEqual({
+      method: 'prompt',
+      args: ['A', [{ type: 'text', text: 'ping' }]],
+    });
+  });
+
+  test('keeps the created harness session when a legacy claim resolves with no id', async () => {
+    const h = harness();
+    Object.assign(h.client, {
+      async initialize() {
+        return { protocolVersion: 1 };
+      },
+      async newSession(input: { cwd: string; mcpServers?: unknown[] }) {
+        h.calls.push({ method: 'newSession', args: [input] });
+        return { sessionId: 'B' };
+      },
+    });
+    const persisted: string[] = [];
+    const controller = createAcpSessionController({
+      sessionId: 'project-session-1',
+      acpServerId: 'project-session-1',
+      acpSessionId: null,
+      runtimeHarness: 'codex',
+      persistAcpSessionId: legacyVoidPersist(persisted),
+      client: h.client,
+    } as never);
+
+    await controller.connect();
+    await controller.send([{ type: 'text', text: 'ping' }]);
+
+    expect(persisted).toEqual(['B']);
+    expect(controller.getSnapshot().ready).toBe(true);
+    expect(h.calls.filter((call) => call.method === 'loadSession')).toEqual([]);
+    expect(h.calls).toContainEqual({
+      method: 'prompt',
+      args: ['B', [{ type: 'text', text: 'ping' }]],
+    });
+  });
+
+  test('adopts the harness session the identity claim stored on success', async () => {
+    const h = harness();
+    Object.assign(h.client, {
+      async initialize() {
+        h.calls.push({ method: 'initialize', args: [] });
+        return { protocolVersion: 1 };
+      },
+      async newSession(input: { cwd: string; mcpServers?: unknown[] }) {
+        h.calls.push({ method: 'newSession', args: [input] });
+        return { sessionId: 'B' };
+      },
+    });
+    const controller = createAcpSessionController({
+      sessionId: 'project-session-1',
+      acpServerId: 'project-session-1',
+      acpSessionId: null,
+      runtimeHarness: 'codex',
+      persistAcpSessionId: async () => 'A',
+      client: h.client,
+    } as never);
+
+    await controller.connect();
+
+    expect(controller.getSnapshot().ready).toBe(true);
+    expect(h.calls.filter((call) => call.method === 'loadSession')).toEqual([
+      { method: 'loadSession', args: [{ sessionId: 'A', cwd: '/workspace' }] },
+    ]);
+  });
+
+  test('surfaces a conflict that carries no authoritative harness session id', async () => {
+    const h = harness();
+    const conflict = Object.assign(
+      new Error('acp_session_id is immutable after the first successful session/new response'),
+      { status: 409, details: { code: 'ACP_SESSION_ID_CONFLICT' } },
+    );
+    Object.assign(h.client, {
+      async initialize() {
+        return { protocolVersion: 1 };
+      },
+      async newSession() {
+        return { sessionId: 'B' };
+      },
+    });
+    const controller = createAcpSessionController({
+      sessionId: 'project-session-1',
+      acpServerId: 'project-session-1',
+      acpSessionId: null,
+      runtimeHarness: 'codex',
+      persistAcpSessionId: async () => {
+        throw conflict;
+      },
+      client: h.client,
+    } as never);
+
+    await expect(controller.connect()).rejects.toBe(conflict);
+    expect({
+      ready: controller.getSnapshot().ready,
+      connection: controller.getSnapshot().connection,
+      error: controller.getSnapshot().error,
+    }).toEqual({ ready: false, connection: 'error', error: conflict });
+    expect(h.calls.filter((call) => call.method === 'loadSession')).toEqual([]);
+  });
+
+  test('refuses a conflict that names the ACP process id as the harness session', async () => {
+    const h = harness();
+    const conflict = Object.assign(new Error('acp_session_id is immutable'), {
+      status: 409,
+      details: { code: 'ACP_SESSION_ID_CONFLICT', acp_session_id: 'project-session-1' },
+    });
+    Object.assign(h.client, {
+      async initialize() {
+        return { protocolVersion: 1 };
+      },
+      async newSession() {
+        return { sessionId: 'B' };
+      },
+    });
+    const controller = createAcpSessionController({
+      sessionId: 'project-session-1',
+      acpServerId: 'project-session-1',
+      acpSessionId: null,
+      runtimeHarness: 'codex',
+      persistAcpSessionId: async () => {
+        throw conflict;
+      },
+      client: h.client,
+    } as never);
+
+    await expect(controller.connect()).rejects.toBe(conflict);
+    expect(controller.getSnapshot().connection).toBe('error');
+    expect(h.calls.filter((call) => call.method === 'loadSession')).toEqual([]);
   });
 
   test('managed sessions use the immutable native agent for prompts and commands', async () => {
@@ -1210,6 +1402,195 @@ describe('ACP session controller', () => {
     expect(controller.getSnapshot()).toMatchObject({
       sending: false,
       error: { message: 'ACP prompt failed' },
+    });
+  });
+});
+
+function modelNotFoundHarness(options: {
+  advertised: string[];
+  currentValue: string;
+  accepts?: (value: string) => boolean;
+}) {
+  const h = harness();
+  h.client.loadSession = async (input) => {
+    h.calls.push({ method: 'loadSession', args: [input] });
+    return {
+      sessionId: input.sessionId,
+      configOptions: [
+        {
+          id: 'model',
+          name: 'Model',
+          type: 'select',
+          category: 'model',
+          currentValue: options.currentValue,
+          options: options.advertised.map((value) => ({ name: value, value })),
+        },
+        { id: 'mode', currentValue: 'build', options: [{ name: 'build', value: 'build' }] },
+      ],
+    };
+  };
+  h.client.setSessionConfigOption = async (sessionId, configId, value) => {
+    h.calls.push({ method: 'setSessionConfigOption', args: [sessionId, configId, value] });
+    if (configId !== 'model') return {};
+    const accepted = options.accepts?.(String(value)) ?? false;
+    if (accepted) return {};
+    throw new AcpRpcError(`Invalid params: model not found: ${String(value)}`, -32602, {
+      modelId: String(value),
+      providerId: String(value).split('/')[0],
+    });
+  };
+  return h;
+}
+
+function modelSetCalls(calls: Array<{ method: string; args: unknown[] }>): unknown[] {
+  return calls
+    .filter((call) => call.method === 'setSessionConfigOption' && call.args[1] === 'model')
+    .map((call) => call.args[2]);
+}
+
+describe('ACP session controller — an unresolvable model is recoverable, never fatal', () => {
+  test('keeps the session open and delivers the prompt when the model is not found', async () => {
+    const h = modelNotFoundHarness({
+      advertised: ['anthropic/claude-opus-4-8', 'opencode/big-pickle'],
+      currentValue: 'opencode/big-pickle',
+    });
+    const controller = createAcpSessionController({ sessionId: 'ses_1', client: h.client });
+    await controller.connect();
+
+    await controller.send([{ type: 'text', text: 'ping' }], {
+      model: 'kortix/anthropic/claude-sonnet-5',
+    });
+
+    expect(controller.getSnapshot()).toMatchObject({
+      ready: true,
+      connection: 'open',
+      error: null,
+    });
+    expect(h.calls.filter((call) => call.method === 'prompt')).toHaveLength(1);
+    expect(h.calls.filter((call) => call.method === 'loadSession')).toHaveLength(1);
+  });
+
+  test('surfaces the unavailable model as a non-fatal notice naming what runs instead', async () => {
+    const h = modelNotFoundHarness({
+      advertised: ['kortix/deepseek-v4-flash', 'kortix/glm-5.2'],
+      currentValue: 'kortix/glm-5.2',
+      accepts: (value) => value === 'kortix/glm-5.2',
+    });
+    const controller = createAcpSessionController({ sessionId: 'ses_1', client: h.client });
+    await controller.connect();
+
+    await controller.send([{ type: 'text', text: 'ping' }], {
+      model: 'kortix/anthropic/claude-sonnet-5',
+    });
+
+    expect(controller.getSnapshot().modelNotice).toMatchObject({
+      reason: 'model-not-found',
+      requestedModel: 'kortix/anthropic/claude-sonnet-5',
+      activeModel: 'kortix/glm-5.2',
+      applied: true,
+    });
+    expect(controller.getSnapshot().error).toBeNull();
+  });
+
+  test('falls back to a harness-advertised option, never to a hardcoded id', async () => {
+    const h = modelNotFoundHarness({
+      advertised: ['kortix/deepseek-v4-flash'],
+      currentValue: 'kortix/deepseek-v4-flash',
+      accepts: (value) => value === 'kortix/deepseek-v4-flash',
+    });
+    const controller = createAcpSessionController({ sessionId: 'ses_1', client: h.client });
+    await controller.connect();
+
+    await controller.send([{ type: 'text', text: 'ping' }], { model: 'kortix/glm-5.2' });
+
+    expect(modelSetCalls(h.calls)).toEqual(['kortix/glm-5.2', 'kortix/deepseek-v4-flash']);
+    expect(controller.getSnapshot().modelNotice?.activeModel).toBe('kortix/deepseek-v4-flash');
+  });
+
+  test('prefers the harness-advertised server default over the first advertised option', async () => {
+    const h = modelNotFoundHarness({
+      advertised: ['kortix/deepseek-v4-flash', 'kortix/glm-5.2'],
+      currentValue: 'kortix/gone-9.9',
+      accepts: (value) => value === 'kortix/glm-5.2',
+    });
+    const controller = createAcpSessionController({
+      sessionId: 'ses_1',
+      client: h.client,
+      getServerDefaultModel: () => 'kortix/glm-5.2',
+    });
+    await controller.connect();
+
+    await controller.send([{ type: 'text', text: 'ping' }], { model: 'kortix/claude-opus-4.8' });
+
+    expect(modelSetCalls(h.calls)).toEqual(['kortix/claude-opus-4.8', 'kortix/glm-5.2']);
+  });
+
+  test('never switches a managed kortix model onto a BYOK id to keep the session alive', async () => {
+    const h = modelNotFoundHarness({
+      advertised: ['anthropic/claude-opus-4-8', 'anthropic/claude-sonnet-5'],
+      currentValue: 'anthropic/claude-opus-4-8',
+    });
+    const controller = createAcpSessionController({ sessionId: 'ses_1', client: h.client });
+    await controller.connect();
+
+    await controller.send([{ type: 'text', text: 'ping' }], { model: 'kortix/glm-5.2' });
+
+    expect(modelSetCalls(h.calls)).toEqual(['kortix/glm-5.2']);
+    expect(controller.getSnapshot().modelNotice).toMatchObject({
+      applied: false,
+      activeModel: 'anthropic/claude-opus-4-8',
+    });
+    expect(h.calls.filter((call) => call.method === 'prompt')).toHaveLength(1);
+  });
+
+  test('never retries a model the harness already rejected', async () => {
+    const h = modelNotFoundHarness({
+      advertised: ['anthropic/claude-opus-4-8'],
+      currentValue: 'anthropic/claude-opus-4-8',
+    });
+    const controller = createAcpSessionController({ sessionId: 'ses_1', client: h.client });
+    await controller.connect();
+
+    await controller.send([{ type: 'text', text: 'one' }], { model: 'kortix/glm-5.2' });
+    await controller.send([{ type: 'text', text: 'two' }], { model: 'kortix/glm-5.2' });
+    await controller.send([{ type: 'text', text: 'three' }], { model: 'kortix/glm-5.2' });
+
+    expect(modelSetCalls(h.calls)).toEqual(['kortix/glm-5.2']);
+    expect(h.calls.filter((call) => call.method === 'prompt')).toHaveLength(3);
+    expect(h.calls.filter((call) => call.method === 'loadSession')).toHaveLength(1);
+    expect(h.calls.filter((call) => call.method === 'connect')).toHaveLength(1);
+  });
+
+  test('clears the notice once a model the harness accepts is selected', async () => {
+    const h = modelNotFoundHarness({
+      advertised: ['kortix/glm-5.2'],
+      currentValue: 'kortix/glm-5.2',
+      accepts: (value) => value === 'kortix/glm-5.2',
+    });
+    const controller = createAcpSessionController({ sessionId: 'ses_1', client: h.client });
+    await controller.connect();
+
+    await controller.send([{ type: 'text', text: 'one' }], { model: 'kortix/gone-9.9' });
+    expect(controller.getSnapshot().modelNotice).not.toBeNull();
+
+    await controller.send([{ type: 'text', text: 'two' }], { model: 'kortix/glm-5.2' });
+    expect(controller.getSnapshot().modelNotice).toBeNull();
+  });
+
+  test('a model rejection during connect never fails open()', async () => {
+    const h = modelNotFoundHarness({
+      advertised: ['kortix/glm-5.2'],
+      currentValue: 'kortix/glm-5.2',
+    });
+    const controller = createAcpSessionController({ sessionId: 'ses_1', client: h.client });
+
+    await controller.connect();
+
+    expect(controller.getSnapshot()).toMatchObject({
+      ready: true,
+      connection: 'open',
+      error: null,
+      modelNotice: null,
     });
   });
 });

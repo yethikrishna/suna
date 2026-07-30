@@ -7,6 +7,7 @@ import { isAbsolute, join } from 'node:path'
 import { createInterface } from 'node:readline'
 
 import { logger } from '../logger'
+import { resolveManagedOpencodeLaunchEnv } from '../opencode'
 import {
   mergeProjectEnv,
   type ProjectEnvStore,
@@ -284,6 +285,8 @@ export class AcpRuntime {
       requestTimeoutMs?: number
       initializeOnCreate?: boolean
       onStartupMark?: (label: string) => void
+      /** Overrides where the OpenCode harness's composed config is written. */
+      opencodeConfigPath?: string
     },
   ) {}
 
@@ -356,9 +359,19 @@ export class AcpRuntime {
       throw new Error(`unsupported ACP agent '${harness}'`)
     }
     const baseEnv = this.options.baseEnv ?? process.env
-    const env = this.options.projectEnv
+    const merged = this.options.projectEnv
       ? mergeProjectEnv(baseEnv, this.options.projectEnv)
       : baseEnv
+    // The OpenCode harness is the same binary the supervisor spawns for the
+    // legacy REST transport, so it needs that path's managed launch env — the
+    // synthetic `kortix` gateway provider above all. Without it OpenCode knows
+    // no `kortix/*` model and rejects every managed model the picker offers.
+    const env =
+      harness === 'opencode'
+        ? await resolveManagedOpencodeLaunchEnv(merged, {
+            configPath: this.options.opencodeConfigPath,
+          })
+        : merged
     const instance = new AcpRuntimeProcess(
       serverId,
       descriptor,

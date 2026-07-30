@@ -19,6 +19,7 @@ import {
   canMountSessionChat,
   canShowSessionChat,
   findInitialSessionPin,
+  resolveChatSessionId,
 } from '@/features/session/session-load-state';
 import { isAutoResuming, isSandboxResumable } from '@/features/session/session-resume';
 import { canPollSessionStart } from '@/features/session/session-start-gate';
@@ -620,7 +621,11 @@ function ActiveSessionChat({
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const rootSessionId = sessionState.opencodeSessionId;
+  // The id to mount the chat on comes from the SDK, which is the only layer that
+  // knows this session's transport: OpenCode REST pins an OpenCode session id,
+  // managed ACP never does. Deriving it here from `opencodeSessionId` is what
+  // left every healthy ACP session on an empty shell.
+  const runtimeMountId = sessionState.chatSessionId;
   const runtimeSessions = sessionState.runtimeSessions;
   const sessionsLoading = sessionState.runtimeSessionsLoading;
   const sessionsListed = sessionState.runtimeSessionsListed;
@@ -652,16 +657,20 @@ function ActiveSessionChat({
   const selectedSession = selectedOpenCodeSessionId
     ? runtimeSessions.find((session) => session.id === selectedOpenCodeSessionId)
     : null;
-  // Pin the first resolved root id so the chat keeps its identity if the live
+  // Pin the first resolved mount id so the chat keeps its identity if the live
   // value blips back to null mid-session. State, not a ref written during
   // render: this component is already keyed per session by the route, so there
   // is no cross-session reset to hand-roll, and a discarded render can no longer
   // leave a pin behind that the state it belongs to never saw.
-  const [pinnedRootSessionId, setPinnedRootSessionId] = useState<string | null>(null);
+  const [pinnedMountId, setPinnedMountId] = useState<string | null>(null);
   useEffect(() => {
-    if (!pinnedRootSessionId && rootSessionId) setPinnedRootSessionId(rootSessionId);
-  }, [pinnedRootSessionId, rootSessionId]);
-  const chatSessionId = selectedSession?.id ?? pinnedRootSessionId ?? rootSessionId ?? null;
+    if (!pinnedMountId && runtimeMountId) setPinnedMountId(runtimeMountId);
+  }, [pinnedMountId, runtimeMountId]);
+  const chatSessionId = resolveChatSessionId({
+    selectedSessionId: selectedSession?.id ?? null,
+    pinnedMountId,
+    runtimeMountId,
+  });
 
   // Migrate the home-composer prompt onto the canonical SDK start-stash. Every
   // producer (project-home composer, `useConfigureThread`, the instant shell)
@@ -806,7 +815,12 @@ function ActiveSessionChat({
           key={chatSessionId}
           sessionId={chatSessionId}
           projectId={projectId}
-          sessionState={chatSessionId === sessionState.opencodeSessionId ? sessionState : undefined}
+          // Hand the SDK state down only while the mounted id IS the runtime's
+          // own mount id. A legacy `?oc=` deep link mounts a DIFFERENT OpenCode
+          // session, which this state does not describe — that case falls back
+          // to SessionChat's own local sync. Comparing against
+          // `opencodeSessionId` instead starved every ACP session (null pin).
+          sessionState={chatSessionId === sessionState.chatSessionId ? sessionState : undefined}
         />
       </ClientErrorBoundary>
     </SessionLayout>

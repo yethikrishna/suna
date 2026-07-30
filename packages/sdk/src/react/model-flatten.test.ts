@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
 import { flattenModels } from './model-flatten';
+import { projectLlmCatalogToProviderList } from './provider-selection';
+import { hasUsableModel } from './use-model-store';
 import type { ProviderListResponse } from './use-opencode-sessions';
 
 // Regression coverage for the "every provider shows as Kortix" picker bug:
@@ -109,5 +111,45 @@ describe('flattenModels — gateway `provider` + `reasoning_options` pass-throug
       }),
     );
     expect(flat?.reasoningOptions).toEqual([{ type: 'budget_tokens', min: 1024 }]);
+  });
+});
+
+describe('the /model-picker payload decides usability end to end', () => {
+  // The literal shape GET /projects/:id/model-picker returns for a FREE-TIER
+  // account on a deployment with KORTIX_BILLING_INTERNAL_ENABLED off: the API
+  // serves and offers every managed model, and `PUT .../sessions/:id/model`
+  // accepts them (200, applied_live: true). The client used to recompute
+  // entitlement from the account's tier_key, decide nothing was usable, show
+  // "No model connected", and revert the pick.
+  const FREE_TIER_PICKER = {
+    models: {
+      'claude-sonnet-4.6': { name: 'Claude Sonnet 4.6', provider: 'kortix', enabled: true },
+      'glm-5.2': { name: 'GLM 5.2', provider: 'zhipuai', enabled: false },
+      'anthropic/claude-opus-4-8': {
+        name: 'Claude Opus 4.8',
+        provider: 'anthropic',
+        enabled: false,
+      },
+    },
+  } as unknown as Parameters<typeof projectLlmCatalogToProviderList>[0];
+
+  test('an offered managed model is usable for a free-tier account with no connected keys', () => {
+    const models = flattenModels(projectLlmCatalogToProviderList(FREE_TIER_PICKER));
+    expect(hasUsableModel(models, { freeTier: true, connectedProviderIds: new Set() })).toBe(true);
+  });
+
+  test('the offered set the picker renders matches what the server enabled', () => {
+    const models = flattenModels(projectLlmCatalogToProviderList(FREE_TIER_PICKER));
+    expect(models.filter((m) => m.enabled !== false).map((m) => m.modelID)).toEqual([
+      'claude-sonnet-4.6',
+    ]);
+  });
+
+  test('a picker that offers nothing still reports nothing usable', () => {
+    const nothing = {
+      models: { 'glm-5.2': { name: 'GLM 5.2', provider: 'zhipuai', enabled: false } },
+    } as unknown as Parameters<typeof projectLlmCatalogToProviderList>[0];
+    const models = flattenModels(projectLlmCatalogToProviderList(nothing));
+    expect(hasUsableModel(models, { freeTier: false })).toBe(false);
   });
 });

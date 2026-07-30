@@ -931,6 +931,11 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
        * Restarting the runtime is how the change takes effect, so an in-flight
        * turn ends. `applied_live` reports whether a running session took it now
        * or whether it applies at next start.
+       *
+       * Check `push_failed` before reporting success: it means a live push was
+       * REQUIRED and failed, so the model is stored while the running harness
+       * still answers from the old one. `!applied_live` alone cannot tell that
+       * apart from the benign "no sandbox to push to" case.
        */
       changeModel: async (model: string) => {
         const result = await P.setProjectSessionModel(projectId, sessionId, model);

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import { DEFAULT_MANAGED_MODEL_IDS, getManagedModel } from '@kortix/llm-catalog';
 
-import { pickerGroupId, pickerGroupLabel } from './model-grouping';
+import { pickerGroupId, pickerGroupLabel, pickerRowSubtitle } from './model-grouping';
 import type { FlatModel } from './session-chat-input';
 
 // Regression coverage for the "every provider shows as Kortix" picker bug.
@@ -15,6 +16,10 @@ import type { FlatModel } from './session-chat-input';
 // `provider` field the gateway now serves (never string-split when it's
 // present) for the grouping key, AND resolve the display label from
 // PROVIDER_LABELS keyed by that REAL id — never from the raw providerName.
+//
+// That `provider` preference applies to BYOK models ONLY. For a platform-managed
+// model `provider` is a BRAND mark, not a group key — see the invariant block
+// below, which is the rule that keeps all managed models in one Kortix group.
 function model(partial: Partial<FlatModel> & Pick<FlatModel, 'providerID' | 'modelID'>): FlatModel {
   return {
     providerName: 'Kortix',
@@ -43,14 +48,21 @@ describe('pickerGroupId', () => {
     expect(pickerGroupId(m)).toBe('kortix');
   });
 
-  test('a branded managed DeepSeek model groups under deepseek for its provider icon', () => {
+  // "Kortix" means MANAGED ON KORTIX CREDENTIALS, not "served by Kortix's own
+  // inference" — glm-5.2 runs on AsterLab and deepseek-v4-flash on OpenRouter,
+  // and both are credits-billed platform defaults. So a managed model's
+  // `provider` field (the picker BRAND mark, stamped from the catalog's
+  // `providerBrand` at apps/api/src/llm-gateway/models/catalog-models.ts:203)
+  // must never become its GROUP key — that split deepseek-v4-flash out into a
+  // one-row "DeepSeek" section while its three siblings sat under "Kortix".
+  test('a branded managed model still groups under kortix, brand mark notwithstanding', () => {
     const m = model({
       providerID: 'kortix',
       modelID: 'deepseek-v4-flash',
       provider: 'deepseek',
     });
-    expect(pickerGroupId(m)).toBe('deepseek');
-    expect(pickerGroupLabel(pickerGroupId(m), m)).toBe('DeepSeek');
+    expect(pickerGroupId(m)).toBe('kortix');
+    expect(pickerGroupLabel(pickerGroupId(m), m)).toBe('Kortix');
   });
 
   test('a codex/<id> model groups under its own `codex` provider, distinct from `openai`', () => {
@@ -59,8 +71,97 @@ describe('pickerGroupId', () => {
   });
 
   test('a non-gateway (native) provider model groups under its own providerID unchanged', () => {
-    const m = model({ providerID: 'anthropic', modelID: 'claude-opus-4-8', providerName: 'Anthropic' });
+    const m = model({
+      providerID: 'anthropic',
+      modelID: 'claude-opus-4-8',
+      providerName: 'Anthropic',
+    });
     expect(pickerGroupId(m)).toBe('anthropic');
+  });
+});
+
+// THE INVARIANT. Every platform-managed default is billed to Kortix credits, so
+// every one of them belongs to the single "Kortix" group — no exceptions, and
+// no matter what brand its catalog entry carries. This loops the REAL catalog
+// (not a fixture) and serves `provider` exactly the way the API does
+// (`providerBrand ?? 'kortix'`), so the day someone adds `providerBrand` to
+// another managed entry — `glm-5.2` is one line away, and
+// apps/api/src/llm-gateway/models/managed-models.test.ts:49,55 already uses
+// `providerBrand: 'zhipuai'` as its worked example — this test fails instead of
+// the picker quietly growing a one-row section.
+describe('managed models are ONE Kortix group — invariant over the whole catalog', () => {
+  test('the catalog has managed models to check', () => {
+    expect(DEFAULT_MANAGED_MODEL_IDS.length).toBeGreaterThan(0);
+  });
+
+  for (const modelID of DEFAULT_MANAGED_MODEL_IDS) {
+    const brand = getManagedModel(modelID)?.providerBrand;
+    test(`${modelID} (brand: ${brand ?? 'none'}) groups under kortix`, () => {
+      const m = model({ providerID: 'kortix', modelID, provider: brand ?? 'kortix' });
+      const groupID = pickerGroupId(m);
+      expect(groupID).toBe('kortix');
+      expect(pickerGroupLabel(groupID, m)).toBe('Kortix');
+    });
+  }
+
+  test('all managed models collapse to exactly one group id', () => {
+    const groupIDs = new Set(
+      DEFAULT_MANAGED_MODEL_IDS.map((modelID) =>
+        pickerGroupId(
+          model({
+            providerID: 'kortix',
+            modelID,
+            provider: getManagedModel(modelID)?.providerBrand ?? 'kortix',
+          }),
+        ),
+      ),
+    );
+    expect([...groupIDs]).toEqual(['kortix']);
+  });
+});
+
+// The same `providerBrand` field caused a SECOND, nastier symptom: with a
+// DeepSeek BYOK key connected, the "DeepSeek" group rendered two rows that were
+// character-for-character identical — same title ("DeepSeek V4 Flash") and same
+// subtitle ("deepseek-v4-flash") — differing only in price, because the group
+// prefix-strip at model-selector.tsx collapsed the BYOK row's
+// `deepseek/deepseek-v4-flash` down to the managed row's bare id. A user could
+// not tell which one spent credits. Grouping managed under `kortix` separates
+// them; this locks that no (group, title, subtitle) triple can repeat.
+describe('managed vs BYOK same-model collision', () => {
+  const managed = model({
+    providerID: 'kortix',
+    modelID: 'deepseek-v4-flash',
+    modelName: 'DeepSeek V4 Flash',
+    provider: 'deepseek',
+  });
+  const byok = model({
+    providerID: 'kortix',
+    modelID: 'deepseek/deepseek-v4-flash',
+    modelName: 'DeepSeek V4 Flash',
+    provider: 'deepseek',
+  });
+
+  test('the two rows do not land in the same group', () => {
+    expect(pickerGroupId(managed)).toBe('kortix');
+    expect(pickerGroupId(byok)).toBe('deepseek');
+    expect(pickerGroupId(managed)).not.toBe(pickerGroupId(byok));
+  });
+
+  test('no two rows share the same group + title + subtitle', () => {
+    const rows = [managed, byok].map((m) => {
+      const groupID = pickerGroupId(m);
+      return `${groupID}|${m.modelName}|${pickerRowSubtitle(groupID, m)}`;
+    });
+    expect(new Set(rows).size).toBe(rows.length);
+  });
+
+  test('the managed row keeps its bare id as the subtitle', () => {
+    expect(pickerRowSubtitle(pickerGroupId(managed), managed)).toBe('deepseek-v4-flash');
+  });
+
+  test('the BYOK row drops the redundant `deepseek/` prefix inside its own group', () => {
+    expect(pickerRowSubtitle(pickerGroupId(byok), byok)).toBe('deepseek-v4-flash');
   });
 });
 

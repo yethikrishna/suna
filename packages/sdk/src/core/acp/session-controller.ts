@@ -1,6 +1,14 @@
 import { messagesBeforeRewind } from '../session/rewind';
 import { buildAcpBridgeEndpoint } from '../session/runtime-transport';
 import { type AcpClient, createAcpClient } from './client';
+import {
+  type AcpModelNotice,
+  acpModelNotice,
+  advertisedCurrentModel,
+  advertisedModelOptions,
+  parseAcpModelNotFound,
+  selectAcpFallbackModel,
+} from './model-fallback';
 import { type AcpProjection, applyAcpEnvelope, createAcpProjection } from './projection';
 import type {
   AcpContentBlock,
@@ -16,6 +24,7 @@ import { AcpTransportError } from './types';
 
 const MAX_CONFIG_RESTART_RETRIES = 3;
 const ACP_PROMPT_QUIET_PERIOD_MS = 500;
+const ACP_SESSION_ID_CONFLICT_CODE = 'ACP_SESSION_ID_CONFLICT';
 
 class AcpRuntimeRestartError extends Error {
   constructor() {
@@ -64,6 +73,12 @@ export interface AcpSessionControllerSnapshot {
   projection: AcpProjection;
   configOptions: Array<Record<string, unknown>>;
   rewind: { messageId: string } | null;
+  /**
+   * A model this session could not select, and what runs instead. Non-fatal by
+   * construction: `error` stays `null`, `ready` stays `true`, and the host
+   * renders this inline rather than replacing the chat surface.
+   */
+  modelNotice: AcpModelNotice | null;
 }
 
 export interface AcpSessionControllerOptions {
@@ -76,8 +91,17 @@ export interface AcpSessionControllerOptions {
   runtimeHarness?: SessionRuntimeHarness;
   /** Immutable harness-native agent or mode selected when the session was created. */
   nativeAgent?: string | null;
-  /** Persist a new harness-native id before the controller accepts prompts. */
-  persistAcpSessionId?(sessionId: string): Promise<void>;
+  /**
+   * Persist a new harness-native id before the controller accepts prompts.
+   * Resolve with the id the platform actually stored — the controller adopts it
+   * when it differs from the one this controller minted.
+   *
+   * The `void` arm is deliberate: it keeps every already published
+   * `Promise<void>` implementation assignable. `Promise<undefined>` would not —
+   * `undefined` is assignable to `void`, never the reverse.
+   */
+  // biome-ignore lint/suspicious/noConfusingVoidType: void keeps published Promise<void> implementations assignable
+  persistAcpSessionId?(sessionId: string): Promise<string | void>;
   /** Exact authenticated platform ACP endpoint for durable transcript mode. */
   endpoint?: string;
   /** Load persisted envelopes and use their ordinal as the SSE cursor. */
@@ -85,6 +109,15 @@ export interface AcpSessionControllerOptions {
   runtimeUrl?: string;
   client?: AcpSessionClient;
   cwd?: string;
+  /**
+   * The platform/server default model, read at fallback time.
+   *
+   * A getter, not a value: the default arrives from `/model-picker` after this
+   * controller is built, and rebuilding the controller to learn it would close
+   * the live stream mid-turn. Optional — without it the fallback simply skips
+   * that preference step (see `selectAcpFallbackModel`).
+   */
+  getServerDefaultModel?(): string | null | undefined;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -131,6 +164,28 @@ function questionContent(
       return [key, answer.length <= 1 ? (answer[0] ?? '') : answer];
     }),
   );
+}
+
+/**
+ * The authoritative harness-native session id a rejected identity claim carries.
+ *
+ * Two writers can mint a harness session for one Kortix session row: headless
+ * prompt delivery on the server, and this controller in the browser. The
+ * platform compare-and-set guard rejects the loser with HTTP 409 and the stored
+ * id, so the loser adopts the winner instead of dead-ending on an
+ * immutable-identity error. Older API builds omit the id; then the claim keeps
+ * surfacing as an error.
+ */
+function conflictingAcpSessionId(error: unknown): string | null {
+  if (!isObject(error)) return null;
+  const status = typeof error.status === 'number' ? error.status : null;
+  if (status !== 409 && asString(error.code) !== ACP_SESSION_ID_CONFLICT_CODE) return null;
+  for (const source of [error, error.details, error.data, error.detail]) {
+    if (!isObject(source)) continue;
+    const id = asString(source.acp_session_id);
+    if (id) return id;
+  }
+  return null;
 }
 
 function hasProjectionBlockers(projection: AcpProjection): boolean {
@@ -198,6 +253,13 @@ export class AcpSessionController {
   private readonly acpServerId: string;
   private protocolSessionId: string | null;
   private snapshot: AcpSessionControllerSnapshot;
+  /**
+   * Every model id this harness has rejected with `-32602`. Consulted before any
+   * `set_config_option`, so a rejected id is attempted EXACTLY ONCE per
+   * controller — the reconnect/retry loop that made a stale pick look like a
+   * dead runtime cannot re-form.
+   */
+  private readonly rejectedModels = new Set<string>();
 
   constructor(private readonly options: AcpSessionControllerOptions) {
     if (!options.client && !options.endpoint && !options.runtimeUrl) {
@@ -227,6 +289,7 @@ export class AcpSessionController {
       projection: createAcpProjection(this.protocolSessionId ?? this.acpServerId),
       configOptions: [],
       rewind: null,
+      modelNotice: null,
     };
   }
 
@@ -316,19 +379,37 @@ export class AcpSessionController {
     return lastOrdinal;
   }
 
+  /**
+   * Claim `createdSessionId` as this session's harness-native id and return the
+   * id that actually won. A conflict carrying the stored id is not fatal: the
+   * other writer already minted one, and this controller adopts it.
+   */
+  private async claimHarnessSessionId(createdSessionId: string): Promise<string> {
+    if (!this.options.persistAcpSessionId) return createdSessionId;
+    try {
+      const stored = await this.options.persistAcpSessionId(createdSessionId);
+      return asString(stored) ?? createdSessionId;
+    } catch (error) {
+      const winner = conflictingAcpSessionId(error);
+      if (!winner || winner === this.acpServerId) throw error;
+      return winner;
+    }
+  }
+
   private async loadCanonicalSession(): Promise<void> {
+    const cwd = this.options.cwd ?? '/workspace';
     let loaded: Record<string, unknown>;
     if (this.protocolSessionId) {
       loaded = await this.client.loadSession({
         sessionId: this.protocolSessionId,
-      cwd: this.options.cwd ?? '/workspace',
-    });
+        cwd,
+      });
     } else {
       if (!this.client.newSession) {
         throw new Error('ACP client does not support session/new');
       }
       const created = await this.client.newSession({
-        cwd: this.options.cwd ?? '/workspace',
+        cwd,
         mcpServers: [],
       });
       const createdSessionId = asString(created.sessionId);
@@ -338,10 +419,13 @@ export class AcpSessionController {
       if (createdSessionId === this.acpServerId) {
         throw new Error('ACP session/new overloaded acp_server_id as acp_session_id');
       }
-      await this.options.persistAcpSessionId?.(createdSessionId);
-      this.protocolSessionId = createdSessionId;
+      const claimedSessionId = await this.claimHarnessSessionId(createdSessionId);
+      this.protocolSessionId = claimedSessionId;
       this.resetCanonicalSessionState();
-      loaded = created;
+      loaded =
+        claimedSessionId === createdSessionId
+          ? created
+          : await this.client.loadSession({ sessionId: claimedSessionId, cwd });
     }
     const configOptions = Array.isArray(loaded.configOptions)
       ? loaded.configOptions.filter(isObject)
@@ -454,14 +538,7 @@ export class AcpSessionController {
         generation = this.runtimeGeneration;
         try {
           if (options.model) {
-            await this.raceWithRuntimeRestart(
-              this.client.setSessionConfigOption(
-                this.requireProtocolSessionId(),
-                'model',
-                options.model,
-              ),
-              generation,
-            );
+            await this.applyModelOption(options.model, generation);
           }
           const nativeAgent = this.usesManagedIdentity ? this.options.nativeAgent : options.agent;
           if (nativeAgent) {
@@ -533,6 +610,71 @@ export class AcpSessionController {
     } finally {
       this.patch({ sending: false });
     }
+  }
+
+  /**
+   * Select `model` for this session, degrading to a harness-advertised
+   * replacement instead of failing the turn.
+   *
+   * Contract, in order:
+   *   - an id this harness already rejected is NEVER attempted again; the
+   *     existing notice stands and the prompt goes out unchanged;
+   *   - a `-32602` "model not found" is recovered, not thrown — the session
+   *     stays `ready`/`open` and `error` stays `null`;
+   *   - the replacement comes from the harness's own advertised option list and
+   *     never crosses the managed/BYOK routing boundary
+   *     (`selectAcpFallbackModel`). With no safe replacement the harness keeps
+   *     its own selection and the user is told which model it is;
+   *   - any other rejection still throws, because it is not this failure mode.
+   */
+  private async applyModelOption(model: string, generation: number): Promise<void> {
+    if (this.rejectedModels.has(model)) {
+      if (!this.snapshot.modelNotice) {
+        this.patch({ modelNotice: this.buildModelNotice(model, null) });
+      }
+      return;
+    }
+    try {
+      await this.raceWithRuntimeRestart(
+        this.client.setSessionConfigOption(this.requireProtocolSessionId(), 'model', model),
+        generation,
+      );
+      if (this.snapshot.modelNotice) this.patch({ modelNotice: null });
+      return;
+    } catch (error) {
+      if (!parseAcpModelNotFound(error)) throw error;
+      this.rejectedModels.add(model);
+    }
+    const fallback = selectAcpFallbackModel({
+      requestedModel: model,
+      advertised: advertisedModelOptions(this.snapshot.configOptions),
+      currentModel: advertisedCurrentModel(this.snapshot.configOptions),
+      serverDefaultModel: this.options.getServerDefaultModel?.() ?? null,
+      rejected: this.rejectedModels,
+    });
+    if (!fallback) {
+      this.patch({ modelNotice: this.buildModelNotice(model, null) });
+      return;
+    }
+    try {
+      await this.raceWithRuntimeRestart(
+        this.client.setSessionConfigOption(this.requireProtocolSessionId(), 'model', fallback),
+        generation,
+      );
+      this.patch({ modelNotice: this.buildModelNotice(model, fallback) });
+    } catch (error) {
+      if (!parseAcpModelNotFound(error)) throw error;
+      this.rejectedModels.add(fallback);
+      this.patch({ modelNotice: this.buildModelNotice(model, null) });
+    }
+  }
+
+  private buildModelNotice(requestedModel: string, fallbackModel: string | null): AcpModelNotice {
+    return acpModelNotice({
+      requestedModel,
+      fallbackModel,
+      harnessModel: advertisedCurrentModel(this.snapshot.configOptions),
+    });
   }
 
   async cancel(): Promise<void> {

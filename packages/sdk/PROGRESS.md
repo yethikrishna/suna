@@ -251,7 +251,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B20 | **Keep ACP SSE connections outside the shared 30-second authenticated-fetch timeout.** The ACP controller uses `/kortix/acp/:sessionId` as a long-lived SSE stream.                                                                                                                                                                                                                                                                            | `src/platform/auth-core.ts` exempted only `/global/event`; deployed cold Chromium aborted the ACP stream before `session/load` settled.                                                                                                                                                                | **DONE 2026-07-25** — implementation `89b97f4cc`; RED test, full SDK gates, and local cold ACP plus REST browser matrix pass                                                                                                                                                                                                         |
 | B21 | **Serialize ACP sends with runtime restart reloads.** A send that starts while OpenCode restarts can wait forever on `session/set_config_option` and never send `session/prompt`.                                                                                                                                                                                                                                                               | Deployed cold Chromium sent `session/set_config_option` at `13:36:20.250Z`, received `kortix/runtime_ready`, then sent `session/load` at `13:36:20.640Z`; `POST_RESTART_PONG` never produced `session/prompt`.                                                                                              | **DONE 2026-07-25** — implementation `d8537fa2c`; RED tests, full SDK gates, and test-harness typecheck pass                                                                                                                                                                                                                          |
 | B22 | **Expose server-owned warm project-session ensure and claim operations.** The project index needs one reusable empty session without owning session selection or deduplication in app code.                                                                                                                                                                                                                                                   | `apps/web/src/app/(app)/projects/[id]/page.tsx` creates a session only after send. `packages/sdk/src/core/rest/projects-client/sessions.ts` exposes create and list, but no atomic warm-session operation.                                                                                              | **DONE 2026-07-26** — implementation `13167d7cf`; RED tests, full SDK gates, live API/SDK lifecycle, workspace refresh, and maintenance retention proof pass                                                                                                                                                                           |
-| B23 | **Prevent ACP prompt results from exposing a false idle window before late protocol updates settle.**                                                                                                                                                                                                                                                                                                                                          | The deployed white-label parity screenshot rendered 4 ACP tool cards and `Agent is working…`, while REST rendered 26 completed tool cards. `applyAcpEnvelope()` marks the projection idle on the prompt result, and later tool or text updates can mark it busy again.                                                                                                  | **IN PROGRESS 2026-07-26** — session `whitelabel-acp-stable-completion`; RED test, SDK fix, strengthened parity gate, merge, Deploy Dev, and deployed proof required                                                                                                                            |
+| B23 | **Prevent ACP prompt results from exposing a false idle window before late protocol updates settle.**                                                                                                                                                                                                                                                                                                                                          | The deployed white-label parity screenshot rendered 4 ACP tool cards and `Agent is working…`, while REST rendered 26 completed tool cards. `applyAcpEnvelope()` marks the projection idle on the prompt result, and later tool or text updates can mark it busy again.                                                                                                  | **IMPLEMENTATION COMPLETE 2026-07-30** (worktree `bugbash`, uncommitted) — session `acp-turn-liveness`. Root cause pinned with production data: `session/load` makes the harness re-emit a finished conversation as BRAND-NEW `session/update` events (dev session `10533f77-00e3-420c-936b-82933e4d1025`, `kortix.acp_session_envelopes` upstream ids `1431`-`1842` at ordinals `44560`-`57861`, i.e. AFTER the `end_turn` response at ordinal `26518`), so no dedupe or ordinal cursor can suppress them and no terminator follows. `AcpProjection` now carries `pendingPrompts` — the unanswered-`session/prompt` ids — and `status` is derived from it alone; content appends no longer mark a turn busy. A prompt settles on its response, on a JSON-RPC error response, or on the next `initialize`/`session/new`/`session/load` re-attach. Replaying the real 1,912-envelope transcript folds to `{type:'idle'}` (was `{type:'busy'}`). SDK gates: typecheck exit `0`, `1413 pass` / `0 fail` / `121 files`. PR, Deploy Dev, and deployed proof required. |
 | B24 | **Accept a server-authorized initial OpenCode session pin in `useSession`.** The SDK must hydrate the cached transcript before runtime readiness without making the initial pin authoritative over the `/start` result.                                                                                                                                                                                                                          | Existing sessions wait for `/start` before `useSessionSync` can hydrate IndexedDB history. The preserved `session-load-latency` work proved the additive option and pin precedence.                                                                                                                       | **IN PROGRESS 2026-07-26** — session `api-latency-refactor`; RED test, implementation port, full SDK gates, browser proof, merge, and Deploy Dev proof required                                                                                                                               |
 | B25 | **Start project model-picker and project-detail reads in parallel.** Gateway projects must not wait for project detail before the SDK starts the compact model-picker request.                                                                                                                                                                                                                                                                   | `src/react/use-opencode-sessions/providers.ts` enables the model query only after `projectDetailQuery.isSuccess`, which creates a sequential request waterfall on project load.                                                                                                                          | **IN PROGRESS 2026-07-26** — session `api-latency-refactor`; RED test, implementation, full SDK gates, browser network proof, merge, and Deploy Dev proof required                                                                                                                            |
 | B26 | **Do not report an expected warm-session configuration mismatch as a global API error.** The web client catches `WARM_SESSION_CONFIGURATION_MISMATCH` and creates a normal session.                                                                                                                                                                                                                                                               | `src/core/rest/projects-client/sessions.ts` calls `/sessions/warm/claim` with the default `showErrors: true`, so the recoverable `409` still reaches the host error handler.                                                                                                                                | **DONE 2026-07-26** — PR #5529, merge `5c0ae97ec`; SDK tests `1280/0`; deployed US proof observed the typed `409`, normal-session fallback, exact `PONG`, and no global mismatch error                                                                                                      |
@@ -262,6 +262,11 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B31 | **Allow a page-scoped ACP query override and settle completed ACP prompts that contain stale running tools.**                                                                                                                                                                                                                                                                                                                                     | `?acp` has no SDK transport override. Dev session `5322fa59-7a73-4fea-9f1a-9da59c2a0b5a` rendered the final assistant response while an older tool part remained `running`; `hasProjectionBlockers()` then kept the composer busy and blocked the queued prompt.                                                                 | **IMPLEMENTATION COMPLETE 2026-07-27** — implementation `d3544ae14`; focused SDK `40/0`, full SDK `1312/0`, typecheck, packed-install smoke, web routing `5/0`, and touched web ESLint pass. PR #5636, Deploy Dev, deployed SHA proof, and deployed ACP-only proof remain |
 | B32 | **Synchronize generated Kortix session names from both ACP and OpenCode REST runtimes without navigation or refresh.**                                                                                                                                                                                                                                                                                                                           | ACP emits `session_info_update`; OpenCode `/global/event` emits a wrapped `session.updated`. Neither path reliably persisted `metadata.name`, and the sidebar query could stay stale after a completed prompt.                                                                                              | **IMPLEMENTATION COMPLETE 2026-07-28** — ACP and REST title events persist server-side; the SDK refetches list and detail queries through a bounded post-send loop; focused API `78/0`, full SDK `1318/0`, API and SDK typechecks, packed-install smoke, test-harness typecheck, and local ACP plus REST Chromium `1/0` pass. Full API has `3` pre-existing failures reproduced in the primary checkout. PR, Deploy Dev, deployed SHA proof, and deployed UI proof remain. |
 | B33 | **The ACP transcript has no bounded read — a session replays every envelope on open.** OpenCode REST opens on a bounded newest-first page (`SESSION_SYNC_PAGE_SIZE`) and pages backwards through a cursor; ACP has no equivalent, so the ACP path gets slower without limit as a session grows. As ACP becomes the only transport, the bounded-read property is lost with it. | `GET /:projectId/sessions/:sessionId/acp/transcript` (`apps/api/src/projects/routes/acp.ts:160`) and `loadAcpTranscript` (`apps/api/src/projects/lib/acp-transcript.ts`) accept only `after` (forward tailing for gap recovery) — no `before`/`limit`. `useSession` hardcodes `hasOlder: false` / `loadOlder: async () => {}` for ACP (`src/react/use-session.ts:533-535`). **Not a small change:** the projection is a fold over the whole envelope log (`applyAcpEnvelope`), so replaying a suffix yields a wrong projection — open tool calls, session info, and rewind state all live in earlier envelopes. Needs either envelope-range snapshots or a projection checkpoint, then the existing `hasOlder`/`loadOlder` contract plugs into the transcript's scroll-driven autoload unchanged. | OPEN |
+
+| B34 | **A losing ACP identity claim dead-ended the session instead of adopting the winner.** Two writers mint a harness-native session for one Kortix session row — headless prompt delivery in the API, and `AcpSessionController.loadCanonicalSession()` in the browser. The platform CAS guard returned `409 acp_session_id is immutable after the first successful session/new response`; the SDK threw before assigning `protocolSessionId`, so `useSession` surfaced "OpenCode failed to load" and every later reload minted another orphan harness conversation. | `core/acp/session-controller.ts` threw at the `persistAcpSessionId` await (pre-fix line `341`) with `protocolSessionId` still `null`; `react/use-acp-session-runtime.ts:78-84` discarded the identity response body. | **IMPLEMENTATION COMPLETE 2026-07-30** (worktree `bugbash`, uncommitted) — `persistAcpSessionId` widened to `Promise<string \| void>`; the controller adopts the stored id from a 200 body or from a `409` carrying `acp_session_id`, then `loadSession`s it and reaches `{ready:true, connection:'open', error:null}`. A `409` without an id still surfaces the error. Depends on the API adding `acp_session_id` to the conflict body (separate change, `apps/api/**`). SDK gates: typecheck exit `0`, `1390 pass` / `0 fail` / `121 files`, packed-install smoke pass. |
+| B35 | **Fan out `client_to_agent` envelopes on the live ACP SSE stream, or a second viewer cannot see a turn it did not start.** The API replays both directions from the transcript on connect (`loadAcpTranscript` in `apps/api/src/projects/routes/acp.ts:160,313`), but the live proxy only forwards agent-to-client events, and a `session/prompt` response persisted by the POST branch is never streamed. A browser already connected when a headless/trigger prompt starts therefore never sees the request, so `AcpProjection.pendingPrompts` stays empty and the turn renders settled while the agent works. | `apps/api/src/projects/routes/acp.ts:281-268` persists the direct prompt response with no stream write; `apps/api/src/projects/lib/acp-sse-proxy.ts` writes only upstream SSE blocks. Surfaced while fixing B23, where content arrival stopped being treated as liveness. | OPEN |
+| B36 | **`useSession` owned no chat mount id, so every host had to re-derive one from the OpenCode pin.** A managed-ACP session never has `project_sessions.opencode_session_id` (never written at create time — `apps/api/src/projects/lib/sessions.ts:1290-1291` — and `openSession`'s ACP branch passes the null through, `apps/api/src/projects/routes/shared.ts:923,932`). `apps/web` derived its mount id from that pin and hard-returned `null`, so a healthy ACP session rendered an empty shell: no composer, no transcript, no loader, while the agent worked server-side. The SDK already owned the correct predicate (`hasSessionRuntimeIdentity`, with a passing test named "managed ACP does not require an OpenCode session id") but exposed no id built from it. | Live `/start` on session `10533f77-00e3-420c-936b-82933e4d1025`: `stage=ready`, `runtime_transport=acp`, `acp_session_id=ses_04ff3eb99ffedjXUSdT2WJBShj`, `opencode_session_id=None`. Host derivation at `apps/web/.../sessions/[sessionId]/page.tsx:664` + hard `return null` at `:793`. | **IMPLEMENTATION COMPLETE 2026-07-30** (worktree `bugbash`, uncommitted) — `react/session-runtime-identity.ts` adds `resolveSessionMountId` (REST → the OpenCode pin; ACP → the durable Kortix session id; `null` until the runtime has an identity) and `useSession` returns it as `chatSessionId`. Additive: no export renamed, public-surface snapshot unchanged. Live browser proof on a managed-ACP session: composer textarea exists, `[data-testid=session-chat]` + `[data-testid=session-layout]` present, boot loader gone, 3 transcript messages rendered. |
+| B37 | **A stale cached `/start` made every ACP controller mint a throwaway harness conversation.** The mint is a runtime call, so nothing refreshed `/start`; the cached response kept saying "no harness session yet" for the whole tab. Each later controller (remount, Fast Refresh, tab reopen) therefore called `session/new` again, got the platform's `409 ACP_SESSION_ID_CONFLICT`, adopted the winner and abandoned its own conversation — one leaked harness conversation per mount, plus a user-facing error toast naming an internal invariant. | Recovered-conflict noise reached the global `onError` hook (`apps/web/src/lib/error-handler.tsx:handleApiError` → toast + Sentry) with the message `acp_session_id is immutable after the first successful session/new response`. | **IMPLEMENTATION COMPLETE 2026-07-30** (worktree `bugbash`, uncommitted) — `useAcpSessionRuntime` reports the settled id (`onAcpIdentitySettled`), `useSession` corrects the cached `/start` identity, `nextAcpIdentity` keeps the write-once id out of the controller memo so learning it never tears down a live stream, and `core/http/api-client.ts` classifies a typed `409 ACP_SESSION_ID_CONFLICT` as silent to `onError` (same pattern as the typed `501 feature_not_supported`). Live proof: 6 controller opens on one session → `session/new` **1**, `session/load` **4**, zero orphans, zero conflicts. |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -280,6 +285,7 @@ is scope creep; losing them is worse. Land them here, then tell the user.
 
 | Date       | Session                  | Finding                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Where                                                                                                             |
 | ---------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 2026-07-30 | `bugbash-model-picker`   | **An explicit model pick has nowhere to persist on a composer with no `sessionId` and no loaded agent** (project home). `setModel` writes the per-agent slot only `if (currentAgent)` and the per-session slot only `if (scopedSessionModelKey)`; with neither it writes `visibility` + `recent` only, both of which lose to `serverDefaultKey` in the read chain — so the picker trigger never moves. Verified in a real browser: after clicking "Claude Sonnet 4.6" on `/projects/<id>`, `localStorage['opencode-model-store-v1']` held only `user` + `recent`, no `selectedModel`/`sessionModel`, and the trigger stayed on the platform default. The read chain's own comment (`:470`) claims selection "must NOT depend on a loaded agent", which the write side does not honour | `packages/sdk/src/react/use-opencode-local.ts:512-545` (write), `:443-459` (read) |
 | 2026-07-10 | `01AzJBSa`               | The original plan's "bump to `0.3.0`" is **impossible** — `version` is inert and `latest` on npm is `0.9.100`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `scripts/stage-npm-publish.mjs:32`                                                                                |
 | 2026-07-10 | `01AzJBSa`               | `KortixProject` declared **twice**, as two different interfaces                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `core/rest/projects-client/projects.ts:31`, `core/runtime/kortix-master.ts:577`                                   |
 | 2026-07-10 | `01AzJBSa`               | Bare `process.env` read in the isomorphic core → `ReferenceError` in a `<script>` bundle                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `platform/platform-client/shared.ts:29` — fixed in Task 7                                                         |
@@ -4090,3 +4096,186 @@ Repository delivery evidence:
   `d6979ad99241ebd8baeb00391dc186ce007b63e1`.
 
 **Repository delivery shippable to production: YES.**
+
+---
+
+### 2026-07-30 — session `bugbash` ACP identity-conflict adoption
+
+Backlog `B34`. Worktree `bugbash`, branch `bugbash`, base `31391b4bb`. Not
+committed — the user commits and delivers this change.
+
+Problem: a project created with `experimental.acp_runtime` showed "OpenCode
+failed to load / acp_session_id is immutable after the first successful
+session/new response". Two writers mint a harness-native session for one Kortix
+session row. The platform CAS guard `409`s the loser, and the SDK had no
+recovery path.
+
+Scope (SDK only — `apps/api/**` and `apps/web/**` untouched):
+
+- Widen `AcpSessionControllerOptions.persistAcpSessionId` to
+  `Promise<string | void>`. Additive and non-breaking: a return type only
+  widens, and `Promise<void>` stays assignable to `Promise<string | void>`.
+- `loadCanonicalSession()` adopts the authoritative id — from a resolved claim
+  or from a `409` whose body carries `acp_session_id` — then
+  `resetCanonicalSessionState()` and `loadSession({ sessionId: winner })`.
+- `react/use-acp-session-runtime.ts` returns the stored
+  `identity.acp_session_id`; a `409` propagates unchanged so the controller
+  reads the winner off `ApiError.details`.
+
+The `tdd` skill is unavailable in this session. The same RED, GREEN, REFACTOR
+sequence ran directly.
+
+TDD evidence (full-suite runs, never filtered):
+
+- RED: `1386 pass`, `3 fail`, `Ran 1391 tests across 121 files`. The three
+  failures were the new ACP-conflict adoption case, the new stored-id case, and
+  the new hook 200-body case.
+- GREEN: `1390 pass`, `0 fail`, `2 skip`, `Ran 1392 tests across 121 files`.
+
+Final SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1390 pass`, `0 fail`, `2 skip`.
+- `pnpm --filter @kortix/sdk smoke:install`: packed tarball installed, imported,
+  and constructed.
+- The public export snapshot did not change; no export was added or renamed.
+- `packages/sdk/package.json` `version` untouched.
+
+Unverified: the deployed API contract. Adoption needs the API to add
+`acp_session_id` to the `409` body; that change is in flight in `apps/api/**` by
+another session. No browser or live-stack run happened in this session.
+
+**SDK package shippable to production: YES** (behaviour degrades to today's
+error surface until the API ships the conflict-body id).
+
+---
+
+### 2026-07-30 — session `bugbash` ACP chat mount identity (B36 + B37)
+
+Claimed and completed B36 and B37 in worktree `bugbash` (uncommitted). Both are
+one defect seen from two sides: the SDK exposed no transport-agnostic chat mount
+id, and it never corrected the cached `/start` ACP identity after a mint.
+
+SDK changes:
+
+- `react/session-runtime-identity.ts` — new `resolveSessionMountId({usesAcp,
+  sessionId, opencodeSessionId})`. REST resolves to the server-owned OpenCode
+  pin, managed ACP to the durable Kortix session id, and `null` until the runtime
+  has an identity. Built on the existing `hasSessionRuntimeIdentity`.
+- `react/use-session.ts` — returns it as `chatSessionId`, and corrects the cached
+  `/start` identity through `applyAcpIdentity` (exact `setQueryData` on a settled
+  id, `invalidateQueries` when a conflict proves the cache is behind).
+- `react/use-acp-session-runtime.ts` — new `nextAcpIdentity` fold plus an
+  `onAcpIdentitySettled` report. The write-once harness id is read through a ref
+  and is NOT a controller-memo dependency, so learning the id cannot close a live
+  stream; a genuine rebuild still reads the freshest id and calls `session/load`.
+  The fold drops the id whenever the Kortix session changes, so a reused hook
+  instance can never bind session B to session A's harness conversation.
+- `core/http/api-client.ts` — a typed `409 ACP_SESSION_ID_CONFLICT` is silent to
+  the global `onError` hook, exactly like the typed `501 feature_not_supported`.
+  The `ApiError` is still returned so the controller reads the winner off it. Any
+  other `409` still reports.
+
+RED → GREEN, per file (full-suite counts at the end):
+
+- `react/session-runtime-identity.test.ts` RED: `SyntaxError: Export named
+  'resolveSessionMountId' not found`. GREEN after the implementation.
+- `react/use-session-runtime-gate.test.ts` RED: 2 fail / 1 pass. GREEN: 4 pass.
+- `react/use-acp-session-runtime.test.ts` RED: `SyntaxError: Export named
+  'nextAcpIdentity' not found`. GREEN: 12 pass.
+- `core/http/api-client.test.ts` RED: `expect(onErrorCalls).toBe(0)` got `1`.
+  GREEN: 22 pass.
+
+Final SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1407 pass`, `0 fail`, `121 files`.
+- Public export snapshot unchanged (`public-surface.test.ts` +
+  `public-type-surface.test.ts` pass). `resolveSessionMountId` and
+  `nextAcpIdentity` are additive and not reachable from the `./react` barrel.
+- `packages/sdk/package.json` `version` untouched.
+
+Live proof (local stack, web `14100` / api `14108`), one managed-ACP session
+(`runtime_transport=acp`, `opencode_session_id=null`):
+
+- Composer textarea exists and is enabled, `[data-testid=session-chat]` and
+  `[data-testid=session-layout]` present, boot loader gone, 3 transcript messages
+  rendered. Before the fix the same surface had 0 textareas and no
+  `session-chat`.
+- 6 controller opens on that session produced `session/new` **1** and
+  `session/load` **4** — zero orphan harness conversations, zero conflicts.
+
+Discovered while proving it, and fixed in the host (not the SDK):
+`apps/web`'s `SessionChat` gated its whole shell on `useRuntimeSession`, an
+OpenCode REST read that 503s for a session's whole life under ACP. That held the
+composer behind a permanent "Connecting" card even once the chat mounted. Fixed
+by `resolveSessionChatContentState` in
+`apps/web/src/features/session/session-load-state.ts`, which uses the SDK's
+`phase` when the mount id is not an OpenCode pin and is byte-identical to today
+otherwise.
+
+Unverified: assistant output never rendered, because this local stack cannot
+complete a turn — the web sends `kortix/claude-opus-4.8` while the sandbox's
+OpenCode only lists `anthropic/claude-opus-4-8`, and `session/prompt` through the
+platform bridge returns `Internal error: OpenCode service failure`. Both are
+environment/catalog faults, not this change. `pnpm --filter @kortix/sdk run smoke:install` passed: packed tarball
+installed and imported.
+
+**SDK package shippable to production: YES.**
+
+---
+
+### Session — bugbash: the model picker's entitlement rule disagreed with the server
+
+**Claimed and finished:** `hasUsableModel` + `isVisible` in
+`src/react/use-model-store.ts`, and the `PUT .../sessions/:id/model` response
+type in `src/core/rest/projects-client/sessions.ts`. Nothing on the Now chain.
+
+**The bug.** A user picked a model and nothing happened: the picker trigger kept
+reading "No model" and the composer kept showing "No model connected — connect
+one to start chatting". Reproduced on the live local stack against a free-tier
+account (`tier_key: 'free'`, 2 monthly credits) where the API happily served the
+managed lineup and accepted the pick (`PUT .../model` → `200`,
+`applied_live: true`).
+
+Cause: the client re-derived plan entitlement instead of reading the server's
+answer. `hasUsableModel` gated managed models on a locally computed `freeTier`
+(from `/billing/account-state`'s `tier_key`), and `isVisible` did the same. The
+server's rule is not that: `/model-picker` applies entitlement only when
+`KORTIX_BILLING_INTERNAL_ENABLED` is on, and it stamps the resolved answer on
+every model as `enabled`. With internal billing off — self-host, and this local
+stack, where `GET /v1/billing/config` returns `{"billing_disabled":true}` — free
+tier IS entitled to every managed model, so the two disagreed by construction and
+the client threw away a selection the server had accepted
+(`resolveAvailableSelectedModel` → `isSelectableModel` → `hasUsableModel`).
+
+Fix: both functions now return the server's `enabled` flag whenever a model
+carries one, and only fall back to the `connectedProviderIds`/`freeTier`
+derivation for catalogs that carry no server answer. Not a loosened gate — on a
+cloud free tier `/model-picker` omits managed models from the payload entirely
+(`gatewayModelCatalog(projectId, { freeManagedOnly: true })` serves
+`byokAndCodex` only), and `resolveCandidates` still throws
+`plan_upgrade_required` at request time.
+
+Also: `setProjectSessionModel` now returns `SessionModelChangeResult` carrying
+`push_failed?: true` — a live push that was REQUIRED and FAILED (row written,
+running harness still on the old model). `applied_live: false` alone could not
+express it: that is also the benign answer for a session with no live sandbox.
+
+**Evidence.** RED then GREEN, both pasted in the session: reverting the two
+`enabled` reads fails 9 tests across `use-model-store.test.ts` and
+`model-flatten.test.ts`; restoring them passes 26. In a real browser on
+`/projects/<id>` the trigger reads `"No model"` with 1 "No model connected" node
+before the fix and `"GLM 5.2"` with 0 such nodes after.
+`pnpm --filter @kortix/sdk typecheck` clean, `test` 1428 pass / 0 fail.
+`public-type-surface.snapshot.json` regenerated — additive, one new type.
+
+**Discovered, NOT fixed (appended to Backlog below):** on a composer with no
+`sessionId` and no loaded agent (project home), `setModel` in
+`use-opencode-local.ts` has no slot to persist an explicit pick — it writes only
+`visibility` and `recent`, both of which lose to `serverDefaultKey` in the read
+chain. So on that surface the trigger still does not move when a model is picked,
+for a completely different reason than the entitlement bug above. Reported to the
+user rather than fixed, to keep this change reviewable.
+
+**SDK package shippable to production: YES.**

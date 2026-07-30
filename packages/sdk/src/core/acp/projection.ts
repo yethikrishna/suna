@@ -22,7 +22,25 @@ export interface AcpMessageWithParts {
 export interface AcpProjection {
   sessionId: string;
   messages: AcpMessageWithParts[];
+  /**
+   * Whether a turn is running. Derived from `pendingPrompts`, never from
+   * content arrival — see the invariant on `pendingPrompts`.
+   */
   status: SessionStatus;
+  /**
+   * JSON-RPC ids of `session/prompt` requests that have no response yet, in
+   * arrival order. This is the ONLY positive evidence that a turn is live.
+   *
+   * The invariant it enforces: a projection folded from history defaults to
+   * settled. `session/load` makes a harness re-emit a finished conversation as
+   * brand-new `session/update` notifications — same wire shape as live output,
+   * with no terminal prompt response behind them. Treating content as liveness
+   * therefore pinned the thinking indicator on forever (dev session
+   * `10533f77-00e3-420c-936b-82933e4d1025`: 412 re-emitted updates landed after
+   * the `end_turn` response, and nothing could settle them). An unanswered
+   * prompt is the one signal that cannot be manufactured by a replay.
+   */
+  pendingPrompts: string[];
   todos: Todo[];
   permissions: PermissionRequest[];
   questions: QuestionRequest[];
@@ -197,7 +215,7 @@ function withAssistant(
     if (existingIndex >= 0) {
       const messages = [...state.messages];
       messages[existingIndex] = mutate(messages[existingIndex]);
-      return { ...state, messages, status: { type: 'busy' } };
+      return { ...state, messages };
     }
   }
 
@@ -205,7 +223,7 @@ function withAssistant(
   if (!messageId && last?.info.role === 'assistant' && !last.info.time.completed) {
     const messages = [...state.messages];
     messages[messages.length - 1] = mutate(last);
-    return { ...state, messages, status: { type: 'busy' } };
+    return { ...state, messages };
   }
 
   const completed = Date.now();
@@ -215,7 +233,6 @@ function withAssistant(
     ...state,
     nextId: state.nextId + 1,
     messages: [...messages, mutate(created)],
-    status: { type: 'busy' },
   };
 }
 
@@ -491,6 +508,35 @@ function normalizeQuestion(params: Record<string, unknown>): QuestionInfo[] {
   ];
 }
 
+/** Status implied by the prompts still awaiting a response. */
+function statusFor(pendingPrompts: readonly string[]): SessionStatus {
+  return pendingPrompts.length > 0 ? { type: 'busy' } : { type: 'idle' };
+}
+
+function withPendingPrompt(state: AcpProjection, id: AcpJsonRpcId): AcpProjection {
+  const key = String(id);
+  const pendingPrompts = state.pendingPrompts.includes(key)
+    ? state.pendingPrompts
+    : [...state.pendingPrompts, key];
+  return { ...state, pendingPrompts, status: statusFor(pendingPrompts) };
+}
+
+function withoutPendingPrompt(state: AcpProjection, id: AcpJsonRpcId): AcpProjection {
+  const key = String(id);
+  if (!state.pendingPrompts.includes(key)) return state;
+  const pendingPrompts = state.pendingPrompts.filter((pending) => pending !== key);
+  return { ...state, pendingPrompts, status: statusFor(pendingPrompts) };
+}
+
+/**
+ * A client handshake or session (re)load. Whoever sends one has just attached,
+ * so no prompt it never saw a response for can still be answered to it: any
+ * carried-over pending prompt is dead and its turn is settled.
+ */
+function isRuntimeAttachRequest(method: string): boolean {
+  return method === 'initialize' || method === 'session/new' || method === 'session/load';
+}
+
 function applyRequest(
   state: AcpProjection,
   id: AcpJsonRpcId,
@@ -498,20 +544,26 @@ function applyRequest(
   rawParams: unknown,
 ): AcpProjection {
   const params = isObject(rawParams) ? rawParams : {};
-  if (asString(params.sessionId) !== state.sessionId) return state;
+  const scoped = asString(params.sessionId);
+  if (isRuntimeAttachRequest(method) && (!scoped || scoped === state.sessionId)) {
+    return state.pendingPrompts.length === 0
+      ? state
+      : { ...state, pendingPrompts: [], status: { type: 'idle' } };
+  }
+  if (scoped !== state.sessionId) return state;
   if (method === 'session/prompt') {
+    const live = withPendingPrompt(state, id);
     const prompt = Array.isArray(params.prompt) ? params.prompt : [];
     const text = prompt
       .flatMap((part) =>
         isObject(part) && part.type === 'text' && typeof part.text === 'string' ? [part.text] : [],
       )
       .join('');
-    if (!text) return state;
+    if (!text) return live;
     return {
-      ...state,
-      nextId: state.nextId + 1,
-      messages: [...state.messages, createUserMessage(state, text, `acp-user-${String(id)}`)],
-      status: { type: 'busy' },
+      ...live,
+      nextId: live.nextId + 1,
+      messages: [...live.messages, createUserMessage(live, text, `acp-user-${String(id)}`)],
     };
   }
   if (method === 'session/request_permission') {
@@ -556,9 +608,10 @@ function applyRequest(
 }
 
 function finishPrompt(state: AcpProjection, result: Record<string, unknown>): AcpProjection {
+  const settled = statusFor(state.pendingPrompts);
   const last = state.messages.at(-1);
   if (!last || last.info.role !== 'assistant') {
-    return { ...state, status: { type: 'idle' } };
+    return { ...state, status: settled };
   }
   const usage = isObject(result.usage) ? result.usage : {};
   const input = Number(usage.inputTokens) || 0;
@@ -593,7 +646,7 @@ function finishPrompt(state: AcpProjection, result: Record<string, unknown>): Ac
     info,
     parts: [...last.parts.filter((part) => part.type !== 'step-finish'), finish],
   };
-  return { ...state, messages, status: { type: 'idle' } };
+  return { ...state, messages, status: settled };
 }
 
 export function createAcpProjection(sessionId: string): AcpProjection {
@@ -601,6 +654,7 @@ export function createAcpProjection(sessionId: string): AcpProjection {
     sessionId,
     messages: [],
     status: { type: 'idle' },
+    pendingPrompts: [],
     todos: [],
     permissions: [],
     questions: [],
@@ -681,11 +735,14 @@ export function applyAcpEnvelope(state: AcpProjection, envelope: AcpEnvelope): A
 
   if ('id' in envelope) {
     const id = String(envelope.id);
-    const closed = {
-      ...state,
-      permissions: state.permissions.filter((item) => item.id !== id),
-      questions: state.questions.filter((item) => item.id !== id),
-    };
+    const closed = withoutPendingPrompt(
+      {
+        ...state,
+        permissions: state.permissions.filter((item) => item.id !== id),
+        questions: state.questions.filter((item) => item.id !== id),
+      },
+      envelope.id,
+    );
     return isObject(envelope.result) &&
       (asString(envelope.result.stopReason) || isObject(envelope.result.usage))
       ? finishPrompt(closed, envelope.result)

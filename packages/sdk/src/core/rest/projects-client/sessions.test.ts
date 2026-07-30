@@ -16,6 +16,7 @@ import {
   listSessionPublicShares,
   restartProjectSession,
   revokeSessionPublicShare,
+  setProjectSessionModel,
   setProjectSessionSharing,
   stopProjectSession,
   updateProjectSession,
@@ -296,4 +297,46 @@ test('listProjectSessions combines scope and end_user_ref', async () => {
   await listProjectSessions('P1', { scope: 'project', end_user_ref: 'u-1' });
   expect(last().url).toContain('scope=project');
   expect(last().url).toContain('end_user_ref=u-1');
+});
+
+test('setProjectSessionModel PUTs the model and reports a live application', async () => {
+  nextResponse = {
+    status: 200,
+    body: { opencode_model: 'kortix/claude-sonnet-4.6', applied_live: true },
+  };
+  const result = await setProjectSessionModel('P1', 'S1', 'claude-sonnet-4.6');
+  expect(last().url).toContain('/projects/P1/sessions/S1/model');
+  expect(last().method).toBe('PUT');
+  expect(last().body).toEqual({ opencode_model: 'claude-sonnet-4.6' });
+  expect(result.applied_live).toBe(true);
+  expect(result.push_failed).toBeUndefined();
+});
+
+test('setProjectSessionModel surfaces a half-applied change via push_failed', async () => {
+  nextResponse = {
+    status: 200,
+    body: {
+      opencode_model: 'kortix/deepseek-v4-flash',
+      applied_live: false,
+      push_failed: true,
+      detail: 'stored, but not pushed: env sync failed: 502 upstream-closed-before-headers',
+    },
+  };
+  const result = await setProjectSessionModel('P1', 'S1', 'deepseek-v4-flash');
+  expect(result.applied_live).toBe(false);
+  expect(result.push_failed).toBe(true);
+  expect(result.detail).toContain('502 upstream-closed-before-headers');
+});
+
+test('setProjectSessionModel leaves push_failed unset for a benign cold-session store', async () => {
+  nextResponse = {
+    status: 200,
+    body: {
+      opencode_model: 'kortix/claude-opus-4.8',
+      applied_live: false,
+      detail: 'stored — applies when the sandbox next starts',
+    },
+  };
+  const result = await setProjectSessionModel('P1', 'S1', 'claude-opus-4.8');
+  expect(result.push_failed).toBeUndefined();
 });

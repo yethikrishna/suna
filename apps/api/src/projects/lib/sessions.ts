@@ -10,6 +10,7 @@ import type { Context } from 'hono';
 import { checkBillingActive } from '../../billing/services/billing-gate';
 import { getCachedAccountTier } from '../../billing/services/entitlements';
 import { tierGrantsAllModels } from '../../billing/services/tiers';
+import { platformDefaultModelId } from '../../llm-gateway/models/served-managed-models';
 import { type SandboxProviderName, config } from '../../config';
 import { resolveExperimentalFeature } from '../../experimental/features';
 import { decideSpendCap, spendCapError, spendWindowStart } from './end-user-spend-cap';
@@ -972,7 +973,7 @@ export async function createProjectSession(input: {
         freeModelsOnly,
       });
       const concreteModel =
-        resolved.model ?? (!freeModelsOnly ? config.LLM_GATEWAY_DEFAULT_MODEL : null);
+        resolved.model ?? (!freeModelsOnly ? platformDefaultModelId() : null);
       if (concreteModel) {
         opencodeModel = toOpencodeModelRef(concreteModel);
         opencodeModelSource = resolved.model ? resolved.source : 'platform';

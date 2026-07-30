@@ -456,3 +456,76 @@ describe('makeRequest classifies a typed feature_not_supported 501 as silent to 
     }
   });
 });
+
+// Two browsers (or two mounts of the same session view) can each call
+// `session/new` on a fresh managed-ACP session before either has stored its
+// harness-native id. The platform keeps the FIRST id and answers the loser with
+// a typed 409 `ACP_SESSION_ID_CONFLICT` whose body carries the winning
+// `acp_session_id` (apps/api/src/projects/routes/acp-identity.ts). The ACP
+// session controller READS that id and adopts it, so the conflict is a handled,
+// recovered outcome — never a user-facing failure. Without this classification
+// the global `onError` hook (apps/web `handleApiError`) turned every recovered
+// race into an error toast + a Sentry capture that named an internal invariant
+// ("acp_session_id is immutable after the first successful session/new
+// response"). Same contract as the typed 501 above: silent to `onError`, still
+// returned as an `ApiError` so the controller can read the winner off it.
+describe('makeRequest classifies a typed ACP_SESSION_ID_CONFLICT 409 as silent to Sentry', () => {
+  function stubFetchOnce(status: number, body: unknown) {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      })) as unknown as typeof fetch;
+    return () => {
+      globalThis.fetch = originalFetch;
+    };
+  }
+
+  test('a 409 with code=ACP_SESSION_ID_CONFLICT does NOT fire onError but still carries the winner', async () => {
+    let onErrorCalls = 0;
+    configureKortix({
+      backendUrl: 'http://api.test/v1',
+      getToken: async () => 'tok',
+      onError: () => {
+        onErrorCalls++;
+      },
+    });
+    const restore = stubFetchOnce(409, {
+      error: 'acp_session_id is immutable after the first successful session/new response',
+      code: 'ACP_SESSION_ID_CONFLICT',
+      acp_session_id: 'ses_winner',
+    });
+    try {
+      const res = await backendApi.put('/projects/p1/sessions/s1/acp-identity', {});
+      expect(res.success).toBe(false);
+      expect(res.error).toBeInstanceOf(ApiError);
+      expect(res.error?.status).toBe(409);
+      expect(res.error?.code).toBe('ACP_SESSION_ID_CONFLICT');
+      expect((res.error as ApiError).details?.acp_session_id).toBe('ses_winner');
+      expect(onErrorCalls).toBe(0);
+    } finally {
+      restore();
+    }
+  });
+
+  test('any other 409 STILL fires onError', async () => {
+    let onErrorCalls = 0;
+    configureKortix({
+      backendUrl: 'http://api.test/v1',
+      getToken: async () => 'tok',
+      onError: () => {
+        onErrorCalls++;
+      },
+    });
+    const restore = stubFetchOnce(409, { error: 'Conflict', message: 'Conflict' });
+    try {
+      const res = await backendApi.put('/projects/p1/sessions/s1/acp-identity', {});
+      expect(res.success).toBe(false);
+      expect(res.error?.status).toBe(409);
+      expect(onErrorCalls).toBe(1);
+    } finally {
+      restore();
+    }
+  });
+});

@@ -17,6 +17,11 @@ export {
   type SendState,
 } from './use-session';
 
+// The non-fatal model notice `useSession` surfaces as `modelNotice`. A host
+// renders it inline; it never gates the chat. Re-exported here so a host does
+// not need a second import from the root entry just to type the prop.
+export type { AcpModelNotice, AcpModelNoticeReason } from '../core/acp/model-fallback';
+
 // The billing/API error classes + helpers, relocated from apps/web's
 // `lib/api/errors.ts` (byte-for-byte duplicate of `platform/api/errors.ts`) —
 // hosts import the one SDK copy instead of keeping a parallel fork in sync.

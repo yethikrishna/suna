@@ -54,6 +54,25 @@ export function isExpectedFileRevisionRace(error: unknown): boolean {
   );
 }
 
+async function readRemoteBranchTip(
+  project: GitBackedProject,
+  repoPath: string,
+  branch: string,
+  authHost: string,
+): Promise<string | null | undefined> {
+  const remote = await runGitCapture(
+    ['ls-remote', '--heads', 'origin', `refs/heads/${branch}`],
+    repoPath,
+    project.gitAuthToken,
+    undefined,
+    authHost,
+    project.gitAuthHeaders,
+  );
+  if (remote.exitCode !== 0) return undefined;
+  const sha = remote.stdout.trim().split(/\s+/, 1)[0] ?? '';
+  return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
+}
+
 /**
  * Hash every file's content into a git blob object (`git hash-object -w`),
  * with bounded concurrency — this used to be one subprocess at a time, which
@@ -425,8 +444,17 @@ export async function commitMultipleFilesToBranch(
       );
     } catch (error) {
       invalidateProjectMirror(project.projectId);
-      if (expectedFileRevision && isExpectedFileRevisionRace(error)) {
-        throw new GitFileRevisionConflictError(expectedFileRevision.path);
+      if (expectedFileRevision) {
+        const remoteTip = await readRemoteBranchTip(project, repoPath, branch, authHost);
+        if (remoteTip === commitSha) {
+          return { commitSha, branch, fileCount: files.length };
+        }
+        if (remoteTip !== undefined && remoteTip !== parentSha) {
+          throw new GitFileRevisionConflictError(expectedFileRevision.path);
+        }
+        if (isExpectedFileRevisionRace(error)) {
+          throw new GitFileRevisionConflictError(expectedFileRevision.path);
+        }
       }
       throw error;
     }

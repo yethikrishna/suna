@@ -104,6 +104,7 @@ const CASES: Case[] = [
   { name: 'project session detail', leaf: PROJECT_ACTIONS.PROJECT_SESSION_READ, path: () => `/v1/projects/${PROJECT}/sessions/${crypto.randomUUID()}` },
   { name: 'project session transcript', leaf: PROJECT_ACTIONS.PROJECT_SESSION_READ, path: () => `/v1/projects/${PROJECT}/sessions/${crypto.randomUUID()}/transcript` },
   { name: 'project session audit', leaf: PROJECT_ACTIONS.PROJECT_SESSION_READ, path: () => `/v1/projects/${PROJECT}/sessions/${crypto.randomUUID()}/audit` },
+  { name: 'project session scope', leaf: PROJECT_ACTIONS.PROJECT_SESSION_READ, path: () => `/v1/projects/${PROJECT}/sessions/${crypto.randomUUID()}/scope` },
   { name: 'project access list', leaf: PROJECT_ACTIONS.PROJECT_MEMBERS_READ, path: () => `/v1/projects/${PROJECT}/access` },
   { name: 'oauth credentials list', leaf: PROJECT_ACTIONS.PROJECT_CONNECTOR_READ, path: () => `/v1/projects/${PROJECT}/oauth` },
   { name: 'review items inbox', leaf: PROJECT_ACTIONS.PROJECT_REVIEW_READ, path: () => `/v1/projects/${PROJECT}/review/items` },
@@ -204,11 +205,6 @@ const SEND_PRIMITIVE_CASES: Case[] = [
     name: 'slack file upload proxy',
     leaf: PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE,
     path: () => `/v1/projects/${PROJECT}/channels/slack/file/upload`,
-  },
-  {
-    name: 'meet speak proxy',
-    leaf: PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE,
-    path: () => `/v1/projects/${PROJECT}/channels/meet/speak`,
   },
   {
     // Teams consent-card upload drives the project bot to SEND into the

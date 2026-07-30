@@ -584,14 +584,6 @@ const envSchema = z.object({
   TUNNEL_MAX_WS_MESSAGE_SIZE: optInt(5 * 1024 * 1024),
 
   // ── Abuse controls (optional, all have sane defaults) ────────────────────
-  /** Max LIVE sessions one Kortix-as-a-Backend end-user (origin_ref) may hold.
-   *  0 / unset = disabled, which is the default: the account-wide cap still
-   *  applies. Opt-in because the right number is wrapper-specific. */
-  KORTIX_BACKEND_PER_ORIGIN_SESSION_LIMIT: optInt(0),
-  /** Per-END-USER spend ceiling in USD over a rolling window. 0/unset = off. */
-  KORTIX_BACKEND_PER_END_USER_SPEND_LIMIT_USD: optNum(0),
-  /** The rolling window the spend ceiling is measured over. */
-  KORTIX_BACKEND_PER_END_USER_SPEND_WINDOW_DAYS: optInt(30),
   KORTIX_INVITE_ACCEPT_REQS_PER_MIN: optInt(20),
   KORTIX_PUBLIC_SESSION_SHARE_REQS_PER_MIN: optInt(60),
   KORTIX_DEMO_REQUEST_REQS_PER_MIN: optInt(10),
@@ -1127,9 +1119,6 @@ export const config = {
   TUNNEL_RATE_LIMIT_WS_CONNECT: env.TUNNEL_RATE_LIMIT_WS_CONNECT,
   TUNNEL_RATE_LIMIT_PERM_GRANT: env.TUNNEL_RATE_LIMIT_PERM_GRANT,
   TUNNEL_MAX_WS_MESSAGE_SIZE: env.TUNNEL_MAX_WS_MESSAGE_SIZE,
-  KORTIX_BACKEND_PER_ORIGIN_SESSION_LIMIT: env.KORTIX_BACKEND_PER_ORIGIN_SESSION_LIMIT,
-  KORTIX_BACKEND_PER_END_USER_SPEND_LIMIT_USD: env.KORTIX_BACKEND_PER_END_USER_SPEND_LIMIT_USD,
-  KORTIX_BACKEND_PER_END_USER_SPEND_WINDOW_DAYS: env.KORTIX_BACKEND_PER_END_USER_SPEND_WINDOW_DAYS,
 
   // ─── Abuse Controls ───────────────────────────────────────────────────────
   KORTIX_INVITE_ACCEPT_REQS_PER_MIN: env.KORTIX_INVITE_ACCEPT_REQS_PER_MIN,

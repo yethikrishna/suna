@@ -22,7 +22,9 @@ describe('white-label SDK boundary', () => {
       export const View = () => <button><Loader2 className="animate-spin" /></button>;
     `;
 
-    expect(new Set(scanSource(fixture).map((violation) => violation.rule))).toEqual(
+    expect(
+      new Set(scanSource(fixture).map((violation) => violation.rule)),
+    ).toEqual(
       new Set([
         'opencode-package',
         'direct-runtime-import',
@@ -43,7 +45,7 @@ describe('white-label SDK boundary', () => {
       fetch('/api/auth/login');
       fetch('/api/mode');
       fetch('/api/preview-url');
-      fetch('/api/usage');
+      fetch('/api/session-costs');
     `;
 
     expect(scanSource(fixture)).toEqual([]);
@@ -51,12 +53,16 @@ describe('white-label SDK boundary', () => {
 
   test('detects provider names embedded inside legacy identifiers', () => {
     const fixture = `useCanonicalOpenCodeSession(projectId);`;
-    expect(scanSource(fixture).map((violation) => violation.rule)).toContain('provider-term');
+    expect(scanSource(fixture).map((violation) => violation.rule)).toContain(
+      'provider-term',
+    );
   });
 
   test('rejects dynamic fetch targets in client code', () => {
     const fixture = `fetch(resolveRuntimeEndpoint(projectId));`;
-    expect(scanSource(fixture).map((violation) => violation.rule)).toContain('raw-kortix-fetch');
+    expect(scanSource(fixture).map((violation) => violation.rule)).toContain(
+      'raw-kortix-fetch',
+    );
   });
 
   test('rejects raw transport calls in server code', () => {
@@ -72,9 +78,10 @@ describe('white-label SDK boundary', () => {
       const result = await fetch(\`\${app.baseUrl}/api/kortix/p/\${runtime}/8000/status\`);
     `;
 
-    expect(
-      scanTestSource(fixture).map((violation) => violation.rule),
-    ).toEqual(['test-raw-kortix-transport', 'test-raw-kortix-transport']);
+    expect(scanTestSource(fixture).map((violation) => violation.rule)).toEqual([
+      'test-raw-kortix-transport',
+      'test-raw-kortix-transport',
+    ]);
   });
 
   test('rejects SDK source imports in application tests', () => {
@@ -82,9 +89,9 @@ describe('white-label SDK boundary', () => {
       import { createScopedKortix } from '../../../packages/sdk/src/node/server';
     `;
 
-    expect(
-      scanTestSource(fixture).map((violation) => violation.rule),
-    ).toEqual(['test-sdk-internal-import']);
+    expect(scanTestSource(fixture).map((violation) => violation.rule)).toEqual([
+      'test-sdk-internal-import',
+    ]);
   });
 
   test('the complete client stays inside the SDK and shadcn boundaries', () => {

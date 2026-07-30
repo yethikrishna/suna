@@ -47,21 +47,26 @@ import { beginSessionTiming, markSessionClick, sessionMark } from '@/lib/session
 import { useBillingAccountId } from '@/stores/billing-account-context';
 import { useSessionFilterStore } from '@/stores/session-filter-store';
 import { listProjectSessions } from '@kortix/sdk';
-import { Icon as IconMynauiType, UsersSolid } from '@mynaui/icons-react';
+import {
+  CalendarDotsIcon as CalendarClock,
+  DotsThreeIcon as HiDotsHorizontal,
+  ListIcon as List,
+  EnvelopeIcon as Mail,
+  ChatsIcon as MessagesSquare,
+  UsersIcon as UsersSolid,
+  WebhooksLogoIcon as Webhook,
+} from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarClock, List, Mail, MessagesSquare, Webhook, type LucideIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { HiDotsHorizontal } from 'react-icons/hi';
-import { IconType } from 'react-icons/lib';
+import { useCallback, useEffect, useMemo, useRef, type ComponentType } from 'react';
 import { SidebarBalanceWarning } from './footer/project-balance-warning';
 import { SidebarUpgradeButton } from './footer/project-upgrade-button';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const modSymbol = isMac ? '⌘' : 'Ctrl';
 
-const SESSION_FILTER_ICONS: Record<SessionFilterValue, LucideIcon | IconMynauiType | IconType> = {
+const SESSION_FILTER_ICONS: Record<SessionFilterValue, ComponentType<{ className?: string }>> = {
   all: List,
   mine: MessagesSquare,
   shared: UsersSolid,

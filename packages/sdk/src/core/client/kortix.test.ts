@@ -47,9 +47,40 @@ test('session(projectId, sessionId) binds both ids', async () => {
   expect(last().url).toContain('/projects/PID123/sessions/SID456/previews');
 });
 
+test('session(projectId, sessionId).cost binds project scope without starting the runtime', async () => {
+  await kortix.session('PID123', 'SID456').cost();
+
+  expect(calls).toHaveLength(1);
+  expect(last().url).toBe(
+    'http://test.local/usage/session-costs/SID456?project_id=PID123',
+  );
+  expect(last().method).toBe('GET');
+});
+
 test('project(id).session(sid) is the same session handle', async () => {
   await kortix.project('PA').session('SB').get();
   expect(last().url).toContain('/projects/PA/sessions/SB');
+});
+
+test('session(...).scope reads the authoritative session scope', async () => {
+  await kortix.session('PID123', 'SID456').scope();
+  expect(last().url).toBe('http://test.local/projects/PID123/sessions/SID456/scope');
+  expect(last().method).toBe('GET');
+});
+
+test('session(...).rescope writes canonical connector authorization bindings', async () => {
+  await kortix.session('PID123', 'SID456').rescope({
+    connector_bindings: {
+      gmail: { authorization_id: 'AUTH-1' },
+    },
+  });
+  expect(last().url).toBe('http://test.local/projects/PID123/sessions/SID456/scope');
+  expect(last().method).toBe('PUT');
+  expect(last().body).toEqual({
+    connector_bindings: {
+      gmail: { authorization_id: 'AUTH-1' },
+    },
+  });
 });
 
 test('project(id).sessions.list forwards manager inventory scope', async () => {
@@ -362,6 +393,11 @@ test('project(id).connectors covers credential-mode/sensitive/policies/pipedream
   await kortix.project('PID123').connectors.setCredentialMode('slack-1', 'shared');
   expect(last().url).toContain('/executor/projects/PID123/connectors/slack-1/credential-mode');
 
+  await kortix.project('PID123').connectors.setAuthorizationStrategy('slack-1', 'user');
+  expect(last().url).toContain(
+    '/executor/projects/PID123/connectors/slack-1/authorization-strategy',
+  );
+
   await kortix.project('PID123').connectors.setSensitive('slack-1', true);
   expect(last().url).toContain('/executor/projects/PID123/connectors/slack-1/sensitive');
 
@@ -389,6 +425,21 @@ test('project(id).connectors covers credential-mode/sensitive/policies/pipedream
   await kortix.project('PID123').connectors.pipedream.finalize('gmail-1');
   expect(last().url).toContain('/executor/projects/PID123/connectors/gmail-1/connect/finalize');
   expect(last().method).toBe('POST');
+});
+
+test('project(id).connectors exposes canonical authorizations with a profiles alias', async () => {
+  await kortix.project('PID123').connectors.authorizations.list();
+  expect(last().url).toContain('/projects/PID123/connector-profiles');
+
+  await kortix.project('PID123').connectors.authorizations.reconcile({
+    connector_alias: 'gmail',
+    owner_type: 'project',
+    label: 'Project Gmail',
+  });
+  expect(last().method).toBe('POST');
+
+  await kortix.project('PID123').connectors.profiles.list();
+  expect(last().url).toContain('/projects/PID123/connector-profiles');
 });
 
 test('kortix.connectStatus hits the top-level connect-status endpoint (not project-scoped)', async () => {
@@ -613,6 +664,28 @@ test('kortix.billing.credits covers purchase + auto-topup get/configure', async 
   await kortix.billing.credits.configureAutoTopup({ enabled: true, threshold: 5, amount: 20 });
   expect(last().url).toContain('/billing/auto-topup/configure');
   expect(last().method).toBe('POST');
+});
+
+test('kortix.billing.sessionCosts covers paginated list and detail reads', async () => {
+  await kortix.billing.sessionCosts.list({
+    accountId: 'ACC1',
+    projectId: 'PID1',
+    limit: 20,
+    offset: 0,
+  });
+  expect(last().url).toBe(
+    'http://test.local/usage/session-costs?account_id=ACC1&project_id=PID1&limit=20&offset=0',
+  );
+  expect(last().method).toBe('GET');
+
+  await kortix.billing.sessionCosts.get('SID/1', {
+    accountId: 'ACC1',
+    projectId: 'PID1',
+  });
+  expect(last().url).toBe(
+    'http://test.local/usage/session-costs/SID%2F1?account_id=ACC1&project_id=PID1',
+  );
+  expect(last().method).toBe('GET');
 });
 
 test('kortix.marketplace covers public catalog browse + authed sources CRUD (top-level, not project-scoped)', async () => {

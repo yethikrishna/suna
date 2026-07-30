@@ -126,12 +126,6 @@ export function serializeSession(
     owner_type: ctx?.ownerType ?? (row.createdBy ? 'unknown' : null),
     visibility: row.visibility,
     origin: row.origin,
-    // Which END-USER a backend session acts for, and what it may read, are
-    // both session content — withheld on a row the caller cannot open.
-    end_user_ref: canAccess ? row.originRef : null,
-    // Deprecated alias, echoed with the same value so wrappers written against
-    // the old name keep working. The DB column keeps its original name.
-    origin_ref: canAccess ? row.originRef : null,
     secrets_allowlist: canAccess ? (row.secretsAllowlist ?? null) : null,
     sharing: visibilityToIntent(
       row.visibility as 'private' | 'project' | 'restricted',

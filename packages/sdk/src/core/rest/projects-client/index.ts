@@ -21,6 +21,7 @@ export * from './model-enablement';
 export * from './agent-scope';
 export * from './agent-config';
 export * from './billing';
+export * from './session-costs';
 export * from './channels';
 export * from './gateway';
 export * from './transcription';

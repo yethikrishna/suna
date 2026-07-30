@@ -21,16 +21,19 @@ ID, and the branch name are the same value. See
 
 ## Session lifecycle
 
-| Method                 | Wraps                              | What it does                                 |
-| ---------------------- | ---------------------------------- | -------------------------------------------- |
-| `s.get(opts?)`         | `GET /projects/:pid/sessions/:sid` | Reads session details                        |
-| `s.update(input)`      | `PATCH …/sessions/:sid`            | Renames the session or updates metadata      |
-| `s.start(waitMs?)`     | `POST …/sessions/:sid/start`       | Provisions and boots the runtime             |
-| `s.restart()`          | `POST …/sessions/:sid/restart`     | Restarts the runtime; keeps the same sandbox |
-| `s.stop()`             | `POST …/sessions/:sid/stop`        | Stops the runtime; the session stays         |
-| `s.delete()`           | `DELETE …/sessions/:sid`           | Deletes the session                          |
-| `s.setSharing(intent)` | `PUT …/sharing`                    | Sets sharing and visibility                  |
-| `s.commit(input?)`     | —                                  | Commits the agent's work                     |
+| Method | Wraps | What it does |
+|---|---|---|
+| `s.get(opts?)` | `GET /projects/:pid/sessions/:sid` | Reads session details |
+| `s.update(input)` | `PATCH …/sessions/:sid` | Renames the session or updates metadata |
+| `s.start(waitMs?)` | `POST …/sessions/:sid/start` | Provisions and boots the runtime |
+| `s.restart()` | `POST …/sessions/:sid/restart` | Restarts the runtime; keeps the same sandbox |
+| `s.stop()` | `POST …/sessions/:sid/stop` | Stops the runtime; the session stays |
+| `s.delete()` | `DELETE …/sessions/:sid` | Deletes the session |
+| `s.setSharing(intent)` | `PUT …/sharing` | Sets sharing and visibility |
+| `s.cost()` | `GET /usage/session-costs/:sid` | Reads finalized LLM and compute cost without starting the runtime |
+| `s.scope()` | `GET …/sessions/:sid/scope` | Reads stored secret narrowing and materialized connector authorizations |
+| `s.rescope(input)` | `PUT …/sessions/:sid/scope` | Replaces supplied scope fields for the next prompt or tool call |
+| `s.commit(input?)` | — | Commits the agent's work |
 
 <Callout type="warn">
   `s.delete()` deletes the session and its runtime. This cannot be undone. To pause a session
@@ -117,6 +120,41 @@ the model; anyone else gets `403`.
 
 `send()` resolves the runtime, then prompts it. `abort()` stops the current
 run without deleting the session.
+
+## Session scope and cost
+
+Read the stored secret narrowing and materialized connector authorizations.
+`secrets_allowlist: null` means the agent's secret grant applies:
+
+```ts
+const scope = await s.scope();
+```
+
+Replace one or both scope fields:
+
+```ts
+await s.rescope({
+  secrets: ['DATABASE_URL'],
+  connector_bindings: {
+    github: { authorization_id: authorizationId },
+  },
+});
+```
+
+Each supplied field replaces its complete previous value. Omit a field to leave
+it unchanged. Connector authorization changes apply to the next tool call.
+Secret removal stops future delivery but cannot remove an already disclosed
+value from model context or an existing process.
+
+Read the unified cost record:
+
+```ts
+const cost = await s.cost();
+```
+
+The record combines finalized LLM cost, billed sandbox compute cost, model
+usage, token totals, compute duration, and ledger entries. `s.cost()` does not
+call `ensureReady()`.
 
 ## Runtime status and previews
 

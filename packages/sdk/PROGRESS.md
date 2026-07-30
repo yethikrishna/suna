@@ -4166,3 +4166,46 @@ and deployed OpenCode REST verification.
 **Status:** IN PROGRESS.
 
 **SDK package shippable to production: NOT YET.**
+
+---
+
+### 2026-07-30 — session `opencode-rest-rollback` post-merge verification
+
+Re-ran the rollback gates after merging current `origin/main` into the worktree.
+The earlier completion entry records pre-merge counts and is retained as history.
+
+Final SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1340 pass`, `0 fail`.
+- `pnpm --filter @kortix/sdk run smoke:install`: the packed tarball installed,
+  imported, and constructed successfully.
+
+Final repository gates:
+
+- Manifest schema: `341 pass`, `0 fail`.
+- Database: `160 pass`, `3 skip`, `0 fail`.
+- API typecheck: exit `0`.
+- API: `4770 pass`, `57 skip`, `0 fail`.
+- Sandbox agent server: `267 pass`, `0 fail`.
+- Shared runtime versions: `269 pass`, `0 fail`.
+- CLI: `559 pass`, `0 fail`.
+- Starter: `48 pass`, `0 fail`.
+- Web: `2563 pass`, `0 fail`.
+- White-label demo: typecheck and production build passed; `281 pass`,
+  `3 skip`, `0 fail`.
+- Test-harness typecheck: exit `0`.
+- Migration lint: `109` files; Squawk reported `42` files and `0` issues.
+- Ke2e route coverage: `506/516` covered, `10` allowlisted, `0` uncovered.
+- Authenticated local curl: `25 pass`, `0 fail`.
+- Local REST contract smoke: `14 pass`, `0 fail`.
+- Local Chromium: `2 pass`, `0 fail`. The session rendered `PONG`, used one
+  `/prompt_async` request and `/global/event`, sent no `/kortix/acp/` request,
+  opened the current-main Files side panel, and passed warm-session fallback.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+**Repository delivery shippable to production: NOT YET.** The direct `main`
+push, Deploy Dev SHA proof, and deployed REST verification remain.

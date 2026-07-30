@@ -57,9 +57,19 @@ The session route calls one hook:
 ```tsx
 const session = useSession(projectId, sessionId);
 
-return session.phase !== 'ready'
-  ? <BootScreen stage={session.stage} reason={session.reason} onRetry={session.retry} />
-  : <WorkbenchTabs session={session} projectId={projectId} sessionId={sessionId} />;
+return session.phase !== 'ready' ? (
+  <BootScreen
+    stage={session.stage}
+    reason={session.reason}
+    onRetry={session.retry}
+  />
+) : (
+  <WorkbenchTabs
+    session={session}
+    projectId={projectId}
+    sessionId={sessionId}
+  />
+);
 ```
 
 The hook exposes the complete workbench contract:
@@ -82,7 +92,7 @@ It renders each available feature by its server-provided label and description.
 It updates a feature through:
 
 ```ts
-kortix.project(projectId).updateExperimentalFeature(feature.key, enabled)
+kortix.project(projectId).updateExperimentalFeature(feature.key, enabled);
 ```
 
 The host does not contain hard-coded experiment keys.
@@ -131,20 +141,20 @@ Set `KORTIX_API_KEY` to enable wrapper mode.
 - `src/server/users.ts` enforces per-user project ownership.
 - `src/server/policy.ts` applies a deny-by-default route policy.
 - `src/server/rate-limit.ts` applies per-user limits.
-- `/api/usage` applies the configured `COST_MARKUP`.
+- `/api/session-costs` applies the configured `COST_MARKUP` to session costs.
 
 The Kortix API key remains server-side.
 
 ## Product surfaces
 
-| Route | SDK-backed surface |
-| --- | --- |
-| `/` | Project list and provisioning |
-| `/account` | Accounts, members, roles, invites, and account projects |
-| `/projects/[id]` | Session creation, agent selection, model selection, and templates |
-| `/projects/[id]/sessions/[sessionId]` | Chat, files, changes, previews, shares, and session actions |
-| `/projects/[id]/settings` | General settings, experiments, capabilities, secrets, access, connectors, triggers, and policies |
-| `/usage` | Wrapper cost and markup report |
+| Route                                 | SDK-backed surface                                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `/`                                   | Project list and provisioning                                                                    |
+| `/account`                            | Accounts, members, roles, invites, and account projects                                          |
+| `/projects/[id]`                      | Session creation, agent selection, model selection, and templates                                |
+| `/projects/[id]/sessions/[sessionId]` | Chat, files, changes, previews, shares, and session actions                                      |
+| `/projects/[id]/settings`             | General settings, experiments, capabilities, secrets, access, connectors, triggers, and policies |
+| `/session-costs`                      | Wrapper session cost and markup report                                                           |
 
 The app uses the following public SDK groups:
 
@@ -203,7 +213,7 @@ pnpm --filter @kortix/whitelabel-demo test
 The test suite boots the production Next.js server. Product flows create a
 request-scoped SDK client. Tests do not construct Kortix backend requests. The
 suite verifies auth, mode selection, ownership, route policy, proxy behavior,
-preview resolution, rate limits, usage markup, and the SDK boundary.
+preview resolution, rate limits, session cost markup, and the SDK boundary.
 
 ## Rebrand
 

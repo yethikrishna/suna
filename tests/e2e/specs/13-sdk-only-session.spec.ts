@@ -293,7 +293,7 @@ test.describe.serial('13 — SDK-only web session', () => {
     expect(failedKortixResponses).toEqual([]);
 
     await page.getByRole('button', { name: /^Files$/ }).click();
-    await expect(page).toHaveURL(`/projects/${projectId}/files`);
+    await expect(page).toHaveURL(`/projects/${projectId}/sessions/${sessionId}`);
     await expect(page.getByText('kortix.yaml', { exact: true }).first()).toBeVisible({
       timeout: 60_000,
     });

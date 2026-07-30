@@ -2,8 +2,8 @@
 
 import { useTranslations } from 'next-intl';
 
+import { ArrowCounterClockwiseIcon as RotateCcw } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RotateCcw } from 'lucide-react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 
@@ -802,6 +802,7 @@ function ActiveSessionChat({
         <SessionChat
           key={chatSessionId}
           sessionId={chatSessionId}
+          projectSessionId={sessionId}
           projectId={projectId}
           sessionState={chatSessionId === sessionState.opencodeSessionId ? sessionState : undefined}
         />

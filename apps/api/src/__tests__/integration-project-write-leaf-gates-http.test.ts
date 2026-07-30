@@ -82,7 +82,7 @@ function req(method: string, path: string, secret: string, body?: unknown) {
 async function iamDenied(res: Response): Promise<boolean> {
   if (res.status !== 403) return false;
   const text = JSON.stringify(await res.json().catch(() => ({})));
-  return /permission|do not have access|doesn't let you/i.test(text);
+  return /permission|do not have access|doesn't let you|is not granted/i.test(text);
 }
 
 interface WCase {
@@ -129,6 +129,15 @@ const CASES: WCase[] = [
     // A live model change restarts opencode, so the scoped token must hold the
     // same destructive capability as the stop route.
     denyGrant: [A.PROJECT_SESSION_START], allowGrant: [A.PROJECT_SESSION_START, A.PROJECT_SESSION_STOP],
+  },
+  {
+    name: 'session scope replacement (leaf session.stop)',
+    leaf: A.PROJECT_SESSION_STOP, method: 'PUT',
+    path: () => `/v1/projects/${PROJECT}/sessions/${sid()}/scope`,
+    body: { connector_bindings: {} },
+    tier: 'member',
+    denyGrant: [A.PROJECT_SESSION_START],
+    allowGrant: [A.PROJECT_SESSION_START, A.PROJECT_SESSION_STOP],
   },
   // ── Review ───────────────────────────────────────────────────────────────
   {
@@ -216,12 +225,6 @@ const CASES: WCase[] = [
     name: 'meet bot name (customize.write)',
     leaf: A.PROJECT_CUSTOMIZE_WRITE, method: 'PUT',
     path: () => `/v1/projects/${PROJECT}/channels/meet/name`, body: {},
-    tier: 'editor', denyGrant: [A.PROJECT_TRIGGER_FIRE], allowGrant: [A.PROJECT_CUSTOMIZE_WRITE],
-  },
-  {
-    name: 'meet voice (customize.write)',
-    leaf: A.PROJECT_CUSTOMIZE_WRITE, method: 'PUT',
-    path: () => `/v1/projects/${PROJECT}/channels/meet/voice`, body: {},
     tier: 'editor', denyGrant: [A.PROJECT_TRIGGER_FIRE], allowGrant: [A.PROJECT_CUSTOMIZE_WRITE],
   },
   {

@@ -72,6 +72,7 @@ try/catching every call.
 | restart | `POST .../sessions/:sid/restart` |
 | commit + push | `POST .../sessions/:sid/commit-push` |
 | sharing (project) | `GET/PUT .../sessions/:sid/sharing` |
+| finalized LLM + compute cost | `GET /v1/usage/session-costs/:sid?project_id=:id` → `projects-client/session-costs.ts`, facade `session(pid,sid).cost()` ✅ |
 | transcript | `GET .../sessions/:sid/transcript` → `projects-client/sessions.ts`'s `getSessionTranscript` ✅, facade `session(pid,sid).transcript()` ✅ (previously listed ✅ here with no client fn behind it — that was false; now genuinely wired) |
 | preview candidates (live ports) | `GET .../sessions/:sid/previews` |
 | public shares | `GET/POST/DELETE .../sessions/:sid/public-shares[/:id]` |
@@ -207,16 +208,23 @@ Two small project-scoped mutations, added to `projects-client/projects.ts`:
 - sandbox proxy `ALL /v1/p/:sandboxId/:port/*` + preview auth/share → used by opencode-client baseURL ✅
 
 ### 15. Billing  ✅ (read + a curated mutation surface)
-Read surface (unchanged) — `kortix.billing.{accountState, accountStateMinimal,
-transactions, transactionsSummary, creditBreakdown, usageHistory,
-tierConfigurations}` ✅. Hooks still web-local (`hooks/billing`) 🟡.
+Read surface — `kortix.billing.{accountState, accountStateMinimal,
+transactions, transactionsSummary, creditBreakdown, usageHistory, usageRollup,
+sessionCosts, tierConfigurations}` ✅. Hooks still web-local
+(`hooks/billing`) 🟡.
 | op | REST |
 |---|---|
 | account state (full / minimal) | `GET /v1/billing/account-state[/minimal]` |
 | transactions (paginated) / summary | `GET /v1/billing/transactions`, `/transactions/summary` |
 | credit breakdown | `GET /v1/billing/credit-breakdown` |
 | usage history | `GET /v1/billing/usage-history` |
+| unified session cost list / detail | `GET /v1/usage/session-costs`, `/v1/usage/session-costs/:sid` |
 | tier configurations (public pricing) | `GET /v1/billing/tier-configurations` |
+
+The unified session-cost client lives in `projects-client/session-costs.ts`.
+Use `kortix.billing.sessionCosts.list(options)` for account or project
+pagination. Use `kortix.billing.sessionCosts.get(sessionId, options)` for model
+usage and mixed LLM/compute ledger entries.
 
 Mutations — a deliberately curated subset of `apps/api/src/billing/routes`
 (Stripe-webhook-only routes and legacy/per-seat-claim internals stay
@@ -281,6 +289,7 @@ Map exists, but these belong to the platform app, not the agent SDK:
 | Marketplace/registry install (project-scoped) | ✅ complete — `projects-client/marketplace.ts`, facade `project(id).marketplace.*` / `.registry.*` |
 | Public marketplace catalog browse + sources | ✅ complete — `projects-client/marketplace-catalog.ts`, facade `kortix.marketplace.*` |
 | Billing mutations (checkout/subscription/credits) | ✅ complete — `projects-client/billing.ts`, facade `kortix.billing.{checkout, subscription, credits}` |
+| Unified session costs | ✅ complete — `projects-client/session-costs.ts`, facade `kortix.billing.sessionCosts.{list,get}` / `session(pid,sid).cost()` |
 | Setup links, manifest validate, git token | ✅ complete — facade `project(id).{setupLinks, validateManifest, gitToken}` |
 | Account audit (Enterprise) | ✅ client + facade (`kortix.accounts.audit.*`); 🟡 no hooks yet |
 | Skills create/update/delete | ❌ web-local (daemon file I/O) |

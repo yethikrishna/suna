@@ -118,10 +118,16 @@ back to `main` — is the unsolved part, and it's what Kortix is built for.
 Use these; don't invent others.
 
 - 3,000+ apps connectable in a click, plus MCP, OpenAPI, GraphQL, and raw HTTP — brokered server-side through one scoped token.
-- microVM isolation; egress and credentials controlled at the network.
+- One isolated sandbox per session. **Do NOT claim blanket "microVM isolation"** — that is true for the Platinum provider (Cloud Hypervisor) but NOT for Daytona, which is the default and uses containers. Name microVM only where the provider is Platinum.
+- **Do NOT claim "egress controlled at the network".** Nothing implements it; E2B ships `allowInternetAccess: true` and the design doc is "Proposed — not scheduled". Removed 2026-07-31.
 - Thousands of agents in parallel on the same config, each on its own isolated cloud computer.
 - Every session in its own disposable Linux sandbox on its own branch; work reaches `main` only through an approved change request.
-- A real account/user/group model with per-resource permissions for people and agents; a secrets manager (encrypted, injected at runtime, never exposed); a full audit trail; human approval gates; on-prem, VPC, or air-gapped deployment.
+- A real account/user/group model with per-resource permissions for people and agents; encrypted secrets injected at runtime; a full audit trail; human approval gates; on-prem or VPC deployment.
+- **Secrets, stated precisely.** CONNECTOR credentials are brokered server-side and never enter the sandbox. A granted RUNTIME secret *is* a real env value in the session and is readable by any command the agent runs — never write "never visible to the model" (see `docs/ENV_SECRET_EXPOSURE_BASELINE.md`). Scope is per project + per agent grant + connector scope; "per person / per group" was retired by migration `20260706_secrets_v2_identifier_model.sql`.
+- **Approval gates are OFF by default** (`policy.default_mode` falls back to `allow_all`). Say "set this explicitly", never "it is on".
+- **SSO is SAML 2.0 only** — no enterprise OIDC. Never write "SAML/OIDC". SCIM 2.0 is first-party but pages beyond the first are unimplemented.
+- **Merge is default-deny for agents, not human-only.** An admin can grant `project.cr.merge`. Say the grant lives in `kortix.yaml` and cannot be widened without an approved change — do not say "only a human can merge".
+- **"Air-gapped" is not a self-host capability today.** `kortix self-host start` pulls images from docker.io and reaches a sandbox provider over egress. Route isolated topologies to Enterprise.
 - Bring your own models — any provider, your own keys — or the ChatGPT, Claude, or Cursor subscription you already pay for.
 - Open source and self-hostable; runs on Kortix Cloud, your servers, or fully on-prem.
 - Three ways work runs: on-demand, human-assisted, and automated.

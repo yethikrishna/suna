@@ -84,7 +84,15 @@ export const cta = {
  */
 export const trust = {
   eyebrow: 'Security & trust',
-  /** Rendered one line each, so the headline breaks the same way at every width. */
+  /**
+   * ACCURACY: do NOT restore "the model never sees them". A granted runtime
+   * secret is a real env value inside the session and is readable by any
+   * command the agent runs — see docs/ENV_SECRET_EXPOSURE_BASELINE.md. The
+   * true, narrower claim is the one below: CONNECTOR credentials are brokered
+   * server-side and never enter the machine.
+   * Do NOT restore "scoped per person and group" either — retired by migration
+   * 20260706_secrets_v2_identifier_model.sql.
+   */
   titleLines: [
     'Giving agents real access',
     'is the easy part. Trusting',
@@ -102,13 +110,13 @@ export const trust = {
   columns: [
     {
       id: 'approve',
-      title: 'Nothing merges itself',
-      body: 'Work reaches main only through a change request a person reads and approves. Agents propose; people decide.',
+      title: 'Merging is a separate power',
+      body: 'Agents open change requests. Merge is default-deny for an agent and granted explicitly in kortix.yaml — so an agent cannot widen its own reach without a change someone else approves.',
     },
     {
       id: 'keys',
-      title: 'The agent never holds your keys',
-      body: 'Credentials stay encrypted and scoped per person and group, injected into the machine at runtime. The model never sees them, and they never reach a log.',
+      title: 'Connector keys never enter the machine',
+      body: 'Third-party credentials stay server-side and are brokered through one scoped token, so the raw key never reaches the sandbox. Delivery is gated by role and by the agent grant.',
     },
     {
       id: 'deploy',

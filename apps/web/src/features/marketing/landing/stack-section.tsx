@@ -2,75 +2,120 @@
 
 import { Reveal } from '@/components/home/reveal';
 import { Badge } from '@/components/ui/badge';
+import { Icon } from '@/features/icon/icon';
 import { cn } from '@/lib/utils';
-import { stack } from './content';
+import { useState } from 'react';
+import { stack, type StackLayerId } from './content';
+
+type IconKey = keyof typeof Icon;
+
+function LayerLogos({ logos, chips }: { logos?: readonly string[]; chips?: readonly string[] }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {logos?.map((key) => {
+        const Glyph = Icon[key as IconKey] as ((p: { className?: string }) => JSX.Element) | undefined;
+        if (!Glyph) return null;
+        return (
+          <span
+            key={key}
+            className="border-border bg-background flex size-11 items-center justify-center rounded-sm border"
+            title={key}
+          >
+            <Glyph className="size-5" />
+          </span>
+        );
+      })}
+      {chips?.map((chip) => (
+        <span
+          key={chip}
+          className="border-border text-muted-foreground rounded-sm border px-3 py-2.5 font-mono text-[11px]"
+        >
+          {chip}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 /**
- * The stack, one labelled layer at a time — the "what is this actually made of"
- * answer. Layers read bottom-up like a real stack diagram on desktop, and the
- * one layer competitors cannot claim ("Your company as code") is the only one
- * that inverts.
+ * The seven layers, one open at a time. Tembo pins an isometric stack to the
+ * scroll; this keeps the useful half — named layers you can step through — and
+ * drops the 3D slabs, showing what each layer actually runs on instead.
  */
 export function StackSection() {
+  const [open, setOpen] = useState<StackLayerId>('models');
+
   return (
     <section id="stack" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
       <Reveal>
-        <Badge variant="kortix" className="rounded">
-          {stack.eyebrow}
-        </Badge>
-        <h2 className="text-foreground mt-6 max-w-3xl text-3xl font-medium tracking-tight text-balance sm:text-4xl">
-          {stack.title}
-        </h2>
-        <p className="text-muted-foreground mt-4 max-w-2xl text-base leading-relaxed">
-          {stack.sub}
-        </p>
+        <div className="max-w-3xl">
+          <Badge variant="kortix" className="rounded">
+            {stack.eyebrow}
+          </Badge>
+          <h2 className="text-foreground mt-6 text-3xl font-medium tracking-tight text-balance sm:text-4xl">
+            {stack.title}
+          </h2>
+          <p className="text-muted-foreground mt-4 text-base leading-relaxed">{stack.sub}</p>
+        </div>
       </Reveal>
 
-      <div className="border-border mt-10 overflow-hidden rounded-sm border">
-        {stack.layers.map((layer, i) => (
-          <Reveal key={layer.id} delay={i * 0.04}>
-            <div
-              className={cn(
-                'group grid grid-cols-1 gap-x-8 gap-y-2 px-5 py-6 sm:grid-cols-12 sm:px-7 sm:py-7',
-                i > 0 && 'border-border border-t',
-                'accent' in layer && layer.accent
-                  ? 'bg-foreground text-background'
-                  : 'bg-card',
-              )}
-            >
-              <div className="sm:col-span-3">
-                <h3 className="text-base font-medium tracking-tight">{layer.name}</h3>
+      <Reveal delay={0.06}>
+        <div className="border-border mt-10 overflow-hidden rounded-sm border">
+          {stack.layers.map((layer, i) => {
+            const isOpen = layer.id === open;
+            const isLast = layer.id === 'kortix';
+            return (
+              <div key={layer.id} className={cn(i > 0 && 'border-border border-t')}>
+                <h3>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(layer.id)}
+                    aria-expanded={isOpen}
+                    aria-controls={`layer-${layer.id}`}
+                    className={cn(
+                      'duration-fast flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors sm:px-7',
+                      isOpen ? 'bg-card' : 'hover:bg-foreground/[0.03]',
+                      isLast && 'font-medium',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'text-base tracking-tight',
+                        isOpen ? 'text-foreground' : 'text-muted-foreground',
+                      )}
+                    >
+                      {layer.name}
+                    </span>
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'text-muted-foreground/50 shrink-0 font-mono text-[11px] tabular-nums',
+                        isOpen && 'text-foreground/40',
+                      )}
+                    >
+                      {String(i + 1).padStart(2, '0')}
+                    </span>
+                  </button>
+                </h3>
+
+                {isOpen && (
+                  <div
+                    id={`layer-${layer.id}`}
+                    className="bg-card grid grid-cols-1 gap-6 px-5 pb-6 sm:grid-cols-12 sm:px-7 sm:pb-7"
+                  >
+                    <p className="text-muted-foreground text-sm leading-relaxed sm:col-span-7">
+                      {layer.body}
+                    </p>
+                    <div className="sm:col-span-5">
+                      <LayerLogos logos={layer.logos} chips={layer.chips} />
+                    </div>
+                  </div>
+                )}
               </div>
-
-              <p
-                className={cn(
-                  'text-sm leading-relaxed sm:col-span-6',
-                  'accent' in layer && layer.accent
-                    ? 'text-background/75'
-                    : 'text-muted-foreground',
-                )}
-              >
-                {layer.body}
-              </p>
-
-              <p
-                className={cn(
-                  'font-mono text-[11px] leading-relaxed tracking-wide sm:col-span-3 sm:text-right',
-                  'accent' in layer && layer.accent
-                    ? 'text-background/55'
-                    : 'text-muted-foreground/70',
-                )}
-              >
-                {layer.meta}
-              </p>
-            </div>
-          </Reveal>
-        ))}
-
-        <div className="border-border bg-card text-muted-foreground border-t px-5 py-4 text-center font-mono text-[11px] tracking-widest uppercase sm:px-7">
-          Kortix
+            );
+          })}
         </div>
-      </div>
+      </Reveal>
     </section>
   );
 }

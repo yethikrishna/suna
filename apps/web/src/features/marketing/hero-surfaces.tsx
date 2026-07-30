@@ -239,7 +239,7 @@ function WebSurface() {
   return (
     <div className="bg-card relative h-full w-full">
       <video
-        className="h-full w-full object-contain motion-reduce:hidden"
+        className="h-full w-full object-cover motion-reduce:hidden"
         poster={SHOWCASE_POSTER}
         autoPlay
         muted
@@ -342,7 +342,9 @@ export function HeroSurfaces() {
         })}
       </div>
 
-      <div className="border-border bg-card mt-3 h-[520px] overflow-hidden rounded-xl border sm:h-[600px]">
+      {/* 16:10 matches the recording, so the video fills the frame edge to edge
+          instead of sitting letterboxed inside a fixed height. */}
+      <div className="border-border bg-card mt-3 aspect-[16/10] min-h-[420px] overflow-hidden rounded-xl border">
         <SurfacePanel surface={active} />
       </div>
     </div>

@@ -46,6 +46,11 @@ export const productMenu: NavMenu = {
           description: 'Your VPC, on-prem, or fully air-gapped',
         },
         {
+          name: 'Security',
+          href: '/security',
+          description: 'Isolation, credentials, permissions and audit',
+        },
+        {
           name: 'Enterprise',
           href: '/enterprise',
           description: 'SSO, RBAC, audit trails and approval gates',

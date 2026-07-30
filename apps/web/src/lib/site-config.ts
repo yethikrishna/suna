@@ -90,11 +90,29 @@ export const productMenu: NavMenu = {
   },
 };
 
+export const companyMenu: NavMenu = {
+  columns: [
+    {
+      title: 'Company',
+      links: [
+        { name: 'About', href: '/about', description: 'Why we are building Kortix' },
+        { name: 'Careers', href: '/careers', description: 'Join the team building it' },
+      ],
+    },
+  ],
+  footer: {
+    text: 'Kortix is developed in the open',
+    linkLabel: 'Read the source →',
+    href: 'https://github.com/kortix-ai/suna',
+  },
+};
+
 export const siteConfig = {
   url: CANONICAL_ORIGIN,
   nav: {
     links: [
       { id: 1, name: 'Product', menu: productMenu },
+      { id: 3, name: 'Company', menu: companyMenu },
       { id: 4, name: 'Pricing', href: '/pricing' },
       { id: 6, name: 'Docs', href: '/docs' },
     ] as NavLink[],

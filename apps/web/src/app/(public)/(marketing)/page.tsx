@@ -1,7 +1,6 @@
 'use client';
 
 import { Separator } from '@/components/ui/separator';
-import { GitCompanySection } from '@/features/marketing/git-company/git-company-section';
 import Hero from '@/features/marketing/hero';
 import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
 import { CtaSection } from '@/features/marketing/landing/cta-section';
@@ -20,12 +19,12 @@ function SectionDivider() {
 
 /**
  * The arc, in the order a reader needs it: what it is, what it does for a team,
- * what it is made of, where that work lives, that it survives a security
- * review, that it is genuinely yours — then start.
+ * what it is made of, that it is genuinely yours, that it survives a security
+ * review — then start.
  *
- * Open source moved from the middle to the last argument before the CTA: it is
- * the answer to the objection the security section raises, so it reads better
- * as the closer's setup than as a mid-page aside.
+ * The repo is no longer its own section. "One kortix.yaml, one repo" and
+ * "source of truth" were the same argument told twice, so the manifest now
+ * opens the layer sequence as layer 01 and the standalone block is gone.
  */
 export default function Home() {
   return (
@@ -43,23 +42,19 @@ export default function Home() {
 
       <SectionDivider />
 
-      {/* 3 · What it is made of — the layers, each with the surface that proves it */}
+      {/* 3 · What it is made of — the layers, each with the surface that proves
+             it, opening on the repo that holds all of them */}
       <HowItWorks />
 
       <SectionDivider />
 
-      {/* 4 · Where the work lives: one kortix.yaml, one repo */}
-      <GitCompanySection />
+      {/* 4 · Open source, and genuinely runnable on your own hardware */}
+      <OpenSourceSection />
 
       <SectionDivider />
 
       {/* 5 · Why it is safe to run, and where we stand on certification */}
       <TrustSection />
-
-      <SectionDivider />
-
-      {/* 6 · Open source, and genuinely runnable on your own hardware */}
-      <OpenSourceSection />
 
       {/* Close */}
       <CtaSection />

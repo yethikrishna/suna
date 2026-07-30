@@ -3,7 +3,6 @@
 import { Reveal } from '@/components/home/reveal';
 import { Button } from '@/components/ui/marketing/button';
 import { Icon } from '@/features/icon/icon';
-import { useGitHubStars } from '@/hooks/utils/use-github-stars';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -27,75 +26,61 @@ function Eyebrow({ children }: { children: string }): ReactNode {
   );
 }
 
-/** Live star count — the only number on the page, read from `/api/github-stars`. */
-function Stars(): ReactNode {
-  const { stars, formattedStars } = useGitHubStars('kortix-ai', 'suna');
-
-  return (
-    <a
-      href={hero.ctaSecondaryHref}
-      target="_blank"
-      rel="noreferrer"
-      className="text-muted-foreground hover:text-foreground font-mono text-[10px] tracking-widest uppercase transition-colors"
-    >
-      {stars === null ? '—' : formattedStars} {hero.starsCaption} ↗
-    </a>
-  );
-}
-
 /**
- * The team, then the thesis. The photograph opens the page. The fixed navbar
- * occupies the top 68px, so `pt-24` (96px) clears it by 28px and nothing above
- * the image is wasted.
+ * The team, then the thesis. The photograph opens the page edge to edge — it is
+ * the six people making the argument, so it gets the full viewport rather than
+ * the 6xl measure everything else hangs on.
  *
  * The crop is the whole point. `/images/team.webp` is 1920×1080 with roughly a
- * quarter of its height empty above the heads, so the container is wider than
- * the source at every width and `object-bottom` takes the whole crop off the
- * top — dead space out, the six figures whole, shoes to hair. `object-cover`
- * scales to the container WIDTH, so cropping the top costs nothing in how large
- * the people render; it only removes emptiness. 21:9 is the tightest the band
- * can go: one more step and the crop line reaches the tallest head.
+ * quarter of its height empty above the heads, so the band is wider than the
+ * source at every width and `object-bottom` takes the whole crop off the top —
+ * dead space out, the six figures whole, shoes to hair. `object-cover` scales to
+ * the container WIDTH, so cropping the top costs nothing in how large the people
+ * render; it only removes emptiness. 21:9 is the tightest the band can go, and
+ * full-bleed spends the remaining margin: at 1440px it crops 193px of a 211px
+ * void. Widen the ratio further and the crop line reaches the tallest head.
  */
 function Hero(): ReactNode {
   return (
-    <section className="mx-auto max-w-6xl px-6 pt-24 pb-14 sm:pt-28 sm:pb-20">
+    <section className="pt-20 pb-14 sm:pb-20">
       <Reveal>
-        <div className="border-border relative aspect-[2/1] w-full overflow-hidden rounded-xl border lg:aspect-[21/9]">
+        <div className="relative aspect-[2/1] w-full overflow-hidden lg:aspect-[21/9]">
           <Image
             src="/images/team.webp"
             alt={hero.imageAlt}
             fill
             priority
             className="object-cover object-bottom"
-            sizes="(max-width: 1152px) 100vw, 1104px"
+            sizes="100vw"
           />
         </div>
 
-        <div className="mt-14 sm:mt-16">
-          <Eyebrow>{hero.eyebrow}</Eyebrow>
-        </div>
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="mt-14 sm:mt-16">
+            <Eyebrow>{hero.eyebrow}</Eyebrow>
+          </div>
 
-        <h1 className="text-foreground mt-8 max-w-4xl text-4xl leading-[1.02] font-medium tracking-tight text-balance sm:text-6xl lg:text-7xl">
-          {hero.title}
-        </h1>
+          <h1 className="text-foreground mt-8 max-w-4xl text-4xl leading-[1.02] font-medium tracking-tight text-balance sm:text-6xl lg:text-7xl">
+            {hero.title}
+          </h1>
 
-        <p className={cn(MEASURE, 'text-muted-foreground mt-8 text-lg leading-relaxed sm:text-xl')}>
-          {hero.lead}
-        </p>
+          <p
+            className={cn(MEASURE, 'text-muted-foreground mt-8 text-lg leading-relaxed sm:text-xl')}
+          >
+            {hero.lead}
+          </p>
 
-        <div className="mt-10 flex flex-wrap items-center gap-3">
-          <Button size="sm" asChild>
-            <Link href={hero.ctaPrimaryHref}>{hero.ctaPrimary}</Link>
-          </Button>
-          <Button size="sm" variant="outline" asChild>
-            <a href={hero.ctaSecondaryHref} target="_blank" rel="noreferrer">
-              <Icon.Github className="size-4" />
-              {hero.ctaSecondary}
-            </a>
-          </Button>
-          <span className="ml-1">
-            <Stars />
-          </span>
+          <div className="mt-10 flex flex-wrap items-center gap-3">
+            <Button size="sm" asChild>
+              <Link href={hero.ctaPrimaryHref}>{hero.ctaPrimary}</Link>
+            </Button>
+            <Button size="sm" variant="outline" asChild>
+              <a href={hero.ctaSecondaryHref} target="_blank" rel="noreferrer">
+                <Icon.Github className="size-4" />
+                {hero.ctaSecondary}
+              </a>
+            </Button>
+          </div>
         </div>
       </Reveal>
     </section>

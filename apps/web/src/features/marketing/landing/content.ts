@@ -18,34 +18,42 @@
  */
 export const heroVariants = [
   {
-    id: 'management-system',
-    label: 'Category-first (README)',
-    eyebrow: 'The open-source AI Management System',
-    title: 'Command your AI workforce from one repo you own',
-    sub: 'Your agents, their skills, your company memory and every connector in one git repo. Any model, your keys, self-hosted or managed cloud.',
+    id: 'category',
+    label: 'Category (recommended)',
+    title: 'The open-source AI Management System',
+    sub: 'Connect the tools your company already runs on, ask in plain language, and agents do the work on their own computers — then hand back the finished thing for you to approve.',
   },
   {
-    id: 'alternative',
-    label: 'Comparative',
-    eyebrow: 'The open-source AI Management System',
-    title: 'The open-source alternative to Claude Cowork and ChatGPT Work',
-    sub: 'Same finished work, except the agents, skills and memory are files in a git repo you own — running any model, on your infrastructure or ours.',
+    id: 'category-workforce',
+    label: 'Category + workforce',
+    title: 'The AI Management System for your whole company',
+    sub: 'One place to run a workforce of agents: connect every tool once, ask in plain language, and review what comes back. Open source, any model, yours to host.',
   },
   {
     id: 'own-it',
     label: 'Ownership-first',
-    eyebrow: 'The open-source AI Management System',
     title: 'An AI workforce your company actually owns',
-    sub: 'Agents work on real cloud computers, land work through a change request you approve, and everything they know stays in your repo.',
+    sub: 'Agents work on their own computers, use credentials they never see, and land nothing without a person approving it. Open source, any model, anywhere.',
   },
   {
     id: 'workforce',
-    label: 'Outcome-first (current)',
-    eyebrow: 'The open-source AI Management System',
+    label: 'Outcome-first (previous)',
     title: 'Give your company a workforce that does the work',
     sub: 'Connect the tools you already run on. Ask in plain language. Agents work on real computers and hand back finished work.',
   },
 ] as const;
+
+/** The eyebrow renders as a row with the two competitor marks, so its parts
+ *  live separately. "more extensible" is a fact (open source, self-hostable,
+ *  any model); avoid "better", which is an unverifiable superlative. */
+export const heroEyebrow = {
+  lead: 'The open-source alternative to',
+  rivals: [
+    { id: 'cowork', icon: 'Claude', label: 'Claude Cowork' },
+    { id: 'chatgpt-work', icon: 'OpenAI', label: 'ChatGPT Work' },
+  ],
+  tail: '— and fully extensible',
+} as const;
 
 export const hero = {
   ...heroVariants[0],

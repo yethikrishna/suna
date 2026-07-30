@@ -1,17 +1,40 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/marketing/button';
 import { WallpaperBackground } from '@/components/ui/wallpaper-background';
 import { useRequestDemo } from '@/features/contact/request-demo-provider';
 import { HeroSurfaces } from '@/features/marketing/hero-surfaces';
-import { hero, heroVariants } from '@/features/marketing/landing/content';
+import { Icon } from '@/features/icon/icon';
+import { hero, heroEyebrow, heroVariants } from '@/features/marketing/landing/content';
 import { useAuth } from '@/features/providers/auth-provider';
 import { trackCtaSignup } from '@/lib/analytics/gtm';
 import { latestProjectPath } from '@/lib/onboarding/last-project-cookie';
 import { cn } from '@/lib/utils';
 import { ArrowRightIcon } from '@phosphor-icons/react';
-import { useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
+
+/** Anchors the product against the two things a reader already knows, with
+ *  their marks, so "AI Management System" lands without a paragraph first. */
+function RivalEyebrow() {
+  return (
+    <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
+      <span>{heroEyebrow.lead}</span>
+      {heroEyebrow.rivals.map((r, i) => {
+        const Glyph = Icon[r.icon as keyof typeof Icon] as
+          | ((p: { className?: string }) => ReactNode)
+          | undefined;
+        return (
+          <span key={r.id} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-muted-foreground/50 mr-1">and</span>}
+            {Glyph ? <Glyph className="size-4" /> : null}
+            <span className="text-foreground font-medium">{r.label}</span>
+          </span>
+        );
+      })}
+      <span className="text-muted-foreground/70">{heroEyebrow.tail}</span>
+    </div>
+  );
+}
 
 const Hero = () => {
   const { user } = useAuth();
@@ -19,7 +42,7 @@ const Hero = () => {
 
   // Dev-only variant preview: ?hero=0..3 swaps the headline so alternatives can
   // be compared in place. Renders nothing in production.
-  type HeroCopy = { id: string; eyebrow: string; title: string; sub: string };
+  type HeroCopy = { id: string; title: string; sub: string };
   const [variant, setVariant] = useState<HeroCopy>(hero);
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
@@ -49,9 +72,7 @@ const Hero = () => {
 
       <div className="relative z-20">
         <div className="mx-auto w-full max-w-6xl">
-          <Badge variant="kortix" className="rounded">
-            {variant.eyebrow}
-          </Badge>
+          <RivalEyebrow />
 
           <h1 className="text-foreground mt-5 max-w-3xl text-4xl font-medium tracking-tight text-balance sm:text-5xl">
             {variant.title}

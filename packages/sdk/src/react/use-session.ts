@@ -135,6 +135,21 @@ export function shouldPollSessionStart(
     : SESSION_START_POLL_MS;
 }
 
+/**
+ * TanStack Query pauses interval fetches while the document is hidden unless
+ * this option is true. Session readiness must continue because it gates the
+ * runtime switch, event stream, and queued-prompt replay.
+ */
+export const SESSION_START_POLL_OPTIONS = {
+  refetchInterval: (query: {
+    state: {
+      error: unknown;
+      data: SessionStartResult | null | undefined;
+    };
+  }) => shouldPollSessionStart(query.state.error, query.state.data),
+  refetchIntervalInBackground: true,
+} as const;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Send-error classification. `send`/the reply actions below never throw for
 // back-compat (`send`) or so a host doesn't need a try/catch for the common
@@ -443,24 +458,7 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
       isSessionStartError(error) && error.status === 404
         ? FRESH_START_404_RETRY_DELAY_MS
         : Math.min(1000 * 2 ** failureCount, 5000),
-    refetchInterval: (q) =>
-      shouldPollSessionStart(q.state.error, q.state.data as SessionStartResult | null | undefined),
-    // Keep polling while the tab is in the background. React Query gates
-    // `refetchInterval` on its focus manager, which reads
-    // `document.visibilityState` — and that reads 'hidden' for a browser window
-    // merely COVERED by another app (Chrome's occlusion detection on macOS), not
-    // just for a switched-away tab. With the default (`false`) the sequence is:
-    // the first `/start` returns `provisioning` (normal — a box takes ~30s), the
-    // user looks at something else, the poll freezes on that answer, and the
-    // page sits on "Provisioning your computer" with the clock ticking long
-    // after the sandbox came up. Nothing downstream recovers it, because the
-    // runtime switch, the SSE stream and the queued-prompt hand-off all gate on
-    // `stage === 'ready'` — so a prompt typed during boot just sits in the
-    // stash. Only a reload (a first fetch is not focus-gated) or returning to
-    // the tab unsticks it. This poll is bounded: it stops itself as soon as the
-    // stage is terminal, so running it in the background costs a handful of
-    // requests, not battery.
-    refetchIntervalInBackground: true,
+    ...SESSION_START_POLL_OPTIONS,
   });
   const startData = start.data ?? null;
   const startError = isSessionStartError(start.error) ? start.error : null;

@@ -75,6 +75,7 @@ import {
   sendStateOnError,
   shouldRetrySessionStart,
   shouldPollSessionStart,
+  SESSION_START_POLL_OPTIONS,
   SESSION_START_POLL_MS,
 } from './use-session';
 import {
@@ -554,5 +555,11 @@ describe('shouldPollSessionStart', () => {
   test('stops on a terminal client error, which polling cannot fix', () => {
     const err = new SessionStartError('gone', { status: 403, terminal: true });
     expect(shouldPollSessionStart(err, at('provisioning'))).toBe(false);
+  });
+});
+
+describe('SESSION_START_POLL_OPTIONS', () => {
+  test('keeps interval fetches active while the document is hidden', () => {
+    expect(SESSION_START_POLL_OPTIONS.refetchIntervalInBackground).toBe(true);
   });
 });

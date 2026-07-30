@@ -79,6 +79,13 @@ function prompt(id: number | string, text: string, blocks: unknown[] = []): Stor
   );
 }
 
+function load(id: number | string): StoredAcpEnvelope {
+  return envelope(
+    { jsonrpc: '2.0', id, method: 'session/load', params: { sessionId: SCOPE } },
+    'client_to_agent',
+  );
+}
+
 function promptResult(
   id: number | string,
   result: Record<string, unknown>,
@@ -201,6 +208,111 @@ describe('compactAcpEnvelopes', () => {
     expect(messages[0].role).toBe('user');
     expect(messages[0].text).toBe('hello there');
     expect(messages[1].text).toBe('one two');
+  });
+
+  test('a user message first seen in a replay sorts before the assistant reply it prompted', () => {
+    const messages = compactAcpEnvelopes(
+      [
+        agentText('the answer', 'msg_a'),
+        load(2),
+        userText('the question', 'msg_u'),
+        agentText('the answer', 'msg_a'),
+      ],
+      options(),
+    );
+
+    expect(messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+    expect(messages[0].text).toBe('the question');
+    expect(messages[1].text).toBe('the answer');
+  });
+
+  test('a chunk flushed after the attach does not claim the head of the replayed history', () => {
+    const messages = compactAcpEnvelopes(
+      [
+        load(2),
+        agentText('the last answer', 'msg_a2'),
+        userText('first question', 'msg_u1'),
+        agentText('first answer', 'msg_a1'),
+        userText('second question', 'msg_u2'),
+        agentText('the last answer', 'msg_a2'),
+      ],
+      options(),
+    );
+
+    expect(messages.map((message) => message.text)).toEqual([
+      'first question',
+      'first answer',
+      'second question',
+      'the last answer',
+    ]);
+  });
+
+  test('a replay orders every canonical message by its replay position', () => {
+    const messages = compactAcpEnvelopes(
+      [
+        agentText('second answer', 'msg_a2'),
+        load(2),
+        userText('first question', 'msg_u1'),
+        agentText('first answer', 'msg_a1'),
+        userText('second question', 'msg_u2'),
+        agentText('second answer', 'msg_a2'),
+      ],
+      options(),
+    );
+
+    expect(messages.map((message) => message.text)).toEqual([
+      'first question',
+      'first answer',
+      'second question',
+      'second answer',
+    ]);
+  });
+
+  test('two back-to-back replays with no prompt between them do not concatenate a message', () => {
+    const messages = compactAcpEnvelopes(
+      [
+        load(2),
+        agentText('The build is green.', 'msg_a'),
+        load(3),
+        agentText('The build is green.', 'msg_a'),
+      ],
+      options(),
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0].text).toBe('The build is green.');
+  });
+
+  test('folding the same replay log twice yields an identical transcript', () => {
+    const log = () => [
+      load(2),
+      userText('first question', 'msg_u1'),
+      thought('thinking', 'msg_a1'),
+      agentText('first answer', 'msg_a1'),
+      toolCall('call_1', 'completed'),
+      userText('second question', 'msg_u2'),
+      agentText('second answer', 'msg_a2'),
+    ];
+    const sequence = (messages: ReturnType<typeof compactAcpEnvelopes>) =>
+      JSON.stringify(
+        messages.map(({ role, text, tools, files, reasoning_omitted }) => ({
+          role,
+          text,
+          tools,
+          files,
+          reasoning_omitted,
+        })),
+      );
+    const once = compactAcpEnvelopes(log(), options());
+    const twice = compactAcpEnvelopes([...log(), ...log()], options());
+
+    expect(sequence(twice)).toBe(sequence(once));
+    expect(once.map((message) => message.text)).toEqual([
+      'first question',
+      'first answer',
+      'second question',
+      'second answer',
+    ]);
   });
 
   test('a replayed tool call never downgrades a terminal status back to running', () => {

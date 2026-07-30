@@ -67,10 +67,75 @@ export interface KortixProject {
   available_sandbox_providers?: SandboxProviderName[];
 }
 
+/** Why the server could not name the manifest's version. Never means "v1". */
+export type ManifestUnknownReason = 'unreadable' | 'unparsable' | 'undeclared' | 'restricted';
+
+/**
+ * The server's manifest-version verdict, returned on the project-detail
+ * config. This is the ONLY input a client may use to decide whether to offer a
+ * manifest upgrade — clients must not re-derive a version from `manifest_raw`.
+ * The manifest declares `kortix_version` itself (required by every published
+ * schema), so the server reads it rather than inferring it, and reports
+ * `version: null` + an `unknown_reason` when it cannot.
+ */
+export interface ProjectManifestVerdict {
+  /** Declared `kortix_version`. `null` whenever `unknown_reason` is set. */
+  version: number | null;
+  /** Highest manifest version the platform understands. */
+  latest_version: number;
+  /** True only for a known version with an implemented upgrade path. */
+  migration_offered: boolean;
+  /** Version the offered migration produces. `null` when none is offered. */
+  target_version: number | null;
+  /** Why `version` is null. `null` when the version is known. */
+  unknown_reason: ManifestUnknownReason | null;
+  /** Repo path the manifest was read from, when one was read. */
+  path: string | null;
+}
+
+/** Normalized, render-ready form of a `ProjectManifestVerdict`. */
+export interface ManifestMigrationOffer {
+  /** Render the upgrade surface only when this is true. */
+  offered: boolean;
+  /** The version the project is on, or `null` when the server says unknown. */
+  currentVersion: number | null;
+  /** The version the offered migration produces, or `null` when none is. */
+  targetVersion: number | null;
+}
+
+const NO_OFFER: ManifestMigrationOffer = {
+  offered: false,
+  currentVersion: null,
+  targetVersion: null,
+};
+
+/**
+ * Read the server verdict off a project-detail config. Fails closed in every
+ * ambiguous case: a missing config, a server too old to send
+ * `manifest_version`, an unknown version, or an offer with no target version
+ * all yield `offered: false`. Nothing here infers a version, so an unreadable
+ * manifest can never be reported as a legacy v1 needing migration.
+ */
+export function manifestMigrationOffer(
+  config: { manifest_version?: ProjectManifestVerdict | null } | null | undefined,
+): ManifestMigrationOffer {
+  const verdict = config?.manifest_version;
+  if (!verdict || typeof verdict.version !== 'number') return NO_OFFER;
+  const target = typeof verdict.target_version === 'number' ? verdict.target_version : null;
+  if (verdict.migration_offered !== true || target === null) {
+    return { offered: false, currentVersion: verdict.version, targetVersion: null };
+  }
+  return { offered: true, currentVersion: verdict.version, targetVersion: target };
+}
+
 export interface ProjectConfigSummary {
   is_kortix_repo: boolean;
   signals: Record<string, boolean>;
   manifest_raw: string | null;
+  /** Server-decided manifest version verdict. Optional so a client built
+   *  against a newer SDK still type-checks against an older API that omits it
+   *  — `manifestMigrationOffer` treats absent as "offer nothing". */
+  manifest_version?: ProjectManifestVerdict | null;
   open_code_raw: string | null;
   /** Provider-neutral project default. The SDK derives this from legacy servers. */
   default_agent?: string | null;

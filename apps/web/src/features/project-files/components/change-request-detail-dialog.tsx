@@ -23,7 +23,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { DiffStat, STATUS_TEXT } from '@/components/ui/status';
 import { errorToast, successToast } from '@/components/ui/toast';
-import { useProjectManifestVersion } from '@/features/workspace/customize/migrate-to-v2/manifest-version';
+import { useProjectManifestUpgrade } from '@/features/workspace/customize/migrate-to-v2/manifest-version';
 import { cn } from '@/lib/utils';
 import { SparklesSolid } from '@mynaui/icons-react';
 import { formatDistanceToNowStrict } from 'date-fns';
@@ -164,8 +164,10 @@ export function ChangeRequestDetailDialog({ crId, onClose }: ChangeRequestDetail
   );
 
   const projectId = useProjectContext()?.projectId ?? '';
-  const { version: manifestVersion } = useProjectManifestVersion(projectId);
-  const manifestFilename = manifestVersion === 2 ? 'kortix.yaml' : 'kortix.toml';
+  // The filename comes from the server's manifest verdict. When the server
+  // could not read the manifest we say "The manifest" rather than guessing a
+  // filename the project may not even have.
+  const manifestFilename = useProjectManifestUpgrade(projectId).manifestFilename ?? 'The manifest';
 
   const mergeMutation = useMergeChangeRequest();
   const closeMutation = useCloseChangeRequest();

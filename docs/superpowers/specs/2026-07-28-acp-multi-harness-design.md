@@ -9,6 +9,34 @@ The project experiment `experimental.acp_runtime` controls one product feature.
 
 The implementation does not add a second harness experiment.
 
+## Enablement (current, 2026-07-30)
+
+ACP is experimental and OFF by default. The whole switch is one variable.
+
+| Knob | Kind | Default | Read at |
+|---|---|---|---|
+| `KORTIX_ACP_RUNTIME` | operator env | `false` | `experimental/features.ts` — the `acp_runtime` `platformDefault()` |
+| `experimental.acp_runtime` | per-project (`projects.metadata`) | absent | `resolveExperimentalFeature()` |
+| `KORTIX_ENABLED_HARNESSES` | operator env | empty = stable set (`opencode`) | `projects/lib/harness-gate.ts` |
+
+Resolution: the project's explicit choice wins over `KORTIX_ACP_RUNTIME`;
+`resolveProjectRuntimeTransport()` has no other input. The feature stays
+`available: () => true` so a project can hold an opinion even while the fleet
+default is off — otherwise every project already on ACP, including v3-manifest
+projects that cannot run REST, would silently fall back and break.
+
+`POST /projects/provision` and `POST /projects/create-repo` stamp
+`experimental.acp_runtime: true` only when the scaffolded starter declares
+`kortix_version: 3`, because v3 has no REST path. Every other new project stores
+no override and follows the fleet default.
+
+`KORTIX_ACP_RUNTIME` does not change the sandbox process:
+`KORTIX_OPENCODE_PROCESS_TRANSPORT` stays pinned to `acp`
+(`projects/lib/sessions.ts`), and both client transports reach that one process.
+
+Removed: `KORTIX_OPENCODE_TRANSPORT`. It was a second operator knob that forced
+ACP fleet-wide and overrode an explicit per-project `false`.
+
 ## Manifest contract
 
 `kortix_version: 3` defines runtime profiles and logical agents.

@@ -26,6 +26,11 @@ beforeEach(() => {
   }) as unknown as typeof fetch;
 });
 
+test('is reachable from the projects-client barrel so a non-React host can claim an ACP identity', async () => {
+  const barrel = await import('./index');
+  expect(typeof barrel.persistProjectSessionAcpIdentity).toBe('function');
+});
+
 test('persists separate ACP process and harness-native session identifiers', async () => {
   const result = await persistProjectSessionAcpIdentity('P1', 'S1', {
     acp_server_id: 'S1',

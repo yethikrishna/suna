@@ -3,24 +3,59 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { MigrateToV2ButtonView } from './migrate-to-v2-button';
 
-describe('MigrateToV2ButtonView — v1/v2 visibility', () => {
-  test('renders the action when the project is v1', () => {
+describe('MigrateToV2ButtonView — visibility follows the server verdict', () => {
+  test('renders the action when the server offers a migration and names its target', () => {
     const html = renderToStaticMarkup(
-      <MigrateToV2ButtonView visible pending={false} onClick={() => {}} />,
+      <MigrateToV2ButtonView
+        migrationOffered
+        targetVersion={2}
+        pending={false}
+        onClick={() => {}}
+      />,
     );
     expect(html).toContain('Migrate to v2');
   });
 
-  test('renders nothing once the project is v2', () => {
+  test('renders nothing when the server offers no migration', () => {
     const html = renderToStaticMarkup(
-      <MigrateToV2ButtonView visible={false} pending={false} onClick={() => {}} />,
+      <MigrateToV2ButtonView
+        migrationOffered={false}
+        targetVersion={null}
+        pending={false}
+        onClick={() => {}}
+      />,
     );
     expect(html).toBe('');
   });
 
+  test('renders nothing when the server names no target version', () => {
+    const html = renderToStaticMarkup(
+      <MigrateToV2ButtonView
+        migrationOffered
+        targetVersion={null}
+        pending={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(html).toBe('');
+  });
+
+  test('the label follows the target version rather than a hardcoded v2', () => {
+    const html = renderToStaticMarkup(
+      <MigrateToV2ButtonView
+        migrationOffered
+        targetVersion={3}
+        pending={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(html).toContain('Migrate to v3');
+    expect(html).not.toContain('v2');
+  });
+
   test('disables itself and swaps the icon for a spinner while a session is being created', () => {
     const html = renderToStaticMarkup(
-      <MigrateToV2ButtonView visible pending onClick={() => {}} />,
+      <MigrateToV2ButtonView migrationOffered targetVersion={2} pending onClick={() => {}} />,
     );
     expect(html).toContain('disabled');
   });
@@ -32,12 +67,12 @@ describe('MigrateToV2ButtonView — click wiring', () => {
     const onClick = () => {
       calls += 1;
     };
-    // Calling the component as a plain function (no JSX) returns the React
-    // element tree without rendering — `<Button onClick={onClick}>` is
-    // returned untouched, so `element.props.onClick` IS the handler we
-    // passed in. This is how we verify "click triggers session-create"
-    // without a DOM/event-loop test harness (this repo has neither wired up).
-    const element = MigrateToV2ButtonView({ visible: true, pending: false, onClick });
+    const element = MigrateToV2ButtonView({
+      migrationOffered: true,
+      targetVersion: 2,
+      pending: false,
+      onClick,
+    });
     expect(element).not.toBeNull();
     const props = (element as { props: { onClick: () => void } }).props;
     expect(typeof props.onClick).toBe('function');

@@ -26,6 +26,7 @@ const STARTER_ROOT = join(import.meta.dir, '..');
 const TEMPLATE_ROOTS = {
   base: join(STARTER_ROOT, 'templates', 'base'),
   'general-knowledge-worker': join(STARTER_ROOT, 'templates', 'general-knowledge-worker'),
+  'multi-harness': join(STARTER_ROOT, 'templates', 'multi-harness'),
   managed: join(STARTER_ROOT, 'templates', 'managed'),
   marketplace: join(STARTER_ROOT, 'templates', 'marketplace'),
   'marketplace-projects': join(STARTER_ROOT, 'templates', 'marketplace-projects'),

@@ -6,6 +6,7 @@ import {
   provisionProjectWithToken,
   type CreateProjectRepoInput,
   type ProvisionProjectInput,
+  manifestMigrationOffer,
 } from './projects';
 import { configureKortix } from '../../http/config';
 
@@ -169,4 +170,80 @@ test('normalizes the provider-neutral default_agent field from legacy project co
 
   expect(detail.config.default_agent).toBe('kortix');
   expect(detail.config.open_code_default_agent).toBe('kortix');
+});
+
+test('manifestMigrationOffer reads the server verdict for an up-to-date v3 project', () => {
+  const offer = manifestMigrationOffer({
+    manifest_version: {
+      version: 3,
+      latest_version: 3,
+      migration_offered: false,
+      target_version: null,
+      unknown_reason: null,
+      path: 'kortix.yaml',
+    },
+  });
+
+  expect(offer.offered).toBe(false);
+  expect(offer.currentVersion).toBe(3);
+  expect(offer.targetVersion).toBeNull();
+});
+
+test('manifestMigrationOffer surfaces a genuine v1 project and its real target', () => {
+  const offer = manifestMigrationOffer({
+    manifest_version: {
+      version: 1,
+      latest_version: 3,
+      migration_offered: true,
+      target_version: 2,
+      unknown_reason: null,
+      path: 'kortix.toml',
+    },
+  });
+
+  expect(offer.offered).toBe(true);
+  expect(offer.currentVersion).toBe(1);
+  expect(offer.targetVersion).toBe(2);
+});
+
+test('manifestMigrationOffer offers nothing when the server reports an unknown manifest', () => {
+  for (const reason of ['unreadable', 'unparsable', 'undeclared', 'restricted'] as const) {
+    const offer = manifestMigrationOffer({
+      manifest_version: {
+        version: null,
+        latest_version: 3,
+        migration_offered: false,
+        target_version: null,
+        unknown_reason: reason,
+        path: null,
+      },
+    });
+
+    expect(offer.offered).toBe(false);
+    expect(offer.currentVersion).toBeNull();
+    expect(offer.targetVersion).toBeNull();
+  }
+});
+
+test('manifestMigrationOffer offers nothing when the config or verdict is absent', () => {
+  expect(manifestMigrationOffer(undefined).offered).toBe(false);
+  expect(manifestMigrationOffer(null).offered).toBe(false);
+  expect(manifestMigrationOffer({}).offered).toBe(false);
+  expect(manifestMigrationOffer({}).currentVersion).toBeNull();
+});
+
+test('manifestMigrationOffer never trusts migration_offered without a target version', () => {
+  const offer = manifestMigrationOffer({
+    manifest_version: {
+      version: 1,
+      latest_version: 3,
+      migration_offered: true,
+      target_version: null,
+      unknown_reason: null,
+      path: 'kortix.toml',
+    },
+  });
+
+  expect(offer.offered).toBe(false);
+  expect(offer.targetVersion).toBeNull();
 });

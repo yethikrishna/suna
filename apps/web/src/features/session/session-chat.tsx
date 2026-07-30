@@ -3587,7 +3587,13 @@ export function SessionChat({
     { refetchInterval: 5_000 },
   );
   const hasPendingApproval = (approvalAudit?.actions ?? []).some(isPendingAction);
-  const { data: commands } = useRuntimeCommands();
+  // Slash commands come from the SDK's transport-resolved list: OpenCode REST
+  // `GET /command` on a REST runtime, the ACP `available_commands_update`
+  // projection on a managed ACP runtime (which serves no OpenCode REST at all).
+  // `useRuntimeCommands()` remains the source for a read-only child session that
+  // has no SDK session state of its own.
+  const { data: restCommands } = useRuntimeCommands();
+  const commands = sessionState ? sessionState.runtimeCommands : restCommands;
   const { data: providers, isLoading: providersLoading } = useRuntimeProviders();
   const { data: allSessions } = useRuntimeSessions();
   const { data: config } = useRuntimeConfig();

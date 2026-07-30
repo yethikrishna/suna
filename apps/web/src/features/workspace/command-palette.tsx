@@ -394,7 +394,14 @@ export function CommandPalette() {
   const panelMode = useUserPreferencesStore((s) => s.preferences.panelMode ?? 'easy');
   const billingEnabled = isBillingEnabled();
 
-  const { data: agents } = useRuntimeAgents();
+  // The agent roster comes from the project config on the server. Without
+  // `projectId` the hook falls back to `GET /agent` INSIDE the session sandbox,
+  // which the palette never needs (the list only fills the "Change Agent" page,
+  // and nothing gates readiness on it) and which an ACP runtime does not serve
+  // at all. The palette is mounted app-wide, so outside `/projects/*` there is
+  // no project and no session to change the agent of — opt out rather than read
+  // whatever sandbox happens to still be connected.
+  const { data: agents } = useRuntimeAgents({ projectId, enabled: !!projectId });
   const { data: providers } = useRuntimeProviders();
 
   const selectedAccountId = useCurrentAccountStore((s) => s.selectedAccountId);

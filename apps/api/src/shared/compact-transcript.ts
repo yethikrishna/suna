@@ -177,6 +177,11 @@ function looksLikeToolName(value: string): boolean {
   return /^[A-Za-z][A-Za-z0-9_.-]*$/.test(value);
 }
 
+/** Mirrors `isRuntimeAttachRequest` in packages/sdk/src/core/acp/projection.ts. */
+function isAcpAttachRequest(method: string): boolean {
+  return method === 'initialize' || method === 'session/new' || method === 'session/load';
+}
+
 function acpToolName(update: Record<string, unknown>): string {
   const title = asString(update.title);
   if (title && looksLikeToolName(title)) return title;
@@ -234,6 +239,28 @@ export function compactAcpEnvelopes(
   let openDraft: AcpDraft | null = null;
   let activeMessageId: string | null = null;
   let activeAssistant: AcpDraft | null = null;
+  /**
+   * True from a runtime attach until the next `session/prompt`. Mirrors
+   * `AcpProjection.replay.replaying` in
+   * `packages/sdk/src/core/acp/projection.ts`: inside that window the harness
+   * re-emits its canonical history, so the replay's emission order — not the
+   * order this fold first heard of a message — is the true conversation order.
+   */
+  let replaying = false;
+  /** The draft the running replay positioned last. */
+  let anchorDraft: AcpDraft | null = null;
+
+  const insertAt = (role: 'user' | 'assistant'): number => {
+    if (!replaying) return drafts.length;
+    if (!anchorDraft) {
+      // A replay re-emits the conversation from its first user turn. An
+      // assistant chunk arriving before that is the tail of the stream the
+      // attach interrupted and still belongs at the end.
+      return role === 'user' ? 0 : drafts.length;
+    }
+    const index = drafts.indexOf(anchorDraft);
+    return index < 0 ? drafts.length : index + 1;
+  };
 
   const createDraft = (role: 'user' | 'assistant', messageId: string | null, createdAt: string) => {
     const draft: AcpDraft = {
@@ -248,7 +275,7 @@ export function compactAcpEnvelopes(
       error: null,
       toolCallIds: [],
     };
-    drafts.push(draft);
+    drafts.splice(insertAt(role), 0, draft);
     return draft;
   };
 
@@ -257,6 +284,12 @@ export function compactAcpEnvelopes(
     openDraft = draft;
     activeMessageId = draft.messageId;
     if (draft.role === 'assistant') activeAssistant = draft;
+    // A replay only becomes the authority on order once its first USER turn
+    // lands. Before that, what arrives is the tail of the stream the attach
+    // interrupted; letting one of those anchor the replay puts the
+    // conversation's LAST answer at the head. Mirrors `anchored` in
+    // `packages/sdk/src/core/acp/projection.ts`.
+    if (replaying && (draft.role === 'user' || anchorDraft)) anchorDraft = draft;
   };
 
   const chunkDraft = (
@@ -356,7 +389,27 @@ export function compactAcpEnvelopes(
       const params = asObject(body.params);
       const scoped = asString(params.sessionId);
       if (scope && scoped && scoped !== scope) continue;
+      if (isAcpAttachRequest(method)) {
+        // Everything after an attach is a re-emission, not a continuation. The
+        // reset is what stops two back-to-back replays from concatenating one
+        // message into itself ("The build is green.The build is green."):
+        // clearing `activeMessageId` makes the next named chunk open a new
+        // segment, and the longest segment — not the sum — wins.
+        //
+        // `activeAssistant` deliberately survives, matching
+        // `applyRequest`/`isRuntimeAttachRequest` in
+        // `packages/sdk/src/core/acp/projection.ts`, which resets only the
+        // active message id. Clearing it here too would split a harness that
+        // names no message (Pi) into an extra assistant turn per attach that
+        // the client projection does not make.
+        activeMessageId = null;
+        replaying = true;
+        anchorDraft = null;
+        continue;
+      }
       if (method !== 'session/prompt') continue;
+      replaying = false;
+      anchorDraft = null;
       const blocks = Array.isArray(params.prompt) ? params.prompt.filter(isObject) : [];
       const text = blocks
         .filter((block) => block.type === 'text' && typeof block.text === 'string')

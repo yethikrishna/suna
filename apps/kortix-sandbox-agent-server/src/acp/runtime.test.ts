@@ -334,4 +334,126 @@ describe('multi-harness ACP runtime', () => {
       '{"native":true}\n',
     )
   })
+
+  test('keeps a real harness process banner out of the transcript stream', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kortix-acp-banner-'))
+    temporaryDirs.push(dir)
+
+    const fixture = join(import.meta.dir, 'fixtures/banner-acp-agent.ts')
+    const registry: AcpHarnessRegistry = new Map([
+      [
+        'pi',
+        {
+          id: 'pi',
+          displayName: 'Banner Pi',
+          adapter: 'test',
+          launch: { command: process.execPath, args: [fixture] },
+        },
+      ],
+    ])
+    const runtime = new AcpRuntime({
+      registry,
+      cwd: dir,
+      initializeOnCreate: true,
+      baseEnv: { ...process.env, KORTIX_RUNTIME_CONFIG_DIR: join(dir, 'pi') },
+    })
+    runtimes.push(runtime)
+
+    const instance = await runtime.getOrCreate('banner', 'pi')
+    const texts: string[] = []
+    instance.subscribe(0, (event) => {
+      const params = event.envelope.params as
+        | { update?: { content?: { text?: string } } }
+        | undefined
+      const text = params?.update?.content?.text
+      if (typeof text === 'string') texts.push(text)
+    })
+
+    await instance.post({
+      jsonrpc: '2.0',
+      id: 'new',
+      method: 'session/new',
+      params: { cwd: dir },
+    })
+    await instance.post({
+      jsonrpc: '2.0',
+      id: 'prompt',
+      method: 'session/prompt',
+      params: {
+        sessionId: 'banner-session',
+        prompt: [{ type: 'text', text: 'hello' }],
+      },
+    })
+
+    expect(texts).toEqual(['real model text'])
+  })
+
+  test('asks Pi for a quiet startup so it composes no banner to leak', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kortix-acp-pi-quiet-'))
+    temporaryDirs.push(dir)
+    const configDir = join(dir, 'pi-config')
+
+    const fixture = join(import.meta.dir, 'fixtures/mock-acp-agent.ts')
+    const registry: AcpHarnessRegistry = new Map([
+      [
+        'pi',
+        {
+          id: 'pi',
+          displayName: 'Mock Pi',
+          adapter: 'test',
+          launch: { command: process.execPath, args: [fixture] },
+        },
+      ],
+    ])
+    const runtime = new AcpRuntime({
+      registry,
+      cwd: dir,
+      baseEnv: {
+        ...process.env,
+        KORTIX_RUNTIME_CONFIG_DIR: configDir,
+      },
+    })
+    runtimes.push(runtime)
+
+    await runtime.getOrCreate('pi-quiet', 'pi')
+
+    expect(
+      JSON.parse(readFileSync(join(configDir, 'settings.json'), 'utf8')),
+    ).toEqual({ quietStartup: true })
+  })
+
+  test('never overwrites author-owned Pi settings', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kortix-acp-pi-settings-'))
+    temporaryDirs.push(dir)
+    const configDir = join(dir, 'pi-config')
+    const settingsFile = join(configDir, 'settings.json')
+    mkdirSync(configDir, { recursive: true })
+    writeFileSync(settingsFile, '{"quietStartup":false}\n')
+
+    const fixture = join(import.meta.dir, 'fixtures/mock-acp-agent.ts')
+    const registry: AcpHarnessRegistry = new Map([
+      [
+        'pi',
+        {
+          id: 'pi',
+          displayName: 'Mock Pi',
+          adapter: 'test',
+          launch: { command: process.execPath, args: [fixture] },
+        },
+      ],
+    ])
+    const runtime = new AcpRuntime({
+      registry,
+      cwd: dir,
+      baseEnv: {
+        ...process.env,
+        KORTIX_RUNTIME_CONFIG_DIR: configDir,
+      },
+    })
+    runtimes.push(runtime)
+
+    await runtime.getOrCreate('pi-settings', 'pi')
+
+    expect(readFileSync(settingsFile, 'utf8')).toBe('{"quietStartup":false}\n')
+  })
 })

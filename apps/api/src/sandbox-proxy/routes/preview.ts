@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { config } from '../../config';
+import { PROJECT_ACTIONS, authorize } from '../../iam';
 import { getTraceHeaders } from '../../lib/request-context';
 import type { ProviderName } from '../../platform/providers';
 import { callerKortixSessionId } from '../../projects/lib/caller-session';
@@ -845,6 +846,49 @@ export async function forwardToSandbox(
           isProhibitedAgentSwitch(requestedAgent, sessionAgent)
         ) {
           return agentSwitchConflictResponse(sessionAgent, requestedAgent!, origin);
+        }
+        // AUTHORIZE the agent this prompt will run — before the env sync, before
+        // the re-mint, before the title/snapshot side effects.
+        //
+        // `project.agent.read` was asserted ONCE, at session create, against
+        // `body.agent_name` (projects/routes/r7.ts). The prompt path never
+        // re-checked, so a member scoped to agent A only could create the session
+        // as A and then prompt `{"agent":"B"}` — and be HANDED B's grant by the
+        // re-mint below, which re-scopes the token to whatever agent is named.
+        // `remintDecisionFor` refuses only the fully-null UNRESTRICTED widening;
+        // it was never an authorization gate and cannot serve as one.
+        //
+        // Costs nothing on an ordinary turn: only a CONCRETE agent differing from
+        // the session's is a switch (the 'default' sentinel is non-binding on
+        // either side — see isProhibitedAgentSwitch).
+        const switchedToAgent = isProhibitedAgentSwitch(requestedAgent, sessionAgent)
+          ? requestedAgent
+          : null;
+        if (switchedToAgent) {
+          const verdict = await authorize(
+            userId,
+            record.accountId,
+            PROJECT_ACTIONS.PROJECT_AGENT_READ,
+            {
+              type: 'project',
+              id: record.projectId,
+              resource: { type: 'agent', id: switchedToAgent },
+            },
+          );
+          if (!verdict.allowed) {
+            console.warn(
+              `[PREVIEW] Refused prompt on ${sandboxId}: caller may not run agent '${switchedToAgent}' (${verdict.reason})`,
+            );
+            return jsonProxyError(
+              {
+                error: `You don't have permission to run the agent '${switchedToAgent}'.`,
+                code: 'AGENT_NOT_AUTHORIZED',
+                requested_agent: switchedToAgent,
+              },
+              403,
+              origin,
+            );
+          }
         }
         // Drop only the legacy 'default' sentinel so OpenCode resolves its own
         // `default_agent` (the real default the session booted with). A *concrete*

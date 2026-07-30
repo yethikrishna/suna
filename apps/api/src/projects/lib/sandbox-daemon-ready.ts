@@ -22,6 +22,51 @@ export interface DaemonReadyDeps {
 }
 
 /**
+ * Is there an opencode restart in flight worth blocking the prompt on?
+ *
+ * The readiness wait below exists for exactly ONE situation: a model-affecting
+ * env change made the daemon restart opencode, and forwarding the prompt into
+ * that restart window 503s "opencode not ready" and silently drops it. The
+ * daemon restarts opencode iff `refreshModels && (projectEnvChanged ||
+ * opencodeEnvChanged)` — see the `/kortix/env` handler in
+ * apps/kortix-sandbox-agent-server/src/routes/env.ts. So that predicate is what
+ * decides whether anything is starting up; the reported STATE alone is not.
+ *
+ * This used to be `opencodeState !== 'ok'`, which was wrong in the one case
+ * that matters most for latency: a managed-ACP session never runs the opencode
+ * HTTP server at all, so the daemon reports `'down'` forever. Every ACP prompt
+ * therefore burned the full 18s budget polling for a process nobody was
+ * starting — 20-24s of dead time on every turn, ~70% of the user-visible
+ * per-turn latency, with the LLM call itself only ~5s of it.
+ *
+ * `'down'` still counts as "wait" when a restart DID happen: `stop()` sets the
+ * state to `'down'` and `start()` only moves it to `'starting'` once the
+ * readiness probe runs, so the daemon can legitimately answer `'down'` in the
+ * moment right after `restart()` (opencode.ts's supervisor). Gating on the
+ * restart predicate rather than the state keeps that case covered.
+ */
+export function shouldWaitForOpencodeReady(args: {
+  refreshModels: boolean;
+  projectEnvChanged: boolean;
+  opencodeEnvChanged: boolean;
+  opencodeState: string | null;
+}): boolean {
+  // Already serving: nothing to wait for, whatever else happened.
+  if (args.opencodeState === 'ok') return false;
+  // Opencode is mid-boot for ANY reason — a restart we caused, or a genuinely
+  // cold first prompt on a fresh sandbox. Forwarding into that window is the
+  // 503 "opencode not ready" this wait exists to prevent, so wait regardless of
+  // the change flags. This is the case `opencodeState !== 'ok'` was really
+  // reaching for; `'down'` is what it over-matched.
+  if (args.opencodeState === 'starting') return true;
+  // Anything else ('down', or a state we do not recognise) is only worth
+  // waiting on when the daemon actually restarted opencode: `stop()` sets
+  // `'down'` and `start()` only advances it once the readiness probe runs, so
+  // the daemon can answer `'down'` in the moment right after `restart()`.
+  return args.refreshModels && (args.projectEnvChanged || args.opencodeEnvChanged);
+}
+
+/**
  * Read the daemon's `/kortix/health` once. Returns the opencode/runtime state,
  * or null when the probe itself failed (transient — the caller keeps polling).
  * Health is unauthenticated at the daemon and always answers 200, so a null

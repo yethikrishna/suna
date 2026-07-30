@@ -222,6 +222,9 @@ export type {
   // Projects
   KortixProject,
   ProjectConfigSummary,
+  ProjectManifestVerdict,
+  ManifestUnknownReason,
+  ManifestMigrationOffer,
   ProjectDetail,
   GatewayCatalogModel,
   ProjectLlmCatalogResponse,

@@ -10,10 +10,12 @@ import {
   projects,
   sessionSandboxes,
 } from '@kortix/db';
+import { EXPERIMENTAL_STARTER_TEMPLATE_ID, getStarterFiles } from '@kortix/starter';
 import type { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { config } from '../config';
 import type { SandboxRuntimeHealth } from '../projects/runtime-inspection';
 import { mockIamEngineAllowAll, mockIamMembershipSyncNoop } from './helpers/iam-mocks';
 
@@ -69,6 +71,7 @@ let gitConnectionRows: Array<typeof projectGitConnections.$inferSelect>;
 let gitCredentialRows: Array<typeof projectGitCredentials.$inferSelect>;
 let assertedIamActions: string[] = [];
 let deniedIamAction: string | null = null;
+let manifestFixture: { path: string; content: string } | null = null;
 let lastProvisionInput: {
   sandboxId: string;
   accountId: string;
@@ -159,6 +162,7 @@ function resetState() {
   gitCredentialRows = [];
   assertedIamActions = [];
   deniedIamAction = null;
+  manifestFixture = null;
 }
 
 const realAuthMiddleware = await import('../middleware/auth');
@@ -250,9 +254,11 @@ mock.module('../projects/git', () => ({
   // compile-agent-config.ts (the agent-first v2 compiler) reads the manifest
   // straight from git — no manifest ⇒ null ⇒ the v1-shaped projects this suite
   // exercises get no compiled agent config, matching their pre-compiler behavior.
-  readManifestFromRepo: async () => null,
+  // A test that needs a real manifest sets `manifestFixture`.
+  readManifestFromRepo: async () => manifestFixture,
   invalidateProjectMirror: () => {},
   listBranches: async () => [],
+  remoteBranchExists: async () => true,
   listCommits: async () => ({ entries: [], nextCursor: null }),
   getCommit: async () => null,
   getCommitDiff: async () => null,
@@ -897,6 +903,17 @@ function createApp() {
     return c.json({ error: true, message: (err as Error).message }, 500);
   });
   return app;
+}
+
+function experimentalStarterManifest(): string {
+  const files = getStarterFiles({
+    projectName: 'Contract Project',
+    repoFullName: `${TEST_GITHUB_OWNER}/contract-project`,
+    template: EXPERIMENTAL_STARTER_TEMPLATE_ID,
+  });
+  const manifest = files.find((file) => file.path === 'kortix.yaml');
+  if (!manifest) throw new Error('experimental starter scaffolds no kortix.yaml');
+  return manifest.content;
 }
 
 /** Poll until predicate holds (or timeout) — robustly flushes the
@@ -3049,5 +3066,108 @@ describe('project session API contract', () => {
     });
     expect(branchCreateCalls).toBe(0);
     expect(sandboxProvisionCalls).toBe(0);
+  });
+
+  test('a project with no ACP opt-in binds its session to the OpenCode REST transport', async () => {
+    const previous = config.KORTIX_ACP_RUNTIME;
+    try {
+      config.KORTIX_ACP_RUNTIME = false;
+      const app = createApp();
+      const res = await app.request(`/v1/projects/${PROJECT_ID}/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(201);
+      expect((sessionRow?.metadata as Record<string, unknown>).runtime_transport).toBe('rest');
+    } finally {
+      config.KORTIX_ACP_RUNTIME = previous;
+    }
+  });
+
+  test('KORTIX_ACP_RUNTIME=true binds new sessions to ACP with no per-project change', async () => {
+    const previous = config.KORTIX_ACP_RUNTIME;
+    try {
+      config.KORTIX_ACP_RUNTIME = true;
+      const app = createApp();
+      const res = await app.request(`/v1/projects/${PROJECT_ID}/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(201);
+      expect((sessionRow?.metadata as Record<string, unknown>).runtime_transport).toBe('acp');
+    } finally {
+      config.KORTIX_ACP_RUNTIME = previous;
+    }
+  });
+
+  test('an existing ACP project keeps ACP while the platform default is off', async () => {
+    const previous = config.KORTIX_ACP_RUNTIME;
+    try {
+      config.KORTIX_ACP_RUNTIME = false;
+      projectRow.metadata = {
+        ...(projectRow.metadata as Record<string, unknown>),
+        experimental: { acp_runtime: true },
+      };
+      const app = createApp();
+      const res = await app.request(`/v1/projects/${PROJECT_ID}/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(201);
+      expect((sessionRow?.metadata as Record<string, unknown>).runtime_transport).toBe('acp');
+    } finally {
+      config.KORTIX_ACP_RUNTIME = previous;
+    }
+  });
+
+  test('a kortix_version 3 manifest without the ACP experiment is refused, never run on REST', async () => {
+    const previous = config.KORTIX_ACP_RUNTIME;
+    try {
+      config.KORTIX_ACP_RUNTIME = false;
+      manifestFixture = { path: 'kortix.yaml', content: experimentalStarterManifest() };
+      sessionRow = null;
+      const app = createApp();
+      const res = await app.request(`/v1/projects/${PROJECT_ID}/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ code: 'ACP_RUNTIME_REQUIRED' });
+      expect(sessionRow).toBeNull();
+      expect(sandboxProvisionCalls).toBe(0);
+    } finally {
+      config.KORTIX_ACP_RUNTIME = previous;
+    }
+  });
+
+  test('a kortix_version 3 manifest runs once the project opts into the ACP experiment', async () => {
+    const previous = config.KORTIX_ACP_RUNTIME;
+    try {
+      config.KORTIX_ACP_RUNTIME = false;
+      manifestFixture = { path: 'kortix.yaml', content: experimentalStarterManifest() };
+      projectRow.metadata = {
+        ...(projectRow.metadata as Record<string, unknown>),
+        experimental: { acp_runtime: true },
+      };
+      const app = createApp();
+      const res = await app.request(`/v1/projects/${PROJECT_ID}/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(201);
+      expect((sessionRow?.metadata as Record<string, unknown>).runtime_transport).toBe('acp');
+    } finally {
+      config.KORTIX_ACP_RUNTIME = previous;
+    }
   });
 });

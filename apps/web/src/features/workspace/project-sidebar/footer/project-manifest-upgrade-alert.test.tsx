@@ -4,57 +4,104 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { ProjectManifestUpgradeAlertView } from './project-manifest-upgrade-alert';
 
-// The view renders sidebar primitives (SidebarMenuItem/Button), so every case
-// needs a SidebarProvider context around it — same shell the sidebar's own
-// tests use. `defaultOpen` expands the disclosure so its body (only mounted
-// while open) is present in the static markup.
 function render(props: {
-  visible: boolean;
-  pending: boolean;
-  onMigrate: () => void;
+  migrationOffered: boolean;
+  targetVersion: number | null;
+  currentVersion?: number | null;
+  manifestFilename?: string | null;
+  pending?: boolean;
+  onMigrate?: () => void;
   defaultOpen?: boolean;
 }) {
   return renderToStaticMarkup(
     <SidebarProvider defaultOpen>
-      <ProjectManifestUpgradeAlertView {...props} />
+      <ProjectManifestUpgradeAlertView
+        currentVersion={props.currentVersion ?? 1}
+        manifestFilename={props.manifestFilename ?? 'kortix.toml'}
+        pending={props.pending ?? false}
+        onMigrate={props.onMigrate ?? (() => {})}
+        migrationOffered={props.migrationOffered}
+        targetVersion={props.targetVersion}
+        defaultOpen={props.defaultOpen}
+      />
     </SidebarProvider>,
   );
 }
 
-describe('ProjectManifestUpgradeAlertView — v1/v2 visibility', () => {
-  test('shows the collapsed "Upgrade to v2" trigger when visible', () => {
-    const html = render({ visible: true, pending: false, onMigrate: () => {} });
-    expect(html).toContain('Upgrade to v2');
-  });
-
-  test('renders nothing at all once the project is on v2 (or the viewer cannot act)', () => {
-    const html = render({ visible: false, pending: false, onMigrate: () => {} });
-    expect(html).not.toContain('Upgrade to v2');
+describe('ProjectManifestUpgradeAlertView — renders only when the server offers a migration', () => {
+  test('renders nothing when the server offers no migration', () => {
+    const html = render({ migrationOffered: false, targetVersion: null, currentVersion: 3 });
+    expect(html).not.toContain('Upgrade to v');
     expect(html).not.toContain('sidebar-menu-item');
   });
 
-  test('expanded body explains the v1→v2 migration and offers the action', () => {
-    const html = render({ visible: true, pending: false, onMigrate: () => {}, defaultOpen: true });
-    expect(html).toContain('Migrate to v2');
-    expect(html).toContain('kortix.toml');
-    expect(html).toContain('kortix.yaml');
+  test('renders nothing when the server offers a migration but names no target version', () => {
+    const html = render({ migrationOffered: true, targetVersion: null });
+    expect(html).not.toContain('Upgrade to v');
+    expect(html).not.toContain('sidebar-menu-item');
   });
 
-  test('disables the migrate action while the session is being created', () => {
-    const html = render({ visible: true, pending: true, onMigrate: () => {}, defaultOpen: true });
-    // The action button carries the actual `disabled=""` attribute — the
-    // ambient `disabled:` utility classes on every sidebar button never emit it.
-    expect(html).toContain('disabled=""');
+  test('renders the trigger when the server offers a migration with a target version', () => {
+    const html = render({ migrationOffered: true, targetVersion: 2 });
+    expect(html).toContain('Upgrade to v2');
   });
 });
 
-describe('ProjectManifestUpgradeAlertView — click wiring', () => {
+describe('ProjectManifestUpgradeAlertView — copy follows the server target version', () => {
+  test('a v3 target never renders a v2 string', () => {
+    const html = render({
+      migrationOffered: true,
+      targetVersion: 3,
+      currentVersion: 2,
+      manifestFilename: 'kortix.yaml',
+      defaultOpen: true,
+    });
+    expect(html).toContain('Upgrade to v3');
+    expect(html).toContain('Migrate to v3');
+    expect(html).not.toContain('Upgrade to v2');
+    expect(html).not.toContain('Migrate to v2');
+    expect(html).toContain('governance-first v3');
+  });
+
+  test('a v2 target renders v2 and names the current version and the file it read', () => {
+    const html = render({
+      migrationOffered: true,
+      targetVersion: 2,
+      currentVersion: 1,
+      manifestFilename: 'kortix.toml',
+      defaultOpen: true,
+    });
+    expect(html).toContain('Upgrade to v2');
+    expect(html).toContain('Migrate to v2');
+    expect(html).toContain('kortix.toml');
+    expect(html).toContain('runs the v1 manifest');
+    expect(html).not.toContain('Migrate to v3');
+    expect(html).not.toContain('governance-first v3');
+  });
+});
+
+describe('ProjectManifestUpgradeAlertView — pending state', () => {
+  test('disables the migrate action while the session is being created', () => {
+    const html = render({
+      migrationOffered: true,
+      targetVersion: 2,
+      pending: true,
+      defaultOpen: true,
+    });
+    expect(html).toContain('disabled=""');
+  });
+
   test('the migrate button is wired to the handler passed in', () => {
     let calls = 0;
     const onMigrate = () => {
       calls += 1;
     };
-    const html = render({ visible: true, pending: false, onMigrate, defaultOpen: true });
+    const html = render({
+      migrationOffered: true,
+      targetVersion: 2,
+      onMigrate,
+      defaultOpen: true,
+    });
     expect(html).toContain('Migrate to v2');
     onMigrate();
     expect(calls).toBe(1);

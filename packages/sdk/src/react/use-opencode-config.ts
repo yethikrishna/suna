@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getClient } from '../core/runtime/client';
 import type { Config } from '@opencode-ai/sdk/v2/client';
-import { useOpenCodeRuntimeReady } from './use-opencode-sessions/keys';
+import { useOpenCodeRestReady } from './use-opencode-sessions/keys';
 
 export type { Config };
 
@@ -26,7 +26,7 @@ function unwrap<T>(result: { data?: T; error?: unknown }): T {
 }
 
 export function useOpenCodeConfig() {
-  const runtimeReady = useOpenCodeRuntimeReady();
+  const runtimeReady = useOpenCodeRestReady();
   return useQuery<Config>({
     queryKey: configKeys.all,
     queryFn: async () => {

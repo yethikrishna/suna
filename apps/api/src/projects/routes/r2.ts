@@ -11,6 +11,7 @@ import { createTemplate, deleteTemplate, getTemplateById, TemplateNotFoundError,
 import { managedGithubToken } from '../git-backends';
 import { commitFile, createRepo, getFileSha } from '../github';
 import { buildProjectSeedFilesFromItem } from '../seed-files';
+import { acpStarterRefusal } from '../lib/acp-runtime-gate';
 import { buildStarterFiles, normalizeStarterTemplateId } from '../starter';
 import { createRoute, z } from '@hono/zod-openapi';
 import { enforceProjectQuota, loadProjectForUser, resolveProjectAccount, assertProjectCapability } from '../lib/access';
@@ -268,7 +269,13 @@ projectsApp.openapi(
   const starterTemplate = normalizeStarterTemplateId(
     body.starter_template ?? body.starterTemplate,
   );
-  const acpRuntimeStarter = !sourceItemId;
+  // Same rule as /projects/provision (routes/r1.ts): a kortix_version 3 scaffold
+  // is only reachable where an operator turned ACP on, and it is refused before
+  // anything upstream exists. See ../lib/acp-runtime-gate.
+  if (!sourceItemId) {
+    const acpRefusal = acpStarterRefusal(starterTemplate);
+    if (acpRefusal) return c.json(acpRefusal.body, acpRefusal.status);
+  }
 
   const isPrivate = typeof body.private === 'boolean' ? body.private : true;
   const description = normalizeString(body.description);
@@ -381,11 +388,10 @@ projectsApp.openapi(
     name: projectName,
     defaultBranch,
       managed: true,
-    projectMetadata: acpRuntimeStarter
-      ? { experimental: { acp_runtime: true } }
-      : undefined,
-    // The starter just committed above (buildStarterFiles) ships kortix.yaml
-    // (kortix_version 3) — record that path so it's never stale from birth.
+    // No `experimental` block: a new project states no opinion about ACP and
+    // inherits the platform default (KORTIX_ACP_RUNTIME, off ⇒ OpenCode REST).
+    // The starter just committed above (buildStarterFiles) ships kortix.yaml —
+    // record that path so it's never stale from birth.
     manifestPath: 'kortix.yaml',
   });
 

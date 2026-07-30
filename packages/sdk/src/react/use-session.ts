@@ -22,6 +22,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { resolveSessionCommands } from '../core/acp/available-commands';
 import { getClient, RuntimeNotReadyError } from '../core/runtime/client';
 import {
   commitSessionRewind,
@@ -81,6 +82,7 @@ import {
   replyToQuestion,
   useAbortOpenCodeSession,
   useExecuteOpenCodeCommand,
+  useOpenCodeCommands,
   useSendOpenCodeMessage,
   type PromptPart,
 } from './use-opencode-sessions';
@@ -436,9 +438,11 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
   const runtimePolicy = createSessionRuntimePolicy(
     startData?.runtime_transport,
     runtimeTransportOverride,
+    { acpServerId: startData?.acp_server_id ?? null },
   );
   const runtimeTransport = runtimePolicy.transport;
   const usesAcp = runtimePolicy.useAcp;
+  const servesOpenCodeRest = runtimePolicy.servesOpenCodeRest;
 
   // 2. Point the SDK's runtime at this session's sandbox once ready. Track WHICH
   // sandbox we switched to (not a bare bool) so navigating between sessions (this
@@ -448,18 +452,26 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
   // separate per-session client to keep in sync.
   const [switchedSandboxId, setSwitchedSandboxId] = useState<string | null>(null);
   useEffect(() => {
-    if (!startReady || !sandbox?.external_id || switchedSandboxId === sandbox.sandbox_id) return;
+    if (!startReady || !sandbox?.external_id) return;
     // Point the app's runtime at THIS session's box — no global "switch", just set
     // the current runtime url. Every read (getClient, the SSE stream, files/
     // terminal/git) resolves through it. `stage==='ready'` is server-proven, so the
     // health effect below seeds connected+healthy with no client poll.
+    //
+    // Bind the OpenCode REST capability WITH the url, in the same write: every
+    // OpenCode REST hook wakes on the url, so two writes would leave a gap in
+    // which they all fire one in-box request against a managed ACP box. Called
+    // unconditionally rather than behind the `switchedSandboxId` guard so a
+    // capability that resolves after the first ready poll still corrects itself
+    // — `setCurrentRuntime` is a no-op when nothing moved.
     setCurrentRuntime(
       getSandboxUrlForExternalId(sandbox.external_id),
       sandbox.external_id,
       sandbox.sandbox_id,
+      { servesOpenCodeRest },
     );
-    setSwitchedSandboxId(sandbox.sandbox_id);
-  }, [startReady, sandbox, switchedSandboxId]);
+    if (switchedSandboxId !== sandbox.sandbox_id) setSwitchedSandboxId(sandbox.sandbox_id);
+  }, [startReady, sandbox, switchedSandboxId, servesOpenCodeRest]);
   // Clear the current runtime when this session view unmounts.
   useEffect(() => () => setCurrentRuntime(null), []);
 
@@ -662,6 +674,21 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
   const agents = useVisibleAgents({ projectId });
   const config = useProjectConfig(projectId);
   const picks = useSessionPicks(sessionId);
+
+  // Slash commands, resolved from whichever runtime actually serves them. The
+  // REST list self-disables on a runtime that serves no OpenCode REST (see
+  // `useOpenCodeRestReady`), so this issues NO in-box request on managed ACP;
+  // the list comes off the ACP `available_commands_update` projection instead.
+  const restCommands = useOpenCodeCommands();
+  const runtimeCommands = useMemo(
+    () =>
+      resolveSessionCommands({
+        servesOpenCodeRest,
+        rest: restCommands.data,
+        advertised: acpRuntime.projection.availableCommands,
+      }),
+    [servesOpenCodeRest, restCommands.data, acpRuntime.projection.availableCommands],
+  );
 
   // 8. Mutations.
   const sendMutation = useSendOpenCodeMessage();
@@ -999,7 +1026,19 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     models,
     agents,
     defaultAgent: config?.default_agent ?? config?.open_code_default_agent ?? null,
+    /** Commands DECLARED in the project repo (name/path/description). */
     commands: config?.commands ?? [],
+    /**
+     * Slash commands this session's runtime actually offers, in the published
+     * `Command` shape a composer palette renders.
+     *
+     * Transport-resolved and therefore the only correct source for a live
+     * session: OpenCode REST `GET /command` for a REST runtime, the ACP
+     * `available_commands_update` projection for a managed ACP runtime, which
+     * serves no OpenCode REST at all. A host that calls `useOpenCodeCommands`
+     * directly gets an empty list on every ACP session.
+     */
+    runtimeCommands,
     picks,
 
     // actions

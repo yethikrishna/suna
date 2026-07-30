@@ -1,41 +1,67 @@
 # ACP and runtime harnesses
 
-Kortix supports four session harnesses:
+Kortix defines four session harnesses. One is stable:
 
-| Manifest id | Harness | Default config directory |
-| --- | --- | --- |
-| `opencode` | OpenCode | `.kortix/opencode` |
-| `claude` | Claude Code | `.claude` |
-| `codex` | Codex | `.codex` |
-| `pi` | Pi | `.pi` |
+| Manifest id | Harness | Default config directory | Status |
+| --- | --- | --- | --- |
+| `opencode` | OpenCode | `.kortix/opencode` | stable |
+| `claude` | Claude Code | `.claude` | experimental |
+| `codex` | Codex | `.codex` | experimental |
+| `pi` | Pi | `.pi` | experimental |
 
-The project experiment key is `acp_runtime`. The visible name is
-**ACP & Multi-Harness**.
+Two gates decide which harness a session runs.
+
+**1. The manifest declares it.** `kortix_version: 2` runs OpenCode and only
+OpenCode — it has no `runtimes` block. `kortix_version: 3` declares named runtime
+profiles and each one names a harness. The manifest is an input, not an
+authority.
+
+**2. The deployment enables it.** `KORTIX_ENABLED_HARNESSES` is the operator
+allowlist. Empty means the stable set only, so `claude`, `codex`, and `pi` are
+off unless an operator names them. The allowlist only adds experimental
+harnesses; OpenCode is never removable. A session that asks for a harness the
+deployment did not enable is refused with `HARNESS_NOT_ENABLED` (HTTP 409).
+Kortix never falls back to a different harness — running OpenCode against
+`.claude` config would be a wrong answer that looks like a working one.
+
+Enabling a harness applies to NEW sessions. A running session keeps the
+`runtime_harness` it booted with.
+
+The project experiment key `acp_runtime` is a separate concern: it selects the
+TRANSPORT, not the harness.
 
 - Disabled: the project uses the OpenCode REST compatibility transport.
-- Enabled: the project uses ACP. A `kortix_version: 3` manifest can select any
-  supported harness.
+- Enabled: the project uses ACP, which is the transport for every harness.
 
-New generic projects enable the experiment automatically. Existing projects
-keep their current experiment state. Enable it before starting a v3 session in
-an existing project. The API rejects a v3 session with
-`ACP_RUNTIME_REQUIRED` while the experiment is disabled.
+New projects enable the experiment automatically. Existing projects keep their
+current experiment state. Enable it before starting a v3 session in an existing
+project. The API rejects a v3 session with `ACP_RUNTIME_REQUIRED` while the
+experiment is disabled.
 
-## Create a four-harness test project
+## The two starters
 
-The New Project modal has one starter. The project creation API scaffolds the
-v3 manifest below and enables `experimental.acp_runtime`.
+| Starter id | Manifest | Harnesses | Status |
+| --- | --- | --- | --- |
+| `general-knowledge-worker` | `kortix_version: 2` | OpenCode | stable, the default |
+| `acp-multi-harness` | `kortix_version: 3` | OpenCode, Claude Code, Codex, Pi | experimental |
 
-The CLI can scaffold the same files:
+An absent or unrecognized `starter_template` resolves to the stable starter. A
+project reaches the multi-harness path only when a caller asks for
+`acp-multi-harness` by name.
+
+The stable starter scaffolds no `.claude`, `.codex`, or `.pi` directory. The
+experimental starter adds those three plus the v3 manifest.
+
+### Create a four-harness test project
+
+Pass the experimental starter id explicitly:
 
 ```sh
 kortix init harness-lab --yes --no-git
 ```
 
 The CLI command writes files only. `kortix ship` creates the cloud project.
-Cloud project creation enables `acp_runtime` for the generic starter.
-`acp-multi-harness` remains an accepted compatibility alias for older API and
-SDK clients. It produces the same files.
+Cloud project creation enables `acp_runtime`.
 
 ## Manifest model
 
@@ -193,8 +219,10 @@ pnpm exec dotenvx run --ignore=MISSING_ENV_FILE \
 ```
 
 The default set is `opencode,claude,codex,pi`. The script creates a disposable
-user and provisions the generic starter. Project creation enables
-`acp_runtime`. The script starts one session per harness and cleans up the
+user and provisions the experimental multi-harness starter. Project creation
+enables `acp_runtime`. The deployment must also list every harness under test in
+`KORTIX_ENABLED_HARNESSES`, or each non-OpenCode session start returns
+`HARNESS_NOT_ENABLED`. The script starts one session per harness and cleans up the
 managed repository, project rows, account row, and user in `finally`. Run
 `pnpm dev` first.
 

@@ -45,6 +45,7 @@ test('missing runtime transport keeps every OpenCode REST client path enabled', 
     streamOpenCodeEvents: true,
     listOpenCodeSessions: true,
     syncOpenCodeMessages: true,
+    servesOpenCodeRest: true,
     sendWith: 'opencode-rest',
   });
 });
@@ -56,6 +57,7 @@ test('ACP transport disables OpenCode REST streaming, listing, sync, and send', 
     streamOpenCodeEvents: false,
     listOpenCodeSessions: false,
     syncOpenCodeMessages: false,
+    servesOpenCodeRest: true,
     sendWith: 'acp',
   });
 });
@@ -68,6 +70,29 @@ test('an explicit ACP override replaces a server-selected REST transport', () =>
     streamOpenCodeEvents: false,
     listOpenCodeSessions: false,
     syncOpenCodeMessages: false,
+    servesOpenCodeRest: true,
     sendWith: 'acp',
   });
+});
+
+test('managed ACP serves no OpenCode REST surface at all', () => {
+  expect(
+    createSessionRuntimePolicy('acp', undefined, { acpServerId: 'session-1' }).servesOpenCodeRest,
+  ).toBe(false);
+  expect(
+    createSessionRuntimePolicy('rest', 'acp', { acpServerId: 'session-1' }).servesOpenCodeRest,
+  ).toBe(false);
+});
+
+test('a legacy ACP session without a managed process id keeps its OpenCode REST surface', () => {
+  expect(
+    createSessionRuntimePolicy('acp', undefined, { acpServerId: null }).servesOpenCodeRest,
+  ).toBe(true);
+  expect(createSessionRuntimePolicy('acp', undefined, {}).servesOpenCodeRest).toBe(true);
+});
+
+test('a REST session keeps its OpenCode REST surface even when a process id is present', () => {
+  expect(
+    createSessionRuntimePolicy('rest', undefined, { acpServerId: 'session-1' }).servesOpenCodeRest,
+  ).toBe(true);
 });

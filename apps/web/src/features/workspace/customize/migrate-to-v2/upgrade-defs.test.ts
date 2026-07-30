@@ -4,15 +4,35 @@ import { MIGRATE_TO_V2_PROMPT } from './migration-prompt';
 import { PROJECT_UPGRADES, applicableUpgrades, buildOneOffUpgradePrompt } from './upgrade-defs';
 
 describe('PROJECT_UPGRADES registry', () => {
-  test('the v2 migration applies to v1 projects only', () => {
-    expect(applicableUpgrades({ manifestVersion: 1 }).map((u) => u.id)).toContain('manifest-v2');
-    expect(applicableUpgrades({ manifestVersion: 2 }).map((u) => u.id)).not.toContain(
-      'manifest-v2',
-    );
+  test('the v2 migration applies only when the server offers a migration to v2', () => {
+    expect(
+      applicableUpgrades({ manifestMigrationOffered: true, manifestTargetVersion: 2 }).map(
+        (u) => u.id,
+      ),
+    ).toContain('manifest-v2');
+  });
+
+  test('a server verdict of "no migration" applies nothing, whatever the version', () => {
+    expect(
+      applicableUpgrades({ manifestMigrationOffered: false, manifestTargetVersion: null }),
+    ).toHaveLength(0);
+    expect(
+      applicableUpgrades({ manifestMigrationOffered: false, manifestTargetVersion: 2 }),
+    ).toHaveLength(0);
+  });
+
+  test('a migration to some other target version does not fire the v2 entry', () => {
+    expect(
+      applicableUpgrades({ manifestMigrationOffered: true, manifestTargetVersion: 3 }).map(
+        (u) => u.id,
+      ),
+    ).not.toContain('manifest-v2');
   });
 
   test('an unresolved manifest read applies nothing — no premature offers', () => {
-    expect(applicableUpgrades({ manifestVersion: null })).toHaveLength(0);
+    expect(
+      applicableUpgrades({ manifestMigrationOffered: false, manifestTargetVersion: null }),
+    ).toHaveLength(0);
   });
 
   test('the v2 entry carries the real migration prompt, not a copy', () => {

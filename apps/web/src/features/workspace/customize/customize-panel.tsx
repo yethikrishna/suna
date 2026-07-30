@@ -31,7 +31,7 @@ import { getProjectDetail } from '@kortix/sdk';
 import { ArrowLeft } from '@mynaui/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo } from 'react';
-import { detectManifestVersion } from './migrate-to-v2/manifest-version';
+import { manifestUpgradeState } from './migrate-to-v2/manifest-version';
 import { UpgradesView } from './migrate-to-v2/upgrade-view';
 import { UPGRADE_ITEM, isRailItemActive, railGroups } from './rail';
 import { RelatedProjectsSwitcher } from './related-projects-switcher';
@@ -94,12 +94,10 @@ export function CustomizPanel({ projectId }: { projectId: string }) {
   const llmGatewayAvailable = isLlmGatewayAvailable(detail.data?.project);
   const voiceEnabled = detail.data?.project?.experimental?.voice ?? false;
   const reviewEnabled = detail.data?.project?.experimental?.review_center ?? false;
-  // Pin Upgrades to the top only once the manifest read resolved to v1 —
-  // while the detail query is in flight (or on v2 projects) the item sits in
-  // its calm Manage slot instead. Same detection the section rows use.
-  const upgradeAttention = detail.data
-    ? detectManifestVersion(detail.data.config.manifest_raw) === 1
-    : false;
+  // Pin Upgrades to the top only once the SERVER says a migration is offered —
+  // while the detail query is in flight, or on an up-to-date/unknown manifest,
+  // the item sits in its calm Manage slot instead.
+  const upgradeAttention = manifestUpgradeState(detail.data?.config).migrationOffered;
 
   // "Needs you" count for the Review rail badge — the SAME shared inbox summary the
   // sidebar "Review" pill and the per-session row dots read (one query key, one

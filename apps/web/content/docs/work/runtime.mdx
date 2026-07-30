@@ -120,9 +120,31 @@ The daemon fetches a short-lived clone credential from `GET /v1/projects/:id/git
 
 ## The agent runtime
 
-Projects without the **ACP & Multi-Harness** experiment use OpenCode REST. The daemon launches `opencode serve` on `127.0.0.1:4096`.
+Kortix ships on **OpenCode REST**. A project without the **ACP & Multi-Harness** experiment talks to OpenCode over its REST compatibility interface on `127.0.0.1:4096`.
 
-Enabled projects use ACP. The daemon starts the selected harness from the immutable runtime plan. The supported harnesses are OpenCode, Claude Code, Codex, and Pi.
+A project with the experiment enabled uses ACP. The daemon starts the selected harness from the immutable runtime plan. The supported harnesses are OpenCode, Claude Code, Codex, and Pi.
+
+The choice is a client transport, not a process. Every session launches one `opencode acp` process, and both transports reach that same process. Switching a project does not change what runs in the sandbox.
+
+### Turning ACP on
+
+ACP is experimental. One environment variable holds the whole switch.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `KORTIX_ACP_RUNTIME` | `false` | The fleet default for the **ACP & Multi-Harness** experiment. `false` puts every project with no explicit choice on OpenCode REST. `true` puts them on ACP. |
+
+Two ways to enable it:
+
+- **A whole deployment.** Set `KORTIX_ACP_RUNTIME=true` and restart the API. Every project that has not chosen for itself moves to ACP.
+- **One project.** Turn on **ACP & Multi-Harness** in Customize → Settings → Experimental. The project's own choice always wins over the fleet default, in both directions: a project stays on ACP with the variable off, and stays on REST with the variable on.
+
+A session binds its transport at create time and never changes it. Flipping either switch affects the next session, never a running one.
+
+Two related gates are separate on purpose:
+
+- `KORTIX_ENABLED_HARNESSES` decides **which** harness a manifest may launch (default: OpenCode only). ACP on with an empty allowlist still runs OpenCode alone. See [the manifest](/docs/project/manifest).
+- A `kortix_version: 3` manifest has no REST path. Creating a session in a v3 project without the ACP experiment returns `409 ACP_RUNTIME_REQUIRED` instead of silently running REST against a v3 runtime plan. Projects scaffolded from the experimental multi-harness starter are therefore created with the experiment already on.
 
 The runtime uses three session identifiers.
 

@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getClient } from '../../core/runtime/client';
 import type { McpStatus } from '@opencode-ai/sdk/v2/client';
-import { opencodeKeys, useOpenCodeRuntimeReady } from './keys';
+import { opencodeKeys, useOpenCodeRestReady } from './keys';
 import { unwrap } from './shared';
 
 // ============================================================================
@@ -11,7 +11,7 @@ import { unwrap } from './shared';
 // ============================================================================
 
 export function useOpenCodeMcpStatus() {
-  const runtimeReady = useOpenCodeRuntimeReady();
+  const runtimeReady = useOpenCodeRestReady();
   return useQuery<Record<string, McpStatus>>({
     queryKey: opencodeKeys.mcpStatus(),
     queryFn: async () => {

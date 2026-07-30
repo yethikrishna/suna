@@ -33,27 +33,111 @@ export interface StarterFile {
   content: string;
 }
 
-// There is one USER-FACING starter kit:
-// - `general-knowledge-worker`: the full skill kit plus v3 runtime profiles for
-//   OpenCode, Claude Code, Codex, and Pi.
+// There are TWO USER-FACING starters, and the difference between them is the
+// manifest version — which is the difference between one harness and four:
 //
-// `minimal` (base only, no domain skills) is kept purely as an INTERNAL
-// building block: the project-clone seed path (`buildProjectSeedFilesFromItem`)
-// uses it to lay down the v3 runtime floor and canonical skill source
-// before a `registry:project`'s own skills/agents are layered on top, so a
-// specialized project template isn't
-// polluted with every general-knowledge skill. It is not surfaced in the
-// create-project UI, mobile, or the `kortix init` prompt.
+// - `general-knowledge-worker` — STABLE. The full skill kit on `kortix_version: 2`,
+//   which runs the OpenCode harness and only the OpenCode harness. The default.
+// - `acp-multi-harness` — EXPERIMENTAL. The same skill kit plus `kortix_version: 3`
+//   runtime profiles for OpenCode, Claude Code, Codex, and Pi, and each harness's
+//   native configuration directory. v3 is not fully released.
 //
-// `acp-multi-harness` is a deprecated compatibility alias for
-// `general-knowledge-worker`. Keep accepting it in API and SDK inputs.
+// `minimal` (base only, no domain skills) is kept purely as an INTERNAL building
+// block: the project-clone seed path (`buildProjectSeedFilesFromItem`) uses it to
+// lay down the stable runtime floor and canonical skill source before a
+// `registry:project`'s own skills/agents are layered on top, so a specialized
+// project template isn't polluted with every general-knowledge skill. It is not
+// surfaced in the create-project UI, mobile, or the `kortix init` prompt.
 export const STARTER_TEMPLATE_IDS = [
   'minimal',
   'general-knowledge-worker',
   'acp-multi-harness',
 ] as const;
 export type StarterTemplateId = (typeof STARTER_TEMPLATE_IDS)[number];
-export const DEFAULT_STARTER_TEMPLATE_ID: StarterTemplateId = 'general-knowledge-worker';
+
+/** The stable starter — one harness (OpenCode), `kortix_version: 2`. */
+export const STABLE_STARTER_TEMPLATE_ID: StarterTemplateId = 'general-knowledge-worker';
+/** The experimental starter — multi-harness ACP, `kortix_version: 3`. */
+export const EXPERIMENTAL_STARTER_TEMPLATE_ID: StarterTemplateId = 'acp-multi-harness';
+/** An unrecognized or absent starter id resolves to the STABLE starter. A user
+ *  never lands on the experimental multi-harness path without asking for it. */
+export const DEFAULT_STARTER_TEMPLATE_ID: StarterTemplateId = STABLE_STARTER_TEMPLATE_ID;
+
+/** How settled a starter is. Surfaced verbatim by every picker. */
+export type StarterStability = 'stable' | 'experimental';
+
+export interface StarterTemplateDescriptor {
+  id: StarterTemplateId;
+  /** Human label for a picker. Carries the word "experimental" when it applies —
+   *  a caller that renders only this string still tells the truth. */
+  label: string;
+  /** One sentence: what it scaffolds, and how settled it is. */
+  description: string;
+  stability: StarterStability;
+  /** `kortix_version` the scaffolded manifest declares. */
+  manifestVersion: 2 | 3;
+  /** Offered to a user. `false` = internal building block. */
+  listed: boolean;
+}
+
+/**
+ * The single source of truth every starter picker renders from — the API, the
+ * `kortix init` prompt, the web create-project surface, mobile. A picker that
+ * reads `label`/`stability`/`description` from here cannot present the
+ * experimental starter as if it were stable, and cannot drift from what the
+ * scaffold actually writes.
+ */
+export const STARTER_TEMPLATES: readonly StarterTemplateDescriptor[] = [
+  {
+    id: 'minimal',
+    label: 'Minimal (internal)',
+    description:
+      'Base runtime floor only — no domain skills. Internal building block for the project-clone seed path; never offered to a user.',
+    stability: 'stable',
+    manifestVersion: 2,
+    listed: false,
+  },
+  {
+    id: 'general-knowledge-worker',
+    label: 'General knowledge worker',
+    description:
+      'The full skill kit on the stable kortix_version 2 manifest. Runs the OpenCode harness. Recommended for production work.',
+    stability: 'stable',
+    manifestVersion: 2,
+    listed: true,
+  },
+  {
+    id: 'acp-multi-harness',
+    label: 'Multi-harness ACP (experimental)',
+    description:
+      'The full skill kit plus kortix_version 3 runtime profiles for OpenCode, Claude Code, Codex, and Pi. kortix_version 3 is not fully released: the manifest shape, harness capabilities, and model behavior can change between releases, and a deployment must enable each experimental harness before a session can start on it.',
+    stability: 'experimental',
+    manifestVersion: 3,
+    listed: true,
+  },
+];
+
+const STARTER_TEMPLATE_BY_ID = new Map<StarterTemplateId, StarterTemplateDescriptor>(
+  STARTER_TEMPLATES.map((template) => [template.id, template]),
+);
+
+/** Descriptor for one starter. Unknown input resolves to the stable default,
+ *  matching `normalizeStarterTemplateId`. Every id in `STARTER_TEMPLATE_IDS` has
+ *  a descriptor, so the fallback below is unreachable — it exists so adding an
+ *  id without a descriptor is a compile-time obligation, not a runtime crash. */
+export function starterTemplate(id: unknown): StarterTemplateDescriptor {
+  const normalized = normalizeStarterTemplateId(id);
+  return (
+    STARTER_TEMPLATE_BY_ID.get(normalized) ??
+    STARTER_TEMPLATE_BY_ID.get(DEFAULT_STARTER_TEMPLATE_ID) ??
+    STARTER_TEMPLATES[0]
+  );
+}
+
+/** The starters a user may pick, in presentation order (stable first). */
+export function listedStarterTemplates(): StarterTemplateDescriptor[] {
+  return STARTER_TEMPLATES.filter((template) => template.listed);
+}
 
 export const KORTIX_MANAGED_SKILL_NAMES = [
   'kortix-cli',
@@ -93,6 +177,10 @@ const GENERAL_KNOWLEDGE_WORKER_TEMPLATE_DIR = join(
   'templates',
   'general-knowledge-worker',
 );
+/** The EXPERIMENTAL layer: the v3 manifest plus each non-OpenCode harness's own
+ *  native configuration directory. Layered only for the experimental starter,
+ *  so the stable scaffold has no `.claude`/`.codex`/`.pi` at all. */
+const MULTI_HARNESS_TEMPLATE_DIR = join(import.meta.dir, '..', 'templates', 'multi-harness');
 const MARKETPLACE_TEMPLATE_DIR = join(import.meta.dir, '..', 'templates', 'marketplace');
 const MANAGED_TEMPLATE_DIR = join(import.meta.dir, '..', 'templates', 'managed');
 
@@ -165,12 +253,18 @@ export function getStarterFiles(vars: StarterVars): StarterFile[] {
     template: normalizeStarterTemplateId(vars.template),
   };
 
+  // Later roots win (`byPath.set`), so the multi-harness layer replaces base's
+  // stable v2 kortix.yaml + README with their v3 counterparts and adds the
+  // native harness config directories.
   const roots: { name: string; dir: string }[] = [{ name: 'base', dir: BASE_TEMPLATE_DIR }];
   if (resolvedVars.template !== 'minimal') {
     roots.push({
       name: 'general-knowledge-worker',
       dir: GENERAL_KNOWLEDGE_WORKER_TEMPLATE_DIR,
     });
+  }
+  if (resolvedVars.template === EXPERIMENTAL_STARTER_TEMPLATE_ID) {
+    roots.push({ name: 'multi-harness', dir: MULTI_HARNESS_TEMPLATE_DIR });
   }
 
   const byPath = new Map<string, StarterFile>();
@@ -236,13 +330,14 @@ export function getProjectTemplateFiles(): StarterFile[] {
  * (under `packages/starter/templates/`). Lets the marketplace build a "View
  * source" link for a first-party skill/agent/tool without guessing which
  * template root it came from. Precedence matches the catalog build
- * (base < general-knowledge-worker < managed < marketplace) so an overridden
- * file resolves to the root that actually wins.
+ * (base < general-knowledge-worker < multi-harness < managed < marketplace) so
+ * an overridden file resolves to the root that actually wins.
  */
 export function getStarterCatalogSourceMap(): Map<string, string> {
   const roots: Array<{ name: string; dir: string }> = [
     { name: 'base', dir: BASE_TEMPLATE_DIR },
     { name: 'general-knowledge-worker', dir: GENERAL_KNOWLEDGE_WORKER_TEMPLATE_DIR },
+    { name: 'multi-harness', dir: MULTI_HARNESS_TEMPLATE_DIR },
     { name: 'managed', dir: MANAGED_TEMPLATE_DIR },
     { name: 'marketplace', dir: MARKETPLACE_TEMPLATE_DIR },
   ];

@@ -40,12 +40,18 @@ Kortix-specific settings go in `kortix.yaml`. Harness-specific behavior stays in
 the selected native config directory. Do not copy harness-native behavior into
 the manifest.
 
-`kortix_version: 2` runs OpenCode. `kortix_version: 3` declares named
-`runtimes` and lets each logical agent select OpenCode, Claude Code, Codex, or
-Pi through `agents.<name>.runtime`. Version 3 requires the project experiment
-`acp_runtime`, shown as **ACP & Multi-Harness**. New generic projects enable
-it automatically. Existing projects keep their experiment state. A disabled
-project uses the OpenCode REST compatibility transport.
+`kortix_version: 2` runs OpenCode, and only OpenCode. `kortix_version: 3`
+declares named `runtimes` and lets each logical agent select OpenCode, Claude
+Code, Codex, or Pi through `agents.<name>.runtime`. Version 3 requires the
+project experiment `acp_runtime`, shown as **ACP & Multi-Harness**. New projects
+enable it automatically. Existing projects keep their experiment state. A
+disabled project uses the OpenCode REST compatibility transport.
+
+OpenCode is the only STABLE harness. Claude Code, Codex, and Pi are
+experimental: a v3 manifest may declare them, but a session starts on one only
+where the deployment lists it in `KORTIX_ENABLED_HARNESSES`. Otherwise session
+start returns `HARNESS_NOT_ENABLED` (HTTP 409) — Kortix refuses rather than
+running a different harness against the wrong config directory.
 
 Legacy v1 projects and v2 projects keep OpenCode-native discovery. Their
 `.kortix/opencode/` directory can also drive a local `opencode` run.
@@ -656,7 +662,9 @@ to see the full enum.
 </reference>
 
 <reference path=".kortix/opencode/skills/kortix-system/references/kortix/runtime-harnesses.md">
-  ACP and multi-harness reference. Covers the `acp_runtime` experiment,
+  ACP and multi-harness reference. Covers the `acp_runtime` experiment, the two
+  starters (stable v2 OpenCode vs experimental v3 multi-harness), the
+  `KORTIX_ENABLED_HARNESSES` operator gate and `HARNESS_NOT_ENABLED`,
   `kortix_version: 3`, OpenCode/Claude Code/Codex/Pi runtime profiles,
   native config and system-skill discovery, harness-specific credentials,
   immutable session identity, model behavior, and the canonical

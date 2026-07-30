@@ -7,12 +7,15 @@
  * here; the view renders whatever is applicable.
  */
 
-import type { ManifestVersion } from './manifest-version';
 import { MIGRATE_TO_V2_PROMPT } from './migration-prompt';
 
 export interface ProjectUpgradeContext {
-  /** `null` while the manifest read hasn't resolved. */
-  manifestVersion: ManifestVersion | null;
+  /** The SERVER's verdict on whether a manifest migration is offered. Never
+   *  inferred from the raw manifest here — see `./manifest-version`. */
+  manifestMigrationOffered: boolean;
+  /** The version the server says that migration produces. An entry matches on
+   *  this, so a registry entry can never fire for a target it does not build. */
+  manifestTargetVersion: number | null;
 }
 
 export interface ProjectUpgrade {
@@ -29,7 +32,7 @@ export const PROJECT_UPGRADES: readonly ProjectUpgrade[] = [
     title: 'Migrate manifest to v2 (kortix.yaml)',
     description:
       'Converts the v1 kortix.toml into the governance-first kortix.yaml, refreshes platform-managed skills to the latest marketplace baseline, and opens a change request for review.',
-    applicable: (ctx) => ctx.manifestVersion === 1,
+    applicable: (ctx) => ctx.manifestMigrationOffered && ctx.manifestTargetVersion === 2,
     prompt: MIGRATE_TO_V2_PROMPT,
   },
 ];

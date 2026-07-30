@@ -110,7 +110,6 @@ export function SessionCostExplorerContent({
 
   const sessions = data?.sessions ?? [];
   const offset = data?.offset ?? 0;
-  const limit = data?.limit ?? 25;
   const total = data?.total ?? 0;
   const start = total === 0 ? 0 : offset + 1;
   const end = Math.min(offset + sessions.length, total);

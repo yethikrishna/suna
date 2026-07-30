@@ -14,6 +14,7 @@ const ACCOUNT_ID = crypto.randomUUID();
 const PROJECT_ID = crypto.randomUUID();
 const USER_ID = crypto.randomUUID();
 const SESSION_ID = crypto.randomUUID();
+const UNAVAILABLE_SESSION_ID = crypto.randomUUID();
 const PROJECT_CONNECTOR_ID = crypto.randomUUID();
 const USER_CONNECTOR_ID = crypto.randomUUID();
 
@@ -48,6 +49,9 @@ beforeAll(async () => {
       'agents:',
       '  support:',
       '    connectors: [project_records, user_records]',
+      '  unavailable:',
+      '    connectors: [unavailable_records]',
+      '    connectors_required: [unavailable_records]',
       '',
     ].join('\n'),
     'utf8',
@@ -168,6 +172,41 @@ describe('createProjectSession required connector authorization gate', () => {
       .from(projectSessions)
       .where(
         and(eq(projectSessions.projectId, PROJECT_ID), eq(projectSessions.sessionId, SESSION_ID)),
+      );
+    expect(rows).toEqual([]);
+  });
+
+  test('returns a configuration conflict when a required connector profile is unavailable', async () => {
+    const result = await createProjectSession({
+      project,
+      userId: USER_ID,
+      requestingPrincipalType: 'human',
+      body: {
+        session_id: UNAVAILABLE_SESSION_ID,
+        agent_name: 'unavailable',
+      },
+      enforceAccountCap: false,
+      authType: 'supabase',
+    });
+
+    expect(result).toEqual({
+      error: {
+        status: 409,
+        body: {
+          error: 'Required connector profile "unavailable_records" is unavailable',
+          code: 'REQUIRED_CONNECTOR_PROFILE_UNAVAILABLE',
+        },
+      },
+    });
+
+    const rows = await db
+      .select({ sessionId: projectSessions.sessionId })
+      .from(projectSessions)
+      .where(
+        and(
+          eq(projectSessions.projectId, PROJECT_ID),
+          eq(projectSessions.sessionId, UNAVAILABLE_SESSION_ID),
+        ),
       );
     expect(rows).toEqual([]);
   });

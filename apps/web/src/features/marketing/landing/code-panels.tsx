@@ -58,17 +58,20 @@ function tokenizeShell(line: string): Tok[] {
   return out;
 }
 
+/* Light surface, not a black terminal: the page is light and a slab of near-black
+   read as a hole in it. Hierarchy comes from weight and opacity, with one earned
+   colour on success output — the brand is otherwise achromatic. */
 const TOKEN_CLASS: Record<string, string> = {
-  comment: 'text-background/35',
-  string: 'text-background/90',
-  keyword: 'text-background/55',
-  fn: 'text-background',
-  type: 'text-background/85',
-  punct: 'text-background/40',
-  prompt: 'text-background/30',
-  cmd: 'text-background',
-  flag: 'text-background/55',
-  ok: 'text-background/55',
+  comment: 'text-muted-foreground/55',
+  string: 'text-foreground/70',
+  keyword: 'text-muted-foreground',
+  fn: 'text-foreground font-medium',
+  type: 'text-foreground/80',
+  punct: 'text-muted-foreground/50',
+  prompt: 'text-muted-foreground/35 select-none',
+  cmd: 'text-foreground font-medium',
+  flag: 'text-muted-foreground',
+  ok: 'text-emerald-600 dark:text-emerald-400',
 };
 
 function CodeSurface({
@@ -95,34 +98,34 @@ function CodeSurface({
   const tokenize = lang === 'ts' ? tokenizeTs : tokenizeShell;
 
   return (
-    <div className="bg-foreground flex h-full flex-col">
-      <div className="border-background/10 flex items-center gap-3 border-b px-4 py-3">
+    <div className="bg-card flex h-full flex-col">
+      <div className="border-border flex items-center gap-3 border-b px-4 py-3">
         <span className="flex gap-1.5" aria-hidden>
-          <span className="bg-background/20 size-2.5 rounded-full" />
-          <span className="bg-background/20 size-2.5 rounded-full" />
-          <span className="bg-background/20 size-2.5 rounded-full" />
+          <span className="bg-muted-foreground/25 size-2.5 rounded-full" />
+          <span className="bg-muted-foreground/25 size-2.5 rounded-full" />
+          <span className="bg-muted-foreground/25 size-2.5 rounded-full" />
         </span>
-        <span className="text-background/50 font-mono text-xs">{title}</span>
+        <span className="text-muted-foreground font-mono text-xs">{title}</span>
 
         <button
           type="button"
           onClick={copy}
-          className="text-background/45 hover:text-background hover:bg-background/10 duration-fast ml-auto flex items-center gap-1.5 rounded-sm px-2 py-1 font-mono text-[11px] transition-colors"
+          className="text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] border-border duration-fast ml-auto flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-colors"
         >
           {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
-        <pre className="font-mono text-[12.5px] leading-[1.7]">
+      <div className="bg-background min-h-0 flex-1 overflow-auto px-5 py-4">
+        <pre className="font-mono text-[12.5px] leading-[1.75]">
           <code>
             {lines.map((line, i) => (
               <div key={`${i}-${line}`} className="whitespace-pre">
                 {line === ''
                   ? ' '
                   : tokenize(line).map((tok, j) => (
-                      <span key={j} className={tok.c ? TOKEN_CLASS[tok.c] : 'text-background/75'}>
+                      <span key={j} className={tok.c ? TOKEN_CLASS[tok.c] : 'text-foreground/85'}>
                         {tok.t}
                       </span>
                     ))}
@@ -133,7 +136,7 @@ function CodeSurface({
       </div>
 
       {footer ? (
-        <div className="border-background/10 border-t px-4 py-3">{footer}</div>
+        <div className="border-border bg-card border-t px-4 py-3">{footer}</div>
       ) : null}
     </div>
   );
@@ -197,7 +200,7 @@ export function SurfaceLink({ href, children }: { href: string; children: React.
     <a
       href={href}
       className={cn(
-        'text-background/70 hover:text-background duration-fast inline-flex items-center gap-1.5',
+        'text-muted-foreground hover:text-foreground duration-fast inline-flex items-center gap-1.5',
         'font-mono text-[11px] transition-colors',
       )}
     >

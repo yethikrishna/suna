@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import {
   ArrowUpRightIcon as ArrowUpRight,
   CodeSimpleIcon as Code2,
+  EnvelopeSimpleIcon as EnvelopeIcon,
   MonitorIcon as Monitor,
   DeviceMobileIcon as Smartphone,
   TerminalIcon as Terminal,
@@ -18,7 +19,7 @@ import Link from 'next/link';
 import type { ComponentType, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
-type SurfaceId = 'web' | 'slack' | 'teams' | 'mobile' | 'cli' | 'sdk';
+type SurfaceId = 'web' | 'slack' | 'teams' | 'email' | 'mobile' | 'cli' | 'sdk';
 
 type Surface = {
   id: SurfaceId;
@@ -27,9 +28,10 @@ type Surface = {
 };
 
 const SURFACES: Surface[] = [
-  { id: 'web', label: 'Web & desktop', icon: Monitor },
+  { id: 'web', label: 'Web', icon: Monitor },
   { id: 'slack', label: 'Slack', icon: Icon.Slack },
   { id: 'teams', label: 'MS Teams', icon: Icon.MicrosoftTeams },
+  { id: 'email', label: 'Email', icon: EnvelopeIcon },
   { id: 'mobile', label: 'Mobile', icon: Smartphone },
   { id: 'cli', label: 'CLI', icon: Terminal },
   { id: 'sdk', label: 'API / SDK', icon: Code2 },
@@ -170,6 +172,64 @@ function ChatSurface({ brand }: { brand: 'slack' | 'teams' }) {
   );
 }
 
+/** Email is a first-class channel: forward a thread, get the work back in it. */
+function EmailSurface() {
+  return (
+    <div className="bg-background flex h-full flex-col">
+      <div className="border-border flex items-center justify-between border-b px-4 py-3">
+        <div className="flex items-center gap-2.5">
+          <EnvelopeIcon className="text-muted-foreground size-5" />
+          <span className="text-foreground text-sm font-semibold">Inbox</span>
+        </div>
+        <span className="text-muted-foreground font-mono text-xs">ops@acme.com</span>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
+        <div className="border-border rounded-lg border p-4">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-foreground text-sm font-semibold">Priya Raman</span>
+            <span className="text-muted-foreground font-mono text-[11px]">08:12</span>
+          </div>
+          <p className="text-muted-foreground mt-0.5 text-xs">
+            to kortix@acme.com · Re: Q3 renewals
+          </p>
+          <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
+            Forwarding the Northwind thread — can you pull their usage and draft the renewal?
+          </p>
+        </div>
+
+        <div className="border-border bg-card rounded-lg border p-4">
+          <div className="flex items-center gap-2">
+            <KortixAvatar />
+            <div>
+              <span className="text-foreground text-sm font-semibold">Kortix</span>
+              <p className="text-muted-foreground text-xs">replied · 6 min</p>
+            </div>
+          </div>
+          <p className="text-muted-foreground mt-3 text-sm leading-relaxed">
+            Pulled 12 months of usage from HubSpot and Stripe. Renewal drafted at $108,960 for
+            year one. Attached the proposal and the workbook — say the word and I&rsquo;ll send it.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {['proposal-northwind.pdf', 'usage-2026.xlsx'].map((f) => (
+              <span
+                key={f}
+                className="border-border text-muted-foreground rounded-sm border px-2.5 py-1 font-mono text-[11px]"
+              >
+                {f}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-border text-muted-foreground border-t px-4 py-3 text-center text-xs">
+        Slack · Teams · Email · Telegram · WhatsApp · SMS — or build your own channel on the API
+      </div>
+    </div>
+  );
+}
+
 const MOBILE_SHOTS = [
   '/images/mobile-app/app-1.png',
   '/images/mobile-app/app-2.png',
@@ -271,6 +331,8 @@ function SurfacePanel({ surface }: { surface: SurfaceId }) {
       return <ChatSurface brand="slack" />;
     case 'teams':
       return <ChatSurface brand="teams" />;
+    case 'email':
+      return <EmailSurface />;
     case 'mobile':
       return <MobileSurface />;
     case 'cli':

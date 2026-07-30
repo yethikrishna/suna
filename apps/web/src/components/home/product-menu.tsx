@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/navigation-menu';
 import type { NavMenu } from '@/lib/site-config';
 import { cn } from '@/lib/utils';
+import { ArrowUpRightIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
@@ -23,9 +24,12 @@ interface ProductMenuProps {
 }
 
 /**
- * Desktop "Product" mega-menu. Radix NavigationMenu gives hover-open, Escape and
- * focus-outside dismissal for free; the controlled `value` adds open-on-focus so
- * the menu is reachable with Tab alone.
+ * Desktop hover menu, shared by Product and Company. Radix NavigationMenu gives
+ * hover-open, Escape and focus-outside dismissal for free; the controlled
+ * `value` adds open-on-focus so the menu is reachable with Tab alone.
+ *
+ * Panel width follows the column count, so a five-link list does not open a
+ * half-viewport panel.
  */
 export function ProductMenu({ name, menu, isNavActive }: ProductMenuProps) {
   const [value, setValue] = useState('');
@@ -34,6 +38,7 @@ export function ProductMenu({ name, menu, isNavActive }: ProductMenuProps) {
   const hasActiveLink = menu.columns.some((column) =>
     column.links.some((link) => isNavActive(link.href)),
   );
+  const isWide = menu.columns.length > 1;
 
   // Escape closes the menu and returns focus to the trigger. Without this guard
   // the trigger's onFocus re-opens the menu the user just dismissed. Radix binds
@@ -83,22 +88,37 @@ export function ProductMenu({ name, menu, isNavActive }: ProductMenuProps) {
             {name}
           </NavigationMenuTrigger>
           <NavigationMenuContent className="[&>div]:bg-transparent [&>div]:p-0">
-            <div className="w-[38rem] max-w-[calc(100vw-2.5rem)]">
-              <div className="grid grid-cols-2 gap-x-4 p-2">
+            {/* A single-column menu is a short list, so it gets a narrow panel;
+                only the two-column product menu earns the full width. */}
+            <div className={cn('max-w-[calc(100vw-2.5rem)]', isWide ? 'w-[38rem]' : 'w-[15rem]')}>
+              <div className={cn('grid gap-x-4 p-2', isWide && 'grid-cols-2')}>
                 {menu.columns.map((column) => (
                   <div key={column.title} className="flex flex-col">
-                    <p className="text-muted-foreground px-2 pt-1.5 pb-2 text-[11px] font-medium tracking-wider uppercase">
-                      {column.title}
-                    </p>
+                    {/* A lone column repeats the trigger's own label, so it is
+                        only worth a heading when there is a second column to
+                        tell it apart from. */}
+                    {isWide && (
+                      <p className="text-muted-foreground px-2 pt-1.5 pb-2 text-[11px] font-medium tracking-wider uppercase">
+                        {column.title}
+                      </p>
+                    )}
                     {column.links.map((link) => (
-                      <NavigationMenuLink
-                        key={link.href}
-                        asChild
-                        active={isNavActive(link.href)}
-                      >
-                        <Link href={link.href} className="gap-0.5 rounded-sm px-2 py-1.5">
-                          <span className="text-foreground text-sm leading-tight font-medium">
+                      <NavigationMenuLink key={link.href} asChild active={isNavActive(link.href)}>
+                        <Link
+                          href={link.href}
+                          {...(link.external
+                            ? { target: '_blank', rel: 'noreferrer noopener' }
+                            : {})}
+                          className="gap-0.5 rounded-sm px-2 py-1.5"
+                        >
+                          <span className="text-foreground flex items-center gap-1.5 text-sm leading-tight font-medium">
                             {link.name}
+                            {link.external && (
+                              <ArrowUpRightIcon
+                                className="text-muted-foreground size-3"
+                                aria-hidden
+                              />
+                            )}
                           </span>
                           {link.description && (
                             <span className="text-muted-foreground text-xs leading-snug">
@@ -110,17 +130,6 @@ export function ProductMenu({ name, menu, isNavActive }: ProductMenuProps) {
                     ))}
                   </div>
                 ))}
-              </div>
-              <div className="border-border flex items-center justify-between gap-4 border-t px-4 py-2.5">
-                <p className="text-muted-foreground text-xs">{menu.footer.text}</p>
-                <NavigationMenuLink asChild>
-                  <Link
-                    href={menu.footer.href}
-                    className="text-foreground shrink-0 flex-row rounded-sm px-2 py-1 text-xs font-medium"
-                  >
-                    {menu.footer.linkLabel}
-                  </Link>
-                </NavigationMenuLink>
               </div>
             </div>
           </NavigationMenuContent>

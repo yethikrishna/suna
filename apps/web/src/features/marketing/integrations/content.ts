@@ -226,8 +226,8 @@ export const policy = {
   /** Real product screenshot — the Permissions tab on a live connector. */
   shot: {
     src: '/media/integrations/connector-permissions.webp',
-    alt: 'The Permissions tab of a Kortix connector: a default rule, then a list of tools each set to Allow, Ask or Block.',
-    caption: 'Permissions on a real connector — 19 tools, one answer each.',
+    alt: 'The Permissions tab of the Google Drive connector in Kortix: a default rule, then every Drive tool set to Allow, Ask, Block or Default.',
+    caption: 'Permissions on a real Google Drive connector — 51 tools, one answer each.',
   },
 
   /** The pause, told as a timeline. This is the part people do not expect. */

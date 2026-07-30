@@ -2,6 +2,8 @@ export type NavSubLink = {
   href: string;
   name: string;
   description?: string;
+  /** Absolute destination off kortix.com — opens in a new tab. */
+  external?: boolean;
 };
 
 export type NavMenuColumn = {
@@ -9,13 +11,13 @@ export type NavMenuColumn = {
   links: NavSubLink[];
 };
 
+/**
+ * A menu is its links and nothing else. Both menus previously carried a promo
+ * strip along the bottom; it added a row of chrome to every hover without
+ * adding a destination, so the shape no longer has one.
+ */
 export type NavMenu = {
   columns: NavMenuColumn[];
-  footer: {
-    text: string;
-    linkLabel: string;
-    href: string;
-  };
 };
 
 export type NavLink =
@@ -83,28 +85,26 @@ export const productMenu: NavMenu = {
       ],
     },
   ],
-  footer: {
-    text: 'Kortix CLI: build and ship your company from the terminal',
-    linkLabel: 'Read the docs →',
-    href: '/docs',
-  },
 };
 
+/**
+ * One column, no descriptions — five short destinations read faster as a list
+ * than as a grid of explained cards, and a narrow panel stops the menu from
+ * spanning half the viewport for five links.
+ */
 export const companyMenu: NavMenu = {
   columns: [
     {
       title: 'Company',
       links: [
-        { name: 'About', href: '/about', description: 'Why we are building Kortix' },
-        { name: 'Careers', href: '/careers', description: 'Join the team building it' },
+        { name: 'About', href: '/about' },
+        { name: 'Careers', href: '/careers' },
+        { name: 'Blog', href: '/blog' },
+        { name: 'X', href: 'https://x.com/kortix', external: true },
+        { name: 'LinkedIn', href: 'https://linkedin.com/company/kortix', external: true },
       ],
     },
   ],
-  footer: {
-    text: 'Kortix is developed in the open',
-    linkLabel: 'Read the source →',
-    href: 'https://github.com/kortix-ai/suna',
-  },
 };
 
 export const siteConfig = {

@@ -18,8 +18,8 @@ function SectionDivider() {
 }
 
 /**
- * The arc, in the order a reader needs it: what it is, what it does for a team,
- * what it is made of, that it is genuinely yours, that it survives a security
+ * The arc, in the order a reader needs it: what it is, what it is made of, what
+ * it does for a team, that it is genuinely yours, that it survives a security
  * review — then start.
  *
  * The repo is no longer its own section. "One kortix.yaml, one repo" and
@@ -35,16 +35,15 @@ export default function Home() {
       {/* transition: the models it runs and the tools it connects */}
       <LogoStrip />
 
-      <SectionDivider />
-
-      {/* 2 · What it does — real work, and the artefact it produces */}
-      <UseCaseWheel />
-
-      <SectionDivider />
-
-      {/* 3 · What it is made of — the layers, each with the surface that proves
-             it, opening on the repo that holds all of them */}
+      {/* 2 · What it is made of — one card per layer, stacking as you descend,
+             opening on the repo that holds all of them. No divider above it:
+             the stack supplies its own edge as the first card parks. */}
       <HowItWorks />
+
+      <SectionDivider />
+
+      {/* 3 · What it does — real work, and the artefact it produces */}
+      <UseCaseWheel />
 
       <SectionDivider />
 

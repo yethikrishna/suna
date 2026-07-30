@@ -724,7 +724,10 @@ export async function createProjectSession(input: {
     };
   }
   if (runtimeAgent) agentName = runtimeAgent.name;
-  const loadedAgents = await loadProjectAgents(project);
+  const loadedAgents = await loadProjectAgents(project, {
+    forceRefresh: true,
+    rethrowReadErrors: true,
+  });
 
   const freeModelsOnly = config.KORTIX_BILLING_INTERNAL_ENABLED
     ? !tierGrantsAllModels(await getCachedAccountTier(accountId))

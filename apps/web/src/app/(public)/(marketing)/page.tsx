@@ -2,6 +2,7 @@
 
 import { Separator } from '@/components/ui/separator';
 import Hero from '@/features/marketing/hero';
+import { FlowSection } from '@/features/marketing/landing/flow-section';
 import { StackSection } from '@/features/marketing/landing/stack-section';
 
 function SectionDivider() {
@@ -26,6 +27,11 @@ export default function Home() {
 
       {/* 2 · Every layer an AI workforce needs, unified */}
       <StackSection />
+
+      <SectionDivider />
+
+      {/* 3 · From a request to finished work — pinned, one step per viewport */}
+      <FlowSection />
     </div>
   );
 }

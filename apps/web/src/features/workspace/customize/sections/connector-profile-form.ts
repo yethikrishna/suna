@@ -19,11 +19,7 @@ export interface EasyConnectProfileInput {
 }
 
 export type ConnectorSetupStatus =
-  | 'connected'
-  | 'error'
-  | 'needs_setup'
-  | 'no_auth'
-  | 'user_managed';
+  'connected' | 'error' | 'needs_setup' | 'no_auth' | 'user_managed';
 
 export function connectorAuthorizationQueryKeys(projectId: string) {
   return [

@@ -4090,3 +4090,28 @@ Repository delivery evidence:
   `d6979ad99241ebd8baeb00391dc186ce007b63e1`.
 
 **Repository delivery shippable to production: YES.**
+
+---
+
+### 2026-07-30 — session `opencode-rest-rollback` claim
+
+Claimed the user-directed removal of ACP, multi-harness runtime support, and
+`kortix.yaml` version 3.
+
+The SDK session runtime will use OpenCode REST only. The rollback will restore
+the release-branch OpenCode REST client behavior without reverting unrelated
+client work. Existing published ACP names require an explicit compatibility
+decision during the public-surface audit.
+
+The required `tdd` skill is unavailable in this session. The implementation
+will use RED, GREEN, and REFACTOR directly.
+
+Required gates are the focused SDK RED/GREEN tests, SDK typecheck, full SDK
+suite, packed-install smoke, API and sandbox-server tests, manifest version 2
+tests, real local curl verification, real local browser session-chat
+verification, branch merge, direct `main` push, Deploy Dev, deployed SHA proof,
+and deployed OpenCode REST verification.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**

@@ -1,5 +1,6 @@
 'use client';
 
+import { ProductMenu } from '@/components/home/product-menu';
 import { KortixLogo } from '@/components/sidebar/kortix-logo';
 import {
   ContextMenu,
@@ -31,7 +32,7 @@ import { useAuth } from '@/features/providers/auth-provider';
 import { useIsMobile } from '@/hooks/utils';
 import { useGitHubStars } from '@/hooks/utils/use-github-stars';
 import { trackCtaSignup } from '@/lib/analytics/gtm';
-import { siteConfig } from '@/lib/site-config';
+import { type NavSubLink, siteConfig } from '@/lib/site-config';
 import { cn } from '@/lib/utils';
 import {
   CaretRightIcon as ChevronRight,
@@ -280,8 +281,19 @@ export function Navbar({ isAbsolute = false }: NavbarProps) {
             </ContextMenu>
 
             <nav className="hidden items-center justify-center gap-2 md:flex">
-              {filteredNavLinks.map((item) =>
-                typeof item.href === 'string' ? (
+              {filteredNavLinks.map((item) => {
+                if ('menu' in item) {
+                  return (
+                    <ProductMenu
+                      key={item.id}
+                      name={item.name}
+                      menu={item.menu}
+                      isNavActive={isNavActive}
+                    />
+                  );
+                }
+
+                return typeof item.href === 'string' ? (
                   <Button
                     key={item.id}
                     variant="ghost"
@@ -331,8 +343,8 @@ export function Navbar({ isAbsolute = false }: NavbarProps) {
                       </NavigationMenuItem>
                     </NavigationMenuList>
                   </NavigationMenu>
-                ),
-              )}
+                );
+              })}
             </nav>
           </div>
 
@@ -433,15 +445,18 @@ export function Navbar({ isAbsolute = false }: NavbarProps) {
                         setIsDrawerOpen(false);
                       };
 
-                    if (typeof item.href === 'string') {
+                    const staticHref =
+                      'menu' in item ? null : typeof item.href === 'string' ? item.href : null;
+
+                    if (staticHref) {
                       return (
                         <motion.li key={item.id} variants={drawerMenuVariants}>
                           <Link
-                            href={item.href}
-                            onClick={handleDrawerNavClick(item.href)}
+                            href={staticHref}
+                            onClick={handleDrawerNavClick(staticHref)}
                             className={cn(
                               'group flex items-center justify-between text-2xl',
-                              isNavActive(item.href)
+                              isNavActive(staticHref)
                                 ? 'text-foreground'
                                 : 'text-muted-foreground hover:text-foreground',
                             )}
@@ -454,18 +469,25 @@ export function Navbar({ isAbsolute = false }: NavbarProps) {
                       );
                     }
 
+                    const subLinks: NavSubLink[] =
+                      'menu' in item
+                        ? item.menu.columns.flatMap((column) => column.links)
+                        : typeof item.href === 'string'
+                          ? []
+                          : item.href;
+
                     return (
                       <motion.li key={item.id} variants={drawerMenuVariants}>
                         <Disclosure
                           className="group w-full"
-                          open={item.href.some((link) => isNavActive(link.href))}
+                          open={subLinks.some((link) => isNavActive(link.href))}
                         >
                           <DisclosureTrigger>
                             <button
                               type="button"
                               className={cn(
                                 'group/trigger flex w-full items-center justify-between text-2xl',
-                                item.href.some((link) => isNavActive(link.href))
+                                subLinks.some((link) => isNavActive(link.href))
                                   ? 'text-foreground'
                                   : 'text-muted-foreground hover:text-foreground',
                               )}
@@ -477,7 +499,7 @@ export function Navbar({ isAbsolute = false }: NavbarProps) {
                           <DisclosureContent>
                             <DisclosureBody className="p-0 pt-4">
                               <ul className="flex flex-col gap-4">
-                                {item.href.map((link) => (
+                                {subLinks.map((link) => (
                                   <li key={link.href}>
                                     <Link
                                       href={link.href}

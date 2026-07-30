@@ -1,20 +1,95 @@
 export type NavSubLink = {
   href: string;
   name: string;
+  description?: string;
+};
+
+export type NavMenuColumn = {
+  title: string;
+  links: NavSubLink[];
+};
+
+export type NavMenu = {
+  columns: NavMenuColumn[];
+  footer: {
+    text: string;
+    linkLabel: string;
+    href: string;
+  };
 };
 
 export type NavLink =
   | { id: number; name: string; href: string }
-  | { id: number; name: string; href: NavSubLink[] };
+  | { id: number; name: string; href: NavSubLink[] }
+  | { id: number; name: string; menu: NavMenu };
 
 import { CANONICAL_ORIGIN } from '@/lib/site-metadata';
+
+export const productMenu: NavMenu = {
+  columns: [
+    {
+      title: 'Platform',
+      links: [
+        {
+          name: 'Agent Computer',
+          href: '/agent-computer',
+          description: 'An isolated cloud computer for every session',
+        },
+        {
+          name: 'Company as Code',
+          href: '/company-as-code',
+          description: 'Agents, skills and memory as git files you own',
+        },
+        {
+          name: 'Self-hosted',
+          href: '/self-hosted',
+          description: 'Your VPC, on-prem, or fully air-gapped',
+        },
+        {
+          name: 'Enterprise',
+          href: '/enterprise',
+          description: 'SSO, RBAC, audit trails and approval gates',
+        },
+      ],
+    },
+    {
+      title: 'Capabilities',
+      links: [
+        {
+          name: 'Integrations',
+          href: '/integrations',
+          description: '3,000+ apps through one scoped token',
+        },
+        {
+          name: 'Automations',
+          href: '/automations',
+          description: 'Cron schedules and signed webhooks',
+        },
+        {
+          name: 'Channels',
+          href: '/channels',
+          description: 'Slack, Teams, Email, WhatsApp and more',
+        },
+        {
+          name: 'Agents & Skills',
+          href: '/agents-and-skills',
+          description: 'A workforce that compounds what it learns',
+        },
+      ],
+    },
+  ],
+  footer: {
+    text: 'Kortix CLI: build and ship your company from the terminal',
+    linkLabel: 'Read the docs →',
+    href: '/docs',
+  },
+};
 
 export const siteConfig = {
   url: CANONICAL_ORIGIN,
   nav: {
     links: [
-      { id: 1, name: 'Product', href: '/' },
-      { id: 2, name: 'Enterprise', href: '/enterprise' },
+      { id: 1, name: 'Product', menu: productMenu },
       { id: 4, name: 'Pricing', href: '/pricing' },
       { id: 6, name: 'Docs', href: '/docs' },
     ] as NavLink[],

@@ -21,11 +21,12 @@ export const hero = {
 /**
  * Trust / security block.
  *
- * ACCURACY GATE: Kortix holds NONE of these certifications. Every badge renders
- * de-emphasised and carries an explicit "In progress" state, and the row carries
- * `badgesNote` verbatim. Never write "compliant", "certified", or "we are SOC 2"
- * here — the `comms` skill forbids claiming a certification we do not hold.
- * Adding a badge to `badges` without holding the certification is a copy bug.
+ * ACCURACY GATE: SOC 2 Type I and Type II are NOT held — both badges render
+ * de-emphasised and carry an explicit "In progress" state. GDPR is a compliance
+ * posture the company does hold, so it carries no state and renders bare.
+ * Never write "compliant", "certified", or "we are SOC 2" here — the `comms`
+ * skill forbids claiming a certification we do not hold. Adding a badge without
+ * holding it, or clearing a SOC 2 `state` before the report lands, is a copy bug.
  */
 export const trust = {
   eyebrow: 'Security & trust',

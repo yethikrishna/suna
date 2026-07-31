@@ -4837,8 +4837,8 @@ Scope:
 - Added typed project, session, actor type, source, outcome, request, trace, and
   correlation fields to audit events.
 - Added the matching account audit list and export filters.
-- Added `clientSource` and `X-Kortix-Client` attribution for web, mobile, CLI,
-  SDK, and backend hosts.
+- Derived request-event sources from authenticated server context. A caller
+  cannot override forensic attribution with a client header.
 - Kept all existing exports compatible. The package version remains `0.3.0`.
 - Kept request bodies, query values, prompts, credentials, and secrets out of
   the centralized event envelope.

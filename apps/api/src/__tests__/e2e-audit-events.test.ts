@@ -36,7 +36,7 @@ describe('audit event middleware', () => {
     auditRows = [];
   });
 
-  test('records a successful API mutation with the full request envelope', async () => {
+  test('records a successful API mutation with an authoritative source', async () => {
     const app = new Hono();
     app.use('/v1/*', auditApiRequest);
     app.post('/v1/projects/:projectId/sessions/:sessionId/messages', async (c) => {
@@ -64,7 +64,7 @@ describe('audit event middleware', () => {
       sessionId: 'session-1',
       actorUserId: '00000000-0000-4000-a000-000000000001',
       actorType: 'agent',
-      source: 'cli',
+      source: 'agent',
       outcome: 'success',
       httpStatus: 200,
       action:
@@ -185,7 +185,7 @@ describe('audit event middleware', () => {
       projectId: '00000000-0000-4000-a000-000000000201',
       actorUserId: '00000000-0000-4000-a000-000000000001',
       actorType: 'human',
-      source: 'cli',
+      source: 'api',
       outcome: 'success',
       httpStatus: 201,
       correlationId: 'project-create-1',

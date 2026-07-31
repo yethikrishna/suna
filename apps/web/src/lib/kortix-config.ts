@@ -30,7 +30,6 @@ export function ensureKortixConfigured(): void {
   configureKortix({
     backendUrl: getEnv().BACKEND_URL,
     getToken: () => getSupabaseAccessToken(),
-    clientSource: 'web',
     getUserId: async () => {
       try {
         const {

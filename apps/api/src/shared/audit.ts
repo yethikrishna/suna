@@ -6,7 +6,6 @@ import { dispatchAuditEvent } from './audit-webhooks';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SKIPPED_PATHS = new Set(['/v1/health', '/v1/openapi.json', '/v1/docs']);
-const CLIENT_SOURCES = new Set(['web', 'mobile', 'cli', 'sdk', 'backend']);
 
 export type AuditActorType = 'human' | 'agent' | 'service_account' | 'system';
 export type AuditOutcome = 'success' | 'failure' | 'denied' | 'pending';
@@ -108,9 +107,7 @@ function inferActorType(c: Context, actorUserId: string | null): AuditActorType 
   return inferAccountId(c) ? 'system' : null;
 }
 
-function inferSource(c: Context, actorType: AuditActorType | null): string {
-  const supplied = c.req.header('x-kortix-client')?.trim().toLowerCase();
-  if (supplied && CLIENT_SOURCES.has(supplied)) return supplied;
+export function inferAuditSource(c: Context, actorType: AuditActorType | null): string {
   if (actorType === 'service_account') return 'automation';
   if (actorType === 'agent') return 'agent';
   if ((c as any).get('authType') === 'supabase') return 'web';
@@ -228,7 +225,7 @@ export async function auditApiRequest(c: Context, next: Next): Promise<void> {
           sessionId: projectSessionId(c, ids.sessionId ?? request?.sessionId ?? null),
           actorUserId,
           actorType,
-          source: inferSource(c, actorType),
+          source: inferAuditSource(c, actorType),
           outcome: outcomeForStatus(status),
           action: `${c.req.method} ${c.req.path}`,
           resourceType: inferred.resourceType,

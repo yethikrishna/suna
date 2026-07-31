@@ -10,7 +10,6 @@ beforeEach(() => {
   configureKortix({
     backendUrl: 'http://test.local',
     getToken: async () => 'tok',
-    clientSource: 'sdk',
   });
   globalThis.fetch = mock(async (url: unknown, options: RequestInit = {}) => {
     calls.push({ url: String(url), method: options.method ?? 'GET' });

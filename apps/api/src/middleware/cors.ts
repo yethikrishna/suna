@@ -45,7 +45,6 @@ export function createCorsMiddleware(options: CorsMiddlewareOptions) {
     allowHeaders: [
       'Content-Type',
       'Authorization',
-      'X-Kortix-Client',
       'X-Kortix-Token',
       'X-Api-Key',
       'Accept',

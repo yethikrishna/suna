@@ -21,7 +21,7 @@ import { projectHasResource, projectResourcesFromConfig, loadConfigWithFiles } f
 import { auth, errors, json } from '../../openapi';
 import { DEFAULT_SANDBOX_SLUG } from '../../snapshots/builder';
 import { db } from '../../shared/db';
-import { recordAuditEvent } from '../../shared/audit';
+import { inferAuditSource, recordAuditEvent } from '../../shared/audit';
 import { roleAllows } from '../access';
 import { createRoute, z } from '@hono/zod-openapi';
 import { accountGroupMembers, accountGroups, accountMembers, executorConnectors, executorExecutions, projectGroupGrants, projectSessions, sessionSandboxes,
@@ -1499,12 +1499,6 @@ projectsApp.openapi(
       return c.json({ error: 'Approval already resolved' }, 409);
     }
 
-    const suppliedSource = c.req.header('x-kortix-client')?.trim().toLowerCase();
-    const approvalSource = ['web', 'mobile', 'cli', 'sdk', 'backend'].includes(
-      suppliedSource ?? '',
-    )
-      ? suppliedSource
-      : 'web';
     try {
       await recordAuditEvent(
         approvalResolvedAuditEvent({
@@ -1516,7 +1510,7 @@ projectsApp.openapi(
           actionPath: row.actionPath,
           connectorId: row.connectorId,
           decision,
-          source: approvalSource,
+          source: inferAuditSource(c, 'human'),
         }),
       );
     } catch (error) {

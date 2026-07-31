@@ -503,7 +503,7 @@ flow(
     const base = { params: { accountId: team.id } };
     const correlationId = ctx.fixtures.name('audit-reconstruction');
 
-    await ctx.step('correlated CLI project read creates one queryable event', async () => {
+    await ctx.step('a client header cannot override the authenticated source', async () => {
       const action = await ctx.client
         .as(ctx.P.OWNER)
         .get('/v1/projects/:projectId', {
@@ -520,7 +520,7 @@ flow(
         query: {
           project_id: project.id,
           actor_type: 'human',
-          source: 'cli',
+          source: 'web',
           outcome: 'success',
           correlation_id: correlationId,
         },
@@ -534,7 +534,7 @@ flow(
       if (
         event.project_id !== project.id ||
         event.actor_type !== 'human' ||
-        event.source !== 'cli' ||
+        event.source !== 'web' ||
         event.outcome !== 'success' ||
         event.correlation_id !== correlationId ||
         typeof event.request_id !== 'string' ||

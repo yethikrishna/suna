@@ -25,8 +25,6 @@ export interface KortixPlatformConfig {
   backendUrl: string;
   /** Returns the current bearer (Supabase JWT, PAT, or API key) — or null if unauthenticated. */
   getToken: () => Promise<string | null>;
-  /** Identifies the host surface in centralized audit events. */
-  clientSource?: 'web' | 'mobile' | 'cli' | 'sdk' | 'backend';
   /** Optional UI error sink (toast/log). No-op by default. */
   onError?: (error: unknown, context?: unknown) => void;
   /** Default sandbox id for local/single-sandbox hosts (was `getEnv().SANDBOX_ID`). */

@@ -67,7 +67,6 @@ installHapticsGate();
 configureKortix({
   backendUrl: API_URL,
   getToken: getAuthToken,
-  clientSource: 'mobile',
   onError: (error, context) => {
     log.error('❌ [kortix-sdk] request failed:', error, context);
   },

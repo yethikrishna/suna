@@ -14,7 +14,6 @@ const scope = (overrides: Partial<SessionScope> = {}): SessionScope => ({
   connector_bindings: {
     mail: { authorization_id: 'authorization-mail' },
   },
-  require_connectors: [],
   dropped_secrets: [],
   added_secrets: [],
   dropped_bindings: [],

@@ -9,7 +9,6 @@ const scope: SessionScope = {
   connector_bindings: {
     mail: { authorization_id: 'authorization-mail-default' },
   },
-  require_connectors: [],
   dropped_secrets: [],
   added_secrets: [],
   dropped_bindings: [],

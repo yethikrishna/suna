@@ -21,7 +21,6 @@ const scope = (overrides: Partial<SessionScope> = {}): SessionScope => ({
     'mail-read': { authorization_id: 'authorization-mail-1' },
     issues: { authorization_id: 'authorization-issues-1' },
   },
-  require_connectors: [],
   dropped_secrets: [],
   added_secrets: [],
   dropped_bindings: [],

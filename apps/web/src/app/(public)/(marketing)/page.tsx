@@ -1,21 +1,13 @@
 'use client';
 
-import { Separator } from '@/components/ui/separator';
 import Hero from '@/features/marketing/hero';
 import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
 import { CtaSection } from '@/features/marketing/landing/cta-section';
 import { LogoStrip } from '@/features/marketing/landing/logo-strip';
+import { ScrollCtaPill } from '@/features/marketing/landing/scroll-cta-pill';
 import { TrustSection } from '@/features/marketing/landing/trust-section';
 import { UseCaseWheel } from '@/features/marketing/landing/use-case-wheel';
 import { OpenSourceSection } from '@/features/marketing/open-source/open-source-section';
-
-function SectionDivider() {
-  return (
-    <div className="mx-auto max-w-6xl">
-      <Separator />
-    </div>
-  );
-}
 
 /**
  * The arc, in the order a reader needs it: what it is, what it is made of, what
@@ -25,6 +17,10 @@ function SectionDivider() {
  * The repo is no longer its own section. "One kortix.yaml, one repo" and
  * "source of truth" were the same argument told twice, so the manifest now
  * opens the layer sequence as layer 01 and the standalone block is gone.
+ *
+ * There are no rules between sections. Each section already owns its own
+ * vertical rhythm, so a hairline every time only drew attention to the seams
+ * instead of the content on either side of them.
  */
 export default function Home() {
   return (
@@ -35,28 +31,26 @@ export default function Home() {
       {/* transition: the models it runs and the tools it connects */}
       <LogoStrip />
 
-      {/* 2 · What it is made of — one card per layer, stacking as you descend,
-             opening on the repo that holds all of them. No divider above it:
-             the stack supplies its own edge as the first card parks. */}
-      <HowItWorks />
+      {/* Past the hero its buttons are gone, so the pill takes over */}
+      <div id="cta-pill-anchor" aria-hidden className="h-px" />
 
-      <SectionDivider />
+      {/* 2 · What it is made of — one card per layer, stacking as you descend,
+             opening on the repo that holds all of them */}
+      <HowItWorks />
 
       {/* 3 · What it does — real work, and the artefact it produces */}
       <UseCaseWheel />
 
-      <SectionDivider />
-
       {/* 4 · Open source, and genuinely runnable on your own hardware */}
       <OpenSourceSection />
-
-      <SectionDivider />
 
       {/* 5 · Why it is safe to run, and where we stand on certification */}
       <TrustSection />
 
       {/* Close */}
       <CtaSection />
+
+      <ScrollCtaPill />
     </div>
   );
 }

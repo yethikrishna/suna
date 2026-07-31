@@ -45,7 +45,9 @@ export const productMenu: NavMenu = {
         {
           name: 'Self-hosted',
           href: '/self-hosted',
-          description: 'Your VPC, on-prem, or fully air-gapped',
+          // ACCURACY: never "air-gapped" — `self-host start` pulls images from
+          // docker.io, so a fully disconnected install is not shipped.
+          description: 'Your own VPC or your own on-prem network',
         },
         {
           name: 'Security',

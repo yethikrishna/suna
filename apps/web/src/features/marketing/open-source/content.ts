@@ -26,6 +26,18 @@
  *     (`apps/cli/src/commands/self-host.ts`) and `kortix hosts use <host>`
  *     (`apps/cli/src/commands/hosts.ts:240`, which prints the exact string
  *     "Active host is now <host>").
+ *  8. Do NOT claim you can fork someone else's company / project, or publish
+ *     your own. The `registry:project` machinery ships, but the catalog holds
+ *     exactly one project item — Kortix's own starter
+ *     (`apps/api/src/marketplace/catalog.ts:487` `buildStarterKitProjectItem`;
+ *     `packages/starter/src/index.test.ts:459` pins the template list to `[]`),
+ *     and there is no publish route at all
+ *     (`apps/api/src/marketplace/index.ts` is read-only + admin source
+ *     registration). This section makes neither claim.
+ *  9. Do NOT write that secrets are invisible to the model. A granted runtime
+ *     secret is a real env value any command in the session can read
+ *     (`docs/ENV_SECRET_EXPOSURE_BASELINE.md`). This section claims nothing
+ *     about secrets.
  */
 
 export const openSource = {
@@ -63,21 +75,26 @@ export const openSource = {
     ],
   },
 
+  /**
+   * The ledger under the proof: one label, one sentence. Rows, not a four-up
+   * grid, because at full panel width each line lands in one read — and
+   * because this section now closes the argument, so it should tally up.
+   */
   facts: [
     {
       id: 'where',
       k: 'Where it runs',
-      v: 'A laptop, a VPS, or inside your own VPC or on-prem network. One Docker Compose stack either way.',
+      v: 'A laptop, a VPS, or inside your own VPC or on-prem network — one Docker Compose stack either way.',
     },
     {
       id: 'same',
       k: 'Same product',
-      v: 'Self-hosting builds from the images the managed cloud runs. It is the whole platform, not a cut-down edition.',
+      v: 'Self-hosting builds from the images the managed cloud runs, so it is the whole platform, not a cut-down edition.',
     },
     {
       id: 'models',
       k: 'Your models',
-      v: 'Any provider, your own keys — or the ChatGPT, Claude, or Cursor subscription you already pay for.',
+      v: 'Any provider and your own keys, or the ChatGPT, Claude, or Cursor subscription you already pay for.',
     },
     {
       id: 'boundary',
@@ -87,6 +104,14 @@ export const openSource = {
       hrefLabel: 'Talk to us',
     },
   ],
+
+  /**
+   * The hand-off into the closing CTA, carried over from the older section the
+   * founder pointed at. It is the manifesto position stated plainly — see the
+   * `comms` skill §2 ("renting your company back from a model lab") and the §7
+   * approved line "we don't rent your company back to you".
+   */
+  closer: 'Your company’s brain should not live in twelve tools that lease it back to you.',
 
   footnote: 'Read the full self-hosting story',
   footnoteHref: '/self-hosted',

@@ -220,7 +220,8 @@ const RUNS_ANYWHERE = [
   {
     icon: Server,
     title: 'Self-host anywhere',
-    desc: 'A laptop, a VPS, your own VPC, or fully air-gapped — the exact same stack as Kortix cloud.',
+    // ACCURACY: not "air-gapped" — `self-host start` pulls images from docker.io.
+    desc: 'A laptop, a VPS, or your own VPC — the exact same stack as Kortix cloud.',
   },
   {
     icon: Cpu,

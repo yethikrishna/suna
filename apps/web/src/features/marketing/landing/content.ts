@@ -97,10 +97,80 @@ export const trust = {
     {
       id: 'deploy',
       title: 'Yours, down to the metal',
-      body: 'Kortix Cloud, your own VPC, on-prem or fully air-gapped. It is open source, so you can read every line of what you are trusting.',
+      // ACCURACY: never restore "air-gapped". `kortix self-host start` pulls
+      // images from docker.io and reaches a sandbox provider over egress, so a
+      // fully disconnected install is not a shipped capability.
+      body: 'Kortix Cloud, your own VPC, or your own on-prem network. It is open source, so you can read every line of what you are trusting.',
     },
   ],
 } as const;
+
+/**
+ * Semantic tone inside an artifact. It encodes something true about the work
+ * product — a score band, a delta's direction, how late an invoice is — and is
+ * the only place colour is allowed in this section. The card frame, borders,
+ * type and spacing stay on the achromatic tokens.
+ */
+export type ArtifactTone = 'up' | 'down' | 'warn' | 'info';
+
+export type SheetRow = {
+  cells: readonly string[];
+  /** Colours the cell at `toneColumn`. Omit for a plain row. */
+  tone?: ArtifactTone;
+  /** Renders as a totals row: heavier weight, top rule. */
+  total?: boolean;
+};
+
+/**
+ * The work product a card shows. It is rendered as markup, never as an image of
+ * a screen — a card must never imply a Kortix UI that does not exist. What is
+ * mocked is the ARTIFACT (a sheet, a diff, an outreach draft), which is a sample
+ * of the agent's output, not a picture of the product. Each `kind` is formatted
+ * like the file type it claims to be, not as prose in a box.
+ */
+export type UseCaseArtifact = {
+  /** File name the work lands as. Rendered mono in the frame's title bar. */
+  file: string;
+  /** One line under the body: what the artifact adds up to. */
+  footer: string;
+} & (
+  | {
+      kind: 'sheet';
+      columns: readonly string[];
+      /** CSS percentages, one per column. Sized so no cell clips. */
+      widths: readonly string[];
+      /** Per-column alignment. Text reads left, figures read right. */
+      aligns: readonly ('left' | 'right')[];
+      rows: readonly SheetRow[];
+      /** Index of the column a row's `tone` colours. Defaults to the last. */
+      toneColumn?: number;
+    }
+  | {
+      kind: 'diff';
+      /** A leading `+` or `-` renders the line as an added / removed row. */
+      lines: readonly string[];
+      stat: string;
+    }
+  | {
+      kind: 'thread';
+      to: string;
+      time: string;
+      subject: string;
+      lines: readonly string[];
+      /** The hold state. Nothing sends until a person approves it. */
+      status: string;
+    }
+  | {
+      kind: 'checks';
+      items: readonly { label: string; value: string; tone: ArtifactTone }[];
+    }
+  | {
+      kind: 'chart';
+      caption: string;
+      /** `pct` is the bar length as a percentage of the track. */
+      bars: readonly { label: string; value: string; pct: number; tone: ArtifactTone }[];
+    }
+);
 
 export type UseCase = {
   id: string;
@@ -110,108 +180,243 @@ export type UseCase = {
   headline: string;
   /** One sentence. How it does it. */
   body: string;
-  /** What a person types into the thread. */
-  ask: string;
-  /** What lands back: a file name, a change request, or a counted result. */
-  artifact: string;
+  /** What lands back, shown on the card. */
+  artifact: UseCaseArtifact;
 };
 
 /**
- * The use-case wheel — ten teams, one per card, rendered on a scroll-driven arc.
+ * The use-case wheel — ten jobs, one per card, rendered on a scroll-driven arc.
  *
- * ACCURACY GATE: every counterparty named in a thread line is a fictional
- * placeholder (Northwind, Globex, Initech, Umbrella, Vandelay). Never swap one
- * for a real customer, prospect, or vendor — we neither name customers nor have
- * permission to. Numbers and file names are illustrative and must stay plausible
- * rather than impressive; they are read as examples, not as published results.
+ * THE BAR A CARD HAS TO CLEAR. A job a company already pays somebody to do, that
+ * an agent with its own Linux machine, a git repo and connectors into the
+ * company's tools can genuinely run end to end, whose output is one concrete
+ * artifact. If you cannot name the artifact in three words, it is not a card.
+ * Judgement-bound, liability-heavy work — contract review is the obvious one —
+ * fails on credibility no matter how good the demo looks, and stays off.
+ *
+ * Each card shows that OUTPUT, not the Kortix UI. Four accuracy rules govern
+ * everything below and none of them is negotiable.
+ *
+ * 1. COUNTERPARTIES ARE FICTIONAL. Northwind, Globex, Initech, Umbrella and
+ *    Vandelay only. Never a real customer, prospect or vendor — we neither name
+ *    customers nor have permission to. Candidates are numbers, never names.
+ * 2. NO CLAIM ABOUT KORTIX ITSELF. Numbers inside an artifact are sample data
+ *    belonging to a fictional company and are fine. A number that reads as a
+ *    Kortix metric, benchmark or certification is not, and must not appear here.
+ * 3. ONLY CAPABILITIES WE SHIP. Every trigger and tool named here exists today:
+ *    schedules, connectors, Slack, change requests. Do not add a card that needs
+ *    something we do not ship.
+ * 4. NEVER A FAKE SCREENSHOT. Artifacts are markup. Do not swap one for an image
+ *    of a product surface that does not exist.
+ *
+ * Four artifacts quote the demo project's own committed workspace and were read
+ * back from its `main` branch, not typed from memory:
+ *   finance   -> finance/fy26-budget.xlsx      (variance = half of plan − actual)
+ *   marketing -> marketing/content-calendar.csv
+ *   data      -> sales/win-loss-analysis.xlsx  (win rate = won / (won + lost))
+ *   ops       -> ops/vendor-contracts.docx
+ * The arithmetic in those four is derived from the columns beside it. If you
+ * edit one, re-derive the other.
  */
 export const useCases = {
   eyebrow: 'Any job, any team',
   title: 'It picks up work from every team and runs it start to finish.',
-  sub: 'Engineering, finance, legal, support — same agents, same isolated machines, same review before anything lands.',
-  /** Micro-labels on the thread mock inside each card. */
-  askLabel: 'Ask',
-  artifactLabel: 'Back',
+  sub: 'Outbound, error triage, the monthly close, the Monday report — real jobs, run on real machines, with a person approving what lands.',
+  /** Micro-label in the corner of the artifact frame. */
+  artifactLabel: 'Output',
   cards: [
     {
-      id: 'engineering',
-      tag: 'Engineering',
-      headline: 'Fixes the bug, opens the change request.',
-      body: 'It reproduces the failure on its own machine, writes the patch, runs the suite, and leaves you a diff to read.',
-      ask: 'Checkout 500s on expired cards. Fix it.',
-      artifact: 'session/fix-checkout · 4 files · tests pass · awaiting review',
-    },
-    {
-      id: 'finance',
-      tag: 'Finance',
-      headline: 'Closes the month while you sleep.',
-      body: 'It reconciles the payout ledger against the bank, chases what is unpaid, and leaves the workbook ready to sign off.',
-      ask: 'Close July. Flag anything that does not reconcile.',
-      artifact: 'stripe-payouts-2026-07.csv · 14 invoices chased · Vandelay 31 days late',
-    },
-    {
-      id: 'sales',
+      id: 'outbound',
       tag: 'Sales',
-      headline: 'Keeps the pipeline honest.',
-      body: 'It reads the calls and the CRM together, then separates the deals that actually moved from the ones that only look alive.',
-      ask: 'What really moved this week?',
-      artifact: '7 deals advanced · 2 slipped · at risk: Northwind, Globex',
+      headline: 'Finds the lead, writes the note.',
+      body: 'It searches for accounts matching your profile, enriches them, and drafts a note per lead — then sends through your own outreach tool, once you approve.',
+      artifact: {
+        kind: 'thread',
+        file: 'outbound/northwind-01.eml',
+        to: 'ops@northwind.example',
+        time: '08:12',
+        subject: 'Your four new platform hires',
+        lines: [
+          'Saw you are hiring four platform engineers.',
+          'Teams at that stage lose about a week a month to',
+          'manual reconciliation. We built an agent that closes',
+          'that loop and shows its working. Worth twenty minutes?',
+        ],
+        status: 'Draft · held for approval',
+        footer: '24 leads enriched · 3 drafted · 0 sent',
+      },
     },
     {
-      id: 'marketing',
-      tag: 'Marketing',
-      headline: 'Turns the changelog into the launch.',
-      body: 'It reads what actually shipped, then drafts the post, the deck and the thread in your voice, ready for you to edit.',
-      ask: 'Ship the v0.11 launch off the changelog.',
-      artifact: 'launch-post.md · launch-deck.pptx · 6 social drafts',
+      id: 'errors',
+      tag: 'Engineering',
+      headline: 'Triages the errors, fixes the top one.',
+      body: 'It reads every error the day threw, groups them, reproduces the worst on its own machine, patches it and opens a change request.',
+      artifact: {
+        kind: 'diff',
+        file: 'fix-checkout-expiry.diff',
+        lines: [
+          ' app/checkout/charge.ts',
+          '-if (card.expMonth < now.getMonth()) {',
+          '+if (isExpired(card, now)) {',
+          '+  return fail(402, "card_expired");',
+          ' }',
+        ],
+        stat: '+2 −1',
+        footer: '9 error groups · top one fixed · 118 tests pass',
+      },
     },
     {
       id: 'support',
       tag: 'Support',
-      headline: 'Triages the queue before standup.',
-      body: 'It reads every ticket that came in overnight, labels and merges the duplicates, and escalates only what needs a person.',
-      ask: 'Triage the overnight queue.',
-      artifact: '38 tickets triaged · 11 duplicates merged · 6 escalated',
+      headline: 'Drafts the reply from your own docs.',
+      body: 'It reads the ticket, finds the answer in your repository rather than inventing one, and leaves a reply with the source attached.',
+      artifact: {
+        kind: 'thread',
+        file: 'support/T-4417-reply.md',
+        to: 'Ticket T-4417 · billing',
+        time: '06:41',
+        subject: 'Re: charged twice for July',
+        lines: [
+          'You were charged once. The second line is the',
+          'proration from your seat change on 14 July, which',
+          'settles against next month. Here is the breakdown.',
+        ],
+        status: 'Source · docs/billing/proration.md',
+        footer: '38 tickets triaged · 27 drafted · 6 escalated',
+      },
     },
     {
-      id: 'recruiting',
+      id: 'close',
+      tag: 'Finance',
+      headline: 'Closes the month while you sleep.',
+      body: 'It reconciles the ledger against the bank, works out the variance per cost centre, and writes the notes that explain it.',
+      artifact: {
+        kind: 'sheet',
+        file: 'finance/fy26-budget.xlsx',
+        columns: ['Cost centre', 'H1 plan', 'Actual', 'Variance'],
+        widths: ['36%', '22%', '22%', '20%'],
+        aligns: ['left', 'right', 'right', 'right'],
+        rows: [
+          { cells: ['R&D — platform', '1,225,000', '1,182,400', '+42,600'], tone: 'up' },
+          { cells: ['Go-to-market', '810,000', '742,800', '+67,200'], tone: 'up' },
+          { cells: ['Security & compliance', '180,000', '198,600', '−18,600'], tone: 'down' },
+          { cells: ['Brand & content', '240,000', '219,400', '+20,600'], tone: 'up' },
+          { cells: ['Total', '2,455,000', '2,343,200', '+111,800'], total: true },
+        ],
+        footer: '1 cost centre over plan · variance notes written',
+      },
+    },
+    {
+      id: 'report',
+      tag: 'Data',
+      headline: 'Builds Monday’s report from the warehouse.',
+      body: 'It runs the query, checks the result against last week, draws the chart and posts the whole thing to the channel before you are up.',
+      artifact: {
+        kind: 'chart',
+        file: 'reports/win-rate-weekly.md',
+        caption: 'Win rate by quarter',
+        bars: [
+          { label: 'Q3 25', value: '36.7%', pct: 37, tone: 'down' },
+          { label: 'Q4 25', value: '44.7%', pct: 45, tone: 'warn' },
+          { label: 'Q1 26', value: '54.2%', pct: 54, tone: 'info' },
+          { label: 'Q2 26', value: '66.7%', pct: 67, tone: 'up' },
+        ],
+        footer: 'Posted to #revenue · top loss reason: price',
+      },
+    },
+    {
+      id: 'content',
+      tag: 'Marketing',
+      headline: 'Runs the content pipeline end to end.',
+      body: 'It researches the topic, drafts the piece, puts it through review and schedules it — and tells you what is stuck.',
+      artifact: {
+        kind: 'sheet',
+        file: 'marketing/content-calendar.csv',
+        columns: ['Channel', 'Title', 'Status'],
+        widths: ['20%', '56%', '24%'],
+        aligns: ['left', 'left', 'right'],
+        toneColumn: 2,
+        rows: [
+          { cells: ['Blog', 'A company is a git repository', 'published'], tone: 'up' },
+          { cells: ['X', 'Launch thread — 9 posts', 'scheduled'], tone: 'info' },
+          { cells: ['Blog', 'Isolation, permissions, audit', 'draft'], tone: 'warn' },
+          { cells: ['YouTube', 'Build an AI department', 'filming'], tone: 'info' },
+          { cells: ['Blog', 'Bring your own model', 'outline'], tone: 'warn' },
+        ],
+        footer: '2 published this week · 3 waiting on a human',
+      },
+    },
+    {
+      id: 'compete',
+      tag: 'Product',
+      headline: 'Watches every competitor for you.',
+      body: 'It checks their pricing, changelog and positioning on a schedule and sends one digest with only what actually moved.',
+      artifact: {
+        kind: 'checks',
+        file: 'research/weekly-digest.md',
+        items: [
+          { label: 'Northwind · pricing page', value: 'seats +12%', tone: 'warn' },
+          { label: 'Globex · changelog', value: '3 releases', tone: 'info' },
+          { label: 'Initech · positioning', value: 'new category', tone: 'info' },
+          { label: 'Umbrella · no change', value: '30 days', tone: 'up' },
+        ],
+        footer: '4 tracked · 3 moved · posted to #competitive',
+      },
+    },
+    {
+      id: 'screening',
       tag: 'Recruiting',
       headline: 'Screens every applicant the same way.',
-      body: 'It runs each application against the same written rubric and shows its reasoning, so the shortlist is comparable.',
-      ask: 'Screen the 42 backend applicants against the rubric.',
-      artifact: '42 screened · 9 shortlisted · scorecards.xlsx',
+      body: 'It runs each application against the same written bar, shows the reasoning, and hands back a shortlist you can compare.',
+      artifact: {
+        kind: 'sheet',
+        file: 'hiring/backend-screen.xlsx',
+        columns: ['Applicant', 'Signal', 'Score', 'Call'],
+        widths: ['26%', '34%', '18%', '22%'],
+        aligns: ['left', 'left', 'right', 'right'],
+        toneColumn: 3,
+        rows: [
+          { cells: ['#041', 'Ran infra at scale', '86', 'advance'], tone: 'up' },
+          { cells: ['#017', 'Strong, no on-call', '74', 'advance'], tone: 'up' },
+          { cells: ['#033', 'Depth unclear', '58', 'hold'], tone: 'warn' },
+          { cells: ['#009', 'No systems work', '31', 'pass'], tone: 'down' },
+        ],
+        footer: '42 screened · 9 shortlisted · reasoning attached',
+      },
     },
     {
-      id: 'data',
-      tag: 'Data',
-      headline: 'Answers the question with the actual numbers.',
-      body: 'It writes the query, runs it against the warehouse, sanity-checks the result, and hands back the sheet instead of a guess.',
-      ask: 'Did Q2 retention improve for the self-serve cohort?',
-      artifact: 'q2-cohort-retention.xlsx · +4.1pp vs Q1',
+      id: 'dependencies',
+      tag: 'Security',
+      headline: 'Sweeps the dependencies every night.',
+      body: 'It checks what you ship against the advisory feeds, patches what can be patched, and raises the rest as a change request.',
+      artifact: {
+        kind: 'checks',
+        file: 'security/advisory-sweep.md',
+        items: [
+          { label: 'tar 6.1.0 → 6.2.1', value: 'patched', tone: 'up' },
+          { label: 'cross-fetch 3.1.4 → 3.1.8', value: 'patched', tone: 'up' },
+          { label: 'sharp 0.32.1', value: 'major bump', tone: 'warn' },
+          { label: 'legacy-auth 1.4.0', value: 'no fix yet', tone: 'down' },
+        ],
+        footer: '2 patched automatically · 2 raised for a decision',
+      },
     },
     {
-      id: 'legal',
-      tag: 'Legal',
-      headline: 'Reads the contract you do not have time to read.',
-      body: 'It diffs an incoming agreement against your standard terms and marks every clause that drifts, with the reason.',
-      ask: 'Redline the Initech MSA against our template.',
-      artifact: '4 non-standard clauses flagged · initech-msa-redline.docx',
-    },
-    {
-      id: 'ops',
+      id: 'renewals',
       tag: 'Ops',
-      headline: 'Watches the things nobody remembers to watch.',
+      headline: 'Watches what nobody remembers to watch.',
       body: 'It runs on a schedule across vendors, renewals, seats and spend, and speaks up only when something needs a decision.',
-      ask: 'Anything expiring in the next 30 days?',
-      artifact: '3 renewals due · Umbrella auto-renews Aug 12 · vendor-review.md',
-    },
-    {
-      id: 'exec',
-      tag: 'Exec',
-      headline: 'Has the brief ready before you ask.',
-      body: 'It pulls the week out of the systems your teams already work in and hands you one page on Monday morning.',
-      ask: 'What do I need to know before Monday?',
-      artifact: 'weekly-brief-2026-07-27.pdf · 5 decisions pending',
+      artifact: {
+        kind: 'checks',
+        file: 'ops/vendor-contracts.docx',
+        items: [
+          { label: 'Vandelay Comms · telephony', value: '2026-09-30', tone: 'down' },
+          { label: 'Initech Security · pen test', value: '2026-11-15', tone: 'warn' },
+          { label: 'Globex Cloud · compute', value: '2027-01-31', tone: 'up' },
+          { label: 'Umbrella Data · EU residency', value: '2027-03-01', tone: 'up' },
+        ],
+        footer: '4 renewals tracked · Vandelay is the next decision',
+      },
     },
   ] satisfies readonly UseCase[],
 } as const;

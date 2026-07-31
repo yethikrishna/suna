@@ -15,7 +15,14 @@ import { ArrowUpRightIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
-const MENU_VALUE = 'product';
+/**
+ * Radix keys its menu state and generated ids off this value. Both the Product
+ * and Company menus previously hardcoded 'product', so two independent
+ * NavigationMenu roots on the same page produced colliding ids — which React
+ * reported as a hydration mismatch inside the trigger on every route. Derive it
+ * from the menu's own name so each root is distinct.
+ */
+const menuValue = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 interface ProductMenuProps {
   name: string;
@@ -32,6 +39,7 @@ interface ProductMenuProps {
  * half-viewport panel.
  */
 export function ProductMenu({ name, menu, isNavActive }: ProductMenuProps) {
+  const MENU_VALUE = menuValue(name);
   const [value, setValue] = useState('');
   const isOpenRef = useRef(false);
   const skipFocusOpenRef = useRef(false);

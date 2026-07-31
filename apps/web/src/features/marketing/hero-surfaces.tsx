@@ -367,6 +367,30 @@ function WebSurface() {
         preload="metadata"
         aria-label="Kortix in the browser: connect apps, manage agents and skills, and an agent returning a finished pitch deck"
       >
+        {/* Ordered by the resource selection algorithm: the browser takes the
+            first source whose type it supports and whose media matches, so the
+            narrowest condition goes first and the unconditional fallback last.
+
+            Phones get the 1280 encode. The frame is 346 CSS px there, so even a
+            3x screen needs 1038 device px — sending the 1920 was 0.9MB of detail
+            no phone can resolve.
+
+            Retina desktops get the 2880. The frame is 1236 CSS px, so a 2x
+            display needs 2472 device px and the 1920 was being upscaled 1.29x —
+            that is the softness. It costs +2.0MB over the webm, which is the
+            right trade for the one asset on the page that shows the product:
+            the poster JPG (160K) paints first and carries LCP, so the video
+            never blocks first paint. */}
+        <source
+          media="(max-width: 480px)"
+          src="/media/showcase/kortix-showcase-1280.mp4"
+          type="video/mp4"
+        />
+        <source
+          media="(min-resolution: 2dppx) and (min-width: 1024px)"
+          src="/media/showcase/kortix-showcase-2880.mp4"
+          type="video/mp4"
+        />
         <source src="/media/showcase/kortix-showcase-1920.webm" type="video/webm" />
         <source src="/media/showcase/kortix-showcase-1920.mp4" type="video/mp4" />
       </video>
@@ -416,6 +440,20 @@ function CliSurface() {
         preload="metadata"
         aria-label="A terminal running the Kortix CLI: curl installs it, kortix projects use picks a project, kortix connectors apps lists the apps an agent can call, and kortix sessions new starts a session on a cloud computer"
       >
+        {/* There is no 2880 master for the CLI, so a retina screen cannot be
+            served true 2x here — the frame needs 2472 device px and the only
+            capture is 1920 wide. Re-encoding it larger would invent no detail;
+            fixing it properly means re-recording the terminal at 2x device
+            scale. What is available is bitrate: the webm is 904K for 28.3s
+            (~255 kbps) and the mp4 is 2.8MB (~798 kbps) at the same 1920x1200,
+            and on a terminal recording — thin, high-contrast glyphs — that
+            3.1x bitrate is the difference between mushy and crisp text. So
+            retina takes the mp4 first and everyone else keeps the small webm. */}
+        <source
+          media="(min-resolution: 2dppx)"
+          src="/media/cli/kortix-cli-1920.mp4"
+          type="video/mp4"
+        />
         <source src="/media/cli/kortix-cli-1920.webm" type="video/webm" />
         <source src="/media/cli/kortix-cli-1920.mp4" type="video/mp4" />
       </video>
@@ -478,7 +516,7 @@ export function HeroSurfaces() {
           a taller box costs them nothing (it just shows more of the recording),
           while the five DOM panels need every pixel — at 300px the Slack ask and
           the Kortix reply could not both be on screen. */}
-      <div className="border-border bg-card h-[360px] overflow-hidden rounded-xl border sm:h-[380px] lg:h-[clamp(400px,calc(100svh-390px),620px)]">
+      <div className="border-border bg-card h-[360px] overflow-hidden rounded-xl border sm:h-[380px] lg:h-[clamp(360px,calc(100svh-424px),620px)]">
         <SurfacePanel surface={active} />
       </div>
 

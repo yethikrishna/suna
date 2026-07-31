@@ -57,10 +57,10 @@ export function SolutionsHubPage(): ReactNode {
         <Reveal delay={0.1}>
           <SpecGrid
             specs={[
-              { k: 'Every session', v: 'Its own cloud computer' },
-              { k: 'Every session', v: 'Its own branch' },
+              { k: 'Every session', v: 'Its own cloud computer, on its own branch' },
               { k: 'Work lands', v: 'Through a change request' },
               { k: 'Merge', v: 'Default-deny for agents' },
+              { k: 'Approval gates', v: 'Off until you set them' },
             ]}
           />
         </Reveal>

@@ -1,166 +1,34 @@
 'use client';
 
-import { Reveal } from '@/components/home/reveal';
-import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { entries, heading, type Entry } from './content';
+import { AgentsSection } from './agents-section';
+import { AutomationsSection } from './automations-section';
+import { ChannelsSection } from './channels-section';
+import { ControlSection } from './control-section';
 
 /**
- * Home-page long-form section — "The long version".
+ * TRANSITIONAL — delete this file once `page.tsx` mounts the four passages.
  *
- * WHY IT EXISTS. Everything else on the home page is something to look at: a
- * hero video, a stack of layer cards, a use-case wheel, a slab, a dark trust
- * card. None of it can be read. A reader who wants substance had nowhere to go
- * except a sub-page they have not been given a reason to open yet. This section
- * is that reason — four entries of real prose, each one an index into the page
- * that carries the long form.
+ * This used to be the section itself: one heading and four prose entries in a
+ * list, 2,626px tall at 1440, sitting in a single slot between the layer stack
+ * and the use-case wheel. It is now four independently mountable sections, which
+ * is the whole point of the change — see `index.ts` for the recommended order.
  *
- * FOUR, NOT EIGHT. It ran eight until half of them were found to be a second
- * telling of the layer stack one screen above: a reader met the repo, agents,
- * the agent computer and connectors as cards, then met them again as prose, and
- * the second pass read as length rather than depth. The four that survive are
- * the ones the stack gestures at and never explains. `content.ts` records each
- * cut and the argument for it — read that before re-adding one.
+ * It survives only so the current `page.tsx` keeps compiling and rendering while
+ * the four are placed. Rendering them back to back here is exactly the wall the
+ * split exists to remove, so this is not a supported layout: it is a scaffold.
  *
- * WHY IT IS NOT A CARD GRID. A fourth grid of three-word tiles would have added
- * nothing the layer stack does not already do, and it would have been the
- * obvious wrong answer: a card is a thing you scan, and this is a thing you
- * read. So there is not a single box, border-radius or fill in here. The
- * structure is typographic — a hairline per entry, a mono number and label in
- * the rail, and the prose in a column capped to a comfortable measure.
- *
- * WHY IT IS NARROWER THAN THE PAGE. The section shell is the page-standard
- * `mx-auto max-w-7xl px-6`, but the document inside it is `max-w-3xl` and the
- * body column inside THAT is capped at 32rem — measured at 67 characters per
- * line at the base size, inside the 65–70 a reader can hold. Long-form text set
- * to the full 6xl grid is unreadable, and the narrowing is what signals "this
- * one is different, slow down".
- *
- * Copy, and the accuracy gate every line of it had to pass, live in
- * `content.ts`. Read that file before editing a word here.
+ * TO FINISH THE JOB: import the four from
+ * `@/features/marketing/capabilities`, drop them into their slots, remove the
+ * `CapabilitiesSection` import, and delete this file.
  */
-
-/* ── mono tokens ───────────────────────────────────────────────────────────
-   Product nouns, config keys, paths and template tokens are set in mono per
-   the brand rules. Keeping the copy in `content.ts` as plain strings (rather
-   than JSX) is what lets it stay reviewable and, later, translatable — so the
-   markup is applied here, from one explicit list. Ordered longest-first so
-   `kortix.yaml` can never be eaten by a shorter alternative. */
-const MONO =
-  /(\{\{ [a-z._*]+ \}\}|kortix\.yaml|kortix init|kortix ship|SKILL\.md|\/workspace|git revert|AES-256-GCM|HMAC-SHA256|\bgrep\b|\bmain\b)/g;
-
-function withMono(text: string): ReactNode[] {
-  return text.split(MONO).map((part, i) =>
-    i % 2 === 1 ? (
-      /* `whitespace-nowrap` matters: without it `AES-256-GCM` breaks at its own
-         hyphens and `{{ cron.scheduled_for }}` splits across two lines at its
-         braces, which reads as a typo rather than a token. Every token in the
-         list above fits the 390px measure whole, so nothing can overflow. */
-      <code
-        key={i}
-        className="text-foreground font-mono text-[0.85em] tracking-tight whitespace-nowrap"
-      >
-        {part}
-      </code>
-    ) : (
-      <span key={i}>{part}</span>
-    ),
-  );
-}
-
-/**
- * One entry: a mono number and label in the rail, prose in the measure column,
- * a line of hard facts, and the link that proves it.
- *
- * The rail stacks above the prose below `md` rather than shrinking — a 10rem
- * column and a 60-character measure cannot both survive 390px, and the label is
- * the part that still works as a heading on its own.
- */
-function EntryRow({ entry }: { entry: Entry }): ReactNode {
-  return (
-    <li className="border-border border-t">
-      <Reveal>
-        <div className="grid gap-x-12 gap-y-4 py-10 sm:py-12 md:grid-cols-[10rem_minmax(0,1fr)]">
-          {/* rail · the number, and what this one is called */}
-          <div className="flex items-baseline gap-3 md:block">
-            <span className="text-muted-foreground/70 font-mono text-[10px] tracking-widest tabular-nums">
-              {entry.n}
-            </span>
-            <h3 className="text-foreground text-sm font-medium tracking-tight md:mt-2 md:text-balance">
-              {entry.label}
-            </h3>
-          </div>
-
-          {/* body · the measure column */}
-          <div className="min-w-0">
-            <div className="max-w-[32rem] space-y-4">
-              {entry.paragraphs.map((paragraph) => (
-                <p key={paragraph.slice(0, 32)} className="text-muted-foreground text-base leading-[1.7]">
-                  {withMono(paragraph)}
-                </p>
-              ))}
-            </div>
-
-            {/* The scan layer. The separator TRAILS its fact rather than leading
-                the next one, so a wrap leaves the slash at the end of a line
-                instead of orphaning it at the start of the next. */}
-            <div className="mt-6 flex max-w-[32rem] flex-wrap items-center gap-x-2 gap-y-1.5">
-              {entry.facts.map((fact, i) => (
-                <span key={fact} className="flex items-center gap-2">
-                  <span className="text-muted-foreground/80 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase">
-                    {fact}
-                  </span>
-                  {i < entry.facts.length - 1 ? (
-                    <span aria-hidden className="text-muted-foreground/30 font-mono text-[10px]">
-                      /
-                    </span>
-                  ) : null}
-                </span>
-              ))}
-            </div>
-
-            <Link
-              href={entry.href}
-              className="text-foreground duration-fast mt-6 inline-flex text-sm underline decoration-current/25 underline-offset-4 transition-colors hover:decoration-current"
-            >
-              {entry.linkLabel} →
-            </Link>
-          </div>
-        </div>
-      </Reveal>
-    </li>
-  );
-}
-
 export function CapabilitiesSection(): ReactNode {
   return (
-    <section id="capabilities" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
-      <div className="mx-auto max-w-3xl">
-        <Reveal>
-          <header className="max-w-[32rem]">
-            <p className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
-              {heading.eyebrow}
-            </p>
-            <h2 className="text-foreground mt-5 text-3xl font-medium tracking-tight text-balance sm:text-4xl">
-              {heading.title}
-            </h2>
-            <p className="text-muted-foreground mt-4 text-base leading-[1.7]">{heading.lede}</p>
-          </header>
-        </Reveal>
-
-        <ol className="mt-12 sm:mt-14">
-          {entries.map((entry) => (
-            <EntryRow key={entry.id} entry={entry} />
-          ))}
-        </ol>
-
-        {/* The document closes on the last entry's hairline. There is no foot
-            block: the grant mechanics that briefly lived here served only two
-            of the four remaining entries, so they folded back into those two
-            (`agents` and `control` in content.ts) — an appendix serving half
-            the document is chrome, not structure. */}
-        <div className="border-border border-t" />
-      </div>
-    </section>
+    <>
+      <AgentsSection />
+      <ChannelsSection />
+      <AutomationsSection />
+      <ControlSection />
+    </>
   );
 }

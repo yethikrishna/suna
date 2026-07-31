@@ -38,14 +38,24 @@ export function AuthorizationStrategyField({
   onChange,
   disabled = false,
   pending = false,
+  lockedReason,
 }: {
   idPrefix: string;
   value: ConnectorAuthorizationStrategy;
   onChange: (value: ConnectorAuthorizationStrategy) => void;
   disabled?: boolean;
   pending?: boolean;
+  /**
+   * Set on a connector that already exists, where the choice is settled.
+   *
+   * Forces the control off AND replaces the description, because a disabled
+   * select with unchanged help text reads as a bug: the user tries it, nothing
+   * happens, and nothing says why. The reason belongs where the control is.
+   */
+  lockedReason?: string;
 }) {
   const id = `${idPrefix}-authorization-strategy`;
+  const locked = Boolean(lockedReason);
   return (
     <Field>
       <div className="flex items-center justify-between gap-2">
@@ -54,7 +64,7 @@ export function AuthorizationStrategyField({
       </div>
       <Select
         value={value}
-        disabled={disabled || pending}
+        disabled={disabled || pending || locked}
         onValueChange={(next) => onChange(next as ConnectorAuthorizationStrategy)}
       >
         <SelectTrigger id={id}>
@@ -66,9 +76,10 @@ export function AuthorizationStrategyField({
         </SelectContent>
       </Select>
       <FieldDescription className="text-pretty">
-        {value === 'project'
-          ? 'One project-managed account is available to allowed sessions.'
-          : 'Each user authorizes their own account for private sessions.'}
+        {lockedReason ??
+          (value === 'project'
+            ? 'One project-managed account is available to allowed sessions.'
+            : 'Each user authorizes their own account for private sessions.')}
       </FieldDescription>
     </Field>
   );

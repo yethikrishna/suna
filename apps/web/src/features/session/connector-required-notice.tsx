@@ -22,8 +22,37 @@
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useConnectorGateStore } from '@/stores/connector-gate-store';
-import type { KortixSendError } from '@kortix/sdk/react';
+import type { KortixSendError, KortixSendErrorConnector } from '@kortix/sdk/react';
 import { PlugIcon as Plug } from '@phosphor-icons/react';
+
+export interface ConnectorNoticeCopy {
+  /** "Gmail" · "Gmail and Slack" · "Gmail, Slack and Notion". */
+  label: string;
+  /**
+   * The connectors a button here could actually connect.
+   *
+   * `user` strategy means the connection must belong to the account the session
+   * RUNS AS. Nobody else can supply it, so offering a button would be offering a
+   * 409 — the card says who can unblock it instead.
+   */
+  connectable: KortixSendErrorConnector[];
+}
+
+/** Pure so the copy and the button decision are testable without a DOM. */
+export function connectorNoticeCopy(
+  connectors: readonly KortixSendErrorConnector[],
+): ConnectorNoticeCopy {
+  const names = connectors.map((connector) => connector.name);
+  return {
+    label:
+      names.length <= 1
+        ? (names[0] ?? '')
+        : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`,
+    connectable: connectors.filter(
+      (connector) => connector.authorization_strategy === 'project',
+    ),
+  };
+}
 
 export function ConnectorRequiredNotice({
   error,
@@ -43,13 +72,7 @@ export function ConnectorRequiredNotice({
   if (!connectors?.length || !projectId) return null;
 
   const names = connectors.map((connector) => connector.name);
-  const label = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
-  // `user` strategy means the connection must belong to the account the session
-  // RUNS AS. Nobody else can supply it, so offering a button would be offering a
-  // 409 — say who can unblock it instead.
-  const connectable = connectors.filter(
-    (connector) => connector.authorization_strategy === 'project',
-  );
+  const { label, connectable } = connectorNoticeCopy(connectors);
 
   return (
     <div className={cn('bg-popover rounded-md border px-4 py-3.5', className)}>
@@ -59,7 +82,7 @@ export function ConnectorRequiredNotice({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-foreground text-sm font-medium">
-            {names.length === 1 ? `Connect ${label} to continue` : `Connect ${label} to continue`}
+            Connect {label} to continue
           </p>
           <p className="text-muted-foreground mt-1 text-xs text-pretty">
             This session needs {label}, and nothing is connected to{' '}

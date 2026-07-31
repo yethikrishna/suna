@@ -209,6 +209,7 @@ import {
 import { SandboxUrlDetector } from './sandbox-url-detector';
 import { sessionComposerReadiness } from './session-composer-readiness';
 import { captureTurnScrollAnchor, restoreTurnScrollAnchor } from './session-history-scroll';
+import { resolveSessionContentState } from './session-load-state';
 import { shouldLoadOlderHistory } from './session-older-autoload';
 
 // ============================================================================
@@ -2140,9 +2141,7 @@ function SameToolGroup({
               {durationLabel}
             </span>
           )}
-          {anyRunning && (
-            <Loading className="text-muted-foreground/40 size-3 flex-shrink-0" />
-          )}
+          {anyRunning && <Loading className="text-muted-foreground/40 size-3 flex-shrink-0" />}
           <ChevronRight
             className={cn(
               'size-3 flex-shrink-0 transition-transform',
@@ -5330,20 +5329,24 @@ export function SessionChat({
   // This eliminates the loader for empty sessions entirely: instead of
   // spinning while we wait to confirm "0 messages", we show the welcome
   // screen right away.
-  const hasMessages = messages && messages.length > 0;
+  const hasMessages = Boolean(messages?.length);
   // "Not found" is a TERMINAL answer, never a loading guess. It's only true once
   // the runtime is connected AND the session lookup has actually run and come
   // back empty. While the runtime is still connecting (the query is disabled and
   // therefore reports isLoading=false) or the lookup is in flight, we know
   // nothing yet — so we must show the loading state, not the error. This is what
   // stops the "This session is not accessible right now." flash on boot.
-  const sessionResolved = runtimeReady && sessionFetched;
   const composerReadiness = sessionComposerReadiness({ runtimeReady });
-  const isNotFound = !session && sessionResolved && !optimisticPrompt;
+  const { isNotFound, isDataLoading } = resolveSessionContentState({
+    runtimeReady,
+    sessionFetched,
+    hasRuntimeSession: Boolean(session),
+    hasMessages,
+    hasOptimisticPrompt: Boolean(optimisticPrompt),
+  });
   // Everything that isn't "we have content" and isn't the terminal not-found
   // state is loading — including the boot window where the query is still
   // disabled (isLoading=false) waiting on the runtime.
-  const isDataLoading = !session && !isNotFound && !hasMessages && !optimisticPrompt;
   const showOptimistic = !!optimisticPrompt && !hasMessages;
   const isTransitioningFromWelcome = !prevHasChatContentRef.current && hasChatContent;
   // The welcome wallpaper is the EMPTY-STATE backdrop for a *resolved* session.

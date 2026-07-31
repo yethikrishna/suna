@@ -121,7 +121,7 @@ const LIST: GatewayAction = {
 };
 
 function makeDeps(outcome: ComputerCallOutcome, action: GatewayAction = FS_READ) {
-  const calls: Array<{ accountId: string; selector: string | null; method: string; args: Record<string, unknown> }> = [];
+  const calls: Array<Parameters<NonNullable<GatewayDeps['executeComputerCall']>>[0]> = [];
   const deps: GatewayDeps = {
     loadConnectorBySlug: async () => COMPUTER,
     loadAction: async () => action,

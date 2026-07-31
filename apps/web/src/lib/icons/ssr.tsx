@@ -57,6 +57,7 @@ import {
   GaugeIcon as GaugeBase,
   GitMergeIcon as GitMergeBase,
   GitPullRequestIcon as GitPullRequestBase,
+  GithubLogoIcon as GithubLogoBase,
   HandshakeIcon as HandshakeBase,
   KeyIcon as KeyBase,
   ListChecksIcon as ListChecksBase,
@@ -76,6 +77,7 @@ import {
   ShieldWarningIcon as ShieldWarningBase,
   SignatureIcon as SignatureBase,
   SirenIcon as SirenBase,
+  SparkleIcon as SparkleBase,
   TagIcon as TagBase,
   TargetIcon as TargetBase,
   TicketIcon as TicketBase,
@@ -133,6 +135,7 @@ export const FunnelIcon = withDefaultWeight(FunnelBase);
 export const GaugeIcon = withDefaultWeight(GaugeBase);
 export const GitMergeIcon = withDefaultWeight(GitMergeBase);
 export const GitPullRequestIcon = withDefaultWeight(GitPullRequestBase);
+export const GithubLogoIcon = withDefaultWeight(GithubLogoBase);
 export const HandshakeIcon = withDefaultWeight(HandshakeBase);
 export const KeyIcon = withDefaultWeight(KeyBase);
 export const ListChecksIcon = withDefaultWeight(ListChecksBase);
@@ -152,6 +155,7 @@ export const ShieldCheckIcon = withDefaultWeight(ShieldCheckBase);
 export const ShieldWarningIcon = withDefaultWeight(ShieldWarningBase);
 export const SignatureIcon = withDefaultWeight(SignatureBase);
 export const SirenIcon = withDefaultWeight(SirenBase);
+export const SparkleIcon = withDefaultWeight(SparkleBase);
 export const TagIcon = withDefaultWeight(TagBase);
 export const TargetIcon = withDefaultWeight(TargetBase);
 export const TicketIcon = withDefaultWeight(TicketBase);

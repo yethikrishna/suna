@@ -1,13 +1,14 @@
 'use client';
 
 import { KortixLogo } from '@/components/sidebar/kortix-logo';
-import { CliSurface, SdkSurface, SurfaceLink } from '@/features/marketing/landing/code-panels';
+import { CopyButton } from '@/components/markdown/copy-button';
+import Hint from '@/components/ui/hint';
+import { SdkSurface, SurfaceLink } from '@/features/marketing/landing/code-panels';
 import { Badge } from '@/components/ui/badge';
 import { Icon } from '@/features/icon/icon';
 import { KORTIX_CLI_INSTALL_COMMAND } from '@/lib/kortix-cli';
 import { cn } from '@/lib/utils';
 import {
-  ArrowUpRightIcon as ArrowUpRight,
   CodeSimpleIcon as Code2,
   EnvelopeSimpleIcon as EnvelopeIcon,
   MonitorIcon as Monitor,
@@ -27,6 +28,7 @@ type Surface = {
   icon: ComponentType<{ className?: string }>;
 };
 
+/** Web leads; the two developer surfaces sit together at the end. */
 const SURFACES: Surface[] = [
   { id: 'web', label: 'Web', icon: Monitor },
   { id: 'slack', label: 'Slack', icon: Icon.Slack },
@@ -36,44 +38,6 @@ const SURFACES: Surface[] = [
   { id: 'cli', label: 'CLI', icon: Terminal },
   { id: 'sdk', label: 'API / SDK', icon: Code2 },
 ];
-
-/* ── shared bits ─────────────────────────────────────────────────────────── */
-
-function MonoLine({ line }: { line: string }) {
-  const slash = line.search(/\s\/\//);
-  const hash = line.search(/\s#/);
-  const idxs = [slash, hash].filter((i) => i >= 0);
-  const ci = idxs.length ? Math.min(...idxs) : -1;
-  if (ci >= 0) {
-    return (
-      <div className="whitespace-pre">
-        <span className="text-foreground/85">{line.slice(0, ci)}</span>
-        <span className="text-muted-foreground/55">{line.slice(ci)}</span>
-      </div>
-    );
-  }
-  return <div className="text-foreground/85 whitespace-pre">{line || ' '}</div>;
-}
-
-function CodeWindow({ title, lines }: { title: string; lines: string[] }) {
-  return (
-    <div className="bg-card flex h-full flex-col">
-      <div className="border-border text-muted-foreground flex items-center gap-2 border-b px-4 py-3 font-mono text-xs">
-        <span className="flex gap-1.5">
-          <span className="bg-muted-foreground/25 size-2.5 rounded-full" />
-          <span className="bg-muted-foreground/25 size-2.5 rounded-full" />
-          <span className="bg-muted-foreground/25 size-2.5 rounded-full" />
-        </span>
-        <span className="ml-2">{title}</span>
-      </div>
-      <div className="flex-1 overflow-auto p-5 font-mono text-xs leading-relaxed sm:p-6 sm:text-sm">
-        {lines.map((line, i) => (
-          <MonoLine key={`${i}:${line}`} line={line} />
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /* ── chat surfaces (Slack / Teams) ───────────────────────────────────────── */
 
@@ -282,8 +246,10 @@ function EmailSurface() {
         </div>
       </div>
 
+      {/* The channel enum is closed: slack, teams, email, voice. Slack is live,
+          Teams is behind an operator switch, email and voice are experimental. */}
       <div className="border-border text-muted-foreground border-t px-4 py-3 text-center text-xs">
-        Slack · Teams · Email · Telegram · WhatsApp · SMS — or build your own channel on the API
+        Slack is live · Teams, email and voice are rolling out · or start sessions from the API
       </div>
     </div>
   );
@@ -317,40 +283,8 @@ function MobileSurface() {
   );
 }
 
-const CLI_LINES = [
-  `$ ${KORTIX_CLI_INSTALL_COMMAND}`,
-  '✓ Kortix CLI installed  # one-time setup',
-  '',
-  '$ kortix init acme-ops',
-  '✓ Initialized Kortix project "acme-ops"  # everything is files',
-  '',
-  '$ kortix sessions new --prompt "draft the renewal for Acme"',
-  '✓ session/renewal-acme · sandbox booted   # isolated branch',
-  '→ change request opened: sales/renewals/acme.md',
-  '',
-  '$ kortix triggers add morning-brief --cron "0 8 * * 1-5"',
-  '✓ scheduled · delivers to #company-ops',
-];
-
-const SDK_LINES = [
-  'import { createKortix, generateSessionId } from "@kortix/sdk";',
-  '',
-  '// one typed client for the Kortix API + the agent runtime',
-  'const kortix = createKortix({',
-  '  backendUrl: "https://api.kortix.com/v1",',
-  '  getToken: () => process.env.KORTIX_API_KEY!,',
-  '});',
-  '',
-  '// the same agents your whole company shares',
-  'const sessionId = generateSessionId();',
-  'await kortix.project(projectId).sessions.create({ session_id: sessionId });',
-  '',
-  'const session = kortix.session(projectId, sessionId);',
-  'await session.start();',
-  'await session.send("Draft the renewal for Acme", { agent: "go-to-market" });',
-];
-
 const SHOWCASE_POSTER = '/media/showcase/kortix-showcase-poster.jpg';
+const CLI_POSTER = '/media/cli/kortix-cli-poster.jpg';
 
 /** Recorded in the real product: a project, its connectors, agents, skills and
  *  schedules, then a session researching on a cloud computer and returning a
@@ -382,6 +316,55 @@ function WebSurface() {
   );
 }
 
+/** The install command is IN the recording — it is the first thing typed. You
+ *  can't select text out of a video, so this is the copy affordance for it:
+ *  one icon-only button, sized to sit inside the terminal's title bar, which is
+ *  the one band of the frame that never carries output. */
+function CopyInstallCommand() {
+  return (
+    <Hint label="Copy the install command" side="left">
+      <span className="border-border bg-background/80 absolute top-2 right-2 z-10 inline-flex rounded-md border shadow-sm backdrop-blur-sm sm:top-3 sm:right-3">
+        <CopyButton code={KORTIX_CLI_INSTALL_COMMAND} />
+      </span>
+    </Hint>
+  );
+}
+
+/** A real terminal recording, replayed from the captured output of the shipped
+ *  CLI: `curl … | bash` installs it, `kortix projects use` picks the project,
+ *  `kortix sessions new` boots a cloud computer, then real work runs from the
+ *  terminal. Every character on screen is output the CLI produced. */
+function CliSurface() {
+  return (
+    <div className="bg-card relative h-full w-full">
+      <CopyInstallCommand />
+      {/* left-top, not top: at phone width the frame is narrower than the 16:10
+          recording, so a centred crop would slice the first characters off every
+          line. Anchoring left keeps the prompt where a terminal starts. */}
+      <video
+        className="h-full w-full object-cover object-left-top motion-reduce:hidden"
+        poster={CLI_POSTER}
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        aria-label="A terminal running the Kortix CLI: curl installs it, kortix projects use picks a project, kortix connectors apps lists the apps an agent can call, and kortix sessions new starts a session on a cloud computer"
+      >
+        <source src="/media/cli/kortix-cli-1920.webm" type="video/webm" />
+        <source src="/media/cli/kortix-cli-1920.mp4" type="video/mp4" />
+      </video>
+      <Image
+        src={CLI_POSTER}
+        alt="A terminal showing the Kortix CLI installed and ready"
+        fill
+        sizes="(max-width: 1024px) 100vw, 1100px"
+        className="hidden object-contain motion-reduce:block"
+      />
+    </div>
+  );
+}
+
 function SurfacePanel({ surface }: { surface: SurfaceId }) {
   switch (surface) {
     case 'web':
@@ -395,11 +378,7 @@ function SurfacePanel({ surface }: { surface: SurfaceId }) {
     case 'mobile':
       return <MobileSurface />;
     case 'cli':
-      return (
-        <CliSurface
-          cta={<SurfaceLink href="/docs/reference/cli">Full CLI reference</SurfaceLink>}
-        />
-      );
+      return <CliSurface />;
     case 'sdk':
       return <SdkSurface cta={<SurfaceLink href="/docs/sdk">Read the SDK docs</SurfaceLink>} />;
   }
@@ -429,8 +408,15 @@ export function HeroSurfaces() {
         <SurfacePanel surface={active} />
       </div>
 
-      {/* surfaces sit under the frame: a quiet list of where it runs */}
-      <div className="mt-4 flex w-full flex-wrap items-center justify-center gap-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Surfaces sit under the frame: a quiet list of where it runs. Nothing
+          may sit between the frame and this row — a per-surface caption made
+          the whole hero jump on every tab change.
+
+          It wraps rather than scrolls. Seven surfaces are the claim being made,
+          so all seven stay on screen at phone width; a scroller would hide
+          three of them behind a swipe nobody is prompted to make. Mobile gets
+          tighter pills so the two rows sit close instead of straggling. */}
+      <div className="mt-4 flex w-full flex-wrap items-center justify-center gap-x-0.5 gap-y-1 sm:gap-x-1">
         {SURFACES.map((s) => {
           const isActive = s.id === active;
           return (
@@ -440,7 +426,10 @@ export function HeroSurfaces() {
               onClick={() => setActive(s.id)}
               aria-current={isActive ? 'true' : undefined}
               className={cn(
-                'duration-fast flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] transition-colors',
+                // min-h-9 (the theme's --spacing is 0.23rem, so ~33px) keeps the touch
+                // target usable while the pill stays tight enough for seven at 390px.
+                'duration-fast flex min-h-9 shrink-0 items-center gap-1 rounded-full px-2.5 py-1.5 text-xs transition-colors',
+                'sm:min-h-0 sm:gap-1.5 sm:px-3 sm:text-[13px]',
                 isActive
                   ? 'bg-foreground/[0.06] text-foreground font-medium'
                   : 'text-muted-foreground/70 hover:text-foreground hover:bg-foreground/[0.03]',

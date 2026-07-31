@@ -43,9 +43,9 @@ Any model, your own API keys, your own infrastructure or our managed cloud.
 | --- | --- | --- | --- |
 | **Source** | Closed | Closed | **Open source — read it, fork it, audit it** |
 | **Models** | Anthropic only | GPT-5.6 only | **Any provider, your own API keys** |
-| **Where it runs** | Anthropic's cloud | OpenAI's cloud | **Our cloud, your VPC, or your own on-prem network** |
+| **Where it runs** | Anthropic's cloud, or Bedrock / Google Cloud / Microsoft Foundry — no self-host | OpenAI's cloud, no self-host | **Our cloud, your VPC, or your own on-prem network** |
 | **Your configuration** | In their product | In their product | **Files in a git repo you own** |
-| **Access** | Claude Max subscribers | Paid plans, usage-metered | **Self-host free · managed cloud from $20/seat + usage** |
+| **Access** | Paid plans (Pro, Max, Team, Enterprise) | Paid plans, usage-metered | **Self-host free · managed cloud $40/seat/mo + usage** |
 
 Competitor rows reflect publicly documented behavior as of July 2026.
 
@@ -75,7 +75,7 @@ kortix chat           # talk to a session's agent from your terminal
 ```
 
 Prefer zero setup? Sign up at **[kortix.com](https://kortix.com)**, create a project, and start a
-session — nothing to install. Full command surface: **[CLI reference](https://kortix.com/docs/reference/cli)**.
+session — nothing to install. Full command surface: **[CLI reference](https://kortix.com/docs/cli)**.
 
 ---
 
@@ -112,7 +112,7 @@ You can `grep` your entire company.
 | **Memory** | A living company brain — plain files today, a system that compounds what it learns over time. |
 | **Connectors** | 3,000+ apps in a click — plus MCP, OpenAPI, GraphQL and raw HTTP. Credentials are brokered server-side through one scoped token and never enter the machine. |
 | **Secrets** | Encrypted at rest, granted per agent, and injected into the sandbox at runtime. A granted secret is a real environment value inside that session. |
-| **Channels** | Slack today, Microsoft Teams behind a switch, email and voice experimental — one click stands up a bot that starts sessions where your team already works. |
+| **Channels** | Slack today, Microsoft Teams behind an operator switch, email and voice experimental. Install the Slack app, invite the bot to a channel, and @-mention it to start a session where your team already works. |
 | **Triggers** | Cron and signed webhooks that spawn sessions automatically — every morning, or the instant something happens. |
 
 Work runs three ways: **on-demand** (ask in chat, get it now), **human-assisted** (the agent works

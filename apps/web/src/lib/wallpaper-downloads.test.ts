@@ -40,6 +40,18 @@ describe('wallpaper downloads manifest', () => {
     expect(WALLPAPER_DOWNLOADS.some((w) => w.id === 'blank')).toBe(false);
   });
 
+  test('ships both brand families on both fields, across the whole size ladder', () => {
+    for (const id of ['symbol', 'logo']) {
+      for (const theme of ['light', 'dark'] as const) {
+        const hit = WALLPAPER_DOWNLOADS.find(
+          (w) => w.group === 'mark' && w.id === id && w.theme === theme,
+        );
+        expect(hit).toBeDefined();
+        expect(hit?.files.map((f) => f.label)).toEqual(['5K', '4K', '1440p', 'Phone']);
+      }
+    }
+  });
+
   test('ships a desktop and a phone file for every wallpaper', () => {
     for (const wallpaper of WALLPAPER_DOWNLOADS) {
       const labels = wallpaper.files.map((f) => f.label);

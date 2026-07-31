@@ -6,10 +6,11 @@
  *
  * Two families:
  *
- * 1. `mark` — the brand wallpaper: the Kortix mark from
- *    `public/brandkit/Logo/Brandmark/SVG` centred on a solid brand field,
- *    black-on-white and white-on-black. Pure geometry, so it is drawn from the
- *    source SVG at each target size and stays exact at any resolution.
+ * 1. `mark` — the brand wallpapers: the Kortix symbol, and the full logo
+ *    lockup, each dead-centred on a solid brand field in black-on-white and
+ *    white-on-black. Pure geometry, so both are drawn from the source SVGs in
+ *    `public/brandkit/Logo` at each target size and stay exact at any
+ *    resolution — nothing is ever upscaled from a raster.
  *
  * 2. `product` — the wallpapers you can set on a Kortix home
  *    (`src/lib/wallpapers.ts`). Five of the six are live WebGL compositions,
@@ -32,9 +33,11 @@
  *
  * Flags:
  *   --base=<url>   dev/prod server that serves /debug/wallpaper (required host)
- *   --only=<ids>   comma-separated wallpaper ids (plus `mark`) to re-render
+ *   --only=<ids>   comma-separated ids to re-render (`symbol`, `logo`, or any
+ *                  wallpaper id from src/lib/wallpapers.ts)
  *   --gpu=<mode>   `metal` (default, fast) or `swiftshader` (no GPU)
  */
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,7 +46,7 @@ import { chromium } from 'playwright';
 const WEB_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = join(WEB_ROOT, 'public/wallpapers/downloads');
 const MANIFEST = join(WEB_ROOT, 'src/lib/wallpaper-downloads.ts');
-const MARK_SVG = join(WEB_ROOT, 'public/brandkit/Logo/Brandmark/SVG/Brandmark Black.svg');
+const BRANDKIT = join(WEB_ROOT, 'public/brandkit/Logo');
 
 const arg = (name, fallback) => {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -91,26 +94,80 @@ const JPEG_QUALITY = 92;
 /** The card preview on /design-system: the real composition, small. */
 const PREVIEW = { w: 960, h: 540, label: 'Preview' };
 const PREVIEW_QUALITY = 78;
-/** Mark height as a share of the shorter edge — present, never a billboard. */
-const MARK_SCALE = 0.13;
+/**
+ * The two brand wallpapers: the symbol alone, and the full logo lockup.
+ *
+ * `width` is the drawn mark's width as a share of the canvas width, and it is
+ * split by orientation because one number cannot serve both. A 16:9 desktop is
+ * ~1.8x wider than it is tall, so a share of its width reads much larger than
+ * the same share on a 1290x2796 phone. The two ratios per family are fixed
+ * across every size in that orientation, so the set looks deliberate.
+ *
+ * The logo carries a wordmark, so it needs more width than the symbol to stay
+ * legible — and less presence than a glyph would take at the same width.
+ */
+const MARK_FAMILIES = [
+  {
+    id: 'symbol',
+    name: 'Symbol',
+    svg: join(BRANDKIT, 'Brandmark/SVG/Brandmark Black.svg'),
+    width: { landscape: 0.085, portrait: 0.152 },
+  },
+  {
+    id: 'logo',
+    name: 'Logo',
+    svg: join(BRANDKIT, 'Logomark/SVG/Logomark Black.svg'),
+    width: { landscape: 0.16, portrait: 0.34 },
+  },
+];
 
 const wanted = (id) => ONLY.length === 0 || ONLY.includes(id);
 const ext = (format) => (format === 'jpeg' ? 'jpg' : 'png');
 
-function markPageHtml({ w, h, bg, fg }) {
-  const svg = readFileSync(MARK_SVG, 'utf8').replace(/\n/g, '');
-  const markHeight = Math.round(Math.min(w, h) * MARK_SCALE);
+/**
+ * A brand wallpaper page: the mark drawn from its source SVG, dead centre.
+ *
+ * Centring is done on the *ink*, not on the SVG box. Both source files carry a
+ * fraction of a unit of asymmetric padding inside their viewBox, which is a
+ * visible drift once it is scaled to 5120px. The page measures the union of the
+ * path bounding boxes, re-crops the viewBox to exactly that, and rounds the
+ * drawn box to even pixels so `(canvas - mark) / 2` is a whole number on both
+ * axes. Nothing is ever rasterised and rescaled — every size is a fresh draw.
+ */
+function markPageHtml({ w, h, bg, fg, svgFile, widthRatio }) {
+  const svg = readFileSync(svgFile, 'utf8').replace(/\n/g, '');
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     html,body{margin:0;padding:0;width:${w}px;height:${h}px;background:${bg};overflow:hidden}
-    body{display:flex;align-items:center;justify-content:center}
-    svg{height:${markHeight}px;width:auto;display:block}
+    body{position:relative}
+    svg{position:absolute;display:block}
     svg path{fill:${fg}}
-  </style></head><body>${svg}</body></html>`;
+  </style></head><body>${svg}<script>
+    (function () {
+      var svg = document.querySelector('svg');
+      var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      svg.querySelectorAll('path').forEach(function (p) {
+        var b = p.getBBox();
+        x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y);
+        x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height);
+      });
+      var iw = x1 - x0, ih = y1 - y0;
+      svg.setAttribute('viewBox', x0 + ' ' + y0 + ' ' + iw + ' ' + ih);
+      var even = function (n) { return 2 * Math.round(n / 2); };
+      var mw = even(${widthRatio} * ${w});
+      var mh = even(mw * ih / iw);
+      svg.setAttribute('width', mw);
+      svg.setAttribute('height', mh);
+      svg.style.left = (${w} - mw) / 2 + 'px';
+      svg.style.top = (${h} - mh) / 2 + 'px';
+      document.documentElement.setAttribute('data-mark-ready', '1');
+    })();
+  </script></body></html>`;
 }
 
 async function capture(page, { url, html, shader, format, quality }) {
   if (html) {
     await page.setContent(html, { waitUntil: 'load' });
+    await page.waitForSelector('html[data-mark-ready]', { timeout: 30_000 });
   } else {
     // A dev server compiling a route can blow past any single navigation
     // timeout; one retry turns that into a slow capture instead of a dead run.
@@ -160,34 +217,44 @@ async function main() {
     });
     const page = await context.newPage();
 
-    if (wanted('mark')) {
+    for (const family of MARK_FAMILIES) {
+      if (!wanted(family.id)) continue;
       const shot = (size, format, quality) =>
         capture(page, {
-          html: markPageHtml({ w: size.w, h: size.h, bg: theme.bg, fg: theme.fg }),
+          html: markPageHtml({
+            w: size.w,
+            h: size.h,
+            bg: theme.bg,
+            fg: theme.fg,
+            svgFile: family.svg,
+            widthRatio: size.w >= size.h ? family.width.landscape : family.width.portrait,
+          }),
           format,
           quality,
         });
 
       for (const size of MARK_SIZES) {
         await page.setViewportSize({ width: size.w, height: size.h });
-        const file = `kortix-mark-${theme.id}-${size.w}x${size.h}.png`;
+        const file = `kortix-${family.id}-${theme.id}-${size.w}x${size.h}.png`;
         const buf = await shot(size, 'png');
         writeFileSync(join(OUT_DIR, file), buf);
         entries.push({
           group: 'mark',
-          id: 'mark',
-          name: 'Kortix Mark',
+          id: family.id,
+          name: family.name,
           theme: theme.id,
           size,
           file,
         });
-        console.log(`mark ${theme.id} ${size.w}x${size.h} → ${(buf.length / 1024).toFixed(0)} KB`);
+        console.log(
+          `${family.id} ${theme.id} ${size.w}x${size.h} → ${(buf.length / 1024).toFixed(0)} KB`,
+        );
       }
 
       await page.setViewportSize({ width: PREVIEW.w, height: PREVIEW.h });
-      const previewFile = `kortix-mark-${theme.id}-preview.jpg`;
+      const previewFile = `kortix-${family.id}-${theme.id}-preview.jpg`;
       writeFileSync(join(OUT_DIR, previewFile), await shot(PREVIEW, 'jpeg', PREVIEW_QUALITY));
-      previews.set(`mark-${theme.id}`, `/wallpapers/downloads/${previewFile}`);
+      previews.set(`${family.id}-${theme.id}`, `/wallpapers/downloads/${previewFile}`);
     }
 
     for (const wallpaper of PRODUCT_WALLPAPERS) {
@@ -298,6 +365,15 @@ export interface WallpaperDownload {
 export const WALLPAPER_DOWNLOADS: WallpaperDownload[] = ${body};
 `,
   );
+
+  // The manifest is committed, so it has to satisfy `prettier --check` without
+  // anyone remembering to run it.
+  try {
+    execFileSync('npx', ['prettier', '--write', MANIFEST], { cwd: WEB_ROOT, stdio: 'ignore' });
+  } catch {
+    console.warn('prettier --write failed on the manifest; run it by hand before committing.');
+  }
+
   console.log(`\nmanifest → ${MANIFEST}`);
 }
 

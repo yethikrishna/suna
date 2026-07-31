@@ -6,7 +6,7 @@
 
 **The open-source AI Management System**
 
-**The open-source alternative to Claude Cowork and ChatGPT Work.**
+**The leading open-source alternative to Claude Cowork and ChatGPT Work.**
 
 [![GitHub stars](https://img.shields.io/github/stars/kortix-ai/suna?style=flat&color=111111&label=Stars)](https://github.com/kortix-ai/suna/stargazers)
 [![Release](https://img.shields.io/github/v/release/kortix-ai/suna?style=flat&color=111111&label=Release)](https://github.com/kortix-ai/suna/releases/latest)
@@ -43,7 +43,7 @@ Any model, your own API keys, your own infrastructure or our managed cloud.
 | --- | --- | --- | --- |
 | **Source** | Closed | Closed | **Open source — read it, fork it, audit it** |
 | **Models** | Anthropic only | GPT-5.6 only | **Any provider, your own API keys** |
-| **Where it runs** | Anthropic's cloud | OpenAI's cloud | **Our cloud, your VPC, on-prem, or air-gapped** |
+| **Where it runs** | Anthropic's cloud | OpenAI's cloud | **Our cloud, your VPC, or your own on-prem network** |
 | **Your configuration** | In their product | In their product | **Files in a git repo you own** |
 | **Access** | Claude Max subscribers | Paid plans, usage-metered | **Self-host free · managed cloud from $20/seat + usage** |
 
@@ -92,8 +92,8 @@ project  (git repo + kortix.yaml)
                            └─ change request ──> you review & merge ──> main
 ```
 
-- Every **session** gets its own **cloud computer** — a disposable, microVM-isolated Linux sandbox
-  on its own branch. The agent can install, run and break anything; only what it commits survives.
+- Every **session** gets its own **cloud computer** — a disposable, isolated Linux sandbox on its
+  own branch. The agent can install, run and break anything; only what it commits survives.
 - Work reaches `main` only through a **change request** you approve, so the company self-improves
   one reviewed change at a time.
 - Run **thousands of sandboxes in parallel** on the same config, each fully isolated, each feeding
@@ -107,12 +107,12 @@ You can `grep` your entire company.
 
 | | |
 | --- | --- |
-| **Agents** | Markdown personas with a scoped reach into tools — one per role or task. Installable in a click, able to rewrite themselves. |
+| **Agents** | OpenCode agents with a scoped reach into tools — markdown at the baseline, with the whole OpenCode lifecycle open to you. One per role or task, installable in a click, able to rewrite themselves. |
 | **Skills** | Reusable know-how that encodes how your company does a job. Written once, shared into every session. |
 | **Memory** | A living company brain — plain files today, a system that compounds what it learns over time. |
-| **Connectors** | 3,000+ apps in a click — plus MCP, OpenAPI, GraphQL and raw HTTP — brokered server-side through one scoped token. |
-| **Secrets** | Encrypted, scoped per person and group, injected into sandboxes at runtime, never exposed to the model or logs. |
-| **Channels** | Slack, Teams, Telegram, WhatsApp, SMS and email — one click stands up a bot that starts sessions where your team already works. |
+| **Connectors** | 3,000+ apps in a click — plus MCP, OpenAPI, GraphQL and raw HTTP. Credentials are brokered server-side through one scoped token and never enter the machine. |
+| **Secrets** | Encrypted at rest, granted per agent, and injected into the sandbox at runtime. A granted secret is a real environment value inside that session. |
+| **Channels** | Slack today, Microsoft Teams behind a switch, email and voice experimental — one click stands up a bot that starts sessions where your team already works. |
 | **Triggers** | Cron and signed webhooks that spawn sessions automatically — every morning, or the instant something happens. |
 
 Work runs three ways: **on-demand** (ask in chat, get it now), **human-assisted** (the agent works
@@ -133,9 +133,9 @@ end).
 
 ## Self-host
 
-Kortix runs on your own infrastructure — laptop, VPS, your VPC, or fully air-gapped. Start a
-production-style local instance from Docker images, then switch the CLI between Cloud and your own
-hosts:
+Kortix runs on your own infrastructure — a laptop, a VPS, your own VPC, or your own on-prem
+network. Start a production-style local instance from Docker images, then switch the CLI between
+Cloud and your own hosts:
 
 ```bash
 kortix self-host start
@@ -144,7 +144,8 @@ kortix hosts use selfhost  # ↔  kortix hosts use cloud
 
 The first interactive setup asks only for the integration credentials that unlock managed git,
 GitHub access, and Pipedream connectors — ports, local URLs, keys and Docker Compose defaults are
-generated for you.
+generated for you. Note that `self-host start` pulls its images from Docker Hub, so this is a
+self-hosted install rather than a disconnected one.
 
 Managed hosting is **[Kortix Cloud](https://kortix.com)**.
 
@@ -152,10 +153,15 @@ Managed hosting is **[Kortix Cloud](https://kortix.com)**.
 
 ## Enterprise & security
 
-Built to survive a security review, not slip past one: microVM isolation · members, groups & roles
-that match your org · per-resource permissions for people **and** agents · a secrets manager
-(encrypted, injected at runtime, never exposed) · a full audit trail · human approval gates on
-sensitive actions · on-prem, VPC, or air-gapped deployment.
+Built to survive a security review, not slip past one: one isolated machine per session · members,
+groups & roles that match your org · per-resource permissions for people **and** agents ·
+connector credentials brokered server-side, so the raw key never reaches the sandbox · a secrets
+manager, encrypted at rest and injected at runtime · a full audit trail · merge that is deny-by-default
+for an agent · approval gates you switch on for the actions that matter · your own VPC or on-prem
+network.
+
+Isolation is per provider: the Platinum provider runs microVMs, the default runs containers.
+Ask us and we'll tell you which one you're on.
 
 ---
 

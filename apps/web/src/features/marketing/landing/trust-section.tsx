@@ -25,7 +25,12 @@ function MetallicMark() {
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute -top-32 -right-40 hidden opacity-[0.42] mix-blend-screen select-none sm:block lg:-top-40 lg:-right-52"
+      /* Anchored to the card's own height rather than hung off a fixed pixel
+         size. It used to be 760x900 pinned at -top-32/-right-40, so the card's
+         overflow-hidden sliced the mark's upper arcs clean off and the box
+         never closed at the top. inset-y-0 makes the mark exactly as tall as
+         the card, whatever the copy does to it. */
+      className="pointer-events-none absolute inset-y-0 right-0 hidden aspect-[900/760] opacity-[0.42] mix-blend-screen select-none sm:block"
     >
       <ShaderSafe>
         <Heatmap
@@ -40,8 +45,8 @@ function MetallicMark() {
           frame={407072.499999992}
           colors={['#d18b19', '#fafafa', '#242424']}
           colorBack="#ffffff00"
-          className="shrink-0"
-          style={{ height: '760px', width: '900px' }}
+          className="h-full w-full"
+          style={{ height: '100%', width: '100%' }}
         />
       </ShaderSafe>
     </div>

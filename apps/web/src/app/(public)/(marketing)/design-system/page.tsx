@@ -111,7 +111,6 @@ import {
   ModalTitle,
   ModalTrigger,
 } from '@/components/ui/modal';
-import { PageHeader } from '@/components/ui/page-header';
 import { PageSearchBar } from '@/components/ui/page-search-bar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Progress } from '@/components/ui/progress';
@@ -607,7 +606,6 @@ const TOC_SECTIONS = [
     id: 'page-patterns',
     label: 'Page Patterns',
     children: [
-      { id: 'pat-page-header', label: 'PageHeader' },
       { id: 'pat-spotlight-card', label: 'SpotlightCard' },
       { id: 'pat-search-bar', label: 'PageSearchBar' },
       { id: 'pat-stagger', label: 'Stagger Mount' },
@@ -3195,40 +3193,6 @@ export default function BrandPage() {
                     'appHomeDesignSystemPage.line2075JsxTextNewManagementStylePagesShouldComposeTheSame',
                   )}
                 </p>
-
-                {/* ── PageHeader ── */}
-                <div id="pat-page-header" className="mb-12">
-                  <ComponentLabel>PageHeader</ComponentLabel>
-                  <ComponentDesc>
-                    {tHardcodedUi.raw(
-                      'appHomeDesignSystemPage.line2084JsxTextTheCanonicalHeroForListManagementPagesRounded',
-                    )}
-                    <code className="font-mono text-xs">max-w-7xl</code>
-                    {tHardcodedUi.raw('appHomeDesignSystemPage.line2087JsxTextHorizontalPadding')}
-                  </ComponentDesc>
-                  <DemoContainer className="overflow-hidden p-0">
-                    <div className="p-6">
-                      <PageHeader icon={Zap}>
-                        <div className="space-y-2 sm:space-y-4">
-                          <div className="text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
-                            <span className="text-primary">
-                              {tHardcodedUi.raw(
-                                'appHomeDesignSystemPage.line2094JsxTextScheduledTasks',
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      </PageHeader>
-                    </div>
-                  </DemoContainer>
-                  <pre className="text-muted-foreground bg-muted/20 mt-3 max-w-full min-w-0 overflow-x-auto rounded-lg px-4 py-3 font-mono text-xs">{`<div className="container mx-auto max-w-7xl px-3 sm:px-4 py-3 sm:py-4">
-  <PageHeader icon={Zap}>
-    <div className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight">
-      <span className="text-primary">Scheduled Tasks</span>
-    </div>
-  </PageHeader>
-</div>`}</pre>
-                </div>
 
                 {/* ── SpotlightCard ── */}
                 <div id="pat-spotlight-card" className="mb-12">

@@ -98,7 +98,7 @@ import { accountsRouter } from './accounts';
 import { authRouter } from './auth';
 import { scimRouter } from './scim';
 import { accountInvitesRouter } from './accounts/invites';
-import { auditStateChangingRequest } from './shared/audit';
+import { auditApiRequest } from './shared/audit';
 import { opsApp } from './ops';
 import { adminApp } from './admin';
 
@@ -322,7 +322,7 @@ if (config.INTERNAL_KORTIX_ENV === 'dev') {
   app.use('*', prettyJSON());
 }
 
-app.use('/v1/*', auditStateChangingRequest);
+app.use('/v1/*', auditApiRequest);
 
 // Wall-clock deadline for non-streaming requests — returns 503 before the 30s
 // client abort instead of hanging. Streaming/proxy/WS surfaces are exempted

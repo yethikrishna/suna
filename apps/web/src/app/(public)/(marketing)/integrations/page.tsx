@@ -14,18 +14,27 @@ import type { ReactNode } from 'react';
  * copy on it never uses "integration" as a noun; the product noun is
  * "connector" (the `comms` skill, §7).
  *
- * The arc, in order: connect once → the credential never reaches the agent →
- * reach is scoped → every action is allowed, gated, or blocked → everything is
+ * The arc, in order: every action is allowed, gated, or blocked → connect once →
+ * the credential never reaches the agent → reach is scoped → everything is
  * written down.
+ *
+ * POLICY IS SECOND, DELIBERATELY (moved 2026-07-31). It used to sit fourth,
+ * after connect / broker / scope, which is the order the plumbing happens in but
+ * not the order a reader cares about. Granting an agent real reach into a real
+ * tool is the thing people hesitate over, and the answer to it — you set allow,
+ * ask or block on every single action, and a rule can match on the arguments —
+ * is the strongest thing this page has. It now lands in the first screenful,
+ * with the real Permissions capture as the first product shot on the page.
+ * Everything after it explains how that control is delivered.
  */
 export default function IntegrationsPage(): ReactNode {
   return (
     <div className="bg-background relative">
       <IntegrationsHero />
+      <PolicySection />
       <ConnectSection />
       <BrokerSection />
       <ScopeSection />
-      <PolicySection />
       <AuditSection />
       <CloseSection />
       <div className="h-24 sm:h-28" />

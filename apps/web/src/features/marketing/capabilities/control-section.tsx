@@ -23,6 +23,12 @@ import { Passage } from './passage';
  * the secrets correction, which cannot be compressed without becoming the false
  * claim it exists to prevent: a granted runtime secret IS a real env value in
  * the session. Read the accuracy gate in `content.ts` before touching it.
+ *
+ * DO NOT ADD THE ALLOW / ASK / BLOCK WALKTHROUGH HERE. It was proposed for this
+ * section on 2026-07-31 and rejected: the per-action policy material and the
+ * connector-permissions capture belong on `/integrations`, high up, where a
+ * reader is already thinking about connecting a tool. This section stays prose,
+ * and stays quiet.
  */
 export function ControlSection(): ReactNode {
   return <Passage passage={control} />;

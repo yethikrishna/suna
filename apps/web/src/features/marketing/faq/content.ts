@@ -30,6 +30,14 @@
  * arrives with. Nothing was added to reach a round number, and a question that
  * stops being asked should be deleted rather than rewritten.
  *
+ * EVERY QUESTION STAYS NEUTRAL. The section renders as a collapsed accordion, so
+ * in the resting state a reader sees the seven QUESTIONS and none of the
+ * answers. That only stays honest while each question is a question — "Do you
+ * hold a security certification?", never "Is Kortix secure?" A question rewritten
+ * into a claim turns the collapsed list into seven pieces of marketing and
+ * buries the four concessions completely. Keep them neutral, and keep the
+ * unflattering ones visibly present.
+ *
  * ==========================================================================
  * ACCURACY GATE — every figure and claim below was read out of code on
  * 2026-07-31. Do not soften, inflate, or "restore" any of it.

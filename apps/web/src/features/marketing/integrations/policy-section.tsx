@@ -158,8 +158,23 @@ export function PolicySection() {
         </div>
       </Reveal>
 
+      {/* The screenshot carries a FOURTH state the three cards above do not:
+          Default. Naming it here is what stops a reader deciding the capture
+          disagrees with the copy — and it is where the honest default belongs,
+          because an untouched project runs everything. */}
+      <Reveal delay={0.08}>
+        <p className="text-muted-foreground mt-6 max-w-3xl text-sm leading-relaxed">
+          {policy.defaultState}
+        </p>
+      </Reveal>
+
       <Reveal delay={0.1}>
-        <ProductShot src={policy.shot.src} alt={policy.shot.alt} caption={policy.shot.caption} />
+        <ProductShot
+          src={policy.shot.src}
+          alt={policy.shot.alt}
+          caption={policy.shot.caption}
+          priority
+        />
       </Reveal>
 
       <Reveal delay={0.12}>

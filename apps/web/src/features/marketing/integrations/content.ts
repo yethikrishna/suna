@@ -201,7 +201,7 @@ export type PolicyStateId = 'allow' | 'ask' | 'block';
 export const policy = {
   eyebrow: 'Policy',
   title: 'Decide what runs, what asks, and what never happens.',
-  sub: 'Every action a connector exposes gets one of three answers. Set them per tool, or write one pattern rule that covers a hundred at a time.',
+  sub: 'Every action a connector exposes gets one of three answers, and you set them. One tool at a time, or one pattern that covers a hundred — a glob by default, or a regular expression when you wrap it in slashes.',
   states: [
     {
       id: 'allow',
@@ -226,6 +226,19 @@ export const policy = {
     },
   ] satisfies readonly { id: PolicyStateId; label: string; verb: string; body: string; example: string }[],
 
+  /**
+   * The fourth state in the screenshot, and the honest default.
+   *
+   * ACCURACY: `policy.default_mode` falls back to `allow_all` when a project
+   * declares no `policy:` block (`apps/api/src/projects/policies.ts:73`), so an
+   * untouched project runs everything. `risk` is the other mode: read
+   * → `always_run`, write and destructive → `require_approval`
+   * (`riskDefaultAction`, `apps/api/src/executor/policy.ts`). Never write that
+   * writes ask by default — they do not until somebody sets `risk`.
+   */
+  defaultState:
+    'A tool left on Default has no rule of its own and falls through to the project default. Until you set that default to risk — reads run, writes and destructive actions ask — an untouched project runs everything.',
+
   /** Real product screenshot — the Permissions tab on a live connector. */
   shot: {
     src: '/media/integrations/connector-permissions.webp',
@@ -245,13 +258,31 @@ export const policy = {
     ],
   },
 
-  /** Argument-level conditions. This is the beat competitors do not have. */
+  /**
+   * Argument-level conditions. This is the beat competitors do not have.
+   *
+   * ACCURACY — read out of `apps/api/src/executor/policy.ts` on 2026-07-31:
+   *  - A condition is a dot path into the call args (`to`, `message.channel`),
+   *    a `match`, and an optional `negate` (`PolicyArgCondition`). ALL must hold.
+   *  - `match` uses the SAME grammar as a tool-path matcher: a glob by default,
+   *    or an explicit `/regex/flags` when slash-wrapped (`compileMatcher`). An
+   *    invalid regex compiles to a never-match, and a nested-quantifier (ReDoS)
+   *    shape is rejected at write time (`isValidMatcher`). "Regular expression"
+   *    is therefore sayable — do not downgrade it back to "pattern".
+   *  - An ARRAY argument matches only when EVERY element matches
+   *    (`argValueMatches`), and a missing value never matches. Both fail closed.
+   *  - An unevaluable or malformed condition makes a permissive rule NOT apply
+   *    and a restrictive rule apply (`ruleApplies`) — always toward less access.
+   *  - Cap is 10 conditions per rule (`MAX_CONDITIONS_PER_POLICY`); the page does
+   *    not state the number, and should not start inventing a different one.
+   */
   conditions: {
     title: 'Rules that read the arguments, not just the tool name',
-    body: 'A tool-name rule can only ask “may the agent send email?” — which is rarely the question. Conditions match on the values in the call, so a rule can allow sending to your own domain and stop at everything else. Anything the rule cannot decide resolves toward less access, never more.',
+    body: 'A tool-name rule can only ask “may the agent send email?” — which is rarely the question. A condition points at a value inside the call and matches it with a glob or a regular expression, so a rule can allow sending to your own domain and stop at everything else. A list argument passes only when every entry passes, so one off-list recipient is enough to hold the call. Anything the rule cannot decide resolves toward less access, never more.',
     rows: [
       { match: 'send_email', when: 'to ends with @acme.com', action: 'allow' },
       { match: 'send_email', when: 'anything else', action: 'ask' },
+      { match: '/^(share|publish)_/', when: 'always', action: 'ask' },
       { match: 'delete_*', when: 'always', action: 'block' },
     ] satisfies readonly { match: string; when: string; action: PolicyStateId }[],
   },

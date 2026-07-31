@@ -225,7 +225,13 @@ export const automations: Passage = {
    The trust section is badges and pillars. This is the mechanism under them, and
    the owning interlude's "reach is declared, never inherited" hands straight
    into it. Three paragraphs on purpose: who may do what, what a secret really
-   is, and the one way work lands. */
+   is, and the one way work lands.
+
+   DO NOT ADD THE ALLOW / ASK / BLOCK WALKTHROUGH HERE. It was proposed for this
+   passage on 2026-07-31 and rejected: the per-action policy material and the
+   connector-permissions capture belong on `/integrations`, high up, where a
+   reader is already thinking about connecting a tool. This passage stays prose,
+   and stays quiet. */
 export const control: Passage = {
   id: 'control',
   eyebrow: 'In bounds',

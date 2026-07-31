@@ -1477,7 +1477,7 @@ const openSourceAiManagementSystem: BlogPostEntry = {
   leadMedia: {
     poster: '/media/showcase/kortix-showcase-poster.jpg',
     sources: [
-      { src: '/media/showcase/kortix-showcase-1920.webm', type: 'video/webm' },
+      { src: '/media/showcase/kortix-showcase-1920.mp4', type: 'video/mp4' },
       { src: '/media/showcase/kortix-showcase-1280.mp4', type: 'video/mp4' },
     ],
     alt: 'Kortix in the browser: a project and its connectors, agents, skills and schedules, then a session working on a cloud computer and returning a finished deck.',

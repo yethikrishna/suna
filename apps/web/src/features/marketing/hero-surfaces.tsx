@@ -339,7 +339,25 @@ function MobileSurface() {
   );
 }
 
-const SHOWCASE_POSTER = '/media/showcase/kortix-showcase-poster.jpg';
+/** The product walkthrough exists in both themes. Same eight screens, same
+ *  order, same pacing, same 2880x1800 master — only the palette differs, and it
+ *  is the palette `globals.css` ships (`:root` vs `.dark`). Both were shot from
+ *  the same signed-in session against the same project, toggling the app's own
+ *  theme between passes; neither is a filtered copy of the other. */
+const SHOWCASE_MEDIA = {
+  light: {
+    poster: '/media/showcase/kortix-showcase-poster.jpg',
+    phone: '/media/showcase/kortix-showcase-1280.mp4',
+    retina: '/media/showcase/kortix-showcase-2880.mp4',
+    mp4: '/media/showcase/kortix-showcase-1920.mp4',
+  },
+  dark: {
+    poster: '/media/showcase/kortix-showcase-dark-poster.jpg',
+    phone: '/media/showcase/kortix-showcase-dark-1280.mp4',
+    retina: '/media/showcase/kortix-showcase-dark-2880.mp4',
+    mp4: '/media/showcase/kortix-showcase-dark-1920.mp4',
+  },
+} as const;
 
 /** The CLI recording exists in both themes. Same flow, same 112x18 grid, same
  *  encodes — only the palette differs, and it is the palette `globals.css`
@@ -384,18 +402,11 @@ function useHeroTheme(): 'light' | 'dark' {
 
 /** Recorded in the real product: a project, its connectors, agents, skills and
  *  schedules, then a session researching on a cloud computer and returning a
- *  finished deck.
- *
- *  THEME GAP — the only asset on this page that is still light-only. The CLI
- *  panel beside it ships both themes; this one cannot yet, because re-shooting
- *  it means driving the real product UI and neither environment that has the
- *  demo data is reachable from a workstation: dev.kortix.com sits behind Vercel
- *  SSO whose bypass secret exists only as a GitHub Actions secret, and the local
- *  stack renders "Couldn't load this project" on the workspace route. Inverting
- *  or filtering the light footage would be a fabricated frame, so it is not done
- *  here. When the dark capture lands, give it the same shape as CLI_MEDIA above
- *  and key the element on `useHeroTheme()` exactly as CliSurface does. */
+ *  finished deck. Every frame is the live app driven against a real project —
+ *  the deck in the last screens is one the agent actually produced. */
 function WebSurface() {
+  const theme = useHeroTheme();
+  const media = SHOWCASE_MEDIA[theme];
   return (
     <div className="bg-card relative h-full w-full">
       {/* left-top, not top. On desktop the frame is wider than the 16:10
@@ -409,8 +420,11 @@ function WebSurface() {
           alternative and is worse: it fits the full 1920px UI into 346px, where
           no label is legible at all. */}
       <video
+        // The key is the whole theme mechanism: changing it remounts the
+        // element, which is the only way a <video> re-runs source selection.
+        key={theme}
         className="h-full w-full object-cover object-left-top motion-reduce:hidden"
-        poster={SHOWCASE_POSTER}
+        poster={media.poster}
         autoPlay
         muted
         loop
@@ -421,6 +435,8 @@ function WebSurface() {
         {/* Ordered by the resource selection algorithm: the browser takes the
             first source whose type it supports and whose media matches, so the
             narrowest condition goes first and the unconditional fallback last.
+            Only device traits are expressed as media queries — those cannot
+            change without a reload. The theme is the `key` above.
 
             Phones get the 1280 encode. The frame is 346 CSS px there, so even a
             3x screen needs 1038 device px — sending the 1920 was 0.9MB of detail
@@ -428,25 +444,28 @@ function WebSurface() {
 
             Retina desktops get the 2880. The frame is 1236 CSS px, so a 2x
             display needs 2472 device px and the 1920 was being upscaled 1.29x —
-            that is the softness. It costs +2.0MB over the webm, which is the
-            right trade for the one asset on the page that shows the product:
-            the poster JPG (160K) paints first and carries LCP, so the video
-            never blocks first paint. */}
-        <source
-          media="(max-width: 480px)"
-          src="/media/showcase/kortix-showcase-1280.mp4"
-          type="video/mp4"
-        />
+            that is the softness. The walkthrough is now shot at
+            deviceScaleFactor 2, so 2880 is native pixels, not an upscale. The
+            poster JPG paints first and carries LCP, so the video never blocks
+            first paint.
+
+            There is no VP9 tier any more, and its absence is the point. A webm
+            source is only worth listing when it is the SMALLER of the two 1920
+            encodes, because selection takes the first supported match and every
+            Chrome and Firefox visitor would load it instead of the mp4. On eight
+            static screens joined by dissolves it is not smaller: VP9 crf36 came
+            out at 2.08MB against H.264 crf20 at 2.12MB. That 2% is not worth a
+            second encode of every frame in both themes. */}
+        <source media="(max-width: 480px)" src={media.phone} type="video/mp4" />
         <source
           media="(min-resolution: 2dppx) and (min-width: 1024px)"
-          src="/media/showcase/kortix-showcase-2880.mp4"
+          src={media.retina}
           type="video/mp4"
         />
-        <source src="/media/showcase/kortix-showcase-1920.webm" type="video/webm" />
-        <source src="/media/showcase/kortix-showcase-1920.mp4" type="video/mp4" />
+        <source src={media.mp4} type="video/mp4" />
       </video>
       <Image
-        src={SHOWCASE_POSTER}
+        src={media.poster}
         alt="Kortix in the browser, showing a project and its files"
         fill
         sizes="(max-width: 1024px) 100vw, 1100px"

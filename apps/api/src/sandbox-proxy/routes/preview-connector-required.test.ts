@@ -57,9 +57,13 @@ mock.module('../../shared/preview-ownership', () => ({
   canAccessPreviewSandbox: async () => true,
   canAccessSandboxSession: async () => true,
 }));
+let authorizeAllowed = true;
 mock.module('../../iam', () => ({
   PROJECT_ACTIONS: { PROJECT_AGENT_READ: 'project.agent.read' },
-  authorize: async () => ({ allowed: true, reason: 'project_role' }),
+  authorize: async () =>
+    authorizeAllowed
+      ? { allowed: true, reason: 'project_role' }
+      : { allowed: false, reason: 'resource_scope_insufficient' },
 }));
 mock.module('../../projects/lib/prompt-connector-preflight', () => ({
   PromptConnectorPreflightUnresolved,
@@ -144,6 +148,7 @@ function prompt(agent?: string): Promise<Response> {
 }
 
 beforeEach(() => {
+  authorizeAllowed = true;
   verdict = { ok: true };
   preflightThrows = null;
   preflightCalls = [];
@@ -304,4 +309,35 @@ test('a non-turn request is never gated', async () => {
 
   expect(response.status).toBe(200);
   expect(preflightCalls).toEqual([]);
+});
+
+test('an unauthorized agent switch is refused WITHOUT revealing that agent\'s connectors', async () => {
+  // The gate reads the requested agent's manifest, and its refusal carries that
+  // agent's connector ids, names and strategies. A caller who may not run agent B
+  // must not be able to enumerate them by naming B in a prompt — so the
+  // authorization decision has to come first, not after.
+  authorizeAllowed = false;
+  verdict = { ok: false, kind: 'authorization_required', profiles: [GMAIL_PROFILE] };
+
+  const response = await prompt('nda-turnaround');
+
+  expect(response.status).toBe(403);
+  expect(await response.json()).toMatchObject({ code: 'AGENT_NOT_AUTHORIZED' });
+  expect(preflightCalls).toEqual([]);
+  expect(upstreamCalls).toBe(0);
+});
+
+test('a refused agent switch does not burn the idempotency key either', async () => {
+  // Same reasoning as the connector retry: the 403 used to sit below the dedupe
+  // claim, so being granted access and retrying returned a silent duplicate.
+  authorizeAllowed = false;
+  const body = { parts: [{ type: 'text', text: 'run it' }], agent: 'nda-turnaround' };
+  expect((await send('/session/ses_1/prompt_async', body)).status).toBe(403);
+
+  authorizeAllowed = true;
+  const retried = await send('/session/ses_1/prompt_async', body);
+
+  expect(retried.status).toBe(200);
+  expect(await retried.json()).not.toMatchObject({ status: 'duplicate' });
+  expect(upstreamCalls).toBe(1);
 });

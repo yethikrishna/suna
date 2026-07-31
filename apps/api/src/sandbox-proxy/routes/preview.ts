@@ -391,6 +391,73 @@ function isConnectorGatedTurn(port: number, method: string, path: string): boole
 }
 
 /**
+ * May this caller run the agent this prompt names? Response to refuse, or null.
+ *
+ * Hoisted out of the forward loop so it runs BEFORE the connector gate. The
+ * connector gate reads the requested agent's manifest, and a caller who may not
+ * run agent B must not learn which connectors B requires by naming it — the
+ * refusal list carries connector ids, names and strategies.
+ *
+ * Running it here also fixes a defect it had where it sat: below
+ * `claimPromptDelivery`, so a 403 burned the Idempotency-Key and the retry after
+ * being granted access came back as a silent duplicate.
+ */
+async function agentSwitchRefusal(
+  record: { accountId: string; projectId: string; agentName?: string | null },
+  requestedAgent: string | null,
+  userId: string | undefined,
+  sandboxId: string,
+  origin?: string,
+): Promise<Response | null> {
+  const sessionAgent = record.agentName ?? DEFAULT_AGENT_SENTINEL;
+  // Agent-lock enforcement is OFF by default — in-session agent switching is
+  // allowed. The 409 only fires when KORTIX_ENFORCE_SESSION_AGENT_LOCK is
+  // explicitly enabled.
+  if (
+    requestedAgent &&
+    config.KORTIX_ENFORCE_SESSION_AGENT_LOCK &&
+    isProhibitedAgentSwitch(requestedAgent, sessionAgent)
+  ) {
+    return agentSwitchConflictResponse(sessionAgent, requestedAgent, origin);
+  }
+  if (!isProhibitedAgentSwitch(requestedAgent, sessionAgent)) return null;
+  const switchedToAgent = requestedAgent as string;
+  if (!userId) {
+    // A switch is an authorization decision and there is no principal to decide
+    // about — a share-token forward, say. Refuse rather than run another agent
+    // on nobody's authority.
+    return jsonProxyError(
+      {
+        error: `You don't have permission to run the agent '${switchedToAgent}'.`,
+        code: 'AGENT_NOT_AUTHORIZED',
+        requested_agent: switchedToAgent,
+      },
+      403,
+      origin,
+    );
+  }
+
+  const verdict = await authorize(userId, record.accountId, PROJECT_ACTIONS.PROJECT_AGENT_READ, {
+    type: 'project',
+    id: record.projectId,
+    resource: { type: 'agent', id: switchedToAgent },
+  });
+  if (verdict.allowed) return null;
+  console.warn(
+    `[PREVIEW] Refused prompt on ${sandboxId}: caller may not run agent '${switchedToAgent}' (${verdict.reason})`,
+  );
+  return jsonProxyError(
+    {
+      error: `You don't have permission to run the agent '${switchedToAgent}'.`,
+      code: 'AGENT_NOT_AUTHORIZED',
+      requested_agent: switchedToAgent,
+    },
+    403,
+    origin,
+  );
+}
+
+/**
  * The refusal body, or null to let the turn through.
  *
  * The shape is byte-identical to what session CREATE returns for the same two
@@ -736,11 +803,13 @@ export async function forwardToSandbox(
   // The three existing early returns further down all sit after the claim and
   // have exactly that defect; this one deliberately does not join them.
   if (!sandboxAuthored && isConnectorGatedTurn(upstreamPort, method, remainingPath)) {
-    const refusal = await connectorGateRefusal(
-      record,
-      requestedPromptAgent(requestBody, incomingHeaders),
-      origin,
-    );
+    const promptAgent = requestedPromptAgent(requestBody, incomingHeaders);
+    // Authorization FIRST. The connector gate below reads this agent's manifest,
+    // and its refusal names the connectors that agent requires — not something a
+    // caller who may not run it should be able to enumerate by asking.
+    const unauthorized = await agentSwitchRefusal(record, promptAgent, userId, sandboxId, origin);
+    if (unauthorized) return unauthorized;
+    const refusal = await connectorGateRefusal(record, promptAgent, origin);
     if (refusal) return refusal;
   }
   if (record.status !== 'active') {
@@ -902,46 +971,9 @@ export async function forwardToSandbox(
       if (shouldSyncProjectEnvBeforeProxy(port, method, remainingPath)) {
         const requestedAgent = requestedPromptAgent(requestBody, incomingHeaders);
         const sessionAgent = record.agentName ?? DEFAULT_AGENT_SENTINEL;
-        // Agent-lock enforcement is OFF by default — in-session agent switching is
-        // allowed. The 409 only fires when KORTIX_ENFORCE_SESSION_AGENT_LOCK is
-        // explicitly enabled (a future per-agent executor-token auth model; see the
-        // config flag's TODO). Until then a prompt may freely run a different agent.
-        if (
-          requestedAgent &&
-          config.KORTIX_ENFORCE_SESSION_AGENT_LOCK &&
-          isProhibitedAgentSwitch(requestedAgent, sessionAgent)
-        ) {
-          return agentSwitchConflictResponse(sessionAgent, requestedAgent, origin);
-        }
-        const switchedToAgent = isProhibitedAgentSwitch(requestedAgent, sessionAgent)
-          ? requestedAgent
-          : null;
-        if (switchedToAgent) {
-          const verdict = await authorize(
-            userId,
-            record.accountId,
-            PROJECT_ACTIONS.PROJECT_AGENT_READ,
-            {
-              type: 'project',
-              id: record.projectId,
-              resource: { type: 'agent', id: switchedToAgent },
-            },
-          );
-          if (!verdict.allowed) {
-            console.warn(
-              `[PREVIEW] Refused prompt on ${sandboxId}: caller may not run agent '${switchedToAgent}' (${verdict.reason})`,
-            );
-            return jsonProxyError(
-              {
-                error: `You don't have permission to run the agent '${switchedToAgent}'.`,
-                code: 'AGENT_NOT_AUTHORIZED',
-                requested_agent: switchedToAgent,
-              },
-              403,
-              origin,
-            );
-          }
-        }
+        // The agent-lock 409 and the project.agent.read 403 used to live here.
+        // They now run in `agentSwitchRefusal`, above the dedupe claim and above
+        // the connector gate — see that function for why both moves matter.
         // Drop only the legacy 'default' sentinel so OpenCode resolves its own
         // `default_agent` (the real default the session booted with). A *concrete*
         // requested agent is forwarded untouched so the user can switch agents

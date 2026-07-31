@@ -1,6 +1,7 @@
 import { isCallLive, readTurns } from '../../channels/voice/runtime';
 import { SessionScopeInputSchema, SessionScopeSchema } from '@kortix/api-contract';
 import { recordSessionToolApproval } from '../../executor/db-deps';
+import { approvalResolvedAuditEvent } from '../../executor/execution-audit';
 import { loadSessionGrants, parseSharingIntent, resolveShareSubject, setSessionSharing } from '../../executor/share';
 import {
   PROJECT_ACTIONS,
@@ -17,6 +18,7 @@ import { projectHasResource, projectResourcesFromConfig, loadConfigWithFiles } f
 import { auth, errors, json } from '../../openapi';
 import { DEFAULT_SANDBOX_SLUG } from '../../snapshots/builder';
 import { db } from '../../shared/db';
+import { recordAuditEvent } from '../../shared/audit';
 import { roleAllows } from '../access';
 import { createRoute, z } from '@hono/zod-openapi';
 import { accountGroupMembers, accountGroups, accountMembers, executorConnectors, executorExecutions, projectGroupGrants, projectSessions, sessionSandboxes,
@@ -1492,6 +1494,30 @@ projectsApp.openapi(
 
     if (resolved.length === 0) {
       return c.json({ error: 'Approval already resolved' }, 409);
+    }
+
+    const suppliedSource = c.req.header('x-kortix-client')?.trim().toLowerCase();
+    const approvalSource = ['web', 'mobile', 'cli', 'sdk', 'backend'].includes(
+      suppliedSource ?? '',
+    )
+      ? suppliedSource
+      : 'web';
+    try {
+      await recordAuditEvent(
+        approvalResolvedAuditEvent({
+          accountId: loaded.row.accountId,
+          projectId,
+          sessionId: row.sessionId,
+          executionId,
+          actorUserId: loaded.userId,
+          actionPath: row.actionPath,
+          connectorId: row.connectorId,
+          decision,
+          source: approvalSource,
+        }),
+      );
+    } catch (error) {
+      console.error('[approvals] failed to record central audit event', error);
     }
 
     // Server-side resume — the reliability backstop. A LIVE gated call (the

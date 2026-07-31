@@ -39,11 +39,11 @@ function LogoRow() {
 
 export function IntegrationsHero() {
   return (
-    <section className="relative overflow-hidden px-6 pt-32 pb-12 sm:pt-36">
+    <section className="relative overflow-hidden pt-32 pb-12 sm:pt-36">
       <div className="absolute inset-0 z-0 mask-y-to-95%">
         <KortixLetterField seed={7211} />
       </div>
-      <div className="relative mx-auto max-w-7xl">
+      <div className="relative mx-auto max-w-7xl px-6">
         <Reveal>
           <Badge variant="kortix" className="rounded">
             {hero.eyebrow}

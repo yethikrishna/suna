@@ -12,7 +12,6 @@ import {
 } from '../../iam';
 import {
   assertAgentScope,
-  getAgentGrant,
   isProjectSessionPrincipal,
 } from '../../iam/agent-scope';
 import { approvalPageUrl } from '../../setup-links/token';

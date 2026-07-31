@@ -30,17 +30,21 @@ describe('connector authorization owner is locked after creation', () => {
     expect(VIEW.match(/lockedReason=/g)?.length ?? 0).toBe(1);
   });
 
-  test('a lockedReason forces the control off even when disabled is false', () => {
-    // Guards the mechanism, not the copy: passing the reason must be sufficient
-    // on its own, so a future caller cannot lock the text while leaving the
-    // select live.
-    expect(MODAL).toContain('disabled={disabled || pending || locked}');
+  test('a lockedReason renders a STATEMENT, returning before any Select', () => {
+    // Stronger than disabling: a disabled select keeps its chevron, focus ring
+    // and hover, so it still invites a click that does nothing. The locked path
+    // returns its own read-only block first, so no select exists to click.
+    const lockedBranch = MODAL.indexOf('if (lockedReason) {');
+    const firstSelect = MODAL.indexOf('<Select');
+    expect(lockedBranch).toBeGreaterThan(-1);
+    expect(lockedBranch).toBeLessThan(firstSelect);
   });
 
-  test('the lock REPLACES the description rather than leaving stale help text', () => {
-    // A disabled select under unchanged help reads as a bug — the user tries it,
-    // nothing happens, nothing says why.
-    expect(MODAL).toContain('{lockedReason ??');
+  test('the locked block states the reason and which owner is in force', () => {
+    // Both halves matter: WHICH owner (the thing being read) and WHY it cannot
+    // move (the thing that stops a support ticket).
+    expect(MODAL).toContain('{lockedReason}');
+    expect(MODAL).toContain("isProject ? 'Project' : 'User'");
   });
 
   test('the backend path is still wired, so this stays a one-prop revert', () => {

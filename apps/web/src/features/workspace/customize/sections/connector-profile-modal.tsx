@@ -3,6 +3,7 @@
 import type { ConnectorAuthorizationStrategy } from '@kortix/sdk';
 import { useEffect, useState } from 'react';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -24,6 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { User, UsersThree } from '@phosphor-icons/react';
 
 import {
   connectorProfileSlugAfterNameChange,
@@ -55,7 +57,47 @@ export function AuthorizationStrategyField({
   lockedReason?: string;
 }) {
   const id = `${idPrefix}-authorization-strategy`;
-  const locked = Boolean(lockedReason);
+
+  // Settled connectors get a STATEMENT, not a dead input. A disabled select
+  // still looks operable — it keeps the chevron, the focus ring and the hover —
+  // so it invites a click that does nothing. Reading the value out plainly is
+  // both calmer and more honest about the fact that there is no decision left.
+  if (lockedReason) {
+    const isProject = value === 'project';
+    return (
+      <Field>
+        <FieldLabel>Authorization owner</FieldLabel>
+        <div className="bg-popover flex items-start gap-3 rounded-md border px-3 py-2.5">
+          <span
+            className={cn(
+              'flex size-9 shrink-0 items-center justify-center rounded-sm',
+              isProject ? 'bg-kortix-blue/15' : 'bg-kortix-purple/15',
+            )}
+          >
+            {isProject ? (
+              <UsersThree className="text-kortix-blue size-4" weight="duotone" />
+            ) : (
+              <User className="text-kortix-purple size-4" weight="duotone" />
+            )}
+          </span>
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">{isProject ? 'Project' : 'User'}</span>
+              <Badge variant="outline" size="xs">
+                Fixed
+              </Badge>
+            </div>
+            <p className="text-muted-foreground text-xs text-pretty">
+              {isProject
+                ? 'One project-managed account, shared with allowed sessions.'
+                : 'Each member authorizes their own account, private to their sessions.'}
+            </p>
+          </div>
+        </div>
+        <FieldDescription className="text-pretty">{lockedReason}</FieldDescription>
+      </Field>
+    );
+  }
   return (
     <Field>
       <div className="flex items-center justify-between gap-2">
@@ -64,7 +106,7 @@ export function AuthorizationStrategyField({
       </div>
       <Select
         value={value}
-        disabled={disabled || pending || locked}
+        disabled={disabled || pending}
         onValueChange={(next) => onChange(next as ConnectorAuthorizationStrategy)}
       >
         <SelectTrigger id={id}>
@@ -76,10 +118,9 @@ export function AuthorizationStrategyField({
         </SelectContent>
       </Select>
       <FieldDescription className="text-pretty">
-        {lockedReason ??
-          (value === 'project'
-            ? 'One project-managed account is available to allowed sessions.'
-            : 'Each user authorizes their own account for private sessions.')}
+        {value === 'project'
+          ? 'One project-managed account is available to allowed sessions.'
+          : 'Each user authorizes their own account for private sessions.'}
       </FieldDescription>
     </Field>
   );

@@ -1076,7 +1076,6 @@ function AgentModelSection({
         <Label>Agent</Label>
         <div className="bg-card rounded-2xl border px-2 py-1">
           <AgentSelector
-            projectId={projectId}
             agents={agents}
             selectedAgent={trigger.agent}
             onSelect={(next) => next && saveAgent.mutate(next)}
@@ -2160,7 +2159,6 @@ function CreateTriggerModal({
               >
                 <div className="bg-card rounded-2xl border px-2 py-1">
                   <AgentSelector
-                    projectId={projectId}
                     agents={agents}
                     selectedAgent={agentName}
                     onSelect={setAgentName}

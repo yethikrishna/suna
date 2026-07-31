@@ -6,7 +6,7 @@ import { fontWeights } from '@/lib/font-weight';
 import { useIcon, type IconComponent } from '@/lib/icon-context';
 import { spring } from '@/lib/springs';
 import { cn } from '@/lib/utils';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'motion/react';
 import Link from 'next/link';
 import {
   Children,

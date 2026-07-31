@@ -62,16 +62,17 @@ import {
   useTeamsInstall,
   useTeamsMode,
 } from '@/hooks/channels/use-teams-installations';
-import { modelKeyToWire, wireToModelKey } from '@kortix/sdk/react';
-import {
-  type Agent,
-  useRuntimeProviders,
-  useVisibleAgents,
-} from '@kortix/sdk/react';
 import { PROJECT_ACTIONS } from '@/lib/project-actions';
 import { useProjectCan } from '@/lib/use-project-can';
 import { cn } from '@/lib/utils';
 import { getProject, listProjectAccess } from '@kortix/sdk';
+import {
+  type Agent,
+  modelKeyToWire,
+  useRuntimeProviders,
+  useVisibleAgents,
+  wireToModelKey,
+} from '@kortix/sdk/react';
 import {
   CheckIcon as Check,
   CheckCircleIcon as CheckCircleSolid,
@@ -401,7 +402,6 @@ function ChannelBindingTableRow({
       <TableCell>
         <div className="bg-card inline-flex rounded-2xl border px-2 py-1">
           <AgentSelector
-            projectId={projectId}
             agents={agentSelectorAgents}
             selectedAgent={selectedAgentValue}
             onSelect={(v) =>
@@ -558,9 +558,7 @@ function SlackChannelRow({
                   })
                 }
               >
-                {disconnect.isPending ? (
-                  <Loading className="size-3.5 shrink-0" />
-                ) : null}
+                {disconnect.isPending ? <Loading className="size-3.5 shrink-0" /> : null}
                 Disconnect
               </Button>
             </div>
@@ -641,9 +639,7 @@ function TeamsChannelRow({ projectId, canWrite }: { projectId: string; canWrite:
                   })
                 }
               >
-                {disconnect.isPending ? (
-                  <Loading className="size-3.5 shrink-0" />
-                ) : null}
+                {disconnect.isPending ? <Loading className="size-3.5 shrink-0" /> : null}
                 Disconnect
               </Button>
             </div>
@@ -749,9 +745,7 @@ function EmailChannelRow({
                     )
                   }
                 >
-                  {disconnect.isPending ? (
-                    <Loading className="size-3.5 shrink-0" />
-                  ) : null}
+                  {disconnect.isPending ? <Loading className="size-3.5 shrink-0" /> : null}
                   Disconnect
                 </Button>
               </div>

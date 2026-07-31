@@ -200,7 +200,6 @@ export function ApplyModal({
                   placeholder={applyForm.linkPlaceholder}
                   inputMode="url"
                 />
-                <p className="text-muted-foreground text-xs">{applyForm.linkHint}</p>
               </div>
 
               {error && <p className="text-destructive text-sm">{error}</p>}

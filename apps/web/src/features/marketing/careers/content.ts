@@ -89,7 +89,7 @@ export const openings = [
   {
     id: 'product-eng',
     name: 'Product / Eng',
-    summary: 'Effectively VP of Engineering and Product. The founder owns it today.',
+    summary: 'Own the platform end to end — the agent runtime, the product around it, and the taste that holds both together.',
     bullets: [
       'Built 0 to 1 and 1 to n at a startup.',
       'Has run their own product or company. The stretch matters more than the outcome.',
@@ -160,9 +160,9 @@ export const bar = {
 } as const;
 
 export const apply = {
-  eyebrow: 'How to apply',
-  title: 'Tell me what you have owned.',
-  body: 'One question matters more than the rest: what have you owned, and for how long. It comes straight to me. I am Marko.',
+  eyebrow: 'Apply',
+  title: 'Tell me what you have worked on.',
+  body: 'One open question, no form to game. Products, campaigns, companies, things you built for yourself — whatever you want me to know. It comes straight to me. I am Marko.',
   cta: 'Apply',
   directLead: 'Or write to me directly:',
   links: [
@@ -177,10 +177,10 @@ export const apply = {
   ],
 } as const;
 
-/** Copy for `ApplyModal`. Short, and one field carries the weight. */
+/** Copy for `ApplyModal`. Short, and one open question carries the weight. */
 export const applyForm = {
   title: 'Apply to Kortix',
-  description: 'Short. The field that counts is what you have owned.',
+  description: 'Short. One open question does the work.',
   areaLabel: 'Which opening',
   areaPlaceholder: 'Pick the closest one',
   areaOptions: [
@@ -195,13 +195,12 @@ export const applyForm = {
   namePlaceholder: 'Your name',
   emailLabel: 'Email',
   emailPlaceholder: 'you@wherever.com',
-  ownedLabel: 'What have you owned, and for how long?',
+  ownedLabel: 'What have you worked on?',
   ownedPlaceholder:
-    'What you owned end to end, how long you owned it, and the state you left it in.',
+    'Products, campaigns, companies, things you built for yourself. Whatever you want to tell me.',
   linkLabel: 'Link to a CV, portfolio, GitHub or profile',
   /* No attachment: the lead pipeline takes JSON only. Ask for a link. */
   linkPlaceholder: 'https://',
-  linkHint: 'A link, not a file — attachments do not reach us.',
   submit: 'Send application',
   submitting: 'Sending',
   doneTitle: 'Application received.',
@@ -209,7 +208,7 @@ export const applyForm = {
   doneCta: 'Done',
   errors: {
     email: 'Enter an email address I can reply to.',
-    owned: 'Tell me what you have owned, and for how long.',
+    owned: 'Tell me what you have worked on.',
     area: 'Pick the closest opening.',
   },
 } as const;

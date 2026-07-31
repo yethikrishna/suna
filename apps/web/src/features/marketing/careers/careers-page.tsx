@@ -33,7 +33,7 @@ function Eyebrow({ children }: { children: string }): ReactNode {
  */
 function Board({ onApply }: { onApply: () => void }): ReactNode {
   return (
-    <section id="openings" className="mx-auto max-w-6xl px-6 pb-4 sm:pb-8">
+    <section id="openings" className="mx-auto max-w-7xl px-6 pb-4 sm:pb-8">
       <Reveal>
         <Accordion type="single" collapsible className="border-border border-t">
           {openings.map((opening) => (
@@ -96,7 +96,7 @@ function Board({ onApply }: { onApply: () => void }): ReactNode {
 /** The bar. The one prose block on the page that earns its space. */
 function Bar(): ReactNode {
   return (
-    <section id="what-we-look-for" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+    <section id="what-we-look-for" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
       <Reveal>
         <Eyebrow>{bar.eyebrow}</Eyebrow>
 
@@ -130,7 +130,7 @@ function Bar(): ReactNode {
 
 function Apply({ onApply }: { onApply: () => void }): ReactNode {
   return (
-    <section id="apply" className="mx-auto max-w-6xl px-6 pb-16 sm:pb-24">
+    <section id="apply" className="mx-auto max-w-7xl px-6 pb-16 sm:pb-24">
       <Reveal>
         <div className="border-border border-t pt-12 sm:pt-16">
           <Eyebrow>{apply.eyebrow}</Eyebrow>
@@ -183,7 +183,7 @@ export function CareersPage(): ReactNode {
 
   return (
     <main className="bg-background min-h-screen">
-      <section className="mx-auto max-w-6xl px-6 pt-32 pb-12 sm:pt-44 sm:pb-16">
+      <section className="mx-auto max-w-7xl px-6 pt-32 pb-12 sm:pt-44 sm:pb-16">
         <Reveal>
           <Eyebrow>{hero.eyebrow}</Eyebrow>
 

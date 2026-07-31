@@ -55,7 +55,7 @@ function Hero(): ReactNode {
           />
         </div>
 
-        <div className="mx-auto max-w-6xl px-6">
+        <div className="mx-auto max-w-7xl px-6">
           <div className="mt-14 sm:mt-16">
             <Eyebrow>{hero.eyebrow}</Eyebrow>
           </div>
@@ -90,7 +90,7 @@ function Hero(): ReactNode {
 /** The three claims. Mono index, headline, one paragraph, a rule between each. */
 function Statements(): ReactNode {
   return (
-    <section id="thesis" className="mx-auto max-w-6xl px-6">
+    <section id="thesis" className="mx-auto max-w-7xl px-6">
       <ol>
         {statements.map((statement) => (
           <li key={statement.id} className="border-border border-t">
@@ -129,7 +129,7 @@ function Statements(): ReactNode {
  */
 function PlatformSection(): ReactNode {
   return (
-    <section id="platform" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+    <section id="platform" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
       <Reveal>
         <Eyebrow>{platform.eyebrow}</Eyebrow>
 
@@ -171,7 +171,7 @@ function PlatformSection(): ReactNode {
 
 function Closing(): ReactNode {
   return (
-    <section id="closing" className="mx-auto max-w-6xl px-6 pt-8 pb-16 sm:pb-24">
+    <section id="closing" className="mx-auto max-w-7xl px-6 pt-8 pb-16 sm:pb-24">
       <Reveal>
         <div
           className="rounded-xl border border-white/10 px-6 py-14 sm:px-12 sm:py-20"

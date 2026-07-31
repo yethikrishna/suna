@@ -1042,7 +1042,7 @@ export default function BrandPage() {
 
   return (
     <main className="bg-background min-h-screen w-full">
-      <div className="mx-auto w-full max-w-6xl min-w-0 px-6 pt-24 pb-24 sm:pt-20 sm:pb-32 lg:px-0">
+      <div className="mx-auto w-full max-w-7xl min-w-0 px-6 pt-24 pb-24 sm:pt-20 sm:pb-32 lg:px-0">
         <div className="grid w-full min-w-0 grid-cols-1 items-start gap-14 lg:grid-cols-12">
           <aside className="sticky top-20 hidden max-h-[calc(100vh-5rem)] self-start lg:col-span-3 lg:block">
             <TocSidebar />

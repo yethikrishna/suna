@@ -34,7 +34,7 @@ const GRID_4_RULES = [
 
 function SectionDivider(): ReactNode {
   return (
-    <div className="mx-auto max-w-6xl px-6">
+    <div className="mx-auto max-w-7xl px-6">
       <Separator />
     </div>
   );
@@ -53,7 +53,7 @@ export default function AutomationsPage(): ReactNode {
     <div className="bg-background relative">
       {/* ── hero ────────────────────────────────────────────────────────── */}
       <section className="relative px-6 pt-32 pb-12 sm:pt-36">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-7xl">
           <Reveal>
             <Badge variant="kortix" className="rounded">
               {hero.eyebrow}
@@ -98,11 +98,11 @@ export default function AutomationsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 1 · cron or webhook, and nothing else ───────────────────────── */}
-      <section id="types" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="types" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={types.eyebrow} title={types.title} sub={types.sub} />
 
         <Reveal delay={0.06}>
-          <div className="mt-10 grid gap-4 sm:grid-cols-2">
+          <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {types.cards.map((card) => (
               <div
                 key={card.id}
@@ -121,7 +121,7 @@ export default function AutomationsPage(): ReactNode {
         </Reveal>
 
         <Reveal delay={0.1}>
-          <ul className="mt-6 grid gap-4 sm:grid-cols-3">
+          <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {types.notes.map((note) => (
               <li
                 key={note}
@@ -137,7 +137,7 @@ export default function AutomationsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 2 · the schedule, as a table ────────────────────────────────── */}
-      <section id="schedule" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="schedule" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={schedule.eyebrow} title={schedule.title} sub={schedule.sub} />
 
         <Reveal delay={0.06}>
@@ -147,7 +147,7 @@ export default function AutomationsPage(): ReactNode {
         </Reveal>
 
         <Reveal delay={0.1}>
-          <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <dl className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {schedule.facts.map((fact) => (
               <div key={fact.id} className="border-border border-t pt-4">
                 <dt className="text-foreground text-sm font-medium">{fact.k}</dt>
@@ -161,11 +161,11 @@ export default function AutomationsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 3 · the automation is a file ────────────────────────────────── */}
-      <section id="declared" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="declared" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={declared.eyebrow} title={declared.title} sub={declared.sub} />
 
         <Reveal delay={0.06}>
-          <div className="mt-10 grid gap-4 lg:grid-cols-2">
+          <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <CodePanel title={declared.yaml.title} lines={declared.yaml.lines} lang="yaml" />
             <CodePanel title={declared.shell.title} lines={declared.shell.lines} lang="sh" />
           </div>
@@ -184,7 +184,7 @@ export default function AutomationsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 4 · webhooks are signed or they are nothing ─────────────────── */}
-      <section id="webhooks" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="webhooks" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={webhook.eyebrow} title={webhook.title} sub={webhook.sub} />
 
         <Reveal delay={0.06}>
@@ -232,7 +232,7 @@ export default function AutomationsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 5 · which session a fire lands in ───────────────────────────── */}
-      <section id="session" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="session" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={session.eyebrow} title={session.title} sub={session.sub} />
 
         <Reveal delay={0.06}>
@@ -267,7 +267,7 @@ export default function AutomationsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 6 · the 3am fire still faces a person ───────────────────────── */}
-      <section id="review" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="review" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={review.eyebrow} title={review.title} sub={review.sub} />
 
         <Reveal delay={0.06}>
@@ -293,7 +293,7 @@ export default function AutomationsPage(): ReactNode {
       </section>
 
       {/* ── closing ─────────────────────────────────────────────────────── */}
-      <section id="cta" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="cta" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <Reveal>
           <div className="border-border bg-card flex flex-col items-start gap-6 rounded-sm border p-8 sm:p-12">
             <Badge variant="kortix" className="rounded">

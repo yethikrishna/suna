@@ -36,7 +36,31 @@
  *    SMS and Discord are NOT channels, in any tense.
  *  - HARNESS. OpenCode only. ACP, `kortix_version: 3` and the Claude Code /
  *    Codex / Pi harnesses sit behind `KORTIX_ACP_RUNTIME` (`config.ts:272`,
- *    default false) and are not shipped. Never name them.
+ *    default false) and are not shipped. Never name them. Saying "an agent is
+ *    an OpenCode agent" is a statement about depth, not about choice — do not
+ *    let it imply a harness menu.
+ *  - WHAT AN AGENT IS. Markdown is the FLOOR, never the ceiling. Do not write
+ *    "an agent is a markdown file" and stop there. Verified:
+ *      · Behavior is a stock OpenCode agent `.md` — Kortix adds no dialect.
+ *        `compile-agent-config.ts` passes the frontmatter straight through as
+ *        `OpencodeAgentConfig`: description, mode, model, variant, temperature,
+ *        top_p, prompt, disable, hidden, options, color, steps, permission.
+ *      · `permission` is per-capability, not one switch: read, edit, glob, grep,
+ *        list, bash, task, external_directory, lsp, skill, todowrite, question,
+ *        webfetch, websearch, doom_loop, plus arbitrary tool names — each
+ *        `allow | ask | deny` or a glob→action map
+ *        (`index.v2.ts` → `PermissionConfigObjectV2`).
+ *      · The rest of the OpenCode surface lives in the same repo and is
+ *        editable: `tools/` (real TypeScript, auto-discovered — the starter
+ *        ships web_search, scrape_webpage, image_search, memory, show),
+ *        `plugins/` (the starter ships a PTY plugin), `skills/`,
+ *        `opencode.jsonc` (models, providers), and a real `package.json` that
+ *        OpenCode `bun install`s at startup.
+ *      · The GRANT covers more than tools. `AgentBlockV2` fields: `sandbox`
+ *        (which machine it boots), `connectors` + `connectors_required`,
+ *        `secrets`, `skills`, `kortix_cli`, `workspace`, `enabled`. CHANNELS
+ *        are covered by `connectors` because a connected channel IS a connector
+ *        with `provider: 'channel'` (`apps/api/src/projects/connectors.ts:61`).
  *  - TRIGGER TEMPLATE TOKENS. The cron payload is built in
  *    `apps/api/src/projects/trigger-execution-store.ts:40-49`:
  *    `cron.schedule`, `cron.timezone`, `cron.scheduled_for`, `cron.claimed_at`,
@@ -89,7 +113,7 @@ export const entries: readonly Entry[] = [
     n: '01',
     label: 'The repo',
     paragraphs: [
-      'A Kortix project is a git repository, and that repository is the company. kortix.yaml is the Kortix layer — the machine a session boots on, the connectors, the triggers, the secret names, and what each agent may touch. The OpenCode config beside it is the runtime the agents think in. Everything past those two files is markdown.',
+      'A Kortix project is a git repository, and that repository is the company. kortix.yaml is the Kortix layer — the machine a session boots on, the connectors, the triggers, the secret names, and what each agent may touch. The OpenCode config beside it is the runtime the agents think in. Everything past those two is files: markdown, TypeScript, whatever the job needs.',
       'So the whole company answers to grep. Every agent prompt, every skill, every remembered fact and every grant is a line in a file with an author, a timestamp and a diff, and undo is git revert. kortix init turns any directory into a Kortix; kortix ship checks it compiles, asks for the secrets it is missing, and brings it live.',
     ],
     facts: ['kortix.yaml', 'OpenCode config', 'kortix init', 'kortix ship'],
@@ -101,10 +125,10 @@ export const entries: readonly Entry[] = [
     n: '02',
     label: 'Agents and skills',
     paragraphs: [
-      'An agent is a markdown file carrying a persona and a permission tree, plus a governance block in kortix.yaml saying what it may reach. A skill is a directory with a SKILL.md at its root — how your company does one specific job, written once and loaded by every session that needs it.',
-      'Grants are deny by default: leave one out and it resolves to none. Above that sits a ceiling nothing in the config can lift, because the grant applied at session start is what the agent declared intersected with the role of the person who launched it. An agent can edit kortix.yaml — it is a file — but the edit only reaches sessions started after a person merges it.',
+      'An agent is an OpenCode agent. At baseline that is one markdown file — frontmatter setting its mode, model and per-capability permission tree, a body that is the system prompt — but markdown is the floor, not the ceiling. The whole OpenCode surface sits in the same repo: your own TypeScript tools, plugins that hook the runtime, the model and provider config.',
+      'What it may reach is a block in kortix.yaml, and it covers more than tools: which sandbox image it boots, which connectors and channels it can call, which secrets it may receive, which skills it may invoke, and what it may do to Kortix itself. A skill is a directory with a SKILL.md — one job, written down once, loaded by every session that needs it.',
     ],
-    facts: ['Markdown', 'Deny by default', 'Agent ≤ human'],
+    facts: ['OpenCode agent', 'Tools, plugins, models', 'The grant covers its machine'],
     href: '/agents-and-skills',
     linkLabel: 'Agents and skills',
   },
@@ -126,7 +150,7 @@ export const entries: readonly Entry[] = [
     label: 'Connectors',
     paragraphs: [
       'Connect a tool once, for the whole project: 3,000+ apps through their own OAuth screens, or your own APIs through an OpenAPI or Postman spec, a GraphQL endpoint, a remote MCP server, or a bare HTTP base URL. Kortix reads the source, works out the authentication, and turns every operation into a tool an agent can call.',
-      'The credential never travels. The machine carries exactly one project-scoped Kortix token; the third-party key is decrypted server-side and attached to the outbound request, so nothing in the sandbox is a secret of yours. Every action gets one of three answers — allow, ask, or block — and a rule can read the arguments rather than only the tool name, so "only to this domain" is a thing you can actually express. An ask holds the call open instead of failing it, and the agent resumes exactly where it stopped.',
+      'The credential never travels. The machine carries one project-scoped Kortix token; the third-party key is decrypted server-side and attached to the outbound request, so nothing in the sandbox is a secret of yours. Every action gets one of three answers — allow, ask, or block — and a rule can read the arguments, not just the tool name. An ask holds the call open rather than failing it, so the agent resumes exactly where it stopped.',
     ],
     facts: ['3,000+ apps', 'MCP · OpenAPI · GraphQL · HTTP', 'Allow / Ask / Block'],
     href: '/integrations',
@@ -150,7 +174,7 @@ export const entries: readonly Entry[] = [
     label: 'Automations',
     paragraphs: [
       'A trigger starts a session with nobody present. There are two kinds and no third: a cron schedule, stored against an IANA timezone name rather than an offset, or a webhook signed with HMAC-SHA256. A webhook trigger that names no signing secret is rejected at validation, so there is no unsigned path to forget to lock down later.',
-      'Both are entries in kortix.yaml, so the 3am job has an author and a history like everything else, and both inherit exactly the reach of the agent they name. The prompt is a template: a webhook fire renders {{ body.* }}, a cron fire renders {{ cron.schedule }}, {{ cron.timezone }} and {{ cron.scheduled_for }}. Every fire is a clean slate by default, or a trigger can re-prompt a session it already owns, keyed off the payload so one customer keeps one thread.',
+      'Both are entries in kortix.yaml, so the 3am job has an author and a history like everything else, and both run as an agent you name. The prompt is a template: a webhook fire renders {{ body.* }}; a cron fire renders {{ cron.schedule }}, {{ cron.timezone }} and {{ cron.scheduled_for }}. Every fire is a clean slate by default, or a trigger can re-prompt a session it already owns, keyed off the payload so one customer keeps one thread.',
     ],
     facts: ['Cron and signed webhook', 'Declared in kortix.yaml', 'Runs as an agent you name'],
     href: '/automations',
@@ -161,8 +185,8 @@ export const entries: readonly Entry[] = [
     n: '07',
     label: 'Permissions and secrets',
     paragraphs: [
-      'People, groups and service accounts are all principals, and a permission attaches to a principal for an action on a resource type. A service account is evaluated purely against its own policies — it never inherits the reach of whoever created it. Secrets are sealed with AES-256-GCM under a key derived per project, and a session receives only the intersection of the agent’s declared grant and the role of the person who started it.',
-      'We will not tell you a granted secret is invisible to the model: once delivered it is a real environment value inside the session, because that is how a tool uses it. What holds is narrower and true — connector credentials never enter the machine at all, and the machine is destroyed with everything on it. Approval gates are not on by default, so set the default you want. And work reaches main exactly one way: a change request. Merging one is a capability of its own, refused to every agent unless an admin grants it in kortix.yaml — and widening that grant is itself a change someone has to approve.',
+      'People, groups and service accounts are all principals, and a permission attaches to a principal for an action on a resource type. A service account never inherits the reach of whoever created it. Secrets are sealed with AES-256-GCM under a key derived per project, and a session receives only the intersection of the agent’s grant and the role of the person who started it.',
+      'We will not tell you a granted secret is invisible to the model: once delivered it is a real environment value in the session, because that is how a tool uses it. What holds is narrower — connector credentials never enter the machine at all, and the machine is destroyed with everything on it. Approval gates are not on by default, so set the default you want. And work reaches main one way: a change request, with merge refused to every agent unless an admin grants it.',
     ],
     facts: ['AES-256-GCM per project', 'Default-deny merge', 'Audit recorded on every plan'],
     href: '/security',
@@ -182,5 +206,49 @@ export const entries: readonly Entry[] = [
   },
 ];
 
-export const closer =
-  'Nothing above is a roadmap item. Every line of it is running today, and every page it points at is written against the code rather than the pitch.';
+/**
+ * The foot of the section.
+ *
+ * This used to be a one-line disclaimer ("nothing above is a roadmap item"),
+ * which was cut: a section should not need to vouch for itself, and a claim
+ * that needs a disclaimer is a claim to rewrite instead.
+ *
+ * What replaced it is the load-bearing detail that was crowding the TOP of
+ * entry 02 — the deny-by-default / agent-≤-human mechanics. It is genuinely
+ * good material and it applies to every entry above rather than to one of
+ * them, so the foot of the document is where it belongs. Detail at the end,
+ * overview at the top.
+ *
+ * Sources: `resolveGrantSet(value, 'none')` for v2
+ * (`packages/manifest-schema/src/index.v2.ts`); `declared ∩ launching-user
+ * role` (`apps/api/src/projects/agents.ts:19-21`); "Account-scoped admin
+ * actions are NEVER grantable" (same file, :16-17).
+ */
+export const rules = {
+  eyebrow: 'The rules underneath',
+  lede: 'Four of them, and they hold the same in the dashboard, the CLI, a Slack thread and a 3am trigger.',
+  /** Terse on purpose. An appendix is a reference, not more prose — every row
+   *  is one sentence a reader can check against the entry it came from. */
+  rows: [
+    {
+      id: 'deny',
+      k: 'Deny by default',
+      v: 'A grant left out resolves to none. No implicit reach into a connector, a secret, a skill or a Kortix verb.',
+    },
+    {
+      id: 'ceiling',
+      k: 'Agent ≤ human',
+      v: 'The session grant is what the agent declared, intersected with the role of whoever launched it.',
+    },
+    {
+      id: 'never',
+      k: 'Some things are ungrantable',
+      v: 'Account administration — members, billing, creating projects — is outside the set an agent can hold at all.',
+    },
+    {
+      id: 'raise',
+      k: 'It cannot vote itself a raise',
+      v: 'An agent can edit kortix.yaml. The edit reaches only sessions started after a person merges it.',
+    },
+  ],
+} as const;

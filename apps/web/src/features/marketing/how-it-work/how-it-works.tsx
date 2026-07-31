@@ -283,12 +283,12 @@ export function HowItWorks(): ReactNode {
       className={cn('relative', pinned && SECTION_HEIGHT)}
     >
       <div className={cn(pinned && 'sticky top-0 flex h-[100svh] flex-col overflow-hidden')}>
-        {/* One measure for the whole section: `mx-auto max-w-6xl px-6`, the same
+        {/* One measure for the whole section: `mx-auto max-w-7xl px-6`, the same
             shell every other marketing section uses. The cards live inside a
             padding-free child of the same box, because an absolutely positioned
             card resolves `inset-x-0` against the padding box and would sit 24px
             wider than the heading it belongs to. */}
-        <div className="mx-auto w-full max-w-6xl shrink-0 px-6 pt-[4.75rem] [@media(max-height:860px)]:pt-[4.5rem]">
+        <div className="mx-auto w-full max-w-7xl shrink-0 px-6 pt-[4.75rem] [@media(max-height:860px)]:pt-[4.5rem]">
           <Badge
             variant="kortix"
             className="rounded font-mono text-[10px] tracking-widest uppercase"
@@ -309,7 +309,7 @@ export function HowItWorks(): ReactNode {
 
         <div
           className={cn(
-            'mx-auto w-full max-w-6xl px-6',
+            'mx-auto w-full max-w-7xl px-6',
             pinned ? 'mt-3 min-h-0 flex-1 pb-4' : 'mt-8 pb-16 sm:mt-10',
           )}
         >

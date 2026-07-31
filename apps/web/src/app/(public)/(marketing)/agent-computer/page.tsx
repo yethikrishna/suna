@@ -34,7 +34,7 @@ const GRID_4_RULES = [
 
 function SectionDivider(): ReactNode {
   return (
-    <div className="mx-auto max-w-6xl px-6">
+    <div className="mx-auto max-w-7xl px-6">
       <Separator />
     </div>
   );
@@ -56,7 +56,7 @@ export default function AgentComputerPage(): ReactNode {
     <div className="bg-background relative">
       {/* ── hero ────────────────────────────────────────────────────────── */}
       <section className="relative px-6 pt-32 pb-12 sm:pt-36">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-7xl">
           <Reveal>
             <Badge variant="kortix" className="rounded">
               {hero.eyebrow}
@@ -102,7 +102,7 @@ export default function AgentComputerPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 1 · what happens when a session starts ──────────────────────── */}
-      <section id="boot" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="boot" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={boot.eyebrow} title={boot.title} sub={boot.sub} />
 
         <Reveal delay={0.06}>
@@ -131,11 +131,11 @@ export default function AgentComputerPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 2 · the agent owns the whole machine ────────────────────────── */}
-      <section id="control" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="control" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={control.eyebrow} title={control.title} sub={control.sub} />
 
         <Reveal delay={0.06}>
-          <div className="mt-10 grid gap-4 sm:grid-cols-3">
+          <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {control.cards.map((card) => (
               <div
                 key={card.id}
@@ -152,7 +152,7 @@ export default function AgentComputerPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 3 · the diagram: main → session branches → change request ───── */}
-      <section id="parallel" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="parallel" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={parallel.eyebrow} title={parallel.title} sub={parallel.sub} />
 
         <Reveal delay={0.06}>
@@ -171,14 +171,14 @@ export default function AgentComputerPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 4 · the machine is declared in the repo ─────────────────────── */}
-      <section id="declared" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="declared" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={declared.eyebrow} title={declared.title} sub={declared.sub} />
 
         <Reveal delay={0.06}>
           {/* `min-w-0` on every column: a grid item defaults to `min-width:auto`,
               so the `overflow-x-auto` scroller inside CodePanel would otherwise
               widen the page instead of scrolling itself. */}
-          <div className="mt-10 grid gap-4 lg:grid-cols-2">
+          <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <CodePanel
               title={declared.yaml.title}
               lines={declared.yaml.lines}
@@ -195,7 +195,7 @@ export default function AgentComputerPage(): ReactNode {
         </Reveal>
 
         <Reveal delay={0.1}>
-          <ul className="mt-6 grid gap-4 sm:grid-cols-3">
+          <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {declared.notes.map((note) => (
               <li
                 key={note}
@@ -211,11 +211,11 @@ export default function AgentComputerPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 5 · everything the machine runs on is a file ────────────────── */}
-      <section id="files" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="files" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={files.eyebrow} title={files.title} sub={files.sub} />
 
         {/* `min-w-0` on both columns — see the note on the `declared` grid. */}
-        <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="min-w-0 lg:col-span-8">
             <FileTree />
           </Reveal>
@@ -241,7 +241,7 @@ export default function AgentComputerPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 6 · the walls around a machine that can do anything ─────────── */}
-      <section id="isolation" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="isolation" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={isolation.eyebrow} title={isolation.title} sub={isolation.sub} />
 
         <Reveal delay={0.06}>
@@ -267,7 +267,7 @@ export default function AgentComputerPage(): ReactNode {
       </section>
 
       {/* ── closing ─────────────────────────────────────────────────────── */}
-      <section id="cta" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="cta" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <Reveal>
           <div className="border-border bg-card flex flex-col items-start gap-6 rounded-sm border p-8 sm:p-12">
             <Badge variant="kortix" className="rounded">

@@ -53,7 +53,7 @@ const Hero = () => {
       </div>
 
       <div className="relative z-20">
-        <div className="mx-auto w-full max-w-6xl">
+        <div className="mx-auto w-full max-w-7xl">
           <RivalEyebrow />
 
           <h1 className="text-foreground mt-5 max-w-3xl text-4xl font-medium tracking-tight text-balance sm:text-5xl">
@@ -66,11 +66,30 @@ const Hero = () => {
               {hero.sub}
             </p>
 
-            <div className="flex shrink-0 flex-wrap gap-3">
-              <Button size="lg" variant="secondary" onClick={() => openDemo()}>
+            {/* The two CTAs split the full width on a phone and shrink to their
+                labels from sm up. Left at their intrinsic width they came to 139
+                and 123 of the 346 available, which is both a small target and an
+                odd ragged pair under a full-bleed headline.
+
+                h-12 on phones only. This theme sets --spacing to 0.23rem, so the
+                shared size="lg" resolves to 36.8px, under the 44px touch target
+                every mobile platform asks for; h-12 is 44.2px. The override is
+                local because sm and up keeps the 36.8px the rest of the site is
+                drawn to. */}
+            <div className="flex w-full shrink-0 flex-wrap gap-3 sm:w-auto">
+              <Button
+                size="lg"
+                variant="secondary"
+                onClick={() => openDemo()}
+                className="h-12 flex-1 sm:h-10 sm:flex-none"
+              >
                 {hero.ctaSecondary}
               </Button>
-              <Button size="lg" onClick={handleLaunch}>
+              <Button
+                size="lg"
+                onClick={handleLaunch}
+                className="h-12 flex-1 sm:h-10 sm:flex-none"
+              >
                 {hero.ctaPrimary}
                 <ArrowRightIcon className="size-4" />
               </Button>
@@ -78,11 +97,11 @@ const Hero = () => {
           </div>
         </div>
 
-        <div id="demo" className="relative z-10 mx-auto mt-10 max-w-6xl scroll-mt-24 sm:mt-12">
+        <div id="demo" className="relative z-10 mx-auto mt-10 max-w-7xl scroll-mt-24 sm:mt-12">
           <HeroSurfaces />
         </div>
 
-        <p className="text-muted-foreground/60 mx-auto mt-6 max-w-6xl text-center font-mono text-[11px] tracking-wide">
+        <p className="text-muted-foreground/60 mx-auto mt-6 max-w-7xl text-center font-mono text-[11px] tracking-wide">
           {hero.trust}
         </p>
       </div>

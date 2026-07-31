@@ -37,7 +37,7 @@ const GRID_4_RULES = [
 
 function SectionDivider(): ReactNode {
   return (
-    <div className="mx-auto max-w-6xl px-6">
+    <div className="mx-auto max-w-7xl px-6">
       <Separator />
     </div>
   );
@@ -83,7 +83,7 @@ export default function SecurityPage(): ReactNode {
     <div className="bg-background relative">
       {/* ── hero ────────────────────────────────────────────────────────── */}
       <section className="relative px-6 pt-32 pb-12 sm:pt-36">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-7xl">
           <Reveal>
             <Badge variant="kortix" className="rounded">
               {hero.eyebrow}
@@ -126,7 +126,7 @@ export default function SecurityPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 1 · isolation ───────────────────────────────────────────────── */}
-      <section id="isolation" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="isolation" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={isolation.eyebrow} title={isolation.title} sub={isolation.sub} />
 
         <Reveal delay={0.06}>
@@ -145,7 +145,7 @@ export default function SecurityPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 2 · credentials ─────────────────────────────────────────────── */}
-      <section id="credentials" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="credentials" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading
           eyebrow={credentials.eyebrow}
           title={credentials.title}
@@ -168,7 +168,7 @@ export default function SecurityPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 3 · identity & permissions ──────────────────────────────────── */}
-      <section id="identity" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="identity" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={identity.eyebrow} title={identity.title} sub={identity.sub} />
 
         <Reveal delay={0.06}>
@@ -178,12 +178,12 @@ export default function SecurityPage(): ReactNode {
         </Reveal>
 
         <Reveal delay={0.1}>
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="border-border bg-card flex h-full flex-col rounded-sm border p-6 sm:p-8">
               <p className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
                 {identity.presets.label}
               </p>
-              <div className="mt-6 grid gap-8 sm:grid-cols-2">
+              <div className="mt-6 grid grid-cols-1 gap-8 sm:grid-cols-2">
                 {(
                   [
                     ['account', identity.presets.account],
@@ -227,7 +227,7 @@ export default function SecurityPage(): ReactNode {
         </Reveal>
 
         <Reveal delay={0.14}>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {[identity.agents, identity.scoping].map((card) => (
               <div
                 key={card.title}
@@ -244,15 +244,15 @@ export default function SecurityPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 4 · control ─────────────────────────────────────────────────── */}
-      <section id="control" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="control" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={control.eyebrow} title={control.title} sub={control.sub} />
 
         <Reveal delay={0.06}>
-          <div className="mt-10 grid gap-4 lg:grid-cols-12">
+          <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
             <div className="lg:col-span-6">
               <CodePanel title={control.yaml.title} lines={control.yaml.lines} lang="yaml" />
             </div>
-            <ul className="grid gap-4 sm:grid-cols-2 lg:col-span-6 lg:auto-rows-fr">
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-6 lg:auto-rows-fr">
               {control.notes.map((note) => (
                 <li
                   key={note.id}
@@ -272,7 +272,7 @@ export default function SecurityPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 5 · how work lands ──────────────────────────────────────────── */}
-      <section id="change-requests" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="change-requests" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={landing.eyebrow} title={landing.title} sub={landing.sub} />
 
         <Reveal delay={0.06}>
@@ -298,7 +298,7 @@ export default function SecurityPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 6 · audit ───────────────────────────────────────────────────── */}
-      <section id="audit" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="audit" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={audit.eyebrow} title={audit.title} sub={audit.sub} />
 
         <Reveal delay={0.06}>
@@ -311,11 +311,11 @@ export default function SecurityPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 7 · deployment & posture ────────────────────────────────────── */}
-      <section id="posture" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="posture" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={posture.eyebrow} title={posture.title} sub={posture.sub} />
 
         <Reveal delay={0.06}>
-          <div className="mt-10 grid gap-4 sm:grid-cols-3">
+          <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {posture.deployments.map((item) => (
               <div
                 key={item.id}
@@ -334,7 +334,7 @@ export default function SecurityPage(): ReactNode {
             <p className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
               {posture.compliance.label}
             </p>
-            <dl className="mt-6 grid gap-4 sm:grid-cols-3">
+            <dl className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
               {posture.compliance.items.map((item) => (
                 <div
                   key={item.k}
@@ -357,7 +357,7 @@ export default function SecurityPage(): ReactNode {
       <SectionDivider />
 
       {/* ── disclosure ──────────────────────────────────────────────────── */}
-      <section id="disclosure" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="disclosure" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading
           eyebrow={disclosure.eyebrow}
           title={disclosure.title}
@@ -401,7 +401,7 @@ export default function SecurityPage(): ReactNode {
       </section>
 
       {/* ── closing ─────────────────────────────────────────────────────── */}
-      <section id="cta" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="cta" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <Reveal>
           <div className="border-border bg-card flex flex-col items-start gap-6 rounded-sm border p-8 sm:p-12">
             <Badge variant="kortix" className="rounded">

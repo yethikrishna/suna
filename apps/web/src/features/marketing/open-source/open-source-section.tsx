@@ -82,7 +82,7 @@ function Fact({
  */
 export function OpenSourceSection(): ReactNode {
   return (
-    <section id="open-source" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+    <section id="open-source" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
       <Reveal>
         <div className="border-border bg-card overflow-hidden rounded-sm border">
           <div className="grid gap-12 px-6 py-12 sm:px-10 lg:grid-cols-12 lg:gap-16">

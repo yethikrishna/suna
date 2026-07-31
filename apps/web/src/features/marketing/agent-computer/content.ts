@@ -178,7 +178,7 @@ export const files = {
     { path: 'your-company/', note: '', depth: 0 },
     { path: 'kortix.yaml', note: 'sandbox image, triggers, channels, connectors, secrets', depth: 1 },
     { path: '.kortix/opencode/', note: 'the runtime your agents think in', depth: 1 },
-    { path: 'agents/', note: 'one markdown persona per agent', depth: 2 },
+    { path: 'agents/', note: 'one OpenCode agent per file', depth: 2 },
     { path: 'skills/', note: 'how this company does a specific job', depth: 2 },
     { path: 'commands/', note: 'the shortcuts everyone shares', depth: 2 },
     { path: 'plugins/', note: 'the tools you wrote yourself', depth: 2 },

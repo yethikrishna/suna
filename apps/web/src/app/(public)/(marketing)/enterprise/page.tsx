@@ -144,7 +144,7 @@ const EnterprisePage = () => {
           <div className="absolute inset-0 z-0 mask-y-to-95%">
             <KortixLetterField seed={3382} />
           </div>
-          <div className="mx-auto max-w-6xl">
+          <div className="mx-auto max-w-7xl">
             <Reveal>
               <Badge variant="kortix" className="rounded">
                 {t('heroEyebrow')}
@@ -170,7 +170,7 @@ const EnterprisePage = () => {
           </div>
         </section>
 
-        <section className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-16 sm:gap-12 sm:py-24 xl:px-0">
+        <section className="mx-auto flex max-w-7xl flex-col gap-10 px-6 py-16 sm:gap-12 sm:py-24 xl:px-0">
           <Reveal>
             <div className="mb-12 max-w-2xl">
               <h2 className="text-foreground mt-3 text-2xl leading-tight font-medium tracking-tight sm:text-3xl md:text-4xl">
@@ -229,7 +229,7 @@ const EnterprisePage = () => {
           </Reveal>
         </section>
 
-        <section className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-16 sm:gap-12 sm:py-24 xl:px-0">
+        <section className="mx-auto flex max-w-7xl flex-col gap-10 px-6 py-16 sm:gap-12 sm:py-24 xl:px-0">
           <Reveal>
             <div className="mb-12 max-w-2xl">
               <h2 className="text-foreground mt-3 text-2xl leading-tight font-medium tracking-tight sm:text-3xl md:text-4xl">
@@ -260,7 +260,7 @@ const EnterprisePage = () => {
           </Reveal>
         </section>
 
-        <section className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-16 sm:gap-12 sm:py-24 xl:px-0">
+        <section className="mx-auto flex max-w-7xl flex-col gap-10 px-6 py-16 sm:gap-12 sm:py-24 xl:px-0">
           <Reveal>
             <div className="mb-12 max-w-2xl">
               <h2 className="text-foreground mt-3 text-2xl leading-tight font-medium tracking-tight sm:text-3xl md:text-4xl">
@@ -324,7 +324,7 @@ const EnterprisePage = () => {
           </Reveal>
         </section>
 
-        <section className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-16 sm:gap-12 sm:py-24 xl:px-0">
+        <section className="mx-auto flex max-w-7xl flex-col gap-10 px-6 py-16 sm:gap-12 sm:py-24 xl:px-0">
           <Reveal>
             <div className="mb-12 max-w-2xl">
               <h2 className="text-foreground mt-3 text-2xl leading-tight font-medium tracking-tight sm:text-3xl md:text-4xl">
@@ -354,7 +354,7 @@ const EnterprisePage = () => {
           </Reveal>
         </section>
 
-        <section id="cta" className="relative mx-auto max-w-6xl px-6 py-16 sm:py-24 lg:px-0">
+        <section id="cta" className="relative mx-auto max-w-7xl px-6 py-16 sm:py-24 lg:px-0">
           <Reveal>
             <div className="border-border bg-card relative overflow-hidden rounded-sm border text-center">
               <div className="flex grid-cols-12 flex-col-reverse gap-2 md:grid">

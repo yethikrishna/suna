@@ -15,7 +15,7 @@ export function ScopeSection() {
     <Section id="scope">
       <SectionHeader eyebrow={scope.eyebrow} title={scope.title} sub={scope.sub} />
 
-      <div className="mt-10 grid gap-4 lg:grid-cols-12">
+      <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
         <Reveal delay={0.06} className="lg:col-span-7">
           <div className="border-border h-full overflow-hidden rounded-sm border">
             {scope.layers.map((layer, i) => (

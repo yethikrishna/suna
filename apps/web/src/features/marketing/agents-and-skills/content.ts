@@ -11,6 +11,22 @@
  * pitch. Re-check before editing a claim:
  *  - An agent is `.kortix/opencode/agents/<name>.md` (behavior) PLUS an
  *    `agents.<name>` block in `kortix.yaml` (governance). Two homes, one agent.
+ *  - MARKDOWN IS THE FLOOR, NOT THE CEILING. Do not write "an agent is a
+ *    markdown persona" and stop. The `.md` is a STOCK OpenCode agent file —
+ *    `compile-agent-config.ts` passes its frontmatter straight through
+ *    (description, mode, model, variant, temperature, top_p, prompt, disable,
+ *    hidden, options, color, steps, permission), so Kortix adds no dialect. The
+ *    rest of the OpenCode surface sits in the same repo and is editable:
+ *    `tools/` (real TypeScript, auto-discovered), `plugins/` (the starter ships
+ *    a PTY plugin), `skills/`, `opencode.jsonc` (models/providers) and a
+ *    `package.json` OpenCode `bun install`s at startup.
+ *  - THE GRANT COVERS MORE THAN TOOLS. `AgentBlockV2` (`index.v2.ts`):
+ *    `sandbox` (which machine it boots), `connectors` + `connectors_required`,
+ *    `secrets`, `skills`, `kortix_cli`, `workspace`, `enabled`. Channels fall
+ *    under `connectors` because a connected channel IS a connector with
+ *    `provider: 'channel'` (`apps/api/src/projects/connectors.ts:61`).
+ *  - Depth is not a harness menu. OpenCode is the only shipped runtime; ACP and
+ *    the other harnesses are behind `KORTIX_ACP_RUNTIME`, default false.
  *  - The scoping field is `permission`. It is NOT called `tools` —
  *    `packages/manifest-schema/src/index.v2.ts` raises a hard error on `tools`:
  *    "`tools` is deprecated upstream — use `permission` instead."
@@ -41,15 +57,15 @@
 export const hero = {
   eyebrow: 'Agents & skills',
   title: 'The workforce that compounds.',
-  sub: 'An agent is a markdown persona with a tightly scoped reach into your tools. A skill is the markdown that encodes how your company does one specific job, written once and loaded in every session that needs it. Both are files in your repo. Both are reviewed like code.',
+  sub: 'An agent is an OpenCode agent: markdown at baseline, and past that your own tools, plugins, models and a per-capability permission tree. A grant in kortix.yaml decides what it reaches — its machine, its connectors and channels, its secrets, its skills. A skill encodes how your company does one specific job. Both are files in your repo. Both are reviewed like code.',
   ctaPrimary: 'Start a session',
   ctaPrimaryHref: '/auth',
   ctaSecondary: 'Read the docs',
   ctaSecondaryHref: '/docs/project/agents',
-  microline: 'Markdown · Versioned · Deny by default · Human-merged',
+  microline: 'OpenCode-native · Versioned · Deny by default · Human-merged',
   /** Four mono facts under the fold. Every value has to be defensible. */
   specs: [
-    { k: 'An agent is', v: 'One markdown file, plus its grants' },
+    { k: 'An agent is', v: 'An OpenCode agent, plus its grants' },
     { k: 'A skill is', v: 'A folder with a SKILL.md' },
     { k: 'Governance', v: 'Deny by default' },
     { k: 'Both land via', v: 'A change request to main' },
@@ -59,7 +75,7 @@ export const hero = {
 export const agent = {
   eyebrow: 'What an agent is',
   title: 'Two files. No hidden object behind them.',
-  sub: 'An agent has exactly two homes. The markdown file carries how it thinks — its prompt, its mode, its model, its permission tree. The manifest block carries what it may touch. Nothing about an agent lives in a database you cannot read.',
+  sub: 'An agent has exactly two homes. The markdown file carries how it thinks — its prompt, its mode, its model, its permission tree — and it is a stock OpenCode agent file, because Kortix adds no dialect to it. The manifest block carries what it may touch. Nothing about an agent lives in a database you cannot read.',
   md: {
     title: '.kortix/opencode/agents/kortix.md',
     caption: 'Excerpt of the default agent in every new Kortix project.',
@@ -117,17 +133,19 @@ export const agent = {
       '# there is no implicit access. grant explicitly.',
     ],
   },
+  /** EXACTLY THREE. `agents-and-skills/page.tsx` renders these in a
+   *  `sm:grid-cols-3` grid, so a fourth orphans onto its own row. */
   notes: [
     'The manifest rejects a behavioral field in the governance block, with an error pointing at the agent’s own .md file.',
+    'Markdown is the floor, not the ceiling: the whole OpenCode surface sits beside it in the same repo — your own TypeScript tools, plugins that hook the runtime, the model and provider config. An agent can pin its own model, or inherit the project, account and platform default in that order.',
     'Two agents ship in every new project: kortix, the generalist, and memory-reflector, which curates the project brain.',
-    'An agent can pin its own model, or inherit the project, account and platform default in that order.',
   ],
 } as const;
 
 export const reach = {
   eyebrow: 'Scoped reach',
   title: 'Deny by default. Never above the human.',
-  sub: 'An agent with no grants gets no connectors, no secrets, no skills and no CLI. You grant explicitly, or the answer is no. On top of that sits a ceiling nothing in the config can lift.',
+  sub: 'The grant block covers the whole surface, not just tools: which sandbox image the agent boots, which connectors and channels it may call, which secrets it may receive, which skills it may invoke, and what it may do to Kortix itself. An agent with no grants gets none of it. You grant explicitly, or the answer is no — and on top of that sits a ceiling nothing in the config can lift.',
   md: {
     title: '.kortix/opencode/agents/memory-reflector.md',
     caption: 'A real permission tree, from a real agent that ships.',
@@ -248,7 +266,7 @@ export const repo = {
     { path: 'your-company/', note: '', depth: 0 },
     { path: 'kortix.yaml', note: 'governance: what each agent may touch', depth: 1 },
     { path: '.kortix/opencode/', note: 'the runtime your agents think in', depth: 1 },
-    { path: 'agents/', note: 'one markdown persona per agent', depth: 2 },
+    { path: 'agents/', note: 'one OpenCode agent per file', depth: 2 },
     { path: 'kortix.md', note: 'the generalist, in every project', depth: 3 },
     { path: 'memory-reflector.md', note: 'curates the project brain on a cron', depth: 3 },
     { path: 'skills/', note: 'one directory per skill', depth: 2 },

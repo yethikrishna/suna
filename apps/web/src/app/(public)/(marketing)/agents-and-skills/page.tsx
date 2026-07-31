@@ -34,7 +34,7 @@ const GRID_4_RULES = [
 
 function SectionDivider(): ReactNode {
   return (
-    <div className="mx-auto max-w-6xl px-6">
+    <div className="mx-auto max-w-7xl px-6">
       <Separator />
     </div>
   );
@@ -54,7 +54,7 @@ export default function AgentsAndSkillsPage(): ReactNode {
     <div className="bg-background relative">
       {/* ── hero ────────────────────────────────────────────────────────── */}
       <section className="relative px-6 pt-32 pb-12 sm:pt-36">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-7xl">
           <Reveal>
             <Badge variant="kortix" className="rounded">
               {hero.eyebrow}
@@ -99,11 +99,11 @@ export default function AgentsAndSkillsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 1 · an agent is two files ───────────────────────────────────── */}
-      <section id="agent" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="agent" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={agent.eyebrow} title={agent.title} sub={agent.sub} />
 
         <Reveal delay={0.06}>
-          <div className="mt-10 grid gap-4 lg:grid-cols-2">
+          <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <MdPanel
               title={agent.md.title}
               caption={agent.md.caption}
@@ -114,7 +114,7 @@ export default function AgentsAndSkillsPage(): ReactNode {
         </Reveal>
 
         <Reveal delay={0.1}>
-          <ul className="mt-6 grid gap-4 sm:grid-cols-3">
+          <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {agent.notes.map((note) => (
               <li
                 key={note}
@@ -130,10 +130,10 @@ export default function AgentsAndSkillsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 2 · the permission tree and the ceiling above it ─────────────── */}
-      <section id="reach" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="reach" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={reach.eyebrow} title={reach.title} sub={reach.sub} />
 
-        <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="lg:col-span-7">
             <MdPanel
               title={reach.md.title}
@@ -186,10 +186,10 @@ export default function AgentsAndSkillsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 3 · a skill is a directory ──────────────────────────────────── */}
-      <section id="skill" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="skill" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={skill.eyebrow} title={skill.title} sub={skill.sub} />
 
-        <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="lg:col-span-7">
             <MdPanel
               title={skill.md.title}
@@ -236,7 +236,7 @@ export default function AgentsAndSkillsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 4 · it is all text in the repo ──────────────────────────────── */}
-      <section id="repo" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="repo" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={repo.eyebrow} title={repo.title} sub={repo.sub} />
 
         <Reveal delay={0.06}>
@@ -270,7 +270,7 @@ export default function AgentsAndSkillsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 5 · starting from someone else's work ───────────────────────── */}
-      <section id="marketplace" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="marketplace" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading
           eyebrow={marketplace.eyebrow}
           title={marketplace.title}
@@ -310,7 +310,7 @@ export default function AgentsAndSkillsPage(): ReactNode {
       </section>
 
       {/* ── closing ─────────────────────────────────────────────────────── */}
-      <section id="cta" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="cta" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <Reveal>
           <div className="border-border bg-card flex flex-col items-start gap-6 rounded-sm border p-8 sm:p-12">
             <Badge variant="kortix" className="rounded">

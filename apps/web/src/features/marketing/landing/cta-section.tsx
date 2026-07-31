@@ -27,7 +27,7 @@ export function CtaSection() {
   }, [user]);
 
   return (
-    <section id="cta" className="relative mx-auto max-w-6xl px-6 py-16 sm:py-24 lg:px-0">
+    <section id="cta" className="relative mx-auto max-w-7xl px-6 py-16 sm:py-24 lg:px-0">
       <Reveal>
         <div className="border-border bg-card relative overflow-hidden rounded-sm border text-center">
           <div className="flex grid-cols-12 flex-col-reverse gap-2 md:grid">

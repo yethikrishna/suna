@@ -34,7 +34,7 @@ const GRID_4_RULES = [
 
 function SectionDivider(): ReactNode {
   return (
-    <div className="mx-auto max-w-6xl px-6">
+    <div className="mx-auto max-w-7xl px-6">
       <Separator />
     </div>
   );
@@ -57,7 +57,7 @@ export default function CompanyAsCodePage(): ReactNode {
     <div className="bg-background relative">
       {/* ── hero ────────────────────────────────────────────────────────── */}
       <section className="relative px-6 pt-32 pb-12 sm:pt-36">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-7xl">
           <Reveal>
             <Badge variant="kortix" className="rounded">
               {hero.eyebrow}
@@ -103,14 +103,14 @@ export default function CompanyAsCodePage(): ReactNode {
       <SectionDivider />
 
       {/* ── 1 · the two files that define the company ───────────────────── */}
-      <section id="definition" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="definition" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading
           eyebrow={definition.eyebrow}
           title={definition.title}
           sub={definition.sub}
         />
 
-        <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="min-w-0 lg:col-span-7">
             <CodePanel
               title={definition.yaml.title}
@@ -157,10 +157,10 @@ export default function CompanyAsCodePage(): ReactNode {
       <SectionDivider />
 
       {/* ── 2 · what is in the repo, and what deliberately is not ───────── */}
-      <section id="repo" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="repo" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={repo.eyebrow} title={repo.title} sub={repo.sub} />
 
-        <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="min-w-0 lg:col-span-7">
             <RepoTree />
           </Reveal>
@@ -190,10 +190,10 @@ export default function CompanyAsCodePage(): ReactNode {
       <SectionDivider />
 
       {/* ── 3 · grep your whole company ─────────────────────────────────── */}
-      <section id="grep" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="grep" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={grep.eyebrow} title={grep.title} sub={grep.sub} />
 
-        <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="min-w-0 lg:col-span-7">
             <CodePanel title={grep.shell.title} lines={grep.shell.lines} lang="sh" />
           </Reveal>
@@ -221,10 +221,10 @@ export default function CompanyAsCodePage(): ReactNode {
       <SectionDivider />
 
       {/* ── 4 · a skill change lands as a reviewed commit ───────────────── */}
-      <section id="change" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="change" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={change.eyebrow} title={change.title} sub={change.sub} />
 
-        <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="min-w-0 lg:col-span-8">
             <ChangeRequest />
           </Reveal>
@@ -250,14 +250,14 @@ export default function CompanyAsCodePage(): ReactNode {
       <SectionDivider />
 
       {/* ── 5 · the company patches itself, on a schedule ───────────────── */}
-      <section id="self-improve" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="self-improve" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading
           eyebrow={selfImprove.eyebrow}
           title={selfImprove.title}
           sub={selfImprove.sub}
         />
 
-        <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="min-w-0 lg:col-span-5">
             <CodePanel
               title={selfImprove.yaml.title}
@@ -296,10 +296,10 @@ export default function CompanyAsCodePage(): ReactNode {
       <SectionDivider />
 
       {/* ── 6 · it is a git repo, so it walks out the door with you ─────── */}
-      <section id="portable" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="portable" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={portable.eyebrow} title={portable.title} sub={portable.sub} />
 
-        <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="min-w-0 lg:col-span-5">
             <CodePanel title={portable.shell.title} lines={portable.shell.lines} lang="sh" />
           </Reveal>
@@ -328,7 +328,7 @@ export default function CompanyAsCodePage(): ReactNode {
       </section>
 
       {/* ── closing ─────────────────────────────────────────────────────── */}
-      <section id="cta" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="cta" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <Reveal>
           <div className="border-border bg-card flex flex-col items-start gap-6 rounded-sm border p-8 sm:p-12">
             <Badge variant="kortix" className="rounded">

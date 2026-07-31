@@ -371,7 +371,7 @@ const EDGE_MASK =
 /** Header, shared by the wheel and the reduced-motion grid. */
 function SectionHeader({ counter }: { counter?: ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-6xl px-6">
+    <div className="mx-auto w-full max-w-7xl px-6">
       <Badge variant="kortix" className="rounded">
         {useCases.eyebrow}
       </Badge>
@@ -400,7 +400,7 @@ function UseCaseGrid() {
       className="py-16 sm:py-24"
     >
       <SectionHeader />
-      <div className="mx-auto mt-12 grid w-full max-w-6xl grid-cols-1 gap-4 px-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mx-auto mt-12 grid w-full max-w-7xl grid-cols-1 gap-4 px-6 sm:grid-cols-2 lg:grid-cols-3">
         {CARDS.map((card, index) => (
           <article key={card.id} className={CARD_SHELL}>
             <UseCaseCard card={card} index={index} active={false} />

@@ -117,8 +117,23 @@ function CodeSurface({
         </button>
       </div>
 
-      <div className="bg-background min-h-0 flex-1 overflow-auto px-5 py-4">
-        <pre className="font-mono text-[12.5px] leading-[1.75]">
+      {/* The snippet is longer and wider than a phone frame, and it always will
+          be — it is real code, not a caption. So the panel is honest about it
+          instead of pretending to fit: the type steps down at phone width to buy
+          back about a quarter of both axes, and a mask fades the last pixels at
+          the bottom and right edges. Without the mask the frame slices a line
+          through its x-height and reads as a rendering bug; with it the same
+          clip reads as "this continues", which is true, and is the cue to
+          scroll. mask-composite intersects the two gradients so a corner fades
+          once rather than twice. */}
+      <div
+        className={cn(
+          'bg-background min-h-0 flex-1 overflow-auto px-4 py-3.5 sm:px-5 sm:py-4',
+          '[mask-image:linear-gradient(to_bottom,#000_calc(100%-2rem),transparent),linear-gradient(to_right,#000_calc(100%-1.5rem),transparent)] [mask-composite:intersect]',
+          'sm:[mask-image:none]',
+        )}
+      >
+        <pre className="font-mono text-[10.5px] leading-[1.65] sm:text-[12.5px] sm:leading-[1.75]">
           <code>
             {lines.map((line, i) => (
               <div key={`${i}-${line}`} className="whitespace-pre">

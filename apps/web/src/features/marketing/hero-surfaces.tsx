@@ -39,6 +39,14 @@ const SURFACES: Surface[] = [
   { id: 'sdk', label: 'API / SDK', icon: Code2 },
 ];
 
+/** A phone frame cannot hold a whole thread, so the last line in view is often
+ *  cut through its x-height — which reads as a rendering fault rather than as
+ *  more content. This fades the final 1.5rem of the scroll area at phone width
+ *  only, where the clip actually happens, so the cut reads as "this continues"
+ *  and doubles as the cue to scroll. Desktop has the room and keeps hard edges. */
+const SCROLL_FADE =
+  '[mask-image:linear-gradient(to_bottom,#000_calc(100%-1.5rem),transparent)] sm:[mask-image:none]';
+
 /* ── chat surfaces (Slack / Teams) ───────────────────────────────────────── */
 
 function ChatBubble({
@@ -159,7 +167,19 @@ function ChatSurface({ brand }: { brand: 'slack' | 'teams' }) {
         <span className="text-muted-foreground font-mono text-xs">#company-ops</span>
       </div>
 
-      <div className="flex flex-1 flex-col justify-end gap-5 overflow-y-auto p-5">
+      {/* justify-start, not justify-end. The thread is short enough to fit on a
+          laptop either way, but at phone width it can still run past the frame,
+          and the two choices fail in opposite directions: end-justified, the
+          overflow eats the ask and the "Kortix APP" attribution off the top, so
+          the panel reads as a stray bullet list by nobody. Start-justified, it
+          eats the last bullet instead — you always keep "someone asked, Kortix
+          answered", which is the entire claim the panel exists to make. */}
+      <div
+        className={cn(
+          'flex flex-1 flex-col justify-start gap-4 overflow-y-auto p-4 sm:gap-5 sm:p-5',
+          SCROLL_FADE,
+        )}
+      >
         <ChatBubble name="Marko" avatar={<PersonAvatar initial="M" />}>
           <span className="text-foreground/70">@Kortix</span> {active.ask}
         </ChatBubble>
@@ -168,8 +188,11 @@ function ChatSurface({ brand }: { brand: 'slack' | 'teams' }) {
         </ChatBubble>
       </div>
 
-      <div className="border-border border-t p-3">
-        <p className="text-muted-foreground/60 mb-2 px-0.5 font-mono text-[10px] tracking-widest uppercase">
+      <div className="border-border shrink-0 border-t p-2.5 sm:p-3">
+        {/* The label is a signpost for a control that is already self-evident —
+            three taps in a row under a thread. On a phone those ~22px are worth
+            more to the thread above, so it only appears once there is room. */}
+        <p className="text-muted-foreground/60 mb-2 hidden px-0.5 font-mono text-[10px] tracking-widest uppercase sm:block">
           Try another
         </p>
         <div className="flex flex-wrap gap-1.5">
@@ -207,8 +230,10 @@ function EmailSurface() {
         <span className="text-muted-foreground font-mono text-xs">ops@acme.com</span>
       </div>
 
-      <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
-        <div className="border-border rounded-lg border p-4">
+      <div
+        className={cn('flex flex-1 flex-col gap-3 overflow-y-auto p-4 sm:gap-4 sm:p-5', SCROLL_FADE)}
+      >
+        <div className="border-border shrink-0 rounded-lg border p-3.5 sm:p-4">
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-foreground text-sm font-semibold">Priya Raman</span>
             <span className="text-muted-foreground font-mono text-[11px]">08:12</span>
@@ -221,7 +246,7 @@ function EmailSurface() {
           </p>
         </div>
 
-        <div className="border-border bg-card rounded-lg border p-4">
+        <div className="border-border bg-card rounded-lg border p-3.5 sm:p-4">
           <div className="flex items-center gap-2">
             <KortixAvatar />
             <div>
@@ -247,8 +272,14 @@ function EmailSurface() {
       </div>
 
       {/* The channel enum is closed: slack, teams, email, voice. Slack is live,
-          Teams is behind an operator switch, email and voice are experimental. */}
-      <div className="border-border text-muted-foreground border-t px-4 py-3 text-center text-xs">
+          Teams is behind an operator switch, email and voice are experimental.
+
+          Hidden on phones. It wraps to three lines there and takes ~56px off a
+          frame that could not already fit the Kortix reply — and a rollout
+          caveat is worth nothing if the thing it qualifies is off screen. The
+          same status is stated on /channels, which is where a reader who cares
+          about it goes. */}
+      <div className="border-border text-muted-foreground hidden shrink-0 border-t px-4 py-3 text-center text-xs sm:block">
         Slack is live · Teams, email and voice are rolling out · or start sessions from the API
       </div>
     </div>
@@ -263,22 +294,45 @@ const MOBILE_SHOTS = [
 
 function MobileSurface() {
   return (
-    <div className="bg-card relative flex h-full items-center justify-center gap-4 overflow-hidden p-6 sm:gap-7 sm:p-10">
-      <Badge variant="kortix" className="absolute top-5 left-5 z-10 rounded">
-        Coming soon
-      </Badge>
-      {MOBILE_SHOTS.map((src, i) => (
-        <div
-          key={src}
-          className={cn(
-            'border-border bg-background h-full max-h-[460px] shrink-0 overflow-hidden rounded-2xl border shadow-md',
-            i === 1 ? 'sm:-translate-y-3' : 'sm:translate-y-3',
-          )}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt="Kortix mobile app" className="block h-full w-auto object-contain" />
-        </div>
-      ))}
+    <div className="bg-card relative flex h-full flex-col overflow-hidden">
+      {/* The badge sat over the artwork and landed on the first screenshot's
+          headline at phone width. It gets its own band instead, so it can never
+          cover the thing it is labelling. */}
+      <div className="flex shrink-0 justify-center pt-4 sm:absolute sm:top-5 sm:left-5 sm:z-10 sm:pt-0">
+        <Badge variant="kortix" className="rounded">
+          Coming soon
+        </Badge>
+      </div>
+
+      {/* Which axis binds flips at sm. On a phone the row is 344px wide, so the
+          binding constraint is width: each card takes a third of it and derives
+          its height from the shots' real 1080x2337 aspect, which is why the
+          ratio is written out rather than rounded. Height-bound (the desktop
+          rule) measured 386px of phones inside 344px and sliced the outer two in
+          half. From sm up there is width to spare and height is the binding
+          constraint again, so the original height-bound sizing returns. Because
+          the card matches the asset's aspect exactly, the image fills it with no
+          letterbox either way. */}
+      <div className="flex min-h-0 flex-1 items-center justify-center gap-3 p-4 sm:gap-7 sm:p-10">
+        {MOBILE_SHOTS.map((src, i) => (
+          <div
+            key={src}
+            className={cn(
+              'border-border bg-background flex justify-center overflow-hidden rounded-2xl border shadow-md',
+              'aspect-[1080/2337] max-h-full min-w-0 flex-1',
+              'sm:aspect-auto sm:h-full sm:max-h-[460px] sm:w-auto sm:flex-none',
+              i === 1 ? 'sm:-translate-y-3' : 'sm:translate-y-3',
+            )}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt="Kortix mobile app"
+              className="block h-full w-full object-cover sm:w-auto sm:object-contain"
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -292,8 +346,18 @@ const CLI_POSTER = '/media/cli/kortix-cli-poster.jpg';
 function WebSurface() {
   return (
     <div className="bg-card relative h-full w-full">
+      {/* left-top, not top. On desktop the frame is wider than the 16:10
+          recording, so `cover` crops vertically and the horizontal anchor is
+          inert — left-top and top render identically. At phone width the frame
+          is narrower than 16:10, so `cover` crops ~134px horizontally, and a
+          centred crop slices the left nav off and cuts the content pane in half.
+          Anchoring left keeps the whole sidebar — which is what the product
+          *is* — and lets the crop fall on the right edge, where a cut reads as
+          a window continuing rather than a screenshot broken. Contain was the
+          alternative and is worse: it fits the full 1920px UI into 346px, where
+          no label is legible at all. */}
       <video
-        className="h-full w-full object-cover object-top motion-reduce:hidden"
+        className="h-full w-full object-cover object-left-top motion-reduce:hidden"
         poster={SHOWCASE_POSTER}
         autoPlay
         muted
@@ -403,8 +467,17 @@ export function HeroSurfaces() {
   return (
     <div className="w-full">
       {/* The frame is shorter than the 16:10 recording and anchored to the top,
-          so the product bleeds off the fold instead of eating a whole screen. */}
-      <div className="border-border bg-card h-[300px] overflow-hidden rounded-xl border sm:h-[380px] lg:h-[440px]">
+          so the product bleeds off the fold instead of eating a whole screen.
+
+          One height for all seven surfaces, at every breakpoint. A per-surface
+          height would let the video panels sit at their native aspect, but the
+          row of pills below is what you tap, and it would jump under your thumb
+          on every tab change. So the height is fixed and each panel is made to
+          fit it. Phone gets 360px rather than 300px: the videos are `cover`, so
+          a taller box costs them nothing (it just shows more of the recording),
+          while the five DOM panels need every pixel — at 300px the Slack ask and
+          the Kortix reply could not both be on screen. */}
+      <div className="border-border bg-card h-[360px] overflow-hidden rounded-xl border sm:h-[380px] lg:h-[440px]">
         <SurfacePanel surface={active} />
       </div>
 

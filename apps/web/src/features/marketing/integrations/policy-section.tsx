@@ -170,7 +170,7 @@ export function PolicySection() {
 
       <Reveal delay={0.14}>
         <Separator className="mt-12" />
-        <div className="mt-8 grid gap-8 lg:grid-cols-12">
+        <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-12">
           <div className="lg:col-span-5">
             <h3 className="text-foreground text-lg leading-tight font-medium tracking-tight text-balance">
               {policy.conditions.title}

@@ -36,7 +36,7 @@ const GRID_4_RULES = [
 
 function SectionDivider(): ReactNode {
   return (
-    <div className="mx-auto max-w-6xl px-6">
+    <div className="mx-auto max-w-7xl px-6">
       <Separator />
     </div>
   );
@@ -57,7 +57,7 @@ export default function ChannelsPage(): ReactNode {
     <div className="bg-background relative">
       {/* ── hero ────────────────────────────────────────────────────────── */}
       <section className="relative px-6 pt-32 pb-12 sm:pt-36">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-7xl">
           <Reveal>
             <Badge variant="kortix" className="rounded">
               {hero.eyebrow}
@@ -102,7 +102,7 @@ export default function ChannelsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 1 · the four platforms, and the truth about each ────────────── */}
-      <section id="surfaces" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="surfaces" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={surfaces.eyebrow} title={surfaces.title} sub={surfaces.sub} />
 
         <Reveal delay={0.06}>
@@ -130,10 +130,10 @@ export default function ChannelsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 2 · a thread is a session ───────────────────────────────────── */}
-      <section id="thread" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="thread" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={thread.eyebrow} title={thread.title} sub={thread.sub} />
 
-        <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="lg:col-span-7">
             <div className="h-full">
               <ThreadMock />
@@ -170,7 +170,7 @@ export default function ChannelsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 3 · connecting it, honestly ─────────────────────────────────── */}
-      <section id="connect" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="connect" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={connect.eyebrow} title={connect.title} sub={connect.sub} />
 
         <Reveal delay={0.06}>
@@ -180,7 +180,7 @@ export default function ChannelsPage(): ReactNode {
         </Reveal>
 
         <Reveal delay={0.1}>
-          <ul className="mt-6 grid gap-4 sm:grid-cols-3">
+          <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {connect.notes.map((note) => (
               <li
                 key={note}
@@ -196,11 +196,11 @@ export default function ChannelsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 4 · what comes back into the thread ─────────────────────────── */}
-      <section id="round-trip" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="round-trip" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={back.eyebrow} title={back.title} sub={back.sub} />
 
         <Reveal delay={0.06}>
-          <div className="mt-10 grid gap-4 sm:grid-cols-3">
+          <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {back.cards.map((card) => (
               <div
                 key={card.id}
@@ -223,7 +223,7 @@ export default function ChannelsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 5 · driving the project from the thread ─────────────────────── */}
-      <section id="commands" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="commands" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={commands.eyebrow} title={commands.title} sub={commands.sub} />
 
         <Reveal delay={0.06}>
@@ -266,7 +266,7 @@ export default function ChannelsPage(): ReactNode {
         <Reveal delay={0.1}>
           <div className="mt-6">
             <h3 className="text-foreground text-sm font-medium">{commands.policy.title}</h3>
-            <dl className="mt-4 grid gap-4 sm:grid-cols-3">
+            <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
               {commands.policy.values.map((value) => (
                 <div key={value.k} className="border-border border-t pt-4">
                   <dt className="text-foreground font-mono text-xs">{value.k}</dt>
@@ -281,7 +281,7 @@ export default function ChannelsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 6 · the walls do not move because it is chat ────────────────── */}
-      <section id="rules" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="rules" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={rules.eyebrow} title={rules.title} sub={rules.sub} />
 
         <Reveal delay={0.06}>
@@ -309,10 +309,10 @@ export default function ChannelsPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 7 · the gap, named out loud ─────────────────────────────────── */}
-      <section id="custom" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="custom" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={custom.eyebrow} title={custom.title} sub={custom.sub} />
 
-        <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="lg:col-span-7">
             <CodePanel title={custom.yaml.title} lines={custom.yaml.lines} lang="yaml" />
           </Reveal>
@@ -342,7 +342,7 @@ export default function ChannelsPage(): ReactNode {
       </section>
 
       {/* ── closing ─────────────────────────────────────────────────────── */}
-      <section id="cta" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="cta" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <Reveal>
           <div className="border-border bg-card flex flex-col items-start gap-6 rounded-sm border p-8 sm:p-12">
             <Badge variant="kortix" className="rounded">

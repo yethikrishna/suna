@@ -39,7 +39,7 @@ function Row({ label, keys, extra }: { label: string; keys: IconKey[]; extra?: R
 export function LogoStrip() {
   return (
     <section aria-label="Models and tools Kortix works with" className="px-6 py-14 sm:py-16">
-      <div className="mx-auto flex max-w-6xl flex-col items-center gap-8 lg:flex-row lg:justify-between">
+      <div className="mx-auto flex max-w-7xl flex-col items-center gap-8 lg:flex-row lg:justify-between">
         <Row
           label="Runs any model"
           keys={MODELS}

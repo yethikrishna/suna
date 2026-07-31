@@ -43,7 +43,7 @@ export function IntegrationsHero() {
       <div className="absolute inset-0 z-0 mask-y-to-95%">
         <KortixLetterField seed={7211} />
       </div>
-      <div className="relative mx-auto max-w-6xl">
+      <div className="relative mx-auto max-w-7xl">
         <Reveal>
           <Badge variant="kortix" className="rounded">
             {hero.eyebrow}

@@ -49,7 +49,7 @@ const GRID_6_RULES = [
 
 function SectionDivider(): ReactNode {
   return (
-    <div className="mx-auto max-w-6xl px-6">
+    <div className="mx-auto max-w-7xl px-6">
       <Separator />
     </div>
   );
@@ -94,7 +94,7 @@ export default function SelfHostedPage(): ReactNode {
     <div className="bg-background relative">
       {/* ── hero ────────────────────────────────────────────────────────── */}
       <section className="relative px-6 pt-32 pb-12 sm:pt-36">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-7xl">
           <Reveal>
             <Badge variant="kortix" className="rounded">
               {hero.eyebrow}
@@ -138,7 +138,7 @@ export default function SelfHostedPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 1 · what you keep ───────────────────────────────────────────── */}
-      <section id="what-you-keep" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="what-you-keep" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={yours.eyebrow} title={yours.title} sub={yours.sub} />
 
         <Reveal delay={0.06}>
@@ -151,18 +151,18 @@ export default function SelfHostedPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 2 · the commands ────────────────────────────────────────────── */}
-      <section id="commands" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="commands" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={commands.eyebrow} title={commands.title} sub={commands.sub} />
 
         <Reveal delay={0.06}>
-          <div className="mt-10 grid gap-4 lg:grid-cols-2">
+          <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <CodePanel title={commands.install.title} lines={commands.install.lines} lang="sh" />
             <CodePanel title={commands.hosts.title} lines={commands.hosts.lines} lang="sh" />
           </div>
         </Reveal>
 
         <Reveal delay={0.1}>
-          <ul className="mt-6 grid gap-4 sm:grid-cols-3">
+          <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {commands.notes.map((note) => (
               <li
                 key={note}
@@ -178,7 +178,7 @@ export default function SelfHostedPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 3 · the first run ───────────────────────────────────────────── */}
-      <section id="first-run" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="first-run" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={firstRun.eyebrow} title={firstRun.title} sub={firstRun.sub} />
 
         <Reveal delay={0.06}>
@@ -205,7 +205,7 @@ export default function SelfHostedPage(): ReactNode {
             <p className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
               {firstRun.generates.label}
             </p>
-            <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+            <ul className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {firstRun.generates.items.map((item) => (
                 <li key={item} className="flex items-start gap-3">
                   <span
@@ -232,7 +232,7 @@ export default function SelfHostedPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 4 · the stack ───────────────────────────────────────────────── */}
-      <section id="stack" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="stack" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={stack.eyebrow} title={stack.title} sub={stack.sub} />
 
         <Reveal delay={0.06}>
@@ -242,7 +242,7 @@ export default function SelfHostedPage(): ReactNode {
         </Reveal>
 
         <Reveal delay={0.1}>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {[stack.data, stack.updates].map((card) => (
               <div
                 key={card.title}
@@ -259,7 +259,7 @@ export default function SelfHostedPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 5 · parity ──────────────────────────────────────────────────── */}
-      <section id="parity" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="parity" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={parity.eyebrow} title={parity.title} sub={parity.sub} />
 
         <Reveal delay={0.06}>
@@ -272,10 +272,10 @@ export default function SelfHostedPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 6 · models ──────────────────────────────────────────────────── */}
-      <section id="models" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="models" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={models.eyebrow} title={models.title} sub={models.sub} />
 
-        <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Reveal delay={0.06} className="lg:col-span-7">
             <CodePanel title={models.shell.title} lines={models.shell.lines} lang="sh" />
           </Reveal>
@@ -301,7 +301,7 @@ export default function SelfHostedPage(): ReactNode {
       <SectionDivider />
 
       {/* ── 7 · where it runs ───────────────────────────────────────────── */}
-      <section id="targets" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="targets" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <SectionHeading eyebrow={targets.eyebrow} title={targets.title} sub={targets.sub} />
 
         <Reveal delay={0.06}>
@@ -325,7 +325,7 @@ export default function SelfHostedPage(): ReactNode {
       </section>
 
       {/* ── closing ─────────────────────────────────────────────────────── */}
-      <section id="cta" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+      <section id="cta" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
         <Reveal>
           <div className="border-border bg-card flex flex-col items-start gap-6 rounded-sm border p-8 sm:p-12">
             <Badge variant="kortix" className="rounded">

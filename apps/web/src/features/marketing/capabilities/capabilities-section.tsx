@@ -3,7 +3,7 @@
 import { Reveal } from '@/components/home/reveal';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { closer, entries, heading, type Entry } from './content';
+import { entries, heading, rules, type Entry } from './content';
 
 /**
  * Home-page long-form section — "The long version".
@@ -13,7 +13,14 @@ import { closer, entries, heading, type Entry } from './content';
  * card. None of it can be read. A reader who wants substance had nowhere to go
  * except a sub-page they have not been given a reason to open yet. This section
  * is that reason — eight entries of real prose, each one an index into the page
- * that carries the long form.
+ * that carries the long form, closing on the grant mechanics that apply to all
+ * eight.
+ *
+ * OVERVIEW AT THE TOP, DETAIL AT THE FOOT. An entry is an overview and has to
+ * read like one. When the deny-by-default / agent-≤-human mechanics sat inside
+ * entry 02 they made the second thing a reader met the densest paragraph on the
+ * page, so they moved to the `rules` block at the end — which also replaced a
+ * self-vouching disclaimer that should never have been there.
  *
  * WHY IT IS NOT A CARD GRID. A fourth grid of three-word tiles would have added
  * nothing the layer stack does not already do, and it would have been the
@@ -23,7 +30,7 @@ import { closer, entries, heading, type Entry } from './content';
  * the rail, and the prose in a column capped to a comfortable measure.
  *
  * WHY IT IS NARROWER THAN THE PAGE. The section shell is the page-standard
- * `mx-auto max-w-6xl px-6`, but the document inside it is `max-w-3xl` and the
+ * `mx-auto max-w-7xl px-6`, but the document inside it is `max-w-3xl` and the
  * body column inside THAT is capped at 32rem — measured at 67 characters per
  * line at the base size, inside the 65–70 a reader can hold. Long-form text set
  * to the full 6xl grid is unreadable, and the narrowing is what signals "this
@@ -127,7 +134,7 @@ function EntryRow({ entry }: { entry: Entry }): ReactNode {
 
 export function CapabilitiesSection(): ReactNode {
   return (
-    <section id="capabilities" className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+    <section id="capabilities" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
       <div className="mx-auto max-w-3xl">
         <Reveal>
           <header className="max-w-[32rem]">
@@ -147,10 +154,34 @@ export function CapabilitiesSection(): ReactNode {
           ))}
         </ol>
 
+        {/* The foot · the mechanics that apply to every entry above.
+            Same two-column grid as an entry so it stays the same document, but
+            no number, smaller type and a tighter row rhythm — it reads as an
+            appendix rather than a ninth entry. */}
         <Reveal>
-          <p className="border-border text-foreground max-w-[32rem] border-t pt-10 text-base leading-[1.7]">
-            {closer}
-          </p>
+          <div className="border-border border-t pt-10">
+            <p className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
+              {rules.eyebrow}
+            </p>
+            <p className="text-foreground mt-4 max-w-[32rem] text-base leading-[1.7]">
+              {rules.lede}
+            </p>
+
+            {/* Two columns, not four stacked rows: the sentences are one line of
+                reference each, so stacking them cost ~170px of page for no
+                added clarity. Each cell carries its own hairline, which keeps
+                the rule between the two columns implied rather than drawn. */}
+            <dl className="mt-8 grid gap-x-12 sm:grid-cols-2">
+              {rules.rows.map((row) => (
+                <div key={row.id} className="border-border border-t py-4">
+                  <dt className="text-foreground text-sm font-medium tracking-tight">{row.k}</dt>
+                  <dd className="text-muted-foreground mt-1 text-sm leading-[1.7]">
+                    {withMono(row.v)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </Reveal>
       </div>
     </section>

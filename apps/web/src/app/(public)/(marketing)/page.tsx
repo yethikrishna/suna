@@ -3,6 +3,7 @@
 import { CapabilitiesSection } from '@/features/marketing/capabilities/capabilities-section';
 import Hero from '@/features/marketing/hero';
 import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
+import { AskingInterlude, OwningInterlude } from '@/features/marketing/interludes';
 import { CtaSection } from '@/features/marketing/landing/cta-section';
 import { LogoStrip } from '@/features/marketing/landing/logo-strip';
 import { ScrollCtaPill } from '@/features/marketing/landing/scroll-cta-pill';
@@ -45,10 +46,17 @@ export default function Home() {
       {/* 4 · What it does — real work, and the artefact it produces */}
       <UseCaseWheel />
 
-      {/* 4 · Open source, and genuinely runnable on your own hardware */}
+      {/* The wheel is all output. This is the input that caused it — without it
+          a reader watches ten results go by and never learns how to ask. */}
+      <AskingInterlude />
+
+      {/* 5 · Open source, and genuinely runnable on your own hardware */}
       <OpenSourceSection />
 
-      {/* 5 · Why it is safe to run, and where we stand on certification */}
+      {/* Rest between two heavy surfaces, and the ownership close */}
+      <OwningInterlude />
+
+      {/* 6 · Why it is safe to run, and where we stand on certification */}
       <TrustSection />
 
       {/* Close */}

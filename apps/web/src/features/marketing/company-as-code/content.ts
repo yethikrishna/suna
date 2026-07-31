@@ -124,7 +124,7 @@ export const definition = {
   },
   agentFile: {
     title: '.kortix/opencode/agents/invoice-clerk.md',
-    caption: 'The agent — a markdown persona. What it says lives here.',
+    caption: 'The agent — a stock OpenCode agent file. What it says lives here.',
     lines: [
       '---',
       'description: Reconciles invoices against payments.',
@@ -150,7 +150,7 @@ export const definition = {
     {
       id: 'opencode-layer',
       title: 'The OpenCode config decides',
-      body: 'Prompts, models, tools, plugins and permissions. An agent is a markdown file with frontmatter and a persona underneath. Read it and you know exactly what that agent will do.',
+      body: 'Prompts, models, tools, plugins and permissions. An agent is a stock OpenCode agent — markdown at baseline, and past that the tools, plugins and model config sitting beside it in the same repo. Read the directory and you know exactly what that agent will do.',
     },
     {
       id: 'no-values',
@@ -176,7 +176,7 @@ export const repo = {
     { path: 'MEMORY.md', note: 'what the company has learned', depth: 3 },
     { path: 'opencode/', note: '', depth: 2 },
     { path: 'opencode.jsonc', note: 'the runtime agents think in', depth: 3 },
-    { path: 'agents/', note: 'one markdown persona per agent', depth: 3 },
+    { path: 'agents/', note: 'one OpenCode agent per file', depth: 3 },
     { path: 'kortix.md', note: '', depth: 4 },
     { path: 'invoice-clerk.md', note: '', depth: 4 },
     { path: 'skills/', note: 'how this company does a job', depth: 3 },

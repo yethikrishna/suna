@@ -85,7 +85,7 @@ const Footer = () => {
 
   return (
     <footer id="site-footer" className="bg-card relative px-6 pt-12 pb-12 md:pb-16">
-      <div className="mx-auto mb-12 max-w-6xl lg:px-0">
+      <div className="mx-auto mb-12 max-w-7xl lg:px-0">
         <nav>
           <div className="grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-5">
             {FOOTER_SECTIONS.map((section) => (
@@ -110,7 +110,7 @@ const Footer = () => {
         </nav>
       </div>
 
-      <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 md:flex-row md:items-center lg:px-0">
+      <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-4 md:flex-row md:items-center lg:px-0">
         <div className="text-muted-foreground flex items-center gap-3 text-base">
           <small>
             {tI18nHardcoded.raw('autoComponentsHomeFooterJsxTextCopye99743e8')}

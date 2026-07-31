@@ -71,6 +71,66 @@ describe('audit HTTP route registry', () => {
 });
 
 describe('humanizeAuditAction — IAM action codes', () => {
+  test('maps every named action emitted by the audit writers', () => {
+    const actions = [
+      'admin.account.session_limit.set',
+      'admin.account.tier.set',
+      'auth.login.fail',
+      'auth.login.success',
+      'auth.logout',
+      'auth.session.first_sight',
+      'enterprise_demo.disable',
+      'enterprise_demo.enable',
+      'iam.audit.webhook.create',
+      'iam.audit.webhook.delete',
+      'iam.audit.webhook.update',
+      'iam.group.create',
+      'iam.group.delete',
+      'iam.group.members.add',
+      'iam.group.members.remove',
+      'iam.group.update',
+      'iam.pat_policy.update',
+      'iam.policy.bulk_import',
+      'iam.policy.create',
+      'iam.policy.delete',
+      'iam.policy.update',
+      'iam.project.group.expired',
+      'iam.project.member.expired',
+      'iam.role.create',
+      'iam.role.delete',
+      'iam.role.permissions.set',
+      'iam.scim.token.create',
+      'iam.scim.token.revoke',
+      'iam.service_account.create',
+      'iam.service_account.delete',
+      'iam.service_account.disable',
+      'iam.session.revoke',
+      'iam.session_policy.update',
+      'iam.sso.mapping.create',
+      'iam.sso.mapping.delete',
+      'iam.sso.provider.create',
+      'iam.sso.provider.delete',
+      'project.admin_bypass_read',
+      'project.admin_bypass_session_read',
+      'project.connector.read',
+      'scim.group.create',
+      'scim.group.delete',
+      'scim.group.update',
+      'scim.user.deactivate',
+      'scim.user.delete',
+      'scim.user.invite',
+      'scim.user.invite_revoke',
+      'session.created',
+      'webhook.test',
+    ];
+
+    for (const action of actions) {
+      const description = describeAuditAction(action);
+      expect(description.mapped, action).toBe(true);
+      expect(description.title, action).not.toBe(action);
+    }
+  });
+
   test('iam.group.create → Created group', () => {
     expect(humanizeAuditAction('iam.group.create')).toEqual({
       title: 'Created group',

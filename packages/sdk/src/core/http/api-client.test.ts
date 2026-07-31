@@ -66,6 +66,31 @@ describe('makeRequest admin-bypass header', () => {
   });
 });
 
+describe('makeRequest client-source header', () => {
+  test('attaches the configured client source', async () => {
+    configureKortix({
+      backendUrl: 'http://api.test/v1',
+      getToken: async () => 'test-token',
+      clientSource: 'cli',
+    });
+    const originalFetch = globalThis.fetch;
+    let capturedHeaders: Record<string, string> = {};
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      capturedHeaders = (init?.headers as Record<string, string>) ?? {};
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    try {
+      await backendApi.get('/projects');
+      expect(capturedHeaders['X-Kortix-Client']).toBe('cli');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 // Regression for prod TypeError "t.message.includes is not a function": a
 // backend 4xx body whose `message` (or `detail.message`) is a non-string
 // value used to flow straight into `new ApiError(message, …)`, and from there

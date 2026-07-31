@@ -37,6 +37,7 @@ export function clearApiKey(): void {
 export const kortix = createKortix({
   backendUrl: BRAND.apiUrl,
   getToken: async () => getApiKey(),
+  clientSource: 'sdk',
 });
 
 /**
@@ -48,5 +49,6 @@ export function configureWrapperMode(): void {
   configureKortix({
     backendUrl: resolveApiUrl(true),
     getToken: async () => getSessionToken(),
+    clientSource: 'sdk',
   });
 }

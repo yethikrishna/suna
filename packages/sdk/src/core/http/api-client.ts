@@ -134,6 +134,14 @@ async function makeRequest<T = any>(
     // Merge with any headers from fetchOptions
     Object.assign(headers, fetchOptions.headers as Record<string, string>);
 
+    const clientSource = platformConfig().clientSource;
+    const hasClientSource = Object.keys(headers).some(
+      (name) => name.toLowerCase() === 'x-kortix-client',
+    );
+    if (clientSource && !hasClientSource) {
+      headers['X-Kortix-Client'] = clientSource;
+    }
+
     if (adminBypassEnabled) {
       headers['x-kortix-admin-bypass'] = '1';
     }

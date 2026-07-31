@@ -6,6 +6,7 @@ import {
   SessionScopeControlContent,
   setAllSessionSecrets,
   setSessionConnectorAuthorization,
+  setSessionConnectorEnabled,
   toggleSessionSecret,
 } from './session-scope-control';
 import type { SessionScopeDraft, SessionScopeSelectionCatalog } from './session-scope-model';
@@ -188,5 +189,30 @@ describe('session scope control changes', () => {
         crm: { authorization_id: 'authorization-crm' },
       },
     });
+  });
+
+  test('enables a connector with its default authorization and removes it when disabled', () => {
+    const connector =
+      catalog.connector_profiles.status === 'ready'
+        ? catalog.connector_profiles.items[0]
+        : undefined;
+
+    expect(connector).toBeDefined();
+    expect(setSessionConnectorEnabled({ connector_bindings: {} }, connector!, true)).toEqual({
+      connector_bindings: {
+        calendar: { authorization_id: 'authorization-calendar' },
+      },
+    });
+    expect(
+      setSessionConnectorEnabled(
+        {
+          connector_bindings: {
+            calendar: { authorization_id: 'authorization-calendar' },
+          },
+        },
+        connector!,
+        false,
+      ),
+    ).toEqual({ connector_bindings: {} });
   });
 });

@@ -20,7 +20,11 @@ import {
   WarningIcon as TriangleAlert,
 } from '@phosphor-icons/react';
 
-import type { SessionScopeDraft, SessionScopeSelectionCatalog } from './session-scope-model';
+import type {
+  SessionScopeConnectorOption,
+  SessionScopeDraft,
+  SessionScopeSelectionCatalog,
+} from './session-scope-model';
 
 const NO_AUTHORIZATION = '__no_authorization__';
 
@@ -95,6 +99,28 @@ export function setSessionConnectorAuthorization(
     ...draft,
     connector_bindings: connectorBindings,
   };
+}
+
+export function setSessionConnectorEnabled(
+  draft: SessionScopeDraft,
+  connector: SessionScopeConnectorOption,
+  enabled: boolean,
+): SessionScopeDraft {
+  if (!enabled) {
+    return setSessionConnectorAuthorization(draft, connector.slug, null);
+  }
+
+  if (draft.connector_bindings?.[connector.slug]) {
+    return draft;
+  }
+
+  const authorization =
+    connector.authorizations.find((candidate) => candidate.is_default) ??
+    connector.authorizations[0];
+
+  return authorization
+    ? setSessionConnectorAuthorization(draft, connector.slug, authorization.authorization_id)
+    : draft;
 }
 
 function secretSummary(draft: SessionScopeDraft): string {

@@ -5,6 +5,11 @@ import { PROJECT_ACTIONS, authorize } from '../../iam';
 import { getTraceHeaders } from '../../lib/request-context';
 import type { ProviderName } from '../../platform/providers';
 import { callerKortixSessionId } from '../../projects/lib/caller-session';
+import {
+  PromptConnectorPreflightUnresolved,
+  type PromptConnectorVerdict,
+  missingPromptConnectorAuthorizations,
+} from '../../projects/lib/prompt-connector-preflight';
 import { syncSandboxEnvForPrompt } from '../../projects/lib/sandbox-env-sync';
 import {
   AgentSecretGrantMismatchError,
@@ -368,6 +373,89 @@ function requestedPromptAgent(
   }
 }
 
+/**
+ * Does this request START A USER TURN that a missing connector should block?
+ *
+ * The same shape as `isTurnStartRequest` MINUS `/summarize`. Summarize is
+ * compaction, not a user turn: refusing to compact a conversation because Gmail
+ * is disconnected would wedge the session instead of protecting it.
+ *
+ * Built on `isTurnStartRequest` rather than the env-sync predicate
+ * (`shouldSyncProjectEnvBeforeProxy`) because that one keys on the
+ * client-addressed port, so a request sent straight to :4096 slips past it, and
+ * it does not strip the in-box `/proxy/{port}` prefix.
+ */
+function isConnectorGatedTurn(port: number, method: string, path: string): boolean {
+  if (!isTurnStartRequest(port, method, path)) return false;
+  return !/^\/session\/[^/]+\/summarize(?:$|[/?#])/.test(path.replace(/^\/proxy\/\d+(?=\/)/, ''));
+}
+
+/**
+ * The refusal body, or null to let the turn through.
+ *
+ * The shape is byte-identical to what session CREATE returns for the same two
+ * codes (projects/routes/r7.ts). That is a contract, not a coincidence: one
+ * client classifier has to read both, and a renamed field here degrades to a
+ * card that says "a connector is missing" without naming which.
+ */
+async function connectorGateRefusal(
+  record: { accountId: string; projectId: string; sessionId: string; agentName?: string | null },
+  requestedAgent: string | null,
+  origin?: string,
+): Promise<Response | null> {
+  let verdict: PromptConnectorVerdict;
+  try {
+    verdict = await missingPromptConnectorAuthorizations({
+      accountId: record.accountId,
+      projectId: record.projectId,
+      sessionId: record.sessionId,
+      sessionAgent: record.agentName ?? DEFAULT_AGENT_SENTINEL,
+      requestedAgent,
+    });
+  } catch (err) {
+    if (err instanceof PromptConnectorPreflightUnresolved) {
+      // 503, never 409. We failed to ESTABLISH the answer; saying "connect your
+      // Gmail" off a transient git read would be a confident lie, and the client
+      // retries a 503 while it never retries a 4xx.
+      console.warn(`[PREVIEW] Connector pre-flight unresolved for ${record.sessionId}: ${err.message}`);
+      return jsonProxyError(
+        { error: err.message, code: 'CONNECTOR_REQUIREMENTS_UNRESOLVED' },
+        503,
+        origin,
+      );
+    }
+    throw err;
+  }
+  if (verdict.ok) return null;
+
+  if (verdict.kind === 'unavailable') {
+    return jsonProxyError(
+      {
+        error:
+          verdict.aliases.length === 1
+            ? `Required connector profile "${verdict.aliases[0]}" is unavailable`
+            : `Required connector profiles ${verdict.aliases.map((a) => `"${a}"`).join(', ')} are unavailable`,
+        code: 'REQUIRED_CONNECTOR_PROFILE_UNAVAILABLE',
+        connectors: verdict.aliases,
+      },
+      409,
+      origin,
+    );
+  }
+  return jsonProxyError(
+    {
+      // `message` as well as `error`: the SDK prefers `message` and otherwise
+      // substitutes a generic "Failed to send message", which would bury this.
+      error: 'Connect the required connector profiles before continuing this session.',
+      message: 'Connect the required connector profiles before continuing this session.',
+      code: 'CONNECTOR_AUTHORIZATION_REQUIRED',
+      connector_profiles: verdict.profiles,
+    },
+    409,
+    origin,
+  );
+}
+
 function agentSwitchConflictResponse(
   expectedAgent: string,
   requestedAgent: string,
@@ -633,6 +721,27 @@ export async function forwardToSandbox(
   // inject arbitrary env into a sandbox by POSTing /v1/p/<id>/8000/kortix/env.
   if (carriesSessionData(upstreamPort) && /^\/kortix\/env(?:$|[/?#])/.test(remainingPath)) {
     return jsonProxyError({ error: 'not found' }, 404, origin);
+  }
+  // A turn whose required connectors cannot serve it is refused HERE — before the
+  // sandbox is woken, before the dedupe claim, before the title is generated from
+  // a prompt that will never run.
+  //
+  // The position is the whole design. Every one of those is downstream:
+  //   - claimPromptDelivery (below) burns the Idempotency-Key. Refuse after it and
+  //     the retry the user makes AFTER connecting Gmail comes back
+  //     `200 {status:'duplicate'}` — their message silently discarded, which is a
+  //     far worse bug than the one being fixed.
+  //   - generateSessionTitleFromFirstPrompt would name the session after a turn
+  //     that was refused.
+  // The three existing early returns further down all sit after the claim and
+  // have exactly that defect; this one deliberately does not join them.
+  if (!sandboxAuthored && isConnectorGatedTurn(upstreamPort, method, remainingPath)) {
+    const refusal = await connectorGateRefusal(
+      record,
+      requestedPromptAgent(requestBody, incomingHeaders),
+      origin,
+    );
+    if (refusal) return refusal;
   }
   if (record.status !== 'active') {
     // A stopped-but-resumable box hit by a REAL USER on the OpenCode data path

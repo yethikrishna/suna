@@ -80,7 +80,7 @@ describe('SessionScopeControlContent', () => {
     expect(html).toContain('type="button"');
   });
 
-  test('renders the active secret allowlist and one authorization selector per connector profile', () => {
+  test('renders compact collapsed summaries for the selected scope', () => {
     const html = renderControl({
       secrets: ['CALENDAR_TOKEN'],
       connector_bindings: {
@@ -89,14 +89,14 @@ describe('SessionScopeControlContent', () => {
       },
     });
 
+    expect(html).toContain('Session access');
+    expect(html).toContain('Share only the secrets and connectors this session needs.');
     expect(html).toContain('1 selected');
-    expect(html).toContain('Calendar token');
-    expect(html).toContain('CRM token');
-    expect(html).toContain('aria-label="Authorization for Calendar"');
-    expect(html).toContain('aria-label="Authorization for CRM"');
-    expect(html).toContain('Private');
-    expect(html).toContain('Project');
-    expect(html).toContain('Saved changes apply to the next prompt or tool call.');
+    expect(html).toContain('2 selected');
+    expect(html.match(/aria-expanded="false"/g)).toHaveLength(2);
+    expect(html).not.toContain('aria-label="Authorization for Calendar"');
+    expect(html).not.toContain('aria-label="Authorization for CRM"');
+    expect(html).toContain('Changes apply to the next prompt.');
   });
 
   test('distinguishes unrestricted secret access from an explicit empty allowlist', () => {
@@ -104,8 +104,8 @@ describe('SessionScopeControlContent', () => {
     const noneHtml = renderControl({ secrets: [], connector_bindings: {} });
 
     expect(allHtml).toContain('All allowed');
-    expect(allHtml.match(/aria-checked="true"/g)).toHaveLength(3);
-    expect(noneHtml).toContain('None allowed');
+    expect(noneHtml).toContain('None selected');
+    expect(allHtml).not.toContain('aria-checked="true"');
     expect(noneHtml).not.toContain('aria-checked="true"');
   });
 
@@ -114,7 +114,7 @@ describe('SessionScopeControlContent', () => {
     const noneHtml = renderControl({ secrets: [], connector_bindings: {} });
 
     expect(unchangedHtml).toContain('Unchanged');
-    expect(noneHtml).toContain('None allowed');
+    expect(noneHtml).toContain('None selected');
   });
 
   test('shows catalog failures without converting them into empty selections', () => {
@@ -130,9 +130,8 @@ describe('SessionScopeControlContent', () => {
       />,
     );
 
-    expect(html).toContain('Secret access is unavailable');
-    expect(html).toContain('Connector access is unavailable');
-    expect(html).not.toContain('None allowed');
+    expect(html.match(/>Unavailable</g)).toHaveLength(2);
+    expect(html).not.toContain('None selected');
   });
 
   test('shows saving state and the non-retroactive warning', () => {

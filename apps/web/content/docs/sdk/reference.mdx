@@ -65,8 +65,9 @@ API requests with semantic session, executor, approval, and computer events.
 
 Each event includes `project_id`, `session_id`, `actor_type`, `source`, `outcome`,
 `request_id`, `trace_id`, and `correlation_id` when the action supplies them.
-The API does not store request bodies, prompts, secrets, credentials, or
-connector arguments in the centralized event.
+The API does not store request bodies, prompts, secrets, credentials, or raw
+connector arguments in the centralized event. Executor events can include a
+bounded argument preview that redacts credential-shaped fields and opaque data.
 
 ### Account invites — `kortix.accountInvites`
 

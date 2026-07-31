@@ -1,5 +1,6 @@
 import type { AuditEventInput, AuditOutcome } from '../shared/audit';
 import type { ExecutionRecord } from './gateway';
+import { buildArgsPreview } from './args-preview';
 
 function outcome(status: ExecutionRecord['status']): AuditOutcome {
   if (status === 'ok') return 'success';
@@ -29,7 +30,7 @@ export function executionAuditEvent(
       connector_id: execution.connectorId,
       profile_id: execution.profileId,
       risk: execution.risk,
-      result_summary: execution.resultSummary,
+      result_summary: buildArgsPreview(execution.resultSummary),
     },
   };
 }

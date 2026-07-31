@@ -121,6 +121,41 @@ describe('audit event middleware', () => {
     });
   });
 
+  test('does not copy request bodies or query values into the central event', async () => {
+    const app = new Hono();
+    app.use('/v1/*', auditApiRequest);
+    app.post('/v1/projects/:projectId/secrets', async (c) => {
+      (c as any).set('userId', '00000000-0000-4000-a000-000000000001');
+      (c as any).set('accountId', '00000000-0000-4000-a000-000000000101');
+      (c as any).set('authType', 'supabase');
+      return c.json({ ok: true });
+    });
+
+    const res = await app.request(
+      '/v1/projects/00000000-0000-4000-a000-000000000201/secrets?token=query-secret',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret: 'body-secret',
+          prompt: 'private prompt',
+          connector_args: { authorization: 'private credential' },
+        }),
+      },
+    );
+
+    expect(res.status).toBe(200);
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0]?.metadata).toEqual({
+      method: 'POST',
+      path: '/v1/projects/00000000-0000-4000-a000-000000000201/secrets',
+    });
+    expect(JSON.stringify(auditRows[0])).not.toContain('query-secret');
+    expect(JSON.stringify(auditRows[0])).not.toContain('body-secret');
+    expect(JSON.stringify(auditRows[0])).not.toContain('private prompt');
+    expect(JSON.stringify(auditRows[0])).not.toContain('private credential');
+  });
+
   test('records mounted project routes from the shared request context', async () => {
     const app = new Hono();
     app.use('/v1/*', async (c, next) => {

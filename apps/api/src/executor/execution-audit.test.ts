@@ -60,6 +60,36 @@ test('executionAuditEvent maps approval states without a session', () => {
   expect(event.outcome).toBe('pending');
 });
 
+test('executionAuditEvent redacts the central result summary', () => {
+  const event = executionAuditEvent(
+    {
+      accountId: 'account-1',
+      projectId: 'project-1',
+      connectorId: 'connector-1',
+      profileId: 'profile-1',
+      actionPath: 'http.request',
+      actingUserId: 'actor-1',
+      sessionId: 'session-1',
+      status: 'error',
+      risk: 'write',
+      resultSummary: {
+        reason: 'upstream rejected the request',
+        upstream: {
+          access_token: 'secret-access-token',
+        },
+      },
+    },
+    'execution-3',
+  );
+
+  expect(event.metadata?.result_summary).toEqual({
+    reason: 'upstream rejected the request',
+    upstream: {
+      access_token: '[redacted]',
+    },
+  });
+});
+
 test('approvalResolvedAuditEvent attributes the human decision to the execution', () => {
   expect(
     approvalResolvedAuditEvent({

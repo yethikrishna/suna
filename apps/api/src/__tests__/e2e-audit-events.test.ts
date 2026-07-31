@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
+import { runWithContext, setContextField } from '../lib/request-context';
 
 let auditRows: Array<Record<string, unknown>> = [];
 
@@ -117,6 +118,72 @@ describe('audit event middleware', () => {
       action: 'GET /v1/accounts/00000000-0000-4000-a000-000000000101/projects',
       outcome: 'success',
       httpStatus: 200,
+    });
+  });
+
+  test('records mounted project routes from the shared request context', async () => {
+    const app = new Hono();
+    app.use('/v1/*', async (c, next) => {
+      await runWithContext(c.req.method, c.req.path, next);
+    });
+    app.use('/v1/*', auditApiRequest);
+    app.post('/v1/projects/provision', (c) => {
+      setContextField('userId', '00000000-0000-4000-a000-000000000001');
+      setContextField('accountId', '00000000-0000-4000-a000-000000000101');
+      setContextField('projectId', '00000000-0000-4000-a000-000000000201');
+      return c.json({ ok: true }, 201);
+    });
+
+    const res = await app.request('/v1/projects/provision', {
+      method: 'POST',
+      headers: {
+        'X-Kortix-Client': 'cli',
+        'X-Correlation-Id': 'project-create-1',
+      },
+      body: '{}',
+    });
+
+    expect(res.status).toBe(201);
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0]).toMatchObject({
+      accountId: '00000000-0000-4000-a000-000000000101',
+      projectId: '00000000-0000-4000-a000-000000000201',
+      actorUserId: '00000000-0000-4000-a000-000000000001',
+      actorType: 'human',
+      source: 'cli',
+      outcome: 'success',
+      httpStatus: 201,
+      correlationId: 'project-create-1',
+    });
+  });
+
+  test('discards non-UUID request scope before the database write', async () => {
+    const app = new Hono();
+    app.use('/v1/*', async (c, next) => {
+      await runWithContext(c.req.method, c.req.path, async () => {
+        setContextField('userId', '00000000-0000-4000-a000-000000000001');
+        setContextField('accountId', '00000000-0000-4000-a000-000000000101');
+        setContextField('projectId', 'provision');
+        await next();
+      });
+    });
+    app.use('/v1/*', auditApiRequest);
+    app.post('/v1/projects/provision', (c) => c.json({ error: 'name is required' }, 400));
+
+    const res = await app.request('/v1/projects/provision', {
+      method: 'POST',
+      headers: { 'X-Correlation-Id': 'invalid-scope-1' },
+      body: '{}',
+    });
+
+    expect(res.status).toBe(400);
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0]).toMatchObject({
+      accountId: '00000000-0000-4000-a000-000000000101',
+      projectId: null,
+      actorUserId: '00000000-0000-4000-a000-000000000001',
+      outcome: 'failure',
+      correlationId: 'invalid-scope-1',
     });
   });
 });

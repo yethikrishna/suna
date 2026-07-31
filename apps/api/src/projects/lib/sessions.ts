@@ -11,6 +11,7 @@ import { getCachedAccountTier } from '../../billing/services/entitlements';
 import { tierGrantsAllModels } from '../../billing/services/tiers';
 import { type SandboxProviderName, config } from '../../config';
 import { agentMayUseConnector } from '../../iam/agent-scope';
+import { setContextField } from '../../lib/request-context';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import {
   isModelServableForAccount,
@@ -1085,6 +1086,8 @@ export async function createProjectSession(input: {
       },
     };
   }
+
+  setContextField('sessionId', sessionId);
 
   try {
     await recordAuditEvent(

@@ -150,6 +150,8 @@ process.on('uncaughtException', (err: Error) => {
 // ─── App Setup ──────────────────────────────────────────────────────────────
 
 const app = new OpenAPIHono();
+const UUID_PATH_SEGMENT_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Exported so tooling/tests can introspect the route table (app.routes) without
 // booting the server. See the import.meta.main guard around startup below.
 export { app };
@@ -209,12 +211,14 @@ app.use('*', async (c, next) => {
       // Auto-extract common resource IDs from URL patterns for logs/traces.
       const path = c.req.path;
       const projectSessionMatch = path.match(/\/projects\/([^/]+)\/sessions\/([^/]+)/);
-      if (projectSessionMatch) {
+      if (projectSessionMatch && UUID_PATH_SEGMENT_RE.test(projectSessionMatch[1])) {
         setContextField('projectId', projectSessionMatch[1]);
         setContextField('sessionId', projectSessionMatch[2]);
       } else {
         const projectMatch = path.match(/\/projects\/([^/]+)/);
-        if (projectMatch) setContextField('projectId', projectMatch[1]);
+        if (projectMatch && UUID_PATH_SEGMENT_RE.test(projectMatch[1])) {
+          setContextField('projectId', projectMatch[1]);
+        }
       }
       const sbMatch = path.match(/\/sandbox(?:es)?\/([^/]+)/) || path.match(/\/p\/([^/]+)/);
       if (sbMatch) setContextField('sandboxId', sbMatch[1]);

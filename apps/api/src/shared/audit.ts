@@ -81,6 +81,7 @@ function inferAccountId(c: Context): string | null {
     accountPathCandidate && UUID_RE.test(accountPathCandidate) ? accountPathCandidate : null;
   return (
     ((c as any).get('accountId') as string | undefined) ||
+    getRequestContext()?.accountId ||
     c.req.query('account_id') ||
     c.req.query('accountId') ||
     accountPathId ||
@@ -134,15 +135,19 @@ function errorStatus(error: unknown): number {
   return 500;
 }
 
+function uuidOrNull(value: string | null | undefined): string | null {
+  return value && UUID_RE.test(value) ? value : null;
+}
+
 export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
   const request = getRequestContext();
   const [row] = await db
     .insert(auditEvents)
     .values({
-      accountId: input.accountId || request?.accountId || null,
-      projectId: input.projectId || request?.projectId || null,
+      accountId: uuidOrNull(input.accountId || request?.accountId),
+      projectId: uuidOrNull(input.projectId || request?.projectId),
       sessionId: input.sessionId || request?.sessionId || null,
-      actorUserId: input.actorUserId || null,
+      actorUserId: uuidOrNull(input.actorUserId),
       actorType: input.actorType ?? (input.actorUserId ? 'human' : 'system'),
       source: input.source ?? 'api',
       outcome: input.outcome ?? 'success',
@@ -207,14 +212,15 @@ export async function auditApiRequest(c: Context, next: Next): Promise<void> {
     thrown = error;
     throw error;
   } finally {
-    const actorUserId = ((c as any).get('userId') as string | undefined) ?? null;
+    const request = getRequestContext();
+    const actorUserId =
+      ((c as any).get('userId') as string | undefined) ?? request?.userId ?? null;
     const accountId = inferAccountId(c);
     if (actorUserId || accountId) {
       const status = thrown ? errorStatus(thrown) : c.res.status;
       const inferred = inferResource(c.req.path);
       const ids = pathIds(c.req.path);
       const actorType = inferActorType(c, actorUserId);
-      const request = getRequestContext();
       try {
         await recordAuditEvent({
           accountId,

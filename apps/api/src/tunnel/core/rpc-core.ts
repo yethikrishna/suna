@@ -120,10 +120,6 @@ export async function executeTunnelRpc(input: {
     const result = await relayRpcToConnectedAgent({
       tunnelId,
       accountId,
-      projectId: input.projectId,
-      sessionId: input.sessionId,
-      actorUserId: input.actorUserId,
-      actorType: input.sessionId ? 'agent' : input.actorUserId ? 'human' : 'system',
       method,
       params: {
         ...params,

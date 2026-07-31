@@ -10,7 +10,11 @@ import {
   listResourceGrants,
   upsertResourceGrant,
 } from '../../iam';
-import { assertAgentScope, getAgentGrant } from '../../iam/agent-scope';
+import {
+  assertAgentScope,
+  getAgentGrant,
+  isProjectSessionPrincipal,
+} from '../../iam/agent-scope';
 import { approvalPageUrl } from '../../setup-links/token';
 import { invalidateIamCacheForGroup } from '../../iam/cache-invalidation';
 import { normalizeProjectRole } from '../../iam/role-perms';
@@ -297,7 +301,7 @@ projectsApp.openapi(
           metadata: { source: 'ui', ...metadata },
           authType: c.get('authType') as string | undefined,
           apiKeyType: c.get('apiKeyType') as string | undefined,
-          inSession: c.get('sessionId') != null || getAgentGrant(c) != null,
+          inSession: isProjectSessionPrincipal(c),
           request: requestAuditContext(c),
         });
         if (result.error) throw new WarmSessionCreateFailure(result.error);
@@ -725,7 +729,7 @@ projectsApp.openapi(
     // session-binding (`sessionId`) or an agent grant.
     authType: c.get('authType') as string | undefined,
     apiKeyType: c.get('apiKeyType') as string | undefined,
-    inSession: c.get('sessionId') != null || getAgentGrant(c) != null,
+    inSession: isProjectSessionPrincipal(c),
     request: requestAuditContext(c),
     idempotencyKey,
     mayManageSystemConnectorProfiles,

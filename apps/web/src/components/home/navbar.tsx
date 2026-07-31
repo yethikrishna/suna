@@ -422,7 +422,7 @@ export function Navbar({ isAbsolute = false }: NavbarProps) {
                 reading "–" whenever /api/github-stars failed. No number, no
                 chip. */}
             {stars !== null && !starsLoading && (
-              <Button variant="ghost" asChild className="hidden sm:flex">
+              <Button variant="ghost" asChild className="hidden rounded-md sm:flex">
                 <Link
                   href="https://github.com/kortix-ai/suna"
                   target="_blank"

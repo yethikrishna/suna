@@ -87,8 +87,8 @@ definition of the machines it all runs on. **Versioned. Diffable. Owned outright
 
 ```
 project  (git repo + kortix.yaml)
-   └─ session ──> cloud computer: an isolated sandbox on its own branch
-                     └─ the agent works
+   └─ session ──> cloud computer: an isolated sandbox on a branch named after the session
+                     └─ the OpenCode agent works
                            └─ change request ──> you review & merge ──> main
 ```
 

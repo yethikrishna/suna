@@ -26,7 +26,7 @@ import {
   AlarmIcon as AlarmBase,
   ArrowLeftIcon as ArrowLeftBase,
   ArrowRightIcon as ArrowRightBase,
-  ArrowsClockwiseIcon as ArrowsClockwiseBase,
+  ArrowClockwiseIcon as ArrowsClockwiseBase,
   AtIcon as AtBase,
   BroadcastIcon as BroadcastBase,
   BugIcon as BugBase,
@@ -104,7 +104,7 @@ export const ActivityIcon = withDefaultWeight(ActivityBase);
 export const AlarmIcon = withDefaultWeight(AlarmBase);
 export const ArrowLeftIcon = withDefaultWeight(ArrowLeftBase);
 export const ArrowRightIcon = withDefaultWeight(ArrowRightBase);
-export const ArrowsClockwiseIcon = withDefaultWeight(ArrowsClockwiseBase);
+export const ArrowClockwiseIcon = withDefaultWeight(ArrowsClockwiseBase);
 export const AtIcon = withDefaultWeight(AtBase);
 export const BroadcastIcon = withDefaultWeight(BroadcastBase);
 export const BugIcon = withDefaultWeight(BugBase);

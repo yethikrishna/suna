@@ -30,8 +30,8 @@ A Kortix **project** is a git repo, and that repo *is* the company. Configuratio
 
 The whole thing is defined by two files:
 
-- **`kortix.yaml`** — the Kortix layer. The sandbox image, triggers, connectors, secret grants, logical agents, and runtime profiles.
-- **Harness-native config** — the runtime behavior. OpenCode keeps its own prompts, skills, tools, permissions, models, and providers.
+- **`kortix.yaml`** — the Kortix layer. The sandbox image, triggers, connectors, secret grants, logical agents, and OpenCode config directory.
+- **OpenCode config** — the runtime behavior. OpenCode owns prompts, skills, tools, permissions, models, and providers.
 
 Everything past that is files in the repo. You can `grep` your entire company. You can read any agent's instructions in plain markdown. You can open a memory file and see exactly what it believes about you. Nothing is hidden because there is nowhere to hide it.
 
@@ -41,7 +41,7 @@ Drop into any directory, run `kortix init`, and it's a Kortix. Run `kortix ship`
 
 ## How a session actually works
 
-Start a session and a sandbox boots from one generic snapshot already running our daemon — **kortix-sandbox-agent-server**. The daemon clones the repo, pulls latest, cuts a fresh branch, and reads `kortix.yaml`. It then starts the session's immutable runtime profile, which runs OpenCode. The agent does its work completely walled off from everything else. When it wants to keep something, it commits and opens a change request back toward `main`. Merge is deny-by-default for an agent, so a person decides whether that lands unless an admin has granted `project.cr.merge`.
+Start a session and a sandbox boots from one generic snapshot already running our daemon — **kortix-sandbox-agent-server**. The daemon clones the repo, pulls latest, cuts a fresh branch, and reads `kortix.yaml`. It then starts OpenCode and exposes its REST API through the Kortix compatibility proxy. The agent does its work completely walled off from everything else. When it wants to keep something, it commits and opens a change request back toward `main`, and a human decides whether that lands.
 
 The daemon is one executable that supervises runtime processes and exposes one session surface. A client gets prompting, streaming, files, and a terminal through that surface.
 
@@ -49,7 +49,7 @@ Because a session is its own sandbox on its own branch, you can run fifty of the
 
 A sync engine mirrors sessions and messages into a database so the interface is instant, but the truth of any session always lives in the sandbox that ran it.
 
-Run all of this on our cloud, on bare metal, in your own VPC, or on-prem — one isolated machine per session. The environment is just more config — describe the box you want, with the libraries you need already on it, and the persistent files load into it.
+Run all of this on our cloud, on bare metal, on-prem, in a microVM. The environment is just more config — describe the box you want, with the libraries you need already on it, and the persistent files load into it.
 
 ---
 
@@ -57,11 +57,11 @@ Run all of this on our cloud, on bare metal, in your own VPC, or on-prem — one
 
 Every one of these is a real resource: spelled out in the repo, managed in an interface that doesn't make you feel stupid, and locked down by actual permissions.
 
-- **Agents** — OpenCode agents with a prompt and a tightly scoped reach into tools and resources. Markdown is the baseline; the whole OpenCode lifecycle is open to you. Installable in one click. Able to rewrite themselves.
+- **Agents** — markdown personas with a prompt and a tightly scoped reach into tools and resources. Installable in one click. Able to rewrite themselves.
 - **Skills** — the part that compounds. Markdown plus scripts that encode how the company gets specific work done. They live in the repo and ride into every session.
 - **Connectors** — wire up everything once: thousands of apps in a click, plus MCP, OpenAPI, GraphQL, raw HTTP. The sandbox sees all of it through a single proxy with one scoped token instead of a drawer full of keys.
-- **Secrets** — encrypted, scoped per project, granted per agent, and a session only ever gets the intersection of that grant and the role of whoever started it. Connector credentials never enter the box at all: the sandbox holds one scoped token and the real key is resolved server-side. Keys, OAuth, model credentials, one governed place.
-- **Channels** — Slack today, Teams behind an operator switch, email and voice experimental. Install the app, invite the bot, and it starts sessions from wherever your people already are.
+- **Secrets** — encrypted, scoped per person and per group, pushed into the sandbox without ever showing their face, enforceable down at the network. Keys, OAuth, model credentials, one governed place.
+- **Channels** — Slack, Teams, Telegram, WhatsApp, SMS, email. One click stands up a bot that starts sessions from wherever your people already are.
 - **Triggers** — cron and webhook. Fire a session every morning, or boot one the instant something happens.
 - **Sessions** — owned by whoever or whatever started them. You see yours; change the filter to see more. A real API and SDK underneath.
 - **Memory** — files for now, and a system that learns later: chew through every session and every connected source and keep a living picture of the company that sharpens by the day.
@@ -78,7 +78,7 @@ You can run thousands of agents on the same configuration at the same time, each
 
 The thing runs without you. The main branch is always up. Triggers go off in the night. And any agent, on your laptop or in the cloud, can edit its own configuration and propose the change — so the system files patches against itself, all of it tracked, and the company gets better at being a company over time instead of staying frozen on the day you set it up.
 
-It's built to survive a security review, not slip past one. Every session on its own isolated machine, destroyed when it's done. Connector credentials brokered server-side so they never reach that machine at all. A real account/user/group model where every agent, skill, file, secret, trigger, channel, and connector answers to who is allowed to touch it. Approval gates you switch on per action, so an agent stops and waits for a person before it does something that matters.
+It's built to survive a security review, not slip past one. MicroVM isolation. Egress and credentials controlled at the network. A real account/user/group model where every agent, skill, file, secret, trigger, channel, and connector answers to who is allowed to touch it. Hard gates that make an agent stop and wait for a person before it does something that matters.
 
 And it's yours all the way down. Any model. Your own keys, or the ChatGPT, Claude, or Cursor subscription you already pay for. Our cloud, your servers, or fully on-prem. Everything is files, ready to walk out the door the day you want them to. The labs are paid to lock you in. We only make money if you'd stay anyway.
 
@@ -94,7 +94,7 @@ Under that surface is as much depth as you can stand. The interface and the code
 
 ## Who it's for
 
-**Developers** get a managed cloud for their OpenCode agents. One `kortix.yaml` selects native runtime profiles. One repo stores the state that persists. Every change request gets a preview you can open. Bring supported direct credentials or use managed model access. `kortix init` and `kortix ship` are the local loop.
+**Developers** get a managed cloud for OpenCode agents. One `kortix.yaml` configures the version 2 OpenCode REST runtime. One repo stores the state that persists. Every change request gets a preview you can open. Bring supported direct credentials or use managed model access. `kortix init` and `kortix ship` are the local loop.
 
 **Companies** get a workforce they can actually manage. People talk to it through the web, Slack, or Teams. It picks up the business as it goes — its skills, its context, the specific way the work gets done — and it does so on infrastructure where the data, the config, and the model belong to the company instead of a vendor.
 

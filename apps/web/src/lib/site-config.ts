@@ -180,7 +180,9 @@ export const siteConfig = {
   nav: {
     links: [
       { id: 1, name: 'Product', menu: productMenu },
-      { id: 2, name: 'Solutions', menu: solutionsMenu },
+      // Solutions is deliberately NOT in the top bar. Eight role pages is a
+      // wide menu beside Product and Company; the roles live in the footer,
+      // and the home-page use-case cards are the in-page entry point.
       { id: 3, name: 'Company', menu: companyMenu },
       { id: 4, name: 'Pricing', href: '/pricing' },
       { id: 6, name: 'Docs', href: '/docs' },

@@ -20,11 +20,29 @@ const FOOTER_SECTIONS: FooterSection[] = [
   {
     title: 'Product',
     links: [
-      { label: 'CLI', href: '/docs/reference/cli' },
+      // `/docs/reference/cli` 404s — there is no reference/ directory. The
+      // page is content/docs/cli.mdx, routed at /docs/cli.
+      { label: 'CLI', href: '/docs/cli' },
       { label: 'Developers', href: '/developers' },
       { label: 'Marketplace', href: '/marketplace' },
       { label: 'Enterprise', href: '/enterprise' },
       { label: 'Pricing', href: '/pricing' },
+    ],
+  },
+  {
+    // Solutions lives here rather than in the top bar: eight role pages is a
+    // wide menu for a nav that already carries Product and Company, and a
+    // reader looking for their own function looks in the footer for it.
+    title: 'Solutions',
+    links: [
+      { label: 'Sales', href: '/solutions/sales' },
+      { label: 'Marketing', href: '/solutions/marketing' },
+      { label: 'Engineering', href: '/solutions/engineering' },
+      { label: 'Product', href: '/solutions/product' },
+      { label: 'Finance', href: '/solutions/finance' },
+      { label: 'People', href: '/solutions/people' },
+      { label: 'IT', href: '/solutions/it' },
+      { label: 'Data Science', href: '/solutions/data-science' },
     ],
   },
   {

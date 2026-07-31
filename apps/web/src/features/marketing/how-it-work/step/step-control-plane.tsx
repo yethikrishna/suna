@@ -1,128 +1,161 @@
 'use client';
 
-import { PageHead } from '@/components/home/interactive-demo/primitives';
+import { PageHead, Panel, Row } from '@/components/home/interactive-demo/primitives';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { InfoBanner } from '@/components/ui/info-banner';
-import {
-  ArrowDownIcon as ArrowDown,
-  CheckIcon as Check,
-  FileTextIcon as FileText,
-} from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
+import { CheckIcon, GitPullRequestIcon } from '@phosphor-icons/react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { WebPanelWrapper } from '../web-panel-wrapper';
 
-export function Step4ShipCli() {
-  const tI18nHardcoded = useTranslations('hardcodedUi');
+/**
+ * Every surface here creates a session for real. Sources are the
+ * `SessionInvocationSource` union plus the `backend` origin a service account
+ * or PAT resolves to. Teams is deliberately absent — it ships behind an
+ * operator switch, so it is not a claim this page can make.
+ */
+const SURFACES = ['Web', 'Slack', 'Mobile', 'CLI', 'API', 'Cron', 'Webhook'];
+
+const CHANGES = [
+  {
+    title: 'Fix the billing webhook retry',
+    meta: '7f2a1c94 · +48 −12 · kortix',
+  },
+  {
+    title: 'Refresh the Monday revenue brief',
+    meta: '31c9ab07 · +1 file · researcher',
+  },
+];
+
+/** Layer 05 — one place to start the work, and one gate for where it lands. */
+export function StepControlPlane(): ReactNode {
   const reduced = useReducedMotion();
-  const [approved, setApproved] = useState(false);
+  const [merged, setMerged] = useState(false);
 
   useEffect(() => {
     if (reduced) {
-      setApproved(true);
+      setMerged(true);
       return;
     }
-    const id = setTimeout(() => setApproved(true), 2400);
+    const id = setTimeout(() => setMerged(true), 2600);
     return () => clearTimeout(id);
   }, [reduced]);
 
-  const enter = (i: number) =>
-    reduced
-      ? { initial: false as const }
-      : {
-          initial: { opacity: 0, y: 8 },
-          animate: { opacity: 1, y: 0 },
-          transition: { delay: 0.05 + i * 0.06, duration: 0.3, ease: 'easeOut' as const },
-        };
-
   return (
-    <div className="relative aspect-19/22 w-full overflow-visible">
+    <div className="relative h-full w-full">
       <WebPanelWrapper activeTab="review">
         <div className="flex h-full flex-col">
           <PageHead
-            title="Review"
-            sub={tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep4ShipCli2e1d3562')}
+            title="Change requests"
+            sub="Session work lands as a diff you read first."
+            action={
+              <Badge size="sm" variant="outline" className="shrink-0">
+                {merged ? '1 open' : '2 open'}
+              </Badge>
+            }
           />
 
-          <motion.div {...enter(0)} className="space-y-3">
-            <div>
-              <div className="text-muted-foreground mb-1.5 text-xs font-medium">Input</div>
-              <div className="border-border bg-card rounded-md border px-4 py-3">
-                <p className="text-foreground text-sm leading-snug">
-                  {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep4ShipClica1df42d')}
-                </p>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep4ShipClid04ede5a')}
-                </p>
-              </div>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+            <div className="space-y-3">
+              <Panel title="Open">
+              {CHANGES.map((change, index) => {
+                const done = merged && index === 0;
+                return (
+                  <Row
+                    key={change.title}
+                    leading={
+                      <span
+                        className={cn(
+                          'flex size-9 items-center justify-center rounded-sm transition-colors duration-300',
+                          done ? 'bg-kortix-green/15' : 'bg-kortix-blue/15',
+                        )}
+                      >
+                        {done ? (
+                          <CheckIcon
+                            weight="fill"
+                            className="text-kortix-green size-4.5 shrink-0"
+                          />
+                        ) : (
+                          <GitPullRequestIcon className="text-kortix-blue size-4.5 shrink-0" />
+                        )}
+                      </span>
+                    }
+                    title={change.title}
+                    subtitle={<span className="font-mono text-[11px]">{change.meta}</span>}
+                    trailing={
+                      <Badge size="xs" variant={done ? 'success' : 'kortix'} className="shrink-0">
+                        {done ? 'merged' : 'review'}
+                      </Badge>
+                    }
+                  />
+                );
+              })}
+            </Panel>
+
+              <AnimatePresence mode="wait" initial={false}>
+                {merged ? (
+                  <motion.div
+                    key="merged"
+                    initial={reduced ? false : { opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, ease: 'easeOut' }}
+                  >
+                    <InfoBanner tone="success" icon={CheckIcon} title="Merged into main">
+                      Merging is a named grant in kortix.yaml. Narrow it to a person, a group or
+                      nobody.
+                    </InfoBanner>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="pending"
+                    initial={false}
+                    exit={reduced ? undefined : { opacity: 0, y: -6 }}
+                    transition={{ duration: 0.2, ease: 'easeOut' }}
+                    className="flex flex-wrap items-center gap-2"
+                  >
+                    <Button size="sm" className="gap-1.5">
+                      <CheckIcon className="size-3.5 shrink-0" />
+                      Merge
+                    </Button>
+                    <span className="text-muted-foreground text-xs">
+                      Read the diff first — nothing lands until it is approved.
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            <ArrowDown className="text-muted-foreground mx-auto size-4 shrink-0" aria-hidden />
-
-            <div>
-              <div className="text-muted-foreground mb-1.5 text-xs font-medium">Output</div>
-              <div className="border-border bg-card rounded-md border px-4 py-3">
-                <div className="flex items-start gap-3">
-                  <span className="border-border bg-background text-muted-foreground flex size-8 shrink-0 items-center justify-center rounded-md border">
-                    <FileText className="size-4" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-foreground text-sm font-medium">
-                      {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep4ShipCli9be01ef2')}
-                    </div>
-                    <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
-                      {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep4ShipCli60d302f9')}
-                    </p>
-                  </div>
-                  {approved ? (
-                    <Badge size="sm" variant="success" className="shrink-0 gap-1">
-                      <Check className="size-3" />
-                      kept
-                    </Badge>
-                  ) : (
-                    <Badge size="sm" variant="outline" className="shrink-0">
-                      ready
-                    </Badge>
-                  )}
+            <div className="space-y-3">
+              <Panel title="Started from" count="every surface starts the same session">
+                <div className="flex flex-wrap gap-1.5 px-4 py-3">
+                  {SURFACES.map((surface) => (
+                    <span
+                      key={surface}
+                      className="border-border text-muted-foreground rounded-md border px-2 py-0.5 font-mono text-[10px] tracking-wide"
+                    >
+                      {surface}
+                    </span>
+                  ))}
                 </div>
-              </div>
-            </div>
-          </motion.div>
+              </Panel>
 
-          <motion.div {...enter(1)} className="mt-4">
-            <AnimatePresence mode="wait" initial={false}>
-              {approved ? (
-                <motion.div
-                  key="approved"
-                  initial={reduced ? false : { opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.25, ease: 'easeOut' }}
-                >
-                  <InfoBanner tone="success" icon={Check} title="Approved">
-                    {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep4ShipCli291a9f3d')}
-                  </InfoBanner>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="pending"
-                  initial={false}
-                  exit={reduced ? undefined : { opacity: 0, y: -6 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                  className="flex flex-col gap-2 sm:flex-row sm:items-center"
-                >
-                  <Button variant="default" size="sm" className="gap-1.5">
-                    <Check className="size-3.5" />
-                    Approve
-                  </Button>
-                  <span className="text-muted-foreground text-xs">
-                    {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep4ShipCli68224593')}
-                  </span>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
+              <Panel title="Lands as">
+                <div className="text-muted-foreground space-y-1.5 px-4 py-3 font-mono text-[11.5px]">
+                  <div>
+                    <span className="text-kortix-green">+</span> a branch per session
+                  </div>
+                  <div>
+                    <span className="text-kortix-green">+</span> a diff you read before it merges
+                  </div>
+                  <div>
+                    <span className="text-kortix-green">+</span> a commit on main you can revert
+                  </div>
+                </div>
+              </Panel>
+            </div>
+          </div>
         </div>
       </WebPanelWrapper>
     </div>

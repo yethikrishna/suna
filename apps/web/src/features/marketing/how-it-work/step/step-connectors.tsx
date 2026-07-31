@@ -1,251 +1,156 @@
 'use client';
 
-import { DraggableCliPanel } from '@/components/home/interactive-demo/cli/draggable-cli-panel';
-import { INTEGRATIONS, PROVIDERS } from '@/components/home/interactive-demo/data';
-import {
-  BrandLogo,
-  ConnectBadge,
-  PageHead,
-  Panel,
-} from '@/components/home/interactive-demo/primitives';
+import { ok, t } from '@/components/home/interactive-demo/cli/terminal';
+import { BrandLogo, ConnectBadge, PageHead } from '@/components/home/interactive-demo/primitives';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import {
-  SquaresFourIcon as Blocks,
-  SparkleIcon as HiMiniSparkles,
-  KeyIcon as KeyRound,
-  CpuIcon as RiCpuLine,
-} from '@phosphor-icons/react';
-import { AnimatePresence, motion } from 'motion/react';
-import { useTranslations } from 'next-intl';
-import { useEffect, useRef } from 'react';
-import { STEP_CLI_PANEL_ANCHOR, StepCliTerminal } from '../step-cli-terminal';
-import { useStep2Director, type Step2View } from '../step-director';
+import { LockKeyIcon } from '@phosphor-icons/react';
+import { motion } from 'motion/react';
+import type { ReactNode } from 'react';
+import { StepCliTerminal } from '../step-cli-terminal';
+import { useCliMovie, type Stage } from '../step-director';
+import { useStepShowcaseStart } from '../use-step-showcase';
 import { WebPanelWrapper } from '../web-panel-wrapper';
 
-function CostTrackingPanel() {
-  const tI18nHardcoded = useTranslations('hardcodedUi');
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: 'easeOut' }}
-    >
-      <Panel
-        title={tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep2ConnectClic4f03099')}
-        count={tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep2ConnectCli1e349a6f')}
-      >
-        <div className="bg-border grid grid-cols-3 gap-px">
-          {[
-            { label: 'Spend', value: '$12.40' },
-            { label: 'Requests', value: '1,284' },
-            { label: 'Tokens', value: '4.2M' },
-          ].map((stat) => (
-            <div key={stat.label} className="bg-card px-3 py-2.5">
-              <div className="text-muted-foreground text-xs">{stat.label}</div>
-              <div className="text-foreground mt-0.5 font-mono text-sm font-medium">
-                {stat.value}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Panel>
-    </motion.div>
-  );
-}
+/** The six shown in the grid, in the order they read. */
+const SHOWN: [domain: string, name: string][] = [
+  ['github.com', 'GitHub'],
+  ['slack.com', 'Slack'],
+  ['linear.app', 'Linear'],
+  ['notion.so', 'Notion'],
+  ['hubspot.com', 'HubSpot'],
+  ['stripe.com', 'Stripe'],
+];
 
-function ModelsView({
-  connectedDomains,
-  showCostPanel,
-}: {
-  connectedDomains: string[];
-  showCostPanel: boolean;
-}) {
-  const tI18nHardcoded = useTranslations('hardcodedUi');
+/**
+ * The connector providers, minus `pipedream` (that is the app catalog above)
+ * and minus the two internal ones. Source: `ConnectorProvider` in
+ * `apps/api/src/projects/connectors.ts`.
+ */
+const BYO_KINDS = ['MCP', 'OpenAPI', 'Postman', 'GraphQL', 'HTTP'];
+
+type ConnectorsState = {
+  connected: string[];
+  /** The per-tool rule the second command writes, shown on the Linear row. */
+  rule: string | null;
+};
+
+const INITIAL: ConnectorsState = { connected: ['GitHub', 'Slack'], rule: null };
+
+/**
+ * Both commands exist: `connectors connect <slug>` starts the 1-click connect,
+ * and `connectors policy <slug> set <match> <allow|ask|block>` writes the rule
+ * that decides whether a tool call runs or stops to ask.
+ */
+const SCRIPT: Stage<ConnectorsState>[] = [
+  {
+    run: 'kortix connectors connect linear',
+    out: [
+      {
+        line: ok(t('Linear connected · '), t('12 tools', 'faded')),
+        state: { connected: ['GitHub', 'Slack', 'Linear'] },
+        pause: 900,
+      },
+    ],
+  },
+  {
+    run: 'kortix connectors policy linear set create_issue ask',
+    out: [{ line: ok(t('create_issue → '), t('ask', 'fg')), state: { rule: 'create_issue · ask' } }],
+  },
+];
+
+function ConnectorsView({ state }: { state: ConnectorsState }): ReactNode {
   return (
     <div className="flex h-full flex-col">
       <PageHead
-        title="Models"
-        sub={tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep2ConnectClif30bc303')}
+        title="Connectors"
+        sub="Connect once, for the whole company."
+        action={
+          <Badge variant="kortix" size="sm" className="shrink-0 rounded">
+            3,000+ apps
+          </Badge>
+        }
       />
 
-      <div className="space-y-2">
-        {PROVIDERS.slice(0, 6).map((p) => {
-          const connected = !!p.domain && connectedDomains.includes(p.domain);
-          return (
-            <motion.div
-              key={p.name}
-              layout
-              className={cn(
-                'border-border/60 bg-card flex items-center gap-3 rounded-md border p-2.5 transition-colors',
-                connected &&
-                  p.domain === 'anthropic.com' &&
-                  'border-kortix-green/30 ring-kortix-green/30 ring-2',
-              )}
-            >
-              {p.domain ? (
-                <BrandLogo domain={p.domain} alt={p.name} />
-              ) : (
-                <span className="bg-foreground text-background flex size-8 shrink-0 items-center justify-center rounded-lg">
-                  <RiCpuLine className="size-4" />
-                </span>
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="text-foreground truncate text-sm font-medium">{p.name}</div>
-                <div className="text-muted-foreground truncate text-xs">{p.hint}</div>
-              </div>
-              {p.state === 'managed' ? (
-                <Badge size="sm" variant="highlight" className="shrink-0 gap-1">
-                  <HiMiniSparkles weight="fill" className="size-3" /> Managed
-                </Badge>
-              ) : connected ? (
-                <ConnectBadge connected />
-              ) : (
-                <Button variant="outline" size="sm" className="shrink-0">
-                  <KeyRound className="size-3.5" /> Connect
-                </Button>
-              )}
-            </motion.div>
-          );
-        })}
-      </div>
-
-      <div className="border-border/60 bg-muted/20 text-muted-foreground mt-3 flex items-center gap-2 rounded-md border px-3 py-2.5 text-xs">
-        <KeyRound className="size-3.5 shrink-0" />
-        {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep2ConnectClidcc2a2a7')}
-      </div>
-
-      <AnimatePresence>
-        {showCostPanel && (
-          <div className="mt-3">
-            <CostTrackingPanel />
-          </div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function IntegrationsView({ connectedNames }: { connectedNames: string[] }) {
-  const tI18nHardcoded = useTranslations('hardcodedUi');
-  const featured = INTEGRATIONS.filter(([, name]) =>
-    ['GitHub', 'Slack', 'Linear', 'Notion', 'HubSpot', 'Stripe'].includes(name),
-  );
-
-  return (
-    <div className="flex h-full flex-col">
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div className="min-w-0">
-          <h3 className="text-foreground text-lg font-semibold tracking-tight">Integrations</h3>
-          <p className="text-muted-foreground mt-0.5 text-sm">
-            {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep2ConnectCli3dee7a71')}
-          </p>
-        </div>
-      </div>
-
+      {/* Two columns, never three. The card gives this panel about 500px, and
+          a third column truncates every connector name to one letter. */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {featured.map(([domain, name, defaultConnected]) => {
-          const connected = defaultConnected || connectedNames.includes(name);
+        {SHOWN.map(([domain, name]) => {
+          const connected = state.connected.includes(name);
+          const rule = name === 'Linear' ? state.rule : null;
           return (
             <motion.div
               key={name}
               layout
               className={cn(
                 'border-border/60 bg-card flex items-center gap-2.5 rounded-md border p-2.5',
-                name === 'Linear' &&
-                  connected &&
-                  'border-kortix-green/30 ring-kortix-green/30 ring-2',
+                rule && 'border-kortix-green/40',
               )}
             >
-              <BrandLogo domain={domain} alt={name} />
-              <span className="text-foreground truncate text-sm font-medium">{name}</span>
+              <BrandLogo domain={domain} alt={name} size={18} />
+              <span className="min-w-0 flex-1">
+                <span className="text-foreground block truncate text-sm font-medium">{name}</span>
+                {rule ? (
+                  <span className="text-muted-foreground block truncate font-mono text-[10px]">
+                    {rule}
+                  </span>
+                ) : null}
+              </span>
               <ConnectBadge connected={connected} />
             </motion.div>
           );
         })}
       </div>
 
-      <button
-        type="button"
-        className="border-border/60 bg-muted/20 mt-3 flex w-full items-center justify-center gap-2 rounded-md border border-dashed py-3 text-sm"
-      >
-        <Blocks className="text-muted-foreground size-4" />
-        <span className="text-foreground font-medium">
-          {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep2ConnectClid2a078a2')}
-        </span>
-      </button>
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="border-border/60 bg-card rounded-md border px-4 py-3">
+          <div className="text-foreground text-sm font-medium">Not in the catalog?</div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {BYO_KINDS.map((kind) => (
+              <span
+                key={kind}
+                className="border-border text-muted-foreground rounded-md border px-2 py-0.5 font-mono text-[10px] tracking-wide"
+              >
+                {kind}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="border-border/60 bg-muted/20 text-muted-foreground flex items-start gap-2 rounded-md border px-3 py-2.5 text-xs leading-relaxed">
+          <LockKeyIcon className="mt-px size-3.5 shrink-0" />
+          <span>
+            Credentials are brokered server-side. The agent calls the tool; the token never enters
+            the machine.
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
 
-function WebPanel({
-  view,
-  connectedProviders,
-  connectedConnectors,
-  showCostPanel,
-}: {
-  view: Step2View;
-  connectedProviders: string[];
-  connectedConnectors: string[];
-  showCostPanel: boolean;
-}) {
-  return (
-    <WebPanelWrapper activeTab={view}>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={view}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.22, ease: 'easeOut' }}
-        >
-          {view === 'models' ? (
-            <ModelsView connectedDomains={connectedProviders} showCostPanel={showCostPanel} />
-          ) : (
-            <IntegrationsView connectedNames={connectedConnectors} />
-          )}
-        </motion.div>
-      </AnimatePresence>
-    </WebPanelWrapper>
-  );
-}
-
-export function Step2ConnectCli() {
-  const director = useStep2Director();
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = rootRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          io.disconnect();
-          director.start();
-        }
-      },
-      { threshold: 0.35 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+/** Layer 02 — every tool the company already runs on, and who may call it. */
+export function StepConnectors(): ReactNode {
+  const movie = useCliMovie(INITIAL, SCRIPT);
+  const rootRef = useStepShowcaseStart(movie.start);
 
   return (
-    <div ref={rootRef} className="relative aspect-19/22 w-full overflow-visible">
-      <DraggableCliPanel containerRef={rootRef} initialAnchor={STEP_CLI_PANEL_ANCHOR}>
-        {({ dragHandleProps }) => (
-          <StepCliTerminal director={director} dragHandleProps={dragHandleProps} />
-        )}
-      </DraggableCliPanel>
+    <div
+      ref={rootRef}
+      className="grid h-full w-full grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]"
+    >
+      <div className="min-h-0">
+        <WebPanelWrapper activeTab="integrations">
+          <ConnectorsView state={movie.state} />
+        </WebPanelWrapper>
+      </div>
 
-      <WebPanel
-        view={director.view}
-        connectedProviders={director.connectedProviders}
-        connectedConnectors={director.connectedConnectors}
-        showCostPanel={director.showCostPanel}
-      />
+      {/* The terminal is a column, not a floating window: at 1100px wide the
+          card has room for both surfaces side by side, and a draggable overlay
+          would only cover the panel it is meant to be driving. */}
+      <div className="hidden min-h-0 lg:block">
+        <StepCliTerminal director={movie} />
+      </div>
     </div>
   );
 }

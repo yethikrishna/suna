@@ -152,14 +152,19 @@ competitor's product wrong is an instant credibility hit.
 | --- | --- | --- |
 | **Vendor** | Anthropic | OpenAI |
 | **Shipped** | Desktop January 2026; web + mobile 2026-07-07 | 2026-07-09 |
-| **Access** | Claude Max subscribers | Paid plans, usage-metered |
+| **Access** | Paid plans — Pro, Max, Team, Enterprise | Paid plans, usage-metered |
 | **Model** | Anthropic models only | GPT-5.6 only |
-| **Hosting** | Anthropic's cloud, no self-host | OpenAI's cloud, no self-host |
+| **Hosting** | Anthropic's cloud, or the customer's Amazon Bedrock / Google Cloud / Microsoft Foundry account. No self-host. | OpenAI's cloud, no self-host |
 
 - The product is **Claude Cowork** — lowercase `w`, one word. **There is no "Claude Work."**
 - **ChatGPT Work** is two words, both capitalized.
 - Only claim what is publicly documented. Do **not** claim anything about their concurrency,
   parallelism, or session limits — we have no verified data on either.
+- **Cowork is not Max-only, and it is not Anthropic-cloud-only.** Verified 2026-07-31 against
+  `claude.com/pricing` (Pro: "Includes Claude Cowork"; Team: "Includes Claude Code and Claude
+  Cowork") and `claude.com/product/cowork` ("Runs where your data lives: Use a Claude account or
+  your own cloud provider: Amazon Bedrock, Google Cloud, or Microsoft Foundry"). Both older claims
+  were wrong and are corrected above.
 - The comparison in `README.md` is the canonical version. Keep any other comparison consistent with
   it, and re-check it whenever either product changes.
 

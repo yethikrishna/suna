@@ -166,7 +166,7 @@ The agent selector shows the harness label when `acp_runtime` is enabled.
 
 The create request sends only the logical `agent_name`.
 
-Triggers, schedules, Slack, email, Telegram, Teams, webhooks, CLI, SDK, and web
+Triggers, schedules, Slack, email, Teams, webhooks, CLI, SDK, and web
 all use the same session-create preflight.
 
 Headless follow-up delivery uses ACP for ACP sessions.

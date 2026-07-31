@@ -21,6 +21,28 @@ export type BlogPostEntry = {
   coverLogos?: CoverLogo[];
   /** Show the Kortix mark in the cover lockup (default true). */
   coverKortix?: boolean;
+  /**
+   * Lead media, rendered in place of the generated cover lockup — the product
+   * itself, running, as the first thing on the page.
+   *
+   * Video, never the GIF. The same recording ships as both, and the pair below
+   * is 1.9–2.9 MB against 3.8 MB for the GIF at worse quality, seeks, and can
+   * be held still. `poster` is also the still shown under
+   * `prefers-reduced-motion`, so a reader who asked for no motion still gets
+   * the frame. Same asset and same source order as the landing hero
+   * (`features/marketing/hero-surfaces.tsx`).
+   */
+  leadMedia?: {
+    /** Poster frame, and the still shown when motion is reduced. */
+    poster: string;
+    /** `<source>` list in preference order — WebM first, MP4 as the fallback. */
+    sources: { src: string; type: string }[];
+    /** What the recording shows. Read out in place of the video. */
+    alt: string;
+    /** Intrinsic ratio as a CSS `aspect-ratio` value. Reserves the box so the
+     *  article below it does not jump when the poster decodes. */
+    aspectRatio: string;
+  };
   /** Minutes — shown in the byline. */
   readingTime: number;
   draft?: boolean;
@@ -65,7 +87,7 @@ const agiReadyArchitecture: BlogPostEntry = {
       items: [
         '**Any model, your keys** — Claude, GPT, Gemini, or open-weight GLM and DeepSeek; your subscription, your spend, your data residency.',
         '**A model-agnostic gateway** — per-project routing chains, ordered fallbacks, and semantic failover where an empty completion is classified as a failure, not a zero-output success.',
-        '**Self-hosted inference** — run it in your VPC, on-prem, or air-gapped, on your own hardware. The platform never assumes a vendor is reachable.',
+        '**Self-hosted inference** — run it in your own VPC or on-prem, on your own hardware. The platform never assumes a vendor is reachable.',
       ],
     },
     {
@@ -575,7 +597,7 @@ const personalAgentsVsCompanyOs: BlogPostEntry = {
         {
           dimension: 'Isolated sandbox per task',
           them: 'Optional / personal',
-          kortix: 'microVM per session, egress-controlled',
+          kortix: 'One isolated machine per session, on its own branch',
         },
         {
           dimension: 'Versioned, auditable, reversible',
@@ -1402,7 +1424,334 @@ for (const dispute of open.data?.disputes ?? []) {
   ],
 };
 
+/**
+ * The flagship post: the landing page's argument, at length, for a reader who
+ * wants more than a page of headlines. The section order below is the section
+ * order of `app/(public)/(marketing)/page.tsx` on purpose — hero, the six
+ * layers, the long version, what it does, open source, trust, close.
+ *
+ * ==========================================================================
+ * ACCURACY GATE. Every claim here is checked against the accuracy-reviewed
+ * landing copy it summarises (`features/marketing/capabilities/content.ts`,
+ * `how-it-work/how-it-works-content.ts`, `open-source/content.ts`,
+ * `landing/content.ts`) and against the `comms` skill. Do not soften, inflate
+ * or "restore" any of it.
+ * ==========================================================================
+ *  - SECRETS. Never write that a granted secret is invisible to the model. A
+ *    granted RUNTIME secret is a real env value readable by any command the
+ *    agent runs (`docs/ENV_SECRET_EXPOSURE_BASELINE.md`). Only CONNECTOR
+ *    credentials never enter the machine.
+ *  - EGRESS is not controlled at the network. Nothing implements it.
+ *  - microVM is the Platinum provider only; containers are the default. Write
+ *    "its own isolated machine".
+ *  - SELF-HOST is NOT air-gapped — `kortix self-host start` pulls images from
+ *    docker.io and reaches a sandbox provider over egress.
+ *  - CHANNELS are a closed enum of four: slack | teams | email | voice.
+ *    Telegram, WhatsApp, SMS and Discord are not channels. And `channels:` is
+ *    REJECTED by the v2 validator (`rejectChannelsV2`) — it is live project
+ *    state, not repo config.
+ *  - MERGE is default-deny for agents, not human-only. APPROVAL GATES are OFF
+ *    by default (`policy.default_mode` falls back to `allow_all`).
+ *  - HARNESS. OpenCode only. ACP, `kortix_version: 3` and the Claude Code /
+ *    Codex / Pi harnesses are not shipped and are never named.
+ *  - An agent is an OpenCode agent — markdown is the baseline, not the ceiling.
+ *  - NO forking or publishing a company. The project catalog holds exactly one
+ *    item, our own starter, and there is no publish route.
+ *  - LICENCE: "open source" and stop. CERTIFICATION: never claimed — SOC 2 is
+ *    in progress, GDPR is held.
+ *  - NUMBERS. "3,000+ apps" is the only figure, and it is the one the live page
+ *    carries. The star count is read live on the site and is deliberately NOT
+ *    hardcoded here. No customer names.
+ *  - SUPERLATIVE. "the leading open-source alternative", once, and nowhere else.
+ */
+const openSourceAiManagementSystem: BlogPostEntry = {
+  slug: 'open-source-ai-management-system',
+  title: 'What Kortix actually is: the open-source AI Management System, layer by layer',
+  description:
+    'One git repo is the source of truth for the agents, the skills, the memory and the connector config. Every session gets its own isolated machine and its own branch. Any model, your keys. Work lands through a change request. Self-hosted or managed cloud. The long version of that sentence.',
+  date: '2026-07-31',
+  author: 'marko',
+  cover: '/banner.png',
+  tags: ['Product', 'Architecture', 'Open Source'],
+  readingTime: 11,
+  leadMedia: {
+    poster: '/media/showcase/kortix-showcase-poster.jpg',
+    sources: [
+      { src: '/media/showcase/kortix-showcase-1920.webm', type: 'video/webm' },
+      { src: '/media/showcase/kortix-showcase-1280.mp4', type: 'video/mp4' },
+    ],
+    alt: 'Kortix in the browser: a project and its connectors, agents, skills and schedules, then a session working on a cloud computer and returning a finished deck.',
+    aspectRatio: '1920 / 1200',
+  },
+  blocks: [
+    {
+      type: 'lead',
+      text: 'Kortix is the open-source AI Management System — the leading open-source alternative to Claude Cowork and ChatGPT Work. One git repo holds the agents, the skills, the memory and the connector config. Every session runs on its own isolated machine, on its own branch. Any model, your keys. Work lands through a change request. Self-host it, or run it on our cloud. This is the long version of that paragraph: every layer, in the order you meet it, with the parts we do not claim marked as such.',
+    },
+    { type: 'h2', text: 'The category is real. The question is who ends up holding it.' },
+    {
+      type: 'p',
+      text: 'Agents that deliver finished work stopped being a demo and became a product category. Claude Cowork shipped on the desktop in January 2026 and reached web and mobile on 7 July; ChatGPT Work followed on 9 July. Both are good products. Both also share a shape: they run inside a model lab, on that lab’s models, on that lab’s cloud, with no self-host option — Cowork for Claude Max subscribers on Anthropic models, ChatGPT Work on paid usage-metered plans, on GPT-5.6.',
+    },
+    {
+      type: 'p',
+      text: 'Which leaves most companies choosing between a toy and a cage: a single-tenant demo with no isolation, no version history and no permission model, or renting your company back from the lab that keeps your data, your configuration and your model. Kortix refuses both. The refusal is not a philosophy — it is six layers, and you can read every one of them.',
+    },
+    { type: 'h2', text: '01 · One git repo that is the company' },
+    {
+      type: 'p',
+      text: 'A Kortix project is a git repository, and that repository *is* the company. `kortix.yaml` is the Kortix layer: the machine a session boots on, the connectors, the triggers, the secret names, and what each agent may touch. The OpenCode configuration beside it is the runtime the agents think in. Everything past those two files is markdown.',
+    },
+    {
+      type: 'p',
+      text: 'So the whole company answers to `grep`. Every agent prompt, every skill, every remembered fact and every grant is a line in a file with an author, a timestamp and a diff, and undo is `git revert`. `kortix init` turns any directory into a Kortix; `kortix ship` checks it compiles, asks for the secrets it is missing, and brings it live.',
+    },
+    {
+      type: 'code',
+      code: `# kortix.yaml — the Kortix layer of the repo.
+kortix_version: 2
+runtime: opencode
+default_agent: kortix
+
+project:
+  name: acme
+
+# OpenCode keeps agents, skills, commands, tools, plugins and models here.
+opencode:
+  config_dir: .kortix/opencode
+
+# An omitted grant resolves to \`none\`. Grant explicitly.
+agents:
+  kortix:
+    connectors: all
+    secrets: all
+    skills: all
+    kortix_cli: all
+
+  memory-reflector:
+    kortix_cli: [project.cr.open]
+
+# A trigger starts a session with nobody present.
+triggers:
+  - slug: memory-reflector
+    type: cron
+    agent: memory-reflector
+    cron: "0 0 3 * * *"
+    timezone: UTC
+    prompt: |
+      Reflect on the last 24 hours of project activity, update
+      .kortix/memory/, and open one change request.`,
+    },
+    {
+      type: 'p',
+      text: 'Note two things that manifest deliberately does not contain. There is no `channels:` block — the v2 validator rejects one, because channel routing is live project state rather than repo configuration, and pretending otherwise would put a lie in your git history. And every omitted grant resolves to `none`: leave a connector out of an agent’s list and that agent does not get it. Deny is the state you fall into by accident, not the one you have to remember.',
+    },
+    { type: 'h2', text: '02 · Every tool your company already runs on' },
+    {
+      type: 'p',
+      text: 'Connect a tool once, for the whole project: 3,000+ apps through their own OAuth screens, or your own APIs through an OpenAPI or Postman spec, a GraphQL endpoint, a remote MCP server, or a bare HTTP base URL. Kortix reads the source, works out the authentication, and turns every operation into a tool an agent can call.',
+    },
+    {
+      type: 'p',
+      text: 'The credential never travels. The machine carries exactly one project-scoped Kortix token; the third-party key is decrypted server-side and attached to the outbound request, so the raw key never reaches the sandbox. Every action gets one of three answers — allow, ask, or block — and a rule can read the arguments it was given rather than only the tool name, so “only to this domain” is something you can actually express. An ask holds the call open instead of failing it, and the agent resumes exactly where it stopped.',
+    },
+    { type: 'h2', text: '03 · Any model. Keep your keys.' },
+    {
+      type: 'p',
+      text: 'The one safe bet in this field is that a better model ships, so Kortix is model-agnostic on purpose. Pick the model per agent, per session or per message. Bring your own API key from any major provider, or use ours. Sign in with the ChatGPT subscription you already pay for. Or point it at your own model behind your own URL — anything OpenAI-compatible. When you switch, nothing above this layer moves.',
+    },
+    { type: 'h2', text: '04 · The part that turns a model into an agent' },
+    {
+      type: 'p',
+      text: 'A model on its own answers a question. A harness gives it planning, tool use, and multi-step runs it actually finishes. Kortix runs OpenCode as that harness, and an agent here *is* an OpenCode agent: a markdown file carrying a persona and a permission tree is the baseline, and the whole OpenCode lifecycle sits underneath it — commands, tools, plugins, providers, models, and skills that ride into every session that needs them. A skill is a directory with a `SKILL.md` at its root: how your company does one specific job, written once.',
+    },
+    {
+      type: 'p',
+      text: 'So how an agent thinks is text you can read, diff and edit. You can say allow, ask or deny per tool, down to a single shell command. And because the harness is open source too, it is never the thing you are locked into.',
+    },
+    { type: 'h2', text: '05 · Every session gets its own computer' },
+    {
+      type: 'p',
+      text: 'Start a session and its own isolated Linux machine boots. It clones the project repo into `/workspace`, cuts a branch named after the session, and starts the harness. The session id, the sandbox id and the branch name are one and the same string. The agent gets the whole machine — a shell, a package manager, a filesystem, the network — and nothing runs on your laptop.',
+    },
+    {
+      type: 'p',
+      text: 'The machine is disposable, so a bad install or a wiped directory goes away with it and only what the agent commits survives. And because one session is one machine on one branch, two sessions cannot touch each other. Run one, or run thousands at once, each a different version of the company working at the same time. That parallel, isolated workforce is the part nobody else has.',
+    },
+    { type: 'h2', text: '06 · One place to start it, one gate to land it' },
+    {
+      type: 'p',
+      text: 'The web app, Slack, mobile, the CLI and the API all start the same session — same object, same branch, same audit row. Then the work comes back the one way it is allowed to: a change request you read as a diff before anything reaches `main`.',
+    },
+    {
+      type: 'p',
+      text: 'Merging one is a capability of its own, and it is **default-deny for agents**. An agent gets it only if an admin grants `project.cr.merge` in `kortix.yaml`, and widening that grant is itself a change somebody else has to approve. It is not a human-only gate, and we would rather state that precisely than sell you a stronger claim than the code makes.',
+    },
+    { type: 'h2', text: 'Where people actually reach it' },
+    {
+      type: 'p',
+      text: 'Bind a project to Slack and a message in a thread starts a session. The agent picks up its own cloud computer, does the work, and answers in the same thread: the reply streams into one message, files move both directions, and a decision it needs from you arrives as a card with buttons. A thread is exactly one session — a unique index in the database, not a convention two services agree to honour.',
+    },
+    {
+      type: 'p',
+      text: 'The honest list is short, because the platform enum is closed at four. **Slack is live.** Microsoft Teams is code-complete behind an operator switch. Email and voice are experimental and opt in per project. Telegram, WhatsApp, SMS and Discord are not channels, in any tense.',
+    },
+    { type: 'h2', text: 'When nobody is asking' },
+    {
+      type: 'p',
+      text: 'A trigger starts a session with nobody present. There are two kinds and no third: a cron schedule stored against an IANA timezone name rather than an offset, or a webhook signed with HMAC-SHA256. A webhook trigger that names no signing secret is rejected at validation, so there is no unsigned path to forget to lock down later.',
+    },
+    {
+      type: 'p',
+      text: 'Both are entries in `kortix.yaml`, so the 3am job has an author and a history like everything else, and both inherit exactly the reach of the agent they name. The prompt is a template: a webhook fire renders `{{ body.* }}`, a cron fire renders `{{ cron.schedule }}`, `{{ cron.timezone }}` and `{{ cron.scheduled_for }}`. Every fire is a clean slate by default, or a trigger can re-prompt a session it already owns, keyed off the payload, so one customer keeps one thread.',
+    },
+    { type: 'h2', text: 'Permissions and secrets, stated precisely' },
+    {
+      type: 'p',
+      text: 'People, groups and service accounts are all principals, and a permission attaches to a principal for an action on a resource type. A service account is evaluated purely against its own policies — it never inherits the reach of whoever created it. Secrets are sealed with AES-256-GCM under a key derived per project. And a session receives only the intersection of the agent’s declared grant and the role of the person who started it, so an agent can never out-reach the human who launched it.',
+    },
+    {
+      type: 'callout',
+      text: 'We will not tell you a granted secret is invisible to the model. Once delivered, a runtime secret is a real environment value inside the session, readable by any command the agent runs — because that is how a tool uses it. What holds is narrower and true: **connector credentials never enter the machine at all**, and the machine is destroyed with everything on it.',
+    },
+    {
+      type: 'p',
+      text: 'Approval gates get the same treatment. They are **not on by default** — a project that declares no policy block falls back to allowing actions — so the operator sets the default they want and puts an explicit ask on the step that matters. Audit is the one thing that is not optional: recording is never gated, and only reading, exporting and streaming the record are permissions at all.',
+    },
+    { type: 'h2', text: 'What it does on an ordinary Tuesday' },
+    {
+      type: 'p',
+      text: 'Layers only matter if they add up to work somebody was already being paid to do. The bar for anything below is the same: a real job, run end to end by an agent with its own machine, a repo, connectors and a schedule, whose output is one concrete artifact.',
+    },
+    {
+      type: 'ul',
+      items: [
+        '**Sales** — pulls a lead list, enriches every account and writes a sequence per lead. Put an ask on the send step and it stops with you before anything goes out.',
+        '**Engineering** — sweeps the day’s errors, groups them, reproduces the worst one on its own machine, patches it, and opens a change request against `main`.',
+        '**Finance** — reconciles the ledger against the bank, chases the receipts that are missing, attaches them, and closes the month with the variance explained.',
+        '**Marketing** — tracks the queries you care about, finds the pages losing ground, rewrites them against the brief, and opens each rewrite as a change request.',
+        '**Data** — queries the warehouse on a schedule, checks the result against last week, draws the chart, and posts the whole thing to Slack while you are asleep.',
+      ],
+    },
+    {
+      type: 'p',
+      text: 'Every one of those is a job, not a chat. What lands is a file — a diff, a spreadsheet, a draft, a report — with a branch behind it and a person in front of it.',
+    },
+    { type: 'h2', text: 'Read every line, then run it on your own box' },
+    {
+      type: 'p',
+      text: 'All of it is open source. Kortix is developed in the open at [kortix-ai/suna](https://github.com/kortix-ai/suna) — clone the repo, read what you are trusting, fork it if you want it different. Then run that same product on hardware you control. One Docker Compose stack, built from the images the managed cloud runs, so it is the whole platform rather than a cut-down edition, and the database, the file storage, every project repo, the secrets, the policies and the audit record sit on disk you control.',
+    },
+    {
+      type: 'code',
+      code: `# bring the whole stack up on your own box
+$ kortix self-host start
+
+# point the CLI at your stack
+$ kortix hosts use selfhost
+→ Active host is now selfhost
+
+# same commands, back on the managed cloud
+$ kortix hosts use cloud
+→ Active host is now cloud`,
+    },
+    {
+      type: 'p',
+      text: 'Two limits, stated plainly. Agent sandboxes run on the compute provider you configure and the stack pulls its images over the internet, so **this is not an air-gapped deployment** — isolated topologies get scoped with us instead. And SAML SSO, SCIM directory sync, custom roles, groups and reading the audit log switch on with an Enterprise licence. Models are yours either way.',
+    },
+    { type: 'h2', text: 'Side by side' },
+    {
+      type: 'compare',
+      them: 'Claude Cowork · ChatGPT Work',
+      rows: [
+        {
+          dimension: 'Where your configuration lives',
+          them: 'Inside the vendor’s product',
+          kortix: 'A git repo you own',
+        },
+        {
+          dimension: 'Version history on that configuration',
+          them: 'Not published',
+          kortix: '`git diff` on every agent, skill and grant',
+        },
+        {
+          dimension: 'Which models it runs',
+          them: 'The vendor’s own — Anthropic, or GPT-5.6',
+          kortix: 'Any model — your keys or your subscription',
+        },
+        {
+          dimension: 'Where it runs',
+          them: 'The vendor’s cloud; no self-host',
+          kortix: 'Managed cloud, your VPC, or your own on-prem network',
+        },
+        {
+          dimension: 'Reading the source',
+          them: 'Closed',
+          kortix: 'Open source — clone it and read it',
+        },
+        {
+          dimension: 'Isolation per unit of work',
+          them: 'Not published',
+          kortix: 'One isolated machine and one branch per session',
+        },
+        {
+          dimension: 'How work lands',
+          them: 'Inside the product',
+          kortix: 'A change request you read as a diff first',
+        },
+        {
+          dimension: 'Audit record',
+          them: 'Not published',
+          kortix: 'Recorded on every plan; reading it is its own permission',
+        },
+        {
+          dimension: 'Getting started',
+          them: 'A Claude Max plan, or a paid metered ChatGPT plan',
+          kortix: 'Free to start, free to self-host',
+        },
+      ],
+    },
+    {
+      type: 'p',
+      text: 'Two of those rows say “not published”, and they stay that way. Neither lab documents its isolation model or its concurrency limits, so we do not get to characterise them. Where we have no data, the table says so.',
+    },
+    { type: 'h2', text: 'What we are not claiming' },
+    {
+      type: 'p',
+      text: 'A page of capabilities is only worth reading if the same page will tell you where the edges are. These are ours.',
+    },
+    {
+      type: 'ul',
+      items: [
+        '**Not air-gapped.** `kortix self-host start` pulls its images over the internet and reaches a sandbox provider, so a fully disconnected install is not a shipped capability. Isolated topologies get scoped directly with us.',
+        '**No blanket microVM claim.** One session gets one isolated machine. Whether that machine is a microVM depends on the compute provider you run on, and the default is not one. We would rather name the boundary than the buzzword.',
+        '**No network egress control.** Nothing in the product enforces it today. The boundary that is real is the credential one — a connector key never enters the sandbox.',
+        '**No certification.** SOC 2 Type I and Type II are in progress, not held. GDPR is a posture the company does hold. We will not print a badge for a report that has not landed.',
+        '**One harness, one runtime.** Kortix runs OpenCode. That is the shipped path, and it is the only one this post describes.',
+      ],
+    },
+    { type: 'h2', text: 'When to pick which' },
+    {
+      type: 'verdict',
+      themLabel: 'a model lab’s agent',
+      them: 'you want finished work today with nothing to run, you are happy on that lab’s models and that lab’s cloud, and your company’s configuration living inside their product is a trade you are content to make.',
+      kortix:
+        'you want the same finished work with the company underneath it staying yours — agents, skills, memory and connector config as files in [one repo you own](/company-as-code), any model on your own keys, [one isolated machine per session](/agent-computer), and [work that lands through review](/security).',
+    },
+    {
+      type: 'p',
+      text: 'None of the above is a roadmap item. Every layer runs today, and every page it points at is written against the code rather than the pitch. The long form on each layer: [company as code](/company-as-code), [agents and skills](/agents-and-skills), [the agent computer](/agent-computer), [connectors](/integrations), [channels](/channels), [automations](/automations), [security](/security) and [self-hosting](/self-hosted). The architecture argument behind all of it is in [AGI-ready architecture](/blog/agi-ready-architecture); the direct comparisons are [Claude Cowork](/blog/kortix-vs-claude-cowork), [Glean](/blog/kortix-vs-glean) and [Poetic](/blog/kortix-vs-poetic).',
+    },
+    {
+      type: 'cta',
+      title: 'Run your whole company from one repo you own.',
+      body: 'Start with one job, connect the tools it needs, and reach it from Slack, the web or the CLI. Free to start, free to self-host.',
+    },
+  ],
+};
+
 export const BLOG_POSTS: BlogPostEntry[] = [
+  openSourceAiManagementSystem,
   kortixVsPoetic,
   agiReadyArchitecture,
   kortixVsGlean,

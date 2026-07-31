@@ -1,103 +1,176 @@
 'use client';
 
-import { DraggableCliPanel } from '@/components/home/interactive-demo/cli/draggable-cli-panel';
-import { Panel } from '@/components/home/interactive-demo/primitives';
+import { ok, t } from '@/components/home/interactive-demo/cli/terminal';
+import { PageHead, Panel, Row } from '@/components/home/interactive-demo/primitives';
 import { Badge } from '@/components/ui/badge';
-import { GitBranchIcon as GitBranch, ChatIcon as MessageSquare } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
+import {
+  CheckIcon,
+  CpuIcon,
+  GitBranchIcon,
+  HardDrivesIcon,
+  TrashIcon,
+} from '@phosphor-icons/react';
 import { motion } from 'motion/react';
-import { useTranslations } from 'next-intl';
-import { STEP_CLI_PANEL_ANCHOR, StepCliTerminal } from '../step-cli-terminal';
-import { useStep5Director, type Step5Phase } from '../step-director';
+import type { ReactNode } from 'react';
+import { StepCliTerminal } from '../step-cli-terminal';
+import { useCliMovie, type Stage } from '../step-director';
 import { useStepShowcaseStart } from '../use-step-showcase';
 import { WebPanelWrapper } from '../web-panel-wrapper';
 
-function RunView({
-  phase,
-  sessionId,
-  branch,
-}: {
-  phase: Step5Phase;
-  sessionId: string;
-  branch: string;
-}) {
-  const tI18nHardcoded = useTranslations('hardcodedUi');
-  const showSession = phase !== 'idle';
-  const showWorking = phase === 'working';
+/**
+ * One id, three jobs. `apps/api/src/projects/routes/r7.ts` states the invariant
+ * outright: `session_id == sandbox_id == git branch name`. So there is no
+ * `session/` branch prefix to show — the branch *is* the id.
+ */
+const SESSION = '7f2a1c94';
+
+type ComputerState = {
+  phase: 'idle' | 'booting' | 'running';
+  /** Steps already finished inside the box, newest last. */
+  done: string[];
+  /** What it is doing right now, or null when it has not started. */
+  doing: string | null;
+};
+
+const INITIAL: ComputerState = { phase: 'idle', done: [], doing: null };
+
+/** `sessions new --prompt` is the real command; `create` is not one. */
+const SCRIPT: Stage<ComputerState>[] = [
+  {
+    run: 'kortix sessions new --prompt "fix the billing webhook retry"',
+    out: [
+      {
+        line: [t('  booting a machine for this session…', 'dim')],
+        state: { phase: 'booting' },
+        pause: 900,
+      },
+      {
+        line: ok(t('sandbox ready · branch '), t(SESSION, 'faded')),
+        state: { phase: 'running', done: ['Machine booted'], doing: 'Cloning the project repo' },
+        pause: 800,
+      },
+      {
+        line: [t('  agent working…', 'dim')],
+        state: {
+          done: ['Machine booted', 'Repo cloned', 'Dependencies installed'],
+          doing: 'Running the test suite',
+        },
+      },
+    ],
+  },
+];
+
+const FACTS = [
+  {
+    icon: CpuIcon,
+    title: 'Its own isolated machine',
+    sub: 'booted from your project image, with your tools already on it',
+  },
+  {
+    icon: GitBranchIcon,
+    title: SESSION,
+    sub: 'the session id, the sandbox id and the branch are one string',
+  },
+  {
+    icon: TrashIcon,
+    title: 'Disposable',
+    sub: 'the agent can install, run and break anything. Only commits survive',
+  },
+];
+
+function ComputerView({ state }: { state: ComputerState }): ReactNode {
+  const started = state.phase !== 'idle';
 
   return (
     <div className="flex h-full flex-col">
-      <div className="text-muted-foreground mb-4 flex flex-wrap items-center gap-2 text-xs">
-        <MessageSquare className="size-3.5" />
-        <span>
-          {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep5RunCli0e74f75e')}
-          {showSession ? sessionId : '…'}
-        </span>
-        {showSession && (
-          <Badge size="sm" variant="outline" className="gap-1 font-mono">
-            <GitBranch className="size-3" />
-            {branch}
-          </Badge>
-        )}
-      </div>
-
-      <div className="flex-1 space-y-3">
-        {showSession && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-3"
+      <PageHead
+        title="Sandbox"
+        sub="One session, one computer, one branch."
+        action={
+          <Badge
+            size="sm"
+            variant={state.phase === 'running' ? 'success' : 'outline'}
+            className="shrink-0 gap-1.5"
           >
-            <Panel
-              title={tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep5RunCli99e75001')}
-              count={tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep5RunClia54c8d26')}
-            >
-              <div className="text-muted-foreground space-y-2 px-4 py-3 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="text-foreground font-mono">{branch}</span>
-                  <Badge size="sm" variant="outline">
-                    {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep5RunCli8317f345')}
-                  </Badge>
-                </div>
-                {showWorking && (
-                  <div className="flex items-center gap-2">
-                    <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
-                    {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep5RunCli8354de66')}
-                  </div>
-                )}
-              </div>
-            </Panel>
-          </motion.div>
-        )}
+            <span
+              className={cn(
+                'size-1.5 rounded-full',
+                state.phase === 'running'
+                  ? 'bg-kortix-green animate-pulse'
+                  : 'bg-muted-foreground/40',
+              )}
+            />
+            {state.phase === 'running' ? 'running' : started ? 'booting' : 'idle'}
+          </Badge>
+        }
+      />
 
-        {!showSession && (
-          <div className="border-border/60 text-muted-foreground flex flex-1 items-center justify-center rounded-md border border-dashed py-12 text-sm">
-            Run{' '}
-            <span className="text-foreground mx-1 font-mono">
-              {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep5RunCli7d7494d3')}
-            </span>{' '}
-            {tI18nHardcoded.raw('autoFeaturesMarketingHowItWorkStepStep5RunCliadb5f23c')}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+        <Panel title="Session" count={started ? SESSION : '—'}>
+          {FACTS.map((fact) => (
+            <Row
+              key={fact.title}
+              leading={
+                <span className="border-border bg-background text-muted-foreground flex size-8 items-center justify-center rounded-md border">
+                  <fact.icon className="size-4" />
+                </span>
+              }
+              title={<span className="font-mono text-[12.5px]">{fact.title}</span>}
+              subtitle={fact.sub}
+            />
+          ))}
+        </Panel>
+
+        <Panel title="Inside the box">
+          <div className="space-y-2 px-4 py-3 font-mono text-[11.5px]">
+            {!started && <div className="text-muted-foreground">waiting for a session…</div>}
+
+            {state.done.map((step) => (
+              <motion.div
+                key={step}
+                initial={{ opacity: 0, x: -4 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.24, ease: 'easeOut' }}
+                className="text-muted-foreground flex items-center gap-2"
+              >
+                <CheckIcon className="text-kortix-green size-3 shrink-0" />
+                {step}
+              </motion.div>
+            ))}
+
+            {state.doing && (
+              <div className="text-foreground flex items-center gap-2">
+                <HardDrivesIcon className="size-3 shrink-0 animate-pulse" />
+                {state.doing}…
+              </div>
+            )}
           </div>
-        )}
+        </Panel>
       </div>
     </div>
   );
 }
 
-export function Step5RunCli() {
-  const director = useStep5Director();
-  const rootRef = useStepShowcaseStart(director.start);
+/** Layer 05 — every session gets its own computer, and its own branch. */
+export function StepComputer(): ReactNode {
+  const movie = useCliMovie(INITIAL, SCRIPT);
+  const rootRef = useStepShowcaseStart(movie.start);
 
   return (
-    <div ref={rootRef} className="relative aspect-19/22 w-full overflow-visible">
-      <DraggableCliPanel containerRef={rootRef} initialAnchor={STEP_CLI_PANEL_ANCHOR}>
-        {({ dragHandleProps }) => (
-          <StepCliTerminal director={director} dragHandleProps={dragHandleProps} />
-        )}
-      </DraggableCliPanel>
+    <div
+      ref={rootRef}
+      className="grid h-full w-full grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]"
+    >
+      <div className="min-h-0">
+        <WebPanelWrapper activeTab="sandbox">
+          <ComputerView state={movie.state} />
+        </WebPanelWrapper>
+      </div>
 
-      <WebPanelWrapper activeTab="chat">
-        <RunView phase={director.phase} sessionId={director.sessionId} branch={director.branch} />
-      </WebPanelWrapper>
+      <div className="hidden min-h-0 lg:block">
+        <StepCliTerminal director={movie} />
+      </div>
     </div>
   );
 }

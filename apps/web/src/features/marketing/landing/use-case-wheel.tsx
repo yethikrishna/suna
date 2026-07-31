@@ -1,10 +1,11 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useCases, type UseCase } from './content';
+import { useCases, type ArtifactTone, type UseCase, type UseCaseArtifact } from './content';
 
 const CARDS = useCases.cards;
 const COUNT = CARDS.length;
@@ -32,36 +33,40 @@ const COUNT = CARDS.length;
  * a hand-tuned top offset.
  */
 const ANGLE_STEP = 10;
-const RADIUS_X = 1200;
+const RADIUS_X = 1500;
 const RADIUS_Y = 620;
 /**
- * Every card except the head drops below the centre line, so the raw arc is
- * bottom-heavy: its ink runs from -h/2 at the head to roughly +h/2 + drop at
- * the last legible neighbour. `ARC_LIFT` raises the whole wheel by half of that
- * excess, which puts the deck's optical centre back on the box's centre line.
- * Measured at 1440x900: it equalises the gap above and below the deck to <20px.
+ * Every card except the head drops below the centre line, so the arc can end up
+ * bottom-heavy and sit off-centre in the pinned viewport. `ARC_LIFT` raises the
+ * whole wheel to cancel that. It is measured, not guessed: at seven slots and
+ * this card height the upright head card is the tallest thing on the arc and
+ * already sets both the deck's top and its bottom, so the correction is zero.
+ * Re-measure the gap above and below the deck whenever the card height or the
+ * card count changes — a shorter card lets the dropped neighbours win the bottom
+ * edge and this goes positive.
  */
-const ARC_LIFT = 11;
+const ARC_LIFT = 0;
 /**
  * Emphasis falloff. The head card is the subject: full size, fully opaque,
  * unblurred, upright. The first neighbour already loses ~28% of its size and
  * more than half its opacity, so the eye has exactly one place to land.
  */
-const NEIGHBOUR_SCALE_DROP = 0.28;
+const NEIGHBOUR_SCALE_DROP = 0.32;
 const OUTER_SCALE_DROP = 0.1;
-const NEIGHBOUR_FADE_DROP = 0.58;
+const NEIGHBOUR_FADE_DROP = 0.62;
 const OUTER_FADE_DROP = 0.14;
 /** Blur per slot of distance, capped, so neighbours read as context not copy. */
-const BLUR_PER_SLOT = 1.8;
-const BLUR_MAX_SLOTS = 3;
+const BLUR_PER_SLOT = 2.2;
+const BLUR_MAX_SLOTS = 2;
 /**
  * Cards past `FADE_EDGE` are gone entirely, which hides the wrap-around jump at
- * ±COUNT/2 and lets the deck read as endless.
+ * ±COUNT/2 and lets the deck read as endless. It has to sit inside COUNT/2, or
+ * the wrap becomes visible on the far side of the wheel.
  */
-const FADE_EDGE = 4;
-const FADE_SPAN = 1;
+const FADE_EDGE = 3;
+const FADE_SPAN = 0.9;
 /** Total scroll length of the pinned track. Pinned travel is this minus 100vh. */
-const TRACK_VH = 400;
+const TRACK_VH = 380;
 
 const clamp01 = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
 
@@ -85,22 +90,242 @@ function settle(raw: number): number {
   return base + eased;
 }
 
-function ThreadMock({ card }: { card: UseCase }) {
+/**
+ * Semantic colour. This is the only colour in the section, and it is earned:
+ * each tone encodes something true about the artifact — a delta's direction, a
+ * score band, how late an invoice is. Card frame, borders, type and spacing stay
+ * achromatic. Every tone is declared for both themes so neither one washes out.
+ */
+const TONE_TEXT: Record<ArtifactTone, string> = {
+  up: 'text-emerald-600 dark:text-emerald-400',
+  down: 'text-rose-600 dark:text-rose-400',
+  warn: 'text-amber-600 dark:text-amber-500',
+  info: 'text-sky-600 dark:text-sky-400',
+};
+const TONE_DOT: Record<ArtifactTone, string> = {
+  up: 'bg-emerald-500',
+  down: 'bg-rose-500',
+  warn: 'bg-amber-500',
+  info: 'bg-sky-500',
+};
+const TONE_BAR: Record<ArtifactTone, string> = {
+  up: 'bg-emerald-500/80 dark:bg-emerald-400/80',
+  down: 'bg-rose-500/80 dark:bg-rose-400/80',
+  warn: 'bg-amber-500/80 dark:bg-amber-400/80',
+  info: 'bg-sky-500/80 dark:bg-sky-400/80',
+};
+
+/** A spreadsheet: shaded header, ruled rows, right-aligned tabular figures. */
+function Sheet({ artifact }: { artifact: Extract<UseCaseArtifact, { kind: 'sheet' }> }) {
+  const toneColumn = artifact.toneColumn ?? artifact.columns.length - 1;
   return (
-    <div className="border-border bg-background/70 mt-auto rounded-sm border">
-      <div className="flex gap-2.5 px-3 py-2.5">
-        <span className="text-muted-foreground/70 mt-px shrink-0 font-mono text-[10px] tracking-widest uppercase">
-          {useCases.askLabel}
+    <table className="w-full min-w-0 table-fixed border-collapse font-mono text-[9.5px] sm:text-[11.5px]">
+      <thead>
+        <tr className="bg-muted/60 border-border/60 border-b">
+          {artifact.columns.map((column, i) => (
+            <th
+              key={column}
+              style={{ width: artifact.widths[i] }}
+              className={cn(
+                'text-muted-foreground/70 truncate px-2.5 py-1.5 text-[8.5px] font-normal tracking-widest uppercase sm:px-3 sm:text-[9px]',
+                artifact.aligns[i] === 'right' ? 'text-right' : 'text-left',
+              )}
+            >
+              {column}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {artifact.rows.map((row) => (
+          <tr
+            key={row.cells.join('|')}
+            className={cn(
+              'border-border/40 border-b last:border-b-0',
+              row.total && 'border-border/70 border-t',
+            )}
+          >
+            {row.cells.map((cell, i) => (
+              <td
+                key={`${i}-${cell}`}
+                className={cn(
+                  'truncate px-2.5 py-[6px] tabular-nums sm:px-3',
+                  artifact.aligns[i] === 'right' ? 'text-right' : 'text-left',
+                  row.total && 'text-foreground font-medium',
+                  !row.total && (i === 0 ? 'text-foreground' : 'text-foreground/70'),
+                  row.tone && i === toneColumn && !row.total && TONE_TEXT[row.tone],
+                )}
+              >
+                {cell}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** A unified diff: a real `+` / `-` gutter, one column, added and removed tinted. */
+function Diff({ artifact }: { artifact: Extract<UseCaseArtifact, { kind: 'diff' }> }) {
+  return (
+    <div className="py-1">
+      {artifact.lines.map((line) => {
+        const sign = line[0] === '+' ? '+' : line[0] === '-' ? '-' : ' ';
+        const text = line.slice(1);
+        return (
+          <div
+            key={line}
+            className={cn(
+              'flex gap-2 px-2.5 py-[3px] font-mono text-[9.5px] leading-relaxed sm:px-3 sm:text-[10.5px]',
+              sign === '+' && 'bg-emerald-500/10',
+              sign === '-' && 'bg-rose-500/10',
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                'w-[6px] shrink-0 select-none',
+                sign === '+' && 'text-emerald-600 dark:text-emerald-400',
+                sign === '-' && 'text-rose-600 dark:text-rose-400',
+                sign === ' ' && 'text-muted-foreground/30',
+              )}
+            >
+              {sign}
+            </span>
+            <span
+              className={cn(
+                'min-w-0 truncate',
+                sign === '+' && 'text-emerald-700 dark:text-emerald-300',
+                sign === '-' && 'text-rose-700 dark:text-rose-300',
+                sign === ' ' && 'text-foreground/70',
+              )}
+            >
+              {text}
+            </span>
+          </div>
+        );
+      })}
+      <p className="text-muted-foreground/70 px-2.5 pt-1.5 font-mono text-[9px] tracking-wider sm:px-3">
+        {artifact.stat}
+      </p>
+    </div>
+  );
+}
+
+/** An outreach draft: real recipient / time / subject structure, then the body. */
+function Thread({ artifact }: { artifact: Extract<UseCaseArtifact, { kind: 'thread' }> }) {
+  return (
+    <div>
+      <div className="border-border/50 flex items-baseline justify-between gap-2 border-b px-2.5 py-1.5 sm:px-3">
+        <span className="text-foreground/70 min-w-0 truncate font-mono text-[9.5px]">
+          {artifact.to}
         </span>
-        <p className="text-foreground/75 text-[13px] leading-snug">{card.ask}</p>
+        <span className="text-muted-foreground/60 shrink-0 font-mono text-[9.5px] tabular-nums">
+          {artifact.time}
+        </span>
       </div>
-      <div className="border-border/70 flex gap-2.5 border-t px-3 py-2.5">
-        <span className="text-muted-foreground/70 mt-px shrink-0 font-mono text-[10px] tracking-widest uppercase">
+      <p className="text-foreground truncate px-2.5 pt-2 text-[11.5px] font-medium sm:px-3">
+        {artifact.subject}
+      </p>
+      <div className="px-2.5 pt-1 pb-2 sm:px-3">
+        {artifact.lines.map((line) => (
+          <p key={line} className="text-muted-foreground truncate text-[11px] leading-relaxed">
+            {line}
+          </p>
+        ))}
+      </div>
+      <p className="mx-2.5 mb-2 inline-flex rounded-sm bg-amber-500/15 px-2 py-[3px] font-mono text-[9px] tracking-wider text-amber-700 uppercase sm:mx-3 dark:text-amber-400">
+        {artifact.status}
+      </p>
+    </div>
+  );
+}
+
+/** A status list: a severity dot per row, value right-aligned and tabular. */
+function Checks({ artifact }: { artifact: Extract<UseCaseArtifact, { kind: 'checks' }> }) {
+  return (
+    <div className="py-0.5">
+      {artifact.items.map((item) => (
+        <div
+          key={item.label}
+          className="border-border/40 flex items-center gap-2 border-b px-2.5 py-[7px] last:border-b-0 sm:px-3"
+        >
+          <span aria-hidden className={cn('size-[6px] shrink-0 rounded-full', TONE_DOT[item.tone])} />
+          <span className="text-foreground/80 min-w-0 flex-1 truncate text-[11px]">
+            {item.label}
+          </span>
+          <span
+            className={cn(
+              'shrink-0 font-mono text-[10px] tabular-nums sm:text-[10.5px]',
+              TONE_TEXT[item.tone],
+            )}
+          >
+            {item.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A chart: one bar per row, length proportional, value on the axis line. */
+function Chart({ artifact }: { artifact: Extract<UseCaseArtifact, { kind: 'chart' }> }) {
+  return (
+    <div className="px-2.5 py-2 sm:px-3">
+      <p className="text-muted-foreground/60 pb-1.5 font-mono text-[9px] tracking-widest uppercase sm:pb-2.5">
+        {artifact.caption}
+      </p>
+      {artifact.bars.map((bar) => (
+        <div key={bar.label} className="flex items-center gap-2 py-[3px] sm:py-[7px]">
+          <span className="text-foreground/70 w-[34px] shrink-0 font-mono text-[9.5px] tabular-nums">
+            {bar.label}
+          </span>
+          <span className="bg-muted/70 h-[9px] min-w-0 flex-1 overflow-hidden rounded-[2px]">
+            <span
+              className={cn('block h-full rounded-[2px]', TONE_BAR[bar.tone])}
+              style={{ width: `${bar.pct}%` }}
+            />
+          </span>
+          <span
+            className={cn(
+              'w-[38px] shrink-0 text-right font-mono text-[9.5px] tabular-nums',
+              TONE_TEXT[bar.tone],
+            )}
+          >
+            {bar.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The artifact — the work product a team receives, and the largest thing on the
+ * card. It is markup, never a picture of a screen: the card shows what the agent
+ * produced, and must never imply a Kortix UI that does not exist.
+ */
+function Artifact({ artifact }: { artifact: UseCaseArtifact }) {
+  return (
+    <div className="border-border bg-background mt-auto w-full min-w-0 overflow-hidden rounded-md border">
+      <div className="border-border/70 bg-muted/30 flex items-baseline justify-between gap-2 border-b px-2.5 py-2 sm:px-3">
+        <span className="text-foreground min-w-0 truncate font-mono text-[10px] sm:text-[10.5px]">
+          {artifact.file}
+        </span>
+        <span className="text-muted-foreground/50 shrink-0 font-mono text-[9px] tracking-widest uppercase">
           {useCases.artifactLabel}
         </span>
-        <p className="text-foreground font-mono text-[12px] leading-snug break-words">
-          {card.artifact}
-        </p>
+      </div>
+
+      {artifact.kind === 'sheet' ? <Sheet artifact={artifact} /> : null}
+      {artifact.kind === 'diff' ? <Diff artifact={artifact} /> : null}
+      {artifact.kind === 'thread' ? <Thread artifact={artifact} /> : null}
+      {artifact.kind === 'checks' ? <Checks artifact={artifact} /> : null}
+      {artifact.kind === 'chart' ? <Chart artifact={artifact} /> : null}
+
+      <div className="border-border/70 text-muted-foreground border-t px-2.5 py-2 text-[10.5px] leading-snug sm:px-3 sm:text-[11px]">
+        {artifact.footer}
       </div>
     </div>
   );
@@ -108,7 +333,7 @@ function ThreadMock({ card }: { card: UseCase }) {
 
 /**
  * One card. Identical chrome for every department — Kortix is monochrome, so a
- * card is told apart by its mono tag, not by a colour.
+ * card is told apart by its mono tag and its artifact, not by a colour.
  */
 function UseCaseCard({ card, index, active }: { card: UseCase; index: number; active: boolean }) {
   return (
@@ -123,14 +348,16 @@ function UseCaseCard({ card, index, active }: { card: UseCase; index: number; ac
       </div>
       <h3
         className={cn(
-          'mt-4 text-[19px] leading-snug font-medium tracking-tight text-balance',
+          'mt-3 text-[16px] leading-snug font-medium tracking-tight text-balance sm:mt-4 sm:text-[20px]',
           active ? 'text-foreground' : 'text-foreground/85',
         )}
       >
         {card.headline}
       </h3>
-      <p className="text-muted-foreground mt-2 text-[13px] leading-relaxed">{card.body}</p>
-      <ThreadMock card={card} />
+      <p className="text-muted-foreground mt-2 text-[12px] leading-relaxed sm:text-[13.5px]">
+        {card.body}
+      </p>
+      <Artifact artifact={card.artifact} />
     </>
   );
 }
@@ -164,7 +391,7 @@ function SectionHeader({ counter }: { counter?: ReactNode }) {
   );
 }
 
-/** `prefers-reduced-motion` fallback: the same ten cards, no transforms. */
+/** `prefers-reduced-motion` fallback: the same seven cards, no transforms. */
 function UseCaseGrid() {
   return (
     <section
@@ -322,12 +549,23 @@ export function UseCaseWheel(): ReactNode {
                 data-active={index === activeIndex ? 'true' : 'false'}
                 className={cn(
                   CARD_SHELL,
-                  'absolute top-1/2 left-1/2 h-[330px] w-[290px] will-change-transform sm:h-[320px] sm:w-[360px]',
+                  'relative',
+                  'absolute top-1/2 left-1/2 h-[368px] w-[292px] will-change-transform sm:h-[404px] sm:w-[468px]',
                   'shadow-none data-[active=true]:shadow-2xl data-[active=true]:border-foreground/20',
                 )}
                 style={{ transform: 'translate(-50%, -50%)' }}
               >
                 <UseCaseCard card={card} index={index} active={index === activeIndex} />
+                {card.href && index === activeIndex ? (
+                  // The whole card is the target. An overlay keeps it a card
+                  // that happens to navigate, with no extra row of chrome, and
+                  // only the head card is reachable — the rest are blurred.
+                  <Link
+                    href={card.href}
+                    aria-label={`${card.role} — ${card.headline}`}
+                    className="focus-visible:ring-ring absolute inset-0 rounded-xl focus-visible:ring-2 focus-visible:outline-none"
+                  />
+                ) : null}
               </article>
             ))}
           </div>

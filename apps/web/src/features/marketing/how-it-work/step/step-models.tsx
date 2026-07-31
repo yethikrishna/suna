@@ -1,64 +1,92 @@
 'use client';
 
 import { PageHead, Panel, Row, StatusDot } from '@/components/home/interactive-demo/primitives';
+import { Badge } from '@/components/ui/badge';
 import { Icon } from '@/features/icon/icon';
+import { GlobeIcon, KeyIcon } from '@phosphor-icons/react';
 import type { ReactNode } from 'react';
 import { WebPanelWrapper } from '../web-panel-wrapper';
 
-type IconKey = keyof typeof Icon;
+type Glyph = (props: { className?: string }) => ReactNode;
 
-const PROVIDERS: { key: IconKey; name: string; models: string; on: boolean }[] = [
-  { key: 'Claude', name: 'Anthropic', models: 'Opus · Sonnet · Haiku', on: true },
-  { key: 'OpenAI', name: 'OpenAI', models: 'GPT · Codex', on: true },
-  { key: 'Gemini', name: 'Google', models: 'Gemini Pro · Flash', on: true },
+const PROVIDERS: { glyph: Glyph; name: string; models: string; on: boolean }[] = [
+  { glyph: Icon.Claude as Glyph, name: 'Anthropic', models: 'Opus · Sonnet · Haiku', on: true },
+  { glyph: Icon.OpenAI as Glyph, name: 'OpenAI', models: 'GPT · Codex', on: true },
+  { glyph: Icon.Gemini as Glyph, name: 'Google', models: 'Gemini Pro · Flash', on: true },
+  {
+    // The custom-provider form takes any base URL and drives it through
+    // `@ai-sdk/openai-compatible` — vLLM, LiteLLM and Ollama all land here.
+    glyph: GlobeIcon as Glyph,
+    name: 'Your endpoint',
+    models: 'anything OpenAI-compatible',
+    on: false,
+  },
 ];
 
-const KEYS = [
-  { label: 'Your own API key', detail: 'any provider' },
-  { label: 'The subscription you already pay for', detail: 'ChatGPT · Claude · Cursor' },
-  { label: 'Your own models', detail: 'on your hardware' },
+/**
+ * How the model gets paid for. The ChatGPT row is the Codex device-grant OAuth,
+ * which is real. Cursor is not — there is no Cursor auth path in the codebase,
+ * so it is not on this list however often the README says it.
+ */
+const BILLING: { glyph: Glyph; title: string; sub: string }[] = [
+  { glyph: KeyIcon as Glyph, title: 'Your own API key', sub: 'any major provider' },
+  {
+    glyph: Icon.ChatGPT as Glyph,
+    title: 'Your ChatGPT subscription',
+    sub: 'the one you already pay for',
+  },
+  { glyph: Icon.Kortix as Glyph, title: 'Kortix Gateway', sub: 'managed — no key to bring' },
 ];
 
-/** Layer 02 — the model slot is yours to fill, and billing follows your keys. */
-export function StepModels() {
+/** Layer 02 — the model slot is yours to fill, and so is the bill. */
+export function StepModels(): ReactNode {
   return (
     <WebPanelWrapper activeTab="models">
-      <PageHead title="Models" sub="Any provider. Switch as they improve." />
+      {/* No `sub` here: the card's own description column already says the
+          panel is provider-agnostic, and the line cost 20px of a frame that
+          has none to spare. */}
+      <PageHead
+        title="Models"
+        action={
+          <Badge variant="kortix" size="sm" className="shrink-0 rounded font-mono">
+            model: auto
+          </Badge>
+        }
+      />
 
-      <div className="space-y-3">
-        <Panel title="Connected" count="3">
-          {PROVIDERS.map((p) => {
-            const Glyph = Icon[p.key] as ((x: { className?: string }) => ReactNode) | undefined;
-            return (
-              <Row
-                key={p.name}
-                leading={
-                  <span className="border-border bg-background flex size-8 items-center justify-center rounded-md border">
-                    {Glyph ? <Glyph className="size-4" /> : null}
-                  </span>
-                }
-                title={p.name}
-                subtitle={p.models}
-                trailing={<StatusDot on={p.on} />}
-              />
-            );
-          })}
-        </Panel>
-
-        <Panel title="Billed through">
-          {KEYS.map((k) => (
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <Panel title="Providers">
+          {PROVIDERS.map((provider) => (
             <Row
-              key={k.label}
+              key={provider.name}
               leading={
-                <span className="border-border text-muted-foreground flex size-8 items-center justify-center rounded-md border font-mono text-[10px]">
-                  key
+                <span className="border-border bg-background text-muted-foreground flex size-8 items-center justify-center rounded-md border">
+                  <provider.glyph className="size-4" />
                 </span>
               }
-              title={k.label}
-              subtitle={k.detail}
+              title={provider.name}
+              subtitle={provider.models}
+              trailing={<StatusDot on={provider.on} label={['connected', 'add yours']} />}
             />
           ))}
         </Panel>
+
+        <div className="space-y-3">
+          <Panel title="Billed through" count="pin per agent, or --model per session">
+            {BILLING.map((option) => (
+              <Row
+                key={option.title}
+                leading={
+                  <span className="border-border bg-background text-muted-foreground flex size-8 items-center justify-center rounded-md border">
+                    <option.glyph className="size-4" />
+                  </span>
+                }
+                title={option.title}
+                subtitle={option.sub}
+              />
+            ))}
+          </Panel>
+        </div>
       </div>
     </WebPanelWrapper>
   );

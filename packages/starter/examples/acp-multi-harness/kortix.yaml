@@ -1,3 +1,8 @@
+# ⚠️ EXPERIMENTAL — NOT SHIPPED. Do not copy this into a real project.
+# The ACP transport, `kortix_version: 3`, and the claude/codex/pi harnesses sit
+# behind the `KORTIX_ACP_RUNTIME` flag, which defaults to false. They are
+# unreleased and unsupported. OpenCode REST + `kortix_version: 2` are the only
+# shipped path — see `packages/starter/templates/base/kortix.yaml`.
 # yaml-language-server: $schema=https://kortix.com/schema/kortix.v3.schema.json
 kortix_version: 3
 default_agent: opencode

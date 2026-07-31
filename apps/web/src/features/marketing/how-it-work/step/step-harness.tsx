@@ -3,39 +3,51 @@
 import { PageHead, Panel, Row } from '@/components/home/interactive-demo/primitives';
 import { Badge } from '@/components/ui/badge';
 import { Icon } from '@/features/icon/icon';
+import { ListChecksIcon, ShieldCheckIcon, WrenchIcon } from '@phosphor-icons/react';
+import type { ReactNode } from 'react';
 import { WebPanelWrapper } from '../web-panel-wrapper';
 
-const CONFIG: { line: string; muted?: boolean }[] = [
-  { line: '# .kortix/opencode/agents/kortix.md', muted: true },
+/**
+ * The real file, with real keys.
+ *
+ * `description`, `model` and `permission` are all in `BEHAVIOR_FRONTMATTER_KEYS`
+ * (`apps/api/src/projects/lib/compile-agent-config.ts`), and the glob-map form
+ * of `permission.bash` is the shape the v2 validator accepts. `tools:` and
+ * `skills:` are NOT frontmatter keys — an earlier version of this panel showed
+ * both, and neither would parse.
+ */
+const CONFIG: { line: string; tone?: 'muted' | 'accent' }[] = [
+  { line: '# .kortix/opencode/agents/kortix.md', tone: 'muted' },
+  { line: 'description: General knowledge worker' },
   { line: 'model: auto' },
-  { line: 'tools: [read, edit, bash, web, connectors]' },
-  { line: 'permissions:' },
-  { line: '  bash: ask' },
+  { line: 'permission:' },
   { line: '  edit: allow' },
-  { line: 'skills: [presentations, xlsx, website-building]' },
+  { line: '  bash:' },
+  { line: '    git push: deny', tone: 'accent' },
+  { line: "    '*': allow" },
 ];
 
 const CAPABILITIES = [
-  { title: 'Planning', sub: 'breaks a request into steps it finishes' },
-  { title: 'Tool use', sub: 'reads, edits, runs, fetches, calls connectors' },
-  { title: 'Permissions', sub: 'what runs freely, what stops to ask' },
+  { icon: ListChecksIcon, title: 'Planning', sub: 'breaks a request into steps it finishes' },
+  { icon: WrenchIcon, title: 'Tool use', sub: 'reads, edits, runs, fetches, calls connectors' },
+  { icon: ShieldCheckIcon, title: 'Permission', sub: 'allow · ask · deny, per tool and per glob' },
 ];
 
 /** Layer 03 — credit OpenCode plainly, and show the harness is an editable file. */
-export function StepHarness() {
+export function StepHarness(): ReactNode {
   return (
     <WebPanelWrapper activeTab="agents">
       <PageHead
         title="Agent harness"
         sub="Powered by OpenCode."
         action={
-          <Badge variant="kortix" className="rounded">
+          <Badge variant="kortix" size="sm" className="shrink-0 rounded">
             Open source
           </Badge>
         }
       />
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <Panel
           title="kortix"
           count="primary"
@@ -48,12 +60,20 @@ export function StepHarness() {
           <div className="bg-background px-4 py-3">
             <pre className="overflow-x-auto font-mono text-[11.5px] leading-[1.75]">
               <code>
-                {CONFIG.map((c) => (
+                {CONFIG.map((entry, index) => (
                   <div
-                    key={c.line}
-                    className={c.muted ? 'text-muted-foreground/55' : 'text-foreground/85'}
+                    // A fixed, ordered snippet: `---` appears twice, so the
+                    // line text is not a unique key. Its position is.
+                    key={`config-${index}`}
+                    className={
+                      entry.tone === 'muted'
+                        ? 'text-muted-foreground/55'
+                        : entry.tone === 'accent'
+                          ? 'text-foreground'
+                          : 'text-foreground/85'
+                    }
                   >
-                    {c.line}
+                    {entry.line}
                   </div>
                 ))}
               </code>
@@ -62,16 +82,16 @@ export function StepHarness() {
         </Panel>
 
         <Panel title="What the harness does">
-          {CAPABILITIES.map((c) => (
+          {CAPABILITIES.map((capability) => (
             <Row
-              key={c.title}
+              key={capability.title}
               leading={
-                <span className="border-border text-muted-foreground flex size-8 items-center justify-center rounded-md border font-mono text-[10px]">
-                  ⌘
+                <span className="border-border bg-background text-muted-foreground flex size-8 items-center justify-center rounded-md border">
+                  <capability.icon className="size-4" />
                 </span>
               }
-              title={c.title}
-              subtitle={c.sub}
+              title={capability.title}
+              subtitle={capability.sub}
             />
           ))}
         </Panel>

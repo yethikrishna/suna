@@ -15,6 +15,7 @@ import {
   DeviceMobileIcon as Smartphone,
   TerminalIcon as Terminal,
 } from '@phosphor-icons/react';
+import { useTheme } from 'next-themes';
 import Image from 'next/image';
 import Link from 'next/link';
 import type { ComponentType, ReactNode } from 'react';
@@ -339,14 +340,61 @@ function MobileSurface() {
 }
 
 const SHOWCASE_POSTER = '/media/showcase/kortix-showcase-poster.jpg';
-const CLI_POSTER = '/media/cli/kortix-cli-poster.jpg';
 
-/** Percent of the CLI recording's height taken by its baked-in title bar. */
-const CROP_TOP = 8;
+/** The CLI recording exists in both themes. Same flow, same 112x18 grid, same
+ *  encodes — only the palette differs, and it is the palette `globals.css`
+ *  ships (`:root` vs `.dark`). */
+const CLI_MEDIA = {
+  light: {
+    poster: '/media/cli/kortix-cli-poster.jpg',
+    phone: '/media/cli/kortix-cli-1280.mp4',
+    retina: '/media/cli/kortix-cli-2880.mp4',
+    webm: '/media/cli/kortix-cli-1920.webm',
+    mp4: '/media/cli/kortix-cli-1920.mp4',
+  },
+  dark: {
+    poster: '/media/cli/kortix-cli-dark-poster.jpg',
+    phone: '/media/cli/kortix-cli-dark-1280.mp4',
+    retina: '/media/cli/kortix-cli-dark-2880.mp4',
+    webm: '/media/cli/kortix-cli-dark-1920.webm',
+    mp4: '/media/cli/kortix-cli-dark-1920.mp4',
+  },
+} as const;
+
+/**
+ * A `<video>` picks a `<source>` once, at load. A `media` attribute keyed on
+ * `prefers-color-scheme` is therefore right on first paint and wrong for the
+ * rest of the session the moment the viewer hits the theme toggle — the element
+ * never re-runs resource selection. So the theme is NOT expressed as a media
+ * query: `resolvedTheme` becomes the `key` of the `<video>`, React unmounts the
+ * old element and mounts a new one, and the new element runs selection against
+ * the other theme's sources. `media` is left to carry only what genuinely never
+ * changes mid-session: device pixel ratio and viewport width.
+ *
+ * Before mount `resolvedTheme` is undefined (the server cannot know it), so the
+ * first paint is the light poster; next-themes resolves within the same commit
+ * and a dark viewer gets one remount.
+ */
+function useHeroTheme(): 'light' | 'dark' {
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  return mounted && resolvedTheme === 'dark' ? 'dark' : 'light';
+}
 
 /** Recorded in the real product: a project, its connectors, agents, skills and
  *  schedules, then a session researching on a cloud computer and returning a
- *  finished deck. */
+ *  finished deck.
+ *
+ *  THEME GAP — the only asset on this page that is still light-only. The CLI
+ *  panel beside it ships both themes; this one cannot yet, because re-shooting
+ *  it means driving the real product UI and neither environment that has the
+ *  demo data is reachable from a workstation: dev.kortix.com sits behind Vercel
+ *  SSO whose bypass secret exists only as a GitHub Actions secret, and the local
+ *  stack renders "Couldn't load this project" on the workspace route. Inverting
+ *  or filtering the light footage would be a fabricated frame, so it is not done
+ *  here. When the dark capture lands, give it the same shape as CLI_MEDIA above
+ *  and key the element on `useHeroTheme()` exactly as CliSurface does. */
 function WebSurface() {
   return (
     <div className="bg-card relative h-full w-full">
@@ -409,9 +457,11 @@ function WebSurface() {
 }
 
 /** The install command is IN the recording — it is the first thing typed. You
- *  can't select text out of a video, so this is the copy affordance for it:
- *  one icon-only button, sized to sit inside the terminal's title bar, which is
- *  the one band of the frame that never carries output. */
+ *  can't select text out of a video, so this is the copy affordance for it: one
+ *  icon-only button in the corner. The recording has no title bar to park it
+ *  in, so it carries its own bordered, blurred plate and sits over the oldest
+ *  row — the one the frame crops first, and the one that is never the live
+ *  prompt. */
 function CopyInstallCommand() {
   return (
     <Hint label="Copy the install command" side="left">
@@ -422,65 +472,73 @@ function CopyInstallCommand() {
   );
 }
 
-/** A real terminal recording, replayed from the captured output of the shipped
- *  CLI: `curl … | bash` installs it, `kortix projects use` picks the project,
- *  `kortix sessions new` boots a cloud computer, then real work runs from the
- *  terminal. Every character on screen is output the CLI produced. */
+/** A real terminal recording, replayed from the captured pty output of the
+ *  shipped CLI: `curl … | bash` installs it, `kortix projects use` picks the
+ *  project, `kortix connectors ls` / `show` lists the connectors and the exact
+ *  actions an agent calls through the executor, `kortix sessions new` boots a
+ *  cloud computer, `kortix sessions status` shows it working. Every character
+ *  on screen is output the CLI produced against dev-api.kortix.com. The grid is
+ *  112 columns by 18 rows so real output — the host line is 111 characters —
+ *  reaches the right edge instead of hugging the left third. */
 function CliSurface() {
+  const theme = useHeroTheme();
+  const media = CLI_MEDIA[theme];
   return (
-    // The recording carries its own simulated window title bar — traffic
-    // lights and a `code — zsh` label — baked into the pixels. It is dead
-    // weight in a frame we are trying to fill with output, and it cannot be
-    // removed with markup, so the video is scaled past the top edge and the
-    // wrapper clips it. CROP_TOP is the share of the recording that bar
-    // occupies; re-measure it if the terminal is ever re-recorded.
     <div className="bg-card relative h-full w-full overflow-hidden">
       <CopyInstallCommand />
-      {/* left-top, not top: at phone width the frame is narrower than the 16:10
-          recording, so a centred crop would slice the first characters off every
-          line. Anchoring left keeps the prompt where a terminal starts. */}
+      {/* left-bottom, and both halves of that matter.
+          bottom: the recording is 2.380:1, the frame is 2.382:1 on a tall
+          desktop but 2.74:1 at 1440x900 and 3.53:1 at 1280x800, so `cover`
+          crops height. The terminal writes upward from the last row, so
+          anchoring bottom throws away the OLDEST lines — exactly what shrinking
+          a real terminal does — and never the live prompt.
+          left: at phone width the frame is 1.02:1, far narrower than the
+          recording, so `cover` crops ~57% of the width. Anchoring left keeps
+          the prompt and the first characters of every line. */}
       <video
-        style={{ height: `${100 + CROP_TOP}%`, top: `-${CROP_TOP}%` }}
-        className="absolute inset-x-0 w-full object-cover object-left-top motion-reduce:hidden"
-        poster={CLI_POSTER}
+        // The key is the whole theme mechanism: changing it remounts the
+        // element, which is the only way a <video> re-runs source selection.
+        key={theme}
+        className="h-full w-full object-cover object-left-bottom motion-reduce:hidden"
+        poster={media.poster}
         autoPlay
         muted
         loop
         playsInline
         preload="metadata"
-        aria-label="A terminal running the Kortix CLI: curl installs it, kortix projects use picks a project, kortix connectors apps lists the apps an agent can call, and kortix sessions new starts a session on a cloud computer"
+        aria-label="A terminal running the Kortix CLI: curl installs it, kortix projects use picks a project, kortix connectors show lists the actions an agent can call, and kortix sessions new starts a session on a cloud computer"
       >
-        {/* There is no 2880 master for the CLI, so a retina screen cannot be
-            served true 2x here — the frame needs 2472 device px and the only
-            capture is 1920 wide. Re-encoding it larger would invent no detail;
-            fixing it properly means re-recording the terminal at 2x device
-            scale. What is available is bitrate: the webm is 904K for 28.3s
-            (~255 kbps) and the mp4 is 2.8MB (~798 kbps) at the same 1920x1200,
-            and on a terminal recording — thin, high-contrast glyphs — that
-            3.1x bitrate is the difference between mushy and crisp text. So
-            retina takes the mp4 first and everyone else keeps the small webm. */}
+        {/* Same per-device selection as the web panel: first supported source
+            whose media matches wins, so the narrowest condition leads. Only
+            device traits are expressed as media queries — those cannot change
+            without a reload. The theme is the `key` above.
+
+            Phones get the 1280. The frame is 344 CSS px there, so even a 3x
+            screen resolves 1032 device px.
+
+            Retina desktops get the 2880 master. The frame is 1234 CSS px, so a
+            2x display needs 2472 device px — the old 1920 capture was being
+            upscaled 1.29x, which is what made the glyphs soft. The terminal is
+            now recorded at deviceScaleFactor 2, so 2880 is native pixels, not
+            an upscale, and it costs 3.5MB against the webm's 1.5MB. The poster
+            JPG (131K) paints first and carries LCP, so the video never blocks
+            first paint. */}
+        <source media="(max-width: 480px)" src={media.phone} type="video/mp4" />
         <source
-          media="(min-resolution: 2dppx)"
-          src="/media/cli/kortix-cli-1920.mp4"
+          media="(min-resolution: 2dppx) and (min-width: 1024px)"
+          src={media.retina}
           type="video/mp4"
         />
-        <source src="/media/cli/kortix-cli-1920.webm" type="video/webm" />
-        <source src="/media/cli/kortix-cli-1920.mp4" type="video/mp4" />
+        <source src={media.webm} type="video/webm" />
+        <source src={media.mp4} type="video/mp4" />
       </video>
-      {/* `fill` forces height:100%, so the crop lives on the wrapper rather
-          than on the Image itself. */}
-      <div
-        className="absolute inset-x-0 hidden motion-reduce:block"
-        style={{ height: `${100 + CROP_TOP}%`, top: `-${CROP_TOP}%` }}
-      >
-        <Image
-          src={CLI_POSTER}
-          alt="A terminal showing the Kortix CLI installed and ready"
-          fill
-          sizes="(max-width: 1024px) 100vw, 1100px"
-          className="object-cover object-left-top"
-        />
-      </div>
+      <Image
+        src={media.poster}
+        alt="A terminal showing the Kortix CLI with a session running on a cloud computer"
+        fill
+        sizes="(max-width: 1024px) 100vw, 1100px"
+        className="hidden object-cover object-left-bottom motion-reduce:block"
+      />
     </div>
   );
 }

@@ -214,4 +214,18 @@ describe('session scope control changes', () => {
       ),
     ).toEqual({ connector_bindings: {} });
   });
+
+  test('does not enable a connector without an available authorization', () => {
+    const connector =
+      catalog.connector_profiles.status === 'ready'
+        ? {
+            ...catalog.connector_profiles.items[0],
+            authorizations: [],
+          }
+        : undefined;
+    const draft: SessionScopeDraft = { connector_bindings: {} };
+
+    expect(connector).toBeDefined();
+    expect(setSessionConnectorEnabled(draft, connector!, true)).toBe(draft);
+  });
 });

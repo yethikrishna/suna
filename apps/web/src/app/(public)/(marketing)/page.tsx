@@ -1,6 +1,6 @@
 'use client';
 
-import { AgentsSection, ControlSection } from '@/features/marketing/capabilities';
+import { ControlSection } from '@/features/marketing/capabilities';
 import Hero from '@/features/marketing/hero';
 import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
 import { AskingInterlude, OwningInterlude } from '@/features/marketing/interludes';
@@ -41,9 +41,9 @@ export default function Home() {
              opening on the repo that holds all of them */}
       <HowItWorks />
 
-      {/* The stack ends on "an OpenCode agent" and stops. This is the rest of
-          that sentence, while the question is still warm. */}
-      <AgentsSection />
+      {/* The stack's first layer is the repo. This is what is actually in it —
+          the company as a directory you can open. */}
+      <OwningInterlude />
 
       {/* 3 · What it does — real work, and the artefact it produces */}
       <UseCaseWheel />
@@ -65,10 +65,8 @@ export default function Home() {
           in a row is what made the middle of the page feel arbitrary. */}
       <AskingInterlude />
 
-      {/* The ownership close, moved up off the CTA's shoulder */}
-      <OwningInterlude />
-
-      {/* 4 · Open source, and genuinely runnable on your own hardware */}
+      {/* 4 · The one thing between the security close and the ask: open
+             source, stated as plainly as it can be. */}
       <OpenSourceSection />
 
       {/* Close, standing on its own */}

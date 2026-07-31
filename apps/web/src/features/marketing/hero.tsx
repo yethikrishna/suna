@@ -51,9 +51,16 @@ const Hero = () => {
      only shows on desktop. Every max-w-7xl container below therefore carries its
      own px-6. */
   return (
+    /* The hero owns a full viewport and centres inside it. Before this it was
+       simply padded from the top, so on a tall display the block finished with
+       ~300px of dead space under it while the eyebrow still sat ~30px below the
+       navbar — top-heavy and cramped at the same time. `min-h-svh` plus
+       `justify-center` splits the slack above and below instead, and the top
+       padding is the floor that keeps the eyebrow clear of the fixed navbar
+       (67px) at every height. */
     <section
       id="hero"
-      className="relative overflow-hidden pt-28 pb-10 sm:pt-32 sm:pb-14 lg:pt-24 lg:pb-10"
+      className="relative flex min-h-svh flex-col justify-center overflow-hidden pt-32 pb-12 sm:pt-36 sm:pb-16 lg:pt-32 lg:pb-14"
     >
       <div
         className="inset-0 z-0 hidden mask-t-from-70% lg:absolute"

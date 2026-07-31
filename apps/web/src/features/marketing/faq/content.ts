@@ -101,8 +101,10 @@ export const faq = {
   eyebrow: 'Straight answers',
   title: 'The questions people ask before the first session.',
   /** One link out, to the page that carries the longest of these answers. */
-  href: '/security',
-  linkLabel: 'How Kortix is secured',
+  /* No trailing link. One 'How Kortix is secured →' under a list of seven
+     questions pointed at the answer to only one of them, and reads as an
+     apology for the section. Each answer carries its own link where it needs
+     one. */
   items: [
     {
       id: 'runs-on',

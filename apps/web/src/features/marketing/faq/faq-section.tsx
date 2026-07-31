@@ -7,7 +7,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { faq } from './content';
 
@@ -111,14 +110,6 @@ export function FaqSection(): ReactNode {
         </Accordion>
       </Reveal>
 
-      <Reveal delay={0.1}>
-        <Link
-          href={faq.href}
-          className="text-foreground duration-fast mt-6 inline-flex text-sm underline decoration-current/25 underline-offset-4 transition-colors hover:decoration-current"
-        >
-          {faq.linkLabel} →
-        </Link>
-      </Reveal>
     </section>
   );
 }

@@ -178,7 +178,12 @@ function ProjectHome() {
             <ConnectorBindingFields
               choices={connectors.data?.connectors ?? []}
               value={bindings}
-              onChange={setBindings}
+              onChange={(next) => {
+                setBindings(next);
+                // The card describes the bindings that were sent. Once those
+                // change it is a verdict on a request that no longer exists.
+                setConnectPrompt(null);
+              }}
             />
           </div>
         )}

@@ -54,7 +54,7 @@ import {
   type SandboxProviderName,
 } from '@kortix/sdk';
 import { refreshProjectProviderState } from '@kortix/sdk/react';
-import { TrashIcon as TrashSolid } from '@phosphor-icons/react';
+import { TrashIcon } from '@phosphor-icons/react';
 import CustomizeSectionWrapper from '../component/section-wrapper';
 import {
   applySandboxProviderResult,
@@ -153,7 +153,7 @@ export function SettingsView({ projectId }: { projectId: string }) {
                     size="sm"
                     onClick={() => setArchiveOpen(true)}
                   >
-                    <TrashSolid weight="fill" className="size-4" />
+                    <TrashIcon className="size-4" />
                     Archive
                   </Button>
                 </div>

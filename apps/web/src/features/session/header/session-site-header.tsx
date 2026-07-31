@@ -44,7 +44,7 @@ import {
   ShareIcon as Share,
   SquareIcon as Square,
   TerminalWindowIcon as SquareTerminal,
-  TrashIcon as TrashSolid,
+  TrashIcon,
 } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -320,7 +320,7 @@ export function SessionSiteHeader({
                       onClick={() => setDeleteOpen(true)}
                       variant="destructive"
                     >
-                      <TrashSolid weight="fill" />
+                      <TrashIcon />
                       Delete
                     </DropdownMenuItem>
                   </>

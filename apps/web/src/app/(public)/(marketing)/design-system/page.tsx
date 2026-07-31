@@ -63,14 +63,6 @@ import {
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { CheckboxGroup, CheckboxGroupItem } from '@/components/ui/checkbox-group';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DefinitionList, DefinitionRow } from '@/components/ui/definition-list';
@@ -175,6 +167,7 @@ import {
   LightningIcon as Zap,
 } from '@phosphor-icons/react';
 
+import { CardSection } from './card-section';
 import { IconsSection } from './icons-section';
 
 const BRAND_COLORS = [
@@ -1881,62 +1874,14 @@ export default function BrandPage() {
                 <div id="comp-card" className="mb-12">
                   <ComponentLabel>Card</ComponentLabel>
                   <ComponentDesc>
-                    {tHardcodedUi.raw(
-                      'appHomeDesignSystemPage.line1160JsxTextContainerWithHeaderContentAndFooterSlotsDefault',
-                    )}
+                    One compositional card — media, eyebrow, title, description, action, content,
+                    footer — laid out by a sibling CardGroup. Two layout axes (orientation, columns)
+                    and two framing switches (border, separated) cover every variant below.
+                    Transparent and borderless by default: cards inherit the substrate under them
+                    and lean on hairline dividers plus a magnetic proximity highlight instead of a
+                    drawn frame.
                   </ComponentDesc>
-                  <DemoContainer>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Card variant="default">
-                        <CardHeader>
-                          <CardTitle>
-                            {tHardcodedUi.raw('appHomeDesignSystemPage.line1167JsxTextDefaultCard')}
-                          </CardTitle>
-                          <CardDescription>
-                            {tHardcodedUi.raw(
-                              'appHomeDesignSystemPage.line1169JsxTextStandardCardWithSolidBackground',
-                            )}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-muted-foreground text-sm">
-                            {tHardcodedUi.raw(
-                              'appHomeDesignSystemPage.line1174JsxTextCardContentGoesHereUseForGroupingRelated',
-                            )}
-                          </p>
-                        </CardContent>
-                        <CardFooter>
-                          <Button variant="outline" size="sm">
-                            Action
-                          </Button>
-                        </CardFooter>
-                      </Card>
-                      <Card variant="glass">
-                        <CardHeader>
-                          <CardTitle>
-                            {tHardcodedUi.raw('appHomeDesignSystemPage.line1186JsxTextGlassCard')}
-                          </CardTitle>
-                          <CardDescription>
-                            {tHardcodedUi.raw(
-                              'appHomeDesignSystemPage.line1188JsxTextTranslucentSurfaceForOverlaysAndPanels',
-                            )}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-muted-foreground text-sm">
-                            {tHardcodedUi.raw(
-                              'appHomeDesignSystemPage.line1193JsxTextCardContentGoesHereUsedForOverlaysAnd',
-                            )}
-                          </p>
-                        </CardContent>
-                        <CardFooter>
-                          <Button variant="outline" size="sm">
-                            Action
-                          </Button>
-                        </CardFooter>
-                      </Card>
-                    </div>
-                  </DemoContainer>
+                  <CardSection />
                 </div>
 
                 <div id="comp-input" className="mb-12">

@@ -359,6 +359,11 @@ i,
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+  /* Interaction overlays — translucent ink, not solid surfaces, so a hover or
+     selection tint blends over whatever substrate is behind it (canvas,
+     surface-1, an image). Used by Card's proximity highlight + selected fill. */
+  --color-hover: var(--hover);
+  --color-active: var(--active);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
@@ -740,6 +745,9 @@ i,
   --border: oklch(0.9128 0 0); /* hairline */
   --input: oklch(0.9431 0 0); /* surface-2 */
   --ring: oklch(0.669 0.1837 248.8066); /* accent-blue — focus only */
+  --hover: oklch(0 0 0 / 0.045); /* ink @ 4.5% — transient hover tint */
+  --active: oklch(0 0 0 / 0.075); /* ink @ 7.5% — persistent selected fill */
+  --focus-ring: var(--ring);
   --chart-1: oklch(0.8781 0.1688 91.8567);
   --chart-2: oklch(0.7724 0.1728 65.367);
   --chart-3: oklch(0.6671 0.1685 53.3814);
@@ -799,6 +807,9 @@ i,
   --border: oklch(0.2686 0 0); /* hairline #262626 */
   --input: oklch(0.2264 0 0); /* surface-2 */
   --ring: oklch(0.669 0.1837 248.8066); /* accent-blue #0099ff — focus only */
+  --hover: oklch(1 0 0 / 0.06); /* ink @ 6% — transient hover tint */
+  --active: oklch(1 0 0 / 0.1); /* ink @ 10% — persistent selected fill */
+  --focus-ring: var(--ring);
   --chart-1: oklch(0.8781 0.1688 91.8567);
   --chart-2: oklch(0.7724 0.1728 65.367);
   --chart-3: oklch(0.6671 0.1685 53.3814);

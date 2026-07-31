@@ -97,7 +97,7 @@ describe('SessionSiteHeader "more actions" menu — destructive last, technical 
 
     // `Delete` also appears earlier as a substring of the `SessionDeleteModal`
     // import — anchor on the destructive button's own icon instead.
-    const deleteIndex = source.indexOf('<TrashSolid');
+    const deleteIndex = source.indexOf('<TrashIcon');
     const exportIndex = source.indexOf('Export conversation');
     const compactIndex = source.indexOf('Summarize conversation');
     const renameIndex = source.indexOf("'autoFeaturesSessionHeaderSessionSiteHeaderJsxTextRename41731a53'");

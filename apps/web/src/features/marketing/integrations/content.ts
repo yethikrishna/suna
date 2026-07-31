@@ -145,7 +145,10 @@ export const broker = {
     },
     {
       id: 'invisible',
-      title: 'Invisible to the model',
+      // ACCURACY: the body scopes this to CONNECTOR credentials, but the title
+      // alone — cropped into a screenshot or read by itself — became the blanket
+      // "secrets are hidden from the model" claim, which is false.
+      title: 'Connector keys stay server-side',
       body: 'The model is never shown a credential, and the ledger stores a hash of the inputs rather than the inputs themselves.',
     },
   ],

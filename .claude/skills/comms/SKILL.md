@@ -185,7 +185,7 @@ exactly.
 - **OpenCode config** — the runtime agents think in: agents, skills, commands, tools, plugins, models, providers.
 - **Session** — one unit of agent work, running on its own cloud computer on its own branch, owned by whoever or whatever started it. Not "chat," "thread," or "conversation."
   - Say: "start a session." Not: "open a chat."
-- **Cloud computer / sandbox** — the disposable, microVM-isolated Linux machine a session runs on. Use **cloud computer** when the point is that agents work on a real machine; use **sandbox** when the point is isolation. Both are sanctioned; never say "container" in external copy.
+- **Cloud computer / sandbox** — the disposable, isolated Linux machine a session runs on. Use **cloud computer** when the point is that agents work on a real machine; use **sandbox** when the point is isolation. Both are sanctioned; never say "container" in external copy. Do not write "microVM" here — see §4; that holds for Platinum only.
 - **`kortix-sandbox-agent-server`** — the daemon a sandbox boots with: clones the repo, cuts the branch, loads config into a live runtime, and exposes prompting/streaming/files/terminal. Mono. Mostly internal.
 - **Change request** — the reviewed merge back toward `main`; how work lands and how the company self-improves. CLI: `kortix cr`. Behaves like a pull request, but in product copy say "change request."
   - Say: "the agent opens a change request you approve." Not: "the agent deploys."
@@ -195,7 +195,7 @@ exactly.
 - **Agent** — a markdown persona with a prompt and a tightly scoped reach into tools and resources. Installable in one click; can rewrite itself. Not "bot."
 - **Skill** — markdown plus scripts that encode how the company does a specific job; lives in the repo and rides into every session. The part that compounds.
 - **Connector** — one-click reach into 3,000+ apps, plus MCP, OpenAPI, GraphQL, and raw HTTP, brokered server-side through one scoped token. Noun = "connector"; verb = "connect." Not "plugin" or "integration."
-- **Secret** — an encrypted, per-person/per-group credential injected into sandboxes at runtime, never shown to the model or logs, enforceable at the network.
+- **Secret** — an encrypted, per-person/per-group credential injected into sandboxes at runtime. **Never claim it is hidden from the model:** a granted runtime secret is a real env value that any command the agent runs can read (`docs/ENV_SECRET_EXPOSURE_BASELINE.md`). **Never claim network enforcement:** egress control is not implemented. The accurate adjacent claim is about **connectors** — connector credentials are brokered server-side and never enter the machine.
 - **Channel** — a chat surface where a bot starts sessions where people already are. The manifest enum is CLOSED: `slack`, `teams`, `email`, `voice` (`packages/manifest-schema/src/constants.ts` → `CHANNEL_PLATFORMS`). Only **Slack** is live; **Teams** is behind an operator switch (`TEAMS_CHANNEL_ENABLED` defaults false); **email** and **voice** are experimental (`platformDefault: () => false`). **Telegram, WhatsApp, SMS and Discord are NOT channels** — do not list them. Do not claim "one click": install needs Slack OAuth env, and the bot must still be invited and @-mentioned.
 - **Trigger** — a cron schedule or signed webhook that spawns sessions automatically.
 - **Memory** — the living company brain: plain files today, a system that compounds what it learns over time. In external copy, not "vector database."
@@ -284,7 +284,7 @@ Each pitch: **who → pain → promise → proof/mechanism → sanctioned phrase
 - **Who:** Security, IT, and platform leaders who must put AI in front of a security review.
 - **Pain:** AI tools that fold under a security review — no isolation, no permissions, no audit, no on-prem story.
 - **Promise:** Built to survive a security review, not slip past one.
-- **Proof / mechanism:** microVM isolation; members, groups, and roles that match your org; per-resource permissions for people **and** agents; a secrets manager; full audit trail; human approval gates; on-prem, VPC, or air-gapped deployment.
+- **Proof / mechanism:** one isolated machine per session (microVM on Platinum, containers by default — say which); members, groups, and roles that match your org; per-resource permissions for people **and** agents; a secrets manager; full audit trail; approval gates (off by default — say so); your own VPC or on-prem network. **Not air-gapped:** `self-host start` pulls images from docker.io.
 - **Sanctioned phrases:** "survives a security review," "isolation, permissions, audit, approval gates," "your data, your models, your infrastructure — no lock-in."
 - **Don't say:** "certified" or specific compliance claims (SOC 2, ISO, etc.) unless given as fact; "unbreakable" / "100% secure."
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { CapabilitiesSection } from '@/features/marketing/capabilities/capabilities-section';
 import Hero from '@/features/marketing/hero';
 import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
 import { CtaSection } from '@/features/marketing/landing/cta-section';
@@ -38,7 +39,10 @@ export default function Home() {
              opening on the repo that holds all of them */}
       <HowItWorks />
 
-      {/* 3 · What it does — real work, and the artefact it produces */}
+      {/* 3 · The one section written to be read, not scanned */}
+      <CapabilitiesSection />
+
+      {/* 4 · What it does — real work, and the artefact it produces */}
       <UseCaseWheel />
 
       {/* 4 · Open source, and genuinely runnable on your own hardware */}

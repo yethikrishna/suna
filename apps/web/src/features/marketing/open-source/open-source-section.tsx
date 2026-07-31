@@ -1,162 +1,90 @@
 'use client';
 
 import { Reveal } from '@/components/home/reveal';
-import { Button } from '@/components/ui/marketing/button';
 import { Icon } from '@/features/icon/icon';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { openSource } from './content';
 import { StarCount } from './star-count';
-import { Terminal } from './terminal';
 
 /**
- * One line of the ledger: label left, one sentence right, hairline above.
+ * Home-page open-source section — the aspirational note between the security
+ * close and the questions under it.
  *
- * At panel width the sentence lands on a single line, so the four rows read as
- * a tally rather than four wrapped footnotes. Below `lg` the label stacks on
- * top of the sentence.
- */
-function Fact({
-  k,
-  v,
-  href,
-  hrefLabel,
-}: {
-  k: string;
-  v: string;
-  href?: string;
-  hrefLabel?: string;
-}): ReactNode {
-  return (
-    <div className="border-border grid gap-2 border-t px-6 py-4 sm:px-10 lg:grid-cols-12 lg:items-baseline lg:gap-8">
-      <dt className="text-foreground font-mono text-[10px] tracking-widest uppercase lg:col-span-3">
-        {k}
-      </dt>
-      <dd className="text-muted-foreground text-sm leading-relaxed lg:col-span-9">
-        {v}
-        {href && hrefLabel ? (
-          <Link
-            href={href}
-            className="text-foreground duration-fast ml-2 inline-flex underline decoration-current/30 underline-offset-4 transition-colors hover:decoration-current"
-          >
-            {hrefLabel} →
-          </Link>
-        ) : null}
-      </dd>
-    </div>
-  );
-}
-
-/**
- * Home-page open-source section — the last argument before the closing CTA.
+ * Four things on one centred axis: the number, what it counts, why the code is
+ * open, and the way out. The number is read live from `/api/github-stars`,
+ * never hardcoded, and is the only large numeral on the page. Copy, its sources
+ * and the accuracy gate live next door in `content.ts`.
  *
- * Its job is to prove two things a reader cannot verify from a claim: the code
- * is genuinely readable (the live star count and a link straight into the
- * repo), and it is genuinely runnable on your own hardware (the two shipped
- * commands, plus what self-hosting does and does not include).
+ * ONE THING LEADS. The numeral leads and the sentence supports it, which is why
+ * the heading is `text-lg sm:text-xl` rather than the `text-2xl sm:text-3xl` a
+ * passage takes. Set at passage weight it fought the 72px number directly above
+ * it and a reader had two places to start. Read in order the stack now says:
+ * twenty thousand people are watching this / here is what that is a count of /
+ * here is why it is open / here is the way in.
  *
- * Because it now sits between the trust card and the CTA card, it is drawn as
- * a slab of its own rather than flat page — otherwise it reads as the gap
- * between two surfaces. `bg-card` keeps that slab honest in both themes: a
- * light panel on the light page, a lifted dark panel on the dark one, never a
- * white rectangle punched into a dark page.
+ * WHAT WAS CUT TO GET HERE. The first version was a lifted `bg-card` slab —
+ * headline, count, two-command terminal, four-row self-hosting ledger, centred
+ * closing line, 1014px of it. The second kept a three-sentence body paragraph
+ * and borrowed the Control passage's hairline-and-mono-facts foot; the facts
+ * (`Developed in the open / Self-host or managed cloud / Any model, your keys`)
+ * restated the paragraph, and the rule plus the facts plus two matched links
+ * was more furniture than a second-to-last section can carry. Both went.
  *
- * NO WALLPAPER HERE, and that is deliberate. The brandmark wallpaper
- * (`WallpaperBackground wallpaperId="brandmark"`, `/kortix-brandmark-bg.svg`)
- * was tried at five sizes and positions inside this panel. It does not
- * survive the scale change: the mark is a 1px stroke of a hollow asterisk cut
- * for a full viewport, so at panel width every setting that is faint enough to
- * sit under type renders as an unidentifiable smudge, and every setting strong
- * enough to read as the Kortix mark draws a line through the headline. A
- * watermark that reads as an artifact is worse than no watermark. The other
- * candidate — `KortixGrid` (`components/ui/marketing/gridder.tsx`), the tiled
- * repeating "kortix" field — is ruled out twice over: it is the signature of
- * the closing CTA that sits directly below this section, and it paints a
- * `kortix-green`/`kortix-purple` gradient into a section that carries no
- * colour. What the older design actually contributed — the slab, the hairline
- * ledger, and the centred closing line — is all here.
+ * THE TWO LINKS ARE NOT EQUALS, so they are not drawn as equals. `/about` is
+ * the rest of the reason and takes the text link; the repo is the proof the
+ * number is about something real and sits in the mono register the caption
+ * above it already uses. Matched underlines read as a choice between two
+ * comparable things, which these are not.
  *
- * The number is the only large numeral on the page, and it is earned: it is
- * read live from `/api/github-stars`, never hardcoded. Copy rules and the
- * accuracy gate live next door in `content.ts`.
+ * WHY THERE IS NO PANEL. The original slab existed because a flat section
+ * between the dark trust card and the CTA card read as the gap between two
+ * surfaces. That argument dies with the content: a 72px numeral is itself the
+ * anchor. Dropping the fill also fixes what `bg-card` cost in dark mode, where a
+ * panel this empty was a large lifted rectangle with almost nothing on it.
+ *
+ * NO WALLPAPER HERE, and that is still deliberate. The brandmark wallpaper
+ * (`WallpaperBackground wallpaperId="brandmark"`) was tried at five sizes in the
+ * old panel: the mark is a 1px stroke cut for a full viewport, so every setting
+ * faint enough to sit under type renders as a smudge and every setting strong
+ * enough to read draws a line through the copy. `KortixGrid` is ruled out twice
+ * over — it is the signature of the closing CTA, and it paints a
+ * `kortix-green`/`kortix-purple` gradient into a section that carries no colour.
  */
 export function OpenSourceSection(): ReactNode {
   return (
     <section id="open-source" className="mx-auto max-w-7xl px-6 py-16 sm:py-24">
-      <Reveal>
-        <div className="border-border bg-card overflow-hidden rounded-sm border">
-          <div className="grid gap-12 px-6 py-12 sm:px-10 lg:grid-cols-12 lg:gap-16">
-            {/* left · the claim, and the number that backs it */}
-            <div className="flex min-w-0 flex-col lg:col-span-5">
-              <p className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
-                {openSource.eyebrow}
-              </p>
+      {/* 34rem. Centred text needs a shorter measure than railed text before the
+          ragged edges cost more than the symmetry returns, and at this width the
+          heading breaks after "platform." — one sentence per line, which is the
+          break it wants anyway. */}
+      <Reveal className="mx-auto flex max-w-[34rem] flex-col items-center text-center">
+        {/* No eyebrow. The caption directly under the digits already says what
+            the number is, and a third mono line above it only delayed the one
+            thing this section opens on. */}
+        <StarCount caption={openSource.stars.caption} />
 
-              <h2 className="text-foreground mt-5 text-3xl font-medium tracking-tight text-balance sm:text-4xl">
-                {openSource.title}
-              </h2>
+        <h2 className="text-foreground mt-9 text-lg font-medium tracking-tight text-balance sm:text-xl">
+          {openSource.title}
+        </h2>
 
-              <p className="text-muted-foreground mt-4 text-base leading-relaxed">
-                {openSource.sub}
-              </p>
+        <div className="mt-6 flex flex-col items-center gap-3">
+          <Link
+            href={openSource.aboutHref}
+            className="text-foreground duration-fast inline-flex text-sm underline decoration-current/25 underline-offset-4 transition-colors hover:decoration-current"
+          >
+            {openSource.aboutLabel} →
+          </Link>
 
-              <StarCount
-                caption={openSource.stars.caption}
-                className="border-border mt-8 border-t pt-8"
-              />
-
-              <div className="mt-8 flex flex-wrap items-center gap-3">
-                <Button size="sm" variant="outline" asChild>
-                  <a href={openSource.ctaPrimaryHref} target="_blank" rel="noreferrer">
-                    <Icon.Github className="size-4" />
-                    {openSource.ctaPrimary}
-                  </a>
-                </Button>
-                <Button size="sm" asChild>
-                  <Link href={openSource.ctaSecondaryHref}>{openSource.ctaSecondary}</Link>
-                </Button>
-              </div>
-            </div>
-
-            {/* right · run it yourself, in two commands */}
-            <div className="flex min-w-0 flex-col lg:col-span-7">
-              {/* `bg-popover`, not the Terminal's own `bg-card`: on a `bg-card`
-                  panel the window chrome would be the same tone as the slab it
-                  sits on. */}
-              <Terminal
-                title={openSource.terminal.title}
-                lines={openSource.terminal.lines}
-                className="bg-popover"
-              />
-
-              {/* `mt-auto` foots the link to the column, so it lands level with
-                  the buttons opposite instead of floating mid-column. */}
-              <Link
-                href={openSource.footnoteHref}
-                className="text-muted-foreground hover:text-foreground duration-fast mt-auto inline-flex w-fit pt-8 font-mono text-[10px] tracking-widest uppercase transition-colors"
-              >
-                {openSource.footnote} →
-              </Link>
-            </div>
-          </div>
-
-          {/* the ledger · what self-hosting is, and where it stops */}
-          <dl>
-            {openSource.facts.map((fact) => (
-              <Fact
-                key={fact.id}
-                k={fact.k}
-                v={fact.v}
-                href={'href' in fact ? fact.href : undefined}
-                hrefLabel={'hrefLabel' in fact ? fact.hrefLabel : undefined}
-              />
-            ))}
-          </dl>
-
-          {/* the hand-off into the closing CTA */}
-          <p className="border-border text-foreground border-t px-6 py-7 text-center text-base leading-relaxed text-balance sm:px-10 sm:text-lg">
-            {openSource.closer}
-          </p>
+          <a
+            href={openSource.repoHref}
+            target="_blank"
+            rel="noreferrer"
+            className="text-muted-foreground hover:text-foreground duration-fast inline-flex items-center gap-2 font-mono text-[10px] tracking-widest uppercase transition-colors"
+          >
+            <Icon.Github className="size-3.5" />
+            {openSource.repoLabel}
+          </a>
         </div>
       </Reveal>
     </section>

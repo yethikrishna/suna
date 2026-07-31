@@ -7,25 +7,54 @@
  *
  * Voice rules: the `comms` skill.
  *
- * ACCURACY GATE for this section specifically:
+ * WHAT THIS SECTION IS. Two things and nothing else: the live star count, and
+ * the reason the code is open at all. The number on its own is a vanity metric;
+ * the reason is what earns it the slot between the security close and the
+ * questions under it. Everything that was neither of those has been cut.
+ *
+ * WHERE THE REASON COMES FROM. `title` is the `/about` thesis, taken from
+ * `marketing/about/content.ts` → `hero.title` plus the first clause of
+ * `hero.lead`, because that page is already accuracy-reviewed and the home page
+ * must not invent a second version of it. `aboutHref` sends a reader there for
+ * the rest — the enumeration ("every agent, all of their data, every skill,
+ * every connector, the memory, the whole configuration") stays on `/about`
+ * rather than being restated here. Do not widen the claim past what `/about`
+ * says.
+ *
+ * WHAT WAS CUT, AND WHY IT IS NOT LOST. A lifted `bg-card` slab, a headline, a
+ * two-command self-host terminal, a four-row self-hosting ledger and a centred
+ * closing line — 1014px of it — came out on 2026-07-31, then a three-job body
+ * paragraph and a mono fact line went with them. The two commands are still on
+ * the page in the hero's CLI panel; the self-hosting ledger reads better on
+ * `/self-hosted`; and the fact line ("Developed in the open / Self-host or
+ * managed cloud / Any model, your keys") only restated the paragraph above it.
+ *
+ * ACCURACY GATE for this section specifically. Every item is still binding on
+ * whatever this file grows back into:
  *  1. NEVER name a licence. "open source" and stop — no badge, no Apache/MIT/
  *     Elastic. (`comms` §7, "On the license".)
- *  2. NO superlative. The star count is the claim; "the leading" / "the go-to" /
- *     "#1" are banned by `comms` §7 even with the number in hand.
+ *  2. ONE superlative form is sanctioned: "the leading open-source
+ *     alternative" (`comms` §7, decided 2026-07-31). The hero already carries
+ *     it (`marketing/landing/content.ts` → `heroEyebrow.lead`), so this
+ *     section does not repeat it. No other superlative — "the go-to", "#1",
+ *     "the best" — is allowed, and the sanctioned one is never extended.
  *  3. The star count is READ LIVE from `/api/github-stars` via
  *     `useGitHubStars`. Nothing here hardcodes it, and no other repo metric
  *     (forks, contributors, downloads) is claimed — none is read.
  *  4. "Air-gapped" is NOT what `kortix self-host start` gives you: it pulls
- *     images from docker.io and reaches a sandbox provider over egress. The
- *     `notOnBox` item states that and routes isolated topologies to
- *     `/enterprise`. Do not soften it.
+ *     images from docker.io and reaches a sandbox provider over egress. This
+ *     section now makes no self-hosting claim at all; if one comes back, it
+ *     stops at "hardware you control" and is never upgraded to "offline",
+ *     "disconnected" or "air-gapped". Isolated topologies are scoped through
+ *     `/enterprise`, which `/self-hosted` routes to.
  *  5. Do not claim "egress controlled at the network" — nothing implements it.
  *  6. Do not claim blanket "microVM isolation" — true for Platinum, not for
  *     Daytona, which is the default. This section names no isolation boundary.
- *  7. Every command below is the shipped CLI. `kortix self-host start`
+ *  7. Any CLI command put back here must be a shipped one. The two that used to
+ *     sit in this file were `kortix self-host start`
  *     (`apps/cli/src/commands/self-host.ts`) and `kortix hosts use <host>`
  *     (`apps/cli/src/commands/hosts.ts:240`, which prints the exact string
- *     "Active host is now <host>").
+ *     "Active host is now <host>"). This section now shows neither.
  *  8. Do NOT claim you can fork someone else's company / project, or publish
  *     your own. The `registry:project` machinery ships, but the catalog holds
  *     exactly one project item — Kortix's own starter
@@ -38,81 +67,30 @@
  *     secret is a real env value any command in the session can read
  *     (`docs/ENV_SECRET_EXPOSURE_BASELINE.md`). This section claims nothing
  *     about secrets.
+ * 10. "The open AGI platform" is aspiration, and `/about` is allowed to say it
+ *     because that page is explicitly a vision page. It must never be dressed
+ *     up as shipped capability here: training, RL and evals are NOT shipped, so
+ *     do not name them in this section at all.
  */
 
 export const openSource = {
-  eyebrow: 'Open source',
-  title: 'Read every line. Then run it on your own box.',
-  sub: 'Kortix is developed in the open. Clone the repo, read what you are trusting, fork it if you want it different — then run that same product on hardware you control.',
-
   /** The one number on this section. Read live; never hardcoded. */
   stars: {
-    /** Screen-reader + fallback label. The digits themselves are animated. */
-    label: 'GitHub stars on kortix-ai/suna',
+    /** Sits under the digits, and is the accessible label with them. */
     caption: 'GitHub stars on kortix-ai/suna',
-    href: 'https://github.com/kortix-ai/suna',
-  },
-
-  ctaPrimary: 'Read the source',
-  ctaPrimaryHref: 'https://github.com/kortix-ai/suna',
-  ctaSecondary: 'Self-host it',
-  ctaSecondaryHref: '/self-hosted',
-
-  /** Two commands, both shipped. Output lines are literal CLI strings. */
-  terminal: {
-    title: 'your machine',
-    lines: [
-      '# bring the whole stack up on your own box',
-      '$ kortix self-host start',
-      '',
-      '# point the CLI at your stack',
-      '$ kortix hosts use selfhost',
-      '→ Active host is now selfhost',
-      '',
-      '# same commands, back on the managed cloud',
-      '$ kortix hosts use cloud',
-      '→ Active host is now cloud',
-    ],
   },
 
   /**
-   * The ledger under the proof: one label, one sentence. Rows, not a four-up
-   * grid, because at full panel width each line lands in one read — and
-   * because this section now closes the argument, so it should tally up.
+   * The whole note. Sentence one is `/about` → `hero.title` verbatim; sentence
+   * two is the first clause of `hero.lead`. Keep the two files in step.
    */
-  facts: [
-    {
-      id: 'where',
-      k: 'Where it runs',
-      v: 'A laptop, a VPS, or inside your own VPC or on-prem network — one Docker Compose stack either way.',
-    },
-    {
-      id: 'same',
-      k: 'Same product',
-      v: 'Self-hosting builds from the images the managed cloud runs, so it is the whole platform, not a cut-down edition.',
-    },
-    {
-      id: 'models',
-      k: 'Your models',
-      v: 'Any provider and your own keys, or the ChatGPT, Claude, or Cursor subscription you already pay for.',
-    },
-    {
-      id: 'boundary',
-      k: 'Where the box ends',
-      v: 'Agent sandboxes run on the compute provider you configure, so the stack reaches out over egress. Fully isolated topologies are scoped with us.',
-      href: '/enterprise',
-      hrefLabel: 'Talk to us',
-    },
-  ],
+  title: 'We are building the open AGI platform. Every company should own all of it.',
 
-  /**
-   * The hand-off into the closing CTA, carried over from the older section the
-   * founder pointed at. It is the manifesto position stated plainly — see the
-   * `comms` skill §2 ("renting your company back from a model lab") and the §7
-   * approved line "we don't rent your company back to you".
-   */
-  closer: 'Your company’s brain should not live in twelve tools that lease it back to you.',
+  /** Primary way out: the rest of the reason. */
+  aboutLabel: 'Why we are building it',
+  aboutHref: '/about',
 
-  footnote: 'Read the full self-hosting story',
-  footnoteHref: '/self-hosted',
+  /** Secondary: the proof the number is about something real. */
+  repoLabel: 'Read the source',
+  repoHref: 'https://github.com/kortix-ai/suna',
 } as const;

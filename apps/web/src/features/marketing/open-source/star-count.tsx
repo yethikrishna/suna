@@ -89,12 +89,16 @@ function useCountUp(target: number | null, start: boolean): number | null {
 
 /**
  * The one large numeral on the home page. `useGitHubStars` reads
- * `/api/github-stars` and already absorbs its own failure, so `stars` is
- * `null` only while the request is in flight; the placeholder holds the line
- * height so nothing reflows when the digits land.
+ * `/api/github-stars`; `stars` is `null` while the request is in flight and
+ * also if it fails, because a failure must never print an invented figure
+ * under this caption. The `—` placeholder holds the line height either way, so
+ * nothing reflows when the digits land.
+ *
+ * The hook takes no arguments here on purpose: the route is hardcoded to
+ * `kortix-ai/suna` server-side and its `owner` / `repo` parameters are ignored.
  */
 export function StarCount({ caption, className }: { caption: string; className?: string }): ReactNode {
-  const { stars } = useGitHubStars('kortix-ai', 'kortix');
+  const { stars } = useGitHubStars();
   const [ref, seen] = useHasBeenSeen<HTMLDivElement>();
   const value = useCountUp(stars, seen);
 

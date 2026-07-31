@@ -144,7 +144,7 @@ export function Navbar({ isAbsolute = false }: NavbarProps) {
   const isMobile = useIsMobile();
 
   const filteredNavLinks = siteConfig.nav.links;
-  const { formattedStars, loading: starsLoading } = useGitHubStars('kortix-ai', 'kortix');
+  const { stars, formattedStars, loading: starsLoading } = useGitHubStars('kortix-ai', 'kortix');
   const openDemo = useRequestDemo();
 
   const isNavActive = useCallback(
@@ -254,7 +254,7 @@ export function Navbar({ isAbsolute = false }: NavbarProps) {
               <ContextMenuContent className="w-64">
                 <ContextMenuSub>
                   <ContextMenuSubTrigger className="gap-2 text-sm">
-                    <KortixLogo size={14} variant="symbol" />
+                    <KortixLogo size={14} variant="symbol" className="text-foreground" />
                     {tHardcodedUi.raw('componentsHomeNavbar.line221JsxTextDownloadSymbol')}
                   </ContextMenuSubTrigger>
                   <ContextMenuSubContent className="w-40">
@@ -417,7 +417,11 @@ export function Navbar({ isAbsolute = false }: NavbarProps) {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
-            {formattedStars && !starsLoading && (
+            {/* `stars`, not `formattedStars`: the formatter returns an en dash
+                for a missing count, so keying on it printed a GitHub chip
+                reading "–" whenever /api/github-stars failed. No number, no
+                chip. */}
+            {stars !== null && !starsLoading && (
               <Button variant="ghost" asChild className="hidden sm:flex">
                 <Link
                   href="https://github.com/kortix-ai/suna"

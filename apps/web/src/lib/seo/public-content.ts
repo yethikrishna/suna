@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import type { Block } from '@/components/blog/blog-content';
 import { PRICING_PLANS } from '@/features/billing/pricing-plans';
+import { ROLES } from '@/features/marketing/solutions/registry';
 import { BLOG_POSTS } from '@/lib/blog-posts';
 import { CANONICAL_ORIGIN, siteMetadata } from '@/lib/site-metadata';
 
@@ -67,6 +68,7 @@ export const STATIC_PUBLIC_ROUTES = [
   '/pricing',
   '/security',
   '/self-hosted',
+  '/solutions',
   '/support',
   '/use-cases',
 ] as const;
@@ -225,6 +227,30 @@ const MARKETING_RECORDS: PublicContentRecord[] = [
     htmlPath: '/self-hosted',
     markdownPath: '/markdown/self-hosted.md',
   },
+  // The Solutions section: one hub plus one page per role. The role records are
+  // derived from the role registry so the page copy and the SEO record cannot
+  // drift apart — `marketingMetadata()` throws for a path with no record, so a
+  // role added to the registry without a record here would 500 its own page.
+  // Each slug also needs an entry in `MARKETING_SOURCES` in
+  // apps/web/scripts/build-content-timestamps.mjs, or the record ships without
+  // a `lastModified` and public-content.test.ts fails.
+  {
+    kind: 'marketing',
+    slug: 'solutions',
+    title: 'Kortix Solutions by role',
+    description:
+      'One platform, eight teams with completely different work. What sales, marketing, product, engineering, finance, people, IT and data science can each hand off — and what comes back.',
+    htmlPath: '/solutions',
+    markdownPath: '/markdown/solutions.md',
+  },
+  ...ROLES.map((role) => ({
+    kind: 'marketing' as const,
+    slug: `solutions/${role.slug}`,
+    title: role.seoTitle,
+    description: role.seoDescription,
+    htmlPath: `/solutions/${role.slug}`,
+    markdownPath: `/markdown/solutions/${role.slug}.md`,
+  })),
 ];
 
 // Stamps each marketing record with a `lastModified` timestamp sourced from

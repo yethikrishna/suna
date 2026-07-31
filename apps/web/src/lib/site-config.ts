@@ -90,6 +90,72 @@ export const productMenu: NavMenu = {
 };
 
 /**
+ * The role axis. Eight `/solutions/<role>` pages, split into the two columns the
+ * renderer supports (a third column would render into a two-column grid).
+ *
+ * The labels and hrefs are hand-written here rather than derived from
+ * `features/marketing/solutions/registry`, because this module is imported by
+ * the client navbar — importing the registry would ship every word of all eight
+ * role pages in the client bundle. Keep the names in step with the `name` field
+ * on each role, and with the home-page use-case cards, which sit on the same
+ * axis: "Data Science", not "Data"; "People", not "HR" or "Recruiting".
+ */
+export const solutionsMenu: NavMenu = {
+  columns: [
+    {
+      title: 'Product & engineering',
+      links: [
+        {
+          name: 'Engineering',
+          href: '/solutions/engineering',
+          description: 'Reproduce it, patch it, open the change request',
+        },
+        {
+          name: 'Product',
+          href: '/solutions/product',
+          description: 'Feedback synthesised into specs, with the evidence',
+        },
+        {
+          name: 'Data Science',
+          href: '/solutions/data-science',
+          description: 'A real machine, a real query, an analysis you can re-run',
+        },
+        {
+          name: 'IT',
+          href: '/solutions/it',
+          description: 'Runbooks that execute, and a platform you can review',
+        },
+      ],
+    },
+    {
+      title: 'Business & operations',
+      links: [
+        {
+          name: 'Sales',
+          href: '/solutions/sales',
+          description: 'Research, drafts and CRM hygiene, held for approval',
+        },
+        {
+          name: 'Marketing',
+          href: '/solutions/marketing',
+          description: 'Production work that sounds like you',
+        },
+        {
+          name: 'Finance',
+          href: '/solutions/finance',
+          description: 'The close, the reconciliation and the variance note',
+        },
+        {
+          name: 'People',
+          href: '/solutions/people',
+          description: 'Scheduling, kits and onboarding — never the decision',
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * One column, no descriptions — five short destinations read faster as a list
  * than as a grid of explained cards, and a narrow panel stops the menu from
  * spanning half the viewport for five links.
@@ -114,6 +180,7 @@ export const siteConfig = {
   nav: {
     links: [
       { id: 1, name: 'Product', menu: productMenu },
+      { id: 2, name: 'Solutions', menu: solutionsMenu },
       { id: 3, name: 'Company', menu: companyMenu },
       { id: 4, name: 'Pricing', href: '/pricing' },
       { id: 6, name: 'Docs', href: '/docs' },

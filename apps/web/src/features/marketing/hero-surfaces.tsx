@@ -341,6 +341,9 @@ function MobileSurface() {
 const SHOWCASE_POSTER = '/media/showcase/kortix-showcase-poster.jpg';
 const CLI_POSTER = '/media/cli/kortix-cli-poster.jpg';
 
+/** Percent of the CLI recording's height taken by its baked-in title bar. */
+const CROP_TOP = 8;
+
 /** Recorded in the real product: a project, its connectors, agents, skills and
  *  schedules, then a session researching on a cloud computer and returning a
  *  finished deck. */
@@ -425,13 +428,20 @@ function CopyInstallCommand() {
  *  terminal. Every character on screen is output the CLI produced. */
 function CliSurface() {
   return (
-    <div className="bg-card relative h-full w-full">
+    // The recording carries its own simulated window title bar — traffic
+    // lights and a `code — zsh` label — baked into the pixels. It is dead
+    // weight in a frame we are trying to fill with output, and it cannot be
+    // removed with markup, so the video is scaled past the top edge and the
+    // wrapper clips it. CROP_TOP is the share of the recording that bar
+    // occupies; re-measure it if the terminal is ever re-recorded.
+    <div className="bg-card relative h-full w-full overflow-hidden">
       <CopyInstallCommand />
       {/* left-top, not top: at phone width the frame is narrower than the 16:10
           recording, so a centred crop would slice the first characters off every
           line. Anchoring left keeps the prompt where a terminal starts. */}
       <video
-        className="h-full w-full object-cover object-left-top motion-reduce:hidden"
+        style={{ height: `${100 + CROP_TOP}%`, top: `-${CROP_TOP}%` }}
+        className="absolute inset-x-0 w-full object-cover object-left-top motion-reduce:hidden"
         poster={CLI_POSTER}
         autoPlay
         muted
@@ -457,13 +467,20 @@ function CliSurface() {
         <source src="/media/cli/kortix-cli-1920.webm" type="video/webm" />
         <source src="/media/cli/kortix-cli-1920.mp4" type="video/mp4" />
       </video>
-      <Image
-        src={CLI_POSTER}
-        alt="A terminal showing the Kortix CLI installed and ready"
-        fill
-        sizes="(max-width: 1024px) 100vw, 1100px"
-        className="hidden object-contain motion-reduce:block"
-      />
+      {/* `fill` forces height:100%, so the crop lives on the wrapper rather
+          than on the Image itself. */}
+      <div
+        className="absolute inset-x-0 hidden motion-reduce:block"
+        style={{ height: `${100 + CROP_TOP}%`, top: `-${CROP_TOP}%` }}
+      >
+        <Image
+          src={CLI_POSTER}
+          alt="A terminal showing the Kortix CLI installed and ready"
+          fill
+          sizes="(max-width: 1024px) 100vw, 1100px"
+          className="object-cover object-left-top"
+        />
+      </div>
     </div>
   );
 }
@@ -516,7 +533,12 @@ export function HeroSurfaces() {
           a taller box costs them nothing (it just shows more of the recording),
           while the five DOM panels need every pixel — at 300px the Slack ask and
           the Kortix reply could not both be on screen. */}
-      <div className="border-border bg-card h-[360px] overflow-hidden rounded-xl border sm:h-[380px] lg:h-[clamp(360px,calc(100svh-424px),620px)]">
+      {/* The cap matters more than the floor. On a tall display the frame was
+          running to 620px and the hero read as one enormous slab; 520 keeps the
+          product legible while leaving the fold visibly un-crowded. The
+          subtrahend is everything above and below it — nav, eyebrow, H1, sub,
+          CTAs, the tab row and the trust line. */}
+      <div className="border-border bg-card h-[340px] overflow-hidden rounded-xl border sm:h-[360px] lg:h-[clamp(340px,calc(100svh-448px),520px)]">
         <SurfacePanel surface={active} />
       </div>
 

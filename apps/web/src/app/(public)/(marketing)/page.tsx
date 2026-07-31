@@ -1,11 +1,6 @@
 'use client';
 
-import {
-  AgentsSection,
-  AutomationsSection,
-  ChannelsSection,
-  ControlSection,
-} from '@/features/marketing/capabilities';
+import { AgentsSection, ControlSection } from '@/features/marketing/capabilities';
 import Hero from '@/features/marketing/hero';
 import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
 import { AskingInterlude, OwningInterlude } from '@/features/marketing/interludes';
@@ -60,23 +55,21 @@ export default function Home() {
 
       <TrustSection />
 
-      {/* The wheel is artefacts with nobody asking for them. This is where the
-          ask arrives. */}
-      <ChannelsSection />
-
       {/* The input that caused all of it — without this a reader watches the
-          results go by and never learns how to ask. */}
+          results go by and never learns how to ask.
+
+          This absorbed the separate channels and automations passages. Its
+          three modes already were "somebody asks in Slack", "it stops at the
+          calls that are yours" and "nobody is present at 07:00" — the two
+          extra sections restated that a screen later, and three prose blocks
+          in a row is what made the middle of the page feel arbitrary. */}
       <AskingInterlude />
 
-      {/* The interlude's third mode is "nobody is present". This is the trigger
-          that makes that true. */}
-      <AutomationsSection />
+      {/* The ownership close, moved up off the CTA's shoulder */}
+      <OwningInterlude />
 
       {/* 4 · Open source, and genuinely runnable on your own hardware */}
       <OpenSourceSection />
-
-      {/* The ownership close — the last thing said before the ask */}
-      <OwningInterlude />
 
       {/* Close, standing on its own */}
       <CtaSection />

@@ -395,7 +395,7 @@ describe('classifySendError — connector refusals', () => {
     id: '11111111-1111-4111-a111-111111111111',
     slug: 'gmail',
     name: 'Gmail',
-    authorization_strategy: 'project',
+    authorization_strategy: 'project' as const,
   };
   const refusal = (data: Record<string, unknown>) =>
     Object.assign(new Error('Failed to send message'), { status: 409, data });

@@ -4216,6 +4216,28 @@ and deployed OpenCode REST verification.
 
 ---
 
+### 2026-07-31 — session `centralized-audit-log` claim
+
+Claimed the additive centralized audit-log contract.
+
+The SDK will expose account audit events with optional project, session, actor
+type, source, outcome, request, and correlation fields. Existing audit event
+fields and functions remain compatible.
+
+The account audit list and export inputs will accept project and session
+filters. The web host will consume this typed SDK contract.
+
+The required `tdd` skill is unavailable in this session. The work will use the
+same RED, GREEN, and REFACTOR sequence directly.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
+---
+
 ### 2026-07-30 — session `opencode-rest-title-preview-reliability` claim
 
 Claimed the OpenCode REST session-title reconciliation regression reported on

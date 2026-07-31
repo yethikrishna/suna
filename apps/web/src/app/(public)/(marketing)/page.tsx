@@ -1,6 +1,6 @@
 'use client';
 
-import { ControlSection } from '@/features/marketing/capabilities';
+import { FaqSection } from '@/features/marketing/faq';
 import Hero from '@/features/marketing/hero';
 import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
 import { CtaSection } from '@/features/marketing/landing/cta-section';
@@ -43,17 +43,17 @@ export default function Home() {
       {/* 3 · What it does — real work, and the artefact it produces */}
       <UseCaseWheel />
 
-      {/* The objection lands the moment you believe the wheel: agents doing
-          that much, in real tools, is alarming. Answer it here rather than
-          eight sections later — mechanism first, then where we stand. */}
-      <ControlSection />
+      {/* Then why any of it is trustworthy in the first place: it is open,
+          and the reason it is open. One centred note between the mechanism
+          and the badges. */}
+      <OpenSourceSection />
 
+      {/* 4 · Where we stand on certification */}
       <TrustSection />
 
-
-      {/* 4 · The one thing between the security close and the ask: open
-             source, stated as plainly as it can be. */}
-      <OpenSourceSection />
+      {/* The questions a reader of this page still has, answered before the
+          ask rather than after it */}
+      <FaqSection />
 
       {/* Close, standing on its own */}
       <CtaSection />

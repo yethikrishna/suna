@@ -3,7 +3,6 @@
 import { ControlSection } from '@/features/marketing/capabilities';
 import Hero from '@/features/marketing/hero';
 import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
-import { AskingInterlude, OwningInterlude } from '@/features/marketing/interludes';
 import { CtaSection } from '@/features/marketing/landing/cta-section';
 import { LogoStrip } from '@/features/marketing/landing/logo-strip';
 import { ScrollCtaPill } from '@/features/marketing/landing/scroll-cta-pill';
@@ -41,10 +40,6 @@ export default function Home() {
              opening on the repo that holds all of them */}
       <HowItWorks />
 
-      {/* The stack's first layer is the repo. This is what is actually in it —
-          the company as a directory you can open. */}
-      <OwningInterlude />
-
       {/* 3 · What it does — real work, and the artefact it produces */}
       <UseCaseWheel />
 
@@ -55,15 +50,6 @@ export default function Home() {
 
       <TrustSection />
 
-      {/* The input that caused all of it — without this a reader watches the
-          results go by and never learns how to ask.
-
-          This absorbed the separate channels and automations passages. Its
-          three modes already were "somebody asks in Slack", "it stops at the
-          calls that are yours" and "nobody is present at 07:00" — the two
-          extra sections restated that a screen later, and three prose blocks
-          in a row is what made the middle of the page feel arbitrary. */}
-      <AskingInterlude />
 
       {/* 4 · The one thing between the security close and the ask: open
              source, stated as plainly as it can be. */}

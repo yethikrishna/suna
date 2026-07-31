@@ -1,6 +1,7 @@
 import { beforeEach, expect, mock, test } from 'bun:test';
 import { configureKortix } from '../../http/config';
 import { exportAccountAudit, listAccountAudit } from './audit';
+import { listAuditEvents } from './iam';
 
 let calls: Array<{ url: string; method: string }> = [];
 
@@ -68,6 +69,25 @@ test('exportAccountAudit sends the same reconstruction filters', async () => {
     session_id: 'session-1',
     actor_type: 'human',
     source: 'web',
+    outcome: 'success',
+  });
+});
+
+test('listAuditEvents sends project and session reconstruction filters', async () => {
+  await listAuditEvents('account-1', {
+    project_id: 'project-1',
+    session_id: 'session-1',
+    actor_type: 'agent',
+    source: 'executor',
+    outcome: 'success',
+  });
+
+  const url = new URL(calls[0]!.url);
+  expect(Object.fromEntries(url.searchParams)).toEqual({
+    project_id: 'project-1',
+    session_id: 'session-1',
+    actor_type: 'agent',
+    source: 'executor',
     outcome: 'success',
   });
 });

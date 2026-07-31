@@ -104,14 +104,22 @@ const DEFAULT_LIMIT = 50;
 export { buildFilters, type AuditFilterInput } from './audit-filters';
 
 // GET /v1/accounts/:accountId/audit
-//   ?action=iam.       — prefix match on action (e.g. "iam.policy.")
-//   ?actor=<uuid>      — only events performed by this user
-//   ?resource_type=X   — prefix match on resource_type (e.g. "project_session")
-//   ?since=ISO         — only events at or after this timestamp
-//   ?until=ISO         — only events at or before this timestamp
-//   ?q=text           — case-insensitive substring on action/resource_type/resource_id
-//   ?cursor=ISO|uuid   — keyset pagination cursor (occurredAt|eventId)
-//   ?limit=N           — default 50, max 200
+//   ?action=executor.       — prefix match on action
+//   ?actor=<uuid>           — only events performed by this user
+//   ?actor_type=agent       — human, agent, service_account, or system
+//   ?project_id=<uuid>      — one project
+//   ?session_id=<id>        — one session
+//   ?source=cli             — one client or execution source
+//   ?outcome=failure        — success, failure, denied, or pending
+//   ?request_id=<id>        — one API request
+//   ?correlation_id=<id>    — one cross-system operation
+//   ?resource_type=X        — prefix match on resource_type
+//   ?since=ISO              — only events at or after this timestamp
+//   ?until=ISO              — only events at or before this timestamp
+//   ?q=text                 — search action, resource, project, session, request,
+//                             trace, and correlation identifiers
+//   ?cursor=ISO|uuid        — keyset pagination cursor (occurredAt|eventId)
+//   ?limit=N                — default 50, max 200
 auditRouter.openapi(
   createRoute({
     method: 'get',

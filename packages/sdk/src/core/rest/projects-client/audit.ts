@@ -1,7 +1,8 @@
-// Account audit log — the Enterprise "what changed" trail, backed by
-// `kortix.audit_events` (every mutation the global middleware + IAM helpers
-// record) plus per-account outbound webhooks that mirror it to a SIEM. Reads
-// are gated on `audit.read` + the account's `auditAccess` entitlement server-side.
+// Account audit log — the Enterprise reconstruction trail, backed by
+// `kortix.audit_events`. The API middleware records authenticated requests.
+// Domain writers add semantic session, executor, approval, and computer events.
+// Per-account webhooks mirror the same stream to a SIEM. Reads are gated on
+// `audit.read` + the account's `auditAccess` entitlement server-side.
 
 import { backendApi } from '../../http/api-client';
 import { unwrap } from './shared';

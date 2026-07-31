@@ -53,6 +53,13 @@ export default function Home() {
       {/* 3 · What it does — real work, and the artefact it produces */}
       <UseCaseWheel />
 
+      {/* The objection lands the moment you believe the wheel: agents doing
+          that much, in real tools, is alarming. Answer it here rather than
+          eight sections later — mechanism first, then where we stand. */}
+      <ControlSection />
+
+      <TrustSection />
+
       {/* The wheel is artefacts with nobody asking for them. This is where the
           ask arrives. */}
       <ChannelsSection />
@@ -68,17 +75,10 @@ export default function Home() {
       {/* 4 · Open source, and genuinely runnable on your own hardware */}
       <OpenSourceSection />
 
-      {/* Rest between two heavy surfaces, and the ownership close */}
+      {/* The ownership close — the last thing said before the ask */}
       <OwningInterlude />
 
-      {/* Governance is deliberately not a layer in the stack, and the trust
-          section is badges. This is the mechanism behind both. */}
-      <ControlSection />
-
-      {/* 5 · Why it is safe to run, and where we stand on certification */}
-      <TrustSection />
-
-      {/* Close */}
+      {/* Close, standing on its own */}
       <CtaSection />
 
       <ScrollCtaPill />

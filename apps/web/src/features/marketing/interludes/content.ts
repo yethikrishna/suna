@@ -16,11 +16,13 @@
  * the graphic right and one with it left, deliberately the calmest things on
  * the page.
  *
- * WHY THEY ARE NOT THE CAPABILITIES SECTION. `features/marketing/capabilities`
- * is the dense read — eight prose entries indexing every sub-page. These carry
- * no link at all and roughly a fifth of the words. They are breathing room, and
- * the moment either one starts arguing a whole capability it has stopped doing
- * its job.
+ * WHY THEY ARE NOT THE PASSAGES. `features/marketing/capabilities` is the dense
+ * read — four prose passages, each indexing a sub-page, each mounted on its own
+ * elsewhere on this page. These two carry no link at all and roughly a third of
+ * the words, and they are two-column with a bordered panel where a passage is a
+ * single narrow document with a mono rail. They are breathing room, and the
+ * moment either one starts arguing a whole capability it has stopped doing its
+ * job.
  *
  * ==========================================================================
  * ACCURACY GATE — checked against code and against the shipped starter

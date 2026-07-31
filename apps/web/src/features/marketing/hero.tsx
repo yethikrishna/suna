@@ -42,8 +42,19 @@ const Hero = () => {
     window.location.href = user ? latestProjectPath(user?.id) : '/auth';
   }, [user]);
 
+  /* The measure and the gutter belong on the same element, which is the rule the
+     navbar already follows (`mx-auto w-full max-w-7xl px-6`). Splitting them —
+     px-6 on the section, max-w-7xl on the inner containers — puts the padding
+     outside the centred box instead of inside it, so once the viewport is wider
+     than max-w-7xl the hero content starts 24px left of the navbar's and the H1
+     hangs off the logo. Below max-w-7xl the two happen to agree, which is why it
+     only shows on desktop. Every max-w-7xl container below therefore carries its
+     own px-6. */
   return (
-    <section id="hero" className="relative overflow-hidden px-6 pt-28 pb-10 sm:pt-32 sm:pb-14">
+    <section
+      id="hero"
+      className="relative overflow-hidden pt-28 pb-10 sm:pt-32 sm:pb-14 lg:pt-24 lg:pb-10"
+    >
       <div
         className="inset-0 z-0 hidden mask-t-from-70% lg:absolute"
         aria-hidden
@@ -53,7 +64,7 @@ const Hero = () => {
       </div>
 
       <div className="relative z-20">
-        <div className="mx-auto w-full max-w-7xl">
+        <div className="mx-auto w-full max-w-7xl px-6">
           <RivalEyebrow />
 
           <h1 className="text-foreground mt-5 max-w-3xl text-4xl font-medium tracking-tight text-balance sm:text-5xl">
@@ -97,11 +108,14 @@ const Hero = () => {
           </div>
         </div>
 
-        <div id="demo" className="relative z-10 mx-auto mt-10 max-w-7xl scroll-mt-24 sm:mt-12">
+        <div
+          id="demo"
+          className="relative z-10 mx-auto mt-10 max-w-7xl px-6 scroll-mt-24 sm:mt-12 lg:mt-8"
+        >
           <HeroSurfaces />
         </div>
 
-        <p className="text-muted-foreground/60 mx-auto mt-6 max-w-7xl text-center font-mono text-[11px] tracking-wide">
+        <p className="text-muted-foreground/60 mx-auto mt-6 max-w-7xl px-6 text-center font-mono text-[11px] tracking-wide">
           {hero.trust}
         </p>
       </div>

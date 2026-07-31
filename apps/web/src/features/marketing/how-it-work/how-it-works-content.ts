@@ -127,7 +127,10 @@ export const LAYERS: Layer[] = [
     description:
       'A model on its own answers. The harness gives it planning, tool use and multi-step runs it actually finishes — powered by OpenCode, configured by a file in the repo.',
     bullets: [
-      'How an agent thinks is markdown you can read, diff and edit',
+      // ACCURACY: markdown is the baseline, not the ceiling. An agent is an
+      // OpenCode agent — tools, plugins and model config sit beside it in the
+      // same repo. Do not shorten this back to "an agent is markdown".
+      'An OpenCode agent: markdown, plus the tools and plugins beside it',
       'Say allow, ask or deny per tool — down to a single shell command',
       'Open source, so the harness is never the thing you are locked into',
     ],

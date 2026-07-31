@@ -16,23 +16,32 @@ type FooterSection = {
   links: FooterLinkItem[];
 };
 
+/**
+ * The footer is the full map of the site — every destination the top bar shows
+ * plus the ones it deliberately does not. Product mirrors `productMenu`,
+ * Solutions carries the eight role pages that were pulled out of the nav, and
+ * Company mirrors `companyMenu`. Keep this in step with `lib/site-config.ts`:
+ * a page that exists in neither place is a page nobody can find.
+ */
 const FOOTER_SECTIONS: FooterSection[] = [
   {
     title: 'Product',
     links: [
-      // `/docs/reference/cli` 404s — there is no reference/ directory. The
-      // page is content/docs/cli.mdx, routed at /docs/cli.
-      { label: 'CLI', href: '/docs/cli' },
-      { label: 'Developers', href: '/developers' },
-      { label: 'Marketplace', href: '/marketplace' },
+      { label: 'Agent Computer', href: '/agent-computer' },
+      { label: 'Company as Code', href: '/company-as-code' },
+      { label: 'Integrations', href: '/integrations' },
+      { label: 'Automations', href: '/automations' },
+      { label: 'Channels', href: '/channels' },
+      { label: 'Agents & Skills', href: '/agents-and-skills' },
+      { label: 'Security', href: '/security' },
+      { label: 'Self-hosted', href: '/self-hosted' },
       { label: 'Enterprise', href: '/enterprise' },
       { label: 'Pricing', href: '/pricing' },
     ],
   },
   {
-    // Solutions lives here rather than in the top bar: eight role pages is a
-    // wide menu for a nav that already carries Product and Company, and a
-    // reader looking for their own function looks in the footer for it.
+    // Pulled out of the top bar: eight roles is a wide menu beside Product and
+    // Company, and a reader looking for their own function looks down here.
     title: 'Solutions',
     links: [
       { label: 'Sales', href: '/solutions/sales' },
@@ -46,21 +55,28 @@ const FOOTER_SECTIONS: FooterSection[] = [
     ],
   },
   {
-    title: 'Resources',
+    title: 'Developers',
     links: [
-      { label: 'Use Cases', href: '/use-cases' },
-      { label: 'Blog', href: '/blog' },
-      { label: 'Changelog', href: '/changelog' },
-      { label: 'Docs', href: '/docs' },
-      { label: 'Brand', href: '/design-system' },
-      { label: 'Status', href: 'https://status.kortix.com', external: true },
+      // /docs/reference/cli 404s — there is no reference/ directory. The page
+      // is content/docs/cli.mdx, routed at /docs/cli.
+      { label: 'Documentation', href: '/docs' },
+      { label: 'CLI', href: '/docs/cli' },
+      { label: 'SDK', href: '/docs/sdk' },
+      { label: 'Quickstart', href: '/docs/quickstart' },
+      { label: 'For developers', href: '/developers' },
+      { label: 'Marketplace', href: '/marketplace' },
+      { label: 'GitHub', href: 'https://github.com/kortix-ai/suna', external: true },
     ],
   },
   {
-    title: 'Legal',
+    title: 'Company',
     links: [
-      { label: 'Terms', href: '/legal?tab=terms' },
-      { label: 'Privacy', href: '/legal?tab=privacy' },
+      { label: 'About', href: '/about' },
+      { label: 'Careers', href: '/careers' },
+      { label: 'Blog', href: '/blog' },
+      { label: 'Changelog', href: '/changelog' },
+      { label: 'Use Cases', href: '/use-cases' },
+      { label: 'Brand', href: '/design-system' },
     ],
   },
   {
@@ -68,6 +84,11 @@ const FOOTER_SECTIONS: FooterSection[] = [
     links: [
       { label: 'X', href: 'https://x.com/kortix', external: true },
       { label: 'LinkedIn', href: 'https://linkedin.com/company/kortix', external: true },
+      { label: 'Discord', href: 'https://discord.com/invite/RvFhXUdZ9H', external: true },
+      { label: 'Status', href: 'https://status.kortix.com', external: true },
+      { label: 'Support', href: '/support' },
+      { label: 'Terms', href: '/legal?tab=terms' },
+      { label: 'Privacy', href: '/legal?tab=privacy' },
     ],
   },
 ];

@@ -3,7 +3,7 @@
 import { Reveal } from '@/components/home/reveal';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { entries, heading, rules, type Entry } from './content';
+import { entries, heading, type Entry } from './content';
 
 /**
  * Home-page long-form section — "The long version".
@@ -12,15 +12,15 @@ import { entries, heading, rules, type Entry } from './content';
  * hero video, a stack of layer cards, a use-case wheel, a slab, a dark trust
  * card. None of it can be read. A reader who wants substance had nowhere to go
  * except a sub-page they have not been given a reason to open yet. This section
- * is that reason — eight entries of real prose, each one an index into the page
- * that carries the long form, closing on the grant mechanics that apply to all
- * eight.
+ * is that reason — four entries of real prose, each one an index into the page
+ * that carries the long form.
  *
- * OVERVIEW AT THE TOP, DETAIL AT THE FOOT. An entry is an overview and has to
- * read like one. When the deny-by-default / agent-≤-human mechanics sat inside
- * entry 02 they made the second thing a reader met the densest paragraph on the
- * page, so they moved to the `rules` block at the end — which also replaced a
- * self-vouching disclaimer that should never have been there.
+ * FOUR, NOT EIGHT. It ran eight until half of them were found to be a second
+ * telling of the layer stack one screen above: a reader met the repo, agents,
+ * the agent computer and connectors as cards, then met them again as prose, and
+ * the second pass read as length rather than depth. The four that survive are
+ * the ones the stack gestures at and never explains. `content.ts` records each
+ * cut and the argument for it — read that before re-adding one.
  *
  * WHY IT IS NOT A CARD GRID. A fourth grid of three-word tiles would have added
  * nothing the layer stack does not already do, and it would have been the
@@ -154,35 +154,12 @@ export function CapabilitiesSection(): ReactNode {
           ))}
         </ol>
 
-        {/* The foot · the mechanics that apply to every entry above.
-            Same two-column grid as an entry so it stays the same document, but
-            no number, smaller type and a tighter row rhythm — it reads as an
-            appendix rather than a ninth entry. */}
-        <Reveal>
-          <div className="border-border border-t pt-10">
-            <p className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
-              {rules.eyebrow}
-            </p>
-            <p className="text-foreground mt-4 max-w-[32rem] text-base leading-[1.7]">
-              {rules.lede}
-            </p>
-
-            {/* Two columns, not four stacked rows: the sentences are one line of
-                reference each, so stacking them cost ~170px of page for no
-                added clarity. Each cell carries its own hairline, which keeps
-                the rule between the two columns implied rather than drawn. */}
-            <dl className="mt-8 grid gap-x-12 sm:grid-cols-2">
-              {rules.rows.map((row) => (
-                <div key={row.id} className="border-border border-t py-4">
-                  <dt className="text-foreground text-sm font-medium tracking-tight">{row.k}</dt>
-                  <dd className="text-muted-foreground mt-1 text-sm leading-[1.7]">
-                    {withMono(row.v)}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </Reveal>
+        {/* The document closes on the last entry's hairline. There is no foot
+            block: the grant mechanics that briefly lived here served only two
+            of the four remaining entries, so they folded back into those two
+            (`agents` and `control` in content.ts) — an appendix serving half
+            the document is chrome, not structure. */}
+        <div className="border-border border-t" />
       </div>
     </section>
   );

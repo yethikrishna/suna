@@ -28,14 +28,15 @@ type Surface = {
   icon: ComponentType<{ className?: string }>;
 };
 
-/** Web leads; the two developer surfaces sit together at the end. */
+/** Web leads and CLI follows it: the two recorded-in-the-product surfaces sit
+ *  together at the front, then the channels, then the API. */
 const SURFACES: Surface[] = [
   { id: 'web', label: 'Web', icon: Monitor },
+  { id: 'cli', label: 'CLI', icon: Terminal },
   { id: 'slack', label: 'Slack', icon: Icon.Slack },
   { id: 'teams', label: 'MS Teams', icon: Icon.MicrosoftTeams },
   { id: 'email', label: 'Email', icon: EnvelopeIcon },
   { id: 'mobile', label: 'Mobile', icon: Smartphone },
-  { id: 'cli', label: 'CLI', icon: Terminal },
   { id: 'sdk', label: 'API / SDK', icon: Code2 },
 ];
 
@@ -477,7 +478,7 @@ export function HeroSurfaces() {
           a taller box costs them nothing (it just shows more of the recording),
           while the five DOM panels need every pixel — at 300px the Slack ask and
           the Kortix reply could not both be on screen. */}
-      <div className="border-border bg-card h-[360px] overflow-hidden rounded-xl border sm:h-[380px] lg:h-[440px]">
+      <div className="border-border bg-card h-[360px] overflow-hidden rounded-xl border sm:h-[380px] lg:h-[clamp(400px,calc(100svh-390px),620px)]">
         <SurfacePanel surface={active} />
       </div>
 

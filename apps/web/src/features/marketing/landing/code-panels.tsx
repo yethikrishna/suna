@@ -99,12 +99,13 @@ function CodeSurface({
 
   return (
     <div className="bg-card flex h-full flex-col">
-      <div className="border-border flex items-center gap-3 border-b px-4 py-3">
-        <span className="flex gap-1.5" aria-hidden>
-          <span className="bg-muted-foreground/25 size-2.5 rounded-full" />
-          <span className="bg-muted-foreground/25 size-2.5 rounded-full" />
-          <span className="bg-muted-foreground/25 size-2.5 rounded-full" />
-        </span>
+      {/* The three fake traffic lights are gone. They simulated a window this
+          panel is not, and they cost a row of height in the one place the hero
+          is trying to win height back for the recording. The bar itself stays,
+          thinned from py-3 to py-2: it still carries the filename, which says
+          what you are looking at, and the copy control, which is the only real
+          affordance here. */}
+      <div className="border-border flex items-center gap-3 border-b px-4 py-2">
         <span className="text-muted-foreground font-mono text-xs">{title}</span>
 
         <button

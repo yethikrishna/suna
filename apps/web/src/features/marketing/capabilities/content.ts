@@ -1,5 +1,5 @@
 /**
- * Home-page long-form section copy — "The long version".
+ * Home-page long-form section copy — "The mechanisms underneath".
  *
  * Plain English lives here, not in `apps/web/translations/*.json`, so the copy
  * can iterate before paying the 8-locale parity gate (`pnpm i18n:translations`).
@@ -10,9 +10,13 @@
  * WHAT THIS SECTION IS. The home page is visual: a hero video, a stacked layer
  * card set, a use-case wheel, a slab and a dark trust card. None of it can be
  * READ. This is the one place on the page where a reader who wants substance
- * gets prose — one entry per capability, each an index into the sub-page that
- * carries the long form. It deliberately does NOT restate a whole sub-page, and
- * it must never contradict one.
+ * gets prose.
+ *
+ * WHAT IT IS NOT is a second telling of the layer stack directly above it. Four
+ * entries, each covering ground `how-it-works-content.ts` does not — see the
+ * block above `entries` for what was cut and why. Every entry indexes into the
+ * sub-page that carries the long form; none restates a whole sub-page, and none
+ * may contradict one.
  *
  * ==========================================================================
  * ACCURACY GATE — every claim below was checked against code, not against the
@@ -77,24 +81,21 @@
  *  - AUDIT. Recording is never gated; only read/export/stream is
  *    (`apps/api/src/types.ts:129-135`).
  *  - SELF-HOST is NOT air-gapped. `kortix self-host start` pulls images over the
- *    internet and the default sandbox provider is remote. Route isolated
- *    topologies to Enterprise.
+ *    internet and the default sandbox provider is remote. No entry claims this
+ *    today — the rule stands in case one is ever re-added.
  *  - LICENCE. Say "open source" and stop. Never name one.
  *  - CERTIFICATION. Never claim one. SOC 2 is in progress; do not mention a
  *    certification on this section at all.
- *  - NUMBERS. "3,000+ apps" is the only sanctioned figure used here. No invented
- *    metrics, no customer names, no benchmarks. Note what is deliberately NOT
- *    quantified: `/self-hosted` says the first run asks "six questions", but the
- *    ordering comment in `apps/cli/src/commands/self-host.ts:382-393` numbers
- *    six STEPS while `promptFeatureFlags` is itself two questions. The count is
- *    soft, so this section says "the handful of things only you can know".
+ *  - NUMBERS. No invented metrics, no customer names, no benchmarks. "3,000+
+ *    apps" is the only sanctioned figure and the connectors entry that used it
+ *    was cut, so this section now carries no figure at all.
  *  - Say "cloud computer" / "agent computer" / "sandbox". NEVER "container".
  */
 
 export const heading = {
-  eyebrow: 'What it does',
-  title: 'The long version.',
-  lede: 'The stack above names the layers. This is what each one actually is, in the order you meet it — and the page behind it when you want the whole argument.',
+  eyebrow: 'In practice',
+  title: 'The mechanisms underneath.',
+  lede: 'The stack above names the layers. These four are what makes them work — the detail a card cannot hold, each one linking to the page that carries the full argument.',
 } as const;
 
 export type Entry = {
@@ -107,58 +108,64 @@ export type Entry = {
   readonly linkLabel: string;
 };
 
+/**
+ * FOUR ENTRIES, AND THE FOUR THAT WERE CUT.
+ *
+ * This section used to run eight. Four of them restated the layer stack that
+ * sits one screen above, so a reader met the same material twice — once as
+ * cards, once as prose — and the second pass read as length rather than depth.
+ * Each cut is recorded here so nobody re-adds one without the argument:
+ *
+ *  - THE REPO. `how-it-works-content.ts` layer 01 already carries all of it:
+ *    "kortix.yaml declares the machine image, the connectors and the triggers",
+ *    "Agents and skills are markdown", "grep the whole company, diff any
+ *    change, roll any part of it back". The only residue was `kortix init` /
+ *    `kortix ship`, which the hero CLI panel and the open-source terminal both
+ *    already show.
+ *  - THE AGENT COMPUTER. Layer 05 carries all three beats, and its "Session id,
+ *    sandbox id and branch name are one and the same string" is sharper than
+ *    the paragraph that was here.
+ *  - CONNECTORS. Layer 02's three bullets state 3,000+/MCP/OpenAPI/GraphQL/HTTP,
+ *    server-side brokering, AND "allow, ask or block — down to the arguments it
+ *    was given". The one beat the card could not hold — an approval HOLDS the
+ *    call and the run resumes from it rather than failing — moved into
+ *    `control` below, which already owns approval gates.
+ *  - RUN IT YOURSELF. The open-source section directly beneath this one owns
+ *    it: the live star count, the two commands, and a four-row ledger of where
+ *    self-hosting stops.
+ *
+ * What is left is the operational layer the stack gestures at and never
+ * explains, in one arc: what an agent really is, where sessions come from, work
+ * that starts itself, and what keeps all of it in bounds.
+ *
+ * `agents` is kept DESPITE layer 04 touching it, deliberately. That card says
+ * "How an agent thinks is markdown you can read, diff and edit" — the exact
+ * understatement corrected in the accuracy gate above. Cut this entry and the
+ * home page states the understatement in a card and corrects it nowhere. The
+ * grant surface (the machine it boots, its connectors and channels, its
+ * secrets, its skills, its Kortix verbs) appears in no card at all.
+ *
+ * `control` is the strongest structural case: `how-it-works-content.ts:11-13`
+ * says in as many words that "Security and governance is deliberately not a
+ * layer here", and the trust section below is badges and pillars, not
+ * mechanism. Nothing else on the page explains it.
+ */
 export const entries: readonly Entry[] = [
   {
-    id: 'repo',
-    n: '01',
-    label: 'The repo',
-    paragraphs: [
-      'A Kortix project is a git repository, and that repository is the company. kortix.yaml is the Kortix layer — the machine a session boots on, the connectors, the triggers, the secret names, and what each agent may touch. The OpenCode config beside it is the runtime the agents think in. Everything past those two is files: markdown, TypeScript, whatever the job needs.',
-      'So the whole company answers to grep. Every agent prompt, every skill, every remembered fact and every grant is a line in a file with an author, a timestamp and a diff, and undo is git revert. kortix init turns any directory into a Kortix; kortix ship checks it compiles, asks for the secrets it is missing, and brings it live.',
-    ],
-    facts: ['kortix.yaml', 'OpenCode config', 'kortix init', 'kortix ship'],
-    href: '/company-as-code',
-    linkLabel: 'Company as code',
-  },
-  {
     id: 'agents',
-    n: '02',
+    n: '01',
     label: 'Agents and skills',
     paragraphs: [
       'An agent is an OpenCode agent. At baseline that is one markdown file — frontmatter setting its mode, model and per-capability permission tree, a body that is the system prompt — but markdown is the floor, not the ceiling. The whole OpenCode surface sits in the same repo: your own TypeScript tools, plugins that hook the runtime, the model and provider config.',
-      'What it may reach is a block in kortix.yaml, and it covers more than tools: which sandbox image it boots, which connectors and channels it can call, which secrets it may receive, which skills it may invoke, and what it may do to Kortix itself. A skill is a directory with a SKILL.md — one job, written down once, loaded by every session that needs it.',
+      'What it may reach is a block in kortix.yaml, and it covers more than tools: which sandbox image it boots, which connectors and channels it can call, which secrets it may receive, which skills it may invoke, and what it may do to Kortix itself. A grant left out resolves to none, and whatever is granted is intersected with the role of whoever launched the session — an agent never exceeds its human.',
     ],
-    facts: ['OpenCode agent', 'Tools, plugins, models', 'The grant covers its machine'],
+    facts: ['OpenCode agent', 'Tools, plugins, models', 'Deny by default'],
     href: '/agents-and-skills',
     linkLabel: 'Agents and skills',
   },
   {
-    id: 'computer',
-    n: '03',
-    label: 'The agent computer',
-    paragraphs: [
-      'Start a session and its own isolated Linux machine boots. It clones the project repo into /workspace, cuts a branch named after the session, and starts OpenCode as the agent harness. The agent gets the whole machine — a shell, a package manager, a filesystem, the network. Nothing runs on your laptop and nothing needs setting up.',
-      'The machine is disposable, so a bad install or a wiped directory goes away with it and only what the agent commits survives. And because one session is one machine on one branch, two sessions cannot touch each other. Run one, or run thousands at once, each a different version of the company working at the same time.',
-    ],
-    facts: ['1 session = 1 computer = 1 branch', 'OpenCode harness', 'Disposable by design'],
-    href: '/agent-computer',
-    linkLabel: 'The agent computer',
-  },
-  {
-    id: 'connectors',
-    n: '04',
-    label: 'Connectors',
-    paragraphs: [
-      'Connect a tool once, for the whole project: 3,000+ apps through their own OAuth screens, or your own APIs through an OpenAPI or Postman spec, a GraphQL endpoint, a remote MCP server, or a bare HTTP base URL. Kortix reads the source, works out the authentication, and turns every operation into a tool an agent can call.',
-      'The credential never travels. The machine carries one project-scoped Kortix token; the third-party key is decrypted server-side and attached to the outbound request, so nothing in the sandbox is a secret of yours. Every action gets one of three answers — allow, ask, or block — and a rule can read the arguments, not just the tool name. An ask holds the call open rather than failing it, so the agent resumes exactly where it stopped.',
-    ],
-    facts: ['3,000+ apps', 'MCP · OpenAPI · GraphQL · HTTP', 'Allow / Ask / Block'],
-    href: '/integrations',
-    linkLabel: 'Connectors',
-  },
-  {
     id: 'channels',
-    n: '05',
+    n: '02',
     label: 'Channels',
     paragraphs: [
       'Bind a project to Slack and a message in a thread starts a session. The agent picks up its own cloud computer, does the work, and answers in the same thread: the reply streams into one message, files move both directions, and a decision it needs from you arrives as a card with buttons.',
@@ -170,7 +177,7 @@ export const entries: readonly Entry[] = [
   },
   {
     id: 'automations',
-    n: '06',
+    n: '03',
     label: 'Automations',
     paragraphs: [
       'A trigger starts a session with nobody present. There are two kinds and no third: a cron schedule, stored against an IANA timezone name rather than an offset, or a webhook signed with HMAC-SHA256. A webhook trigger that names no signing secret is rejected at validation, so there is no unsigned path to forget to lock down later.',
@@ -182,73 +189,15 @@ export const entries: readonly Entry[] = [
   },
   {
     id: 'control',
-    n: '07',
+    n: '04',
     label: 'Permissions and secrets',
     paragraphs: [
       'People, groups and service accounts are all principals, and a permission attaches to a principal for an action on a resource type. A service account never inherits the reach of whoever created it. Secrets are sealed with AES-256-GCM under a key derived per project, and a session receives only the intersection of the agent’s grant and the role of the person who started it.',
-      'We will not tell you a granted secret is invisible to the model: once delivered it is a real environment value in the session, because that is how a tool uses it. What holds is narrower — connector credentials never enter the machine at all, and the machine is destroyed with everything on it. Approval gates are not on by default, so set the default you want. And work reaches main one way: a change request, with merge refused to every agent unless an admin grants it.',
+      'We will not tell you a granted secret is invisible to the model: once delivered it is a real environment value in the session, because that is how a tool uses it. What holds is narrower — connector credentials never enter the machine at all, and the machine is destroyed with everything on it. Account administration — members, billing, creating projects — is outside the set an agent can hold at all.',
+      'Approval gates are not on by default, so set the default you want. When one fires it holds the call open rather than failing it, so the run resumes from exactly where it stopped — a gate that errors out just teaches an agent to retry around it. Work reaches main one way: a change request, and merge is refused to every agent unless an admin grants it in kortix.yaml, which is itself an edit a person has to merge.',
     ],
     facts: ['AES-256-GCM per project', 'Default-deny merge', 'Audit recorded on every plan'],
     href: '/security',
     linkLabel: 'Security',
   },
-  {
-    id: 'selfhost',
-    n: '08',
-    label: 'Run it yourself',
-    paragraphs: [
-      'All of it is open source. One command brings up a single Docker Compose stack built from the same images the managed cloud runs, and the database, the file storage, every project repo, the secrets, the policies and the audit record sit on disk you control. The CLI asks the handful of things only you can know, and generates every port, URL, password and signing key itself.',
-      'Two limits, stated plainly. Agent sandboxes run on the provider you configure and the stack pulls its images over the internet, so this is not an air-gapped deployment — isolated topologies get scoped with us instead. And SAML SSO, SCIM directory sync, custom roles, groups and reading the audit log switch on with an Enterprise licence. Models are yours either way: any provider and your own keys, or the ChatGPT, Claude or Cursor subscription you already pay for.',
-    ],
-    facts: ['One Compose stack', 'Same images as the cloud', 'Any model, your keys'],
-    href: '/self-hosted',
-    linkLabel: 'Self-hosted',
-  },
 ];
-
-/**
- * The foot of the section.
- *
- * This used to be a one-line disclaimer ("nothing above is a roadmap item"),
- * which was cut: a section should not need to vouch for itself, and a claim
- * that needs a disclaimer is a claim to rewrite instead.
- *
- * What replaced it is the load-bearing detail that was crowding the TOP of
- * entry 02 — the deny-by-default / agent-≤-human mechanics. It is genuinely
- * good material and it applies to every entry above rather than to one of
- * them, so the foot of the document is where it belongs. Detail at the end,
- * overview at the top.
- *
- * Sources: `resolveGrantSet(value, 'none')` for v2
- * (`packages/manifest-schema/src/index.v2.ts`); `declared ∩ launching-user
- * role` (`apps/api/src/projects/agents.ts:19-21`); "Account-scoped admin
- * actions are NEVER grantable" (same file, :16-17).
- */
-export const rules = {
-  eyebrow: 'The rules underneath',
-  lede: 'Four of them, and they hold the same in the dashboard, the CLI, a Slack thread and a 3am trigger.',
-  /** Terse on purpose. An appendix is a reference, not more prose — every row
-   *  is one sentence a reader can check against the entry it came from. */
-  rows: [
-    {
-      id: 'deny',
-      k: 'Deny by default',
-      v: 'A grant left out resolves to none. No implicit reach into a connector, a secret, a skill or a Kortix verb.',
-    },
-    {
-      id: 'ceiling',
-      k: 'Agent ≤ human',
-      v: 'The session grant is what the agent declared, intersected with the role of whoever launched it.',
-    },
-    {
-      id: 'never',
-      k: 'Some things are ungrantable',
-      v: 'Account administration — members, billing, creating projects — is outside the set an agent can hold at all.',
-    },
-    {
-      id: 'raise',
-      k: 'It cannot vote itself a raise',
-      v: 'An agent can edit kortix.yaml. The edit reaches only sessions started after a person merges it.',
-    },
-  ],
-} as const;

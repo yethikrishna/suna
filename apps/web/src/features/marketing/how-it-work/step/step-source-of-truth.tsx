@@ -48,7 +48,7 @@ const REPO = [
   {
     icon: RobotIcon,
     path: 'opencode/agents/',
-    note: 'one markdown persona per agent',
+    note: 'one OpenCode agent per file',
   },
   {
     icon: SparkleIcon,

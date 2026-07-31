@@ -84,10 +84,11 @@ export function FaqSection(): ReactNode {
               id={item.id}
               className={i > 0 ? 'border-border border-t' : ''}
             >
-              {/* HIT AREA. `py-5` puts the row at 64px measured, clear of the
-                  44px tap-target floor a previous audit found several controls
-                  on this site below. The trigger is `flex-1`, so the target is
-                  the whole row rather than the words.
+              {/* HIT AREA. `py-5` puts the row at 59px measured (1440 and 390
+                  alike), clear of the 44px tap-target floor a previous audit
+                  found several controls on this site below. The trigger is
+                  `flex-1`, so the target is the whole 1234px row rather than the
+                  words in it.
 
                   `hover:no-underline` because the caret is already the
                   affordance and an underline on top of it reads as a link. The

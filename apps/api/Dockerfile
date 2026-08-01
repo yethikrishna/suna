@@ -64,6 +64,7 @@ ARG SERVICE
 
 # Copy workspace root files for pnpm install
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY patches ./patches
 
 # Copy the target app and workspace packages it depends on
 COPY ${SERVICE} ./${SERVICE}

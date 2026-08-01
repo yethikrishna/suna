@@ -17,6 +17,9 @@ describe('E2B template uploads on Bun', () => {
 
     expect(patchPath).toBe('patches/e2b@2.37.0.patch');
 
+    const dockerfile = readRepoFile('apps/api/Dockerfile');
+    expect(dockerfile).toContain('COPY patches ./patches');
+
     const patch = readRepoFile(patchPath as string);
     expect(patch.match(/globalThis\.Bun \? globalThis\.Bun\.file\(filePath\)/g)).toHaveLength(2);
     expect(patch).toContain('Readable.toWeb');

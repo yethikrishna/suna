@@ -435,7 +435,9 @@ export function kortixToolchainLayer(opts: KortixToolchainLayerOpts): string {
     '    && rm -rf /var/lib/apt/lists/*',
     '',
     'RUN useradd --create-home --shell /bin/bash --user-group kortix \\',
-    "    && printf 'kortix ALL=(ALL) NOPASSWD:ALL\\n' > /etc/sudoers.d/kortix \\",
+    // E2B's Dockerfile parser removes the backslash from a quoted `\\n`.
+    // Use echo so every provider writes the same valid sudoers line.
+    "    && echo 'kortix ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/kortix \\",
     '    && chmod 0440 /etc/sudoers.d/kortix \\',
     '    && mkdir -p /workspace /opt/kortix /opt/pw-browsers /ephemeral/kortix-master/opencode \\',
     '        /home/kortix/.local/bin /home/kortix/.local/share/pnpm/bin /home/kortix/.bun/bin \\',

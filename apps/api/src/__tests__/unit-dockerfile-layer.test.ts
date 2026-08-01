@@ -90,7 +90,8 @@ describe('buildLayeredDockerfile', () => {
   test('runs build-time and runtime tools as the standard kortix user', () => {
     const merged = buildLayeredDockerfile({ userDockerfile: 'FROM ubuntu:24.04', ...COMMON });
     expect(merged).toContain('useradd --create-home --shell /bin/bash --user-group kortix');
-    expect(merged).toContain("printf 'kortix ALL=(ALL) NOPASSWD:ALL\\n' > /etc/sudoers.d/kortix");
+    expect(merged).toContain("echo 'kortix ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/kortix");
+    expect(merged).not.toContain("NOPASSWD:ALL\\n");
     expect(merged).toContain(
       'chown -R kortix:kortix /workspace /opt/kortix /opt/pw-browsers /ephemeral',
     );

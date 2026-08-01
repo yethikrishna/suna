@@ -36,7 +36,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { EntityAvatar } from '@/components/ui/entity-avatar';
-import Hint from '@/components/ui/hint';
 import { Input } from '@/components/ui/input';
 import Loading from '@/components/ui/loading';
 import { SidebarContext } from '@/components/ui/sidebar';
@@ -56,16 +55,6 @@ import { formatRelative } from '@kortix/shared';
 import { CaretUpDownIcon, CheckCircleIcon as CheckCircleSolid } from '@phosphor-icons/react';
 
 export type ProjectSwitcherVariant = 'header' | 'sidebar';
-
-/**
- * Distance from the merged control's outer edge to the name segment, in px:
- * 1px shell border + the `w-7` mark segment + the 1px seam.
- *
- * The menu's trigger is the name segment, so `align="start"` would hang it
- * inboard of the control it belongs to and out of line with every other row in
- * the panel. Pulling it back by this much aligns the menu to the shell.
- */
-const SIDEBAR_MARK_SEGMENT_WIDTH = 30;
 
 export function ProjectSwitcher({
   variant = 'header',
@@ -226,15 +215,18 @@ export function ProjectSwitcher({
           className,
         )}
       >
-        <Hint side="bottom" label={homeLabel}>
-          <Link
-            href={homeHref}
-            aria-label={homeLabel}
-            className="text-foreground hover:bg-sidebar-accent focus-visible:ring-primary/30 flex h-full w-7 shrink-0 items-center justify-center rounded-s-sm transition-colors duration-150 ease-out outline-none focus-visible:rounded-sm focus-visible:ring-[0.6px]"
-          >
-            <Icon.Kortix className="size-4" />
-          </Link>
-        </Hint>
+        {/* Force-closed while the menu is open. Radix Menu puts
+            `pointer-events: none` on the body, so the mark never receives the
+            pointerleave that would dismiss its tooltip — it hangs there behind
+            the menu until the next pointer event. `undefined` hands control
+            back, so hover still works normally. */}
+        <Link
+          href={homeHref}
+          aria-label={homeLabel}
+          className="text-foreground hover:bg-sidebar-accent focus-visible:ring-primary/30 flex h-full w-7 shrink-0 items-center justify-center rounded-s-sm transition-colors duration-150 ease-out outline-none focus-visible:rounded-sm focus-visible:ring-[0.6px]"
+        >
+          <Icon.Kortix className="size-4" />
+        </Link>
         {/* Seam. Absent at rest so the shell reads as one surface; drawn on
             hover so the two hit areas are discoverable before they are
             clicked, and never after the pointer has left. */}
@@ -272,7 +264,6 @@ export function ProjectSwitcher({
       <DropdownMenuContent
         align="start"
         side="bottom"
-        // alignOffset={variant === 'sidebar' ? SIDEBAR_MARK_SEGMENT_WIDTH : 0}
         className={cn(
           'bg-background dark:bg-sidebar overflow-hidden p-0',
           // Fixed width, not the trigger's: in the sidebar the trigger is the

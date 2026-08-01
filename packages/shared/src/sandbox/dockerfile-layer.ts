@@ -356,6 +356,9 @@ function buildOpencodeInstanceWarmupLines(opts: {
     // breaks every session's first prompt, not just startup latency, so
     // it must fail the build — the warm-up readiness probe below stays
     // best-effort as before.
+    // E2B's Dockerfile parser does not preserve COPY --chown. Correct the
+    // ownership explicitly before the standard kortix user changes this tree.
+    'RUN sudo chown -R kortix:kortix /opt/kortix/warm-config',
     'RUN cd /opt/kortix/warm-config/.kortix/opencode \\',
     '    && rm -rf node_modules \\',
     '    && ln -s /opt/kortix/opencode-config-deps/node_modules node_modules \\',

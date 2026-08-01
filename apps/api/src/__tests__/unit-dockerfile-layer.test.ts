@@ -229,6 +229,11 @@ describe('buildLayeredDockerfile', () => {
     });
     const verifyIdx = withConfig.indexOf('bun build tools/*.ts');
     expect(verifyIdx).toBeGreaterThanOrEqual(0);
+    const ownershipIdx = withConfig.indexOf(
+      'RUN sudo chown -R kortix:kortix /opt/kortix/warm-config',
+    );
+    expect(ownershipIdx).toBeGreaterThanOrEqual(0);
+    expect(ownershipIdx).toBeLessThan(verifyIdx);
     const precedingRun = withConfig.lastIndexOf('RUN', verifyIdx);
     const stepText = withConfig.slice(precedingRun, verifyIdx);
     expect(stepText).not.toContain('set +e');

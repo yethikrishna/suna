@@ -1008,6 +1008,13 @@ export async function createProjectSession(input: {
   const sessionId = requestedSessionId ?? randomUUID();
 
   const initialPrompt = normalizeString(body.initial_prompt ?? body.initialPrompt);
+  const pendingPrompt =
+    body.pending_prompt &&
+    typeof body.pending_prompt === 'object' &&
+    !Array.isArray(body.pending_prompt) &&
+    typeof (body.pending_prompt as Record<string, unknown>).text === 'string'
+      ? (body.pending_prompt as Record<string, unknown>)
+      : null;
   const sessionName = normalizeString(body.name);
   // An explicit `title_source` means the baked prompt is a rendered envelope
   // (Slack/Teams/Telegram turn instructions + workspace/channel ids) and these
@@ -1021,6 +1028,7 @@ export async function createProjectSession(input: {
     ...requestMetadata,
     ...(sessionName ? { name: sessionName } : {}),
     ...(initialPrompt ? { initial_prompt: initialPrompt } : {}),
+    ...(pendingPrompt ? { pending_prompt: pendingPrompt } : {}),
     ...(explicitTitleSource
       ? { title_source: explicitTitleSource.slice(0, TITLE_SOURCE_MAX_CHARS) }
       : {}),

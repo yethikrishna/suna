@@ -1,6 +1,5 @@
 'use client';
 
-import { ArrowBendUpLeftIcon as Reply } from '@phosphor-icons/react';
 import { useMemo } from 'react';
 
 import { GridFileCard } from '@/features/session/grid-file-card';
@@ -15,6 +14,15 @@ import {
 import { SessionBusyIndicator } from '@/features/session/session-busy-indicator';
 import { cn } from '@/lib/utils';
 import { openTabAndNavigate } from '@/stores/tab-store';
+
+/** Matches `BUBBLE_SURFACE` / `BUBBLE_TEXT` in `turn/user-message.tsx`. */
+const BUBBLE_SURFACE = cn(
+  'bg-sidebar dark:bg-sidebar-accent-foreground/9 text-foreground flex max-w-full flex-col rounded-lg px-3 py-2.5 select-none',
+);
+const BUBBLE_TEXT = cn(
+  'text-[0.9rem] leading-[22px] font-medium',
+  'break-words whitespace-pre-wrap select-text',
+);
 
 /**
  * The optimistic turn — the user's message plus the assistant's waiting row,
@@ -102,17 +110,9 @@ function OptimisticUserBubble({
   }, [text]);
 
   return (
-    <div className="bg-card flex max-w-[90%] flex-col overflow-hidden rounded-3xl rounded-br-lg border">
-      {replyContext && (
-        <div className="bg-primary/5 border-primary/10 mx-3 mt-3 mb-0 flex items-center gap-2 rounded-2xl border px-3 py-1.5">
-          <Reply className="text-primary/60 size-3 flex-shrink-0" />
-          <span className="text-muted-foreground truncate text-xs">
-            {replyContext.length > 150 ? `${replyContext.slice(0, 150)}...` : replyContext}
-          </span>
-        </div>
-      )}
+    <div className="ml-auto flex w-full max-w-[80%] flex-col items-end gap-2 self-end">
       {files.length > 0 && (
-        <div className="flex flex-wrap gap-2 p-3 pb-0">
+        <div className="flex flex-wrap justify-end gap-2">
           {files.map((f, i) => (
             <div key={`${f.path}-${i}`} onClick={(e) => e.stopPropagation()}>
               <GridFileCard
@@ -125,14 +125,23 @@ function OptimisticUserBubble({
           ))}
         </div>
       )}
-      {cleanText && (
-        <p className="px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
-          <HighlightMentions
-            text={cleanText}
-            agentNames={agentNames}
-            onFileClick={onFileClick}
-          />
-        </p>
+      {(cleanText || replyContext) && (
+        <div className={cn(BUBBLE_SURFACE, 'w-fit overflow-hidden')}>
+          {replyContext && (
+            <blockquote className="border-border mb-2 border-l-2 pl-2.5">
+              <p className="text-muted-foreground line-clamp-2 text-xs leading-5">{replyContext}</p>
+            </blockquote>
+          )}
+          {cleanText && (
+            <p className={BUBBLE_TEXT}>
+              <HighlightMentions
+                text={cleanText}
+                agentNames={agentNames}
+                onFileClick={onFileClick}
+              />
+            </p>
+          )}
+        </div>
       )}
     </div>
   );

@@ -13,10 +13,10 @@ import type { DemoConversation } from './use-demo-conversation';
 
 export function UserBubble({ text }: { text: string }) {
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="bg-card flex max-w-[90%] flex-col overflow-hidden rounded-3xl rounded-br-lg border">
-        <div className="px-4 py-3">
-          <div className="text-sm leading-relaxed break-words whitespace-pre-wrap">{text}</div>
+    <div className="ml-auto flex w-full max-w-[80%] flex-col items-end gap-2 self-end">
+      <div className="bg-sidebar dark:bg-sidebar-accent-foreground/9 text-foreground flex w-fit max-w-full flex-col rounded-lg px-3 py-2.5">
+        <div className="text-[0.9rem] leading-[22px] font-medium break-words whitespace-pre-wrap select-text">
+          {text}
         </div>
       </div>
     </div>

@@ -127,7 +127,7 @@ export function ChainOfThoughtStep({
       <div
         aria-hidden
         className={cn(
-          'bg-muted-foreground/60 absolute top-[1.6rem] bottom-0 left-2 w-px',
+          'bg-muted-foreground/50 absolute top-[1.6rem] bottom-0 left-2 w-[0.7px]',
           isLast && 'hidden',
         )}
       />

@@ -296,10 +296,10 @@ export function ShowTool({ part, sessionId, defaultOpen = false, forceOpen, lock
       <DisclosureTrigger>
         <Button
           type="button"
-          variant="outline"
+          variant="accent"
           size="sm"
           data-component="tool-trigger"
-          className="w-fit max-w-full justify-start gap-2 font-normal"
+          className="w-fit max-w-full justify-start gap-2 font-normal border"
         >
           {/* `Loading`'s base sets `in-data-[slot=button]:text-background`, which
               is invisible on a transparent outline button — the same trailing-`!`

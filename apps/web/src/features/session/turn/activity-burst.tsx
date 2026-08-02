@@ -11,10 +11,11 @@
  */
 
 import { CaretRightIcon, CheckCircleIcon, ClockCounterClockwiseIcon } from '@phosphor-icons/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ChainOfThought, ChainOfThoughtStep } from '@/components/ui/chain-of-thought';
 import { Disclosure, DisclosureContent, DisclosureTrigger } from '@/components/ui/disclosure';
+import { FadedScrollArea } from '@/components/ui/faded-scroll-area';
 import { ToolActivateContext } from '@/features/session/tool/shared/infrastructure';
 import { cn } from '@/lib/utils';
 import { isReasoningPart, type Part } from '@/ui';
@@ -22,6 +23,76 @@ import { ActivityStep } from './activity-step';
 import { burstTitle } from './burst-title';
 import { flattenThought, mergeBurstSteps } from './merge-steps';
 import { stepLabel } from './step-label';
+
+const THOUGHT_COLLAPSED_MAX_H = 'max-h-54';
+
+/**
+ * Thought body: capped while collapsed (`THOUGHT_COLLAPSED_MAX_H` + fade),
+ * with Show more / Show less once the text overflows the cap.
+ */
+function ThoughtStepBody({ texts, running }: { texts: ReadonlyArray<string>; running: boolean }) {
+  const text = flattenThought(texts);
+  const [expanded, setExpanded] = useState(false);
+  const [canExpand, setCanExpand] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const checkOverflow = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || expanded) return;
+    setCanExpand(el.scrollHeight > el.clientHeight + 1);
+  }, [expanded]);
+
+  useLayoutEffect(() => {
+    checkOverflow();
+    const el = scrollRef.current;
+    if (el && running && !expanded) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [checkOverflow, expanded, running, text]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(checkOverflow);
+    ro.observe(el);
+    window.addEventListener('resize', checkOverflow);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', checkOverflow);
+    };
+  }, [checkOverflow, text, expanded]);
+
+  return (
+    <div className="min-w-0 flex-1">
+      {expanded ? (
+        <p className="text-foreground/60 text-sm leading-[1.5] text-pretty">{text}</p>
+      ) : (
+        <FadedScrollArea
+          ref={scrollRef}
+          fadeColor="from-background"
+          rootClassName={cn('h-auto', THOUGHT_COLLAPSED_MAX_H)}
+          className={THOUGHT_COLLAPSED_MAX_H}
+        >
+          <p className="text-foreground/60 text-sm leading-[1.5] text-pretty">{text}</p>
+        </FadedScrollArea>
+      )}
+      {canExpand && !running ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+          className={cn(
+            'text-muted-foreground hover:text-foreground mt-1 inline-flex cursor-pointer items-center',
+            'origin-left text-xs font-medium transition-[color,transform] duration-150 ease-out active:scale-[0.96]',
+            'focus-visible:ring-ring/50 rounded-sm focus-visible:ring-2 focus-visible:outline-none',
+          )}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 /** True when the turn is working AND this burst has an unfinished part. */
 export function burstIsRunning(parts: ReadonlyArray<Part>, working: boolean): boolean {
@@ -95,7 +166,7 @@ export function ActivityBurst({
       <DisclosureTrigger>
         <div
           className={cn(
-            'text-muted-foreground hover:text-foreground',
+            'text-muted-foreground/70 hover:text-muted-foreground',
             'flex w-full cursor-pointer items-center gap-1.5',
             'text-left text-sm transition-colors',
           )}
@@ -129,9 +200,7 @@ export function ActivityBurst({
                   <ChainOfThoughtStep key={step.key}>
                     <div className="flex min-w-0 gap-3">
                       <ClockCounterClockwiseIcon className="text-muted-foreground mt-[3px] size-4 flex-none" />
-                      <p className="text-foreground/90 min-w-0 flex-1 text-sm leading-[1.5] text-pretty">
-                        {flattenThought(step.texts)}
-                      </p>
+                      <ThoughtStepBody texts={step.texts} running={running} />
                     </div>
                   </ChainOfThoughtStep>
                 ) : (

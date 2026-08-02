@@ -1,29 +1,29 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
-import { createHmac } from 'node:crypto';
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { createHmac } from "node:crypto";
 import {
   AgentMailApiError,
   createAgentMailInbox,
   createAgentMailWebhook,
   isAgentMailInboxLimitError,
   resolveAgentMailApiKey,
-} from '../channels/agentmail-api';
-import type { AgentMailMessageReceivedEvent } from '../channels/email/types';
-import { verifyAgentMailSignature } from '../channels/email/verify';
-import { config } from '../config';
+} from "../channels/agentmail-api";
+import type { AgentMailMessageReceivedEvent } from "../channels/email/types";
+import { verifyAgentMailSignature } from "../channels/email/verify";
+import { config } from "../config";
 
 let dbResults: unknown[][] = [];
 
 function makeChain(): any {
   const chain: any = {};
   for (const m of [
-    'from',
-    'innerJoin',
-    'where',
-    'limit',
-    'set',
-    'values',
-    'onConflictDoNothing',
-    'returning',
+    "from",
+    "innerJoin",
+    "where",
+    "limit",
+    "set",
+    "values",
+    "onConflictDoNothing",
+    "returning",
   ]) {
     chain[m] = () => chain;
   }
@@ -32,7 +32,7 @@ function makeChain(): any {
   return chain;
 }
 
-mock.module('../shared/db', () => ({
+mock.module("../shared/db", () => ({
   db: {
     select: () => makeChain(),
     insert: () => makeChain(),
@@ -50,7 +50,7 @@ let continueCalls: Array<{
 let createCalls: Array<any> = [];
 
 function expectExecutorEmailPrompt(prompt: string) {
-  for (const tool of ['connectors', 'discover', 'describe', 'call']) {
+  for (const tool of ["connectors", "discover", "describe", "call"]) {
     expect(prompt).toContain(`\`${tool}\``);
   }
   expect(prompt).toContain('"connector":"email"');
@@ -58,38 +58,39 @@ function expectExecutorEmailPrompt(prompt: string) {
   expect(prompt).toContain('"inbox_id":"inb-1"');
   expect(prompt).toContain('"message_id":"msg-1"');
   expect(prompt).toContain('"text":"<reply>"');
-  expect(prompt).toContain('Use `html` instead of `text` only when needed.');
-  expect(prompt).not.toContain('call `email.reply_message`');
+  expect(prompt).toContain("Use `html` instead of `text` only when needed.");
+  expect(prompt).not.toContain("call `email.reply_message`");
 }
 
 const {
   dispatchAgentMailEvent,
   isAgentMailSenderAllowedForTest,
   resetEmailSessionLifecycleForTest,
+  setEmailSenderPolicyLoaderForTest,
   setEmailSessionLifecycleForTest,
-} = await import('../channels/email/session');
-const { emailWebhookApp } = await import('../channels/email/app');
-await import('../channels/email/routes');
+} = await import("../channels/email/session");
+const { emailWebhookApp } = await import("../channels/email/app");
+await import("../channels/email/routes");
 
 const event: AgentMailMessageReceivedEvent = {
-  type: 'event',
-  event_type: 'message.received',
-  event_id: 'evt-1',
+  type: "event",
+  event_type: "message.received",
+  event_id: "evt-1",
   message: {
-    inbox_id: 'inb-1',
-    thread_id: 'thr-1',
-    message_id: 'msg-1',
-    from: 'Customer <customer@example.com>',
-    to: ['agent@example.com'],
-    subject: 'Need help',
-    text: 'Can you help?',
-    extracted_text: 'Can you help?',
+    inbox_id: "inb-1",
+    thread_id: "thr-1",
+    message_id: "msg-1",
+    from: "Customer <customer@example.com>",
+    to: ["agent@example.com"],
+    subject: "Need help",
+    text: "Can you help?",
+    extracted_text: "Can you help?",
     attachments: [],
   },
   thread: {
-    inbox_id: 'inb-1',
-    thread_id: 'thr-1',
-    subject: 'Need help',
+    inbox_id: "inb-1",
+    thread_id: "thr-1",
+    subject: "Need help",
     message_count: 1,
   },
 };
@@ -104,35 +105,35 @@ beforeEach(() => {
   continueCalls = [];
   createCalls = [];
   setEmailSessionLifecycleForTest({
-    resolveProjectAutomationActor: async () => 'user-1',
+    resolveProjectAutomationActor: async () => "user-1",
     continueSession: async (input) => {
       continueCalls.push({
         sessionId: input.sessionId,
         text: input.text,
         opencodeEnv: input.opencodeEnv,
       });
-      return 'delivered';
+      return "delivered";
     },
     createSession: async (input) => {
       createCalls.push(input);
       return {
-        status: 'created',
-        sessionId: 'sess-1',
-        row: { sessionId: 'sess-1' } as any,
+        status: "created",
+        sessionId: "sess-1",
+        row: { sessionId: "sess-1" } as any,
       };
     },
   });
 });
 
-describe('AgentMail webhook verification', () => {
-  test('accepts valid Svix v1 signatures and rejects tampering', () => {
-    const secret = `whsec_${Buffer.from('test-signing-key').toString('base64')}`;
+describe("AgentMail webhook verification", () => {
+  test("accepts valid Svix v1 signatures and rejects tampering", () => {
+    const secret = `whsec_${Buffer.from("test-signing-key").toString("base64")}`;
     const rawBody = JSON.stringify({ ok: true });
-    const svixId = 'msg_123';
+    const svixId = "msg_123";
     const svixTimestamp = String(Math.floor(Date.now() / 1000));
-    const sig = createHmac('sha256', Buffer.from('test-signing-key'))
+    const sig = createHmac("sha256", Buffer.from("test-signing-key"))
       .update(`${svixId}.${svixTimestamp}.${rawBody}`)
-      .digest('base64');
+      .digest("base64");
 
     expect(
       verifyAgentMailSignature({
@@ -154,28 +155,31 @@ describe('AgentMail webhook verification', () => {
     ).toBe(false);
   });
 
-  test('webhook route fails closed when signing is missing or invalid', async () => {
+  test("webhook route fails closed when signing is missing or invalid", async () => {
     const originalSecret = config.AGENTMAIL_WEBHOOK_SECRET;
     const rawBody = JSON.stringify(event);
     try {
-      (config as { AGENTMAIL_WEBHOOK_SECRET: string | undefined }).AGENTMAIL_WEBHOOK_SECRET =
-        undefined;
-      const missingSecret = await emailWebhookApp.request('/agentmail', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
+      (
+        config as { AGENTMAIL_WEBHOOK_SECRET: string | undefined }
+      ).AGENTMAIL_WEBHOOK_SECRET = undefined;
+      const missingSecret = await emailWebhookApp.request("/agentmail", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
         body: rawBody,
       });
       expect(missingSecret.status).toBe(503);
 
-      (config as { AGENTMAIL_WEBHOOK_SECRET: string | undefined }).AGENTMAIL_WEBHOOK_SECRET =
-        `whsec_${Buffer.from('test-signing-key').toString('base64')}`;
-      const invalidSignature = await emailWebhookApp.request('/agentmail', {
-        method: 'POST',
+      (
+        config as { AGENTMAIL_WEBHOOK_SECRET: string | undefined }
+      ).AGENTMAIL_WEBHOOK_SECRET =
+        `whsec_${Buffer.from("test-signing-key").toString("base64")}`;
+      const invalidSignature = await emailWebhookApp.request("/agentmail", {
+        method: "POST",
         headers: {
-          'content-type': 'application/json',
-          'svix-id': 'msg_123',
-          'svix-timestamp': String(Math.floor(Date.now() / 1000)),
-          'svix-signature': 'v1,not-valid',
+          "content-type": "application/json",
+          "svix-id": "msg_123",
+          "svix-timestamp": String(Math.floor(Date.now() / 1000)),
+          "svix-signature": "v1,not-valid",
         },
         body: rawBody,
       });
@@ -184,58 +188,64 @@ describe('AgentMail webhook verification', () => {
       // A malformed unsigned body (missing event_type/inbox_id) must NOT be
       // acked with 200 — that let an unauthenticated caller poison ack/monitoring
       // with `{}` -> 200 ok. Now rejected with 400 before any signature check.
-      const malformed = await emailWebhookApp.request('/agentmail', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
+      const malformed = await emailWebhookApp.request("/agentmail", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({}),
       });
       expect(malformed.status).toBe(400);
     } finally {
-      (config as { AGENTMAIL_WEBHOOK_SECRET: string | undefined }).AGENTMAIL_WEBHOOK_SECRET =
-        originalSecret;
+      (
+        config as { AGENTMAIL_WEBHOOK_SECRET: string | undefined }
+      ).AGENTMAIL_WEBHOOK_SECRET = originalSecret;
     }
   });
 });
 
-describe('AgentMail credential resolution', () => {
-  test('supports both project BYO keys and server-managed fallback keys', () => {
+describe("AgentMail credential resolution", () => {
+  test("supports both project BYO keys and server-managed fallback keys", () => {
     const original = config.AGENTMAIL_API_KEY;
     try {
       (config as { AGENTMAIL_API_KEY: string | undefined }).AGENTMAIL_API_KEY =
-        'server-managed-key';
-      expect(resolveAgentMailApiKey('project-byo-key')).toBe('project-byo-key');
-      expect(resolveAgentMailApiKey(null)).toBe('server-managed-key');
-      expect(resolveAgentMailApiKey(undefined)).toBe('server-managed-key');
+        "server-managed-key";
+      expect(resolveAgentMailApiKey("project-byo-key")).toBe("project-byo-key");
+      expect(resolveAgentMailApiKey(null)).toBe("server-managed-key");
+      expect(resolveAgentMailApiKey(undefined)).toBe("server-managed-key");
 
-      (config as { AGENTMAIL_API_KEY: string | undefined }).AGENTMAIL_API_KEY = undefined;
+      (config as { AGENTMAIL_API_KEY: string | undefined }).AGENTMAIL_API_KEY =
+        undefined;
       expect(resolveAgentMailApiKey(null)).toBeNull();
     } finally {
-      (config as { AGENTMAIL_API_KEY: string | undefined }).AGENTMAIL_API_KEY = original;
+      (config as { AGENTMAIL_API_KEY: string | undefined }).AGENTMAIL_API_KEY =
+        original;
     }
   });
 });
 
-describe('AgentMail webhook provisioning', () => {
-  test('subscribes new inbox webhooks to normal and unauthenticated inbound mail', async () => {
+describe("AgentMail webhook provisioning", () => {
+  test("subscribes new inbox webhooks to normal and unauthenticated inbound mail", async () => {
     const originalFetch = globalThis.fetch;
     let requestBody: any = null;
     globalThis.fetch = (async (_url, init) => {
-      requestBody = JSON.parse(String(init?.body ?? '{}'));
-      return new Response(JSON.stringify({ webhook_id: 'wh-1', secret: 'whsec_test' }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
+      requestBody = JSON.parse(String(init?.body ?? "{}"));
+      return new Response(
+        JSON.stringify({ webhook_id: "wh-1", secret: "whsec_test" }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
     }) as typeof fetch;
     try {
       await createAgentMailWebhook({
-        apiKey: 'am_test',
-        inboxId: 'inb-1',
-        url: 'https://api.kortix.test/v1/webhooks/email/agentmail',
-        clientId: 'kortix-email-proj-1',
+        apiKey: "am_test",
+        inboxId: "inb-1",
+        url: "https://api.kortix.test/v1/webhooks/email/agentmail",
+        clientId: "kortix-email-proj-1",
       });
       expect(requestBody.event_types).toEqual([
-        'message.received',
-        'message.received.unauthenticated',
+        "message.received",
+        "message.received.unauthenticated",
       ]);
     } finally {
       globalThis.fetch = originalFetch;
@@ -243,26 +253,26 @@ describe('AgentMail webhook provisioning', () => {
   });
 });
 
-describe('AgentMail provider errors', () => {
-  test('preserves upstream status and detects inbox quota failures', async () => {
+describe("AgentMail provider errors", () => {
+  test("preserves upstream status and detects inbox quota failures", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
-          message: 'Maximum number of inboxes reached for this workspace',
+          message: "Maximum number of inboxes reached for this workspace",
         }),
         {
           status: 403,
-          headers: { 'content-type': 'application/json' },
+          headers: { "content-type": "application/json" },
         },
       )) as unknown as typeof fetch;
     try {
       try {
         await createAgentMailInbox({
-          apiKey: 'am_test',
-          username: 'support',
-          displayName: 'Support',
-          clientId: 'kortix-project-proj-1',
+          apiKey: "am_test",
+          username: "support",
+          displayName: "Support",
+          clientId: "kortix-project-proj-1",
         });
       } catch (err) {
         expect(err).toBeInstanceOf(AgentMailApiError);
@@ -270,36 +280,36 @@ describe('AgentMail provider errors', () => {
         expect(isAgentMailInboxLimitError(err)).toBe(true);
         return;
       }
-      throw new Error('Expected AgentMail inbox create to fail');
+      throw new Error("Expected AgentMail inbox create to fail");
     } finally {
       globalThis.fetch = originalFetch;
     }
   });
 });
 
-describe('dispatchAgentMailEvent', () => {
-  test('first message creates one project-visible session bound to the email thread', async () => {
+describe("dispatchAgentMailEvent", () => {
+  test("first message creates one project-visible session bound to the email thread", async () => {
     dbResults = [
-      [{ eventId: 'email:event:evt-1' }],
-      [{ projectId: 'proj-1' }],
+      [{ eventId: "email:event:evt-1" }],
+      [{ projectId: "proj-1" }],
       [],
-      [{ eventId: 'email:msg:inb-1:msg-1' }],
+      [{ eventId: "email:msg:inb-1:msg-1" }],
       [],
       [
         {
-          projectId: 'proj-1',
-          accountId: 'acc-1',
-          defaultBranch: 'main',
-          name: 'Support',
+          projectId: "proj-1",
+          accountId: "acc-1",
+          defaultBranch: "main",
+          name: "Support",
         },
       ],
-      [{ agentName: 'veyris', opencodeModel: null }],
-      [{ eventId: 'email:threadcreate:inb-1:thr-1' }],
+      [{ agentName: "veyris", opencodeModel: null }],
+      [{ eventId: "email:threadcreate:inb-1:thr-1" }],
       [
         {
-          profileId: 'profile-email-1',
-          metadata: { inbox_id: 'inb-1' },
-          status: 'active',
+          profileId: "profile-email-1",
+          metadata: { inbox_id: "inb-1" },
+          status: "active",
         },
       ],
     ];
@@ -308,28 +318,28 @@ describe('dispatchAgentMailEvent', () => {
 
     expect(continueCalls).toHaveLength(0);
     expect(createCalls).toHaveLength(1);
-    expect(createCalls[0].source).toBe('email');
+    expect(createCalls[0].source).toBe("email");
     expect(createCalls[0].postCreate).toEqual([
       {
-        type: 'bind_chat_thread',
-        platform: 'email',
-        workspaceId: 'inb-1',
-        threadId: 'thr-1',
+        type: "bind_chat_thread",
+        platform: "email",
+        workspaceId: "inb-1",
+        threadId: "thr-1",
       },
       expect.objectContaining({
-        type: 'deliver_prompt',
-        source: 'email',
-        userId: 'user-1',
+        type: "deliver_prompt",
+        source: "email",
+        userId: "user-1",
       }),
     ]);
-    expect(createCalls[0].postCreate[1].text).toContain('Need help');
+    expect(createCalls[0].postCreate[1].text).toContain("Need help");
     expectExecutorEmailPrompt(createCalls[0].postCreate[1].text);
-    expect(createCalls[0].extraEnvVars.KORTIX_EMAIL_INBOX_ID).toBe('inb-1');
-    expect(createCalls[0].extraEnvVars.KORTIX_EXECUTOR_MCP_ENABLED).toBe('1');
+    expect(createCalls[0].extraEnvVars.KORTIX_EMAIL_INBOX_ID).toBe("inb-1");
+    expect(createCalls[0].extraEnvVars.KORTIX_EXECUTOR_MCP_ENABLED).toBe("1");
     expect(createCalls[0].body.connector_bindings).toEqual({
-      email: { authorization_id: 'profile-email-1' },
+      email: { authorization_id: "profile-email-1" },
     });
-    expect(createCalls[0].body.agent_name).toBe('veyris');
+    expect(createCalls[0].body.agent_name).toBe("veyris");
     expect(createCalls[0].body.initial_prompt).toBeUndefined();
   });
 
@@ -337,35 +347,35 @@ describe('dispatchAgentMailEvent', () => {
     const { type: _type, thread: _thread, ...unwrappedEvent } = event;
     const actualAgentMailPayload: AgentMailMessageReceivedEvent = {
       ...unwrappedEvent,
-      event_id: 'evt-unwrapped',
+      event_id: "evt-unwrapped",
       message: {
         ...event.message,
-        thread_id: 'thr-unwrapped',
-        message_id: 'msg-unwrapped',
-        subject: 'Actual AgentMail payload',
+        thread_id: "thr-unwrapped",
+        message_id: "msg-unwrapped",
+        subject: "Actual AgentMail payload",
       },
     };
     dbResults = [
-      [{ eventId: 'email:event:evt-unwrapped' }],
-      [{ projectId: 'proj-1' }],
+      [{ eventId: "email:event:evt-unwrapped" }],
+      [{ projectId: "proj-1" }],
       [],
-      [{ eventId: 'email:msg:inb-1:msg-unwrapped' }],
+      [{ eventId: "email:msg:inb-1:msg-unwrapped" }],
       [],
       [
         {
-          projectId: 'proj-1',
-          accountId: 'acc-1',
-          defaultBranch: 'main',
-          name: 'Support',
+          projectId: "proj-1",
+          accountId: "acc-1",
+          defaultBranch: "main",
+          name: "Support",
         },
       ],
       [],
-      [{ eventId: 'email:threadcreate:inb-1:thr-unwrapped' }],
+      [{ eventId: "email:threadcreate:inb-1:thr-unwrapped" }],
       [
         {
-          profileId: 'profile-email-1',
-          metadata: { inbox_id: 'inb-1' },
-          status: 'active',
+          profileId: "profile-email-1",
+          metadata: { inbox_id: "inb-1" },
+          status: "active",
         },
       ],
     ];
@@ -373,80 +383,112 @@ describe('dispatchAgentMailEvent', () => {
     await dispatchAgentMailEvent(actualAgentMailPayload);
 
     expect(createCalls).toHaveLength(1);
-    expect(createCalls[0].metadata.email.subject).toBe('Actual AgentMail payload');
-    expect(createCalls[0].postCreate[1].text).toContain('Thread ID:  thr-unwrapped');
+    expect(createCalls[0].metadata.email.subject).toBe(
+      "Actual AgentMail payload",
+    );
+    expect(createCalls[0].postCreate[1].text).toContain(
+      "Thread ID:  thr-unwrapped",
+    );
   });
 
-  test('routes unauthenticated inbound mail through the same sender policy and session path', async () => {
+  test("routes unauthenticated inbound mail through the same sender policy and session path", async () => {
     const unauthenticatedEvent: AgentMailMessageReceivedEvent = {
       ...event,
-      event_type: 'message.received.unauthenticated',
-      event_id: 'evt-unauth',
-      message: { ...event.message, message_id: 'msg-unauth' },
+      event_type: "message.received.unauthenticated",
+      event_id: "evt-unauth",
+      message: { ...event.message, message_id: "msg-unauth" },
     };
     dbResults = [
-      [{ eventId: 'email:event:evt-unauth' }],
-      [{ projectId: 'proj-1' }],
+      [{ eventId: "email:event:evt-unauth" }],
+      [{ projectId: "proj-1" }],
       [],
-      [{ eventId: 'email:msg:inb-1:msg-unauth' }],
-      [{ sessionId: 'sess-1' }],
+      [{ eventId: "email:msg:inb-1:msg-unauth" }],
+      [{ sessionId: "sess-1" }],
       [
         {
-          profileId: 'profile-email-1',
-          metadata: { inbox_id: 'inb-1' },
-          status: 'active',
+          profileId: "profile-email-1",
+          metadata: { inbox_id: "inb-1" },
+          status: "active",
         },
       ],
-      [{ accountId: 'acc-1', connectorId: 'conn-email' }],
-      [{ accountId: 'acc-1' }],
+      [{ accountId: "acc-1", connectorId: "conn-email" }],
+      [{ accountId: "acc-1" }],
       [],
-      [{ profileId: 'profile-email-1' }],
+      [{ profileId: "profile-email-1" }],
     ];
 
     await dispatchAgentMailEvent(unauthenticatedEvent);
 
     expect(createCalls).toHaveLength(0);
     expect(continueCalls).toHaveLength(1);
-    expect(continueCalls[0].sessionId).toBe('sess-1');
-    expect(continueCalls[0].opencodeEnv).toEqual({ KORTIX_EXECUTOR_MCP_ENABLED: '1' });
+    expect(continueCalls[0].sessionId).toBe("sess-1");
+    expect(continueCalls[0].opencodeEnv).toEqual({
+      KORTIX_EXECUTOR_MCP_ENABLED: "1",
+    });
   });
 
-  test('known thread routes a new email into the existing session', async () => {
+  test("known thread routes a new email into the existing session", async () => {
     dbResults = [
-      [{ eventId: 'email:event:evt-1' }],
-      [{ projectId: 'proj-1' }],
+      [{ eventId: "email:event:evt-1" }],
+      [{ projectId: "proj-1" }],
       [],
-      [{ eventId: 'email:msg:inb-1:msg-1' }],
-      [{ sessionId: 'sess-1' }],
+      [{ eventId: "email:msg:inb-1:msg-1" }],
+      [{ sessionId: "sess-1" }],
       [
         {
-          profileId: 'profile-email-1',
-          metadata: { inbox_id: 'inb-1' },
-          status: 'active',
+          profileId: "profile-email-1",
+          metadata: { inbox_id: "inb-1" },
+          status: "active",
         },
       ],
-      [{ accountId: 'acc-1', connectorId: 'conn-email' }],
-      [{ accountId: 'acc-1' }],
+      [{ accountId: "acc-1", connectorId: "conn-email" }],
+      [{ accountId: "acc-1" }],
       [],
-      [{ profileId: 'profile-email-1' }],
+      [{ profileId: "profile-email-1" }],
     ];
 
     await dispatchAgentMailEvent(event);
 
     expect(createCalls).toHaveLength(0);
     expect(continueCalls).toHaveLength(1);
-    expect(continueCalls[0].sessionId).toBe('sess-1');
-    expect(continueCalls[0].opencodeEnv).toEqual({ KORTIX_EXECUTOR_MCP_ENABLED: '1' });
-    expect(continueCalls[0].text).toContain('Customer <customer@example.com>');
+    expect(continueCalls[0].sessionId).toBe("sess-1");
+    expect(continueCalls[0].opencodeEnv).toEqual({
+      KORTIX_EXECUTOR_MCP_ENABLED: "1",
+    });
+    expect(continueCalls[0].text).toContain("Customer <customer@example.com>");
     expectExecutorEmailPrompt(continueCalls[0].text);
   });
 
-  test('sender allow policy supports exact emails, domains, and regex', () => {
+  test("a rejected sender never claims the message or creates or continues a session", async () => {
+    setEmailSenderPolicyLoaderForTest(async () => ({
+      mode: "restricted",
+      allowedEmails: ["approved@example.com"],
+      allowedDomains: [],
+      allowedRegex: null,
+    }));
+    dbResults = [
+      [{ eventId: "email:event:evt-1" }],
+      [{ projectId: "proj-1" }],
+      // If dispatch moves past policy enforcement, these sentinels would let
+      // it claim the inbound message and create a new thread/session.
+      [],
+      [{ eventId: "email:msg:inb-1:msg-1" }],
+      [],
+    ];
+
+    await dispatchAgentMailEvent(event);
+
+    expect(createCalls).toHaveLength(0);
+    expect(continueCalls).toHaveLength(0);
+    expect(dbResults).toHaveLength(3);
+  });
+
+  test("sender allow policy supports exact emails, domains, and regex", () => {
     const policy = {
-      mode: 'restricted' as const,
-      allowedEmails: ['customer@example.com'],
-      allowedDomains: ['kortix.com'],
-      allowedRegex: '^vip-[0-9]+@example\\.org$',
+      mode: "restricted" as const,
+      allowedEmails: ["customer@example.com"],
+      allowedDomains: ["kortix.com"],
+      allowedRegex: "^vip-[0-9]+@example\\.org$",
     };
 
     expect(isAgentMailSenderAllowedForTest(event, policy)).toBe(true);
@@ -456,7 +498,7 @@ describe('dispatchAgentMailEvent', () => {
           ...event,
           message: {
             ...event.message,
-            from: 'Teammate <person@ops.kortix.com>',
+            from: "Teammate <person@ops.kortix.com>",
           },
         },
         policy,
@@ -466,7 +508,7 @@ describe('dispatchAgentMailEvent', () => {
       isAgentMailSenderAllowedForTest(
         {
           ...event,
-          message: { ...event.message, from: 'vip-12@example.org' },
+          message: { ...event.message, from: "vip-12@example.org" },
         },
         policy,
       ),
@@ -475,15 +517,15 @@ describe('dispatchAgentMailEvent', () => {
       isAgentMailSenderAllowedForTest(
         {
           ...event,
-          message: { ...event.message, from: 'Other <other@external.test>' },
+          message: { ...event.message, from: "Other <other@external.test>" },
         },
         policy,
       ),
     ).toBe(false);
   });
 
-  test('sender regex runtime stays linear for ambiguous repetition and fails closed on unsupported syntax', () => {
-    const adversarialSender = `${'a'.repeat(50_000)}!@example.com`;
+  test("sender regex runtime stays linear for ambiguous repetition and fails closed on unsupported syntax", () => {
+    const adversarialSender = `${"a".repeat(50_000)}!@example.com`;
     const allowed = (allowedRegex: string) =>
       isAgentMailSenderAllowedForTest(
         {
@@ -495,7 +537,7 @@ describe('dispatchAgentMailEvent', () => {
           },
         },
         {
-          mode: 'restricted',
+          mode: "restricted",
           allowedEmails: [],
           allowedDomains: [],
           allowedRegex,
@@ -503,69 +545,83 @@ describe('dispatchAgentMailEvent', () => {
       );
     const startedAt = performance.now();
 
-    expect(allowed('^(a{1,3})+@example\\.com$')).toBe(false);
-    expect(allowed('^(a|aa)+@example\\.com$')).toBe(false);
-    expect(allowed('^(?=a)a+@example\\.com$')).toBe(false);
+    expect(allowed("^(a{1,3})+@example\\.com$")).toBe(false);
+    expect(allowed("^(a|aa)+@example\\.com$")).toBe(false);
+    expect(allowed("^(?=a)a+@example\\.com$")).toBe(false);
     expect(performance.now() - startedAt).toBeLessThan(1_000);
   });
 
-  test('sender allow policy rejects ambiguous or attacker-controlled From values', () => {
+  test("sender allow policy rejects ambiguous or attacker-controlled From values", () => {
     const policy = {
-      mode: 'restricted' as const,
-      allowedEmails: ['customer@example.com'],
+      mode: "restricted" as const,
+      allowedEmails: ["customer@example.com"],
       allowedDomains: [],
       allowedRegex: null,
     };
-    const allowed = (from: AgentMailMessageReceivedEvent['message']['from']) =>
+    const allowed = (from: AgentMailMessageReceivedEvent["message"]["from"]) =>
       isAgentMailSenderAllowedForTest(
         { ...event, message: { ...event.message, from, from_: undefined } },
         policy,
       );
 
-    expect(allowed('Customer <customer@example.com>')).toBe(true);
-    expect(allowed('customer@example.com')).toBe(true);
-    expect(allowed('customer@example.com <attacker@evil.test>')).toBe(false);
-    expect(allowed('Attacker <attacker@evil.test>, customer@example.com')).toBe(false);
-    expect(allowed('Customer <customer@example.com> trailing')).toBe(false);
-    expect(allowed('Customer customer@example.com')).toBe(false);
+    expect(allowed("Customer <customer@example.com>")).toBe(true);
+    expect(allowed("customer@example.com")).toBe(true);
+    expect(allowed("customer@example.com <attacker@evil.test>")).toBe(false);
+    expect(allowed("Attacker <attacker@evil.test>, customer@example.com")).toBe(
+      false,
+    );
+    expect(allowed("Customer <customer@example.com> trailing")).toBe(false);
+    expect(allowed("Customer customer@example.com")).toBe(false);
   });
 
-  test('sender allow policy requires exactly one structured From mailbox', () => {
+  test("sender allow policy requires exactly one structured From mailbox", () => {
     const policy = {
-      mode: 'restricted' as const,
-      allowedEmails: ['customer@example.com'],
+      mode: "restricted" as const,
+      allowedEmails: ["customer@example.com"],
       allowedDomains: [],
       allowedRegex: null,
     };
-    const allowed = (from_: AgentMailMessageReceivedEvent['message']['from_']) =>
+    const allowed = (
+      from_: AgentMailMessageReceivedEvent["message"]["from_"],
+    ) =>
       isAgentMailSenderAllowedForTest(
         { ...event, message: { ...event.message, from: undefined, from_ } },
         policy,
       );
 
-    expect(allowed([{ email: 'customer@example.com', name: 'Customer' }])).toBe(true);
-    expect(allowed([{ address: 'customer@example.com' }])).toBe(true);
+    expect(allowed([{ email: "customer@example.com", name: "Customer" }])).toBe(
+      true,
+    );
+    expect(allowed([{ address: "customer@example.com" }])).toBe(true);
     expect(
       allowed([
         {
-          email: ' Customer@Example.COM ',
-          address: 'customer@example.com',
+          email: " Customer@Example.COM ",
+          address: "customer@example.com",
         },
       ]),
     ).toBe(true);
-    expect(allowed([{ email: '', address: 'customer@example.com' }])).toBe(true);
-    expect(allowed([{ email: 'customer@example.com', address: 'attacker@evil.test' }])).toBe(false);
-    expect(allowed([{ email: 'not a mailbox', address: 'customer@example.com' }])).toBe(false);
-    expect(allowed([{ name: 'customer@example.com' }])).toBe(false);
-    expect(allowed(['customer@example.com', 'attacker@evil.test'])).toBe(false);
+    expect(allowed([{ email: "", address: "customer@example.com" }])).toBe(
+      true,
+    );
+    expect(
+      allowed([
+        { email: "customer@example.com", address: "attacker@evil.test" },
+      ]),
+    ).toBe(false);
+    expect(
+      allowed([{ email: "not a mailbox", address: "customer@example.com" }]),
+    ).toBe(false);
+    expect(allowed([{ name: "customer@example.com" }])).toBe(false);
+    expect(allowed(["customer@example.com", "attacker@evil.test"])).toBe(false);
     expect(
       isAgentMailSenderAllowedForTest(
         {
           ...event,
           message: {
             ...event.message,
-            from: 'customer@example.com',
-            from_: 'attacker@evil.test',
+            from: "customer@example.com",
+            from_: "attacker@evil.test",
           },
         },
         policy,

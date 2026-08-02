@@ -29,6 +29,7 @@ const defaultEmailSessionLifecycle = {
 };
 
 let emailSessionLifecycle = defaultEmailSessionLifecycle;
+let emailSenderPolicyLoader = loadAgentMailSenderPolicyForInbox;
 
 export function setEmailSessionLifecycleForTest(
   overrides: Partial<typeof defaultEmailSessionLifecycle>,
@@ -38,6 +39,13 @@ export function setEmailSessionLifecycleForTest(
 
 export function resetEmailSessionLifecycleForTest() {
   emailSessionLifecycle = defaultEmailSessionLifecycle;
+  emailSenderPolicyLoader = loadAgentMailSenderPolicyForInbox;
+}
+
+export function setEmailSenderPolicyLoaderForTest(
+  loader: typeof loadAgentMailSenderPolicyForInbox,
+) {
+  emailSenderPolicyLoader = loader;
 }
 
 export async function resolveProjectForAgentMailInbox(inboxId: string): Promise<string | null> {
@@ -60,7 +68,7 @@ export async function dispatchAgentMailEvent(event: AgentMailMessageReceivedEven
     });
     return;
   }
-  const policy = await loadAgentMailSenderPolicyForInbox(projectId, event.message.inbox_id);
+  const policy = await emailSenderPolicyLoader(projectId, event.message.inbox_id);
   if (!senderAllowed(event, policy)) {
     console.warn('[email-webhook] sender rejected by AgentMail inbox policy', {
       inboxId: event.message.inbox_id,

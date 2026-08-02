@@ -66,6 +66,7 @@ const {
   dispatchAgentMailEvent,
   isAgentMailSenderAllowedForTest,
   resetEmailSessionLifecycleForTest,
+  setEmailSenderPolicyLoaderForTest,
   setEmailSessionLifecycleForTest,
 } = await import('../channels/email/session');
 const { emailWebhookApp } = await import('../channels/email/app');
@@ -439,6 +440,30 @@ describe('dispatchAgentMailEvent', () => {
     expect(continueCalls[0].opencodeEnv).toEqual({ KORTIX_EXECUTOR_MCP_ENABLED: '1' });
     expect(continueCalls[0].text).toContain('Customer <customer@example.com>');
     expectExecutorEmailPrompt(continueCalls[0].text);
+  });
+
+  test('a rejected sender never claims the message or creates or continues a session', async () => {
+    setEmailSenderPolicyLoaderForTest(async () => ({
+      mode: 'restricted',
+      allowedEmails: ['approved@example.com'],
+      allowedDomains: [],
+      allowedRegex: null,
+    }));
+    dbResults = [
+      [{ eventId: 'email:event:evt-1' }],
+      [{ projectId: 'proj-1' }],
+      // If dispatch moves past policy enforcement, these sentinels would let
+      // it claim the inbound message and create a new thread/session.
+      [],
+      [{ eventId: 'email:msg:inb-1:msg-1' }],
+      [],
+    ];
+
+    await dispatchAgentMailEvent(event);
+
+    expect(createCalls).toHaveLength(0);
+    expect(continueCalls).toHaveLength(0);
+    expect(dbResults).toHaveLength(3);
   });
 
   test('sender allow policy supports exact emails, domains, and regex', () => {

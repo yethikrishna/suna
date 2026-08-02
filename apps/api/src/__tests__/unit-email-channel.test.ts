@@ -1,6 +1,5 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { createHmac } from 'node:crypto';
-import { config } from '../config';
 import {
   AgentMailApiError,
   createAgentMailInbox,
@@ -8,8 +7,9 @@ import {
   isAgentMailInboxLimitError,
   resolveAgentMailApiKey,
 } from '../channels/agentmail-api';
-import { verifyAgentMailSignature } from '../channels/email/verify';
 import type { AgentMailMessageReceivedEvent } from '../channels/email/types';
+import { verifyAgentMailSignature } from '../channels/email/verify';
+import { config } from '../config';
 
 let dbResults: unknown[][] = [];
 
@@ -66,6 +66,7 @@ const {
   dispatchAgentMailEvent,
   isAgentMailSenderAllowedForTest,
   resetEmailSessionLifecycleForTest,
+  setEmailSenderPolicyLoaderForTest,
   setEmailSessionLifecycleForTest,
 } = await import('../channels/email/session');
 const { emailWebhookApp } = await import('../channels/email/app');
@@ -441,6 +442,30 @@ describe('dispatchAgentMailEvent', () => {
     expectExecutorEmailPrompt(continueCalls[0].text);
   });
 
+  test('a rejected sender never claims the message or creates or continues a session', async () => {
+    setEmailSenderPolicyLoaderForTest(async () => ({
+      mode: 'restricted',
+      allowedEmails: ['approved@example.com'],
+      allowedDomains: [],
+      allowedRegex: null,
+    }));
+    dbResults = [
+      [{ eventId: 'email:event:evt-1' }],
+      [{ projectId: 'proj-1' }],
+      // If dispatch moves past policy enforcement, these sentinels would let
+      // it claim the inbound message and create a new thread/session.
+      [],
+      [{ eventId: 'email:msg:inb-1:msg-1' }],
+      [],
+    ];
+
+    await dispatchAgentMailEvent(event);
+
+    expect(createCalls).toHaveLength(0);
+    expect(continueCalls).toHaveLength(0);
+    expect(dbResults).toHaveLength(3);
+  });
+
   test('sender allow policy supports exact emails, domains, and regex', () => {
     const policy = {
       mode: 'restricted' as const,
@@ -480,6 +505,33 @@ describe('dispatchAgentMailEvent', () => {
         policy,
       ),
     ).toBe(false);
+  });
+
+  test('sender regex runtime stays linear for ambiguous repetition and fails closed on unsupported syntax', () => {
+    const adversarialSender = `${'a'.repeat(50_000)}!@example.com`;
+    const allowed = (allowedRegex: string) =>
+      isAgentMailSenderAllowedForTest(
+        {
+          ...event,
+          message: {
+            ...event.message,
+            from: adversarialSender,
+            from_: undefined,
+          },
+        },
+        {
+          mode: 'restricted',
+          allowedEmails: [],
+          allowedDomains: [],
+          allowedRegex,
+        },
+      );
+    const startedAt = performance.now();
+
+    expect(allowed('^(a{1,3})+@example\\.com$')).toBe(false);
+    expect(allowed('^(a|aa)+@example\\.com$')).toBe(false);
+    expect(allowed('^(?=a)a+@example\\.com$')).toBe(false);
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
   });
 
   test('sender allow policy rejects ambiguous or attacker-controlled From values', () => {

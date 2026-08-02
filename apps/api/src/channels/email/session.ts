@@ -19,6 +19,7 @@ import {
 import { db } from '../../shared/db';
 import { type AgentMailSenderPolicy, loadAgentMailSenderPolicyForInbox } from '../install-store';
 import { EMAIL_EVENT_DEDUPE_TTL_MS } from './app';
+import { matchesEmailSenderRegex } from './sender-policy-regex';
 import type { AgentMailMessageReceivedEvent } from './types';
 
 const defaultEmailSessionLifecycle = {
@@ -28,6 +29,7 @@ const defaultEmailSessionLifecycle = {
 };
 
 let emailSessionLifecycle = defaultEmailSessionLifecycle;
+let emailSenderPolicyLoader = loadAgentMailSenderPolicyForInbox;
 
 export function setEmailSessionLifecycleForTest(
   overrides: Partial<typeof defaultEmailSessionLifecycle>,
@@ -37,6 +39,13 @@ export function setEmailSessionLifecycleForTest(
 
 export function resetEmailSessionLifecycleForTest() {
   emailSessionLifecycle = defaultEmailSessionLifecycle;
+  emailSenderPolicyLoader = loadAgentMailSenderPolicyForInbox;
+}
+
+export function setEmailSenderPolicyLoaderForTest(
+  loader: typeof loadAgentMailSenderPolicyForInbox,
+) {
+  emailSenderPolicyLoader = loader;
 }
 
 export async function resolveProjectForAgentMailInbox(inboxId: string): Promise<string | null> {
@@ -59,7 +68,7 @@ export async function dispatchAgentMailEvent(event: AgentMailMessageReceivedEven
     });
     return;
   }
-  const policy = await loadAgentMailSenderPolicyForInbox(projectId, event.message.inbox_id);
+  const policy = await emailSenderPolicyLoader(projectId, event.message.inbox_id);
   if (!senderAllowed(event, policy)) {
     console.warn('[email-webhook] sender rejected by AgentMail inbox policy', {
       inboxId: event.message.inbox_id,
@@ -538,11 +547,7 @@ export function isAgentMailSenderAllowedForTest(
     return true;
   }
   if (policy.allowedRegex) {
-    try {
-      return new RegExp(policy.allowedRegex, 'i').test(email);
-    } catch {
-      return false;
-    }
+    return matchesEmailSenderRegex(policy.allowedRegex, email);
   }
   return false;
 }

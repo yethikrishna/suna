@@ -481,4 +481,57 @@ describe('dispatchAgentMailEvent', () => {
       ),
     ).toBe(false);
   });
+
+  test('sender allow policy rejects ambiguous or attacker-controlled From values', () => {
+    const policy = {
+      mode: 'restricted' as const,
+      allowedEmails: ['customer@example.com'],
+      allowedDomains: [],
+      allowedRegex: null,
+    };
+    const allowed = (from: AgentMailMessageReceivedEvent['message']['from']) =>
+      isAgentMailSenderAllowedForTest(
+        { ...event, message: { ...event.message, from, from_: undefined } },
+        policy,
+      );
+
+    expect(allowed('Customer <customer@example.com>')).toBe(true);
+    expect(allowed('customer@example.com')).toBe(true);
+    expect(allowed('customer@example.com <attacker@evil.test>')).toBe(false);
+    expect(allowed('Attacker <attacker@evil.test>, customer@example.com')).toBe(false);
+    expect(allowed('Customer <customer@example.com> trailing')).toBe(false);
+    expect(allowed('Customer customer@example.com')).toBe(false);
+  });
+
+  test('sender allow policy requires exactly one structured From mailbox', () => {
+    const policy = {
+      mode: 'restricted' as const,
+      allowedEmails: ['customer@example.com'],
+      allowedDomains: [],
+      allowedRegex: null,
+    };
+    const allowed = (from_: AgentMailMessageReceivedEvent['message']['from_']) =>
+      isAgentMailSenderAllowedForTest(
+        { ...event, message: { ...event.message, from: undefined, from_ } },
+        policy,
+      );
+
+    expect(allowed([{ email: 'customer@example.com', name: 'Customer' }])).toBe(true);
+    expect(allowed([{ address: 'customer@example.com' }])).toBe(true);
+    expect(allowed([{ name: 'customer@example.com' }])).toBe(false);
+    expect(allowed(['customer@example.com', 'attacker@evil.test'])).toBe(false);
+    expect(
+      isAgentMailSenderAllowedForTest(
+        {
+          ...event,
+          message: {
+            ...event.message,
+            from: 'customer@example.com',
+            from_: 'attacker@evil.test',
+          },
+        },
+        policy,
+      ),
+    ).toBe(false);
+  });
 });

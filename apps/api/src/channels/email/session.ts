@@ -455,10 +455,63 @@ function messageSender(event: AgentMailMessageReceivedEvent): string {
   return '';
 }
 
+const MAILBOX_PATTERN = /[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi;
+
+/**
+ * Resolve the one canonical From mailbox AgentMail delivered.
+ *
+ * A substring match is not an authorization boundary: a crafted value such
+ * as `allowed@example.com <attacker@evil.test>` contains an allowlisted
+ * address even though the actual mailbox is the value in angle brackets.
+ * Accept either a bare address or one ordinary `Display Name <address>`
+ * mailbox, and reject ambiguous/multi-address values entirely.
+ */
 function senderEmail(event: AgentMailMessageReceivedEvent): string | null {
-  const sender = messageSender(event).toLowerCase();
-  const match = sender.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/i);
-  return match?.[0]?.toLowerCase() ?? null;
+  const primary = event.message.from;
+  const alternate = event.message.from_;
+  const primaryMailbox =
+    typeof primary === 'string' && primary.trim() ? canonicalMailbox(primary) : null;
+  const alternateMailbox = canonicalStructuredMailbox(alternate);
+  if (primaryMailbox && alternate !== undefined) {
+    return alternateMailbox === primaryMailbox ? primaryMailbox : null;
+  }
+  if (typeof primary === 'string' && primary.trim()) return primaryMailbox;
+  return alternateMailbox;
+}
+
+function canonicalStructuredMailbox(
+  from: AgentMailMessageReceivedEvent['message']['from_'],
+): string | null {
+  if (Array.isArray(from)) {
+    if (from.length !== 1) return null;
+    const [first] = from;
+    if (typeof first === 'string') return canonicalMailbox(first);
+    if (!first || typeof first !== 'object') return null;
+    return canonicalMailbox(first.email ?? first.address ?? '');
+  }
+  return typeof from === 'string' ? canonicalMailbox(from) : null;
+}
+
+function canonicalMailbox(value: string): string | null {
+  const sender = value.trim().toLowerCase();
+  const matches = [...sender.matchAll(MAILBOX_PATTERN)];
+  if (matches.length !== 1) return null;
+  const mailbox = matches[0]?.[0];
+  if (!mailbox) return null;
+  if (sender === mailbox) return mailbox;
+
+  const open = sender.indexOf('<');
+  const close = sender.indexOf('>');
+  if (
+    open <= 0 ||
+    close !== sender.length - 1 ||
+    sender.indexOf('<', open + 1) !== -1 ||
+    sender.indexOf('>', close + 1) !== -1 ||
+    sender.slice(open + 1, close).trim() !== mailbox
+  ) {
+    return null;
+  }
+  return mailbox;
 }
 
 export function isAgentMailSenderAllowedForTest(

@@ -19,6 +19,7 @@ import {
 import { db } from '../../shared/db';
 import { type AgentMailSenderPolicy, loadAgentMailSenderPolicyForInbox } from '../install-store';
 import { EMAIL_EVENT_DEDUPE_TTL_MS } from './app';
+import { matchesEmailSenderRegex } from './sender-policy-regex';
 import type { AgentMailMessageReceivedEvent } from './types';
 
 const defaultEmailSessionLifecycle = {
@@ -538,11 +539,7 @@ export function isAgentMailSenderAllowedForTest(
     return true;
   }
   if (policy.allowedRegex) {
-    try {
-      return new RegExp(policy.allowedRegex, 'i').test(email);
-    } catch {
-      return false;
-    }
+    return matchesEmailSenderRegex(policy.allowedRegex, email);
   }
   return false;
 }

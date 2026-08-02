@@ -1,6 +1,5 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { createHmac } from 'node:crypto';
-import { config } from '../config';
 import {
   AgentMailApiError,
   createAgentMailInbox,
@@ -8,8 +7,9 @@ import {
   isAgentMailInboxLimitError,
   resolveAgentMailApiKey,
 } from '../channels/agentmail-api';
-import { verifyAgentMailSignature } from '../channels/email/verify';
 import type { AgentMailMessageReceivedEvent } from '../channels/email/types';
+import { verifyAgentMailSignature } from '../channels/email/verify';
+import { config } from '../config';
 
 let dbResults: unknown[][] = [];
 
@@ -480,6 +480,33 @@ describe('dispatchAgentMailEvent', () => {
         policy,
       ),
     ).toBe(false);
+  });
+
+  test('sender regex runtime stays linear for ambiguous repetition and fails closed on unsupported syntax', () => {
+    const adversarialSender = `${'a'.repeat(50_000)}!@example.com`;
+    const allowed = (allowedRegex: string) =>
+      isAgentMailSenderAllowedForTest(
+        {
+          ...event,
+          message: {
+            ...event.message,
+            from: adversarialSender,
+            from_: undefined,
+          },
+        },
+        {
+          mode: 'restricted',
+          allowedEmails: [],
+          allowedDomains: [],
+          allowedRegex,
+        },
+      );
+    const startedAt = performance.now();
+
+    expect(allowed('^(a{1,3})+@example\\.com$')).toBe(false);
+    expect(allowed('^(a|aa)+@example\\.com$')).toBe(false);
+    expect(allowed('^(?=a)a+@example\\.com$')).toBe(false);
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
   });
 
   test('sender allow policy rejects ambiguous or attacker-controlled From values', () => {

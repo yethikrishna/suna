@@ -1,6 +1,5 @@
 'use client';
 
-import { BetterCodeBlock } from '@/components/ui/better-code-block';
 import { TextShimmer } from '@/components/ui/text-shimmer';
 import {
   BasicTool,
@@ -13,13 +12,17 @@ import {
   partOutput,
   partStatus,
   partStreamingInput,
+  ToolCodeCard,
   ToolOutputFallback,
   ToolRunningContext,
+  useToolIndent,
 } from '@/features/session/tool/shared/infrastructure';
 import { ToolRegistry } from '@/features/session/tool/shared/registry';
 import type { ToolProps } from '@/features/session/tool/shared/types';
+import { cn } from '@/lib/utils';
 import { useFilePreviewStore } from '@/stores/file-preview-store';
-import { getDirectory, getFilename } from '@/ui';
+import { getFilename } from '@/ui';
+import { PencilSimpleIcon } from '@phosphor-icons/react';
 import { useTranslations } from 'next-intl';
 import { useContext } from 'react';
 
@@ -37,9 +40,9 @@ export function EditTool({ part, defaultOpen, forceOpen, locked }: ToolProps) {
     (streamingInput.target_filepath as string) ||
     undefined;
   const filename = getFilename(filePath) || '';
-  const directory = filePath ? getDirectory(filePath) : undefined;
   const ext = filename.split('.').pop() || '';
   const diagnostics = getToolDiagnostics(part, filePath);
+  const indent = useToolIndent();
 
   const isStalePending = !running && !filename && (status === 'pending' || status === 'running');
 
@@ -63,12 +66,12 @@ export function EditTool({ part, defaultOpen, forceOpen, locked }: ToolProps) {
 
   return (
     <BasicTool
+      icon={<PencilSimpleIcon className="size-3.5 flex-shrink-0" />}
       trigger={{
         title: 'Edit',
         subtitle: isStalePending
           ? undefined
           : filename || (isStalePending ? 'Working...' : undefined),
-        args: directory ? [directory] : undefined,
       }}
       onSubtitleClick={filePath ? () => openPreview(filePath) : undefined}
       defaultOpen={defaultOpen}
@@ -83,20 +86,16 @@ export function EditTool({ part, defaultOpen, forceOpen, locked }: ToolProps) {
           <InlineDiffView oldValue={before} newValue={after} filename={filename} />
         </div>
       ) : codeEdit ? (
-        <div className="bg-card">
+        <>
+          {/* Morph's instructions describe the edit the card below carries, so
+              they share its indent rather than sitting flush with the row. */}
           {morphInstructions && (
-            <div className="text-muted-foreground px-3 pt-2 text-xs italic">
+            <div className={cn('text-muted-foreground mt-1.5 text-xs italic', indent)}>
               {morphInstructions}
             </div>
           )}
-          <BetterCodeBlock
-            code={codeEdit}
-            language={ext}
-            showBackgroundColors={false}
-            border={false}
-            className="p-0"
-          />
-        </div>
+          <ToolCodeCard code={codeEdit} language={ext} />
+        </>
       ) : isStalePending ? (
         <div className="p-4 pt-0">
           <TextShimmer>

@@ -74,6 +74,13 @@ const PPT_MIME_TYPE = 'application/vnd.ms-powerpoint';
 const DEFAULT_ZOOM = 100;
 const PPTX_LOADING_INDICATOR_DELAY_MS = 300;
 const PPTX_THUMBNAIL_WIDTH = 112;
+// Horizontal chrome around a thumbnail inside the sidebar: the row rails
+// (`right-2 left-2` = 16px) plus the option padding (`p-2` = 16px). Subtracted
+// from the measured sidebar width so slides render at exactly the visible
+// thumbnail width — a fixed resolution leaves a bare strip of the white
+// preview background (glaring in dark mode) or clips the slide.
+const PPTX_THUMBNAIL_ROW_INSET_PX = 32;
+const PPTX_THUMBNAIL_MIN_WIDTH = 64;
 const PPTX_THUMBNAIL_LIST_PADDING = 12;
 const PPTX_THUMBNAIL_ROW_ESTIMATE = 112;
 const PPTX_THUMBNAIL_PREFETCH_ROWS = 0;
@@ -509,11 +516,14 @@ function PptxSidebarThumbnail({
         type: PPTX_MIME_TYPE,
       }}
       previewAspectRatio={aspectRatio}
-      previewClassName="rounded-sm bg-white"
+      previewClassName="bg-transparent rounded-sm"
       previewContent={
         <div
           ref={containerRef}
-          className="size-full overflow-hidden bg-white [&_[data-rpv-slide-wrapper]]:m-0!"
+          // The rendered slide paints its own background (`rpv-normalized-slide`),
+          // so the container stays transparent — any painted container color
+          // shows through as a rim around the slide (glaring in dark mode).
+          className="flex size-full items-center justify-center overflow-hidden [&_[data-rpv-slide-wrapper]]:m-0!"
         />
       }
       isLoading={status !== 'ready' && status !== 'error'}
@@ -744,15 +754,19 @@ function PptxThumbnailSidebarContent({
     prefetchSlideIndexes: [],
     visibleSlideIndexes: [],
   });
+  const [listShellRef, listShellWidth] = useElementWidth<HTMLDivElement>();
+  const thumbnailWidth = listShellWidth
+    ? Math.max(PPTX_THUMBNAIL_MIN_WIDTH, Math.round(listShellWidth - PPTX_THUMBNAIL_ROW_INSET_PX))
+    : PPTX_THUMBNAIL_WIDTH;
   const thumbnailOptions = React.useMemo(
     () => ({
       renderWindow,
       resolution: {
-        maxHeight: Math.round(PPTX_THUMBNAIL_WIDTH * 0.75),
-        maxWidth: PPTX_THUMBNAIL_WIDTH,
+        maxHeight: Math.round(thumbnailWidth * 0.75),
+        maxWidth: thumbnailWidth,
       },
     }),
-    [renderWindow],
+    [renderWindow, thumbnailWidth],
   );
   const { thumbnails } = usePptxViewerThumbnails(controller, thumbnailOptions);
   const handleRenderWindowChange = React.useCallback(
@@ -777,16 +791,18 @@ function PptxThumbnailSidebarContent({
   );
 
   return (
-    <PptxThumbnailSidebarList
-      activeSlideIndex={activeSlideIndex}
-      displayFileName={displayFileName}
-      isLoading={isLoading}
-      onRenderWindowChange={handleRenderWindowChange}
-      onSelectSlide={onSelectSlide}
-      sidebarOpen={sidebarOpen}
-      slideCount={slideCount}
-      thumbnails={thumbnails}
-    />
+    <div ref={listShellRef} className="h-full">
+      <PptxThumbnailSidebarList
+        activeSlideIndex={activeSlideIndex}
+        displayFileName={displayFileName}
+        isLoading={isLoading}
+        onRenderWindowChange={handleRenderWindowChange}
+        onSelectSlide={onSelectSlide}
+        sidebarOpen={sidebarOpen}
+        slideCount={slideCount}
+        thumbnails={thumbnails}
+      />
+    </div>
   );
 }
 

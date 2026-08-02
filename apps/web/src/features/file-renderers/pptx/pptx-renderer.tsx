@@ -31,15 +31,18 @@ interface PptxRendererProps {
    *  before the file menu — so a caller adds actions to the ONE header this
    *  viewer already has, instead of stacking a second one above it. */
   toolbarActions?: React.ReactNode;
-  compact?: boolean;
 }
 
+/**
+ * PptxRenderer — `.pptx`/`.ppt` decks via the vendored Extend PptxViewerPreview.
+ * The viewer always renders with its standard toolbar (file name, slide nav,
+ * zoom, download) — there is no compact mode for PPTX.
+ */
 export function PptxRenderer({
   blob,
   binaryUrl,
   fileName,
   className,
-  compact = false,
   toolbarActions,
 }: PptxRendererProps) {
   const [src, setSrc] = useState<string | null>(null);
@@ -68,9 +71,7 @@ export function PptxRenderer({
     <PptxViewerPreview
       src={src}
       fileName={fileName}
-      showToolbar={!compact}
       showUpload={false}
-      defaultThumbnailSidebarOpen={!compact}
       className={cn('h-full w-full', className)}
       toolbarActions={toolbarActions}
     />

@@ -283,6 +283,10 @@ export function ShowContentRenderer({
    * Renderers with no toolbar of their own (the plain-text/code viewer whose
    * header is suppressed) use `ViewerFrame` on both surfaces — it is their
    * only header, so it can never double up.
+   *
+   * PPTX is the exception among toolbar-owning renderers: it always shows its
+   * own toolbar (never compact, never framed) and the surface actions always
+   * ride in its `toolbarActions` slot.
    */
   const framed = (node: React.ReactNode) =>
     fill ? (
@@ -661,15 +665,13 @@ export function ShowContentRenderer({
       return (
         <Suspense fallback={<RendererFallback className={mediaH} />}>
           <div className={cn(mediaH, 'overflow-hidden')}>
-            {framed(
-              <PptxRenderer
-                blob={rawBlob}
-                binaryUrl={blobUrl}
-                fileName={fileName}
-                className="h-full"
-                {...viewerChrome}
-              />,
-            )}
+            <PptxRenderer
+              blob={rawBlob}
+              binaryUrl={blobUrl}
+              fileName={fileName}
+              className="h-full"
+              toolbarActions={toolbarActions}
+            />
           </div>
         </Suspense>
       );

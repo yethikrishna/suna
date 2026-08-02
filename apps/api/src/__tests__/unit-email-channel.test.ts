@@ -183,6 +183,23 @@ describe('AgentMail webhook verification', () => {
       });
       expect(invalidSignature.status).toBe(401);
 
+      const standardId = 'msg_standard_123';
+      const standardTimestamp = String(Math.floor(Date.now() / 1000));
+      const standardSignature = createHmac('sha256', Buffer.from('test-signing-key'))
+        .update(`${standardId}.${standardTimestamp}.${rawBody}`)
+        .digest('base64');
+      const standardHeaders = await emailWebhookApp.request('/agentmail', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'webhook-id': standardId,
+          'webhook-timestamp': standardTimestamp,
+          'webhook-signature': `v1,${standardSignature}`,
+        },
+        body: rawBody,
+      });
+      expect(standardHeaders.status).toBe(200);
+
       // A malformed unsigned body (missing event_type/inbox_id) must NOT be
       // acked with 200 — that let an unauthenticated caller poison ack/monitoring
       // with `{}` -> 200 ok. Now rejected with 400 before any signature check.

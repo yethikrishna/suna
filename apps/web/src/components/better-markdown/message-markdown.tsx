@@ -104,7 +104,7 @@ const components: Components = {
     </th>
   ),
   tr: ({ children, className }) => (
-    <tr className={cn("border-border bg-background border-b last:border-b-0", className)}>
+    <tr className={cn(className, "border-border bg-background border-b last:border-b-0")}>
       {children}
     </tr>
   ),

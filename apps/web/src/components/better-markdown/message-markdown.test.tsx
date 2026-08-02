@@ -16,6 +16,11 @@ function cellTextAligns(html: string, tag: 'th' | 'td'): (string | undefined)[] 
   return matches.map((m) => /text-align:\s*([a-z]+)/.exec(m[1])?.[1]);
 }
 
+function tableWrapperClasses(html: string): string {
+  const match = /<div class="([^"]*overflow-x-auto[^"]*)"/.exec(html);
+  return match?.[1] ?? '';
+}
+
 describe('MessageMarkdown table cells', () => {
   test('th carries whitespace-nowrap and break-normal', () => {
     const html = renderToStaticMarkup(<MessageMarkdown content={TABLE_MD} />);
@@ -54,9 +59,10 @@ describe('MessageMarkdown table cells', () => {
 
   test('table wrapper scrolls horizontally, not vertically', () => {
     const html = renderToStaticMarkup(<MessageMarkdown content={TABLE_MD} />);
+    const wrapperClasses = tableWrapperClasses(html);
 
-    expect(html).toContain('overflow-x-auto');
-    expect(html).not.toContain('overflow-y-auto');
+    expect(wrapperClasses).toContain('overflow-x-auto');
+    expect(wrapperClasses).not.toContain('overflow-y-auto');
   });
 
   test('th header band uses bg-muted, not bg-accent', () => {
@@ -68,5 +74,11 @@ describe('MessageMarkdown table cells', () => {
       expect(cls).toContain('bg-muted');
       expect(cls).not.toContain('bg-accent');
     }
+  });
+
+  test('does not leak the react-markdown node prop onto th/td', () => {
+    const html = renderToStaticMarkup(<MessageMarkdown content={TABLE_MD} />);
+
+    expect(html).not.toContain('node=');
   });
 });

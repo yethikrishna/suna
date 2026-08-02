@@ -13,13 +13,6 @@ import {
   normalizeClassName,
   prepareMarkdownForKatex,
 } from '@/components/markdown/katex-markdown';
-import { SetupLinkButton } from '@/components/setup-links/setup-link-button';
-import { parseSetupLinkHref } from '@/components/setup-links/util';
-import { useSandboxProxy } from '@/hooks/use-sandbox-proxy';
-import { isMermaidCode } from '@/lib/mermaid-utils';
-import { toast } from '@/lib/toast';
-import { cn } from '@/lib/utils';
-import { stripKortixSystemTags } from '@/lib/utils/kortix-system-tags';
 import {
   isInternalUrl,
   isLinkSafeHref,
@@ -29,6 +22,13 @@ import {
   normalizeLanguage,
   shikiWasmAvailable,
 } from '@/components/markdown/unified-markdown-utils';
+import { SetupLinkButton } from '@/components/setup-links/setup-link-button';
+import { parseSetupLinkHref } from '@/components/setup-links/util';
+import { useSandboxProxy } from '@/hooks/use-sandbox-proxy';
+import { isMermaidCode } from '@/lib/mermaid-utils';
+import { toast } from '@/lib/toast';
+import { cn } from '@/lib/utils';
+import { stripKortixSystemTags } from '@/lib/utils/kortix-system-tags';
 import { useFilePreviewStore } from '@/stores/file-preview-store';
 import { getActivePanelSessionId, openFileInSessionPanel } from '@/stores/session-browser-store';
 import { autoLinkUrls } from '@kortix/shared';
@@ -624,6 +624,8 @@ export const DocMarkdown = React.memo<DocMarkdownProps>(
           <tbody className="divide-border divide-y">{children}</tbody>
         ),
         tr: ({ children }: { children?: React.ReactNode }) => <tr>{children}</tr>,
+        // cn() is twMerge: the last same-group class wins. Static classes go
+        // last here so an incoming className can't strip whitespace-nowrap/break-normal.
         th: ({
           children,
           className: thClassName,
@@ -633,7 +635,7 @@ export const DocMarkdown = React.memo<DocMarkdownProps>(
           <th
             className={cn(
               thClassName,
-              'text-foreground px-4 py-2 text-left font-semibold whitespace-nowrap break-normal',
+              'text-foreground px-4 py-2 text-left font-semibold break-normal whitespace-nowrap',
             )}
             {...props}
           >
@@ -647,7 +649,10 @@ export const DocMarkdown = React.memo<DocMarkdownProps>(
           ...props
         }: React.TdHTMLAttributes<HTMLTableCellElement> & { node?: unknown }) => (
           <td
-            className={cn(tdClassName, 'text-foreground px-4 py-2 text-left font-normal break-normal')}
+            className={cn(
+              tdClassName,
+              'text-foreground px-4 py-2 text-left font-normal break-normal',
+            )}
             {...props}
           >
             {wrapChildrenWithPaths(children)}

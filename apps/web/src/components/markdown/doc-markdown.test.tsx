@@ -1,5 +1,5 @@
-import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, test } from 'bun:test';
+import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -67,7 +67,9 @@ describe('DocMarkdown table cells', () => {
   });
 
   test('th keeps whitespace-nowrap and break-normal when a raw HTML class conflicts', () => {
-    const html = renderToStaticMarkup(withIntl(<DocMarkdown content={CONFLICTING_CLASS_TABLE_HTML} />));
+    const html = renderToStaticMarkup(
+      withIntl(<DocMarkdown content={CONFLICTING_CLASS_TABLE_HTML} />),
+    );
     const classes = cellClasses(html, 'th');
 
     expect(classes.length).toBeGreaterThan(0);
@@ -78,12 +80,20 @@ describe('DocMarkdown table cells', () => {
   });
 
   test('td keeps break-normal when a raw HTML class conflicts', () => {
-    const html = renderToStaticMarkup(withIntl(<DocMarkdown content={CONFLICTING_CLASS_TABLE_HTML} />));
+    const html = renderToStaticMarkup(
+      withIntl(<DocMarkdown content={CONFLICTING_CLASS_TABLE_HTML} />),
+    );
     const classes = cellClasses(html, 'td');
 
     expect(classes.length).toBeGreaterThan(0);
     for (const cls of classes) {
       expect(cls).toContain('break-normal');
     }
+  });
+
+  test('does not leak the react-markdown node prop onto th/td', () => {
+    const html = renderToStaticMarkup(withIntl(<DocMarkdown content={TABLE_MD} />));
+
+    expect(html).not.toContain('node=');
   });
 });

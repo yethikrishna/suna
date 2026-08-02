@@ -78,7 +78,7 @@ const DocxRenderer = lazy(() =>
   import('./docx/docx-renderer').then((m) => ({ default: m.DocxRenderer })),
 );
 const PptxRenderer = lazy(() =>
-  import('./pptx-renderer').then((m) => ({ default: m.PptxRenderer })),
+  import('./pptx/pptx-renderer').then((m) => ({ default: m.PptxRenderer })),
 );
 
 // ── Extension regexes + type resolution (pure, unit-tested sibling module) ──
@@ -280,9 +280,9 @@ export function ShowContentRenderer({
    *   panel   → the viewer's own toolbar is the one header, and our actions ride
    *             in its native `toolbarActions` slot beside zoom and search
    *
-   * Renderers with no toolbar of their own (PPTX, and the plain-text/code
-   * viewer whose header is suppressed) use `ViewerFrame` on both surfaces —
-   * it is their only header, so it can never double up.
+   * Renderers with no toolbar of their own (the plain-text/code viewer whose
+   * header is suppressed) use `ViewerFrame` on both surfaces — it is their
+   * only header, so it can never double up.
    */
   const framed = (node: React.ReactNode) =>
     fill ? (
@@ -667,8 +667,7 @@ export function ShowContentRenderer({
                 binaryUrl={blobUrl}
                 fileName={fileName}
                 className="h-full"
-                compact={!fill}
-                toolbarActions={fill ? toolbarActions : undefined}
+                {...viewerChrome}
               />,
             )}
           </div>

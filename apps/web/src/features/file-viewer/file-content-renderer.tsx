@@ -62,7 +62,7 @@ const XlsxRenderer = lazy(() =>
   import('@/features/file-renderers/xlsx/xlsx-renderer').then((m) => ({ default: m.XlsxRenderer })),
 );
 const PptxRenderer = lazy(() =>
-  import('@/features/file-renderers/pptx-renderer').then((m) => ({ default: m.PptxRenderer })),
+  import('@/features/file-renderers/pptx/pptx-renderer').then((m) => ({ default: m.PptxRenderer })),
 );
 const ImageRenderer = lazy(() =>
   import('@/features/file-renderers/image-renderer').then((m) => ({ default: m.ImageRenderer })),

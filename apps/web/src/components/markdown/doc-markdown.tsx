@@ -625,10 +625,12 @@ export const DocMarkdown = React.memo<DocMarkdownProps>(
         ),
         tr: ({ children }: { children?: React.ReactNode }) => <tr>{children}</tr>,
         th: ({ children }: { children?: React.ReactNode }) => (
-          <th className="text-foreground px-4 py-2 text-left font-semibold">{children}</th>
+          <th className="text-foreground px-4 py-2 text-left font-semibold whitespace-nowrap break-normal">
+            {children}
+          </th>
         ),
         td: ({ children }: { children?: React.ReactNode }) => (
-          <td className="text-foreground px-4 py-2 text-left font-normal">
+          <td className="text-foreground px-4 py-2 text-left font-normal break-normal">
             {wrapChildrenWithPaths(children)}
           </td>
         ),

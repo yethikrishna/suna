@@ -95,7 +95,7 @@ const components: Components = {
   th: ({ children, className }) => (
     <th
       className={cn(
-        "bg-accent border-b px-4 py-2 text-left font-semibold [&[align=center]]:text-center [&[align=right]]:text-right",
+        "bg-accent border-b px-4 py-2 text-left font-semibold whitespace-nowrap break-normal [&[align=center]]:text-center [&[align=right]]:text-right",
         className,
       )}
     >
@@ -110,7 +110,7 @@ const components: Components = {
   td: ({ children, className }) => (
     <td
       className={cn(
-        "px-4 py-2 text-left font-normal [&[align=center]]:text-center [&[align=right]]:text-right",
+        "px-4 py-2 text-left font-normal break-normal [&[align=center]]:text-center [&[align=right]]:text-right",
         className,
       )}
     >

@@ -48,17 +48,26 @@ describe('project session provider-failure recovery', () => {
     resolve(import.meta.dir, '../../app/(app)/projects/[id]/sessions/[sessionId]/page.tsx'),
     'utf8',
   );
-  const failureStart = pageSource.indexOf("if (sandbox?.status === 'error')");
-  const failureEnd = pageSource.indexOf('// Stopped but resumable', failureStart);
-  const failureSurface = pageSource.slice(failureStart, failureEnd);
+  const recoverySource = readFileSync(
+    resolve(import.meta.dir, './provider-failure-recovery.tsx'),
+    'utf8',
+  );
 
-  test('does not reserve prompt-safe recovery controls for capacity errors', () => {
-    expect(failureStart).toBeGreaterThan(-1);
-    expect(failureEnd).toBeGreaterThan(failureStart);
-    expect(failureSurface).not.toContain('failure.isCapacity');
-    expect(failureSurface).toContain('onClick={handleProvisioningRetry}');
-    expect(failureSurface).toContain('Copy prompt');
-    expect(failureSurface).toContain('onClick={() => setDeleteOpen(true)}');
+  test('routes structured provider failures and generic start errors through one surface', () => {
+    expect(pageSource).toContain('const recoverableFailure =');
+    expect(pageSource).toContain('session.failure');
+    expect(pageSource).toContain('session.startError');
+    expect(pageSource).toContain('if (unmaterializedFailure)');
+    expect(pageSource).toContain('<ProviderFailureRecovery');
+  });
+
+  test('shows the saved prompt and exposes one-click recovery controls', () => {
+    expect(recoverySource).toContain('Saved prompt');
+    expect(recoverySource).toContain('{pendingPrompt.text}');
+    expect(recoverySource).toContain('whitespace-pre-wrap');
+    expect(recoverySource).toContain('Copy prompt');
+    expect(recoverySource).toContain('onClick={onRetry}');
+    expect(recoverySource).toContain('onClick={onDelete}');
   });
 });
 

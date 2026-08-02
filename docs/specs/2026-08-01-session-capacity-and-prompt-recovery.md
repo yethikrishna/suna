@@ -98,8 +98,10 @@ Every terminal provider failure card shows these controls:
 
 The title and message come from the API error mapping.
 Capacity, Git authentication, and unknown provider errors use the same recovery controls.
-The card states that the prompt is saved.
-The card shows the attachment count when attachment names exist.
+The card shows the saved prompt text.
+The card shows each attachment name when attachment names exist.
+The card uses the same recovery controls for a non-404 `/start` error.
+A `404` response keeps the separate missing-session message.
 
 ## Deletion rule
 

@@ -78,7 +78,7 @@ const DocxRenderer = lazy(() =>
   import('./docx/docx-renderer').then((m) => ({ default: m.DocxRenderer })),
 );
 const PptxRenderer = lazy(() =>
-  import('./pptx/pptx-renderer').then((m) => ({ default: m.PptxRenderer })),
+  import('./pptx-renderer').then((m) => ({ default: m.PptxRenderer })),
 );
 
 // ── Extension regexes + type resolution (pure, unit-tested sibling module) ──
@@ -280,13 +280,9 @@ export function ShowContentRenderer({
    *   panel   → the viewer's own toolbar is the one header, and our actions ride
    *             in its native `toolbarActions` slot beside zoom and search
    *
-   * Renderers with no toolbar of their own (the plain-text/code viewer whose
-   * header is suppressed) use `ViewerFrame` on both surfaces — it is their
-   * only header, so it can never double up.
-   *
-   * PPTX is the exception among toolbar-owning renderers: it always shows its
-   * own toolbar (never compact, never framed) and the surface actions always
-   * ride in its `toolbarActions` slot.
+   * Renderers with no toolbar of their own (PPTX, and the plain-text/code
+   * viewer whose header is suppressed) use `ViewerFrame` on both surfaces —
+   * it is their only header, so it can never double up.
    */
   const framed = (node: React.ReactNode) =>
     fill ? (
@@ -665,13 +661,15 @@ export function ShowContentRenderer({
       return (
         <Suspense fallback={<RendererFallback className={mediaH} />}>
           <div className={cn(mediaH, 'overflow-hidden')}>
-            <PptxRenderer
-              blob={rawBlob}
-              binaryUrl={blobUrl}
-              fileName={fileName}
-              className="h-full"
-              toolbarActions={toolbarActions}
-            />
+            {alwaysFramed(
+              <PptxRenderer
+                blob={rawBlob}
+                binaryUrl={blobUrl}
+                filePath={sandboxPath || ''}
+                fileName={fileName}
+                className="h-full"
+              />,
+            )}
           </div>
         </Suspense>
       );

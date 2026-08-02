@@ -42,8 +42,25 @@ mock.module('../shared/db', () => ({
   hasDatabase: () => true,
 }));
 
-let continueCalls: Array<{ sessionId: string; text: string }> = [];
+let continueCalls: Array<{
+  sessionId: string;
+  text: string;
+  opencodeEnv?: Record<string, string | null>;
+}> = [];
 let createCalls: Array<any> = [];
+
+function expectExecutorEmailPrompt(prompt: string) {
+  for (const tool of ['connectors', 'discover', 'describe', 'call']) {
+    expect(prompt).toContain(`\`${tool}\``);
+  }
+  expect(prompt).toContain('"connector":"email"');
+  expect(prompt).toContain('"action":"reply_message"');
+  expect(prompt).toContain('"inbox_id":"inb-1"');
+  expect(prompt).toContain('"message_id":"msg-1"');
+  expect(prompt).toContain('"text":"<reply>"');
+  expect(prompt).toContain('Use `html` instead of `text` only when needed.');
+  expect(prompt).not.toContain('call `email.reply_message`');
+}
 
 const {
   dispatchAgentMailEvent,
@@ -89,7 +106,11 @@ beforeEach(() => {
   setEmailSessionLifecycleForTest({
     resolveProjectAutomationActor: async () => 'user-1',
     continueSession: async (input) => {
-      continueCalls.push({ sessionId: input.sessionId, text: input.text });
+      continueCalls.push({
+        sessionId: input.sessionId,
+        text: input.text,
+        opencodeEnv: input.opencodeEnv,
+      });
       return 'delivered';
     },
     createSession: async (input) => {
@@ -302,7 +323,9 @@ describe('dispatchAgentMailEvent', () => {
       }),
     ]);
     expect(createCalls[0].postCreate[1].text).toContain('Need help');
+    expectExecutorEmailPrompt(createCalls[0].postCreate[1].text);
     expect(createCalls[0].extraEnvVars.KORTIX_EMAIL_INBOX_ID).toBe('inb-1');
+    expect(createCalls[0].extraEnvVars.KORTIX_EXECUTOR_MCP_ENABLED).toBe('1');
     expect(createCalls[0].body.connector_bindings).toEqual({
       email: { authorization_id: 'profile-email-1' },
     });
@@ -385,6 +408,7 @@ describe('dispatchAgentMailEvent', () => {
     expect(createCalls).toHaveLength(0);
     expect(continueCalls).toHaveLength(1);
     expect(continueCalls[0].sessionId).toBe('sess-1');
+    expect(continueCalls[0].opencodeEnv).toEqual({ KORTIX_EXECUTOR_MCP_ENABLED: '1' });
   });
 
   test('known thread routes a new email into the existing session', async () => {
@@ -412,7 +436,9 @@ describe('dispatchAgentMailEvent', () => {
     expect(createCalls).toHaveLength(0);
     expect(continueCalls).toHaveLength(1);
     expect(continueCalls[0].sessionId).toBe('sess-1');
+    expect(continueCalls[0].opencodeEnv).toEqual({ KORTIX_EXECUTOR_MCP_ENABLED: '1' });
     expect(continueCalls[0].text).toContain('Customer <customer@example.com>');
+    expectExecutorEmailPrompt(continueCalls[0].text);
   });
 
   test('sender allow policy supports exact emails, domains, and regex', () => {

@@ -518,6 +518,17 @@ describe('dispatchAgentMailEvent', () => {
 
     expect(allowed([{ email: 'customer@example.com', name: 'Customer' }])).toBe(true);
     expect(allowed([{ address: 'customer@example.com' }])).toBe(true);
+    expect(
+      allowed([
+        {
+          email: ' Customer@Example.COM ',
+          address: 'customer@example.com',
+        },
+      ]),
+    ).toBe(true);
+    expect(allowed([{ email: '', address: 'customer@example.com' }])).toBe(true);
+    expect(allowed([{ email: 'customer@example.com', address: 'attacker@evil.test' }])).toBe(false);
+    expect(allowed([{ email: 'not a mailbox', address: 'customer@example.com' }])).toBe(false);
     expect(allowed([{ name: 'customer@example.com' }])).toBe(false);
     expect(allowed(['customer@example.com', 'attacker@evil.test'])).toBe(false);
     expect(

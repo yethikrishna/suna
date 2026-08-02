@@ -487,7 +487,16 @@ function canonicalStructuredMailbox(
     const [first] = from;
     if (typeof first === 'string') return canonicalMailbox(first);
     if (!first || typeof first !== 'object') return null;
-    return canonicalMailbox(first.email ?? first.address ?? '');
+    const rawEmail = typeof first.email === 'string' ? first.email.trim() : '';
+    const rawAddress = typeof first.address === 'string' ? first.address.trim() : '';
+    const email = rawEmail ? canonicalMailbox(rawEmail) : null;
+    const address = rawAddress ? canonicalMailbox(rawAddress) : null;
+    // AgentMail payload variants have used both keys. Treat them as aliases,
+    // but never choose one silently when a malformed or conflicting second
+    // value is present: either condition makes the sender ambiguous.
+    if ((rawEmail && !email) || (rawAddress && !address)) return null;
+    if (email && address && email !== address) return null;
+    return email ?? address;
   }
   return typeof from === 'string' ? canonicalMailbox(from) : null;
 }

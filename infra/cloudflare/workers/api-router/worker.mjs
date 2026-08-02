@@ -144,7 +144,7 @@ export default {
     const isGateway = url.hostname.includes('gateway');
 
     const active =
-      (isGateway ? env.GATEWAY_ACTIVE_BACKEND : env.ACTIVE_BACKEND) || 'eks';
+      (isGateway ? env.GATEWAY_ACTIVE_BACKEND : env.ACTIVE_BACKEND) || 'ecs-fargate';
     const backends = isGateway
       ? {
           eks: env.GATEWAY_BACKEND_EKS,

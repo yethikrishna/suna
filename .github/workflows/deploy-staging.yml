@@ -31,7 +31,7 @@ env:
   STAGING_SUPABASE_REF: ujzsbwvurfyeuerxxeaz
   API_APP: kortix-api
   GATEWAY_APP: kortix-gateway
-  API_HOST: staging-api-eks.kortix.com
+  API_HOST: staging-api-ecs-fargate.kortix.com
   GATEWAY_HOST: gateway-staging.kortix.com
   PUBLIC_API_HOST: staging-api.kortix.com
   WEB_HOST: staging.kortix.com
@@ -418,18 +418,15 @@ jobs:
             exit 1
           fi
 
-          # This REST deploy replaces all staging Worker bindings. Keep these
-          # values equal to the staging defaults in wrangler.toml. The API uses
-          # EKS. The gateway uses ECS Fargate.
+          # This REST deploy replaces all staging Worker bindings. The API
+          # and gateway both use ECS Fargate. EKS was decommissioned 2026-08-02.
           metadata="$(jq -cn '{
             main_module: "worker.mjs",
             compatibility_date: "2026-06-01",
             bindings: [
-              {type:"plain_text", name:"ACTIVE_BACKEND", text:"eks"},
-              {type:"plain_text", name:"BACKEND_EKS", text:"https://staging-api-eks.kortix.com"},
+              {type:"plain_text", name:"ACTIVE_BACKEND", text:"ecs-fargate"},
               {type:"plain_text", name:"BACKEND_ECS_FARGATE", text:"https://staging-api-ecs-fargate.kortix.com"},
               {type:"plain_text", name:"GATEWAY_ACTIVE_BACKEND", text:"ecs-fargate"},
-              {type:"plain_text", name:"GATEWAY_BACKEND_EKS", text:"https://gateway-staging-eks.kortix.com"},
               {type:"plain_text", name:"GATEWAY_BACKEND_ECS_FARGATE", text:"https://gateway-staging-ecs-fargate.kortix.com"}
             ]
           }')"

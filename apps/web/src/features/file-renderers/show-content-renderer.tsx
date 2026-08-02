@@ -661,13 +661,14 @@ export function ShowContentRenderer({
       return (
         <Suspense fallback={<RendererFallback className={mediaH} />}>
           <div className={cn(mediaH, 'overflow-hidden')}>
-            {alwaysFramed(
+            {framed(
               <PptxRenderer
                 blob={rawBlob}
                 binaryUrl={blobUrl}
-                filePath={sandboxPath || ''}
                 fileName={fileName}
                 className="h-full"
+                compact={!fill}
+                toolbarActions={fill ? toolbarActions : undefined}
               />,
             )}
           </div>

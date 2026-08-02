@@ -1007,10 +1007,8 @@ export function FileContentRenderer({
               <PptxRenderer
                 blob={rawBlob}
                 binaryUrl={blobUrl}
-                filePath={filePath}
                 fileName={fileName}
                 className="h-full"
-                onDownload={handleDownload}
               />
             </Suspense>
           )}

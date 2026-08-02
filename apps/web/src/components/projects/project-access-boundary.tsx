@@ -107,6 +107,37 @@ export function shouldPollForApproval(state: AccessGateState): boolean {
 }
 
 /**
+ * The three 403 faces. Only these know who the caller is and that the project
+ * exists, so only these show the account/project facts, the approval note, and
+ * the platform-admin escape hatch.
+ */
+export function isForbiddenState(state: AccessGateState): boolean {
+  return state === 'request' || shouldPollForApproval(state);
+}
+
+/** What the primary button on a given screen does. */
+export type GateAction = 'request' | 'recheck' | 'retry' | 'leave';
+
+/**
+ * `notFound` is the odd one out: it is terminal, so its primary action is the
+ * way out rather than a retry. Offering "Try again" on a deleted project just
+ * re-runs a request that can only 404 again.
+ */
+export function gateAction(state: AccessGateState): GateAction {
+  switch (state) {
+    case 'request':
+      return 'request';
+    case 'sent':
+    case 'alreadyRequested':
+      return 'recheck';
+    case 'unavailable':
+      return 'retry';
+    case 'notFound':
+      return 'leave';
+  }
+}
+
+/**
  * Decides which screen wins when the user has a request in flight AND the
  * project fetch is failing.
  *
@@ -284,7 +315,10 @@ function AccessGateScreen({
   });
 
   const copy = gateCopyKeys(state);
-  const forbidden = state === 'request' || shouldPollForApproval(state);
+  const forbidden = isForbiddenState(state);
+  const action = gateAction(state);
+  const goToProjects = () => router.push('/projects');
+  const showAdminBypass = forbidden && !!adminRole?.isAdmin;
 
   return (
     <AuthFrame>
@@ -318,7 +352,7 @@ function AccessGateScreen({
             </DetailPanel>
           ) : null}
 
-          {state === 'request' ? (
+          {action === 'request' ? (
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -359,51 +393,68 @@ function AccessGateScreen({
                 {t.raw('projectAccessBoundary.requestAction')}
               </Button>
             </form>
+          ) : action === 'leave' ? (
+            // Terminal. The way out IS the primary action, so it is a button
+            // rather than the quiet link the other screens carry underneath.
+            <Button type="button" size="lg" className="mt-5 w-full" onClick={goToProjects}>
+              {t.raw('projectAccessBoundary.projectsAction')}
+            </Button>
           ) : (
             <Button
               type="button"
               size="lg"
-              variant={shouldPollForApproval(state) ? 'secondary' : 'default'}
+              variant={action === 'recheck' ? 'secondary' : 'default'}
               className="mt-5 w-full"
               onClick={onRecheck}
               disabled={rechecking}
             >
               {rechecking ? <Loading className="size-4 shrink-0" /> : null}
-              {shouldPollForApproval(state)
+              {action === 'recheck'
                 ? t.raw('projectAccessBoundary.checkNowAction')
                 : t.raw('projectAccessBoundary.tryAgainAction')}
             </Button>
           )}
 
-          <div className="text-muted-foreground mt-8 space-y-2 text-sm">
-            {forbidden ? <p>{t.raw('projectAccessBoundary.approvalNote')}</p> : null}
-            <div className="flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => router.push('/projects')}
-                className="hover:text-foreground -my-2 inline-block cursor-pointer py-2 underline-offset-4 transition-colors hover:underline"
-              >
-                {t.raw('projectAccessBoundary.projectsAction')}
-              </button>
-              {adminRole?.isAdmin ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-kortix-orange hover:text-kortix-orange hover:bg-kortix-orange/10 -mr-2 h-7 shrink-0 px-2 text-xs"
-                  onClick={() => bypassMutation.mutate()}
-                  disabled={bypassMutation.isPending}
-                >
-                  {bypassMutation.isPending ? (
-                    <Loading className="size-3.5 shrink-0" />
-                  ) : (
-                    <ShieldWarningIcon className="size-3.5 shrink-0" />
-                  )}
-                  {t.raw('projectAccessBoundary.openAsAdmin')}
-                </Button>
-              ) : null}
+          {action !== 'leave' || showAdminBypass ? (
+            <div className="text-muted-foreground mt-8 space-y-2 text-sm">
+              {forbidden ? <p>{t.raw('projectAccessBoundary.approvalNote')}</p> : null}
+              <div className="flex items-center justify-between gap-3">
+                {action === 'leave' ? (
+                  <span />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={goToProjects}
+                    className="hover:text-foreground -my-2 inline-block cursor-pointer py-2 underline-offset-4 transition-colors hover:underline"
+                  >
+                    {t.raw('projectAccessBoundary.projectsAction')}
+                  </button>
+                )}
+                {/*
+                  403 only. Admin bypass re-fetches with a bypass header, which
+                  cannot resurrect a deleted project or clear a 500 — offering
+                  it on those screens is a dead control.
+                */}
+                {showAdminBypass ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-kortix-orange hover:text-kortix-orange hover:bg-kortix-orange/10 -mr-2 h-7 shrink-0 px-2 text-xs"
+                    onClick={() => bypassMutation.mutate()}
+                    disabled={bypassMutation.isPending}
+                  >
+                    {bypassMutation.isPending ? (
+                      <Loading className="size-3.5 shrink-0" />
+                    ) : (
+                      <ShieldWarningIcon className="size-3.5 shrink-0" />
+                    )}
+                    {t.raw('projectAccessBoundary.openAsAdmin')}
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </Rise>
     </AuthFrame>

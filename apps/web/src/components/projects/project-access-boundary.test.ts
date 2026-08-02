@@ -4,9 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 import {
   errorStatus,
+  gateAction,
   gateCopyKeys,
   gateStateForError,
   gateStateForRequestResult,
+  isForbiddenState,
   resolveGateState,
   shouldPollForApproval,
   type AccessGateState,
@@ -94,6 +96,55 @@ describe('gateStateForRequestResult', () => {
 describe('shouldPollForApproval', () => {
   test('polls exactly the states whose copy promises the page self-opens', () => {
     expect(ALL_STATES.filter(shouldPollForApproval)).toEqual(['sent', 'alreadyRequested']);
+  });
+});
+
+describe('gateAction', () => {
+  test('every state gets an action — no screen is a dead end', () => {
+    // Enumerated rather than spot-checked: the whole point is that no state
+    // silently falls through to whatever the `else` branch happens to render.
+    expect(ALL_STATES.map(gateAction)).toEqual(['request', 'recheck', 'recheck', 'leave', 'retry']);
+  });
+
+  test('a deleted project is never offered a retry', () => {
+    // 404 is terminal. "Try again" there re-runs a request that can only 404
+    // again, so the primary action has to be the way out instead.
+    expect(gateAction('notFound')).toBe('leave');
+    expect(gateAction('notFound')).not.toBe('retry');
+  });
+
+  test('only a transient failure offers a retry', () => {
+    expect(ALL_STATES.filter((s) => gateAction(s) === 'retry')).toEqual(['unavailable']);
+  });
+
+  test('the recheck action lines up exactly with the states that poll', () => {
+    // If these ever diverge, a screen either polls with no way to check now, or
+    // shows "Check now" on a screen that is not waiting on anything.
+    expect(ALL_STATES.filter((s) => gateAction(s) === 'recheck')).toEqual(
+      ALL_STATES.filter(shouldPollForApproval),
+    );
+  });
+});
+
+describe('isForbiddenState', () => {
+  test('covers exactly the three screens behind a 403', () => {
+    expect(ALL_STATES.filter(isForbiddenState)).toEqual(['request', 'sent', 'alreadyRequested']);
+  });
+
+  test('a 404 or a transient failure is not a permission problem', () => {
+    // This gates the account/project facts, the approval note, and the admin
+    // escape hatch. Admin bypass re-fetches with a bypass header — it cannot
+    // resurrect a deleted project or clear a 500, so offering it there is a
+    // dead control.
+    expect(isForbiddenState('notFound')).toBe(false);
+    expect(isForbiddenState('unavailable')).toBe(false);
+  });
+
+  test('the admin escape hatch is gated on the 403 states, not just on the role', () => {
+    expect(componentSource).toContain('const showAdminBypass = forbidden && !!adminRole?.isAdmin');
+    expect(componentSource).toContain('{showAdminBypass ? (');
+    // The bare role check was what leaked the control onto 404 and 500.
+    expect(componentSource).not.toMatch(/\{adminRole\?\.isAdmin \? \(/);
   });
 });
 

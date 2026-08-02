@@ -1210,7 +1210,7 @@ function SessionTurn({
                 return true;
               }),
             { standaloneCallIds },
-          ).map((segment, index) => {
+          ).map((segment, index, segments) => {
             if (segment.kind === 'burst') {
               return (
                 <ActivityBurst
@@ -1218,6 +1218,7 @@ function SessionTurn({
                   parts={segment.parts}
                   sessionId={sessionId}
                   working={working}
+                  isTrailing={index === segments.length - 1}
                   disableNavigation={disableToolNavigation}
                 />
               );

@@ -661,21 +661,23 @@ function UserMessageActions({
   onRewind: (messageId: string, text: string) => void;
   rewindDisabled: boolean;
 }) {
-  if (rewindDisabled) return null;
+  // Copy stays available while the agent is busy / rewind is locked.
+  // Only edit-from-here is gated — hiding the whole bar was wrong.
   return (
     <div className="flex justify-end gap-0.5 opacity-0 transition-opacity duration-150 group-hover/turn:opacity-100">
-      <Hint label="Edit from here" side="bottom" align="center">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label="Edit message and rewind session"
-          disabled={rewindDisabled}
-          onClick={() => onRewind(messageId, rewindPromptText)}
-        >
-          <PencilSimpleIcon weight="regular" className="text-foreground size-4" />
-        </Button>
-      </Hint>
+      {!rewindDisabled && (
+        <Hint label="Edit from here" side="bottom" align="center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Edit message and rewind session"
+            onClick={() => onRewind(messageId, rewindPromptText)}
+          >
+            <PencilSimpleIcon weight="regular" className="text-foreground size-4" />
+          </Button>
+        </Hint>
+      )}
       <CopyButton code={copyText} size="sm" />
     </div>
   );

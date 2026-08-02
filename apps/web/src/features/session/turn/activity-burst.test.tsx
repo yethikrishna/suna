@@ -13,9 +13,25 @@ function tool(id: string, name: string, state: Record<string, unknown>): ToolPar
 }
 
 describe('burstIsRunning', () => {
-  test('a completed burst is not running even while the turn works', () => {
+  test('a completed non-trailing burst is not running even while the turn works', () => {
+    // Burst already closed by later text/standalone — collapse it.
     const parts: Part[] = [tool('1', 'read', { status: 'completed', time: { start: 1, end: 2 } })];
-    expect(burstIsRunning(parts, true)).toBe(false);
+    expect(burstIsRunning(parts, true, false)).toBe(false);
+  });
+
+  test('a completed trailing burst stays running while the turn works', () => {
+    // Gap between SSE tool parts: every part settled, next call not arrived yet.
+    // Without this the disclosure blinks shut between every pair of calls.
+    const parts: Part[] = [
+      tool('1', 'read', { status: 'completed', time: { start: 1, end: 2 } }),
+      tool('2', 'bash', { status: 'completed', time: { start: 3, end: 4 } }),
+    ];
+    expect(burstIsRunning(parts, true, true)).toBe(true);
+  });
+
+  test('a trailing burst collapses once the turn stops working', () => {
+    const parts: Part[] = [tool('1', 'read', { status: 'completed', time: { start: 1, end: 2 } })];
+    expect(burstIsRunning(parts, false, true)).toBe(false);
   });
 
   test('a pending part while the turn works is running', () => {
@@ -40,11 +56,11 @@ describe('burstIsRunning', () => {
     expect(burstIsRunning(parts, true)).toBe(true);
   });
 
-  test('a reasoning part with an end time does not', () => {
+  test('a reasoning part with an end time does not when the burst is not trailing', () => {
     const parts: Part[] = [
       { id: 'r', type: 'reasoning', text: 'done', time: { start: 1, end: 2 } } as unknown as Part,
     ];
-    expect(burstIsRunning(parts, true)).toBe(false);
+    expect(burstIsRunning(parts, true, false)).toBe(false);
   });
 });
 

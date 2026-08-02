@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 
+import { CopyButton } from '@/components/markdown/copy-button';
 import { GridFileCard } from '@/features/session/grid-file-card';
 import {
   parseAgentMentionReferences,
@@ -68,7 +69,7 @@ export function OptimisticTurn({
   className?: string;
 }) {
   return (
-    <div data-turn-id="optimistic" className={cn('mt-12 first:mt-0', className)}>
+    <div data-turn-id="optimistic" className={cn('group/turn mt-12 first:mt-0', className)}>
       <div className="flex justify-end">
         <OptimisticUserBubble
           text={text}
@@ -143,6 +144,9 @@ function OptimisticUserBubble({
           )}
         </div>
       )}
+      <div className="flex justify-end opacity-0 transition-opacity duration-150 group-hover/turn:opacity-100">
+        <CopyButton code={text} size="sm" />
+      </div>
     </div>
   );
 }

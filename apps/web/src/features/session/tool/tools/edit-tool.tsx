@@ -18,6 +18,7 @@ import {
   useToolIndent,
 } from '@/features/session/tool/shared/infrastructure';
 import { ToolRegistry } from '@/features/session/tool/shared/registry';
+import { ToolResultCard } from '@/features/session/tool/shared/result-card';
 import type { ToolProps } from '@/features/session/tool/shared/types';
 import { cn } from '@/lib/utils';
 import { useFilePreviewStore } from '@/stores/file-preview-store';
@@ -82,9 +83,9 @@ export function EditTool({ part, defaultOpen, forceOpen, locked }: ToolProps) {
       {isError ? (
         <ToolOutputFallback output={output} toolName="edit" />
       ) : hasDiff ? (
-        <div data-scrollable className="max-h-96 overflow-auto">
+        <ToolResultCard>
           <InlineDiffView oldValue={before} newValue={after} filename={filename} />
-        </div>
+        </ToolResultCard>
       ) : codeEdit ? (
         <>
           {/* Morph's instructions describe the edit the card below carries, so
@@ -97,13 +98,13 @@ export function EditTool({ part, defaultOpen, forceOpen, locked }: ToolProps) {
           <ToolCodeCard code={codeEdit} language={ext} />
         </>
       ) : isStalePending ? (
-        <div className="p-4 pt-0">
+        <ToolResultCard bodyClassName="px-2 py-1.5">
           <TextShimmer>
             {tHardcodedUi.raw(
               'componentsSessionToolRenderers.line2853JsxTextWaitingForFileContent',
             )}
           </TextShimmer>
-        </div>
+        </ToolResultCard>
       ) : null}
       <DiagnosticsDisplay diagnostics={diagnostics} filePath={filePath} />
     </BasicTool>

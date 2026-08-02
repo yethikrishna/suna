@@ -24,6 +24,11 @@ describe('OptimisticTurn', () => {
     expect(markup).toContain('ship the thing');
   });
 
+  test('offers copy before the server turn exists', () => {
+    const markup = render(<OptimisticTurn text="ship the thing" />);
+    expect(markup).toContain('aria-label="Copy code"');
+  });
+
   test('waits with a Thinking shimmer — no logomark, no boot copy', () => {
     const markup = render(<OptimisticTurn text="d" />);
     expect(markup).toContain('Thinking');

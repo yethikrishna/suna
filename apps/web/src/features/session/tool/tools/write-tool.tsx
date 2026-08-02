@@ -17,6 +17,7 @@ import {
   ToolRunningContext,
 } from '@/features/session/tool/shared/infrastructure';
 import { ToolRegistry } from '@/features/session/tool/shared/registry';
+import { ToolResultCard } from '@/features/session/tool/shared/result-card';
 import type { ToolProps } from '@/features/session/tool/shared/types';
 
 import { useFilePreviewStore } from '@/stores/file-preview-store';
@@ -64,13 +65,13 @@ export function WriteTool({ part, defaultOpen, forceOpen, locked }: ToolProps) {
       ) : content ? (
         <ToolCodeCard code={content} language={ext} />
       ) : isStalePending ? (
-        <div className="p-4 pt-0">
+        <ToolResultCard bodyClassName="px-2 py-1.5">
           <TextShimmer>
             {tHardcodedUi.raw(
               'componentsSessionToolRenderers.line2853JsxTextWaitingForFileContent',
             )}
           </TextShimmer>
-        </div>
+        </ToolResultCard>
       ) : null}
       <DiagnosticsDisplay diagnostics={diagnostics} filePath={filePath} />
     </BasicTool>

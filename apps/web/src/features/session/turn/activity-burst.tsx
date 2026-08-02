@@ -4,10 +4,11 @@
  * One burst — a maximal run of non-text parts.
  *
  * Renders as a chain of thought: a muted summary line that expands into a
- * connected vertical chain of steps. Open while it streams, auto-collapsed the
- * moment it settles, and manual after the user's first click. Collapsed height
- * is always one row, whatever the burst contains. A settled chain closes on a
- * "Done" step so the rail terminates instead of trailing off.
+ * connected vertical chain of steps. The trailing burst stays open for the
+ * whole working turn (so SSE gaps between tool calls do not blink it shut);
+ * earlier bursts auto-collapse once later text/standalone closes them. Manual
+ * after the user's first click. Collapsed height is always one row. A settled
+ * chain closes on a "Done" step so the rail terminates instead of trailing off.
  */
 
 import { CaretRightIcon, CheckCircleIcon, ClockCounterClockwiseIcon } from '@phosphor-icons/react';
@@ -94,9 +95,23 @@ function ThoughtStepBody({ texts, running }: { texts: ReadonlyArray<string>; run
   );
 }
 
-/** True when the turn is working AND this burst has an unfinished part. */
-export function burstIsRunning(parts: ReadonlyArray<Part>, working: boolean): boolean {
+/**
+ * True when this burst should stay open as "in progress".
+ *
+ * - Turn idle → closed.
+ * - Trailing burst while the turn still works → open. Tool parts often settle
+ *   for a beat before the next SSE call arrives; treating that gap as settled
+ *   blinks the disclosure shut between every pair of calls.
+ * - Non-trailing burst → open only while it still has an unfinished part
+ *   (later text/standalone already closed this run).
+ */
+export function burstIsRunning(
+  parts: ReadonlyArray<Part>,
+  working: boolean,
+  isTrailing = false,
+): boolean {
   if (!working) return false;
+  if (isTrailing) return true;
   return parts.some((part) => {
     const state = (part as { state?: { status?: string } }).state;
     if (state?.status === 'pending' || state?.status === 'running') return true;
@@ -125,14 +140,17 @@ export function ActivityBurst({
   parts,
   sessionId,
   working,
+  isTrailing = false,
   disableNavigation,
 }: {
   parts: Part[];
   sessionId: string;
   working: boolean;
+  /** Last segment in the turn — stay open across SSE gaps between tool calls. */
+  isTrailing?: boolean;
   disableNavigation?: boolean;
 }) {
-  const running = burstIsRunning(parts, working);
+  const running = burstIsRunning(parts, working, isTrailing);
   const [open, setOpen] = useState(running);
   const userToggled = useRef(false);
 

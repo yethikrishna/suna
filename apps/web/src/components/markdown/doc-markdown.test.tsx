@@ -14,10 +14,16 @@ function withIntl(node: ReactNode) {
 }
 
 const TABLE_MD = ['| Priority | Name |', '| --- | --- |', '| High | G1 |', ''].join('\n');
+const ALIGN_TABLE_MD = ['| Center | Right |', '| :---: | ---: |', '| b | c |', ''].join('\n');
 
 function cellClasses(html: string, tag: 'th' | 'td'): string[] {
   const matches = [...html.matchAll(new RegExp(`<${tag} class="([^"]*)"`, 'g'))];
   return matches.map((m) => m[1]);
+}
+
+function cellTextAligns(html: string, tag: 'th' | 'td'): (string | undefined)[] {
+  const matches = [...html.matchAll(new RegExp(`<${tag}\\s+([^>]*)>`, 'g'))];
+  return matches.map((m) => /text-align:\s*([a-z]+)/.exec(m[1])?.[1]);
 }
 
 describe('DocMarkdown table cells', () => {
@@ -40,5 +46,19 @@ describe('DocMarkdown table cells', () => {
     for (const cls of classes) {
       expect(cls).toContain('break-normal');
     }
+  });
+
+  test('th forwards alignment through sanitize for :---: and ---: columns', () => {
+    const html = renderToStaticMarkup(withIntl(<DocMarkdown content={ALIGN_TABLE_MD} />));
+    const aligns = cellTextAligns(html, 'th');
+
+    expect(aligns).toEqual(['center', 'right']);
+  });
+
+  test('td forwards alignment through sanitize for :---: and ---: columns', () => {
+    const html = renderToStaticMarkup(withIntl(<DocMarkdown content={ALIGN_TABLE_MD} />));
+    const aligns = cellTextAligns(html, 'td');
+
+    expect(aligns).toEqual(['center', 'right']);
   });
 });

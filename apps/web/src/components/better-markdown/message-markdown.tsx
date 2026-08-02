@@ -88,16 +88,17 @@ const components: Components = {
     </blockquote>
   ),
   table: ({ children }) => (
-    <div className="border-border mt-6 w-full overflow-hidden overflow-y-auto rounded-md border">
+    <div className="border-border mt-6 w-full overflow-hidden overflow-x-auto rounded-md border">
       <table className="w-full">{children}</table>
     </div>
   ),
-  th: ({ children, className }) => (
+  th: ({ children, className, node: _node, ...props }) => (
     <th
       className={cn(
-        "bg-accent border-b px-4 py-2 text-left font-semibold whitespace-nowrap break-normal [&[align=center]]:text-center [&[align=right]]:text-right",
+        "bg-muted border-b px-4 py-2 text-left font-semibold whitespace-nowrap break-normal [&[align=center]]:text-center [&[align=right]]:text-right",
         className,
       )}
+      {...props}
     >
       {children}
     </th>
@@ -107,12 +108,13 @@ const components: Components = {
       {children}
     </tr>
   ),
-  td: ({ children, className }) => (
+  td: ({ children, className, node: _node, ...props }) => (
     <td
       className={cn(
         "px-4 py-2 text-left font-normal break-normal [&[align=center]]:text-center [&[align=right]]:text-right",
         className,
       )}
+      {...props}
     >
       {children}
     </td>

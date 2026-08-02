@@ -632,8 +632,8 @@ export const DocMarkdown = React.memo<DocMarkdownProps>(
         }: React.ThHTMLAttributes<HTMLTableCellElement> & { node?: unknown }) => (
           <th
             className={cn(
-              'text-foreground px-4 py-2 text-left font-semibold whitespace-nowrap break-normal',
               thClassName,
+              'text-foreground px-4 py-2 text-left font-semibold whitespace-nowrap break-normal',
             )}
             {...props}
           >
@@ -647,7 +647,7 @@ export const DocMarkdown = React.memo<DocMarkdownProps>(
           ...props
         }: React.TdHTMLAttributes<HTMLTableCellElement> & { node?: unknown }) => (
           <td
-            className={cn('text-foreground px-4 py-2 text-left font-normal break-normal', tdClassName)}
+            className={cn(tdClassName, 'text-foreground px-4 py-2 text-left font-normal break-normal')}
             {...props}
           >
             {wrapChildrenWithPaths(children)}

@@ -95,8 +95,8 @@ const components: Components = {
   th: ({ children, className, node: _node, ...props }) => (
     <th
       className={cn(
-        "bg-muted border-b px-4 py-2 text-left font-semibold whitespace-nowrap break-normal [&[align=center]]:text-center [&[align=right]]:text-right",
         className,
+        "bg-muted border-b px-4 py-2 text-left font-semibold whitespace-nowrap break-normal [&[align=center]]:text-center [&[align=right]]:text-right",
       )}
       {...props}
     >
@@ -111,8 +111,8 @@ const components: Components = {
   td: ({ children, className, node: _node, ...props }) => (
     <td
       className={cn(
-        "px-4 py-2 text-left font-normal break-normal [&[align=center]]:text-center [&[align=right]]:text-right",
         className,
+        "px-4 py-2 text-left font-normal break-normal [&[align=center]]:text-center [&[align=right]]:text-right",
       )}
       {...props}
     >

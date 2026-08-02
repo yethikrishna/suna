@@ -15,6 +15,10 @@ function withIntl(node: ReactNode) {
 
 const TABLE_MD = ['| Priority | Name |', '| --- | --- |', '| High | G1 |', ''].join('\n');
 const ALIGN_TABLE_MD = ['| Center | Right |', '| :---: | ---: |', '| b | c |', ''].join('\n');
+const CONFLICTING_CLASS_TABLE_HTML = [
+  '<table><tr><th class="whitespace-normal">Head</th></tr>',
+  '<tr><td class="break-all">cell</td></tr></table>',
+].join('\n');
 
 function cellClasses(html: string, tag: 'th' | 'td'): string[] {
   const matches = [...html.matchAll(new RegExp(`<${tag} class="([^"]*)"`, 'g'))];
@@ -60,5 +64,30 @@ describe('UnifiedMarkdown table cells', () => {
     const aligns = cellTextAligns(html, 'td');
 
     expect(aligns).toEqual(['center', 'right']);
+  });
+
+  test('th keeps whitespace-nowrap and break-normal when a raw HTML class conflicts', () => {
+    const html = renderToStaticMarkup(
+      withIntl(<UnifiedMarkdown content={CONFLICTING_CLASS_TABLE_HTML} />),
+    );
+    const classes = cellClasses(html, 'th');
+
+    expect(classes.length).toBeGreaterThan(0);
+    for (const cls of classes) {
+      expect(cls).toContain('whitespace-nowrap');
+      expect(cls).toContain('break-normal');
+    }
+  });
+
+  test('td keeps break-normal when a raw HTML class conflicts', () => {
+    const html = renderToStaticMarkup(
+      withIntl(<UnifiedMarkdown content={CONFLICTING_CLASS_TABLE_HTML} />),
+    );
+    const classes = cellClasses(html, 'td');
+
+    expect(classes.length).toBeGreaterThan(0);
+    for (const cls of classes) {
+      expect(cls).toContain('break-normal');
+    }
   });
 });

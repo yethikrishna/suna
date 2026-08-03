@@ -13,6 +13,7 @@ import { runSessionsAnswer, runSessionsApprove, runSessionsPending } from './ses
 import { runSessionsChat, runSessionsLog, runSessionsStatus } from './sessions-chat.ts';
 import { runSessionsConnect } from './sessions-connect.ts';
 import { runSessionsDigest } from './sessions-digest.ts';
+import { runSessionsScope } from './sessions-scope.ts';
 import { runSessionsShell } from './sessions-shell.ts';
 import { C, help, pad, status } from '../style.ts';
 import { sessionWebUrl } from '../web-url.ts';
@@ -45,6 +46,11 @@ Subcommands:
                                     --connector <alias>=<authorization-id>
                                       bind a connector authorization
                                       (repeatable).
+                                    --no-connectors          use no connector
+                                      authorizations.
+                                    --require-connector <alias>
+                                      require a connected authorization before
+                                      provisioning (repeatable).
                                     --context <key>=<value>  runtime context
                                       (repeatable).
   chat [<session-id>]               Talk to a session's agent (REPL, or
@@ -73,6 +79,13 @@ Subcommands:
                                     stripped. --since <7d>, --json.
                                     Aliases: review, summary.
   info <session-id>                 Show one session. --json.
+  scope <session-id>                Read or replace the session's secret and
+                                    connector access. Changes apply to the next
+                                    prompt. --secret, --no-secrets,
+                                    --inherit-secrets, --connector,
+                                    --no-connectors, --require-connector,
+                                    --no-required-connectors, --json.
+                                    Alias: access.
   preview <session-id> [port]       Print a clickable preview URL for a port
                                     in the session's sandbox (default 3000).
                                     Root-served (assets work). --port, --json.
@@ -131,6 +144,9 @@ export async function runSessions(argv: string[]): Promise<number> {
   }
   if (sub === 'answer') {
     return runSessionsAnswer(argv.slice(1));
+  }
+  if (sub === 'scope' || sub === 'access') {
+    return runSessionsScope(argv.slice(1));
   }
   const rest = argv.slice(1);
   // None of the subcommands below (ls/new/info/preview/restart/rename/rm/
@@ -205,6 +221,7 @@ export type SessionOverrides = {
   model?: string;
   secrets?: string[];
   connectors?: Record<string, { authorization_id: string }>;
+  requiredConnectors?: string[];
   runtimeContext?: Record<string, string>;
 };
 
@@ -223,16 +240,28 @@ export function parseSessionOverrides(argv: string[]): SessionOverrides {
   // from omitting the field (agent's normal set); --no-secrets expresses it.
   if (secrets.length) out.secrets = secrets;
   else if (noSecrets) out.secrets = [];
-  for (const pair of takeFlagValues(argv, ['--connector'])) {
+  const connectorPairs = takeFlagValues(argv, ['--connector']);
+  const noConnectors = takeFlagBool(argv, ['--no-connectors']);
+  if (connectorPairs.length && noConnectors) {
+    throw new Error('pass either --connector <alias>=<authorization-id> or --no-connectors, not both');
+  }
+  for (const pair of connectorPairs) {
     const eq = pair.indexOf('=');
-    if (eq <= 0) throw new Error(`--connector expects alias=authorization_id, got "${pair}"`);
+    if (eq <= 0 || eq === pair.length - 1) {
+      throw new Error(`--connector expects alias=authorization_id, got "${pair}"`);
+    }
     (out.connectors ??= {})[pair.slice(0, eq)] = {
       authorization_id: pair.slice(eq + 1),
     };
   }
+  if (noConnectors) out.connectors = {};
+  const requiredConnectors = takeFlagValues(argv, ['--require-connector']);
+  if (requiredConnectors.length) out.requiredConnectors = [...new Set(requiredConnectors)];
   for (const pair of takeFlagValues(argv, ['--context'])) {
     const eq = pair.indexOf('=');
-    if (eq <= 0) throw new Error(`--context expects key=value, got "${pair}"`);
+    if (eq <= 0 || eq === pair.length - 1) {
+      throw new Error(`--context expects key=value, got "${pair}"`);
+    }
     (out.runtimeContext ??= {})[pair.slice(0, eq)] = pair.slice(eq + 1);
   }
   return out;
@@ -298,7 +327,10 @@ async function sessionsNew(
   if (agent) body.agent_name = agent;
   if (overrides.model) body.opencode_model = overrides.model;
   if (overrides.secrets !== undefined) body.secrets = overrides.secrets;
-  if (overrides.connectors) body.connector_bindings = overrides.connectors;
+  if (overrides.connectors !== undefined) body.connector_bindings = overrides.connectors;
+  if (overrides.requiredConnectors !== undefined) {
+    body.require_connectors = overrides.requiredConnectors;
+  }
   if (overrides.runtimeContext) body.runtime_context = overrides.runtimeContext;
 
   const prepared = await prepareClientCreatedBranch(ctx, body);

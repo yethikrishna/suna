@@ -1,6 +1,6 @@
 # Reloading a live session's config
 
-*Verified against `/Users/ivanbagaric/Documents/MyWorkspace/kortix/computer` @ `7f9c3734fb` (branch `prompt-connector-card`). All line numbers are from that checkout.*
+*Verified against the repo @ `7f9c3734fb` (branch `prompt-connector-card`). All line numbers are from that checkout.*
 
 ## Root cause
 

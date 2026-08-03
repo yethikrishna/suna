@@ -52,14 +52,15 @@ describe('tryDisposeReload', () => {
     expect(OPENCODE_SRC).toContain('const baseEnv = currentProjectEnv')
   })
 
-  test('a 200 alone is NOT success — the content-type is checked', () => {
+  test('a 200 alone is NOT success — content-type AND body are checked', () => {
     // opencode answers 200 text/html for every unknown path (its SPA
-    // catch-all). Treating that as success would report "reloaded" for an
-    // endpoint that does not exist, which is exactly how the SDK's
-    // systemReload() is broken today.
+    // catch-all), which is exactly how the SDK's systemReload() is broken.
+    // And the endpoint answers `true`: a JSON `false` with a 200 would
+    // otherwise be read as "reloaded" and skip the fallback, leaving the old
+    // config running while we reported success.
     const body = disposeReloadBody()
     expect(body).toContain("includes('application/json')")
-    expect(body).toMatch(/res\.ok\s*&&/)
+    expect(body).toContain('body === true')
   })
 
   test('it reports failure rather than throwing, so the caller can fall back', () => {

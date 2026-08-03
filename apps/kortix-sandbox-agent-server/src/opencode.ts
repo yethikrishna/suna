@@ -1141,14 +1141,21 @@ export function createOpencodeSupervisor(
         `http://127.0.0.1:${currentCfg.opencodeInternalPort}/global/dispose`,
         { method: 'POST', signal: AbortSignal.timeout(15_000) },
       )
-      // Content-type matters: the SPA catch-all also answers 200. A JSON body
-      // is what distinguishes the real endpoint from the web UI.
-      if (res.ok && (res.headers.get('content-type') ?? '').includes('application/json')) {
+      // Content-type matters: the SPA catch-all also answers 200, so a status
+      // check alone cannot tell the real endpoint from the web UI.
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      // And the BODY matters: the endpoint answers `true` on success. A JSON
+      // `false` (or an error object) with a 200 would otherwise be read as
+      // "reloaded" and skip the fallback, leaving the old config running while
+      // we reported success.
+      const body = res.ok && isJson ? await res.json().catch(() => null) : null
+      if (body === true) {
         logger.info('[opencode] config reloaded via dispose (no respawn)')
         return true
       }
-      logger.info('[opencode] dispose unavailable; falling back to restart', {
+      logger.info('[opencode] dispose did not confirm; falling back to restart', {
         status: res.status,
+        contentType: res.headers.get('content-type'),
       })
     } catch (err) {
       logger.info('[opencode] dispose failed; falling back to restart', {

@@ -1143,7 +1143,11 @@ export function createOpencodeSupervisor(
       )
       // Content-type matters: the SPA catch-all also answers 200, so a status
       // check alone cannot tell the real endpoint from the web UI.
-      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      // Case-insensitive, and `application/<vendor>+json` counts — a false
+      // negative here would fall back to an ~8s respawn for no reason.
+      const isJson = /^application\/([\w.+-]+\+)?json\b/i.test(
+        (res.headers.get('content-type') ?? '').trim(),
+      )
       // And the BODY matters: the endpoint answers `true` on success. A JSON
       // `false` (or an error object) with a 200 would otherwise be read as
       // "reloaded" and skip the fallback, leaving the old config running while

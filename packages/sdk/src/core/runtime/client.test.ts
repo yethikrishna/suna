@@ -214,6 +214,32 @@ test('a 200 with HTML is the SPA catch-all, NOT a reload', async () => {
   await expect(systemReload('dispose-only')).rejects.toThrow('unavailable on this sandbox');
 });
 
+test('an uppercase or vendor JSON content-type still counts', async () => {
+  // Header values are case-insensitive and `application/<vendor>+json` is JSON.
+  // A false negative here would report a working endpoint as missing.
+  setCurrentRuntime('http://sbx.test', 'active-sbx');
+  captureRawFetchCalls(
+    () => new Response('true', { status: 200, headers: { 'content-type': 'Application/JSON; charset=utf-8' } }),
+  );
+  expect((await systemReload('dispose-only')).success).toBe(true);
+
+  captureRawFetchCalls(
+    () => new Response('true', { status: 200, headers: { 'content-type': 'application/vnd.kortix+json' } }),
+  );
+  expect((await systemReload('dispose-only')).success).toBe(true);
+});
+
+test('a JSON content-type with an unparseable body throws, rather than reporting a decline', async () => {
+  // That is a protocol regression, not a reload that said no — flattening it
+  // into "did not confirm" would hide it and lose the parse detail.
+  setCurrentRuntime('http://sbx.test', 'active-sbx');
+  captureRawFetchCalls(
+    () => new Response('{not json', { status: 200, headers: { 'content-type': 'application/json' } }),
+  );
+
+  await expect(systemReload('dispose-only')).rejects.toThrow('malformed JSON');
+});
+
 test('a JSON body that does not confirm reports failure instead of success', async () => {
   setCurrentRuntime('http://sbx.test', 'active-sbx');
   captureRawFetchCalls(() => jsonResponse(false));

@@ -245,6 +245,9 @@ export async function systemReload(mode: SystemReloadMode): Promise<SystemReload
 	const path = mode === 'full' ? '/kortix/refresh' : '/global/dispose';
 	const response = await authenticatedFetch(`${url}${path}`, { method: 'POST' });
 	const contentType = response.headers.get('content-type') ?? '';
+	// Case-insensitive, and `application/<vendor>+json` counts. A false negative
+	// here would report a working endpoint as missing.
+	const isJson = /^application\/([\w.+-]+\+)?json\b/i.test(contentType.trim());
 	if (!response.ok) {
 		throw new ApiError(`System reload failed (${response.status}): ${await daemonErrorMessage(response)}`, {
 			status: response.status,
@@ -252,7 +255,7 @@ export async function systemReload(mode: SystemReloadMode): Promise<SystemReload
 			code: 'RUNTIME_UNAVAILABLE',
 		});
 	}
-	if (!contentType.includes('application/json')) {
+	if (!isJson) {
 		// A 200 with HTML is opencode's SPA catch-all — the route is not there.
 		throw new ApiError(`System reload endpoint is unavailable on this sandbox (${path})`, {
 			status: response.status,
@@ -260,7 +263,18 @@ export async function systemReload(mode: SystemReloadMode): Promise<SystemReload
 			code: 'RUNTIME_UNAVAILABLE',
 		});
 	}
-	const body = (await response.json().catch(() => null)) as unknown;
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch (err) {
+		// JSON content-type with an unparseable body is a protocol regression, not
+		// a reload that declined. Surface it with the parse detail instead of
+		// flattening it into a generic "did not confirm".
+		throw new ApiError(
+			`System reload returned malformed JSON from ${path}: ${err instanceof Error ? err.message : String(err)}`,
+			{ status: response.status, response, code: 'RUNTIME_UNAVAILABLE' },
+		);
+	}
 	// `/global/dispose` answers a bare `true`; `/kortix/refresh` answers an
 	// object with `ok`. Neither matches SystemReloadResult, so build it here
 	// rather than changing a shape callers already consume.

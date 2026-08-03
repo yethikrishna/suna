@@ -286,6 +286,22 @@ describe('buildSecretView ⇄ SecretSchema', () => {
     });
   });
 
+  test('denied delivery requires a rotation newer than the strategy change', () => {
+    const out = buildSecretView({
+      identifier: 'OPENAI_API_KEY',
+      name: 'OPENAI_API_KEY',
+      shared: secretRow({
+        strategy: 'denied',
+        rotatedAt: new Date('2026-08-03T09:00:00.000Z'),
+        updatedAt: new Date('2026-08-03T10:00:00.000Z'),
+      }),
+      canManageShared: true,
+    });
+
+    expect(SecretSchema.strict().parse(out)).toEqual(out);
+    expect(out.requires_rotation).toBe(true);
+  });
+
   test('two identifiers sharing the same key parse as independent secrets', () => {
     const primary = buildSecretView({
       identifier: 'GMAPS-primary',

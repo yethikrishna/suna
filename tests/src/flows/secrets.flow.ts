@@ -159,7 +159,7 @@ flow(
         .has("$.strategy", "denied")
         .has("$.consumer", null)
         .has("$.delivery_status", "disabled")
-        .has("$.requires_rotation", false);
+        .has("$.requires_rotation", true);
     });
 
     for (const strategy of ["broker", "egress"]) {

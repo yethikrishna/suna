@@ -310,6 +310,9 @@ export function buildSecretView(input: {
     personal && mineActive ? 'mine' : shared ? 'shared' : 'none';
   const deliveryRow = shared ?? personal;
   const strategy = deliveryRow?.strategy ?? 'runtime';
+  const requiresRotation =
+    strategy !== 'runtime' &&
+    (!deliveryRow?.rotatedAt || deliveryRow.rotatedAt < deliveryRow.updatedAt);
   const backend = deliveryRow?.egressPolicy?.backend;
   const consumer =
     strategy === 'runtime'
@@ -357,7 +360,7 @@ export function buildSecretView(input: {
     egress_policy: deliveryRow?.egressPolicy ?? null,
     strategy_locked: deliveryRow?.strategyLocked ?? false,
     last_rotated_at: deliveryRow?.rotatedAt?.toISOString() ?? null,
-    requires_rotation: strategy !== 'runtime' && !deliveryRow?.rotatedAt,
+    requires_rotation: requiresRotation,
   };
 }
 

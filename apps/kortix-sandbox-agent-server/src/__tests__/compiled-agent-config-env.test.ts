@@ -90,4 +90,12 @@ describe('the unplanned-respawn hook waits for readiness', () => {
       (exitHandler as string).indexOf('onUnplannedRespawn'),
     )
   })
+
+  test('a respawn that fails to spawn cannot take the daemon down', () => {
+    // `spawnChild` writes the config before spawning, so it can reject on a full
+    // or read-only disk. Unhandled that would kill the daemon — the only thing
+    // that can bring opencode back.
+    const respawn = OPENCODE_SRC.split('void spawnChild(binaryPath).then(')[1]?.split('}, delay)')[0]
+    expect(respawn).toContain('.catch(')
+  })
 })

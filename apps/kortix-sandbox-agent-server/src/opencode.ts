@@ -1066,6 +1066,13 @@ export function createOpencodeSupervisor(
               })
             }
           })
+        }).catch((err) => {
+          // `spawnChild` writes the config before it spawns (mkdir/write), so it
+          // can reject on a full or read-only disk. Unhandled here it would take
+          // the daemon down with it — and the daemon is the only thing that can
+          // bring opencode back. The next exit re-enters this timer with the
+          // backoff already doubled.
+          logger.error('[opencode] respawn failed', { err: (err as Error).message })
         })
       }, delay)
     })

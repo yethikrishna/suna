@@ -1,0 +1,56 @@
+/**
+ * `KORTIX_COMPILED_AGENT_CONFIG` must be accepted on the live-env route.
+ *
+ * It is the server-compiled agent config — agents, prompts, permissions, model.
+ * It was the one piece of a session's configuration with no way into a running
+ * box: compiled from git at provision, handed down as an env var, and excluded
+ * from this allowlist. A `git pull` in the sandbox changed the working tree but
+ * not the agent's behaviour, and restarting opencode re-read the daemon's
+ * unchanged env and rebuilt the same stale config — so the only way to pick up a
+ * merged agent change was a brand-new session.
+ *
+ * opencode composes its config from this env at spawn and never re-reads it, so
+ * accepting the value is only half the job — the restart is what applies it.
+ */
+import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+const ENV_ROUTE = readFileSync(join(import.meta.dir, '..', 'routes', 'env.ts'), 'utf8')
+
+/** The allowlist body, so a name added to a comment or another Set never counts. */
+function runtimeEnvAllowlist(): string[] {
+  const body = ENV_ROUTE.split('const OPENCODE_RUNTIME_ENV_NAMES = new Set([')[1]?.split('])')[0]
+  expect(body).toBeTruthy()
+  return [...(body as string).matchAll(/'([A-Z0-9_]+)'/g)].map((m) => m[1] as string)
+}
+
+describe('the live-env allowlist', () => {
+  test('accepts the compiled agent config', () => {
+    expect(runtimeEnvAllowlist()).toContain('KORTIX_COMPILED_AGENT_CONFIG')
+  })
+
+  test('still accepts the model — the precedent this follows', () => {
+    // A mid-session model change already worked exactly this way: allowlist the
+    // name, then restart. If that stopped being true, the reload built on top of
+    // it is standing on nothing.
+    expect(runtimeEnvAllowlist()).toContain('KORTIX_OPENCODE_MODEL')
+  })
+
+  test('the allowlist is a closed set, not a pattern over KORTIX_*', () => {
+    // Anything reaching opencode's process env is reaching the agent. The gate
+    // is an explicit list precisely so a new KORTIX_* name cannot be pushed into
+    // a running box by accident.
+    expect(ENV_ROUTE).toContain('if (!OPENCODE_RUNTIME_ENV_NAMES.has(name)) continue')
+    expect(runtimeEnvAllowlist().length).toBeLessThan(10)
+  })
+
+  test('an allowlisted change with refreshModels restarts opencode', () => {
+    // Accepting the value alone changes nothing: opencode reads its config only
+    // at spawn. Without this the push would silently no-op until the next boot.
+    expect(ENV_ROUTE).toContain('await opencode.restart()')
+    expect(ENV_ROUTE).toContain(
+      'if (body.refreshModels === true && (result.changed || opencodeEnvChanged))',
+    )
+  })
+})

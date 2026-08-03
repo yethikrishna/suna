@@ -908,6 +908,20 @@ export type Opencode = {
 
 export interface OpencodeSupervisorOptions {
   onStartupMark?: (label: string) => void
+  /**
+   * opencode died without anyone asking it to, and has just been respawned.
+   *
+   * A turn ends only when opencode emits `session.idle`/`session.error` over
+   * SSE. A killed process emits neither, so an in-flight turn is left with a
+   * part stuck "running" and the client streams it forever — the 57s spinner
+   * you get when an agent runs `kill <opencode pid>` from its own shell, and
+   * equally what an OOM or a crash produces.
+   *
+   * The supervisor cannot fix that itself: it knows nothing about sessions.
+   * It reports the fact and main.ts finalizes the orphaned turn, the same way
+   * boot already does when it adopts a root whose last turn never completed.
+   */
+  onUnplannedRespawn?: () => void
 }
 
 export function createOpencodeSupervisor(
@@ -1027,7 +1041,19 @@ export function createOpencodeSupervisor(
       restartDelayMs = Math.min(restartDelayMs * 2, 30_000)
       logger.info('[opencode] restarting', { delayMs: delay })
       setTimeout(() => {
-        if (!stopping && binaryPath) void spawnChild(binaryPath)
+        if (stopping || !binaryPath) return
+        void spawnChild(binaryPath).then(() => {
+          // AFTER the respawn, so the abort has something listening. Never on a
+          // planned stop()/restart() — those return above with `stopping` set,
+          // and their callers own whatever the turn should do.
+          try {
+            options.onUnplannedRespawn?.()
+          } catch (err) {
+            logger.warn('[opencode] unplanned-respawn hook threw', {
+              err: (err as Error).message,
+            })
+          }
+        })
       }, delay)
     })
 

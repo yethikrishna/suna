@@ -17,6 +17,7 @@ const PROJECT_ACTIONS = {
 mock.module('../iam', () => ({ PROJECT_ACTIONS }));
 
 let agentGrant: Record<string, unknown> | null = null;
+let authType: 'service_account' | 'supabase' = 'supabase';
 
 let row: ReturnType<typeof secretRow> | null = secretRow();
 const updates: Array<Record<string, unknown>> = [];
@@ -135,7 +136,8 @@ mock.module('../projects/lib/sandbox-env-sync', () => ({
 }));
 
 mock.module('../shared/audit', () => ({
-  inferAuditSource: () => 'api',
+  inferAuditSource: (_context: unknown, actorType: string) =>
+    actorType === 'service_account' ? 'automation' : 'api',
   recordAuditEvent: async (event: Record<string, unknown>) => {
     audits.push(event);
   },
@@ -149,10 +151,12 @@ function buildApp() {
     Variables: {
       userId: string;
       agentGrant: Record<string, unknown>;
+      authType: 'service_account' | 'supabase';
     };
   }>();
   app.use('*', async (c, next) => {
     c.set('userId', USER_ID);
+    c.set('authType', authType);
     if (agentGrant) c.set('agentGrant', agentGrant);
     await next();
   });
@@ -164,6 +168,7 @@ describe('PUT /v1/projects/:projectId/secrets/:identifier/strategy', () => {
   beforeEach(() => {
     row = secretRow();
     agentGrant = null;
+    authType = 'supabase';
     updates.length = 0;
     audits.length = 0;
     propagations.length = 0;
@@ -223,6 +228,23 @@ describe('PUT /v1/projects/:projectId/secrets/:identifier/strategy', () => {
     },
   );
 
+  test('attributes a service-account strategy change to automation', async () => {
+    authType = 'service_account';
+
+    const response = await buildApp().request(
+      `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ strategy: 'denied' }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(audits[0]?.actorType).toBe('service_account');
+    expect(audits[0]?.source).toBe('automation');
+  });
+
   test('rejects an agent principal', async () => {
     agentGrant = { env: ['SERVICE_API_KEY'] };
 
@@ -261,6 +283,7 @@ describe('POST /v1/projects/:projectId/secrets audit', () => {
   beforeEach(() => {
     row = null;
     agentGrant = null;
+    authType = 'supabase';
     updates.length = 0;
     audits.length = 0;
     propagations.length = 0;
@@ -298,6 +321,7 @@ describe('DELETE /v1/projects/:projectId/secrets/:identifier audit', () => {
   beforeEach(() => {
     row = secretRow({ valueEnc: 'encrypted-delete-value', strategy: 'denied' });
     agentGrant = null;
+    authType = 'supabase';
     updates.length = 0;
     audits.length = 0;
     propagations.length = 0;

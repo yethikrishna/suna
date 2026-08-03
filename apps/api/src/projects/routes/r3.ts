@@ -615,7 +615,12 @@ projectsApp.openapi(
   if (!view) {
     throw new Error(`Secret view not found after upsert: ${identifier}`);
   }
-  const actorType = getAgentGrant(c) ? 'agent' : 'human';
+  const actorType =
+    c.get('authType') === 'service_account'
+      ? 'service_account'
+      : getAgentGrant(c)
+        ? 'agent'
+        : 'human';
   await recordAuditEvent({
     accountId: loaded.row.accountId,
     projectId,
@@ -730,12 +735,14 @@ projectsApp.openapi(
     if (!view) return c.json({ error: 'Not found' }, 404);
 
     if (existing.strategy !== parsed.data.strategy) {
+      const actorType =
+        c.get('authType') === 'service_account' ? 'service_account' : 'human';
       await recordAuditEvent({
         accountId: loaded.row.accountId,
         projectId,
         actorUserId: loaded.userId,
-        actorType: 'human',
-        source: inferAuditSource(c, 'human'),
+        actorType,
+        source: inferAuditSource(c, actorType),
         action: 'secret.strategy.changed',
         resourceType: 'project_secret',
         resourceId: existing.secretId,
@@ -1160,7 +1167,12 @@ projectsApp.openapi(
   void propagateProjectSecretsToActiveSandboxes(projectId, { refreshModels: isGatewayManagedEnv(identifier) });
 
   if (existing) {
-    const actorType = getAgentGrant(c) ? 'agent' : 'human';
+    const actorType =
+      c.get('authType') === 'service_account'
+        ? 'service_account'
+        : getAgentGrant(c)
+          ? 'agent'
+          : 'human';
     await recordAuditEvent({
       accountId: loaded.row.accountId,
       projectId,

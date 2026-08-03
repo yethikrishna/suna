@@ -37,12 +37,13 @@ Subcommands:
                                     --wait blocks until it's running; --json
                                     prints the session object (capture
                                     session_id to orchestrate).
-                                    Backend overrides (require a backend token —
-                                    see docs/KORTIX_AS_A_BACKEND_GUIDE.md):
+                                    Session access at creation:
                                     --secret <id>           narrow injected
-                                      secrets to these identifiers (repeatable).
+                                      secrets to these identifiers (repeatable;
+                                      backend token required).
                                     --no-secrets            inject zero project
-                                      secrets into the session.
+                                      secrets into the session (backend token
+                                      required).
                                     --connector <alias>=<authorization-id>
                                       bind a connector authorization
                                       (repeatable).

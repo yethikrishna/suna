@@ -175,6 +175,18 @@ afterEach(() => {
 });
 
 describe("kortix sessions scope", () => {
+  test("limits the create-time backend-token notice to secret flags", async () => {
+    const result = await runCli(["sessions", "--help"]);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Session access at creation:");
+    expect(result.stdout).toContain("backend token required");
+    expect(result.stdout).not.toContain(
+      "Backend overrides (require a backend token",
+    );
+    expect(requests).toEqual([]);
+  });
+
   test("reads the authoritative scope as JSON", async () => {
     const result = await runCli(["sessions", "scope", SESSION_ID, "--json"]);
 

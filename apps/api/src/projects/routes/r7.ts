@@ -1,6 +1,5 @@
 import { isCallLive, readTurns } from '../../channels/voice/runtime';
 import { SessionScopeInputSchema, SessionScopeSchema } from '@kortix/api-contract';
-import { recordSessionToolApproval } from '../../executor/db-deps';
 import { approvalResolvedAuditEvent } from '../../executor/execution-audit';
 import { loadSessionGrants, parseSharingIntent, resolveShareSubject, setSessionSharing } from '../../executor/share';
 import {
@@ -24,7 +23,7 @@ import { db } from '../../shared/db';
 import { inferAuditSource, recordAuditEvent } from '../../shared/audit';
 import { roleAllows } from '../access';
 import { createRoute, z } from '@hono/zod-openapi';
-import { accountGroupMembers, accountGroups, accountMembers, executorConnectors, executorExecutions, projectGroupGrants, projectSessions, sessionSandboxes,
+import { accountGroupMembers, accountGroups, accountMembers, executorConnectors, executorExecutions, projectGroupGrants, projectSessions, sessionLifecycleCommands, sessionSandboxes,
   projectSessionConnectorBindings,
   serviceAccounts,
 } from '@kortix/db';
@@ -68,9 +67,9 @@ import {
 } from '../lib/warm-sessions';
 import {
   createSession,
+  buildContinueSessionCommandValues,
   deleteSession,
   drainSessionLifecycleQueue,
-  enqueueContinueSessionCommand,
 } from '../session-lifecycle';
 import { requireEntitlement } from '../../accounts/iam/helpers';
 import { accountHasEntitlement } from '../../billing/services/entitlements';
@@ -1028,7 +1027,7 @@ projectsApp.openapi(
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     await assertProjectCapability(c, loaded.userId, loaded.row.accountId, projectId, PROJECT_ACTIONS.PROJECT_SESSION_READ);
-    const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
+    const visible = await loadVisibleSession(loaded, sessionId, callerKortixSessionId(c));
     if (!visible) return c.json({ error: 'Not found' }, 404);
     // The historical trail is Enterprise (`auditAccess`), but this endpoint is
     // also the approval CONTROL PLANE: write/destructive connector actions
@@ -1443,6 +1442,7 @@ projectsApp.openapi(
       .select({
         executionId: executorExecutions.executionId,
         sessionId: executorExecutions.sessionId,
+        actingUserId: executorExecutions.actingUserId,
         connectorId: executorExecutions.connectorId,
         actionPath: executorExecutions.actionPath,
         status: executorExecutions.status,
@@ -1477,8 +1477,8 @@ projectsApp.openapi(
     } catch {
       isManager = false;
     }
-    let targetCreatedBy: string | null = null;
-    let targetOrigin: string | null = null;
+    let targetCreatedBy: string | null = row.sessionId ? null : row.actingUserId;
+    let targetOrigin: string | null = row.sessionId ? null : 'user';
     if (row.sessionId) {
       const [session] = await db
         .select({ createdBy: projectSessions.createdBy, origin: projectSessions.origin })
@@ -1495,6 +1495,7 @@ projectsApp.openapi(
       targetSessionOrigin: targetOrigin,
       targetSessionCreatedBy: targetCreatedBy,
       callerUserId: loaded.userId,
+      callerAuthType: (c.get('authType') as string | undefined) ?? null,
       callerSessionId: callerKortixSessionId(c),
     });
     if (!verdict.allowed) {
@@ -1505,13 +1506,30 @@ projectsApp.openapi(
                 'An agent cannot resolve its own approval — a human must approve or deny this',
               code: 'APPROVAL_REQUIRES_HUMAN',
             }
-          : { error: 'Only a project manager or the session launcher can resolve this' },
+          : verdict.reason === 'non_human_caller'
+            ? {
+                error: 'Sign in with a Kortix account to resolve this approval',
+                code: 'APPROVAL_REQUIRES_HUMAN',
+              }
+            : { error: 'Only a project manager or the session launcher can resolve this' },
         403,
       );
     }
 
+    const existingDetail =
+      typeof row.resultSummary === 'object' && row.resultSummary ? row.resultSummary : {};
+    if (decision === 'approve' && existingDetail.args_preview_complete !== true) {
+      return c.json(
+        {
+          error: 'The complete connector parameters are not available for review',
+          code: 'APPROVAL_PREVIEW_INCOMPLETE',
+        },
+        409,
+      );
+    }
+
     const detail = {
-      ...(typeof row.resultSummary === 'object' && row.resultSummary ? row.resultSummary : {}),
+      ...existingDetail,
       decision,
       decided_by: loaded.userId,
     };
@@ -1520,24 +1538,51 @@ projectsApp.openapi(
     // the terminal `ok` (the real retried call re-audits as its own row), deny
     // flips it to `denied`. Both stamp approvedBy (= who resolved) + resolvedAt,
     // so the row leaves the pending inbox. A lost race matches 0 rows → 409.
-    const resolved = await db
-      .update(executorExecutions)
-      .set({
-        status: decision === 'approve' ? 'ok' : 'denied',
-        approvedBy: loaded.userId,
-        resolvedAt: new Date(),
-        resultSummary: detail,
-      })
-      .where(
-        and(
-          eq(executorExecutions.executionId, executionId),
-          eq(executorExecutions.projectId, projectId),
-          eq(executorExecutions.status, 'pending_approval'),
-          isNull(executorExecutions.approvedBy),
-          isNull(executorExecutions.resolvedAt),
-        ),
-      )
-      .returning({ id: executorExecutions.executionId });
+    const resumeText = row.sessionId
+      ? decision === 'approve'
+        ? `Your pending approval to run ${row.actionPath} was approved — continue.`
+        : `Your request to run ${row.actionPath} was denied — continue without it.`
+      : null;
+    const callbackValues = row.sessionId && resumeText
+      ? buildContinueSessionCommandValues({
+          source: 'system:approval-resume',
+          projectId,
+          accountId: loaded.row.accountId,
+          sessionId: row.sessionId,
+          actorUserId: loaded.userId,
+          text: resumeText,
+          executionId,
+          availableAt: new Date(),
+          idempotencyKey: `approval-resume:${executionId}`,
+        })
+      : null;
+    const resolved = await db.transaction(async (tx) => {
+      const updated = await tx
+        .update(executorExecutions)
+        .set({
+          status: decision === 'approve' ? 'ok' : 'denied',
+          approvedBy: loaded.userId,
+          resolvedAt: new Date(),
+          resultSummary: detail,
+        })
+        .where(
+          and(
+            eq(executorExecutions.executionId, executionId),
+            eq(executorExecutions.projectId, projectId),
+            eq(executorExecutions.status, 'pending_approval'),
+            isNull(executorExecutions.approvedBy),
+            isNull(executorExecutions.resolvedAt),
+          ),
+        )
+        .returning({ id: executorExecutions.executionId });
+      if (updated.length > 0 && callbackValues) {
+        await tx
+          .insert(sessionLifecycleCommands)
+          .values(callbackValues)
+          .onConflictDoNothing({ target: sessionLifecycleCommands.idempotencyKey });
+      }
+      return updated;
+    });
 
     if (resolved.length === 0) {
       return c.json({ error: 'Approval already resolved' }, 409);
@@ -1561,49 +1606,17 @@ projectsApp.openapi(
       console.error('[approvals] failed to record central audit event', error);
     }
 
-    // Server-side resume — the reliability backstop. A LIVE gated call (the
-    // sandbox CLI/MCP pause loop, or an approve within the gateway's 45s hold)
-    // picks this decision out of the DB within ~1s, marks it consumed, and the
-    // agent's turn resumes in-band — no message needed. When nobody was
-    // waiting (an older sandbox image without the pause loop, or a decision
-    // after the ~30min poll budget), the resolve would otherwise change
-    // nothing the agent can see: its turn already ended on `pending_approval`.
-    // So we enqueue a DURABLE continue_session command with a grace-window
-    // schedule: the drain re-checks the consumed marker at execution time and
-    // either no-ops (a live waiter got there first) or delivers the
-    // continuation prompt into the session (approval carry-over then lets the
-    // retried call run without re-asking). Queue-backed so it survives this
-    // pod dying; idempotency-keyed so a double-resolve can't double-prompt.
+    // Decision callback. The executor HTTP call returned the approval URL and
+    // ended. A human decision now enqueues one durable continue_session command
+    // and starts a drain immediately. The next exact call claims the approved
+    // request digest once. A changed payload creates a new approval instead.
     if (row.sessionId) {
-      const resumeText =
-        decision === 'approve'
-          ? `Your pending approval to run ${row.actionPath} was approved — continue.`
-          : `Your request to run ${row.actionPath} was denied — continue without it.`;
-      try {
-        await enqueueContinueSessionCommand({
-          source: 'system:approval-resume',
-          projectId,
-          accountId: loaded.row.accountId,
-          sessionId: row.sessionId,
-          actorUserId: loaded.userId,
-          text: resumeText,
-          executionId,
-          // > the waiter's 1s decision poll + hold re-issue latency, with margin.
-          availableAt: new Date(Date.now() + 6_000),
-          idempotencyKey: `approval-resume:${executionId}`,
-        });
-        // Best-effort fast path: the scheduler drains every ~60s; kick one
-        // drain shortly after the grace window so the resume usually lands in
-        // seconds. If this pod dies first, the scheduler still delivers.
-        setTimeout(() => {
-          drainSessionLifecycleQueue({ limit: 5 }).catch(() => {});
-        }, 7_000).unref?.();
-      } catch (err) {
-        console.warn('[approvals] failed to enqueue resume', {
-          executionId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+      // Best-effort immediate webhook-like delivery. The transaction above
+      // already persisted the callback with the decision as one atomic outbox.
+      void drainSessionLifecycleQueue({
+        limit: 1,
+        idempotencyKey: `approval-resume:${executionId}`,
+      }).catch(() => {});
     }
 
     return c.json({ ok: true });

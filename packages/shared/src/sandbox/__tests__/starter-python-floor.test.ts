@@ -143,19 +143,34 @@ describe('starter templates stay in accordance with the baked Python floor', () 
     expect(pyFiles.length).toBeGreaterThan(10);
   });
 
+  const collectViolations = (file: string, source: string, violations: string[]) => {
+    for (const line of source.split('\n')) {
+      const mod = topLevelModule(line);
+      if (!mod || STDLIB.has(mod) || floorImports.has(mod)) continue;
+      if (isLocalModule(file, mod)) continue;
+      const relative = file.slice(TEMPLATES_DIR.length + 1);
+      const exemption = Object.entries(PROJECT_CODE_EXEMPTIONS).find(([prefix]) =>
+        relative.startsWith(`${prefix}/`),
+      );
+      if (exemption?.[1].has(mod)) continue;
+      violations.push(`${relative}: ${mod}`);
+    }
+  };
+
   test('every third-party import in starter Python scripts is baked into the floor', () => {
     const violations: string[] = [];
     for (const file of pyFiles) {
-      for (const line of readFileSync(file, 'utf-8').split('\n')) {
-        const mod = topLevelModule(line);
-        if (!mod || STDLIB.has(mod) || floorImports.has(mod)) continue;
-        if (isLocalModule(file, mod)) continue;
-        const relative = file.slice(TEMPLATES_DIR.length + 1);
-        const exemption = Object.entries(PROJECT_CODE_EXEMPTIONS).find(([prefix]) =>
-          relative.startsWith(`${prefix}/`),
-        );
-        if (exemption?.[1].has(mod)) continue;
-        violations.push(`${relative}: ${mod}`);
+      collectViolations(file, readFileSync(file, 'utf-8'), violations);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('every third-party import taught in doc Python code blocks is baked into the floor', () => {
+    const violations: string[] = [];
+    for (const file of textFiles.filter((f) => !f.endsWith('.py'))) {
+      const text = readFileSync(file, 'utf-8');
+      for (const block of text.matchAll(/```(?:python|py)\n([\s\S]*?)```/g)) {
+        collectViolations(file, block[1], violations);
       }
     }
     expect(violations).toEqual([]);

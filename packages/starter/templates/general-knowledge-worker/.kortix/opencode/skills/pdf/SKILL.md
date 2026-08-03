@@ -7,7 +7,7 @@ defaultProjectInstallOrder: 40
 
 # PDF Processing
 
-`pypdf`, `pdfplumber`, `pymupdf`, `pdf2image`, `reportlab`, and `pillow` are pre-installed. Run Python files with `python3 script.py`. Use `uv run --with <package> script.py` only for a package that is not pre-installed.
+`pypdf`, `pdfplumber`, `pymupdf`, `pdf2image`, `pypdfium2`, `pytesseract`, `reportlab`, and `pillow` are pre-installed. Run Python files with `python3 script.py`. Use `uv run --with <package> script.py` only for a package that is not pre-installed.
 
 ## Quick Start
 

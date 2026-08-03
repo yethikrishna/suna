@@ -44,6 +44,8 @@ export const PYTHON_PACKAGE_FLOOR_IMPORTS: Record<string, string> = {
   playwright: 'playwright',
   pymupdf: 'fitz',
   pypdf: 'pypdf',
+  pypdfium2: 'pypdfium2',
+  pytesseract: 'pytesseract',
   'python-docx': 'docx',
   'python-pptx': 'pptx',
   reportlab: 'reportlab',

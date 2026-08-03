@@ -902,7 +902,7 @@ export type Opencode = {
   start(): Promise<void>
   stop(signal?: NodeJS.Signals): Promise<void>
   restart(): Promise<void>
-  reloadConfig(): Promise<'disposed' | 'restarted'>
+  reloadConfig(opts?: { mustRespawn?: boolean }): Promise<'disposed' | 'restarted'>
   reconfigure(nextCfg: Config, nextOpencodeConfigDir: string, nextProjectEnv?: ProjectEnvStore): void
   getPid(): number | null
   getInternalUrl(): string
@@ -1279,8 +1279,14 @@ export function createOpencodeSupervisor(
      * a future opencode that drops the endpoint degrades to today's behaviour
      * rather than silently not applying the config.
      */
-    async reloadConfig(): Promise<'disposed' | 'restarted'> {
-      if (await tryDisposeReload()) return 'disposed'
+    async reloadConfig(opts: { mustRespawn?: boolean } = {}): Promise<'disposed' | 'restarted'> {
+      // Some settings are not IN the config file — they shape the child's
+      // PROCESS env at spawn, and a dispose cannot re-run that. The provider-key
+      // deny-list is the live case: `withoutDeniedProviderEnv` strips native
+      // keys when the child is spawned, so disposing after a gateway-mode
+      // toggle would leave those keys exactly as they were — routing around the
+      // gateway's budgets and logging, or failing to restore BYOK.
+      if (!opts.mustRespawn && (await tryDisposeReload())) return 'disposed'
       await this.restart()
       return 'restarted'
     },

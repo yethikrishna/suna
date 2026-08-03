@@ -69,10 +69,23 @@ describe('tryDisposeReload', () => {
     expect(body).toContain('catch')
   })
 
+  test('a deny-list change forces a respawn — dispose cannot re-run env shaping', () => {
+    // KORTIX_OPENCODE_DENY_ENV is not IN the config file. `withoutDeniedProviderEnv`
+    // strips native provider keys when the child is SPAWNED, so disposing after a
+    // gateway-mode toggle leaves those keys exactly as they were — routing around
+    // the gateway's budgets and logging, or failing to restore BYOK.
+    const ENV_ROUTE = readFileSync(join(import.meta.dir, '..', 'routes', 'env.ts'), 'utf8')
+    expect(ENV_ROUTE).toContain("opencodeEnvNames.includes('KORTIX_OPENCODE_DENY_ENV')")
+    expect(ENV_ROUTE).toContain('reloadConfig({ mustRespawn })')
+    // And the supervisor must honour it BEFORE trying dispose.
+    const reload = OPENCODE_SRC.split('async reloadConfig(')[1]?.split('\n    },')[0]
+    expect(reload).toContain('!opts.mustRespawn && (await tryDisposeReload())')
+  })
+
   test('reloadConfig falls back to a full restart when dispose does not win', () => {
     // A future opencode that drops the endpoint must degrade to today's
     // behaviour, never to "config silently not applied".
-    const reload = OPENCODE_SRC.split('async reloadConfig()')[1]?.split('\n    },')[0]
+    const reload = OPENCODE_SRC.split('async reloadConfig(')[1]?.split('\n    },')[0]
     expect(reload).toBeTruthy()
     expect(reload).toContain('tryDisposeReload()')
     expect(reload).toContain('this.restart()')

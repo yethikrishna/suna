@@ -180,12 +180,17 @@ export function createEnvRouter(cfg: Config, opencode: Opencode, projectEnv: Pro
           // (measured on the pinned 1.17.11). It falls back to a restart on its
           // own if dispose is unavailable, so this is never less correct — only
           // faster, and it does not sever an in-flight turn when dispose wins.
-          const how = await opencode.reloadConfig()
+          // A change to the spawn-time deny-list cannot be applied by a
+          // dispose — see reloadConfig. Anything else lives in the config file
+          // and takes the fast path.
+          const mustRespawn = opencodeEnvNames.includes('KORTIX_OPENCODE_DENY_ENV')
+          const how = await opencode.reloadConfig({ mustRespawn })
           logger.info('[env] config-affecting env changed; applied to opencode', {
             projectRevision: result.revision,
             projectEnvChanged: result.changed,
             opencodeEnvNames,
             how,
+            mustRespawn,
           })
         }
 

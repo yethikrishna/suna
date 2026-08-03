@@ -176,21 +176,18 @@ describe('starter templates stay in accordance with the baked Python floor', () 
     expect(violations).toEqual([]);
   });
 
+  const basePackageName = (spec: string): string =>
+    /^["']?([A-Za-z0-9._-]+)/.exec(spec)?.[1]?.toLowerCase() ?? '';
+
   test('no floor package is still invoked through uv run --with', () => {
-    const floorNames = new Set(
-      Object.keys(PYTHON_PACKAGE_FLOOR).map((p) => p.replace(/\[.*\]/, '').toLowerCase()),
-    );
+    const floorNames = new Set(Object.keys(PYTHON_PACKAGE_FLOOR).map(basePackageName));
     const violations: string[] = [];
     for (const file of textFiles) {
       const lines = readFileSync(file, 'utf-8').split('\n');
       for (const [index, line] of lines.entries()) {
         for (const match of line.matchAll(/--with[= ]('[^']+'|"[^"]+"|[^\s`]+)/g)) {
           for (const raw of match[1].split(',')) {
-            const pkg = raw
-              .replace(/['"]/g, '')
-              .replace(/\[.*\]/, '')
-              .replace(/[<>=].*/, '')
-              .toLowerCase();
+            const pkg = basePackageName(raw);
             if (floorNames.has(pkg)) {
               violations.push(`${file.slice(TEMPLATES_DIR.length + 1)}:${index + 1}: ${pkg}`);
             }

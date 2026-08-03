@@ -567,7 +567,7 @@ projectsApp.openapi(
       : getAgentGrant(c)
         ? 'agent'
         : 'human';
-  const secretId = await runAuditedTransaction(
+  await runAuditedTransaction(
     async (tx) => {
       if (value !== null) {
         const [row] = await tx

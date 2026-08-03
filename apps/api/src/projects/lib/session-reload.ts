@@ -33,6 +33,7 @@ import { and, eq } from 'drizzle-orm';
 import { projects, sessionSandboxes } from '@kortix/db';
 import { db } from '../../shared/db';
 import { resolveSandboxIngress } from '../../sandbox-proxy/backend';
+import { invalidateProjectMirror, type GitBackedProject } from '../git';
 import { agentConfigEtag, resolveCompiledAgentConfigForSession } from './compile-agent-config';
 import { pushSessionAgentConfigToSandbox } from './sandbox-env-sync';
 
@@ -109,10 +110,24 @@ export async function readSandboxConfigState(input: {
 }
 
 /**
+ * "Latest" has to mean latest — drop the mirror's TTL before compiling.
+ *
+ * The git mirror is TTL-cached (60s by default) and every read through
+ * `readRepoFile` / `resolveCommitSha` takes the warm hit. On an ordinary
+ * endpoint that is right. On THIS one it is self-defeating: the whole feature is
+ * "I merged a change, get it into my session", and the merge is by definition
+ * seconds old. Reloading inside the window recompiled the PRE-merge manifest,
+ * produced an unchanged etag, and answered "already up to date" — the exact
+ * confusion the reload exists to end, moved one layer up.
+ *
+ * Invalidating rather than force-fetching keeps it to a single network op: the
+ * compile's own first read does the fetch and re-stamps `lastRefreshAt`, so the
+ * reads after it in the same request are warm again.
+ */
+/**
  * The etag this session WOULD get if it were reloaded right now.
  *
- * Recompiles from the session's own ref; delivers nothing. Cheap enough to call
- * from a status endpoint — the git mirror is TTL-cached and the compile is pure.
+ * Recompiles from the session's own ref; delivers nothing.
  */
 export async function latestAgentConfigEtag(input: {
   projectId: string;
@@ -129,16 +144,19 @@ export async function latestAgentConfigEtag(input: {
     .where(and(eq(projects.projectId, input.projectId), eq(projects.accountId, input.accountId)))
     .limit(1);
   if (!project?.defaultBranch) return null;
-  const compiled = await resolveCompiledAgentConfigForSession(
-    {
-      projectId: input.projectId,
-      repoUrl: project.repoUrl,
-      defaultBranch: project.defaultBranch,
-      manifestPath: project.manifestPath ?? 'kortix.yaml',
-      gitAuthToken: null,
-    },
-    input.baseRef,
-  ).catch(() => null);
+  const gitProject: GitBackedProject = {
+    projectId: input.projectId,
+    repoUrl: project.repoUrl,
+    defaultBranch: project.defaultBranch,
+    manifestPath: project.manifestPath ?? 'kortix.yaml',
+    gitAuthToken: null,
+  };
+  // Without this, `stale: false` is answerable from a cache that predates the
+  // very commit the caller is asking about.
+  invalidateProjectMirror(input.projectId);
+  const compiled = await resolveCompiledAgentConfigForSession(gitProject, input.baseRef).catch(
+    () => null,
+  );
   return agentConfigEtag(compiled);
 }
 
@@ -168,6 +186,11 @@ export async function reloadSessionConfig(input: {
   /** Reload even if a turn is running. It will be ended. */
   force?: boolean;
 }): Promise<SessionReloadResult> {
+  // Before anything reads the mirror — the base_sha resolve, the compile inside
+  // the push, the etag compare. See `invalidateProjectMirror` above: a reload
+  // served from a 60s cache can apply the pre-merge config and report success.
+  invalidateProjectMirror(input.projectId);
+
   const before = await readSandboxConfigState({
     sessionId: input.sessionId,
     includeTurnState: input.force !== true,
@@ -238,9 +261,36 @@ export async function reloadSessionConfig(input: {
 }
 
 /**
- * `POST /kortix/refresh?restart=0` — pull the workspace, leave opencode alone.
+ * `POST /kortix/refresh?restart=0` — fast-forward the session's own branch.
  *
- * `restart=0` matters: the config push right after restarts opencode anyway, and
+ * NEVER `base=1`. That flag routes the daemon to `syncWorkspaceToBase`, whose
+ * entire body is `git checkout -B <cfg.branchName> <baseSha>` — and
+ * `cfg.branchName` is the SESSION ID. On a session with commits of its own that
+ * force-moves the working branch onto the base tip, orphaning every one of them
+ * and deleting the files they introduced. The helper says so itself: "safe
+ * because a fresh session has no local work yet". Its only other caller invokes
+ * it at session CREATE on a restored warm snapshot, which is exactly that
+ * pristine case. A reload runs against an established session, where the
+ * precondition does not hold.
+ *
+ * It is tempting to gate the reset on "does this session have local commits" and
+ * the API cannot answer that: the mirror is the only thing it can inspect, and a
+ * session branch that was committed but never pushed does not exist there. The
+ * check would return "no local work" for precisely the session that has the most
+ * to lose. So the destructive path is not used at all.
+ *
+ * What is left is `git pull --ff-only origin <sessionId>` — it cannot discard
+ * anything, and it fails cleanly (swallowed below as `repo_refreshed: false`)
+ * for a branch that was never pushed. It does NOT bring the base branch's
+ * commits into the workspace. That is a real limit and it is the correct one:
+ * moving a live session onto a new base is a merge with conflicts, not a side
+ * effect of a button labelled "Reload config".
+ *
+ * None of this weakens the reload's actual job. The agent config is compiled
+ * server-side from the git MIRROR at the session's ref; it never came from the
+ * sandbox's working tree, so it updates either way.
+ *
+ * `restart=0`: the config push right after restarts opencode anyway, and
  * restarting twice doubles the boot cost and the window where the box 503s.
  */
 async function refreshSandboxWorkspace(
@@ -265,8 +315,11 @@ async function refreshSandboxWorkspace(
       signal: AbortSignal.timeout(120_000),
     });
     if (!res.ok) return { ok: false, commitSha: null };
-    const body = (await res.json()) as { repo?: { commit?: unknown } };
-    const commit = body.repo?.commit;
+    // The daemon answers `{repo: {before, after}}` — there is no `repo.commit`,
+    // so the old read was always undefined and `commit_sha` always reported the
+    // PRE-reload value, making a successful pull look like a no-op.
+    const body = (await res.json()) as { repo?: { after?: { commit?: unknown } } };
+    const commit = body.repo?.after?.commit;
     return { ok: true, commitSha: typeof commit === 'string' ? commit : null };
   } catch {
     // A failed pull is not a failed reload: the config recompiles from the git

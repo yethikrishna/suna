@@ -15,6 +15,17 @@ let readRepoFileCalls: string[] = [];
 // ran main's agents; recording the ref is what makes that visible.
 let refsRead: string[] = [];
 
+// `mock.module` REPLACES the module — it does not merge. `../git` is a barrel,
+// so anything omitted here stops existing for every module loaded afterwards in
+// the same bun process, including ones this file never touches. That is not
+// hypothetical: `session-reload.ts` importing `resolveCommitSha` from the barrel
+// made `session-reload.test.ts` die with "Export named 'resolveCommitSha' not
+// found" — but only when the two files ran together, and the error surfaced as
+// an unhandled error between tests rather than against either of them.
+//
+// So the stubs below are deliberately broader than this file needs: they keep
+// the barrel's shape intact for whoever loads next. Add to them rather than
+// letting a sibling suite break.
 mock.module('../git', () => ({
   readManifestFromRepo: async (_project: unknown, _candidates: unknown, ref: string) => {
     refsRead.push(ref);
@@ -26,6 +37,9 @@ mock.module('../git', () => ({
     if (!(path in mdFileContent)) throw new Error(`no such file: ${path}`);
     return mdFileContent[path];
   },
+  // Unused here; present so the barrel keeps its shape for other modules.
+  resolveCommitSha: async () => '0'.repeat(40),
+  invalidateProjectMirror: () => {},
 }));
 
 const {

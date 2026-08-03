@@ -1041,40 +1041,7 @@ export function createOpencodeSupervisor(
       child = null
       state = stopping ? 'down' : 'starting'
       if (stopping) return
-      const delay = restartDelayMs
-      restartDelayMs = Math.min(restartDelayMs * 2, 30_000)
-      logger.info('[opencode] restarting', { delayMs: delay })
-      setTimeout(() => {
-        if (stopping || !binaryPath) return
-        void spawnChild(binaryPath).then(() => {
-          if (!options.onUnplannedRespawn) return
-          // `spawnChild` resolving means the PROCESS started, not that opencode
-          // is listening — its HTTP server comes up seconds later. Firing the
-          // hook here would have it call `/message` against a dead port, read
-          // the failure as "no turn to finalize", and silently do nothing in
-          // exactly the case it exists for. Wait for the readiness probe.
-          void waitUntilReady(RESPAWN_FINALIZE_TIMEOUT_MS).then((ready) => {
-            if (!ready) {
-              logger.warn('[opencode] respawned but never became ready; orphaned turn left as-is')
-              return
-            }
-            try {
-              options.onUnplannedRespawn?.()
-            } catch (err) {
-              logger.warn('[opencode] unplanned-respawn hook threw', {
-                err: (err as Error).message,
-              })
-            }
-          })
-        }).catch((err) => {
-          // `spawnChild` writes the config before it spawns (mkdir/write), so it
-          // can reject on a full or read-only disk. Unhandled here it would take
-          // the daemon down with it — and the daemon is the only thing that can
-          // bring opencode back. The next exit re-enters this timer with the
-          // backoff already doubled.
-          logger.error('[opencode] respawn failed', { err: (err as Error).message })
-        })
-      }, delay)
+      scheduleUnplannedRespawn()
     })
 
     proc.on('error', (err) => {
@@ -1088,6 +1055,53 @@ export function createOpencodeSupervisor(
     if (state !== 'ok') logger.info('[opencode] ready')
     state = 'ok'
     restartDelayMs = 500
+  }
+
+  /**
+   * Bring opencode back after it died on its own, and finalize the turn it took
+   * with it.
+   *
+   * Reschedules ITSELF on a failed spawn. `spawnChild` writes the config before
+   * spawning, so a full or read-only disk rejects before any process exists —
+   * and with no process there is no `exit` event, so relying on that to retry
+   * would leave opencode down permanently once the first attempt failed. The
+   * backoff is shared with the exit path, so a persistent failure backs off to
+   * 30s rather than spinning.
+   */
+  function scheduleUnplannedRespawn(): void {
+    if (stopping) return
+    const delay = restartDelayMs
+    restartDelayMs = Math.min(restartDelayMs * 2, 30_000)
+    logger.info('[opencode] restarting', { delayMs: delay })
+    setTimeout(() => {
+      if (stopping || !binaryPath) return
+      void spawnChild(binaryPath)
+        .then(() => {
+          if (!options.onUnplannedRespawn) return
+          // `spawnChild` resolving means the PROCESS started, not that opencode
+          // is listening — its HTTP server comes up seconds later. Firing the
+          // hook here would have it call `/message` against a dead port, read
+          // the failure as "no turn to finalize", and silently do nothing in
+          // exactly the case it exists for. Wait for the readiness probe.
+          return waitUntilReady(RESPAWN_FINALIZE_TIMEOUT_MS).then((ready) => {
+            if (!ready) {
+              logger.warn('[opencode] respawned but never became ready; orphaned turn left as-is')
+              return
+            }
+            try {
+              options.onUnplannedRespawn?.()
+            } catch (err) {
+              logger.warn('[opencode] unplanned-respawn hook threw', {
+                err: (err as Error).message,
+              })
+            }
+          })
+        })
+        .catch((err) => {
+          logger.error('[opencode] respawn failed; retrying', { err: (err as Error).message })
+          scheduleUnplannedRespawn()
+        })
+    }, delay)
   }
 
   async function checkReady(): Promise<boolean> {

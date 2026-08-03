@@ -63,7 +63,7 @@ describe('the unplanned-respawn hook waits for readiness', () => {
     // comes up seconds later. Firing the hook on spawn had it call `/message`
     // against a dead port, read the failure as "no turn to finalize", and do
     // nothing at all — silently failing in exactly the case it exists for.
-    const respawn = OPENCODE_SRC.split('void spawnChild(binaryPath).then(')[1]?.split('}, delay)')[0]
+    const respawn = OPENCODE_SRC.split('function scheduleUnplannedRespawn(')[1]?.split('\n  }\n')[0]
     expect(respawn).toBeTruthy()
     expect(respawn).toContain('waitUntilReady(')
     // The hook must be INSIDE the readiness continuation, not beside it.
@@ -86,8 +86,9 @@ describe('the unplanned-respawn hook waits for readiness', () => {
       "proc.on('error'",
     )[0]
     expect(exitHandler).toContain('if (stopping) return')
+    // The respawn (and with it the hook) is only reached past that guard.
     expect((exitHandler as string).indexOf('if (stopping) return')).toBeLessThan(
-      (exitHandler as string).indexOf('onUnplannedRespawn'),
+      (exitHandler as string).indexOf('scheduleUnplannedRespawn()'),
     )
   })
 
@@ -95,7 +96,10 @@ describe('the unplanned-respawn hook waits for readiness', () => {
     // `spawnChild` writes the config before spawning, so it can reject on a full
     // or read-only disk. Unhandled that would kill the daemon — the only thing
     // that can bring opencode back.
-    const respawn = OPENCODE_SRC.split('void spawnChild(binaryPath).then(')[1]?.split('}, delay)')[0]
+    const respawn = OPENCODE_SRC.split('function scheduleUnplannedRespawn(')[1]?.split('\n  }\n')[0]
     expect(respawn).toContain('.catch(')
+    // And it must RETRY: a failed spawn produces no process, so no exit event —
+    // relying on that to retry would leave opencode down permanently.
+    expect(respawn).toContain('scheduleUnplannedRespawn()')
   })
 })

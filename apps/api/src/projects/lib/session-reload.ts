@@ -61,7 +61,8 @@ export async function readSandboxConfigState(input: {
   etag: string | null;
   commitSha: string | null;
   reachable: boolean;
-  turnInFlight: boolean;
+  /** `null` when the box could not tell us — see the reload gate. */
+  turnInFlight: boolean | null;
 }> {
   try {
     const [row] = await db
@@ -71,7 +72,7 @@ export async function readSandboxConfigState(input: {
         and(eq(sessionSandboxes.sessionId, input.sessionId), eq(sessionSandboxes.status, 'active')),
       )
       .limit(1);
-    const unreachable = { etag: null, commitSha: null, reachable: false, turnInFlight: false };
+    const unreachable = { etag: null, commitSha: null, reachable: false, turnInFlight: null };
     if (!row?.externalId) return unreachable;
     const serviceKey = (row.config as Record<string, unknown> | null)?.serviceKey;
     if (typeof serviceKey !== 'string') return unreachable;
@@ -97,10 +98,13 @@ export async function readSandboxConfigState(input: {
       etag: typeof body.agent_config_etag === 'string' ? body.agent_config_etag : null,
       commitSha: typeof body.commit_sha === 'string' ? body.commit_sha : null,
       reachable: true,
-      turnInFlight: body.turn_in_flight === true,
+      // Tri-state on purpose: `true` busy, `false` idle, `null` could not tell.
+      // Absent (the caller did not ask) is also null.
+      turnInFlight:
+        body.turn_in_flight === true ? true : body.turn_in_flight === false ? false : null,
     };
   } catch {
-    return { etag: null, commitSha: null, reachable: false, turnInFlight: false };
+    return { etag: null, commitSha: null, reachable: false, turnInFlight: null };
   }
 }
 
@@ -179,7 +183,10 @@ export async function reloadSessionConfig(input: {
     };
   }
 
-  if (input.force !== true && before.turnInFlight) {
+  // `null` counts as busy. "Could not tell" is not permission to restart — that
+  // would defeat the one promise this gate makes, in precisely the case where
+  // opencode is slow because it IS working.
+  if (input.force !== true && before.turnInFlight !== false) {
     // The push restarts opencode, which ends the turn. Say so instead of
     // discarding someone's work silently.
     return {
@@ -188,7 +195,10 @@ export async function reloadSessionConfig(input: {
       etag: before.etag,
       repo_refreshed: false,
       commit_sha: before.commitSha,
-      reason: 'session is mid-turn',
+      reason:
+        before.turnInFlight === true
+          ? 'session is mid-turn'
+          : 'could not confirm the session is idle',
     };
   }
 

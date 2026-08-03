@@ -18,11 +18,24 @@ import { logger } from './logger'
  */
 export const OPENCODE_SESSION_PIN_PATH = '/var/run/kortix/opencode-session-id'
 
-/** The canonical opencode root, or null when nothing is pinned yet. */
+/**
+ * The canonical opencode root, or null when nothing is pinned yet.
+ *
+ * The value goes into a URL, so it is shape-checked rather than trusted: the pin
+ * file is daemon-written and 0600, but "a file decides part of an outbound
+ * request" is worth closing off regardless of who writes it today. opencode ids
+ * are `ses_` + base-ish chars; anything else is treated as no pin at all.
+ */
+const OPENCODE_SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/
+
 export function readPinnedSessionId(): string | null {
   try {
     const id = readFileSync(OPENCODE_SESSION_PIN_PATH, 'utf8').trim()
-    return id.length > 0 ? id : null
+    if (!OPENCODE_SESSION_ID.test(id)) {
+      if (id.length > 0) logger.warn('[turn-state] ignoring a malformed pinned session id')
+      return null
+    }
+    return id
   } catch {
     return null
   }
@@ -33,6 +46,15 @@ export interface RootInspection {
   hasMessages: boolean
   /** Its last message is an assistant turn with no completion time. */
   lastTurnIncomplete: boolean
+  /**
+   * False when the read failed — opencode unreachable, non-2xx, unparseable.
+   *
+   * Without this the two "no turn here" answers are indistinguishable: a session
+   * genuinely idle, and one we could not ask about. The post-respawn cleanup can
+   * treat them the same (nothing to abort either way); the reload gate CANNOT,
+   * because "could not tell" must not read as permission to restart.
+   */
+  known: boolean
 }
 
 export async function inspectOpencodeRoot(
@@ -40,42 +62,54 @@ export async function inspectOpencodeRoot(
   workspace: string,
   sessionId: string,
 ): Promise<RootInspection> {
-  const empty = { hasMessages: false, lastTurnIncomplete: false }
+  const unknown = { hasMessages: false, lastTurnIncomplete: false, known: false }
   try {
     const res = await fetch(
       `${baseUrl}/session/${encodeURIComponent(sessionId)}/message?directory=${encodeURIComponent(workspace)}`,
       { signal: AbortSignal.timeout(5_000) },
     )
-    if (!res.ok) return empty
+    if (!res.ok) return unknown
     const msgs = (await res.json()) as Array<{
       info?: { role?: string; time?: { completed?: number } }
     }>
-    if (!Array.isArray(msgs) || msgs.length === 0) return empty
+    if (!Array.isArray(msgs) || msgs.length === 0)
+      return { hasMessages: false, lastTurnIncomplete: false, known: true }
     const last = msgs[msgs.length - 1]
     return {
       hasMessages: true,
       lastTurnIncomplete: Boolean(last?.info?.role === 'assistant' && !last?.info?.time?.completed),
+      known: true,
     }
   } catch {
-    return empty
+    return unknown
   }
 }
 
 /**
- * Best-effort "a turn is running right now", for the reload gate.
+ * Is a turn running right now? `null` when it cannot be told.
  *
- * Unknown reads as NOT in flight. The alternative — refusing every reload
- * whenever opencode is briefly unreachable — would break the feature in exactly
- * the situations people reach for it, and the caller offers `force` for the case
- * where the turn is what they are trying to escape.
+ * The three answers are genuinely different and the caller must see all three.
+ * Collapsing "could not tell" into `false` — which this did at first — hands the
+ * reload gate a green light while a turn is very much running and opencode is
+ * merely slow to answer, defeating the one promise the gate makes. The gate
+ * treats `null` as busy; `force` is there for a box that is wedged.
+ *
+ * No pin IS a definite `false`: nothing has ever run in this sandbox.
  */
-export async function opencodeTurnInFlight(baseUrl: string, workspace: string): Promise<boolean> {
-  const sessionId = readPinnedSessionId()
+export async function opencodeTurnInFlight(
+  baseUrl: string,
+  workspace: string,
+  /** The root to ask about. Defaults to the pinned one; passed explicitly by
+   *  tests, which have no pin file. */
+  rootSessionId: string | null = readPinnedSessionId(),
+): Promise<boolean | null> {
+  const sessionId = rootSessionId
   if (!sessionId) return false
   try {
-    return (await inspectOpencodeRoot(baseUrl, workspace, sessionId)).lastTurnIncomplete
+    const inspection = await inspectOpencodeRoot(baseUrl, workspace, sessionId)
+    return inspection.known ? inspection.lastTurnIncomplete : null
   } catch (err) {
     logger.warn('[turn-state] could not read turn state', { err: (err as Error).message })
-    return false
+    return null
   }
 }

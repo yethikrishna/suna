@@ -2178,7 +2178,7 @@ projectsApp.openapi(
     summary: "Whether a session's agent config is the latest",
     ...auth,
     request: { params: z.object({ projectId: z.string(), sessionId: z.string() }) },
-    responses: { 200: json(z.any(), 'Config freshness'), ...errors(404) },
+    responses: { 200: json(z.any(), 'Config freshness'), ...errors(400, 403, 404) },
   }),
   async (c: any) => {
     const projectId = c.req.param('projectId');
@@ -2187,6 +2187,17 @@ projectsApp.openapi(
 
     const loaded = await loadProjectForUser(c, projectId, 'session');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
+    // `loadProjectForUser(..., 'session')` is the coarse access level, not a
+    // read grant. Without this an agent-scoped or read-restricted token could
+    // read a session's commit sha and config hash — small, but it is session
+    // state, and every other session READ on this router asserts the same leaf.
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_SESSION_READ,
+    );
     const visible = await loadVisibleSession(loaded, sessionId, callerKortixSessionId(c));
     if (!visible) return c.json({ error: 'Not found' }, 404);
 
@@ -2265,12 +2276,17 @@ projectsApp.openapi(
     });
     // A reload restarts opencode, which ENDS the turn in flight. Refused by
     // default rather than discarding someone's work without saying so.
-    if (result.reason === 'session is mid-turn') {
+    if (
+      result.reason === 'session is mid-turn' ||
+      result.reason === 'could not confirm the session is idle'
+    ) {
       return c.json(
         {
           ...result,
           error:
-            'This session is mid-turn. A reload restarts the runtime and ends it — retry when idle, or pass force: true.',
+            result.reason === 'session is mid-turn'
+              ? 'This session is mid-turn. A reload restarts the runtime and ends it — retry when idle, or pass force: true.'
+              : 'Could not confirm this session is idle, and a reload restarts the runtime. Retry, or pass force: true.',
           code: 'SESSION_BUSY',
         },
         409,

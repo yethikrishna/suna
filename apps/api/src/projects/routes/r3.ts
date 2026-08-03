@@ -1209,7 +1209,9 @@ projectsApp.openapi(
       ));
   }
 
-  void propagateProjectSecretsToActiveSandboxes(projectId, { refreshModels: isGatewayManagedEnv(identifier) });
+  void propagateProjectSecretsToActiveSandboxes(projectId, {
+    refreshModels: existing ? isGatewayManagedEnv(existing.name) : false,
+  });
 
   return c.json({ ok: true });
 },

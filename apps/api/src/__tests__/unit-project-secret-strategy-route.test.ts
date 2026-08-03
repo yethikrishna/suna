@@ -387,7 +387,12 @@ describe('POST /v1/projects/:projectId/secrets audit', () => {
 
 describe('DELETE /v1/projects/:projectId/secrets/:identifier audit', () => {
   beforeEach(() => {
-    row = secretRow({ valueEnc: 'encrypted-delete-value', strategy: 'denied' });
+    row = secretRow({
+      identifier: 'primary-openai',
+      name: 'OPENAI_API_KEY',
+      valueEnc: 'encrypted-delete-value',
+      strategy: 'denied',
+    });
     agentGrant = null;
     authType = 'supabase';
     updates.length = 0;
@@ -397,7 +402,7 @@ describe('DELETE /v1/projects/:projectId/secrets/:identifier audit', () => {
 
   test('records the deleted policy metadata without the encrypted value', async () => {
     const response = await buildApp().request(
-      `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY`,
+      `/v1/projects/${PROJECT_ID}/secrets/primary-openai`,
       { method: 'DELETE' },
     );
 
@@ -410,8 +415,12 @@ describe('DELETE /v1/projects/:projectId/secrets/:identifier audit', () => {
       resourceId: SECRET_ID,
       before: { configured: true, strategy: 'denied' },
       after: { configured: false },
-      metadata: { identifier: 'SERVICE_API_KEY', name: 'SERVICE_API_KEY' },
+      metadata: { identifier: 'primary-openai', name: 'OPENAI_API_KEY' },
     });
     expect(JSON.stringify(audits[0])).not.toContain('encrypted-delete-value');
+    expect(propagations).toEqual([{
+      projectId: PROJECT_ID,
+      options: { refreshModels: true },
+    }]);
   });
 });

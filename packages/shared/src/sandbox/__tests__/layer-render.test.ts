@@ -133,7 +133,10 @@ describe('the Python runtime is managed by uv', () => {
   test('does not install or mutate the distro Python', () => {
     expect(toolchain).not.toContain('python3 python3-dev python3-pip python3-venv');
     expect(toolchain.match(/uv pip install/g)).toHaveLength(1);
-    expect(toolchain).toContain('uv pip install --system --break-system-packages');
+    expect(toolchain).toContain(
+      'uv pip install --python /home/kortix/.local/bin/python3 --break-system-packages',
+    );
+    expect(toolchain).not.toContain('uv pip install --system');
   });
 
   test('bakes every floor package exactly-pinned into the managed Python', () => {

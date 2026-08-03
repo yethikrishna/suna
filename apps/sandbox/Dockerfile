@@ -131,9 +131,11 @@ RUN UV_VERSION="$(sed -n 's/.*"uv": "\([^"]*\)".*/\1/p' /tmp/kortix-runtime-vers
 # `uv run --with` stays the escape hatch for packages outside the floor.
 # `--break-system-packages` overrides uv's externally-managed marker on the
 # interpreter installed above — our frozen build-time interpreter, not a
-# distro Python. Unquoted $(...) expansion is safe here: pins contain no
-# whitespace, and the `markitdown[pptx]` glob matches no file in this cwd.
-RUN uv pip install --system --break-system-packages \
+# distro Python. The interpreter is named by EXPLICIT PATH: `--system` skips
+# uv-managed interpreters and would resolve the distro python3 that
+# LibreOffice's apt deps drag in. Unquoted $(...) expansion is safe here: pins
+# contain no whitespace, and the `markitdown[pptx]` glob matches no file here.
+RUN uv pip install --python /home/kortix/.local/bin/python3 --break-system-packages \
         $(python3 -c "import json; print(' '.join(f'{k}=={v}' for k, v in sorted(json.load(open('/tmp/kortix-runtime-versions.json'))['pythonPackages'].items())))") \
     && python3 -c "import importlib; [importlib.import_module(m) for m in ['PIL', 'docx', 'fitz', 'lxml', 'markitdown', 'openpyxl', 'pandas', 'pdf2docx', 'pdf2image', 'pdfplumber', 'playwright', 'pptx', 'pypdf', 'pypdfium2', 'pytesseract', 'reportlab']]; print('python package floor OK')"
 

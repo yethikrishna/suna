@@ -14,6 +14,10 @@ import { applyManagedOpencodeEnv } from './managed-opencode-env'
 import { mergeProjectEnv, type ProjectEnvStore } from './project-env'
 
 const READY_POLL_MS = 100
+/** How long the post-respawn turn finalize waits for opencode to answer again.
+ *  Generous next to a ~5-12s cold start, and bounded so cleanup cannot outlive
+ *  the problem it is cleaning up after. */
+const RESPAWN_FINALIZE_TIMEOUT_MS = 60_000
 const BOOT_READY_POLL_MS = 50
 const READY_TIMEOUT_MS = 20_000
 // Once opencode is READY, the readiness probe becomes a slow LIVENESS check.
@@ -1043,16 +1047,25 @@ export function createOpencodeSupervisor(
       setTimeout(() => {
         if (stopping || !binaryPath) return
         void spawnChild(binaryPath).then(() => {
-          // AFTER the respawn, so the abort has something listening. Never on a
-          // planned stop()/restart() — those return above with `stopping` set,
-          // and their callers own whatever the turn should do.
-          try {
-            options.onUnplannedRespawn?.()
-          } catch (err) {
-            logger.warn('[opencode] unplanned-respawn hook threw', {
-              err: (err as Error).message,
-            })
-          }
+          if (!options.onUnplannedRespawn) return
+          // `spawnChild` resolving means the PROCESS started, not that opencode
+          // is listening — its HTTP server comes up seconds later. Firing the
+          // hook here would have it call `/message` against a dead port, read
+          // the failure as "no turn to finalize", and silently do nothing in
+          // exactly the case it exists for. Wait for the readiness probe.
+          void waitUntilReady(RESPAWN_FINALIZE_TIMEOUT_MS).then((ready) => {
+            if (!ready) {
+              logger.warn('[opencode] respawned but never became ready; orphaned turn left as-is')
+              return
+            }
+            try {
+              options.onUnplannedRespawn?.()
+            } catch (err) {
+              logger.warn('[opencode] unplanned-respawn hook threw', {
+                err: (err as Error).message,
+              })
+            }
+          })
         })
       }, delay)
     })
@@ -1072,6 +1085,24 @@ export function createOpencodeSupervisor(
 
   async function checkReady(): Promise<boolean> {
     return probeOpencodeSessionApi(`http://127.0.0.1:${currentCfg.opencodeInternalPort}`, currentCfg.projectTarget, 2_000)
+  }
+
+  /**
+   * Resolve once opencode is answering again, or false if it never does.
+   *
+   * Only the post-respawn turn finalize uses this. Bounded, because the caller
+   * is cleanup: a box that came back but stayed unhealthy has bigger problems
+   * than a stuck spinner, and a hook that waited forever would keep a timer
+   * alive across every subsequent restart.
+   */
+  async function waitUntilReady(timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if (stopping) return false
+      if (state === 'ok' || (await checkReady())) return true
+      await new Promise((resolve) => setTimeout(resolve, READY_POLL_MS))
+    }
+    return false
   }
 
   function scheduleReadinessProbe() {

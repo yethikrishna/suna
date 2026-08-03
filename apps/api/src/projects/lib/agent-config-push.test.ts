@@ -61,9 +61,14 @@ mock.module('./secret-grant', () => ({
 // the rest and the module fails to load.
 mock.module('../secrets', () => ({
   ...realSecrets,
-  listProjectSecretsSnapshotForUser: async () => [
-    { identifier: 'EXAMPLE', key: 'EXAMPLE', value: 'v', scope: 'shared' },
-  ],
+  // `{ env, names, revision }` — the real return shape. An array here made
+  // `.env` undefined, which produced the "no env snapshot" the test below
+  // asserts. It would have passed for the wrong reason.
+  listProjectSecretsSnapshotForUser: async () => ({
+    env: { EXAMPLE: 'v' },
+    names: ['EXAMPLE'],
+    revision: 'rev-1',
+  }),
 }));
 
 mock.module('../../sandbox-proxy/backend', () => ({
@@ -103,18 +108,15 @@ beforeEach(() => {
 });
 
 describe('pushSessionAgentConfigToSandbox', () => {
-  test('refuses when there is no env snapshot rather than pushing a bare config', async () => {
-    // The push carries the session's whole env alongside the config. Sending the
-    // config with no env would have the daemon replace a populated env with an
-    // empty one — the agent loses every secret mid-session.
-    //
-    // (The happy path needs the full env-snapshot pipeline, which is DB-backed;
-    // it is covered by the integration suite and by sandbox-env-sync.test.ts.
-    // What is asserted here is everything this function decides ITSELF.)
+  test('pushes the freshly compiled config and asks for the opencode restart', async () => {
+    // opencode reads its config only at spawn, so the push alone changes
+    // nothing — `refreshModels` is what makes the daemon restart it and apply.
     const result = await pushSessionAgentConfigToSandbox({ ...INPUT, baseRef: 'main' });
 
-    expect(result).toEqual({ applied: false, reason: 'no env snapshot' });
-    expect(posted).toEqual([]);
+    expect(result).toEqual({ applied: true });
+    expect(posted).toHaveLength(1);
+    expect(posted[0].opencodeEnv?.KORTIX_COMPILED_AGENT_CONFIG).toBe(compiled as string);
+    expect(posted[0].refreshModels).toBe(true);
   });
 
   test("recompiles from the SESSION's ref", async () => {

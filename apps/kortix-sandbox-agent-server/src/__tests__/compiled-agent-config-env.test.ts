@@ -54,3 +54,40 @@ describe('the live-env allowlist', () => {
     )
   })
 })
+
+const OPENCODE_SRC = readFileSync(join(import.meta.dir, '..', 'opencode.ts'), 'utf8')
+
+describe('the unplanned-respawn hook waits for readiness', () => {
+  test('it fires only after opencode answers again, not when the process spawns', () => {
+    // `spawnChild` resolving means the PROCESS started; opencode's HTTP server
+    // comes up seconds later. Firing the hook on spawn had it call `/message`
+    // against a dead port, read the failure as "no turn to finalize", and do
+    // nothing at all — silently failing in exactly the case it exists for.
+    const respawn = OPENCODE_SRC.split('void spawnChild(binaryPath).then(')[1]?.split('}, delay)')[0]
+    expect(respawn).toBeTruthy()
+    expect(respawn).toContain('waitUntilReady(')
+    // The hook must be INSIDE the readiness continuation, not beside it.
+    const hookAt = (respawn as string).indexOf('options.onUnplannedRespawn?.()')
+    const waitAt = (respawn as string).indexOf('waitUntilReady(')
+    expect(waitAt).toBeGreaterThanOrEqual(0)
+    expect(hookAt).toBeGreaterThan(waitAt)
+  })
+
+  test('the wait is bounded, so cleanup cannot outlive the problem', () => {
+    expect(OPENCODE_SRC).toContain('const RESPAWN_FINALIZE_TIMEOUT_MS =')
+    expect(OPENCODE_SRC).toContain('if (!ready) {')
+  })
+
+  test('a planned stop/restart never reaches the hook', () => {
+    // Those return early with `stopping` set; their callers own the turn.
+    // The full signature — a comment upstream also mentions `proc.on('exit')`,
+    // and splitting on that matched the prose instead of the handler.
+    const exitHandler = OPENCODE_SRC.split("proc.on('exit', (code, signal) =>")[1]?.split(
+      "proc.on('error'",
+    )[0]
+    expect(exitHandler).toContain('if (stopping) return')
+    expect((exitHandler as string).indexOf('if (stopping) return')).toBeLessThan(
+      (exitHandler as string).indexOf('onUnplannedRespawn'),
+    )
+  })
+})

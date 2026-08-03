@@ -49,7 +49,7 @@ RUN case "$(uname -m)" in \\
     && python -c 'import sys; assert sys.version_info[:3] == (3, 12, 13); print("managed python:", sys.version)' \\
     && python3 -c 'import sys; assert sys.version_info[:3] == (3, 12, 13)'
 
-RUN uv pip install --system --break-system-packages \\
+RUN uv pip install --python /home/kortix/.local/bin/python3 --break-system-packages \\
         "lxml==6.1.1" \\
         "markitdown[pptx]==0.1.7" \\
         "openpyxl==3.1.5" \\
@@ -223,7 +223,7 @@ RUN case "$(uname -m)" in \\
     && python -c 'import sys; assert sys.version_info[:3] == (3, 12, 13); print("managed python:", sys.version)' \\
     && python3 -c 'import sys; assert sys.version_info[:3] == (3, 12, 13)'
 
-RUN uv pip install --system --break-system-packages \\
+RUN uv pip install --python /home/kortix/.local/bin/python3 --break-system-packages \\
         "lxml==6.1.1" \\
         "markitdown[pptx]==0.1.7" \\
         "openpyxl==3.1.5" \\
@@ -398,7 +398,7 @@ RUN case "$(uname -m)" in \\
     && python -c 'import sys; assert sys.version_info[:3] == (3, 12, 13); print("managed python:", sys.version)' \\
     && python3 -c 'import sys; assert sys.version_info[:3] == (3, 12, 13)'
 
-RUN uv pip install --system --break-system-packages \\
+RUN uv pip install --python /home/kortix/.local/bin/python3 --break-system-packages \\
         "lxml==6.1.1" \\
         "markitdown[pptx]==0.1.7" \\
         "openpyxl==3.1.5" \\

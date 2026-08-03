@@ -480,10 +480,17 @@ export function kortixToolchainLayer(opts: KortixToolchainLayerOpts): string {
     // this layer. python-playwright is pinned to the SAME version as the Node
     // playwright that bakes Chromium below, so both resolve the identical
     // browser revision under PLAYWRIGHT_BROWSERS_PATH.
+    // The install targets the managed interpreter by EXPLICIT PATH, never by
+    // discovery: `--system` skips uv-managed interpreters by design, and the
+    // apt floor above drags in Ubuntu's distro python3 via LibreOffice — so
+    // `--system` resolved /usr/bin/python3, where `kortix` cannot write, and
+    // the v39 bake failed on every provider (dev, 2026-08-03). The local-repro
+    // gap: a test container without the apt floor has no distro python, so
+    // `--system` happens to fall back to the managed shim and "passes".
     // The import check is a single-line `python3 -c` on purpose: E2B's
     // Dockerfile parser reads a heredoc body's first line as an instruction
     // and aborts the build.
-    'RUN uv pip install --system --break-system-packages \\',
+    'RUN uv pip install --python /home/kortix/.local/bin/python3 --break-system-packages \\',
     ...Object.entries(PYTHON_PACKAGE_FLOOR).map(
       ([pkg, version]) => `        "${pkg}==${version}" \\`,
     ),

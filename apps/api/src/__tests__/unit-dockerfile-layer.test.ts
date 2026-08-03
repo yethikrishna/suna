@@ -113,7 +113,9 @@ describe('buildLayeredDockerfile', () => {
     expect(merged).toContain(`agent-browser@${AGENT_BROWSER_VERSION}`);
     expect(merged).toContain('uv python install --default 3.12.13');
     expect(merged).not.toContain('uv venv');
-    expect(merged).toContain('uv pip install --system --break-system-packages');
+    expect(merged).toContain(
+      'uv pip install --python /home/kortix/.local/bin/python3 --break-system-packages',
+    );
     expect(merged).toContain(`"pillow==${PYTHON_PACKAGE_FLOOR.pillow}"`);
     expect(merged).toContain('python package floor OK');
     expect(merged).toContain('COPY kortix-agent.gz /tmp/kortix-agent.gz');

@@ -33,7 +33,7 @@ import { and, eq } from 'drizzle-orm';
 import { projects, sessionSandboxes } from '@kortix/db';
 import { db } from '../../shared/db';
 import { resolveSandboxIngress } from '../../sandbox-proxy/backend';
-import { invalidateProjectMirror, resolveCommitSha, type GitBackedProject } from '../git';
+import { invalidateProjectMirror, type GitBackedProject } from '../git';
 import { agentConfigEtag, resolveCompiledAgentConfigForSession } from './compile-agent-config';
 import { pushSessionAgentConfigToSandbox } from './sandbox-env-sync';
 
@@ -228,14 +228,7 @@ export async function reloadSessionConfig(input: {
   let repoRefreshed = false;
   let commitSha = before.commitSha;
   if (input.refreshRepo !== false) {
-    const refreshed = await refreshSandboxWorkspace(input.sessionId, {
-      projectId: input.projectId,
-      repoUrl: input.repoUrl,
-      defaultBranch: input.defaultBranch,
-      manifestPath: input.manifestPath ?? 'kortix.yaml',
-      gitAuthToken: null,
-      baseRef: input.baseRef,
-    });
+    const refreshed = await refreshSandboxWorkspace(input.sessionId);
     repoRefreshed = refreshed.ok;
     commitSha = refreshed.commitSha ?? commitSha;
   }
@@ -268,25 +261,40 @@ export async function reloadSessionConfig(input: {
 }
 
 /**
- * `POST /kortix/refresh?base=1&base_sha=…&restart=0` — sync the workspace to the
- * tip of the session's BASE ref, leave opencode alone.
+ * `POST /kortix/refresh?restart=0` — fast-forward the session's own branch.
  *
- * `base=1` is what makes this mean anything. Without it the daemon runs
- * `refreshRepo`, which pulls `cfg.branchName` — and the API sets that to the
- * SESSION ID (`session-runtime-env.ts`, `KORTIX_BRANCH_NAME: input.sessionId`).
- * So the plain form fetched `refs/heads/<sessionId>`: it threw for a session
- * whose branch was never pushed, and for a pushed one it pulled the session's
- * own branch, which by construction does not contain the merge the user is
- * reloading to get. Either way the failure was swallowed below and the CLI still
- * printed "Reloaded." `base=1` routes to `syncWorkspaceToBase` instead, which is
- * what the warm-snapshot path has always used.
+ * NEVER `base=1`. That flag routes the daemon to `syncWorkspaceToBase`, whose
+ * entire body is `git checkout -B <cfg.branchName> <baseSha>` — and
+ * `cfg.branchName` is the SESSION ID. On a session with commits of its own that
+ * force-moves the working branch onto the base tip, orphaning every one of them
+ * and deleting the files they introduced. The helper says so itself: "safe
+ * because a fresh session has no local work yet". Its only other caller invokes
+ * it at session CREATE on a restored warm snapshot, which is exactly that
+ * pristine case. A reload runs against an established session, where the
+ * precondition does not hold.
  *
- * `restart=0` matters too: the config push right after restarts opencode anyway,
- * and restarting twice doubles the boot cost and the window where the box 503s.
+ * It is tempting to gate the reset on "does this session have local commits" and
+ * the API cannot answer that: the mirror is the only thing it can inspect, and a
+ * session branch that was committed but never pushed does not exist there. The
+ * check would return "no local work" for precisely the session that has the most
+ * to lose. So the destructive path is not used at all.
+ *
+ * What is left is `git pull --ff-only origin <sessionId>` — it cannot discard
+ * anything, and it fails cleanly (swallowed below as `repo_refreshed: false`)
+ * for a branch that was never pushed. It does NOT bring the base branch's
+ * commits into the workspace. That is a real limit and it is the correct one:
+ * moving a live session onto a new base is a merge with conflicts, not a side
+ * effect of a button labelled "Reload config".
+ *
+ * None of this weakens the reload's actual job. The agent config is compiled
+ * server-side from the git MIRROR at the session's ref; it never came from the
+ * sandbox's working tree, so it updates either way.
+ *
+ * `restart=0`: the config push right after restarts opencode anyway, and
+ * restarting twice doubles the boot cost and the window where the box 503s.
  */
 async function refreshSandboxWorkspace(
   sessionId: string,
-  project: GitBackedProject & { baseRef?: string | null },
 ): Promise<{ ok: boolean; commitSha: string | null }> {
   try {
     const [row] = await db
@@ -297,17 +305,11 @@ async function refreshSandboxWorkspace(
     const serviceKey = (row?.config as Record<string, unknown> | null)?.serviceKey;
     if (!row?.externalId || typeof serviceKey !== 'string') return { ok: false, commitSha: null };
 
-    // The session's own ref, not the project default — the same ref the compiler
-    // reads, so the workspace and the compiled config cannot describe different
-    // commits.
-    const baseSha = await resolveCommitSha(project, project.baseRef ?? project.defaultBranch);
-
     const { url, headers } = await resolveSandboxIngress(row.externalId, {
       port: SANDBOX_SERVICE_PORT,
       transport: 'http',
     });
-    const query = new URLSearchParams({ base: '1', base_sha: baseSha, restart: '0' });
-    const res = await fetch(`${url.replace(/\/$/, '')}/kortix/refresh?${query}`, {
+    const res = await fetch(`${url.replace(/\/$/, '')}/kortix/refresh?restart=0`, {
       method: 'POST',
       headers: { ...headers, Authorization: `Bearer ${serviceKey}` },
       signal: AbortSignal.timeout(120_000),
@@ -318,7 +320,7 @@ async function refreshSandboxWorkspace(
     // PRE-reload value, making a successful pull look like a no-op.
     const body = (await res.json()) as { repo?: { after?: { commit?: unknown } } };
     const commit = body.repo?.after?.commit;
-    return { ok: true, commitSha: typeof commit === 'string' ? commit : baseSha };
+    return { ok: true, commitSha: typeof commit === 'string' ? commit : null };
   } catch {
     // A failed pull is not a failed reload: the config recompiles from the git
     // MIRROR, not the sandbox's working tree, so the agent still updates.

@@ -17,6 +17,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 
 import { errorToast, successToast, warningToast } from '@/components/ui/toast';
 import {
@@ -137,13 +138,30 @@ export function useSessionConfigFreshness(projectId?: string, sessionId?: string
 
 export function useReloadSessionConfig(projectId: string, sessionId: string) {
   const queryClient = useQueryClient();
+  // Held in state rather than read off `mutation.error`, because `mutate()`
+  // CLEARS the previous error before it starts. Derived straight from the
+  // mutation, the confirm dialog would unmount on the very click that confirms
+  // it — the user would see it vanish with no indication anything was happening,
+  // and its `isPending` could never be true. Cleared explicitly on dismiss and
+  // on a settled attempt.
+  const [busyReason, setBusyReason] = useState<ReloadBusyReason | null>(null);
 
   const mutation = useMutation({
+    // NEVER retry. The global default retries any non-4xx once — and the API's
+    // own 25s request deadline answers 503 while the reload keeps running
+    // server-side, so the "failure" that triggers the retry is usually a reload
+    // in progress. The retry then fires a SECOND reload, which restarts opencode
+    // a second time and ends whatever turn the first restart just allowed to
+    // start. A reload is cheap to repeat by hand and expensive to repeat by
+    // accident.
+    retry: false,
     mutationFn: (vars: { force?: boolean } = {}) =>
       // `refresh_repo` is left to the server default (true). "Reload" means
       // "catch this session up", and that includes the workspace.
       reloadProjectSessionConfig(projectId, sessionId, vars.force ? { force: true } : {}),
     onSuccess: (result: SessionReloadResult) => {
+      // It landed — whatever refusal opened the dialog is answered.
+      setBusyReason(null);
       queryClient.invalidateQueries({ queryKey: sessionConfigKey(projectId, sessionId) });
       if (!result.applied) {
         warningToast(reloadNotAppliedCopy(result.reason));
@@ -166,7 +184,12 @@ export function useReloadSessionConfig(projectId: string, sessionId: string) {
     onError: (error: unknown) => {
       // A busy session is not a failure — it is a question ("end the running
       // turn?"). The caller renders a confirm; toasting here would talk over it.
-      if (busyReasonOf(error)) return;
+      const busy = busyReasonOf(error);
+      if (busy) {
+        setBusyReason(busy);
+        return;
+      }
+      setBusyReason(null);
       const message = error instanceof Error ? error.message.trim() : '';
       errorToast(message || 'Reload failed. Try again in a moment.');
     },
@@ -175,8 +198,8 @@ export function useReloadSessionConfig(projectId: string, sessionId: string) {
   return {
     reload: (vars: { force?: boolean } = {}) => mutation.mutate(vars),
     isPending: mutation.isPending,
-    /** Non-null exactly while the last attempt was refused for a running turn. */
-    busyReason: busyReasonOf(mutation.error),
-    clearBusy: () => mutation.reset(),
+    /** Set when an attempt was refused for a running turn; drives the confirm. */
+    busyReason,
+    clearBusy: () => setBusyReason(null),
   };
 }

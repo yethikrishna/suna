@@ -50,15 +50,24 @@ describe('isConfigStale', () => {
 });
 
 /**
- * The workspace half of a reload — the part that silently did nothing.
+ * The workspace half of a reload — and the one thing it must never do.
  *
- * `refreshSandboxWorkspace` posted `/kortix/refresh?restart=0` with no `base=1`.
- * Without that flag the daemon runs `refreshRepo`, which pulls `cfg.branchName`
- * — and the API sets `KORTIX_BRANCH_NAME` to the SESSION ID. So the reload asked
- * the sandbox to pull `refs/heads/<sessionId>`: a throw for a session whose
- * branch was never pushed, and for a pushed one a pull of the session's own
- * branch, which cannot contain the merge the user is reloading to collect.
- * The throw was swallowed and the CLI still printed "Reloaded."
+ * `base=1` routes the daemon to `syncWorkspaceToBase`, whose entire body is
+ * `git checkout -B <cfg.branchName> <baseSha>` — and `cfg.branchName` is the
+ * SESSION ID. On a session carrying commits of its own that force-moves the
+ * working branch onto the base tip, orphaning them and deleting the files they
+ * introduced, while the call still returns 200 and the UI says "Reloaded."
+ *
+ * The helper documents the precondition it needs — "safe because a fresh
+ * session has no local work yet" — and its only other caller honours it, at
+ * session CREATE on a restored warm snapshot. A reload runs against an
+ * established session, so it must use the `--ff-only` path, which cannot
+ * discard anything and fails cleanly on a branch that was never pushed.
+ *
+ * The obvious mitigation — gate the reset on "does this session have local
+ * commits" — is not available: the API can only inspect the git mirror, and a
+ * session branch committed but never pushed is not in it, so the check would
+ * answer "no local work" for exactly the session with the most to lose.
  *
  * Asserted against the source because the function is private and closes over
  * `db`, `resolveSandboxIngress` and `fetch` with no injection seam. That is a
@@ -72,20 +81,23 @@ function refreshBody(): string {
   return body as string;
 }
 
-describe('the reload pulls the BASE ref, not the session branch', () => {
-  test('it sends base=1', () => {
-    expect(refreshBody()).toContain("base: '1'");
+describe('the reload never hard-resets the session branch', () => {
+  test('it does NOT send base=1 — that path destroys committed session work', () => {
+    const body = refreshBody();
+    expect(body).not.toContain("base: '1'");
+    expect(body).not.toContain('base=1');
+    expect(body).not.toContain('base_sha');
   });
 
-  test('base_sha is resolved from the session ref, falling back to the default branch', () => {
-    // Same ref the compiler reads. If these two diverged, the workspace and the
-    // compiled config would describe different commits and the reload would
-    // half-apply.
-    expect(refreshBody()).toContain('project.baseRef ?? project.defaultBranch');
+  test('it uses the plain refresh, which is git pull --ff-only', () => {
+    // --ff-only is the whole safety property: it refuses rather than discards.
+    expect(refreshBody()).toContain('/kortix/refresh?restart=0');
   });
 
-  test('it still skips the restart — the config push right after does one', () => {
-    expect(refreshBody()).toContain("restart: '0'");
+  test('it does not resolve a base sha at all — nothing on this path needs one', () => {
+    // Belt and braces: no base sha in scope means no way to reintroduce the
+    // reset by wiring an existing local back into the query.
+    expect(refreshBody()).not.toContain('resolveCommitSha');
   });
 
   test('both entry points drop the mirror TTL before reading it', () => {

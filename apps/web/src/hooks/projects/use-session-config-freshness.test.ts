@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { SessionConfigState } from '@kortix/sdk';
 
 import { reloadNotAppliedCopy, sessionConfigNotice } from './use-session-config-freshness';
@@ -127,5 +129,38 @@ describe('reloadNotAppliedCopy', () => {
     expect(reloadNotAppliedCopy('agent config unchanged')).toBe(
       'Already running the latest config.',
     );
+  });
+});
+
+/**
+ * Two mutation properties that are invisible in normal use and expensive when wrong.
+ * Source-asserted: exercising them needs a QueryClientProvider + a real network
+ * seam, and this hook's own value is the pure logic above.
+ */
+const HOOK_SOURCE = readFileSync(
+  join(import.meta.dir, 'use-session-config-freshness.ts'),
+  'utf8',
+);
+
+describe('useReloadSessionConfig — the costly mistakes', () => {
+  test('the reload mutation never retries', () => {
+    // The app-wide default retries any non-4xx once. The API answers 503 at its
+    // own 25s deadline WHILE the reload keeps running server-side, so the
+    // "failure" that would trigger a retry is usually a reload in progress —
+    // and the retry restarts opencode a second time, ending the turn the first
+    // restart just permitted.
+    const body = HOOK_SOURCE.split('const mutation = useMutation({')[1]?.split('\n  });')[0];
+    expect(body).toBeTruthy();
+    expect(body).toContain('retry: false');
+  });
+
+  test('busyReason is state, not derived from mutation.error', () => {
+    // mutate() clears the previous error before starting, so a derived
+    // busyReason would unmount the confirm dialog on the very click that
+    // confirms it — vanishing with no sign anything happened, and making its
+    // isPending prop unobservable.
+    expect(HOOK_SOURCE).toContain('useState<ReloadBusyReason | null>(null)');
+    expect(HOOK_SOURCE).not.toContain('busyReason: busyReasonOf(mutation.error)');
+    expect(HOOK_SOURCE).toContain('clearBusy: () => setBusyReason(null)');
   });
 });

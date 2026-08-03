@@ -8,10 +8,10 @@ import {
   NODE_VERSION,
   NPM_VERSION,
   OPENCODE_VERSION,
-  PILLOW_VERSION,
   PLAYWRIGHT_VERSION,
   PNPM_SHA256_AMD64,
   PNPM_VERSION,
+  PYTHON_PACKAGE_FLOOR,
   UV_SHA256_AMD64,
   UV_VERSION,
 } from '@kortix/shared';
@@ -113,7 +113,9 @@ describe('buildLayeredDockerfile', () => {
     expect(merged).toContain(`agent-browser@${AGENT_BROWSER_VERSION}`);
     expect(merged).toContain('uv python install --default 3.12.13');
     expect(merged).not.toContain('uv venv');
-    expect(merged).toContain(`uv pip install --system --break-system-packages "pillow==${PILLOW_VERSION}"`);
+    expect(merged).toContain('uv pip install --system --break-system-packages');
+    expect(merged).toContain(`"pillow==${PYTHON_PACKAGE_FLOOR.pillow}"`);
+    expect(merged).toContain('python package floor OK');
     expect(merged).toContain('COPY kortix-agent.gz /tmp/kortix-agent.gz');
     expect(merged).toContain('gunzip -c /tmp/kortix-agent.gz > /usr/local/bin/kortix-agent');
     // The admin CLI is baked alongside the daemon and verified at build time.

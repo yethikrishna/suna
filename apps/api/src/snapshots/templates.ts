@@ -209,8 +209,9 @@ const FINGERPRINT_EXCLUDES = ['node_modules', '.bin', 'dist', '.turbo', '.cache'
 // skill tells it never to fall back to a raw API, so it would report a retired
 // feature as a transient provider failure mid-call.
 // v37: require a source digest beside the compiled sandbox CLI.
-// v39: bake pinned Pillow into the managed Python — bare `from PIL import
-// Image` works in every sandbox without `uv run --with pillow`.
+// v39: bake the pinned Python package floor (runtime-versions.json
+// `pythonPackages`) into the managed interpreter — starter skills and bare
+// `python3` run with zero per-script resolution or runtime PyPI downloads.
 const RUNTIME_LAYER_VERSION = 'verified-runtime-artifacts-v39';
 const DEFAULT_CPU = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_CPU', 2);
 const DEFAULT_MEMORY_GB = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_MEMORY_GB', 4);

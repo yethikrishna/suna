@@ -47,9 +47,24 @@ RUN case "$(uname -m)" in \\
     && uv --version | grep -Eq '^uv 0.11.30( |$)' \\
     && UV_PYTHON_DOWNLOADS=automatic uv python install --default 3.12.13 \\
     && python -c 'import sys; assert sys.version_info[:3] == (3, 12, 13); print("managed python:", sys.version)' \\
-    && python3 -c 'import sys; assert sys.version_info[:3] == (3, 12, 13)' \\
-    && uv pip install --system --break-system-packages "pillow==12.3.0" \\
-    && python3 -c 'import PIL; assert PIL.__version__ == "12.3.0"'
+    && python3 -c 'import sys; assert sys.version_info[:3] == (3, 12, 13)'
+
+RUN uv pip install --system --break-system-packages \\
+        "lxml==6.1.1" \\
+        "markitdown[pptx]==0.1.7" \\
+        "openpyxl==3.1.5" \\
+        "pandas==3.0.5" \\
+        "pdf2docx==0.5.13" \\
+        "pdf2image==1.17.0" \\
+        "pdfplumber==0.11.10" \\
+        "pillow==12.3.0" \\
+        "playwright==1.60.0" \\
+        "pymupdf==1.28.0" \\
+        "pypdf==6.14.2" \\
+        "python-docx==1.2.0" \\
+        "python-pptx==1.0.2" \\
+        "reportlab==5.0.0" \\
+    && python3 -c 'import importlib; [importlib.import_module(m) for m in ["PIL","docx","fitz","lxml","markitdown","openpyxl","pandas","pdf2docx","pdf2image","pdfplumber","playwright","pptx","pypdf","reportlab"]]; print("python package floor OK")'
 
 ENV SHELL=/bin/bash
 RUN case "$(uname -m)" in \\
@@ -204,9 +219,24 @@ RUN case "$(uname -m)" in \\
     && uv --version | grep -Eq '^uv 0.11.30( |$)' \\
     && UV_PYTHON_DOWNLOADS=automatic uv python install --default 3.12.13 \\
     && python -c 'import sys; assert sys.version_info[:3] == (3, 12, 13); print("managed python:", sys.version)' \\
-    && python3 -c 'import sys; assert sys.version_info[:3] == (3, 12, 13)' \\
-    && uv pip install --system --break-system-packages "pillow==12.3.0" \\
-    && python3 -c 'import PIL; assert PIL.__version__ == "12.3.0"'
+    && python3 -c 'import sys; assert sys.version_info[:3] == (3, 12, 13)'
+
+RUN uv pip install --system --break-system-packages \\
+        "lxml==6.1.1" \\
+        "markitdown[pptx]==0.1.7" \\
+        "openpyxl==3.1.5" \\
+        "pandas==3.0.5" \\
+        "pdf2docx==0.5.13" \\
+        "pdf2image==1.17.0" \\
+        "pdfplumber==0.11.10" \\
+        "pillow==12.3.0" \\
+        "playwright==1.60.0" \\
+        "pymupdf==1.28.0" \\
+        "pypdf==6.14.2" \\
+        "python-docx==1.2.0" \\
+        "python-pptx==1.0.2" \\
+        "reportlab==5.0.0" \\
+    && python3 -c 'import importlib; [importlib.import_module(m) for m in ["PIL","docx","fitz","lxml","markitdown","openpyxl","pandas","pdf2docx","pdf2image","pdfplumber","playwright","pptx","pypdf","reportlab"]]; print("python package floor OK")'
 
 ENV SHELL=/bin/bash
 RUN case "$(uname -m)" in \\
@@ -362,9 +392,24 @@ RUN case "$(uname -m)" in \\
     && uv --version | grep -Eq '^uv 0.11.30( |$)' \\
     && UV_PYTHON_DOWNLOADS=automatic uv python install --default 3.12.13 \\
     && python -c 'import sys; assert sys.version_info[:3] == (3, 12, 13); print("managed python:", sys.version)' \\
-    && python3 -c 'import sys; assert sys.version_info[:3] == (3, 12, 13)' \\
-    && uv pip install --system --break-system-packages "pillow==12.3.0" \\
-    && python3 -c 'import PIL; assert PIL.__version__ == "12.3.0"'
+    && python3 -c 'import sys; assert sys.version_info[:3] == (3, 12, 13)'
+
+RUN uv pip install --system --break-system-packages \\
+        "lxml==6.1.1" \\
+        "markitdown[pptx]==0.1.7" \\
+        "openpyxl==3.1.5" \\
+        "pandas==3.0.5" \\
+        "pdf2docx==0.5.13" \\
+        "pdf2image==1.17.0" \\
+        "pdfplumber==0.11.10" \\
+        "pillow==12.3.0" \\
+        "playwright==1.60.0" \\
+        "pymupdf==1.28.0" \\
+        "pypdf==6.14.2" \\
+        "python-docx==1.2.0" \\
+        "python-pptx==1.0.2" \\
+        "reportlab==5.0.0" \\
+    && python3 -c 'import importlib; [importlib.import_module(m) for m in ["PIL","docx","fitz","lxml","markitdown","openpyxl","pandas","pdf2docx","pdf2image","pdfplumber","playwright","pptx","pypdf","reportlab"]]; print("python package floor OK")'
 
 ENV SHELL=/bin/bash
 RUN case "$(uname -m)" in \\

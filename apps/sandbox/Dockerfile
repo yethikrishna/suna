@@ -123,11 +123,19 @@ RUN UV_VERSION="$(sed -n 's/.*"uv": "\([^"]*\)".*/\1/p' /tmp/kortix-runtime-vers
     && uv --version | grep -Eq "^uv ${UV_VERSION}( |$)" \
     && UV_PYTHON_DOWNLOADS=automatic uv python install --default "$PYTHON_VERSION" \
     && python -c "import sys; assert '.'.join(map(str, sys.version_info[:3])) == '${PYTHON_VERSION}'; print('managed python:', sys.version)" \
-    && python3 -c "import sys; assert '.'.join(map(str, sys.version_info[:3])) == '${PYTHON_VERSION}'" \
-    && PILLOW_VERSION="$(sed -n 's/.*"pillow": "\([^"]*\)".*/\1/p' /tmp/kortix-runtime-versions.json)" \
-    && test -n "$PILLOW_VERSION" \
-    && uv pip install --system --break-system-packages "pillow==${PILLOW_VERSION}" \
-    && python3 -c "import PIL; assert PIL.__version__ == '${PILLOW_VERSION}'"
+    && python3 -c "import sys; assert '.'.join(map(str, sys.version_info[:3])) == '${PYTHON_VERSION}'"
+
+# Python package floor — everything the starter skills import, baked into the
+# managed interpreter so bare `python3` needs no per-script resolution or
+# runtime downloads. Pins live in runtime-versions.json (`pythonPackages`);
+# `uv run --with` stays the escape hatch for packages outside the floor.
+# `--break-system-packages` overrides uv's externally-managed marker on the
+# interpreter installed above — our frozen build-time interpreter, not a
+# distro Python. Unquoted $(...) expansion is safe here: pins contain no
+# whitespace, and the `markitdown[pptx]` glob matches no file in this cwd.
+RUN uv pip install --system --break-system-packages \
+        $(python3 -c "import json; print(' '.join(f'{k}=={v}' for k, v in sorted(json.load(open('/tmp/kortix-runtime-versions.json'))['pythonPackages'].items())))") \
+    && python3 -c "import importlib; [importlib.import_module(m) for m in ['PIL', 'docx', 'fitz', 'lxml', 'markitdown', 'openpyxl', 'pandas', 'pdf2docx', 'pdf2image', 'pdfplumber', 'playwright', 'pptx', 'pypdf', 'reportlab']]; print('python package floor OK')"
 
 ENV SHELL=/bin/bash
 RUN PNPM_VERSION="$(python -c "import json; print(json.load(open('/tmp/kortix-runtime-versions.json'))['pnpm'])")" \

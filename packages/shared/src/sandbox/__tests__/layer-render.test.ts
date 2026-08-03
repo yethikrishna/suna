@@ -24,9 +24,11 @@ import {
   BUN_SHA256_AMD64,
   BUN_SHA256_ARM64,
   OPENCODE_VERSION,
-  PILLOW_VERSION,
+  PLAYWRIGHT_VERSION,
   PNPM_SHA256_AMD64,
   PNPM_SHA256_ARM64,
+  PYTHON_PACKAGE_FLOOR,
+  PYTHON_PACKAGE_FLOOR_IMPORTS,
   UV_SHA256_AMD64,
   UV_SHA256_ARM64,
 } from '../../runtime-versions';
@@ -134,13 +136,28 @@ describe('the Python runtime is managed by uv', () => {
     expect(toolchain).toContain('uv pip install --system --break-system-packages');
   });
 
-  test('bakes pinned Pillow into the managed Python and proves the import', () => {
-    expect(toolchain).toContain(
-      `uv pip install --system --break-system-packages "pillow==${PILLOW_VERSION}"`,
+  test('bakes every floor package exactly-pinned into the managed Python', () => {
+    for (const [pkg, version] of Object.entries(PYTHON_PACKAGE_FLOOR)) {
+      expect(toolchain).toContain(`"${pkg}==${version}"`);
+    }
+  });
+
+  test('proves every floor import at build time in a single-line check', () => {
+    for (const importName of Object.values(PYTHON_PACKAGE_FLOOR_IMPORTS)) {
+      expect(toolchain).toContain(`"${importName}"`);
+    }
+    expect(toolchain).toContain('python package floor OK');
+    expect(toolchain).not.toContain('<<');
+  });
+
+  test('every floor package has an import mapping and vice versa', () => {
+    expect(Object.keys(PYTHON_PACKAGE_FLOOR_IMPORTS).sort()).toEqual(
+      Object.keys(PYTHON_PACKAGE_FLOOR).sort(),
     );
-    expect(toolchain).toContain(
-      `python3 -c 'import PIL; assert PIL.__version__ == "${PILLOW_VERSION}"'`,
-    );
+  });
+
+  test('python-playwright matches the Node playwright that bakes Chromium', () => {
+    expect(PYTHON_PACKAGE_FLOOR.playwright).toBe(PLAYWRIGHT_VERSION);
   });
 
   test('installs an exact managed Python as python and python3', () => {

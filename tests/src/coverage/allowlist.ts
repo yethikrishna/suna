@@ -5,32 +5,6 @@ export interface AllowEntry {
 }
 
 export const uncoveredAllow: AllowEntry[] = [
-  // These four are not new code — they shipped without the route manifest being
-  // regenerated, so the gate never saw them. Regenerating it for an unrelated
-  // change surfaced them all at once. Allowlisted rather than left to block an
-  // unrelated PR; each still deserves a flow.
-  {
-    method: "GET",
-    path: "/health/ready",
-    reason:
-      "infra readiness probe (k8s/ALB), unauthenticated and body-less — no user-facing contract to assert; predates the manifest regeneration that surfaced it",
-  },
-  {
-    method: "GET",
-    path: "/v1/health/ready",
-    reason: "the /v1-prefixed alias of the same infra readiness probe",
-  },
-  {
-    method: "POST",
-    path: "/v1/executor/attachments",
-    reason:
-      "executor-scoped upload called by the in-sandbox executor with its own token, not by end-user clients; predates the manifest regeneration that surfaced it",
-  },
-  {
-    method: "POST",
-    path: "/v1/executor/projects/:*/attachments",
-    reason: "the project-scoped form of the same executor-only upload",
-  },
   {
     method: "POST",
     path: "/v1/platform/boot-timeline",

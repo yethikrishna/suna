@@ -143,6 +143,33 @@ describe('ensureDefaultProjectBinding', () => {
     expect(stderrChunks.join('')).toContain('kortix init');
   });
 
+  it('says "in this account", not "your first" — the user may have projects elsewhere', async () => {
+    // The old wording told someone with four projects under a sibling account to
+    // create their first one. It is also the line that makes a command look
+    // failed right before its cross-account fallback succeeds.
+    mockProjects([]);
+
+    await ensureDefaultProjectBinding(AUTH);
+
+    const out = stderrChunks.join('');
+    expect(out).toContain('No projects in this account');
+    expect(out).toContain('kortix accounts use');
+    expect(out).not.toContain('your first');
+  });
+
+  it('stays SILENT when the caller has a fallback', async () => {
+    // `locateSessionAnywhere` scans the host's other accounts next and usually
+    // finds the session. Announcing "no projects" first reports a failure that
+    // has not happened — the command goes on to succeed, but the output reads
+    // as an error.
+    mockProjects([]);
+
+    const outcome = await ensureDefaultProjectBinding(AUTH, { quiet: true });
+
+    expect(outcome.project).toBeNull();
+    expect(stderrChunks.join('')).toBe('');
+  });
+
   it('does not prompt or bind on a non-TTY when several projects exist', async () => {
     mockProjects([project('proj_a', 'A'), project('proj_b', 'B')]);
 

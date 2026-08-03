@@ -40,7 +40,19 @@ function bindableAccountId(auth: Auth): string | undefined {
  */
 export async function ensureDefaultProjectBinding(
   auth: Auth,
-  opts: { promptTitle?: string } = {},
+  opts: {
+    promptTitle?: string;
+    /**
+     * Say nothing when no project can be bound.
+     *
+     * For a caller that has a FALLBACK — `locateSessionAnywhere` scans the
+     * account's siblings next — the "no projects here" note is not the
+     * outcome, it is a step. Printing it announces a failure that is about to
+     * be recovered from, which reads as the command having failed even when it
+     * goes on to succeed.
+     */
+    quiet?: boolean;
+  } = {},
 ): Promise<BindOutcome> {
   const existing = defaultProject();
   if (existing) return { project: existing, bound: false };
@@ -58,9 +70,14 @@ export async function ensureDefaultProjectBinding(
   }
 
   if (projects.length === 0) {
-    process.stderr.write(
-      `${C.dim}No projects in this account yet — create your first with ${C.reset}${C.cyan}kortix init <name>${C.reset}${C.dim} then ${C.reset}${C.cyan}kortix ship${C.reset}${C.dim}.${C.reset}\n`,
-    );
+    // "in this account" matters: the user may well have projects, just under a
+    // different account on the same host. Telling them to create their first
+    // one would be wrong, and this message used to say exactly that.
+    if (!opts.quiet) {
+      process.stderr.write(
+        `${C.dim}No projects in this account — create one with ${C.reset}${C.cyan}kortix init <name>${C.reset}${C.dim}, or switch accounts with ${C.reset}${C.cyan}kortix accounts use${C.reset}${C.dim}.${C.reset}\n`,
+      );
+    }
     return { project: null, bound: false };
   }
 

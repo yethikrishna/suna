@@ -5706,3 +5706,30 @@ Required SDK gates are typecheck, the full test suite, and packed-install smoke.
 **Status:** IN PROGRESS.
 
 **SDK package shippable to production: NOT YET.**
+
+---
+
+### 2026-08-03 — session `integrator-policy-approvals` completion
+
+Added the optional `review_complete` field to `ApprovalLinkDetails`. Existing
+consumers that construct this public interface remain source-compatible. The web
+approval page now reads the SDK field directly without a host-local type cast.
+
+RED:
+
+- `pnpm --filter @kortix/sdk typecheck`: failed with `TS2353` and `TS2339`
+  because `ApprovalLinkDetails` did not expose `review_complete`.
+
+GREEN:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1410 pass`, `2 skip`, `0 fail`, and
+  `6026 expect()` calls across `117` files.
+- `pnpm --filter @kortix/sdk smoke:install`: exit `0`; packed tarball imported
+  and `createKortix` constructed successfully.
+
+No public export name changed. The public-surface snapshots stayed unchanged.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**

@@ -5399,3 +5399,27 @@ Required SDK gates are typecheck, the full test suite, and packed-install smoke.
 **Status:** IN PROGRESS.
 
 **SDK package shippable to production: NOT YET.**
+
+---
+
+### 2026-08-03 — session `secret-delivery-control-plane` claim
+
+No **Now** task claimed. This is the first public secret-delivery control-plane
+slice defined in `docs/SECRET_DELIVERY_CONTROL_PLANE.md`.
+
+Scope:
+
+- Expose stored secret delivery metadata through the project secrets API.
+- Add an admin-only route for delivery-strategy changes.
+- Expose the additive contract through `@kortix/sdk`.
+- Record central audit events for secret administration without secret values.
+- Keep `broker` and `egress` unavailable until their adapters exist.
+
+The required `tdd` skill is unavailable in this session. The work will use the
+same RED, GREEN, and REFACTOR sequence directly.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**

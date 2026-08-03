@@ -376,6 +376,31 @@ test('reloadProjectSessionConfig forwards force as a real boolean', async () => 
   expect(last().body).toEqual({ force: true });
 });
 
+test('neither config call routes failures to the host global error handler', async () => {
+  // `showErrors` defaults to TRUE, which calls platformConfig().onError — a
+  // toast in the web host. Both of these must opt out, for different reasons:
+  // the GET is a background probe that 404s on any still-materializing session
+  // (so the default toasts at a user who merely opened one, on every focus),
+  // and the POST's 409 is a question the caller answers with a confirm dialog,
+  // not an error to announce over it.
+  const errors: unknown[] = [];
+  configureKortix({
+    backendUrl: 'http://test.local',
+    getToken: async () => 'tok',
+    onError: (err: unknown) => errors.push(err),
+  });
+
+  nextResponse = { status: 404, body: { error: 'Not found' } };
+  await getProjectSessionConfigState('P1', 'S1').catch(() => {});
+  nextResponse = { status: 409, body: { code: 'SESSION_BUSY', reason: 'session is mid-turn' } };
+  await reloadProjectSessionConfig('P1', 'S1').catch(() => {});
+
+  expect(errors).toEqual([]);
+
+  // Leave the shared config as the rest of this file expects it.
+  configureKortix({ backendUrl: 'http://test.local', getToken: async () => 'tok' });
+});
+
 test('reloadProjectSessionConfig surfaces the 409 code and reason for the confirm step', async () => {
   // A busy session is not a failure the user should just be toasted about —
   // the UI needs `code` to know to offer "reload anyway", and `reason` to say

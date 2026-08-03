@@ -576,6 +576,12 @@ export interface SessionConfigState {
  * Not cheap — the server drops the project's git-mirror TTL, recompiles the
  * manifest, and calls into the sandbox. Fetch it on mount and on focus; do not
  * poll it on a timer.
+ *
+ * `showErrors: false` because this is a BACKGROUND probe nobody asked for. It
+ * runs on every session mount, and a session that is still materializing 404s —
+ * with the default the host's global error handler would toast at a user who
+ * merely opened a new session, on every focus, forever. A failure here already
+ * has a meaning ("could not tell"), and that is the caller's to render.
  */
 export async function getProjectSessionConfigState(
   projectId: string,
@@ -584,6 +590,7 @@ export async function getProjectSessionConfigState(
   return unwrap(
     await backendApi.get<SessionConfigState>(
       `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/config`,
+      { showErrors: false },
     ),
   );
 }
@@ -615,6 +622,11 @@ export interface SessionReloadResult {
  * default while a turn is running and answers 409 with `code: 'SESSION_BUSY'`
  * and a `reason`; `force: true` overrides and discards that turn, so it belongs
  * behind a confirmation, never behind a silent retry.
+ *
+ * `showErrors: false` because the 409 is not an error to announce — it is a
+ * question ("end the running turn?"), and the caller answers it with a confirm.
+ * Letting the host's global handler toast it too would talk over that dialog,
+ * and would double up on every other failure the caller already reports.
  */
 export async function reloadProjectSessionConfig(
   projectId: string,
@@ -625,6 +637,7 @@ export async function reloadProjectSessionConfig(
     await backendApi.post<SessionReloadResult>(
       `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/reload`,
       input,
+      { showErrors: false },
     ),
   );
 }

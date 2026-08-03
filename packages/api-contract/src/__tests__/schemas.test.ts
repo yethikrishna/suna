@@ -543,12 +543,11 @@ describe('SecretSchema', () => {
   });
 
   test('accepts only a strategy in the update input', () => {
-    expect(UpdateSecretStrategyInputSchema.strict().parse({ strategy: 'denied' })).toEqual({
+    expect(UpdateSecretStrategyInputSchema.parse({ strategy: 'denied' })).toEqual({
       strategy: 'denied',
     });
     expect(
-      UpdateSecretStrategyInputSchema.strict().safeParse({ strategy: 'runtime', value: 'secret' })
-        .success,
+      UpdateSecretStrategyInputSchema.safeParse({ strategy: 'runtime', value: 'secret' }).success,
     ).toBe(false);
   });
 });

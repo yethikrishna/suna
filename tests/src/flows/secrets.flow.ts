@@ -162,6 +162,17 @@ flow(
         .has("$.requires_rotation", true);
     });
 
+    await ctx.step("runtime delivery stays disabled until rotation", async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .put(
+          "/v1/projects/:projectId/secrets/:identifier/strategy",
+          { strategy: "runtime" },
+          { params: { projectId: p.id, identifier: "CONTROL_PLANE_KEY" } },
+        );
+      r.status(409).body().has("$.code", "secret_rotation_required");
+    });
+
     for (const strategy of ["broker", "egress"]) {
       await ctx.step(`${strategy} fails closed until its adapter is available`, async () => {
         const r = await ctx.client
@@ -175,6 +186,30 @@ flow(
       });
     }
 
+    await ctx.step("rotation permits runtime delivery", async () => {
+      const rotate = await ctx.client
+        .as(ctx.P.OWNER)
+        .post(
+          "/v1/projects/:projectId/secrets",
+          { name: "CONTROL_PLANE_KEY", value: "rotated-control-plane-value" },
+          { params: { projectId: p.id } },
+        );
+      rotate.status(200).body().has("$.strategy", "denied").has("$.requires_rotation", false);
+
+      const restore = await ctx.client
+        .as(ctx.P.OWNER)
+        .put(
+          "/v1/projects/:projectId/secrets/:identifier/strategy",
+          { strategy: "runtime" },
+          { params: { projectId: p.id, identifier: "CONTROL_PLANE_KEY" } },
+        );
+      restore
+        .status(200)
+        .body()
+        .has("$.strategy", "runtime")
+        .has("$.requires_rotation", false);
+    });
+
     await ctx.step("central audit reconstructs the strategy change without a value", async () => {
       const r = await ctx.client.as(ctx.P.OWNER).get("/v1/accounts/:accountId/audit", {
         params: { accountId: team.id },
@@ -182,12 +217,13 @@ flow(
       });
       r.status(200).body().exists("$.events[0]");
       const events = r.json<{ events: Array<Record<string, unknown>> }>().events;
-      const event = events.find((item) => item.action === "secret.strategy.changed");
-      if (!event) throw new Error("strategy audit event missing");
+      const matchingEvents = events.filter((item) => item.action === "secret.strategy.changed");
+      const event = matchingEvents[0];
+      if (!event || matchingEvents.length < 2) throw new Error("strategy audit events missing");
       if (
         event.project_id !== p.id ||
         event.resource_type !== "project_secret" ||
-        JSON.stringify(event).includes("control-plane-value")
+        JSON.stringify(matchingEvents).includes("control-plane-value")
       ) {
         throw new Error(`unsafe strategy audit event: ${JSON.stringify(event)}`);
       }

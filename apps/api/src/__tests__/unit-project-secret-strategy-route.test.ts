@@ -60,6 +60,8 @@ function queryResult(fields: Record<string, unknown> | undefined) {
         secretId: row.secretId,
         name: row.name,
         strategy: row.strategy,
+        rotatedAt: row.rotatedAt,
+        updatedAt: row.updatedAt,
         strategyLocked: row.strategyLocked,
       }
     : row;
@@ -69,9 +71,7 @@ function queryResult(fields: Record<string, unknown> | undefined) {
   };
 }
 
-mock.module('../shared/db', () => ({
-  hasDatabase: true,
-  db: {
+const databaseMock = {
     select: (fields?: Record<string, unknown>) => ({
       from: (table: unknown) => {
         if (table !== projectSecrets) throw new Error('unexpected table');
@@ -114,8 +114,9 @@ mock.module('../shared/db', () => ({
         },
       };
     },
-  },
-}));
+};
+
+mock.module('../shared/db', () => ({ hasDatabase: true, db: databaseMock }));
 
 mock.module('../projects/lib/access', () => ({
   loadProjectForUser: async () => ({
@@ -140,6 +141,14 @@ mock.module('../shared/audit', () => ({
     actorType === 'service_account' ? 'automation' : 'api',
   recordAuditEvent: async (event: Record<string, unknown>) => {
     audits.push(event);
+  },
+  runAuditedTransaction: async <T>(
+    operation: (tx: typeof databaseMock) => Promise<T>,
+    event: (result: T) => Record<string, unknown>,
+  ) => {
+    const result = await operation(databaseMock);
+    audits.push(event(result));
+    return result;
   },
 }));
 
@@ -276,6 +285,65 @@ describe('PUT /v1/projects/:projectId/secrets/:identifier/strategy', () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ code: 'secret_strategy_locked' });
     expect(updates).toHaveLength(0);
+  });
+
+  test('rejects unexpected request fields', async () => {
+    const response = await buildApp().request(
+      `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ strategy: 'denied', value: 'not-accepted' }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(updates).toHaveLength(0);
+  });
+
+  test('requires rotation before restoring runtime delivery', async () => {
+    row = secretRow({
+      strategy: 'denied',
+      rotatedAt: new Date('2026-08-03T10:00:00.000Z'),
+      updatedAt: new Date('2026-08-03T10:05:00.000Z'),
+    });
+
+    const response = await buildApp().request(
+      `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ strategy: 'runtime' }),
+      },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: 'secret_rotation_required' });
+    expect(updates).toHaveLength(0);
+    expect(audits).toHaveLength(0);
+  });
+
+  test('restores runtime delivery after rotation', async () => {
+    const rotatedAt = new Date('2026-08-03T10:05:00.000Z');
+    row = secretRow({ strategy: 'denied', rotatedAt, updatedAt: rotatedAt });
+
+    const response = await buildApp().request(
+      `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ strategy: 'runtime' }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      strategy: 'runtime',
+      delivery_status: 'available',
+      requires_rotation: false,
+    });
+    expect(updates).toHaveLength(1);
+    expect(audits).toHaveLength(1);
   });
 });
 

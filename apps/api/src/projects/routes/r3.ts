@@ -3,7 +3,7 @@ import { PROJECT_ACTIONS } from '../../iam';
 import { agentMayUseEnv, getAgentGrant } from '../../iam/agent-scope';
 import { auth, errors, json } from '../../openapi';
 import { createAccountToken, listAccountTokens, revokeAccountToken } from '../../repositories/account-tokens';
-import { inferAuditSource, recordAuditEvent } from '../../shared/audit';
+import { inferAuditSource, runAuditedTransaction } from '../../shared/audit';
 import { db } from '../../shared/db';
 import { kickRoutedPreBuild, templateBuildProviders } from '../../snapshots/builder';
 import { getTemplateById } from '../../snapshots/templates';
@@ -561,40 +561,63 @@ projectsApp.openapi(
   }
 
   const now = new Date();
-  let secretId: string;
-  if (value !== null) {
-    const [row] = await db
-      .insert(projectSecrets)
-      .values({
-        projectId,
-        identifier,
-        name,
-        valueEnc: encryptProjectSecret(projectId, value),
-        createdBy: loaded.userId,
-        rotatedAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        // The shared row is unique on (project, identifier) WHERE owner_user_id IS NULL.
-        target: [projectSecrets.projectId, projectSecrets.identifier],
-        targetWhere: isNull(projectSecrets.ownerUserId),
-        set: {
-          valueEnc: encryptProjectSecret(projectId, value),
-          rotatedAt: now,
-          updatedAt: now,
-        },
-      })
-      .returning({ secretId: projectSecrets.secretId });
-    secretId = row.secretId;
-  } else {
-    // No value change (identifier/name unchanged) — nothing to do besides
-    // touching updatedAt so the list reflects the write.
-    await db
-      .update(projectSecrets)
-      .set({ updatedAt: now })
-      .where(eq(projectSecrets.secretId, existing!.secretId));
-    secretId = existing!.secretId;
-  }
+  const actorType =
+    c.get('authType') === 'service_account'
+      ? 'service_account'
+      : getAgentGrant(c)
+        ? 'agent'
+        : 'human';
+  const secretId = await runAuditedTransaction(
+    async (tx) => {
+      if (value !== null) {
+        const [row] = await tx
+          .insert(projectSecrets)
+          .values({
+            projectId,
+            identifier,
+            name,
+            valueEnc: encryptProjectSecret(projectId, value),
+            createdBy: loaded.userId,
+            rotatedAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: [projectSecrets.projectId, projectSecrets.identifier],
+            targetWhere: isNull(projectSecrets.ownerUserId),
+            set: {
+              valueEnc: encryptProjectSecret(projectId, value),
+              rotatedAt: now,
+              updatedAt: now,
+            },
+          })
+          .returning({ secretId: projectSecrets.secretId });
+        return row.secretId;
+      }
+
+      await tx
+        .update(projectSecrets)
+        .set({ updatedAt: now })
+        .where(eq(projectSecrets.secretId, existing!.secretId));
+      return existing!.secretId;
+    },
+    (resourceId) => ({
+      accountId: loaded.row.accountId,
+      projectId,
+      actorUserId: loaded.userId,
+      actorType,
+      source: inferAuditSource(c, actorType),
+      action: existing ? 'secret.updated' : 'secret.created',
+      resourceType: 'project_secret',
+      resourceId,
+      before: existing ? { configured: true, strategy: existing.strategy } : null,
+      after: {
+        configured: true,
+        strategy: existing?.strategy ?? 'runtime',
+        rotated: value !== null,
+      },
+      metadata: { identifier, name },
+    }),
+  );
 
   void propagateProjectSecretsToActiveSandboxes(projectId, { refreshModels: isGatewayManagedEnv(name) });
 
@@ -615,31 +638,6 @@ projectsApp.openapi(
   if (!view) {
     throw new Error(`Secret view not found after upsert: ${identifier}`);
   }
-  const actorType =
-    c.get('authType') === 'service_account'
-      ? 'service_account'
-      : getAgentGrant(c)
-        ? 'agent'
-        : 'human';
-  await recordAuditEvent({
-    accountId: loaded.row.accountId,
-    projectId,
-    actorUserId: loaded.userId,
-    actorType,
-    source: inferAuditSource(c, actorType),
-    action: existing ? 'secret.updated' : 'secret.created',
-    resourceType: 'project_secret',
-    resourceId: secretId,
-    before: existing
-      ? { configured: true, strategy: existing.strategy }
-      : null,
-    after: {
-      configured: true,
-      strategy: view.strategy,
-      rotated: value !== null,
-    },
-    metadata: { identifier, name },
-  });
   return c.json(view, 200);
 },
 );
@@ -701,6 +699,8 @@ projectsApp.openapi(
         secretId: projectSecrets.secretId,
         name: projectSecrets.name,
         strategy: projectSecrets.strategy,
+        rotatedAt: projectSecrets.rotatedAt,
+        updatedAt: projectSecrets.updatedAt,
         strategyLocked: projectSecrets.strategyLocked,
       })
       .from(projectSecrets)
@@ -719,12 +719,47 @@ projectsApp.openapi(
         409,
       );
     }
+    if (
+      parsed.data.strategy === 'runtime' &&
+      existing.strategy !== 'runtime' &&
+      (!existing.rotatedAt || existing.rotatedAt < existing.updatedAt)
+    ) {
+      return c.json(
+        {
+          error: 'Rotate the secret before restoring runtime delivery',
+          code: 'secret_rotation_required',
+        },
+        409,
+      );
+    }
 
     if (existing.strategy !== parsed.data.strategy) {
-      await db
-        .update(projectSecrets)
-        .set({ strategy: parsed.data.strategy, updatedAt: new Date() })
-        .where(eq(projectSecrets.secretId, existing.secretId));
+      const actorType =
+        c.get('authType') === 'service_account' ? 'service_account' : 'human';
+      await runAuditedTransaction(
+        async (tx) => {
+          await tx
+            .update(projectSecrets)
+            .set({ strategy: parsed.data.strategy, updatedAt: new Date() })
+            .where(eq(projectSecrets.secretId, existing.secretId));
+        },
+        () => ({
+          accountId: loaded.row.accountId,
+          projectId,
+          actorUserId: loaded.userId,
+          actorType,
+          source: inferAuditSource(c, actorType),
+          action: 'secret.strategy.changed',
+          resourceType: 'project_secret',
+          resourceId: existing.secretId,
+          before: { strategy: existing.strategy },
+          after: {
+            strategy: parsed.data.strategy,
+            requires_rotation: parsed.data.strategy !== 'runtime',
+          },
+          metadata: { identifier, name: existing.name },
+        }),
+      );
       await propagateProjectSecretsToActiveSandboxes(projectId, {
         refreshModels: isGatewayManagedEnv(existing.name),
       });
@@ -733,27 +768,6 @@ projectsApp.openapi(
     const views = await loadSecretViewsForUser(projectId, loaded.userId, true);
     const view = views.find((item) => item.identifier === identifier);
     if (!view) return c.json({ error: 'Not found' }, 404);
-
-    if (existing.strategy !== parsed.data.strategy) {
-      const actorType =
-        c.get('authType') === 'service_account' ? 'service_account' : 'human';
-      await recordAuditEvent({
-        accountId: loaded.row.accountId,
-        projectId,
-        actorUserId: loaded.userId,
-        actorType,
-        source: inferAuditSource(c, actorType),
-        action: 'secret.strategy.changed',
-        resourceType: 'project_secret',
-        resourceId: existing.secretId,
-        before: { strategy: existing.strategy },
-        after: {
-          strategy: parsed.data.strategy,
-          requires_rotation: view.requires_rotation,
-        },
-        metadata: { identifier, name: existing.name },
-      });
-    }
 
     return c.json(view, 200);
   },
@@ -1154,39 +1168,48 @@ projectsApp.openapi(
     ))
     .limit(1);
 
-  // Only the shared row — members' personal overrides for this identifier are
-  // theirs to remove (via the /personal route) and are left intact.
-  await db
-    .delete(projectSecrets)
-    .where(and(
-      eq(projectSecrets.projectId, projectId),
-      eq(projectSecrets.identifier, identifier),
-      isNull(projectSecrets.ownerUserId),
-    ));
-
-  void propagateProjectSecretsToActiveSandboxes(projectId, { refreshModels: isGatewayManagedEnv(identifier) });
-
   if (existing) {
     const actorType =
       c.get('authType') === 'service_account'
         ? 'service_account'
         : getAgentGrant(c)
-          ? 'agent'
-          : 'human';
-    await recordAuditEvent({
-      accountId: loaded.row.accountId,
-      projectId,
-      actorUserId: loaded.userId,
-      actorType,
-      source: inferAuditSource(c, actorType),
-      action: 'secret.deleted',
-      resourceType: 'project_secret',
-      resourceId: existing.secretId,
-      before: { configured: true, strategy: existing.strategy },
-      after: { configured: false },
-      metadata: { identifier, name: existing.name },
-    });
+        ? 'agent'
+        : 'human';
+    await runAuditedTransaction(
+      async (tx) => {
+        await tx
+          .delete(projectSecrets)
+          .where(and(
+            eq(projectSecrets.projectId, projectId),
+            eq(projectSecrets.identifier, identifier),
+            isNull(projectSecrets.ownerUserId),
+          ));
+      },
+      () => ({
+        accountId: loaded.row.accountId,
+        projectId,
+        actorUserId: loaded.userId,
+        actorType,
+        source: inferAuditSource(c, actorType),
+        action: 'secret.deleted',
+        resourceType: 'project_secret',
+        resourceId: existing.secretId,
+        before: { configured: true, strategy: existing.strategy },
+        after: { configured: false },
+        metadata: { identifier, name: existing.name },
+      }),
+    );
+  } else {
+    await db
+      .delete(projectSecrets)
+      .where(and(
+        eq(projectSecrets.projectId, projectId),
+        eq(projectSecrets.identifier, identifier),
+        isNull(projectSecrets.ownerUserId),
+      ));
   }
+
+  void propagateProjectSecretsToActiveSandboxes(projectId, { refreshModels: isGatewayManagedEnv(identifier) });
 
   return c.json({ ok: true });
 },

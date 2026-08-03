@@ -37,8 +37,10 @@ Connector and LLM are consumers. They are not delivery strategies.
 | `egress` | Opaque placeholder | A network boundary replaces the placeholder |
 | `denied` | Nothing | The value is stored but disabled |
 
-The strictness order is `runtime < egress < broker < denied`. A lower layer can
-tighten a decision. It cannot weaken a stricter decision.
+The strictness order is `runtime < egress < broker < denied`. During request
+resolution, a lower layer can tighten a decision. It cannot weaken a stricter
+decision. An authorized person can change the stored strategy. Restoring
+`runtime` after a stricter strategy requires a new secret value first.
 
 ## System boundaries
 
@@ -137,8 +139,9 @@ UI labels use direct language:
 | `runtime` | Readable in sandbox | Agent code can read and copy the value |
 | `denied` | Stored but disabled | No consumer can use the value |
 
-New generic secrets default to `denied`. Known managed consumers default to
-`broker`. Existing secrets remain `runtime` until an explicit migration.
+After phase 6, new generic secrets default to `denied`. Known managed consumers
+default to `broker`. Existing secrets remain `runtime` until an explicit
+migration.
 
 ## Central audit contract
 
@@ -160,6 +163,23 @@ bodies.
 Required actions include `secret.created`, `secret.updated`, `secret.deleted`,
 `secret.strategy.changed`, `secret.access.allowed`, `secret.access.denied`, and
 `secret.used`.
+
+A secret configuration mutation and its semantic audit event commit in one
+database transaction. Webhook dispatch starts only after that transaction
+commits. An audit insert failure rolls back the mutation.
+
+## Current implementation
+
+The first implementation slice provides strategy metadata through the API and
+SDK. It supports `runtime` and `denied`. It rejects `broker` and `egress` with a
+typed `409` until their adapters exist. Only authorized human and service
+account principals can change a strategy. Restoring `runtime` requires a value
+rotation. Secret create, update, delete, and strategy changes produce atomic,
+metadata-only semantic audit events.
+
+This slice does not include broker adapters, egress adapters, the strategy
+editor UI, per-use audit events, or the default migration. The delivery phases
+below define that remaining work.
 
 ## Delivery phases
 

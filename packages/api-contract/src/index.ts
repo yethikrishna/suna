@@ -1008,9 +1008,11 @@ export const SecretEgressPolicySchema = z.object({
 });
 export type SecretEgressPolicy = z.infer<typeof SecretEgressPolicySchema>;
 
-export const UpdateSecretStrategyInputSchema = z.object({
-  strategy: SecretDeliveryStrategySchema,
-});
+export const UpdateSecretStrategyInputSchema = z
+  .object({
+    strategy: SecretDeliveryStrategySchema,
+  })
+  .strict();
 export type UpdateSecretStrategyInput = z.infer<typeof UpdateSecretStrategyInputSchema>;
 
 export const SecretSchema = z.object({

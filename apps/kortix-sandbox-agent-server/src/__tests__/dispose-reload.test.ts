@@ -59,7 +59,12 @@ describe('tryDisposeReload', () => {
     // otherwise be read as "reloaded" and skip the fallback, leaving the old
     // config running while we reported success.
     const body = disposeReloadBody()
-    expect(body).toContain("includes('application/json')")
+    // Matched case-insensitively, not by substring: header values are
+    // case-insensitive and `application/<vendor>+json` is JSON. A false
+    // negative here would cost a needless ~8s respawn.
+    expect(body).toContain('json')
+    expect(body).toContain('/i.test(')
+    expect(body).not.toContain("includes('application/json')")
     expect(body).toContain('body === true')
   })
 

@@ -1151,15 +1151,23 @@ export function CommandPalette() {
   const handleRestartConfig = useCallback(() => {
     close();
     systemReload('dispose-only')
-      .then(() => successToast('Config reloaded'))
-      .catch(() => errorToast('Restart failed'));
+      .then((r) =>
+        r.success
+          ? successToast('Config reloaded')
+          : errorToast(r.errors[0] ?? 'The sandbox did not confirm the reload'),
+      )
+      .catch((err: Error) => errorToast(err.message));
   }, [close]);
 
   const handleRestartFull = useCallback(() => {
     close();
     systemReload('full')
-      .then(() => successToast('Full restart initiated'))
-      .catch(() => errorToast('Restart failed'));
+      .then((r) =>
+        r.success
+          ? successToast('Workspace pulled and runtime restarted')
+          : errorToast(r.errors[0] ?? 'The sandbox did not confirm the restart'),
+      )
+      .catch((err: Error) => errorToast(err.message));
   }, [close]);
 
   const actionHandlers: Record<string, () => void> = useMemo(

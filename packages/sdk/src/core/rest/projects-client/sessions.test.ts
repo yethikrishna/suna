@@ -9,6 +9,7 @@ import {
   deleteProjectSession,
   ensureWarmProjectSession,
   getProjectSession,
+  getProjectSessionConfigState,
   getProjectSessionScope,
   getSessionAudit,
   getSessionPreviewCandidates,
@@ -16,6 +17,7 @@ import {
   getVoiceTranscript,
   listProjectSessions,
   listSessionPublicShares,
+  reloadProjectSessionConfig,
   restartProjectSession,
   revokeSessionPublicShare,
   setProjectSessionScope,
@@ -307,6 +309,92 @@ test('restartProjectSession POSTs to /restart', async () => {
   expect(last().url).toContain('/projects/P1/sessions/S1/restart');
   expect(last().method).toBe('POST');
   expect(result.status).toBe('provisioning');
+});
+
+test('getProjectSessionConfigState GETs /config', async () => {
+  nextResponse = {
+    status: 200,
+    body: {
+      base_ref: 'main',
+      running_etag: 'aaaaaaaaaaaaaaaa',
+      latest_etag: 'bbbbbbbbbbbbbbbb',
+      commit_sha: 'c'.repeat(40),
+      stale: true,
+      sandbox_reachable: true,
+    },
+  };
+  const result = await getProjectSessionConfigState('P1', 'S1');
+  expect(last().url).toContain('/projects/P1/sessions/S1/config');
+  expect(last().method).toBe('GET');
+  expect(result.stale).toBe(true);
+  expect(result.latest_etag).toBe('bbbbbbbbbbbbbbbb');
+});
+
+test('getProjectSessionConfigState preserves a NULL stale — "could not tell" is not "fresh"', async () => {
+  // The whole point of the tri-state. A client that coerces this to false
+  // reports a session as up to date when nobody ever asked the box.
+  nextResponse = {
+    status: 200,
+    body: {
+      base_ref: 'main',
+      running_etag: null,
+      latest_etag: null,
+      commit_sha: null,
+      stale: null,
+      sandbox_reachable: false,
+    },
+  };
+  const result = await getProjectSessionConfigState('P1', 'S1');
+  expect(result.stale).toBeNull();
+  expect(result.stale).not.toBe(false);
+});
+
+test('reloadProjectSessionConfig POSTs to /reload with an empty body by default', async () => {
+  nextResponse = {
+    status: 200,
+    body: {
+      applied: true,
+      previous_etag: 'aaaaaaaaaaaaaaaa',
+      etag: 'bbbbbbbbbbbbbbbb',
+      repo_refreshed: true,
+      commit_sha: 'c'.repeat(40),
+      detail: 'Reloaded. The next prompt runs the new config.',
+    },
+  };
+  const result = await reloadProjectSessionConfig('P1', 'S1');
+  expect(last().url).toContain('/projects/P1/sessions/S1/reload');
+  expect(last().method).toBe('POST');
+  expect(last().body).toEqual({});
+  expect(result.applied).toBe(true);
+});
+
+test('reloadProjectSessionConfig forwards force as a real boolean', async () => {
+  // The route tests `body?.force === true` — a truthy string would be ignored
+  // and the reload would silently refuse again on a busy session.
+  nextResponse = { status: 200, body: { applied: true, detail: 'ok' } };
+  await reloadProjectSessionConfig('P1', 'S1', { force: true });
+  expect(last().body).toEqual({ force: true });
+});
+
+test('reloadProjectSessionConfig surfaces the 409 code and reason for the confirm step', async () => {
+  // A busy session is not a failure the user should just be toasted about —
+  // the UI needs `code` to know to offer "reload anyway", and `reason` to say
+  // which of the two refusals it was.
+  nextResponse = {
+    status: 409,
+    body: {
+      applied: false,
+      reason: 'session is mid-turn',
+      code: 'SESSION_BUSY',
+      error: 'This session is mid-turn.',
+    },
+  };
+  const err = await reloadProjectSessionConfig('P1', 'S1').then(
+    () => null,
+    (e: unknown) => e as { code?: string; data?: { reason?: string } },
+  );
+  expect(err?.code).toBe('SESSION_BUSY');
+  expect(err?.data?.reason).toBe('session is mid-turn');
 });
 
 test('stopProjectSession POSTs to /stop', async () => {

@@ -544,6 +544,92 @@ export async function stopProjectSession(projectId: string, sessionId: string) {
 }
 
 /**
+ * Whether a session is running the agent config the manifest compiles to now.
+ *
+ * A session's agent behaviour is compiled from git ONCE, at provision, and
+ * frozen into the sandbox's environment. Merging an agent change does not reach
+ * a session that is already open — this is how you find out, and
+ * `reloadProjectSessionConfig` is how you fix it.
+ */
+export interface SessionConfigState {
+  /** The ref the session compiles from — its own `base_ref`, else the default branch. */
+  base_ref: string;
+  /** Content hash of the config the BOX says it spawned with. */
+  running_etag: string | null;
+  /** Content hash of what the manifest compiles to right now. */
+  latest_etag: string | null;
+  commit_sha: string | null;
+  /**
+   * TRI-STATE, and the distinction is the point.
+   *
+   * `null` means "could not tell", NEVER "up to date": the sandbox is
+   * unreachable, or the project has no compiled config at all (a v1
+   * `kortix.toml` project). Branch on `=== true` and `=== false`; `!stale`
+   * silently reports an unaskable session as current, which is the exact
+   * failure this field exists to prevent.
+   */
+  stale: boolean | null;
+  sandbox_reachable: boolean;
+}
+
+/**
+ * Not cheap — the server drops the project's git-mirror TTL, recompiles the
+ * manifest, and calls into the sandbox. Fetch it on mount and on focus; do not
+ * poll it on a timer.
+ */
+export async function getProjectSessionConfigState(
+  projectId: string,
+  sessionId: string,
+): Promise<SessionConfigState> {
+  return unwrap(
+    await backendApi.get<SessionConfigState>(
+      `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/config`,
+    ),
+  );
+}
+
+/**
+ * The outcome of a reload.
+ *
+ * `applied: false` arrives with HTTP **200**, not an error — "there was nothing
+ * to do" and "it worked" are both successful requests. Check `applied`, never
+ * the status code. On a non-applied result `etag` echoes the OLD hash rather
+ * than reporting a change that did not happen.
+ */
+export interface SessionReloadResult {
+  /** True only when the config the box runs was actually replaced. */
+  applied: boolean;
+  previous_etag: string | null;
+  etag: string | null;
+  repo_refreshed: boolean;
+  commit_sha: string | null;
+  /** Why nothing was applied. Internal wording — map it, don't render it. */
+  reason?: string;
+  detail: string;
+}
+
+/**
+ * Recompile the agent config from git and push it into a RUNNING session.
+ *
+ * This RESTARTS opencode, which ENDS an in-flight turn. The API refuses by
+ * default while a turn is running and answers 409 with `code: 'SESSION_BUSY'`
+ * and a `reason`; `force: true` overrides and discards that turn, so it belongs
+ * behind a confirmation, never behind a silent retry.
+ */
+export async function reloadProjectSessionConfig(
+  projectId: string,
+  sessionId: string,
+  input: { refresh_repo?: boolean; force?: boolean } = {},
+): Promise<SessionReloadResult> {
+  return unwrap(
+    await backendApi.post<SessionReloadResult>(
+      `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/reload`,
+      input,
+    ),
+  );
+}
+
+/**
  * Change the model a session uses, mid-flight.
  *
  * `opencode_model` is set at create; this re-points an existing session. When

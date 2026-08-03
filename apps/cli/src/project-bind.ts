@@ -43,7 +43,9 @@ export async function ensureDefaultProjectBinding(
   opts: {
     promptTitle?: string;
     /**
-     * Say nothing when no project can be bound.
+     * Say nothing on ANY path that ends without a bound project — an empty
+     * account, a failed list, a declined picker, a non-TTY with several to
+     * choose from.
      *
      * For a caller that has a FALLBACK — `locateSessionAnywhere` scans the
      * account's siblings next — the "no projects here" note is not the
@@ -63,9 +65,11 @@ export async function ensureDefaultProjectBinding(
       ProjectSummary[]
     >('/projects');
   } catch (err) {
-    process.stderr.write(
-      `${C.dim}Could not list projects to bind a default: ${(err as Error).message}${C.reset}\n`,
-    );
+    if (!opts.quiet) {
+      process.stderr.write(
+        `${C.dim}Could not list projects to bind a default: ${(err as Error).message}${C.reset}\n`,
+      );
+    }
     return { project: null, bound: false };
   }
 
@@ -90,15 +94,19 @@ export async function ensureDefaultProjectBinding(
       items: projects.map((p) => ({ value: p, label: p.name, sublabel: p.project_id })),
     });
     if (!picked) {
-      process.stderr.write(
-        `${C.dim}Skipped. Bind one any time with ${C.reset}${C.cyan}kortix projects use${C.reset}${C.dim}.${C.reset}\n`,
-      );
+      if (!opts.quiet) {
+        process.stderr.write(
+          `${C.dim}Skipped. Bind one any time with ${C.reset}${C.cyan}kortix projects use${C.reset}${C.dim}.${C.reset}\n`,
+        );
+      }
       return { project: null, bound: false };
     }
   } else {
-    process.stderr.write(
-      `${C.dim}No default project bound. Run ${C.reset}${C.cyan}kortix projects use${C.reset}${C.dim} to pick one.${C.reset}\n`,
-    );
+    if (!opts.quiet) {
+      process.stderr.write(
+        `${C.dim}No default project bound. Run ${C.reset}${C.cyan}kortix projects use${C.reset}${C.dim} to pick one.${C.reset}\n`,
+      );
+    }
     return { project: null, bound: false };
   }
 

@@ -123,7 +123,11 @@ RUN UV_VERSION="$(sed -n 's/.*"uv": "\([^"]*\)".*/\1/p' /tmp/kortix-runtime-vers
     && uv --version | grep -Eq "^uv ${UV_VERSION}( |$)" \
     && UV_PYTHON_DOWNLOADS=automatic uv python install --default "$PYTHON_VERSION" \
     && python -c "import sys; assert '.'.join(map(str, sys.version_info[:3])) == '${PYTHON_VERSION}'; print('managed python:', sys.version)" \
-    && python3 -c "import sys; assert '.'.join(map(str, sys.version_info[:3])) == '${PYTHON_VERSION}'"
+    && python3 -c "import sys; assert '.'.join(map(str, sys.version_info[:3])) == '${PYTHON_VERSION}'" \
+    && PILLOW_VERSION="$(sed -n 's/.*"pillow": "\([^"]*\)".*/\1/p' /tmp/kortix-runtime-versions.json)" \
+    && test -n "$PILLOW_VERSION" \
+    && uv pip install --system --break-system-packages "pillow==${PILLOW_VERSION}" \
+    && python3 -c "import PIL; assert PIL.__version__ == '${PILLOW_VERSION}'"
 
 ENV SHELL=/bin/bash
 RUN PNPM_VERSION="$(python -c "import json; print(json.load(open('/tmp/kortix-runtime-versions.json'))['pnpm'])")" \

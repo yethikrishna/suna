@@ -10,6 +10,7 @@ export type RuntimeVersions = {
   uvSha256Amd64: string;
   uvSha256Arm64: string;
   python: string;
+  pillow: string;
   bun: string;
   bunSha256Amd64: string;
   bunSha256Arm64: string;
@@ -30,6 +31,7 @@ export const UV_VERSION = RUNTIME_VERSIONS.uv;
 export const UV_SHA256_AMD64 = RUNTIME_VERSIONS.uvSha256Amd64;
 export const UV_SHA256_ARM64 = RUNTIME_VERSIONS.uvSha256Arm64;
 export const PYTHON_VERSION = RUNTIME_VERSIONS.python;
+export const PILLOW_VERSION = RUNTIME_VERSIONS.pillow;
 export const BUN_VERSION = RUNTIME_VERSIONS.bun;
 export const BUN_SHA256_AMD64 = RUNTIME_VERSIONS.bunSha256Amd64;
 export const BUN_SHA256_ARM64 = RUNTIME_VERSIONS.bunSha256Arm64;

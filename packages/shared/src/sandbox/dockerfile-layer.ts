@@ -28,6 +28,7 @@ import {
   BUN_VERSION,
   NODE_VERSION,
   NPM_VERSION,
+  PILLOW_VERSION,
   PLAYWRIGHT_VERSION,
   PNPM_SHA256_AMD64,
   PNPM_SHA256_ARM64,
@@ -464,7 +465,17 @@ export function kortixToolchainLayer(opts: KortixToolchainLayerOpts): string {
     `    && uv --version | grep -Eq '^uv ${UV_VERSION}( |$)' \\`,
     `    && UV_PYTHON_DOWNLOADS=automatic uv python install --default ${PYTHON_VERSION} \\`,
     `    && python -c 'import sys; assert sys.version_info[:3] == (${PYTHON_VERSION.replaceAll('.', ', ')}); print("managed python:", sys.version)' \\`,
-    `    && python3 -c 'import sys; assert sys.version_info[:3] == (${PYTHON_VERSION.replaceAll('.', ', ')})'`,
+    `    && python3 -c 'import sys; assert sys.version_info[:3] == (${PYTHON_VERSION.replaceAll('.', ', ')})' \\`,
+    // Pillow is baked into the managed Python so plain `python3 -c "from PIL
+    // import Image"` works with no per-script resolution — image work is common
+    // enough that agents (and users' own scripts) reach for it bare, without
+    // `uv run --with pillow`. `--break-system-packages` overrides uv's own
+    // externally-managed marker on the interpreter it just installed — this is
+    // OUR frozen build-time interpreter, not a distro Python; nothing upgrades
+    // it after this layer. Per-script `uv run --with pillow==X` still overrides
+    // (the venv's site-packages precede the base interpreter's on sys.path).
+    `    && uv pip install --system --break-system-packages "pillow==${PILLOW_VERSION}" \\`,
+    `    && python3 -c 'import PIL; assert PIL.__version__ == "${PILLOW_VERSION}"'`,
     '',
     // Install pnpm's versioned standalone release artifact after verifying the
     // repository-controlled checksum. pnpm then owns the JavaScript runtime

@@ -24,6 +24,7 @@ import {
   BUN_SHA256_AMD64,
   BUN_SHA256_ARM64,
   OPENCODE_VERSION,
+  PILLOW_VERSION,
   PNPM_SHA256_AMD64,
   PNPM_SHA256_ARM64,
   UV_SHA256_AMD64,
@@ -129,8 +130,17 @@ describe('the Python runtime is managed by uv', () => {
 
   test('does not install or mutate the distro Python', () => {
     expect(toolchain).not.toContain('python3 python3-dev python3-pip python3-venv');
-    expect(toolchain).not.toContain('--break-system-packages');
-    expect(toolchain).not.toContain('uv pip install');
+    expect(toolchain.match(/uv pip install/g)).toHaveLength(1);
+    expect(toolchain).toContain('uv pip install --system --break-system-packages');
+  });
+
+  test('bakes pinned Pillow into the managed Python and proves the import', () => {
+    expect(toolchain).toContain(
+      `uv pip install --system --break-system-packages "pillow==${PILLOW_VERSION}"`,
+    );
+    expect(toolchain).toContain(
+      `python3 -c 'import PIL; assert PIL.__version__ == "${PILLOW_VERSION}"'`,
+    );
   });
 
   test('installs an exact managed Python as python and python3', () => {

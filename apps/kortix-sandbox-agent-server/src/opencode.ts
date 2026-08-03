@@ -902,6 +902,7 @@ export type Opencode = {
   start(): Promise<void>
   stop(signal?: NodeJS.Signals): Promise<void>
   restart(): Promise<void>
+  reloadConfig(): Promise<'disposed' | 'restarted'>
   reconfigure(nextCfg: Config, nextOpencodeConfigDir: string, nextProjectEnv?: ProjectEnvStore): void
   getPid(): number | null
   getInternalUrl(): string
@@ -1109,6 +1110,55 @@ export function createOpencodeSupervisor(
   }
 
   /**
+   * Rewrite the config file and ask opencode to re-read it in place. True when
+   * it did.
+   *
+   * Measured against the pinned opencode (1.17.11) on 2026-08-03:
+   *   - `POST /global/dispose` re-reads the config file from disk, in-process,
+   *     same pid, in ~51ms. A respawn is ~8s.
+   *   - There is NO config file watcher. Rewriting the file alone changes
+   *     nothing — verified over 18s on a fresh process. Every edit needs its
+   *     own dispose.
+   *   - `POST /kortix/services/system/reload`, which the SDK calls, does NOT
+   *     exist: it falls through to opencode's SPA catch-all and answers 200
+   *     text/html. Hence `/global/dispose` directly.
+   */
+  async function tryDisposeReload(): Promise<boolean> {
+    // The SAME env spawnChild composes the config from, so a dispose and a
+    // respawn can never disagree about what the config should be.
+    const baseEnv = currentProjectEnv
+      ? mergeProjectEnv(process.env, currentProjectEnv)
+      : process.env
+    const written = await writeKortixOpencodeConfig(baseEnv).catch((err) => {
+      logger.warn('[opencode] could not rewrite config for reload', {
+        err: (err as Error).message,
+      })
+      return null
+    })
+    if (!written) return false
+    try {
+      const res = await fetch(
+        `http://127.0.0.1:${currentCfg.opencodeInternalPort}/global/dispose`,
+        { method: 'POST', signal: AbortSignal.timeout(15_000) },
+      )
+      // Content-type matters: the SPA catch-all also answers 200. A JSON body
+      // is what distinguishes the real endpoint from the web UI.
+      if (res.ok && (res.headers.get('content-type') ?? '').includes('application/json')) {
+        logger.info('[opencode] config reloaded via dispose (no respawn)')
+        return true
+      }
+      logger.info('[opencode] dispose unavailable; falling back to restart', {
+        status: res.status,
+      })
+    } catch (err) {
+      logger.info('[opencode] dispose failed; falling back to restart', {
+        err: (err as Error).message,
+      })
+    }
+    return false
+  }
+
+  /**
    * Resolve once opencode is answering again, or false if it never does.
    *
    * Only the post-respawn turn finalize uses this. Bounded, because the caller
@@ -1213,6 +1263,19 @@ export function createOpencodeSupervisor(
       await this.stop('SIGTERM')
       restartDelayMs = 500
       await this.start()
+    },
+
+    /**
+     * Apply the current env's config, without a respawn when opencode allows it.
+     *
+     * Falls back to a full restart whenever dispose is unavailable or fails, so
+     * a future opencode that drops the endpoint degrades to today's behaviour
+     * rather than silently not applying the config.
+     */
+    async reloadConfig(): Promise<'disposed' | 'restarted'> {
+      if (await tryDisposeReload()) return 'disposed'
+      await this.restart()
+      return 'restarted'
     },
 
     reconfigure(nextCfg: Config, nextOpencodeConfigDir: string, nextProjectEnv?: ProjectEnvStore) {

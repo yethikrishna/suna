@@ -175,12 +175,18 @@ export function createEnvRouter(cfg: Config, opencode: Opencode, projectEnv: Pro
           writeAgentEnvFile(projectEnv)
         }
         if (body.refreshModels === true && (result.changed || opencodeEnvChanged)) {
-          logger.info('[env] model-affecting env changed; restarting opencode', {
+          // reloadConfig, not restart: opencode re-reads its config file in
+          // place via /global/dispose in ~51ms, against ~8s for a respawn
+          // (measured on the pinned 1.17.11). It falls back to a restart on its
+          // own if dispose is unavailable, so this is never less correct — only
+          // faster, and it does not sever an in-flight turn when dispose wins.
+          const how = await opencode.reloadConfig()
+          logger.info('[env] config-affecting env changed; applied to opencode', {
             projectRevision: result.revision,
             projectEnvChanged: result.changed,
             opencodeEnvNames,
+            how,
           })
-          await opencode.restart()
         }
 
         return c.json({

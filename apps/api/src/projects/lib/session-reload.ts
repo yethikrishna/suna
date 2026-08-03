@@ -33,6 +33,7 @@ import { and, eq } from 'drizzle-orm';
 import { projects, sessionSandboxes } from '@kortix/db';
 import { db } from '../../shared/db';
 import { resolveSandboxIngress } from '../../sandbox-proxy/backend';
+import { invalidateProjectMirror, resolveCommitSha, type GitBackedProject } from '../git';
 import { agentConfigEtag, resolveCompiledAgentConfigForSession } from './compile-agent-config';
 import { pushSessionAgentConfigToSandbox } from './sandbox-env-sync';
 
@@ -109,10 +110,24 @@ export async function readSandboxConfigState(input: {
 }
 
 /**
+ * "Latest" has to mean latest — drop the mirror's TTL before compiling.
+ *
+ * The git mirror is TTL-cached (60s by default) and every read through
+ * `readRepoFile` / `resolveCommitSha` takes the warm hit. On an ordinary
+ * endpoint that is right. On THIS one it is self-defeating: the whole feature is
+ * "I merged a change, get it into my session", and the merge is by definition
+ * seconds old. Reloading inside the window recompiled the PRE-merge manifest,
+ * produced an unchanged etag, and answered "already up to date" — the exact
+ * confusion the reload exists to end, moved one layer up.
+ *
+ * Invalidating rather than force-fetching keeps it to a single network op: the
+ * compile's own first read does the fetch and re-stamps `lastRefreshAt`, so the
+ * reads after it in the same request are warm again.
+ */
+/**
  * The etag this session WOULD get if it were reloaded right now.
  *
- * Recompiles from the session's own ref; delivers nothing. Cheap enough to call
- * from a status endpoint — the git mirror is TTL-cached and the compile is pure.
+ * Recompiles from the session's own ref; delivers nothing.
  */
 export async function latestAgentConfigEtag(input: {
   projectId: string;
@@ -129,16 +144,19 @@ export async function latestAgentConfigEtag(input: {
     .where(and(eq(projects.projectId, input.projectId), eq(projects.accountId, input.accountId)))
     .limit(1);
   if (!project?.defaultBranch) return null;
-  const compiled = await resolveCompiledAgentConfigForSession(
-    {
-      projectId: input.projectId,
-      repoUrl: project.repoUrl,
-      defaultBranch: project.defaultBranch,
-      manifestPath: project.manifestPath ?? 'kortix.yaml',
-      gitAuthToken: null,
-    },
-    input.baseRef,
-  ).catch(() => null);
+  const gitProject: GitBackedProject = {
+    projectId: input.projectId,
+    repoUrl: project.repoUrl,
+    defaultBranch: project.defaultBranch,
+    manifestPath: project.manifestPath ?? 'kortix.yaml',
+    gitAuthToken: null,
+  };
+  // Without this, `stale: false` is answerable from a cache that predates the
+  // very commit the caller is asking about.
+  invalidateProjectMirror(input.projectId);
+  const compiled = await resolveCompiledAgentConfigForSession(gitProject, input.baseRef).catch(
+    () => null,
+  );
   return agentConfigEtag(compiled);
 }
 
@@ -168,6 +186,11 @@ export async function reloadSessionConfig(input: {
   /** Reload even if a turn is running. It will be ended. */
   force?: boolean;
 }): Promise<SessionReloadResult> {
+  // Before anything reads the mirror — the base_sha resolve, the compile inside
+  // the push, the etag compare. See `invalidateProjectMirror` above: a reload
+  // served from a 60s cache can apply the pre-merge config and report success.
+  invalidateProjectMirror(input.projectId);
+
   const before = await readSandboxConfigState({
     sessionId: input.sessionId,
     includeTurnState: input.force !== true,
@@ -205,7 +228,14 @@ export async function reloadSessionConfig(input: {
   let repoRefreshed = false;
   let commitSha = before.commitSha;
   if (input.refreshRepo !== false) {
-    const refreshed = await refreshSandboxWorkspace(input.sessionId);
+    const refreshed = await refreshSandboxWorkspace(input.sessionId, {
+      projectId: input.projectId,
+      repoUrl: input.repoUrl,
+      defaultBranch: input.defaultBranch,
+      manifestPath: input.manifestPath ?? 'kortix.yaml',
+      gitAuthToken: null,
+      baseRef: input.baseRef,
+    });
     repoRefreshed = refreshed.ok;
     commitSha = refreshed.commitSha ?? commitSha;
   }
@@ -238,13 +268,25 @@ export async function reloadSessionConfig(input: {
 }
 
 /**
- * `POST /kortix/refresh?restart=0` — pull the workspace, leave opencode alone.
+ * `POST /kortix/refresh?base=1&base_sha=…&restart=0` — sync the workspace to the
+ * tip of the session's BASE ref, leave opencode alone.
  *
- * `restart=0` matters: the config push right after restarts opencode anyway, and
- * restarting twice doubles the boot cost and the window where the box 503s.
+ * `base=1` is what makes this mean anything. Without it the daemon runs
+ * `refreshRepo`, which pulls `cfg.branchName` — and the API sets that to the
+ * SESSION ID (`session-runtime-env.ts`, `KORTIX_BRANCH_NAME: input.sessionId`).
+ * So the plain form fetched `refs/heads/<sessionId>`: it threw for a session
+ * whose branch was never pushed, and for a pushed one it pulled the session's
+ * own branch, which by construction does not contain the merge the user is
+ * reloading to get. Either way the failure was swallowed below and the CLI still
+ * printed "Reloaded." `base=1` routes to `syncWorkspaceToBase` instead, which is
+ * what the warm-snapshot path has always used.
+ *
+ * `restart=0` matters too: the config push right after restarts opencode anyway,
+ * and restarting twice doubles the boot cost and the window where the box 503s.
  */
 async function refreshSandboxWorkspace(
   sessionId: string,
+  project: GitBackedProject & { baseRef?: string | null },
 ): Promise<{ ok: boolean; commitSha: string | null }> {
   try {
     const [row] = await db
@@ -255,19 +297,28 @@ async function refreshSandboxWorkspace(
     const serviceKey = (row?.config as Record<string, unknown> | null)?.serviceKey;
     if (!row?.externalId || typeof serviceKey !== 'string') return { ok: false, commitSha: null };
 
+    // The session's own ref, not the project default — the same ref the compiler
+    // reads, so the workspace and the compiled config cannot describe different
+    // commits.
+    const baseSha = await resolveCommitSha(project, project.baseRef ?? project.defaultBranch);
+
     const { url, headers } = await resolveSandboxIngress(row.externalId, {
       port: SANDBOX_SERVICE_PORT,
       transport: 'http',
     });
-    const res = await fetch(`${url.replace(/\/$/, '')}/kortix/refresh?restart=0`, {
+    const query = new URLSearchParams({ base: '1', base_sha: baseSha, restart: '0' });
+    const res = await fetch(`${url.replace(/\/$/, '')}/kortix/refresh?${query}`, {
       method: 'POST',
       headers: { ...headers, Authorization: `Bearer ${serviceKey}` },
       signal: AbortSignal.timeout(120_000),
     });
     if (!res.ok) return { ok: false, commitSha: null };
-    const body = (await res.json()) as { repo?: { commit?: unknown } };
-    const commit = body.repo?.commit;
-    return { ok: true, commitSha: typeof commit === 'string' ? commit : null };
+    // The daemon answers `{repo: {before, after}}` — there is no `repo.commit`,
+    // so the old read was always undefined and `commit_sha` always reported the
+    // PRE-reload value, making a successful pull look like a no-op.
+    const body = (await res.json()) as { repo?: { after?: { commit?: unknown } } };
+    const commit = body.repo?.after?.commit;
+    return { ok: true, commitSha: typeof commit === 'string' ? commit : baseSha };
   } catch {
     // A failed pull is not a failed reload: the config recompiles from the git
     // MIRROR, not the sandbox's working tree, so the agent still updates.

@@ -38,6 +38,7 @@ import { projectSessions, sessionSandboxes } from '@kortix/db';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { PROVISIONING_SESSION_STATUSES } from '../../projects/lib/session-status';
 import * as realProviders from '../providers';
+import * as realComputeMetering from '../../billing/services/compute-metering';
 
 const dialect = new PgDialect();
 
@@ -241,7 +242,11 @@ mock.module('./provider-events', () => ({
   },
 }));
 
+// Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
+// lists exports by hand deletes every export it omits — the failure surfaces in
+// whatever unrelated file imports the missing name next, attributed to no test.
 mock.module('../../billing/services/compute-metering', () => ({
+  ...realComputeMetering,
   startComputeSession: async (input: { sandboxId: string; accountId: string; provider: string }) => {
     computeSessionsOpened.push(input);
     onComputeOpened?.();

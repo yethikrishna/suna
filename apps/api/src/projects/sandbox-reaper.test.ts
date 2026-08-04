@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { projectSessions, sandboxComputeSessions, sessionSandboxes } from '@kortix/db';
 import * as realProviders from '../platform/providers';
+import * as realComputeMetering from '../billing/services/compute-metering';
 
 // ── mock state ──────────────────────────────────────────────────────────────
 let candidates: any[] = [];
@@ -218,7 +219,11 @@ mock.module('../sandbox-proxy', () => ({
   },
 }));
 
+// Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
+// lists exports by hand deletes every export it omits — the failure surfaces in
+// whatever unrelated file imports the missing name next, attributed to no test.
 mock.module('../billing/services/compute-metering', () => ({
+  ...realComputeMetering,
   reopenComputeForSandbox: async () => undefined,
   markComputeSessionAlive: async (sandboxId: string, at: Date) => {
     livenessStamps.push({ sandboxId, at });

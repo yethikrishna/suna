@@ -439,7 +439,12 @@ mock.module('../projects/opencode-mapping', () => ({
   }),
 }));
 
+// Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
+// lists exports by hand deletes every export it omits — the failure surfaces in
+// whatever unrelated file imports the missing name next, attributed to no test.
+const realComputeMetering = await import('../billing/services/compute-metering');
 mock.module('../billing/services/compute-metering', () => ({
+  ...realComputeMetering,
   reopenComputeForSandbox: async () => {
     computeReopenCalls += 1;
   },

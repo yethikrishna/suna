@@ -7,7 +7,9 @@ import { logger } from './logger'
  * Static Web Server — ported from main's `core/services/static-web.js`
  * (formerly an always-on s6 service on port 3211). The new architecture has no
  * s6: the single `kortix-agent` daemon owns the sandbox, so this runs
- * in-process as a second Bun.serve listener bound to localhost:3211.
+ * in-process as a second Bun.serve listener on port 3211. NOTE it binds
+ * 0.0.0.0, not localhost — this comment claimed localhost for a long time and
+ * it was never true, which is part of how the exposure below went unnoticed.
  *
  * It is reachable from the app exactly as before — through the agent server's
  * `/proxy/3211/*` reverse proxy and the `p3211-<sandboxId>` subdomain route.
@@ -24,7 +26,42 @@ import { logger } from './logger'
 
 const DEFAULT_STATIC_PORT = 3211
 
-const ALLOWED_ROOTS = ['/workspace', '/tmp', '/home', '/opt']
+/**
+ * Where agent OUTPUT lives. This server exists to serve HTML the agent
+ * produced (see the header comment), and that lands in the repo or in scratch.
+ *
+ * `/home` and `/opt` used to be here, and `/home` is where the daemon writes
+ * the session's credentials — `~/.config/kortix-opencode.json` holds the
+ * session's LLM gateway key and executor PAT, `~/.local/share/opencode/auth.json`
+ * holds the account's Codex/OpenCode subscription credential. This listener has
+ * no authentication of its own, so any caller who reached port 3211 could read
+ * both. Mode 0600 was no defence: the reader IS the process that wrote them.
+ *
+ * Removing them is a deliberate narrowing. If some flow genuinely serves a
+ * preview out of the home directory it will now 403 — that is the intended
+ * trade, and the file API on :8000 (authenticated, session-scoped) remains the
+ * way to read anything outside these roots.
+ */
+const ALLOWED_ROOTS = ['/workspace', '/tmp']
+
+/**
+ * Paths refused no matter which root they sit under.
+ *
+ * Redundant with ALLOWED_ROOTS today, and that is the point: this holds even if
+ * someone later widens the roots again, which is exactly how the leak got in.
+ * Matched on the normalized absolute path, so `/workspace/../home/...` cannot
+ * dodge it — `normalize()` has already collapsed the traversal.
+ */
+const DENIED_PATH_SEGMENTS = [
+  '/.config/',
+  '/.local/share/opencode/',
+  '/.ssh/',
+  '/.aws/',
+  '/.gnupg/',
+  '/.netrc',
+  '/.git-credentials',
+  '/.kortix/secrets',
+]
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -79,6 +116,10 @@ function toAbsPath(rawPath: string): string | null {
 }
 
 function isAllowed(absPath: string): boolean {
+  // Denies win. `absPath` is already normalized, so a traversal has collapsed
+  // before it gets here and cannot smuggle a denied segment past this.
+  const probe = `${absPath}/`
+  if (DENIED_PATH_SEGMENTS.some((segment) => probe.includes(segment))) return false
   return ALLOWED_ROOTS.some((root) => absPath === root || absPath.startsWith(root + '/'))
 }
 

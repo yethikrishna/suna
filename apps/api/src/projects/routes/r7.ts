@@ -2459,7 +2459,23 @@ projectsApp.openapi(
         PROJECT_ACTIONS.PROJECT_SECRET_READ,
       );
       if (nextAllowlist !== null && nextAllowlist.length > 0) {
-        const availableSecrets = await listResolvedProjectSecrets(projectId, loaded.userId);
+        // The SESSION OWNER, not the caller. Delivery resolves per principal —
+        // `resolveOwnerRawEnv` keys the per-prompt push on `createdBy`, and
+        // sessions.ts spells out why: "a per-user secret override resolves per
+        // principal… if a manager restarted another member's session we'd inject
+        // the MANAGER's personal secret".
+        //
+        // Validating against the caller let a project manager re-scoping someone
+        // else's session add an identifier that exists only as the MANAGER's own
+        // personal override. The API answered 200 with it listed in
+        // `secrets_allowlist` and "Applies from the next prompt." — and the
+        // session never received it, on that prompt or any later one, with
+        // nothing anywhere saying so.
+        //
+        // Falls back to the caller only when the row carries no creator, which
+        // matches how every other principal-resolution site degrades.
+        const secretsPrincipal = visible.row.createdBy ?? loaded.userId;
+        const availableSecrets = await listResolvedProjectSecrets(projectId, secretsPrincipal);
         const available = new Set(
           availableSecrets.map((secret) => secret.identifier.toUpperCase()),
         );

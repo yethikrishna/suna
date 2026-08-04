@@ -1,4 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test';
+import * as realProviders from '../platform/providers';
+import * as realPreviewOwnership from '../shared/preview-ownership';
 import * as realKortixUserContext from '../shared/kortix-user-context';
 
 let queryCount = 0;
@@ -18,6 +20,7 @@ const canonicalRow = {
 
 mock.module('../config', () => ({ config: {} }));
 mock.module('../shared/preview-ownership', () => ({
+  ...realPreviewOwnership,
   resolvePreviewUserContext: async () => null,
 }));
 // Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
@@ -31,6 +34,7 @@ mock.module('../shared/kortix-user-context', () => ({
   encodeKortixUserContext: () => '',
 }));
 mock.module('../platform/providers', () => ({
+  ...realProviders,
   getProvider: () => ({
     resolveIngress: async () => {
       throw new Error('not used');

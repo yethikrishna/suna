@@ -8,6 +8,8 @@
 //
 // `mock.module` is process-global in bun, so this lives in its own file.
 import { describe, expect, mock, test } from 'bun:test';
+import * as realProviders from '../platform/providers';
+import * as realPreviewOwnership from '../shared/preview-ownership';
 import * as realKortixUserContext from '../shared/kortix-user-context';
 
 let ensureRunningCalls: string[] = [];
@@ -15,6 +17,7 @@ let deadlineAt: Date | null = new Date(Date.now() + 60 * 60_000);
 
 mock.module('../config', () => ({ config: {} }));
 mock.module('../shared/preview-ownership', () => ({
+  ...realPreviewOwnership,
   resolvePreviewUserContext: async () => null,
 }));
 // Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
@@ -28,6 +31,7 @@ mock.module('../shared/kortix-user-context', () => ({
   encodeKortixUserContext: () => '',
 }));
 mock.module('../platform/providers', () => ({
+  ...realProviders,
   getProvider: () => ({
     async ensureRunning(externalId: string) {
       ensureRunningCalls.push(externalId);

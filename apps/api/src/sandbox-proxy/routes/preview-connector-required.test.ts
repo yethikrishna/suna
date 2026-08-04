@@ -14,6 +14,7 @@
 // message silently dropped — a worse bug than the one being fixed.
 import { afterAll, beforeEach, expect, mock, test } from 'bun:test';
 import * as realRequestContext from '../../lib/request-context';
+import * as realPreviewOwnership from '../../shared/preview-ownership';
 import * as realKortixUserContext from '../../shared/kortix-user-context';
 
 const ACTIVE_RECORD = {
@@ -61,6 +62,7 @@ mock.module('../../shared/kortix-user-context', () => ({
   KORTIX_USER_CONTEXT_HEADER: 'x-kortix-user-context',
 }));
 mock.module('../../shared/preview-ownership', () => ({
+  ...realPreviewOwnership,
   canAccessPreviewSandbox: async () => true,
   canAccessSandboxSession: async () => true,
 }));

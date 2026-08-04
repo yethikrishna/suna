@@ -179,7 +179,11 @@ describe('syncOpencodeConfigDirToBase', () => {
     const result = await syncOpencodeConfigDirToBase(cfg(), 'does/not/exist')
 
     expect(result.synced).toBe(false)
-    expect(['not in base', 'already matches base']).toContain(result.skipped)
+    // Either answer is correct and which one you get depends on git's version:
+    // an empty pathspec can read as "nothing differs" rather than "no such
+    // path". What matters is that it is a SKIP and not a thrown failure.
+    expect(result.skipped).toBeDefined()
+    expect(['not in base', 'already matches base']).toContain(result.skipped as string)
   })
 
   test('an explicit base_sha pins which commit is restored', async () => {

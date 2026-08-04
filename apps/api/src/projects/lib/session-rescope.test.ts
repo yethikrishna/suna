@@ -318,3 +318,31 @@ describe('the scope route surfaces the narrowing', () => {
     expect(ROUTE).toContain('rotate them if that matters');
   });
 });
+
+/**
+ * Validation and DELIVERY must resolve secrets for the same principal.
+ *
+ * The per-prompt push keys on the session's `createdBy` — `resolveOwnerRawEnv`
+ * does, and `sessions.ts` spells out why: "a per-user secret override resolves
+ * per principal… if a manager restarted another member's session we'd inject the
+ * MANAGER's personal secret".
+ *
+ * `PUT /scope` validated against the CALLER instead. So a project manager
+ * re-scoping someone else's session could add an identifier that exists only as
+ * the manager's own personal override: the API answered 200 with it listed in
+ * `secrets_allowlist` and "Applies from the next prompt.", and the session never
+ * received it — not on that prompt, not on any later one, with nothing anywhere
+ * saying so.
+ */
+describe('the scope route validates for the session OWNER, not the caller', () => {
+  test('availability is resolved against createdBy', () => {
+    expect(ROUTE).toContain('const secretsPrincipal = visible.row.createdBy ?? loaded.userId');
+    expect(ROUTE).toContain('listResolvedProjectSecrets(projectId, secretsPrincipal)');
+  });
+
+  test('it no longer resolves availability against the caller', () => {
+    // The exact call that made a manager's personal override look in-scope for
+    // somebody else's session.
+    expect(ROUTE).not.toContain('listResolvedProjectSecrets(projectId, loaded.userId)');
+  });
+});

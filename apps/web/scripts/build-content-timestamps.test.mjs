@@ -21,6 +21,7 @@ describe('content timestamp manifest', () => {
     if (Object.keys(generatedManifest).length === 0) return;
 
     const committedManifest = JSON.parse(await readFile(manifestUrl, 'utf8'));
+    assert.ok(Object.values(generatedManifest).every((value) => value.endsWith('Z')));
     assert.deepEqual(committedManifest, generatedManifest);
   });
 });

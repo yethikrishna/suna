@@ -105,7 +105,7 @@ function lastCommitIso(pathRelativeToRepo) {
       encoding: 'utf8',
     });
     const trimmed = out.trim();
-    if (trimmed) return trimmed;
+    if (trimmed) return new Date(trimmed).toISOString();
   } catch {
     // fall through to the mtime fallback
   }

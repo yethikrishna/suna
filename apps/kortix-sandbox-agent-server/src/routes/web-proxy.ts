@@ -142,15 +142,22 @@ function isLoopbackName(hostname: string): boolean {
  * race — and the credential strip above is unconditional, so a request that does
  * win the race still carries none of our secrets.
  */
-async function reachesThisBox(hostname: string): Promise<boolean> {
-  if (isLoopbackName(hostname)) return true
+async function reachesThisBox(
+  hostname: string,
+): Promise<{ self: boolean; address: string | null }> {
+  if (isLoopbackName(hostname)) return { self: true, address: null }
   try {
     const resolved = await lookup(hostname.replace(/\.+$/, ''), { all: true })
-    return resolved.some((entry) => isLoopbackAddress(entry.address))
+    if (resolved.some((entry) => isLoopbackAddress(entry.address))) {
+      return { self: true, address: null }
+    }
+    // Handed back so the caller can CONNECT to the address it just vetted,
+    // instead of resolving a second time and trusting the answer to match.
+    return { self: false, address: resolved[0]?.address ?? null }
   } catch {
     // Unresolvable. The fetch below fails on its own; do not turn a DNS blip
     // into a spurious 403 for a legitimate site.
-    return false
+    return { self: false, address: null }
   }
 }
 
@@ -533,21 +540,44 @@ async function handleWebProxy(c: Context, opts: WebProxyOptions): Promise<Respon
     : parsedTarget.protocol === 'https:'
       ? 443
       : 80
-  if (
-    opts.blockedSelfPorts.has(targetPort) &&
-    (await reachesThisBox(parsedTarget.hostname))
-  ) {
-    logger.warn('[web-proxy] refused a loopback request to the control plane', {
-      host: parsedTarget.hostname,
-      port: targetPort,
-    })
-    return c.json(
-      {
-        error: 'this port is not reachable through the web proxy',
-        code: 'WEB_PROXY_PORT_BLOCKED',
-      },
-      403,
-    )
+  //
+  // `fetchTarget` is what we actually connect to. It differs from `targetUrl`
+  // only when we had to vet the destination — everything else (HTML rewriting,
+  // redirect resolution, logs) keeps the original host, which is what the
+  // browser needs to see.
+  let fetchTarget = targetUrl
+  if (opts.blockedSelfPorts.has(targetPort)) {
+    const target = await reachesThisBox(parsedTarget.hostname)
+    if (target.self) {
+      logger.warn('[web-proxy] refused a request to the box control plane', {
+        host: parsedTarget.hostname,
+        port: targetPort,
+      })
+      return c.json(
+        {
+          error: 'this port is not reachable through the web proxy',
+          code: 'WEB_PROXY_PORT_BLOCKED',
+        },
+        403,
+      )
+    }
+    // PIN THE CONNECTION TO THE ADDRESS WE VETTED.
+    //
+    // Otherwise the check is resolve-then-fetch, and a DNS rebind between the
+    // two — TTL 0, second answer 127.0.0.1 — sends us to the control plane we
+    // just refused. Connecting by address closes that window; the Host header
+    // is already the original host, so the upstream still sees what it expects.
+    //
+    // http only, and that is sufficient rather than lazy: the rebind target
+    // would have to be our own loopback control plane, and neither the daemon
+    // nor opencode speaks TLS there, so an https request cannot complete a
+    // handshake against it. Leaving https alone also keeps SNI and certificate
+    // validation intact, which pinning by IP would break.
+    if (target.address && parsedTarget.protocol === 'http:') {
+      const pinned = new URL(targetUrl)
+      pinned.hostname = target.address
+      fetchTarget = pinned.toString()
+    }
   }
 
   const headers = buildUpstreamHeaders(c, CREDENTIAL_HEADERS)
@@ -594,7 +624,7 @@ async function handleWebProxy(c: Context, opts: WebProxyOptions): Promise<Respon
     try {
       const signal = getFetchSignal(acceptsSSE, clientAbort)
 
-      const response = await fetch(targetUrl, {
+      const response = await fetch(fetchTarget, {
         method: c.req.method,
         headers,
         body,

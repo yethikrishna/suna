@@ -2432,6 +2432,11 @@ projectsApp.openapi(
     let nextAllowlist = visible.row.secretsAllowlist ?? null;
     let droppedSecrets: string[] = [];
     let addedSecrets: string[] = [];
+    // Distinct from `droppedSecrets.length > 0`: a session's allowlist starts
+    // null ("everything the grant allows"), so its FIRST narrowing may shrink
+    // the effective set without being able to name what it lost — which is
+    // precisely when the warning matters most.
+    let narrowedSecrets = false;
     if (wantsSecrets) {
       const decided = rescopeSessionSecrets({
         current: visible.row.secretsAllowlist ?? null,
@@ -2442,6 +2447,7 @@ projectsApp.openapi(
       nextAllowlist = decided.allowlist;
       droppedSecrets = decided.dropped;
       addedSecrets = decided.added;
+      narrowedSecrets = decided.narrowed;
       if (nextAllowlist !== null && nextAllowlist.length > 0) {
         const availableSecrets = await listResolvedProjectSecrets(projectId, loaded.userId);
         const available = new Set(
@@ -2652,11 +2658,16 @@ projectsApp.openapi(
       // Connector bindings ARE retroactive (resolved at call time). Secrets are
       // not: a dropped one stops being delivered from the next prompt, but the
       // agent's context and any shell it already spawned still hold what it read.
-      retroactive: droppedSecrets.length === 0,
-      detail:
-        droppedSecrets.length > 0
-          ? 'Dropped secrets stop being delivered from the next prompt. Values the agent already read remain in its context and in shells it already started — rotate them if that matters.'
-          : 'Applies from the next prompt.',
+      // Keyed on `narrowed`, not on the dropped NAMES. Narrowing a session away
+      // from an unrestricted allowlist shrinks what it may read even when the
+      // agent's grant is 'all' and the lost names cannot be enumerated — and
+      // that is the largest narrowing there is. Keying off the names suppressed
+      // this warning on exactly that case, telling a user revoking every secret
+      // from a live session that nothing had been dropped.
+      retroactive: !narrowedSecrets,
+      detail: narrowedSecrets
+        ? 'Dropped secrets stop being delivered from the next prompt. Values the agent already read remain in its context and in shells it already started — rotate them if that matters.'
+        : 'Applies from the next prompt.',
     });
   },
 );

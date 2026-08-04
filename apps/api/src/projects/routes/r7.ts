@@ -2432,6 +2432,12 @@ projectsApp.openapi(
     let nextAllowlist = visible.row.secretsAllowlist ?? null;
     let droppedSecrets: string[] = [];
     let addedSecrets: string[] = [];
+    // Distinct from `droppedSecrets.length > 0`: a session's allowlist starts
+    // null ("everything the grant allows"), so its FIRST narrowing may shrink
+    // the effective set without being able to name what it lost — which is
+    // precisely when the warning matters most.
+    let narrowedSecrets = false;
+    let canReadSecretNames = false;
     if (wantsSecrets) {
       const decided = rescopeSessionSecrets({
         current: visible.row.secretsAllowlist ?? null,
@@ -2442,6 +2448,16 @@ projectsApp.openapi(
       nextAllowlist = decided.allowlist;
       droppedSecrets = decided.dropped;
       addedSecrets = decided.added;
+      narrowedSecrets = decided.narrowed;
+      // Only affects whether the dropped NAMES are echoed back — never whether
+      // the narrowing itself is reported.
+      canReadSecretNames = await projectCapabilityAllowed(
+        c,
+        loaded.userId,
+        loaded.row.accountId,
+        projectId,
+        PROJECT_ACTIONS.PROJECT_SECRET_READ,
+      );
       if (nextAllowlist !== null && nextAllowlist.length > 0) {
         const availableSecrets = await listResolvedProjectSecrets(projectId, loaded.userId);
         const available = new Set(
@@ -2646,17 +2662,29 @@ projectsApp.openapi(
       secrets_allowlist: nextAllowlist,
       required_connectors: nextRequired,
       connector_bindings: effectiveBindings,
-      dropped_secrets: droppedSecrets,
+      // Names are gated; the WARNING is not. Enumerating the agent grant to
+      // report what a null → list narrowing dropped hands the caller secret
+      // identifiers they may not be entitled to see: this route gates on
+      // project.session.stop, and a plain member holds that for their own
+      // session while deliberately lacking project.secret.read. `narrowed`
+      // carries no names, so the "rotate them" warning still fires for everyone
+      // — which is the part that actually matters.
+      dropped_secrets: canReadSecretNames ? droppedSecrets : [],
       added_secrets: addedSecrets,
       dropped_bindings: droppedBindings,
       // Connector bindings ARE retroactive (resolved at call time). Secrets are
       // not: a dropped one stops being delivered from the next prompt, but the
       // agent's context and any shell it already spawned still hold what it read.
-      retroactive: droppedSecrets.length === 0,
-      detail:
-        droppedSecrets.length > 0
-          ? 'Dropped secrets stop being delivered from the next prompt. Values the agent already read remain in its context and in shells it already started — rotate them if that matters.'
-          : 'Applies from the next prompt.',
+      // Keyed on `narrowed`, not on the dropped NAMES. Narrowing a session away
+      // from an unrestricted allowlist shrinks what it may read even when the
+      // agent's grant is 'all' and the lost names cannot be enumerated — and
+      // that is the largest narrowing there is. Keying off the names suppressed
+      // this warning on exactly that case, telling a user revoking every secret
+      // from a live session that nothing had been dropped.
+      retroactive: !narrowedSecrets,
+      detail: narrowedSecrets
+        ? 'Dropped secrets stop being delivered from the next prompt. Values the agent already read remain in its context and in shells it already started — rotate them if that matters.'
+        : 'Applies from the next prompt.',
     });
   },
 );

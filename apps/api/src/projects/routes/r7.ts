@@ -78,6 +78,7 @@ import {
   isConfigStale,
   latestAgentConfigEtag,
   readSandboxConfigState,
+  reloadDetail,
   reloadSessionConfig,
 } from '../lib/session-reload';
 import {
@@ -2307,9 +2308,7 @@ projectsApp.openapi(
     }
     return c.json({
       ...result,
-      detail: result.applied
-        ? 'Reloaded. The next prompt runs the new config.'
-        : `Nothing to apply: ${result.reason ?? 'unchanged'}.`,
+      detail: reloadDetail(result),
     });
   },
 );

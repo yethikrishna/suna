@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { agentConfigEtag } from './compile-agent-config';
-import { isConfigStale } from './session-reload';
+import { isConfigStale, reloadDetail } from './session-reload';
 
 describe('agentConfigEtag', () => {
   test('the same config hashes the same, a changed one does not', () => {
@@ -76,8 +76,12 @@ describe('isConfigStale', () => {
 const SOURCE = readFileSync(join(import.meta.dir, 'session-reload.ts'), 'utf8');
 
 function refreshBody(): string {
-  const body = SOURCE.split('async function refreshSandboxWorkspace(')[1]?.split('\n}')[0];
+  // `\n}\n`, not `\n}` — the function's multi-line return type closes with
+  // `\n}> {`, so the looser delimiter cuts the body off at the signature and
+  // every assertion below passes vacuously.
+  const body = SOURCE.split('async function refreshSandboxWorkspace(')[1]?.split('\n}\n')[0];
   expect(body).toBeTruthy();
+  expect(body).toContain('/kortix/refresh');
   return body as string;
 }
 
@@ -123,5 +127,103 @@ describe('the reload never hard-resets the session branch', () => {
     const body = refreshBody();
     expect(body).toContain('body.repo?.after?.commit');
     expect(body).not.toContain('body.repo?.commit');
+  });
+});
+
+/**
+ * The sentence the user is told.
+ *
+ * This existed as one unconditional string — "Reloaded. The next prompt runs the
+ * new config." — and it was measurably false on dev: the etag moved, opencode
+ * kept reading the working tree's agent `.md`, and the reload reported success.
+ * The rule these tests encode is that we may only claim the agent changed when
+ * the files opencode actually reads were brought forward.
+ */
+describe('reloadDetail', () => {
+  const base = {
+    applied: true,
+    previous_etag: 'aaaa',
+    etag: 'bbbb',
+    repo_refreshed: true,
+    commit_sha: null,
+  };
+
+  test('claims the agent changed ONLY when the config dir synced', () => {
+    expect(reloadDetail({ ...base, config_dir_synced: true })).toBe(
+      'Reloaded. The next prompt runs the new config.',
+    );
+  });
+
+  test('an old daemon gets a "could not confirm", never a success claim', () => {
+    // `null` is a sandbox built before the sync shipped. Claiming either way
+    // would be guessing, and guessing wrong is what got us here.
+    const detail = reloadDetail({ ...base, config_dir_synced: null });
+    expect(detail).not.toContain('The next prompt runs the new config');
+    expect(detail).toContain('could not confirm');
+  });
+
+  test('a session that edited its own agent is told its version was KEPT', () => {
+    for (const reason of ['local changes', 'local commits']) {
+      const detail = reloadDetail({
+        ...base,
+        config_dir_synced: false,
+        config_dir_reason: reason,
+      });
+      expect(detail).toContain('YOUR version');
+      expect(detail).not.toContain('The next prompt runs the new config');
+    }
+  });
+
+  test('"already current" is a success, not a warning', () => {
+    expect(
+      reloadDetail({ ...base, config_dir_synced: false, config_dir_reason: 'already matches base' }),
+    ).toBe('Reloaded. The agent files were already current.');
+  });
+
+  test('a project with no repo agent files is not warned about', () => {
+    for (const reason of ['no tracked config dir', 'not in base']) {
+      expect(
+        reloadDetail({ ...base, config_dir_synced: false, config_dir_reason: reason }),
+      ).toContain('only the compiled config changed');
+    }
+  });
+
+  test('an unmapped skip reason still never claims success', () => {
+    const detail = reloadDetail({
+      ...base,
+      config_dir_synced: false,
+      config_dir_reason: 'checkout failed',
+    });
+    expect(detail).not.toContain('The next prompt runs the new config');
+    expect(detail).not.toContain('checkout failed');
+  });
+
+  test('a non-applied reload reports the reason and nothing about the agent', () => {
+    expect(
+      reloadDetail({
+        ...base,
+        applied: false,
+        config_dir_synced: null,
+        reason: 'no reachable sandbox',
+      }),
+    ).toBe('Nothing to apply: no reachable sandbox.');
+  });
+
+  test('NO combination ever claims the agent changed while the dir was skipped', () => {
+    // The regression that would reintroduce the original bug.
+    const reasons = [
+      'already matches base',
+      'local changes',
+      'local commits',
+      'no tracked config dir',
+      'not in base',
+      'fetch failed',
+      'checkout failed',
+      undefined,
+    ];
+    for (const config_dir_reason of reasons) {
+      const detail = reloadDetail({ ...base, config_dir_synced: false, config_dir_reason });
+      expect(detail).not.toContain('The next prompt runs the new config');
+    }
   });
 });

@@ -49,8 +49,58 @@ export interface SessionReloadResult {
   /** Whether the workspace was pulled, and to what. */
   repo_refreshed: boolean;
   commit_sha: string | null;
+  /**
+   * Whether the agent config files opencode ACTUALLY reads were brought forward.
+   *
+   * This, not `applied`, is what decides whether the agent behaves differently.
+   * opencode is spawned with `OPENCODE_CONFIG_DIR` pointing into the working
+   * tree, and the `.md` files there beat the compiled config this pushes as
+   * JSON — so `applied: true` with `config_dir_synced: false` means the etag
+   * moved and the agent did not.
+   *
+   * `null` when the box could not be asked: a sandbox running a daemon built
+   * before this shipped ignores the request and reports nothing. Never `false`
+   * for that case — "did not sync" and "cannot tell" lead to different sentences.
+   */
+  config_dir_synced: boolean | null;
+  /** Why the agent files were left alone. Internal wording — map it, don't render it. */
+  config_dir_reason?: string;
   /** Present when nothing was applied. */
   reason?: string;
+}
+
+/**
+ * One sentence for the reload, and the only place that decides whether we are
+ * allowed to say the agent changed.
+ *
+ * The old copy — "Reloaded. The next prompt runs the new config." — was
+ * unconditional, and measurably false whenever the agent's `.md` files were not
+ * brought forward: the etag moved, opencode kept reading the working tree, and
+ * the user was told the opposite.
+ */
+export function reloadDetail(result: SessionReloadResult): string {
+  if (!result.applied) return `Nothing to apply: ${result.reason ?? 'unchanged'}.`;
+  if (result.config_dir_synced === true) {
+    return 'Reloaded. The next prompt runs the new config.';
+  }
+  if (result.config_dir_synced === null) {
+    // An older daemon. It may or may not have picked the change up; claiming
+    // either way would be guessing.
+    return 'Config pushed. This sandbox could not confirm its agent files were updated — restart the session if the agent still behaves the old way.';
+  }
+  switch (result.config_dir_reason) {
+    case 'already matches base':
+      return 'Reloaded. The agent files were already current.';
+    case 'local changes':
+      return 'Config pushed, but this session has uncommitted edits to its agent files — those were kept, so the agent still runs YOUR version.';
+    case 'local commits':
+      return 'Config pushed, but this session has committed its own agent changes — those were kept, so the agent still runs YOUR version.';
+    case 'no tracked config dir':
+    case 'not in base':
+      return 'Reloaded. This project keeps no agent files in the repo, so only the compiled config changed.';
+    default:
+      return 'Config pushed, but the agent files in this session could not be updated — restart the session if the agent still behaves the old way.';
+  }
 }
 
 /** What the sandbox says it is running right now. */
@@ -202,6 +252,7 @@ export async function reloadSessionConfig(input: {
       etag: null,
       repo_refreshed: false,
       commit_sha: null,
+      config_dir_synced: null,
       reason: 'no reachable sandbox',
     };
   }
@@ -218,6 +269,7 @@ export async function reloadSessionConfig(input: {
       etag: before.etag,
       repo_refreshed: false,
       commit_sha: before.commitSha,
+      config_dir_synced: null,
       reason:
         before.turnInFlight === true
           ? 'session is mid-turn'
@@ -227,10 +279,17 @@ export async function reloadSessionConfig(input: {
 
   let repoRefreshed = false;
   let commitSha = before.commitSha;
+  // `null` until the box answers — a daemon built before the config-dir sync
+  // shipped ignores the request and reports nothing, which is not the same as
+  // declining to sync.
+  let configDirSynced: boolean | null = null;
+  let configDirReason: string | undefined;
   if (input.refreshRepo !== false) {
     const refreshed = await refreshSandboxWorkspace(input.sessionId);
     repoRefreshed = refreshed.ok;
     commitSha = refreshed.commitSha ?? commitSha;
+    configDirSynced = refreshed.configDirSynced;
+    configDirReason = refreshed.configDirReason;
   }
 
   const push = await pushSessionAgentConfigToSandbox({
@@ -256,6 +315,8 @@ export async function reloadSessionConfig(input: {
     etag: push.applied ? latest : before.etag,
     repo_refreshed: repoRefreshed,
     commit_sha: commitSha,
+    config_dir_synced: configDirSynced,
+    ...(configDirReason ? { config_dir_reason: configDirReason } : {}),
     ...(push.applied ? {} : { reason: push.reason ?? 'agent config unchanged' }),
   };
 }
@@ -293,9 +354,13 @@ export async function reloadSessionConfig(input: {
  * `restart=0`: the config push right after restarts opencode anyway, and
  * restarting twice doubles the boot cost and the window where the box 503s.
  */
-async function refreshSandboxWorkspace(
-  sessionId: string,
-): Promise<{ ok: boolean; commitSha: string | null }> {
+async function refreshSandboxWorkspace(sessionId: string): Promise<{
+  ok: boolean;
+  commitSha: string | null;
+  configDirSynced: boolean | null;
+  configDirReason?: string;
+}> {
+  const unreachable = { ok: false, commitSha: null, configDirSynced: null };
   try {
     const [row] = await db
       .select({ externalId: sessionSandboxes.externalId, config: sessionSandboxes.config })
@@ -303,27 +368,40 @@ async function refreshSandboxWorkspace(
       .where(and(eq(sessionSandboxes.sessionId, sessionId), eq(sessionSandboxes.status, 'active')))
       .limit(1);
     const serviceKey = (row?.config as Record<string, unknown> | null)?.serviceKey;
-    if (!row?.externalId || typeof serviceKey !== 'string') return { ok: false, commitSha: null };
+    if (!row?.externalId || typeof serviceKey !== 'string') return unreachable;
 
     const { url, headers } = await resolveSandboxIngress(row.externalId, {
       port: SANDBOX_SERVICE_PORT,
       transport: 'http',
     });
-    const res = await fetch(`${url.replace(/\/$/, '')}/kortix/refresh?restart=0`, {
+    // `config_dir=1` is the half that makes a reload change behaviour — see the
+    // comment above. Sent unconditionally: a daemon built before it shipped just
+    // ignores the query parameter and answers without `config_dir`, which reads
+    // back as `null` ("could not tell") rather than `false`.
+    const res = await fetch(`${url.replace(/\/$/, '')}/kortix/refresh?restart=0&config_dir=1`, {
       method: 'POST',
       headers: { ...headers, Authorization: `Bearer ${serviceKey}` },
       signal: AbortSignal.timeout(120_000),
     });
-    if (!res.ok) return { ok: false, commitSha: null };
+    if (!res.ok) return unreachable;
     // The daemon answers `{repo: {before, after}}` — there is no `repo.commit`,
     // so the old read was always undefined and `commit_sha` always reported the
     // PRE-reload value, making a successful pull look like a no-op.
-    const body = (await res.json()) as { repo?: { after?: { commit?: unknown } } };
+    const body = (await res.json()) as {
+      repo?: { after?: { commit?: unknown } };
+      config_dir?: { synced?: unknown; skipped?: unknown };
+    };
     const commit = body.repo?.after?.commit;
-    return { ok: true, commitSha: typeof commit === 'string' ? commit : null };
+    const dir = body.config_dir;
+    return {
+      ok: true,
+      commitSha: typeof commit === 'string' ? commit : null,
+      configDirSynced: typeof dir?.synced === 'boolean' ? dir.synced : null,
+      ...(typeof dir?.skipped === 'string' ? { configDirReason: dir.skipped } : {}),
+    };
   } catch {
     // A failed pull is not a failed reload: the config recompiles from the git
     // MIRROR, not the sandbox's working tree, so the agent still updates.
-    return { ok: false, commitSha: null };
+    return unreachable;
   }
 }

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
-import type { Config } from '../config'
-import { refreshRepo, syncWorkspaceToBase } from '../git'
+import { resolveOpencodeConfigDirRelative, type Config } from '../config'
+import { refreshRepo, syncOpencodeConfigDirToBase, syncWorkspaceToBase } from '../git'
 import {
   KORTIX_USER_CONTEXT_HEADER,
   verifyKortixUserContext,
@@ -45,6 +45,16 @@ export function createRefreshRouter(cfg: Config, opencode: Opencode): Hono {
     // and keeps warm-snapshot restore fast). Default behaviour is refresh+restart.
     const syncBase = c.req.query('base') === '1'
     const skipRestart = c.req.query('restart') === '0'
+    // `?config_dir=1` updates ONLY the opencode config directory from the base
+    // ref. Separate from `base=1` on purpose: that one resets the session's
+    // BRANCH and discards its commits, which is fine at create-time on a warm
+    // snapshot and catastrophic on a live session. This one touches a single
+    // pathspec and refuses when the session has its own work there.
+    //
+    // An older daemon simply ignores this parameter and does the plain refresh,
+    // which is the previous behaviour — so the API can send it unconditionally
+    // without version negotiation.
+    const syncConfigDir = c.req.query('config_dir') === '1'
     const baseSha = c.req.query('base_sha')
     if (baseSha !== undefined && !/^[0-9a-f]{40}$/i.test(baseSha)) {
       return c.json({ error: 'invalid base_sha' }, 400)
@@ -55,6 +65,11 @@ export function createRefreshRouter(cfg: Config, opencode: Opencode): Hono {
         const repo = syncBase
           ? await syncWorkspaceToBase(cfg, baseSha)
           : await refreshRepo(cfg)
+        // After the repo op, so a successful pull is reflected before we compare
+        // the config dir against base.
+        const configDir = syncConfigDir
+          ? await syncOpencodeConfigDirToBase(cfg, await resolveOpencodeConfigDirRelative(cfg), baseSha)
+          : undefined
         if (!skipRestart) await opencode.restart()
         return c.json({
           ok: true,
@@ -62,6 +77,7 @@ export function createRefreshRouter(cfg: Config, opencode: Opencode): Hono {
             before: repo.before,
             after: repo.after,
           },
+          ...(configDir ? { config_dir: configDir } : {}),
           opencode: opencode.getState(),
           opencode_pid: opencode.getPid(),
         })

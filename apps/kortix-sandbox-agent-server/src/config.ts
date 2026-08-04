@@ -242,6 +242,24 @@ export async function resolveSandboxOnBoot(cfg: Config): Promise<string | null> 
  * opencode.jsonc — that's what keeps a freshly provisioned sandbox bootable
  * before a project has been cloned.
  */
+/**
+ * The same directory, but REPO-RELATIVE — the form git pathspecs need.
+ *
+ * `resolveOpencodeConfigDir` answers "where does opencode read from" (absolute,
+ * with a fallback outside the repo when the project has no opencode.jsonc). A
+ * git operation needs the other half: the path inside the working tree, or
+ * nothing at all when the effective dir is the out-of-repo default and there is
+ * therefore nothing in git to sync.
+ */
+export async function resolveOpencodeConfigDirRelative(cfg: Config): Promise<string | null> {
+  const fs = await import('node:fs/promises')
+  const rel = await readOpencodeConfigDirFromManifest(fs, cfg.projectTarget)
+  const absolute = await resolveOpencodeConfigDir(cfg)
+  // Fell back to the out-of-repo default: the project ships no opencode config,
+  // so there is no tracked directory to update.
+  return absolute === `${cfg.projectTarget}/${rel}` ? rel : null
+}
+
 export async function resolveOpencodeConfigDir(cfg: Config): Promise<string> {
   const fs = await import('node:fs/promises')
   const relConfigDir = await readOpencodeConfigDirFromManifest(fs, cfg.projectTarget)

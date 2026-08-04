@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { dirname, extname, join, normalize } from 'node:path'
 
 import { logger } from './logger'
@@ -115,12 +115,51 @@ function toAbsPath(rawPath: string): string | null {
   return normalize(decoded)
 }
 
-function isAllowed(absPath: string): boolean {
-  // Denies win. `absPath` is already normalized, so a traversal has collapsed
-  // before it gets here and cannot smuggle a denied segment past this.
+function isDenied(absPath: string): boolean {
+  // `absPath` is normalized, so a traversal has collapsed before it gets here
+  // and cannot smuggle a denied segment past this.
   const probe = `${absPath}/`
-  if (DENIED_PATH_SEGMENTS.some((segment) => probe.includes(segment))) return false
-  return ALLOWED_ROOTS.some((root) => absPath === root || absPath.startsWith(root + '/'))
+  return DENIED_PATH_SEGMENTS.some((segment) => probe.includes(segment))
+}
+
+function underAny(absPath: string, roots: readonly string[]): boolean {
+  return roots.some((root) => absPath === root || absPath.startsWith(root + '/'))
+}
+
+function isAllowed(absPath: string): boolean {
+  if (isDenied(absPath)) return false
+  return underAny(absPath, ALLOWED_ROOTS)
+}
+
+/**
+ * The allowed roots with their OWN symlinks resolved.
+ *
+ * Needed because the post-resolve check compares a fully resolved file path,
+ * and a root can itself be a link — macOS `/tmp` is a link to `/private/tmp`,
+ * so comparing a resolved path against the literal roots refused every
+ * legitimate file under it. A container could do the same to `/workspace`.
+ * Resolve both sides or the comparison is not like-for-like.
+ *
+ * Computed once; the roots do not move while the process runs.
+ */
+let resolvedRootsCache: string[] | null = null
+function resolvedRoots(): string[] {
+  if (resolvedRootsCache) return resolvedRootsCache
+  resolvedRootsCache = ALLOWED_ROOTS.map((root) => {
+    try {
+      return realpathSync(root)
+    } catch {
+      // A root that does not exist on this box cannot match anything anyway.
+      return root
+    }
+  })
+  return resolvedRootsCache
+}
+
+/** Is the path we are about to OPEN — links followed — inside the roots? */
+function isAllowedResolved(realPath: string): boolean {
+  if (isDenied(realPath)) return false
+  return underAny(realPath, ALLOWED_ROOTS) || underAny(realPath, resolvedRoots())
 }
 
 function stripTrailingSlash(value: string): string {
@@ -273,13 +312,44 @@ function serveDirectory(absPath: string, baseUrl: string): Response {
   })
 }
 
+function forbidden(): Response {
+  return new Response(`Forbidden path. Allowed roots: ${ALLOWED_ROOTS.join(', ')}`, {
+    status: 403,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', ...corsHeaders },
+  })
+}
+
 function serveFile(absPath: string, baseUrl: string, injectBaseTag = false): Response {
   try {
-    if (!isAllowed(absPath)) {
-      return new Response(`Forbidden path. Allowed roots: ${ALLOWED_ROOTS.join(', ')}`, {
-        status: 403,
-        headers: { 'Content-Type': 'text/plain; charset=utf-8', ...corsHeaders },
+    if (!isAllowed(absPath)) return forbidden()
+
+    // AUTHORIZE THE PATH THAT WILL ACTUALLY BE OPENED.
+    //
+    // `normalize()` collapses `..` but does NOT follow symlinks, while
+    // `readFileSync` does — so the check above and the read below could be
+    // looking at two different files. The agent can write to every allowed
+    // root, so it can also create the link:
+    //
+    //   ln -s /home/kortix/.config /workspace/x
+    //   GET /abs/workspace/x/kortix-opencode.json   ->  the session's PAT
+    //
+    // Re-checking the resolved path closes that. The literal check stays in
+    // front of it so an obviously out-of-bounds request is still refused
+    // without touching the filesystem.
+    let realPath: string
+    try {
+      realPath = realpathSync(absPath)
+    } catch (err) {
+      const code = (err as { code?: string })?.code
+      if (code === 'ENOENT' || code === 'ENOTDIR') return notFound(absPath)
+      throw err
+    }
+    if (realPath !== absPath && !isAllowedResolved(realPath)) {
+      logger.warn('[static-web] refused a link out of the allowed roots', {
+        requested: absPath,
+        resolved: realPath,
       })
+      return forbidden()
     }
 
     const mime = getMime(absPath)
@@ -287,14 +357,14 @@ function serveFile(absPath: string, baseUrl: string, injectBaseTag = false): Res
     // For HTML loaded via /open?path=, inject a <base> tag so relative asset
     // references (CSS, JS, images) resolve through the /abs/ route.
     if (injectBaseTag && isHtml(absPath)) {
-      const raw = readFileSync(absPath, 'utf-8')
+      const raw = readFileSync(realPath, 'utf-8')
       const patched = injectBase(raw, absPath, baseUrl)
       return new Response(patched, {
         headers: { 'Content-Type': mime, ...corsHeaders },
       })
     }
 
-    const data = readFileSync(absPath)
+    const data = readFileSync(realPath)
     return new Response(data, {
       headers: { 'Content-Type': mime, ...corsHeaders },
     })

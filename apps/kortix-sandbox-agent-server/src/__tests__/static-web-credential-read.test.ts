@@ -20,7 +20,7 @@
  * predicate returns.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { startStaticWebServer } from '../static-web'
@@ -115,5 +115,78 @@ describe('serving agent output still works', () => {
     const { status, body } = await get(`/abs${dir}/app.html`)
     expect(status).toBe(200)
     expect(body).toContain('BUILD_OK')
+  })
+})
+
+/**
+ * A symlink out of the allowed roots must not be followed.
+ *
+ * `normalize()` collapses `..` but does NOT follow links, while `readFileSync`
+ * does — so the authorization check and the read were looking at two different
+ * files. The agent can write to every allowed root, so it can make the link
+ * itself:
+ *
+ *   ln -s /home/kortix/.config /workspace/x
+ *   GET /abs/workspace/x/kortix-opencode.json     ->  the session's PAT
+ *
+ * That defeated the root narrowing completely, which is the argument for why
+ * the fix could not stop at the roots.
+ */
+describe('symlinks cannot smuggle a path back out', () => {
+  test('a link into a credential directory is refused', async () => {
+    const fakeHome = mkdtempSync('/tmp/kortix-fake-home-')
+    mkdirSync(join(fakeHome, '.config'), { recursive: true })
+    writeFileSync(join(fakeHome, '.config', 'kortix-opencode.json'), '{"apiKey":"SECRET-KEY"}')
+
+    // The link sits inside an allowed root, so the literal path check passes
+    // and only resolving it can refuse the read.
+    const link = join(scratch, 'escape-config')
+    symlinkSync(join(fakeHome, '.config'), link)
+
+    const { status, body } = await get(`/abs${link}/kortix-opencode.json`)
+    expect(status).toBe(403)
+    expect(body).not.toContain('SECRET-KEY')
+
+    rmSync(fakeHome, { recursive: true, force: true })
+  })
+
+  test('a link reaching outside every allowed root is refused', async () => {
+    const outside = mkdtempSync(join(process.env.TMPDIR || '/var/tmp', 'kortix-outside-'))
+    writeFileSync(join(outside, 'secret.txt'), 'SECRET-PAYLOAD')
+
+    const link = join(scratch, 'escape-file.txt')
+    symlinkSync(join(outside, 'secret.txt'), link)
+
+    const { status, body } = await get(`/abs${link}`)
+    expect(status).toBe(403)
+    expect(body).not.toContain('SECRET-PAYLOAD')
+
+    rmSync(outside, { recursive: true, force: true })
+  })
+
+  test('an ordinary file is still served after the resolve step', async () => {
+    // The resolve must not break the normal path it sits in front of.
+    const dir = join(scratch, 'plain')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'ok.html'), '<html><body>PLAIN_OK</body></html>')
+
+    const { status, body } = await get(`/abs${dir}/ok.html`)
+    expect(status).toBe(200)
+    expect(body).toContain('PLAIN_OK')
+  })
+
+  test('a link that stays inside the allowed roots still works', async () => {
+    // Symlinks are not banned — only ones that leave the roots. A build output
+    // symlinked within /tmp or /workspace is legitimate.
+    const real = join(scratch, 'real')
+    mkdirSync(real, { recursive: true })
+    writeFileSync(join(real, 'in.html'), '<html><body>INSIDE_OK</body></html>')
+
+    const link = join(scratch, 'inside-link')
+    symlinkSync(real, link)
+
+    const { status, body } = await get(`/abs${link}/in.html`)
+    expect(status).toBe(200)
+    expect(body).toContain('INSIDE_OK')
   })
 })

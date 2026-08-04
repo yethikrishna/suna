@@ -610,6 +610,30 @@ export interface SessionReloadResult {
   etag: string | null;
   repo_refreshed: boolean;
   commit_sha: string | null;
+  /**
+   * What happened to the agent files opencode ACTUALLY reads.
+   *
+   * This — not `applied` — decides whether the agent behaves differently.
+   * opencode is spawned with `OPENCODE_CONFIG_DIR` pointing into the session's
+   * working tree, and the agent `.md` files there beat the compiled config the
+   * reload pushes as JSON, so anything but `'updated'` means the hash moved and
+   * the agent did not.
+   *
+   * Three of these are successes (`updated`, `already-current`,
+   * `not-applicable`), one is a deliberate refusal to discard the session's own
+   * edits (`kept-yours`), and two are different flavours of "we did not find
+   * out" (`not-requested` when `refresh_repo: false`, `unknown` for a sandbox
+   * whose daemon predates the sync). Absent on a response from an older API.
+   *
+   * Prefer `detail` for display — it already words every case.
+   */
+  agent_files?:
+    | 'updated'
+    | 'already-current'
+    | 'kept-yours'
+    | 'not-applicable'
+    | 'not-requested'
+    | 'unknown';
   /** Why nothing was applied. Internal wording — map it, don't render it. */
   reason?: string;
   detail: string;

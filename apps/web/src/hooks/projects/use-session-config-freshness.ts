@@ -167,7 +167,15 @@ export function useReloadSessionConfig(projectId: string, sessionId: string) {
         warningToast(reloadNotAppliedCopy(result.reason));
         return;
       }
-      successToast(result.detail || 'Config reloaded');
+      // Only two outcomes warrant a warning: the session's own agent files were
+      // kept (so the agent still runs THEIR version), or we could not confirm.
+      // The other three are successes — an earlier version keyed off a boolean
+      // and warned on "already current", which is just fine. `detail` already
+      // words every case.
+      const needsAttention =
+        result.agent_files === 'kept-yours' || result.agent_files === 'unknown';
+      if (needsAttention) warningToast(result.detail);
+      else successToast(result.detail || 'Config reloaded');
       // A reload RESTARTS opencode. Refreshing only the config query would
       // leave the chat bound to a runtime that just went away — so invalidate
       // exactly what a restart does.

@@ -3,7 +3,13 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { agentConfigEtag } from './compile-agent-config';
-import { isConfigStale } from './session-reload';
+import {
+  classifyAgentFiles,
+  isConfigStale,
+  reloadDetail,
+  reloadNeedsAttention,
+  type ReloadAgentFiles,
+} from './session-reload';
 
 describe('agentConfigEtag', () => {
   test('the same config hashes the same, a changed one does not', () => {
@@ -76,8 +82,12 @@ describe('isConfigStale', () => {
 const SOURCE = readFileSync(join(import.meta.dir, 'session-reload.ts'), 'utf8');
 
 function refreshBody(): string {
-  const body = SOURCE.split('async function refreshSandboxWorkspace(')[1]?.split('\n}')[0];
+  // `\n}\n`, not `\n}` — the function's multi-line return type closes with
+  // `\n}> {`, so the looser delimiter cuts the body off at the signature and
+  // every assertion below passes vacuously.
+  const body = SOURCE.split('async function refreshSandboxWorkspace(')[1]?.split('\n}\n')[0];
   expect(body).toBeTruthy();
+  expect(body).toContain('/kortix/refresh');
   return body as string;
 }
 
@@ -123,5 +133,125 @@ describe('the reload never hard-resets the session branch', () => {
     const body = refreshBody();
     expect(body).toContain('body.repo?.after?.commit');
     expect(body).not.toContain('body.repo?.commit');
+  });
+});
+
+/**
+ * The sentence the user is told.
+ *
+ * This existed as one unconditional string — "Reloaded. The next prompt runs the
+ * new config." — and it was measurably false on dev: the etag moved, opencode
+ * kept reading the working tree's agent `.md`, and the reload reported success.
+ * The rule these tests encode is that we may only claim the agent changed when
+ * the files opencode actually reads were brought forward.
+ */
+describe('classifyAgentFiles', () => {
+  test('every daemon answer maps to exactly one outcome', () => {
+    const c = classifyAgentFiles;
+    expect(c({ requested: true, synced: true })).toBe('updated');
+    expect(c({ requested: true, synced: false, reason: 'already matches base' })).toBe(
+      'already-current',
+    );
+    expect(c({ requested: true, synced: false, reason: 'local changes' })).toBe('kept-yours');
+    expect(c({ requested: true, synced: false, reason: 'local commits' })).toBe('kept-yours');
+    expect(c({ requested: true, synced: false, reason: 'no tracked config dir' })).toBe(
+      'not-applicable',
+    );
+    expect(c({ requested: true, synced: false, reason: 'not in base' })).toBe('not-applicable');
+    expect(c({ requested: true, synced: null })).toBe('unknown');
+  });
+
+  test('refresh_repo:false is "not-requested", NOT "could not confirm"', () => {
+    // These were the same `null` before. One means an old sandbox could not
+    // answer; the other means we deliberately never asked. Telling a user who
+    // passed --no-repo that their sandbox "could not confirm" is a fabrication.
+    expect(classifyAgentFiles({ requested: false, synced: null })).toBe('not-requested');
+  });
+
+  test('an unrecognised skip reason degrades to unknown, never to a success', () => {
+    // 'fetch failed' / 'checkout failed' / anything added later. We cannot claim
+    // the agent changed, and we must not claim the user's version was kept.
+    for (const reason of ['fetch failed', 'checkout failed', 'something new', undefined]) {
+      expect(classifyAgentFiles({ requested: true, synced: false, reason })).toBe('unknown');
+    }
+  });
+});
+
+describe('reloadDetail', () => {
+  const base = {
+    applied: true,
+    previous_etag: 'aaaa',
+    etag: 'bbbb',
+    repo_refreshed: true,
+    commit_sha: null,
+  } as const;
+
+  test('claims the agent changed ONLY for "updated"', () => {
+    expect(reloadDetail({ ...base, agent_files: 'updated' })).toBe(
+      'Reloaded. The next prompt runs the new config.',
+    );
+    const others: ReloadAgentFiles[] = [
+      'already-current',
+      'kept-yours',
+      'not-applicable',
+      'not-requested',
+      'unknown',
+    ];
+    for (const agent_files of others) {
+      expect(reloadDetail({ ...base, agent_files })).not.toContain(
+        'The next prompt runs the new config',
+      );
+    }
+  });
+
+  test('a session that edited its own agent is told ITS version was kept', () => {
+    expect(reloadDetail({ ...base, agent_files: 'kept-yours' })).toContain('YOUR version');
+  });
+
+  test('--no-repo says the refresh was skipped, not that the box failed', () => {
+    const detail = reloadDetail({ ...base, agent_files: 'not-requested' });
+    expect(detail).toContain('repo refresh was skipped');
+    expect(detail).not.toContain('could not confirm');
+  });
+
+  test('a non-applied reload reports the reason and nothing about the agent', () => {
+    expect(
+      reloadDetail({
+        ...base,
+        applied: false,
+        agent_files: 'unknown',
+        reason: 'no reachable sandbox',
+      }),
+    ).toBe('Nothing to apply: no reachable sandbox.');
+  });
+});
+
+describe('reloadNeedsAttention', () => {
+  const base = {
+    applied: true,
+    previous_etag: 'aaaa',
+    etag: 'bbbb',
+    repo_refreshed: true,
+    commit_sha: null,
+  } as const;
+
+  test('the three success outcomes are NOT warnings', () => {
+    // The first thing the review caught: warning on "already current" and on a
+    // project that simply keeps no agent files, both of which are fine.
+    for (const agent_files of ['updated', 'already-current', 'not-applicable'] as const) {
+      expect(reloadNeedsAttention({ ...base, agent_files })).toBe(false);
+    }
+  });
+
+  test('kept-yours and unknown ARE warnings — the agent may not have changed', () => {
+    for (const agent_files of ['kept-yours', 'unknown'] as const) {
+      expect(reloadNeedsAttention({ ...base, agent_files })).toBe(true);
+    }
+  });
+
+  test('a non-applied reload always needs attention', () => {
+    expect(
+      reloadNeedsAttention({ ...base, applied: false, agent_files: 'updated' }),
+    ).toBe(true);
   });
 });

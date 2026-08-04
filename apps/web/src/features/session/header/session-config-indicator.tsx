@@ -117,7 +117,13 @@ export function SessionConfigIndicator({
 
           <p className="text-muted-foreground mt-2.5 text-xs leading-relaxed">
             {stale
-              ? 'This session started with an older version of the agent config. Reloading picks up the latest — your files and history are kept.'
+              ? // Only ONE unconditional promise is made here — that nothing of
+                // yours is lost — because that one is structural: the reload
+                // never moves the branch. Bringing the agent files forward is
+                // deliberately worded as an attempt, since the reload refuses
+                // when this session has edited them itself. The toast afterwards
+                // reports which of the two happened.
+                'This session started with an older version of the agent config. Reloading tries to bring its agent files up to date, and keeps any changes this session made to them. Your commits and other files are untouched.'
               : "This session's runtime didn't report which agent config it's running, so we can't tell whether it's current. Reloading puts it on the latest."}
           </p>
 

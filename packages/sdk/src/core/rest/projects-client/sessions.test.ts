@@ -368,6 +368,37 @@ test('reloadProjectSessionConfig POSTs to /reload with an empty body by default'
   expect(result.applied).toBe(true);
 });
 
+test('reloadProjectSessionConfig surfaces whether the agent files actually changed', async () => {
+  // `applied` says the compiled config was pushed. `config_dir_synced` says
+  // whether the files opencode READS were brought forward — and those came
+  // apart in production: applied:true with the agent still on the old prompt.
+  nextResponse = {
+    status: 200,
+    body: {
+      applied: true,
+      previous_etag: 'aaaaaaaaaaaaaaaa',
+      etag: 'bbbbbbbbbbbbbbbb',
+      repo_refreshed: true,
+      commit_sha: null,
+      agent_files: 'kept-yours',
+      detail: 'Config pushed, but this session has committed its own agent changes…',
+    },
+  };
+  const result = await reloadProjectSessionConfig('P1', 'S1');
+  expect(result.applied).toBe(true);
+  expect(result.agent_files).toBe('kept-yours');
+});
+
+test('"we did not find out" is distinguishable from "we declined"', async () => {
+  // Three different things that a boolean collapsed: an old daemon that could
+  // not answer, a caller that never asked, and a deliberate refusal. Telling a
+  // --no-repo caller their sandbox "could not confirm" is a fabrication.
+  for (const agent_files of ['unknown', 'not-requested', 'kept-yours'] as const) {
+    nextResponse = { status: 200, body: { applied: true, detail: 'ok', agent_files } };
+    expect((await reloadProjectSessionConfig('P1', 'S1')).agent_files).toBe(agent_files);
+  }
+});
+
 test('reloadProjectSessionConfig forwards force as a real boolean', async () => {
   // The route tests `body?.force === true` — a truthy string would be ignored
   // and the reload would silently refuse again on a busy session.

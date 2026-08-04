@@ -44,6 +44,32 @@ export function createRefreshRouter(cfg: Config, opencode: Opencode): Hono {
     // `?restart=0` skips the opencode restart (the file watcher picks up changes
     // and keeps warm-snapshot restore fast). Default behaviour is refresh+restart.
     const syncBase = c.req.query('base') === '1'
+    // `base=1` force-resets the session's own branch onto the base tip
+    // (`syncWorkspaceToBase` → `git checkout -B <cfg.branchName> <sha>`, and
+    // branchName IS the session id), discarding every commit the session made
+    // and deleting the files they introduced.
+    //
+    // The API's own reload deliberately refuses to send it. But the endpoint is
+    // reachable through the user-facing sandbox proxy — that proxy blocks
+    // exactly one daemon path, `/kortix/env`, and this is not it — so any
+    // principal who can see the session could wipe its history with one request,
+    // as could the in-box agent via a prompt-injected `curl` against localhost.
+    //
+    // Its only legitimate caller is the warm-session workspace refresh, at
+    // session CREATE, holding the SERVICE key. So require that: a request that
+    // authenticated as a user may refresh, never reset. Defence lives here
+    // rather than in the proxy's allowlist because this is the layer that knows
+    // what the flag does.
+    if (syncBase && !serviceAuthenticated) {
+      logger.warn('[refresh] rejected base=1 from a non-service caller')
+      return c.json(
+        {
+          error: 'base reset requires the sandbox service credential',
+          code: 'BASE_RESET_FORBIDDEN',
+        },
+        403,
+      )
+    }
     const skipRestart = c.req.query('restart') === '0'
     // `?config_dir=1` updates ONLY the opencode config directory from the base
     // ref. Separate from `base=1` on purpose: that one resets the session's

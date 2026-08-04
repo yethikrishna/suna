@@ -223,3 +223,112 @@ describe('syncOpencodeConfigDirToBase', () => {
     expect(agentText()).toBe('ORIGINAL PROMPT\n')
   })
 })
+
+/**
+ * A daemon reboot must never move the session's branch.
+ *
+ * `checkoutLocalSessionBranch` ran `git checkout -B <branch>` with NO start
+ * point, which RESETS the branch to whatever HEAD happens to be. Correct exactly
+ * once — creating the branch on a fresh baked checkout — and destructive every
+ * other time, because it runs on EVERY daemon boot where /workspace/.git exists.
+ *
+ * No attacker and nothing unusual is needed. The agent moves HEAD off the
+ * session branch (`git checkout main` to diff against base is ordinary), then
+ * the box reboots in place — the idle reaper and the proxy's auto-resume both do
+ * that with no user action — and every commit the session made is reset away.
+ * The command exits 0 and prints only "Switched to and reset branch".
+ *
+ * The guard meant to catch this (`mismatched`, keyed on cfg.sessionFresh +
+ * cfg.baseSha) is dead: KORTIX_SESSION_FRESH and KORTIX_BASE_SHA have no
+ * producer left in apps/api, so it is always false.
+ *
+ * These exercise real git, because the whole defect is a property of what
+ * `checkout -B` does versus what `checkout` does.
+ */
+describe('reboot must not reset an existing session branch', () => {
+  test('the destructive primitive really does orphan commits (the bug)', () => {
+    // Establishes the danger the fix avoids, so a future reader can see why the
+    // extra rev-parse is not ceremony.
+    write(work, 'agent-work.txt', 'work\n')
+    git(work, 'add', '-A')
+    git(work, 'commit', '-qm', 'agent work')
+    const sessionTip = git(work, 'rev-parse', 'HEAD')
+    git(work, 'checkout', '-q', 'main')
+
+    git(work, 'checkout', '-B', 'ses-1111-2222')
+
+    expect(git(work, 'rev-parse', 'HEAD')).not.toBe(sessionTip)
+    expect(git(work, 'log', '--oneline', '-1')).not.toContain('agent work')
+  })
+
+  test('a plain checkout of an EXISTING branch preserves its commits', () => {
+    // What the fixed code does instead.
+    write(work, 'agent-work.txt', 'work\n')
+    git(work, 'add', '-A')
+    git(work, 'commit', '-qm', 'agent work')
+    const sessionTip = git(work, 'rev-parse', 'HEAD')
+    git(work, 'checkout', '-q', 'main')
+
+    git(work, 'checkout', 'ses-1111-2222')
+
+    expect(git(work, 'rev-parse', 'HEAD')).toBe(sessionTip)
+    expect(readFileSync(join(work, 'agent-work.txt'), 'utf8')).toBe('work\n')
+  })
+
+  test('the daemon probes for the ref and only creates when it is absent', () => {
+    const SRC = readFileSync(join(import.meta.dir, '..', 'git.ts'), 'utf8')
+    const fn = SRC.split('async function checkoutLocalSessionBranch(')[1]?.split('\n}\n')[0]
+    expect(fn).toBeTruthy()
+    expect(fn).toContain("'rev-parse', '--verify', '--quiet'")
+    // The existing-ref path must be a plain checkout — `-B` there is the bug.
+    const existingPath = (fn as string).slice((fn as string).indexOf('exists.code === 0'));
+    expect(existingPath).toContain("'checkout', branch");
+    // `-B` may appear EXACTLY once: the create path, reached only when the ref
+    // does not exist. A second occurrence means either the existing-ref branch
+    // uses it, or a failed switch falls back to it — and that fallback is
+    // precisely the data loss.
+    expect((fn as string).match(/'-B'/g) ?? []).toHaveLength(1);
+  })
+})
+
+/**
+ * `base=1` is the branch reset. Only the service credential may ask for it.
+ *
+ * `syncWorkspaceToBase` force-resets the session's own branch onto the base tip
+ * and deletes the files its commits introduced. The API's reload deliberately
+ * refuses to send it — but the endpoint is reachable through the user-facing
+ * sandbox proxy, which blocks exactly one daemon path (`/kortix/env`) and not
+ * this one. So any principal who could see the session could wipe its history
+ * with a single request, as could the in-box agent via a prompt-injected `curl`
+ * against localhost.
+ *
+ * Its only legitimate caller is the warm-session workspace refresh, at session
+ * CREATE, holding the service key.
+ */
+describe('base=1 requires the service credential', () => {
+  const ROUTE = readFileSync(join(import.meta.dir, '..', 'routes', 'refresh.ts'), 'utf8')
+
+  test('a user-context caller is rejected', () => {
+    expect(ROUTE).toContain('if (syncBase && !serviceAuthenticated)')
+    expect(ROUTE).toContain('BASE_RESET_FORBIDDEN')
+  })
+
+  test('the check runs BEFORE any repo work', () => {
+    // Rejecting after the reset would be no protection at all.
+    const gateAt = ROUTE.indexOf('if (syncBase && !serviceAuthenticated)')
+    const workAt = ROUTE.indexOf('syncWorkspaceToBase(')
+    expect(gateAt).toBeGreaterThanOrEqual(0)
+    expect(gateAt).toBeLessThan(workAt)
+  })
+
+  test('the ordinary refresh is still open to a user-context caller', () => {
+    // The gate must be specific to the destructive flag — a session owner
+    // pulling their own workspace is legitimate and must keep working.
+    const gate = ROUTE.slice(
+      ROUTE.indexOf('if (syncBase && !serviceAuthenticated)'),
+      ROUTE.indexOf('const skipRestart'),
+    )
+    expect(gate).not.toContain('config_dir')
+    expect(gate).not.toContain('restart')
+  })
+})

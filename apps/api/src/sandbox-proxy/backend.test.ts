@@ -15,10 +15,13 @@
 // own file, same caveat other sandbox-proxy tests document.
 import { describe, expect, test } from 'bun:test';
 import { mock } from 'bun:test';
+import * as realProviders from '../platform/providers';
+import * as realPreviewOwnership from '../shared/preview-ownership';
 
 mock.module('../config', () => ({ config: {} }));
 mock.module('../shared/db', () => ({ db: {} }));
 mock.module('../shared/preview-ownership', () => ({
+  ...realPreviewOwnership,
   resolvePreviewUserContext: async () => null,
 }));
 mock.module('../shared/kortix-user-context', () => ({
@@ -28,7 +31,11 @@ mock.module('../shared/kortix-user-context', () => ({
 
 let resolveCalls: Array<{ port: number; transport?: string; path?: string }> = [];
 
+// Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
+// lists exports by hand deletes every export it omits — the failure surfaces in
+// whatever unrelated file imports the missing name next, attributed to no test.
 mock.module('../platform/providers', () => ({
+  ...realProviders,
   getProvider: () => ({
     async resolveIngress(_externalId: string, request: { port: number; transport?: string; path?: string }) {
       resolveCalls.push(request);

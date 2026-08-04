@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
+import * as realPreviewOwnership from '../shared/preview-ownership';
+import * as realRequestContext from '../lib/request-context';
 
 let secretKeyValidations: string[] = [];
 
@@ -42,7 +44,11 @@ mock.module('../shared/supabase', () => ({
   }),
 }));
 
+// Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
+// lists exports by hand deletes every export it omits — the failure surfaces in
+// whatever unrelated file imports the missing name next, attributed to no test.
 mock.module('../shared/preview-ownership', () => ({
+  ...realPreviewOwnership,
   canAccessPreviewSandbox: async ({ accountId }: { accountId?: string }) =>
     accountId === 'acct-1',
   // No project-scoped PATs in this suite — stub so the real module's shape
@@ -56,7 +62,7 @@ mock.module('../shared/auth-audit', () => ({
 }));
 
 mock.module('../lib/sentry', () => ({ setSentryUser: () => {} }));
-mock.module('../lib/request-context', () => ({ setContextField: () => {} }));
+mock.module('../lib/request-context', () => ({ ...realRequestContext, setContextField: () => {} }));
 mock.module('../iam/sso-sync', () => ({ syncSsoMembership: async () => {} }));
 
 const { combinedAuth, supabaseAuth } = await import('../middleware/auth');

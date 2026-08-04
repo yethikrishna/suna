@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { projectSessions, sessionSandboxes } from '@kortix/db';
+import * as realProviders from '../../../platform/providers';
 
 let sandboxRow: Record<string, unknown> | null = null;
 let stopCalls: string[] = [];
@@ -57,7 +58,11 @@ mock.module('../../../shared/db', () => ({
   },
 }));
 
+// Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
+// lists exports by hand deletes every export it omits — the failure surfaces in
+// whatever unrelated file imports the missing name next, attributed to no test.
 mock.module('../../../platform/providers', () => ({
+  ...realProviders,
   getProvider: (_name: string) => ({
     stop: async (externalId: string) => {
       stopCalls.push(externalId);

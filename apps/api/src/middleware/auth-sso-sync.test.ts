@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import * as realRequestContext from '../lib/request-context';
 
 let verifyResult: unknown;
 let networkUser: unknown;
@@ -24,7 +25,10 @@ mock.module('../iam/sso-sync', () => ({
 
 mock.module('../shared/auth-audit', () => ({ auditLoginSuccess: () => {}, auditLoginFail: () => {} }));
 mock.module('../lib/sentry', () => ({ setSentryUser: () => {} }));
-mock.module('../lib/request-context', () => ({ setContextField: () => {} }));
+// Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
+// lists exports by hand deletes every export it omits — the failure surfaces in
+// whatever unrelated file imports the missing name next, attributed to no test.
+mock.module('../lib/request-context', () => ({ ...realRequestContext, setContextField: () => {} }));
 
 const { supabaseAuth, combinedAuth } = await import('./auth');
 

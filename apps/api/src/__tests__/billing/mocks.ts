@@ -5,6 +5,7 @@
  * the same mock.module() registrations without conflicts.
  */
 import { mock } from 'bun:test';
+import * as realProviders from '../../platform/providers';
 
 // ─── Global Mock Registry ─────────────────────────────────────────────────────
 
@@ -175,7 +176,11 @@ export function registerGlobalMocks() {
     hasDatabase: false,
   }));
 
+  // Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
+  // lists exports by hand deletes every export it omits — the failure surfaces in
+  // whatever unrelated file imports the missing name next, attributed to no test.
   mock.module('../../platform/providers', () => ({
+    ...realProviders,
     getProvider: (_name: string) => ({
       stop: async (_externalId: string) => undefined,
     }),

@@ -14,6 +14,7 @@
 // message silently dropped — a worse bug than the one being fixed.
 import { afterAll, beforeEach, expect, mock, test } from 'bun:test';
 import * as realRequestContext from '../../lib/request-context';
+import * as realPreviewOwnership from '../../shared/preview-ownership';
 
 const ACTIVE_RECORD = {
   status: 'active',
@@ -53,7 +54,11 @@ mock.module('../../lib/request-context', () => ({
 mock.module('../../shared/kortix-user-context', () => ({
   KORTIX_USER_CONTEXT_HEADER: 'x-kortix-user-context',
 }));
+// Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
+// lists exports by hand deletes every export it omits — the failure surfaces in
+// whatever unrelated file imports the missing name next, attributed to no test.
 mock.module('../../shared/preview-ownership', () => ({
+  ...realPreviewOwnership,
   canAccessPreviewSandbox: async () => true,
   canAccessSandboxSession: async () => true,
 }));

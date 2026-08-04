@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import * as realProviders from '../../platform/providers';
 
 let sandboxRows: Array<{ sandboxId: string; provider: string; externalId: string | null }> = [];
 let sandboxQueryError: Error | null = null;
@@ -20,7 +21,11 @@ mock.module('../../shared/db', () => ({
   },
 }));
 
+// Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
+// lists exports by hand deletes every export it omits — the failure surfaces in
+// whatever unrelated file imports the missing name next, attributed to no test.
 mock.module('../../platform/providers', () => ({
+  ...realProviders,
   getProvider: (_name: string) => ({
     stop: async (externalId: string) => {
       stops.push(externalId);

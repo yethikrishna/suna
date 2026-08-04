@@ -1252,7 +1252,21 @@ export function createOpencodeSupervisor(
       try {
         await spawnChild(bin)
       } catch (err) {
-        logger.error('[opencode] initial spawn failed', err)
+        // A failed spawn produces NO process, so no 'exit' ever fires and the
+        // crash path that normally rescues opencode never runs. Left as a bare
+        // log, this permanently killed the session: `restart()` stops the
+        // WORKING opencode first, so a spawn that then fails — a full disk, a
+        // PID/memory ceiling — leaves the box reporting `starting` forever with
+        // every prompt 503ing, while `/kortix/env` answered ok:true and the
+        // reload reported success. Recovering needed a whole new session, with
+        // nothing anywhere saying the restart was what killed it.
+        //
+        // `scheduleUnplannedRespawn` is exactly the right recovery and already
+        // self-reschedules with backoff up to 30s; the planned path simply
+        // never called it.
+        logger.error('[opencode] spawn failed; scheduling respawn', err)
+        state = 'down'
+        scheduleUnplannedRespawn()
       }
       scheduleReadinessProbe()
     },

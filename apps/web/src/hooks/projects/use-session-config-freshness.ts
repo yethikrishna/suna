@@ -167,12 +167,14 @@ export function useReloadSessionConfig(projectId: string, sessionId: string) {
         warningToast(reloadNotAppliedCopy(result.reason));
         return;
       }
-      // `config_dir_synced === false` is a deliberate refusal: the session has
-      // its own edits to its agent files, so the compiled config was pushed but
-      // the agent still runs the user's version. Reporting that as a plain
-      // success is how the original bug looked from the outside — the etag moved
-      // and the behaviour did not. `detail` already words every case.
-      if (result.config_dir_synced === false) warningToast(result.detail);
+      // Only two outcomes warrant a warning: the session's own agent files were
+      // kept (so the agent still runs THEIR version), or we could not confirm.
+      // The other three are successes — an earlier version keyed off a boolean
+      // and warned on "already current", which is just fine. `detail` already
+      // words every case.
+      const needsAttention =
+        result.agent_files === 'kept-yours' || result.agent_files === 'unknown';
+      if (needsAttention) warningToast(result.detail);
       else successToast(result.detail || 'Config reloaded');
       // A reload RESTARTS opencode. Refreshing only the config query would
       // leave the chat bound to a runtime that just went away — so invalidate

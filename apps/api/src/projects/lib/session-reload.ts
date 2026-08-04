@@ -39,6 +39,53 @@ import { pushSessionAgentConfigToSandbox } from './sandbox-env-sync';
 
 const SANDBOX_SERVICE_PORT = 8000;
 
+/**
+ * What happened to the agent `.md` files opencode actually reads.
+ *
+ * Six outcomes and not a boolean, because three of them are successes, one is a
+ * deliberate refusal, and two are "we did not find out" for different reasons.
+ * Collapsing any of those together is how a reload ends up warning about a
+ * success — or, worse, calling a no-op a success.
+ */
+export type ReloadAgentFiles =
+  /** Brought forward from base. The agent WILL behave differently. */
+  | 'updated'
+  /** Nothing to do — they already matched base. */
+  | 'already-current'
+  /** Refused: this session has its own edits or commits there. Kept. */
+  | 'kept-yours'
+  /** The project keeps no agent files in the repo. */
+  | 'not-applicable'
+  /** `refresh_repo: false` — never attempted. */
+  | 'not-requested'
+  /** A daemon built before the sync shipped could not say. */
+  | 'unknown';
+
+/** Map the daemon's raw answer onto the outcome the surfaces branch on. */
+export function classifyAgentFiles(input: {
+  requested: boolean;
+  synced: boolean | null;
+  reason?: string;
+}): ReloadAgentFiles {
+  if (!input.requested) return 'not-requested';
+  if (input.synced === true) return 'updated';
+  if (input.synced === null) return 'unknown';
+  switch (input.reason) {
+    case 'already matches base':
+      return 'already-current';
+    case 'local changes':
+    case 'local commits':
+      return 'kept-yours';
+    case 'no tracked config dir':
+    case 'not in base':
+      return 'not-applicable';
+    default:
+      // fetch failed / checkout failed / anything new: we cannot claim the agent
+      // changed, and we must not claim the user's version was deliberately kept.
+      return 'unknown';
+  }
+}
+
 export interface SessionReloadResult {
   /** True when the agent config the box runs was actually replaced. */
   applied: boolean;
@@ -50,21 +97,21 @@ export interface SessionReloadResult {
   repo_refreshed: boolean;
   commit_sha: string | null;
   /**
-   * Whether the agent config files opencode ACTUALLY reads were brought forward.
+   * What happened to the agent files opencode ACTUALLY reads.
    *
-   * This, not `applied`, is what decides whether the agent behaves differently.
-   * opencode is spawned with `OPENCODE_CONFIG_DIR` pointing into the working
-   * tree, and the `.md` files there beat the compiled config this pushes as
-   * JSON — so `applied: true` with `config_dir_synced: false` means the etag
-   * moved and the agent did not.
+   * This, not `applied`, decides whether the agent behaves differently: opencode
+   * is spawned with `OPENCODE_CONFIG_DIR` pointing into the working tree, and
+   * the `.md` files there beat the compiled config this pushes as JSON. So
+   * `applied: true` with anything but `updated` means the etag moved and the
+   * agent did not.
    *
-   * `null` when the box could not be asked: a sandbox running a daemon built
-   * before this shipped ignores the request and reports nothing. Never `false`
-   * for that case — "did not sync" and "cannot tell" lead to different sentences.
+   * A boolean was not enough. `false` conflated a deliberate refusal with two
+   * outcomes that are plain successes (nothing to do, project keeps no agent
+   * files), and `null` conflated "an old daemon could not say" with "we never
+   * tried because refresh_repo was false" — so both the CLI and the web toast
+   * classified real successes as warnings and vice versa.
    */
-  config_dir_synced: boolean | null;
-  /** Why the agent files were left alone. Internal wording — map it, don't render it. */
-  config_dir_reason?: string;
+  agent_files: ReloadAgentFiles;
   /** Present when nothing was applied. */
   reason?: string;
 }
@@ -80,27 +127,32 @@ export interface SessionReloadResult {
  */
 export function reloadDetail(result: SessionReloadResult): string {
   if (!result.applied) return `Nothing to apply: ${result.reason ?? 'unchanged'}.`;
-  if (result.config_dir_synced === true) {
-    return 'Reloaded. The next prompt runs the new config.';
-  }
-  if (result.config_dir_synced === null) {
-    // An older daemon. It may or may not have picked the change up; claiming
-    // either way would be guessing.
-    return 'Config pushed. This sandbox could not confirm its agent files were updated — restart the session if the agent still behaves the old way.';
-  }
-  switch (result.config_dir_reason) {
-    case 'already matches base':
+  switch (result.agent_files) {
+    case 'updated':
+      return 'Reloaded. The next prompt runs the new config.';
+    case 'already-current':
       return 'Reloaded. The agent files were already current.';
-    case 'local changes':
-      return 'Config pushed, but this session has uncommitted edits to its agent files — those were kept, so the agent still runs YOUR version.';
-    case 'local commits':
-      return 'Config pushed, but this session has committed its own agent changes — those were kept, so the agent still runs YOUR version.';
-    case 'no tracked config dir':
-    case 'not in base':
+    case 'not-applicable':
       return 'Reloaded. This project keeps no agent files in the repo, so only the compiled config changed.';
+    case 'kept-yours':
+      return 'Config pushed, but this session has its own changes to its agent files — those were kept, so the agent still runs YOUR version.';
+    case 'not-requested':
+      return 'Compiled config pushed. Agent files were left alone because the repo refresh was skipped.';
     default:
-      return 'Config pushed, but the agent files in this session could not be updated — restart the session if the agent still behaves the old way.';
+      return 'Config pushed, but this sandbox could not confirm its agent files were updated — restart the session if the agent still behaves the old way.';
   }
+}
+
+/**
+ * Is this an outcome the user should be nudged about?
+ *
+ * Only two are: their own version was kept, or we could not confirm. Everything
+ * else — including the two cases where nothing needed doing — is a success, and
+ * warning on those was the first thing the review caught.
+ */
+export function reloadNeedsAttention(result: SessionReloadResult): boolean {
+  if (!result.applied) return true;
+  return result.agent_files === 'kept-yours' || result.agent_files === 'unknown';
 }
 
 /** What the sandbox says it is running right now. */
@@ -252,7 +304,7 @@ export async function reloadSessionConfig(input: {
       etag: null,
       repo_refreshed: false,
       commit_sha: null,
-      config_dir_synced: null,
+      agent_files: 'unknown',
       reason: 'no reachable sandbox',
     };
   }
@@ -269,7 +321,7 @@ export async function reloadSessionConfig(input: {
       etag: before.etag,
       repo_refreshed: false,
       commit_sha: before.commitSha,
-      config_dir_synced: null,
+      agent_files: 'unknown',
       reason:
         before.turnInFlight === true
           ? 'session is mid-turn'
@@ -315,8 +367,11 @@ export async function reloadSessionConfig(input: {
     etag: push.applied ? latest : before.etag,
     repo_refreshed: repoRefreshed,
     commit_sha: commitSha,
-    config_dir_synced: configDirSynced,
-    ...(configDirReason ? { config_dir_reason: configDirReason } : {}),
+    agent_files: classifyAgentFiles({
+      requested: input.refreshRepo !== false,
+      synced: configDirSynced,
+      reason: configDirReason,
+    }),
     ...(push.applied ? {} : { reason: push.reason ?? 'agent config unchanged' }),
   };
 }

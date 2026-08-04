@@ -611,23 +611,29 @@ export interface SessionReloadResult {
   repo_refreshed: boolean;
   commit_sha: string | null;
   /**
-   * Whether the agent files opencode ACTUALLY reads were brought forward.
+   * What happened to the agent files opencode ACTUALLY reads.
    *
    * This — not `applied` — decides whether the agent behaves differently.
    * opencode is spawned with `OPENCODE_CONFIG_DIR` pointing into the session's
    * working tree, and the agent `.md` files there beat the compiled config the
-   * reload pushes as JSON. So `applied: true` with `config_dir_synced: false`
-   * means the hash moved and the agent did not.
+   * reload pushes as JSON, so anything but `'updated'` means the hash moved and
+   * the agent did not.
    *
-   * `false` is a deliberate refusal: the session has its own uncommitted or
-   * committed edits under that directory, and a reload does not discard them.
-   * `null` means the sandbox could not say — a daemon built before this shipped
-   * omits the field. Never read `null` as `false`; they warrant different
-   * sentences. Prefer `detail`, which already words all of these.
+   * Three of these are successes (`updated`, `already-current`,
+   * `not-applicable`), one is a deliberate refusal to discard the session's own
+   * edits (`kept-yours`), and two are different flavours of "we did not find
+   * out" (`not-requested` when `refresh_repo: false`, `unknown` for a sandbox
+   * whose daemon predates the sync). Absent on a response from an older API.
+   *
+   * Prefer `detail` for display — it already words every case.
    */
-  config_dir_synced?: boolean | null;
-  /** Why the agent files were left alone. Internal wording — use `detail`. */
-  config_dir_reason?: string;
+  agent_files?:
+    | 'updated'
+    | 'already-current'
+    | 'kept-yours'
+    | 'not-applicable'
+    | 'not-requested'
+    | 'unknown';
   /** Why nothing was applied. Internal wording — map it, don't render it. */
   reason?: string;
   detail: string;

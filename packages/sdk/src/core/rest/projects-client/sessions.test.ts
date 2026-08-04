@@ -380,25 +380,23 @@ test('reloadProjectSessionConfig surfaces whether the agent files actually chang
       etag: 'bbbbbbbbbbbbbbbb',
       repo_refreshed: true,
       commit_sha: null,
-      config_dir_synced: false,
-      config_dir_reason: 'local commits',
+      agent_files: 'kept-yours',
       detail: 'Config pushed, but this session has committed its own agent changes…',
     },
   };
   const result = await reloadProjectSessionConfig('P1', 'S1');
   expect(result.applied).toBe(true);
-  expect(result.config_dir_synced).toBe(false);
-  expect(result.config_dir_reason).toBe('local commits');
+  expect(result.agent_files).toBe('kept-yours');
 });
 
-test('an older sandbox reports config_dir_synced as null, never false', async () => {
-  // A daemon built before the sync shipped omits the field entirely. Coercing
-  // that to false would tell the user their agent was deliberately left alone,
-  // which is a different (and wrong) statement from "could not tell".
-  nextResponse = { status: 200, body: { applied: true, detail: 'ok', config_dir_synced: null } };
-  const result = await reloadProjectSessionConfig('P1', 'S1');
-  expect(result.config_dir_synced).toBeNull();
-  expect(result.config_dir_synced).not.toBe(false);
+test('"we did not find out" is distinguishable from "we declined"', async () => {
+  // Three different things that a boolean collapsed: an old daemon that could
+  // not answer, a caller that never asked, and a deliberate refusal. Telling a
+  // --no-repo caller their sandbox "could not confirm" is a fabrication.
+  for (const agent_files of ['unknown', 'not-requested', 'kept-yours'] as const) {
+    nextResponse = { status: 200, body: { applied: true, detail: 'ok', agent_files } };
+    expect((await reloadProjectSessionConfig('P1', 'S1')).agent_files).toBe(agent_files);
+  }
 });
 
 test('reloadProjectSessionConfig forwards force as a real boolean', async () => {

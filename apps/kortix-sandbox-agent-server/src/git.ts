@@ -1180,6 +1180,22 @@ export async function syncWorkspaceToBase(
   return { before, after }
 }
 
+/**
+ * Every git call in the config-dir sync runs with pathspec magic OFF.
+ *
+ * `opencode.config_dir` is repo-controlled, it becomes a pathspec, and git
+ * honours magic like `:(top)*` even after `--`. Without this, a manifest could
+ * turn "sync the agent config directory" into `git checkout <base> -- ':(top)*'`
+ * — a rewrite of the whole working tree. Verified against the real primitives:
+ * the magic form rewrites files outside the directory, the literalized form
+ * does not.
+ *
+ * `resolveOpencodeConfigDirRelative` also rejects non-literal values, so this is
+ * the second of two independent guards. It is the one that holds even if a
+ * future caller passes a path from somewhere else.
+ */
+const LITERAL = { env: { GIT_LITERAL_PATHSPECS: '1' } } as const
+
 export interface ConfigDirSyncResult {
   /** True only when files were actually replaced from the base ref. */
   synced: boolean
@@ -1246,12 +1262,12 @@ export async function syncOpencodeConfigDirToBase(
   // our own previous one. Comparing against base instead answers the question
   // that actually matters, and it cannot mask a real edit: content that differs
   // from base falls through to the guards below.
-  const diff = await execGit(['-C', target, 'diff', '--quiet', ref, '--', relConfigDir])
+  const diff = await execGit(['-C', target, 'diff', '--quiet', ref, '--', relConfigDir], LITERAL)
   if (diff.code === 0) return { synced: false, skipped: 'already matches base' }
 
   // Uncommitted edits under the config dir — including untracked files, which
   // `git checkout` would silently leave behind in a half-updated directory.
-  const dirty = await execGit(['-C', target, 'status', '--porcelain', '--', relConfigDir])
+  const dirty = await execGit(['-C', target, 'status', '--porcelain', '--', relConfigDir], LITERAL)
   if (dirty.code === 0 && dirty.stdout.trim().length > 0) {
     return { synced: false, skipped: 'local changes' }
   }
@@ -1259,14 +1275,15 @@ export async function syncOpencodeConfigDirToBase(
   // Commits this session made on top of base that touch the config dir. Without
   // this a session that edited and COMMITTED its agent would have that silently
   // reverted by a reload.
-  const ahead = await execGit([
-    '-C', target, 'log', '--oneline', `${ref}..HEAD`, '--', relConfigDir,
-  ])
+  const ahead = await execGit(
+    ['-C', target, 'log', '--oneline', `${ref}..HEAD`, '--', relConfigDir],
+    LITERAL,
+  )
   if (ahead.code === 0 && ahead.stdout.trim().length > 0) {
     return { synced: false, skipped: 'local commits' }
   }
 
-  const checkout = await execGit(['-C', target, 'checkout', ref, '--', relConfigDir])
+  const checkout = await execGit(['-C', target, 'checkout', ref, '--', relConfigDir], LITERAL)
   if (checkout.code !== 0) {
     // The most likely cause is that base has no such directory at all.
     const missing = /did not match any file|pathspec/i.test(checkout.stderr)
@@ -1274,7 +1291,7 @@ export async function syncOpencodeConfigDirToBase(
     return { synced: false, skipped: missing ? 'not in base' : 'checkout failed' }
   }
   // Un-stage: leave a plain working-tree change, not a staged one.
-  await execGit(['-C', target, 'reset', '-q', '--', relConfigDir])
+  await execGit(['-C', target, 'reset', '-q', '--', relConfigDir], LITERAL)
 
   logger.info('[git] synced opencode config dir to base', { dir: relConfigDir, ref })
   return { synced: true }

@@ -663,7 +663,7 @@ async function sessionsReload(
       previous_etag: string | null;
       etag: string | null;
       repo_refreshed: boolean;
-      config_dir_synced?: boolean | null;
+      agent_files?: string;
       detail: string;
     }>(`/projects/${projectId}/sessions/${sessionId}/reload`, {
       refresh_repo: !args.includes('--no-repo'),
@@ -683,10 +683,14 @@ async function sessionsReload(
     // the session's agent files were left alone — the etag moved and the agent
     // did not. The etag transition is still worth printing; the claim is not
     // ours to make.
-    const changed = result.config_dir_synced !== false;
+    //
+    // Only two outcomes deserve a warning. An earlier version keyed off a
+    // boolean and warned on `already-current` and `not-applicable`, which are
+    // plain successes.
+    const needsAttention = result.agent_files === 'kept-yours' || result.agent_files === 'unknown';
     const etags = `${C.dim} — ${result.previous_etag ?? 'unknown'} → ${result.etag}${C.reset}`;
     const line = `Reloaded ${C.bold}${shortId(sessionId)}${C.reset}${etags}\n  ${result.detail}`;
-    process.stdout.write(`${changed ? status.ok(line) : status.warn(line)}\n`);
+    process.stdout.write(`${needsAttention ? status.warn(line) : status.ok(line)}\n`);
     return 0;
   } catch (err) {
     return surfaceApiError(err);

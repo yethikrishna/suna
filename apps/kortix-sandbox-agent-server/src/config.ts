@@ -254,10 +254,33 @@ export async function resolveSandboxOnBoot(cfg: Config): Promise<string | null> 
 export async function resolveOpencodeConfigDirRelative(cfg: Config): Promise<string | null> {
   const fs = await import('node:fs/promises')
   const rel = await readOpencodeConfigDirFromManifest(fs, cfg.projectTarget)
+  if (!isPlainRelativePath(rel)) return null
   const absolute = await resolveOpencodeConfigDir(cfg)
   // Fell back to the out-of-repo default: the project ships no opencode config,
   // so there is no tracked directory to update.
   return absolute === `${cfg.projectTarget}/${rel}` ? rel : null
+}
+
+/**
+ * Is this a literal directory path, and nothing cleverer?
+ *
+ * `opencode.config_dir` comes from a repo-controlled manifest and this value
+ * becomes a git PATHSPEC. The manifest reader only rejects absolute paths and
+ * `..`, so `:(top)*` survives it — and git honours pathspec magic even after
+ * `--`, which would let a manifest turn a config-dir sync into a rewrite of the
+ * whole working tree. The git calls also run with `GIT_LITERAL_PATHSPECS=1`, so
+ * this is the second of two independent guards rather than the only one; it
+ * exists so a magic-looking value is SKIPPED loudly instead of silently
+ * resolving to some other directory.
+ *
+ * Deliberately narrow: only the boot path may keep interpreting whatever the
+ * manifest says. This governs the sync alone.
+ */
+function isPlainRelativePath(value: string): boolean {
+  if (!value || value.startsWith('/') || value.startsWith('-')) return false
+  return value
+    .split('/')
+    .every((segment) => segment.length > 0 && segment !== '.' && segment !== '..' && /^[\w .-]+$/.test(segment))
 }
 
 export async function resolveOpencodeConfigDir(cfg: Config): Promise<string> {

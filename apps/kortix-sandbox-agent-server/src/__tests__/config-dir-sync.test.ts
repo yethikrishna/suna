@@ -168,6 +168,32 @@ describe('syncOpencodeConfigDirToBase', () => {
     expect(git(work, 'diff', '--name-only', 'refs/remotes/origin/main', '--', CONFIG_DIR)).toBe('')
   })
 
+  test('pathspec magic cannot widen the sync beyond the directory', async () => {
+    // `opencode.config_dir` is REPO-CONTROLLED and becomes a git pathspec, and
+    // git honours magic like `:(top)*` even after `--`. Unguarded, a manifest
+    // could turn this into `git checkout <base> -- ':(top)*'` — a rewrite of the
+    // whole working tree. Proven below against the real primitive: the same
+    // pathspec run WITHOUT the guard does reach outside the directory.
+    write(work, 'app.ts', 'export const x = 999\n')
+    git(work, 'add', '-A')
+    git(work, 'commit', '-qm', 'local edit outside the config dir')
+
+    const result = await syncOpencodeConfigDirToBase(cfg(), ':(top)*')
+
+    expect(result.synced).toBe(false)
+    // Untouched: the file outside the config dir still has the session's content.
+    expect(readFileSync(join(work, 'app.ts'), 'utf8')).toBe('export const x = 999\n')
+
+    // The attack is real without the guard — this is what we are preventing.
+    const unguarded = spawnSync(
+      'git',
+      ['-C', work, 'checkout', 'refs/remotes/origin/main', '--', ':(top)*'],
+      { encoding: 'utf8' },
+    )
+    expect(unguarded.status).toBe(0)
+    expect(readFileSync(join(work, 'app.ts'), 'utf8')).toBe('export const x = 1\n')
+  })
+
   test('a project with no tracked config dir is skipped, not failed', async () => {
     expect(await syncOpencodeConfigDirToBase(cfg(), null)).toEqual({
       synced: false,

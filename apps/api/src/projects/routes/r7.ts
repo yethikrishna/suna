@@ -2437,6 +2437,7 @@ projectsApp.openapi(
     // the effective set without being able to name what it lost — which is
     // precisely when the warning matters most.
     let narrowedSecrets = false;
+    let canReadSecretNames = false;
     if (wantsSecrets) {
       const decided = rescopeSessionSecrets({
         current: visible.row.secretsAllowlist ?? null,
@@ -2448,6 +2449,15 @@ projectsApp.openapi(
       droppedSecrets = decided.dropped;
       addedSecrets = decided.added;
       narrowedSecrets = decided.narrowed;
+      // Only affects whether the dropped NAMES are echoed back — never whether
+      // the narrowing itself is reported.
+      canReadSecretNames = await projectCapabilityAllowed(
+        c,
+        loaded.userId,
+        loaded.row.accountId,
+        projectId,
+        PROJECT_ACTIONS.PROJECT_SECRET_READ,
+      );
       if (nextAllowlist !== null && nextAllowlist.length > 0) {
         const availableSecrets = await listResolvedProjectSecrets(projectId, loaded.userId);
         const available = new Set(
@@ -2652,7 +2662,14 @@ projectsApp.openapi(
       secrets_allowlist: nextAllowlist,
       required_connectors: nextRequired,
       connector_bindings: effectiveBindings,
-      dropped_secrets: droppedSecrets,
+      // Names are gated; the WARNING is not. Enumerating the agent grant to
+      // report what a null → list narrowing dropped hands the caller secret
+      // identifiers they may not be entitled to see: this route gates on
+      // project.session.stop, and a plain member holds that for their own
+      // session while deliberately lacking project.secret.read. `narrowed`
+      // carries no names, so the "rotate them" warning still fires for everyone
+      // — which is the part that actually matters.
+      dropped_secrets: canReadSecretNames ? droppedSecrets : [],
       added_secrets: addedSecrets,
       dropped_bindings: droppedBindings,
       // Connector bindings ARE retroactive (resolved at call time). Secrets are

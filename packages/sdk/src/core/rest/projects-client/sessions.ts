@@ -610,6 +610,24 @@ export interface SessionReloadResult {
   etag: string | null;
   repo_refreshed: boolean;
   commit_sha: string | null;
+  /**
+   * Whether the agent files opencode ACTUALLY reads were brought forward.
+   *
+   * This — not `applied` — decides whether the agent behaves differently.
+   * opencode is spawned with `OPENCODE_CONFIG_DIR` pointing into the session's
+   * working tree, and the agent `.md` files there beat the compiled config the
+   * reload pushes as JSON. So `applied: true` with `config_dir_synced: false`
+   * means the hash moved and the agent did not.
+   *
+   * `false` is a deliberate refusal: the session has its own uncommitted or
+   * committed edits under that directory, and a reload does not discard them.
+   * `null` means the sandbox could not say — a daemon built before this shipped
+   * omits the field. Never read `null` as `false`; they warrant different
+   * sentences. Prefer `detail`, which already words all of these.
+   */
+  config_dir_synced?: boolean | null;
+  /** Why the agent files were left alone. Internal wording — use `detail`. */
+  config_dir_reason?: string;
   /** Why nothing was applied. Internal wording — map it, don't render it. */
   reason?: string;
   detail: string;

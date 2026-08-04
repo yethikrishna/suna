@@ -368,6 +368,39 @@ test('reloadProjectSessionConfig POSTs to /reload with an empty body by default'
   expect(result.applied).toBe(true);
 });
 
+test('reloadProjectSessionConfig surfaces whether the agent files actually changed', async () => {
+  // `applied` says the compiled config was pushed. `config_dir_synced` says
+  // whether the files opencode READS were brought forward — and those came
+  // apart in production: applied:true with the agent still on the old prompt.
+  nextResponse = {
+    status: 200,
+    body: {
+      applied: true,
+      previous_etag: 'aaaaaaaaaaaaaaaa',
+      etag: 'bbbbbbbbbbbbbbbb',
+      repo_refreshed: true,
+      commit_sha: null,
+      config_dir_synced: false,
+      config_dir_reason: 'local commits',
+      detail: 'Config pushed, but this session has committed its own agent changes…',
+    },
+  };
+  const result = await reloadProjectSessionConfig('P1', 'S1');
+  expect(result.applied).toBe(true);
+  expect(result.config_dir_synced).toBe(false);
+  expect(result.config_dir_reason).toBe('local commits');
+});
+
+test('an older sandbox reports config_dir_synced as null, never false', async () => {
+  // A daemon built before the sync shipped omits the field entirely. Coercing
+  // that to false would tell the user their agent was deliberately left alone,
+  // which is a different (and wrong) statement from "could not tell".
+  nextResponse = { status: 200, body: { applied: true, detail: 'ok', config_dir_synced: null } };
+  const result = await reloadProjectSessionConfig('P1', 'S1');
+  expect(result.config_dir_synced).toBeNull();
+  expect(result.config_dir_synced).not.toBe(false);
+});
+
 test('reloadProjectSessionConfig forwards force as a real boolean', async () => {
   // The route tests `body?.force === true` — a truthy string would be ignored
   // and the reload would silently refuse again on a busy session.

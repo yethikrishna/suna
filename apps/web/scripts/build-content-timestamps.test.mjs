@@ -6,13 +6,21 @@ const manifestUrl = new URL('../src/lib/seo/content-timestamps.json', import.met
 const scriptUrl = new URL('./build-content-timestamps.mjs', import.meta.url);
 
 describe('content timestamp manifest', () => {
-  it('imports without writing and matches the current git history', async () => {
+  it('imports without writing', async () => {
     const beforeImport = await readFile(manifestUrl, 'utf8');
     const module = await import(`${scriptUrl.href}?test=${Date.now()}`);
     const afterImport = await readFile(manifestUrl, 'utf8');
 
     assert.equal(afterImport, beforeImport);
     assert.equal(typeof module.createContentTimestampManifest, 'function');
-    assert.deepEqual(JSON.parse(beforeImport), module.createContentTimestampManifest());
+  });
+
+  it('matches the current git history when full history is available', async () => {
+    const module = await import(`${scriptUrl.href}?test=${Date.now()}`);
+    const generatedManifest = module.createContentTimestampManifest();
+    if (Object.keys(generatedManifest).length === 0) return;
+
+    const committedManifest = JSON.parse(await readFile(manifestUrl, 'utf8'));
+    assert.deepEqual(committedManifest, generatedManifest);
   });
 });

@@ -29,6 +29,22 @@ import {
 } from '@kortix/sdk';
 import { clearRuntimeEnsureGuard } from '@kortix/sdk/react';
 
+/**
+ * How long a freshness answer is trusted before a window-focus refetch will
+ * re-ask.
+ *
+ * Named, exported and asserted in tests because its VALUE is the bug. React
+ * Query skips a focus refetch while the cached value is still fresh, so this
+ * constant is what decides whether "edit an agent file, tab back to the session"
+ * shows anything at all. At the 5 minutes it used to be, it showed nothing, and
+ * a full page reload was the only thing that worked — a reload wipes the cache
+ * instead of revalidating, which is why it looked like the feature worked.
+ *
+ * Raise this and you silently switch the feature off for the flow people
+ * actually use.
+ */
+export const CONFIG_FRESHNESS_STALE_TIME_MS = 30_000;
+
 export function sessionConfigKey(projectId?: string, sessionId?: string) {
   return ['session-config', projectId ?? '', sessionId ?? ''] as const;
 }
@@ -121,9 +137,18 @@ export function useSessionConfigFreshness(projectId?: string, sessionId?: string
     // recompiles the manifest, and reaches into the sandbox — an interval would
     // make one git fetch per open session per tick, forever, to detect a thing
     // that only changes when somebody merges. Staleness is edge-triggered, so
-    // this refetches on mount and on window focus (both off by default here)
-    // and is invalidated explicitly after a reload.
-    staleTime: 5 * 60_000,
+    // this refetches on mount and on window focus, and is invalidated explicitly
+    // after a reload.
+    //
+    // `staleTime` GATES the focus refetch, which is the whole reason it is 30s
+    // and not the 5 minutes it used to be. React Query skips a focus refetch
+    // while the cached value is still fresh, so with a 5-minute window the
+    // ordinary flow — edit an agent file in your editor, tab back — showed
+    // nothing, and a full page reload was the only thing that worked (it wipes
+    // the cache rather than revalidating). 30s is long enough that alt-tabbing
+    // does not turn into a git fetch per switch, short enough that coming back
+    // from an edit always re-asks.
+    staleTime: CONFIG_FRESHNESS_STALE_TIME_MS,
     gcTime: 10 * 60_000,
     refetchOnMount: true,
     refetchOnWindowFocus: true,

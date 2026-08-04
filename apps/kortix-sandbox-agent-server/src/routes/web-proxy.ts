@@ -29,6 +29,7 @@
 
 import { Hono, type Context } from 'hono'
 import { lookup } from 'node:dns/promises'
+import { networkInterfaces } from 'node:os'
 
 import { logger } from '../logger'
 import {
@@ -75,13 +76,39 @@ const CREDENTIAL_HEADERS = new Set([
   'e2b-traffic-access-token',
 ])
 
+/**
+ * Every address that belongs to THIS machine.
+ *
+ * Loopback is not enough. The daemon binds 0.0.0.0, so the box's own interface
+ * address — its eth0 10.x/172.x — reaches :8000 exactly as 127.0.0.1 does, and
+ * a guard that only knew about loopback let that spelling through.
+ *
+ * Computed once: a sandbox's addresses do not change during its life, and this
+ * sits in the path of every proxied asset request.
+ */
+let ownAddressCache: Set<string> | null = null
+function ownAddresses(): Set<string> {
+  if (ownAddressCache) return ownAddressCache
+  const found = new Set<string>()
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      // Drop the IPv6 zone index (`fe80::1%eth0`) — it is not part of the address.
+      found.add(entry.address.toLowerCase().split('%')[0] as string)
+    }
+  }
+  ownAddressCache = found
+  return found
+}
+
 /** Does this literal address reach the box itself? */
 function isLoopbackAddress(addr: string): boolean {
-  const a = addr.toLowerCase().replace(/^\[|\]$/g, '')
+  const a = addr.toLowerCase().replace(/^\[|\]$/g, '').split('%')[0] as string
   if (a === '::1' || a === '::' || a === '0.0.0.0') return true
   // IPv4-mapped IPv6, e.g. ::ffff:127.0.0.1
   if (a.startsWith('::ffff:')) return isLoopbackAddress(a.slice('::ffff:'.length))
-  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(a)
+  if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(a)) return true
+  // The box's own non-loopback bind addresses. Same destination, different route.
+  return ownAddresses().has(a)
 }
 
 /**
@@ -128,8 +155,15 @@ async function reachesThisBox(hostname: string): Promise<boolean> {
 }
 
 export interface WebProxyOptions {
-  /** Loopback ports this proxy refuses to reach — the box's own control plane. */
-  blockedLoopbackPorts: ReadonlySet<number>
+  /**
+   * Ports this proxy refuses to reach ON THIS BOX — our own control plane.
+   *
+   * Named for the destination, not for loopback: the daemon binds 0.0.0.0
+   * (proxy.ts), so the box's own interface address reaches it just as
+   * 127.0.0.1 does, and a guard that thought in terms of "loopback" missed
+   * that spelling entirely.
+   */
+  blockedSelfPorts: ReadonlySet<number>
 }
 
 const STRIP_RESPONSE_HEADERS = new Set([
@@ -500,7 +534,7 @@ async function handleWebProxy(c: Context, opts: WebProxyOptions): Promise<Respon
       ? 443
       : 80
   if (
-    opts.blockedLoopbackPorts.has(targetPort) &&
+    opts.blockedSelfPorts.has(targetPort) &&
     (await reachesThisBox(parsedTarget.hostname))
   ) {
     logger.warn('[web-proxy] refused a loopback request to the control plane', {

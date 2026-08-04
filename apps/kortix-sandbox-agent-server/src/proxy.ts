@@ -190,7 +190,7 @@ export function buildOpencodeApp(
   app.route(
     '/web-proxy',
     createWebProxyRouter({
-      blockedLoopbackPorts: new Set([cfg.servicePort, cfg.opencodeInternalPort]),
+      blockedSelfPorts: new Set([cfg.servicePort, cfg.opencodeInternalPort]),
     }),
   )
 

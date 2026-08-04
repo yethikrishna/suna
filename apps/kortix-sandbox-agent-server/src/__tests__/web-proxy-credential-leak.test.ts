@@ -24,7 +24,21 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 
+import { networkInterfaces } from 'node:os'
+
 import { createWebProxyRouter } from '../routes/web-proxy'
+
+/** This machine's own non-loopback IPv4 addresses — the same ones a sandbox's
+ *  daemon is reachable on besides 127.0.0.1. */
+function ownInterfaceAddresses(): string[] {
+  const out: string[] = []
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family === 'IPv4' && !entry.internal) out.push(entry.address)
+    }
+  }
+  return out.slice(0, 3)
+}
 
 const SERVICE_KEY = 'sandbox-service-key-under-test'
 
@@ -71,7 +85,7 @@ function proxiedUserRequestHeaders(): Record<string, string> {
 function router() {
   // Nothing blocked, so the request reaches the upstream and we can inspect
   // exactly what it received.
-  return createWebProxyRouter({ blockedLoopbackPorts: new Set<number>() })
+  return createWebProxyRouter({ blockedSelfPorts: new Set<number>() })
 }
 
 describe('/web-proxy does not forward our credentials to the target', () => {
@@ -127,7 +141,7 @@ describe('/web-proxy stays off the box control plane', () => {
   const OPENCODE = 4096
 
   function guarded() {
-    return createWebProxyRouter({ blockedLoopbackPorts: new Set([DAEMON, OPENCODE]) })
+    return createWebProxyRouter({ blockedSelfPorts: new Set([DAEMON, OPENCODE]) })
   }
 
   test('it refuses a loopback tunnel into opencode', async () => {
@@ -176,6 +190,9 @@ describe('/web-proxy stays off the box control plane', () => {
     '0x7f000001',
     '0',
     '127.0.0.1.nip.io',
+    // The daemon binds 0.0.0.0, so the box's OWN interface address reaches
+    // :8000 exactly as loopback does. A loopback-only guard let this through.
+    ...ownInterfaceAddresses(),
   ]
 
   test.each(LOOPBACK_SPELLINGS)('%s is refused on a control port', async (host) => {

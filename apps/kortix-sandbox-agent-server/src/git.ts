@@ -1153,17 +1153,39 @@ export async function refreshRepo(cfg: Config): Promise<{ before: RepoInfo; afte
     'origin',
     `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
   ])
-  if (fetched.code !== 0) throw new Error(`git fetch refresh failed: ${fetched.stderr}`)
+  // A session branch that was never pushed has NO remote ref, and that is the
+  // ordinary state of a session which has not proposed its changes yet — the
+  // branch is created locally at boot and only reaches origin when the user
+  // proposes. Treating it as a failure made `POST /kortix/refresh` answer 500
+  // for exactly those sessions, which is the common case: reload is offered by
+  // the stale-config notice, and a brand-new session is the one most likely to
+  // be told its config moved.
+  //
+  // Verified live on dev against a freshly provisioned session:
+  //   git fetch refresh failed: fatal: couldn't find remote ref refs/heads/<session-id>
+  //
+  // There is nothing upstream to fast-forward from, so skip the pull and let
+  // the rest of the refresh — notably the config-dir sync, which reads the BASE
+  // ref, not this branch — carry on. Any other fetch failure is still fatal.
+  const missingRemoteBranch =
+    fetched.code !== 0 && /couldn't find remote ref/i.test(fetched.stderr)
+  if (fetched.code !== 0 && !missingRemoteBranch) {
+    throw new Error(`git fetch refresh failed: ${fetched.stderr}`)
+  }
 
-  const pulled = await gitWithAuth(cloneCredential, authRepoUrl, [
-    '-C',
-    target,
-    'pull',
-    '--ff-only',
-    'origin',
-    branch,
-  ])
-  if (pulled.code !== 0) throw new Error(`git pull refresh failed: ${pulled.stderr}`)
+  if (missingRemoteBranch) {
+    logger.info('[git] session branch is not on the remote yet; nothing to pull', { branch })
+  } else {
+    const pulled = await gitWithAuth(cloneCredential, authRepoUrl, [
+      '-C',
+      target,
+      'pull',
+      '--ff-only',
+      'origin',
+      branch,
+    ])
+    if (pulled.code !== 0) throw new Error(`git pull refresh failed: ${pulled.stderr}`)
+  }
 
   const after = await readRepoInfo(target)
   if (!after) throw new Error('project repo disappeared after refresh')

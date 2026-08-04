@@ -76,3 +76,57 @@ describe('start(): a failed spawn schedules a respawn', () => {
     expect(SRC).toContain('restartDelayMs = 500')
   })
 })
+
+/**
+ * A PLANNED restart strands its turn exactly like a crash does.
+ *
+ * Only the crash path was cleaning up. `proc.on('exit')` returns early while
+ * `stopping` is set — which `stop()` sets and `restart()` goes through — so
+ * `onUnplannedRespawn`, and with it the orphaned-turn finalize, never fired for
+ * a restart we asked for.
+ *
+ * A turn ends only when opencode emits `session.idle`/`session.error` over SSE.
+ * The opencode we killed emits neither, so the last assistant message stays
+ * incomplete and every client streaming it spins forever. `reload --force` is
+ * the sharpest case: it exists precisely to reload DURING a turn, and its
+ * confirmation tells the user it "ends the turn that's running right now" —
+ * then left it spinning instead of ended. `/kortix/refresh` (restart on by
+ * default) and `sessions restart` reach the same place.
+ */
+describe('restart(): the turn it kills gets finalized', () => {
+  function restartBody(): string {
+    const body = SRC.split('    async restart() {')[1]?.split('\n    },')[0]
+    expect(body).toBeTruthy()
+    // Guard the extraction — this must still cover the stop/start pair.
+    expect(body).toContain("await this.stop('SIGTERM')")
+    expect(body).toContain('await this.start()')
+    return body as string
+  }
+
+  test('it fires the finalize hook the crash path uses', () => {
+    expect(restartBody()).toContain('options.onUnplannedRespawn()')
+  })
+
+  test('it waits for readiness first, like the crash path does', () => {
+    // Firing before opencode is listening makes the hook read "no turn to
+    // finalize" and silently do nothing in the exact case it exists for.
+    const body = restartBody()
+    const hookAt = body.indexOf('options.onUnplannedRespawn()')
+    const readyAt = body.indexOf('waitUntilReady(')
+    expect(readyAt).toBeGreaterThanOrEqual(0)
+    expect(readyAt).toBeLessThan(hookAt)
+  })
+
+  test('a hook that throws cannot break the restart', () => {
+    // This runs after the runtime is already back up; failing to tidy a turn
+    // must not turn a successful restart into an error.
+    expect(restartBody()).toContain('catch')
+  })
+
+  test('the exit handler still skips the crash-path respawn on a planned stop', () => {
+    // The early return is correct for RESPAWNING — `restart()` starts the new
+    // process itself, and a shutdown must not be fought. Only the finalize was
+    // missing, so that early return must stay.
+    expect(SRC).toContain('if (stopping) return\n      scheduleUnplannedRespawn()')
+  })
+})

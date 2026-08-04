@@ -566,13 +566,47 @@ async function checkoutSessionBranch(
 
 async function checkoutLocalSessionBranch(target: string, branch: string): Promise<void> {
   await clearStaleGitLock(target)
-  const local = await execGit([
-    '-C',
-    target,
-    'checkout',
-    '-B',
-    branch,
+
+  // `-B` with no start point RESETS the branch to whatever HEAD is. That is
+  // right exactly once — creating the session branch on a fresh baked checkout —
+  // and destructive every other time, because this runs on EVERY daemon boot
+  // where /workspace/.git already exists.
+  //
+  // The damage needs no attacker and no unusual behaviour: the agent moves HEAD
+  // off the session branch (a `git checkout main` to diff against base is
+  // ordinary), then the box reboots in place — the idle reaper and the proxy's
+  // auto-resume both do that with no user action at all — and every commit the
+  // session made is force-reset away. `git checkout -B` exits 0 and prints only
+  // "Switched to and reset branch", so nothing surfaces; the commits survive
+  // solely in a reflog the user is never told about.
+  //
+  // The guard that was meant to prevent re-materializing the wrong content
+  // (`mismatched`, keyed on cfg.sessionFresh + cfg.baseSha) cannot help here:
+  // KORTIX_SESSION_FRESH and KORTIX_BASE_SHA have no producer left in apps/api,
+  // so it is always false and this line always runs.
+  //
+  // So: only CREATE. If the ref already exists, a plain checkout moves HEAD to
+  // it and cannot move the ref.
+  const exists = await execGit([
+    '-C', target, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`,
   ])
+  if (exists.code === 0) {
+    const switched = await execGit(['-C', target, 'checkout', branch])
+    if (switched.code !== 0) {
+      // Deliberately NOT falling back to `-B`: that fallback is the data loss.
+      // A session left on another branch still boots and still has its files;
+      // a reset one has lost commits. Loud, and non-fatal.
+      logger.error('[git] could not switch to the existing session branch; leaving HEAD as-is', {
+        branch,
+        stderr: switched.stderr,
+      })
+      return
+    }
+    logger.info('[git] switched to existing session branch', { branch })
+    return
+  }
+
+  const local = await execGit(['-C', target, 'checkout', '-B', branch])
   if (local.code !== 0) {
     throw new Error(`failed to create local session branch ${branch}: ${local.stderr}`)
   }

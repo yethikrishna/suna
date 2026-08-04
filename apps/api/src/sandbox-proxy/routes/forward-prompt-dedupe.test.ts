@@ -14,6 +14,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:tes
 import { mock } from 'bun:test';
 import * as realRequestContext from '../../lib/request-context';
 import * as realPreviewOwnership from '../../shared/preview-ownership';
+import * as realKortixUserContext from '../../shared/kortix-user-context';
 
 const ACTIVE_RECORD = {
   status: 'active',
@@ -31,12 +32,15 @@ mock.module('../../lib/request-context', () => ({
   ...realRequestContext,
   getTraceHeaders: () => ({}),
 }));
+// Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
+// lists exports by hand silently deletes every other one — and the failure lands
+// in whatever unrelated file imports the missing name next, as
+// `SyntaxError: Export named '…' not found`, attributed to no test at all.
+// Overriding only what this file needs keeps new exports working by default.
 mock.module('../../shared/kortix-user-context', () => ({
+  ...realKortixUserContext,
   KORTIX_USER_CONTEXT_HEADER: 'x-kortix-user-context',
 }));
-// Spread the real module: `mock.module` replaces it WHOLESALE, so a stub that
-// lists exports by hand deletes every export it omits — the failure surfaces in
-// whatever unrelated file imports the missing name next, attributed to no test.
 mock.module('../../shared/preview-ownership', () => ({
   ...realPreviewOwnership,
   canAccessPreviewSandbox: async () => true,

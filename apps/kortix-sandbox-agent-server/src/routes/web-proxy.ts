@@ -27,7 +27,8 @@
  * Resilience: same retry/timeout/abort patterns as the port proxy.
  */
 
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
+import { logger } from '../logger'
 import {
   FETCH_TIMEOUT_MS,
   MAX_RETRIES,
@@ -41,7 +42,52 @@ import {
   getFetchSignal,
 } from './proxy-utils'
 
-const webProxyRouter = new Hono()
+/**
+ * Headers that authenticate the CALLER TO US, and must never leave the box.
+ *
+ * This is a forward proxy to a host the CALLER NAMES, so every header copied
+ * onto the upstream request is handed to that host. apps/api authenticates every
+ * request it relays here — an ordinary user's included — with the sandbox's own
+ * service key, and adds a signed user-context plus the sandbox provider's
+ * preview token (buildSandboxUpstreamHeaders, apps/api/src/sandbox-proxy/backend.ts).
+ * Copying those onto `/web-proxy/https/attacker.example/` mailed them out.
+ *
+ * The service key is the worst of them: it is also the HMAC secret for
+ * X-Kortix-User-Context, so whoever holds it can mint a context claiming any
+ * userId and any role for this sandbox, and it satisfies every bearer-only
+ * daemon check.
+ *
+ * Stripped for EVERY target, loopback included — the in-box agent must not be
+ * able to read them back out of a request either. The sibling port proxy
+ * already strips `authorization` for exactly this reason (port-proxy.ts);
+ * this proxy, the one that reaches the open internet, did not.
+ */
+const CREDENTIAL_HEADERS = new Set([
+  'authorization',
+  'proxy-authorization',
+  'cookie',
+  'x-kortix-user-context',
+  'x-kortix-service-call',
+  // Sandbox-provider preview credentials (daytona.ts, e2b.ts).
+  'x-daytona-preview-token',
+  'e2b-traffic-access-token',
+])
+
+/**
+ * Is this host the box itself? Used to keep the web proxy off our own control
+ * plane. Deliberately generous — a miss here reopens the bypass below.
+ */
+function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase()
+  if (host === 'localhost' || host.endsWith('.localhost')) return true
+  if (host === '0.0.0.0' || host === '::1' || host === '[::1]') return true
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+}
+
+export interface WebProxyOptions {
+  /** Loopback ports this proxy refuses to reach — the box's own control plane. */
+  blockedLoopbackPorts: ReadonlySet<number>
+}
 
 const STRIP_RESPONSE_HEADERS = new Set([
   'content-security-policy',
@@ -380,7 +426,7 @@ function transformHtml(html: string, targetUrl: string): string {
 
 // ── Route Handler ────────────────────────────────────────────────────────────
 
-webProxyRouter.all('/*', async (c) => {
+async function handleWebProxy(c: Context, opts: WebProxyOptions): Promise<Response> {
   const url = new URL(c.req.url)
 
   const subPath = url.pathname.replace(/^\/web-proxy/, '') || '/'
@@ -394,7 +440,37 @@ webProxyRouter.all('/*', async (c) => {
   }
 
   const parsedTarget = new URL(targetUrl)
-  const headers = buildUpstreamHeaders(c)
+
+  // Keep the web proxy off the box's OWN control plane.
+  //
+  // Browsing a dev server the agent started (`localhost:3000`) is the point of
+  // this proxy. Re-entering the daemon (:8000) or opencode (:4096) is not: those
+  // are reached from outside through apps/api, which enforces a stack of
+  // path-keyed controls on the way — the agent-authorization check, the
+  // connector gate, the 24h run cap, prompt idempotency, and the secret-grant
+  // re-mint. A request tunnelled through here arrives on loopback with the path
+  // buried in OUR url, so every one of those is skipped and the caller runs a
+  // turn apps/api would have refused.
+  const targetPort = parsedTarget.port
+    ? Number(parsedTarget.port)
+    : parsedTarget.protocol === 'https:'
+      ? 443
+      : 80
+  if (isLoopbackHost(parsedTarget.hostname) && opts.blockedLoopbackPorts.has(targetPort)) {
+    logger.warn('[web-proxy] refused a loopback request to the control plane', {
+      host: parsedTarget.hostname,
+      port: targetPort,
+    })
+    return c.json(
+      {
+        error: 'this port is not reachable through the web proxy',
+        code: 'WEB_PROXY_PORT_BLOCKED',
+      },
+      403,
+    )
+  }
+
+  const headers = buildUpstreamHeaders(c, CREDENTIAL_HEADERS)
   headers.set('Host', parsedTarget.host)
 
   // Rewrite Referer to the target origin so upstream sees a natural referer
@@ -550,6 +626,10 @@ webProxyRouter.all('/*', async (c) => {
     target: targetUrl,
     details: lastError,
   }, 502)
-})
+}
 
-export default webProxyRouter
+export function createWebProxyRouter(opts: WebProxyOptions): Hono {
+  const webProxyRouter = new Hono()
+  webProxyRouter.all('/*', (c) => handleWebProxy(c, opts))
+  return webProxyRouter
+}

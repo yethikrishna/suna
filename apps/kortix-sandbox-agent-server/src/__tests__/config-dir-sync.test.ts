@@ -23,9 +23,11 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-
 import type { Config } from '../config'
 import { syncOpencodeConfigDirToBase } from '../git'
+import { KORTIX_SERVICE_CALL_HEADER } from '../kortix-user-context'
+import type { Opencode } from '../opencode'
+import { createRefreshRouter } from '../routes/refresh'
 
 const CONFIG_DIR = '.kortix/opencode'
 const AGENT = `${CONFIG_DIR}/agents/kortix.md`
@@ -305,30 +307,81 @@ describe('reboot must not reset an existing session branch', () => {
  * Its only legitimate caller is the warm-session workspace refresh, at session
  * CREATE, holding the service key.
  */
-describe('base=1 requires the service credential', () => {
-  const ROUTE = readFileSync(join(import.meta.dir, '..', 'routes', 'refresh.ts'), 'utf8')
+/**
+ * `base=1` — the destructive branch reset — must be unreachable from the proxy.
+ *
+ * These drive the real Hono route rather than asserting on its source, because
+ * the FIRST version of this gate passed a source-shaped test while protecting
+ * nothing. It checked only the bearer, and the preview proxy authenticates every
+ * request it relays — an ordinary user's included — with the target sandbox's
+ * own service key. So `serviceAuthenticated` was true for exactly the traffic
+ * the gate existed to stop, and no amount of grepping the file would say so.
+ *
+ * The shape below named "a proxied user request" is that case, pinned.
+ */
+describe('base=1 requires a DIRECT service call', () => {
+  const TOKEN = 'service-key-under-test'
 
-  test('a user-context caller is rejected', () => {
-    expect(ROUTE).toContain('if (syncBase && !serviceAuthenticated)')
-    expect(ROUTE).toContain('BASE_RESET_FORBIDDEN')
+  function router() {
+    // The rejection paths return before any repo or runtime work, so a config
+    // carrying just the token is all the route reads on these paths.
+    const cfg = { sandboxToken: TOKEN } as unknown as Config
+    const opencode = {
+      restart: async () => {
+        throw new Error('restart must not run on a refused request')
+      },
+      getState: () => 'ready',
+      getPid: () => 1,
+    } as unknown as Opencode
+    return createRefreshRouter(cfg, opencode)
+  }
+
+  async function post(path: string, headers: Record<string, string>) {
+    return router().request(path, { method: 'POST', headers })
+  }
+
+  test('a request shaped exactly like a proxied user request is refused', async () => {
+    // What the proxy actually sends: the sandbox's service key as the bearer,
+    // and NO service-call header (it strips that name from every forward).
+    // This is the request that used to be accepted.
+    const res = await post('/?base=1', { Authorization: `Bearer ${TOKEN}` })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ code: 'BASE_RESET_FORBIDDEN' })
   })
 
-  test('the check runs BEFORE any repo work', () => {
-    // Rejecting after the reset would be no protection at all.
-    const gateAt = ROUTE.indexOf('if (syncBase && !serviceAuthenticated)')
-    const workAt = ROUTE.indexOf('syncWorkspaceToBase(')
-    expect(gateAt).toBeGreaterThanOrEqual(0)
-    expect(gateAt).toBeLessThan(workAt)
+  test('the service-call header alone does not authorize it', async () => {
+    // The header is unauthenticated on its own — anyone can name a header. It
+    // proves the HOP, never the caller, so it must not substitute for the token.
+    const res = await post('/?base=1', { [KORTIX_SERVICE_CALL_HEADER]: '1' })
+    expect(res.status).toBe(401)
   })
 
-  test('the ordinary refresh is still open to a user-context caller', () => {
-    // The gate must be specific to the destructive flag — a session owner
-    // pulling their own workspace is legitimate and must keep working.
-    const gate = ROUTE.slice(
-      ROUTE.indexOf('if (syncBase && !serviceAuthenticated)'),
-      ROUTE.indexOf('const skipRestart'),
-    )
-    expect(gate).not.toContain('config_dir')
-    expect(gate).not.toContain('restart')
+  test('a direct platform call — both proofs — is not refused', async () => {
+    const res = await post('/?base=1', {
+      Authorization: `Bearer ${TOKEN}`,
+      [KORTIX_SERVICE_CALL_HEADER]: '1',
+    })
+    // It proceeds into the repo work and fails there (this config has no
+    // workspace). The assertion that matters is that it was not turned away by
+    // the gate — otherwise the warm-session refresh at session create breaks.
+    expect(res.status).not.toBe(403)
+    expect(res.status).not.toBe(401)
+  })
+
+  test('the refusal happens before any repo work', async () => {
+    // Refusing after the reset would be no protection at all. `syncWorkspaceToBase`
+    // would throw on this config; a 403 proves it was never reached.
+    const res = await post('/?base=1', { Authorization: `Bearer ${TOKEN}` })
+    expect(res.status).toBe(403)
+  })
+
+  test('an ordinary refresh is still open to a proxied caller', async () => {
+    // The gate must be specific to the destructive flag. A session owner pulling
+    // their own workspace, or the API's reload sending `config_dir=1`, is
+    // legitimate and must keep working without the direct-call header.
+    for (const path of ['/', '/?restart=0&config_dir=1']) {
+      const res = await post(path, { Authorization: `Bearer ${TOKEN}` })
+      expect(res.status).not.toBe(403)
+    }
   })
 })

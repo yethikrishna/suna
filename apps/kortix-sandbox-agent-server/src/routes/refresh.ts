@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { resolveOpencodeConfigDirRelative, type Config } from '../config'
 import { refreshRepo, syncOpencodeConfigDirToBase, syncWorkspaceToBase } from '../git'
 import {
+  KORTIX_SERVICE_CALL_HEADER,
   KORTIX_USER_CONTEXT_HEADER,
   verifyKortixUserContext,
 } from '../kortix-user-context'
@@ -56,11 +57,19 @@ export function createRefreshRouter(cfg: Config, opencode: Opencode): Hono {
     // as could the in-box agent via a prompt-injected `curl` against localhost.
     //
     // Its only legitimate caller is the warm-session workspace refresh, at
-    // session CREATE, holding the SERVICE key. So require that: a request that
-    // authenticated as a user may refresh, never reset. Defence lives here
-    // rather than in the proxy's allowlist because this is the layer that knows
-    // what the flag does.
-    if (syncBase && !serviceAuthenticated) {
+    // session CREATE, calling us DIRECTLY.
+    //
+    // The bearer alone cannot express that. The proxy authenticates everything
+    // it relays — an ordinary user's request included — with this very sandbox's
+    // service key, so `serviceAuthenticated` is true for user traffic too and a
+    // bearer-only gate would be decoration. What the proxy does NOT relay is
+    // KORTIX_SERVICE_CALL_HEADER: it strips it from every forwarded request, so
+    // only a direct platform call can present it.
+    //
+    // Require BOTH. The header proves the hop, the bearer proves the caller, and
+    // neither is sufficient alone: the header is unauthenticated on its own, and
+    // the bearer is available to anything the proxy speaks to.
+    if (syncBase && !(serviceAuthenticated && c.req.header(KORTIX_SERVICE_CALL_HEADER) === '1')) {
       logger.warn('[refresh] rejected base=1 from a non-service caller')
       return c.json(
         {

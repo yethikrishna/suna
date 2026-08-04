@@ -28,6 +28,8 @@
  */
 
 import { Hono, type Context } from 'hono'
+import { lookup } from 'node:dns/promises'
+
 import { logger } from '../logger'
 import {
   FETCH_TIMEOUT_MS,
@@ -73,15 +75,56 @@ const CREDENTIAL_HEADERS = new Set([
   'e2b-traffic-access-token',
 ])
 
+/** Does this literal address reach the box itself? */
+function isLoopbackAddress(addr: string): boolean {
+  const a = addr.toLowerCase().replace(/^\[|\]$/g, '')
+  if (a === '::1' || a === '::' || a === '0.0.0.0') return true
+  // IPv4-mapped IPv6, e.g. ::ffff:127.0.0.1
+  if (a.startsWith('::ffff:')) return isLoopbackAddress(a.slice('::ffff:'.length))
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(a)
+}
+
 /**
- * Is this host the box itself? Used to keep the web proxy off our own control
- * plane. Deliberately generous — a miss here reopens the bypass below.
+ * Does this hostname name the box itself, by spelling alone?
+ *
+ * `new URL()` has already folded the inet_aton forms for us — `127.1`,
+ * `2130706433`, `0x7f000001` all arrive here as `127.0.0.1`, and `0` as
+ * `0.0.0.0` — verified against Bun, so this only has to handle NAMES.
+ *
+ * The trailing dot is the DNS root label: `localhost.` and `foo.localhost.`
+ * resolve exactly like the undotted forms, and reached the control plane until
+ * this stripped them.
  */
-function isLoopbackHost(hostname: string): boolean {
-  const host = hostname.toLowerCase()
+function isLoopbackName(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.+$/, '')
   if (host === 'localhost' || host.endsWith('.localhost')) return true
-  if (host === '0.0.0.0' || host === '::1' || host === '[::1]') return true
-  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+  return isLoopbackAddress(host)
+}
+
+/**
+ * Does this host reach the box, by any spelling OR by DNS?
+ *
+ * Matching on the name alone is not enough and never can be: `127.0.0.1.nip.io`
+ * is a ready-made public name for 127.0.0.1, and any attacker-controlled domain
+ * becomes one with a single A record. So resolve it and judge the ADDRESS.
+ *
+ * KNOWN RESIDUAL: this resolves and then fetches, so a DNS rebind between the
+ * two calls still slips through. Closing that needs the connection pinned to the
+ * address we checked, which Bun's fetch does not expose. It is a much narrower
+ * hole than the spelling bypass — it needs attacker-controlled DNS and a won
+ * race — and the credential strip above is unconditional, so a request that does
+ * win the race still carries none of our secrets.
+ */
+async function reachesThisBox(hostname: string): Promise<boolean> {
+  if (isLoopbackName(hostname)) return true
+  try {
+    const resolved = await lookup(hostname.replace(/\.+$/, ''), { all: true })
+    return resolved.some((entry) => isLoopbackAddress(entry.address))
+  } catch {
+    // Unresolvable. The fetch below fails on its own; do not turn a DNS blip
+    // into a spurious 403 for a legitimate site.
+    return false
+  }
 }
 
 export interface WebProxyOptions {
@@ -456,7 +499,10 @@ async function handleWebProxy(c: Context, opts: WebProxyOptions): Promise<Respon
     : parsedTarget.protocol === 'https:'
       ? 443
       : 80
-  if (isLoopbackHost(parsedTarget.hostname) && opts.blockedLoopbackPorts.has(targetPort)) {
+  if (
+    opts.blockedLoopbackPorts.has(targetPort) &&
+    (await reachesThisBox(parsedTarget.hostname))
+  ) {
     logger.warn('[web-proxy] refused a loopback request to the control plane', {
       host: parsedTarget.hostname,
       port: targetPort,

@@ -151,13 +151,38 @@ describe('/web-proxy stays off the box control plane', () => {
     expect(res.status).toBe(403)
   })
 
-  test('127.0.0.1 and 0.0.0.0 are the same host as localhost', async () => {
-    for (const host of ['127.0.0.1', '127.0.0.2', '0.0.0.0']) {
-      const res = await guarded().request(`/web-proxy/http/${host}:${OPENCODE}/session/x`, {
-        method: 'POST',
-      })
-      expect(res.status).toBe(403)
-    }
+  /**
+   * Every spelling below was PROVEN to reach a real loopback listener before
+   * this list was written — not assumed. A first version of this guard matched
+   * on `localhost` / `127.x` literals and let five of them straight through.
+   *
+   * Three groups, and they fail for different reasons:
+   *   - inet_aton forms (`127.1`, `2130706433`, `0x7f000001`, `0`) — `new URL()`
+   *     folds these to dotted-quad before we ever see them.
+   *   - the DNS root label (`localhost.`, `foo.localhost.`) — identical
+   *     resolution, different string. This is what Strix caught on this PR.
+   *   - a public NAME pointing at 127.0.0.1 (`127.0.0.1.nip.io`) — no spelling
+   *     rule can catch this one, which is why the guard resolves.
+   */
+  const LOOPBACK_SPELLINGS = [
+    '127.0.0.1',
+    '127.0.0.2',
+    '0.0.0.0',
+    'LOCALHOST',
+    'localhost.',
+    'foo.localhost.',
+    '127.1',
+    '2130706433',
+    '0x7f000001',
+    '0',
+    '127.0.0.1.nip.io',
+  ]
+
+  test.each(LOOPBACK_SPELLINGS)('%s is refused on a control port', async (host) => {
+    const res = await guarded().request(`/web-proxy/http/${host}:${OPENCODE}/session/x`, {
+      method: 'POST',
+    })
+    expect(res.status).toBe(403)
   })
 
   test("browsing the agent's own dev server still works", async () => {

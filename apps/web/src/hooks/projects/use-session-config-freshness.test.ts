@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SessionConfigState } from '@kortix/sdk';
 
-import { reloadNotAppliedCopy, sessionConfigNotice } from './use-session-config-freshness';
+import {
+  CONFIG_FRESHNESS_STALE_TIME_MS,
+  reloadNotAppliedCopy,
+  sessionConfigNotice,
+} from './use-session-config-freshness';
 
 const state = (over: Partial<SessionConfigState>): SessionConfigState => ({
   base_ref: 'main',
@@ -162,5 +166,27 @@ describe('useReloadSessionConfig — the costly mistakes', () => {
     expect(HOOK_SOURCE).toContain('useState<ReloadBusyReason | null>(null)');
     expect(HOOK_SOURCE).not.toContain('busyReason: busyReasonOf(mutation.error)');
     expect(HOOK_SOURCE).toContain('clearBusy: () => setBusyReason(null)');
+  });
+});
+
+/**
+ * The staleness check is edge-triggered off window focus, and React Query will
+ * NOT refetch on focus while the cached answer is still within `staleTime`.
+ * That made the constant itself the bug: at 5 minutes, the ordinary flow — edit
+ * an agent file in your editor, tab back to the session — showed nothing, and
+ * only a full page reload surfaced the notice, because a reload discards the
+ * cache rather than revalidating it.
+ */
+describe('the freshness answer expires fast enough to be re-asked on focus', () => {
+  test('staleTime is short enough for an edit-and-return round trip', () => {
+    // Editing a file and tabbing back takes far longer than this, so the focus
+    // refetch always fires for the flow this feature exists to serve.
+    expect(CONFIG_FRESHNESS_STALE_TIME_MS).toBeLessThanOrEqual(60_000);
+  });
+
+  test('but not so short that alt-tabbing becomes a git fetch per switch', () => {
+    // Each check drops the project's git-mirror TTL, recompiles the manifest and
+    // reaches into the sandbox. Zero would make focus a hot path.
+    expect(CONFIG_FRESHNESS_STALE_TIME_MS).toBeGreaterThanOrEqual(10_000);
   });
 });

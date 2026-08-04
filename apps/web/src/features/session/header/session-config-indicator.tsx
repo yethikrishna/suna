@@ -26,9 +26,10 @@ import {
   type ReloadBusyReason,
   useSessionConfigFreshness,
 } from '@/hooks/projects/use-session-config-freshness';
+import { dismissToast, warningToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { ArrowsClockwiseIcon } from '@phosphor-icons/react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /** The server's two refusals, as something a person would actually read. */
 const BUSY_COPY: Record<ReloadBusyReason, { title: string; body: string; tail: string }> = {
@@ -62,6 +63,50 @@ export function SessionConfigIndicator({
   const [open, setOpen] = useState(false);
 
   const stale = notice.kind === 'stale';
+
+  // A toast as well as the chip, because the chip alone was not found.
+  //
+  // The chip is correct and stays — it is the durable, always-available
+  // affordance, and it is where you look once you know the concept exists. But
+  // it is an icon in a header, and a session that silently runs the wrong agent
+  // is exactly the case where the user does NOT already know to look. So the
+  // arrival of staleness also gets announced once, where new information
+  // belongs.
+  //
+  // Announced ONCE per distinct config version, not once per render and not
+  // again after dismissal: `shownFor` keys on the etag pair, so re-checks of the
+  // same staleness stay quiet and only a genuinely newer config speaks up again.
+  // Persistent (`Infinity`) because it reports a condition, not an event — it
+  // stays true until acted on — and `warningToast` already carries its own close
+  // button, so it is dismissible without being self-dismissing.
+  const toastId = `session-config-stale-${sessionId}`;
+  const shownFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (notice.kind !== 'stale') {
+      // Retract on the way out. After a successful reload the condition is gone,
+      // and a lingering card offering to fix it would be worse than no card.
+      if (shownFor.current !== null) {
+        shownFor.current = null;
+        dismissToast(toastId);
+      }
+      return;
+    }
+    const version = `${notice.running}->${notice.latest}`;
+    if (shownFor.current === version) return;
+    shownFor.current = version;
+    warningToast('Agent config is out of date', {
+      id: toastId,
+      description:
+        'This session is running an older version of the agent config. Your commits and other files are untouched.',
+      duration: Number.POSITIVE_INFINITY,
+      button: (
+        <Button size="sm" disabled={!canReload || isPending} onClick={() => reload()}>
+          {isPending ? <Loading className="size-4 shrink-0" /> : null}
+          Reload config
+        </Button>
+      ),
+    });
+  }, [notice, toastId, reload, canReload, isPending]);
 
   // The confirm is rendered by the header, not here — see `SessionConfigReloadConfirm`.
   // This component may vanish the moment a reload lands, and a dialog that

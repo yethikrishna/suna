@@ -34,6 +34,36 @@ const OPENCODE_AUTH_PATH = `${OPENCODE_DATA_HOME}/opencode/auth.json`
 const CODEX_AUTH_JSON_SECRET = 'CODEX_AUTH_JSON'
 const OPENCODE_AUTH_JSON_SECRET = 'OPENCODE_AUTH_JSON'
 
+/**
+ * Env values `spawnChild` consumes OUTSIDE the opencode config file.
+ *
+ * A dispose reload re-reads the config file in place — it never re-runs
+ * `spawnChild`, so anything spawn does with the env besides writing that file
+ * survives untouched. These two are materialized into
+ * `~/.local/share/opencode/auth.json`, so a dispose leaves the OLD subscription
+ * credential on disk and opencode keeps authenticating with it.
+ *
+ * That is a regression the dispose fast path introduced: this path used to be a
+ * full restart, which respawned and re-materialized. The symptom is quiet and
+ * bad — a user connects a ChatGPT/Codex account, the UI confirms it, and the
+ * next turn still runs on the account they replaced.
+ *
+ * `KORTIX_OPENCODE_DENY_ENV` belongs to the same family (`withoutDeniedProviderEnv`
+ * strips native provider keys at spawn) and is included for the same reason.
+ */
+export const RESPAWN_REQUIRED_ENV_NAMES = [
+  CODEX_AUTH_JSON_SECRET,
+  OPENCODE_AUTH_JSON_SECRET,
+  'KORTIX_OPENCODE_DENY_ENV',
+] as const
+
+/** Does this env delta need a full respawn rather than a dispose? */
+export function requiresRespawn(changedNames: readonly string[]): boolean {
+  return changedNames.some((name) =>
+    (RESPAWN_REQUIRED_ENV_NAMES as readonly string[]).includes(name),
+  )
+}
+
 /** True when OpenCode uses the single synthetic `kortix` LLM provider. */
 export function hasKortixLlmGateway(env: NodeJS.ProcessEnv): boolean {
   return Boolean(

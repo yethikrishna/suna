@@ -55,7 +55,7 @@ import {
   proxyAttemptTimeoutMs,
 } from '../preview-retry-budget';
 import { claimPromptDelivery, promptDeliveryKey, releasePromptDelivery } from '../prompt-dedupe';
-import { carriesSessionData } from '../session-data-ports';
+import { carriesSessionData, requiresSessionVisibility } from '../session-data-ports';
 
 // `userId` is set by combinedAuth (mounted in ../index.ts) before this route.
 // `apiKeyType` is read to decide whether a request may extend the sandbox's
@@ -816,7 +816,7 @@ export async function forwardToSandbox(
   // whose access was revoked/downgraded replays captured ids on the data path.
   if (
     access.kind === 'principal' &&
-    carriesSessionData(upstreamPort) &&
+    requiresSessionVisibility(upstreamPort) &&
     !(await canAccessSandboxSession({
       sessionId: record.sessionId,
       projectId: record.projectId,
@@ -1500,7 +1500,7 @@ export async function resolvePreviewWsUpstream(opts: {
   // PTY/opencode WS leg ungated there — the same hole this PR closes on the HTTP
   // side, one function further down the file.
   if (
-    carriesSessionData(upstreamPort) &&
+    requiresSessionVisibility(upstreamPort) &&
     !(await canAccessSandboxSession({
       sessionId: record.sessionId,
       projectId: record.projectId,

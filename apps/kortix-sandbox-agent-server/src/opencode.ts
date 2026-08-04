@@ -1318,6 +1318,40 @@ export function createOpencodeSupervisor(
       await this.stop('SIGTERM')
       restartDelayMs = 500
       await this.start()
+      // A PLANNED restart strands its turn exactly like a crash does, and only
+      // the crash path was cleaning up: `proc.on('exit')` returns early while
+      // `stopping` is set — which `stop()` sets and this goes through — so
+      // `onUnplannedRespawn`, and with it the orphaned-turn finalize, never
+      // fired for a restart we asked for.
+      //
+      // A turn ends only when opencode emits `session.idle`/`session.error` over
+      // SSE. The opencode we just killed emits neither, so the last assistant
+      // message stays incomplete and every client streaming it spins forever.
+      // `reload --force` is the sharpest case: it exists precisely to reload
+      // DURING a turn, and its confirmation tells the user it "ends the turn
+      // that's running right now" — then left it spinning instead of ended.
+      // `/kortix/refresh` (restart on by default) and `sessions restart` reach
+      // the same place.
+      //
+      // Unconditional because `finalizeOrphanedTurn` already distinguishes: it
+      // aborts only a last message that is an assistant turn with no completion
+      // time, and leaves a completed turn, a user-last session, and an empty one
+      // alone. Readiness is awaited first for the reason the crash path
+      // documents — firing before opencode listens makes the hook read "no turn
+      // to finalize" and silently do nothing in the exact case it exists for.
+      if (!options.onUnplannedRespawn) return
+      const ready = await waitUntilReady(RESPAWN_FINALIZE_TIMEOUT_MS)
+      if (!ready) {
+        logger.warn('[opencode] restarted but never became ready; orphaned turn left as-is')
+        return
+      }
+      try {
+        options.onUnplannedRespawn()
+      } catch (err) {
+        logger.warn('[opencode] post-restart finalize hook threw', {
+          err: (err as Error).message,
+        })
+      }
     },
 
     /**

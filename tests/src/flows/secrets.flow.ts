@@ -124,6 +124,7 @@ flow(
       "GET /v1/projects/:projectId/secrets",
       "PUT /v1/projects/:projectId/secrets/:identifier/strategy",
       "POST /v1/projects/:projectId/secrets/:identifier/broker",
+      "POST /v1/projects/:projectId/secrets/sync",
       "GET /v1/accounts/:accountId/audit",
     ],
   },
@@ -161,6 +162,17 @@ flow(
         .has("$.consumer", null)
         .has("$.delivery_status", "disabled")
         .has("$.requires_rotation", true);
+    });
+
+    await ctx.step("manager synchronizes the current policy to active sessions", async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .post(
+          "/v1/projects/:projectId/secrets/sync",
+          {},
+          { params: { projectId: p.id } },
+        );
+      r.status(200).body().has("$.ok", true).has("$.synced", true);
     });
 
     await ctx.step("runtime delivery stays disabled until rotation", async () => {

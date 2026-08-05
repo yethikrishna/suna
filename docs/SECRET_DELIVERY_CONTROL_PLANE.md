@@ -92,6 +92,9 @@ connector, Git, and automation credentials do not need to enter the sandbox.
 New generic secrets default to `runtime` with the `sandbox` consumer. This is an
 explicit compatibility choice for arbitrary local tools.
 
+When a caller supplies only `runtime` or `denied`, the API infers `sandbox` or
+no consumer. Broker creation always requires an explicit server consumer.
+
 Known LLM credential keys default to `broker` with the `llm_gateway` consumer
 when the client omits both fields. The provider settings UI also sends this
 policy explicitly. A caller can still request `runtime` and `sandbox` when a

@@ -557,6 +557,103 @@ describe('POST /v1/projects/:projectId/secrets audit', () => {
     expect(JSON.stringify(audits[0])).not.toContain('plaintext-test-value');
   });
 
+  test('infers the sandbox consumer for explicit runtime creation', async () => {
+    const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'SERVICE_API_KEY',
+        value: 'plaintext-test-value',
+        strategy: 'runtime',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      strategy: 'runtime',
+      consumer: 'sandbox',
+    });
+    expect(row).toMatchObject({ strategy: 'runtime', consumer: 'sandbox' });
+  });
+
+  test('infers no consumer for explicit denied creation', async () => {
+    const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'SERVICE_API_KEY',
+        value: 'plaintext-test-value',
+        strategy: 'denied',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      strategy: 'denied',
+      consumer: null,
+    });
+    expect(row).toMatchObject({ strategy: 'denied', consumer: null });
+  });
+
+  test('rejects a creation consumer without a strategy', async () => {
+    const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'SERVICE_API_KEY',
+        value: 'plaintext-test-value',
+        consumer: 'sandbox',
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: 'consumer requires a strategy' });
+  });
+
+  test('rejects consumers that conflict with runtime or denied creation', async () => {
+    const app = buildApp();
+    const runtime = await app.request(`/v1/projects/${PROJECT_ID}/secrets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'SERVICE_API_KEY',
+        value: 'plaintext-test-value',
+        strategy: 'runtime',
+        consumer: 'connector',
+      }),
+    });
+    const denied = await app.request(`/v1/projects/${PROJECT_ID}/secrets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'SERVICE_API_KEY',
+        value: 'plaintext-test-value',
+        strategy: 'denied',
+        consumer: 'sandbox',
+      }),
+    });
+
+    expect(runtime.status).toBe(400);
+    expect(denied.status).toBe(400);
+  });
+
+  test('requires a named server consumer for broker creation', async () => {
+    const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'SERVICE_API_KEY',
+        value: 'plaintext-test-value',
+        strategy: 'broker',
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: 'broker creation requires a supported server consumer',
+    });
+  });
+
   test('creates an LLM gateway secret without a runtime delivery transition', async () => {
     const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets`, {
       method: 'POST',

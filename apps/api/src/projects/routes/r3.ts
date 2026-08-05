@@ -558,14 +558,22 @@ projectsApp.openapi(
   ) {
     return c.json({ error: 'broker creation requires a supported server consumer' }, 400);
   }
-  if (requestedStrategy === 'runtime' && requestedConsumer?.data !== 'sandbox') {
+  if (
+    requestedStrategy === 'runtime' &&
+    requestedConsumer !== undefined &&
+    requestedConsumer.data !== 'sandbox'
+  ) {
     return c.json({ error: 'runtime creation requires the sandbox consumer' }, 400);
   }
-  if (requestedStrategy === 'denied' && requestedConsumer?.data !== null) {
+  if (
+    requestedStrategy === 'denied' &&
+    requestedConsumer !== undefined &&
+    requestedConsumer.data !== null
+  ) {
     return c.json({ error: 'denied creation cannot have a consumer' }, 400);
   }
-  if ((requestedStrategy === undefined) !== (requestedConsumer === undefined)) {
-    return c.json({ error: 'strategy and consumer must be set together' }, 400);
+  if (requestedStrategy === undefined && requestedConsumer !== undefined) {
+    return c.json({ error: 'consumer requires a strategy' }, 400);
   }
   const defaultToGateway =
     requestedStrategy === undefined &&
@@ -580,7 +588,11 @@ projectsApp.openapi(
     requestedConsumer === undefined
       ? defaultToGateway
         ? 'llm_gateway'
-        : undefined
+        : requestedStrategy === 'runtime'
+          ? 'sandbox'
+          : requestedStrategy === 'denied'
+            ? null
+            : undefined
       : requestedConsumer.data;
   let explicitPolicy = null;
   if (explicitConsumer === 'http_broker') {

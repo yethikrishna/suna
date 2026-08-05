@@ -2,7 +2,7 @@ import { projectSessions, sandboxes } from '@kortix/db';
 import { AUTO_TOPUP_DEFAULT_AMOUNT, AUTO_TOPUP_DEFAULT_THRESHOLD } from '@kortix/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { config } from '../../config';
-import { maxConcurrentSessionsForTier } from '../../shared/account-limits';
+import { effectiveTierForLimits, maxConcurrentSessionsForTier } from '../../shared/account-limits';
 import { db } from '../../shared/db';
 import { isPlatformAdmin } from '../../shared/platform-roles';
 import type { AccountStateResponse, CommitmentInfo, ScheduledChange } from '../../types';
@@ -285,7 +285,14 @@ export async function buildMinimalAccountState(accountId: string): Promise<Accou
         limit:
           typeof sub?.maxConcurrentSessions === 'number' && sub.maxConcurrentSessions > 0
             ? Math.floor(sub.maxConcurrentSessions)
-            : maxConcurrentSessionsForTier(tierName),
+            : // Same tier the SERVER will enforce, not the raw column.
+              // resolveAccountSessionLimit coerces a paying per-seat account
+              // whose stored tier is stale to 'per_seat' (shared/account-limits.ts)
+              // so bad tier data cannot gate a paying team as free. Reading the
+              // raw column here meant the dashboard showed such an account the
+              // FREE ceiling while the server admitted the per-seat one — two
+              // independent derivations of one number.
+              maxConcurrentSessionsForTier(effectiveTierForLimits(tierName, sub)),
       },
     },
   };

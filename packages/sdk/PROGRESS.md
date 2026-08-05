@@ -5772,6 +5772,37 @@ that UI wiring belongs to the web task consuming this client.
 
 ---
 
+### 2026-08-02 — session `capabilities-task-5` (small fix, bundled with an `apps/web` task)
+
+Not a Now-chain task — a single self-contained bug fix carried in while building the
+skill/command detail modal for the capabilities-pages plan (`suna-capabilities`
+worktree, `apps/web/src/features/workspace/capabilities/skills/entity-modal.tsx`).
+
+`readProjectFile` (`core/rest/projects-client/files.ts`) called `backendApi.get`
+with no options, so `showErrors` defaulted to `true` and a `project.file.read`
+403 fired the global toast — even though every existing caller
+(`config-entity-view.tsx`, the git-ref file explorer, and now the new entity
+modal) already renders its own inline error state. `listProjectFiles` in the
+same file already carried the fix for the identical gate
+(`{ showErrors: false }`, "a member deep-linking to the files page legitimately
+403s"); `readProjectFile` just didn't have it yet. Same one-line fix, same
+justification, applied to the sibling function.
+
+Test-first: added a 403-never-hits-`onError` test to `files.test.ts` mirroring
+`listProjectFiles`'s existing one. RED (received 1 call, expected 0) before the
+fix, GREEN after. No signature change, no new export — behavior-only.
+
+Gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1389 pass`, `2 skip`, `0 fail`, `5968
+  expect() calls` across `117` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: exit `0`.
+
+**SDK package shippable to production: YES.**
+
+---
+
 ### 2026-08-03 — session `session-title-source-of-truth` claim
 
 No **Now** task claimed. This is a narrow cross-host session-title bug fix.

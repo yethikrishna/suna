@@ -2,21 +2,18 @@ import type { CustomizeSection } from '@/lib/customize-sections';
 import {
   AlarmIcon as AlarmClock,
   ArrowCircleUpIcon as ArrowUpCircle,
-  WaveformIcon as AudioLines,
-  RobotIcon as Bot,
-  CubeIcon as Boxes,
   ChatsIcon as ChatMessages,
-  CommandIcon as Command,
-  ShippingContainerIcon as Container,
-  GitForkIcon as GitFork,
-  TrayIcon as Inbox,
-  KeyIcon as KeyRound,
+  CubeIcon as Boxes,
   GearSixIcon as LucideSettings,
-  UsersThreeIcon as LucideUsersRound,
+  GitForkIcon as GitFork,
+  KeyIcon as KeyRound,
   MonitorIcon as Monitor,
-  PlugIcon as Plug,
-  SparkleIcon as Sparkles,
+  RobotIcon as Bot,
+  ShippingContainerIcon as Container,
   StorefrontIcon as Store,
+  TrayIcon as Inbox,
+  UsersThreeIcon as LucideUsersRound,
+  WaveformIcon as AudioLines,
   WebhooksLogoIcon as Webhook,
 } from '@phosphor-icons/react';
 import type { RailGroup, RailItem } from './type';
@@ -25,9 +22,8 @@ import type { RailGroup, RailItem } from './type';
  * Whether a rail item is the active one for the current section.
  *
  * `llm-management` stands in for every `llm-*` sub-section so deep-links into
- * an LLM sub-page still light up the single LLM rail entry. Every other item —
- * including the independent Agents, Skills, and Commands entries — matches its
- * own section 1:1.
+ * an LLM sub-page still light up the single LLM rail entry. Every other item
+ * matches its own section 1:1.
  */
 export function isRailItemActive(item: RailItem, section: CustomizeSection): boolean {
   if (item.section === 'llm-management') return section.startsWith('llm-');
@@ -64,16 +60,11 @@ export const LLM_ITEM: RailItem = { section: 'llm-management', label: 'LLM', ico
 const GROUPS: readonly RailGroup[] = [
   {
     label: 'Build',
-    items: [
-      { section: 'agents', label: 'Agents', icon: Bot },
-      { section: 'skills', label: 'Skills', icon: Sparkles },
-      { section: 'commands', label: 'Commands', icon: Command },
-    ],
+    items: [{ section: 'agents', label: 'Agents', icon: Bot }],
   },
   {
     label: 'Connect',
     items: [
-      { section: 'connectors', label: 'Connectors', icon: Plug },
       { section: 'secrets', label: 'Secrets', icon: KeyRound },
       { section: 'channels', label: 'Channels', icon: ChatMessages },
     ],

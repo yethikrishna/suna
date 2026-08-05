@@ -188,6 +188,12 @@ async function settleComputeWindow(
       windowCost,
       `Sandbox compute · ${row.cpuCores}vCPU/${row.memoryGb}GB/${row.diskGb}GB · ${durationSeconds.toFixed(0)}s`,
       'compute_debit',
+      // Derived from WHAT is billed — this session and this window end — so a
+      // retry after a lost response produces the same key and replays instead
+      // of charging again. The CAS claim above already stops two settlers from
+      // both billing; this covers the single settler that never learned its own
+      // debit succeeded.
+      `compute:${row.id}:${billableEnd.toISOString()}`,
     );
   } catch (err) {
     // Out of credits + no auto-topup. Hand the window back so the next tick can

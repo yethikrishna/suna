@@ -22,7 +22,10 @@ import {
 } from './compile-agent-config';
 import { waitForDaemonOpencodeReady } from './sandbox-daemon-ready';
 import { SECRET_CAPABILITIES_ENV_NAME } from '../secret-capabilities';
-import { workspaceModeFromSessionMetadata } from './session-sandbox-metadata';
+import {
+  workspaceModeAllowsFullRepository,
+  workspaceModeFromSessionMetadata,
+} from './session-sandbox-metadata';
 
 /**
  * The origin THIS sandbox should reach kortix-api's LLM-gateway surface at —
@@ -673,7 +676,8 @@ export async function pushSessionAgentConfigToSandbox(input: {
       gitAuthToken: null,
     };
     const compiled =
-      workspaceModeFromSessionMetadata(session?.metadata) === 'runtime' && session?.agentName
+      !workspaceModeAllowsFullRepository(workspaceModeFromSessionMetadata(session?.metadata)) &&
+      session?.agentName
         ? await resolveSelectedAgentConfigForSession(
             gitProject,
             session.agentName,

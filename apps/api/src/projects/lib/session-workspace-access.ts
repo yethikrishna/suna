@@ -3,7 +3,10 @@ import { and, eq } from 'drizzle-orm';
 
 import { PROJECT_ACTIONS } from '../../iam/actions';
 import { db } from '../../shared/db';
-import { workspaceModeFromSessionMetadata } from './session-sandbox-metadata';
+import {
+  workspaceModeAllowsFullRepository,
+  workspaceModeFromSessionMetadata,
+} from './session-sandbox-metadata';
 
 const REPOSITORY_ACTIONS = new Set<string>([
   PROJECT_ACTIONS.PROJECT_FILE_READ,
@@ -18,7 +21,7 @@ export function isRepositoryProjectAction(action: string): boolean {
 }
 
 export function workspaceMetadataAllowsRepositoryAccess(metadata: unknown): boolean {
-  return workspaceModeFromSessionMetadata(metadata) !== 'runtime';
+  return workspaceModeAllowsFullRepository(workspaceModeFromSessionMetadata(metadata));
 }
 
 export async function sessionWorkspaceAllowsRepositoryAccess(input: {

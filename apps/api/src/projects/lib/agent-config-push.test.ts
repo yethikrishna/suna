@@ -234,6 +234,14 @@ describe('pushSessionAgentConfigToSandbox', () => {
     expect(compileCalls).toEqual([{ ref: 'main', agent: 'support' }]);
   });
 
+  test('keeps historical read sessions on selected-agent compilation', async () => {
+    sessionMetadata = { workspace_mode: 'read' };
+
+    await pushSessionAgentConfigToSandbox({ ...INPUT, baseRef: 'main' });
+
+    expect(compileCalls).toEqual([{ ref: 'main', agent: 'support' }]);
+  });
+
   test('a project with no compiled config pushes NOTHING', async () => {
     // `null` is a v1 project or an unreadable manifest. Pushing an empty value
     // would delete the agents the box is running — for a transient read failure

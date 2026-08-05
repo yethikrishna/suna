@@ -1,5 +1,6 @@
 import { agentConfigEtag } from './compile-agent-config';
 import type { WorkspaceModeV2 } from '@kortix/manifest-schema';
+import { workspaceModeAllowsFullRepository } from './session-sandbox-metadata';
 
 export interface SessionRuntimeEnvInput {
   projectId: string;
@@ -21,15 +22,16 @@ export interface SessionRuntimeEnvInput {
 }
 
 export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<string, string> {
+  const allowsFullRepository = workspaceModeAllowsFullRepository(input.workspaceMode);
   const projectGitEnv: Record<string, string> =
-    input.workspaceMode === 'runtime'
-      ? {}
-      : {
+    allowsFullRepository
+      ? {
           KORTIX_REPO_URL: input.repoUrl,
           KORTIX_DEFAULT_BRANCH: input.baseRef,
           KORTIX_BASE_REF: input.baseRef,
           KORTIX_BRANCH_NAME: input.sessionId,
-        };
+        }
+      : {};
   return {
     ...projectGitEnv,
     KORTIX_PROJECT_ID: input.projectId,
@@ -37,7 +39,7 @@ export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<st
     KORTIX_SERVICE_PORT: '8000',
     KORTIX_AGENT_NAME: input.agentName,
     KORTIX_API_URL: input.apiUrl,
-    KORTIX_PROJECT_AUTO_CLONE: input.workspaceMode === 'runtime' ? '0' : '1',
+    KORTIX_PROJECT_AUTO_CLONE: allowsFullRepository ? '1' : '0',
     ...(input.workspaceMode ? { KORTIX_WORKSPACE_MODE: input.workspaceMode } : {}),
     // Frontend base for user-facing dashboard links — the agent/CLI must never
     // surface KORTIX_API_URL (the API host) to a human. See sandboxFrontendBaseUrl().

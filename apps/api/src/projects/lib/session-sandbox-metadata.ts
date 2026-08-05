@@ -12,10 +12,19 @@ export function sandboxSlugFromSessionMetadata(metadata: unknown): string | unde
 /** Read the server-owned agent workspace mode from durable session metadata. */
 export function workspaceModeFromSessionMetadata(metadata: unknown): WorkspaceModeV2 | undefined {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined;
-  const value = (metadata as Record<string, unknown>).workspace_mode;
+  const record = metadata as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, 'workspace_mode')) return undefined;
+  const value = record.workspace_mode;
   return typeof value === 'string' && (WORKSPACE_MODES_V2 as readonly string[]).includes(value)
     ? (value as WorkspaceModeV2)
-    : undefined;
+    : 'runtime';
+}
+
+/** Only branch and legacy sessions may receive repository bytes or credentials. */
+export function workspaceModeAllowsFullRepository(
+  mode: WorkspaceModeV2 | null | undefined,
+): boolean {
+  return mode === undefined || mode === null || mode === 'branch';
 }
 
 /** Apply the session sandbox precedence contract. */

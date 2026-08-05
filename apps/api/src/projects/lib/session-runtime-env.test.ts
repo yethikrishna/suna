@@ -64,6 +64,20 @@ describe('buildSessionRuntimeEnv — workspace mode', () => {
     expect(env).not.toHaveProperty('KORTIX_BRANCH_NAME');
   });
 
+  test('read mode cannot clone before exact-path artifacts are implemented', () => {
+    const env = buildSessionRuntimeEnv({
+      ...BASE_INPUT,
+      workspaceMode: 'read',
+    });
+
+    expect(env.KORTIX_WORKSPACE_MODE).toBe('read');
+    expect(env.KORTIX_PROJECT_AUTO_CLONE).toBe('0');
+    expect(env).not.toHaveProperty('KORTIX_REPO_URL');
+    expect(env).not.toHaveProperty('KORTIX_DEFAULT_BRANCH');
+    expect(env).not.toHaveProperty('KORTIX_BASE_REF');
+    expect(env).not.toHaveProperty('KORTIX_BRANCH_NAME');
+  });
+
   test('legacy and branch sessions keep the project clone and Git coordinates', () => {
     for (const env of [
       buildSessionRuntimeEnv(BASE_INPUT),

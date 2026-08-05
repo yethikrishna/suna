@@ -88,7 +88,10 @@ import {
 } from '../session-title-generate';
 import { canOverride, resolveSessionOrigin } from './session-origin';
 import { sessionCreatedAuditEvent } from './session-audit';
-import { resolveSessionSandboxSlug } from './session-sandbox-metadata';
+import {
+  resolveSessionSandboxSlug,
+  workspaceModeAllowsFullRepository,
+} from './session-sandbox-metadata';
 import { projectSessionMetadataMerge } from './session-metadata-merge';
 import {
   buildSessionRuntimeContextEnv,
@@ -322,7 +325,7 @@ export async function buildSessionSandboxEnvVars(input: {
       gitAuthToken: null,
     };
     compiledAgentConfig =
-      input.workspaceMode === 'runtime'
+      !workspaceModeAllowsFullRepository(input.workspaceMode)
         ? await resolveSelectedAgentConfigForSession(
             gitProject,
             input.agentName,
@@ -774,6 +777,17 @@ export async function createProjectSession(input: {
     };
   }
   const workspaceMode = workspaceFromLoadedAgents(agentName, loadedAgents) ?? 'branch';
+  if (workspaceMode === 'read') {
+    return {
+      error: {
+        status: 409,
+        body: {
+          error: 'workspace mode "read" requires restricted workspace artifacts',
+          code: 'WORKSPACE_MODE_UNAVAILABLE',
+        },
+      },
+    };
+  }
 
   const freeModelsOnly = config.KORTIX_BILLING_INTERNAL_ENABLED
     ? !tierGrantsAllModels(await getCachedAccountTier(accountId))

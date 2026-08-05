@@ -31,16 +31,19 @@ describe('workspaceModeFromSessionMetadata', () => {
     expect(workspaceModeFromSessionMetadata({ workspace_mode: 'branch' })).toBe('branch');
   });
 
-  test('rejects missing and invalid metadata values', () => {
+  test('keeps missing metadata legacy-compatible and maps invalid stored modes to runtime', () => {
     expect(workspaceModeFromSessionMetadata(null)).toBeUndefined();
     expect(workspaceModeFromSessionMetadata({})).toBeUndefined();
-    expect(workspaceModeFromSessionMetadata({ workspace_mode: 'all' })).toBeUndefined();
+    expect(workspaceModeFromSessionMetadata({ workspace_mode: 'all' })).toBe('runtime');
+    expect(workspaceModeFromSessionMetadata({ workspace_mode: null })).toBe('runtime');
   });
 });
 
-describe('runtime workspace repository boundary', () => {
-  test('runtime metadata denies repository access while branch and legacy metadata allow it', () => {
+describe('restricted workspace repository boundary', () => {
+  test('restricted metadata denies repository access while branch and legacy metadata allow it', () => {
     expect(workspaceMetadataAllowsRepositoryAccess({ workspace_mode: 'runtime' })).toBe(false);
+    expect(workspaceMetadataAllowsRepositoryAccess({ workspace_mode: 'read' })).toBe(false);
+    expect(workspaceMetadataAllowsRepositoryAccess({ workspace_mode: 'all' })).toBe(false);
     expect(workspaceMetadataAllowsRepositoryAccess({ workspace_mode: 'branch' })).toBe(true);
     expect(workspaceMetadataAllowsRepositoryAccess({})).toBe(true);
   });

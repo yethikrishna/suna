@@ -5,12 +5,7 @@ import { type ConnectorSharing, type ProjectGitConnection, unwrap } from './shar
 
 export type SecretDeliveryStrategy = 'runtime' | 'egress' | 'broker' | 'denied';
 export type SecretConsumer =
-  | 'sandbox'
-  | 'llm_gateway'
-  | 'executor'
-  | 'git_proxy'
-  | 'http_broker'
-  | 'network';
+  'sandbox' | 'llm_gateway' | 'connector' | 'executor' | 'git_proxy' | 'http_broker' | 'network';
 export type SecretDeliveryStatus = 'available' | 'unavailable' | 'disabled';
 export type SecretInjectionSlot =
   | { kind: 'header'; name: string; template?: string }
@@ -31,6 +26,7 @@ export interface SecretEgressPolicy {
   tls?: 'terminate' | 'tunnel';
 }
 export interface UpdateSecretStrategyOptions {
+  consumer?: SecretConsumer | null;
   egress_policy?: SecretEgressPolicy;
   handle_prefix?: string;
 }
@@ -134,13 +130,18 @@ export async function upsertProjectSecret(
      *  one identifier per key). Set explicitly to create a SECOND secret under
      *  the same key (e.g. "GMAPS-backup" also GOOGLE_MAPS_API_KEY). */
     identifier?: string;
+    /** The only service allowed to receive plaintext. */
+    consumer?: SecretConsumer | null;
+    /** Use `broker` for every server-side consumer. */
+    strategy?: SecretDeliveryStrategy;
+    /** Required when `consumer` is `http_broker`. */
+    egress_policy?: SecretEgressPolicy;
+    handle_prefix?: string;
     /** Omit to leave an existing secret's value untouched (e.g. a no-op touch). */
     value?: string;
   },
 ) {
-  return unwrap(
-    await backendApi.post<ProjectSecret>(`/projects/${projectId}/secrets`, input),
-  );
+  return unwrap(await backendApi.post<ProjectSecret>(`/projects/${projectId}/secrets`, input));
 }
 
 export async function setProjectSecretStrategy(
@@ -203,10 +204,9 @@ export async function startProjectProviderOAuth(
   input?: { sharing?: ConnectorSharing },
 ): Promise<ProviderOAuthStart> {
   return unwrap(
-    await backendApi.post<ProviderOAuthStart>(
-      `/projects/${projectId}/oauth/${provider}/start`,
-      { sharing: input?.sharing },
-    ),
+    await backendApi.post<ProviderOAuthStart>(`/projects/${projectId}/oauth/${provider}/start`, {
+      sharing: input?.sharing,
+    }),
   );
 }
 
@@ -216,17 +216,13 @@ export async function pollProjectProviderOAuth(
   flowId: string,
 ): Promise<ProviderOAuthPoll> {
   return unwrap(
-    await backendApi.post<ProviderOAuthPoll>(
-      `/projects/${projectId}/oauth/${provider}/poll`,
-      { flow_id: flowId },
-    ),
+    await backendApi.post<ProviderOAuthPoll>(`/projects/${projectId}/oauth/${provider}/poll`, {
+      flow_id: flowId,
+    }),
   );
 }
 
-export async function upsertProjectGitCredential(
-  projectId: string,
-  input: { token: string },
-) {
+export async function upsertProjectGitCredential(projectId: string, input: { token: string }) {
   return unwrap(
     await backendApi.put<{
       configured: boolean;

@@ -38,6 +38,7 @@ function secretRow(overrides: Record<string, unknown> = {}) {
     ownerUserId: null,
     description: null,
     strategy: 'runtime' as const,
+    consumer: 'sandbox' as const,
     egressPolicy: null,
     handlePrefix: null,
     rotatedAt: null,
@@ -62,6 +63,7 @@ function queryResult(fields: Record<string, unknown> | undefined) {
         secretId: row.secretId,
         name: row.name,
         strategy: row.strategy,
+        consumer: row.consumer,
         rotatedAt: row.rotatedAt,
         updatedAt: row.updatedAt,
         strategyLocked: row.strategyLocked,
@@ -76,57 +78,57 @@ function queryResult(fields: Record<string, unknown> | undefined) {
 }
 
 const databaseMock = {
-    select: (fields?: Record<string, unknown>) => ({
-      from: (table: unknown) => {
-        if (table !== projectSecrets) throw new Error('unexpected table');
-        return { where: () => queryResult(fields) };
-      },
-    }),
-    update: (table: unknown) => {
-      if (table === projectSessionSecretHandles) {
-        return {
-          set: (values: Record<string, unknown>) => ({
-            where: async () => {
-              handleUpdates.push(values);
-            },
-          }),
-        };
-      }
+  select: (fields?: Record<string, unknown>) => ({
+    from: (table: unknown) => {
       if (table !== projectSecrets) throw new Error('unexpected table');
+      return { where: () => queryResult(fields) };
+    },
+  }),
+  update: (table: unknown) => {
+    if (table === projectSessionSecretHandles) {
       return {
         set: (values: Record<string, unknown>) => ({
           where: async () => {
-            updates.push(values);
-            if (row) row = { ...row, ...values };
+            handleUpdates.push(values);
           },
         }),
       };
-    },
-    insert: (table: unknown) => {
-      if (table !== projectSecrets) throw new Error('unexpected table');
-      return {
-        values: (values: Record<string, unknown>) => {
-          const inserted = secretRow(values);
-          row = inserted;
-          return {
-            onConflictDoUpdate: ({ set }: { set: Record<string, unknown> }) => ({
-              returning: async () => {
-                row = row ? { ...row, ...set } : inserted;
-                return [{ secretId: SECRET_ID }];
-              },
-            }),
-          };
-        },
-      };
-    },
-    delete: (table: unknown) => {
-      if (table !== projectSecrets) throw new Error('unexpected table');
-      return {
+    }
+    if (table !== projectSecrets) throw new Error('unexpected table');
+    return {
+      set: (values: Record<string, unknown>) => ({
         where: async () => {
-          row = null;
+          updates.push(values);
+          if (row) row = { ...row, ...values };
         },
-      };
-    },
+      }),
+    };
+  },
+  insert: (table: unknown) => {
+    if (table !== projectSecrets) throw new Error('unexpected table');
+    return {
+      values: (values: Record<string, unknown>) => {
+        const inserted = secretRow(values);
+        row = inserted;
+        return {
+          onConflictDoUpdate: ({ set }: { set: Record<string, unknown> }) => ({
+            returning: async () => {
+              row = row ? { ...row, ...set } : inserted;
+              return [{ secretId: SECRET_ID }];
+            },
+          }),
+        };
+      },
+    };
+  },
+  delete: (table: unknown) => {
+    if (table !== projectSecrets) throw new Error('unexpected table');
+    return {
+      where: async () => {
+        row = null;
+      },
+    };
+  },
 };
 
 mock.module('../shared/db', () => ({ hasDatabase: true, db: databaseMock }));
@@ -266,7 +268,11 @@ describe('PUT /v1/projects/:projectId/secrets/:identifier/strategy', () => {
       {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ strategy: 'broker', egress_policy: egressPolicy, handle_prefix: 'svc_' }),
+        body: JSON.stringify({
+          strategy: 'broker',
+          egress_policy: egressPolicy,
+          handle_prefix: 'svc_',
+        }),
       },
     );
 
@@ -286,7 +292,7 @@ describe('PUT /v1/projects/:projectId/secrets/:identifier/strategy', () => {
     expect(audits).toHaveLength(1);
   });
 
-  test('rejects an unavailable broker backend', async () => {
+  test('rejects a network policy on the LLM gateway consumer', async () => {
     const response = await buildApp().request(
       `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
       {
@@ -303,10 +309,33 @@ describe('PUT /v1/projects/:projectId/secrets/:identifier/strategy', () => {
       },
     );
 
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ code: 'secret_delivery_unavailable' });
+    expect(response.status).toBe(400);
     expect(updates).toHaveLength(0);
     expect(audits).toHaveLength(0);
+  });
+
+  test('configures the LLM gateway without a network policy', async () => {
+    const response = await buildApp().request(
+      `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ strategy: 'broker', consumer: 'llm_gateway' }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      strategy: 'broker',
+      consumer: 'llm_gateway',
+      delivery_status: 'available',
+      egress_policy: null,
+    });
+    expect(updates[0]).toMatchObject({
+      strategy: 'broker',
+      consumer: 'llm_gateway',
+      egressPolicy: null,
+    });
   });
 
   test('rejects transparent egress until its adapter is available', async () => {
@@ -479,6 +508,37 @@ describe('POST /v1/projects/:projectId/secrets audit', () => {
     });
     expect(JSON.stringify(audits[0])).not.toContain('plaintext-test-value');
   });
+
+  test('creates an LLM gateway secret without a runtime delivery transition', async () => {
+    const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'SERVICE_API_KEY',
+        value: 'plaintext-test-value',
+        strategy: 'broker',
+        consumer: 'llm_gateway',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      strategy: 'broker',
+      consumer: 'llm_gateway',
+      delivery_status: 'available',
+      egress_policy: null,
+    });
+    expect(row).toMatchObject({ strategy: 'broker', consumer: 'llm_gateway' });
+    expect(audits[0]).toMatchObject({
+      after: {
+        configured: true,
+        strategy: 'broker',
+        consumer: 'llm_gateway',
+        rotated: true,
+      },
+    });
+    expect(JSON.stringify(audits)).not.toContain('plaintext-test-value');
+  });
 });
 
 describe('DELETE /v1/projects/:projectId/secrets/:identifier audit', () => {
@@ -497,10 +557,9 @@ describe('DELETE /v1/projects/:projectId/secrets/:identifier audit', () => {
   });
 
   test('records the deleted policy metadata without the encrypted value', async () => {
-    const response = await buildApp().request(
-      `/v1/projects/${PROJECT_ID}/secrets/primary-openai`,
-      { method: 'DELETE' },
-    );
+    const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets/primary-openai`, {
+      method: 'DELETE',
+    });
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
@@ -514,9 +573,11 @@ describe('DELETE /v1/projects/:projectId/secrets/:identifier audit', () => {
       metadata: { identifier: 'primary-openai', name: 'OPENAI_API_KEY' },
     });
     expect(JSON.stringify(audits[0])).not.toContain('encrypted-delete-value');
-    expect(propagations).toEqual([{
-      projectId: PROJECT_ID,
-      options: { refreshModels: true },
-    }]);
+    expect(propagations).toEqual([
+      {
+        projectId: PROJECT_ID,
+        options: { refreshModels: true },
+      },
+    ]);
   });
 });

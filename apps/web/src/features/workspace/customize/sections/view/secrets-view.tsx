@@ -47,7 +47,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Table,
   TableBody,
@@ -56,6 +55,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { Icon } from '@/features/icon/icon';
 import { EmptyState } from '@/features/layout/section/empty-state';
@@ -456,7 +456,7 @@ function SecretTableRow({
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const canManageShared = canManage && !row.system;
   const distinctKey = row.identifier !== row.key;
-  const delivery = secretDeliveryPresentation(row.strategy);
+  const delivery = secretDeliveryPresentation(row.strategy, row.consumer);
 
   return (
     <TableRow
@@ -557,6 +557,9 @@ function SecretDialog({
   const [key, setKey] = useState(row?.key ?? '');
   const [value, setValue] = useState('');
   const [strategy, setStrategy] = useState<SecretDeliveryStrategy>(row?.strategy ?? 'runtime');
+  const [brokerConsumer, setBrokerConsumer] = useState<'llm_gateway' | 'http_broker'>(
+    row?.consumer === 'llm_gateway' ? 'llm_gateway' : 'http_broker',
+  );
   const currentPolicy = row?.egressPolicy;
   const currentInjection = currentPolicy?.inject;
   const [brokerHosts, setBrokerHosts] = useState(
@@ -566,9 +569,9 @@ function SecretDialog({
     currentPolicy?.rules[0]?.methods?.join(', ') ?? 'POST',
   );
   const [brokerPath, setBrokerPath] = useState(currentPolicy?.rules[0]?.path ?? '/');
-  const [injectionKind, setInjectionKind] = useState<
-    'header' | 'query' | 'json_body_field'
-  >(currentInjection?.kind ?? 'header');
+  const [injectionKind, setInjectionKind] = useState<'header' | 'query' | 'json_body_field'>(
+    currentInjection?.kind ?? 'header',
+  );
   const [injectionTarget, setInjectionTarget] = useState(
     currentInjection?.kind === 'json_body_field'
       ? currentInjection.path
@@ -607,21 +610,42 @@ function SecretDialog({
       if (strategy === 'runtime' && row?.requiresRotation && !value.trim()) {
         throw new Error('Enter a new value before making this secret readable in the sandbox.');
       }
-      if (strategy === 'broker' && !brokerPolicy) {
+      if (strategy === 'broker' && brokerConsumer === 'http_broker' && !brokerPolicy) {
         throw new Error('Complete the broker destination and credential placement.');
       }
 
+      const nextConsumer: SecretConsumer | null =
+        strategy === 'runtime'
+          ? 'sandbox'
+          : strategy === 'denied'
+            ? null
+            : strategy === 'egress'
+              ? 'network'
+              : brokerConsumer;
       const hasValueChange = Boolean(value.trim()) || !row?.configured;
       if (hasValueChange) {
         await upsertProjectSecret(projectId, {
           name: finalKey,
           identifier: finalIdentifier,
           ...(value.trim() ? { value } : {}),
+          strategy,
+          consumer: nextConsumer,
+          ...(strategy === 'broker' && brokerConsumer === 'http_broker' && brokerPolicy
+            ? { egress_policy: brokerPolicy }
+            : {}),
         });
+        return null;
       }
-      if (strategy !== (row?.strategy ?? 'runtime') || strategy === 'broker') {
+      if (
+        strategy !== (row?.strategy ?? 'runtime') ||
+        nextConsumer !== (row?.consumer ?? 'sandbox') ||
+        strategy === 'broker'
+      ) {
         return setProjectSecretStrategy(projectId, finalIdentifier, strategy, {
-          ...(brokerPolicy ? { egress_policy: brokerPolicy } : {}),
+          consumer: nextConsumer,
+          ...(strategy === 'broker' && brokerConsumer === 'http_broker' && brokerPolicy
+            ? { egress_policy: brokerPolicy }
+            : {}),
         });
       }
       return null;
@@ -648,7 +672,10 @@ function SecretDialog({
     : row.configured
       ? `Edit ${row.identifier}`
       : `Set ${row.identifier}`;
-  const selectedDelivery = secretDeliveryPresentation(strategy);
+  const selectedDelivery = secretDeliveryPresentation(
+    strategy,
+    strategy === 'broker' ? brokerConsumer : undefined,
+  );
   const deliveryOptions = secretDeliveryOptions(strategy, row?.deliveryStatus ?? 'available');
   const canSave = canSaveSecretDelivery({
     isEdit,
@@ -658,6 +685,14 @@ function SecretDialog({
     requiresRotation: Boolean(row?.requiresRotation),
     currentStrategy: row?.strategy ?? 'runtime',
     nextStrategy: strategy,
+    nextConsumer:
+      strategy === 'runtime'
+        ? 'sandbox'
+        : strategy === 'denied'
+          ? null
+          : strategy === 'egress'
+            ? 'network'
+            : brokerConsumer,
     brokerPolicyValid: brokerPolicy !== null,
   });
 
@@ -785,120 +820,161 @@ function SecretDialog({
             {strategy === 'broker' && (
               <div className="border-border bg-sidebar space-y-4 rounded-md border p-3">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">HTTPS broker policy</p>
+                  <p className="text-sm font-medium">Kortix service</p>
                   <p className="text-muted-foreground text-xs">
-                    The sandbox receives an opaque handle. Kortix adds the real value only to a
-                    matching HTTPS request.
+                    The selected service uses the value outside the sandbox.
                   </p>
                 </div>
 
                 <Field>
-                  <FieldLabel htmlFor="secret-dialog-broker-hosts">Allowed hosts</FieldLabel>
-                  <Textarea
-                    id="secret-dialog-broker-hosts"
-                    value={brokerHosts}
-                    onChange={(event) => setBrokerHosts(event.target.value)}
-                    placeholder={'api.example.com\n*.service.example.com'}
-                    minHeight={56}
-                    maxHeight={112}
-                    variant="outline"
-                    className="font-mono text-xs"
+                  <FieldLabel htmlFor="secret-dialog-broker-consumer">Used by</FieldLabel>
+                  <Select
+                    value={brokerConsumer}
+                    onValueChange={(next) =>
+                      setBrokerConsumer(next as 'llm_gateway' | 'http_broker')
+                    }
                     disabled={save.isPending}
-                  />
-                  <FieldDescription>
-                    One exact host or leading wildcard per line. Kortix denies every other host.
-                  </FieldDescription>
+                  >
+                    <SelectTrigger id="secret-dialog-broker-consumer" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem
+                        value="llm_gateway"
+                        description="Kortix sends model requests. The sandbox receives no key."
+                      >
+                        LLM gateway
+                      </SelectItem>
+                      <SelectItem
+                        value="http_broker"
+                        description="Kortix adds the value to one approved HTTPS destination."
+                      >
+                        HTTPS broker
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </Field>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field>
-                    <FieldLabel htmlFor="secret-dialog-broker-methods">Methods</FieldLabel>
-                    <Input
-                      id="secret-dialog-broker-methods"
-                      value={brokerMethods}
-                      onChange={(event) => setBrokerMethods(event.target.value.toUpperCase())}
-                      placeholder="POST"
-                      className="font-mono text-xs"
-                      disabled={save.isPending}
-                    />
-                    <FieldDescription>Comma-separated. Blank allows any method.</FieldDescription>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="secret-dialog-broker-path">Path</FieldLabel>
-                    <Input
-                      id="secret-dialog-broker-path"
-                      value={brokerPath}
-                      onChange={(event) => setBrokerPath(event.target.value)}
-                      placeholder="/v1/*"
-                      className="font-mono text-xs"
-                      disabled={save.isPending}
-                    />
-                    <FieldDescription>Exact path or one trailing /* wildcard.</FieldDescription>
-                  </Field>
-                </div>
+                {brokerConsumer === 'http_broker' && (
+                  <>
+                    <InfoBanner tone="neutral" title="Opaque sandbox handle">
+                      The sandbox receives a session handle. Kortix adds the real value only to a
+                      matching HTTPS request.
+                    </InfoBanner>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field>
-                    <FieldLabel htmlFor="secret-dialog-injection-kind">Credential location</FieldLabel>
-                    <Select
-                      value={injectionKind}
-                      onValueChange={(next) =>
-                        setInjectionKind(next as 'header' | 'query' | 'json_body_field')
-                      }
-                      disabled={save.isPending}
-                    >
-                      <SelectTrigger id="secret-dialog-injection-kind" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="header">Header</SelectItem>
-                        <SelectItem value="query">Query parameter</SelectItem>
-                        <SelectItem value="json_body_field">JSON body field</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="secret-dialog-injection-target">
-                      {injectionKind === 'header'
-                        ? 'Header name'
-                        : injectionKind === 'query'
-                          ? 'Parameter name'
-                          : 'JSON field path'}
-                    </FieldLabel>
-                    <Input
-                      id="secret-dialog-injection-target"
-                      value={injectionTarget}
-                      onChange={(event) => setInjectionTarget(event.target.value)}
-                      placeholder={
-                        injectionKind === 'header'
-                          ? 'authorization'
-                          : injectionKind === 'query'
-                            ? 'api_key'
-                            : 'auth.api_key'
-                      }
-                      className="font-mono text-xs"
-                      disabled={save.isPending}
-                    />
-                  </Field>
-                </div>
+                    <Field>
+                      <FieldLabel htmlFor="secret-dialog-broker-hosts">Allowed hosts</FieldLabel>
+                      <Textarea
+                        id="secret-dialog-broker-hosts"
+                        value={brokerHosts}
+                        onChange={(event) => setBrokerHosts(event.target.value)}
+                        placeholder={'api.example.com\n*.service.example.com'}
+                        minHeight={56}
+                        maxHeight={112}
+                        variant="outline"
+                        className="font-mono text-xs"
+                        disabled={save.isPending}
+                      />
+                      <FieldDescription>
+                        One exact host or leading wildcard per line. Kortix denies every other host.
+                      </FieldDescription>
+                    </Field>
 
-                {injectionKind === 'header' && (
-                  <Field>
-                    <FieldLabel htmlFor="secret-dialog-injection-template">
-                      Header value template
-                    </FieldLabel>
-                    <Input
-                      id="secret-dialog-injection-template"
-                      value={injectionTemplate}
-                      onChange={(event) => setInjectionTemplate(event.target.value)}
-                      placeholder="Bearer {{secret}}"
-                      className="font-mono text-xs"
-                      disabled={save.isPending}
-                    />
-                    <FieldDescription>
-                      Optional. Include {'{{secret}}'} where Kortix inserts the value.
-                    </FieldDescription>
-                  </Field>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor="secret-dialog-broker-methods">Methods</FieldLabel>
+                        <Input
+                          id="secret-dialog-broker-methods"
+                          value={brokerMethods}
+                          onChange={(event) => setBrokerMethods(event.target.value.toUpperCase())}
+                          placeholder="POST"
+                          className="font-mono text-xs"
+                          disabled={save.isPending}
+                        />
+                        <FieldDescription>
+                          Comma-separated. Blank allows any method.
+                        </FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="secret-dialog-broker-path">Path</FieldLabel>
+                        <Input
+                          id="secret-dialog-broker-path"
+                          value={brokerPath}
+                          onChange={(event) => setBrokerPath(event.target.value)}
+                          placeholder="/v1/*"
+                          className="font-mono text-xs"
+                          disabled={save.isPending}
+                        />
+                        <FieldDescription>Exact path or one trailing /* wildcard.</FieldDescription>
+                      </Field>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor="secret-dialog-injection-kind">
+                          Credential location
+                        </FieldLabel>
+                        <Select
+                          value={injectionKind}
+                          onValueChange={(next) =>
+                            setInjectionKind(next as 'header' | 'query' | 'json_body_field')
+                          }
+                          disabled={save.isPending}
+                        >
+                          <SelectTrigger id="secret-dialog-injection-kind" className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="header">Header</SelectItem>
+                            <SelectItem value="query">Query parameter</SelectItem>
+                            <SelectItem value="json_body_field">JSON body field</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="secret-dialog-injection-target">
+                          {injectionKind === 'header'
+                            ? 'Header name'
+                            : injectionKind === 'query'
+                              ? 'Parameter name'
+                              : 'JSON field path'}
+                        </FieldLabel>
+                        <Input
+                          id="secret-dialog-injection-target"
+                          value={injectionTarget}
+                          onChange={(event) => setInjectionTarget(event.target.value)}
+                          placeholder={
+                            injectionKind === 'header'
+                              ? 'authorization'
+                              : injectionKind === 'query'
+                                ? 'api_key'
+                                : 'auth.api_key'
+                          }
+                          className="font-mono text-xs"
+                          disabled={save.isPending}
+                        />
+                      </Field>
+                    </div>
+
+                    {injectionKind === 'header' && (
+                      <Field>
+                        <FieldLabel htmlFor="secret-dialog-injection-template">
+                          Header value template
+                        </FieldLabel>
+                        <Input
+                          id="secret-dialog-injection-template"
+                          value={injectionTemplate}
+                          onChange={(event) => setInjectionTemplate(event.target.value)}
+                          placeholder="Bearer {{secret}}"
+                          className="font-mono text-xs"
+                          disabled={save.isPending}
+                        />
+                        <FieldDescription>
+                          Optional. Include {'{{secret}}'} where Kortix inserts the value.
+                        </FieldDescription>
+                      </Field>
+                    )}
+                  </>
                 )}
               </div>
             )}

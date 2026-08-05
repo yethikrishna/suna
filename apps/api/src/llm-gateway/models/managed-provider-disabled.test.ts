@@ -64,6 +64,7 @@ mock.module('../../projects/secrets', () => ({
   decryptProjectSecret: (_projectId: string, value: string) => value,
   encryptProjectSecret: (_projectId: string, value: string) => value,
   getProjectSecretValue: async () => 'operators-own-anthropic-key',
+  getProjectSecretValueForConsumer: async () => 'operators-own-anthropic-key',
   listProjectSecrets: async () => ({}),
   listProjectSecretsForUser: async () => ({}),
   listProjectSecretsSnapshot: async () => ({ env: {}, names: [], revision: 'empty' }),
@@ -82,9 +83,8 @@ mock.module('../credentials/codex', () => ({
   resolveCodexCredential: async () => null,
 }));
 
-const { RUNTIME_MANAGED_MODELS, getRuntimeManagedModel, isRuntimeManagedModelId } = await import(
-  './managed-models'
-);
+const { RUNTIME_MANAGED_MODELS, getRuntimeManagedModel, isRuntimeManagedModelId } =
+  await import('./managed-models');
 const { managedCandidates, managedDescriptor } = await import('../resolution/descriptors');
 const { resolveCandidates } = await import('../resolution/resolve-candidates');
 const { gatewayModelCatalog, managedModels } = await import('./catalog-models');

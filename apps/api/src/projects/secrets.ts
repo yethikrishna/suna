@@ -7,6 +7,7 @@ import { recordAuditEvent } from '../shared/audit';
 import { db } from '../shared/db';
 import {
   type SecretEgressPolicy,
+  type SecretConsumer,
   type SecretStrategy,
   emitsValue,
   mintHandle,
@@ -188,6 +189,8 @@ export interface ResolvedProjectSecret {
    *  existed; `resolveSecretDelivery` reads absence as "no opinion", NOT as
    *  `runtime`, so an older row cannot silently downgrade a narrowed one. */
   strategy?: SecretStrategy;
+  /** The only service allowed to receive plaintext. */
+  consumer?: SecretConsumer | null;
   egressPolicy?: SecretEgressPolicy | null;
   handlePrefix?: string | null;
 }
@@ -213,6 +216,7 @@ export async function listResolvedProjectSecrets(
       ownerUserId: projectSecrets.ownerUserId,
       active: projectSecrets.active,
       strategy: projectSecrets.strategy,
+      consumer: projectSecrets.consumer,
       egressPolicy: projectSecrets.egressPolicy,
       handlePrefix: projectSecrets.handlePrefix,
     })
@@ -248,6 +252,7 @@ export async function listResolvedProjectSecrets(
       key: chosen.name,
       value: decryptProjectSecret(projectId, chosen.valueEnc),
       strategy: policyRow.strategy ?? undefined,
+      consumer: policyRow.consumer ?? undefined,
       egressPolicy: policyRow.egressPolicy ?? null,
       handlePrefix: policyRow.handlePrefix ?? null,
     });
@@ -561,10 +566,18 @@ export async function materializeSecretDelivery(
       agentGrantEnv: input.grantEnv ?? null,
       sessionAllowlist: null,
     });
-    if (delivery.emit === 'plaintext') continue;
+    const consumer =
+      row.consumer ??
+      (delivery.strategy === 'runtime'
+        ? 'sandbox'
+        : row.egressPolicy?.backend === 'kortix_fetch'
+          ? 'http_broker'
+          : (row.egressPolicy?.backend ?? null));
+    if (delivery.emit === 'plaintext' && consumer === 'sandbox') continue;
     if (
       delivery.emit === 'handle' &&
       delivery.strategy === 'broker' &&
+      consumer === 'http_broker' &&
       row.egressPolicy?.backend === 'kortix_fetch'
     ) {
       env[row.key] = await input.mintHandleFor(row);
@@ -728,4 +741,108 @@ export async function getProjectSecretValue(
   const row =
     canonical ?? [...rows].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]!;
   return decryptProjectSecret(projectId, row.valueEnc);
+}
+
+export interface ProjectSecretConsumerRead {
+  projectId: string;
+  accountId: string;
+  sessionId?: string | null;
+  actorUserId?: string | null;
+  name: string;
+  consumer: Exclude<SecretConsumer, 'sandbox' | 'network' | 'http_broker'>;
+}
+
+/**
+ * Resolve one shared value through its declared server consumer.
+ *
+ * The audit write completes before the function returns plaintext. A failed
+ * audit write therefore fails the secret use instead of creating an unlogged
+ * access path.
+ */
+export async function getProjectSecretValueForConsumer(
+  input: ProjectSecretConsumerRead,
+): Promise<string | null> {
+  const normalizedName = input.name.trim().toUpperCase();
+  const rows = await db
+    .select({
+      secretId: projectSecrets.secretId,
+      identifier: projectSecrets.identifier,
+      valueEnc: projectSecrets.valueEnc,
+      scope: projectSecrets.scope,
+      strategy: projectSecrets.strategy,
+      consumer: projectSecrets.consumer,
+      updatedAt: projectSecrets.updatedAt,
+    })
+    .from(projectSecrets)
+    .where(
+      and(
+        eq(projectSecrets.projectId, input.projectId),
+        eq(projectSecrets.name, normalizedName),
+        isNull(projectSecrets.ownerUserId),
+      ),
+    );
+  if (rows.length === 0) {
+    await recordAuditEvent({
+      accountId: input.accountId,
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+      actorUserId: input.actorUserId,
+      actorType: input.sessionId ? 'agent' : input.actorUserId ? 'human' : 'system',
+      source: input.consumer,
+      outcome: 'denied',
+      action: 'secret.consumer.missing',
+      resourceType: 'project_secret',
+      metadata: { name: normalizedName, consumer: input.consumer },
+    });
+    return null;
+  }
+
+  const canonical = rows.find((candidate) => candidate.identifier === normalizedName);
+  const row =
+    canonical ?? [...rows].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]!;
+  const allowed =
+    input.consumer === 'connector'
+      ? row.scope === 'connector' && (row.consumer === 'connector' || row.consumer === 'sandbox')
+      : row.strategy === 'broker' && row.consumer === input.consumer;
+  if (!allowed) {
+    await recordAuditEvent({
+      accountId: input.accountId,
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+      actorUserId: input.actorUserId,
+      actorType: input.sessionId ? 'agent' : input.actorUserId ? 'human' : 'system',
+      source: input.consumer,
+      outcome: 'denied',
+      action: 'secret.consumer.denied',
+      resourceType: 'project_secret',
+      resourceId: row.secretId,
+      metadata: {
+        identifier: row.identifier,
+        name: normalizedName,
+        requested_consumer: input.consumer,
+        configured_consumer: row.consumer,
+        strategy: row.strategy,
+      },
+    });
+    return null;
+  }
+
+  const value = decryptProjectSecret(input.projectId, row.valueEnc);
+  await recordAuditEvent({
+    accountId: input.accountId,
+    projectId: input.projectId,
+    sessionId: input.sessionId,
+    actorUserId: input.actorUserId,
+    actorType: input.sessionId ? 'agent' : input.actorUserId ? 'human' : 'system',
+    source: input.consumer,
+    action: 'secret.consumer.used',
+    resourceType: 'project_secret',
+    resourceId: row.secretId,
+    metadata: {
+      identifier: row.identifier,
+      name: normalizedName,
+      consumer: input.consumer,
+    },
+  });
+  return value;
 }

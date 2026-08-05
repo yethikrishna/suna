@@ -678,11 +678,7 @@ mock.module('../shared/db', () => ({
           return [sessionRow];
         },
         onConflictDoNothing: async () => [],
-        onConflictDoUpdate: ({
-          set,
-        }: {
-          set: Partial<typeof projectSecrets.$inferInsert>;
-        }) => {
+        onConflictDoUpdate: ({ set }: { set: Partial<typeof projectSecrets.$inferInsert> }) => {
           const conflictResult = {
             returning: async () => {
               if (table === projectGitConnections) {
@@ -764,6 +760,7 @@ mock.module('../shared/db', () => ({
                 createdBy: values.createdBy ?? null,
                 description: values.description ?? null,
                 strategy: values.strategy ?? 'runtime',
+                consumer: values.consumer ?? 'sandbox',
                 egressPolicy: values.egressPolicy ?? null,
                 handlePrefix: values.handlePrefix ?? null,
                 rotatedAt: values.rotatedAt ?? null,
@@ -1334,6 +1331,7 @@ describe('project session API contract', () => {
       ownerUserId: null,
       description: null,
       strategy: 'runtime' as const,
+      consumer: 'sandbox' as const,
       egressPolicy: null,
       handlePrefix: null,
       rotatedAt: null,
@@ -1455,6 +1453,7 @@ describe('project session API contract', () => {
         ownerUserId: null,
         description: null,
         strategy: 'runtime' as const,
+        consumer: 'sandbox' as const,
         egressPolicy: null,
         handlePrefix: null,
         rotatedAt: null,
@@ -1751,8 +1750,7 @@ describe('project session API contract', () => {
         },
         failure: {
           category: 'provider-capacity',
-          message:
-            'The sandbox provider is at capacity right now. Stop another session and retry.',
+          message: 'The sandbox provider is at capacity right now. Stop another session and retry.',
           retryable: true,
         },
       });
@@ -1793,10 +1791,9 @@ describe('project session API contract', () => {
       },
     ];
 
-    const response = await app.request(
-      `/v1/projects/${PROJECT_ID}/sessions/${SESSION_ID}/start`,
-      { method: 'POST' },
-    );
+    const response = await app.request(`/v1/projects/${PROJECT_ID}/sessions/${SESSION_ID}/start`, {
+      method: 'POST',
+    });
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({

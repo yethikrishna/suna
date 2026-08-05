@@ -36,7 +36,8 @@ let secretItems: Array<{
   configured?: boolean;
   effective_source?: 'mine' | 'shared' | 'none';
   strategy?: 'runtime' | 'egress' | 'broker' | 'denied';
-  consumer?: 'sandbox' | 'llm_gateway' | 'executor' | 'git_proxy' | 'http_broker' | 'network' | null;
+  consumer?:
+    'sandbox' | 'llm_gateway' | 'executor' | 'git_proxy' | 'http_broker' | 'network' | null;
   delivery_status?: 'available' | 'unavailable' | 'disabled';
   requires_rotation?: boolean;
 }>;
@@ -50,7 +51,8 @@ function secret(
     configured?: boolean;
     effective_source?: 'mine' | 'shared' | 'none';
     strategy?: 'runtime' | 'egress' | 'broker' | 'denied';
-    consumer?: 'sandbox' | 'llm_gateway' | 'executor' | 'git_proxy' | 'http_broker' | 'network' | null;
+    consumer?:
+      'sandbox' | 'llm_gateway' | 'executor' | 'git_proxy' | 'http_broker' | 'network' | null;
     delivery_status?: 'available' | 'unavailable' | 'disabled';
     requires_rotation?: boolean;
   } = {},
@@ -155,7 +157,11 @@ function mockApi() {
       const identifier = String(input.identifier ?? name);
       return json(secret(identifier, name));
     }
-    if (url.includes('/projects/proj_1/secrets/') && url.endsWith('/strategy') && method === 'PUT') {
+    if (
+      url.includes('/projects/proj_1/secrets/') &&
+      url.endsWith('/strategy') &&
+      method === 'PUT'
+    ) {
       const input = typeof body === 'object' && body !== null ? body : {};
       const identifier = decodeURIComponent(url.split('/secrets/')[1].split('/strategy')[0]);
       return json(
@@ -452,6 +458,7 @@ describe('kortix secrets delivery', () => {
     const put = requests.find((request) => request.method === 'PUT');
     expect(put?.body).toEqual({
       strategy: 'broker',
+      consumer: 'http_broker',
       egress_policy: {
         backend: 'kortix_fetch',
         rules: [
@@ -464,6 +471,36 @@ describe('kortix secrets delivery', () => {
       },
       handle_prefix: 'sk-ant-api03-',
     });
+  });
+
+  test('configures an LLM gateway consumer without HTTP policy flags', async () => {
+    const code = await runSecrets([
+      'delivery',
+      'ANTHROPIC_API_KEY',
+      'broker',
+      '--consumer',
+      'llm-gateway',
+    ]);
+
+    expect(code).toBe(0);
+    const put = requests.find((request) => request.method === 'PUT');
+    expect(put?.body).toEqual({ strategy: 'broker', consumer: 'llm_gateway' });
+  });
+
+  test('rejects HTTP policy flags for the LLM gateway consumer', async () => {
+    const code = await runSecrets([
+      'delivery',
+      'ANTHROPIC_API_KEY',
+      'broker',
+      '--consumer',
+      'llm-gateway',
+      '--allow-host',
+      'api.anthropic.com',
+    ]);
+
+    expect(code).toBe(2);
+    expect(requests).toHaveLength(0);
+    expect(stripAnsi(stderr)).toContain('cannot be used');
   });
 
   test('requires an explicit host and one injection slot for broker delivery', async () => {

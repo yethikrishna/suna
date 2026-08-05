@@ -239,6 +239,13 @@
       "when": 1785702120462,
       "tag": "20260802202200_executor_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1785949081266,
+      "tag": "20260805165801_secret_consumer_boundary",
+      "breakpoints": true
     }
   ]
 }

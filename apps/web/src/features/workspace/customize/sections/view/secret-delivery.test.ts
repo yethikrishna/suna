@@ -32,6 +32,17 @@ describe('secretDeliveryPresentation', () => {
       'Added to approved outbound requests at the network boundary.',
     );
   });
+
+  test('labels each supported server consumer explicitly', () => {
+    expect(secretDeliveryPresentation('broker', 'llm_gateway')).toMatchObject({
+      label: 'LLM gateway',
+      description: 'Used for model requests without entering the sandbox.',
+    });
+    expect(secretDeliveryPresentation('broker', 'http_broker')).toMatchObject({
+      label: 'HTTPS broker',
+      description: 'Added only to an approved HTTPS request outside the sandbox.',
+    });
+  });
 });
 
 describe('secretDeliveryOptions', () => {
@@ -66,6 +77,7 @@ describe('canSaveSecretDelivery', () => {
         requiresRotation: true,
         currentStrategy: 'denied',
         nextStrategy: 'runtime',
+        nextConsumer: 'sandbox',
         brokerPolicyValid: false,
       }),
     ).toBe(false);
@@ -81,6 +93,7 @@ describe('canSaveSecretDelivery', () => {
         requiresRotation: true,
         currentStrategy: 'denied',
         nextStrategy: 'runtime',
+        nextConsumer: 'sandbox',
         brokerPolicyValid: false,
       }),
     ).toBe(true);
@@ -96,6 +109,7 @@ describe('canSaveSecretDelivery', () => {
         requiresRotation: false,
         currentStrategy: 'runtime',
         nextStrategy: 'runtime',
+        nextConsumer: 'sandbox',
         brokerPolicyValid: false,
       }),
     ).toBe(false);
@@ -111,6 +125,7 @@ describe('canSaveSecretDelivery', () => {
         requiresRotation: false,
         currentStrategy: 'runtime',
         nextStrategy: 'broker',
+        nextConsumer: 'http_broker',
         brokerPolicyValid: false,
       }),
     ).toBe(false);
@@ -123,7 +138,24 @@ describe('canSaveSecretDelivery', () => {
         requiresRotation: false,
         currentStrategy: 'runtime',
         nextStrategy: 'broker',
+        nextConsumer: 'http_broker',
         brokerPolicyValid: true,
+      }),
+    ).toBe(true);
+  });
+
+  test('allows the LLM gateway consumer without an HTTP policy', () => {
+    expect(
+      canSaveSecretDelivery({
+        isEdit: true,
+        key: 'OPENAI_API_KEY',
+        value: '',
+        requiresValue: false,
+        requiresRotation: false,
+        currentStrategy: 'runtime',
+        nextStrategy: 'broker',
+        nextConsumer: 'llm_gateway',
+        brokerPolicyValid: false,
       }),
     ).toBe(true);
   });

@@ -51,6 +51,7 @@ Subcommands:
                                     a secret via the intake link or after a
                                     secret was updated mid-session.
   delivery IDENTIFIER STRATEGY      Set runtime, broker, egress, or denied.
+    --consumer <service>             Broker consumer: llm-gateway or http-broker.
     --allow-host <host>              Broker host. Repeat for more hosts.
     --allow-method <method>          Allowed HTTP method. Repeat as needed.
     --allow-path <path>              Exact path or one trailing /* wildcard.
@@ -301,7 +302,7 @@ async function secretsLs(opts: CtxOpts, json = false): Promise<number> {
         : r.strategy === 'denied'
           ? 'disabled'
           : r.strategy === 'broker'
-            ? r.consumer ?? 'Kortix broker'
+            ? (r.consumer ?? 'Kortix broker')
             : 'approved hosts';
     const rotation = r.requiresRotation ? ' · rotate' : '';
     const deliveryText = `${delivery}${rotation}`;
@@ -334,7 +335,7 @@ type BrokerMethod = (typeof BROKER_METHODS)[number];
 
 function takeFlagValues(args: string[], names: string[]): string[] {
   const values: string[] = [];
-  for (let index = 0; index < args.length; ) {
+  for (let index = 0; index < args.length;) {
     if (!names.includes(args[index]!)) {
       index += 1;
       continue;
@@ -357,11 +358,7 @@ function deliveryLabel(strategy: SecretStrategy): string {
   return 'Stored but disabled';
 }
 
-async function secretsDelivery(
-  args: string[],
-  opts: CtxOpts,
-  json = false,
-): Promise<number> {
+async function secretsDelivery(args: string[], opts: CtxOpts, json = false): Promise<number> {
   const [identifier, strategyRaw] = args;
   const options = args.slice(2);
   if (!identifier || !IDENTIFIER_RE.test(identifier)) {
@@ -371,9 +368,7 @@ async function secretsDelivery(
     return 2;
   }
   if (!SECRET_STRATEGIES.includes(strategyRaw as SecretStrategy)) {
-    process.stderr.write(
-      `${status.err('Delivery must be runtime, broker, egress, or denied.')}\n`,
-    );
+    process.stderr.write(`${status.err('Delivery must be runtime, broker, egress, or denied.')}\n`);
     return 2;
   }
 
@@ -385,6 +380,7 @@ async function secretsDelivery(
   let injectJson: string | undefined;
   let template: string | undefined;
   let handlePrefix: string | undefined;
+  let consumerFlag: string | undefined;
   try {
     allowedHosts = takeFlagValues(options, ['--allow-host']);
     allowedMethods = takeFlagValues(options, ['--allow-method']).map((method) =>
@@ -396,6 +392,7 @@ async function secretsDelivery(
     injectJson = takeFlagValue(options, ['--inject-json']);
     template = takeFlagValue(options, ['--template']);
     handlePrefix = takeFlagValue(options, ['--handle-prefix']);
+    consumerFlag = takeFlagValue(options, ['--consumer']);
   } catch (err) {
     process.stderr.write(`${status.err((err as Error).message)}\n`);
     return 2;
@@ -408,6 +405,15 @@ async function secretsDelivery(
   const ctx = await resolveProjectContext(opts);
   if (!ctx) return 1;
   const strategy = strategyRaw as SecretStrategy;
+  const consumer = consumerFlag?.replace(/-/g, '_') ?? 'http_broker';
+  if (strategy === 'broker' && !['llm_gateway', 'http_broker'].includes(consumer)) {
+    process.stderr.write(`${status.err('--consumer must be llm-gateway or http-broker.')}\n`);
+    return 2;
+  }
+  if (strategy !== 'broker' && consumerFlag !== undefined) {
+    process.stderr.write(`${status.err('--consumer is only valid for broker delivery.')}\n`);
+    return 2;
+  }
   const hasBrokerOptions =
     allowedHosts.length > 0 ||
     allowedMethods.length > 0 ||
@@ -418,7 +424,9 @@ async function secretsDelivery(
     template !== undefined ||
     handlePrefix !== undefined;
   if (strategy !== 'broker' && hasBrokerOptions) {
-    process.stderr.write(`${status.err('Broker policy flags are only valid for broker delivery.')}\n`);
+    process.stderr.write(
+      `${status.err('Broker policy flags are only valid for broker delivery.')}\n`,
+    );
     return 2;
   }
   if (strategy === 'egress') {
@@ -429,7 +437,13 @@ async function secretsDelivery(
   }
 
   let policy: SecretEgressPolicy | undefined;
-  if (strategy === 'broker') {
+  if (strategy === 'broker' && consumer === 'llm_gateway' && hasBrokerOptions) {
+    process.stderr.write(
+      `${status.err('HTTP policy flags cannot be used with the llm-gateway consumer.')}\n`,
+    );
+    return 2;
+  }
+  if (strategy === 'broker' && consumer === 'http_broker') {
     if (allowedHosts.length === 0) {
       process.stderr.write(`${status.err('Broker delivery requires --allow-host.')}\n`);
       return 2;
@@ -472,6 +486,7 @@ async function secretsDelivery(
   try {
     const result = await withKortixScope(ctx.auth, () =>
       setProjectSecretStrategy(ctx.projectId, identifier, strategy, {
+        ...(strategy === 'broker' ? { consumer: consumer as 'llm_gateway' | 'http_broker' } : {}),
         ...(policy ? { egress_policy: policy } : {}),
         ...(handlePrefix ? { handle_prefix: handlePrefix } : {}),
       }),
@@ -559,7 +574,9 @@ async function secretsCall(args: string[], opts: CtxOpts, json = false): Promise
     try {
       body = readFileSync(bodyFile, 'utf8');
     } catch (err) {
-      process.stderr.write(`${status.err(`Cannot read request body: ${(err as Error).message}`)}\n`);
+      process.stderr.write(
+        `${status.err(`Cannot read request body: ${(err as Error).message}`)}\n`,
+      );
       return 2;
     }
   }

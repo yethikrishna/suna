@@ -218,6 +218,43 @@ describe('materializeSecretDelivery', () => {
     expect(env).toEqual({});
   });
 
+  test('withholds an LLM gateway secret without minting a sandbox handle', async () => {
+    const gateway = row('provider', 'PROVIDER_KEY', {
+      strategy: 'broker',
+      consumer: 'llm_gateway',
+    });
+    const env = envFor([gateway]);
+    let mintCount = 0;
+
+    await materializeSecretDelivery([gateway], env, {
+      sessionId: 'session-1',
+      grantEnv: ['provider'],
+      mintHandleFor: async () => {
+        mintCount += 1;
+        return 'must-not-mint';
+      },
+    });
+
+    expect(env).toEqual({});
+    expect(mintCount).toBe(0);
+  });
+
+  test('fails closed when a runtime strategy targets a server consumer', async () => {
+    const gateway = row('provider', 'PROVIDER_KEY', {
+      strategy: 'runtime',
+      consumer: 'llm_gateway',
+    });
+    const env = envFor([gateway]);
+
+    await materializeSecretDelivery([gateway], env, {
+      sessionId: 'session-1',
+      grantEnv: ['provider'],
+      mintHandleFor: async () => 'must-not-mint',
+    });
+
+    expect(env).toEqual({});
+  });
+
   test.each([
     ['runtime', 'value-of-provider'],
     ['egress', undefined],

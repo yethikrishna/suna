@@ -56,9 +56,7 @@ export function isSecretStrategy(value: unknown): value is SecretStrategy {
  * a manifest that lists a secret as a bare string (today's only form) expresses
  * no delivery opinion, so it must not drag a brokered row back down to rank 0.
  */
-export function maxStrategy(
-  ...declared: Array<SecretStrategy | null | undefined>
-): SecretStrategy {
+export function maxStrategy(...declared: Array<SecretStrategy | null | undefined>): SecretStrategy {
   let winner: SecretStrategy = 'runtime';
   let seen = false;
   for (const candidate of declared) {
@@ -90,12 +88,12 @@ export function isFullyWithheld(strategy: SecretStrategy): boolean {
  * construction rather than by review.
  */
 import type { SecretEgressPolicy, SecretEgressRule, SecretInjectionSlot } from '@kortix/db';
+import type { SecretConsumer } from '@kortix/api-contract';
 
-export type { SecretEgressPolicy, SecretEgressRule, SecretInjectionSlot };
+export type { SecretConsumer, SecretEgressPolicy, SecretEgressRule, SecretInjectionSlot };
 
 export type EgressPolicyParse =
-  | { ok: true; policy: SecretEgressPolicy }
-  | { ok: false; error: string };
+  { ok: true; policy: SecretEgressPolicy } | { ok: false; error: string };
 
 const HOST_LABEL = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
@@ -319,9 +317,7 @@ function handleKey(rootSecret: string): Buffer {
 }
 
 function tagFor(rootSecret: string, lookupId: string): string {
-  const mac = createHmac('sha256', handleKey(rootSecret))
-    .update(`kxs.v1|${lookupId}`)
-    .digest();
+  const mac = createHmac('sha256', handleKey(rootSecret)).update(`kxs.v1|${lookupId}`).digest();
   return base32(mac, TAG_LEN);
 }
 

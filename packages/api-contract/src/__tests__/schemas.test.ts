@@ -372,10 +372,9 @@ describe('warm project session schemas', () => {
         sandbox_slug: 'default',
       }).success,
     ).toBe(true);
-    expect(
-      ClaimWarmProjectSessionInputSchema.safeParse({ session_id: 'not-a-uuid' })
-        .success,
-    ).toBe(false);
+    expect(ClaimWarmProjectSessionInputSchema.safeParse({ session_id: 'not-a-uuid' }).success).toBe(
+      false,
+    );
   });
 });
 
@@ -552,6 +551,7 @@ describe('SecretSchema', () => {
     expect(
       UpdateSecretStrategyInputSchema.parse({
         strategy: 'broker',
+        consumer: 'http_broker',
         egress_policy: {
           backend: 'kortix_fetch',
           rules: [{ host: 'api.example.com', methods: ['POST'], path: '/v1/*' }],
@@ -561,6 +561,7 @@ describe('SecretSchema', () => {
       }),
     ).toEqual({
       strategy: 'broker',
+      consumer: 'http_broker',
       egress_policy: {
         backend: 'kortix_fetch',
         rules: [{ host: 'api.example.com', methods: ['POST'], path: '/v1/*' }],
@@ -571,6 +572,9 @@ describe('SecretSchema', () => {
     expect(
       UpdateSecretStrategyInputSchema.safeParse({ strategy: 'runtime', value: 'secret' }).success,
     ).toBe(false);
+    expect(
+      UpdateSecretStrategyInputSchema.parse({ strategy: 'broker', consumer: 'llm_gateway' }),
+    ).toEqual({ strategy: 'broker', consumer: 'llm_gateway' });
   });
 
   test('validates the generic HTTPS broker request and response envelopes', () => {
@@ -731,9 +735,9 @@ describe('session connector profile contracts', () => {
   const profileId = '11111111-1111-4111-a111-111111111111';
 
   test('normalizes canonical, deprecated, and equal dual binding input', () => {
-    expect(
-      SessionConnectorBindingInputSchema.parse({ authorization_id: profileId }),
-    ).toEqual({ authorization_id: profileId });
+    expect(SessionConnectorBindingInputSchema.parse({ authorization_id: profileId })).toEqual({
+      authorization_id: profileId,
+    });
     expect(SessionConnectorBindingInputSchema.parse({ profile_id: profileId })).toEqual({
       authorization_id: profileId,
     });

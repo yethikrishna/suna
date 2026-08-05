@@ -6,7 +6,7 @@ import {
 import { getCachedAccountTier } from '../../billing/services/entitlements';
 import { accountIsFreeTierForModels } from '../../billing/services/tiers';
 import { config } from '../../config';
-import { getProjectSecretValue } from '../../projects/secrets';
+import { getProjectSecretValueForConsumer } from '../../projects/secrets';
 import { CodexRefreshError, resolveCodexCredential } from '../credentials/codex';
 import { capabilitiesForModel } from '../models/catalog-models';
 import { getRuntimeManagedModel, isKnownManagedModelId } from '../models/managed-models';
@@ -125,7 +125,16 @@ export async function resolveCandidates(
   if (byok && principal.projectId) {
     // Provider keys are always project-wide (shared) — there is no
     // per-user/private key concept. See getProjectSecretValue.
-    const key = await getProjectSecretValue(principal.projectId, byok.envVar);
+    const readGatewaySecret = (name: string) =>
+      getProjectSecretValueForConsumer({
+        projectId: principal.projectId!,
+        accountId: principal.accountId,
+        sessionId: principal.sessionId,
+        actorUserId: principal.userId,
+        name,
+        consumer: 'llm_gateway',
+      });
+    const key = await readGatewaySecret(byok.envVar);
     if (key) {
       const tier = config.KORTIX_BILLING_INTERNAL_ENABLED
         ? await resolveCachedAccountTier(principal.accountId)
@@ -145,9 +154,7 @@ export async function resolveCandidates(
       // Bedrock's project-scoped region also feeds the AI-SDK engine's Bedrock
       // provider (descriptor.region); resolve it once for both baseUrl + region.
       const bedrockRegion =
-        byok.kind === 'bedrock'
-          ? await getProjectSecretValue(principal.projectId, BEDROCK_REGION_ENV_VAR)
-          : undefined;
+        byok.kind === 'bedrock' ? await readGatewaySecret(BEDROCK_REGION_ENV_VAR) : undefined;
       const baseUrl = byok.kind === 'bedrock' ? bedrockByokBaseUrl(bedrockRegion) : byok.baseUrl;
       // Bedrock invoke id: normalize a wrong-geography cross-region
       // inference-profile prefix (e.g. a `jp.` pick that got stored as an

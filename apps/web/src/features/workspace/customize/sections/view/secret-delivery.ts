@@ -1,4 +1,5 @@
 import type {
+  SecretConsumer,
   SecretDeliveryStatus,
   SecretDeliveryStrategy,
   SecretEgressPolicy,
@@ -35,7 +36,22 @@ const PRESENTATIONS: Record<SecretDeliveryStrategy, SecretDeliveryPresentation> 
 
 export function secretDeliveryPresentation(
   strategy: SecretDeliveryStrategy,
+  consumer?: SecretConsumer | null,
 ): SecretDeliveryPresentation {
+  if (strategy === 'broker' && consumer === 'llm_gateway') {
+    return {
+      label: 'LLM gateway',
+      description: 'Used for model requests without entering the sandbox.',
+      tone: 'secondary',
+    };
+  }
+  if (strategy === 'broker' && consumer === 'http_broker') {
+    return {
+      label: 'HTTPS broker',
+      description: 'Added only to an approved HTTPS request outside the sandbox.',
+      tone: 'secondary',
+    };
+  }
   return PRESENTATIONS[strategy];
 }
 
@@ -117,13 +133,20 @@ export function canSaveSecretDelivery(input: {
   requiresRotation: boolean;
   currentStrategy: SecretDeliveryStrategy;
   nextStrategy: SecretDeliveryStrategy;
+  nextConsumer: SecretConsumer | null;
   brokerPolicyValid: boolean;
 }): boolean {
   const hasValue = Boolean(input.value.trim());
   if (!input.isEdit && !input.key.trim()) return false;
   if (input.requiresValue && !hasValue) return false;
   if (input.nextStrategy === 'runtime' && input.requiresRotation && !hasValue) return false;
-  if (input.nextStrategy === 'broker' && !input.brokerPolicyValid) return false;
+  if (
+    input.nextStrategy === 'broker' &&
+    input.nextConsumer === 'http_broker' &&
+    !input.brokerPolicyValid
+  ) {
+    return false;
+  }
   if (input.nextStrategy === 'broker') return true;
   return !input.isEdit || hasValue || input.nextStrategy !== input.currentStrategy;
 }

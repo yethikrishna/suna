@@ -105,6 +105,7 @@ function secretRow(
     ownerUserId: null,
     description: null,
     strategy: 'runtime' as const,
+    consumer: 'sandbox' as const,
     egressPolicy: null,
     handlePrefix: null,
     rotatedAt: null,
@@ -156,10 +157,12 @@ describe('serializeProject ⇄ ProjectSchema', () => {
     }
   });
 
-  test.each(['managed', 'local_docker', 'justavps', 'unknown']) (
+  test.each(['managed', 'local_docker', 'justavps', 'unknown'])(
     'does not surface retired or unknown project pin %s',
     (provider) => {
-      const out = serializeProject(projectRow({ metadata: { default_sandbox_provider: provider } }));
+      const out = serializeProject(
+        projectRow({ metadata: { default_sandbox_provider: provider } }),
+      );
       expect(out.default_sandbox_provider).toBeNull();
       expect(ProjectSchema.strict().parse(out)).toEqual(out);
     },
@@ -311,7 +314,7 @@ describe('buildSecretView ⇄ SecretSchema', () => {
     const out = buildSecretView({
       identifier: 'OPENAI_API_KEY',
       name: 'OPENAI_API_KEY',
-      shared: secretRow({ strategy: 'broker', egressPolicy }),
+      shared: secretRow({ strategy: 'broker', consumer: 'http_broker', egressPolicy }),
       canManageShared: true,
     });
 
@@ -321,6 +324,23 @@ describe('buildSecretView ⇄ SecretSchema', () => {
       consumer: 'http_broker',
       delivery_status: 'available',
       egress_policy: egressPolicy,
+    });
+  });
+
+  test('LLM gateway metadata reports available delivery without a network policy', () => {
+    const out = buildSecretView({
+      identifier: 'OPENAI_API_KEY',
+      name: 'OPENAI_API_KEY',
+      shared: secretRow({ strategy: 'broker', consumer: 'llm_gateway' }),
+      canManageShared: true,
+    });
+
+    expect(SecretSchema.strict().parse(out)).toEqual(out);
+    expect(out).toMatchObject({
+      strategy: 'broker',
+      consumer: 'llm_gateway',
+      delivery_status: 'available',
+      egress_policy: null,
     });
   });
 

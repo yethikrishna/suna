@@ -16,7 +16,7 @@ import { propagateProjectSecretsToActiveSandboxes } from '../lib/sandbox-env-syn
 import { isGatewayManagedEnv } from '../../llm-gateway/sandbox-credentials';
 import { seedProjectDefaultModelOnConnect } from '../../llm-gateway/models/seed-default';
 import { createRoute, z } from '@hono/zod-openapi';
-import { UpdateSecretStrategyInputSchema } from '@kortix/api-contract';
+import { SecretConsumerSchema, UpdateSecretStrategyInputSchema } from '@kortix/api-contract';
 import { parseEgressPolicy } from '../../secrets/strategy';
 import {
   projectSecrets,
@@ -537,6 +537,53 @@ projectsApp.openapi(
   }
 
   const value = typeof body.value === 'string' ? body.value : null;
+  const requestedConsumer =
+    body.consumer === undefined ? undefined : SecretConsumerSchema.nullable().safeParse(body.consumer);
+  if (requestedConsumer && !requestedConsumer.success) {
+    return c.json({ error: 'consumer is invalid' }, 400);
+  }
+  const requestedStrategy = body.strategy;
+  if (
+    requestedStrategy !== undefined &&
+    !['runtime', 'broker', 'denied'].includes(String(requestedStrategy))
+  ) {
+    return c.json({ error: 'secret creation supports runtime, broker, or denied delivery' }, 400);
+  }
+  if (
+    requestedStrategy === 'broker' &&
+    requestedConsumer?.data !== 'llm_gateway' &&
+    requestedConsumer?.data !== 'http_broker'
+  ) {
+    return c.json({ error: 'broker creation requires a supported server consumer' }, 400);
+  }
+  if (requestedStrategy === 'runtime' && requestedConsumer?.data !== 'sandbox') {
+    return c.json({ error: 'runtime creation requires the sandbox consumer' }, 400);
+  }
+  if (requestedStrategy === 'denied' && requestedConsumer?.data !== null) {
+    return c.json({ error: 'denied creation cannot have a consumer' }, 400);
+  }
+  if ((requestedStrategy === undefined) !== (requestedConsumer === undefined)) {
+    return c.json({ error: 'strategy and consumer must be set together' }, 400);
+  }
+  const explicitStrategy = requestedStrategy as 'runtime' | 'broker' | 'denied' | undefined;
+  const explicitConsumer = requestedConsumer?.data;
+  let explicitPolicy = null;
+  if (explicitConsumer === 'http_broker') {
+    const policy = parseEgressPolicy(body.egress_policy);
+    if (!policy.ok || policy.policy.backend !== 'kortix_fetch') {
+      return c.json({ error: policy.ok ? 'HTTP broker requires the kortix_fetch backend' : policy.error }, 400);
+    }
+    explicitPolicy = policy.policy;
+  } else if (body.egress_policy !== undefined) {
+    return c.json({ error: 'This consumer does not accept an outbound policy' }, 400);
+  }
+  const explicitHandlePrefix =
+    explicitConsumer === 'http_broker' && typeof body.handle_prefix === 'string'
+      ? body.handle_prefix.trim()
+      : null;
+  if (explicitHandlePrefix && explicitHandlePrefix.length > 48) {
+    return c.json({ error: 'handle_prefix must contain at most 48 characters' }, 400);
+  }
 
   // Look up the existing SHARED row by IDENTIFIER so a key-unchanged edit
   // doesn't force re-entering the value. Creating a brand-new secret still
@@ -546,6 +593,7 @@ projectsApp.openapi(
       secretId: projectSecrets.secretId,
       name: projectSecrets.name,
       strategy: projectSecrets.strategy,
+      consumer: projectSecrets.consumer,
     })
     .from(projectSecrets)
     .where(and(
@@ -583,6 +631,10 @@ projectsApp.openapi(
             identifier,
             name,
             valueEnc: encryptProjectSecret(projectId, value),
+            ...(explicitStrategy ? { strategy: explicitStrategy } : {}),
+            ...(explicitConsumer !== undefined ? { consumer: explicitConsumer } : {}),
+            ...(explicitPolicy ? { egressPolicy: explicitPolicy } : {}),
+            ...(explicitHandlePrefix ? { handlePrefix: explicitHandlePrefix } : {}),
             createdBy: loaded.userId,
             rotatedAt: now,
             updatedAt: now,
@@ -592,6 +644,10 @@ projectsApp.openapi(
             targetWhere: isNull(projectSecrets.ownerUserId),
             set: {
               valueEnc: encryptProjectSecret(projectId, value),
+              ...(explicitStrategy ? { strategy: explicitStrategy } : {}),
+              ...(explicitConsumer !== undefined ? { consumer: explicitConsumer } : {}),
+              ...(explicitConsumer !== undefined ? { egressPolicy: explicitPolicy } : {}),
+              ...(explicitConsumer !== undefined ? { handlePrefix: explicitHandlePrefix } : {}),
               rotatedAt: now,
               updatedAt: now,
             },
@@ -615,10 +671,15 @@ projectsApp.openapi(
       action: existing ? 'secret.updated' : 'secret.created',
       resourceType: 'project_secret',
       resourceId,
-      before: existing ? { configured: true, strategy: existing.strategy } : null,
+      before: existing
+        ? { configured: true, strategy: existing.strategy, consumer: existing.consumer }
+        : null,
       after: {
         configured: true,
-        strategy: existing?.strategy ?? 'runtime',
+        strategy: explicitStrategy ?? existing?.strategy ?? 'runtime',
+        consumer:
+          explicitConsumer !== undefined ? explicitConsumer : (existing?.consumer ?? 'sandbox'),
+        egress_policy: explicitPolicy,
         rotated: value !== null,
       },
       metadata: { identifier, name },
@@ -691,7 +752,45 @@ projectsApp.openapi(
       return c.json({ error: `${identifier} is managed by Kortix` }, 403);
     }
     let nextPolicy = null;
-    if (parsed.data.strategy === 'broker' || parsed.data.strategy === 'egress') {
+    const policyBackend = parsed.data.egress_policy?.backend;
+    const inferredConsumer =
+      parsed.data.strategy === 'runtime'
+        ? 'sandbox'
+        : parsed.data.strategy === 'denied'
+          ? null
+          : parsed.data.strategy === 'egress'
+            ? 'network'
+            : policyBackend === 'kortix_fetch'
+              ? 'http_broker'
+              : policyBackend === 'llm_gateway' ||
+                  policyBackend === 'executor' ||
+                  policyBackend === 'git_proxy'
+                ? policyBackend
+                : 'http_broker';
+    const nextConsumer =
+      parsed.data.consumer === undefined ? inferredConsumer : parsed.data.consumer;
+
+    if (parsed.data.strategy === 'runtime' && nextConsumer !== 'sandbox') {
+      return c.json({ error: 'runtime delivery requires the sandbox consumer' }, 400);
+    }
+    if (parsed.data.strategy === 'denied' && nextConsumer !== null) {
+      return c.json({ error: 'denied delivery cannot have a consumer' }, 400);
+    }
+    if (parsed.data.strategy === 'egress' && nextConsumer !== 'network') {
+      return c.json({ error: 'egress delivery requires the network consumer' }, 400);
+    }
+    if (
+      parsed.data.strategy === 'broker' &&
+      !['llm_gateway', 'executor', 'git_proxy', 'http_broker', 'connector'].includes(
+        String(nextConsumer),
+      )
+    ) {
+      return c.json({ error: 'broker delivery requires a server consumer' }, 400);
+    }
+
+    const requiresNetworkPolicy =
+      parsed.data.strategy === 'egress' || nextConsumer === 'http_broker';
+    if (requiresNetworkPolicy) {
       if (!parsed.data.egress_policy) {
         return c.json(
           {
@@ -709,6 +808,8 @@ projectsApp.openapi(
         );
       }
       nextPolicy = policy.policy;
+    } else if (parsed.data.egress_policy) {
+      return c.json({ error: 'This consumer does not accept an outbound policy' }, 400);
     }
     if (parsed.data.strategy === 'egress') {
       return c.json(
@@ -721,7 +822,8 @@ projectsApp.openapi(
     }
     if (
       parsed.data.strategy === 'broker' &&
-      nextPolicy?.backend !== 'kortix_fetch'
+      nextConsumer !== 'llm_gateway' &&
+      nextConsumer !== 'http_broker'
     ) {
       return c.json(
         {
@@ -737,6 +839,7 @@ projectsApp.openapi(
         secretId: projectSecrets.secretId,
         name: projectSecrets.name,
         strategy: projectSecrets.strategy,
+        consumer: projectSecrets.consumer,
         rotatedAt: projectSecrets.rotatedAt,
         updatedAt: projectSecrets.updatedAt,
         strategyLocked: projectSecrets.strategyLocked,
@@ -774,9 +877,10 @@ projectsApp.openapi(
     }
 
     const nextHandlePrefix =
-      parsed.data.strategy === 'broker' ? (parsed.data.handle_prefix ?? null) : null;
+      nextConsumer === 'http_broker' ? (parsed.data.handle_prefix ?? null) : null;
     const deliveryChanged =
       existing.strategy !== parsed.data.strategy ||
+      existing.consumer !== nextConsumer ||
       JSON.stringify(existing.egressPolicy ?? null) !== JSON.stringify(nextPolicy) ||
       existing.handlePrefix !== nextHandlePrefix;
     if (deliveryChanged) {
@@ -789,6 +893,7 @@ projectsApp.openapi(
             .update(projectSecrets)
             .set({
               strategy: parsed.data.strategy,
+              consumer: nextConsumer,
               egressPolicy: nextPolicy,
               handlePrefix: nextHandlePrefix,
               updatedAt: changedAt,
@@ -815,11 +920,13 @@ projectsApp.openapi(
           resourceId: existing.secretId,
           before: {
             strategy: existing.strategy,
+            consumer: existing.consumer,
             egress_policy: existing.egressPolicy ?? null,
             handle_prefix: existing.handlePrefix ?? null,
           },
           after: {
             strategy: parsed.data.strategy,
+            consumer: nextConsumer,
             egress_policy: nextPolicy,
             handle_prefix: nextHandlePrefix,
             requires_rotation: parsed.data.strategy !== 'runtime',

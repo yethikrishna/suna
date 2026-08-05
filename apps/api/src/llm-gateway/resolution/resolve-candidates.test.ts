@@ -39,12 +39,13 @@ mock.module('../../config', () => ({ config }));
 // `secretsByName` falls back to `resolvedSecret` for backward compatibility.
 let resolvedSecret: string | null = null;
 let secretsByName: Record<string, string | null> = {};
-const getProjectSecretValue = mock(async (_projectId: string, name: string) => {
+const getProjectSecretValueForConsumer = mock(async (input: { name: string }) => {
+  const name = input.name;
   if (name in secretsByName) return secretsByName[name] ?? null;
   return resolvedSecret;
 });
 mock.module('../../projects/secrets', () => ({
-  getProjectSecretValue,
+  getProjectSecretValueForConsumer,
 }));
 
 class CodexRefreshError extends Error {}
@@ -169,7 +170,7 @@ beforeEach(() => {
   livePricingCalls = [];
   getAccountTier.mockClear();
   getCachedAccountTier.mockClear();
-  getProjectSecretValue.mockClear();
+  getProjectSecretValueForConsumer.mockClear();
   resolveCodexCredential.mockClear();
 });
 
@@ -249,8 +250,16 @@ describe('resolveCandidates — BYOK billingMode / free-tier / managed-fallback'
     // The bearer token AND the region are each looked up under their own
     // AWS-standard secret name, project-wide (shared) only — there is no
     // per-caller/private lookup.
-    expect(getProjectSecretValue).toHaveBeenCalledWith('p1', 'AWS_BEARER_TOKEN_BEDROCK');
-    expect(getProjectSecretValue).toHaveBeenCalledWith('p1', 'AWS_REGION');
+    expect(getProjectSecretValueForConsumer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'p1',
+        name: 'AWS_BEARER_TOKEN_BEDROCK',
+        consumer: 'llm_gateway',
+      }),
+    );
+    expect(getProjectSecretValueForConsumer).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'p1', name: 'AWS_REGION', consumer: 'llm_gateway' }),
+    );
   });
 
   test('BYOK Bedrock with no AWS_REGION set: falls back to the BYOK default (us-east-1), not the managed AWS_BEDROCK_REGION default', async () => {

@@ -61,6 +61,29 @@ describe('slack step', () => {
   test('collapses to a single confirmed state once connected', () => {
     expect(slack).toContain('Connected to Slack');
   });
+
+  // The custom-app setup sits BESIDE the chooser, not on top of it. An earlier
+  // pass replaced the whole step with a sub-view, which hid what the user came
+  // from — they are still adding Kortix to Slack, just by a longer route.
+  test('opens the custom app as a second pane, not a replacement', () => {
+    expect(slack).toContain('xl:flex-row');
+    expect(slack).toContain('<motion.aside');
+    expect(slack).toContain('Bring your own Slack app');
+    // No drill-in: the chooser is never unmounted to make room.
+    expect(slack).not.toContain("key={pane}");
+  });
+
+  // FLIP-derived transforms, not an animated width — a width animation would
+  // lay out and paint every frame.
+  test('shifts the chooser with a layout animation', () => {
+    expect(slack).toContain('layout={!reduced}');
+  });
+
+  // Below xl there is no room for two panes side by side.
+  test('stacks the pane underneath on narrow screens', () => {
+    expect(slack).toContain('flex-col');
+    expect(slack).toContain('xl:w-[420px]');
+  });
 });
 
 describe('company step', () => {

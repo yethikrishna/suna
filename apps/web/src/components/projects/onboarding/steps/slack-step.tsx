@@ -3,24 +3,28 @@
 /**
  * Install Kortix into Slack.
  *
- * Two panes, not one screen with a disclosure. Choosing "Use a custom Slack
- * app" is a move *into* a sub-view, so it animates like one: the chooser
- * translates out to the left and the form arrives from the right, the same
- * grammar the wizard uses between steps. Expanding a form inline underneath a
- * row said "this is more of the same list", which it is not — it is a different
- * task with its own title and its own way back.
+ * Opening "Use a custom Slack app" does not replace the step — it widens it.
+ * The chooser slides left and the manifest panel arrives beside it, so the
+ * user can still see what they came from while they work through the setup.
+ * That is the right shape because the two are one task: you are still adding
+ * Kortix to Slack, just by a longer route.
+ *
+ * The shift is a Motion `layout` animation, so the movement is FLIP-derived
+ * transforms rather than an animated width — no layout thrash per frame. Below
+ * `xl` there is no room for two panes, so the panel stacks underneath instead
+ * and the same fade carries it in.
  *
  * The install itself is unchanged: open the OAuth popup, poll, detect.
  */
 
 import {
-  ArrowLeftIcon as ArrowLeft,
   CheckIcon as Check,
   SlidersHorizontalIcon as Sliders,
   LightningIcon as Lightning,
+  XIcon as X,
 } from '@phosphor-icons/react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { InfoBanner } from '@/components/ui/info-banner';
@@ -28,7 +32,7 @@ import Loading from '@/components/ui/loading';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSlackInstall, useSlackMode } from '@/hooks/channels/use-channels-installations';
 
-import { slideVariants } from '../motion';
+import { ENTER_TRANSITION, EXIT_TRANSITION } from '../motion';
 import { ChoiceRow, StepShell } from '../step-shell';
 
 /** Lazy — keeps the giant connectors-view module out of the project bundle. */
@@ -37,8 +41,6 @@ const SlackConnectForm = lazy(() =>
     default: m.SlackConnectForm,
   })),
 );
-
-type Pane = 'choose' | 'custom';
 
 export function SlackStep({
   projectId,
@@ -51,22 +53,17 @@ export function SlackStep({
 }) {
   const mode = useSlackMode(projectId);
   const install = useSlackInstall(projectId);
-  const [requestedPane, setPane] = useState<Pane>('choose');
+  const [customRequested, setCustomRequested] = useState(false);
   const [pollRequested, setPollRequested] = useState(false);
 
   const reduced = useReducedMotion() ?? false;
-  const paneVariants = useMemo(() => slideVariants(reduced), [reduced]);
 
   const installUrl = mode.data?.oauth_available ? mode.data.install_url : null;
   const connected = !!install.data;
 
-  // A landed install makes the sub-view moot, so the chooser wins. Derived
-  // rather than reset from an effect: an effect would cascade a render to say
-  // something React can just compute.
-  const pane: Pane = connected ? 'choose' : requestedPane;
-
-  // Derived, not stored — the poll stops the instant the install lands rather
-  // than a render later.
+  // Both derived rather than reset from effects: a landed install closes the
+  // panel and stops the poll without cascading a render to say so.
+  const customOpen = customRequested && !connected;
   const waiting = pollRequested && !connected;
 
   const refetch = install.refetch;
@@ -83,92 +80,90 @@ export function SlackStep({
   };
 
   return (
-    <AnimatePresence mode="popLayout" custom={pane === 'custom' ? 1 : -1} initial={false}>
-      <motion.div
-        key={pane}
-        custom={pane === 'custom' ? 1 : -1}
-        variants={paneVariants}
-        initial="enter"
-        animate="center"
-        exit="exit"
-      >
-        {pane === 'custom' ? (
-          <div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground -ml-2 mb-4 h-8 gap-1.5 px-2"
-              onClick={() => setPane('choose')}
-            >
-              <ArrowLeft className="size-3.5" />
-              Back
-            </Button>
-            <StepShell
-              title="Bring your own Slack app"
-              description="Point Kortix at a Slack app you control. You'll need its signing secret and bot token."
-              primaryLabel="Continue"
-              primaryDisabled={!connected}
-              onPrimary={onContinue}
-            >
-              <Suspense fallback={<Skeleton className="h-40 w-full rounded-md" />}>
-                <SlackConnectForm projectId={projectId} onConnected={() => install.refetch()} />
-              </Suspense>
-            </StepShell>
-          </div>
-        ) : (
-          <StepShell
-            title="Add Kortix to Slack"
-            description="This is where most teams actually use Kortix — @mention your agent, kick off tasks, get results in the channel."
-            primaryLabel="Continue"
-            primaryDisabled={!connected}
-            onPrimary={onContinue}
-            skipLabel={connected ? undefined : 'Skip'}
-            onSkip={connected ? undefined : onSkip}
-          >
-            {connected ? (
-              <InfoBanner tone="success" icon={Check} title="Connected to Slack">
-                Installed to{' '}
-                <span className="font-medium">
-                  {install.data?.workspaceName || install.data?.workspaceId}
-                </span>
-                . You can @mention your agent in any channel it&apos;s invited to.
-              </InfoBanner>
-            ) : (
-              <div
-                className="flex flex-col gap-2"
-                role="radiogroup"
-                aria-label="Slack install method"
-              >
-                <ChoiceRow
-                  selected={false}
-                  label={waiting ? 'Waiting for approval in Slack…' : 'Add to Slack'}
-                  description={
-                    waiting
-                      ? 'We’ll detect it automatically — no need to come back here'
-                      : 'One click, nothing to configure'
-                  }
-                  disabled={mode.isLoading || !installUrl}
-                  onSelect={openInstall}
-                  leading={
-                    waiting ? (
-                      <Loading className="size-4 shrink-0" />
-                    ) : (
-                      <Lightning className="text-muted-foreground size-4 shrink-0" />
-                    )
-                  }
-                />
-                <ChoiceRow
-                  selected={false}
-                  label="Use a custom Slack app"
-                  description="For self-hosted workspaces, or when managed install is unavailable"
-                  onSelect={() => setPane('custom')}
-                  leading={<Sliders className="text-muted-foreground size-4 shrink-0" />}
-                />
-              </div>
-            )}
-          </StepShell>
-        )}
+    <div className="flex flex-col items-center gap-6 xl:flex-row xl:items-start xl:justify-center">
+      <motion.div layout={!reduced} transition={ENTER_TRANSITION} className="w-full max-w-[560px] shrink-0">
+        <StepShell
+          title="Add Kortix to Slack"
+          description="This is where most teams actually use Kortix — @mention your agent, kick off tasks, get results in the channel."
+          primaryLabel="Continue"
+          primaryDisabled={!connected}
+          onPrimary={onContinue}
+          skipLabel={connected ? undefined : 'Skip'}
+          onSkip={connected ? undefined : onSkip}
+        >
+          {connected ? (
+            <InfoBanner tone="success" icon={Check} title="Connected to Slack">
+              Installed to{' '}
+              <span className="font-medium">
+                {install.data?.workspaceName || install.data?.workspaceId}
+              </span>
+              . You can @mention your agent in any channel it&apos;s invited to.
+            </InfoBanner>
+          ) : (
+            <div className="flex flex-col gap-2" role="radiogroup" aria-label="Slack install method">
+              <ChoiceRow
+                selected={false}
+                label={waiting ? 'Waiting for approval in Slack…' : 'Add to Slack'}
+                description={
+                  waiting
+                    ? 'We’ll detect it automatically — no need to come back here'
+                    : 'One click, nothing to configure'
+                }
+                disabled={mode.isLoading || !installUrl}
+                onSelect={openInstall}
+                leading={
+                  waiting ? (
+                    <Loading className="size-4 shrink-0" />
+                  ) : (
+                    <Lightning className="text-muted-foreground size-4 shrink-0" />
+                  )
+                }
+              />
+              <ChoiceRow
+                selected={customOpen}
+                label="Use a custom Slack app"
+                description="For self-hosted workspaces, or when managed install is unavailable"
+                onSelect={() => setCustomRequested((o) => !o)}
+                leading={<Sliders className="text-muted-foreground size-4 shrink-0" />}
+              />
+            </div>
+          )}
+        </StepShell>
       </motion.div>
-    </AnimatePresence>
+
+      <AnimatePresence initial={false}>
+        {customOpen && (
+          <motion.aside
+            key="custom-slack"
+            // Arrives from the right, the direction it is opening toward.
+            initial={reduced ? { opacity: 0 } : { opacity: 0, x: -16 }}
+            animate={{ opacity: 1, x: 0, transition: ENTER_TRANSITION }}
+            exit={reduced ? { opacity: 0 } : { opacity: 0, x: -16, transition: EXIT_TRANSITION }}
+            className="border-border/60 bg-popover w-full max-w-[560px] shrink-0 rounded-md border p-4 xl:w-[420px] xl:max-w-none"
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <h2 className="text-foreground text-sm font-medium">Bring your own Slack app</h2>
+                <p className="text-muted-foreground text-xs leading-5">
+                  For self-hosted setups or workspace-scoped installs.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Close custom Slack app setup"
+                className="text-muted-foreground shrink-0"
+                onClick={() => setCustomRequested(false)}
+              >
+                <X className="size-3.5" />
+              </Button>
+            </div>
+            <Suspense fallback={<Skeleton className="h-40 w-full rounded-md" />}>
+              <SlackConnectForm projectId={projectId} onConnected={() => install.refetch()} />
+            </Suspense>
+          </motion.aside>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

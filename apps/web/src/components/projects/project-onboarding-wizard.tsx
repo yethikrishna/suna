@@ -47,6 +47,7 @@ import { useAuth } from '@/features/providers/auth-provider';
 import { useProjectOnboarding } from '@/hooks/projects/use-project-onboarding';
 import { usePersonalContactTier } from '@/hooks/use-show-personal-contact';
 import { isConnectorsEnabled } from '@/lib/config';
+import { cn } from '@/lib/utils';
 import { useComposerPrefillStore } from '@/stores/composer-prefill-store';
 import { listConnectors } from '@kortix/sdk';
 
@@ -202,7 +203,15 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
           </div>
 
           <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-5 pb-16 md:items-center md:px-8">
-            <div className="w-full max-w-[560px] py-8">
+            {/* The Slack step expands into a second pane on wide screens, so it
+                gets room for the pair. Below xl it stays a single column and
+                the pane stacks underneath. Every other step is 560 flat. */}
+            <div
+              className={cn(
+                'w-full py-8',
+                stepId === 'slack' ? 'max-w-[560px] xl:max-w-[1040px]' : 'max-w-[560px]',
+              )}
+            >
               {/* popLayout, not wait: `wait` runs the exit to completion before
                   the enter starts, which doubled every step to ~440ms of dead
                   air. popLayout takes the outgoing step out of flow so the two

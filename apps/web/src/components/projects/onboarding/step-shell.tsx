@@ -20,9 +20,14 @@ import { cn } from '@/lib/utils';
  * One segment per wizard step. Sits at the top of the column, not in the header
  * bar — the reference flows keep progress with the content it describes.
  */
+/**
+ * Six short ticks, centred in the top bar. Segments rather than one continuous
+ * bar so the flow states honestly how much is left — "six short things" is a
+ * promise a filling bar cannot make.
+ */
 export function StepProgress({ total, current }: { total: number; current: number }) {
   return (
-    <div className="flex flex-1 items-center gap-1.5" aria-hidden>
+    <div className="flex w-[200px] items-center gap-1.5" aria-hidden>
       {Array.from({ length: total }).map((_, i) => (
         <span
           key={i}
@@ -37,7 +42,6 @@ export function StepProgress({ total, current }: { total: number; current: numbe
 }
 
 export function StepShell({
-  eyebrow,
   title,
   description,
   children,
@@ -47,7 +51,6 @@ export function StepShell({
   skipLabel,
   onSkip,
 }: {
-  eyebrow?: string;
   title: string;
   description?: string;
   children?: ReactNode;
@@ -58,9 +61,8 @@ export function StepShell({
   onSkip?: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="space-y-2">
-        {eyebrow && <p className="text-muted-foreground text-xs font-medium">{eyebrow}</p>}
+    <div className="flex flex-col">
+      <div className="space-y-2.5">
         <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance">
           {title}
         </h1>
@@ -69,31 +71,31 @@ export function StepShell({
         )}
       </div>
 
-      {children}
+      {children && <div className="mt-8">{children}</div>}
 
-      {/* The primary lives in the column, not in a bordered footer bar. One less
-          piece of chrome, and it keeps the whole step readable as one block. */}
-      <div className="flex flex-col items-center gap-1">
-        <Button
-          size="lg"
-          className="w-full active:scale-[0.96]"
-          onClick={onPrimary}
-          disabled={primaryDisabled}
-        >
-          {primaryLabel}
-        </Button>
+      {/* Skip and Continue are siblings with real distance between them and from
+          the content above. A skip tucked directly under the primary reads as a
+          footnote to it; side by side it reads as the other choice, which is
+          what it is. */}
+      <div className="mt-10 flex items-center gap-3">
         {skipLabel && onSkip && (
-          // h-10 rather than the size="sm" h-8, so the quiet escape hatch still
-          // clears the 40px minimum hit area.
           <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground h-10 active:scale-[0.96]"
+            size="lg"
+            variant="outline"
+            className="flex-1 active:scale-[0.96]"
             onClick={onSkip}
           >
             {skipLabel}
           </Button>
         )}
+        <Button
+          size="lg"
+          className="flex-1 active:scale-[0.96]"
+          onClick={onPrimary}
+          disabled={primaryDisabled}
+        >
+          {primaryLabel}
+        </Button>
       </div>
     </div>
   );

@@ -13,8 +13,14 @@
  * because an empty finish screen would punish them twice for skipping.
  */
 
-import { ArrowRightIcon as ArrowRight, CheckIcon as Check } from '@phosphor-icons/react';
+import {
+  ArrowRightIcon as ArrowRight,
+  CheckIcon as Check,
+  CalendarBlankIcon as Calendar,
+} from '@phosphor-icons/react';
 import type { OnboardingUseCase } from '@kortix/sdk';
+
+import { Button } from '@/components/ui/button';
 
 import { starterPromptsFor } from '../onboarding-profile';
 import { ChoiceRow, StepShell } from '../step-shell';
@@ -22,11 +28,16 @@ import { ChoiceRow, StepShell } from '../step-shell';
 export function DoneStep({
   useCase,
   profileCount,
+  showFounderCall,
+  onBookCall,
   onStart,
   onUsePrompt,
 }: {
   useCase: OnboardingUseCase | null;
   profileCount: number;
+  /** Founder-concierge tier. The CTA used to live on the deleted welcome step. */
+  showFounderCall?: boolean;
+  onBookCall?: () => void;
   onStart: () => void;
   onUsePrompt: (prompt: string) => void;
 }) {
@@ -61,6 +72,22 @@ export function DoneStep({
             />
           ))}
         </div>
+
+        {/* Rehomed from the deleted welcome step. Quiet, below the prompts —
+            it is an offer, not the main path. */}
+        {showFounderCall && onBookCall && (
+          <div className="mt-6 flex justify-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground h-10 gap-1.5"
+              onClick={onBookCall}
+            >
+              <Calendar className="size-3.5" />
+              Book a 20-minute setup call with Marko
+            </Button>
+          </div>
+        )}
       </StepShell>
     </div>
   );

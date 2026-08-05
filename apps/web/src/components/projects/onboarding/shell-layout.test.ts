@@ -40,9 +40,8 @@ describe('onboarding shell', () => {
     expect(shell).not.toContain('rounded-2xl');
   });
 
-  test('derives its step list and survey numbering from the shared helpers', () => {
+  test('derives its step list from the shared helper', () => {
     expect(shell).toContain('buildSteps(');
-    expect(shell).toContain('surveyPosition(');
   });
 
   // Every step body lives in its own module; the shell is a frame, not a
@@ -52,5 +51,46 @@ describe('onboarding shell', () => {
     expect(shell).not.toContain('function ToolsStep');
     expect(shell).not.toContain('function SlackStep');
     expect(shell).not.toContain('function ModelStep');
+  });
+
+  // The top bar is a back control and progress. Nothing competes with the
+  // question — no mark, no title, no product name.
+  test('carries no branding in the chrome', () => {
+    expect(shell).not.toContain('KortixAsterisk');
+    expect(shell).not.toContain('Set up your project');
+  });
+
+  test('renders progress centred and a back control, nothing else', () => {
+    expect(shell).toContain('<StepProgress');
+    expect(shell).toContain('justify-center');
+    expect(shell).toContain('aria-label="Back"');
+  });
+
+  // The welcome screen is gone, so the founder-concierge CTA has to survive
+  // somewhere or the deletion silently dropped a conversion path.
+  test('keeps the founder call reachable from the finish step', () => {
+    expect(shell).toContain('showFounderCall');
+    expect(shell).toContain('onBookCall');
+  });
+});
+
+describe('step shell primitive', () => {
+  const stepShell = readFileSync(join(import.meta.dir, 'step-shell.tsx'), 'utf8');
+
+  // "Question 1 of 2" told the user how much interrogation was left. The
+  // progress bar already does that, more quietly.
+  test('has no eyebrow prop at all', () => {
+    expect(stepShell).not.toContain('eyebrow');
+  });
+
+  // A skip tucked directly beneath the primary reads as a footnote to it. Side
+  // by side, as a secondary, it reads as the other choice — which it is.
+  test('renders skip as a secondary sibling of the primary', () => {
+    expect(stepShell).toContain('variant="outline"');
+    expect(stepShell).toContain('gap-3');
+  });
+
+  test('puts real distance between the content and the actions', () => {
+    expect(stepShell).toContain('mt-10');
   });
 });

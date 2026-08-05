@@ -41,7 +41,6 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { KortixAsterisk } from '@/components/ui/kortix-asterisk';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { DemoQualifierModal } from '@/features/contact/demo-qualifier-modal';
 import { useAuth } from '@/features/providers/auth-provider';
@@ -55,7 +54,6 @@ import {
   buildSteps,
   deriveCompanyDomain,
   firstStepAfterSurvey,
-  surveyPosition,
 } from './onboarding/onboarding-profile';
 import { StepProgress } from './onboarding/step-shell';
 import { useOnboardingAnswers } from './onboarding/use-onboarding-answers';
@@ -65,7 +63,6 @@ import { PlanStep } from './onboarding/steps/plan-step';
 import { SlackStep } from './onboarding/steps/slack-step';
 import { ToolsStep } from './onboarding/steps/tools-step';
 import { UseCaseStep } from './onboarding/steps/use-case-step';
-import { WelcomeStep } from './onboarding/steps/welcome-step';
 
 const CAL_LINK = 'team/kortix/demo';
 const CAL_NAMESPACE = 'kortix-onboarding-wizard';
@@ -95,9 +92,7 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
 
   const connectorsEnabled = isConnectorsEnabled();
   const steps = useMemo(() => buildSteps(connectorsEnabled), [connectorsEnabled]);
-  const stepId = steps[index] ?? 'welcome';
-  const survey = surveyPosition(stepId);
-  const eyebrow = survey ? `Question ${survey.index} of ${survey.total}` : undefined;
+  const stepId = steps[index] ?? 'use-case';
 
   // `?onboarding-reset` reopens the wizard from the top (clears completion flag).
   const resetFn = onboarding.reset;
@@ -169,32 +164,27 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
         aria-label="Project setup"
       >
         <div className="border-border/60 bg-background flex h-full flex-col overflow-hidden rounded-md border">
-          <div className="flex items-center px-5 py-4 md:px-8">
-            <div className="flex items-center gap-2.5">
-              <KortixAsterisk index={0} />
-              <span className="text-foreground text-sm font-semibold tracking-tight">
-                Set up your project
-              </span>
+          {/* The entire chrome: a back control on the left, progress centred.
+              No mark, no title. Nothing here competes with the question. */}
+          <div className="relative flex h-14 shrink-0 items-center px-3 md:px-5">
+            {index > 0 && (
+              <Button
+                variant="ghost"
+                size="icon-md"
+                aria-label="Back"
+                className="text-muted-foreground hover:text-foreground active:scale-[0.96]"
+                onClick={back}
+              >
+                <ArrowLeft className="size-4" />
+              </Button>
+            )}
+            <div className="pointer-events-none absolute inset-x-0 flex justify-center">
+              <StepProgress total={steps.length} current={index} />
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-5 pb-10 md:items-center md:px-8">
-            <div className="w-full max-w-[560px] py-6">
-              <div className="mb-8 flex items-center gap-3">
-                {index > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground -ml-2 h-8 shrink-0 gap-1.5 px-2"
-                    onClick={back}
-                  >
-                    <ArrowLeft className="size-3.5" />
-                    Back
-                  </Button>
-                )}
-                <StepProgress total={steps.length} current={index} />
-              </div>
-
+          <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-5 pb-16 md:items-center md:px-8">
+            <div className="w-full max-w-[560px] py-8">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={stepId}
@@ -203,16 +193,8 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
                   exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.22, ease: 'easeOut' }}
                 >
-                  {stepId === 'welcome' && (
-                    <WelcomeStep
-                      showFounderStep={showFounderStep}
-                      onBookCall={() => setCalOpen(true)}
-                      onContinue={next}
-                    />
-                  )}
                   {stepId === 'use-case' && (
                     <UseCaseStep
-                      eyebrow={eyebrow}
                       value={answers.use_case ?? null}
                       onSelect={(v) => save({ use_case: v })}
                       onContinue={next}
@@ -221,7 +203,6 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
                   )}
                   {stepId === 'company' && (
                     <CompanyStep
-                      eyebrow={eyebrow}
                       domain={domain}
                       size={answers.company_size ?? null}
                       onDomainChange={setDomain}
@@ -255,6 +236,8 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
                     <DoneStep
                       useCase={answers.use_case ?? null}
                       profileCount={connectorSlugs.length}
+                      showFounderCall={showFounderStep}
+                      onBookCall={() => setCalOpen(true)}
                       onStart={complete}
                       onUsePrompt={startWithPrompt}
                     />

@@ -1,26 +1,29 @@
 'use client';
 
 /**
- * Step 6 — choose how to start.
+ * How to power the agent.
  *
- * This absorbs what used to be a separate "Connect a model" step. Picking a
- * paid plan IS how a user gets Kortix models, and `Start free` routes to
- * bring-your-own-key — two screens would have asked the same question twice.
+ * The earlier version fired a modal the instant a row was clicked. That is the
+ * defect: the user taps to *consider* an option and gets a whole separate flow
+ * thrown at them, so they back out and lose the thread. Here, selecting a row
+ * only selects. `Continue` performs whatever was chosen.
  *
- * It is NEVER a gate. `Continue` carries no disabled condition: the chat
- * composer enforces model connection later, and blocking here would strand a
- * user who wants to look around before deciding to pay.
+ * "Decide later" exists so nobody is ever cornered. The chat composer already
+ * gates on model connection at the moment it actually matters, which makes
+ * deferring a legitimate answer rather than an escape hatch.
  */
 
+import { CheckIcon as Check, KeyIcon as Key, ClockIcon as Clock, SparkleIcon as Sparkle } from '@phosphor-icons/react';
 import { useState } from 'react';
 
+import { InfoBanner } from '@/components/ui/info-banner';
 import { flattenModels } from '@/features/session/session-chat-input';
 import { useModelConnectionGate } from '@/features/session/use-model-connection-gate';
 import { useRuntimeProviders } from '@kortix/sdk/react';
 
 import { ChoiceRow, StepShell } from '../step-shell';
 
-type PlanChoice = 'free' | 'paid';
+type PlanChoice = 'kortix' | 'byok' | 'later';
 
 export function PlanStep({ onContinue }: { onContinue: () => void }) {
   const { data: providers } = useRuntimeProviders();
@@ -28,42 +31,70 @@ export function PlanStep({ onContinue }: { onContinue: () => void }) {
     useModelConnectionGate(flattenModels(providers));
   const [choice, setChoice] = useState<PlanChoice | null>(null);
 
+  // Nothing opens until Continue. This is the whole point of the step.
+  const handleContinue = () => {
+    if (choice === 'kortix') openUpgrade();
+    else if (choice === 'byok') openConnectProvider('providers');
+    else onContinue();
+  };
+
+  // A model is already connected, so there is no question left to ask. Confirm
+  // it and move on rather than making the user answer something moot.
+  if (hasSelectableModels) {
+    return (
+      <>
+        {modal}
+        <StepShell
+          title="Your agent is ready to think"
+          description="A model is already connected. You can change it anytime from the composer."
+          primaryLabel="Continue"
+          onPrimary={onContinue}
+        >
+          <InfoBanner tone="success" icon={Check} title="Model connected">
+            Switch models or add another provider whenever you like — nothing here is locked in.
+          </InfoBanner>
+        </StepShell>
+      </>
+    );
+  }
+
   return (
     <>
       {modal}
       <StepShell
-        title="How do you want to start?"
-        description={
-          hasSelectableModels
-            ? 'A model is already connected, so you’re ready either way. Pick a plan now or stay on free — you can change this anytime.'
-            : 'Your agent needs a model to think with. Both options take under a minute, and you can change this anytime.'
+        title="How do you want to power your agent?"
+        description="Your agent needs a model to think with. Nothing happens until you continue."
+        // The label names what the button will actually do, so the modal that
+        // opens is never a surprise.
+        primaryLabel={
+          choice === 'kortix' ? 'See plans' : choice === 'byok' ? 'Add a key' : 'Continue'
         }
-        primaryLabel="Continue"
-        onPrimary={onContinue}
+        onPrimary={handleContinue}
       >
-        <div className="flex flex-col gap-2" role="radiogroup" aria-label="Plan">
-          <ChoiceRow
-            selected={choice === 'free'}
-            label="Start free"
-            description="Explore Kortix with your own API key from Anthropic, OpenAI, or any provider."
-            onSelect={() => {
-              setChoice('free');
-              openConnectProvider('providers');
-            }}
-          />
-          {/* Hidden when billing is off: there is no <GlobalUpgradeModal/>
-              mounted to respond, so the row would be a dead click. */}
+        <div className="flex flex-col gap-2" role="radiogroup" aria-label="Model access">
           {showUpgradeOption && (
             <ChoiceRow
-              selected={choice === 'paid'}
-              label="Start with a paid plan"
-              description="Instant access to Kortix models, higher limits, and priority support."
-              onSelect={() => {
-                setChoice('paid');
-                openUpgrade();
-              }}
+              selected={choice === 'kortix'}
+              label="Use Kortix models"
+              description="Instant access, higher limits, nothing to configure"
+              onSelect={() => setChoice('kortix')}
+              leading={<Sparkle className="text-muted-foreground size-4 shrink-0" />}
             />
           )}
+          <ChoiceRow
+            selected={choice === 'byok'}
+            label="Bring your own API key"
+            description="Anthropic, OpenAI, or any other provider"
+            onSelect={() => setChoice('byok')}
+            leading={<Key className="text-muted-foreground size-4 shrink-0" />}
+          />
+          <ChoiceRow
+            selected={choice === 'later'}
+            label="Decide later"
+            description="The composer will ask the first time you send a task"
+            onSelect={() => setChoice('later')}
+            leading={<Clock className="text-muted-foreground size-4 shrink-0" />}
+          />
         </div>
       </StepShell>
     </>

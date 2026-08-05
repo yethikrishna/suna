@@ -1,56 +1,106 @@
 /**
- * The redesign has exactly one structural rule: nothing renders outside a
- * single 560px column.
+ * The alignment contract.
  *
- * These assertions read the source string because the rule is about what the
- * markup is ALLOWED to contain, not about runtime state. A rendering test would
- * pass just as happily with a `max-w-2xl` container as with a `max-w-[560px]`
- * one — the defect being fixed here is invisible to the DOM API and visible
- * only in the classes.
+ * The redesign rests on one rule — every element in a step starts at the same
+ * left edge — and the previous version failed it in four separate ways at
+ * once: it centred the column and the content inside it, stretched the actions
+ * edge-to-edge, and centre-aligned two whole steps. No amount of spacing or
+ * motion work fixed how that read, so the rule is asserted rather than trusted.
+ *
+ * Source assertions, because "nothing here is centred" is a property of the
+ * markup that a rendering test cannot see.
  */
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const shell = readFileSync(
-  join(import.meta.dir, '..', 'project-onboarding-wizard.tsx'),
-  'utf8',
-);
+const read = (...p: string[]) => readFileSync(join(import.meta.dir, ...p), 'utf8');
 
-describe('onboarding shell', () => {
-  test('constrains the body to one 560px column', () => {
-    expect(shell).toContain('max-w-[560px]');
+const shell = read('..', 'project-onboarding-wizard.tsx');
+const stepShell = read('step-shell.tsx');
+
+const STEPS = [
+  'use-case-step.tsx',
+  'company-step.tsx',
+  'tools-step.tsx',
+  'slack-step.tsx',
+  'plan-step.tsx',
+  'done-step.tsx',
+] as const;
+
+describe('the rail', () => {
+  test('is a single fixed width', () => {
+    expect(shell).toContain('max-w-[640px]');
     expect(shell).not.toContain('max-w-2xl');
   });
 
-  test('drops the bordered footer bar in favour of an in-column primary', () => {
-    expect(shell).not.toContain('StepPrimaryAction');
-    expect(shell).not.toContain('border-t');
+  // A full-bleed button belongs to both edges and therefore to neither. This
+  // was the single most visible alignment break.
+  test('actions are auto-width, never stretched', () => {
+    expect(stepShell).not.toContain('w-full active:scale');
+    expect(stepShell).not.toContain('flex-1 active:scale');
+    expect(stepShell).toContain('items-start');
   });
 
-  test('renders the inset panel frame', () => {
-    expect(shell).toContain('fixed inset-0');
-    expect(shell).toContain('rounded-md border');
+  test('no step centres its own content', () => {
+    for (const step of STEPS) {
+      const src = read('steps', step);
+      expect(`${step}: ${src.includes('text-center')}`).toBe(`${step}: false`);
+      expect(`${step}: ${src.includes('items-center justify-center')}`).toBe(`${step}: false`);
+      expect(`${step}: ${src.includes('mx-auto')}`).toBe(`${step}: false`);
+    }
   });
 
-  // rounded-xl / rounded-2xl are banned on app containers by the design system.
-  // The spec and plan both originally specified rounded-xl for this panel.
-  test('uses no banned container radius', () => {
-    expect(shell).not.toContain('rounded-xl');
-    expect(shell).not.toContain('rounded-2xl');
+  test('every step renders through the shared shell', () => {
+    for (const step of STEPS) {
+      expect(`${step}: ${read('steps', step).includes('<StepShell')}`).toBe(`${step}: true`);
+    }
+  });
+});
+
+describe('chrome', () => {
+  test('carries no branding and no progress widget', () => {
+    expect(shell).not.toContain('KortixAsterisk');
+    expect(shell).not.toContain('Set up your project');
+    expect(shell).not.toContain('StepProgress');
   });
 
-  test('derives its step list and survey numbering from the shared helpers', () => {
-    expect(shell).toContain('buildSteps(');
-    expect(shell).toContain('surveyPosition(');
+  // The count lives on the rail as the first line, so it shares the left edge
+  // with everything else instead of floating in the header.
+  test('the step count is a rail line, not a floating element', () => {
+    expect(shell).toContain('stepLabel(index, steps.length)');
+    expect(stepShell).toContain('stepLabel');
+    expect(stepShell).toContain('tabular-nums');
   });
 
-  // Every step body lives in its own module; the shell is a frame, not a
-  // grab-bag. Guards against the file drifting back into a 850-line monolith.
+  test('keeps a back control and nothing else', () => {
+    expect(shell).toContain('aria-label="Back"');
+  });
+
+  // The welcome screen is gone, so the founder CTA has to survive somewhere or
+  // the deletion silently dropped a conversion path.
+  test('keeps the founder call reachable from the finish step', () => {
+    expect(shell).toContain('showFounderCall');
+  });
+
   test('holds no step bodies of its own', () => {
     expect(shell).not.toContain('function WelcomeStep');
     expect(shell).not.toContain('function ToolsStep');
     expect(shell).not.toContain('function SlackStep');
-    expect(shell).not.toContain('function ModelStep');
+  });
+});
+
+describe('options', () => {
+  // Uniform height is most of what makes a grid read as deliberate rather than
+  // assembled — a staggered row is the tell.
+  test('single-line cards share one fixed height', () => {
+    expect(stepShell).toContain('h-[52px]');
+  });
+
+  // A sentence of helper text under every choice is padding, and padding is
+  // what makes an interface feel generated.
+  test('use case options are label-only', () => {
+    const useCase = read('steps', 'use-case-step.tsx');
+    expect(useCase).not.toContain('description={option.description}');
   });
 });

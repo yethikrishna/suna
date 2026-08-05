@@ -1,18 +1,22 @@
 'use client';
 
 /**
- * Step 5 — install Kortix into Slack.
+ * Install Kortix into Slack.
  *
- * Behaviour is unchanged from the pre-redesign wizard: open the install in a
- * popup, POLL for the install to land, and flip to a confirmed state the moment
- * it does. Still gated — `Continue` stays disabled until connected — with a
- * quiet skip as the escape hatch.
+ * Two cards, and the custom-app route opens a view of its own on the same rail
+ * rather than a side panel or an inline expansion. Earlier attempts squeezed
+ * the manifest form beside the chooser or underneath it; both fought the rail's
+ * single width. A dedicated view gets the full width, keeps one alignment
+ * rule, and does not inflate the step count — the counter still reads Slack.
+ *
+ * The install itself is unchanged: open the OAuth popup, poll, detect.
  */
 
 import {
+  ArrowLeftIcon as ArrowLeft,
   CheckIcon as Check,
-  CaretDownIcon as ChevronDown,
-  SlidersHorizontalIcon as SlidersHorizontal,
+  LightningIcon as Lightning,
+  SlidersHorizontalIcon as Sliders,
 } from '@phosphor-icons/react';
 import { Suspense, lazy, useEffect, useState } from 'react';
 
@@ -21,41 +25,49 @@ import { InfoBanner } from '@/components/ui/info-banner';
 import Loading from '@/components/ui/loading';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSlackInstall, useSlackMode } from '@/hooks/channels/use-channels-installations';
-import { cn } from '@/lib/utils';
 
-import { StepShell } from '../step-shell';
+import { OptionCard, OptionGrid, StepShell } from '../step-shell';
 
-/** Lazy — keeps the giant connectors-view module out of the project bundle. */
+const importConnectorsView = () => import('@/features/workspace/customize/sections/connectors-view');
+
 const SlackConnectForm = lazy(() =>
-  import('@/features/workspace/customize/sections/connectors-view').then((m) => ({
-    default: m.SlackConnectForm,
-  })),
+  importConnectorsView().then((m) => ({ default: m.SlackConnectForm })),
 );
 
+/**
+ * Fetch the chunk on hover, before the click. Left alone, `lazy()` downloads
+ * and parses a large form at the moment the view swaps, which drops frames for
+ * reasons that have nothing to do with the transition. Idempotent — the module
+ * registry dedupes.
+ */
+const preloadConnectorsView = () => {
+  void importConnectorsView();
+};
+
 export function SlackStep({
+  stepLabel,
   projectId,
   onContinue,
   onSkip,
 }: {
+  stepLabel: string;
   projectId: string;
   onContinue: () => void;
   onSkip: () => void;
 }) {
   const mode = useSlackMode(projectId);
   const install = useSlackInstall(projectId);
+  const [customRequested, setCustomRequested] = useState(false);
   const [pollRequested, setPollRequested] = useState(false);
-  const [customOpen, setCustomOpen] = useState(false);
 
   const installUrl = mode.data?.oauth_available ? mode.data.install_url : null;
   const connected = !!install.data;
 
-  // Derived, not stored. The pre-redesign version kept `waiting` in state and
-  // used a second effect to flip it off once the install landed — a setState
-  // inside an effect body, which cascades a render for something React can just
-  // compute. Deriving it also stops the poll below the instant we're connected.
+  // Both derived, not reset from effects: a landed install closes the custom
+  // view and stops the poll without cascading a render to say so.
+  const showCustom = customRequested && !connected;
   const waiting = pollRequested && !connected;
 
-  // Poll for the install while we're waiting on the user to approve in Slack.
   const refetch = install.refetch;
   useEffect(() => {
     if (!waiting) return;
@@ -69,100 +81,81 @@ export function SlackStep({
     setPollRequested(true);
   };
 
+  if (showCustom) {
+    return (
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground -ml-2 mb-5 h-8 gap-1.5 px-2"
+          onClick={() => setCustomRequested(false)}
+        >
+          <ArrowLeft className="size-3.5" />
+          Back to install options
+        </Button>
+        <StepShell
+          stepLabel={stepLabel}
+          title="Bring your own Slack app"
+          description="Point Kortix at a Slack app you control. You'll need its signing secret and bot token."
+          primaryLabel="Continue"
+          primaryDisabled={!connected}
+          onPrimary={onContinue}
+        >
+          <Suspense fallback={<Skeleton className="h-64 w-full rounded-md" />}>
+            <SlackConnectForm projectId={projectId} onConnected={() => install.refetch()} />
+          </Suspense>
+        </StepShell>
+      </div>
+    );
+  }
+
   return (
     <StepShell
-      title="Install Kortix into Slack"
-      description="This is where most teams actually use Kortix. Install the app and you can @mention your agent, kick off tasks, and get results right inside Slack."
+      stepLabel={stepLabel}
+      title="Add Kortix to Slack"
+      description="This is where most teams actually use Kortix — @mention your agent, kick off tasks, get results in the channel."
       primaryLabel="Continue"
       primaryDisabled={!connected}
       onPrimary={onContinue}
-      skipLabel={connected ? undefined : 'Skip for now'}
-      onSkip={connected ? undefined : onSkip}
+      secondaryLabel={connected ? undefined : 'Skip'}
+      onSecondary={connected ? undefined : onSkip}
     >
-      <div className="flex flex-col gap-4">
-        {connected ? (
-          <InfoBanner tone="success" icon={Check} title="Slack connected">
-            Installed to{' '}
-            <span className="font-medium">
-              {install.data?.workspaceName || install.data?.workspaceId}
-            </span>
-            . You can @mention your agent in any channel it&apos;s invited to.
-          </InfoBanner>
-        ) : (
-          <div className="bg-popover flex flex-col items-center gap-4 rounded-md border px-4 py-8 text-center">
-            <SlackGlyph />
-            {waiting ? (
-              <div className="flex flex-col items-center gap-2">
-                <div className="text-foreground flex items-center gap-2 text-sm font-medium">
-                  <Loading className="size-4 shrink-0" />
-                  Waiting for you to approve in Slack…
-                </div>
-                <p className="text-muted-foreground text-xs leading-5 text-pretty">
-                  Approve the install in the window that opened. We&apos;ll detect it automatically
-                  — no need to come back and click anything.
-                </p>
-                <Button variant="ghost" size="sm" className="mt-1" onClick={openInstall}>
-                  Reopen Slack install
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-3">
-                <p className="text-muted-foreground text-sm leading-6 text-pretty">
-                  One click — authorize Kortix in your workspace, no setup required.
-                </p>
-                <Button
-                  className="active:scale-[0.96]"
-                  onClick={openInstall}
-                  disabled={mode.isLoading || !installUrl}
-                >
-                  Add to Slack
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Custom Slack app — fallback for self-hosted / managed install not configured. */}
-        {!connected && (
-          <div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground h-8 gap-1.5 px-0"
-              onClick={() => setCustomOpen((o) => !o)}
-            >
-              <ChevronDown
-                className={cn('size-3.5 transition-transform', customOpen && 'rotate-180')}
-              />
-              <SlidersHorizontal className="size-3.5" />
-              Use a custom Slack app instead
-            </Button>
-            {customOpen && (
-              <div className="mt-3">
-                <Suspense fallback={<Skeleton className="h-24 w-full rounded-md" />}>
-                  <SlackConnectForm projectId={projectId} onConnected={() => install.refetch()} />
-                </Suspense>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {connected ? (
+        <InfoBanner tone="success" icon={Check} title="Connected to Slack">
+          Installed to{' '}
+          <span className="font-medium">
+            {install.data?.workspaceName || install.data?.workspaceId}
+          </span>
+          . You can @mention your agent in any channel it&apos;s invited to.
+        </InfoBanner>
+      ) : (
+        <OptionGrid label="Slack install method">
+          <OptionCard
+            selected={false}
+            label={waiting ? 'Waiting for approval…' : 'Add to Slack'}
+            description={
+              waiting ? 'We’ll detect it automatically' : 'One click, nothing to configure'
+            }
+            disabled={mode.isLoading || !installUrl}
+            onSelect={openInstall}
+            icon={
+              waiting ? (
+                <Loading className="size-4 shrink-0" />
+              ) : (
+                <Lightning className="text-muted-foreground size-4" />
+              )
+            }
+          />
+          <OptionCard
+            selected={false}
+            label="Use a custom Slack app"
+            description="For self-hosted workspaces"
+            onSelect={() => setCustomRequested(true)}
+            onPreload={preloadConnectorsView}
+            icon={<Sliders className="text-muted-foreground size-4" />}
+          />
+        </OptionGrid>
+      )}
     </StepShell>
-  );
-}
-
-function SlackGlyph() {
-  return (
-    <span className="border-border/60 bg-background flex size-12 items-center justify-center rounded-md border">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="https://www.google.com/s2/favicons?domain=slack.com&sz=128"
-        alt=""
-        width={28}
-        height={28}
-        className="size-7"
-      />
-    </span>
   );
 }

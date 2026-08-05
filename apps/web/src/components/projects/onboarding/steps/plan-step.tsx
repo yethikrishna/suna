@@ -1,69 +1,97 @@
 'use client';
 
 /**
- * Step 6 — choose how to start.
+ * How to power the agent.
  *
- * This absorbs what used to be a separate "Connect a model" step. Picking a
- * paid plan IS how a user gets Kortix models, and `Start free` routes to
- * bring-your-own-key — two screens would have asked the same question twice.
+ * Selecting a card only selects. `Continue` performs it, and its label names
+ * what will happen — an earlier version fired a modal the instant a row was
+ * clicked, so tapping to consider an option threw a separate flow at the user
+ * and they backed out of it.
  *
- * It is NEVER a gate. `Continue` carries no disabled condition: the chat
- * composer enforces model connection later, and blocking here would strand a
- * user who wants to look around before deciding to pay.
+ * A connected model is context, not an answer: the options stay available so
+ * nobody who wants a second provider or a plan is stranded on a confirmation
+ * screen.
  */
 
+import {
+  CheckIcon as Check,
+  ClockIcon as Clock,
+  KeyIcon as Key,
+  SparkleIcon as Sparkle,
+} from '@phosphor-icons/react';
 import { useState } from 'react';
 
+import { InfoBanner } from '@/components/ui/info-banner';
 import { flattenModels } from '@/features/session/session-chat-input';
 import { useModelConnectionGate } from '@/features/session/use-model-connection-gate';
 import { useRuntimeProviders } from '@kortix/sdk/react';
 
-import { ChoiceRow, StepShell } from '../step-shell';
+import { OptionCard, OptionGrid, StepShell } from '../step-shell';
 
-type PlanChoice = 'free' | 'paid';
+type PlanChoice = 'kortix' | 'byok' | 'later';
 
-export function PlanStep({ onContinue }: { onContinue: () => void }) {
+export function PlanStep({ stepLabel, onContinue }: { stepLabel: string; onContinue: () => void }) {
   const { data: providers } = useRuntimeProviders();
   const { openConnectProvider, openUpgrade, modal, hasSelectableModels, showUpgradeOption } =
     useModelConnectionGate(flattenModels(providers));
   const [choice, setChoice] = useState<PlanChoice | null>(null);
 
+  const handleContinue = () => {
+    if (choice === 'kortix') openUpgrade();
+    else if (choice === 'byok') openConnectProvider('providers');
+    else onContinue();
+  };
+
   return (
     <>
       {modal}
       <StepShell
-        title="How do you want to start?"
+        stepLabel={stepLabel}
+        title="How do you want to power your agent?"
         description={
           hasSelectableModels
-            ? 'A model is already connected, so you’re ready either way. Pick a plan now or stay on free — you can change this anytime.'
-            : 'Your agent needs a model to think with. Both options take under a minute, and you can change this anytime.'
+            ? 'A model is already connected, so you’re good to go. Add another provider or upgrade if you want more.'
+            : 'Your agent needs a model to think with. Nothing opens until you continue.'
         }
-        primaryLabel="Continue"
-        onPrimary={onContinue}
+        primaryLabel={
+          choice === 'kortix' ? 'See plans' : choice === 'byok' ? 'Add a key' : 'Continue'
+        }
+        onPrimary={handleContinue}
       >
-        <div className="flex flex-col gap-2" role="radiogroup" aria-label="Plan">
-          <ChoiceRow
-            selected={choice === 'free'}
-            label="Start free"
-            description="Explore Kortix with your own API key from Anthropic, OpenAI, or any provider."
-            onSelect={() => {
-              setChoice('free');
-              openConnectProvider('providers');
-            }}
-          />
-          {/* Hidden when billing is off: there is no <GlobalUpgradeModal/>
-              mounted to respond, so the row would be a dead click. */}
-          {showUpgradeOption && (
-            <ChoiceRow
-              selected={choice === 'paid'}
-              label="Start with a paid plan"
-              description="Instant access to Kortix models, higher limits, and priority support."
-              onSelect={() => {
-                setChoice('paid');
-                openUpgrade();
-              }}
-            />
+        <div className="space-y-4">
+          {hasSelectableModels && (
+            <InfoBanner tone="success" icon={Check} title="Model connected">
+              You can switch models or add another provider at any time.
+            </InfoBanner>
           )}
+
+          <OptionGrid label="Model access">
+            {showUpgradeOption && (
+              <OptionCard
+                selected={choice === 'kortix'}
+                label="Use Kortix models"
+                description="Instant access, higher limits"
+                onSelect={() => setChoice('kortix')}
+                icon={<Sparkle className="text-muted-foreground size-4" />}
+              />
+            )}
+            <OptionCard
+              selected={choice === 'byok'}
+              label={hasSelectableModels ? 'Connect another provider' : 'Bring your own API key'}
+              description="Anthropic, OpenAI, or any other"
+              onSelect={() => setChoice('byok')}
+              icon={<Key className="text-muted-foreground size-4" />}
+            />
+            <OptionCard
+              selected={choice === 'later'}
+              label={hasSelectableModels ? 'Keep what I have' : 'Decide later'}
+              description={
+                hasSelectableModels ? 'Carry on as you are' : 'The composer will ask you first time'
+              }
+              onSelect={() => setChoice('later')}
+              icon={<Clock className="text-muted-foreground size-4" />}
+            />
+          </OptionGrid>
         </div>
       </StepShell>
     </>

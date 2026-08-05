@@ -1,23 +1,24 @@
 'use client';
 
 /**
- * Step 3, survey question 2 — who the team works for.
+ * Who the team works for.
  *
- * Domain and size share one screen because they are one thought. Both fields
- * are optional, so `Continue` is never disabled: this is a survey, not a form,
- * and gating the flow on it would trade real activation for a data point.
+ * Both fields are optional, so `Continue` is never disabled: this is a survey,
+ * not a form, and gating the flow on it would trade real activation for a data
+ * point.
  */
 
+import { GlobeIcon } from '@phosphor-icons/react';
 import type { OnboardingCompanySize } from '@kortix/sdk';
 
-import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { Label } from '@/components/ui/label';
 
 import { COMPANY_SIZES } from '../onboarding-profile';
-import { ChoiceRow, StepShell } from '../step-shell';
+import { OptionCard, OptionGrid, StepShell } from '../step-shell';
 
 export function CompanyStep({
-  eyebrow,
+  stepLabel,
   domain,
   size,
   onDomainChange,
@@ -25,7 +26,7 @@ export function CompanyStep({
   onContinue,
   onSkip,
 }: {
-  eyebrow?: string;
+  stepLabel: string;
   domain: string;
   size: OnboardingCompanySize | null;
   onDomainChange: (v: string) => void;
@@ -35,40 +36,45 @@ export function CompanyStep({
 }) {
   return (
     <StepShell
-      eyebrow={eyebrow}
+      stepLabel={stepLabel}
       title="Tell us about your company"
       description="Your agent uses the domain to research your own company. Nothing is shared publicly."
       primaryLabel="Continue"
       onPrimary={onContinue}
-      skipLabel="Skip these questions"
-      onSkip={onSkip}
+      secondaryLabel="Skip"
+      onSecondary={onSkip}
     >
-      <div className="flex flex-col gap-5">
-        <div className="space-y-2">
+      {/* Two questions on one screen, so they need to read as two. */}
+      <div className="space-y-8">
+        <div className="space-y-2.5">
           <Label htmlFor="onboarding-company-domain">Company domain</Label>
-          <Input
-            id="onboarding-company-domain"
-            value={domain}
-            onChange={(e) => onDomainChange(e.target.value)}
-            placeholder="acme.com"
-            autoComplete="organization"
-            spellCheck={false}
-            className="h-10"
-          />
+          <InputGroup className="h-11 max-w-[340px]">
+            <InputGroupAddon>
+              <GlobeIcon className="text-muted-foreground size-4" />
+            </InputGroupAddon>
+            <InputGroupInput
+              id="onboarding-company-domain"
+              value={domain}
+              onChange={(e) => onDomainChange(e.target.value)}
+              placeholder="acme.com"
+              autoComplete="organization"
+              spellCheck={false}
+            />
+          </InputGroup>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <Label>Company size</Label>
-          <div className="flex flex-col gap-2" role="radiogroup" aria-label="Company size">
+          <OptionGrid label="Company size">
             {COMPANY_SIZES.map((option) => (
-              <ChoiceRow
+              <OptionCard
                 key={option}
                 selected={size === option}
                 label={`${option} people`}
                 onSelect={() => onSizeChange(option)}
               />
             ))}
-          </div>
+          </OptionGrid>
         </div>
       </div>
     </StepShell>

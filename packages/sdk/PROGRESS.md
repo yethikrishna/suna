@@ -62,6 +62,29 @@ persisted across a reload, reordered, or edited by a user.
 
 ---
 
+### 2026-08-05 — session `secret-delivery-complete` claim
+
+No **Now** task claimed. This work continues the completed
+`secret-delivery-control-plane` slice.
+
+Scope:
+
+- Add an additive SDK contract for complete secret delivery configuration.
+- Preserve `setProjectSecretStrategy()` and every published name.
+- Expose consumer, broker, egress, rotation, and credential-profile metadata.
+- Keep web and CLI clients on the SDK contract.
+
+The listed `tdd` skill is unavailable in this session. This work will use the
+same RED, GREEN, and REFACTOR sequence directly.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
+---
+
 ### 2026-08-04 — session `auth-cache-link-prefetch` claim
 
 No **Now** task claimed. This is a narrow browser cache identity fix.

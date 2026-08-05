@@ -57,7 +57,7 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { errorToast, successToast } from '@/components/ui/toast';
-import { Icon } from '@/features/icon/icon';
+import { Plus as PlusIcon } from '@/features/icon/icons/plus';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
 import CustomizeSectionWrapper from '@/features/workspace/customize/sections/component/section-wrapper';
@@ -200,7 +200,7 @@ export function SecretsView({ projectId }: { projectId: string }) {
                 )}
               </Button>
               <Button size="sm" variant="secondary" onClick={openCreate}>
-                <Icon.Plus className="size-4 shrink-0" />
+                <PlusIcon className="size-4 shrink-0" />
                 Add
               </Button>
             </div>

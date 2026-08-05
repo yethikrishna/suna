@@ -48,3 +48,23 @@ describe('buildSessionRuntimeEnv — KORTIX_COMPILED_AGENT_CONFIG', () => {
     expect(env).not.toHaveProperty('KORTIX_ORIGIN_REF');
   });
 });
+
+describe('buildSessionRuntimeEnv — workspace mode', () => {
+  test('runtime mode disables the project clone', () => {
+    const env = buildSessionRuntimeEnv({
+      ...BASE_INPUT,
+      workspaceMode: 'runtime',
+    });
+
+    expect(env.KORTIX_WORKSPACE_MODE).toBe('runtime');
+    expect(env.KORTIX_PROJECT_AUTO_CLONE).toBe('0');
+  });
+
+  test('legacy and branch sessions keep the project clone', () => {
+    expect(buildSessionRuntimeEnv(BASE_INPUT).KORTIX_PROJECT_AUTO_CLONE).toBe('1');
+    expect(
+      buildSessionRuntimeEnv({ ...BASE_INPUT, workspaceMode: 'branch' })
+        .KORTIX_PROJECT_AUTO_CLONE,
+    ).toBe('1');
+  });
+});

@@ -1,4 +1,5 @@
 import { agentConfigEtag } from './compile-agent-config';
+import type { WorkspaceModeV2 } from '@kortix/manifest-schema';
 
 export interface SessionRuntimeEnvInput {
   projectId: string;
@@ -11,6 +12,8 @@ export interface SessionRuntimeEnvInput {
   frontendUrl?: string;
   initialPrompt?: string | null;
   opencodeModel?: string | null;
+  /** Project file delivery mode selected by the session's agent. */
+  workspaceMode?: WorkspaceModeV2 | null;
   /** Server-compiled OpenCode agent config (JSON string) for a `kortix_version:
    *  2` project — see `compile-agent-config.ts`. `null`/omitted for a v1
    *  project: no key is emitted, so v1 sandbox env is byte-for-byte unchanged. */
@@ -28,6 +31,8 @@ export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<st
     KORTIX_SERVICE_PORT: '8000',
     KORTIX_AGENT_NAME: input.agentName,
     KORTIX_API_URL: input.apiUrl,
+    KORTIX_PROJECT_AUTO_CLONE: input.workspaceMode === 'runtime' ? '0' : '1',
+    ...(input.workspaceMode ? { KORTIX_WORKSPACE_MODE: input.workspaceMode } : {}),
     // Frontend base for user-facing dashboard links — the agent/CLI must never
     // surface KORTIX_API_URL (the API host) to a human. See sandboxFrontendBaseUrl().
     ...(input.frontendUrl ? { KORTIX_FRONTEND_URL: input.frontendUrl } : {}),

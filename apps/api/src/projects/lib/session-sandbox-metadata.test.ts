@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   resolveSessionSandboxSlug,
   sandboxSlugFromSessionMetadata,
+  workspaceModeFromSessionMetadata,
 } from './session-sandbox-metadata';
 
 describe('sandboxSlugFromSessionMetadata', () => {
@@ -15,6 +16,20 @@ describe('sandboxSlugFromSessionMetadata', () => {
     expect(sandboxSlugFromSessionMetadata(null)).toBeUndefined();
     expect(sandboxSlugFromSessionMetadata({})).toBeUndefined();
     expect(sandboxSlugFromSessionMetadata({ sandbox_slug: '../escape' })).toBeUndefined();
+  });
+});
+
+describe('workspaceModeFromSessionMetadata', () => {
+  test('returns a persisted workspace mode', () => {
+    expect(workspaceModeFromSessionMetadata({ workspace_mode: 'runtime' })).toBe('runtime');
+    expect(workspaceModeFromSessionMetadata({ workspace_mode: 'read' })).toBe('read');
+    expect(workspaceModeFromSessionMetadata({ workspace_mode: 'branch' })).toBe('branch');
+  });
+
+  test('rejects missing and invalid metadata values', () => {
+    expect(workspaceModeFromSessionMetadata(null)).toBeUndefined();
+    expect(workspaceModeFromSessionMetadata({})).toBeUndefined();
+    expect(workspaceModeFromSessionMetadata({ workspace_mode: 'all' })).toBeUndefined();
   });
 });
 

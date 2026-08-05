@@ -1,3 +1,5 @@
+import { WORKSPACE_MODES_V2, type WorkspaceModeV2 } from '@kortix/manifest-schema';
+
 /** Read the server-owned resolved template from durable session metadata. */
 export function sandboxSlugFromSessionMetadata(metadata: unknown): string | undefined {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined;
@@ -5,6 +7,15 @@ export function sandboxSlugFromSessionMetadata(metadata: unknown): string | unde
   if (typeof value !== 'string') return undefined;
   const slug = value.trim();
   return /^[a-z0-9][a-z0-9_-]{0,127}$/.test(slug) ? slug : undefined;
+}
+
+/** Read the server-owned agent workspace mode from durable session metadata. */
+export function workspaceModeFromSessionMetadata(metadata: unknown): WorkspaceModeV2 | undefined {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined;
+  const value = (metadata as Record<string, unknown>).workspace_mode;
+  return typeof value === 'string' && (WORKSPACE_MODES_V2 as readonly string[]).includes(value)
+    ? (value as WorkspaceModeV2)
+    : undefined;
 }
 
 /** Apply the session sandbox precedence contract. */

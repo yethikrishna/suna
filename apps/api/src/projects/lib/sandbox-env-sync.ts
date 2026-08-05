@@ -18,9 +18,11 @@ import { sanitizeSandboxEnv } from './sandbox-env-names';
 import {
   agentConfigEtag,
   resolveCompiledAgentConfigForSession,
+  resolveSelectedAgentConfigForSession,
 } from './compile-agent-config';
 import { waitForDaemonOpencodeReady } from './sandbox-daemon-ready';
 import { SECRET_CAPABILITIES_ENV_NAME } from '../secret-capabilities';
+import { workspaceModeFromSessionMetadata } from './session-sandbox-metadata';
 
 /**
  * The origin THIS sandbox should reach kortix-api's LLM-gateway surface at —
@@ -655,16 +657,29 @@ export async function pushSessionAgentConfigToSandbox(input: {
   baseRef?: string | null;
 }): Promise<{ applied: boolean; reason?: string; opencodeReload?: 'disposed' | 'restarted' | 'kept-old' | null }> {
   try {
-    const compiled = await resolveCompiledAgentConfigForSession(
-      {
-        projectId: input.projectId,
-        repoUrl: input.repoUrl,
-        defaultBranch: input.defaultBranch,
-        manifestPath: input.manifestPath ?? 'kortix.yaml',
-        gitAuthToken: null,
-      },
-      input.baseRef,
-    );
+    const [session] = await db
+      .select({
+        agentName: projectSessions.agentName,
+        metadata: projectSessions.metadata,
+      })
+      .from(projectSessions)
+      .where(eq(projectSessions.sessionId, input.sessionId))
+      .limit(1);
+    const gitProject = {
+      projectId: input.projectId,
+      repoUrl: input.repoUrl,
+      defaultBranch: input.defaultBranch,
+      manifestPath: input.manifestPath ?? 'kortix.yaml',
+      gitAuthToken: null,
+    };
+    const compiled =
+      workspaceModeFromSessionMetadata(session?.metadata) === 'runtime' && session?.agentName
+        ? await resolveSelectedAgentConfigForSession(
+            gitProject,
+            session.agentName,
+            input.baseRef,
+          )
+        : await resolveCompiledAgentConfigForSession(gitProject, input.baseRef);
     // `null` is a v1 project or an unreadable manifest. Pushing an empty value
     // would DELETE the agent config the box is running — a v1 project has none
     // to begin with, and for a transient read failure that would be a silent

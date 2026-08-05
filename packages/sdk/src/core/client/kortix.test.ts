@@ -42,6 +42,20 @@ test('project(id) handle binds the id and hits the right endpoint', async () => 
   expect(last().method).toBe('GET');
 });
 
+test('project(id).secrets.broker binds the project and encoded identifier', async () => {
+  await kortix.project('PID123').secrets.broker('primary/key', {
+    url: 'https://api.example.com/v1/items',
+    method: 'POST',
+  });
+
+  expect(last().url).toContain('/projects/PID123/secrets/primary%2Fkey/broker');
+  expect(last().method).toBe('POST');
+  expect(last().body).toEqual({
+    url: 'https://api.example.com/v1/items',
+    method: 'POST',
+  });
+});
+
 test('session(projectId, sessionId) binds both ids', async () => {
   await kortix.session('PID123', 'SID456').previews();
   expect(last().url).toContain('/projects/PID123/sessions/SID456/previews');

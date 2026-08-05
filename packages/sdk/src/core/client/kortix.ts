@@ -361,6 +361,8 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
           P.upsertProjectSecret(projectId, input),
         setStrategy: (...a: DropFirst<Parameters<typeof P.setProjectSecretStrategy>>) =>
           P.setProjectSecretStrategy(projectId, ...a),
+        broker: (...a: DropFirst<Parameters<typeof P.brokerProjectSecretRequest>>) =>
+          P.brokerProjectSecretRequest(projectId, ...a),
         remove: (name: string) => P.deleteProjectSecret(projectId, name),
         setPersonal: (...a: DropFirst<Parameters<typeof P.setPersonalProjectSecret>>) =>
           P.setPersonalProjectSecret(projectId, ...a),

@@ -142,6 +142,13 @@ function mockApi() {
         manifest_path: 'kortix.yaml',
       });
     }
+    if (url.includes('/projects/proj_1/secrets/') && url.endsWith('/broker') && method === 'POST') {
+      return json({
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+        body_base64: Buffer.from('{"created":true}').toString('base64'),
+      });
+    }
     if (url.includes('/projects/proj_1/secrets') && method === 'POST') {
       const input = typeof body === 'object' && body !== null ? body : {};
       const name = String(input.name).toUpperCase();
@@ -418,6 +425,163 @@ describe('kortix secrets delivery', () => {
     expect(code).toBe(2);
     expect(requests).toHaveLength(0);
     expect(stripAnsi(stderr)).toContain('runtime, broker, egress, or denied');
+  });
+
+  test('configures an HTTPS broker policy from explicit allow and injection flags', async () => {
+    const code = await runSecrets([
+      'delivery',
+      'ANTHROPIC_API_KEY',
+      'broker',
+      '--allow-host',
+      'api.anthropic.com',
+      '--allow-host',
+      '*.anthropic.com',
+      '--allow-method',
+      'POST',
+      '--allow-path',
+      '/v1/*',
+      '--inject-header',
+      'x-api-key',
+      '--template',
+      '{{secret}}',
+      '--handle-prefix',
+      'sk-ant-api03-',
+    ]);
+
+    expect(code).toBe(0);
+    const put = requests.find((request) => request.method === 'PUT');
+    expect(put?.body).toEqual({
+      strategy: 'broker',
+      egress_policy: {
+        backend: 'kortix_fetch',
+        rules: [
+          { host: 'api.anthropic.com', methods: ['POST'], path: '/v1/*' },
+          { host: '*.anthropic.com', methods: ['POST'], path: '/v1/*' },
+        ],
+        inject: { kind: 'header', name: 'x-api-key', template: '{{secret}}' },
+        on_no_match: 'deny',
+        tls: 'terminate',
+      },
+      handle_prefix: 'sk-ant-api03-',
+    });
+  });
+
+  test('requires an explicit host and one injection slot for broker delivery', async () => {
+    const noHost = await runSecrets([
+      'delivery',
+      'ANTHROPIC_API_KEY',
+      'broker',
+      '--inject-header',
+      'x-api-key',
+    ]);
+    expect(noHost).toBe(2);
+    expect(stripAnsi(stderr)).toContain('--allow-host');
+    expect(requests).toHaveLength(0);
+
+    captureOutput();
+    const conflicting = await runSecrets([
+      'delivery',
+      'ANTHROPIC_API_KEY',
+      'broker',
+      '--allow-host',
+      'api.anthropic.com',
+      '--inject-header',
+      'x-api-key',
+      '--inject-query',
+      'key',
+    ]);
+    expect(conflicting).toBe(2);
+    expect(stripAnsi(stderr)).toContain('one injection');
+    expect(requests).toHaveLength(0);
+  });
+
+  test('rejects broker-only flags for runtime delivery', async () => {
+    const code = await runSecrets([
+      'delivery',
+      'ANTHROPIC_API_KEY',
+      'runtime',
+      '--allow-host',
+      'api.anthropic.com',
+    ]);
+    expect(code).toBe(2);
+    expect(requests).toHaveLength(0);
+    expect(stripAnsi(stderr)).toContain('only valid for broker');
+  });
+});
+
+describe('kortix secrets call', () => {
+  test('sends a broker request through the SDK and prints the decoded response', async () => {
+    const code = await runSecrets([
+      'call',
+      'ANTHROPIC_API_KEY',
+      'https://api.anthropic.com/v1/messages',
+      '--method',
+      'POST',
+      '--header',
+      'content-type: application/json',
+      '--data',
+      '{"model":"test"}',
+    ]);
+
+    expect(code).toBe(0);
+    const request = requests.find((item) => item.url.endsWith('/broker'));
+    expect(request?.body).toEqual({
+      url: 'https://api.anthropic.com/v1/messages',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body_base64: Buffer.from('{"model":"test"}').toString('base64'),
+    });
+    expect(stripAnsi(stdout)).toContain('Upstream status: 201');
+    expect(stripAnsi(stdout)).toContain('{"created":true}');
+  });
+
+  test('reads a request body from a file', async () => {
+    const bodyFile = join(tmp, 'request.json');
+    writeFileSync(bodyFile, '{"from":"file"}', 'utf8');
+
+    const code = await runSecrets([
+      'call',
+      'SERVICE_KEY',
+      'https://api.example.com/v1/items',
+      '--method',
+      'POST',
+      '--data-file',
+      bodyFile,
+      '--json',
+    ]);
+
+    expect(code).toBe(0);
+    const request = requests.find((item) => item.url.endsWith('/broker'));
+    expect(objectBody(request!)).toMatchObject({
+      body_base64: Buffer.from('{"from":"file"}').toString('base64'),
+    });
+    expect(JSON.parse(stdout)).toMatchObject({ status: 201 });
+  });
+
+  test('rejects invalid or ambiguous request options before a network call', async () => {
+    const badMethod = await runSecrets([
+      'call',
+      'SERVICE_KEY',
+      'https://api.example.com/v1/items',
+      '--method',
+      'TRACE',
+    ]);
+    expect(badMethod).toBe(2);
+    expect(requests).toHaveLength(0);
+
+    captureOutput();
+    const duplicateBody = await runSecrets([
+      'call',
+      'SERVICE_KEY',
+      'https://api.example.com/v1/items',
+      '--data',
+      '{}',
+      '--data-file',
+      join(tmp, 'unused.json'),
+    ]);
+    expect(duplicateBody).toBe(2);
+    expect(stripAnsi(stderr)).toContain('one request body');
+    expect(requests).toHaveLength(0);
   });
 });
 

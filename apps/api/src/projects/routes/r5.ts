@@ -67,6 +67,11 @@ projectsApp.openapi(
 
   const loaded = await loadProjectForUser(c, projectId, 'read');
   if (!loaded) return c.json({ error: 'Not found' }, 404);
+  await assertAgentSessionWorkspaceAllowsRepository(
+    c,
+    loaded.row.accountId,
+    projectId,
+  );
 
   await db
     .update(projects)

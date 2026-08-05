@@ -9,7 +9,7 @@ import {
   PlusIcon as Plus,
 } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useCallback, useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { InfoBanner } from '@/components/ui/info-banner';
 import { Input } from '@/components/ui/input';
 import {
@@ -38,6 +39,13 @@ import {
   ModalHeader,
   ModalTitle,
 } from '@/components/ui/modal';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -53,24 +61,33 @@ import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
 import CustomizeSectionWrapper from '@/features/workspace/customize/sections/component/section-wrapper';
 import { ProjectProviderModal } from '@/features/workspace/customize/sections/llm-provider/llm-provider-modal';
-import { refreshProjectProviderState } from '@kortix/sdk/react';
 import { isLlmGatewayEnabled } from '@/lib/llm-gateway';
 import { cn } from '@/lib/utils';
 import { useCustomizeStore } from '@/stores/customize-store';
 import {
   type ProjectSecret,
   type ProjectSecretsResponse,
+  type SecretConsumer,
+  type SecretDeliveryStatus,
+  type SecretDeliveryStrategy,
   deleteProjectSecret,
   getProjectDetail,
   listProjectSecrets,
+  setProjectSecretStrategy,
   upsertProjectSecret,
 } from '@kortix/sdk';
+import { refreshProjectProviderState } from '@kortix/sdk/react';
 import {
   WarningIcon as DangerTriangleSolid,
   PencilSimpleIcon,
   MagnifyingGlassIcon as Search,
   TrashIcon,
 } from '@phosphor-icons/react';
+import {
+  canSaveSecretDelivery,
+  secretDeliveryOptions,
+  secretDeliveryPresentation,
+} from './secret-delivery';
 
 const SECRET_NAME_REGEX = /^[A-Z_][A-Z0-9_]{0,63}$/;
 const IDENTIFIER_REGEX = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
@@ -93,6 +110,10 @@ interface SecretRow {
   purpose: string | null;
   canRotate: boolean;
   updatedAt: string | null;
+  strategy: SecretDeliveryStrategy;
+  consumer: SecretConsumer | null;
+  deliveryStatus: SecretDeliveryStatus;
+  requiresRotation: boolean;
 }
 
 export function SecretsView({ projectId }: { projectId: string }) {
@@ -163,10 +184,8 @@ export function SecretsView({ projectId }: { projectId: string }) {
   return (
     <>
       <CustomizeSectionWrapper
-        title={tHardcodedUi.raw('appProjectsIdCustomizeSecretsPage.line104JsxTextProjectSecrets')}
-        description={tHardcodedUi.raw(
-          'appProjectsIdCustomizeSecretsPage.line106JsxTextKeyValuePairsInjectedAsEnvironmentVariablesInto',
-        )}
+        title="Secrets"
+        description="Store encrypted values and control where each value can be used."
         action={
           !secretsQuery.isLoading && !secretsQuery.isError && canManage ? (
             <div className="flex items-center gap-1.5">
@@ -260,7 +279,8 @@ export function SecretsView({ projectId }: { projectId: string }) {
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
                       <TableHead>Identifier</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>Value</TableHead>
+                      <TableHead>Access</TableHead>
                       <TableHead className="w-[52px]">
                         <span className="sr-only">Actions</span>
                       </TableHead>
@@ -282,6 +302,7 @@ export function SecretsView({ projectId }: { projectId: string }) {
               )}
 
               <SecretDialog
+                key={dialogOpen ? (dialogRow?.identifier ?? 'new') : 'closed'}
                 open={dialogOpen}
                 onOpenChange={setDialogOpen}
                 projectId={projectId}
@@ -365,6 +386,10 @@ function buildRows(raw: ProjectSecretsResponse | ProjectSecret[] | null | undefi
     purpose: item.purpose ?? null,
     canRotate: Boolean(item.can_rotate),
     updatedAt: item.updated_at ?? null,
+    strategy: item.strategy ?? 'runtime',
+    consumer: item.consumer ?? (item.strategy === 'denied' ? null : 'sandbox'),
+    deliveryStatus: item.delivery_status ?? (item.strategy === 'denied' ? 'disabled' : 'available'),
+    requiresRotation: Boolean(item.requires_rotation),
   });
 
   const rows: SecretRow[] = [];
@@ -388,6 +413,10 @@ function buildRows(raw: ProjectSecretsResponse | ProjectSecret[] | null | undefi
       purpose: null,
       canRotate: false,
       updatedAt: null,
+      strategy: 'runtime',
+      consumer: 'sandbox',
+      deliveryStatus: 'available',
+      requiresRotation: false,
     });
   }
 
@@ -421,6 +450,7 @@ function SecretTableRow({
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const canManageShared = canManage && !row.system;
   const distinctKey = row.identifier !== row.key;
+  const delivery = secretDeliveryPresentation(row.strategy);
 
   return (
     <TableRow
@@ -453,6 +483,16 @@ function SecretTableRow({
       </TableCell>
       <TableCell className="text-muted-foreground max-w-[200px] text-xs font-medium whitespace-normal">
         {statusLabel(row)}
+      </TableCell>
+      <TableCell className="max-w-[220px] whitespace-normal">
+        <div className="flex flex-col items-start gap-1">
+          <Badge variant={delivery.tone} size="xs">
+            {delivery.label}
+          </Badge>
+          {row.requiresRotation && (
+            <span className="text-kortix-orange text-[11px] font-medium">Rotation required</span>
+          )}
+        </div>
       </TableCell>
       <TableCell>
         {!canManageShared ? null : (
@@ -507,21 +547,15 @@ function SecretDialog({
   onSaved: () => void;
 }) {
   const isEdit = row !== null;
-  const [identifier, setIdentifier] = useState('');
-  const [key, setKey] = useState('');
+  const [identifier, setIdentifier] = useState(row?.identifier ?? '');
+  const [key, setKey] = useState(row?.key ?? '');
   const [value, setValue] = useState('');
+  const [strategy, setStrategy] = useState<SecretDeliveryStrategy>(row?.strategy ?? 'runtime');
 
   const requiresValue = !row?.configured;
 
-  useEffect(() => {
-    if (!open) return;
-    setIdentifier(row?.identifier ?? '');
-    setKey(row?.key ?? '');
-    setValue('');
-  }, [open, row]);
-
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const finalKey = (row?.key ?? key).trim().toUpperCase();
       const finalIdentifier = (row?.identifier ?? identifier).trim() || finalKey;
       if (!SECRET_NAME_REGEX.test(finalKey)) {
@@ -536,11 +570,22 @@ function SecretDialog({
       if (finalKey.startsWith('KORTIX_')) {
         throw new Error('KORTIX_* keys are reserved for platform variables');
       }
-      return upsertProjectSecret(projectId, {
-        name: finalKey,
-        identifier: finalIdentifier,
-        ...(value.trim() ? { value } : {}),
-      });
+      if (strategy === 'runtime' && row?.requiresRotation && !value.trim()) {
+        throw new Error('Enter a new value before making this secret readable in the sandbox.');
+      }
+
+      const hasValueChange = Boolean(value.trim()) || !row?.configured;
+      if (hasValueChange) {
+        await upsertProjectSecret(projectId, {
+          name: finalKey,
+          identifier: finalIdentifier,
+          ...(value.trim() ? { value } : {}),
+        });
+      }
+      if (strategy !== (row?.strategy ?? 'runtime')) {
+        return setProjectSecretStrategy(projectId, finalIdentifier, strategy);
+      }
+      return null;
     },
     onSuccess: () => {
       successToast(
@@ -564,6 +609,17 @@ function SecretDialog({
     : row.configured
       ? `Edit ${row.identifier}`
       : `Set ${row.identifier}`;
+  const selectedDelivery = secretDeliveryPresentation(strategy);
+  const deliveryOptions = secretDeliveryOptions(strategy, row?.deliveryStatus ?? 'available');
+  const canSave = canSaveSecretDelivery({
+    isEdit,
+    key,
+    value,
+    requiresValue,
+    requiresRotation: Boolean(row?.requiresRotation),
+    currentStrategy: row?.strategy ?? 'runtime',
+    nextStrategy: strategy,
+  });
 
   return (
     <Modal
@@ -577,9 +633,8 @@ function SecretDialog({
         <ModalHeader>
           <ModalTitle>{title}</ModalTitle>
           <ModalDescription>
-            {isEdit
-              ? 'Injected as an environment variable into every session the granted agents run.'
-              : 'A profile-like secret: an identifier agents grant, a key injected as an env var, and a value.'}
+            The identifier selects this credential profile. The delivery policy controls where its
+            value can be used.
           </ModalDescription>
         </ModalHeader>
         <form onSubmit={handleSubmit} autoComplete="off">
@@ -649,6 +704,50 @@ function SecretDialog({
                 Leave the value blank to leave it unchanged.
               </p>
             )}
+
+            <Field>
+              <FieldLabel htmlFor="secret-dialog-delivery">Delivery</FieldLabel>
+              <Select
+                value={strategy}
+                onValueChange={(next) => setStrategy(next as SecretDeliveryStrategy)}
+                disabled={save.isPending}
+              >
+                <SelectTrigger id="secret-dialog-delivery" className="min-h-10 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {deliveryOptions.map((option) => (
+                    <SelectItem
+                      key={option.strategy}
+                      value={option.strategy}
+                      disabled={option.disabled}
+                      description={
+                        option.disabled
+                          ? `${option.description} Not available in this deployment.`
+                          : option.description
+                      }
+                    >
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldDescription>{selectedDelivery.description}</FieldDescription>
+            </Field>
+
+            {strategy === 'runtime' && (
+              <InfoBanner tone="warning" title="Readable inside the sandbox">
+                Agent code and commands can read this value. Use this option only when the secret
+                must be available to a local process.
+              </InfoBanner>
+            )}
+
+            {row?.requiresRotation && (
+              <InfoBanner tone="warning" title="Replace the previous value">
+                An earlier sandbox may retain the previous value. Rotate it at the provider, then
+                save the replacement here.
+              </InfoBanner>
+            )}
           </ModalBody>
 
           <ModalFooter className="sm:justify-between">
@@ -666,9 +765,7 @@ function SecretDialog({
               type="submit"
               size="sm"
               className="w-full sm:w-auto"
-              disabled={
-                (!isEdit && !key.trim()) || (requiresValue && !value.trim()) || save.isPending
-              }
+              disabled={save.isPending || !canSave}
             >
               {save.isPending && <Loading className="size-4 shrink-0" />}
               Save

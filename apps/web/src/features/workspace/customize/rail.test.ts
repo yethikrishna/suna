@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { CustomizeSection } from '@/lib/customize-sections';
+import { describe, expect, test } from 'bun:test';
 import { type RailFlags, isRailItemActive, railGroups } from './rail';
 import type { RailItem } from './type';
 
@@ -52,6 +52,14 @@ describe('isRailItemActive', () => {
 });
 
 describe('railGroups', () => {
+  test('uses Secrets as the user-facing section name', () => {
+    const secrets = railGroups(flags())
+      .flatMap((group) => group.items)
+      .find((railItem) => railItem.section === 'secrets');
+
+    expect(secrets?.label).toBe('Secrets');
+  });
+
   test('the base rail carries no flag-gated item', () => {
     const sections = sectionsOf(flags());
     for (const gated of [

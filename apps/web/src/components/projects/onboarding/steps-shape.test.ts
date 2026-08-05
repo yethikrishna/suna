@@ -118,9 +118,12 @@ describe('plan step', () => {
     expect(plan).toContain("'Add a key'");
   });
 
-  // Asking someone to pick a model source when one is already connected is a
-  // question with no answer that matters.
-  test('skips the question entirely when a model is already connected', () => {
-    expect(plan).toContain('if (hasSelectableModels)');
+  // An earlier version short-circuited to a confirm-only screen when a model
+  // was already connected, which stranded anyone who wanted to add a second
+  // provider or move onto a plan. A connected model is context, not an answer.
+  test('keeps every option available even when a model is already connected', () => {
+    expect(plan).not.toContain('if (hasSelectableModels)');
+    expect(plan).toContain('Connect another provider');
+    expect(plan).toContain('Keep what I have');
   });
 });

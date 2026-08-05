@@ -32,7 +32,8 @@ export function StepProgress({ total, current }: { total: number; current: numbe
         <span
           key={i}
           className={cn(
-            'h-1 flex-1 rounded-full transition-colors duration-300',
+            // 200ms, not 300: a 1px tick taking longer than a dropdown reads as lag.
+            'h-1 flex-1 rounded-full transition-colors duration-200',
             i < current ? 'bg-foreground/50' : i === current ? 'bg-foreground' : 'bg-foreground/15',
           )}
         />

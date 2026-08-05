@@ -15,13 +15,15 @@
 
 import {
   ArrowRightIcon as ArrowRight,
-  CheckIcon as Check,
+  CheckCircleIcon as CheckCircle,
   CalendarBlankIcon as Calendar,
 } from '@phosphor-icons/react';
+import { motion, useReducedMotion } from 'motion/react';
 import type { OnboardingUseCase } from '@kortix/sdk';
 
 import { Button } from '@/components/ui/button';
 
+import { SEAL_TRANSITION } from '../motion';
 import { starterPromptsFor } from '../onboarding-profile';
 import { ChoiceRow, StepShell } from '../step-shell';
 
@@ -42,19 +44,28 @@ export function DoneStep({
   onUsePrompt: (prompt: string) => void;
 }) {
   const prompts = starterPromptsFor(useCase);
+  const reduced = useReducedMotion() ?? false;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="bg-kortix-green/15 flex size-9 items-center justify-center rounded-sm">
-        <Check className="text-kortix-green size-5" weight="fill" />
-      </div>
+    <div className="flex flex-col gap-7">
+      {/* The one celebratory beat in the flow, and it happens exactly once.
+          Springs from 0.6 — never 0, because nothing appears out of nothing —
+          with a trace of bounce that would be wrong anywhere else in the UI. */}
+      <motion.div
+        initial={reduced ? { opacity: 0 } : { scale: 0.6, opacity: 0 }}
+        animate={reduced ? { opacity: 1 } : { scale: 1, opacity: 1 }}
+        transition={reduced ? { duration: 0.2 } : SEAL_TRANSITION}
+        className="bg-kortix-green/12 flex size-16 items-center justify-center rounded-full"
+      >
+        <CheckCircle className="text-kortix-green size-10" weight="fill" />
+      </motion.div>
 
       <StepShell
-        title="You're all set"
+        title="Your command center is live"
         description={
           profileCount > 0
-            ? `Your command center is ready with ${profileCount} ${profileCount === 1 ? 'tool' : 'tools'} connected. Pick a starting point, or jump straight in.`
-            : 'Your command center is ready. Pick a starting point, or jump straight in.'
+            ? `${profileCount} ${profileCount === 1 ? 'tool' : 'tools'} connected and ready. Pick something for your agent to start on, or jump straight in.`
+            : 'Pick something for your agent to start on, or jump straight in.'
         }
         primaryLabel="Start building"
         onPrimary={onStart}

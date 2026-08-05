@@ -37,7 +37,7 @@
 
 import { ArrowLeftIcon as ArrowLeft } from '@phosphor-icons/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -50,6 +50,7 @@ import { isConnectorsEnabled } from '@/lib/config';
 import { useComposerPrefillStore } from '@/stores/composer-prefill-store';
 import { listConnectors } from '@kortix/sdk';
 
+import { slideVariants } from './onboarding/motion';
 import {
   buildSteps,
   deriveCompanyDomain,
@@ -81,6 +82,9 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
 
   const onboarding = useProjectOnboarding(projectId);
   const queryClient = useQueryClient();
+
+  const reduced = useReducedMotion() ?? false;
+  const stepVariants = useMemo(() => slideVariants(reduced), [reduced]);
 
   const [calOpen, setCalOpen] = useState(false);
   const [index, setIndex] = useState(0);
@@ -128,11 +132,22 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
     queryClient.invalidateQueries({ queryKey: ['project-connectors', projectId] });
   }, [queryClient, projectId]);
 
+  // Direction drives the slide. Without it, Back and Continue animate
+  // identically and the motion lies about which way the user moved.
+  const [direction, setDirection] = useState(1);
+  const goTo = useCallback((resolve: (i: number) => number) => {
+    setIndex((i) => {
+      const target = resolve(i);
+      setDirection(target >= i ? 1 : -1);
+      return target;
+    });
+  }, []);
+
   const next = useCallback(
-    () => setIndex((i) => Math.min(i + 1, steps.length - 1)),
-    [steps.length],
+    () => goTo((i) => Math.min(i + 1, steps.length - 1)),
+    [goTo, steps.length],
   );
-  const back = useCallback(() => setIndex((i) => Math.max(i - 1, 0)), []);
+  const back = useCallback(() => goTo((i) => Math.max(i - 1, 0)), [goTo]);
   const complete = useCallback(() => onboarding.complete(), [onboarding]);
 
   // Picking a starting point on the finish step seeds the project-home composer
@@ -149,7 +164,10 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
 
   // Skipping the survey jumps past BOTH questions to whatever comes next —
   // `tools` normally, `slack` when connectors are disabled.
-  const skipSurvey = useCallback(() => setIndex(firstStepAfterSurvey(steps)), [steps]);
+  const skipSurvey = useCallback(
+    () => goTo(() => firstStepAfterSurvey(steps)),
+    [goTo, steps],
+  );
 
   if (!isPending) return null;
 
@@ -185,13 +203,18 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
 
           <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-5 pb-16 md:items-center md:px-8">
             <div className="w-full max-w-[560px] py-8">
-              <AnimatePresence mode="wait">
+              {/* popLayout, not wait: `wait` runs the exit to completion before
+                  the enter starts, which doubled every step to ~440ms of dead
+                  air. popLayout takes the outgoing step out of flow so the two
+                  overlap and the swap reads as one movement. */}
+              <AnimatePresence mode="popLayout" custom={direction} initial={false}>
                 <motion.div
                   key={stepId}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.22, ease: 'easeOut' }}
+                  custom={direction}
+                  variants={stepVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
                 >
                   {stepId === 'use-case' && (
                     <UseCaseStep

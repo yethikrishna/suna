@@ -38,32 +38,16 @@ export function PlanStep({ onContinue }: { onContinue: () => void }) {
     else onContinue();
   };
 
-  // A model is already connected, so there is no question left to ask. Confirm
-  // it and move on rather than making the user answer something moot.
-  if (hasSelectableModels) {
-    return (
-      <>
-        {modal}
-        <StepShell
-          title="Your agent is ready to think"
-          description="A model is already connected. You can change it anytime from the composer."
-          primaryLabel="Continue"
-          onPrimary={onContinue}
-        >
-          <InfoBanner tone="success" icon={Check} title="Model connected">
-            Switch models or add another provider whenever you like — nothing here is locked in.
-          </InfoBanner>
-        </StepShell>
-      </>
-    );
-  }
-
   return (
     <>
       {modal}
       <StepShell
         title="How do you want to power your agent?"
-        description="Your agent needs a model to think with. Nothing happens until you continue."
+        description={
+          hasSelectableModels
+            ? 'A model is already connected, so you’re good to go. Add another provider or upgrade if you want more.'
+            : 'Your agent needs a model to think with. Nothing happens until you continue.'
+        }
         // The label names what the button will actually do, so the modal that
         // opens is never a surprise.
         primaryLabel={
@@ -71,30 +55,45 @@ export function PlanStep({ onContinue }: { onContinue: () => void }) {
         }
         onPrimary={handleContinue}
       >
-        <div className="flex flex-col gap-2" role="radiogroup" aria-label="Model access">
-          {showUpgradeOption && (
-            <ChoiceRow
-              selected={choice === 'kortix'}
-              label="Use Kortix models"
-              description="Instant access, higher limits, nothing to configure"
-              onSelect={() => setChoice('kortix')}
-              leading={<Sparkle className="text-muted-foreground size-4 shrink-0" />}
-            />
+        <div className="flex flex-col gap-2">
+          {/* A connected model is context, not an answer. The options stay —
+              removing them stranded anyone who wanted to add a second provider
+              or move onto a plan. */}
+          {hasSelectableModels && (
+            <InfoBanner tone="success" icon={Check} title="Model connected" className="mb-2">
+              You can switch models or add another provider at any time.
+            </InfoBanner>
           )}
-          <ChoiceRow
-            selected={choice === 'byok'}
-            label="Bring your own API key"
-            description="Anthropic, OpenAI, or any other provider"
-            onSelect={() => setChoice('byok')}
-            leading={<Key className="text-muted-foreground size-4 shrink-0" />}
-          />
-          <ChoiceRow
-            selected={choice === 'later'}
-            label="Decide later"
-            description="The composer will ask the first time you send a task"
-            onSelect={() => setChoice('later')}
-            leading={<Clock className="text-muted-foreground size-4 shrink-0" />}
-          />
+
+          <div className="flex flex-col gap-2" role="radiogroup" aria-label="Model access">
+            {showUpgradeOption && (
+              <ChoiceRow
+                selected={choice === 'kortix'}
+                label="Use Kortix models"
+                description="Instant access, higher limits, nothing to configure"
+                onSelect={() => setChoice('kortix')}
+                leading={<Sparkle className="text-muted-foreground size-4 shrink-0" />}
+              />
+            )}
+            <ChoiceRow
+              selected={choice === 'byok'}
+              label={hasSelectableModels ? 'Connect another provider' : 'Bring your own API key'}
+              description="Anthropic, OpenAI, or any other provider"
+              onSelect={() => setChoice('byok')}
+              leading={<Key className="text-muted-foreground size-4 shrink-0" />}
+            />
+            <ChoiceRow
+              selected={choice === 'later'}
+              label={hasSelectableModels ? 'Keep what I have' : 'Decide later'}
+              description={
+                hasSelectableModels
+                  ? 'Carry on with the model that’s already connected'
+                  : 'The composer will ask the first time you send a task'
+              }
+              onSelect={() => setChoice('later')}
+              leading={<Clock className="text-muted-foreground size-4 shrink-0" />}
+            />
+          </div>
         </div>
       </StepShell>
     </>

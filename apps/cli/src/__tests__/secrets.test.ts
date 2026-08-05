@@ -35,6 +35,10 @@ let secretItems: Array<{
   name: string;
   configured?: boolean;
   effective_source?: 'mine' | 'shared' | 'none';
+  strategy?: 'runtime' | 'egress' | 'broker' | 'denied';
+  consumer?: 'sandbox' | 'llm_gateway' | 'executor' | 'git_proxy' | 'http_broker' | 'network' | null;
+  delivery_status?: 'available' | 'unavailable' | 'disabled';
+  requires_rotation?: boolean;
 }>;
 let manifestRequired: string[];
 let manifestOptional: string[];
@@ -45,6 +49,10 @@ function secret(
   state: {
     configured?: boolean;
     effective_source?: 'mine' | 'shared' | 'none';
+    strategy?: 'runtime' | 'egress' | 'broker' | 'denied';
+    consumer?: 'sandbox' | 'llm_gateway' | 'executor' | 'git_proxy' | 'http_broker' | 'network' | null;
+    delivery_status?: 'available' | 'unavailable' | 'disabled';
+    requires_rotation?: boolean;
   } = {},
 ) {
   const configured = state.configured ?? true;
@@ -59,6 +67,10 @@ function secret(
     updated_at: '2026-01-01T00:00:00.000Z',
     configured,
     effective_source: effectiveSource,
+    strategy: state.strategy ?? 'runtime',
+    consumer: state.consumer ?? 'sandbox',
+    delivery_status: state.delivery_status ?? 'available',
+    requires_rotation: state.requires_rotation ?? false,
   };
 }
 
@@ -135,6 +147,18 @@ function mockApi() {
       const name = String(input.name).toUpperCase();
       const identifier = String(input.identifier ?? name);
       return json(secret(identifier, name));
+    }
+    if (url.includes('/projects/proj_1/secrets/') && url.endsWith('/strategy') && method === 'PUT') {
+      const input = typeof body === 'object' && body !== null ? body : {};
+      const identifier = decodeURIComponent(url.split('/secrets/')[1].split('/strategy')[0]);
+      return json(
+        secret(identifier, identifier, {
+          strategy: input.strategy as 'runtime' | 'egress' | 'broker' | 'denied',
+          consumer: input.strategy === 'runtime' ? 'sandbox' : null,
+          delivery_status: input.strategy === 'denied' ? 'disabled' : 'available',
+          requires_rotation: input.strategy !== 'runtime',
+        }),
+      );
     }
     if (url.includes('/projects/proj_1/secrets/') && method === 'DELETE') {
       return json({ status: 'deleted' });
@@ -289,6 +313,10 @@ describe('kortix secrets ls — identifier-first', () => {
       configured: true,
       available: true,
       effective_source: 'shared',
+      strategy: 'runtime',
+      consumer: 'sandbox',
+      delivery_status: 'available',
+      requires_rotation: false,
       key: 'GOOGLE_MAPS_API_KEY',
       has_value: true,
       source: 'undeclared',
@@ -302,10 +330,35 @@ describe('kortix secrets ls — identifier-first', () => {
       configured: false,
       available: false,
       effective_source: 'none',
+      strategy: 'runtime',
+      consumer: 'sandbox',
+      delivery_status: 'available',
+      requires_rotation: false,
       key: 'STRIPE_API_KEY',
       has_value: false,
       source: 'required',
     });
+  });
+
+  test('shows where each secret is delivered', async () => {
+    secretItems = [
+      { identifier: 'LOCAL_KEY', name: 'LOCAL_KEY', strategy: 'runtime' },
+      {
+        identifier: 'DISABLED_KEY',
+        name: 'DISABLED_KEY',
+        strategy: 'denied',
+        consumer: null,
+        delivery_status: 'disabled',
+        requires_rotation: true,
+      },
+    ];
+    const code = await runSecrets(['ls']);
+    expect(code).toBe(0);
+    const out = stripAnsi(stdout);
+    expect(out).toContain('DELIVERY');
+    expect(out).toContain('sandbox');
+    expect(out).toContain('disabled');
+    expect(out).toContain('rotate');
   });
 
   test('does not report a value-less API row as set merely because the row exists', async () => {
@@ -347,6 +400,24 @@ describe('kortix secrets ls — identifier-first', () => {
       effective_source: 'mine',
       has_value: true,
     });
+  });
+});
+
+describe('kortix secrets delivery', () => {
+  test('changes a secret to denied delivery', async () => {
+    const code = await runSecrets(['delivery', 'ANTHROPIC_API_KEY', 'denied']);
+    expect(code).toBe(0);
+    const put = requests.find((request) => request.method === 'PUT');
+    expect(put?.url).toContain('/secrets/ANTHROPIC_API_KEY/strategy');
+    expect(put?.body).toEqual({ strategy: 'denied' });
+    expect(stripAnsi(stdout)).toContain('Stored but disabled');
+  });
+
+  test('rejects an unknown strategy before any network call', async () => {
+    const code = await runSecrets(['delivery', 'ANTHROPIC_API_KEY', 'plaintext']);
+    expect(code).toBe(2);
+    expect(requests).toHaveLength(0);
+    expect(stripAnsi(stderr)).toContain('runtime, broker, egress, or denied');
   });
 });
 

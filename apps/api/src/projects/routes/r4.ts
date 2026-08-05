@@ -133,7 +133,7 @@ import {
   upsertTriggerInManifest,
 } from '../lib/triggers';
 import { shortenSandboxDeadlineOnTurnEnd } from '../sandbox-deadline';
-import { listProjectSecretsSnapshot } from '../secrets';
+import { listProjectSecretNamesForConsumer } from '../secrets';
 import { reconcileProjectTriggerRuntime } from '../trigger-runtime-catalog';
 import { type ParsedManifest, extractTriggers, loadProjectTriggers } from '../triggers';
 import { turnStreamKindField } from './r4-turn-stream-kind';
@@ -2758,7 +2758,11 @@ projectsApp.openapi(
       ? accountIsFreeTierForModels(await getCachedAccountTier(accountId))
       : false;
     const [secrets, defaults, routing] = await Promise.all([
-      listProjectSecretsSnapshot(projectId).catch(() => ({ names: [] as string[] })),
+      listProjectSecretNamesForConsumer({
+        projectId,
+        principalUserId: loaded.userId,
+        consumer: 'llm_gateway',
+      }).catch(() => [] as string[]),
       getAccountModelDefaults(accountId, projectId),
       getProjectRoutingPolicy(projectId),
     ]);
@@ -2777,7 +2781,7 @@ projectsApp.openapi(
     ].filter((model): model is string => !!model);
     const models = projectPickerCatalog(
       gatewayModelCatalog(projectId, { freeManagedOnly }),
-      new Set(secrets.names.map((name) => name.toUpperCase())),
+      new Set(secrets),
       requiredModels,
     );
     // Server-owned per-project enablement, resolved HERE and stamped onto each

@@ -73,6 +73,7 @@ mock.module('../projects/secrets', () => ({
     names: [],
     revision: 'empty',
   }),
+  listProjectSecretNamesForConsumer: async () => [],
   listProjectSecretsSnapshotForUser: async () => ({
     env: {},
     names: [],

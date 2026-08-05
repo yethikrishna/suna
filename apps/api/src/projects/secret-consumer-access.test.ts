@@ -19,8 +19,12 @@ mock.module('../shared/audit', () => ({
   },
 }));
 
-const { decryptProjectSecret, encryptProjectSecret, getProjectSecretValueForConsumer } =
-  await import('./secrets');
+const {
+  decryptProjectSecret,
+  encryptProjectSecret,
+  getProjectSecretValueForConsumer,
+  listProjectSecretNamesForConsumer,
+} = await import('./secrets');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const ACCOUNT_ID = '22222222-2222-4222-8222-222222222222';
@@ -30,6 +34,7 @@ function secret(overrides: Record<string, unknown> = {}) {
   return {
     secretId: '33333333-3333-4333-8333-333333333333',
     identifier: 'provider-primary',
+    ownerUserId: null,
     valueEnc: encryptProjectSecret(PROJECT_ID, 'plaintext-test-value'),
     scope: 'runtime',
     active: true,
@@ -40,7 +45,7 @@ function secret(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function read() {
+function read(principalUserId?: string) {
   return getProjectSecretValueForConsumer({
     projectId: PROJECT_ID,
     accountId: ACCOUNT_ID,
@@ -48,6 +53,7 @@ function read() {
     actorUserId: '44444444-4444-4444-8444-444444444444',
     name: 'provider_key',
     consumer: 'llm_gateway',
+    principalUserId,
   });
 }
 
@@ -132,6 +138,48 @@ describe('getProjectSecretValueForConsumer', () => {
     expect(audits[0]).toMatchObject({ action: 'secret.consumer.used' });
   });
 
+  test('uses an active personal value under the shared delivery policy', async () => {
+    rows = [
+      secret(),
+      secret({
+        secretId: '55555555-5555-4555-8555-555555555555',
+        ownerUserId: '44444444-4444-4444-8444-444444444444',
+        valueEnc: encryptProjectSecret(PROJECT_ID, 'personal-value'),
+      }),
+    ];
+
+    expect(await read('44444444-4444-4444-8444-444444444444')).toBe('personal-value');
+    expect(audits[0]).toMatchObject({
+      resourceId: '55555555-5555-4555-8555-555555555555',
+      metadata: {
+        identifier: 'provider-primary',
+        consumer: 'llm_gateway',
+        value_source: 'personal',
+      },
+    });
+  });
+
+  test('uses the shared value when the personal override is inactive', async () => {
+    rows = [
+      secret(),
+      secret({
+        secretId: '55555555-5555-4555-8555-555555555555',
+        ownerUserId: '44444444-4444-4444-8444-444444444444',
+        active: false,
+        valueEnc: encryptProjectSecret(PROJECT_ID, 'inactive-personal-value'),
+      }),
+    ];
+
+    expect(await read('44444444-4444-4444-8444-444444444444')).toBe(
+      'plaintext-test-value',
+    );
+    expect(audits[0]).toMatchObject({
+      resourceId: '33333333-3333-4333-8333-333333333333',
+      metadata: { value_source: 'shared' },
+    });
+    expect(JSON.stringify(audits)).not.toContain('inactive-personal-value');
+  });
+
   test('records a denied lookup when the secret is absent', async () => {
     expect(await read()).toBeNull();
     expect(audits).toEqual([
@@ -165,6 +213,7 @@ describe('getProjectSecretValueForConsumer', () => {
           identifier: 'provider-primary',
           name: 'PROVIDER_KEY',
           consumer: 'llm_gateway',
+          value_source: 'shared',
         },
       }),
     ]);
@@ -176,4 +225,58 @@ test('project secret encryption preserves an empty value', () => {
   const envelope = encryptProjectSecret(PROJECT_ID, '');
 
   expect(decryptProjectSecret(PROJECT_ID, envelope)).toBe('');
+});
+
+describe('listProjectSecretNamesForConsumer', () => {
+  beforeEach(() => {
+    rows = [];
+  });
+
+  test('lists only active secrets assigned to the requested server consumer', async () => {
+    rows = [
+      secret({ identifier: 'openai', name: 'OPENAI_API_KEY' }),
+      secret({
+        identifier: 'runtime',
+        name: 'RUNTIME_KEY',
+        strategy: 'runtime',
+        consumer: 'sandbox',
+      }),
+      secret({
+        identifier: 'denied',
+        name: 'DENIED_KEY',
+        strategy: 'denied',
+        consumer: null,
+      }),
+      secret({
+        identifier: 'broker',
+        name: 'BROKER_KEY',
+        strategy: 'broker',
+        consumer: 'http_broker',
+      }),
+    ];
+
+    expect(
+      await listProjectSecretNamesForConsumer({
+        projectId: PROJECT_ID,
+        consumer: 'llm_gateway',
+      }),
+    ).toEqual(['OPENAI_API_KEY']);
+  });
+
+  test('includes an active personal provider credential for that user', async () => {
+    rows = [
+      secret({
+        name: 'CODEX_AUTH_JSON',
+        ownerUserId: '44444444-4444-4444-8444-444444444444',
+      }),
+    ];
+
+    expect(
+      await listProjectSecretNamesForConsumer({
+        projectId: PROJECT_ID,
+        principalUserId: '44444444-4444-4444-8444-444444444444',
+        consumer: 'llm_gateway',
+      }),
+    ).toEqual(['CODEX_AUTH_JSON']);
+  });
 });

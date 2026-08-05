@@ -372,6 +372,8 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
           P.startProjectProviderOAuth(projectId, ...a),
         pollProviderOAuth: (...a: DropFirst<Parameters<typeof P.pollProjectProviderOAuth>>) =>
           P.pollProjectProviderOAuth(projectId, ...a),
+        removeProviderOAuth: (provider: string) =>
+          P.deleteProjectProviderOAuth(projectId, provider),
       },
 
       access: {

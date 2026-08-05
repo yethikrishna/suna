@@ -753,8 +753,18 @@ export interface ProjectSecretConsumerRead {
   accountId?: string;
   sessionId?: string | null;
   actorUserId?: string | null;
+  /** Select this user's active personal override before the shared value. */
+  principalUserId?: string | null;
   name: string;
   consumer: Exclude<SecretConsumer, 'sandbox' | 'network' | 'http_broker'>;
+}
+
+export interface ProjectSecretConsumerValue {
+  accountId: string;
+  secretId: string;
+  ownerUserId: string | null;
+  updatedAt: Date;
+  value: string;
 }
 
 export async function projectSecretIsConfiguredForConsumer(input: {
@@ -788,6 +798,59 @@ export async function projectSecretIsConfiguredForConsumer(input: {
   );
 }
 
+export async function listProjectSecretNamesForConsumer(input: {
+  projectId: string;
+  principalUserId?: string | null;
+  consumer: Exclude<SecretConsumer, 'sandbox' | 'network' | 'http_broker'>;
+}): Promise<string[]> {
+  const rows = await db
+    .select({
+      identifier: projectSecrets.identifier,
+      name: projectSecrets.name,
+      scope: projectSecrets.scope,
+      strategy: projectSecrets.strategy,
+      consumer: projectSecrets.consumer,
+      ownerUserId: projectSecrets.ownerUserId,
+      active: projectSecrets.active,
+    })
+    .from(projectSecrets)
+    .where(
+      and(
+        eq(projectSecrets.projectId, input.projectId),
+        input.principalUserId
+          ? or(
+              isNull(projectSecrets.ownerUserId),
+              eq(projectSecrets.ownerUserId, input.principalUserId),
+            )
+          : isNull(projectSecrets.ownerUserId),
+      ),
+    );
+
+  type Row = (typeof rows)[number];
+  const byIdentifier = new Map<string, { shared?: Row; personal?: Row }>();
+  for (const row of rows) {
+    const slot = byIdentifier.get(row.identifier) ?? {};
+    if (row.ownerUserId === null) slot.shared = row;
+    else if (row.ownerUserId === input.principalUserId) slot.personal = row;
+    byIdentifier.set(row.identifier, slot);
+  }
+
+  const names = new Set<string>();
+  for (const slot of byIdentifier.values()) {
+    const selected = slot.personal?.active ? slot.personal : slot.shared;
+    if (!selected?.active || selected.name.toUpperCase().startsWith('KORTIX_')) continue;
+    const policy = slot.shared ?? selected;
+    const configured =
+      input.consumer === 'connector'
+        ? (policy.strategy === 'broker' && policy.consumer === 'connector') ||
+          (policy.scope === 'connector' &&
+            (policy.consumer === 'connector' || policy.consumer === 'sandbox'))
+        : policy.strategy === 'broker' && policy.consumer === input.consumer;
+    if (configured) names.add(selected.name.toUpperCase());
+  }
+  return [...names].sort();
+}
+
 /**
  * Resolve one shared value through its declared server consumer.
  *
@@ -795,9 +858,9 @@ export async function projectSecretIsConfiguredForConsumer(input: {
  * audit write therefore fails the secret use instead of creating an unlogged
  * access path.
  */
-export async function getProjectSecretValueForConsumer(
+export async function resolveProjectSecretForConsumer(
   input: ProjectSecretConsumerRead,
-): Promise<string | null> {
+): Promise<ProjectSecretConsumerValue | null> {
   const accountId =
     input.accountId ??
     (
@@ -813,6 +876,7 @@ export async function getProjectSecretValueForConsumer(
     .select({
       secretId: projectSecrets.secretId,
       identifier: projectSecrets.identifier,
+      ownerUserId: projectSecrets.ownerUserId,
       valueEnc: projectSecrets.valueEnc,
       scope: projectSecrets.scope,
       active: projectSecrets.active,
@@ -825,7 +889,12 @@ export async function getProjectSecretValueForConsumer(
       and(
         eq(projectSecrets.projectId, input.projectId),
         eq(projectSecrets.name, normalizedName),
-        isNull(projectSecrets.ownerUserId),
+        input.principalUserId
+          ? or(
+              isNull(projectSecrets.ownerUserId),
+              eq(projectSecrets.ownerUserId, input.principalUserId),
+            )
+          : isNull(projectSecrets.ownerUserId),
       ),
     );
   if (rows.length === 0) {
@@ -844,15 +913,23 @@ export async function getProjectSecretValueForConsumer(
     return null;
   }
 
-  const canonical = rows.find((candidate) => candidate.identifier === normalizedName);
-  const row =
-    canonical ?? [...rows].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]!;
+  const pick = (candidates: typeof rows) =>
+    candidates.find((candidate) => candidate.identifier === normalizedName) ??
+    [...candidates].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
+  const shared = pick(rows.filter((candidate) => candidate.ownerUserId === null));
+  const personal = input.principalUserId
+    ? pick(rows.filter((candidate) => candidate.ownerUserId === input.principalUserId))
+    : undefined;
+  const row = personal?.active ? personal : (shared ?? personal);
+  if (!row) return null;
+  const policyRow = shared ?? row;
   const allowed =
     row.active &&
     (input.consumer === 'connector'
-      ? (row.strategy === 'broker' && row.consumer === 'connector') ||
-        (row.scope === 'connector' && (row.consumer === 'connector' || row.consumer === 'sandbox'))
-      : row.strategy === 'broker' && row.consumer === input.consumer);
+      ? (policyRow.strategy === 'broker' && policyRow.consumer === 'connector') ||
+        (policyRow.scope === 'connector' &&
+          (policyRow.consumer === 'connector' || policyRow.consumer === 'sandbox'))
+      : policyRow.strategy === 'broker' && policyRow.consumer === input.consumer);
   if (!allowed) {
     await recordAuditEvent({
       accountId,
@@ -869,8 +946,9 @@ export async function getProjectSecretValueForConsumer(
         identifier: row.identifier,
         name: normalizedName,
         requested_consumer: input.consumer,
-        configured_consumer: row.consumer,
-        strategy: row.strategy,
+        configured_consumer: policyRow.consumer,
+        strategy: policyRow.strategy,
+        value_source: row.ownerUserId ? 'personal' : 'shared',
       },
     });
     return null;
@@ -895,6 +973,7 @@ export async function getProjectSecretValueForConsumer(
         identifier: row.identifier,
         name: normalizedName,
         consumer: input.consumer,
+        value_source: row.ownerUserId ? 'personal' : 'shared',
       },
     });
     return null;
@@ -913,7 +992,20 @@ export async function getProjectSecretValueForConsumer(
       identifier: row.identifier,
       name: normalizedName,
       consumer: input.consumer,
+      value_source: row.ownerUserId ? 'personal' : 'shared',
     },
   });
-  return value;
+  return {
+    accountId,
+    secretId: row.secretId,
+    ownerUserId: row.ownerUserId,
+    updatedAt: row.updatedAt,
+    value,
+  };
+}
+
+export async function getProjectSecretValueForConsumer(
+  input: ProjectSecretConsumerRead,
+): Promise<string | null> {
+  return (await resolveProjectSecretForConsumer(input))?.value ?? null;
 }

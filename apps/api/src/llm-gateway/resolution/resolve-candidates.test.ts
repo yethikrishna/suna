@@ -473,7 +473,10 @@ describe('resolveCandidates — codex + unknown provider', () => {
 
   test('codex provider resolves to the codex descriptor when a credential exists', async () => {
     codexCredential = { access: 'codex-token' };
-    const candidates = await resolveCandidates(principal(), 'codex/gpt-5.5');
+    const candidates = await resolveCandidates(
+      principal({ accountId: 'acct-1', sessionId: 'session-1' }),
+      'codex/gpt-5.5',
+    );
     expect(candidates).toEqual([
       expect.objectContaining({
         provider: 'openai-codex',
@@ -481,6 +484,10 @@ describe('resolveCandidates — codex + unknown provider', () => {
         resolvedModel: 'codex/gpt-5.5',
       }),
     ]);
+    expect(resolveCodexCredential).toHaveBeenCalledWith('p1', 'u1', undefined, {
+      accountId: 'acct-1',
+      sessionId: 'session-1',
+    });
   });
 
   test('codex with no resolvable credential throws provider_not_connected', async () => {

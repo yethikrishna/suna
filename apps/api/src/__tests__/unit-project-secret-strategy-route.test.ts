@@ -651,4 +651,57 @@ describe('DELETE /v1/projects/:projectId/secrets/:identifier audit', () => {
       },
     ]);
   });
+
+  test('requires the OAuth disconnect route for a Codex credential', async () => {
+    row = secretRow({
+      identifier: 'CODEX_AUTH_JSON',
+      name: 'CODEX_AUTH_JSON',
+      strategy: 'broker',
+      consumer: 'llm_gateway',
+    });
+
+    const response = await buildApp().request(
+      `/v1/projects/${PROJECT_ID}/secrets/CODEX_AUTH_JSON`,
+      { method: 'DELETE' },
+    );
+
+    expect(response.status).toBe(400);
+    expect(row).not.toBeNull();
+    expect(audits).toHaveLength(0);
+  });
+});
+
+describe('DELETE /v1/projects/:projectId/oauth/:provider audit', () => {
+  beforeEach(() => {
+    row = secretRow({
+      identifier: 'CODEX_AUTH_JSON',
+      name: 'CODEX_AUTH_JSON',
+      strategy: 'broker',
+      consumer: 'llm_gateway',
+    });
+    agentGrant = null;
+    authType = 'supabase';
+    audits.length = 0;
+    propagations.length = 0;
+  });
+
+  test('deletes subscription credentials and records metadata only', async () => {
+    const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/oauth/openai`, {
+      method: 'DELETE',
+    });
+
+    expect(response.status).toBe(200);
+    expect(row).toBeNull();
+    expect(audits).toEqual([
+      expect.objectContaining({
+        action: 'secret.oauth.disconnected',
+        resourceType: 'project_secret',
+        metadata: {
+          identifier: 'CODEX_AUTH_JSON',
+          consumer: 'llm_gateway',
+        },
+      }),
+    ]);
+    expect(JSON.stringify(audits)).not.toContain('encrypted-value');
+  });
 });

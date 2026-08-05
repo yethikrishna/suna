@@ -90,7 +90,10 @@ export async function resolveCandidates(
     }
     let credential: Awaited<ReturnType<typeof resolveCodexCredential>>;
     try {
-      credential = await resolveCodexCredential(principal.projectId, principal.userId);
+      credential = await resolveCodexCredential(principal.projectId, principal.userId, undefined, {
+        accountId: principal.accountId,
+        sessionId: principal.sessionId,
+      });
     } catch (err) {
       if (err instanceof CodexRefreshError) {
         // Distinguishes "connected once, but the ChatGPT session expired or was

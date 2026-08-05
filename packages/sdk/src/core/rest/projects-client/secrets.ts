@@ -222,6 +222,14 @@ export async function pollProjectProviderOAuth(
   );
 }
 
+export async function deleteProjectProviderOAuth(projectId: string, provider: string) {
+  return unwrap(
+    await backendApi.delete<{ ok: boolean }>(
+      `/projects/${projectId}/oauth/${encodeURIComponent(provider)}`,
+    ),
+  );
+}
+
 export async function upsertProjectGitCredential(projectId: string, input: { token: string }) {
   return unwrap(
     await backendApi.put<{

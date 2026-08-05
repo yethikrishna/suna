@@ -2,6 +2,7 @@ import { beforeEach, expect, mock, test } from 'bun:test';
 import { configureKortix } from '../../http/config';
 import {
   deletePersonalProjectSecret,
+  deleteProjectProviderOAuth,
   deleteProjectSecret,
   listProjectSecrets,
   pollProjectProviderOAuth,
@@ -214,6 +215,13 @@ test('deleteProjectSecret DELETEs the encoded secret name', async () => {
   nextResponse = { status: 200, body: { ok: true } };
   await deleteProjectSecret('P1', 'MY KEY');
   expect(last().url).toContain('/projects/P1/secrets/MY%20KEY');
+  expect(last().method).toBe('DELETE');
+});
+
+test('deleteProjectProviderOAuth DELETEs the encoded provider', async () => {
+  nextResponse = { status: 200, body: { ok: true } };
+  await deleteProjectProviderOAuth('P1', 'openai/codex');
+  expect(last().url).toContain('/projects/P1/oauth/openai%2Fcodex');
   expect(last().method).toBe('DELETE');
 });
 

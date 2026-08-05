@@ -3,7 +3,7 @@ import { PROJECT_ACTIONS } from '../../iam';
 import { agentMayUseEnv, getAgentGrant } from '../../iam/agent-scope';
 import { auth, errors, json } from '../../openapi';
 import { createAccountToken, listAccountTokens, revokeAccountToken } from '../../repositories/account-tokens';
-import { inferAuditSource, runAuditedTransaction } from '../../shared/audit';
+import { inferAuditSource, recordAuditEvent, runAuditedTransaction } from '../../shared/audit';
 import { db } from '../../shared/db';
 import { kickRoutedPreBuild, templateBuildProviders } from '../../snapshots/builder';
 import { getTemplateById } from '../../snapshots/templates';
@@ -11,7 +11,7 @@ import { roleAllows } from '../access';
 import { loadProjectConfig } from '../git';
 import { parseBasicAuthHeader } from '../git-backends';
 import { pollCodexDeviceAuth, startCodexDeviceAuth } from '../codex-device-auth';
-import { decryptProjectSecret, encryptProjectSecret, identifierKeyConflicts, isValidIdentifier, isValidSecretName } from '../secrets';
+import { decryptProjectSecret, encryptProjectSecret, identifierKeyConflicts, isValidIdentifier, isValidSecretName, resolveProjectSecretForConsumer } from '../secrets';
 import { propagateProjectSecretsToActiveSandboxes } from '../lib/sandbox-env-sync';
 import { isGatewayManagedEnv } from '../../llm-gateway/sandbox-credentials';
 import { seedProjectDefaultModelOnConnect } from '../../llm-gateway/models/seed-default';
@@ -955,8 +955,8 @@ projectsApp.openapi(
 //
 // Connect a subscription-backed LLM provider (today: a ChatGPT Plus/Pro
 // account via the OpenAI Codex device grant) and save the resulting login as
-// the project's CODEX_AUTH_JSON secret — which sandboxes materialize into
-// OpenCode's auth.json on boot. No sandbox is required to connect.
+// the project's CODEX_AUTH_JSON secret. Only the LLM gateway can decrypt this
+// value. The sandbox receives neither the token nor an opaque handle.
 //
 // Two quick, NON-streaming calls so they survive any edge (a long-lived
 // streaming response gets reset by Cloudflare) and any replica:
@@ -988,15 +988,17 @@ const OAUTH_POLL_INTERVAL_MS = 3000;
 // member/group secret sharing was retired (see projects/secrets.ts).
 async function writeCodexAuthSecret(input: {
   projectId: string;
+  accountId: string;
   userId: string;
   value: string;
   sharing?: ReturnType<typeof parseSharingIntent>;
 }) {
-  const { projectId, userId, value, sharing } = input;
+  const { projectId, accountId, userId, value, sharing } = input;
   const now = new Date();
+  let secretId: string;
 
   if (sharing?.mode === 'private') {
-    await db
+    const [written] = await db
       .insert(projectSecrets)
       .values({
         projectId,
@@ -1005,6 +1007,10 @@ async function writeCodexAuthSecret(input: {
         valueEnc: encryptProjectSecret(projectId, value),
         ownerUserId: userId,
         active: true,
+        strategy: 'broker',
+        consumer: 'llm_gateway',
+        strategyLocked: true,
+        rotatedAt: now,
         createdBy: userId,
         updatedAt: now,
       })
@@ -1014,17 +1020,30 @@ async function writeCodexAuthSecret(input: {
         set: {
           valueEnc: encryptProjectSecret(projectId, value),
           active: true,
+          strategy: 'broker',
+          consumer: 'llm_gateway',
+          egressPolicy: null,
+          handlePrefix: null,
+          strategyLocked: true,
+          rotatedAt: now,
           updatedAt: now,
         },
-      });
+      })
+      .returning({ secretId: projectSecrets.secretId });
+    if (!written) throw new Error('Failed to store the private Codex credential');
+    secretId = written.secretId;
   } else {
-    await db
+    const [written] = await db
       .insert(projectSecrets)
       .values({
         projectId,
         identifier: CODEX_AUTH_JSON_SECRET_NAME,
         name: CODEX_AUTH_JSON_SECRET_NAME,
         valueEnc: encryptProjectSecret(projectId, value),
+        strategy: 'broker',
+        consumer: 'llm_gateway',
+        strategyLocked: true,
+        rotatedAt: now,
         createdBy: userId,
         updatedAt: now,
       })
@@ -1033,10 +1052,35 @@ async function writeCodexAuthSecret(input: {
         targetWhere: isNull(projectSecrets.ownerUserId),
         set: {
           valueEnc: encryptProjectSecret(projectId, value),
+          strategy: 'broker',
+          consumer: 'llm_gateway',
+          egressPolicy: null,
+          handlePrefix: null,
+          strategyLocked: true,
+          rotatedAt: now,
           updatedAt: now,
         },
-      });
+      })
+      .returning({ secretId: projectSecrets.secretId });
+    if (!written) throw new Error('Failed to store the shared Codex credential');
+    secretId = written.secretId;
   }
+
+  await recordAuditEvent({
+    accountId,
+    projectId,
+    actorUserId: userId,
+    actorType: 'human',
+    source: 'api',
+    action: 'secret.oauth.connected',
+    resourceType: 'project_secret',
+    resourceId: secretId,
+    metadata: {
+      identifier: CODEX_AUTH_JSON_SECRET_NAME,
+      consumer: 'llm_gateway',
+      sharing: sharing?.mode === 'private' ? 'private' : 'project',
+    },
+  });
 
   void propagateProjectSecretsToActiveSandboxes(projectId, { refreshModels: true });
 
@@ -1200,7 +1244,13 @@ projectsApp.openapi(
   // Authorized — persist the auth.json as the project secret with the sharing
   // chosen at start time (sealed, tamper-proof, in the flow handle).
   const sharing = state.s ? (parseSharingIntent(state.s, loaded.userId) ?? undefined) : undefined;
-  await writeCodexAuthSecret({ projectId, userId: loaded.userId, value: result.authJson, sharing });
+  await writeCodexAuthSecret({
+    projectId,
+    accountId: loaded.row.accountId,
+    userId: loaded.userId,
+    value: result.authJson,
+    sharing,
+  });
 
   return c.json({
     status: 'success',
@@ -1236,26 +1286,19 @@ projectsApp.openapi(
 
   const items: Array<{ provider_id: string; expires_in_ms: number | null; updated_at: string }> = [];
   for (const [providerId, cfg] of Object.entries(OAUTH_PROVIDERS)) {
-    const [row] = await db
-      .select({ valueEnc: projectSecrets.valueEnc, updatedAt: projectSecrets.updatedAt })
-      .from(projectSecrets)
-      .where(and(
-        eq(projectSecrets.projectId, projectId),
-        eq(projectSecrets.name, cfg.secretName),
-        isNull(projectSecrets.ownerUserId),
-      ))
-      .limit(1);
-    if (!row) continue;
-    let expiresInMs: number | null = null;
-    try {
-      expiresInMs = authExpiresInMs(decryptProjectSecret(projectId, row.valueEnc));
-    } catch {
-      // unreadable — leave unknown
-    }
+    const credential = await resolveProjectSecretForConsumer({
+      projectId,
+      accountId: loaded.row.accountId,
+      actorUserId: loaded.userId,
+      principalUserId: loaded.userId,
+      name: cfg.secretName,
+      consumer: 'llm_gateway',
+    });
+    if (!credential) continue;
     items.push({
       provider_id: providerId,
-      expires_in_ms: expiresInMs,
-      updated_at: (row.updatedAt ?? new Date()).toISOString(),
+      expires_in_ms: authExpiresInMs(credential.value),
+      updated_at: credential.updatedAt.toISOString(),
     });
   }
 
@@ -1288,9 +1331,28 @@ projectsApp.openapi(
   const cfg = OAUTH_PROVIDERS[provider];
   if (!cfg) return c.json({ error: 'Not found' }, 404);
 
-  await db
-    .delete(projectSecrets)
-    .where(and(eq(projectSecrets.projectId, projectId), eq(projectSecrets.name, cfg.secretName)));
+  await runAuditedTransaction(
+    async (tx) => {
+      await tx
+        .delete(projectSecrets)
+        .where(
+          and(eq(projectSecrets.projectId, projectId), eq(projectSecrets.name, cfg.secretName)),
+        );
+    },
+    () => ({
+      accountId: loaded.row.accountId,
+      projectId,
+      actorUserId: loaded.userId,
+      actorType: 'human',
+      source: 'api',
+      action: 'secret.oauth.disconnected',
+      resourceType: 'project_secret',
+      metadata: {
+        identifier: cfg.secretName,
+        consumer: 'llm_gateway',
+      },
+    }),
+  );
   void propagateProjectSecretsToActiveSandboxes(projectId, { refreshModels: isGatewayManagedEnv(cfg.secretName) });
 
   return c.json({ ok: true });
@@ -1330,6 +1392,12 @@ projectsApp.openapi(
   // DB read needed before the delete.
   if (isSystemProjectSecretName(identifier)) {
     return c.json({ error: `${identifier} is managed by Kortix and cannot be removed` }, 403);
+  }
+  if (identifier.toUpperCase() === CODEX_AUTH_JSON_SECRET_NAME) {
+    return c.json(
+      { error: `${CODEX_AUTH_JSON_SECRET_NAME} must be disconnected as an OAuth provider` },
+      400,
+    );
   }
 
   const [existing] = await db
@@ -1520,6 +1588,12 @@ projectsApp.openapi(
   if (!loaded) return c.json({ error: 'Not found' }, 404);
   if (!name || !isValidSecretName(name)) {
     return c.json({ error: 'Invalid secret name' }, 400);
+  }
+  if (name === CODEX_AUTH_JSON_SECRET_NAME) {
+    return c.json(
+      { error: `${CODEX_AUTH_JSON_SECRET_NAME} must be disconnected as an OAuth provider` },
+      400,
+    );
   }
 
   await db

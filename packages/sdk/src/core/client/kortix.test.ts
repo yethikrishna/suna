@@ -364,7 +364,7 @@ test('project(id).access.resourceGrants covers list/create/remove', async () => 
   expect(last().method).toBe('DELETE');
 });
 
-test('project(id).secrets covers provider OAuth start/poll', async () => {
+test('project(id).secrets covers provider OAuth start, poll, and removal', async () => {
   await kortix.project('PID123').secrets.startProviderOAuth('chatgpt');
   expect(last().url).toContain('/projects/PID123/oauth/chatgpt/start');
   expect(last().method).toBe('POST');
@@ -372,6 +372,10 @@ test('project(id).secrets covers provider OAuth start/poll', async () => {
   await kortix.project('PID123').secrets.pollProviderOAuth('chatgpt', 'FLOW1');
   expect(last().url).toContain('/projects/PID123/oauth/chatgpt/poll');
   expect(last().method).toBe('POST');
+
+  await kortix.project('PID123').secrets.removeProviderOAuth('chatgpt');
+  expect(last().url).toContain('/projects/PID123/oauth/chatgpt');
+  expect(last().method).toBe('DELETE');
 });
 
 test('project(id).connectors covers credential-mode/sensitive/policies/pipedream', async () => {

@@ -5,6 +5,11 @@ import {
   sandboxSlugFromSessionMetadata,
   workspaceModeFromSessionMetadata,
 } from './session-sandbox-metadata';
+import {
+  isRepositoryProjectAction,
+  workspaceMetadataAllowsRepositoryAccess,
+} from './session-workspace-access';
+import { PROJECT_ACTIONS } from '../../iam/actions';
 
 describe('sandboxSlugFromSessionMetadata', () => {
   test('returns a persisted template slug', () => {
@@ -30,6 +35,24 @@ describe('workspaceModeFromSessionMetadata', () => {
     expect(workspaceModeFromSessionMetadata(null)).toBeUndefined();
     expect(workspaceModeFromSessionMetadata({})).toBeUndefined();
     expect(workspaceModeFromSessionMetadata({ workspace_mode: 'all' })).toBeUndefined();
+  });
+});
+
+describe('runtime workspace repository boundary', () => {
+  test('runtime metadata denies repository access while branch and legacy metadata allow it', () => {
+    expect(workspaceMetadataAllowsRepositoryAccess({ workspace_mode: 'runtime' })).toBe(false);
+    expect(workspaceMetadataAllowsRepositoryAccess({ workspace_mode: 'branch' })).toBe(true);
+    expect(workspaceMetadataAllowsRepositoryAccess({})).toBe(true);
+  });
+
+  test('classifies every repository-backed project capability', () => {
+    expect(isRepositoryProjectAction(PROJECT_ACTIONS.PROJECT_FILE_READ)).toBe(true);
+    expect(isRepositoryProjectAction(PROJECT_ACTIONS.PROJECT_FILE_WRITE)).toBe(true);
+    expect(isRepositoryProjectAction(PROJECT_ACTIONS.PROJECT_GITOPS_READ)).toBe(true);
+    expect(isRepositoryProjectAction(PROJECT_ACTIONS.PROJECT_GITOPS_PUSH)).toBe(true);
+    expect(isRepositoryProjectAction(PROJECT_ACTIONS.PROJECT_GITOPS_MERGE)).toBe(true);
+    expect(isRepositoryProjectAction(PROJECT_ACTIONS.PROJECT_SECRET_READ)).toBe(false);
+    expect(isRepositoryProjectAction(PROJECT_ACTIONS.PROJECT_CONNECTOR_READ)).toBe(false);
   });
 });
 

@@ -93,6 +93,29 @@ describe('authorizeGitProxy — CLI PAT', () => {
     expect(authorizeCalls).toHaveLength(0);
   });
 
+  test('a session PAT for a runtime workspace is denied before account ownership can allow it', async () => {
+    patResult = {
+      isValid: true,
+      accountId: OWNER_ACCOUNT,
+      userId: 'user-1',
+      tokenId: 'tok-1',
+      projectId: PROJECT_ID,
+      sessionId: 'sandbox-1',
+    };
+    sandboxRow = {
+      sandboxId: 'sandbox-1',
+      sessionMetadata: { workspace_mode: 'runtime' },
+    };
+
+    const res = await authorizeGitProxy('kortix_pat_x', PROJECT_ID, 'read');
+
+    expect(res).toMatchObject({
+      ok: false,
+      status: 403,
+      message: 'session workspace does not allow repository access',
+    });
+  });
+
   test('a PAT on another account passes when the user holds the git capability', async () => {
     patResult = { isValid: true, accountId: OTHER_ACCOUNT, userId: 'user-1', tokenId: 'tok-1' };
     authorizeAllowed = true;

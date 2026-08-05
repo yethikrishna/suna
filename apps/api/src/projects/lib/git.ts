@@ -25,7 +25,10 @@ import { authorize } from '../../iam/dispatcher';
 import type { RequestContext } from '../../iam/engine';
 import { registerPrincipalScopedMemo } from '../../iam/cache-invalidation';
 import { PROJECT_GIT_AUTH_SECRET_NAME, ProjectGitConnectionRow, ProjectGitCredentialRow, ProjectRow, normalizeJsonObject, normalizeString } from './serializers';
-import { workspaceModeFromSessionMetadata } from './session-sandbox-metadata';
+import {
+  sessionWorkspaceAllowsRepositoryAccess,
+  workspaceMetadataAllowsRepositoryAccess,
+} from './session-workspace-access';
 
 // Memoized briefly (positive hits only): this runs on every project-scoped
 // request. Each DB statement is a fast same-region roundtrip (~3ms measured,
@@ -689,6 +692,20 @@ export async function authorizeGitProxy(
     if (result.projectId && result.projectId !== projectId) {
       return { ok: false, status: 403, message: 'token is scoped to a different project' };
     }
+    if (
+      result.sessionId &&
+      !(await sessionWorkspaceAllowsRepositoryAccess({
+        sessionId: result.sessionId,
+        accountId: result.accountId,
+        projectId,
+      }))
+    ) {
+      return {
+        ok: false,
+        status: 403,
+        message: 'session workspace does not allow repository access',
+      };
+    }
     if (result.accountId !== project.accountId) {
       // Thread the acting token so the agent-grant fold fires (userRole ∩ grant)
       // — a bare authorize() would silently skip it.
@@ -714,7 +731,14 @@ export async function authorizeGitProxy(
           sessionMetadata: projectSessions.metadata,
         })
         .from(sessionSandboxes)
-        .innerJoin(projectSessions, eq(projectSessions.sessionId, sessionSandboxes.sessionId))
+        .innerJoin(
+          projectSessions,
+          and(
+            eq(projectSessions.sessionId, sessionSandboxes.sessionId),
+            eq(projectSessions.projectId, sessionSandboxes.projectId),
+            eq(projectSessions.accountId, sessionSandboxes.accountId),
+          ),
+        )
         .where(and(
           eq(sessionSandboxes.sandboxId, result.sandboxId),
           eq(sessionSandboxes.projectId, projectId),
@@ -725,7 +749,7 @@ export async function authorizeGitProxy(
       if (!sandbox) {
         return { ok: false, status: 403, message: 'sandbox token is not scoped to this project' };
       }
-      if (workspaceModeFromSessionMetadata(sandbox.sessionMetadata) === 'runtime') {
+      if (!workspaceMetadataAllowsRepositoryAccess(sandbox.sessionMetadata)) {
         return { ok: false, status: 403, message: 'sandbox workspace does not allow Git access' };
       }
       return { ok: true, project };

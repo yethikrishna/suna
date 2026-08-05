@@ -100,7 +100,7 @@ when the client omits both fields. The provider settings UI also sends this
 policy explicitly. A caller can still request `runtime` and `sandbox` when a
 local process genuinely needs that provider key.
 
-Migration `20260805205000000_isolate_existing_llm_credentials.sql` moves the
+Migration `20260805205105000_isolate_existing_llm_credentials.sql` moves the
 catalog's existing LLM credentials to `broker` and `llm_gateway`. It clears
 obsolete network policies and handles. It also marks the value as requiring
 rotation because an earlier sandbox can retain plaintext.

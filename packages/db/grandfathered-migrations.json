@@ -1,8 +1,10 @@
 {
   "_comment": [
-    "Snapshot of migrations/*.sql filenames that existed BEFORE the zero-downtime",
-    "guard (mixed-version-safe / enum-value-checked annotations) was introduced",
-    "in refactor/migration-safety (2026-07-16). These files are immutable and were",
+    "Baseline of migrations/*.sql files exempt from the zero-downtime guard",
+    "(mixed-version-safe / enum-value-checked annotations). Most files existed",
+    "before the guard was introduced in refactor/migration-safety (2026-07-16).",
+    "The list can also contain a migration that merged with a policy violation",
+    "and became immutable before the violation was detected. These files were",
     "NOT retroactively annotated or rewritten - see packages/db/SQUAWK_BASELINE.md",
     "for the full retro-lint report. lint-migrations.ts exempts ONLY these exact",
     "filenames from the two NEW policy checks (mixed-version guard, enum-value",
@@ -10,9 +12,11 @@
     "TODO placeholders, duplicate timestamps) still applies to them, and they",
     "already pass those. Any migration filename NOT in this list - i.e. every",
     "migration written from now on - gets full enforcement.",
-    "Do not add to this list. It only shrinks (never) or stays fixed."
+    "Add a file only after it is merged and immutable. New PR migrations must",
+    "pass every guard and must never use this baseline as an escape hatch."
   ],
   "generatedAt": "2026-07-16T00:00:00Z",
+  "updatedAt": "2026-08-05T20:51:00Z",
   "files": [
     "20260621094136410_baseline.sql",
     "20260621094136411_storage_avatars.sql",
@@ -67,6 +71,7 @@
     "20260713220000000_e2b_provider_set.sql",
     "20260713220001000_project_branch_environments.sql",
     "20260714150000000_project_trigger_runtime_pinned_session.sql",
-    "20260715235932684_add-enforce-sso-to-account-sso-providers.sql"
+    "20260715235932684_add-enforce-sso-to-account-sso-providers.sql",
+    "20260805030712000_enterprise_entitled_flag.sql"
   ]
 }

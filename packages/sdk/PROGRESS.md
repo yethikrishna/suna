@@ -12,6 +12,29 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-05 — session `cli-connectors-refactor` claim
+
+Claimed scope:
+
+- Replace active `executor` terminology with `connector` and `connection` across
+  the SDK, CLI, API, runtime, npm package, documentation, and tests.
+- Preserve published `@kortix/sdk` compatibility with deprecated aliases where
+  removal would break existing consumers.
+- Collapse the agent-facing CLI into one `kortix connectors` command tree.
+- Fix and black-box verify the complete CLI defect list in
+  `kortix-cli-refactor-report.md` with a real agent-minted session token.
+
+The required `tdd` skill is unavailable in this session. The work will use the
+same RED, GREEN, and REFACTOR sequence directly.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
+---
+
 ### 2026-08-06 — session `connector-secret-binding` completion
 
 No **Now** task claimed. This is an additive connector credential-source fix.

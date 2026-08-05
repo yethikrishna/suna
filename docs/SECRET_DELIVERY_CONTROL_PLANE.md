@@ -148,6 +148,12 @@ Each session receives a revisioned opaque handle. A strategy change revokes its
 active handles. The broker checks the current agent grant, session allowlist,
 stored policy, and handle snapshot before decrypting the value.
 
+An agent grant of `env: all` is a ceiling. It does not materialize HTTP broker
+handles by itself. The session must also contain an explicit allowlist with the
+secret identifier. The broker route intersects both policies again on every
+call. This rule limits a leaked session token to the broker secrets selected for
+that session.
+
 The broker enforces HTTPS. It blocks private, loopback, link-local, metadata,
 and rebinding targets. It reevaluates redirects. It bounds request and response
 sizes. It strips sensitive response headers and never records request bodies,

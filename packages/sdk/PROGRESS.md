@@ -79,9 +79,37 @@ same RED, GREEN, and REFACTOR sequence directly.
 
 Required SDK gates are typecheck, the full test suite, and packed-install smoke.
 
-**Status:** IN PROGRESS.
+**Status:** COMPLETE.
 
-**SDK package shippable to production: NOT YET.**
+**SDK package shippable to production: YES.**
+
+### 2026-08-05 — session `secret-delivery-complete` completion
+
+Added an additive project-secret contract for delivery strategy, managed
+consumer, HTTP broker policy, rotation state, and session broker calls. Kept all
+published names and the existing `setProjectSecretStrategy()` signature. The
+web and CLI use the SDK contract instead of defining a second transport.
+
+RED:
+
+- The secret-client contract tests failed before the request and response types
+  included managed consumers and HTTP broker policy.
+- The root client test failed before a session exposed the secret broker.
+
+GREEN:
+
+- `pnpm --filter @kortix/sdk test`: `1499 pass`, `0 fail`, and `6204 expect()`
+  calls across `121` files.
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk run smoke:install`: exit `0`; the packed tarball
+  imported and `createKortix` constructed successfully.
+
+The public surface changed additively. No export was removed or renamed. The
+package version was not edited.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
 
 ---
 

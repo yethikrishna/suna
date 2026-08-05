@@ -42,6 +42,14 @@ describe('secretDeliveryPresentation', () => {
       label: 'HTTPS broker',
       description: 'Added only to an approved HTTPS request outside the sandbox.',
     });
+    expect(secretDeliveryPresentation('broker', 'connector')).toMatchObject({
+      label: 'Connector',
+      description: 'Used by an authorized connector without entering the sandbox.',
+    });
+    expect(secretDeliveryPresentation('broker', 'git_proxy')).toMatchObject({
+      label: 'Git service',
+      description: 'Used for repository access without entering the sandbox.',
+    });
   });
 });
 

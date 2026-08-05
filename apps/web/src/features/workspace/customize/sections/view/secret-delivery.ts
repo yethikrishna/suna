@@ -52,6 +52,20 @@ export function secretDeliveryPresentation(
       tone: 'secondary',
     };
   }
+  if (strategy === 'broker' && consumer === 'connector') {
+    return {
+      label: 'Connector',
+      description: 'Used by an authorized connector without entering the sandbox.',
+      tone: 'secondary',
+    };
+  }
+  if (strategy === 'broker' && consumer === 'git_proxy') {
+    return {
+      label: 'Git service',
+      description: 'Used for repository access without entering the sandbox.',
+      tone: 'secondary',
+    };
+  }
   return PRESENTATIONS[strategy];
 }
 

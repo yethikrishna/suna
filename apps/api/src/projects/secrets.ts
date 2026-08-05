@@ -752,6 +752,37 @@ export interface ProjectSecretConsumerRead {
   consumer: Exclude<SecretConsumer, 'sandbox' | 'network' | 'http_broker'>;
 }
 
+export async function projectSecretIsConfiguredForConsumer(input: {
+  projectId: string;
+  name: string;
+  consumer: Exclude<SecretConsumer, 'sandbox' | 'network' | 'http_broker'>;
+}): Promise<boolean> {
+  const normalizedName = input.name.trim().toUpperCase();
+  const rows = await db
+    .select({
+      scope: projectSecrets.scope,
+      strategy: projectSecrets.strategy,
+      consumer: projectSecrets.consumer,
+      active: projectSecrets.active,
+    })
+    .from(projectSecrets)
+    .where(
+      and(
+        eq(projectSecrets.projectId, input.projectId),
+        eq(projectSecrets.name, normalizedName),
+        isNull(projectSecrets.ownerUserId),
+      ),
+    );
+  return rows.some(
+    (row) =>
+      row.active &&
+      (input.consumer === 'connector'
+        ? row.scope === 'connector' ||
+          (row.strategy === 'broker' && row.consumer === 'connector')
+        : row.strategy === 'broker' && row.consumer === input.consumer),
+  );
+}
+
 /**
  * Resolve one shared value through its declared server consumer.
  *
@@ -769,6 +800,7 @@ export async function getProjectSecretValueForConsumer(
       identifier: projectSecrets.identifier,
       valueEnc: projectSecrets.valueEnc,
       scope: projectSecrets.scope,
+      active: projectSecrets.active,
       strategy: projectSecrets.strategy,
       consumer: projectSecrets.consumer,
       updatedAt: projectSecrets.updatedAt,
@@ -801,9 +833,11 @@ export async function getProjectSecretValueForConsumer(
   const row =
     canonical ?? [...rows].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]!;
   const allowed =
-    input.consumer === 'connector'
-      ? row.scope === 'connector' && (row.consumer === 'connector' || row.consumer === 'sandbox')
-      : row.strategy === 'broker' && row.consumer === input.consumer;
+    row.active &&
+    (input.consumer === 'connector'
+      ? (row.strategy === 'broker' && row.consumer === 'connector') ||
+        (row.scope === 'connector' && (row.consumer === 'connector' || row.consumer === 'sandbox'))
+      : row.strategy === 'broker' && row.consumer === input.consumer);
   if (!allowed) {
     await recordAuditEvent({
       accountId: input.accountId,

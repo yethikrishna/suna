@@ -487,6 +487,20 @@ describe('kortix secrets delivery', () => {
     expect(put?.body).toEqual({ strategy: 'broker', consumer: 'llm_gateway' });
   });
 
+  test('configures a connector consumer without HTTP policy flags', async () => {
+    const code = await runSecrets([
+      'delivery',
+      'CONNECTOR_API_KEY',
+      'broker',
+      '--consumer',
+      'connector',
+    ]);
+
+    expect(code).toBe(0);
+    const put = requests.find((request) => request.method === 'PUT');
+    expect(put?.body).toEqual({ strategy: 'broker', consumer: 'connector' });
+  });
+
   test('rejects HTTP policy flags for the LLM gateway consumer', async () => {
     const code = await runSecrets([
       'delivery',

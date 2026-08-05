@@ -338,6 +338,30 @@ describe('PUT /v1/projects/:projectId/secrets/:identifier/strategy', () => {
     });
   });
 
+  test('configures a connector consumer without a network policy', async () => {
+    const response = await buildApp().request(
+      `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ strategy: 'broker', consumer: 'connector' }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      strategy: 'broker',
+      consumer: 'connector',
+      delivery_status: 'available',
+      egress_policy: null,
+    });
+    expect(updates[0]).toMatchObject({
+      strategy: 'broker',
+      consumer: 'connector',
+      egressPolicy: null,
+    });
+  });
+
   test('rejects transparent egress until its adapter is available', async () => {
     const response = await buildApp().request(
       `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
@@ -537,6 +561,29 @@ describe('POST /v1/projects/:projectId/secrets audit', () => {
         rotated: true,
       },
     });
+    expect(JSON.stringify(audits)).not.toContain('plaintext-test-value');
+  });
+
+  test('creates a connector secret without a runtime delivery transition', async () => {
+    const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'SERVICE_API_KEY',
+        value: 'plaintext-test-value',
+        strategy: 'broker',
+        consumer: 'connector',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      strategy: 'broker',
+      consumer: 'connector',
+      delivery_status: 'available',
+      egress_policy: null,
+    });
+    expect(row).toMatchObject({ strategy: 'broker', consumer: 'connector' });
     expect(JSON.stringify(audits)).not.toContain('plaintext-test-value');
   });
 });

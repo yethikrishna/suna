@@ -68,6 +68,8 @@ describe('saveSlackInstall', () => {
       name: 'SLACK_BOT_TOKEN',
       valueEnc: 'enc:xoxb-test',
       scope: 'connector',
+      strategy: 'broker',
+      consumer: 'connector',
     });
     expect(insertedValues).toContainEqual({
       projectId: 'proj-1',
@@ -75,6 +77,8 @@ describe('saveSlackInstall', () => {
       name: 'SLACK_SIGNING_SECRET',
       valueEnc: 'enc:signing-secret',
       scope: 'connector',
+      strategy: 'broker',
+      consumer: 'connector',
     });
   });
 });

@@ -764,6 +764,8 @@ async function upsertSecret(projectId: string, name: string, value: string): Pro
       name,
       valueEnc,
       scope: 'connector',
+      strategy: 'broker',
+      consumer: 'connector',
     });
   } catch (err) {
     if (!isUniqueConflict(err)) throw err;
@@ -779,7 +781,15 @@ async function updateSharedSecret(
 ): Promise<boolean> {
   const rows = await db
     .update(projectSecrets)
-    .set({ valueEnc, scope: 'connector', updatedAt: new Date() })
+    .set({
+      valueEnc,
+      scope: 'connector',
+      strategy: 'broker',
+      consumer: 'connector',
+      egressPolicy: null,
+      handlePrefix: null,
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(projectSecrets.projectId, projectId),

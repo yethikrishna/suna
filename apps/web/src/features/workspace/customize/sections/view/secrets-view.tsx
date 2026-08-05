@@ -557,8 +557,12 @@ function SecretDialog({
   const [key, setKey] = useState(row?.key ?? '');
   const [value, setValue] = useState('');
   const [strategy, setStrategy] = useState<SecretDeliveryStrategy>(row?.strategy ?? 'runtime');
-  const [brokerConsumer, setBrokerConsumer] = useState<'llm_gateway' | 'http_broker'>(
-    row?.consumer === 'llm_gateway' ? 'llm_gateway' : 'http_broker',
+  const [brokerConsumer, setBrokerConsumer] = useState<
+    'llm_gateway' | 'connector' | 'http_broker'
+  >(
+    row?.consumer === 'llm_gateway' || row?.consumer === 'connector'
+      ? row.consumer
+      : 'http_broker',
   );
   const currentPolicy = row?.egressPolicy;
   const currentInjection = currentPolicy?.inject;
@@ -831,7 +835,7 @@ function SecretDialog({
                   <Select
                     value={brokerConsumer}
                     onValueChange={(next) =>
-                      setBrokerConsumer(next as 'llm_gateway' | 'http_broker')
+                      setBrokerConsumer(next as 'llm_gateway' | 'connector' | 'http_broker')
                     }
                     disabled={save.isPending}
                   >
@@ -850,6 +854,12 @@ function SecretDialog({
                         description="Kortix adds the value to one approved HTTPS destination."
                       >
                         HTTPS broker
+                      </SelectItem>
+                      <SelectItem
+                        value="connector"
+                        description="An authorized connector uses the value. The sandbox receives no key."
+                      >
+                        Connector
                       </SelectItem>
                     </SelectContent>
                   </Select>

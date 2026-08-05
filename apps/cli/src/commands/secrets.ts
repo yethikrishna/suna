@@ -51,7 +51,8 @@ Subcommands:
                                     a secret via the intake link or after a
                                     secret was updated mid-session.
   delivery IDENTIFIER STRATEGY      Set runtime, broker, egress, or denied.
-    --consumer <service>             Broker consumer: llm-gateway or http-broker.
+    --consumer <service>             Broker consumer: llm-gateway, connector,
+                                    or http-broker.
     --allow-host <host>              Broker host. Repeat for more hosts.
     --allow-method <method>          Allowed HTTP method. Repeat as needed.
     --allow-path <path>              Exact path or one trailing /* wildcard.
@@ -406,8 +407,10 @@ async function secretsDelivery(args: string[], opts: CtxOpts, json = false): Pro
   if (!ctx) return 1;
   const strategy = strategyRaw as SecretStrategy;
   const consumer = consumerFlag?.replace(/-/g, '_') ?? 'http_broker';
-  if (strategy === 'broker' && !['llm_gateway', 'http_broker'].includes(consumer)) {
-    process.stderr.write(`${status.err('--consumer must be llm-gateway or http-broker.')}\n`);
+  if (strategy === 'broker' && !['llm_gateway', 'connector', 'http_broker'].includes(consumer)) {
+    process.stderr.write(
+      `${status.err('--consumer must be llm-gateway, connector, or http-broker.')}\n`,
+    );
     return 2;
   }
   if (strategy !== 'broker' && consumerFlag !== undefined) {
@@ -437,9 +440,9 @@ async function secretsDelivery(args: string[], opts: CtxOpts, json = false): Pro
   }
 
   let policy: SecretEgressPolicy | undefined;
-  if (strategy === 'broker' && consumer === 'llm_gateway' && hasBrokerOptions) {
+  if (strategy === 'broker' && consumer !== 'http_broker' && hasBrokerOptions) {
     process.stderr.write(
-      `${status.err('HTTP policy flags cannot be used with the llm-gateway consumer.')}\n`,
+      `${status.err(`HTTP policy flags cannot be used with the ${consumer.replace(/_/g, '-')} consumer.`)}\n`,
     );
     return 2;
   }
@@ -486,7 +489,9 @@ async function secretsDelivery(args: string[], opts: CtxOpts, json = false): Pro
   try {
     const result = await withKortixScope(ctx.auth, () =>
       setProjectSecretStrategy(ctx.projectId, identifier, strategy, {
-        ...(strategy === 'broker' ? { consumer: consumer as 'llm_gateway' | 'http_broker' } : {}),
+        ...(strategy === 'broker'
+          ? { consumer: consumer as 'llm_gateway' | 'connector' | 'http_broker' }
+          : {}),
         ...(policy ? { egress_policy: policy } : {}),
         ...(handlePrefix ? { handle_prefix: handlePrefix } : {}),
       }),

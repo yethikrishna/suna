@@ -31,6 +31,7 @@ function secret(overrides: Record<string, unknown> = {}) {
     identifier: 'provider-primary',
     valueEnc: encryptProjectSecret(PROJECT_ID, 'plaintext-test-value'),
     scope: 'runtime',
+    active: true,
     strategy: 'broker',
     consumer: 'llm_gateway',
     updatedAt: new Date('2026-08-05T12:00:00.000Z'),
@@ -93,6 +94,43 @@ describe('getProjectSecretValueForConsumer', () => {
     expect(JSON.stringify(audits)).not.toContain('plaintext-test-value');
   });
 
+  test('allows a connector-scoped legacy row only through the connector boundary', async () => {
+    rows = [secret({ scope: 'connector', strategy: 'runtime', consumer: 'connector' })];
+
+    expect(
+      await getProjectSecretValueForConsumer({
+        projectId: PROJECT_ID,
+        accountId: ACCOUNT_ID,
+        sessionId: SESSION_ID,
+        actorUserId: '44444444-4444-4444-8444-444444444444',
+        name: 'provider_key',
+        consumer: 'connector',
+      }),
+    ).toBe('plaintext-test-value');
+    expect(audits[0]).toMatchObject({
+      source: 'connector',
+      action: 'secret.consumer.used',
+      metadata: { consumer: 'connector' },
+    });
+    expect(JSON.stringify(audits)).not.toContain('plaintext-test-value');
+  });
+
+  test('allows a broker row assigned to the connector consumer', async () => {
+    rows = [secret({ strategy: 'broker', consumer: 'connector' })];
+
+    expect(
+      await getProjectSecretValueForConsumer({
+        projectId: PROJECT_ID,
+        accountId: ACCOUNT_ID,
+        sessionId: SESSION_ID,
+        actorUserId: '44444444-4444-4444-8444-444444444444',
+        name: 'provider_key',
+        consumer: 'connector',
+      }),
+    ).toBe('plaintext-test-value');
+    expect(audits[0]).toMatchObject({ action: 'secret.consumer.used' });
+  });
+
   test('records a denied lookup when the secret is absent', async () => {
     expect(await read()).toBeNull();
     expect(audits).toEqual([
@@ -102,5 +140,15 @@ describe('getProjectSecretValueForConsumer', () => {
         metadata: { name: 'PROVIDER_KEY', consumer: 'llm_gateway' },
       }),
     ]);
+  });
+
+  test('denies an inactive secret to its configured consumer', async () => {
+    rows = [secret({ active: false })];
+
+    expect(await read()).toBeNull();
+    expect(audits[0]).toMatchObject({
+      outcome: 'denied',
+      action: 'secret.consumer.denied',
+    });
   });
 });

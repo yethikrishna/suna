@@ -30,7 +30,7 @@ import {
   isPerSeatAccount,
 } from './tiers';
 import { getAccountEntitlements } from './entitlements';
-import { getUsageBreakdownThisPeriod } from './usage-breakdown';
+import { currentPeriodStart, getUsageBreakdownThisPeriod } from './usage-breakdown';
 
 const ACTIVE_SESSION_STATUSES = ['queued', 'branching', 'provisioning', 'running'] as const;
 
@@ -137,7 +137,7 @@ export async function buildMinimalAccountState(accountId: string): Promise<Accou
       fetchInstances(),
       countActiveMembers(accountId).catch(() => 1),
       isPerSeatAccount(sub?.billingModel)
-        ? getUsageBreakdownThisPeriod(accountId, sub?.billingCycleAnchor ?? null).catch(() => null)
+        ? getUsageBreakdownThisPeriod(accountId, currentPeriodStart(sub?.billingCycleAnchor ?? null)).catch(() => null)
         : Promise.resolve(null),
       countActiveSessions(accountId).catch(() => 0),
     ]);

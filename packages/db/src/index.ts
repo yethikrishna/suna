@@ -38,6 +38,8 @@ export {
   projectMembers,
   projectAccessRequests,
   projectSecrets,
+  projectSessionSecretHandles,
+  projectSecretHandleStatusEnum,
   secretShareScopeEnum,
   secretGrantPrincipalEnum,
   projectSecretScopeEnum,

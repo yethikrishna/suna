@@ -17,6 +17,7 @@ import { isGatewayManagedEnv } from '../../llm-gateway/sandbox-credentials';
 import { seedProjectDefaultModelOnConnect } from '../../llm-gateway/models/seed-default';
 import { createRoute, z } from '@hono/zod-openapi';
 import { UpdateSecretStrategyInputSchema } from '@kortix/api-contract';
+import { parseEgressPolicy } from '../../secrets/strategy';
 import { projectSecrets, projects, sessionSandboxes } from '@kortix/db';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { loadProjectForUser, assertProjectCapability } from '../lib/access';
@@ -684,10 +685,42 @@ projectsApp.openapi(
     if (isSystemProjectSecretName(identifier)) {
       return c.json({ error: `${identifier} is managed by Kortix` }, 403);
     }
+    let nextPolicy = null;
     if (parsed.data.strategy === 'broker' || parsed.data.strategy === 'egress') {
+      if (!parsed.data.egress_policy) {
+        return c.json(
+          {
+            error: `${parsed.data.strategy} delivery requires an outbound policy`,
+            code: 'secret_delivery_policy_required',
+          },
+          400,
+        );
+      }
+      const policy = parseEgressPolicy(parsed.data.egress_policy);
+      if (!policy.ok) {
+        return c.json(
+          { error: policy.error, code: 'secret_delivery_policy_invalid' },
+          400,
+        );
+      }
+      nextPolicy = policy.policy;
+    }
+    if (parsed.data.strategy === 'egress') {
       return c.json(
         {
-          error: `${parsed.data.strategy} delivery is unavailable until its adapter is enabled`,
+          error: 'egress delivery is unavailable until its adapter is enabled',
+          code: 'secret_delivery_unavailable',
+        },
+        409,
+      );
+    }
+    if (
+      parsed.data.strategy === 'broker' &&
+      nextPolicy?.backend !== 'kortix_fetch'
+    ) {
+      return c.json(
+        {
+          error: 'The selected broker backend is unavailable',
           code: 'secret_delivery_unavailable',
         },
         409,
@@ -702,6 +735,8 @@ projectsApp.openapi(
         rotatedAt: projectSecrets.rotatedAt,
         updatedAt: projectSecrets.updatedAt,
         strategyLocked: projectSecrets.strategyLocked,
+        egressPolicy: projectSecrets.egressPolicy,
+        handlePrefix: projectSecrets.handlePrefix,
       })
       .from(projectSecrets)
       .where(
@@ -733,14 +768,25 @@ projectsApp.openapi(
       );
     }
 
-    if (existing.strategy !== parsed.data.strategy) {
+    const nextHandlePrefix =
+      parsed.data.strategy === 'broker' ? (parsed.data.handle_prefix ?? null) : null;
+    const deliveryChanged =
+      existing.strategy !== parsed.data.strategy ||
+      JSON.stringify(existing.egressPolicy ?? null) !== JSON.stringify(nextPolicy) ||
+      existing.handlePrefix !== nextHandlePrefix;
+    if (deliveryChanged) {
       const actorType =
         c.get('authType') === 'service_account' ? 'service_account' : 'human';
       await runAuditedTransaction(
         async (tx) => {
           await tx
             .update(projectSecrets)
-            .set({ strategy: parsed.data.strategy, updatedAt: new Date() })
+            .set({
+              strategy: parsed.data.strategy,
+              egressPolicy: nextPolicy,
+              handlePrefix: nextHandlePrefix,
+              updatedAt: new Date(),
+            })
             .where(eq(projectSecrets.secretId, existing.secretId));
         },
         () => ({
@@ -752,9 +798,15 @@ projectsApp.openapi(
           action: 'secret.strategy.changed',
           resourceType: 'project_secret',
           resourceId: existing.secretId,
-          before: { strategy: existing.strategy },
+          before: {
+            strategy: existing.strategy,
+            egress_policy: existing.egressPolicy ?? null,
+            handle_prefix: existing.handlePrefix ?? null,
+          },
           after: {
             strategy: parsed.data.strategy,
+            egress_policy: nextPolicy,
+            handle_prefix: nextHandlePrefix,
             requires_rotation: parsed.data.strategy !== 'runtime',
           },
           metadata: { identifier, name: existing.name },

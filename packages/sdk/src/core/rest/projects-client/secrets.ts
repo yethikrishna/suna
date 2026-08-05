@@ -12,6 +12,28 @@ export type SecretConsumer =
   | 'http_broker'
   | 'network';
 export type SecretDeliveryStatus = 'available' | 'unavailable' | 'disabled';
+export type SecretInjectionSlot =
+  | { kind: 'header'; name: string; template?: string }
+  | { kind: 'query'; name: string }
+  | { kind: 'json_body_field'; path: string };
+export interface SecretEgressRule {
+  host: string;
+  methods?: string[];
+  path?: string;
+  inject?: SecretInjectionSlot;
+}
+export interface SecretEgressPolicy {
+  backend?: 'llm_gateway' | 'executor' | 'git_proxy' | 'kortix_fetch';
+  base_url_env?: string;
+  rules: SecretEgressRule[];
+  inject: SecretInjectionSlot;
+  on_no_match?: 'deny' | 'observe';
+  tls?: 'terminate' | 'tunnel';
+}
+export interface UpdateSecretStrategyOptions {
+  egress_policy?: SecretEgressPolicy;
+  handle_prefix?: string;
+}
 
 /**
  * One project secret: `{ identifier, name (the env var KEY), value }`.
@@ -54,7 +76,7 @@ export interface ProjectSecret {
   /** Whether the selected delivery path is usable in this deployment. */
   delivery_status?: SecretDeliveryStatus;
   /** Network policy metadata. The secret value is never present. */
-  egress_policy?: Record<string, unknown> | null;
+  egress_policy?: SecretEgressPolicy | null;
   strategy_locked?: boolean;
   last_rotated_at?: string | null;
   /** The stored value may have entered an earlier sandbox and must be replaced. */
@@ -114,11 +136,12 @@ export async function setProjectSecretStrategy(
   projectId: string,
   identifier: string,
   strategy: SecretDeliveryStrategy,
+  options: UpdateSecretStrategyOptions = {},
 ) {
   return unwrap(
     await backendApi.put<ProjectSecret>(
       `/projects/${projectId}/secrets/${encodeURIComponent(identifier)}/strategy`,
-      { strategy },
+      { strategy, ...options },
     ),
   );
 }

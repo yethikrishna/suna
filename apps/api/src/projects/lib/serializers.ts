@@ -356,7 +356,11 @@ export function buildSecretView(input: {
     strategy,
     consumer,
     delivery_status:
-      strategy === 'runtime' ? 'available' : strategy === 'denied' ? 'disabled' : 'unavailable',
+      strategy === 'runtime' || (strategy === 'broker' && backend === 'kortix_fetch')
+        ? 'available'
+        : strategy === 'denied'
+          ? 'disabled'
+          : 'unavailable',
     egress_policy: deliveryRow?.egressPolicy ?? null,
     strategy_locked: deliveryRow?.strategyLocked ?? false,
     last_rotated_at: deliveryRow?.rotatedAt?.toISOString() ?? null,

@@ -64,6 +64,8 @@ function queryResult(fields: Record<string, unknown> | undefined) {
         rotatedAt: row.rotatedAt,
         updatedAt: row.updatedAt,
         strategyLocked: row.strategyLocked,
+        egressPolicy: row.egressPolicy,
+        handlePrefix: row.handlePrefix,
       }
     : row;
   return {
@@ -223,24 +225,98 @@ describe('PUT /v1/projects/:projectId/secrets/:identifier/strategy', () => {
     expect(JSON.stringify(audits[0])).not.toContain('encrypted-value');
   });
 
-  test.each(['broker', 'egress'] as const)(
-    'rejects unavailable %s delivery without changing the row',
-    async (strategy) => {
-      const response = await buildApp().request(
-        `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
-        {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ strategy }),
-        },
-      );
+  test('requires an outbound policy for broker delivery', async () => {
+    const response = await buildApp().request(
+      `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ strategy: 'broker' }),
+      },
+    );
 
-      expect(response.status).toBe(409);
-      expect(await response.json()).toMatchObject({ code: 'secret_delivery_unavailable' });
-      expect(updates).toHaveLength(0);
-      expect(audits).toHaveLength(0);
-    },
-  );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'secret_delivery_policy_required' });
+    expect(updates).toHaveLength(0);
+    expect(audits).toHaveLength(0);
+  });
+
+  test('configures the generic HTTPS broker with a validated outbound policy', async () => {
+    const egressPolicy = {
+      backend: 'kortix_fetch',
+      rules: [{ host: 'api.example.com', methods: ['POST'], path: '/v1/*' }],
+      inject: { kind: 'header', name: 'authorization', template: 'Bearer {{secret}}' },
+    };
+    const response = await buildApp().request(
+      `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ strategy: 'broker', egress_policy: egressPolicy, handle_prefix: 'svc_' }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      strategy: 'broker',
+      consumer: 'http_broker',
+      delivery_status: 'available',
+      egress_policy: egressPolicy,
+    });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({
+      strategy: 'broker',
+      egressPolicy,
+      handlePrefix: 'svc_',
+    });
+    expect(audits).toHaveLength(1);
+  });
+
+  test('rejects an unavailable broker backend', async () => {
+    const response = await buildApp().request(
+      `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          strategy: 'broker',
+          egress_policy: {
+            backend: 'llm_gateway',
+            rules: [{ host: 'api.example.com' }],
+            inject: { kind: 'header', name: 'authorization' },
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: 'secret_delivery_unavailable' });
+    expect(updates).toHaveLength(0);
+    expect(audits).toHaveLength(0);
+  });
+
+  test('rejects transparent egress until its adapter is available', async () => {
+    const response = await buildApp().request(
+      `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          strategy: 'egress',
+          egress_policy: {
+            backend: 'llm_gateway',
+            rules: [{ host: 'api.example.com' }],
+            inject: { kind: 'header', name: 'authorization' },
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: 'secret_delivery_unavailable' });
+    expect(updates).toHaveLength(0);
+    expect(audits).toHaveLength(0);
+  });
 
   test('attributes a service-account strategy change to automation', async () => {
     authType = 'service_account';

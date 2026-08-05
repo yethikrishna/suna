@@ -1012,6 +1012,8 @@ export type SecretEgressPolicy = z.infer<typeof SecretEgressPolicySchema>;
 export const UpdateSecretStrategyInputSchema = z
   .object({
     strategy: SecretDeliveryStrategySchema,
+    egress_policy: SecretEgressPolicySchema.optional(),
+    handle_prefix: z.string().min(1).max(48).optional(),
   })
   .strict();
 export type UpdateSecretStrategyInput = z.infer<typeof UpdateSecretStrategyInputSchema>;

@@ -302,6 +302,28 @@ describe('buildSecretView ⇄ SecretSchema', () => {
     expect(out.requires_rotation).toBe(true);
   });
 
+  test('generic HTTPS broker metadata reports an available server consumer', () => {
+    const egressPolicy = {
+      backend: 'kortix_fetch' as const,
+      rules: [{ host: 'api.example.com' }],
+      inject: { kind: 'header' as const, name: 'authorization' },
+    };
+    const out = buildSecretView({
+      identifier: 'OPENAI_API_KEY',
+      name: 'OPENAI_API_KEY',
+      shared: secretRow({ strategy: 'broker', egressPolicy }),
+      canManageShared: true,
+    });
+
+    expect(SecretSchema.strict().parse(out)).toEqual(out);
+    expect(out).toMatchObject({
+      strategy: 'broker',
+      consumer: 'http_broker',
+      delivery_status: 'available',
+      egress_policy: egressPolicy,
+    });
+  });
+
   test('two identifiers sharing the same key parse as independent secrets', () => {
     const primary = buildSecretView({
       identifier: 'GMAPS-primary',

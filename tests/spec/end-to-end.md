@@ -434,9 +434,9 @@ DB `project_secrets` (AES-256-GCM, key bound to `projectId`, unique `(project_id
 `SEC-1` `GET /projects/:id/secrets` → `manage` → names only + manifest required/optional keys + virtual git-auth row.
 `SEC-2` `POST /projects/:id/secrets {name,value}` → `manage` → upsert (encrypt); name upper-cased; invalid name format → 400; `KORTIX_*` reserved → 400. M_EDITOR/M_VIEWER → 403.
 `SEC-3` `DELETE /projects/:id/secrets/:name` → `manage`; invalid name → 400; system secret (git-auth) → 403.
-`SEC-4` injection — `buildSessionSandboxEnvVars` decrypts **all** project secrets into the session env (project-global, no per-member scoping) + minted `KORTIX_TOKEN`/`KORTIX_CLI_TOKEN`, `KORTIX_LLM_*`, `KORTIX_GIT_AUTH_TOKEN`, etc.
+`SEC-4` injection — `buildSessionSandboxEnvVars` intersects the agent grant and immutable session allowlist. Only `runtime` values enter the session environment. `denied` enters nothing. Managed delivery never falls back to plaintext.
 `SEC-6` `POST /projects/:id/secrets {identifier,name,value}` → two identifiers may share one env-var `name` (e.g. `GMAPS-primary`/`GMAPS-backup` both `GOOGLE_MAPS_API_KEY`); re-submitting an existing `identifier` with a different `name` → 409.
-`SEC-8` `PUT /projects/:id/secrets/:identifier/strategy {strategy}` → manager-only human control plane; `runtime|denied` → 200 with delivery metadata and a `secret.strategy.changed` audit event; `broker|egress` → 409 until an adapter is available; agent principals → 403.
+`SEC-8` `PUT /projects/:id/secrets/:identifier/strategy {strategy,egress_policy?,handle_prefix?}` → manager-only control plane; `runtime|denied` → 200; `broker` requires a validated policy and currently accepts only `backend=kortix_fetch`; transparent `egress` and other broker backends → 409 until their adapters are available; each change writes `secret.strategy.changed`; agent principals → 403.
 `EXEC-ATT-AUTH` `POST /executor/[projects/:projectId/]attachments` → both attachment-upload forms require authentication before accepting multipart data; anonymous requests → 401.
 
 ---

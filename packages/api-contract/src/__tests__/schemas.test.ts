@@ -543,9 +543,28 @@ describe('SecretSchema', () => {
     expect(SecretDeliveryStrategySchema.safeParse('env').success).toBe(false);
   });
 
-  test('accepts only a strategy in the update input', () => {
+  test('accepts a broker policy and handle prefix in the update input', () => {
     expect(UpdateSecretStrategyInputSchema.parse({ strategy: 'denied' })).toEqual({
       strategy: 'denied',
+    });
+    expect(
+      UpdateSecretStrategyInputSchema.parse({
+        strategy: 'broker',
+        egress_policy: {
+          backend: 'kortix_fetch',
+          rules: [{ host: 'api.example.com', methods: ['POST'], path: '/v1/*' }],
+          inject: { kind: 'header', name: 'authorization', template: 'Bearer {{secret}}' },
+        },
+        handle_prefix: 'example_',
+      }),
+    ).toEqual({
+      strategy: 'broker',
+      egress_policy: {
+        backend: 'kortix_fetch',
+        rules: [{ host: 'api.example.com', methods: ['POST'], path: '/v1/*' }],
+        inject: { kind: 'header', name: 'authorization', template: 'Bearer {{secret}}' },
+      },
+      handle_prefix: 'example_',
     });
     expect(
       UpdateSecretStrategyInputSchema.safeParse({ strategy: 'runtime', value: 'secret' }).success,

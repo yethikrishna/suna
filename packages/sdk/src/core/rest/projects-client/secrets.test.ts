@@ -94,6 +94,29 @@ test('setProjectSecretStrategy PUTs the strategy to the encoded identifier route
   expect(result.strategy).toBe('denied');
 });
 
+test('setProjectSecretStrategy sends broker policy options', async () => {
+  nextResponse = { status: 200, body: { identifier: 'API_KEY', strategy: 'broker' } };
+
+  await setProjectSecretStrategy('P1', 'API_KEY', 'broker', {
+    egress_policy: {
+      backend: 'kortix_fetch',
+      rules: [{ host: 'api.example.com', methods: ['POST'], path: '/v1/*' }],
+      inject: { kind: 'header', name: 'authorization', template: 'Bearer {{secret}}' },
+    },
+    handle_prefix: 'example_',
+  });
+
+  expect(last().body).toEqual({
+    strategy: 'broker',
+    egress_policy: {
+      backend: 'kortix_fetch',
+      rules: [{ host: 'api.example.com', methods: ['POST'], path: '/v1/*' }],
+      inject: { kind: 'header', name: 'authorization', template: 'Bearer {{secret}}' },
+    },
+    handle_prefix: 'example_',
+  });
+});
+
 test('startProjectProviderOAuth posts to the provider start endpoint with the sharing intent', async () => {
   nextResponse = {
     status: 200,

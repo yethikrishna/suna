@@ -362,6 +362,30 @@ describe('PUT /v1/projects/:projectId/secrets/:identifier/strategy', () => {
     });
   });
 
+  test('configures an automation consumer without a network policy', async () => {
+    const response = await buildApp().request(
+      `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ strategy: 'broker', consumer: 'executor' }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      strategy: 'broker',
+      consumer: 'executor',
+      delivery_status: 'available',
+      egress_policy: null,
+    });
+    expect(updates[0]).toMatchObject({
+      strategy: 'broker',
+      consumer: 'executor',
+      egressPolicy: null,
+    });
+  });
+
   test('rejects transparent egress until its adapter is available', async () => {
     const response = await buildApp().request(
       `/v1/projects/${PROJECT_ID}/secrets/SERVICE_API_KEY/strategy`,

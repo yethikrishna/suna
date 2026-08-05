@@ -1,7 +1,7 @@
 import { createHash, createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
 import { SESSION_SECRETS_ALLOWLIST_MAX_KEYS } from '@kortix/api-contract';
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
-import { projectSecrets, projectSessionSecretHandles, projectSessions } from '@kortix/db';
+import { projectSecrets, projectSessionSecretHandles, projectSessions, projects } from '@kortix/db';
 import { config } from '../config';
 import { recordAuditEvent } from '../shared/audit';
 import { db } from '../shared/db';
@@ -77,7 +77,12 @@ export function encryptProjectSecret(projectId: string, value: string): string {
 
 export function decryptProjectSecret(projectId: string, valueEnc: string): string {
   const [version, ivB64, tagB64, ciphertextB64] = valueEnc.split(':');
-  if (version !== ENVELOPE_VERSION || !ivB64 || !tagB64 || !ciphertextB64) {
+  if (
+    version !== ENVELOPE_VERSION ||
+    !ivB64 ||
+    !tagB64 ||
+    ciphertextB64 === undefined
+  ) {
     throw new Error('Unsupported project secret envelope');
   }
   const tag = fromB64url(tagB64);
@@ -745,7 +750,7 @@ export async function getProjectSecretValue(
 
 export interface ProjectSecretConsumerRead {
   projectId: string;
-  accountId: string;
+  accountId?: string;
   sessionId?: string | null;
   actorUserId?: string | null;
   name: string;
@@ -793,6 +798,16 @@ export async function projectSecretIsConfiguredForConsumer(input: {
 export async function getProjectSecretValueForConsumer(
   input: ProjectSecretConsumerRead,
 ): Promise<string | null> {
+  const accountId =
+    input.accountId ??
+    (
+      await db
+        .select({ accountId: projects.accountId })
+        .from(projects)
+        .where(eq(projects.projectId, input.projectId))
+        .limit(1)
+    )[0]?.accountId;
+  if (!accountId) return null;
   const normalizedName = input.name.trim().toUpperCase();
   const rows = await db
     .select({
@@ -815,7 +830,7 @@ export async function getProjectSecretValueForConsumer(
     );
   if (rows.length === 0) {
     await recordAuditEvent({
-      accountId: input.accountId,
+      accountId,
       projectId: input.projectId,
       sessionId: input.sessionId,
       actorUserId: input.actorUserId,
@@ -840,7 +855,7 @@ export async function getProjectSecretValueForConsumer(
       : row.strategy === 'broker' && row.consumer === input.consumer);
   if (!allowed) {
     await recordAuditEvent({
-      accountId: input.accountId,
+      accountId,
       projectId: input.projectId,
       sessionId: input.sessionId,
       actorUserId: input.actorUserId,
@@ -861,9 +876,31 @@ export async function getProjectSecretValueForConsumer(
     return null;
   }
 
-  const value = decryptProjectSecret(input.projectId, row.valueEnc);
+  let value: string;
+  try {
+    value = decryptProjectSecret(input.projectId, row.valueEnc);
+  } catch {
+    await recordAuditEvent({
+      accountId,
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+      actorUserId: input.actorUserId,
+      actorType: input.sessionId ? 'agent' : input.actorUserId ? 'human' : 'system',
+      source: input.consumer,
+      outcome: 'failure',
+      action: 'secret.consumer.invalid',
+      resourceType: 'project_secret',
+      resourceId: row.secretId,
+      metadata: {
+        identifier: row.identifier,
+        name: normalizedName,
+        consumer: input.consumer,
+      },
+    });
+    return null;
+  }
   await recordAuditEvent({
-    accountId: input.accountId,
+    accountId,
     projectId: input.projectId,
     sessionId: input.sessionId,
     actorUserId: input.actorUserId,

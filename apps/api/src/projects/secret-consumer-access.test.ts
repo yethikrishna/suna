@@ -19,7 +19,8 @@ mock.module('../shared/audit', () => ({
   },
 }));
 
-const { encryptProjectSecret, getProjectSecretValueForConsumer } = await import('./secrets');
+const { decryptProjectSecret, encryptProjectSecret, getProjectSecretValueForConsumer } =
+  await import('./secrets');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const ACCOUNT_ID = '22222222-2222-4222-8222-222222222222';
@@ -151,4 +152,28 @@ describe('getProjectSecretValueForConsumer', () => {
       action: 'secret.consumer.denied',
     });
   });
+
+  test('returns null and records malformed ciphertext without exposing it', async () => {
+    rows = [secret({ valueEnc: 'not-an-envelope' })];
+
+    expect(await read()).toBeNull();
+    expect(audits).toEqual([
+      expect.objectContaining({
+        outcome: 'failure',
+        action: 'secret.consumer.invalid',
+        metadata: {
+          identifier: 'provider-primary',
+          name: 'PROVIDER_KEY',
+          consumer: 'llm_gateway',
+        },
+      }),
+    ]);
+    expect(JSON.stringify(audits)).not.toContain('not-an-envelope');
+  });
+});
+
+test('project secret encryption preserves an empty value', () => {
+  const envelope = encryptProjectSecret(PROJECT_ID, '');
+
+  expect(decryptProjectSecret(PROJECT_ID, envelope)).toBe('');
 });

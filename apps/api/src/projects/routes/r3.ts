@@ -553,6 +553,7 @@ projectsApp.openapi(
     requestedStrategy === 'broker' &&
     requestedConsumer?.data !== 'llm_gateway' &&
     requestedConsumer?.data !== 'connector' &&
+    requestedConsumer?.data !== 'executor' &&
     requestedConsumer?.data !== 'http_broker'
   ) {
     return c.json({ error: 'broker creation requires a supported server consumer' }, 400);
@@ -825,6 +826,7 @@ projectsApp.openapi(
       parsed.data.strategy === 'broker' &&
       nextConsumer !== 'llm_gateway' &&
       nextConsumer !== 'connector' &&
+      nextConsumer !== 'executor' &&
       nextConsumer !== 'http_broker'
     ) {
       return c.json(

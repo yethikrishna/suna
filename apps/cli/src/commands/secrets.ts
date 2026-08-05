@@ -52,7 +52,7 @@ Subcommands:
                                     secret was updated mid-session.
   delivery IDENTIFIER STRATEGY      Set runtime, broker, egress, or denied.
     --consumer <service>             Broker consumer: llm-gateway, connector,
-                                    or http-broker.
+                                    automation, or http-broker.
     --allow-host <host>              Broker host. Repeat for more hosts.
     --allow-method <method>          Allowed HTTP method. Repeat as needed.
     --allow-path <path>              Exact path or one trailing /* wildcard.
@@ -406,10 +406,14 @@ async function secretsDelivery(args: string[], opts: CtxOpts, json = false): Pro
   const ctx = await resolveProjectContext(opts);
   if (!ctx) return 1;
   const strategy = strategyRaw as SecretStrategy;
-  const consumer = consumerFlag?.replace(/-/g, '_') ?? 'http_broker';
-  if (strategy === 'broker' && !['llm_gateway', 'connector', 'http_broker'].includes(consumer)) {
+  const normalizedConsumer = consumerFlag?.replace(/-/g, '_') ?? 'http_broker';
+  const consumer = normalizedConsumer === 'automation' ? 'executor' : normalizedConsumer;
+  if (
+    strategy === 'broker' &&
+    !['llm_gateway', 'connector', 'executor', 'http_broker'].includes(consumer)
+  ) {
     process.stderr.write(
-      `${status.err('--consumer must be llm-gateway, connector, or http-broker.')}\n`,
+      `${status.err('--consumer must be llm-gateway, connector, automation, or http-broker.')}\n`,
     );
     return 2;
   }
@@ -490,7 +494,7 @@ async function secretsDelivery(args: string[], opts: CtxOpts, json = false): Pro
     const result = await withKortixScope(ctx.auth, () =>
       setProjectSecretStrategy(ctx.projectId, identifier, strategy, {
         ...(strategy === 'broker'
-          ? { consumer: consumer as 'llm_gateway' | 'connector' | 'http_broker' }
+          ? { consumer: consumer as 'llm_gateway' | 'connector' | 'executor' | 'http_broker' }
           : {}),
         ...(policy ? { egress_policy: policy } : {}),
         ...(handlePrefix ? { handle_prefix: handlePrefix } : {}),

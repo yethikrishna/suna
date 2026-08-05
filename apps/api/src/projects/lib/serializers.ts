@@ -364,6 +364,7 @@ export function buildSecretView(input: {
     delivery_status:
       (strategy === 'runtime' && consumer === 'sandbox') ||
       (strategy === 'broker' && consumer === 'llm_gateway') ||
+      (strategy === 'broker' && consumer === 'executor') ||
       (strategy === 'broker' && consumer === 'git_proxy') ||
       (strategy === 'broker' && consumer === 'http_broker' && backend === 'kortix_fetch') ||
       consumer === 'connector'

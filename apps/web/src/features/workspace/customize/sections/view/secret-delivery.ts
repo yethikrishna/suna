@@ -66,6 +66,13 @@ export function secretDeliveryPresentation(
       tone: 'secondary',
     };
   }
+  if (strategy === 'broker' && consumer === 'executor') {
+    return {
+      label: 'Automation',
+      description: 'Used by server-side triggers and actions without entering the sandbox.',
+      tone: 'secondary',
+    };
+  }
   return PRESENTATIONS[strategy];
 }
 

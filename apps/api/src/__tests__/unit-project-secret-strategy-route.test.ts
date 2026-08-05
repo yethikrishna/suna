@@ -588,6 +588,50 @@ describe('POST /v1/projects/:projectId/secrets audit', () => {
     expect(JSON.stringify(audits)).not.toContain('plaintext-test-value');
   });
 
+  test('defaults a known LLM credential to the LLM gateway', async () => {
+    const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'ANTHROPIC_API_KEY', value: 'plaintext-test-value' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      strategy: 'broker',
+      consumer: 'llm_gateway',
+      delivery_status: 'available',
+    });
+    expect(row).toMatchObject({ strategy: 'broker', consumer: 'llm_gateway' });
+    expect(audits[0]).toMatchObject({
+      after: {
+        configured: true,
+        strategy: 'broker',
+        consumer: 'llm_gateway',
+        rotated: true,
+      },
+    });
+  });
+
+  test('keeps an explicit runtime choice for a known LLM credential', async () => {
+    const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'ANTHROPIC_API_KEY',
+        value: 'plaintext-test-value',
+        strategy: 'runtime',
+        consumer: 'sandbox',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      strategy: 'runtime',
+      consumer: 'sandbox',
+    });
+    expect(row).toMatchObject({ strategy: 'runtime', consumer: 'sandbox' });
+  });
+
   test('creates a connector secret without a runtime delivery transition', async () => {
     const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets`, {
       method: 'POST',

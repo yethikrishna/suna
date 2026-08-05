@@ -567,8 +567,21 @@ projectsApp.openapi(
   if ((requestedStrategy === undefined) !== (requestedConsumer === undefined)) {
     return c.json({ error: 'strategy and consumer must be set together' }, 400);
   }
-  const explicitStrategy = requestedStrategy as 'runtime' | 'broker' | 'denied' | undefined;
-  const explicitConsumer = requestedConsumer?.data;
+  const defaultToGateway =
+    requestedStrategy === undefined &&
+    requestedConsumer === undefined &&
+    isGatewayManagedEnv(name);
+  const explicitStrategy = (requestedStrategy ?? (defaultToGateway ? 'broker' : undefined)) as
+    | 'runtime'
+    | 'broker'
+    | 'denied'
+    | undefined;
+  const explicitConsumer =
+    requestedConsumer === undefined
+      ? defaultToGateway
+        ? 'llm_gateway'
+        : undefined
+      : requestedConsumer.data;
   let explicitPolicy = null;
   if (explicitConsumer === 'http_broker') {
     const policy = parseEgressPolicy(body.egress_policy);

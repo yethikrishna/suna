@@ -103,6 +103,7 @@ import {
   resolvePendingQuestion,
 } from '../lib/pending-questions';
 import { loadProjectAgents } from '../agents';
+import { getAgentGrant } from '../../iam/agent-scope';
 import {
   assertProjectCapability,
   loadProjectForUser,
@@ -3355,6 +3356,17 @@ projectsApp.openapi(
     const sessionId = c.req.param('sessionId');
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
+    // The question text is session CONTENT, so it sits behind the same leaf the
+    // other session-content reads use (r7.ts). `loadProjectForUser(…, 'read')`
+    // is only the coarse project floor: a caller whose custom role or scoped
+    // token has `project.session.read` revoked still clears it.
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_SESSION_READ,
+    );
     const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
     if (!visible) return c.json({ error: 'Not found' }, 404);
     return c.json({ question: await getOpenQuestion(sessionId) });
@@ -3377,6 +3389,19 @@ projectsApp.openapi(
   async (c: any) => {
     const projectId = c.req.param('projectId');
     const sessionId = c.req.param('sessionId');
+    // The `question` tool exists so the agent YIELDS TO A HUMAN. An
+    // agent-session token is scoped to its own session, which is precisely the
+    // session holding the question it just asked — so if it could POST here it
+    // would answer itself and resume, and the tool would be decorative.
+    //
+    // Denied outright rather than scope-gated: `assertAgentScope(…
+    // PROJECT_SESSION_START)` is the usual bar for starting a turn, but that
+    // leaf ships in the default agent preset (accounts/iam/role-presets.ts), so
+    // it would admit the self-answer on a stock grant. Answering is a human
+    // operation. Same shape as the token-minting guard in r3.ts.
+    if (getAgentGrant(c)) {
+      return c.json({ error: 'Agent-session tokens cannot answer their own question' }, 403);
+    }
     // Answering resumes a parked box and starts a turn, so this is a mutation
     // of the session — the same bar the question relay itself uses.
     const loaded = await loadProjectForUser(c, projectId, 'session');

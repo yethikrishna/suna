@@ -195,4 +195,4 @@ describe('renderAnswerPrompt', () => {
     expect(() => renderAnswerPrompt(null, [['yes']])).not.toThrow();
     expect(renderAnswerPrompt(null, [['yes']])).toContain('yes');
   });
-})
+});

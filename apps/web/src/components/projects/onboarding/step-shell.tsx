@@ -110,6 +110,7 @@ export function ChoiceRow({
   leading,
   trailing,
   disabled,
+  onPreload,
   'aria-label': ariaLabel,
 }: {
   selected: boolean;
@@ -119,6 +120,13 @@ export function ChoiceRow({
   leading?: ReactNode;
   trailing?: ReactNode;
   disabled?: boolean;
+  /**
+   * Fired on hover and focus, ahead of any click. Rows that reveal a
+   * lazily-loaded surface use this to fetch the chunk early — otherwise the
+   * download and parse land in the middle of the open animation and drop
+   * frames. Must stay idempotent and cheap; it can fire many times.
+   */
+  onPreload?: () => void;
   /**
    * Overrides the accessible name when the visible label alone would mislead.
    * The tools step needs this: a connected app still offers "Add <app> profile",
@@ -135,6 +143,8 @@ export function ChoiceRow({
       aria-label={ariaLabel}
       disabled={disabled}
       onClick={onSelect}
+      onPointerEnter={onPreload}
+      onFocus={onPreload}
       className={cn(
         // py-3 + two text lines clears the 40px minimum hit area comfortably.
         'bg-popover flex w-full items-center gap-3 rounded-md border px-4 py-3 text-left',

@@ -84,6 +84,36 @@ describe('slack step', () => {
     expect(slack).toContain('flex-col');
     expect(slack).toContain('xl:w-[420px]');
   });
+
+  // Under the default mode the exiting panel keeps its flex space until the
+  // fade completes, so the chooser sits still and then jumps back. This was
+  // why closing felt worse than opening.
+  test('lets the chooser move back while the panel is still leaving', () => {
+    expect(slack).toContain('mode="popLayout"');
+  });
+
+  // The chunk downloaded and parsed during the open animation, dropping frames
+  // for reasons that had nothing to do with easing.
+  test('preloads the lazy form before the click', () => {
+    expect(slack).toContain('onPreload={preloadConnectorsView}');
+    expect(slack).toContain('const preloadConnectorsView');
+  });
+
+  // The manifest block is tall. Sizing the panel to it grew the row far past
+  // the chooser, and the wizard centres its body vertically, so the whole step
+  // lurched upward as the panel appeared.
+  test('bounds the panel height so the row does not lurch', () => {
+    expect(slack).toContain('max-h-[380px]');
+    // The Suspense fallback matches the loaded height — otherwise skeleton to
+    // form is a second reflow mid-animation.
+    expect(slack).toContain('h-[380px]');
+  });
+
+  // A toggle can be interrupted mid-flight. Springs preserve velocity across
+  // an interruption; a tween restarts from zero and visibly jumps.
+  test('uses a spring for the layout shift', () => {
+    expect(slack).toContain('LAYOUT_TRANSITION');
+  });
 });
 
 describe('company step', () => {

@@ -32,15 +32,28 @@ import Loading from '@/components/ui/loading';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSlackInstall, useSlackMode } from '@/hooks/channels/use-channels-installations';
 
-import { ENTER_TRANSITION, EXIT_TRANSITION } from '../motion';
+import { ENTER_TRANSITION, EXIT_TRANSITION, LAYOUT_TRANSITION } from '../motion';
 import { ChoiceRow, StepShell } from '../step-shell';
 
 /** Lazy — keeps the giant connectors-view module out of the project bundle. */
+const importConnectorsView = () => import('@/features/workspace/customize/sections/connectors-view');
+
 const SlackConnectForm = lazy(() =>
-  import('@/features/workspace/customize/sections/connectors-view').then((m) => ({
-    default: m.SlackConnectForm,
-  })),
+  importConnectorsView().then((m) => ({ default: m.SlackConnectForm })),
 );
+
+/**
+ * Fetch the chunk on hover, before the click.
+ *
+ * Left to itself, `lazy()` starts downloading when the panel mounts — so the
+ * browser downloads, parses, and mounts a large form with a syntax-highlighted
+ * manifest *during* the open animation, and drops frames doing it. This was the
+ * single biggest source of jank on this step; easing had nothing to do with it.
+ * Idempotent: the module registry dedupes, so repeat calls are free.
+ */
+const preloadConnectorsView = () => {
+  void importConnectorsView();
+};
 
 export function SlackStep({
   projectId,
@@ -81,7 +94,11 @@ export function SlackStep({
 
   return (
     <div className="flex flex-col items-center gap-6 xl:flex-row xl:items-start xl:justify-center">
-      <motion.div layout={!reduced} transition={ENTER_TRANSITION} className="w-full max-w-[560px] shrink-0">
+      <motion.div
+        layout={!reduced}
+        transition={LAYOUT_TRANSITION}
+        className="w-full max-w-[560px] shrink-0"
+      >
         <StepShell
           title="Add Kortix to Slack"
           description="This is where most teams actually use Kortix — @mention your agent, kick off tasks, get results in the channel."
@@ -124,6 +141,7 @@ export function SlackStep({
                 label="Use a custom Slack app"
                 description="For self-hosted workspaces, or when managed install is unavailable"
                 onSelect={() => setCustomRequested((o) => !o)}
+                onPreload={preloadConnectorsView}
                 leading={<Sliders className="text-muted-foreground size-4 shrink-0" />}
               />
             </div>
@@ -131,7 +149,12 @@ export function SlackStep({
         </StepShell>
       </motion.div>
 
-      <AnimatePresence initial={false}>
+      {/* popLayout is what makes CLOSING smooth. Under the default mode the
+          exiting panel keeps its 420px of flex space until the fade finishes,
+          so the chooser cannot start moving back until then — it sat still,
+          then jumped. popLayout takes the panel out of flow the instant it
+          starts leaving, so the slide back and the fade out run together. */}
+      <AnimatePresence initial={false} mode="popLayout">
         {customOpen && (
           <motion.aside
             key="custom-slack"
@@ -158,9 +181,17 @@ export function SlackStep({
                 <X className="size-3.5" />
               </Button>
             </div>
-            <Suspense fallback={<Skeleton className="h-40 w-full rounded-md" />}>
-              <SlackConnectForm projectId={projectId} onConnected={() => install.refetch()} />
-            </Suspense>
+            {/* Bounded, with the fallback the same height as the loaded form.
+                The manifest block is very tall; letting the panel size to it
+                made the row grow far past the chooser, and since the wizard
+                centres its body vertically the whole step lurched upward as it
+                appeared. A fixed viewport with internal scroll keeps the row's
+                height governed by the chooser, so nothing moves but the panel. */}
+            <div className="max-h-[380px] overflow-y-auto pr-1">
+              <Suspense fallback={<Skeleton className="h-[380px] w-full rounded-md" />}>
+                <SlackConnectForm projectId={projectId} onConnected={() => install.refetch()} />
+              </Suspense>
+            </div>
           </motion.aside>
         )}
       </AnimatePresence>

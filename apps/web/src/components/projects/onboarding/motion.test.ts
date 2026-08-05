@@ -10,7 +10,13 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ENTER_TRANSITION, EXIT_TRANSITION, SEAL_TRANSITION, slideVariants } from './motion';
+import {
+  ENTER_TRANSITION,
+  EXIT_TRANSITION,
+  LAYOUT_TRANSITION,
+  SEAL_TRANSITION,
+  slideVariants,
+} from './motion';
 
 const shell = readFileSync(
   join(import.meta.dir, '..', 'project-onboarding-wizard.tsx'),
@@ -75,6 +81,14 @@ describe('timing', () => {
     expect(SEAL_TRANSITION.bounce).toBeGreaterThan(0);
     expect(ENTER_TRANSITION.bounce).toBeUndefined();
     expect(EXIT_TRANSITION.bounce).toBeUndefined();
+    expect(LAYOUT_TRANSITION.bounce).toBe(0);
+  });
+
+  // The row that drives this layout shift is a toggle, so the motion is
+  // interruptible by design. A spring carries its velocity across the
+  // interruption; a tween restarts from zero and visibly jumps.
+  test('layout shifts use an interruptible spring', () => {
+    expect(LAYOUT_TRANSITION.type).toBe('spring');
   });
 });
 

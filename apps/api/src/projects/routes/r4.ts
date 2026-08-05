@@ -95,6 +95,7 @@ import {
   setProjectModelOverrides,
 } from '../../repositories/project-routing-policies';
 import { db } from '../../shared/db';
+import { recordPendingQuestion } from '../lib/pending-questions';
 import { loadProjectAgents } from '../agents';
 import {
   assertProjectCapability,
@@ -3270,14 +3271,49 @@ projectsApp.openapi(
       return c.json({ error: 'no valid questions provided' }, 400);
     }
 
+    // PERSIST FIRST, and independently of any channel.
+    //
+    // A waiting turn makes no gateway LLM calls, earns no deadline extension,
+    // and its box is parked on schedule — correct, and the bounded-lifetime
+    // invariant depends on it. What parking used to destroy is the question
+    // itself: opencode restarts cold, so the user returned to a session that had
+    // forgotten what it asked. Storing it out here lets the box die on time and
+    // the conversation survive it. See lib/pending-questions.ts.
+    //
+    // Deliberately does NOT touch the deadline. A box that could keep itself
+    // alive by reporting "still waiting" is the self-renewal this design
+    // deleted.
+    const resolvedAccountId = (c as any).get('accountId') as string | undefined;
+    if (resolvedAccountId) {
+      await recordPendingQuestion({
+        accountId: resolvedAccountId,
+        projectId,
+        sessionId,
+        requestId: body.request_id?.trim() || `q-${sessionId}`,
+        opencodeSessionId: (body as { opencode_session_id?: string }).opencode_session_id ?? null,
+        questions,
+      }).catch((err) => {
+        // Never fail the relay on a bookkeeping error — the agent is blocked and
+        // the channel render is still worth attempting.
+        console.warn('[turn-question] could not persist pending question:', err);
+        return null;
+      });
+    }
+
     // Non-blocking: post the question(s) into the thread and return immediately
     // with sentinel `answers`. The agent does NOT wait for an inline answer — the
     // user's in-thread reply arrives as a follow-up turn. Returning `answers` keeps
     // BOTH the new sandbox (ignores them, uses its own sentinel) and an old sandbox
     // image (resumes opencode from them) unblocked.
+    //
+    // A session with no channel has nothing to post to. That is not an error now
+    // that the question is durable: it is the ordinary web case, and failing here
+    // would make the relay look broken for every non-Slack session.
     const result = await relayTurnQuestion(sessionId, questions);
-    if (!result.ok) return c.json({ ok: false, error: result.error }, 409);
-    return c.json({ ok: true, answers: result.answers });
+    if (!result.ok) {
+      return c.json({ ok: true, persisted: true, answers: [], channel_error: result.error });
+    }
+    return c.json({ ok: true, persisted: true, answers: result.answers });
   },
 );
 

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import { projectSecrets, projectSessions } from '@kortix/db';
+import { projectSecrets, projectSessionSecretHandles, projectSessions } from '@kortix/db';
 import { Hono } from 'hono';
+import * as realAccess from '../projects/lib/access';
 import * as realProjectSecrets from '../projects/secrets';
 
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
@@ -12,6 +13,11 @@ const POLICY = {
   backend: 'kortix_fetch' as const,
   rules: [{ host: 'api.example.com', methods: ['POST'], path: '/v1/*' }],
   inject: { kind: 'header' as const, name: 'authorization', template: 'Bearer {{secret}}' },
+};
+const FROZEN_POLICY = {
+  backend: 'kortix_fetch' as const,
+  rules: [{ host: 'api.example.com', methods: ['POST'], path: '/v1/*' }],
+  inject: { kind: 'header' as const, name: 'x-api-key' },
 };
 
 let authType: 'pat' | 'supabase' = 'pat';
@@ -26,6 +32,10 @@ let agentGrant: Record<string, unknown> | null = {
 let sessionRow: Record<string, unknown> | null = {
   sessionId: SESSION_ID,
   secretsAllowlist: ['PRIMARY'],
+};
+let handleRow: Record<string, unknown> | null = {
+  policySnapshot: FROZEN_POLICY,
+  expiresAt: null,
 };
 let secretRows: Array<Record<string, unknown>> = [];
 const audits: Array<Record<string, unknown>> = [];
@@ -51,6 +61,11 @@ const databaseMock = {
       where: () => {
         if (table === projectSessions) return { limit: async () => (sessionRow ? [sessionRow] : []) };
         if (table === projectSecrets) return Promise.resolve(secretRows);
+        if (table === projectSessionSecretHandles) {
+          return {
+            orderBy: () => ({ limit: async () => (handleRow ? [handleRow] : []) }),
+          };
+        }
         throw new Error('unexpected table');
       },
     }),
@@ -59,6 +74,7 @@ const databaseMock = {
 
 mock.module('../shared/db', () => ({ db: databaseMock, hasDatabase: true }));
 mock.module('../projects/lib/access', () => ({
+  ...realAccess,
   loadProjectForUser: async () => ({
     row: { accountId: ACCOUNT_ID, projectId: PROJECT_ID },
     userId: USER_ID,
@@ -149,6 +165,7 @@ describe('POST /v1/projects/:projectId/secrets/:identifier/broker', () => {
       env: ['PRIMARY'],
     };
     sessionRow = { sessionId: SESSION_ID, secretsAllowlist: ['PRIMARY'] };
+    handleRow = { policySnapshot: FROZEN_POLICY, expiresAt: null };
     secretRows = [sharedSecret()];
     audits.length = 0;
     decrypted.length = 0;
@@ -215,7 +232,7 @@ describe('POST /v1/projects/:projectId/secrets/:identifier/broker', () => {
     expect(await response.json()).toMatchObject({ status: 201 });
     expect(decrypted).toEqual(['personal-encrypted-value']);
     expect(brokerCalls).toEqual([
-      expect.objectContaining({ policy: POLICY, secret: 'personal-secret-value' }),
+      expect.objectContaining({ policy: FROZEN_POLICY, secret: 'personal-secret-value' }),
     ]);
     expect(audits.map((event) => event.action)).toEqual([
       'secret.broker.requested',
@@ -240,6 +257,27 @@ describe('POST /v1/projects/:projectId/secrets/:identifier/broker', () => {
     expect(response.status).toBe(403);
     expect(decrypted).toHaveLength(0);
     expect(brokerCalls).toHaveLength(0);
+  });
+
+  test('requires a materialized active handle before decryption', async () => {
+    handleRow = null;
+
+    const response = await brokerRequest();
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: 'session_secret_handle_required' });
+    expect(decrypted).toHaveLength(0);
+    expect(brokerCalls).toHaveLength(0);
+  });
+
+  test('uses the frozen handle policy instead of a changed secret policy', async () => {
+    const response = await brokerRequest();
+
+    expect(response.status).toBe(200);
+    expect(brokerCalls).toEqual([
+      expect.objectContaining({ policy: FROZEN_POLICY, secret: 'shared-secret-value' }),
+    ]);
+    expect(brokerCalls[0]?.policy).not.toEqual(POLICY);
   });
 
   test('records broker failures without recording the secret', async () => {

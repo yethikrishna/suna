@@ -2,9 +2,9 @@ import {
   SecretBrokerRequestSchema,
   SecretBrokerResponseSchema,
 } from '@kortix/api-contract';
-import { projectSecrets, projectSessions } from '@kortix/db';
+import { projectSecrets, projectSessionSecretHandles, projectSessions } from '@kortix/db';
 import { createRoute, z } from '@hono/zod-openapi';
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { getAgentGrant } from '../../iam/agent-scope';
 import { auth, errors, json } from '../../openapi';
 import {
@@ -166,6 +166,43 @@ projectsApp.openapi(
         );
       }
 
+      const [handle] = await db
+        .select({
+          policySnapshot: projectSessionSecretHandles.policySnapshot,
+          expiresAt: projectSessionSecretHandles.expiresAt,
+        })
+        .from(projectSessionSecretHandles)
+        .where(
+          and(
+            eq(projectSessionSecretHandles.projectId, projectId),
+            eq(projectSessionSecretHandles.sessionId, sessionId),
+            eq(projectSessionSecretHandles.secretId, shared.secretId),
+            eq(projectSessionSecretHandles.status, 'active'),
+          ),
+        )
+        .orderBy(desc(projectSessionSecretHandles.revision))
+        .limit(1);
+      if (
+        !handle ||
+        (handle.expiresAt !== null && handle.expiresAt.getTime() <= Date.now()) ||
+        handle.policySnapshot.backend !== 'kortix_fetch'
+      ) {
+        await recordAuditEvent({
+          ...auditBase,
+          action: 'secret.broker.failed',
+          outcome: 'denied',
+          httpStatus: 409,
+          after: { reason: 'session_secret_handle_required' },
+        });
+        return c.json(
+          {
+            error: 'The active session does not have this brokered secret',
+            code: 'session_secret_handle_required',
+          },
+          409,
+        );
+      }
+
       await recordAuditEvent({
         ...auditBase,
         action: 'secret.broker.requested',
@@ -174,7 +211,7 @@ projectsApp.openapi(
       const encryptedValue = personal?.valueEnc ?? shared.valueEnc;
       const secret = decryptProjectSecret(projectId, encryptedValue);
       const result = await executeSecretBrokerRequest(
-        shared.egressPolicy,
+        handle.policySnapshot,
         secret,
         parsed.data,
       );

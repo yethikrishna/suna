@@ -18,7 +18,12 @@ import { seedProjectDefaultModelOnConnect } from '../../llm-gateway/models/seed-
 import { createRoute, z } from '@hono/zod-openapi';
 import { UpdateSecretStrategyInputSchema } from '@kortix/api-contract';
 import { parseEgressPolicy } from '../../secrets/strategy';
-import { projectSecrets, projects, sessionSandboxes } from '@kortix/db';
+import {
+  projectSecrets,
+  projectSessionSecretHandles,
+  projects,
+  sessionSandboxes,
+} from '@kortix/db';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { loadProjectForUser, assertProjectCapability } from '../lib/access';
 import { AnyObject, SecretSchema, projectsApp } from '../lib/app';
@@ -775,6 +780,7 @@ projectsApp.openapi(
       JSON.stringify(existing.egressPolicy ?? null) !== JSON.stringify(nextPolicy) ||
       existing.handlePrefix !== nextHandlePrefix;
     if (deliveryChanged) {
+      const changedAt = new Date();
       const actorType =
         c.get('authType') === 'service_account' ? 'service_account' : 'human';
       await runAuditedTransaction(
@@ -785,9 +791,18 @@ projectsApp.openapi(
               strategy: parsed.data.strategy,
               egressPolicy: nextPolicy,
               handlePrefix: nextHandlePrefix,
-              updatedAt: new Date(),
+              updatedAt: changedAt,
             })
             .where(eq(projectSecrets.secretId, existing.secretId));
+          await tx
+            .update(projectSessionSecretHandles)
+            .set({ status: 'revoked', revokedAt: changedAt })
+            .where(
+              and(
+                eq(projectSessionSecretHandles.secretId, existing.secretId),
+                eq(projectSessionSecretHandles.status, 'active'),
+              ),
+            );
         },
         () => ({
           accountId: loaded.row.accountId,

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import { projectSecrets } from '@kortix/db';
+import { projectSecrets, projectSessionSecretHandles } from '@kortix/db';
 import { Hono } from 'hono';
 import * as realAccess from '../projects/lib/access';
 
@@ -22,6 +22,7 @@ let authType: 'service_account' | 'supabase' = 'supabase';
 
 let row: ReturnType<typeof secretRow> | null = secretRow();
 const updates: Array<Record<string, unknown>> = [];
+const handleUpdates: Array<Record<string, unknown>> = [];
 const audits: Array<Record<string, unknown>> = [];
 const propagations: Array<{ projectId: string; options: unknown }> = [];
 
@@ -82,6 +83,15 @@ const databaseMock = {
       },
     }),
     update: (table: unknown) => {
+      if (table === projectSessionSecretHandles) {
+        return {
+          set: (values: Record<string, unknown>) => ({
+            where: async () => {
+              handleUpdates.push(values);
+            },
+          }),
+        };
+      }
       if (table !== projectSecrets) throw new Error('unexpected table');
       return {
         set: (values: Record<string, unknown>) => ({
@@ -186,6 +196,7 @@ describe('PUT /v1/projects/:projectId/secrets/:identifier/strategy', () => {
     agentGrant = null;
     authType = 'supabase';
     updates.length = 0;
+    handleUpdates.length = 0;
     audits.length = 0;
     propagations.length = 0;
   });
@@ -209,6 +220,9 @@ describe('PUT /v1/projects/:projectId/secrets/:identifier/strategy', () => {
     });
     expect(updates).toHaveLength(1);
     expect(updates[0]?.strategy).toBe('denied');
+    expect(handleUpdates).toEqual([
+      expect.objectContaining({ status: 'revoked', revokedAt: expect.any(Date) }),
+    ]);
     expect(propagations).toHaveLength(1);
     expect(audits).toHaveLength(1);
     expect(audits[0]).toMatchObject({
@@ -434,6 +448,7 @@ describe('POST /v1/projects/:projectId/secrets audit', () => {
     agentGrant = null;
     authType = 'supabase';
     updates.length = 0;
+    handleUpdates.length = 0;
     audits.length = 0;
     propagations.length = 0;
   });

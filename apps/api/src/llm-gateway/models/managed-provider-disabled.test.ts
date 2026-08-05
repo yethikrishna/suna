@@ -65,6 +65,9 @@ mock.module('../../projects/secrets', () => ({
   encryptProjectSecret: (_projectId: string, value: string) => value,
   getProjectSecretValue: async () => 'operators-own-anthropic-key',
   getProjectSecretValueForConsumer: async () => 'operators-own-anthropic-key',
+  resolveProjectSecretsForConsumer: async (input: { name: string }) => [
+    { identifier: input.name, value: 'operators-own-anthropic-key' },
+  ],
   listProjectSecrets: async () => ({}),
   listProjectSecretsForUser: async () => ({}),
   listProjectSecretsSnapshot: async () => ({ env: {}, names: [], revision: 'empty' }),

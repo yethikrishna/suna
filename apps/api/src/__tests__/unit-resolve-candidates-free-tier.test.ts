@@ -66,6 +66,9 @@ mock.module('../projects/secrets', () => ({
   encryptProjectSecret: (_projectId: string, value: string) => value,
   getProjectSecretValue: async () => 'user-key',
   getProjectSecretValueForConsumer: async () => 'user-key',
+  resolveProjectSecretsForConsumer: async (input: { name: string }) => [
+    { identifier: input.name, value: 'user-key' },
+  ],
   listProjectSecrets: async () => ({}),
   listProjectSecretsForUser: async () => ({}),
   listProjectSecretsSnapshot: async () => ({

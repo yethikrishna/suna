@@ -46,6 +46,7 @@ mock.module('../../projects/secrets', () => ({
   encryptProjectSecret: (_projectId: string, value: string) => value,
   getProjectSecretValue: async () => null,
   getProjectSecretValueForConsumer: async () => null,
+  resolveProjectSecretsForConsumer: async () => [],
   listProjectSecrets: async () => ({}),
   listProjectSecretsForUser: async () => ({}),
   listProjectSecretsSnapshot: async () => ({ env: {}, names: [], revision: 'empty' }),

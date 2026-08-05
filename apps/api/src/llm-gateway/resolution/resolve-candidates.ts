@@ -6,7 +6,10 @@ import {
 import { getCachedAccountTier } from '../../billing/services/entitlements';
 import { accountIsFreeTierForModels } from '../../billing/services/tiers';
 import { config } from '../../config';
-import { getProjectSecretValueForConsumer } from '../../projects/secrets';
+import {
+  getProjectSecretValueForConsumer,
+  resolveProjectSecretsForConsumer,
+} from '../../projects/secrets';
 import { CodexRefreshError, resolveCodexCredential } from '../credentials/codex';
 import { capabilitiesForModel } from '../models/catalog-models';
 import { getRuntimeManagedModel, isKnownManagedModelId } from '../models/managed-models';
@@ -137,8 +140,15 @@ export async function resolveCandidates(
         name,
         consumer: 'llm_gateway',
       });
-    const key = await readGatewaySecret(byok.envVar);
-    if (key) {
+    const keys = await resolveProjectSecretsForConsumer({
+      projectId: principal.projectId,
+      accountId: principal.accountId,
+      sessionId: principal.sessionId,
+      actorUserId: principal.userId,
+      name: byok.envVar,
+      consumer: 'llm_gateway',
+    });
+    if (keys.length > 0) {
       const tier = config.KORTIX_BILLING_INTERNAL_ENABLED
         ? await resolveCachedAccountTier(principal.accountId)
         : 'self-hosted';
@@ -168,13 +178,14 @@ export async function resolveCandidates(
         byok.kind === 'bedrock'
           ? normalizeBedrockInferenceProfileRegion(resolvedModelId, bedrockRegion)
           : resolvedModelId;
-      const byokDescriptor: UpstreamDescriptor = {
+      const byokDescriptors: UpstreamDescriptor[] = keys.map(({ identifier, value }) => ({
         provider,
         kind: byok.kind,
         npm: byok.npm,
         baseUrl,
         ...(bedrockRegion ? { region: bedrockRegion } : {}),
-        apiKey: key,
+        apiKey: value,
+        credentialRef: identifier,
         billingMode:
           config.KORTIX_BILLING_INTERNAL_ENABLED && !isFreeTier ? 'platform-fee' : 'none',
         markup: isFreeTier ? 0 : PLATFORM_FEE_MARKUP,
@@ -192,11 +203,13 @@ export async function resolveCandidates(
         ),
         reasoning: capabilities.reasoning,
         temperature: capabilities.temperature,
-      };
+      }));
       // Queue a managed model behind the BYOK key: if the user's key hits a
       // rate-limit / quota / billing error, the failover loop falls over to it
       // (billed as Kortix credits) so the turn doesn't die.
-      return isFreeTier ? [byokDescriptor] : [byokDescriptor, ...byokFallbackCandidates()];
+      return isFreeTier
+        ? byokDescriptors
+        : [...byokDescriptors, ...byokFallbackCandidates()];
     }
     // No shared key configured for this project — provider keys are always
     // project-wide, so there's no other place to look.

@@ -24,6 +24,7 @@ const {
   encryptProjectSecret,
   getProjectSecretValueForConsumer,
   listProjectSecretNamesForConsumer,
+  resolveProjectSecretsForConsumer,
 } = await import('./secrets');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
@@ -83,6 +84,21 @@ describe('getProjectSecretValueForConsumer', () => {
       },
     });
     expect(JSON.stringify(audits)).not.toContain('plaintext-test-value');
+  });
+
+  test('does not decrypt or audit fallback identifiers when the first value resolves', async () => {
+    rows = [
+      secret({ identifier: 'PROVIDER_KEY' }),
+      secret({
+        secretId: '55555555-5555-4555-8555-555555555555',
+        identifier: 'provider-secondary',
+        valueEnc: encryptProjectSecret(PROJECT_ID, 'secondary-value'),
+      }),
+    ];
+
+    expect(await read()).toBe('plaintext-test-value');
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({ metadata: { identifier: 'PROVIDER_KEY' } });
   });
 
   test('denies a runtime sandbox secret to the LLM gateway', async () => {
@@ -218,6 +234,124 @@ describe('getProjectSecretValueForConsumer', () => {
       }),
     ]);
     expect(JSON.stringify(audits)).not.toContain('not-an-envelope');
+  });
+});
+
+describe('resolveProjectSecretsForConsumer', () => {
+  beforeEach(() => {
+    rows = [];
+    audits.length = 0;
+  });
+
+  test('returns every authorized identifier in deterministic fallback order', async () => {
+    rows = [
+      secret({
+        secretId: '55555555-5555-4555-8555-555555555555',
+        identifier: 'provider-secondary',
+        valueEnc: encryptProjectSecret(PROJECT_ID, 'secondary-value'),
+        updatedAt: new Date('2026-08-05T14:00:00.000Z'),
+      }),
+      secret({
+        identifier: 'PROVIDER_KEY',
+        valueEnc: encryptProjectSecret(PROJECT_ID, 'canonical-value'),
+        updatedAt: new Date('2026-08-05T10:00:00.000Z'),
+      }),
+      secret({
+        secretId: '66666666-6666-4666-8666-666666666666',
+        identifier: 'provider-tertiary',
+        valueEnc: encryptProjectSecret(PROJECT_ID, 'tertiary-value'),
+        updatedAt: new Date('2026-08-05T13:00:00.000Z'),
+      }),
+    ];
+
+    const values = await resolveProjectSecretsForConsumer({
+      projectId: PROJECT_ID,
+      accountId: ACCOUNT_ID,
+      sessionId: SESSION_ID,
+      actorUserId: '44444444-4444-4444-8444-444444444444',
+      name: 'provider_key',
+      consumer: 'llm_gateway',
+    });
+
+    expect(values.map(({ identifier, value }) => ({ identifier, value }))).toEqual([
+      { identifier: 'PROVIDER_KEY', value: 'canonical-value' },
+      { identifier: 'provider-secondary', value: 'secondary-value' },
+      { identifier: 'provider-tertiary', value: 'tertiary-value' },
+    ]);
+    expect(audits.map((event) => event.action)).toEqual([
+      'secret.consumer.used',
+      'secret.consumer.used',
+      'secret.consumer.used',
+    ]);
+    expect(JSON.stringify(audits)).not.toContain('canonical-value');
+    expect(JSON.stringify(audits)).not.toContain('secondary-value');
+    expect(JSON.stringify(audits)).not.toContain('tertiary-value');
+  });
+
+  test('applies a personal override to its matching identifier only', async () => {
+    rows = [
+      secret({ identifier: 'provider-primary' }),
+      secret({
+        secretId: '55555555-5555-4555-8555-555555555555',
+        identifier: 'provider-primary',
+        ownerUserId: '44444444-4444-4444-8444-444444444444',
+        valueEnc: encryptProjectSecret(PROJECT_ID, 'personal-primary'),
+      }),
+      secret({
+        secretId: '66666666-6666-4666-8666-666666666666',
+        identifier: 'provider-secondary',
+        valueEnc: encryptProjectSecret(PROJECT_ID, 'shared-secondary'),
+      }),
+    ];
+
+    const values = await resolveProjectSecretsForConsumer({
+      projectId: PROJECT_ID,
+      accountId: ACCOUNT_ID,
+      sessionId: SESSION_ID,
+      actorUserId: '44444444-4444-4444-8444-444444444444',
+      principalUserId: '44444444-4444-4444-8444-444444444444',
+      name: 'provider_key',
+      consumer: 'llm_gateway',
+    });
+
+    expect(values.map(({ identifier, value }) => ({ identifier, value }))).toEqual([
+      { identifier: 'provider-primary', value: 'personal-primary' },
+      { identifier: 'provider-secondary', value: 'shared-secondary' },
+    ]);
+    expect(audits[0]).toMatchObject({ metadata: { value_source: 'personal' } });
+    expect(audits[1]).toMatchObject({ metadata: { value_source: 'shared' } });
+  });
+
+  test('skips denied and malformed identifiers while returning valid fallbacks', async () => {
+    rows = [
+      secret({
+        identifier: 'denied',
+        strategy: 'runtime',
+        consumer: 'sandbox',
+      }),
+      secret({ identifier: 'invalid', valueEnc: 'invalid-envelope' }),
+      secret({
+        secretId: '66666666-6666-4666-8666-666666666666',
+        identifier: 'valid',
+        valueEnc: encryptProjectSecret(PROJECT_ID, 'valid-value'),
+      }),
+    ];
+
+    const values = await resolveProjectSecretsForConsumer({
+      projectId: PROJECT_ID,
+      accountId: ACCOUNT_ID,
+      name: 'provider_key',
+      consumer: 'llm_gateway',
+    });
+
+    expect(values.map(({ identifier, value }) => ({ identifier, value }))).toEqual([
+      { identifier: 'valid', value: 'valid-value' },
+    ]);
+    expect(audits.map((event) => event.action)).toEqual([
+      'secret.consumer.denied',
+      'secret.consumer.invalid',
+      'secret.consumer.used',
+    ]);
   });
 });
 

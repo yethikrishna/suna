@@ -39,13 +39,20 @@ mock.module('../../config', () => ({ config }));
 // `secretsByName` falls back to `resolvedSecret` for backward compatibility.
 let resolvedSecret: string | null = null;
 let secretsByName: Record<string, string | null> = {};
+let resolvedSecrets: Array<{ identifier: string; value: string }> = [];
 const getProjectSecretValueForConsumer = mock(async (input: { name: string }) => {
   const name = input.name;
   if (name in secretsByName) return secretsByName[name] ?? null;
   return resolvedSecret;
 });
+const resolveProjectSecretsForConsumer = mock(async (input: { name: string }) => {
+  if (resolvedSecrets.length > 0) return resolvedSecrets;
+  const value = await getProjectSecretValueForConsumer(input);
+  return value ? [{ identifier: input.name, value }] : [];
+});
 mock.module('../../projects/secrets', () => ({
   getProjectSecretValueForConsumer,
+  resolveProjectSecretsForConsumer,
 }));
 
 class CodexRefreshError extends Error {}
@@ -161,6 +168,7 @@ beforeEach(() => {
   });
   resolvedSecret = null;
   secretsByName = {};
+  resolvedSecrets = [];
   codexCredential = null;
   codexThrows = false;
   catalogUpstream = null;
@@ -171,6 +179,7 @@ beforeEach(() => {
   getAccountTier.mockClear();
   getCachedAccountTier.mockClear();
   getProjectSecretValueForConsumer.mockClear();
+  resolveProjectSecretsForConsumer.mockClear();
   resolveCodexCredential.mockClear();
 });
 
@@ -181,7 +190,7 @@ describe('resolveCandidates — BYOK billingMode / free-tier / managed-fallback'
       envVar: 'ANTHROPIC_API_KEY',
       kind: 'anthropic',
     };
-    resolvedSecret = 'sk-user-key';
+    resolvedSecrets = [{ identifier: 'ANTHROPIC_API_KEY', value: 'sk-user-key' }];
     runtimeManagedModel = { id: 'anthropic/claude-sonnet-4.6' };
     const p = principal();
     tierByAccount[p.accountId] = 'pro';
@@ -193,8 +202,38 @@ describe('resolveCandidates — BYOK billingMode / free-tier / managed-fallback'
       billingMode: 'platform-fee',
       markup: 0.1,
       apiKey: 'sk-user-key',
+      credentialRef: 'ANTHROPIC_API_KEY',
     });
     expect(candidates[1]).toMatchObject({ provider: 'kortix-managed' });
+  });
+
+  test('queues every provider credential before the managed fallback', async () => {
+    catalogUpstream = {
+      baseUrl: 'https://api.anthropic.com/v1',
+      envVar: 'ANTHROPIC_API_KEY',
+      kind: 'anthropic',
+    };
+    resolvedSecrets = [
+      { identifier: 'primary', value: 'sk-primary' },
+      { identifier: 'secondary', value: 'sk-secondary' },
+    ];
+    runtimeManagedModel = { id: 'anthropic/claude-sonnet-4.6' };
+    const p = principal();
+    tierByAccount[p.accountId] = 'pro';
+
+    const candidates = await resolveCandidates(p, 'anthropic/claude-sonnet-4.6');
+
+    expect(candidates).toHaveLength(3);
+    expect(candidates.map((candidate) => candidate.credentialRef)).toEqual([
+      'primary',
+      'secondary',
+      undefined,
+    ]);
+    expect(candidates.map((candidate) => candidate.apiKey)).toEqual([
+      'sk-primary',
+      'sk-secondary',
+      'm',
+    ]);
   });
 
   test('BYOK descriptor carries the model capability flags for the transport', async () => {

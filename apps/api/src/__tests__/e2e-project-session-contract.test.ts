@@ -1420,6 +1420,17 @@ describe('project session API contract', () => {
     expect(await sandboxCloneRes.json()).toMatchObject({
       error: 'sandbox workspace does not allow repository access',
     });
+
+    for (const suffix of ['diff', 'merge-preview']) {
+      const crRes = await app.request(
+        `/v1/projects/${PROJECT_ID}/change-requests/00000000-0000-4000-a000-000000000801/${suffix}`,
+        { headers: { Authorization: `Bearer ${SESSION_AGENT_PAT}` } },
+      );
+      expect(crRes.status).toBe(403);
+      expect(await crRes.json()).toMatchObject({
+        message: 'session workspace does not allow repository access',
+      });
+    }
   });
 
   test('rejects removed session attribution fields', async () => {

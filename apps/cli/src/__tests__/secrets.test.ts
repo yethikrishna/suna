@@ -37,7 +37,7 @@ let secretItems: Array<{
   effective_source?: 'mine' | 'shared' | 'none';
   strategy?: 'runtime' | 'egress' | 'broker' | 'denied';
   consumer?:
-    'sandbox' | 'llm_gateway' | 'executor' | 'git_proxy' | 'http_broker' | 'network' | null;
+    'sandbox' | 'llm_gateway' | 'connector' | 'executor' | 'git_proxy' | 'http_broker' | 'network' | null;
   delivery_status?: 'available' | 'unavailable' | 'disabled';
   requires_rotation?: boolean;
 }>;
@@ -52,7 +52,7 @@ function secret(
     effective_source?: 'mine' | 'shared' | 'none';
     strategy?: 'runtime' | 'egress' | 'broker' | 'denied';
     consumer?:
-      'sandbox' | 'llm_gateway' | 'executor' | 'git_proxy' | 'http_broker' | 'network' | null;
+      'sandbox' | 'llm_gateway' | 'connector' | 'executor' | 'git_proxy' | 'http_broker' | 'network' | null;
     delivery_status?: 'available' | 'unavailable' | 'disabled';
     requires_rotation?: boolean;
   } = {},

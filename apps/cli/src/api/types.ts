@@ -63,6 +63,7 @@ export interface ProjectSecret {
   consumer?:
     | 'sandbox'
     | 'llm_gateway'
+    | 'connector'
     | 'executor'
     | 'git_proxy'
     | 'http_broker'

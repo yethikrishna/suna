@@ -1,4 +1,8 @@
-import type { SecretDeliveryStatus, SecretDeliveryStrategy } from '@kortix/sdk';
+import type {
+  SecretDeliveryStatus,
+  SecretDeliveryStrategy,
+  SecretEgressPolicy,
+} from '@kortix/sdk';
 
 export type SecretDeliveryPresentation = {
   label: string;
@@ -48,9 +52,61 @@ export function secretDeliveryOptions(
     strategy,
     ...PRESENTATIONS[strategy],
     disabled:
-      (strategy === 'broker' || strategy === 'egress') &&
-      (strategy !== selected || status !== 'available'),
+      strategy === 'egress' ||
+      (strategy === 'broker' && strategy === selected && status !== 'available'),
   }));
+}
+
+const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
+
+export type BrokerPolicyForm = {
+  hosts: string;
+  methods: string;
+  path: string;
+  injectionKind: 'header' | 'query' | 'json_body_field';
+  injectionTarget: string;
+  template: string;
+};
+
+export function buildBrokerPolicy(form: BrokerPolicyForm): SecretEgressPolicy | null {
+  const hosts = form.hosts
+    .split(/[\s,]+/)
+    .map((host) => host.trim())
+    .filter(Boolean);
+  const methods = form.methods
+    .split(/[\s,]+/)
+    .map((method) => method.trim().toUpperCase())
+    .filter(Boolean);
+  const path = form.path.trim();
+  const target = form.injectionTarget.trim();
+  if (hosts.length === 0 || !target) return null;
+  if (methods.some((method) => !HTTP_METHODS.has(method))) return null;
+  if (path && !path.startsWith('/')) return null;
+  if (form.injectionKind === 'header' && form.template && !form.template.includes('{{secret}}')) {
+    return null;
+  }
+
+  const inject =
+    form.injectionKind === 'header'
+      ? {
+          kind: 'header' as const,
+          name: target,
+          ...(form.template.trim() ? { template: form.template.trim() } : {}),
+        }
+      : form.injectionKind === 'query'
+        ? { kind: 'query' as const, name: target }
+        : { kind: 'json_body_field' as const, path: target };
+  return {
+    backend: 'kortix_fetch',
+    rules: hosts.map((host) => ({
+      host,
+      ...(methods.length > 0 ? { methods } : {}),
+      ...(path ? { path } : {}),
+    })),
+    inject,
+    on_no_match: 'deny',
+    tls: 'terminate',
+  };
 }
 
 export function canSaveSecretDelivery(input: {
@@ -61,10 +117,13 @@ export function canSaveSecretDelivery(input: {
   requiresRotation: boolean;
   currentStrategy: SecretDeliveryStrategy;
   nextStrategy: SecretDeliveryStrategy;
+  brokerPolicyValid: boolean;
 }): boolean {
   const hasValue = Boolean(input.value.trim());
   if (!input.isEdit && !input.key.trim()) return false;
   if (input.requiresValue && !hasValue) return false;
   if (input.nextStrategy === 'runtime' && input.requiresRotation && !hasValue) return false;
+  if (input.nextStrategy === 'broker' && !input.brokerPolicyValid) return false;
+  if (input.nextStrategy === 'broker') return true;
   return !input.isEdit || hasValue || input.nextStrategy !== input.currentStrategy;
 }

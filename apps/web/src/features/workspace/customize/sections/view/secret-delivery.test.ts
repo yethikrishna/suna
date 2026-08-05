@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  buildBrokerPolicy,
   canSaveSecretDelivery,
   secretDeliveryOptions,
   secretDeliveryPresentation,
@@ -34,19 +35,19 @@ describe('secretDeliveryPresentation', () => {
 });
 
 describe('secretDeliveryOptions', () => {
-  test('offers runtime and denied while server adapters are unavailable', () => {
+  test('offers the HTTPS broker and keeps transparent egress unavailable', () => {
     const options = secretDeliveryOptions('runtime', 'available');
     expect(options.map(({ strategy, disabled }) => ({ strategy, disabled }))).toEqual([
       { strategy: 'runtime', disabled: false },
-      { strategy: 'broker', disabled: true },
+      { strategy: 'broker', disabled: false },
       { strategy: 'egress', disabled: true },
       { strategy: 'denied', disabled: false },
     ]);
   });
 
-  test('keeps a selected non-runtime policy visible when its adapter is available', () => {
+  test('keeps the broker available and transparent egress disabled', () => {
     expect(secretDeliveryOptions('broker', 'available')[1]?.disabled).toBe(false);
-    expect(secretDeliveryOptions('egress', 'available')[2]?.disabled).toBe(false);
+    expect(secretDeliveryOptions('egress', 'available')[2]?.disabled).toBe(true);
   });
 
   test('disables a selected non-runtime policy when the server marks it unavailable', () => {
@@ -65,6 +66,7 @@ describe('canSaveSecretDelivery', () => {
         requiresRotation: true,
         currentStrategy: 'denied',
         nextStrategy: 'runtime',
+        brokerPolicyValid: false,
       }),
     ).toBe(false);
   });
@@ -79,6 +81,7 @@ describe('canSaveSecretDelivery', () => {
         requiresRotation: true,
         currentStrategy: 'denied',
         nextStrategy: 'runtime',
+        brokerPolicyValid: false,
       }),
     ).toBe(true);
   });
@@ -93,7 +96,73 @@ describe('canSaveSecretDelivery', () => {
         requiresRotation: false,
         currentStrategy: 'runtime',
         nextStrategy: 'runtime',
+        brokerPolicyValid: false,
       }),
     ).toBe(false);
+  });
+
+  test('requires a complete broker policy', () => {
+    expect(
+      canSaveSecretDelivery({
+        isEdit: true,
+        key: 'LOCAL_TEST_KEY',
+        value: '',
+        requiresValue: false,
+        requiresRotation: false,
+        currentStrategy: 'runtime',
+        nextStrategy: 'broker',
+        brokerPolicyValid: false,
+      }),
+    ).toBe(false);
+    expect(
+      canSaveSecretDelivery({
+        isEdit: true,
+        key: 'LOCAL_TEST_KEY',
+        value: '',
+        requiresValue: false,
+        requiresRotation: false,
+        currentStrategy: 'runtime',
+        nextStrategy: 'broker',
+        brokerPolicyValid: true,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('buildBrokerPolicy', () => {
+  test('normalizes hosts and methods into strict broker rules', () => {
+    expect(
+      buildBrokerPolicy({
+        hosts: ' api.example.com, *.example.com ',
+        methods: 'post, GET',
+        path: '/v1/*',
+        injectionKind: 'header',
+        injectionTarget: 'Authorization',
+        template: 'Bearer {{secret}}',
+      }),
+    ).toEqual({
+      backend: 'kortix_fetch',
+      rules: [
+        { host: 'api.example.com', methods: ['POST', 'GET'], path: '/v1/*' },
+        { host: '*.example.com', methods: ['POST', 'GET'], path: '/v1/*' },
+      ],
+      inject: { kind: 'header', name: 'Authorization', template: 'Bearer {{secret}}' },
+      on_no_match: 'deny',
+      tls: 'terminate',
+    });
+  });
+
+  test('rejects missing hosts, invalid methods, and an empty injection target', () => {
+    const base = {
+      hosts: 'api.example.com',
+      methods: 'POST',
+      path: '/v1/*',
+      injectionKind: 'header' as const,
+      injectionTarget: 'authorization',
+      template: '',
+    };
+    expect(buildBrokerPolicy({ ...base, hosts: '' })).toBeNull();
+    expect(buildBrokerPolicy({ ...base, methods: 'TRACE' })).toBeNull();
+    expect(buildBrokerPolicy({ ...base, injectionTarget: '' })).toBeNull();
   });
 });

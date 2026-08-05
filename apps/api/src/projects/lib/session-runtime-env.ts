@@ -21,11 +21,17 @@ export interface SessionRuntimeEnvInput {
 }
 
 export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<string, string> {
+  const projectGitEnv: Record<string, string> =
+    input.workspaceMode === 'runtime'
+      ? {}
+      : {
+          KORTIX_REPO_URL: input.repoUrl,
+          KORTIX_DEFAULT_BRANCH: input.baseRef,
+          KORTIX_BASE_REF: input.baseRef,
+          KORTIX_BRANCH_NAME: input.sessionId,
+        };
   return {
-    KORTIX_REPO_URL: input.repoUrl,
-    KORTIX_DEFAULT_BRANCH: input.baseRef,
-    KORTIX_BASE_REF: input.baseRef,
-    KORTIX_BRANCH_NAME: input.sessionId,
+    ...projectGitEnv,
     KORTIX_PROJECT_ID: input.projectId,
     KORTIX_SESSION_ID: input.sessionId,
     KORTIX_SERVICE_PORT: '8000',

@@ -12,7 +12,7 @@ import {
   getProjectSecretValueForConsumer,
 } from '../secrets';
 import { recordAuditEvent } from '../../shared/audit';
-import { accountGithubInstallationStates, accountGithubInstallations, accountMembers, projectGitConnections, projectGitCredentials, projects, sessionSandboxes } from '@kortix/db';
+import { accountGithubInstallationStates, accountGithubInstallations, accountMembers, projectGitConnections, projectGitCredentials, projectSessions, projects, sessionSandboxes } from '@kortix/db';
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { ttlMemo } from '../../shared/ttl-memo';
@@ -25,6 +25,7 @@ import { authorize } from '../../iam/dispatcher';
 import type { RequestContext } from '../../iam/engine';
 import { registerPrincipalScopedMemo } from '../../iam/cache-invalidation';
 import { PROJECT_GIT_AUTH_SECRET_NAME, ProjectGitConnectionRow, ProjectGitCredentialRow, ProjectRow, normalizeJsonObject, normalizeString } from './serializers';
+import { workspaceModeFromSessionMetadata } from './session-sandbox-metadata';
 
 // Memoized briefly (positive hits only): this runs on every project-scoped
 // request. Each DB statement is a fast same-region roundtrip (~3ms measured,
@@ -708,8 +709,12 @@ export async function authorizeGitProxy(
         return { ok: false, status: 403, message: 'sandbox token missing a sandbox scope' };
       }
       const [sandbox] = await db
-        .select({ sandboxId: sessionSandboxes.sandboxId })
+        .select({
+          sandboxId: sessionSandboxes.sandboxId,
+          sessionMetadata: projectSessions.metadata,
+        })
         .from(sessionSandboxes)
+        .innerJoin(projectSessions, eq(projectSessions.sessionId, sessionSandboxes.sessionId))
         .where(and(
           eq(sessionSandboxes.sandboxId, result.sandboxId),
           eq(sessionSandboxes.projectId, projectId),
@@ -719,6 +724,9 @@ export async function authorizeGitProxy(
         .limit(1);
       if (!sandbox) {
         return { ok: false, status: 403, message: 'sandbox token is not scoped to this project' };
+      }
+      if (workspaceModeFromSessionMetadata(sandbox.sessionMetadata) === 'runtime') {
+        return { ok: false, status: 403, message: 'sandbox workspace does not allow Git access' };
       }
       return { ok: true, project };
     }

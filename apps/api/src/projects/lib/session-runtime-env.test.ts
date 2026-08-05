@@ -50,7 +50,7 @@ describe('buildSessionRuntimeEnv — KORTIX_COMPILED_AGENT_CONFIG', () => {
 });
 
 describe('buildSessionRuntimeEnv — workspace mode', () => {
-  test('runtime mode disables the project clone', () => {
+  test('runtime mode removes every project Git coordinate', () => {
     const env = buildSessionRuntimeEnv({
       ...BASE_INPUT,
       workspaceMode: 'runtime',
@@ -58,13 +58,22 @@ describe('buildSessionRuntimeEnv — workspace mode', () => {
 
     expect(env.KORTIX_WORKSPACE_MODE).toBe('runtime');
     expect(env.KORTIX_PROJECT_AUTO_CLONE).toBe('0');
+    expect(env).not.toHaveProperty('KORTIX_REPO_URL');
+    expect(env).not.toHaveProperty('KORTIX_DEFAULT_BRANCH');
+    expect(env).not.toHaveProperty('KORTIX_BASE_REF');
+    expect(env).not.toHaveProperty('KORTIX_BRANCH_NAME');
   });
 
-  test('legacy and branch sessions keep the project clone', () => {
-    expect(buildSessionRuntimeEnv(BASE_INPUT).KORTIX_PROJECT_AUTO_CLONE).toBe('1');
-    expect(
-      buildSessionRuntimeEnv({ ...BASE_INPUT, workspaceMode: 'branch' })
-        .KORTIX_PROJECT_AUTO_CLONE,
-    ).toBe('1');
+  test('legacy and branch sessions keep the project clone and Git coordinates', () => {
+    for (const env of [
+      buildSessionRuntimeEnv(BASE_INPUT),
+      buildSessionRuntimeEnv({ ...BASE_INPUT, workspaceMode: 'branch' }),
+    ]) {
+      expect(env.KORTIX_PROJECT_AUTO_CLONE).toBe('1');
+      expect(env.KORTIX_REPO_URL).toBe(BASE_INPUT.repoUrl);
+      expect(env.KORTIX_DEFAULT_BRANCH).toBe(BASE_INPUT.baseRef);
+      expect(env.KORTIX_BASE_REF).toBe(BASE_INPUT.baseRef);
+      expect(env.KORTIX_BRANCH_NAME).toBe(BASE_INPUT.sessionId);
+    }
   });
 });

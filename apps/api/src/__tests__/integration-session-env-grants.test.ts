@@ -13,6 +13,7 @@
  */
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test';
 import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 import { and, eq, sql, inArray, isNull } from 'drizzle-orm';
 import {
   auditEvents,
@@ -65,7 +66,7 @@ beforeAll(async () => {
     projectId: ctx.projectId,
     accountId: ctx.accountId,
     name: `Secret delivery test ${SUFFIX}`,
-    repoUrl: process.cwd(),
+    repoUrl: resolve(import.meta.dir, '../../../..'),
     defaultBranch: 'HEAD',
     manifestPath: 'packages/starter/templates/base/kortix.yaml',
   });
@@ -151,6 +152,7 @@ beforeAll(async () => {
     .update(projectSecrets)
     .set({
       strategy: 'broker',
+      consumer: 'http_broker',
       egressPolicy: {
         backend: 'kortix_fetch',
         rules: [{ host: 'api.example.com', methods: ['POST'], path: '/v1/*' }],

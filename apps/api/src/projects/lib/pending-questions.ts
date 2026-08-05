@@ -173,3 +173,46 @@ export async function clearOpenQuestions(sessionId: string): Promise<number> {
     .returning({ id: sessionPendingQuestions.id });
   return rows.length;
 }
+
+/**
+ * Render a stored question and its answer as the text of a follow-up turn.
+ *
+ * The answer CANNOT be delivered inline to the call that blocked. That call
+ * lived in an opencode process which has since been parked and restarted cold —
+ * its request id no longer exists, and nothing is waiting on it. This is also
+ * how the channel path has always worked: "the user's in-thread reply arrives
+ * as a follow-up turn" (routes/r4.ts).
+ *
+ * So the answer arrives as a new turn, and it has to carry its own context: the
+ * fresh opencode has no memory of asking. Quoting the question is what makes
+ * the reply legible instead of a bare "yes" with nothing to attach it to.
+ */
+export function renderAnswerPrompt(questions: unknown, answers: unknown): string {
+  const asked = Array.isArray(questions)
+    ? questions
+        .map((q) => {
+          const text =
+            q && typeof q === 'object'
+              ? ((q as { text?: unknown; question?: unknown }).text ??
+                (q as { question?: unknown }).question)
+              : q;
+          return typeof text === 'string' ? text.trim() : null;
+        })
+        .filter((t): t is string => !!t)
+    : [];
+
+  const given = Array.isArray(answers)
+    ? answers
+        .map((a) => (Array.isArray(a) ? a.join(', ') : typeof a === 'string' ? a : null))
+        .filter((t): t is string => !!t && t.trim().length > 0)
+    : [];
+
+  const lines: string[] = [];
+  if (asked.length > 0) {
+    lines.push('You asked:');
+    for (const q of asked) lines.push(`> ${q}`);
+    lines.push('');
+  }
+  lines.push(given.length > 0 ? given.join('\n') : '(no answer given)');
+  return lines.join('\n');
+}

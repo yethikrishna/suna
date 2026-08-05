@@ -98,7 +98,7 @@ RED:
 
 GREEN:
 
-- `pnpm --filter @kortix/sdk test`: `1499 pass`, `0 fail`, and `6204 expect()`
+- `pnpm --filter @kortix/sdk test`: `1538 pass`, `0 fail`, and `6298 expect()`
   calls across `121` files.
 - `pnpm --filter @kortix/sdk typecheck`: exit `0`.
 - `pnpm --filter @kortix/sdk run smoke:install`: exit `0`; the packed tarball

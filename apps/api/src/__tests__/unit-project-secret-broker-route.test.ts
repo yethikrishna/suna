@@ -214,6 +214,23 @@ describe('POST /v1/projects/:projectId/secrets/:identifier/broker', () => {
     );
   });
 
+  test('accepts a broker handle materialized from an all grant narrowed by the session allowlist', async () => {
+    agentGrant = {
+      agent: 'default',
+      kortixCli: 'all',
+      connectors: 'all',
+      env: 'all',
+    };
+    sessionRow = { sessionId: SESSION_ID, secretsAllowlist: ['PRIMARY'] };
+
+    const response = await brokerRequest();
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: 201 });
+    expect(decrypted).toEqual(['shared-encrypted-value']);
+    expect(brokerCalls).toHaveLength(1);
+  });
+
   test('uses the shared delivery policy and the active personal value', async () => {
     secretRows = [
       sharedSecret(),

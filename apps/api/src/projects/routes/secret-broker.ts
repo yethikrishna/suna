@@ -14,7 +14,7 @@ import {
 import { resolveSecretDelivery } from '../../secrets/strategy';
 import { recordAuditEvent } from '../../shared/audit';
 import { db } from '../../shared/db';
-import { decryptProjectSecret } from '../secrets';
+import { decryptProjectSecret, intersectSecretGrants } from '../secrets';
 import { loadProjectForUser } from '../lib/access';
 import { projectsApp } from '../lib/app';
 import { ACTIVE_SESSION_STATUSES } from '../lib/session-status';
@@ -131,11 +131,15 @@ projectsApp.openapi(
     };
 
     try {
+      const effectiveGrantEnv = intersectSecretGrants(
+        agentGrant.env ?? 'all',
+        session.secretsAllowlist,
+      );
       const delivery = resolveSecretDelivery({
         identifier,
         strategy: shared.strategy,
-        agentGrantEnv: agentGrant.env ?? 'all',
-        sessionAllowlist: session.secretsAllowlist,
+        agentGrantEnv: effectiveGrantEnv,
+        sessionAllowlist: null,
         sessionId,
       });
       if (delivery.emit !== 'handle') {

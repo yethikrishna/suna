@@ -1,26 +1,24 @@
 'use client';
 
 /**
- * What the team will use Kortix for.
+ * Step 2, survey question 1 — what the team will actually use Kortix for.
  *
- * The only answer that changes what the user sees later: it picks the three
- * starting points on the finish step. Domain and size are captured, not acted
- * on.
+ * This is the only answer that changes what the user sees later: it picks the
+ * three starting points on the finish step. Domain and size are captured, not
+ * acted on.
  */
 
 import type { OnboardingUseCase } from '@kortix/sdk';
 
 import { USE_CASE_OPTIONS } from '../onboarding-profile';
-import { OptionCard, OptionGrid, StepShell } from '../step-shell';
+import { ChoiceRow, StepShell } from '../step-shell';
 
 export function UseCaseStep({
-  stepLabel,
   value,
   onSelect,
   onContinue,
   onSkip,
 }: {
-  stepLabel: string;
   value: OnboardingUseCase | null;
   onSelect: (v: OnboardingUseCase) => void;
   onContinue: () => void;
@@ -28,25 +26,25 @@ export function UseCaseStep({
 }) {
   return (
     <StepShell
-      stepLabel={stepLabel}
-      title="Where will you use Kortix?"
-      description="This picks the starting points we show you at the end. You can change it later."
+      title="What will you use Kortix for?"
+      description="We use this to pick the right starting points for you. You can change it later."
       primaryLabel="Continue"
       primaryDisabled={!value}
       onPrimary={onContinue}
-      secondaryLabel="Skip"
-      onSecondary={onSkip}
+      skipLabel="Skip"
+      onSkip={onSkip}
     >
-      <OptionGrid label="Use case">
+      <div className="flex flex-col gap-2" role="radiogroup" aria-label="Use case">
         {USE_CASE_OPTIONS.map((option) => (
-          <OptionCard
+          <ChoiceRow
             key={option.value}
             selected={value === option.value}
             label={option.label}
+            description={option.description}
             onSelect={() => onSelect(option.value)}
           />
         ))}
-      </OptionGrid>
+      </div>
     </StepShell>
   );
 }

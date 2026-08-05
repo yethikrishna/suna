@@ -14,25 +14,30 @@ export type StepId = 'use-case' | 'company' | 'tools' | 'slack' | 'plan' | 'done
 export interface UseCaseOption {
   value: OnboardingUseCase;
   label: string;
+  description: string;
 }
 
 /**
- * Label-only, deliberately. A sentence of helper text under every option is
- * filler — it pads the screen without helping anyone choose between "Sales"
- * and "Marketing".
- *
  * Ordered by how often the matching department appears across
  * `apps/web/content/use-cases/` — Sales (11 posts), Engineering (9), Finance
  * (7), Support/CS (7), Ops (5), Marketing (5), HR/Recruiting (4).
  */
 export const USE_CASE_OPTIONS: readonly UseCaseOption[] = [
-  { value: 'sales', label: 'Sales' },
-  { value: 'support', label: 'Customer support' },
-  { value: 'marketing', label: 'Marketing' },
-  { value: 'engineering', label: 'Engineering' },
-  { value: 'finance_ops', label: 'Finance & operations' },
-  { value: 'hr_recruiting', label: 'HR & recruiting' },
-  { value: 'other', label: 'Something else' },
+  { value: 'sales', label: 'Sales', description: 'Follow up on leads, keep the CRM clean' },
+  { value: 'support', label: 'Customer support', description: 'Triage tickets, draft replies' },
+  { value: 'marketing', label: 'Marketing', description: 'Watch the market, refresh content' },
+  { value: 'engineering', label: 'Engineering', description: 'Triage errors, chase upgrades' },
+  {
+    value: 'finance_ops',
+    label: 'Finance & operations',
+    description: 'Invoices, expenses, month-end close',
+  },
+  {
+    value: 'hr_recruiting',
+    label: 'HR & recruiting',
+    description: 'Onboarding, scheduling, sourcing',
+  },
+  { value: 'other', label: 'Something else', description: 'We’ll start you with the basics' },
 ] as const;
 
 /**
@@ -51,10 +56,10 @@ export const COMPANY_SIZES: readonly OnboardingCompanySize[] = [
 ] as const;
 
 /**
- * No welcome step. A screen that asks nothing and tells nothing costs the user
- * a click and returns nothing — Okta, Alan, and Brilliant all open on their
- * first real question. The founder-concierge CTA it used to carry moves to the
- * finish step.
+ * No welcome step. A screen that asks nothing and tells nothing is a screen
+ * the user pays for and gets nothing back from — Alan, Brilliant, and Headspace
+ * all open directly on their first real question. The founder-concierge CTA
+ * that used to live on the welcome screen moves to the finish step.
  */
 const ALL_STEPS: readonly StepId[] = ['use-case', 'company', 'tools', 'slack', 'plan', 'done'];
 
@@ -69,7 +74,10 @@ export function buildSteps(connectorsEnabled: boolean): StepId[] {
 
 const SURVEY_STEPS: readonly StepId[] = ['use-case', 'company'];
 
-/** Which of the two survey questions this is, or null for every other step. */
+/**
+ * The eyebrow counts SURVEY questions, not wizard steps — so dropping the tools
+ * step never renumbers it.
+ */
 export function surveyPosition(stepId: StepId): { index: number; total: number } | null {
   const i = SURVEY_STEPS.indexOf(stepId);
   return i === -1 ? null : { index: i + 1, total: SURVEY_STEPS.length };
@@ -86,16 +94,6 @@ export function surveyPosition(stepId: StepId): { index: number; total: number }
 export function firstStepAfterSurvey(steps: readonly StepId[]): number {
   const i = steps.findIndex((s) => !surveyPosition(s));
   return i === -1 ? Math.max(steps.length - 1, 0) : i;
-}
-
-/**
- * The rail's first line — "2 of 6".
- *
- * Counts wizard steps, not survey questions, because it sits on the rail as
- * orientation for the whole flow rather than as a label for one section.
- */
-export function stepLabel(index: number, total: number): string {
-  return `${index + 1} of ${total}`;
 }
 
 /**

@@ -1,13 +1,12 @@
 'use client';
 
 /**
- * Connect the apps the team already lives in.
+ * Step 4 — connect the apps the team already lives in.
  *
- * A search box over a uniform card grid — the shape Attio and Postman both use
- * for an integration catalogue, and the one that survives 3,000 entries. The
- * whole step is skipped by the shell when `isConnectorsEnabled()` is false
- * (self-host without PIPEDREAM_*), so it never has to render a dead 501; it
- * still handles the catalogue call itself returning one.
+ * Real Pipedream OAuth, inline. The whole step is skipped by the shell when
+ * `isConnectorsEnabled()` is false (self-host without PIPEDREAM_*), so this
+ * component never has to render a dead 501 — but it still handles the case
+ * where the catalogue call itself returns one.
  */
 
 import { PlusIcon as Plus, MagnifyingGlassIcon as Search } from '@phosphor-icons/react';
@@ -16,9 +15,10 @@ import Image from 'next/image';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { EntityAvatar } from '@/components/ui/entity-avatar';
 import { FadedScrollArea } from '@/components/ui/faded-scroll-area';
 import { InfoBanner } from '@/components/ui/info-banner';
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { Input } from '@/components/ui/input';
 import Loading from '@/components/ui/loading';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -29,20 +29,18 @@ import { ConnectorProfileModal } from '@/features/workspace/customize/sections/c
 import { useToolConnect } from '@/hooks/connectors/use-tool-connect';
 import { listPipedreamApps } from '@kortix/sdk';
 
-import { OptionCard, OptionGrid, StepShell } from '../step-shell';
+import { ChoiceRow, StepShell } from '../step-shell';
 
-/** Slack has its own dedicated step, so keep it out of this catalogue. */
+/** Slack has its own dedicated step, so keep it out of this list. */
 const SLACK_SLUGS = new Set(['slack', 'slack_v2']);
 
 export function ToolsStep({
-  stepLabel,
   projectId,
   existingSlugs,
   onConnected,
   onContinue,
   onSkip,
 }: {
-  stepLabel: string;
   projectId: string;
   existingSlugs: readonly string[];
   onConnected: () => void;
@@ -71,81 +69,85 @@ export function ToolsStep({
 
   return (
     <StepShell
-      stepLabel={stepLabel}
       title="Connect your tools"
-      description="Your agent can read, write, and act across everything you connect."
+      description="Pick the apps you live in and authorize them right here. Your agent can read, write, and act across everything you connect."
       primaryLabel="Continue"
       onPrimary={onContinue}
-      secondaryLabel="Skip"
-      onSecondary={onSkip}
+      skipLabel="Skip"
+      onSkip={onSkip}
     >
-      <div className="space-y-4">
-        <InputGroup className="h-11 max-w-[340px]">
-          <InputGroupAddon>
-            <Search className="text-muted-foreground size-4" />
-          </InputGroupAddon>
-          <InputGroupInput
+      <div className="flex flex-col gap-4">
+        <div className="relative">
+          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+          <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search 3,000+ apps…"
-            aria-label="Search apps"
+            className="h-10 pl-9"
           />
-        </InputGroup>
+        </div>
 
         {notConfigured ? (
           <InfoBanner tone="neutral" title="App connect isn’t configured on this deployment">
             You can still continue and connect tools later from Connectors.
           </InfoBanner>
         ) : (
-          // Bounded by the rail, not the viewport. The fade says there is more
-          // without putting a scrollbar on screen.
-          <FadedScrollArea fadeColor="from-background" className="max-h-[296px] overflow-y-auto pr-1">
+          // Bounded by the column, not the viewport: a vh-relative height made
+          // this step the tallest thing in the flow on large screens. The fade
+          // tells you there is more without adding a scrollbar to look at.
+          <FadedScrollArea
+            fadeColor="from-background"
+            className="max-h-[320px] overflow-y-auto pr-1"
+          >
             {appsQuery.isLoading ? (
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} className="h-[52px] w-full rounded-md" />
+              <div className="flex flex-col gap-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-[58px] w-full rounded-md" />
                 ))}
               </div>
             ) : apps.length === 0 ? (
-              <p className="text-muted-foreground py-8 text-xs">
-                {q ? `Nothing matches “${q}”.` : 'Search for the apps your team uses.'}
+              <p className="text-muted-foreground py-10 text-center text-xs">
+                {q ? `Nothing matches “${q}”.` : 'Try a search.'}
               </p>
             ) : (
               <>
-                <OptionGrid label="Apps">
+                <div className="flex flex-col gap-2">
                   {apps.map((app) => (
-                    <OptionCard
+                    <ChoiceRow
                       key={app.slug}
                       selected={existingSlugs.includes(app.slug)}
                       label={app.name}
+                      description={app.categories?.[0]}
                       aria-label={`Add ${app.name} profile`}
                       disabled={connect.isPending}
                       onSelect={() => setSelectedApp(app)}
-                      icon={
+                      leading={
                         app.imgSrc ? (
                           <Image
                             src={app.imgSrc}
                             alt=""
-                            width={20}
-                            height={20}
+                            width={28}
+                            height={28}
                             unoptimized
                             referrerPolicy="no-referrer"
-                            className="size-5 shrink-0 rounded-sm object-contain"
+                            className="size-7 shrink-0 rounded-sm object-contain"
                           />
                         ) : (
-                          <Plus className="text-muted-foreground size-4" />
+                          <EntityAvatar icon={Plus} size="sm" label={app.name} />
                         )
                       }
                       trailing={
                         connect.isPending && connect.variables?.appSlug === app.slug ? (
                           <Loading className="size-4 shrink-0" />
-                        ) : undefined
+                        ) : (
+                          <Plus className="text-muted-foreground/50 size-4" />
+                        )
                       }
                     />
                   ))}
-                </OptionGrid>
+                </div>
                 {appsQuery.hasNextPage && (
-                  <div className="pt-3">
+                  <div className="flex justify-center pt-3">
                     <Button
                       variant="outline"
                       size="sm"
@@ -153,7 +155,9 @@ export function ToolsStep({
                       onClick={() => appsQuery.fetchNextPage()}
                       disabled={appsQuery.isFetchingNextPage}
                     >
-                      {appsQuery.isFetchingNextPage ? <Loading className="size-3.5 shrink-0" /> : null}
+                      {appsQuery.isFetchingNextPage ? (
+                        <Loading className="size-3.5 shrink-0" />
+                      ) : null}
                       Load more
                     </Button>
                   </div>
@@ -163,11 +167,11 @@ export function ToolsStep({
           </FadedScrollArea>
         )}
 
-        {profileCount > 0 && (
-          <p className="text-muted-foreground text-xs">
-            {profileCount} {profileCount === 1 ? 'profile' : 'profiles'} added.
-          </p>
-        )}
+        <p className="text-muted-foreground text-xs">
+          {profileCount > 0
+            ? `${profileCount} ${profileCount === 1 ? 'profile' : 'profiles'} added — add as many as you like, then continue.`
+            : 'Connect a few now, or skip and add them anytime.'}
+        </p>
       </div>
 
       <ConnectorProfileModal

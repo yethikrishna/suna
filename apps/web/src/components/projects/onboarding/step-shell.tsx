@@ -1,120 +1,134 @@
 'use client';
 
 /**
- * The onboarding layout primitives.
+ * The only two shapes onboarding is allowed to draw.
  *
- * One rule governs all of them: **every element starts at the same left edge.**
- * The counter, the headline, the sub-copy, the options, and the actions share
- * one x. That is the whole reason this reads as structured — the previous
- * version left-aligned its text, stretched its buttons edge-to-edge, and
- * centred two of its steps, so no two elements agreed on where a line begins.
+ * Every step renders inside `StepShell` and every selectable option is a
+ * `ChoiceRow`. That constraint IS the redesign: the previous wizard gave each
+ * step its own container — a tile grid here, a full-bleed card there — which is
+ * what made five screens read as five unrelated screens rather than one flow.
  *
- * Consequences worth stating, because they are easy to undo by accident:
- *   - Buttons are AUTO-WIDTH. A `w-full` or `flex-1` button spans to both edges
- *     and stops participating in the rail.
- *   - Nothing is centred. No `mx-auto`, no `items-center`, no `text-center`.
- *   - Options are uniform cards on a grid, not bespoke rows per step.
+ * Adding an eighth step must never require inventing new chrome.
  */
 
-import { CheckIcon as Check } from '@phosphor-icons/react';
 import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+/**
+ * Six short ticks, centred in the top bar. Segments rather than one continuous
+ * bar so the flow states honestly how much is left — "six short things" is a
+ * promise a filling bar cannot make.
+ */
+export function StepProgress({ total, current }: { total: number; current: number }) {
+  return (
+    <div className="flex w-[200px] items-center gap-1.5" aria-hidden>
+      {Array.from({ length: total }).map((_, i) => (
+        <span
+          key={i}
+          className={cn(
+            // 200ms, not 300: a 1px tick taking longer than a dropdown reads as lag.
+            'h-1 flex-1 rounded-full transition-colors duration-200',
+            i < current ? 'bg-foreground/50' : i === current ? 'bg-foreground' : 'bg-foreground/15',
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function StepShell({
-  stepLabel,
   title,
   description,
   children,
   primaryLabel,
   primaryDisabled,
   onPrimary,
-  secondaryLabel,
-  onSecondary,
+  skipLabel,
+  onSkip,
 }: {
-  /** e.g. "2 of 6". First line of the rail. */
-  stepLabel?: string;
   title: string;
   description?: string;
   children?: ReactNode;
   primaryLabel: string;
   primaryDisabled?: boolean;
   onPrimary: () => void;
-  secondaryLabel?: string;
-  onSecondary?: () => void;
+  skipLabel?: string;
+  onSkip?: () => void;
 }) {
   return (
-    <div className="flex flex-col items-start">
-      {stepLabel && (
-        <p className="text-muted-foreground text-xs font-medium tabular-nums">{stepLabel}</p>
-      )}
+    <div className="flex flex-col">
+      <div className="space-y-2.5">
+        <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance">
+          {title}
+        </h1>
+        {description && (
+          <p className="text-muted-foreground text-sm leading-6 text-pretty">{description}</p>
+        )}
+      </div>
 
-      <h1 className="text-foreground mt-3 text-3xl font-semibold tracking-tight">{title}</h1>
+      {children && <div className="mt-8">{children}</div>}
 
-      {description && (
-        // Capped by character count, not by the container: a measure this long
-        // stays readable without the paragraph running to the rail's full width.
-        <p className="text-muted-foreground mt-2 max-w-[56ch] text-sm leading-6">{description}</p>
-      )}
-
-      {children && <div className="mt-8 w-full">{children}</div>}
-
-      {/* Auto-width and left-aligned. Stretching these to the rail's full width
-          is what broke the alignment before — a full-bleed button belongs to
-          both edges and therefore to neither. */}
-      <div className="mt-10 flex items-center gap-2.5">
-        <Button size="lg" onClick={onPrimary} disabled={primaryDisabled} className="min-w-[132px]">
-          {primaryLabel}
-        </Button>
-        {secondaryLabel && onSecondary && (
-          <Button size="lg" variant="outline" onClick={onSecondary}>
-            {secondaryLabel}
+      {/* Skip and Continue are siblings with real distance between them and from
+          the content above. A skip tucked directly under the primary reads as a
+          footnote to it; side by side it reads as the other choice, which is
+          what it is. */}
+      <div className="mt-10 flex items-center gap-3">
+        {skipLabel && onSkip && (
+          <Button
+            size="lg"
+            variant="outline"
+            className="flex-1 active:scale-[0.96]"
+            onClick={onSkip}
+          >
+            {skipLabel}
           </Button>
         )}
+        <Button
+          size="lg"
+          className="flex-1 active:scale-[0.96]"
+          onClick={onPrimary}
+          disabled={primaryDisabled}
+        >
+          {primaryLabel}
+        </Button>
       </div>
     </div>
   );
 }
 
-/** Two columns of uniform cards. The shape Okta, Attio, and Postman all use. */
-export function OptionGrid({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2" role="radiogroup" aria-label={label}>
-      {children}
-    </div>
-  );
-}
-
-/**
- * One option. Fixed height so a grid row never staggers, which is most of what
- * makes a grid read as deliberate rather than assembled.
- *
- * `description` switches it to a taller two-line card — use it only where the
- * distinction between options genuinely needs a sentence. Adding a line of
- * helper text under every choice is filler, and filler is what makes an
- * interface feel generated.
- */
-export function OptionCard({
+export function ChoiceRow({
   selected,
   label,
   description,
-  icon,
   onSelect,
-  onPreload,
-  disabled,
+  leading,
   trailing,
+  disabled,
+  onPreload,
   'aria-label': ariaLabel,
 }: {
   selected: boolean;
   label: string;
   description?: string;
-  icon?: ReactNode;
   onSelect: () => void;
-  /** Hover/focus hook for prefetching a lazily-loaded surface behind this card. */
-  onPreload?: () => void;
-  disabled?: boolean;
+  leading?: ReactNode;
   trailing?: ReactNode;
+  disabled?: boolean;
+  /**
+   * Fired on hover and focus, ahead of any click. Rows that reveal a
+   * lazily-loaded surface use this to fetch the chunk early — otherwise the
+   * download and parse land in the middle of the open animation and drop
+   * frames. Must stay idempotent and cheap; it can fire many times.
+   */
+  onPreload?: () => void;
+  /**
+   * Overrides the accessible name when the visible label alone would mislead.
+   * The tools step needs this: a connected app still offers "Add <app> profile",
+   * because a second profile for the same provider is legal and the row's
+   * selected state would otherwise read as "already done, nothing to do here".
+   */
   'aria-label'?: string;
 }) {
   return (
@@ -128,23 +142,36 @@ export function OptionCard({
       onPointerEnter={onPreload}
       onFocus={onPreload}
       className={cn(
-        'bg-popover flex w-full items-center gap-3 rounded-md border px-4 text-left',
-        description ? 'py-3' : 'h-[52px]',
-        'transition-[background-color,border-color] duration-150',
+        // py-3 + two text lines clears the 40px minimum hit area comfortably.
+        'bg-popover flex w-full items-center gap-3 rounded-md border px-4 py-3 text-left',
+        // Named properties, never `transition-all`. Scale is 0.99, not the usual
+        // 0.96: at the column's 560px this row is wide enough that 4% reads as a
+        // lurch rather than a press.
+        'transition-[background-color,border-color,scale] duration-150 active:scale-[0.99]',
         'hover:border-primary/30 hover:bg-primary/[0.03]',
         'focus-visible:ring-kortix-base focus-visible:ring-[0.6px] focus-visible:outline-none',
         'disabled:pointer-events-none disabled:opacity-50',
-        selected && 'border-primary/50 bg-primary/[0.05]',
+        // Selection is a tinted primary wash, never `bg-muted`.
+        selected && 'border-primary/40 bg-primary/[0.05]',
       )}
     >
-      {icon && <span className="flex size-5 shrink-0 items-center justify-center">{icon}</span>}
+      {leading ?? (
+        <span
+          className={cn(
+            'flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors',
+            selected ? 'border-primary' : 'border-border',
+          )}
+        >
+          {selected && <span className="bg-primary size-2 rounded-full" />}
+        </span>
+      )}
       <span className="min-w-0 flex-1">
         <span className="text-foreground block truncate text-sm font-medium">{label}</span>
         {description && (
-          <span className="text-muted-foreground mt-0.5 block text-xs leading-5">{description}</span>
+          <span className="text-muted-foreground block truncate text-xs">{description}</span>
         )}
       </span>
-      {trailing ?? (selected && <Check className="text-primary size-4 shrink-0" />)}
+      {trailing && <span className="shrink-0">{trailing}</span>}
     </button>
   );
 }

@@ -20,6 +20,15 @@ describe('buildSteps', () => {
   test('drops only the tools step when connectors are disabled', () => {
     expect(buildSteps(false)).toEqual(['use-case', 'company', 'slack', 'plan', 'done']);
   });
+
+  // A screen that asks nothing and tells nothing is a screen the user pays for
+  // and gets nothing back from. Alan, Brilliant, and Headspace all open on
+  // their first real question.
+  test('opens on a question — there is no welcome screen', () => {
+    expect(buildSteps(true)[0]).toBe('use-case');
+    expect(buildSteps(false)[0]).toBe('use-case');
+    expect(buildSteps(true)).not.toContain('welcome');
+  });
 });
 
 describe('surveyPosition', () => {
@@ -45,14 +54,14 @@ describe('firstStepAfterSurvey', () => {
   });
 
   // The skip must not assume the tools step exists — with connectors disabled
-  // the next real step is Slack, one index earlier.
+  // the next real step is Slack at the same index.
   test('lands on slack when connectors are disabled', () => {
     const steps = buildSteps(false);
     expect(firstStepAfterSurvey(steps)).toBe(2);
     expect(steps[2]).toBe('slack');
   });
 
-  test('never returns a survey step or the welcome step', () => {
+  test('never returns a survey step', () => {
     for (const steps of [buildSteps(true), buildSteps(false)]) {
       const target = steps[firstStepAfterSurvey(steps)];
       expect(target).toBeDefined();

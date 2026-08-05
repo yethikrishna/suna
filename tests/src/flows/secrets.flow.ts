@@ -123,6 +123,7 @@ flow(
       "POST /v1/projects/:projectId/secrets",
       "GET /v1/projects/:projectId/secrets",
       "PUT /v1/projects/:projectId/secrets/:identifier/strategy",
+      "POST /v1/projects/:projectId/secrets/:identifier/broker",
       "GET /v1/accounts/:accountId/audit",
     ],
   },
@@ -221,6 +222,21 @@ flow(
           { params: { projectId: p.id, identifier: "CONTROL_PLANE_KEY" } },
         );
       r.status(409).body().has("$.code", "secret_delivery_unavailable");
+    });
+
+    await ctx.step("broker execution requires a session-scoped agent token", async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .post(
+          "/v1/projects/:projectId/secrets/:identifier/broker",
+          {
+            url: "https://api.example.com/v1/messages",
+            method: "POST",
+            body_base64: "e30=",
+          },
+          { params: { projectId: p.id, identifier: "CONTROL_PLANE_KEY" } },
+        );
+      r.status(403).body().has("$.code", "session_agent_token_required");
     });
 
     await ctx.step("rotation permits runtime delivery", async () => {

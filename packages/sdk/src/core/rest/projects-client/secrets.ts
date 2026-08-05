@@ -34,6 +34,17 @@ export interface UpdateSecretStrategyOptions {
   egress_policy?: SecretEgressPolicy;
   handle_prefix?: string;
 }
+export interface SecretBrokerRequest {
+  url: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
+  headers?: Record<string, string>;
+  body_base64?: string;
+}
+export interface SecretBrokerResponse {
+  status: number;
+  headers: Record<string, string>;
+  body_base64: string;
+}
 
 /**
  * One project secret: `{ identifier, name (the env var KEY), value }`.
@@ -142,6 +153,19 @@ export async function setProjectSecretStrategy(
     await backendApi.put<ProjectSecret>(
       `/projects/${projectId}/secrets/${encodeURIComponent(identifier)}/strategy`,
       { strategy, ...options },
+    ),
+  );
+}
+
+export async function brokerProjectSecretRequest(
+  projectId: string,
+  identifier: string,
+  input: SecretBrokerRequest,
+): Promise<SecretBrokerResponse> {
+  return unwrap(
+    await backendApi.post<SecretBrokerResponse>(
+      `/projects/${projectId}/secrets/${encodeURIComponent(identifier)}/broker`,
+      input,
     ),
   );
 }

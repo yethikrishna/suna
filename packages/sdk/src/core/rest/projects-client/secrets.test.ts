@@ -7,6 +7,7 @@ import {
   pollProjectProviderOAuth,
   setPersonalProjectSecret,
   setProjectSecretStrategy,
+  brokerProjectSecretRequest,
   startProjectProviderOAuth,
   upsertProjectGitCredential,
   upsertProjectSecret,
@@ -115,6 +116,32 @@ test('setProjectSecretStrategy sends broker policy options', async () => {
     },
     handle_prefix: 'example_',
   });
+});
+
+test('brokerProjectSecretRequest POSTs a policy-bound HTTPS request', async () => {
+  nextResponse = {
+    status: 200,
+    body: { status: 201, headers: { 'content-type': 'application/json' }, body_base64: 'e30=' },
+  };
+
+  const result = await brokerProjectSecretRequest('P1', 'primary/key', {
+    url: 'https://api.example.com/v1/messages',
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body_base64: 'e30=',
+  });
+
+  expect(last()).toMatchObject({
+    method: 'POST',
+    url: expect.stringContaining('/projects/P1/secrets/primary%2Fkey/broker'),
+    body: {
+      url: 'https://api.example.com/v1/messages',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body_base64: 'e30=',
+    },
+  });
+  expect(result.status).toBe(201);
 });
 
 test('startProjectProviderOAuth posts to the provider start endpoint with the sharing intent', async () => {

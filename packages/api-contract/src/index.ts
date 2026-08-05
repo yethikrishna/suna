@@ -1018,6 +1018,27 @@ export const UpdateSecretStrategyInputSchema = z
   .strict();
 export type UpdateSecretStrategyInput = z.infer<typeof UpdateSecretStrategyInputSchema>;
 
+export const SecretBrokerRequestSchema = z
+  .object({
+    url: z.string().min(1).max(4096),
+    method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']).default('GET'),
+    headers: z.record(z.string(), z.string().max(8192)).optional(),
+    body_base64: z.string().max(1_400_000).optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value.headers ?? {}).length <= 64, {
+    message: 'headers must contain at most 64 entries',
+    path: ['headers'],
+  });
+export type SecretBrokerRequest = z.infer<typeof SecretBrokerRequestSchema>;
+
+export const SecretBrokerResponseSchema = z.object({
+  status: z.number().int().min(100).max(599),
+  headers: z.record(z.string(), z.string()),
+  body_base64: z.string(),
+});
+export type SecretBrokerResponse = z.infer<typeof SecretBrokerResponseSchema>;
+
 export const SecretSchema = z.object({
   /** Unique per project. The handle an agent's `secrets` grant references. */
   identifier: z.string(),

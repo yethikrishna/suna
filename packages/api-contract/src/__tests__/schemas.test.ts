@@ -16,6 +16,8 @@ import {
   ProjectSessionSandboxSchema,
   ProjectSessionSchema,
   ReconcileConnectionProfileInputSchema,
+  SecretBrokerRequestSchema,
+  SecretBrokerResponseSchema,
   SecretSchema,
   SecretDeliveryStrategySchema,
   UpdateSecretStrategyInputSchema,
@@ -569,6 +571,32 @@ describe('SecretSchema', () => {
     expect(
       UpdateSecretStrategyInputSchema.safeParse({ strategy: 'runtime', value: 'secret' }).success,
     ).toBe(false);
+  });
+
+  test('validates the generic HTTPS broker request and response envelopes', () => {
+    expect(
+      SecretBrokerRequestSchema.parse({
+        url: 'https://api.example.com/v1/messages',
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body_base64: 'e30=',
+      }),
+    ).toEqual({
+      url: 'https://api.example.com/v1/messages',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body_base64: 'e30=',
+    });
+    expect(SecretBrokerRequestSchema.parse({ url: 'https://api.example.com' }).method).toBe('GET');
+    expect(
+      SecretBrokerRequestSchema.safeParse({
+        url: 'https://api.example.com',
+        headers: Object.fromEntries(Array.from({ length: 65 }, (_, index) => [`x-${index}`, 'x'])),
+      }).success,
+    ).toBe(false);
+    expect(
+      SecretBrokerResponseSchema.parse({ status: 200, headers: {}, body_base64: 'b2s=' }),
+    ).toEqual({ status: 200, headers: {}, body_base64: 'b2s=' });
   });
 });
 

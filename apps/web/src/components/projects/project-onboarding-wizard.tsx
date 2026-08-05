@@ -37,25 +37,25 @@
 
 import { ArrowLeftIcon as ArrowLeft } from '@phosphor-icons/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { KortixAsterisk } from '@/components/ui/kortix-asterisk';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { DemoQualifierModal } from '@/features/contact/demo-qualifier-modal';
 import { useAuth } from '@/features/providers/auth-provider';
 import { useProjectOnboarding } from '@/hooks/projects/use-project-onboarding';
 import { usePersonalContactTier } from '@/hooks/use-show-personal-contact';
 import { isConnectorsEnabled } from '@/lib/config';
-import { cn } from '@/lib/utils';
 import { useComposerPrefillStore } from '@/stores/composer-prefill-store';
 import { listConnectors } from '@kortix/sdk';
 
-import { slideVariants } from './onboarding/motion';
 import {
   buildSteps,
   deriveCompanyDomain,
   firstStepAfterSurvey,
+  surveyPosition,
 } from './onboarding/onboarding-profile';
 import { StepProgress } from './onboarding/step-shell';
 import { useOnboardingAnswers } from './onboarding/use-onboarding-answers';
@@ -65,6 +65,7 @@ import { PlanStep } from './onboarding/steps/plan-step';
 import { SlackStep } from './onboarding/steps/slack-step';
 import { ToolsStep } from './onboarding/steps/tools-step';
 import { UseCaseStep } from './onboarding/steps/use-case-step';
+import { WelcomeStep } from './onboarding/steps/welcome-step';
 
 const CAL_LINK = 'team/kortix/demo';
 const CAL_NAMESPACE = 'kortix-onboarding-wizard';
@@ -84,9 +85,6 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
   const onboarding = useProjectOnboarding(projectId);
   const queryClient = useQueryClient();
 
-  const reduced = useReducedMotion() ?? false;
-  const stepVariants = useMemo(() => slideVariants(reduced), [reduced]);
-
   const [calOpen, setCalOpen] = useState(false);
   const [index, setIndex] = useState(0);
 
@@ -97,7 +95,9 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
 
   const connectorsEnabled = isConnectorsEnabled();
   const steps = useMemo(() => buildSteps(connectorsEnabled), [connectorsEnabled]);
-  const stepId = steps[index] ?? 'use-case';
+  const stepId = steps[index] ?? 'welcome';
+  const survey = surveyPosition(stepId);
+  const eyebrow = survey ? `Question ${survey.index} of ${survey.total}` : undefined;
 
   // `?onboarding-reset` reopens the wizard from the top (clears completion flag).
   const resetFn = onboarding.reset;
@@ -133,22 +133,11 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
     queryClient.invalidateQueries({ queryKey: ['project-connectors', projectId] });
   }, [queryClient, projectId]);
 
-  // Direction drives the slide. Without it, Back and Continue animate
-  // identically and the motion lies about which way the user moved.
-  const [direction, setDirection] = useState(1);
-  const goTo = useCallback((resolve: (i: number) => number) => {
-    setIndex((i) => {
-      const target = resolve(i);
-      setDirection(target >= i ? 1 : -1);
-      return target;
-    });
-  }, []);
-
   const next = useCallback(
-    () => goTo((i) => Math.min(i + 1, steps.length - 1)),
-    [goTo, steps.length],
+    () => setIndex((i) => Math.min(i + 1, steps.length - 1)),
+    [steps.length],
   );
-  const back = useCallback(() => goTo((i) => Math.max(i - 1, 0)), [goTo]);
+  const back = useCallback(() => setIndex((i) => Math.max(i - 1, 0)), []);
   const complete = useCallback(() => onboarding.complete(), [onboarding]);
 
   // Picking a starting point on the finish step seeds the project-home composer
@@ -165,10 +154,7 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
 
   // Skipping the survey jumps past BOTH questions to whatever comes next —
   // `tools` normally, `slack` when connectors are disabled.
-  const skipSurvey = useCallback(
-    () => goTo(() => firstStepAfterSurvey(steps)),
-    [goTo, steps],
-  );
+  const skipSurvey = useCallback(() => setIndex(firstStepAfterSurvey(steps)), [steps]);
 
   if (!isPending) return null;
 
@@ -183,50 +169,50 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
         aria-label="Project setup"
       >
         <div className="border-border/60 bg-background flex h-full flex-col overflow-hidden rounded-md border">
-          {/* The entire chrome: a back control on the left, progress centred.
-              No mark, no title. Nothing here competes with the question. */}
-          <div className="relative flex h-14 shrink-0 items-center px-3 md:px-5">
-            {index > 0 && (
-              <Button
-                variant="ghost"
-                size="icon-md"
-                aria-label="Back"
-                className="text-muted-foreground hover:text-foreground active:scale-[0.96]"
-                onClick={back}
-              >
-                <ArrowLeft className="size-4" />
-              </Button>
-            )}
-            <div className="pointer-events-none absolute inset-x-0 flex justify-center">
-              <StepProgress total={steps.length} current={index} />
+          <div className="flex items-center px-5 py-4 md:px-8">
+            <div className="flex items-center gap-2.5">
+              <KortixAsterisk index={0} />
+              <span className="text-foreground text-sm font-semibold tracking-tight">
+                Set up your project
+              </span>
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-5 pb-16 md:items-center md:px-8">
-            {/* The Slack step expands into a second pane on wide screens, so it
-                gets room for the pair. Below xl it stays a single column and
-                the pane stacks underneath. Every other step is 560 flat. */}
-            <div
-              className={cn(
-                'w-full py-8',
-                stepId === 'slack' ? 'max-w-[560px] xl:max-w-[1040px]' : 'max-w-[560px]',
-              )}
-            >
-              {/* popLayout, not wait: `wait` runs the exit to completion before
-                  the enter starts, which doubled every step to ~440ms of dead
-                  air. popLayout takes the outgoing step out of flow so the two
-                  overlap and the swap reads as one movement. */}
-              <AnimatePresence mode="popLayout" custom={direction} initial={false}>
+          <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-5 pb-10 md:items-center md:px-8">
+            <div className="w-full max-w-[560px] py-6">
+              <div className="mb-8 flex items-center gap-3">
+                {index > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground -ml-2 h-8 shrink-0 gap-1.5 px-2"
+                    onClick={back}
+                  >
+                    <ArrowLeft className="size-3.5" />
+                    Back
+                  </Button>
+                )}
+                <StepProgress total={steps.length} current={index} />
+              </div>
+
+              <AnimatePresence mode="wait">
                 <motion.div
                   key={stepId}
-                  custom={direction}
-                  variants={stepVariants}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.22, ease: 'easeOut' }}
                 >
+                  {stepId === 'welcome' && (
+                    <WelcomeStep
+                      showFounderStep={showFounderStep}
+                      onBookCall={() => setCalOpen(true)}
+                      onContinue={next}
+                    />
+                  )}
                   {stepId === 'use-case' && (
                     <UseCaseStep
+                      eyebrow={eyebrow}
                       value={answers.use_case ?? null}
                       onSelect={(v) => save({ use_case: v })}
                       onContinue={next}
@@ -235,6 +221,7 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
                   )}
                   {stepId === 'company' && (
                     <CompanyStep
+                      eyebrow={eyebrow}
                       domain={domain}
                       size={answers.company_size ?? null}
                       onDomainChange={setDomain}
@@ -268,8 +255,6 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
                     <DoneStep
                       useCase={answers.use_case ?? null}
                       profileCount={connectorSlugs.length}
-                      showFounderCall={showFounderStep}
-                      onBookCall={() => setCalOpen(true)}
                       onStart={complete}
                       onUsePrompt={startWithPrompt}
                     />

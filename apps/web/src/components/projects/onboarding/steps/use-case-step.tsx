@@ -14,11 +14,13 @@ import { USE_CASE_OPTIONS } from '../onboarding-profile';
 import { ChoiceRow, StepShell } from '../step-shell';
 
 export function UseCaseStep({
+  eyebrow,
   value,
   onSelect,
   onContinue,
   onSkip,
 }: {
+  eyebrow?: string;
   value: OnboardingUseCase | null;
   onSelect: (v: OnboardingUseCase) => void;
   onContinue: () => void;
@@ -26,12 +28,13 @@ export function UseCaseStep({
 }) {
   return (
     <StepShell
+      eyebrow={eyebrow}
       title="What will you use Kortix for?"
       description="We use this to pick the right starting points for you. You can change it later."
       primaryLabel="Continue"
       primaryDisabled={!value}
       onPrimary={onContinue}
-      skipLabel="Skip"
+      skipLabel="Skip these questions"
       onSkip={onSkip}
     >
       <div className="flex flex-col gap-2" role="radiogroup" aria-label="Use case">

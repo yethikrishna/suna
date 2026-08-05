@@ -9,14 +9,18 @@
  * where the catalogue call itself returns one.
  */
 
-import { PlusIcon as Plus, MagnifyingGlassIcon as Search } from '@phosphor-icons/react';
+import {
+  PlusIcon as Plus,
+  MagnifyingGlassIcon as Search,
+  SlidersHorizontalIcon as SlidersHorizontal,
+  CaretDownIcon as ChevronDown,
+} from '@phosphor-icons/react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import Image from 'next/image';
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { EntityAvatar } from '@/components/ui/entity-avatar';
-import { FadedScrollArea } from '@/components/ui/faded-scroll-area';
 import { InfoBanner } from '@/components/ui/info-banner';
 import { Input } from '@/components/ui/input';
 import Loading from '@/components/ui/loading';
@@ -27,12 +31,22 @@ import {
 } from '@/features/workspace/customize/sections/connector-profile-form';
 import { ConnectorProfileModal } from '@/features/workspace/customize/sections/connector-profile-modal';
 import { useToolConnect } from '@/hooks/connectors/use-tool-connect';
+import { cn } from '@/lib/utils';
 import { listPipedreamApps } from '@kortix/sdk';
 
 import { ChoiceRow, StepShell } from '../step-shell';
 
 /** Slack has its own dedicated step, so keep it out of this list. */
 const SLACK_SLUGS = new Set(['slack', 'slack_v2']);
+
+/** Lazy — the full custom-connector form (OpenAPI / Postman / GraphQL / MCP / HTTP),
+ * reused verbatim from the Connectors page. Keeps the giant connectors-view
+ * module out of the project bundle until someone actually opens it. */
+const CustomConnectorForm = lazy(() =>
+  import('@/features/workspace/customize/sections/connectors-view').then((m) => ({
+    default: m.CustomConnectorForm,
+  })),
+);
 
 export function ToolsStep({
   projectId,
@@ -49,6 +63,7 @@ export function ToolsStep({
 }) {
   const [q, setQ] = useState('');
   const [selectedApp, setSelectedApp] = useState<EasyConnectApp | null>(null);
+  const [customOpen, setCustomOpen] = useState(false);
   const connect = useToolConnect(projectId, onConnected);
 
   const appsQuery = useInfiniteQuery({
@@ -73,7 +88,7 @@ export function ToolsStep({
       description="Pick the apps you live in and authorize them right here. Your agent can read, write, and act across everything you connect."
       primaryLabel="Continue"
       onPrimary={onContinue}
-      skipLabel="Skip"
+      skipLabel="Skip for now"
       onSkip={onSkip}
     >
       <div className="flex flex-col gap-4">
@@ -89,16 +104,13 @@ export function ToolsStep({
 
         {notConfigured ? (
           <InfoBanner tone="neutral" title="App connect isn’t configured on this deployment">
-            You can still continue and connect tools later from Connectors.
+            You can still continue and connect tools later from Connectors, or wire up an API
+            directly below.
           </InfoBanner>
         ) : (
           // Bounded by the column, not the viewport: a vh-relative height made
-          // this step the tallest thing in the flow on large screens. The fade
-          // tells you there is more without adding a scrollbar to look at.
-          <FadedScrollArea
-            fadeColor="from-background"
-            className="max-h-[320px] overflow-y-auto pr-1"
-          >
+          // this step the tallest thing in the flow on large screens.
+          <div className="max-h-[320px] overflow-y-auto pr-1">
             {appsQuery.isLoading ? (
               <div className="flex flex-col gap-2">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -164,7 +176,7 @@ export function ToolsStep({
                 )}
               </>
             )}
-          </FadedScrollArea>
+          </div>
         )}
 
         <p className="text-muted-foreground text-xs">
@@ -172,6 +184,35 @@ export function ToolsStep({
             ? `${profileCount} ${profileCount === 1 ? 'profile' : 'profiles'} added — add as many as you like, then continue.`
             : 'Connect a few now, or skip and add them anytime.'}
         </p>
+
+        {/* A disclosure, not a second tab. The step asks one thing; a tab bar
+            would make it ask two. */}
+        <div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground h-8 gap-1.5 px-0"
+            onClick={() => setCustomOpen((o) => !o)}
+          >
+            <ChevronDown
+              className={cn('size-3.5 transition-transform', customOpen && 'rotate-180')}
+            />
+            <SlidersHorizontal className="size-3.5" />
+            Connect a custom API instead
+          </Button>
+          {customOpen && (
+            <div className="mt-3 max-h-[320px] overflow-y-auto pr-1">
+              <Suspense fallback={<Skeleton className="h-56 w-full rounded-md" />}>
+                <CustomConnectorForm
+                  projectId={projectId}
+                  emailChannelEnabled={false}
+                  onAdded={() => onConnected()}
+                />
+              </Suspense>
+            </div>
+          )}
+        </div>
       </div>
 
       <ConnectorProfileModal

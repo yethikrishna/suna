@@ -9,7 +9,7 @@
 import { emailDomain, isWorkEmail } from '@/lib/personal-email';
 import type { OnboardingCompanySize, OnboardingUseCase } from '@kortix/sdk';
 
-export type StepId = 'use-case' | 'company' | 'tools' | 'slack' | 'plan' | 'done';
+export type StepId = 'welcome' | 'use-case' | 'company' | 'tools' | 'slack' | 'plan' | 'done';
 
 export interface UseCaseOption {
   value: OnboardingUseCase;
@@ -55,13 +55,15 @@ export const COMPANY_SIZES: readonly OnboardingCompanySize[] = [
   '1000+',
 ] as const;
 
-/**
- * No welcome step. A screen that asks nothing and tells nothing is a screen
- * the user pays for and gets nothing back from — Alan, Brilliant, and Headspace
- * all open directly on their first real question. The founder-concierge CTA
- * that used to live on the welcome screen moves to the finish step.
- */
-const ALL_STEPS: readonly StepId[] = ['use-case', 'company', 'tools', 'slack', 'plan', 'done'];
+const ALL_STEPS: readonly StepId[] = [
+  'welcome',
+  'use-case',
+  'company',
+  'tools',
+  'slack',
+  'plan',
+  'done',
+];
 
 /**
  * Self-host without Pipedream configured (`isConnectorsEnabled()` false) has no
@@ -84,15 +86,15 @@ export function surveyPosition(stepId: StepId): { index: number; total: number }
 }
 
 /**
- * Where "Skip" lands from a survey question: the first step that is not itself
- * a survey question.
+ * Where "Skip these questions" lands: the first step that is neither the
+ * welcome nor a survey question.
  *
  * Computed from the step list rather than hardcoded, because the tools step is
  * absent when connectors are disabled — a fixed index would drop the user onto
  * the wrong screen on a self-host build.
  */
 export function firstStepAfterSurvey(steps: readonly StepId[]): number {
-  const i = steps.findIndex((s) => !surveyPosition(s));
+  const i = steps.findIndex((s) => s !== 'welcome' && !surveyPosition(s));
   return i === -1 ? Math.max(steps.length - 1, 0) : i;
 }
 

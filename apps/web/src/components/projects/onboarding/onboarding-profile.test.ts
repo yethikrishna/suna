@@ -12,22 +12,28 @@ import {
 
 describe('buildSteps', () => {
   test('includes the tools step when connectors are enabled', () => {
-    expect(buildSteps(true)).toEqual(['use-case', 'company', 'tools', 'slack', 'plan', 'done']);
+    expect(buildSteps(true)).toEqual([
+      'welcome',
+      'use-case',
+      'company',
+      'tools',
+      'slack',
+      'plan',
+      'done',
+    ]);
   });
 
   // Self-host without Pipedream configured has no catalogue to offer, so the
   // step is dropped rather than landing the user on a dead 501.
   test('drops only the tools step when connectors are disabled', () => {
-    expect(buildSteps(false)).toEqual(['use-case', 'company', 'slack', 'plan', 'done']);
-  });
-
-  // A screen that asks nothing and tells nothing is a screen the user pays for
-  // and gets nothing back from. Alan, Brilliant, and Headspace all open on
-  // their first real question.
-  test('opens on a question — there is no welcome screen', () => {
-    expect(buildSteps(true)[0]).toBe('use-case');
-    expect(buildSteps(false)[0]).toBe('use-case');
-    expect(buildSteps(true)).not.toContain('welcome');
+    expect(buildSteps(false)).toEqual([
+      'welcome',
+      'use-case',
+      'company',
+      'slack',
+      'plan',
+      'done',
+    ]);
   });
 });
 
@@ -40,7 +46,7 @@ describe('surveyPosition', () => {
   // The eyebrow counts SURVEY questions, not wizard steps, so removing the
   // tools step must not renumber it.
   test('is null for every non-survey step', () => {
-    for (const id of ['tools', 'slack', 'plan', 'done'] as const) {
+    for (const id of ['welcome', 'tools', 'slack', 'plan', 'done'] as const) {
       expect(surveyPosition(id)).toBeNull();
     }
   });
@@ -48,23 +54,22 @@ describe('surveyPosition', () => {
 
 describe('firstStepAfterSurvey', () => {
   test('lands on tools when connectors are enabled', () => {
-    const steps = buildSteps(true);
-    expect(firstStepAfterSurvey(steps)).toBe(2);
-    expect(steps[2]).toBe('tools');
+    expect(firstStepAfterSurvey(buildSteps(true))).toBe(3);
   });
 
   // The skip must not assume the tools step exists — with connectors disabled
-  // the next real step is Slack at the same index.
+  // the next real step is Slack, one index earlier.
   test('lands on slack when connectors are disabled', () => {
     const steps = buildSteps(false);
-    expect(firstStepAfterSurvey(steps)).toBe(2);
-    expect(steps[2]).toBe('slack');
+    expect(firstStepAfterSurvey(steps)).toBe(3);
+    expect(steps[3]).toBe('slack');
   });
 
-  test('never returns a survey step', () => {
+  test('never returns a survey step or the welcome step', () => {
     for (const steps of [buildSteps(true), buildSteps(false)]) {
       const target = steps[firstStepAfterSurvey(steps)];
       expect(target).toBeDefined();
+      expect(target).not.toBe('welcome');
       expect(surveyPosition(target!)).toBeNull();
     }
   });

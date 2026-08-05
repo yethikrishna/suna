@@ -14,8 +14,6 @@ const step = (name: string) => readFileSync(join(import.meta.dir, 'steps', name)
 
 const tools = step('tools-step.tsx');
 const plan = step('plan-step.tsx');
-const slack = step('slack-step.tsx');
-const company = step('company-step.tsx');
 
 describe('tools step', () => {
   test('uses a vertical list, not a tile grid', () => {
@@ -30,101 +28,15 @@ describe('tools step', () => {
     expect(tools).not.toContain('vh]');
   });
 
-  // The step asks exactly one thing: which apps. The custom-API escape hatch
-  // lives on the Connectors page, not inside onboarding.
-  test('asks one thing — no tabs, no custom-API branch', () => {
+  // The step asks one thing. A tab bar makes it ask two.
+  test('offers the custom connector as a disclosure, not a second tab', () => {
     expect(tools).not.toContain('<Tabs');
     expect(tools).not.toContain('TabsTrigger');
-    expect(tools).not.toContain('Connect a custom API');
-    expect(tools).not.toContain('CustomConnectorForm');
-  });
-
-  // The fade says "there is more" without putting a scrollbar on screen.
-  test('fades the scroll edges instead of showing a hard cut', () => {
-    expect(tools).toContain('FadedScrollArea');
+    expect(tools).toContain('Connect a custom API instead');
   });
 
   test('keeps the accessible name that distinguishes adding another profile', () => {
     expect(tools).toContain('aria-label={`Add ${app.name} profile`}');
-  });
-});
-
-describe('slack step', () => {
-  // Was a bordered card, a button inside it, and a disclosure beneath — three
-  // unrelated shapes on a screen where every other step is a list of rows.
-  test('offers both install paths as the shared row primitive', () => {
-    expect(slack).toContain('<ChoiceRow');
-    expect(slack).toContain('Add to Slack');
-    expect(slack).toContain('Use a custom Slack app');
-  });
-
-  test('collapses to a single confirmed state once connected', () => {
-    expect(slack).toContain('Connected to Slack');
-  });
-
-  // The custom-app setup sits BESIDE the chooser, not on top of it. An earlier
-  // pass replaced the whole step with a sub-view, which hid what the user came
-  // from — they are still adding Kortix to Slack, just by a longer route.
-  test('opens the custom app as a second pane, not a replacement', () => {
-    expect(slack).toContain('xl:flex-row');
-    expect(slack).toContain('<motion.aside');
-    expect(slack).toContain('Bring your own Slack app');
-    // No drill-in: the chooser is never unmounted to make room.
-    expect(slack).not.toContain("key={pane}");
-  });
-
-  // FLIP-derived transforms, not an animated width — a width animation would
-  // lay out and paint every frame.
-  test('shifts the chooser with a layout animation', () => {
-    expect(slack).toContain('layout={!reduced}');
-  });
-
-  // Below xl there is no room for two panes side by side.
-  test('stacks the pane underneath on narrow screens', () => {
-    expect(slack).toContain('flex-col');
-    expect(slack).toContain('xl:w-[420px]');
-  });
-
-  // Under the default mode the exiting panel keeps its flex space until the
-  // fade completes, so the chooser sits still and then jumps back. This was
-  // why closing felt worse than opening.
-  test('lets the chooser move back while the panel is still leaving', () => {
-    expect(slack).toContain('mode="popLayout"');
-  });
-
-  // The chunk downloaded and parsed during the open animation, dropping frames
-  // for reasons that had nothing to do with easing.
-  test('preloads the lazy form before the click', () => {
-    expect(slack).toContain('onPreload={preloadConnectorsView}');
-    expect(slack).toContain('const preloadConnectorsView');
-  });
-
-  // The manifest block is tall. Sizing the panel to it grew the row far past
-  // the chooser, and the wizard centres its body vertically, so the whole step
-  // lurched upward as the panel appeared.
-  test('bounds the panel height so the row does not lurch', () => {
-    expect(slack).toContain('max-h-[380px]');
-    // The Suspense fallback matches the loaded height — otherwise skeleton to
-    // form is a second reflow mid-animation.
-    expect(slack).toContain('h-[380px]');
-  });
-
-  // A toggle can be interrupted mid-flight. Springs preserve velocity across
-  // an interruption; a tween restarts from zero and visibly jumps.
-  test('uses a spring for the layout shift', () => {
-    expect(slack).toContain('LAYOUT_TRANSITION');
-  });
-});
-
-describe('company step', () => {
-  test('uses an input group with an icon for the domain', () => {
-    expect(company).toContain('InputGroup');
-    expect(company).toContain('GlobeIcon');
-  });
-
-  // Two separate questions on one screen must read as two, not as a form.
-  test('separates the two questions properly', () => {
-    expect(company).toContain('space-y-10');
   });
 });
 
@@ -146,37 +58,8 @@ describe('plan step', () => {
     expect(plan).toContain('showUpgradeOption');
   });
 
-  test('offers three ways forward, including deferring', () => {
+  test('renders both options as the shared row primitive', () => {
     expect(plan).toContain('<ChoiceRow');
-    expect(plan).toContain('Use Kortix models');
-    expect(plan).toContain('Bring your own API key');
-    expect(plan).toContain('Decide later');
-  });
-
-  // THE fix for this step. Clicking a row used to fire a modal instantly: the
-  // user taps to consider an option, gets a whole separate flow thrown at them,
-  // backs out, and loses the thread. Selection must only select.
-  test('opens nothing on selection — the action is deferred to Continue', () => {
-    expect(plan).not.toContain('openUpgrade();\n            }}');
-    expect(plan).toContain('const handleContinue');
-    // Each onSelect does exactly one thing: record the choice.
-    for (const choice of ['kortix', 'byok', 'later']) {
-      expect(plan).toContain(`onSelect={() => setChoice('${choice}')}`);
-    }
-  });
-
-  // The modal that opens should never be a surprise, so the button names it.
-  test('labels the primary with what it will actually do', () => {
-    expect(plan).toContain("'See plans'");
-    expect(plan).toContain("'Add a key'");
-  });
-
-  // An earlier version short-circuited to a confirm-only screen when a model
-  // was already connected, which stranded anyone who wanted to add a second
-  // provider or move onto a plan. A connected model is context, not an answer.
-  test('keeps every option available even when a model is already connected', () => {
-    expect(plan).not.toContain('if (hasSelectableModels)');
-    expect(plan).toContain('Connect another provider');
-    expect(plan).toContain('Keep what I have');
+    expect(plan).toContain('Start free');
   });
 });

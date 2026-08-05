@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { SecretBrokerRequest } from '@kortix/api-contract';
 import type { SecretEgressPolicy } from '@kortix/db';
 import {
+  createPinnedLookup,
   executeSecretBrokerRequest,
   prepareSecretBrokerRequest,
   redactSecretFromResponse,
@@ -167,4 +168,21 @@ describe('executeSecretBrokerRequest', () => {
 test('redactSecretFromResponse handles repeated literal values', () => {
   const redacted = redactSecretFromResponse(Buffer.from(`${SECRET}:${SECRET}`), SECRET);
   expect(redacted.toString('utf8')).toBe('[REDACTED]:[REDACTED]');
+});
+
+test('createPinnedLookup returns an array when the runtime requests all addresses', async () => {
+  const lookup = createPinnedLookup({ address: '203.0.113.10', family: 4 });
+  const result = await new Promise<{ address: unknown; family: number | undefined }>(
+    (resolve, reject) => {
+      lookup('api.example.com', { all: true }, (error, address, family) => {
+        if (error) reject(error);
+        else resolve({ address, family });
+      });
+    },
+  );
+
+  expect(result).toEqual({
+    address: [{ address: '203.0.113.10', family: 4 }],
+    family: undefined,
+  });
 });

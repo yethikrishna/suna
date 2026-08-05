@@ -1,6 +1,7 @@
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
+import type { LookupFunction } from 'node:net';
 import type {
   SecretBrokerRequest,
   SecretBrokerResponse,
@@ -251,6 +252,16 @@ async function resolvePinnedAddress(url: URL): Promise<{ address: string; family
   return { address: selected.address, family: selected.family === 6 ? 6 : 4 };
 }
 
+export function createPinnedLookup(pinned: { address: string; family: 4 | 6 }): LookupFunction {
+  return (_hostname, options, callback) => {
+    if (options.all) {
+      callback(null, [pinned]);
+      return;
+    }
+    callback(null, pinned.address, pinned.family);
+  };
+}
+
 export async function pinnedHttpsTransport(
   prepared: PreparedBrokerRequest,
 ): Promise<BrokerTransportResponse> {
@@ -271,9 +282,7 @@ export async function pinnedHttpsTransport(
         method: prepared.method,
         headers: prepared.headers,
         servername: isIP(prepared.url.hostname) === 0 ? prepared.url.hostname : undefined,
-        lookup: (_hostname, _options, callback) => {
-          callback(null, pinned.address, pinned.family);
-        },
+        lookup: createPinnedLookup(pinned),
       },
       (response) => {
         const chunks: Buffer[] = [];

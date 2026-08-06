@@ -1,4 +1,7 @@
-// ─── Observability (must be first — instruments before other imports) ────────
+// Expand the aggregate ECS secret before any module reads process.env.
+import './environment-secret';
+
+// ─── Observability (must follow environment hydration) ───────────────────────
 import './lib/sentry';
 import { captureException, flushSentry, addBreadcrumb, isSentryIgnoredError } from './lib/sentry';
 import { logger as appLogger, isLoggingTransportError } from './lib/logger';

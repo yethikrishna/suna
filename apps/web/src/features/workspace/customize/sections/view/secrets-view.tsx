@@ -888,8 +888,8 @@ function SecretDialog({
         <ModalHeader>
           <ModalTitle>{title}</ModalTitle>
           <ModalDescription>
-            The identifier selects this credential profile. The delivery policy controls where its
-            value can be used.
+            The identifier selects this credential. The delivery policy controls where its value can
+            be used.
           </ModalDescription>
         </ModalHeader>
         <form onSubmit={handleSubmit} autoComplete="off">

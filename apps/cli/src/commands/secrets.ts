@@ -23,7 +23,7 @@ const HELP = help`Usage: kortix secrets <subcommand> [options]
 Manage encrypted secrets on the linked Kortix project. A delivery policy
 controls whether each value reaches a sandbox or stays on Kortix services.
 
-A secret is profile-like: an IDENTIFIER (the unique handle an agent's
+A secret has an IDENTIFIER (the unique handle an agent's
 \`secrets\` grant references), a KEY (the env var injected into the sandbox),
 and a value. Runtime delivery uses KEY as an environment variable. Leave the
 identifier blank and it defaults to the key. Set it explicitly to keep a

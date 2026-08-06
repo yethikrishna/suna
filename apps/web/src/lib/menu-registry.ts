@@ -452,7 +452,7 @@ export const menuRegistry: MenuItemDef[] = [
     href: '/projects/{projectId}/connectors',
     requiresProject: true,
     keywords:
-      'connectors integrations pipedream mcp openapi postman collections apps executor project customize',
+      'connectors connections pipedream mcp openapi postman collections apps connector project customize',
   },
   {
     id: 'proj-connectors-policies',
@@ -469,7 +469,7 @@ export const menuRegistry: MenuItemDef[] = [
     href: '/projects/{projectId}/connectors',
     requiresProject: true,
     keywords:
-      'policies approval block require_approval rules tools executor guardrails project customize',
+      'policies approval block require_approval rules tools connector guardrails project customize',
   },
   {
     id: 'proj-git',
@@ -586,7 +586,7 @@ export const menuRegistry: MenuItemDef[] = [
     href: '/projects/{projectId}/customize/channels',
     requiresProject: true,
     keywords:
-      'channels slack email agent mail agentmail agentic mail inbox messaging notifications integrations project customize',
+      'channels slack email agent mail agentmail agentic mail inbox messaging notifications connections project customize',
   },
   {
     id: 'proj-settings',

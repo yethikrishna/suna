@@ -33,8 +33,9 @@ import {
   usageEvents,
   gatewayRequestLogs,
   accountSsoProviders,
-  executorConnectorAuthorizationStrategyEnum,
-  executorConnectors,
+  connectorAuthorizationStrategyEnum,
+  connectorCalls,
+  connectors,
 } from './kortix';
 
 function columnNames(table: any): string[] {
@@ -142,16 +143,25 @@ describe('kortix enums', () => {
   });
 
   test('connector authorization strategy is project or user', () => {
-    expect(executorConnectorAuthorizationStrategyEnum.enumName).toBe(
+    expect(connectorAuthorizationStrategyEnum.enumName).toBe(
       'executor_connector_authorization_strategy',
     );
-    expect(executorConnectorAuthorizationStrategyEnum.enumValues).toEqual(['project', 'user']);
+    expect(connectorAuthorizationStrategyEnum.enumValues).toEqual(['project', 'user']);
   });
 });
 
-describe('connector profiles', () => {
-  test('store one authorization strategy on each connector profile', () => {
-    expect(columnNames(executorConnectors)).toContain('authorization_strategy');
+describe('connectors', () => {
+  test('uses canonical exports over the transition database identifiers', () => {
+    expect(getTableConfig(connectors).name).toBe('executor_connectors');
+    expect(getTableConfig(connectorCalls).name).toBe('executor_executions');
+  });
+
+  test('store one authorization strategy on each connector', () => {
+    expect(columnNames(connectors)).toContain('authorization_strategy');
+  });
+
+  test('maps connector call identifiers to the transition execution_id column', () => {
+    expect(primaryColumn(connectorCalls)).toBe('execution_id');
   });
 });
 

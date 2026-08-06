@@ -343,12 +343,12 @@ describe('humanizeAuditAction — fallbacks', () => {
       title: 'Started session',
       kind: 'create',
     });
-    expect(humanizeAuditAction('executor.gmail.send_email')).toEqual({
-      title: 'Ran connector action',
+    expect(humanizeAuditAction('connector.gmail.send_email')).toEqual({
+      title: 'Ran connector call',
       detail: 'gmail.send_email',
       kind: 'update',
     });
-    expect(humanizeAuditAction('executor.approval.denied')).toEqual({
+    expect(humanizeAuditAction('connector.approval.denied')).toEqual({
       title: 'Denied connector action',
       kind: 'revoke',
     });

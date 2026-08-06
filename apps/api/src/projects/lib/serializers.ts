@@ -10,7 +10,7 @@ import {
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { type SandboxProviderName, config } from '../../config';
-import { type SecretGrant, visibilityToIntent } from '../../executor/share';
+import { type SecretGrant, visibilityToIntent } from '../../connectors/share';
 import { buildExperimentalCatalog, resolveExperimentalFeatures } from '../../experimental/features';
 import { db } from '../../shared/db';
 import type { listSandboxTemplates, listSnapshotBuilds } from '../../snapshots/builder';
@@ -323,8 +323,8 @@ export function buildSecretView(input: {
           ? 'network'
           : backend === 'llm_gateway'
             ? 'llm_gateway'
-            : backend === 'executor'
-              ? 'executor'
+            : backend === 'connector'
+              ? 'connector'
               : backend === 'git_proxy'
                 ? 'git_proxy'
                 : backend === 'kortix_fetch'

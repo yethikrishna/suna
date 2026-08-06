@@ -1,4 +1,4 @@
-import { parseSharingIntent } from '../../executor/share';
+import { parseSharingIntent } from '../../connectors/share';
 import { PROJECT_ACTIONS } from '../../iam';
 import { agentMayUseEnv, getAgentGrant } from '../../iam/agent-scope';
 import { auth, errors, json } from '../../openapi';
@@ -19,7 +19,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { SecretConsumerSchema, UpdateSecretStrategyInputSchema } from '@kortix/api-contract';
 import { parseEgressPolicy } from '../../secrets/strategy';
 import {
-  executorConnectors,
+  connectors,
   projectSecrets,
   projectSessionSecretHandles,
   projects,
@@ -33,12 +33,12 @@ import { CODEX_AUTH_JSON_SECRET_NAME, isSystemProjectSecretName, loadSecretViews
 
 async function connectorSecretBindings(projectId: string, identifier: string): Promise<string[]> {
   const rows = await db
-    .select({ slug: executorConnectors.slug })
-    .from(executorConnectors)
+    .select({ slug: connectors.slug })
+    .from(connectors)
     .where(
       and(
-        eq(executorConnectors.projectId, projectId),
-        eq(executorConnectors.authSecret, identifier),
+        eq(connectors.projectId, projectId),
+        eq(connectors.authSecret, identifier),
       ),
     );
   return rows.map((row) => row.slug).sort();
@@ -99,7 +99,7 @@ projectsApp.openapi(
 // middleware enforces that the URL's `:projectId` matches the token's
 // project_id, so the token is useless outside this one project. They're
 // auto-minted at session-create time and injected into the sandbox as
-// `KORTIX_TOKEN` so the in-container CLI works with zero config.
+// `KORTIX_CLI_TOKEN` so the in-container CLI works with zero config.
 
 
 projectsApp.openapi(
@@ -803,9 +803,7 @@ projectsApp.openapi(
             ? 'network'
             : policyBackend === 'kortix_fetch'
               ? 'http_broker'
-              : policyBackend === 'llm_gateway' ||
-                  policyBackend === 'executor' ||
-                  policyBackend === 'git_proxy'
+              : policyBackend === 'llm_gateway' || policyBackend === 'git_proxy'
                 ? policyBackend
                 : 'http_broker';
     const nextConsumer =

@@ -3,7 +3,6 @@ import {
   AlarmIcon as AlarmClock,
   ArrowCircleUpIcon as ArrowUpCircle,
   WaveformIcon as AudioLines,
-  RobotIcon as Bot,
   CubeIcon as Boxes,
   ChatsIcon as ChatMessages,
   CommandIcon as Command,
@@ -60,11 +59,13 @@ export const LLM_ITEM: RailItem = { section: 'llm-management', label: 'LLM', ico
 
 const GROUPS: readonly RailGroup[] = [
   {
+    // Agents graduated to `/projects/<id>/agent` and is no longer an overlay
+    // section. Commands went the other way — its standalone page was deleted
+    // (#6169), so it is Build's one static item again. `customize-panel` drops
+    // groups whose items all filter out, so if this ever empties again an
+    // all-flags-off project renders no orphan header.
     label: 'Build',
-    items: [
-      { section: 'agents', label: 'Agents', icon: Bot },
-      { section: 'commands', label: 'Commands', icon: Command },
-    ],
+    items: [{ section: 'commands', label: 'Commands', icon: Command }],
   },
   {
     label: 'Connect',

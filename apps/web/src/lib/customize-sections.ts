@@ -7,16 +7,18 @@
  * so the page, the sidebar, and any deep-link helpers all agree on the
  * canonical list.
  *
- * Files, Connectors, and Skills are NOT customize sections. They are standalone
- * `/projects/[id]/<section>` pages. Commands remains in this overlay because its
- * standalone page no longer exists. Deep-link routes still accept the legacy
- * section names and redirect them where applicable.
+ * Files, Agents, Connectors, and Skills are NOT customize sections — they are
+ * standalone `/projects/[id]/<section>` pages (any member can browse Files;
+ * Agents/Connectors/Skills gate on their own read leaf — see
+ * capabilities/capability-tab-routes.ts). Commands is the one that came BACK:
+ * its standalone page was deleted (#6169), so it lives in this overlay and its
+ * deep link opens here rather than redirecting. Deep-link routes still accept
+ * the legacy section names and redirect them where applicable.
  */
 
 export type CustomizeSection =
   | 'git'
   | 'review'
-  | 'agents'
   | 'commands'
   | 'marketplace'
   | 'secrets'
@@ -37,12 +39,17 @@ export type CustomizeSection =
   | 'settings'
   | 'upgrade';
 
-export const DEFAULT_CUSTOMIZE_SECTION: CustomizeSection = 'agents';
+/**
+ * The default must be a section that is actually in the rail with every flag
+ * off, or the overlay opens on nothing. Agents graduated to its own route, so
+ * this moved off `agents`; Secrets is what the overlay is most often opened
+ * for and it survives every flag.
+ */
+export const DEFAULT_CUSTOMIZE_SECTION: CustomizeSection = 'secrets';
 
 export const CUSTOMIZE_SECTIONS: readonly CustomizeSection[] = [
   'git',
   'review',
-  'agents',
   'commands',
   'marketplace',
   'secrets',
@@ -72,6 +79,11 @@ export const CUSTOMIZE_SECTIONS: readonly CustomizeSection[] = [
 const GRADUATED: Record<string, (projectId: string) => string> = {
   files: (p) => `/projects/${p}/files`,
   changes: (p) => `/projects/${p}/files?panel=proposed-changes`,
+  // The overlay section was `agents`; the route segment is `agent`. Both
+  // spellings redirect, because every bookmark and stale href in the wild
+  // points at the plural one.
+  agent: (p) => `/projects/${p}/agent`,
+  agents: (p) => `/projects/${p}/agent`,
   connectors: (p) => `/projects/${p}/connectors`,
   skills: (p) => `/projects/${p}/skills`,
 };

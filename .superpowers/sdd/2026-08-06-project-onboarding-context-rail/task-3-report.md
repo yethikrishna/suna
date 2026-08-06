@@ -247,3 +247,92 @@ Output:
 No output.
 Exit status 0.
 ```
+
+## Review Fix Round 2
+
+### Changes
+
+| Before | After |
+| --- | --- |
+| The `Connected` badge was visible but omitted from the button's accessible description. | Connected tool actions conditionally reference the badge through `aria-describedby`. |
+| `ActionRow` forwarded `aria-label` but not an accessible description ID. | `ActionRow` accepts and forwards `aria-describedby` to its native button. |
+| The source contract checked only visual status and non-toggle semantics. | The contract also requires conditional description wiring, a matching badge ID, and native-button forwarding. |
+
+### TDD Evidence
+
+RED command:
+
+```bash
+pnpm --filter Kortix-Computer-Frontend test src/components/projects/onboarding/steps-shape.test.ts
+```
+
+RED output:
+
+```text
+24 pass
+1 fail
+53 expect() calls
+Ran 25 tests across 1 file.
+Exit status 1
+```
+
+GREEN output from the same command:
+
+```text
+25 pass
+0 fail
+56 expect() calls
+Ran 25 tests across 1 file.
+Exit status 0
+```
+
+### Focused Tests
+
+Command:
+
+```bash
+pnpm --filter Kortix-Computer-Frontend test src/components/projects/onboarding/shell-layout.test.ts src/components/projects/onboarding/steps-shape.test.ts src/components/projects/onboarding/motion.test.ts src/components/projects/onboarding/done-step.test.ts
+```
+
+Output:
+
+```text
+65 pass
+0 fail
+245 expect() calls
+Ran 65 tests across 4 files.
+Exit status 0
+```
+
+### All Onboarding Tests
+
+Command:
+
+```bash
+pnpm --filter Kortix-Computer-Frontend test src/components/projects/onboarding
+```
+
+Output:
+
+```text
+86 pass
+0 fail
+357 expect() calls
+Ran 86 tests across 6 files.
+Exit status 0
+```
+
+### ESLint
+
+Command:
+
+```bash
+pnpm --filter Kortix-Computer-Frontend exec eslint src/components/projects/onboarding/step-shell.tsx src/components/projects/onboarding/steps/tools-step.tsx src/components/projects/onboarding/steps-shape.test.ts
+```
+
+Output:
+
+```text
+No output.
+Exit status 0.
+```

@@ -189,6 +189,7 @@ export function ActionRow({
   onSelect,
   onPreload,
   'aria-label': ariaLabel,
+  'aria-describedby': ariaDescribedBy,
 }: {
   label: string;
   description?: string;
@@ -199,6 +200,7 @@ export function ActionRow({
   onSelect: () => void;
   onPreload?: () => void;
   'aria-label'?: string;
+  'aria-describedby'?: string;
 }) {
   return (
     <button
@@ -206,6 +208,7 @@ export function ActionRow({
       disabled={disabled}
       aria-pressed={active === undefined ? undefined : active}
       aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       onClick={onSelect}
       onPointerEnter={onPreload}
       onFocus={onPreload}

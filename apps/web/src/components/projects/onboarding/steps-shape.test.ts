@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const step = (name: string) => readFileSync(join(import.meta.dir, 'steps', name), 'utf8');
+const stepShell = readFileSync(join(import.meta.dir, 'step-shell.tsx'), 'utf8');
 
 const tools = step('tools-step.tsx');
 const plan = step('plan-step.tsx');
@@ -61,8 +62,16 @@ describe('tools step', () => {
 
   test('shows connected state as status without exposing a toggle', () => {
     expect(tools).not.toContain('active={existingSlugs.includes(app.slug)}');
-    expect(tools).toContain('<Badge variant="success" size="xs">');
+    expect(tools).toContain('<Badge');
+    expect(tools).toContain('variant="success"');
     expect(tools).toContain('Connected');
+  });
+
+  test('exposes connected status as the add action description', () => {
+    expect(tools).toContain('aria-describedby={connected ? connectedStatusId : undefined}');
+    expect(tools).toContain('id={connectedStatusId}');
+    expect(stepShell).toContain("'aria-describedby': ariaDescribedBy");
+    expect(stepShell).toContain('aria-describedby={ariaDescribedBy}');
   });
 });
 

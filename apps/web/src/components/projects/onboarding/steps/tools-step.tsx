@@ -133,42 +133,48 @@ export function ToolsStep({
             ) : (
               <>
                 <div className="flex flex-col gap-2">
-                  {apps.map((app) => (
-                    <ActionRow
-                      key={app.slug}
-                      label={app.name}
-                      description={app.categories?.[0]}
-                      aria-label={`Add ${app.name} profile`}
-                      disabled={connect.isPending}
-                      onSelect={() => setSelectedApp(app)}
-                      leading={
-                        app.imgSrc ? (
-                          <Image
-                            src={app.imgSrc}
-                            alt=""
-                            width={28}
-                            height={28}
-                            unoptimized
-                            referrerPolicy="no-referrer"
-                            className="size-7 shrink-0 rounded-sm object-contain"
-                          />
-                        ) : (
-                          <EntityAvatar icon={PlusIcon} size="sm" label={app.name} />
-                        )
-                      }
-                      trailing={
-                        connect.isPending && connect.variables?.appSlug === app.slug ? (
-                          <Loading className="size-4 shrink-0" />
-                        ) : existingSlugs.includes(app.slug) ? (
-                          <Badge variant="success" size="xs">
-                            Connected
-                          </Badge>
-                        ) : (
-                          <PlusIcon className="text-muted-foreground/50 size-4" />
-                        )
-                      }
-                    />
-                  ))}
+                  {apps.map((app) => {
+                    const connected = existingSlugs.includes(app.slug);
+                    const connectedStatusId = `onboarding-tool-${app.slug}-connected`;
+
+                    return (
+                      <ActionRow
+                        key={app.slug}
+                        label={app.name}
+                        description={app.categories?.[0]}
+                        aria-label={`Add ${app.name} profile`}
+                        aria-describedby={connected ? connectedStatusId : undefined}
+                        disabled={connect.isPending}
+                        onSelect={() => setSelectedApp(app)}
+                        leading={
+                          app.imgSrc ? (
+                            <Image
+                              src={app.imgSrc}
+                              alt=""
+                              width={28}
+                              height={28}
+                              unoptimized
+                              referrerPolicy="no-referrer"
+                              className="size-7 shrink-0 rounded-sm object-contain"
+                            />
+                          ) : (
+                            <EntityAvatar icon={PlusIcon} size="sm" label={app.name} />
+                          )
+                        }
+                        trailing={
+                          connect.isPending && connect.variables?.appSlug === app.slug ? (
+                            <Loading className="size-4 shrink-0" />
+                          ) : connected ? (
+                            <Badge id={connectedStatusId} variant="success" size="xs">
+                              Connected
+                            </Badge>
+                          ) : (
+                            <PlusIcon className="text-muted-foreground/50 size-4" />
+                          )
+                        }
+                      />
+                    );
+                  })}
                 </div>
                 {appsQuery.hasNextPage && (
                   <div className="flex justify-center pt-3">

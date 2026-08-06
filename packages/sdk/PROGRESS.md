@@ -12,6 +12,28 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-06 — session `connector-secret-binding` claim
+
+No **Now** task claimed. This is an additive connector credential-source fix.
+
+Scope:
+
+- Add an SDK contract to bind a project secret to one project-owned connector.
+- Preserve all published names and existing connector credential methods.
+- Reject missing, incompatible, and ambiguous secret bindings at the API boundary.
+- Expose the binding in the secret editor without sending the value to the sandbox.
+
+The listed `tdd` skill is unavailable in this session. This work will use the
+same RED, GREEN, and REFACTOR sequence directly.
+
+Required SDK gates are typecheck, the full test suite, and packed-install smoke.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
+---
+
 ### 2026-08-05 — session `cli-audit-source` claim
 
 No **Now** task claimed. This is a narrow additive transport-metadata fix.

@@ -80,6 +80,17 @@ describe('onboarding shell', () => {
 
 describe('step shell primitive', () => {
   const stepShell = readFileSync(join(import.meta.dir, 'step-shell.tsx'), 'utf8');
+  const componentSource = (name: string) => {
+    const starts = [`export function ${name}`, `export const ${name}`]
+      .map((declaration) => stepShell.indexOf(declaration))
+      .filter((index) => index >= 0);
+    const start = starts.length > 0 ? Math.min(...starts) : -1;
+    if (start < 0) return '';
+    const remainder = stepShell.slice(start + 1);
+    const nextExportOffset = remainder.search(/\nexport (?:function|const) /);
+    const end = nextExportOffset < 0 ? undefined : start + 1 + nextExportOffset;
+    return stepShell.slice(start, end);
+  };
 
   // "Question 1 of 2" told the user how much interrogation was left. The
   // progress bar already does that, more quietly.
@@ -113,11 +124,18 @@ describe('step shell primitive', () => {
     expect(stepShell).toContain('bg-popover');
     expect(stepShell).toContain('border-border');
     expect(stepShell).toContain('text-foreground');
-    expect(stepShell.match(/rowClassName/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
     expect(stepShell).not.toMatch(
       /(?:bg|border|text)-(?:black|white|slate|gray|zinc|neutral|stone)-/,
     );
     expect(stepShell).not.toContain('rounded-xl');
     expect(stepShell).not.toContain('rounded-2xl');
+  });
+
+  test('applies the shared row class to each row primitive', () => {
+    const sharedClassApplication = /className=\{[^}]*\browClassName\b[^}]*\}/g;
+
+    for (const component of ['SelectionRow', 'ActionRow']) {
+      expect(componentSource(component).match(sharedClassApplication) ?? []).toHaveLength(1);
+    }
   });
 });

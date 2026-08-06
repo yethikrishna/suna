@@ -107,3 +107,34 @@ The 12 failures identify missing Task 2 and Task 3 geometry, primitive, and step
 - The layout-property assertion checks normal and reduced variants.
 - The row-style assertion requires one shared class contract across `SelectionRow` and `ActionRow`.
 - `git diff --check` reports no whitespace errors.
+
+## Review Follow-up 2
+
+### Fix
+
+- Replaced the global `rowClassName` reference count with component-bounded source extraction.
+- Required one `className` application containing `rowClassName` inside `SelectionRow`.
+- Required one `className` application containing `rowClassName` inside `ActionRow`.
+- The assertion accepts function and constant component exports.
+- The assertion does not require a specific element, helper, formatting style, or conditional-class implementation.
+
+### Test Execution
+
+Command:
+
+```bash
+pnpm --filter Kortix-Computer-Frontend test src/components/projects/onboarding/shell-layout.test.ts src/components/projects/onboarding/steps-shape.test.ts src/components/projects/onboarding/motion.test.ts src/components/projects/onboarding/done-step.test.ts
+```
+
+Output:
+
+```text
+32 pass
+13 fail
+1 error
+73 expect() calls
+Ran 45 tests across 4 files.
+Exit status 1
+```
+
+The new source-shape assertion fails because Task 2 has not created `SelectionRow` or `ActionRow`. The other failures remain the expected Task 2 and Task 3 contract failures. The error remains the expected missing `contextVariants` export.

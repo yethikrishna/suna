@@ -4,9 +4,9 @@
 # fresh from Secrets Manager, so the ECS env can never drift from the EKS env.
 #
 # The env contract lives in ONE place per environment: the Secrets Manager blob
-# `kortix-<env>-env` (the same blob external-secrets syncs into EKS). We read its
-# keys and wire every one into the task-def as a `secrets` entry pointing back at
-# that blob's JSON key — no hand-maintained secret list, no drift.
+# `kortix-<env>-env`. ECS injects the complete JSON document through one stable
+# selector. Application startup expands it into process.env. Adding or removing
+# an optional JSON key cannot invalidate an already-registered task definition.
 #
 # Usage:
 #   ecs-deploy.sh <env> <image> [--service api|gateway] [--version X.Y.Z]
@@ -128,15 +128,15 @@ SECRET_ARN="$(aws secretsmanager describe-secret --region "$REGION" \
   --secret-id "$SECRET_NAME" --query 'ARN' --output text)"
 [ -n "$SECRET_ARN" ] && [ "$SECRET_ARN" != "None" ] || { echo "secret $SECRET_NAME not found in $REGION" >&2; exit 1; }
 
-# every key in the blob -> a task-def secret entry pointing at that JSON key
-SECRETS_JSON="$(aws secretsmanager get-secret-value --region "$REGION" \
-  --secret-id "$SECRET_ARN" --query 'SecretString' --output text \
-  | jq --arg arn "$SECRET_ARN" '
-      keys
-      | map({ name: ., valueFrom: ($arn + ":" + . + "::") })')"
-KEYCOUNT="$(echo "$SECRETS_JSON" | jq 'length')"
+# Validate the blob without printing it. The task definition references only the
+# secret ARN, so its selector remains valid when optional keys change later.
+SECRET_VALUE="$(aws secretsmanager get-secret-value --region "$REGION" \
+  --secret-id "$SECRET_ARN" --query 'SecretString' --output text)"
+KEYCOUNT="$(printf '%s' "$SECRET_VALUE" | jq 'if type == "object" and all(.[]; type == "string") then length else error("secret must be a JSON object of strings") end')"
 [ "$KEYCOUNT" -gt 0 ] || { echo "blob $SECRET_NAME has 0 keys — refusing to deploy" >&2; exit 1; }
-echo "▶ wired $KEYCOUNT secret keys from $SECRET_NAME"
+unset SECRET_VALUE
+SECRETS_JSON="$(jq -cn --arg arn "$SECRET_ARN" '[{name: "KORTIX_ENV_JSON", valueFrom: $arn}]')"
+echo "▶ wired $KEYCOUNT environment values through KORTIX_ENV_JSON from $SECRET_NAME"
 
 # ── base task-def = the service's current one, with runtime fields stripped ──
 CURRENT_TD="$(aws ecs describe-services --region "$REGION" --cluster "$CLUSTER" \

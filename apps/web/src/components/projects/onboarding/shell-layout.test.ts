@@ -98,11 +98,26 @@ describe('step shell primitive', () => {
     expect(stepShell).toContain('mt-10');
   });
 
-  test('positions context in a fixed 340px rail', () => {
+  test('positions context in a fixed 340px rail with a 32px gap', () => {
     expect(stepShell).toContain('w-[340px]');
+    expect(stepShell).toContain('xl:left-[calc(100%+2rem)]');
   });
 
   test('exposes progress to assistive technology', () => {
     expect(stepShell).toContain('role="progressbar"');
+  });
+
+  test('shares semantic-token, app-radius styling across both row primitives', () => {
+    expect(stepShell).toContain('const rowClassName');
+    expect(stepShell).toContain('rounded-md');
+    expect(stepShell).toContain('bg-popover');
+    expect(stepShell).toContain('border-border');
+    expect(stepShell).toContain('text-foreground');
+    expect(stepShell.match(/rowClassName/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(stepShell).not.toMatch(
+      /(?:bg|border|text)-(?:black|white|slate|gray|zinc|neutral|stone)-/,
+    );
+    expect(stepShell).not.toContain('rounded-xl');
+    expect(stepShell).not.toContain('rounded-2xl');
   });
 });

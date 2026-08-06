@@ -24,8 +24,32 @@ const shell = readFileSync(
 );
 
 type Axis = { opacity: number; x: number };
+type MotionState = Record<string, unknown>;
 const at = (v: unknown, direction: number) =>
   (typeof v === 'function' ? (v as (d: number) => Axis)(direction) : (v as Axis));
+const stateAt = (v: unknown, direction = 1): MotionState =>
+  (typeof v === 'function'
+    ? (v as (d: number) => MotionState)(direction)
+    : (v as MotionState));
+
+const LAYOUT_PROPERTIES = [
+  'width',
+  'height',
+  'margin',
+  'marginTop',
+  'marginRight',
+  'marginBottom',
+  'marginLeft',
+  'padding',
+  'paddingTop',
+  'paddingRight',
+  'paddingBottom',
+  'paddingLeft',
+  'top',
+  'right',
+  'bottom',
+  'left',
+] as const;
 
 describe('slideVariants', () => {
   test('forward pushes content left, backward pushes it right', () => {
@@ -95,9 +119,32 @@ describe('timing', () => {
 
   test('keeps context replacement opacity-only with reduced motion', () => {
     const variants = contextVariants(true);
-    expect(at(variants.enter, 1).x).toBe(0);
-    expect(at(variants.center, 1).x).toBe(0);
-    expect(at(variants.exit, 1).x).toBe(0);
+    const enter = stateAt(variants.enter);
+    const center = stateAt(variants.center);
+    const exit = stateAt(variants.exit);
+
+    expect(enter.opacity).toBe(0);
+    expect(center.opacity).toBe(1);
+    expect(exit.opacity).toBe(0);
+
+    for (const state of [enter, center, exit]) {
+      const animatedProperties = Object.keys(state).filter(
+        (property) => property !== 'opacity' && property !== 'transition',
+      );
+      expect(animatedProperties).toEqual([]);
+    }
+  });
+
+  test('never animates layout properties for context changes', () => {
+    for (const reduced of [false, true]) {
+      const variants = contextVariants(reduced);
+      for (const variant of [variants.enter, variants.center, variants.exit]) {
+        const state = stateAt(variant);
+        for (const property of LAYOUT_PROPERTIES) {
+          expect(state).not.toHaveProperty(property);
+        }
+      }
+    }
   });
 });
 

@@ -66,3 +66,44 @@ All failures are expected before Task 2 and Task 3. They identify missing `max-w
 ## Concerns
 
 - The brief's `--filter web` selector is stale for this checkout. Use `--filter Kortix-Computer-Frontend` and paths relative to `apps/web` until the package name or command is corrected.
+
+## Review Follow-up
+
+### Fixes
+
+- Added `xl:left-[calc(100%+2rem)]` to protect the required 32px rail gap.
+- Strengthened reduced-motion coverage to require `opacity` values for enter, center, and exit.
+- Restricted reduced-motion context states to `opacity` and `transition` properties only.
+- Added normal and reduced-motion checks that reject width, height, spacing, and inset animation properties.
+- Required both row primitives to share `rowClassName`.
+- Required `rounded-md`, `bg-popover`, `border-border`, and `text-foreground` row styling.
+- Rejected direct neutral palette classes and banned container radii in `step-shell.tsx`.
+
+### Test Execution
+
+Command:
+
+```bash
+pnpm --filter Kortix-Computer-Frontend test src/components/projects/onboarding/shell-layout.test.ts src/components/projects/onboarding/steps-shape.test.ts src/components/projects/onboarding/motion.test.ts src/components/projects/onboarding/done-step.test.ts
+```
+
+Output:
+
+```text
+32 pass
+12 fail
+1 error
+72 expect() calls
+Ran 44 tests across 4 files.
+Exit status 1
+```
+
+The 12 failures identify missing Task 2 and Task 3 geometry, primitive, and step migrations. The error identifies the missing Task 2 `contextVariants` export. No failure identifies a test syntax, fixture, or environment defect.
+
+### Self-review
+
+- The 32px assertion uses the implementation plan's exact `2rem` offset.
+- The reduced-motion assertion rejects all animated properties except `opacity` and `transition`.
+- The layout-property assertion checks normal and reduced variants.
+- The row-style assertion requires one shared class contract across `SelectionRow` and `ActionRow`.
+- `git diff --check` reports no whitespace errors.

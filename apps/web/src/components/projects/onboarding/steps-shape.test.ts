@@ -58,6 +58,12 @@ describe('tools step', () => {
   test('keeps the accessible name that distinguishes adding another profile', () => {
     expect(tools).toContain('aria-label={`Add ${app.name} profile`}');
   });
+
+  test('shows connected state as status without exposing a toggle', () => {
+    expect(tools).not.toContain('active={existingSlugs.includes(app.slug)}');
+    expect(tools).toContain('<Badge variant="success" size="xs">');
+    expect(tools).toContain('Connected');
+  });
 });
 
 describe('slack step', () => {
@@ -67,6 +73,11 @@ describe('slack step', () => {
     expect(slack).toContain('<ActionRow');
     expect(slack).toContain('Add to Slack');
     expect(slack).toContain('Use a custom Slack app');
+  });
+
+  test('exposes the install-method label as a group name', () => {
+    expect(slack).toContain('role="group"');
+    expect(slack).toContain('aria-label="Slack install method"');
   });
 
   test('collapses to a single confirmed state once connected', () => {
@@ -151,6 +162,17 @@ describe('plan step', () => {
   test('labels the primary with what it will actually do', () => {
     expect(plan).toContain("'See plans'");
     expect(plan).toContain("'Add a key'");
+  });
+
+  test('describes BYOK accurately with and without an existing model', () => {
+    const byokContext = plan.slice(
+      plan.indexOf("if (choice === 'byok')"),
+      plan.indexOf("if (choice === 'later')"),
+    );
+
+    expect(byokContext).toContain('copy: hasSelectableModels');
+    expect(byokContext).toContain('Your existing model access stays unchanged.');
+    expect(byokContext).toContain('This connects your first model provider.');
   });
 
   // An earlier version short-circuited to a confirm-only screen when a model

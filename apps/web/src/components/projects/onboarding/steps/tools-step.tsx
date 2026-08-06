@@ -14,6 +14,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import { useState } from 'react';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EntityAvatar } from '@/components/ui/entity-avatar';
 import { FadedScrollArea } from '@/components/ui/faded-scroll-area';
@@ -135,7 +136,6 @@ export function ToolsStep({
                   {apps.map((app) => (
                     <ActionRow
                       key={app.slug}
-                      active={existingSlugs.includes(app.slug)}
                       label={app.name}
                       description={app.categories?.[0]}
                       aria-label={`Add ${app.name} profile`}
@@ -159,6 +159,10 @@ export function ToolsStep({
                       trailing={
                         connect.isPending && connect.variables?.appSlug === app.slug ? (
                           <Loading className="size-4 shrink-0" />
+                        ) : existingSlugs.includes(app.slug) ? (
+                          <Badge variant="success" size="xs">
+                            Connected
+                          </Badge>
                         ) : (
                           <PlusIcon className="text-muted-foreground/50 size-4" />
                         )

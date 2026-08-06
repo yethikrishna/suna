@@ -41,7 +41,9 @@ export function PlanStep({ onContinue }: { onContinue: () => void }) {
     if (choice === 'byok') {
       return {
         title: hasSelectableModels ? 'Add another provider' : 'Bring your own provider',
-        copy: 'Continue to connect a provider key. Your existing model access stays unchanged.',
+        copy: hasSelectableModels
+          ? 'Continue to connect another provider key. Your existing model access stays unchanged.'
+          : 'Continue to connect a provider key. This connects your first model provider.',
       };
     }
     if (choice === 'later') {

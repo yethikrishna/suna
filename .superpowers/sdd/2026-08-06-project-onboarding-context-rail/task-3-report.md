@@ -123,3 +123,127 @@ TypeScript reports no error in an onboarding file.
 
 - Browser geometry and interaction verification remains part of Task 4. This task did not start the local stack or create screenshots.
 - TypeScript remains non-zero because of the 15 documented unrelated Bun test typing errors.
+
+## Review Fixes
+
+### Changes
+
+| Before | After |
+| --- | --- |
+| BYOK context said existing model access stayed unchanged for every user. | BYOK context says it connects the first provider when `hasSelectableModels` is false. It preserves the existing-access copy only when a model already exists. |
+| Connected tool actions used `active`, which exposed `aria-pressed` on the one-way add action. | Tool actions omit `active`. Connected providers show a non-interactive `Badge variant="success"` status. |
+| The Slack install-method label named a generic `div`. | The container uses `role="group"` with `aria-label="Slack install method"`. |
+| Source contracts did not protect these three semantics. | `steps-shape.test.ts` asserts both BYOK states, non-toggle connected status, and the named Slack group. |
+
+### TDD Evidence
+
+Plan-copy RED:
+
+```text
+21 pass
+1 fail
+44 expect() calls
+Ran 22 tests across 1 file.
+Exit status 1
+```
+
+Plan-copy GREEN:
+
+```text
+22 pass
+0 fail
+46 expect() calls
+Ran 22 tests across 1 file.
+Exit status 0
+```
+
+Tool-semantics RED:
+
+```text
+22 pass
+1 fail
+47 expect() calls
+Ran 23 tests across 1 file.
+Exit status 1
+```
+
+Tool-semantics GREEN:
+
+```text
+23 pass
+0 fail
+49 expect() calls
+Ran 23 tests across 1 file.
+Exit status 0
+```
+
+Slack-group RED:
+
+```text
+23 pass
+1 fail
+50 expect() calls
+Ran 24 tests across 1 file.
+Exit status 1
+```
+
+Slack-group GREEN:
+
+```text
+24 pass
+0 fail
+51 expect() calls
+Ran 24 tests across 1 file.
+Exit status 0
+```
+
+### Focused Tests
+
+Command:
+
+```bash
+pnpm --filter Kortix-Computer-Frontend test src/components/projects/onboarding/shell-layout.test.ts src/components/projects/onboarding/steps-shape.test.ts src/components/projects/onboarding/motion.test.ts src/components/projects/onboarding/done-step.test.ts
+```
+
+Output:
+
+```text
+64 pass
+0 fail
+240 expect() calls
+Ran 64 tests across 4 files.
+Exit status 0
+```
+
+### All Onboarding Tests
+
+Command:
+
+```bash
+pnpm --filter Kortix-Computer-Frontend test src/components/projects/onboarding
+```
+
+Output:
+
+```text
+85 pass
+0 fail
+352 expect() calls
+Ran 85 tests across 6 files.
+Exit status 0
+```
+
+### ESLint
+
+Command:
+
+```bash
+pnpm --filter Kortix-Computer-Frontend exec eslint src/components/projects/onboarding/steps/plan-step.tsx src/components/projects/onboarding/steps/tools-step.tsx src/components/projects/onboarding/steps/slack-step.tsx src/components/projects/onboarding/steps-shape.test.ts
+```
+
+Output:
+
+```text
+No output.
+Exit status 0.
+```

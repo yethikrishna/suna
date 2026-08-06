@@ -142,7 +142,7 @@ export function SlackStep({
           . You can @mention your agent in any channel it&apos;s invited to.
         </InfoBanner>
       ) : (
-        <div className="flex flex-col gap-2" aria-label="Slack install method">
+        <div className="flex flex-col gap-2" role="group" aria-label="Slack install method">
           <ActionRow
             label={waiting ? 'Waiting for approval in Slack…' : 'Add to Slack'}
             description={

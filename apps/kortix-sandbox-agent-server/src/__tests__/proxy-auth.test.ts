@@ -23,6 +23,7 @@ import { KORTIX_USER_CONTEXT_HEADER } from '../kortix-user-context'
 import { buildGitAuthArgs, configureGlobalGitIdentity, materializeRepo, __clearCloneTokenCacheForTests, __clearRepoIdentityMemoForTests } from '../git'
 
 const TEST_TOKEN = 'test-kortix-token-32-chars-1234567890'
+const TEST_AGENT_ENV_FILE = join(tmpdir(), `kortix-proxy-agent-env-${process.pid}.sh`)
 
 function baseConfig(over: Partial<Config> = {}): Config {
   return {
@@ -122,6 +123,7 @@ describe('daemon proxy auth gate', () => {
     // own fetch call count + git-config side effects.
     __clearCloneTokenCacheForTests()
     __clearRepoIdentityMemoForTests()
+    rmSync(TEST_AGENT_ENV_FILE, { force: true })
   })
 
   it('uses KORTIX_SANDBOX_TOKEN as the canonical sandbox auth token', () => {
@@ -825,6 +827,9 @@ describe('daemon proxy auth gate', () => {
       Date.now(),
       { repoMaterializationError: null, timeline: [] },
       store,
+      null,
+      undefined,
+      TEST_AGENT_ENV_FILE,
     )
 
     const res = await app.request('/kortix/env', {
@@ -846,6 +851,8 @@ describe('daemon proxy auth gate', () => {
       changed: true,
       revision: 'rev-1',
       names: ['NEW_SECRET', 'OLD_SECRET', 'REMOVED_SECRET'],
+      exported: 2,
+      agent_env_written: true,
     })
     expect(restartCalls).toBe(0)
     expect(mergeProjectEnv({
@@ -889,6 +896,9 @@ describe('daemon proxy auth gate', () => {
       Date.now(),
       { repoMaterializationError: null, timeline: [] },
       store,
+      null,
+      undefined,
+      TEST_AGENT_ENV_FILE,
     )
 
     try {
@@ -966,6 +976,9 @@ describe('daemon proxy auth gate', () => {
       Date.now(),
       { repoMaterializationError: null, timeline: [] },
       store,
+      null,
+      undefined,
+      TEST_AGENT_ENV_FILE,
     )
 
     const request = () =>
@@ -1028,6 +1041,9 @@ describe('daemon proxy auth gate', () => {
       Date.now(),
       { repoMaterializationError: null, timeline: [] },
       store,
+      null,
+      undefined,
+      TEST_AGENT_ENV_FILE,
     )
 
     try {
@@ -1091,6 +1107,9 @@ describe('daemon proxy auth gate', () => {
       Date.now(),
       { repoMaterializationError: null, timeline: [] },
       store,
+      null,
+      undefined,
+      TEST_AGENT_ENV_FILE,
     )
 
     const res = await app.request('/kortix/env', {

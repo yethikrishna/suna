@@ -41,19 +41,7 @@ const SKELETON_CARD_COUNT = 6;
  */
 export function CatalogCardSkeleton() {
   return (
-    <div
-      className={cn(
-        'border-border/60 flex w-full items-start gap-3 rounded-md border px-4 py-3.5',
-        CATALOG_CARD_HEIGHT_CLASSNAME,
-      )}
-      data-slot="catalog-card-skeleton"
-    >
-      <Skeleton className="size-10 shrink-0 rounded-md" />
-      <div className="min-w-0 flex-1 space-y-2 pt-0.5">
-        <Skeleton className="h-3.5 w-2/5 rounded-sm" />
-        <Skeleton className="h-3 w-full rounded-sm" />
-      </div>
-    </div>
+    <Skeleton className={cn(CATALOG_CARD_HEIGHT_CLASSNAME)} data-slot="catalog-card-skeleton" />
   );
 }
 

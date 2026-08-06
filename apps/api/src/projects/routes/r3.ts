@@ -1689,7 +1689,29 @@ projectsApp.openapi(
     ...auth,
     request: { params: z.object({ projectId: z.string() }) },
     responses: {
-      200: json(z.any(), 'Secrets re-pushed'),
+      200: json(
+        z.object({
+          ok: z.boolean(),
+          active_sandboxes: z.number().int().nonnegative(),
+          targeted: z.number().int().nonnegative(),
+          synced: z.number().int().nonnegative(),
+          failed: z.number().int().nonnegative(),
+          exported: z.number().int().nonnegative(),
+          results: z.array(z.object({
+            session_id: z.string(),
+            sandbox_id: z.string().nullable(),
+            status: z.enum(['synced', 'failed']),
+            scope: z.enum(['inherit', 'restricted', 'none']).nullable(),
+            revision: z.string().nullable(),
+            exported: z.number().int().nonnegative(),
+            managed: z.number().int().nonnegative().nullable(),
+            withheld: z.number().int().nonnegative().nullable(),
+            agent_env_written: z.boolean(),
+            reason: z.string().optional(),
+          })),
+        }),
+        'Secret delivery verification result',
+      ),
       ...errors(403, 404),
     },
   }),
@@ -1698,8 +1720,8 @@ projectsApp.openapi(
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     await assertProjectCapability(c, loaded.userId, loaded.row.accountId, projectId, PROJECT_ACTIONS.PROJECT_SECRET_WRITE);
-    await propagateProjectSecretsToActiveSandboxes(projectId);
-    return c.json({ ok: true, synced: true });
+    const result = await propagateProjectSecretsToActiveSandboxes(projectId);
+    return c.json(result);
   },
 );
 

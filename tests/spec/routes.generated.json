@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 533,
+  "count": 529,
   "routes": [
     {
       "method": "GET",
@@ -867,6 +867,34 @@
       "path": "/v1/integrations/oauth2/callback"
     },
     {
+      "method": "POST",
+      "path": "/v1/llm/chat/completions"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/llm/health"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/llm/messages"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/llm/models"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/llm/v1/chat/completions"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/llm/v1/messages"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/llm/v1/models"
+    },
+    {
       "method": "GET",
       "path": "/v1/marketplace/items"
     },
@@ -1683,14 +1711,6 @@
       "path": "/v1/projects/:projectId/sessions/:sessionId/public-shares/:shareId"
     },
     {
-      "method": "GET",
-      "path": "/v1/projects/:projectId/sessions/:sessionId/question"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/projects/:projectId/sessions/:sessionId/question"
-    },
-    {
       "method": "POST",
       "path": "/v1/projects/:projectId/sessions/:sessionId/reload"
     },
@@ -1901,42 +1921,6 @@
     {
       "method": "POST",
       "path": "/v1/setup-links/secret/:token"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/setup/bootstrap-owner"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/setup/health"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/setup/install-status"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/setup/sandbox-providers"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/setup/setup-complete"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/setup/setup-status"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/setup/setup-wizard-step"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/setup/setup-wizard-step"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/setup/status"
     },
     {
       "method": "GET",

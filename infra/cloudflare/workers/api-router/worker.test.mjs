@@ -115,6 +115,28 @@ describe('api-router worker', () => {
     );
   });
 
+  test('requires an explicit database migration gate for live production ECS rolls', () => {
+    const ecsDeploy = readFileSync(
+      new URL('../../../scripts/ecs-deploy.sh', import.meta.url),
+      'utf8',
+    );
+    const prodWorkflow = readFileSync(
+      new URL('../../../../.github/workflows/deploy-prod.yml', import.meta.url),
+      'utf8',
+    );
+    const shadowWorkflow = readFileSync(
+      new URL(
+        '../../../../.github/workflows/deploy-prod-us-east-2-shadow.yml',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+
+    expect(ecsDeploy).toContain('refusing live $ENV rollout without --database-migrated');
+    expect(prodWorkflow.match(/--database-migrated/g)?.length).toBe(2);
+    expect(shadowWorkflow.match(/--database-migrated/g)?.length).toBe(2);
+  });
+
   test('keeps production API tasks at the incident-tested 4 GiB and three-task floor', () => {
     const prodTerraform = readFileSync(
       new URL('../../../terraform/environments/prod/main.tf', import.meta.url),

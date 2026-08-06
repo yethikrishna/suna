@@ -49,7 +49,7 @@ export const PROJECT_ACTIONS = {
   PROJECT_SECRET_WRITE: 'project.secret.write',
   PROJECT_CONNECTOR_READ: 'project.connector.read',
   PROJECT_CONNECTOR_WRITE: 'project.connector.write',
-  PROJECT_CONNECTOR_PROFILES_MANAGE: 'project.connector.profiles.manage',
+  PROJECT_CONNECTOR_CONNECTIONS_MANAGE: 'project.connector.connections.manage',
 
   PROJECT_REVIEW_READ: 'project.review.read',
   PROJECT_REVIEW_SUBMIT: 'project.review.submit',

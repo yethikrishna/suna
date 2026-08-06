@@ -12,6 +12,32 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-06 — session `sdk-connectors-unified` claim
+
+No **Now** task claimed. This is the user-directed final SDK consolidation.
+
+Claimed scope:
+
+- Move the Connector gateway client, types, catalog search, connector calls,
+  approval results, and attachment uploads into the framework-free
+  `@kortix/sdk` core.
+- Expose one direct project interface through
+  `kortix.project(projectId).connectors` and the existing `getToken` seam.
+- Migrate the CLI, MCP server, sandbox Slack client, snapshot build inputs,
+  tests, documentation, and package publishing to `@kortix/sdk`.
+- Delete the unpublished `@kortix/connector-sdk` workspace package. Do not add
+  a compatibility package.
+- Verify the packed SDK, complete CLI, and real CLI with an agent-minted token.
+
+The required `tdd` skill is unavailable in this session. This work will use the
+same RED, GREEN, and REFACTOR sequence directly.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
+---
+
 ### 2026-08-06 — session `connector-compat-removal` completion
 
 No **Now** task claimed. This is the second phase of the user-directed connector

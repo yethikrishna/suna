@@ -67,11 +67,13 @@ export interface ConnectorAttachmentUploadResult {
   expires_at: string;
 }
 
-function connectorGatewayPath(projectId: string, suffix: string): string {
-  return `/connectors/projects/${encodeURIComponent(projectId)}/${suffix}`;
+function connectorGatewayPath(projectId: string | undefined, suffix: string): string {
+  return projectId
+    ? `/connectors/projects/${encodeURIComponent(projectId)}/${suffix}`
+    : `/connectors/${suffix}`;
 }
 
-export async function getConnectorCatalog(projectId: string): Promise<ConnectorCatalogEntry[]> {
+export async function getConnectorCatalog(projectId?: string): Promise<ConnectorCatalogEntry[]> {
   const result = unwrap(
     await backendApi.get<{ connectors?: ConnectorCatalogEntry[] }>(
       connectorGatewayPath(projectId, 'catalog'),
@@ -80,7 +82,7 @@ export async function getConnectorCatalog(projectId: string): Promise<ConnectorC
   return result.connectors ?? [];
 }
 
-export async function listConnectorTools(projectId: string): Promise<ConnectorTool[]> {
+export async function listConnectorTools(projectId?: string): Promise<ConnectorTool[]> {
   const tools: ConnectorTool[] = [];
   for (const connector of await getConnectorCatalog(projectId)) {
     for (const action of connector.actions) {
@@ -98,7 +100,7 @@ export async function listConnectorTools(projectId: string): Promise<ConnectorTo
 }
 
 export async function searchConnectorTools(
-  projectId: string,
+  projectId: string | undefined,
   query = '',
   options: { limit?: number } = {},
 ): Promise<ConnectorTool[]> {
@@ -115,7 +117,7 @@ export async function searchConnectorTools(
 }
 
 export async function describeConnectorTool(
-  projectId: string,
+  projectId: string | undefined,
   tool: string,
 ): Promise<ConnectorTool | null> {
   return (await listConnectorTools(projectId)).find((candidate) => candidate.tool === tool) ?? null;
@@ -132,7 +134,7 @@ function parseConnectorTool(tool: string): { connector: string; action: string }
 }
 
 export async function callConnector<T = unknown>(
-  projectId: string,
+  projectId: string | undefined,
   tool: string,
   args: Record<string, unknown> = {},
 ): Promise<ConnectorCallResult<T>> {
@@ -156,7 +158,7 @@ function connectorResponseMessage(body: unknown, status: number): string {
 }
 
 export async function uploadConnectorAttachment(
-  projectId: string,
+  projectId: string | undefined,
   content: Uint8Array | ArrayBuffer | Blob,
   input: ConnectorAttachmentUploadInput,
 ): Promise<ConnectorAttachmentUploadResult> {

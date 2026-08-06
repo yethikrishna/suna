@@ -68,6 +68,19 @@ test('project(id).connectors exposes the complete connector data plane', async (
   });
 });
 
+test('top-level connectors supports a project-scoped agent token without a project id', async () => {
+  expect(typeof kortix.connectors.catalog).toBe('function');
+  expect(typeof kortix.connectors.call).toBe('function');
+
+  await kortix.connectors.call('slack.send_message', { channel: 'C1' });
+  expect(last().url).toBe('http://test.local/connectors/call');
+  expect(last().body).toEqual({
+    connector: 'slack',
+    action: 'send_message',
+    args: { channel: 'C1' },
+  });
+});
+
 test('project(id).secrets.broker binds the project and encoded identifier', async () => {
   await kortix.project('PID123').secrets.broker('primary/key', {
     url: 'https://api.example.com/v1/items',

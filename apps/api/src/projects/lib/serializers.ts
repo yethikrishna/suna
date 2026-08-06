@@ -330,12 +330,14 @@ export function buildSecretView(input: {
                 : backend === 'kortix_fetch'
                   ? 'http_broker'
                   : null;
-  const consumer =
+  const storedConsumer =
     strategy === 'denied'
       ? null
       : deliveryRow?.scope === 'connector'
         ? 'connector'
         : (deliveryRow?.consumer ?? legacyConsumer);
+  // Old rows used `executor` for the service now named `connector`.
+  const consumer = storedConsumer === 'executor' ? 'connector' : storedConsumer;
   return {
     identifier,
     name,
@@ -364,7 +366,6 @@ export function buildSecretView(input: {
     delivery_status:
       (strategy === 'runtime' && consumer === 'sandbox') ||
       (strategy === 'broker' && consumer === 'llm_gateway') ||
-      (strategy === 'broker' && consumer === 'executor') ||
       (strategy === 'broker' && consumer === 'git_proxy') ||
       (strategy === 'broker' && consumer === 'http_broker' && backend === 'kortix_fetch') ||
       consumer === 'connector'

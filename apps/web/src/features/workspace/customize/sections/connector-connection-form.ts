@@ -11,13 +11,13 @@ export interface EasyConnectApp {
   slug: string;
   name: string;
   /** Catalogue metadata, when the source publishes it (Pipedream apps do).
-   *  Optional so a hand-typed `{ slug, name }` stays valid; the profile
+   *  Optional so a hand-typed `{ slug, name }` stays valid; the connection
    *  modal simply renders less without them. */
   description?: string | null;
   imgSrc?: string | null;
 }
 
-export interface EasyConnectConnectorInput {
+export interface EasyConnectConnectionInput {
   name: string;
   slug: string;
   authorizationStrategy: ConnectorAuthorizationStrategy;
@@ -115,9 +115,7 @@ export function proposeConnectorConnectionSlug(
 
   for (let index = 1; ; index += 1) {
     const suffix = `-${index}`;
-    const stem = base
-      .slice(0, MAX_CONNECTOR_SLUG_LENGTH - suffix.length)
-      .replace(/[-_]+$/g, '');
+    const stem = base.slice(0, MAX_CONNECTOR_SLUG_LENGTH - suffix.length).replace(/[-_]+$/g, '');
     const candidate = `${stem}${suffix}`;
     if (isConnectorConnectionSlugAvailable(candidate, existingSlugs)) return candidate;
   }
@@ -155,14 +153,14 @@ export function buildEmailConnectorConnectionSlug(baseInput: string, uniqueId: s
 
 export function buildEasyConnectConnectorDraft(
   app: EasyConnectApp,
-  connector: EasyConnectConnectorInput,
+  connection: EasyConnectConnectionInput,
 ): ConnectorDraftInput {
   return createOnlyConnectorDraft({
-    slug: connector.slug,
-    name: connector.name.trim(),
+    slug: connection.slug,
+    name: connection.name.trim(),
     provider: 'pipedream',
     app: app.slug,
     account: 'default',
-    authorization_strategy: connector.authorizationStrategy,
+    authorization_strategy: connection.authorizationStrategy,
   });
 }

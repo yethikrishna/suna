@@ -1084,7 +1084,7 @@ export async function setConnectorSecretBinding(
 ) {
   return unwrap(
     await backendApi.put<{ ok: boolean }>(
-      `/executor/projects/${projectId}/connectors/${encodeURIComponent(slug)}/secret-binding`,
+      `/connectors/projects/${projectId}/connectors/${encodeURIComponent(slug)}/secret-binding`,
       { secret_identifier: secretIdentifier },
     ),
   );

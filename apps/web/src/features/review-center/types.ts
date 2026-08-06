@@ -101,7 +101,7 @@ export interface ApprovalAction {
   actionPath?: string;
   rawArgsPreview?: Record<string, unknown>;
   reviewComplete?: boolean;
-  executorRisk?: string | null;
+  connectorRisk?: string | null;
   policySource: string;
   decided?: 'approved' | 'denied'; // prototype-local decision state
 }
@@ -160,7 +160,7 @@ export function segmentForStatus(status: ReviewStatus): ReviewSegment {
   return 'done';
 }
 
-/** Prototype/native approval actions can use the safe-risk helper. Executor approvals cannot. */
+/** Prototype/native approval actions can use the safe-risk helper. Connector approvals cannot. */
 export function isSafeRisk(risk: ReviewRisk): boolean {
   return risk === 'none' || risk === 'low';
 }

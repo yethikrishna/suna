@@ -335,7 +335,7 @@ test('setConnectorSecretBinding sends one explicit project secret identifier', a
   await setConnectorSecretBinding('P1', 'signed-api', 'SIGNING_KEY');
 
   expect(last()).toEqual({
-    url: 'http://test.local/executor/projects/P1/connectors/signed-api/secret-binding',
+    url: 'http://test.local/connectors/projects/P1/connectors/signed-api/secret-binding',
     method: 'PUT',
     body: { secret_identifier: 'SIGNING_KEY' },
   });

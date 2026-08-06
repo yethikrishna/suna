@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 const read = (path: string) => readFileSync(resolve(import.meta.dir, path), 'utf8');
 
-describe('executor approval review contract', () => {
+describe('connector approval review contract', () => {
   test('the session header links to parameter review and cannot resolve directly', () => {
     const source = read('../session/header/session-pending-approvals-indicator.tsx');
 

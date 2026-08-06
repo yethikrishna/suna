@@ -594,12 +594,8 @@ function SecretDialog({
   const [key, setKey] = useState(row?.key ?? '');
   const [value, setValue] = useState('');
   const [strategy, setStrategy] = useState<SecretDeliveryStrategy>(row?.strategy ?? 'runtime');
-  const [brokerConsumer, setBrokerConsumer] = useState<
-    'llm_gateway' | 'connector' | 'executor' | 'http_broker'
-  >(
-    row?.consumer === 'llm_gateway' || row?.consumer === 'connector' || row?.consumer === 'executor'
-      ? row.consumer
-      : 'http_broker',
+  const [brokerConsumer, setBrokerConsumer] = useState<'llm_gateway' | 'connector' | 'http_broker'>(
+    row?.consumer === 'llm_gateway' || row?.consumer === 'connector' ? row.consumer : 'http_broker',
   );
   const [selectedConnectorSlugs, setSelectedConnectorSlugs] = useState<string[] | null>(null);
   const effectiveSelectedConnectorSlugs =
@@ -1011,9 +1007,7 @@ function SecretDialog({
                   <Select
                     value={brokerConsumer}
                     onValueChange={(next) =>
-                      setBrokerConsumer(
-                        next as 'llm_gateway' | 'connector' | 'executor' | 'http_broker',
-                      )
+                      setBrokerConsumer(next as 'llm_gateway' | 'connector' | 'http_broker')
                     }
                     disabled={save.isPending}
                   >
@@ -1038,12 +1032,6 @@ function SecretDialog({
                         description="An authorized connector uses the value. The sandbox receives no key."
                       >
                         Connector
-                      </SelectItem>
-                      <SelectItem
-                        value="executor"
-                        description="Server-side triggers and actions use the value. The sandbox receives no key."
-                      >
-                        Automation
                       </SelectItem>
                     </SelectContent>
                   </Select>

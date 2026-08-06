@@ -204,17 +204,21 @@ async function setup(): Promise<void> {
   accountId = account?.account_id ?? '';
   check('personal account resolved', accounts.status === 200 && !!accountId);
 
+  const credit = {
+    tier: 'pro',
+    billingModel: 'legacy',
+    balance: '100',
+    legacyBalance: '100',
+    nonExpiringCredits: '100',
+    legacyNonExpiringCredits: '100',
+  } as const;
   const [fundedAccount] = await db
-    .update(creditAccounts)
-    .set({
-      tier: 'pro',
-      billingModel: 'legacy',
-      balance: '100',
-      legacyBalance: '100',
-      nonExpiringCredits: '100',
-      legacyNonExpiringCredits: '100',
+    .insert(creditAccounts)
+    .values({ accountId, ...credit })
+    .onConflictDoUpdate({
+      target: creditAccounts.accountId,
+      set: credit,
     })
-    .where(eq(creditAccounts.accountId, accountId))
     .returning({ accountId: creditAccounts.accountId, tier: creditAccounts.tier });
   check(
     'ephemeral account is funded for the real gateway request',

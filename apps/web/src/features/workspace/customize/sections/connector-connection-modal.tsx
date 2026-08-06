@@ -5,11 +5,7 @@ import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Disclosure,
-  DisclosureContent,
-  DisclosureTrigger,
-} from '@/components/ui/disclosure';
+import { Disclosure, DisclosureContent, DisclosureTrigger } from '@/components/ui/disclosure';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import Loading from '@/components/ui/loading';
@@ -32,13 +28,13 @@ import { cn } from '@/lib/utils';
 import { CaretDownIcon, PlusIcon, User, UsersThree } from '@phosphor-icons/react';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 
-import { ConnectorProfileHeader } from './connector-profile-header';
 import {
   connectorConnectionSlugAfterNameChange,
   type EasyConnectConnectionInput,
   isConnectorConnectionSlugAvailable,
   normalizeConnectorConnectionSlug,
 } from './connector-connection-form';
+import { ConnectorConnectionHeader } from './connector-connection-header';
 
 export function AuthorizationStrategyField({
   idPrefix,
@@ -228,7 +224,7 @@ export function ConnectorConnectionModal({
           <ModalTitle>{title}</ModalTitle>
         </VisuallyHidden>
         <ModalHeader>
-          <ConnectorProfileHeader
+          <ConnectorConnectionHeader
             icon={icon}
             name={displayName}
             byline={byline}

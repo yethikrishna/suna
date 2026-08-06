@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 530,
+  "count": 532,
   "routes": [
     {
       "method": "GET",
@@ -797,6 +797,10 @@
     {
       "method": "PUT",
       "path": "/v1/connectors/projects/:projectId/connectors/:slug/policies"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/connectors/projects/:projectId/connectors/:slug/secret-binding"
     },
     {
       "method": "PUT",
@@ -1629,6 +1633,10 @@
     {
       "method": "POST",
       "path": "/v1/projects/:projectId/secrets"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/:projectId/secrets/:identifier/broker"
     },
     {
       "method": "PUT",

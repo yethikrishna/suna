@@ -52,10 +52,6 @@ describe('secretDeliveryPresentation', () => {
       label: 'Git service',
       description: 'Used for repository access without entering the sandbox.',
     });
-    expect(secretDeliveryPresentation('broker', 'executor')).toMatchObject({
-      label: 'Automation',
-      description: 'Used by server-side triggers and actions without entering the sandbox.',
-    });
   });
 });
 

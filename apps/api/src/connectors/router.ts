@@ -1198,7 +1198,7 @@ export function createConnectorRouter(deps: ConnectorRouterDeps): OpenAPIHono {
     createRoute({
       method: 'put',
       path: '/projects/{projectId}/connectors/{slug}/secret-binding',
-      tags: ['executor'],
+      tags: ['connectors'],
       summary: "Bind a brokered project secret as a connector's credential",
       ...auth,
       request: {

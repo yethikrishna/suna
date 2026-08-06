@@ -49,7 +49,7 @@ import {
   connectorSyncErrorForSlug,
   createOnlyConnectorDraft,
   proposeConnectorConnectionSlug,
-  type EasyConnectConnectorInput,
+  type EasyConnectConnectionInput,
 } from './connector-connection-form';
 import { ConnectorConnectionModal } from './connector-connection-modal';
 
@@ -68,7 +68,7 @@ type DiscoverConnectorTarget =
  *
  * ── Known duplication, read before changing this file ──────────────────────
  * `features/workspace/capabilities/connectors/discover-add-flow.tsx` runs the
- * same add journey (surface picker -> `ConnectorProfileModal` ->
+ * same add journey (surface picker -> `ConnectorConnectionModal` ->
  * `createConnector`) for the Connectors page's Browse scope. The two are
  * separate implementations of one journey and must stay behaviourally
  * consistent; a fix here very likely belongs there too. That file's header
@@ -139,20 +139,20 @@ export function DiscoverCatalogue({
   const addConnector = useMutation({
     mutationFn: async ({
       target,
-      connector,
+      connection,
     }: {
       target: DiscoverConnectorTarget;
-      connector: EasyConnectConnectorInput;
+      connection: EasyConnectConnectionInput;
     }) => {
       let draft: ConnectorDraftInput;
       if (target.source === 'pipedream') {
         draft = {
-          slug: connector.slug,
-          name: connector.name.trim(),
+          slug: connection.slug,
+          name: connection.name.trim(),
           provider: 'pipedream',
           app: target.app.slug,
           account: 'default',
-          authorization_strategy: connector.authorizationStrategy,
+          authorization_strategy: connection.authorizationStrategy,
         };
       } else {
         if (!target.variant.connector) {
@@ -168,10 +168,10 @@ export function DiscoverCatalogue({
             }
           : undefined;
         draft = {
-          slug: connector.slug,
-          name: connector.name.trim(),
+          slug: connection.slug,
+          name: connection.name.trim(),
           provider: template.provider,
-          authorization_strategy: connector.authorizationStrategy,
+          authorization_strategy: connection.authorizationStrategy,
           ...(template.spec ? { spec: template.spec } : {}),
           ...(template.url ? { url: template.url } : {}),
           ...(template.transport ? { transport: template.transport } : {}),
@@ -448,7 +448,9 @@ export function DiscoverCatalogue({
         description="Create a connector. The display name and slug identify it in project configuration."
         initialName={connectionDisplayName}
         initialSlug={
-          connectorTarget ? proposeConnectorConnectionSlug(connectionDisplayName, existingSlugs) : ''
+          connectorTarget
+            ? proposeConnectorConnectionSlug(connectionDisplayName, existingSlugs)
+            : ''
         }
         existingSlugs={existingSlugs}
         pending={addConnector.isPending}
@@ -458,9 +460,9 @@ export function DiscoverCatalogue({
             : false
         }
         onOpenChange={(open) => !open && setConnectorTarget(null)}
-        onSubmit={(connector) => {
+        onSubmit={(connection) => {
           if (!connectorTarget) return;
-          addConnector.mutate({ target: connectorTarget, connector });
+          addConnector.mutate({ target: connectorTarget, connection });
         }}
       />
     </div>

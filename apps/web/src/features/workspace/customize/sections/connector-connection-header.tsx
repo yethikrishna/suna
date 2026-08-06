@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
  * tile, same `object-contain` treatment, so the two are indistinguishable on
  * screen.
  */
-export function ConnectorProfileIcon({ src, name }: { src?: string | null; name: string }) {
+export function ConnectorConnectionIcon({ src, name }: { src?: string | null; name: string }) {
   if (src) {
     return (
       <span className="border-border/60 bg-card relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-sm border">
@@ -35,7 +35,7 @@ export function ConnectorProfileIcon({ src, name }: { src?: string | null; name:
 
 /**
  * A connector's identity block — icon, name, byline, description —
- * shared by the add flow (`ConnectorProfileModal`) and the detail modal
+ * shared by the add flow (`ConnectorConnectionModal`) and the detail modal
  * (`connector-modal.tsx`), so "what is this thing?" is answered by the same
  * layout in both places.
  *
@@ -44,7 +44,7 @@ export function ConnectorProfileIcon({ src, name }: { src?: string | null; name:
  * for a caller-owned control (the detail modal's inline rename, or Radix's
  * `ModalTitle`) without changing the rhythm around it.
  */
-export function ConnectorProfileHeader({
+export function ConnectorConnectionHeader({
   icon,
   name,
   nameSlot,
@@ -71,7 +71,9 @@ export function ConnectorProfileHeader({
       {icon}
       <div className="min-w-0 flex-1 space-y-0">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {nameSlot ?? <span className="text-foreground truncate text-lg font-semibold">{name}</span>}
+          {nameSlot ?? (
+            <span className="text-foreground truncate text-lg font-semibold">{name}</span>
+          )}
           {status}
         </div>
         {byline || meta ? (

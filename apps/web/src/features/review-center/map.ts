@@ -182,7 +182,7 @@ function approvalDetail(d: AnyRec, row: ApiReviewItem): ApprovalDetail {
         actionPath: path,
         rawArgsPreview: hasArgsPreview ? rawArgsPreview : undefined,
         reviewComplete: d.args_preview_complete === true,
-        executorRisk: str(d.risk) ?? null,
+        connectorRisk: str(d.risk) ?? null,
         policySource: 'Requires approval',
       },
     ],

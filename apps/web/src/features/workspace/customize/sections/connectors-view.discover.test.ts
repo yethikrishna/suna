@@ -54,7 +54,7 @@ describe('feature-flagged Discover connector marketplace', () => {
       'proposeConnectorConnectionSlug(connectionDisplayName, existingSlugs)',
     );
     expect(discoverSource).toContain('createOnlyConnectorDraft(draft)');
-    expect(discoverSource).toContain('authorization_strategy: connector.authorizationStrategy');
+    expect(discoverSource).toContain('authorization_strategy: connection.authorizationStrategy');
   });
 
   test('does not mislabel a domain card as only its feed-provided MCP surface', () => {

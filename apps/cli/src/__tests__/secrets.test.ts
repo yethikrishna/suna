@@ -36,7 +36,7 @@ let secretItems: Array<{
   effective_source?: 'mine' | 'shared' | 'none';
   strategy?: 'runtime' | 'egress' | 'broker' | 'denied';
   consumer?:
-    'sandbox' | 'llm_gateway' | 'connector' | 'executor' | 'git_proxy' | 'http_broker' | 'network' | null;
+    'sandbox' | 'llm_gateway' | 'connector' | 'git_proxy' | 'http_broker' | 'network' | null;
   delivery_status?: 'available' | 'unavailable' | 'disabled';
   requires_rotation?: boolean;
 }>;
@@ -51,7 +51,7 @@ function secret(
     effective_source?: 'mine' | 'shared' | 'none';
     strategy?: 'runtime' | 'egress' | 'broker' | 'denied';
     consumer?:
-      'sandbox' | 'llm_gateway' | 'connector' | 'executor' | 'git_proxy' | 'http_broker' | 'network' | null;
+      'sandbox' | 'llm_gateway' | 'connector' | 'git_proxy' | 'http_broker' | 'network' | null;
     delivery_status?: 'available' | 'unavailable' | 'disabled';
     requires_rotation?: boolean;
   } = {},
@@ -500,7 +500,7 @@ describe('kortix secrets delivery', () => {
     expect(put?.body).toEqual({ strategy: 'broker', consumer: 'connector' });
   });
 
-  test('configures an automation consumer without HTTP policy flags', async () => {
+  test('maps the legacy automation alias to the connector consumer', async () => {
     const code = await runSecrets([
       'delivery',
       'WEBHOOK_SIGNING_KEY',
@@ -511,7 +511,7 @@ describe('kortix secrets delivery', () => {
 
     expect(code).toBe(0);
     const put = requests.find((request) => request.method === 'PUT');
-    expect(put?.body).toEqual({ strategy: 'broker', consumer: 'executor' });
+    expect(put?.body).toEqual({ strategy: 'broker', consumer: 'connector' });
   });
 
   test('rejects HTTP policy flags for the LLM gateway consumer', async () => {

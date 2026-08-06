@@ -31,6 +31,15 @@ import { AnyObject, SecretSchema, projectsApp } from '../lib/app';
 import { getProjectGitConnection, getProjectGitRemote, hasServerManagedGitAuth, loadGitProject, resolveProjectGitAuth, resolveProjectUpstream, upsertProjectGitConnection, upsertProjectGitCredential, withProjectGitAuth } from '../lib/git';
 import { CODEX_AUTH_JSON_SECRET_NAME, isSystemProjectSecretName, loadSecretViewsForUser, normalizeString, readBody, serializeProjectGitConnection } from '../lib/serializers';
 
+type ProjectSecretConsumer = z.infer<typeof SecretConsumerSchema>;
+
+/** Accept the pre-connectors wire value, but never persist or return it. */
+function canonicalSecretConsumer(
+  consumer: ProjectSecretConsumer | null | undefined,
+): Exclude<ProjectSecretConsumer, 'executor'> | null | undefined {
+  return consumer === 'executor' ? 'connector' : consumer;
+}
+
 async function connectorSecretBindings(projectId: string, identifier: string): Promise<string[]> {
   const rows = await db
     .select({ slug: connectors.slug })
@@ -556,6 +565,9 @@ projectsApp.openapi(
   if (requestedConsumer && !requestedConsumer.success) {
     return c.json({ error: 'consumer is invalid' }, 400);
   }
+  const requestedConsumerData = requestedConsumer?.success
+    ? canonicalSecretConsumer(requestedConsumer.data)
+    : undefined;
   const requestedStrategy = body.strategy;
   if (
     requestedStrategy !== undefined &&
@@ -565,24 +577,23 @@ projectsApp.openapi(
   }
   if (
     requestedStrategy === 'broker' &&
-    requestedConsumer?.data !== 'llm_gateway' &&
-    requestedConsumer?.data !== 'connector' &&
-    requestedConsumer?.data !== 'executor' &&
-    requestedConsumer?.data !== 'http_broker'
+    requestedConsumerData !== 'llm_gateway' &&
+    requestedConsumerData !== 'connector' &&
+    requestedConsumerData !== 'http_broker'
   ) {
     return c.json({ error: 'broker creation requires a supported server consumer' }, 400);
   }
   if (
     requestedStrategy === 'runtime' &&
     requestedConsumer !== undefined &&
-    requestedConsumer.data !== 'sandbox'
+    requestedConsumerData !== 'sandbox'
   ) {
     return c.json({ error: 'runtime creation requires the sandbox consumer' }, 400);
   }
   if (
     requestedStrategy === 'denied' &&
     requestedConsumer !== undefined &&
-    requestedConsumer.data !== null
+    requestedConsumerData !== null
   ) {
     return c.json({ error: 'denied creation cannot have a consumer' }, 400);
   }
@@ -607,7 +618,7 @@ projectsApp.openapi(
           : requestedStrategy === 'denied'
             ? null
             : undefined
-      : requestedConsumer.data;
+      : requestedConsumerData;
   let explicitPolicy = null;
   if (explicitConsumer === 'http_broker') {
     const policy = parseEgressPolicy(body.egress_policy);
@@ -807,7 +818,9 @@ projectsApp.openapi(
                 ? policyBackend
                 : 'http_broker';
     const nextConsumer =
-      parsed.data.consumer === undefined ? inferredConsumer : parsed.data.consumer;
+      parsed.data.consumer === undefined
+        ? inferredConsumer
+        : canonicalSecretConsumer(parsed.data.consumer);
 
     if (parsed.data.strategy === 'runtime' && nextConsumer !== 'sandbox') {
       return c.json({ error: 'runtime delivery requires the sandbox consumer' }, 400);
@@ -820,7 +833,7 @@ projectsApp.openapi(
     }
     if (
       parsed.data.strategy === 'broker' &&
-      !['llm_gateway', 'executor', 'git_proxy', 'http_broker', 'connector'].includes(
+      !['llm_gateway', 'git_proxy', 'http_broker', 'connector'].includes(
         String(nextConsumer),
       )
     ) {
@@ -863,7 +876,6 @@ projectsApp.openapi(
       parsed.data.strategy === 'broker' &&
       nextConsumer !== 'llm_gateway' &&
       nextConsumer !== 'connector' &&
-      nextConsumer !== 'executor' &&
       nextConsumer !== 'http_broker'
     ) {
       return c.json(

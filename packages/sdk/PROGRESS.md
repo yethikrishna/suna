@@ -33,10 +33,12 @@ Required SDK gates are typecheck, the full test suite, and packed-install smoke.
 Final SDK gates:
 
 - `pnpm --filter @kortix/sdk typecheck`: exit `0`.
-- `pnpm --filter @kortix/sdk test`: `1537 pass`, `0 fail`, and
-  `6316 expect()` calls across `121` files.
+- `pnpm --filter @kortix/sdk test`: `1575 pass`, `0 fail`, and
+  `6401 expect()` calls across `122` files after the final rebase.
 - `pnpm --filter @kortix/sdk run smoke:install`: exit `0`; the packed tarball
   imported and `createKortix` constructed successfully.
+- `bun apps/api/scripts/e2e-cli-agent-token.ts`: `85 pass`, `0 fail`. Every
+  assertion launched the real CLI with a production-minted project/session PAT.
 
 Published `profile` and `integration` names remain as deprecated aliases.
 Canonical new code uses `connector` and `connection`.

@@ -89,6 +89,7 @@ import {
   TrashIcon,
 } from '@phosphor-icons/react';
 import {
+  brokerConsumerForSecret,
   buildBrokerPolicy,
   canSaveSecretDelivery,
   connectorBindingChanges,
@@ -594,8 +595,8 @@ function SecretDialog({
   const [key, setKey] = useState(row?.key ?? '');
   const [value, setValue] = useState('');
   const [strategy, setStrategy] = useState<SecretDeliveryStrategy>(row?.strategy ?? 'runtime');
-  const [brokerConsumer, setBrokerConsumer] = useState<'llm_gateway' | 'connector' | 'http_broker'>(
-    row?.consumer === 'llm_gateway' || row?.consumer === 'connector' ? row.consumer : 'http_broker',
+  const [brokerConsumer, setBrokerConsumer] = useState(() =>
+    brokerConsumerForSecret(row?.consumer),
   );
   const [selectedConnectorSlugs, setSelectedConnectorSlugs] = useState<string[] | null>(null);
   const effectiveSelectedConnectorSlugs =
@@ -629,13 +630,7 @@ function SecretDialog({
     setKey(row?.key ?? '');
     setValue('');
     setStrategy(row?.strategy ?? 'runtime');
-    setBrokerConsumer(
-      row?.consumer === 'llm_gateway' ||
-        row?.consumer === 'connector' ||
-        row?.consumer === 'executor'
-        ? row.consumer
-        : 'http_broker',
-    );
+    setBrokerConsumer(brokerConsumerForSecret(row?.consumer));
     setSelectedConnectorSlugs(null);
     setBrokerHosts(currentPolicy?.rules.map((rule) => rule.host).join('\n') ?? '');
     setBrokerMethods(currentPolicy?.rules[0]?.methods?.join(', ') ?? 'POST');

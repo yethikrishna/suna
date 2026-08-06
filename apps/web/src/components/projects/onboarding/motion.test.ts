@@ -11,26 +11,24 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  CONTEXT_ENTER_TRANSITION,
+  CONTEXT_EXIT_TRANSITION,
   ENTER_TRANSITION,
   EXIT_TRANSITION,
+  REDUCED_TRANSITION,
   SEAL_TRANSITION,
   contextVariants,
   slideVariants,
 } from './motion';
 
-const shell = readFileSync(
-  join(import.meta.dir, '..', 'project-onboarding-wizard.tsx'),
-  'utf8',
-);
+const shell = readFileSync(join(import.meta.dir, '..', 'project-onboarding-wizard.tsx'), 'utf8');
 
 type Axis = { opacity: number; x: number };
 type MotionState = Record<string, unknown>;
 const at = (v: unknown, direction: number) =>
-  (typeof v === 'function' ? (v as (d: number) => Axis)(direction) : (v as Axis));
+  typeof v === 'function' ? (v as (d: number) => Axis)(direction) : (v as Axis);
 const stateAt = (v: unknown, direction = 1): MotionState =>
-  (typeof v === 'function'
-    ? (v as (d: number) => MotionState)(direction)
-    : (v as MotionState));
+  typeof v === 'function' ? (v as (d: number) => MotionState)(direction) : (v as MotionState);
 
 const LAYOUT_PROPERTIES = [
   'width',
@@ -52,6 +50,11 @@ const LAYOUT_PROPERTIES = [
 ] as const;
 
 describe('slideVariants', () => {
+  test('uses the selected 16px travel distance', () => {
+    const variants = slideVariants(false);
+    expect(at(variants.enter, 1).x).toBe(16);
+    expect(at(variants.exit, 1).x).toBe(-16);
+  });
   test('forward pushes content left, backward pushes it right', () => {
     const variants = slideVariants(false);
 
@@ -84,6 +87,13 @@ describe('slideVariants', () => {
 });
 
 describe('timing', () => {
+  test('uses the selected step, context, and reduced-motion timings', () => {
+    expect(ENTER_TRANSITION.duration).toBe(0.22);
+    expect(EXIT_TRANSITION.duration).toBe(0.17);
+    expect(CONTEXT_ENTER_TRANSITION.duration).toBe(0.2);
+    expect(CONTEXT_EXIT_TRANSITION.duration).toBe(0.15);
+    expect(REDUCED_TRANSITION.duration).toBe(0.16);
+  });
   // Exits run ~75-80% of enters: the user has already decided, so get out of
   // the way faster than you arrived.
   test('exits are faster than enters', () => {
@@ -110,11 +120,11 @@ describe('timing', () => {
   test('moves the context rail from its own side of the decision lane', () => {
     const variants = contextVariants(false);
     expect(at(variants.enter, 1).opacity).toBe(0);
-    expect(at(variants.enter, 1).x).toBeGreaterThan(0);
+    expect(at(variants.enter, 1).x).toBe(12);
     expect(at(variants.center, 1).opacity).toBe(1);
     expect(at(variants.center, 1).x).toBe(0);
     expect(at(variants.exit, 1).opacity).toBe(0);
-    expect(at(variants.exit, 1).x).toBeGreaterThan(0);
+    expect(at(variants.exit, 1).x).toBe(12);
   });
 
   test('keeps context replacement opacity-only with reduced motion', () => {

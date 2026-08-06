@@ -10,13 +10,25 @@
  */
 
 import { motion, useReducedMotion } from 'motion/react';
-import { useId, type ReactNode } from 'react';
+import { createContext, useContext, useId, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
 
 import { contextVariants } from './motion';
+
+const StepIdentityContext = createContext<string | null>(null);
+
+export function StepIdentityProvider({
+  idPrefix,
+  children,
+}: {
+  idPrefix: string;
+  children: ReactNode;
+}) {
+  return <StepIdentityContext.Provider value={idPrefix}>{children}</StepIdentityContext.Provider>;
+}
 
 const rowClassName = cn(
   'border-border bg-popover text-foreground flex min-h-12 w-full cursor-pointer items-center gap-3 rounded-md border px-4 py-3 text-left',
@@ -76,13 +88,14 @@ export function StepShell({
   onSkip?: () => void;
   context?: ReactNode;
 }) {
-  const titleId = useId();
+  const generatedId = useId();
+  const idPrefix = useContext(StepIdentityContext) ?? `onboarding-step-${generatedId}`;
 
   return (
     <div className="relative flex flex-col">
       <div className="space-y-2.5">
         <h1
-          id={`onboarding-step-title-${titleId}`}
+          id={`${idPrefix}-title`}
           data-onboarding-step-title
           tabIndex={-1}
           className="text-foreground text-2xl font-semibold tracking-tight text-balance focus:outline-none"
@@ -90,7 +103,12 @@ export function StepShell({
           {title}
         </h1>
         {description && (
-          <p className="text-muted-foreground text-sm leading-6 text-pretty">{description}</p>
+          <p
+            id={`${idPrefix}-description`}
+            className="text-muted-foreground text-sm leading-6 text-pretty"
+          >
+            {description}
+          </p>
         )}
       </div>
 
@@ -102,12 +120,12 @@ export function StepShell({
           the content above. A skip tucked directly under the primary reads as a
           footnote to it; side by side it reads as the other choice, which is
           what it is. */}
-      <div className="mt-10 flex items-center gap-3">
+      <div className="mt-8 flex flex-col-reverse gap-3 md:flex-row md:items-center md:justify-end">
         {skipLabel && onSkip && (
           <Button
             size="lg"
-            variant="outline"
-            className="flex-1 active:scale-[0.96] motion-reduce:active:scale-100"
+            variant="ghost"
+            className="w-full whitespace-nowrap active:scale-[0.96] motion-reduce:active:scale-100 md:w-auto"
             onClick={onSkip}
           >
             {skipLabel}
@@ -115,7 +133,7 @@ export function StepShell({
         )}
         <Button
           size="lg"
-          className="flex-1 active:scale-[0.96] motion-reduce:active:scale-100"
+          className="w-full whitespace-nowrap active:scale-[0.96] motion-reduce:active:scale-100 md:w-auto md:min-w-36"
           onClick={onPrimary}
           disabled={primaryDisabled}
         >
@@ -135,7 +153,7 @@ export function StepContext({ children }: { children: ReactNode }) {
       initial="enter"
       animate="center"
       exit="exit"
-      className="mt-6 w-full xl:absolute xl:top-0 xl:left-[calc(100%+2rem)] xl:mt-0 xl:w-[340px]"
+      className="mt-6 w-full xl:absolute xl:top-0 xl:left-[calc(100%+2rem)] xl:mt-0 xl:max-h-[min(560px,calc(100dvh-160px))] xl:w-[340px] xl:overflow-y-auto"
     >
       {children}
     </motion.aside>

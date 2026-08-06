@@ -20,12 +20,16 @@ import type { Transition, Variants } from 'motion/react';
 export const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
 /** How far content travels. Small enough to read as a shift, not a swipe. */
-const TRAVEL = 24;
+const STEP_TRAVEL = 16;
+const CONTEXT_TRAVEL = 12;
 
-export const ENTER_TRANSITION: Transition = { duration: 0.28, ease: EASE_OUT };
+export const ENTER_TRANSITION: Transition = { duration: 0.22, ease: EASE_OUT };
 
 /** Exits run ~75% of the enter — the user has already decided, get out of the way. */
-export const EXIT_TRANSITION: Transition = { duration: 0.2, ease: EASE_OUT };
+export const EXIT_TRANSITION: Transition = { duration: 0.17, ease: EASE_OUT };
+export const CONTEXT_ENTER_TRANSITION: Transition = { duration: 0.2, ease: EASE_OUT };
+export const CONTEXT_EXIT_TRANSITION: Transition = { duration: 0.15, ease: EASE_OUT };
+export const REDUCED_TRANSITION: Transition = { duration: 0.16, ease: EASE_OUT };
 
 /**
  * Directional slide for a step or sub-view swap.
@@ -36,10 +40,10 @@ export const EXIT_TRANSITION: Transition = { duration: 0.2, ease: EASE_OUT };
  * would cost comprehension rather than just movement.
  */
 export function slideVariants(reduced: boolean): Variants {
-  const ahead = reduced ? 0 : TRAVEL;
+  const ahead = reduced ? 0 : STEP_TRAVEL;
   // Negating 0 yields -0, which is a distinct value to Object.is and would make
   // the reduced-motion contract awkward to assert. Pin it to a true zero.
-  const behind = reduced ? 0 : -TRAVEL;
+  const behind = reduced ? 0 : -STEP_TRAVEL;
   return {
     enter: (direction: number) => ({
       opacity: 0,
@@ -48,12 +52,12 @@ export function slideVariants(reduced: boolean): Variants {
     center: {
       opacity: 1,
       x: 0,
-      transition: ENTER_TRANSITION,
+      transition: reduced ? REDUCED_TRANSITION : ENTER_TRANSITION,
     },
     exit: (direction: number) => ({
       opacity: 0,
       x: direction >= 0 ? behind : ahead,
-      transition: EXIT_TRANSITION,
+      transition: reduced ? REDUCED_TRANSITION : EXIT_TRANSITION,
     }),
   };
 }
@@ -70,15 +74,15 @@ export function contextVariants(reduced: boolean): Variants {
   if (reduced) {
     return {
       enter: { opacity: 0 },
-      center: { opacity: 1, transition: ENTER_TRANSITION },
-      exit: { opacity: 0, transition: EXIT_TRANSITION },
+      center: { opacity: 1, transition: REDUCED_TRANSITION },
+      exit: { opacity: 0, transition: REDUCED_TRANSITION },
     };
   }
 
   return {
-    enter: { opacity: 0, x: TRAVEL },
-    center: { opacity: 1, x: 0, transition: ENTER_TRANSITION },
-    exit: { opacity: 0, x: TRAVEL, transition: EXIT_TRANSITION },
+    enter: { opacity: 0, x: CONTEXT_TRAVEL },
+    center: { opacity: 1, x: 0, transition: CONTEXT_ENTER_TRANSITION },
+    exit: { opacity: 0, x: CONTEXT_TRAVEL, transition: CONTEXT_EXIT_TRANSITION },
   };
 }
 

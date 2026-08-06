@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const shell = readFileSync(join(import.meta.dir, '..', 'project-onboarding-wizard.tsx'), 'utf8');
+const step = (name: string) => readFileSync(join(import.meta.dir, 'steps', name), 'utf8');
 
 describe('onboarding shell', () => {
   test('constrains the body to one 520px decision lane', () => {
@@ -29,9 +30,28 @@ describe('onboarding shell', () => {
     expect(shell).not.toContain('border-t');
   });
 
-  test('renders the inset panel frame', () => {
+  test('renders the inset panel frame only from the md breakpoint', () => {
     expect(shell).toContain('fixed inset-0');
-    expect(shell).toContain('rounded-md border');
+    expect(shell).toContain('!inset-0');
+    expect(shell).toContain('md:!inset-2');
+    expect(shell).toContain('!rounded-none');
+    expect(shell).toContain('md:!rounded-md');
+    expect(shell).toContain('!border-0');
+    expect(shell).toContain('md:!border');
+    expect(shell).toContain('!min-h-[100dvh]');
+  });
+
+  test('keeps every desktop step title on one fixed top baseline', () => {
+    expect(shell).toContain('items-start justify-center');
+    expect(shell).not.toContain('md:items-center');
+    expect(shell).toContain('max-w-[520px] py-8');
+  });
+
+  test('binds dialog labelling to existing ids for the active step', () => {
+    expect(shell).toContain('aria-labelledby={`onboarding-${stepId}-title`}');
+    expect(shell).toContain('aria-describedby={`onboarding-${stepId}-description`}');
+    expect(shell).not.toContain('aria-label="Project setup"');
+    expect(shell).toContain('idPrefix={`onboarding-${stepId}`}');
   });
 
   // rounded-xl / rounded-2xl are banned on app containers by the design system.
@@ -107,18 +127,25 @@ describe('step shell primitive', () => {
 
   // A skip tucked directly beneath the primary reads as a footnote to it. Side
   // by side, as a secondary, it reads as the other choice — which it is.
-  test('renders skip as a secondary sibling of the primary', () => {
-    expect(stepShell).toContain('variant="outline"');
+  test('renders skip as a lower-contrast, unequal secondary sibling', () => {
+    expect(stepShell).toContain('variant="ghost"');
+    expect(stepShell).not.toContain('variant="outline"');
     expect(stepShell).toContain('gap-3');
+    expect(stepShell).toContain('md:justify-end');
+    expect(stepShell).toContain('md:min-w-36');
+    expect(stepShell).not.toContain('className="flex-1');
   });
 
   test('puts real distance between the content and the actions', () => {
-    expect(stepShell).toContain('mt-10');
+    expect(stepShell).toContain('mt-8');
+    expect(stepShell).not.toContain('mt-10 flex items-center');
   });
 
   test('positions context in a fixed 340px rail with a 32px gap', () => {
     expect(stepShell).toContain('w-[340px]');
     expect(stepShell).toContain('xl:left-[calc(100%+2rem)]');
+    expect(stepShell).toContain('xl:max-h-[min(560px,calc(100dvh-160px))]');
+    expect(stepShell).toContain('xl:overflow-y-auto');
   });
 
   test('exposes progress to assistive technology', () => {
@@ -128,6 +155,8 @@ describe('step shell primitive', () => {
   test('gives concurrent step titles unique ids', () => {
     expect(stepShell).toContain('data-onboarding-step-title');
     expect(stepShell).not.toContain('id="onboarding-step-title"');
+    expect(stepShell).toContain('id={`${idPrefix}-title`}');
+    expect(stepShell).toContain('id={`${idPrefix}-description`}');
   });
 
   test('removes action and row press scale for reduced motion', () => {
@@ -158,5 +187,13 @@ describe('step shell primitive', () => {
     for (const component of ['SelectionRow', 'ActionRow']) {
       expect(componentSource(component).match(sharedClassApplication) ?? []).toHaveLength(1);
     }
+  });
+});
+
+describe('step action copy', () => {
+  test('names survey and optional skips explicitly', () => {
+    expect(step('use-case-step.tsx')).toContain('skipLabel="Skip survey"');
+    expect(step('company-step.tsx')).toContain('skipLabel="Skip survey"');
+    expect(step('tools-step.tsx')).toContain('skipLabel="Skip for now"');
   });
 });

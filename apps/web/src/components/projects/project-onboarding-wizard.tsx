@@ -57,7 +57,7 @@ import {
   deriveCompanyDomain,
   firstStepAfterSurvey,
 } from './onboarding/onboarding-profile';
-import { StepProgress } from './onboarding/step-shell';
+import { StepIdentityProvider, StepProgress } from './onboarding/step-shell';
 import { CompanyStep } from './onboarding/steps/company-step';
 import { DoneStep } from './onboarding/steps/done-step';
 import { PlanStep } from './onboarding/steps/plan-step';
@@ -75,10 +75,12 @@ function AnimatedStep({
   children,
   direction,
   variants,
+  idPrefix,
 }: {
   children: ReactNode;
   direction: number;
   variants: Variants;
+  idPrefix: string;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
 
@@ -95,7 +97,7 @@ function AnimatedStep({
         frameRef.current?.querySelector<HTMLElement>('[data-onboarding-step-title]')?.focus();
       }}
     >
-      {children}
+      <StepIdentityProvider idPrefix={idPrefix}>{children}</StepIdentityProvider>
     </motion.div>
   );
 }
@@ -138,10 +140,12 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
     const url = new URL(window.location.href);
     if (!url.searchParams.has('onboarding-reset')) return;
     resetFiredRef.current = true;
-    setIndex(0);
     Promise.resolve()
       .then(() => resetFn())
-      .then(() => successToast('Onboarding reset'))
+      .then(() => {
+        setIndex(0);
+        successToast('Onboarding reset');
+      })
       .catch((err) => errorToast(err instanceof Error ? err.message : String(err)));
     url.searchParams.delete('onboarding-reset');
     window.history.replaceState(null, '', url.toString());
@@ -207,8 +211,9 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
           showCloseButton={false}
           closeOnOutsideClick={false}
           overlayClassName="bg-muted/30 fixed inset-0 backdrop-blur-none"
-          className="border-border/60 !bg-background !inset-2 !h-auto !max-h-none !w-auto !max-w-none !translate-x-0 !translate-y-0 !gap-0 !space-y-0 !overflow-hidden !rounded-md border"
-          aria-label="Project setup"
+          className="border-border/60 !bg-background !inset-0 !h-[100dvh] !max-h-none !min-h-[100dvh] !w-auto !max-w-none !translate-x-0 !translate-y-0 !gap-0 !space-y-0 !overflow-hidden !rounded-none !border-0 md:!inset-2 md:!h-auto md:!min-h-0 md:!rounded-md md:!border"
+          aria-labelledby={`onboarding-${stepId}-title`}
+          aria-describedby={`onboarding-${stepId}-description`}
           onEscapeKeyDown={(event) => {
             event.preventDefault();
             if (index > 0) back();
@@ -234,14 +239,19 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-5 pb-16 md:items-center md:px-8">
+            <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-5 md:px-8">
               <div className="w-full max-w-[520px] py-8">
                 {/* popLayout, not wait: `wait` runs the exit to completion before
                   the enter starts, which doubled every step to ~440ms of dead
                   air. popLayout takes the outgoing step out of flow so the two
                   overlap and the swap reads as one movement. */}
                 <AnimatePresence mode="popLayout" custom={direction} initial={false}>
-                  <AnimatedStep key={stepId} direction={direction} variants={stepVariants}>
+                  <AnimatedStep
+                    key={stepId}
+                    direction={direction}
+                    variants={stepVariants}
+                    idPrefix={`onboarding-${stepId}`}
+                  >
                     {stepId === 'use-case' && (
                       <UseCaseStep
                         value={answers.use_case ?? null}

@@ -39,7 +39,7 @@ export function CompanyStep({
       description="Your agent uses the domain to research your own company. Nothing is shared publicly."
       primaryLabel="Continue"
       onPrimary={onContinue}
-      skipLabel="Skip"
+      skipLabel="Skip survey"
       onSkip={onSkip}
     >
       {/* space-y-10: two separate questions on one screen need to read as two,

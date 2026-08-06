@@ -78,7 +78,7 @@ export function ToolsStep({
       description="Pick the apps you live in and authorize them right here. Your agent can read, write, and act across everything you connect."
       primaryLabel="Continue"
       onPrimary={onContinue}
-      skipLabel="Skip"
+      skipLabel="Skip for now"
       onSkip={onSkip}
       context={
         <StepContext>

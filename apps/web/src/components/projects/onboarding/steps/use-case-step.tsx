@@ -33,7 +33,7 @@ export function UseCaseStep({
       primaryLabel="Continue"
       primaryDisabled={!value}
       onPrimary={onContinue}
-      skipLabel="Skip"
+      skipLabel="Skip survey"
       onSkip={onSkip}
     >
       <RadioGroup

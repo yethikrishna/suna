@@ -9,6 +9,7 @@ import {
   searchConnectorTools,
   uploadConnectorAttachment,
   type ConnectorCatalogEntry,
+  type ConnectorCallResult,
 } from './connectors';
 
 interface RecordedRequest {
@@ -86,6 +87,30 @@ test('catalog uses the project-scoped route and the shared token seam', async ()
   expect(calls[0]?.headers.get('authorization')).toBe('Bearer agent-token');
 });
 
+test('the platform fetch seam supports compatibility clients without replacing global fetch', async () => {
+  const injectedFetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    return new Response(JSON.stringify({ connectors: [] }), {
+      status: 200,
+      headers: {
+        'content-type': 'application/json',
+        'x-request-url': request.url,
+      },
+    });
+  }) as unknown as typeof fetch;
+  configureKortix({
+    backendUrl: 'http://injected.local/v1',
+    getToken: async () => 'compatibility-token',
+    fetch: injectedFetch,
+  });
+  globalThis.fetch = mock(async () => {
+    throw new Error('global fetch must not run');
+  }) as unknown as typeof fetch;
+
+  expect(await getConnectorCatalog('project-one')).toEqual([]);
+  expect(injectedFetch).toHaveBeenCalledTimes(1);
+});
+
 test('catalog returns an empty list when the response omits connectors', async () => {
   responseBody = {};
   expect(await getConnectorCatalog('project-one')).toEqual([]);
@@ -150,7 +175,7 @@ test('call rejects an invalid tool identifier before making a request', async ()
 
 test('call preserves an asynchronous approval handoff', async () => {
   responseStatus = 202;
-  responseBody = {
+  const approval = {
     ok: false,
     status: 'pending_approval',
     execution_id: 'execution-one',
@@ -158,13 +183,14 @@ test('call preserves an asynchronous approval handoff', async () => {
     approval_url: 'https://app.kortix.test/approve/token',
     approval_summary: 'to: finance@example.com',
     approval_instructions: 'Share the approval URL with a human, then stop.',
-  };
+  } satisfies ConnectorCallResult;
+  responseBody = approval;
 
   expect(
     await callConnector('project-one', 'gmail.send_email', {
       to: 'finance@example.com',
     }),
-  ).toEqual(responseBody);
+  ).toEqual(approval);
 });
 
 test('attachment upload sends raw bytes through the shared token seam', async () => {

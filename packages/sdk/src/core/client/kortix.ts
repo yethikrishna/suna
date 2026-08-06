@@ -407,6 +407,24 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
       },
 
       connectors: {
+        /** Callable catalog for this project and agent token. */
+        catalog: () => P.getConnectorCatalog(projectId),
+        /** Flattened `<connector>.<action>` tool list. */
+        tools: () => P.listConnectorTools(projectId),
+        /** Search callable tools by id and description. */
+        search: (...a: DropFirst<Parameters<typeof P.searchConnectorTools>>) =>
+          P.searchConnectorTools(projectId, ...a),
+        /** Describe one `<connector>.<action>` tool. */
+        describe: (...a: DropFirst<Parameters<typeof P.describeConnectorTool>>) =>
+          P.describeConnectorTool(projectId, ...a),
+        /** Call one `<connector>.<action>` tool. */
+        call: <T = unknown>(
+          ...a: DropFirst<Parameters<typeof P.callConnector<T>>>
+        ) => P.callConnector<T>(projectId, ...a),
+        /** Upload bytes for use by a later connector call. */
+        uploadAttachment: (
+          ...a: DropFirst<Parameters<typeof P.uploadConnectorAttachment>>
+        ) => P.uploadConnectorAttachment(projectId, ...a),
         list: () => P.listConnectors(projectId),
         config: (...a: DropFirst<Parameters<typeof P.getConnectorConfig>>) =>
           P.getConnectorConfig(projectId, ...a),

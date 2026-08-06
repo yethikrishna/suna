@@ -1,6 +1,6 @@
 /**
  * The redesign has exactly one structural rule: nothing renders outside a
- * single 560px column.
+ * single 520px decision lane.
  *
  * These assertions read the source string because the rule is about what the
  * markup is ALLOWED to contain, not about runtime state. A rendering test would
@@ -18,9 +18,13 @@ const shell = readFileSync(
 );
 
 describe('onboarding shell', () => {
-  test('constrains the body to one 560px column', () => {
-    expect(shell).toContain('max-w-[560px]');
+  test('constrains the body to one 520px decision lane', () => {
+    expect(shell).toContain('max-w-[520px]');
     expect(shell).not.toContain('max-w-2xl');
+  });
+
+  test('keeps the decision lane fixed when a step supplies context', () => {
+    expect(shell).not.toContain("stepId === 'slack' ?");
   });
 
   test('drops the bordered footer bar in favour of an in-column primary', () => {
@@ -92,5 +96,13 @@ describe('step shell primitive', () => {
 
   test('puts real distance between the content and the actions', () => {
     expect(stepShell).toContain('mt-10');
+  });
+
+  test('positions context in a fixed 340px rail', () => {
+    expect(stepShell).toContain('w-[340px]');
+  });
+
+  test('exposes progress to assistive technology', () => {
+    expect(stepShell).toContain('role="progressbar"');
   });
 });

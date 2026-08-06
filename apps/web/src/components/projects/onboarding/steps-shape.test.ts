@@ -16,12 +16,23 @@ const tools = step('tools-step.tsx');
 const plan = step('plan-step.tsx');
 const slack = step('slack-step.tsx');
 const company = step('company-step.tsx');
+const useCase = step('use-case-step.tsx');
+
+describe('use-case step', () => {
+  test('uses selection semantics for its single survey answer', () => {
+    expect(useCase).toContain('<SelectionRow');
+  });
+});
 
 describe('tools step', () => {
   test('uses a vertical list, not a tile grid', () => {
     expect(tools).not.toContain('grid-cols-2');
     expect(tools).not.toContain('sm:grid-cols-3');
-    expect(tools).toContain('<ChoiceRow');
+    expect(tools).toContain('<ActionRow');
+  });
+
+  test('does not present connection actions as one radio answer', () => {
+    expect(tools).not.toContain('role="radiogroup"');
   });
 
   // The column sets the bound, not the viewport. A vh-relative height made this
@@ -53,7 +64,7 @@ describe('slack step', () => {
   // Was a bordered card, a button inside it, and a disclosure beneath — three
   // unrelated shapes on a screen where every other step is a list of rows.
   test('offers both install paths as the shared row primitive', () => {
-    expect(slack).toContain('<ChoiceRow');
+    expect(slack).toContain('<ActionRow');
     expect(slack).toContain('Add to Slack');
     expect(slack).toContain('Use a custom Slack app');
   });
@@ -62,34 +73,12 @@ describe('slack step', () => {
     expect(slack).toContain('Connected to Slack');
   });
 
-  // The custom-app setup sits BESIDE the chooser, not on top of it. An earlier
-  // pass replaced the whole step with a sub-view, which hid what the user came
-  // from — they are still adding Kortix to Slack, just by a longer route.
-  test('opens the custom app as a second pane, not a replacement', () => {
-    expect(slack).toContain('xl:flex-row');
-    expect(slack).toContain('<motion.aside');
+  // The custom-app setup sits in the shared context rail. An earlier pass
+  // widened this step only, which moved the decision lane off centre.
+  test('opens the custom app in the shared context rail', () => {
+    expect(slack).toContain('<StepContext');
+    expect(slack).not.toContain('xl:flex-row');
     expect(slack).toContain('Bring your own Slack app');
-    // No drill-in: the chooser is never unmounted to make room.
-    expect(slack).not.toContain("key={pane}");
-  });
-
-  // FLIP-derived transforms, not an animated width — a width animation would
-  // lay out and paint every frame.
-  test('shifts the chooser with a layout animation', () => {
-    expect(slack).toContain('layout={!reduced}');
-  });
-
-  // Below xl there is no room for two panes side by side.
-  test('stacks the pane underneath on narrow screens', () => {
-    expect(slack).toContain('flex-col');
-    expect(slack).toContain('xl:w-[420px]');
-  });
-
-  // Under the default mode the exiting panel keeps its flex space until the
-  // fade completes, so the chooser sits still and then jumps back. This was
-  // why closing felt worse than opening.
-  test('lets the chooser move back while the panel is still leaving', () => {
-    expect(slack).toContain('mode="popLayout"');
   });
 
   // The chunk downloaded and parsed during the open animation, dropping frames
@@ -109,11 +98,6 @@ describe('slack step', () => {
     expect(slack).toContain('h-[380px]');
   });
 
-  // A toggle can be interrupted mid-flight. Springs preserve velocity across
-  // an interruption; a tween restarts from zero and visibly jumps.
-  test('uses a spring for the layout shift', () => {
-    expect(slack).toContain('LAYOUT_TRANSITION');
-  });
 });
 
 describe('company step', () => {
@@ -147,7 +131,7 @@ describe('plan step', () => {
   });
 
   test('offers three ways forward, including deferring', () => {
-    expect(plan).toContain('<ChoiceRow');
+    expect(plan).toContain('<SelectionRow');
     expect(plan).toContain('Use Kortix models');
     expect(plan).toContain('Bring your own API key');
     expect(plan).toContain('Decide later');

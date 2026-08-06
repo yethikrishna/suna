@@ -16,7 +16,7 @@ describe('done step', () => {
   });
 
   test('renders prompts as the shared row primitive', () => {
-    expect(source).toContain('<ChoiceRow');
+    expect(source).toContain('<ActionRow');
   });
 
   test('stays inside the column — nothing full-bleed', () => {

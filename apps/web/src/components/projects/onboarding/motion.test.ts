@@ -13,8 +13,8 @@ import { join } from 'node:path';
 import {
   ENTER_TRANSITION,
   EXIT_TRANSITION,
-  LAYOUT_TRANSITION,
   SEAL_TRANSITION,
+  contextVariants,
   slideVariants,
 } from './motion';
 
@@ -81,14 +81,23 @@ describe('timing', () => {
     expect(SEAL_TRANSITION.bounce).toBeGreaterThan(0);
     expect(ENTER_TRANSITION.bounce).toBeUndefined();
     expect(EXIT_TRANSITION.bounce).toBeUndefined();
-    expect(LAYOUT_TRANSITION.bounce).toBe(0);
   });
 
-  // The row that drives this layout shift is a toggle, so the motion is
-  // interruptible by design. A spring carries its velocity across the
-  // interruption; a tween restarts from zero and visibly jumps.
-  test('layout shifts use an interruptible spring', () => {
-    expect(LAYOUT_TRANSITION.type).toBe('spring');
+  test('moves the context rail from its own side of the decision lane', () => {
+    const variants = contextVariants(false);
+    expect(at(variants.enter, 1).opacity).toBe(0);
+    expect(at(variants.enter, 1).x).toBeGreaterThan(0);
+    expect(at(variants.center, 1).opacity).toBe(1);
+    expect(at(variants.center, 1).x).toBe(0);
+    expect(at(variants.exit, 1).opacity).toBe(0);
+    expect(at(variants.exit, 1).x).toBeGreaterThan(0);
+  });
+
+  test('keeps context replacement opacity-only with reduced motion', () => {
+    const variants = contextVariants(true);
+    expect(at(variants.enter, 1).x).toBe(0);
+    expect(at(variants.center, 1).x).toBe(0);
+    expect(at(variants.exit, 1).x).toBe(0);
   });
 });
 

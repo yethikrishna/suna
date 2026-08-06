@@ -32,7 +32,6 @@ const ORIGINAL_STDERR_WRITE = process.stderr.write;
 
 const ENV_KEYS = [
   'KORTIX_CLI_TOKEN',
-  'KORTIX_EXECUTOR_TOKEN',
   'KORTIX_TOKEN',
   'KORTIX_API_URL',
   'KORTIX_PROJECT_ID',
@@ -51,6 +50,7 @@ let stdout = '';
 let stderr = '';
 /** What the mocked invite route answers. Each test sets this. */
 let inviteResponse: Record<string, unknown>;
+let pendingResponse: Record<string, unknown>;
 
 function writeConfig(): void {
   const file = join(tmp, 'config.json');
@@ -97,10 +97,14 @@ beforeEach(() => {
   (process.stdout as any).write = (chunk: unknown) => ((stdout += String(chunk)), true);
   (process.stderr as any).write = (chunk: unknown) => ((stderr += String(chunk)), true);
   inviteResponse = {};
+  pendingResponse = { pending: [] };
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes('/access/invite') && (init?.method ?? 'GET').toUpperCase() === 'POST') {
       return json(inviteResponse, 201);
+    }
+    if (url.includes('/access/pending-invites') && (init?.method ?? 'GET').toUpperCase() === 'GET') {
+      return json(pendingResponse);
     }
     return json({ error: `unexpected ${url}` }, 500);
   }) as typeof fetch;
@@ -129,7 +133,7 @@ const invite = (extra: Record<string, unknown>) => ({
 
 describe('kortix access invite — email honesty', () => {
   test('a SKIPPED email is reported as such, with the link that still works', async () => {
-    inviteResponse = invite({ email_sent: false, email_skip_reason: 'missing_mailtrap_token' });
+    inviteResponse = invite({ email_sent: false, email_skip_reason: 'email_not_configured' });
 
     const code = await runAccess(['invite', 'bob@corp.com', '--project', PROJECT, '--role', 'editor']);
     const out = stripAnsi(stdout);
@@ -140,7 +144,7 @@ describe('kortix access invite — email honesty', () => {
     // The only remaining delivery channel — discarding it left no recovery path.
     expect(out).toContain(INVITE_URL);
     // And it says WHY, so the operator can go fix the deployment.
-    expect(out).toContain('missing_mailtrap_token');
+    expect(out).toContain('email_not_configured');
   });
 
   test('a SENT email still reads as a plain success', async () => {
@@ -174,7 +178,7 @@ describe('kortix access invite — email honesty', () => {
   test('--json emits the full payload, including the fields the CLI used to drop', async () => {
     // Previously ignored on this subcommand, so a scripted caller had no way to
     // detect the skip either.
-    inviteResponse = invite({ email_sent: false, email_skip_reason: 'missing_mailtrap_token' });
+    inviteResponse = invite({ email_sent: false, email_skip_reason: 'email_not_configured' });
 
     const code = await runAccess([
       'invite', 'bob@corp.com', '--project', PROJECT, '--role', 'editor', '--json',
@@ -183,7 +187,27 @@ describe('kortix access invite — email honesty', () => {
     expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
     expect(parsed.email_sent).toBe(false);
-    expect(parsed.email_skip_reason).toBe('missing_mailtrap_token');
+    expect(parsed.email_skip_reason).toBe('email_not_configured');
     expect(parsed.invite_url).toBe(INVITE_URL);
+  });
+
+  test('pending displays the invited member email from the API payload', async () => {
+    pendingResponse = {
+      pending: [
+        {
+          invite_id: 'inv_abc123',
+          email: 'pending@corp.com',
+          project_role: 'editor',
+          invited_by_email: 'owner@corp.com',
+          invite_expired: false,
+        },
+      ],
+    };
+
+    const code = await runAccess(['pending', '--project', PROJECT]);
+
+    expect(code).toBe(0);
+    expect(stripAnsi(stdout)).toContain('pending@corp.com');
+    expect(stripAnsi(stdout)).not.toContain('undefined');
   });
 });

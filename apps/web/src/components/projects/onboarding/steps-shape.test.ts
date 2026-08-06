@@ -56,8 +56,8 @@ describe('tools step', () => {
     expect(tools).toContain('FadedScrollArea');
   });
 
-  test('keeps the accessible name that distinguishes adding another profile', () => {
-    expect(tools).toContain('aria-label={`Add ${app.name} profile`}');
+  test('keeps the accessible name that distinguishes adding another connection', () => {
+    expect(tools).toContain('aria-label={`Add ${app.name} connection`}');
   });
 
   test('shows connected state as status without exposing a toggle', () => {

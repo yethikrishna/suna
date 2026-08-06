@@ -27,10 +27,10 @@ import {
 import Loading from '@/components/ui/loading';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  proposeConnectorProfileSlug,
+  proposeConnectorConnectionSlug,
   type EasyConnectApp,
-} from '@/features/workspace/customize/sections/connector-profile-form';
-import { ConnectorProfileModal } from '@/features/workspace/customize/sections/connector-profile-modal';
+} from '@/features/workspace/customize/sections/connector-connection-form';
+import { ConnectorConnectionModal } from '@/features/workspace/customize/sections/connector-connection-modal';
 import { useToolConnect } from '@/hooks/connectors/use-tool-connect';
 import { listPipedreamApps } from '@kortix/sdk';
 
@@ -70,7 +70,7 @@ export function ToolsStep({
     .filter((a) => !SLACK_SLUGS.has(a.slug));
   const notConfigured =
     appsQuery.isError && /501|not configured/i.test((appsQuery.error as Error)?.message ?? '');
-  const profileCount = existingSlugs.length;
+  const connectionCount = existingSlugs.length;
 
   return (
     <StepShell
@@ -84,8 +84,8 @@ export function ToolsStep({
         <StepContext>
           <div className="bg-popover rounded-md border px-4 py-5">
             <p className="text-foreground text-sm font-medium">
-              <span className="tabular-nums">{profileCount}</span>{' '}
-              {profileCount === 1 ? 'profile' : 'profiles'} connected
+              <span className="tabular-nums">{connectionCount}</span>{' '}
+              {connectionCount === 1 ? 'connection' : 'connections'} connected
             </p>
             <p className="text-muted-foreground mt-1 text-xs leading-5 text-pretty">
               Authorization happens with each provider. Kortix receives only the access that you
@@ -142,7 +142,7 @@ export function ToolsStep({
                         key={app.slug}
                         label={app.name}
                         description={app.categories?.[0]}
-                        aria-label={`Add ${app.name} profile`}
+                        aria-label={`Add ${app.name} connection`}
                         aria-describedby={connected ? connectedStatusId : undefined}
                         disabled={connect.isPending}
                         onSelect={() => setSelectedApp(app)}
@@ -198,33 +198,33 @@ export function ToolsStep({
         )}
 
         <p className="text-muted-foreground text-xs">
-          {profileCount > 0
-            ? `${profileCount} ${profileCount === 1 ? 'profile' : 'profiles'} added — add as many as you like, then continue.`
+          {connectionCount > 0
+            ? `${connectionCount} ${connectionCount === 1 ? 'connection' : 'connections'} added — add as many as you like, then continue.`
             : 'Connect a few now, or skip and add them anytime.'}
         </p>
       </div>
 
-      <ConnectorProfileModal
+      <ConnectorConnectionModal
         open={selectedApp !== null}
-        idPrefix="onboarding-tool-profile"
+        idPrefix="onboarding-tool-connection"
         title={`Add ${selectedApp?.name ?? 'app'}`}
-        description="Create a connector profile before authorization. You can add more than one profile for the same app."
+        description="Create a connector connection before authorization. You can add more than one connection for the same app."
         initialName={selectedApp?.name ?? ''}
         initialSlug={
-          selectedApp ? proposeConnectorProfileSlug(selectedApp.slug, existingSlugs) : ''
+          selectedApp ? proposeConnectorConnectionSlug(selectedApp.name, existingSlugs) : ''
         }
         existingSlugs={existingSlugs}
         pending={connect.isPending}
         onOpenChange={(open) => !open && setSelectedApp(null)}
-        onSubmit={(profile) => {
+        onSubmit={(connection) => {
           if (!selectedApp) return;
           connect.mutate(
             {
               appSlug: selectedApp.slug,
               appName: selectedApp.name,
-              profileName: profile.name,
-              profileSlug: profile.slug,
-              authorizationStrategy: profile.authorizationStrategy,
+              connectorName: connection.name,
+              connectorSlug: connection.slug,
+              authorizationStrategy: connection.authorizationStrategy,
             },
             { onSuccess: () => setSelectedApp(null) },
           );

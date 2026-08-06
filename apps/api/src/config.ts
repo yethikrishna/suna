@@ -249,11 +249,11 @@ const envSchema = z.object({
   // earlier 120m, so the pause/resume win is subsumed there.
   // Lock a session to the agent it booted with: the preview proxy 409s a prompt
   // that asks OpenCode to run a different agent. GATED OFF by default — it was
-  // added for a future per-agent executor-token auth model that isn't built yet,
+  // added for a future per-agent connector-token auth model that isn't built yet,
   // and meanwhile it blocks legitimate in-session agent switching and
   // false-positives on new sessions (the picker can send the first agent in the
   // list before the session's real default resolves). TODO(marko): re-enable once
-  // the executor token is re-minted per requested agent before tool execution.
+  // the connector token is re-minted per requested agent before tool execution.
   KORTIX_ENFORCE_SESSION_AGENT_LOCK: optBoolFalse,
 
   // Optional strict lock for operators that require one immutable secret grant
@@ -557,7 +557,7 @@ const envSchema = z.object({
   // ── Frontend (optional) ──────────────────────────────────────────────────
   FRONTEND_URL: optUrl('http://localhost:3000'),
 
-  // ── Pipedream Connect (optional — powers the Executor's 1-click connectors) ─
+  // ── Pipedream Connect (optional — powers the Connector's 1-click connectors) ─
   PIPEDREAM_CLIENT_ID: optStr,
   PIPEDREAM_CLIENT_SECRET: optStr,
   PIPEDREAM_PROJECT_ID: optStr,
@@ -599,7 +599,20 @@ const envSchema = z.object({
   SANDBOX_VERSION: optStr, // dev override: skip npm registry lookup for latest version
   GITHUB_TOKEN: optStr, // optional: authenticated GitHub API calls for changelog
 
-  // ── Mailtrap (optional — provisioning email notifications) ────────────────
+  // ── Transactional email (provider chain: SES → Resend → Mailtrap) ─────────
+  // Every provider is optional; the transport tries each configured one in
+  // EMAIL_PROVIDER_ORDER and falls through on failure. See lib/email/transport.ts.
+  EMAIL_PROVIDER_ORDER: optStrDefault('ses,resend,mailtrap'),
+  // AWS SES (SigV4-signed SESv2 HTTP API; IAM user kortix-ses-sender).
+  AWS_SES_REGION: optStrDefault('us-east-2'),
+  AWS_SES_ACCESS_KEY_ID: optStr,
+  AWS_SES_SECRET_ACCESS_KEY: optStr,
+  // Resend (https://resend.com).
+  RESEND_API_KEY: optStr,
+  // Override sender for the Resend leg only — needed while the primary from-
+  // domain is not yet claimed/verified in the Resend team. The intended from
+  // address is preserved as Reply-To.
+  RESEND_FROM_EMAIL: optStr,
   MAILTRAP_API_TOKEN: optStr,
   MAILTRAP_FROM_EMAIL: optStrDefault('noreply@kortix.com'),
   MAILTRAP_FROM_NAME: optStrDefault('Kortix'),
@@ -909,7 +922,7 @@ export const config = {
   // ─── API Key Hashing ──────────────────────────────────────────────────────
   API_KEY_SECRET: env.API_KEY_SECRET,
 
-  // ─── Pipedream Connect (Executor 1-click connectors) ──────────────────────
+  // ─── Pipedream Connect (Connector 1-click connectors) ──────────────────────
   PIPEDREAM_CLIENT_ID: env.PIPEDREAM_CLIENT_ID,
   PIPEDREAM_CLIENT_SECRET: env.PIPEDREAM_CLIENT_SECRET,
   PIPEDREAM_PROJECT_ID: env.PIPEDREAM_PROJECT_ID,
@@ -1134,7 +1147,13 @@ export const config = {
   SANDBOX_VERSION_OVERRIDE: env.SANDBOX_VERSION,
   GITHUB_TOKEN: env.GITHUB_TOKEN,
 
-  // ─── Mailtrap (Email Notifications) ────────────────────────────────────────
+  // ─── Transactional email (provider chain) ──────────────────────────────────
+  EMAIL_PROVIDER_ORDER: env.EMAIL_PROVIDER_ORDER,
+  AWS_SES_REGION: env.AWS_SES_REGION,
+  AWS_SES_ACCESS_KEY_ID: env.AWS_SES_ACCESS_KEY_ID,
+  AWS_SES_SECRET_ACCESS_KEY: env.AWS_SES_SECRET_ACCESS_KEY,
+  RESEND_API_KEY: env.RESEND_API_KEY,
+  RESEND_FROM_EMAIL: env.RESEND_FROM_EMAIL,
   MAILTRAP_API_TOKEN: env.MAILTRAP_API_TOKEN,
   MAILTRAP_FROM_EMAIL: env.MAILTRAP_FROM_EMAIL,
   MAILTRAP_FROM_NAME: env.MAILTRAP_FROM_NAME,

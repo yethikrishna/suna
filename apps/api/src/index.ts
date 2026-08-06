@@ -75,7 +75,7 @@ import {
 import { marketplaceApp } from './marketplace';
 import { skillsApp } from './skills';
 import { oauthApp } from './oauth';
-import { nativeOAuth2CallbackApp } from './executor/oauth2-callback';
+import { nativeOAuth2CallbackApp } from './connectors/oauth2-callback';
 import {
   projectWebhooksApp,
   projectsApp,
@@ -635,9 +635,9 @@ app.openapi(
 // "Book a demo" qualifier form POSTs the first-step details here (via the web
 // server); we email an internal notification to DEMO_LEAD_NOTIFY_EMAIL on every
 // submission, whether or not the lead goes on to book a Cal slot. The email uses
-// the API's Mailtrap credentials (AWS Secrets Manager), so the Vercel frontend
-// never needs the secret. IP rate-limited; a missing Mailtrap token is a
-// graceful skip, so lead capture never fails on account of email.
+// the API's email-provider credentials (AWS Secrets Manager), so the Vercel
+// frontend never needs the secret. IP rate-limited; no configured email
+// provider is a graceful skip, so lead capture never fails on account of email.
 const DemoRequestSchema = z
   .object({
     name: z.string().max(200).optional(),
@@ -781,7 +781,7 @@ app.route('/v1/marketplace', marketplaceApp); // /v1/marketplace — browse the 
 // what lets an agent in ANY harness, holding only the `kortix` binary and a token,
 // read the platform's own instructions with no repo checkout and no sandbox.
 // combinedAuth (not supabaseAuth) so a CLI `kortix_pat_` and the in-sandbox
-// KORTIX_CLI_TOKEN both work; see ./skills/index.ts for the full auth rationale.
+// KORTIX_CLI_TOKEN works; see ./skills/index.ts for the full auth rationale.
 app.use('/v1/skills', combinedAuth);
 app.use('/v1/skills/*', combinedAuth);
 app.route('/v1/skills', skillsApp); // GET /v1/skills, /v1/skills/:name[?full=1], /v1/skills/:name/file?path=
@@ -794,14 +794,14 @@ app.route('/v1/skills', skillsApp); // GET /v1/skills, /v1/skills/:name[?full=1]
   app.route('/v1/git', gitProxyApp); // /v1/git/:projectId(.git)/{info/refs,git-upload-pack,git-receive-pack}
 }
 
-// Executor — unified connector layer. Gateway routes (/connectors, /call) use
-// KORTIX_EXECUTOR_TOKEN (validated inside the router); admin routes
+// Connector — unified connector layer. Gateway routes (/catalog, /call) use
+// KORTIX_CLI_TOKEN (validated inside the router); admin routes
 // (/projects/:id/connectors*) need user auth, so combinedAuth runs first.
 {
-  const { executorApp } = await import('./executor');
-  app.use('/v1/executor/projects/*', combinedAuth);
-  app.use('/v1/executor/connect-status', combinedAuth); // deployment capability flag (authed)
-  app.route('/v1/executor', executorApp); // /v1/executor/connectors, /call, /projects/:id/connectors[/sync|/:slug/sharing]
+  const { connectorApp } = await import('./connectors');
+  app.use('/v1/connectors/projects/*', combinedAuth);
+  app.use('/v1/connectors/connect-status', combinedAuth); // deployment capability flag (authed)
+  app.route('/v1/connectors', connectorApp);
 }
 
 app.route('/v1/webhooks', projectWebhooksApp); // /v1/webhooks/:triggerId — signed project trigger fires
@@ -873,7 +873,7 @@ app.route('/v1/admin', adminApp);
 
 // OAuth2 provider — public token endpoint, auth on authorize/consent
 app.route('/v1/oauth', oauthApp);
-app.route('/v1/integrations/oauth2', nativeOAuth2CallbackApp);
+app.route('/v1/connectors/oauth2', nativeOAuth2CallbackApp);
 
 // Public device-auth endpoints (no auth — CLI uses these)
 import { createDeviceAuthPublicRouter } from './tunnel/routes/device-auth';

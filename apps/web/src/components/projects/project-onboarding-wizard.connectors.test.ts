@@ -10,17 +10,17 @@ const source = readFileSync(
   'utf8',
 );
 
-describe('project onboarding connector profiles', () => {
-  test('collects an explicit profile before starting authorization', () => {
-    expect(source).toContain('<ConnectorProfileModal');
-    expect(source).toContain('idPrefix="onboarding-tool-profile"');
-    expect(source).toContain('profileSlug: profile.slug');
-    expect(source).toContain('authorizationStrategy: profile.authorizationStrategy');
+describe('project onboarding connections', () => {
+  test('collects an explicit connection before connecting', () => {
+    expect(source).toContain('<ConnectorConnectionModal');
+    expect(source).toContain('idPrefix="onboarding-tool-connection"');
+    expect(source).toContain('connectorSlug: connection.slug');
+    expect(source).toContain('authorizationStrategy: connection.authorizationStrategy');
   });
 
-  test('allows multiple profiles for one provider app', () => {
-    expect(source).toContain('proposeConnectorProfileSlug(selectedApp.slug, existingSlugs)');
-    expect(source).toContain('aria-label={`Add ${app.name} profile`}');
+  test('allows multiple connections for one provider app', () => {
+    expect(source).toContain('proposeConnectorConnectionSlug(selectedApp.slug, existingSlugs)');
+    expect(source).toContain('aria-label={`Add ${app.name} connection`}');
     expect(source).not.toContain('disabled={connected || busy}');
   });
 

@@ -48,6 +48,26 @@ test('project(id) handle binds the id and hits the right endpoint', async () => 
   expect(last().method).toBe('GET');
 });
 
+test('project(id).connectors exposes the complete connector data plane', async () => {
+  const connectors = kortix.project('PID123').connectors;
+
+  expect(typeof connectors.catalog).toBe('function');
+  expect(typeof connectors.tools).toBe('function');
+  expect(typeof connectors.search).toBe('function');
+  expect(typeof connectors.describe).toBe('function');
+  expect(typeof connectors.call).toBe('function');
+  expect(typeof connectors.uploadAttachment).toBe('function');
+
+  await connectors.call('slack.send_message', { channel: 'C1', text: 'hello' });
+  expect(last().url).toBe('http://test.local/connectors/projects/PID123/call');
+  expect(last().method).toBe('POST');
+  expect(last().body).toEqual({
+    connector: 'slack',
+    action: 'send_message',
+    args: { channel: 'C1', text: 'hello' },
+  });
+});
+
 test('project(id).secrets.broker binds the project and encoded identifier', async () => {
   await kortix.project('PID123').secrets.broker('primary/key', {
     url: 'https://api.example.com/v1/items',

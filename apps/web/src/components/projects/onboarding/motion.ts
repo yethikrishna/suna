@@ -59,6 +59,30 @@ export function slideVariants(reduced: boolean): Variants {
 }
 
 /**
+ * Context enters from the rail side without moving the decision lane.
+ *
+ * The rail uses the same timing as the step transition, but it does not mirror
+ * with navigation direction. It always belongs to the right side of the lane.
+ * Reduced motion keeps only the opacity change and omits the x property so the
+ * browser never creates a transform for the rail.
+ */
+export function contextVariants(reduced: boolean): Variants {
+  if (reduced) {
+    return {
+      enter: { opacity: 0 },
+      center: { opacity: 1, transition: ENTER_TRANSITION },
+      exit: { opacity: 0, transition: EXIT_TRANSITION },
+    };
+  }
+
+  return {
+    enter: { opacity: 0, x: TRAVEL },
+    center: { opacity: 1, x: 0, transition: ENTER_TRANSITION },
+    exit: { opacity: 0, x: TRAVEL, transition: EXIT_TRANSITION },
+  };
+}
+
+/**
  * Layout shifts — a sibling appearing and pushing content sideways.
  *
  * A spring, not a tween, because this one is interruptible by design: the row

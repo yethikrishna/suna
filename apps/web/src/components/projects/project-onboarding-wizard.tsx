@@ -6,7 +6,7 @@
  * This file is a FRAME, not a screen. It owns the canvas, the inset panel, the
  * progress bar, the step index, and nothing else. Every step body lives in
  * ./onboarding/steps/, and every one of them renders through `StepShell` inside
- * a single 560px column.
+ * a single 520px decision lane.
  *
  * That column is the whole design. The previous version declared a max width on
  * the body but let individual steps break out of it — a 3-column tile grid in
@@ -41,13 +41,13 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { Modal, ModalContent } from '@/components/ui/modal';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { DemoQualifierModal } from '@/features/contact/demo-qualifier-modal';
 import { useAuth } from '@/features/providers/auth-provider';
 import { useProjectOnboarding } from '@/hooks/projects/use-project-onboarding';
 import { usePersonalContactTier } from '@/hooks/use-show-personal-contact';
 import { isConnectorsEnabled } from '@/lib/config';
-import { cn } from '@/lib/utils';
 import { useComposerPrefillStore } from '@/stores/composer-prefill-store';
 import { listConnectors } from '@kortix/sdk';
 
@@ -58,13 +58,13 @@ import {
   firstStepAfterSurvey,
 } from './onboarding/onboarding-profile';
 import { StepProgress } from './onboarding/step-shell';
-import { useOnboardingAnswers } from './onboarding/use-onboarding-answers';
 import { CompanyStep } from './onboarding/steps/company-step';
 import { DoneStep } from './onboarding/steps/done-step';
 import { PlanStep } from './onboarding/steps/plan-step';
 import { SlackStep } from './onboarding/steps/slack-step';
 import { ToolsStep } from './onboarding/steps/tools-step';
 import { UseCaseStep } from './onboarding/steps/use-case-step';
+import { useOnboardingAnswers } from './onboarding/use-onboarding-answers';
 
 const CAL_LINK = 'team/kortix/demo';
 const CAL_NAMESPACE = 'kortix-onboarding-wizard';
@@ -98,6 +98,14 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
   const connectorsEnabled = isConnectorsEnabled();
   const steps = useMemo(() => buildSteps(connectorsEnabled), [connectorsEnabled]);
   const stepId = steps[index] ?? 'use-case';
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('onboarding-step-title')?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [stepId]);
 
   // `?onboarding-reset` reopens the wizard from the top (clears completion flag).
   const resetFn = onboarding.reset;
@@ -165,121 +173,117 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
 
   // Skipping the survey jumps past BOTH questions to whatever comes next —
   // `tools` normally, `slack` when connectors are disabled.
-  const skipSurvey = useCallback(
-    () => goTo(() => firstStepAfterSurvey(steps)),
-    [goTo, steps],
-  );
+  const skipSurvey = useCallback(() => goTo(() => firstStepAfterSurvey(steps)), [goTo, steps]);
 
   if (!isPending) return null;
 
   return (
     <>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="bg-muted/30 fixed inset-0 z-[70] p-2"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Project setup"
-      >
-        <div className="border-border/60 bg-background flex h-full flex-col overflow-hidden rounded-md border">
-          {/* The entire chrome: a back control on the left, progress centred.
+      <Modal open>
+        <ModalContent
+          side="fullscreen"
+          animation="none"
+          showCloseButton={false}
+          closeOnOutsideClick={false}
+          overlayClassName="bg-muted/30 fixed inset-0 backdrop-blur-none"
+          className="border-border/60 !bg-background !inset-2 !h-auto !max-h-none !w-auto !max-w-none !translate-x-0 !translate-y-0 !gap-0 !space-y-0 !overflow-hidden !rounded-md border"
+          aria-label="Project setup"
+          onEscapeKeyDown={(event) => {
+            event.preventDefault();
+            if (index > 0) back();
+          }}
+        >
+          <div className="flex h-full flex-col overflow-hidden">
+            {/* The entire chrome: a back control on the left, progress centred.
               No mark, no title. Nothing here competes with the question. */}
-          <div className="relative flex h-14 shrink-0 items-center px-3 md:px-5">
-            {index > 0 && (
-              <Button
-                variant="ghost"
-                size="icon-md"
-                aria-label="Back"
-                className="text-muted-foreground hover:text-foreground active:scale-[0.96]"
-                onClick={back}
-              >
-                <ArrowLeft className="size-4" />
-              </Button>
-            )}
-            <div className="pointer-events-none absolute inset-x-0 flex justify-center">
-              <StepProgress total={steps.length} current={index} />
-            </div>
-          </div>
-
-          <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-5 pb-16 md:items-center md:px-8">
-            {/* The Slack step expands into a second pane on wide screens, so it
-                gets room for the pair. Below xl it stays a single column and
-                the pane stacks underneath. Every other step is 560 flat. */}
-            <div
-              className={cn(
-                'w-full py-8',
-                stepId === 'slack' ? 'max-w-[560px] xl:max-w-[1040px]' : 'max-w-[560px]',
+            <div className="relative flex h-14 shrink-0 items-center px-3 md:px-5">
+              {index > 0 && (
+                <Button
+                  variant="ghost"
+                  size="icon-md"
+                  aria-label="Back"
+                  className="text-muted-foreground hover:text-foreground active:scale-[0.96]"
+                  onClick={back}
+                >
+                  <ArrowLeft className="size-4" />
+                </Button>
               )}
-            >
-              {/* popLayout, not wait: `wait` runs the exit to completion before
+              <div className="pointer-events-none absolute inset-x-0 flex justify-center">
+                <StepProgress total={steps.length} current={index} />
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-5 pb-16 md:items-center md:px-8">
+              <div className="w-full max-w-[520px] py-8">
+                {/* popLayout, not wait: `wait` runs the exit to completion before
                   the enter starts, which doubled every step to ~440ms of dead
                   air. popLayout takes the outgoing step out of flow so the two
                   overlap and the swap reads as one movement. */}
-              <AnimatePresence mode="popLayout" custom={direction} initial={false}>
-                <motion.div
-                  key={stepId}
-                  custom={direction}
-                  variants={stepVariants}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                >
-                  {stepId === 'use-case' && (
-                    <UseCaseStep
-                      value={answers.use_case ?? null}
-                      onSelect={(v) => save({ use_case: v })}
-                      onContinue={next}
-                      onSkip={skipSurvey}
-                    />
-                  )}
-                  {stepId === 'company' && (
-                    <CompanyStep
-                      domain={domain}
-                      size={answers.company_size ?? null}
-                      onDomainChange={setDomain}
-                      onSizeChange={(v) => save({ company_size: v })}
-                      onContinue={() => {
-                        // The domain is free text, so it saves on Continue
-                        // rather than per keystroke.
-                        const trimmed = domain.trim();
-                        if (trimmed && trimmed !== answers.company_domain) {
-                          save({ company_domain: trimmed });
-                        }
-                        next();
-                      }}
-                      onSkip={skipSurvey}
-                    />
-                  )}
-                  {stepId === 'tools' && (
-                    <ToolsStep
-                      projectId={projectId}
-                      existingSlugs={connectorSlugs}
-                      onConnected={refreshConnectors}
-                      onContinue={next}
-                      onSkip={next}
-                    />
-                  )}
-                  {stepId === 'slack' && (
-                    <SlackStep projectId={projectId} onContinue={next} onSkip={next} />
-                  )}
-                  {stepId === 'plan' && <PlanStep onContinue={next} />}
-                  {stepId === 'done' && (
-                    <DoneStep
-                      useCase={answers.use_case ?? null}
-                      profileCount={connectorSlugs.length}
-                      showFounderCall={showFounderStep}
-                      onBookCall={() => setCalOpen(true)}
-                      onStart={complete}
-                      onUsePrompt={startWithPrompt}
-                    />
-                  )}
-                </motion.div>
-              </AnimatePresence>
+                <AnimatePresence mode="popLayout" custom={direction} initial={false}>
+                  <motion.div
+                    key={stepId}
+                    custom={direction}
+                    variants={stepVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                  >
+                    {stepId === 'use-case' && (
+                      <UseCaseStep
+                        value={answers.use_case ?? null}
+                        onSelect={(v) => save({ use_case: v })}
+                        onContinue={next}
+                        onSkip={skipSurvey}
+                      />
+                    )}
+                    {stepId === 'company' && (
+                      <CompanyStep
+                        domain={domain}
+                        size={answers.company_size ?? null}
+                        onDomainChange={setDomain}
+                        onSizeChange={(v) => save({ company_size: v })}
+                        onContinue={() => {
+                          // The domain is free text, so it saves on Continue
+                          // rather than per keystroke.
+                          const trimmed = domain.trim();
+                          if (trimmed && trimmed !== answers.company_domain) {
+                            save({ company_domain: trimmed });
+                          }
+                          next();
+                        }}
+                        onSkip={skipSurvey}
+                      />
+                    )}
+                    {stepId === 'tools' && (
+                      <ToolsStep
+                        projectId={projectId}
+                        existingSlugs={connectorSlugs}
+                        onConnected={refreshConnectors}
+                        onContinue={next}
+                        onSkip={next}
+                      />
+                    )}
+                    {stepId === 'slack' && (
+                      <SlackStep projectId={projectId} onContinue={next} onSkip={next} />
+                    )}
+                    {stepId === 'plan' && <PlanStep onContinue={next} />}
+                    {stepId === 'done' && (
+                      <DoneStep
+                        useCase={answers.use_case ?? null}
+                        profileCount={connectorSlugs.length}
+                        showFounderCall={showFounderStep}
+                        onBookCall={() => setCalOpen(true)}
+                        onStart={complete}
+                        onUsePrompt={startWithPrompt}
+                      />
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
             </div>
           </div>
-        </div>
-      </motion.div>
+        </ModalContent>
+      </Modal>
 
       {showFounderStep && (
         <DemoQualifierModal

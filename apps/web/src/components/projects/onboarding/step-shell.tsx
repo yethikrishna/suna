@@ -1,20 +1,30 @@
 'use client';
 
 /**
- * The only two shapes onboarding is allowed to draw.
+ * The shared shapes onboarding is allowed to draw.
  *
- * Every step renders inside `StepShell` and every selectable option is a
- * `ChoiceRow`. That constraint IS the redesign: the previous wizard gave each
- * step its own container — a tile grid here, a full-bleed card there — which is
- * what made five screens read as five unrelated screens rather than one flow.
+ * Every step renders inside `StepShell`. Survey choices use `SelectionRow`.
+ * Actions use `ActionRow`. Optional supporting content uses `StepContext`.
  *
  * Adding an eighth step must never require inventing new chrome.
  */
 
-import type { ReactNode } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
+import { useId, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
+
+import { contextVariants } from './motion';
+
+const rowClassName = cn(
+  'border-border bg-popover text-foreground flex min-h-12 w-full cursor-pointer items-center gap-3 rounded-md border px-4 py-3 text-left',
+  'transition-[background-color,border-color,scale] duration-150 active:scale-[0.99]',
+  'hover:border-primary/30 hover:bg-primary/[0.03]',
+  'focus-visible:ring-kortix-base focus-visible:ring-[0.6px] focus-visible:outline-none',
+  'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+);
 
 /**
  * Six short ticks, centred in the top bar. Segments rather than one continuous
@@ -23,7 +33,14 @@ import { cn } from '@/lib/utils';
  */
 export function StepProgress({ total, current }: { total: number; current: number }) {
   return (
-    <div className="flex w-[200px] items-center gap-1.5" aria-hidden>
+    <div
+      className="flex w-[200px] items-center gap-1.5"
+      role="progressbar"
+      aria-label="Setup progress"
+      aria-valuemin={1}
+      aria-valuemax={total}
+      aria-valuenow={current + 1}
+    >
       {Array.from({ length: total }).map((_, i) => (
         <span
           key={i}
@@ -47,6 +64,7 @@ export function StepShell({
   onPrimary,
   skipLabel,
   onSkip,
+  context,
 }: {
   title: string;
   description?: string;
@@ -56,11 +74,16 @@ export function StepShell({
   onPrimary: () => void;
   skipLabel?: string;
   onSkip?: () => void;
+  context?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col">
+    <div className="relative flex flex-col">
       <div className="space-y-2.5">
-        <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance">
+        <h1
+          id="onboarding-step-title"
+          tabIndex={-1}
+          className="text-foreground text-2xl font-semibold tracking-tight text-balance focus:outline-none"
+        >
           {title}
         </h1>
         {description && (
@@ -94,10 +117,107 @@ export function StepShell({
           {primaryLabel}
         </Button>
       </div>
+
+      {context}
     </div>
   );
 }
 
+export function StepContext({ children }: { children: ReactNode }) {
+  const reduced = useReducedMotion() ?? false;
+
+  return (
+    <motion.aside
+      variants={contextVariants(reduced)}
+      initial="enter"
+      animate="center"
+      exit="exit"
+      className="mt-6 w-full xl:absolute xl:top-0 xl:left-[calc(100%+2rem)] xl:mt-0 xl:w-[340px]"
+    >
+      {children}
+    </motion.aside>
+  );
+}
+
+export function SelectionRow({
+  value,
+  label,
+  description,
+  leading,
+  disabled,
+}: {
+  value: string;
+  label: string;
+  description?: string;
+  leading?: ReactNode;
+  disabled?: boolean;
+}) {
+  const id = useId();
+
+  return (
+    <label
+      htmlFor={id}
+      className={cn(
+        rowClassName,
+        'has-data-[state=checked]:border-primary/40 has-data-[state=checked]:bg-primary/[0.05]',
+        'has-focus-visible:ring-kortix-base has-focus-visible:ring-[0.6px] has-focus-visible:outline-none',
+        disabled && 'pointer-events-none cursor-not-allowed opacity-50',
+      )}
+    >
+      {leading}
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">{label}</span>
+        {description && (
+          <span className="text-muted-foreground block text-xs text-pretty">{description}</span>
+        )}
+      </span>
+      <RadioGroupItem id={id} value={value} disabled={disabled} />
+    </label>
+  );
+}
+
+export function ActionRow({
+  label,
+  description,
+  leading,
+  trailing,
+  active,
+  disabled,
+  onSelect,
+  onPreload,
+}: {
+  label: string;
+  description?: string;
+  leading?: ReactNode;
+  trailing?: ReactNode;
+  active?: boolean;
+  disabled?: boolean;
+  onSelect: () => void;
+  onPreload?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-pressed={active === undefined ? undefined : active}
+      onClick={onSelect}
+      onPointerEnter={onPreload}
+      onFocus={onPreload}
+      className={cn(rowClassName, active && 'border-primary/40 bg-primary/[0.05]')}
+    >
+      {leading}
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">{label}</span>
+        {description && (
+          <span className="text-muted-foreground block text-xs text-pretty">{description}</span>
+        )}
+      </span>
+      {trailing && <span className="shrink-0">{trailing}</span>}
+    </button>
+  );
+}
+
+/** @deprecated Use SelectionRow or ActionRow for new onboarding steps. */
 export function ChoiceRow({
   selected,
   label,
@@ -141,19 +261,7 @@ export function ChoiceRow({
       onClick={onSelect}
       onPointerEnter={onPreload}
       onFocus={onPreload}
-      className={cn(
-        // py-3 + two text lines clears the 40px minimum hit area comfortably.
-        'bg-popover flex w-full items-center gap-3 rounded-md border px-4 py-3 text-left',
-        // Named properties, never `transition-all`. Scale is 0.99, not the usual
-        // 0.96: at the column's 560px this row is wide enough that 4% reads as a
-        // lurch rather than a press.
-        'transition-[background-color,border-color,scale] duration-150 active:scale-[0.99]',
-        'hover:border-primary/30 hover:bg-primary/[0.03]',
-        'focus-visible:ring-kortix-base focus-visible:ring-[0.6px] focus-visible:outline-none',
-        'disabled:pointer-events-none disabled:opacity-50',
-        // Selection is a tinted primary wash, never `bg-muted`.
-        selected && 'border-primary/40 bg-primary/[0.05]',
-      )}
+      className={cn(rowClassName, selected && 'border-primary/40 bg-primary/[0.05]')}
     >
       {leading ?? (
         <span

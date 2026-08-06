@@ -3,7 +3,11 @@ import type { DailyCreditConfig, TierConfig, TierEntitlements } from '../../type
 // Config-free tier facts live in their own module so genuinely pure consumers
 // (billing-state.ts) can import them without booting env validation. Re-exported
 // here so every existing `from './tiers'` import keeps working — one definition.
-import { accountMetersCompute, isCreditPlanAccount, isPaidTier, isPerSeatAccount } from './tier-facts';
+// Only what this module CALLS. Everything else from tier-facts reaches
+// consumers through the re-export block below — importing a name here purely to
+// re-export it is a dead local binding (CodeQL flags it, and `isPaidTier` had
+// been sitting unused on this line since before the credit plans landed).
+import { isPerSeatAccount } from './tier-facts';
 
 export {
   MINIMUM_CREDIT_FOR_RUN,

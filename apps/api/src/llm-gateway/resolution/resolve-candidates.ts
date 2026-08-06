@@ -178,7 +178,19 @@ export async function resolveCandidates(
       const tier = config.KORTIX_BILLING_INTERNAL_ENABLED
         ? await resolveCachedAccountTier(principal.accountId)
         : 'self-hosted';
+      // TWO DIFFERENT QUESTIONS. Conflating them is what let a credit plan reach
+      // managed inference through the back door.
+      //
+      // 1. Does this account pay the BYOK platform fee? Free accounts do not;
+      //    every paid account does, including the v3 credit plans.
       const isFreeTier = config.KORTIX_BILLING_INTERNAL_ENABLED && tier === 'free';
+      // 2. May this account use MANAGED inference at all? `models: []` says no
+      //    for Starter/Team/Scale even though they are paid, so this cannot be a
+      //    `tier === 'free'` check — it has to be the same entitlement predicate
+      //    the direct managed path uses. Billing disabled (self-hosted) keeps
+      //    the fallback, as before.
+      const mayUseManagedModels =
+        !config.KORTIX_BILLING_INTERNAL_ENABLED || !accountIsFreeTierForModels(tier);
       const resolvedModelId = effectiveModel.slice(provider.length + 1);
       // Capability flags from the catalog (models.dev enrichment) so the
       // transport can decide which params a reasoning-restricted model
@@ -233,9 +245,15 @@ export async function resolveCandidates(
       // Queue a managed model behind the BYOK key: if the user's key hits a
       // rate-limit / quota / billing error, the failover loop falls over to it
       // (billed as Kortix credits) so the turn doesn't die.
-      return isFreeTier
-        ? byokDescriptors
-        : [...byokDescriptors, ...byokFallbackCandidates()];
+      //
+      // Only for accounts entitled to managed models. Otherwise a plan that
+      // includes no inference could reach it by having its own key rate-limit —
+      // serving managed tokens the plan forbids, and skipping the wallet
+      // admission gate on the way, since that gate is bypassed for exactly the
+      // tiers this fallback would be serving.
+      return mayUseManagedModels
+        ? [...byokDescriptors, ...byokFallbackCandidates()]
+        : byokDescriptors;
     }
     // No shared key configured for this project — provider keys are always
     // project-wide, so there's no other place to look.

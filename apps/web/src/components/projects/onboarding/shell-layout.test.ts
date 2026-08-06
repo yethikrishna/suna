@@ -44,7 +44,8 @@ describe('onboarding shell', () => {
   test('keeps every desktop step title on one fixed top baseline', () => {
     expect(shell).toContain('items-start justify-center');
     expect(shell).not.toContain('md:items-center');
-    expect(shell).toContain('max-w-[520px] py-8');
+    expect(shell).toContain('max-w-[520px] pt-8');
+    expect(shell).toContain('pb-[max(2rem,env(safe-area-inset-bottom))]');
   });
 
   test('binds dialog labelling to existing ids for the active step', () => {
@@ -134,6 +135,11 @@ describe('step shell primitive', () => {
     expect(stepShell).toContain('md:justify-end');
     expect(stepShell).toContain('md:min-w-36');
     expect(stepShell).not.toContain('className="flex-1');
+  });
+
+  test('keeps mobile visual and focus order aligned', () => {
+    expect(stepShell).toContain('mt-8 flex flex-col gap-3');
+    expect(stepShell).not.toContain('flex-col-reverse');
   });
 
   test('puts real distance between the content and the actions', () => {

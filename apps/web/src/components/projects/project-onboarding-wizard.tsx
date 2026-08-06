@@ -240,7 +240,7 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
             </div>
 
             <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-5 md:px-8">
-              <div className="w-full max-w-[520px] py-8">
+              <div className="w-full max-w-[520px] pt-8 pb-[max(2rem,env(safe-area-inset-bottom))]">
                 {/* popLayout, not wait: `wait` runs the exit to completion before
                   the enter starts, which doubled every step to ~440ms of dead
                   air. popLayout takes the outgoing step out of flow so the two

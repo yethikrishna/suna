@@ -120,7 +120,7 @@ export function StepShell({
           the content above. A skip tucked directly under the primary reads as a
           footnote to it; side by side it reads as the other choice, which is
           what it is. */}
-      <div className="mt-8 flex flex-col-reverse gap-3 md:flex-row md:items-center md:justify-end">
+      <div className="mt-8 flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
         {skipLabel && onSkip && (
           <Button
             size="lg"

@@ -20,7 +20,6 @@ import { AnimatePresence } from 'motion/react';
 import { Suspense, lazy, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { InfoBanner } from '@/components/ui/info-banner';
 import Loading from '@/components/ui/loading';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSlackInstall, useSlackMode } from '@/hooks/channels/use-channels-installations';
@@ -80,7 +79,13 @@ export function SlackStep({
   const openInstall = () => {
     if (!installUrl) return;
     window.open(installUrl, 'kortix-slack-install', 'width=640,height=780,noopener');
+    setCustomRequested(false);
     setPollRequested(true);
+  };
+
+  const toggleCustom = () => {
+    setPollRequested(false);
+    setCustomRequested((open) => !open);
   };
 
   return (
@@ -90,12 +95,32 @@ export function SlackStep({
       primaryLabel="Continue"
       primaryDisabled={!connected}
       onPrimary={onContinue}
-      skipLabel={connected ? undefined : 'Skip'}
+      skipLabel={connected ? undefined : 'Not now'}
       onSkip={connected ? undefined : onSkip}
       context={
         <AnimatePresence initial={false}>
-          {customOpen && (
-            <StepContext>
+          {connected ? (
+            <StepContext key="connected">
+              <div
+                className="border-border/60 bg-popover rounded-md border p-4"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <div className="flex items-center gap-2">
+                  <Check className="text-kortix-green size-4 shrink-0" />
+                  <h2 className="text-foreground text-sm font-medium">Connected to Slack</h2>
+                </div>
+                <p className="text-muted-foreground mt-2 text-xs leading-5 text-pretty">
+                  Installed to{' '}
+                  <span className="text-foreground font-medium">
+                    {install.data?.workspaceName || install.data?.workspaceId}
+                  </span>
+                  . You can @mention your agent in any channel it&apos;s invited to.
+                </p>
+              </div>
+            </StepContext>
+          ) : customOpen ? (
+            <StepContext key="custom">
               <div className="border-border/60 bg-popover rounded-md border p-4">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div className="space-y-1">
@@ -124,52 +149,57 @@ export function SlackStep({
                 height governed by the chooser, so nothing moves but the panel. */}
                 <div className="max-h-[380px] overflow-y-auto pr-1">
                   <Suspense fallback={<Skeleton className="h-[380px] w-full rounded-md" />}>
-                    <SlackConnectForm projectId={projectId} onConnected={() => install.refetch()} />
+                    <SlackConnectForm
+                      projectId={projectId}
+                      customOnly
+                      onConnected={() => install.refetch()}
+                    />
                   </Suspense>
                 </div>
               </div>
             </StepContext>
-          )}
+          ) : waiting ? (
+            <StepContext key="waiting">
+              <div
+                className="border-border/60 bg-popover rounded-md border p-4"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <div className="flex items-center gap-2">
+                  <Loading className="size-4 shrink-0" />
+                  <h2 className="text-foreground text-sm font-medium">
+                    Waiting for approval in Slack…
+                  </h2>
+                </div>
+                <p className="text-muted-foreground mt-2 text-xs leading-5 text-pretty">
+                  Complete the install in the Slack popup. Kortix checks the connection every 2.5
+                  seconds.
+                </p>
+              </div>
+            </StepContext>
+          ) : null}
         </AnimatePresence>
       }
     >
-      {connected ? (
-        <InfoBanner tone="success" icon={Check} title="Connected to Slack">
-          Installed to{' '}
-          <span className="font-medium">
-            {install.data?.workspaceName || install.data?.workspaceId}
-          </span>
-          . You can @mention your agent in any channel it&apos;s invited to.
-        </InfoBanner>
-      ) : (
+      {!connected ? (
         <div className="flex flex-col gap-2" role="group" aria-label="Slack install method">
           <ActionRow
-            label={waiting ? 'Waiting for approval in Slack…' : 'Add to Slack'}
-            description={
-              waiting
-                ? 'We’ll detect it automatically — no need to come back here'
-                : 'One click, nothing to configure'
-            }
-            disabled={mode.isLoading || !installUrl}
+            label="Add to Slack"
+            description="One click, nothing to configure"
+            disabled={mode.isLoading || !installUrl || waiting}
             onSelect={openInstall}
-            leading={
-              waiting ? (
-                <Loading className="size-4 shrink-0" />
-              ) : (
-                <Lightning className="text-muted-foreground size-4 shrink-0" />
-              )
-            }
+            leading={<Lightning className="text-muted-foreground size-4 shrink-0" />}
           />
           <ActionRow
             active={customOpen}
             label="Use a custom Slack app"
             description="For self-hosted workspaces, or when managed install is unavailable"
-            onSelect={() => setCustomRequested((open) => !open)}
+            onSelect={toggleCustom}
             onPreload={preloadConnectorsView}
             leading={<Sliders className="text-muted-foreground size-4 shrink-0" />}
           />
         </div>
-      )}
+      ) : null}
     </StepShell>
   );
 }

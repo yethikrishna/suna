@@ -13,7 +13,7 @@
  * deferring a legitimate answer rather than an escape hatch.
  */
 
-import { ClockIcon as Clock, KeyIcon as Key, SparkleIcon as Sparkle } from '@phosphor-icons/react';
+import { ClockIcon as Clock, KeyIcon as Key } from '@phosphor-icons/react';
 import { useState } from 'react';
 
 import { RadioGroup } from '@/components/ui/radio-group';
@@ -21,6 +21,7 @@ import { flattenModels } from '@/features/session/session-chat-input';
 import { useModelConnectionGate } from '@/features/session/use-model-connection-gate';
 import { useRuntimeProviders } from '@kortix/sdk/react';
 
+import { Kortix } from '@/features/icon/icons/kortix';
 import { SelectionRow, StepContext, StepShell } from '../step-shell';
 
 type PlanChoice = 'kortix' | 'byok' | 'later';
@@ -94,11 +95,9 @@ export function PlanStep({ onContinue }: { onContinue: () => void }) {
         onPrimary={handleContinue}
         context={
           <StepContext>
-            <div className="bg-popover rounded-md border px-4 py-5">
+            <div className="bg-popover rounded-md border px-4 py-3">
               <p className="text-foreground text-sm font-medium">{context.title}</p>
-              <p className="text-muted-foreground mt-1 text-xs leading-5 text-pretty">
-                {context.copy}
-              </p>
+              <p className="text-muted-foreground text-xs leading-5 text-pretty">{context.copy}</p>
             </div>
           </StepContext>
         }
@@ -116,14 +115,14 @@ export function PlanStep({ onContinue }: { onContinue: () => void }) {
               value="kortix"
               label="Use Kortix models"
               description="Instant access, higher limits, nothing to configure"
-              leading={<Sparkle className="text-muted-foreground size-4 shrink-0" />}
+              leading={<Kortix className="size-5 shrink-0" />}
             />
           )}
           <SelectionRow
             value="byok"
             label={hasSelectableModels ? 'Connect another provider' : 'Bring your own API key'}
             description="Anthropic, OpenAI, or any other provider"
-            leading={<Key className="text-muted-foreground size-4 shrink-0" />}
+            leading={<Key className="text-muted-foreground size-5 shrink-0" weight="duotone" />}
           />
           <SelectionRow
             value="later"
@@ -133,7 +132,7 @@ export function PlanStep({ onContinue }: { onContinue: () => void }) {
                 ? 'Carry on with the model that’s already connected'
                 : 'The composer will ask the first time you send a task'
             }
-            leading={<Clock className="text-muted-foreground size-4 shrink-0" />}
+            leading={<Clock className="text-muted-foreground size-5 shrink-0" weight="duotone" />}
           />
         </RadioGroup>
       </StepShell>

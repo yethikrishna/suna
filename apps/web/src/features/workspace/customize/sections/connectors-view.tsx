@@ -1413,7 +1413,7 @@ export function ConnectorDetail({
       <div className="mt-7 space-y-5">
         <section className="space-y-2">
           <Label>Authorization</Label>
-          <div className="bg-popover rounded-md border px-4 py-5">
+          <div className="bg-popover rounded-md border px-4 py-3">
             <AuthorizationStrategyField
               idPrefix={`connector-${connector.slug}`}
               value={connector.authorizationStrategy}
@@ -1751,7 +1751,7 @@ export function ChannelConnectionSection({
     return (
       <section className="space-y-4">
         <Label>Connection</Label>
-        <div className="bg-popover rounded-md border px-4 py-5">
+        <div className="bg-popover rounded-md border px-4 py-3">
           <p className="text-muted-foreground text-sm">
             Nothing to connect — voice calls run on Kortix&apos;s own infrastructure. Your agent can
             start a call, follow what is said, and speak into it. Use the Permissions tab to choose
@@ -1764,7 +1764,7 @@ export function ChannelConnectionSection({
   return (
     <section className="space-y-4">
       <Label>Connection</Label>
-      <div className="bg-popover rounded-md border px-4 py-5">
+      <div className="bg-popover rounded-md border px-4 py-3">
         <InfoBanner tone="warning">
           This channel connection is missing its platform setting.
         </InfoBanner>
@@ -1794,7 +1794,7 @@ function EmailChannelConnection({
       <p className="text-muted-foreground -mt-2 text-xs">
         AgentMail inbox assigned to this connection.
       </p>
-      <div className="bg-popover rounded-md border px-4 py-5">
+      <div className="bg-popover rounded-md border px-4 py-3">
         {install.isLoading ? (
           <Skeleton className="h-24 w-full rounded-2xl" />
         ) : install.data ? (
@@ -2325,7 +2325,7 @@ function SlackChannelConnection({
       <p className="text-muted-foreground -mt-2 text-xs">
         Slack workspace assigned to this connection.
       </p>
-      <div className="bg-popover rounded-md border px-4 py-5">
+      <div className="bg-popover rounded-md border px-4 py-3">
         {install.isLoading ? (
           <Skeleton className="h-24 w-full rounded-2xl" />
         ) : install.data ? (
@@ -2735,7 +2735,7 @@ export function ConnectionSection({
           'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrDescriptionHowa31daf50',
         )}
       </p>
-      <div className="bg-popover rounded-md border px-4 py-5">
+      <div className="bg-popover rounded-md border px-4 py-3">
         {configQuery.isError ? (
           <InfoBanner
             tone="destructive"
@@ -3117,7 +3117,7 @@ export function PermissionsSection({
           whatever you set here is ignored. They are marked below.
         </InfoBanner>
       )}
-      <div className="bg-popover rounded-md border px-4 py-5">
+      <div className="bg-popover rounded-md border px-4 py-3">
         <div className="space-y-4">
           <div className="space-y-2">
             <Label>Default</Label>

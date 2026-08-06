@@ -1,44 +1,9 @@
 'use client';
 
-/**
- * Project onboarding — a guided setup flow for a brand-new project.
- *
- * This file is a FRAME, not a screen. It owns the canvas, the inset panel, the
- * progress bar, the step index, and nothing else. Every step body lives in
- * ./onboarding/steps/, and every one of them renders through `StepShell` inside
- * a single 520px decision lane.
- *
- * That column is the whole design. The previous version declared a max width on
- * the body but let individual steps break out of it — a 3-column tile grid in
- * one, a viewport-tall scroller in another, full-bleed cards in two more — so
- * five screens read as five unrelated screens. One column, one row primitive,
- * and an eighth step would cost no new chrome.
- *
- * The steps:
- *
- *   1. Welcome            — a warm start (founder concierge when eligible).
- *   2. Use case           — what the team will actually use Kortix for.
- *   3. Your company       — domain (prefilled from a work email) + size.
- *   4. Connect your tools — real Pipedream OAuth, inline. Skipped entirely when
- *                           Pipedream isn't configured (self-host without
- *                           PIPEDREAM_*, see isConnectorsEnabled()).
- *   5. Add to Slack       — one-click install, POLLED. Gated, with a quiet skip.
- *   6. Choose your plan   — start free, or upgrade. Never a gate.
- *   7. You're all set     — starting points picked from the step-2 answer.
- *
- * Steps 2 and 3 are the survey and are skippable together in one click.
- *
- * Self-gates: only renders while the project's onboarding status is 'pending'
- * (no `metadata.onboarding_completed_at`).
- *
- * NOTE: copy here is plain English. The repo's hardcoded-UI i18n keys still need
- * to be generated for these strings before this ships beyond local testing.
- */
-
 import { ArrowLeftIcon as ArrowLeft } from '@phosphor-icons/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion, useReducedMotion, type Variants } from 'motion/react';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Modal, ModalContent } from '@/components/ui/modal';
@@ -76,17 +41,27 @@ function AnimatedStep({
   direction,
   variants,
   idPrefix,
+  ref,
 }: {
   children: ReactNode;
   direction: number;
   variants: Variants;
   idPrefix: string;
+  // popLayout measures the exiting step through this ref. Without it the
+  // outgoing step is never popped out of flow, the centred flex container
+  // lays both steps out as one stack during the swap, and the content visibly
+  // drops, then jumps back up when the exit unmounts.
+  ref?: Ref<HTMLDivElement>;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
 
   return (
     <motion.div
-      ref={frameRef}
+      ref={(node) => {
+        frameRef.current = node;
+        if (typeof ref === 'function') ref(node);
+        else if (ref) ref.current = node;
+      }}
       custom={direction}
       variants={variants}
       initial="enter"
@@ -211,7 +186,7 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
           showCloseButton={false}
           closeOnOutsideClick={false}
           overlayClassName="bg-muted/30 fixed inset-0 backdrop-blur-none"
-          className="border-border/60 !bg-background !inset-0 !h-[100dvh] !max-h-none !min-h-[100dvh] !w-auto !max-w-none !translate-x-0 !translate-y-0 !gap-0 !space-y-0 !overflow-hidden !rounded-none !border-0 md:!inset-2 md:!h-auto md:!min-h-0 md:!rounded-md md:!border"
+          className="border-border bg-background! inset-0! h-dvh! max-h-none! min-h-dvh! w-auto! max-w-none! translate-x-0! translate-y-0! gap-0! space-y-0! overflow-hidden! rounded-none! border-0! md:inset-2! md:h-auto! md:min-h-0! md:rounded-md! md:border!"
           aria-labelledby={`onboarding-${stepId}-title`}
           aria-describedby={`onboarding-${stepId}-description`}
           onEscapeKeyDown={(event) => {
@@ -222,11 +197,11 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
           <div className="flex h-full flex-col overflow-hidden">
             {/* The entire chrome: a back control on the left, progress centred.
               No mark, no title. Nothing here competes with the question. */}
-            <div className="relative flex h-14 shrink-0 items-center px-3 md:px-5">
+            <div className="relative flex h-14 shrink-0 items-center px-4 ">
               {index > 0 && (
                 <Button
                   variant="ghost"
-                  size="icon-md"
+                  size="icon"
                   aria-label="Back"
                   className="text-muted-foreground hover:text-foreground active:scale-[0.96] motion-reduce:active:scale-100"
                   onClick={back}
@@ -239,7 +214,7 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-5 md:px-8">
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 md:px-8">
               <div className="w-full max-w-[520px] pt-8 pb-[max(2rem,env(safe-area-inset-bottom))]">
                 {/* popLayout, not wait: `wait` runs the exit to completion before
                   the enter starts, which doubled every step to ~440ms of dead

@@ -10,12 +10,7 @@
  * The install itself is unchanged: open the OAuth popup, poll, detect.
  */
 
-import {
-  CheckIcon as Check,
-  LightningIcon as Lightning,
-  SlidersHorizontalIcon as Sliders,
-  XIcon as X,
-} from '@phosphor-icons/react';
+import { CheckCircleIcon, SlidersHorizontalIcon, XIcon as X } from '@phosphor-icons/react';
 import { AnimatePresence } from 'motion/react';
 import { Suspense, lazy, useEffect, useState } from 'react';
 
@@ -24,6 +19,7 @@ import Loading from '@/components/ui/loading';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSlackInstall, useSlackMode } from '@/hooks/channels/use-channels-installations';
 
+import { Slack } from '@/features/icon/icons/slack';
 import { ActionRow, StepContext, StepShell } from '../step-shell';
 
 /** Lazy — keeps the giant connectors-view module out of the project bundle. */
@@ -102,12 +98,12 @@ export function SlackStep({
           {connected ? (
             <StepContext key="connected">
               <div
-                className="border-border/60 bg-popover rounded-md border p-4"
+                className="border-border bg-popover rounded-md border p-4"
                 aria-live="polite"
                 aria-atomic="true"
               >
                 <div className="flex items-center gap-2">
-                  <Check className="text-kortix-green size-4 shrink-0" />
+                  <CheckCircleIcon weight="fill" className="text-kortix-green size-4 shrink-0" />
                   <h2 className="text-foreground text-sm font-medium">Connected to Slack</h2>
                 </div>
                 <p className="text-muted-foreground mt-2 text-xs leading-5 text-pretty">
@@ -121,7 +117,7 @@ export function SlackStep({
             </StepContext>
           ) : customOpen ? (
             <StepContext key="custom">
-              <div className="border-border/60 bg-popover rounded-md border p-4">
+              <div className="border-border bg-popover rounded-md border p-4">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div className="space-y-1">
                     <h2 className="text-foreground text-sm font-medium">
@@ -188,7 +184,7 @@ export function SlackStep({
             description="One click, nothing to configure"
             disabled={mode.isLoading || !installUrl || waiting}
             onSelect={openInstall}
-            leading={<Lightning className="text-muted-foreground size-4 shrink-0" />}
+            leading={<Slack className="size-5 shrink-0" />}
           />
           <ActionRow
             active={customOpen}
@@ -196,7 +192,7 @@ export function SlackStep({
             description="For self-hosted workspaces, or when managed install is unavailable"
             onSelect={toggleCustom}
             onPreload={preloadConnectorsView}
-            leading={<Sliders className="text-muted-foreground size-4 shrink-0" />}
+            leading={<SlidersHorizontalIcon className="text-muted-foreground size-5 shrink-0" weight="duotone" />}
           />
         </div>
       ) : null}

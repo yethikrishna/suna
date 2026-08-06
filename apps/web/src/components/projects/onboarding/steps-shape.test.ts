@@ -23,6 +23,13 @@ describe('use-case step', () => {
   test('uses selection semantics for its single survey answer', () => {
     expect(useCase).toContain('<SelectionRow');
   });
+
+  // Icons make the seven options scannable; SelectionRow already owns the slot.
+  test('gives every use case a phosphor leading icon', () => {
+    expect(useCase).toContain('@phosphor-icons/react');
+    expect(useCase).toContain('USE_CASE_ICONS');
+    expect(useCase).toContain('leading=');
+  });
 });
 
 describe('tools step', () => {
@@ -129,6 +136,14 @@ describe('company step', () => {
   test('separates the two questions properly', () => {
     expect(company).toContain('space-y-8');
     expect(company).not.toContain('space-y-10');
+  });
+
+  // Invalid non-empty domain shakes the whole InputGroup, not just the input.
+  test('wires domain validation into a group-level shake', () => {
+    expect(company).toContain('isValidCompanyHttpLink');
+    expect(company).toContain('aria-invalid={domainInvalid || undefined}');
+    expect(company).toContain("domainInvalid && 'motion-safe:animate-shake'");
+    expect(company).toContain('aria-invalid:animate-none');
   });
 });
 

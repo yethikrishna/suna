@@ -5,6 +5,7 @@ import {
   COMPANY_SIZES,
   deriveCompanyDomain,
   firstStepAfterSurvey,
+  isValidCompanyHttpLink,
   starterPromptsFor,
   surveyPosition,
   USE_CASE_OPTIONS,
@@ -98,6 +99,28 @@ describe('deriveCompanyDomain', () => {
   // it through because it only denylists known consumer providers.
   test('returns empty for a domain with no dot', () => {
     expect(deriveCompanyDomain('sam@localhost')).toBe('');
+  });
+});
+
+describe('isValidCompanyHttpLink', () => {
+  test('allows empty — the field is optional', () => {
+    expect(isValidCompanyHttpLink('')).toBe(true);
+    expect(isValidCompanyHttpLink('   ')).toBe(true);
+  });
+
+  test('allows bare hostnames and http(s) URLs', () => {
+    expect(isValidCompanyHttpLink('acme.com')).toBe(true);
+    expect(isValidCompanyHttpLink('https://acme.com')).toBe(true);
+    expect(isValidCompanyHttpLink('http://acme.co.uk/path')).toBe(true);
+    expect(isValidCompanyHttpLink('  ACME.COM  ')).toBe(true);
+  });
+
+  test('rejects free text, other schemes, and single-label hosts', () => {
+    expect(isValidCompanyHttpLink('not a company')).toBe(false);
+    expect(isValidCompanyHttpLink('localhost')).toBe(false);
+    expect(isValidCompanyHttpLink('ftp://acme.com')).toBe(false);
+    expect(isValidCompanyHttpLink('javascript:alert(1)')).toBe(false);
+    expect(isValidCompanyHttpLink('127.0.0.1')).toBe(false);
   });
 });
 

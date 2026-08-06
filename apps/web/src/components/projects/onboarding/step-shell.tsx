@@ -185,7 +185,7 @@ export function SelectionRow({
         disabled && 'pointer-events-none cursor-not-allowed opacity-50',
       )}
     >
-      {leading}
+      <span className="flex size-5 shrink-0 items-center justify-center">{leading}</span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">{label}</span>
         {description && (
@@ -208,6 +208,7 @@ export function ActionRow({
   onPreload,
   'aria-label': ariaLabel,
   'aria-describedby': ariaDescribedBy,
+  className,
 }: {
   label: string;
   description?: string;
@@ -219,6 +220,7 @@ export function ActionRow({
   onPreload?: () => void;
   'aria-label'?: string;
   'aria-describedby'?: string;
+  className?: string;
 }) {
   return (
     <button
@@ -230,9 +232,9 @@ export function ActionRow({
       onClick={onSelect}
       onPointerEnter={onPreload}
       onFocus={onPreload}
-      className={cn(rowClassName, active && 'border-primary/40 bg-primary/[0.05]')}
+      className={cn(rowClassName, active && 'border-primary/40 bg-primary/[0.05]', className)}
     >
-      {leading}
+      <span className="flex size-5 shrink-0 items-center justify-center">{leading}</span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">{label}</span>
         {description && (

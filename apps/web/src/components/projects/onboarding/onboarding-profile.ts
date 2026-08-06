@@ -8,6 +8,7 @@
 
 import { emailDomain, isWorkEmail } from '@/lib/personal-email';
 import type { OnboardingCompanySize, OnboardingUseCase } from '@kortix/sdk';
+import type { IconWeight } from '@phosphor-icons/react';
 
 export type StepId = 'use-case' | 'company' | 'tools' | 'slack' | 'plan' | 'done';
 
@@ -15,6 +16,7 @@ export interface UseCaseOption {
   value: OnboardingUseCase;
   label: string;
   description: string;
+  weight: IconWeight;
 }
 
 /**
@@ -23,21 +25,23 @@ export interface UseCaseOption {
  * (7), Support/CS (7), Ops (5), Marketing (5), HR/Recruiting (4).
  */
 export const USE_CASE_OPTIONS: readonly UseCaseOption[] = [
-  { value: 'sales', label: 'Sales', description: 'Follow up on leads, keep the CRM clean' },
-  { value: 'support', label: 'Customer support', description: 'Triage tickets, draft replies' },
-  { value: 'marketing', label: 'Marketing', description: 'Watch the market, refresh content' },
-  { value: 'engineering', label: 'Engineering', description: 'Triage errors, chase upgrades' },
+  { value: 'sales', label: 'Sales', description: 'Follow up on leads, keep the CRM clean',weight: 'regular' },
+  { value: 'support', label: 'Customer support', description: 'Triage tickets, draft replies',weight: 'duotone' },
+  { value: 'marketing', label: 'Marketing', description: 'Watch the market, refresh content',weight: 'duotone' },
+  { value: 'engineering', label: 'Engineering', description: 'Triage errors, chase upgrades',weight: 'regular' },
   {
     value: 'finance_ops',
     label: 'Finance & operations',
     description: 'Invoices, expenses, month-end close',
+    weight: 'regular',
   },
   {
     value: 'hr_recruiting',
     label: 'HR & recruiting',
     description: 'Onboarding, scheduling, sourcing',
+      weight: 'duotone',
   },
-  { value: 'other', label: 'Something else', description: 'We’ll start you with the basics' },
+  { value: 'other', label: 'Something else', description: 'We’ll start you with the basics',weight: 'regular' },
 ] as const;
 
 /**
@@ -111,6 +115,32 @@ export function deriveCompanyDomain(email: string | null | undefined): string {
     return '';
   }
   return domain;
+}
+
+/**
+ * Company domain field: empty is allowed (optional survey), otherwise require a
+ * hostname or http(s) URL the agent can research — `acme.com` or
+ * `https://acme.com`. Rejects other schemes, single-label hosts, and free text.
+ */
+export function isValidCompanyHttpLink(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+
+  let url: URL;
+  try {
+    url = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`);
+  } catch {
+    return false;
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+
+  const host = url.hostname;
+  if (!host.includes('.') || host.startsWith('.') || host.endsWith('.')) return false;
+  // Bare IPs are not company domains; a real site host has at least one label.
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return false;
+
+  return true;
 }
 
 export interface StarterPrompt {

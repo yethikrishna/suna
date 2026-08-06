@@ -19,11 +19,10 @@ import {
   CalendarBlankIcon as Calendar,
   CheckCircleIcon as CheckCircle,
 } from '@phosphor-icons/react';
-import { motion, useReducedMotion } from 'motion/react';
+import { useReducedMotion } from 'motion/react';
 
 import { Button } from '@/components/ui/button';
 
-import { SEAL_TRANSITION } from '../motion';
 import { starterPromptsFor } from '../onboarding-profile';
 import { ActionRow, StepContext, StepShell } from '../step-shell';
 
@@ -51,14 +50,9 @@ export function DoneStep({
       {/* The one celebratory beat in the flow, and it happens exactly once.
           Springs from 0.6 — never 0, because nothing appears out of nothing —
           with a trace of bounce that would be wrong anywhere else in the UI. */}
-      <motion.div
-        initial={reduced ? { opacity: 0 } : { scale: 0.6, opacity: 0 }}
-        animate={reduced ? { opacity: 1 } : { scale: 1, opacity: 1 }}
-        transition={reduced ? { duration: 0.2 } : SEAL_TRANSITION}
-        className="bg-kortix-green/12 flex size-16 items-center justify-center rounded-full"
-      >
+      <span className="bg-kortix-green/12 flex size-16 items-center justify-center rounded-lg">
         <CheckCircle className="text-kortix-green size-10" weight="fill" />
-      </motion.div>
+      </span>
 
       <StepShell
         title="Your command center is live"
@@ -72,9 +66,9 @@ export function DoneStep({
         context={
           profileCount > 0 ? (
             <StepContext>
-              <div className="bg-popover rounded-md border px-4 py-5">
+              <div className="bg-popover rounded-md border px-4 py-3">
                 <p className="text-foreground text-sm font-medium">Setup summary</p>
-                <p className="text-muted-foreground mt-1 text-xs leading-5 text-pretty">
+                <p className="text-muted-foreground text-xs leading-5 text-pretty">
                   <span className="text-foreground tabular-nums">{profileCount}</span>{' '}
                   {profileCount === 1 ? 'tool is' : 'tools are'} connected and ready for your agent.
                 </p>
@@ -89,6 +83,7 @@ export function DoneStep({
               key={p.template}
               label={p.title}
               description={p.prompt}
+              className="items-start"
               aria-label={`Start with: ${p.title}`}
               onSelect={() => onUsePrompt(p.prompt)}
               leading={<ArrowRight className="text-muted-foreground/50 size-4 shrink-0" />}

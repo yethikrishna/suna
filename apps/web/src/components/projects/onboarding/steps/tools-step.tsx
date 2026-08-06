@@ -82,12 +82,12 @@ export function ToolsStep({
       onSkip={onSkip}
       context={
         <StepContext>
-          <div className="bg-popover rounded-md border px-4 py-5">
+          <div className="bg-popover rounded-md border px-4 py-3">
             <p className="text-foreground text-sm font-medium">
               <span className="tabular-nums">{connectionCount}</span>{' '}
               {connectionCount === 1 ? 'connection' : 'connections'} connected
             </p>
-            <p className="text-muted-foreground mt-1 text-xs leading-5 text-pretty">
+            <p className="text-muted-foreground  text-xs leading-5 text-pretty">
               Authorization happens with each provider. Kortix receives only the access that you
               approve, and you can revoke it later.
             </p>
@@ -127,9 +127,11 @@ export function ToolsStep({
                 ))}
               </div>
             ) : apps.length === 0 ? (
-              <p className="text-muted-foreground py-10 text-center text-xs">
-                {q ? `Nothing matches “${q}”.` : 'Try a search.'}
-              </p>
+              <div className="flex h-full flex-1 flex-col items-center justify-center rounded-md border">
+                <p className="text-muted-foreground py-10 text-center text-xs">
+                  {q ? `Nothing matches “${q}”.` : 'Try a search.'}
+                </p>
+              </div>
             ) : (
               <>
                 <div className="flex flex-col gap-2">

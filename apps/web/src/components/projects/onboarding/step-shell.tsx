@@ -31,8 +31,8 @@ export function StepIdentityProvider({
 }
 
 const rowClassName = cn(
-  'border-border bg-popover text-foreground flex min-h-12 w-full cursor-pointer items-center gap-3 rounded-md border px-4 py-3 text-left',
-  'transition-[background-color,border-color,scale] duration-150 active:scale-[0.99] motion-reduce:active:scale-100',
+  'border-border bg-popover text-foreground flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-md border px-4 py-3 text-left',
+  'transition-[background-color,border-color,opacity,scale] duration-150 active:scale-[0.99] motion-reduce:active:scale-100',
   'hover:border-primary/30 hover:bg-primary/[0.03]',
   'focus-visible:ring-kortix-base focus-visible:ring-[0.6px] focus-visible:outline-none',
   'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
@@ -93,7 +93,7 @@ export function StepShell({
 
   return (
     <div className="relative flex flex-col">
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         <h1
           id={`${idPrefix}-title`}
           data-onboarding-step-title
@@ -112,7 +112,7 @@ export function StepShell({
         )}
       </div>
 
-      {children && <div className="mt-8">{children}</div>}
+      {children && <div className="mt-6">{children}</div>}
 
       {context}
 

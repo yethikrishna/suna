@@ -127,7 +127,8 @@ describe('company step', () => {
 
   // Two separate questions on one screen must read as two, not as a form.
   test('separates the two questions properly', () => {
-    expect(company).toContain('space-y-10');
+    expect(company).toContain('space-y-8');
+    expect(company).not.toContain('space-y-10');
   });
 });
 

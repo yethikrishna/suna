@@ -42,9 +42,9 @@ export function CompanyStep({
       skipLabel="Skip survey"
       onSkip={onSkip}
     >
-      {/* space-y-10: two separate questions on one screen need to read as two,
+      {/* space-y-8: two separate questions on one screen need to read as two,
           not as a stacked form. */}
-      <div className="space-y-10">
+      <div className="space-y-8">
         <div className="space-y-3">
           <Label htmlFor="onboarding-company-domain">Company domain</Label>
           <InputGroup className="h-11">

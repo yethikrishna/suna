@@ -126,6 +126,13 @@ describe('step shell primitive', () => {
     expect(stepShell).not.toContain('eyebrow');
   });
 
+  test('uses the selected heading and content spacing', () => {
+    const shellSource = componentSource('StepShell');
+    expect(shellSource).toContain('className="space-y-2"');
+    expect(shellSource).toContain('{children && <div className="mt-6">');
+    expect(shellSource).not.toContain('space-y-2.5');
+  });
+
   // A skip tucked directly beneath the primary reads as a footnote to it. Side
   // by side, as a secondary, it reads as the other choice — which it is.
   test('renders skip as a lower-contrast, unequal secondary sibling', () => {
@@ -185,6 +192,12 @@ describe('step shell primitive', () => {
     );
     expect(stepShell).not.toContain('rounded-xl');
     expect(stepShell).not.toContain('rounded-2xl');
+  });
+
+  test('keeps rows 56px tall and transitions opacity explicitly', () => {
+    expect(stepShell).toContain('min-h-14');
+    expect(stepShell).toContain('transition-[background-color,border-color,opacity,scale]');
+    expect(stepShell).not.toContain('min-h-12');
   });
 
   test('applies the shared row class to each row primitive', () => {

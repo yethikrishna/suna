@@ -4,7 +4,7 @@ import {
   type UpstreamDescriptor,
 } from '@kortix/llm-gateway';
 import { getCachedAccountTier } from '../../billing/services/entitlements';
-import { accountIsFreeTierForModels } from '../../billing/services/tiers';
+import { accountIsFreeTierForModels, isPaidTier } from '../../billing/services/tiers';
 import { config } from '../../config';
 import {
   getProjectSecretValueForConsumer,
@@ -65,6 +65,32 @@ function byokFallbackCandidates(): UpstreamDescriptor[] {
 
 const PLAN_UPGRADE_SUGGESTION =
   'Upgrade your plan to use this model, or choose a model available on your current plan.';
+
+/**
+ * The same block, for a plan that is PAID but simply does not include managed
+ * inference — every v3 credit plan (Starter / Team / Scale).
+ *
+ * "requires a paid plan" is false and actively misleading there: the customer
+ * is paying. Managed models are not something their plan is too small for, they
+ * are deliberately not bundled, and the remedy is a key rather than an upgrade.
+ */
+const BRING_YOUR_OWN_KEY_SUGGESTION =
+  'This plan does not include managed models. Add your own provider key to use ' +
+  'this model, or pick a model your key covers.';
+
+export function noManagedModelsError(model: string, tierIsPaid: boolean): GatewayResolutionError {
+  return tierIsPaid
+    ? new GatewayResolutionError(
+        'plan_upgrade_required',
+        `"${model}" needs your own provider key on this plan.`,
+        BRING_YOUR_OWN_KEY_SUGGESTION,
+      )
+    : new GatewayResolutionError(
+        'plan_upgrade_required',
+        `"${model}" requires a paid plan.`,
+        PLAN_UPGRADE_SUGGESTION,
+      );
+}
 
 /**
  * `resolveCandidates` throws a `GatewayResolutionError` (never returns an
@@ -241,11 +267,9 @@ export async function resolveCandidates(
     if (config.KORTIX_BILLING_INTERNAL_ENABLED) {
       const tier = await resolveCachedAccountTier(principal.accountId);
       if (accountIsFreeTierForModels(tier)) {
-        throw new GatewayResolutionError(
-          'plan_upgrade_required',
-          `"${effectiveModel}" requires a paid plan.`,
-          PLAN_UPGRADE_SUGGESTION,
-        );
+        // A v3 credit plan lands here too — it pays, it just doesn't bundle
+        // managed inference. Telling that customer to "upgrade" is wrong.
+        throw noManagedModelsError(effectiveModel, isPaidTier(tier ?? 'free'));
       }
     }
     const candidates = managedCandidates(managed);

@@ -10,7 +10,7 @@
 #
 # Usage:
 #   ecs-deploy.sh <env> <image> [--service api|gateway] [--version X.Y.Z]
-#                 [--no-wait] [--dry-run]
+#                 [--database-migrated] [--no-wait] [--dry-run]
 #
 #   env        dev | staging | prod | prod-use2-shadow
 #   image      full image ref to pin, e.g. kortix/kortix-api:dev-481dc551
@@ -26,6 +26,11 @@
 #              job assert the public endpoint serves the released version.
 #   --dry-run  render + print the task-def override, then exit WITHOUT
 #              registering or rolling anything.
+#   --database-migrated
+#              required for a live prod or prod-use2-shadow rollout. This is an
+#              explicit assertion that the environment's migration job passed.
+#              It prevents an emergency direct ECS roll from silently bypassing
+#              the database gate.
 #
 # Requires: awscli v2, jq. Assumes the ECS cluster/service/ALB/target-group and
 # the exec/task IAM roles already exist (Terraform owns those).
@@ -54,11 +59,13 @@ shift 2
 SVC_KIND="api"
 WAIT=1
 DRY_RUN=0
+DATABASE_MIGRATED=0
 VERSION_OVERRIDE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --service) SVC_KIND="$2"; shift 2 ;;
     --version) VERSION_OVERRIDE="$2"; shift 2 ;;
+    --database-migrated) DATABASE_MIGRATED=1; shift ;;
     --no-wait) WAIT=0; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
@@ -91,6 +98,13 @@ case "$ENV" in
     ;;
   *) echo "unknown env: $ENV" >&2; exit 2 ;;
 esac
+
+if [ "$DRY_RUN" != "1" ] \
+  && { [ "$ENV" = "prod" ] || [ "$ENV" = "prod-use2-shadow" ]; } \
+  && [ "$DATABASE_MIGRATED" != "1" ]; then
+  echo "refusing live $ENV rollout without --database-migrated; apply and verify all database migrations first" >&2
+  exit 2
+fi
 
 # Each service lives in its own cluster (the ecs-api module names cluster==service):
 #   api     → cluster/service <service-prefix>,         container "api"

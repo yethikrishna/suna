@@ -1,4 +1,4 @@
-# Production API outage: OOM and stale secret selectors
+# Production API outage: OOM, stale secret selectors, and schema drift
 
 Date: 2026-08-06
 
@@ -69,6 +69,9 @@ All times use UTC.
 - `2026-08-06T20:09:07Z`: The gateway rollout completes with `2/2` tasks.
 - `2026-08-06T20:09:59Z`: The API rollout completes with `3/3` tasks.
 - `2026-08-06T20:17:06Z`: The API reaches steady state after the autoscaling floor changes to three tasks.
+- `2026-08-06T20:44:06Z`: API revision `36` starts from merge commit `8f121bd61a60`.
+- `2026-08-06T20:49:58Z`: Live traffic exposes `18` unapplied database migrations. Project and billing routes return `500` for missing columns.
+- `2026-08-06T20:54:39Z`: All `18` migrations are applied to the primary and disaster-recovery databases. Public API traffic returns `200` again.
 
 ## Recovery
 
@@ -83,14 +86,34 @@ The incident response made these production changes:
 
 Post-recovery verification:
 
-- API revision `35`: rollout `COMPLETED`, desired `3`, running `3`, pending `0`.
-- Gateway revision `29`: rollout `COMPLETED`, desired `2`, running `2`, pending `0`.
+- API revision `36`: rollout `COMPLETED`, desired `3`, running `3`, pending `0`.
+- Gateway revision `30`: rollout `COMPLETED`, desired `2`, running `2`, pending `0`.
 - API target group: three healthy targets.
 - Gateway target group: two healthy targets.
 - Public API health: `20/20` requests returned `200`.
 - Public gateway health: `20/20` requests returned `200`.
 - Public marketplace: `10/10` requests returned `200`.
-- Marketplace response: `7,248` items, `loading: false`, `pending: 0`.
+- Marketplace response: `7,250` items, `loading: false`, `pending: 0`.
+- API health reached all three instances. Every instance reported commit `8f121bd61a60`.
+- Both production databases reported `No migrations to run`.
+
+## Recovery regression: schema drift
+
+The emergency ECS rollout used `infra/scripts/ecs-deploy.sh` directly because the GitHub-hosted production workflow was queued.
+That path registered the new image without running the workflow's `migrate-db` job.
+The image required `18` migrations that production had not applied.
+
+The migration runner then found two production-only schema differences:
+
+- `credit_accounts` did not contain the legacy `kortix_credit_accounts_billing_model_check` constraint.
+- The disaster-recovery logical publication still published `project_session_connector_bindings.profile_id`.
+
+The billing migration now drops the old constraint with `IF EXISTS` before installing the canonical constraint.
+The connector migration now detaches explicit logical publications, removes `profile_id`, and re-adds the table with its canonical column list in one transaction.
+The primary publication now includes `connection_id` and excludes `profile_id`.
+Live production ECS rolls now require `--database-migrated`.
+Both production workflows pass this assertion only after their migration steps.
+A direct emergency ECS roll without the migration assertion exits before it calls AWS.
 
 ## Permanent prevention
 

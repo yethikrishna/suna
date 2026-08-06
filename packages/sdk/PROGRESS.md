@@ -54,6 +54,45 @@ surfaces. No export was removed or renamed. The package version was not edited.
 
 ---
 
+### 2026-08-05 — session `provision-idempotency` completion
+
+No **Now** task claimed. The SDK half of a server-side defect fix is one
+optional field; the rest is `apps/api` + `packages/db`.
+
+`POST /v1/projects/provision` mints a brand-new managed repo on every call and
+guarded only on the quota count, so a retry after a lost response created a
+genuine duplicate project with its own upstream GitHub repo. The route now
+accepts an `idempotency_key`, looks it up before `backend.createRepo`, and
+returns the already-provisioned project. `ProvisionProjectInput` gained
+`idempotency_key?: string` so that key is part of the public surface.
+
+RED:
+
+- `pnpm --filter @kortix/sdk typecheck`: `error TS2353: Object literal may only
+  specify known properties, and 'idempotency_key' does not exist in type
+  'ProvisionProjectInput'` — three occurrences, exit `2`. The type IS the
+  behaviour here, so the type-checker is where the failure belongs; the runtime
+  wire assertion (`idempotency_key is sent on provision`) guards a future
+  refactor that whitelists body fields.
+
+GREEN:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1496 pass`, `0 fail`, `6196 expect()` calls
+  across `121` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: exit `0`; the packed tarball
+  imported and constructed.
+
+Public surface unchanged in NAMES — one optional field added to an existing
+exported interface. Additive, no alias needed, no major implied, no snapshot
+re-record. The `version` field was not touched.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+---
+
 ### 2026-08-05 — session `cli-audit-source` claim
 
 No **Now** task claimed. This is a narrow additive transport-metadata fix.
@@ -6333,6 +6372,96 @@ No public export name changed. The public-surface snapshots stayed unchanged.
 **Status:** COMPLETE.
 
 **SDK package shippable to production: YES.**
+
+---
+
+### 2026-08-05 — session `preview-port-probe` (host-driven, additive)
+
+`apps/web`'s Easy-mode `AppPreview` declared a preview app dead after 5s of
+iframe silence. Nothing probed the port, so a cold dev-server compile (30-60s
+per the root `CLAUDE.md`) was indistinguishable from a dead one. The host needed
+a real verdict; per the "hosts never raw-`fetch` the sandbox proxy" rule, the
+probe belongs here.
+
+Added `src/core/session/preview-probe.ts`, exported through
+`src/core/session/index.ts` (already re-exported by the root barrel and
+`./session`):
+
+- `PreviewPortProbe` — `'reachable' | 'unreachable' | 'unknown'`.
+- `classifyPreviewProbeStatus(status)` — pure. `502/503/504` is the proxy
+  itself saying nothing is listening; `401/403` is our own preview-auth gate
+  and therefore says nothing about the port; anything else in the HTTP range
+  means a server answered.
+- `probePreviewPort(url, { signal, timeoutMs })` — a credentialed `HEAD` that
+  never throws; every failure mode collapses to `'unknown'`.
+- `PREVIEW_PROBE_TIMEOUT_MS = 10_000`.
+
+Deliberately NOT `authenticatedFetch`: the preview proxy authenticates a browser
+with the `__preview_session` cookie, and an `Authorization` header would turn
+every probe into a CORS preflight.
+
+RED:
+
+- `bun test src/core/session/preview-probe.test.ts`: `0 pass`, `1 fail` —
+  `Cannot find module './preview-probe'`.
+
+GREEN:
+
+- `bun test src/core/session/preview-probe.test.ts`: `21 pass`, `0 fail`.
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1516 pass`, `1 fail`, `1517` tests across
+  `122` files. The one failure is `fetchCostExportCsv requests the export URL
+  with a Bearer token` in `core/rest/projects-client/session-costs.test.ts` —
+  PRE-EXISTING and unrelated (a process-wide `mock.module` auth-token leak from
+  a sibling suite). Verified on a clean tree at the same commit: `1495 pass`,
+  `1 fail`, same test.
+- `pnpm --filter @kortix/sdk smoke:install`: exit `0`.
+
+Public surface: PURELY ADDITIVE — 4 names on `.` and `./session`
+(`PREVIEW_PROBE_TIMEOUT_MS`, `PreviewPortProbe`, `classifyPreviewProbeStatus`,
+`probePreviewPort`). Both snapshots re-recorded; zero removals, zero renames.
+`version` untouched.
+
+Not verified: the probe has never been run against a live sandbox proxy (this
+workstream is barred from booting the stack). If the cross-origin `HEAD` is
+refused in production it resolves `'unknown'`, which by design can never fail a
+preview — the host falls back to its own bounded wait.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+---
+
+### 2026-08-05 — session `preview-port-probe` review round
+
+Review of the host change found that `PREVIEW_PROBE_TIMEOUT_MS = 10_000` was
+badly chosen. A caller decides a port is dead from repeated misses inside a
+window of its own; `apps/web`'s window is also 10s, so ONE probe that stalled to
+its ceiling consumed the caller's entire sampling budget and the loop ended
+after a single sample.
+
+Lowered to `3_000` and re-justified in the source: the proxy's "nothing is
+listening" answer needs no upstream connection and returns in well under a
+second, so a short ceiling never delays a real verdict — it only stops a socket
+being held behind an app that accepted the connection and then stalled, which is
+itself already weak evidence the port is up. Three seconds leaves room for
+several samples inside any window worth having.
+
+- `bun test src/core/session/preview-probe.test.ts`: `21 pass`, `0 fail`.
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1516 pass`, `1 fail` — the same
+  pre-existing `fetchCostExportCsv` failure documented in the entry above.
+- `pnpm --filter @kortix/sdk smoke:install`: exit `0`.
+
+No export name changed, so both public-surface snapshots are byte-identical to
+the previous entry's. `version` untouched.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+---
 
 ### 2026-08-06 — session `perf-memory` review fix wave
 

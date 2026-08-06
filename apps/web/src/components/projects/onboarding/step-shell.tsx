@@ -20,7 +20,7 @@ import { contextVariants } from './motion';
 
 const rowClassName = cn(
   'border-border bg-popover text-foreground flex min-h-12 w-full cursor-pointer items-center gap-3 rounded-md border px-4 py-3 text-left',
-  'transition-[background-color,border-color,scale] duration-150 active:scale-[0.99]',
+  'transition-[background-color,border-color,scale] duration-150 active:scale-[0.99] motion-reduce:active:scale-100',
   'hover:border-primary/30 hover:bg-primary/[0.03]',
   'focus-visible:ring-kortix-base focus-visible:ring-[0.6px] focus-visible:outline-none',
   'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
@@ -76,11 +76,14 @@ export function StepShell({
   onSkip?: () => void;
   context?: ReactNode;
 }) {
+  const titleId = useId();
+
   return (
     <div className="relative flex flex-col">
       <div className="space-y-2.5">
         <h1
-          id="onboarding-step-title"
+          id={`onboarding-step-title-${titleId}`}
+          data-onboarding-step-title
           tabIndex={-1}
           className="text-foreground text-2xl font-semibold tracking-tight text-balance focus:outline-none"
         >
@@ -102,7 +105,7 @@ export function StepShell({
           <Button
             size="lg"
             variant="outline"
-            className="flex-1 active:scale-[0.96]"
+            className="flex-1 active:scale-[0.96] motion-reduce:active:scale-100"
             onClick={onSkip}
           >
             {skipLabel}
@@ -110,7 +113,7 @@ export function StepShell({
         )}
         <Button
           size="lg"
-          className="flex-1 active:scale-[0.96]"
+          className="flex-1 active:scale-[0.96] motion-reduce:active:scale-100"
           onClick={onPrimary}
           disabled={primaryDisabled}
         >

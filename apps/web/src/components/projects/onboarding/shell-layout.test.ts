@@ -12,10 +12,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const shell = readFileSync(
-  join(import.meta.dir, '..', 'project-onboarding-wizard.tsx'),
-  'utf8',
-);
+const shell = readFileSync(join(import.meta.dir, '..', 'project-onboarding-wizard.tsx'), 'utf8');
 
 describe('onboarding shell', () => {
   test('constrains the body to one 520px decision lane', () => {
@@ -76,6 +73,16 @@ describe('onboarding shell', () => {
     expect(shell).toContain('showFounderCall');
     expect(shell).toContain('onBookCall');
   });
+
+  test('focuses the title inside the entering step after its animation completes', () => {
+    expect(shell).toContain('onAnimationComplete');
+    expect(shell).toContain("querySelector<HTMLElement>('[data-onboarding-step-title]')");
+    expect(shell).not.toContain("document.getElementById('onboarding-step-title')");
+  });
+
+  test('removes press scale from the back control for reduced motion', () => {
+    expect(shell).toContain('motion-reduce:active:scale-100');
+  });
 });
 
 describe('step shell primitive', () => {
@@ -116,6 +123,20 @@ describe('step shell primitive', () => {
 
   test('exposes progress to assistive technology', () => {
     expect(stepShell).toContain('role="progressbar"');
+  });
+
+  test('gives concurrent step titles unique ids', () => {
+    expect(stepShell).toContain('data-onboarding-step-title');
+    expect(stepShell).not.toContain('id="onboarding-step-title"');
+  });
+
+  test('removes action and row press scale for reduced motion', () => {
+    expect(
+      componentSource('StepShell').match(/motion-reduce:active:scale-100/g) ?? [],
+    ).toHaveLength(2);
+    expect(stepShell.slice(0, stepShell.indexOf('export function StepProgress'))).toContain(
+      'motion-reduce:active:scale-100',
+    );
   });
 
   test('shares semantic-token, app-radius styling across both row primitives', () => {

@@ -37,8 +37,8 @@
 
 import { ArrowLeftIcon as ArrowLeft } from '@phosphor-icons/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion, type Variants } from 'motion/react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Modal, ModalContent } from '@/components/ui/modal';
@@ -71,6 +71,35 @@ const CAL_NAMESPACE = 'kortix-onboarding-wizard';
 
 const Q = { staleTime: 60_000, refetchOnWindowFocus: false } as const;
 
+function AnimatedStep({
+  children,
+  direction,
+  variants,
+}: {
+  children: ReactNode;
+  direction: number;
+  variants: Variants;
+}) {
+  const frameRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <motion.div
+      ref={frameRef}
+      custom={direction}
+      variants={variants}
+      initial="enter"
+      animate="center"
+      exit="exit"
+      onAnimationComplete={(definition) => {
+        if (definition !== 'center') return;
+        frameRef.current?.querySelector<HTMLElement>('[data-onboarding-step-title]')?.focus();
+      }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
   const contactTier = usePersonalContactTier();
   const showFounderStep = contactTier === 'personal';
@@ -98,14 +127,6 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
   const connectorsEnabled = isConnectorsEnabled();
   const steps = useMemo(() => buildSteps(connectorsEnabled), [connectorsEnabled]);
   const stepId = steps[index] ?? 'use-case';
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      document.getElementById('onboarding-step-title')?.focus();
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [stepId]);
 
   // `?onboarding-reset` reopens the wizard from the top (clears completion flag).
   const resetFn = onboarding.reset;
@@ -202,7 +223,7 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
                   variant="ghost"
                   size="icon-md"
                   aria-label="Back"
-                  className="text-muted-foreground hover:text-foreground active:scale-[0.96]"
+                  className="text-muted-foreground hover:text-foreground active:scale-[0.96] motion-reduce:active:scale-100"
                   onClick={back}
                 >
                   <ArrowLeft className="size-4" />
@@ -220,14 +241,7 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
                   air. popLayout takes the outgoing step out of flow so the two
                   overlap and the swap reads as one movement. */}
                 <AnimatePresence mode="popLayout" custom={direction} initial={false}>
-                  <motion.div
-                    key={stepId}
-                    custom={direction}
-                    variants={stepVariants}
-                    initial="enter"
-                    animate="center"
-                    exit="exit"
-                  >
+                  <AnimatedStep key={stepId} direction={direction} variants={stepVariants}>
                     {stepId === 'use-case' && (
                       <UseCaseStep
                         value={answers.use_case ?? null}
@@ -277,7 +291,7 @@ export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
                         onUsePrompt={startWithPrompt}
                       />
                     )}
-                  </motion.div>
+                  </AnimatedStep>
                 </AnimatePresence>
               </div>
             </div>

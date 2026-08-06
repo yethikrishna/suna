@@ -39,7 +39,7 @@ import { endCall, isCallLive, promptVoiceAgent, startCall } from '../channels/vo
 import { readTranscriptForAgent } from '../channels/voice/transcript-read';
 import { kortixSay } from '../channels/voice/utterance';
 import { config } from '../config';
-import { authorize } from '../iam';
+import { authorize, PROJECT_ACTIONS } from '../iam';
 import { agentMayUseConnector } from '../iam/agent-scope';
 import type { ChannelPlatform } from '../projects/connectors';
 import { invalidateProjectMirror } from '../projects/git';
@@ -923,7 +923,11 @@ async function listCatalog(p: ExecutorPrincipal): Promise<CatalogConnector[]> {
 async function resolveProjectUserWith(
   c: Context,
   projectId: string,
-  action: 'project.connector.read' | 'project.connector.write',
+  action:
+    | typeof PROJECT_ACTIONS.PROJECT_CONNECTOR_READ
+    | typeof PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE
+    | typeof PROJECT_ACTIONS.PROJECT_SECRET_READ
+    | typeof PROJECT_ACTIONS.PROJECT_SECRET_WRITE,
 ): Promise<{ accountId: string; userId: string } | null> {
   if (!isUuid(projectId)) return null;
   const userId = c.get('userId') as string | undefined;
@@ -956,7 +960,25 @@ async function resolveAdmin(
   c: Context,
   projectId: string,
 ): Promise<{ accountId: string; userId: string } | null> {
-  return resolveProjectUserWith(c, projectId, 'project.connector.write');
+  return resolveProjectUserWith(c, projectId, PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE);
+}
+
+async function resolveSecretBindingAdmin(
+  c: Context,
+  projectId: string,
+): Promise<{ accountId: string; userId: string } | null> {
+  const connectorAdmin = await resolveProjectUserWith(
+    c,
+    projectId,
+    PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE,
+  );
+  if (!connectorAdmin) return null;
+  const secretAdmin = await resolveProjectUserWith(
+    c,
+    projectId,
+    PROJECT_ACTIONS.PROJECT_SECRET_WRITE,
+  );
+  return secretAdmin ? connectorAdmin : null;
 }
 
 // The connectors LIST is read-tier: project.connector.read is in the member
@@ -967,7 +989,14 @@ async function resolveReader(
   c: Context,
   projectId: string,
 ): Promise<{ accountId: string; userId: string } | null> {
-  return resolveProjectUserWith(c, projectId, 'project.connector.read');
+  return resolveProjectUserWith(c, projectId, PROJECT_ACTIONS.PROJECT_CONNECTOR_READ);
+}
+
+async function resolveSecretReader(
+  c: Context,
+  projectId: string,
+): Promise<{ accountId: string; userId: string } | null> {
+  return resolveProjectUserWith(c, projectId, PROJECT_ACTIONS.PROJECT_SECRET_READ);
 }
 
 /** Admin list — sharing + credential mode + whether the shared credential is set. */
@@ -1256,6 +1285,7 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
   listCatalog,
   resolveAdmin,
   resolveReader,
+  resolveSecretReader,
   listConnectors,
   // The manual "Sync" button re-pulls catalogs unconditionally (force) — the
   // user is explicitly asking to refresh, e.g. an MCP server gained new tools.
@@ -1269,6 +1299,7 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
   setConnectorCredential: (projectId, slug, input) =>
     setConnectorCredentialShared(projectId, slug, input),
   setConnectorSecretBinding,
+  resolveSecretBindingAdmin,
   deleteConnectorCredential: async (projectId, slug) => {
     const [row] = await db
       .select({

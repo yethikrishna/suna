@@ -238,6 +238,11 @@ export interface ExecutorRouterDeps {
     c: Context,
     projectId: string,
   ): Promise<{ accountId: string; userId: string } | null>;
+  /** Read-tier authorization for exact project secret identifiers. */
+  resolveSecretReader?(
+    c: Context,
+    projectId: string,
+  ): Promise<{ accountId: string; userId: string } | null>;
   listConnectors(projectId: string): Promise<AdminConnectorView[]>;
   syncConnectors(projectId: string, accountId: string): Promise<SyncResult>;
   /** Create/update a connector in kortix.yaml + materialize. */
@@ -264,6 +269,11 @@ export interface ExecutorRouterDeps {
     slug: string,
     secretIdentifier: string | null,
   ): Promise<CrudOutcome>;
+  /** Secret binding requires both connector-write and secret-write. */
+  resolveSecretBindingAdmin?(
+    c: Context,
+    projectId: string,
+  ): Promise<{ accountId: string; userId: string } | null>;
   /** `userId` is accepted for back-compat but unused — a connector has exactly
    *  one (shared) credential since `per_user` was removed 2026-07-05. */
   deleteConnectorCredential?(projectId: string, slug: string, userId: string): Promise<CrudOutcome>;
@@ -954,7 +964,15 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
         ? await deps.resolveReader(c, projectId)
         : await deps.resolveAdmin(c, projectId);
       if (!reader) return c.json({ error: 'forbidden' }, 403);
-      return c.json({ connectors: await deps.listConnectors(projectId) });
+      const canReadSecretIdentifiers = deps.resolveSecretReader
+        ? Boolean(await deps.resolveSecretReader(c, projectId))
+        : false;
+      const connectors = await deps.listConnectors(projectId);
+      return c.json({
+        connectors: canReadSecretIdentifiers
+          ? connectors
+          : connectors.map((connector) => ({ ...connector, secretIdentifier: null })),
+      });
     },
   );
 
@@ -1177,7 +1195,9 @@ export function createExecutorRouter(deps: ExecutorRouterDeps): OpenAPIHono {
     async (c: any) => {
       const projectId = c.req.param('projectId');
       const slug = c.req.param('slug');
-      const admin = await deps.resolveAdmin(c, projectId);
+      const admin = deps.resolveSecretBindingAdmin
+        ? await deps.resolveSecretBindingAdmin(c, projectId)
+        : null;
       if (!admin) return c.json({ error: 'forbidden' }, 403);
       if (!deps.setConnectorSecretBinding) {
         return featureNotSupportedResponse(c, 'connector_secret_binding');

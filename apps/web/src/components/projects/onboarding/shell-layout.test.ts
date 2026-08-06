@@ -21,7 +21,7 @@ describe('onboarding shell', () => {
     expect(shell).not.toContain('max-w-2xl');
   });
 
-  test('keeps the decision lane fixed when a step supplies context', () => {
+  test('keeps the decision lane fixed — no per-step width branch', () => {
     expect(shell).not.toContain("stepId === 'slack' ?");
   });
 
@@ -154,11 +154,9 @@ describe('step shell primitive', () => {
     expect(stepShell).not.toContain('mt-10 flex items-center');
   });
 
-  test('positions context in a fixed 340px rail with a 32px gap', () => {
-    expect(stepShell).toContain('w-[340px]');
-    expect(stepShell).toContain('xl:left-[calc(100%+2rem)]');
-    expect(stepShell).toContain('xl:max-h-[min(560px,calc(100dvh-160px))]');
-    expect(stepShell).toContain('xl:overflow-y-auto');
+  test('has no StepContext primitive or context slot', () => {
+    expect(stepShell).not.toContain('StepContext');
+    expect(componentSource('StepShell')).not.toContain('context');
   });
 
   test('exposes progress to assistive technology', () => {

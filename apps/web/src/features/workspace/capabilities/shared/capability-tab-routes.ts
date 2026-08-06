@@ -1,16 +1,17 @@
 /**
- * The three capability pages that graduated out of the Customize overlay.
+ * The capability pages that graduated out of the Customize overlay. Commands
+ * was removed (its standalone page deleted) and lives only in the Customize
+ * overlay again — `/customize/commands` via the `proj-commands` palette entry.
  * Order is the tab order; it is also the order the sidebar lists them in.
  */
 export interface CapabilityTab {
-  key: 'connectors' | 'skills' | 'commands';
+  key: 'connectors' | 'skills';
   label: string;
 }
 
 export const CAPABILITY_TABS: readonly CapabilityTab[] = [
   { key: 'connectors', label: 'Connectors' },
   { key: 'skills', label: 'Skills' },
-  { key: 'commands', label: 'Commands' },
 ];
 
 export function capabilityTabHref(projectId: string, key: CapabilityTab['key']): string {

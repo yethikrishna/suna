@@ -73,7 +73,6 @@ const GRADUATED: Record<string, (projectId: string) => string> = {
   changes: (p) => `/projects/${p}/files?panel=proposed-changes`,
   connectors: (p) => `/projects/${p}/connectors`,
   skills: (p) => `/projects/${p}/skills`,
-  commands: (p) => `/projects/${p}/commands`,
 };
 
 export function legacyCustomizeRedirect(

@@ -6,20 +6,12 @@ import {
   executorExecutions,
   executorProjectPolicies,
   executorProjectSettings,
+  projectSecrets,
   projectSessions,
   projects,
 } from '@kortix/db';
 import { sanitizeConnectorHeaders } from '@kortix/manifest-schema';
-import {
-  and,
-  desc,
-  eq,
-  gt,
-  inArray,
-  isNotNull,
-  isNull,
-  sql,
-} from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 /**
  * Production wiring for the executor router — DB-backed ExecutorRouterDeps +
  * GatewayDeps. Access lives on the connector; credentials are split per (connector,
@@ -66,6 +58,7 @@ import { executeComputerCall } from '../tunnel/core/rpc-core';
 import { executorAttachmentStore } from './attachments';
 import { hideSupersededSlack } from './channel-rules';
 import { buildAdminConnectorViews } from './connector-list';
+import { validateConnectorSecretBinding } from './connector-secret-binding';
 import {
   connectorIdsWithSharedCredentials,
   credentialExists,
@@ -538,31 +531,10 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
     },
     consumeApprovedExecution: consumeApprovedExecution,
     isPendingApprovalExecution: isPendingApprovalExecution,
-    executePipedream: ({
-      projectId,
-      connectorSlug,
-      app,
-      actionKey,
-      args,
-      accountId,
-      userId,
-    }) =>
-      runPipedreamAction(
-        projectId,
-        connectorSlug,
-        app,
-        actionKey,
-        args,
-        accountId,
-        userId,
-      ),
-    executePipedreamProxy: ({
-      projectId,
-      connectorSlug,
-      args,
-      accountId,
-      userId,
-    }) => runPipedreamProxy(projectId, connectorSlug, args, accountId, userId),
+    executePipedream: ({ projectId, connectorSlug, app, actionKey, args, accountId, userId }) =>
+      runPipedreamAction(projectId, connectorSlug, app, actionKey, args, accountId, userId),
+    executePipedreamProxy: ({ projectId, connectorSlug, args, accountId, userId }) =>
+      runPipedreamProxy(projectId, connectorSlug, args, accountId, userId),
     // Computer connectors relay through the shared tunnel RPC core (permission
     // check → relay → audit). The machine is resolved from the `computer`
     // selector, scoped to this account.
@@ -866,10 +838,7 @@ async function resolveProjectPrincipal(
   }
   if (!accountId) return null;
   const sessionIdentity = resolveTokenBoundSessionId(
-    projectSessionIdForProjectPrincipal(
-      tokenProjectId,
-      c.get('sessionId') as string | undefined,
-    ),
+    projectSessionIdForProjectPrincipal(tokenProjectId, c.get('sessionId') as string | undefined),
     c.req.header('X-Kortix-Session-Id') ?? null,
   );
   if (!sessionIdentity.ok) return null;
@@ -1016,23 +985,46 @@ async function listConnectors(projectId: string): Promise<AdminConnectorView[]> 
     const { hasAuth } = authOf(row);
     return hasAuth && row.providerType === 'channel';
   });
-  const [actions, credentialConnectorIds, connectedChannelSlugs] = await Promise.all([
-    db
-      .select()
-      .from(executorConnectorActions)
-      .where(
-        inArray(
-          executorConnectorActions.connectorId,
-          conns.map((row) => row.connectorId),
-        ),
-      ),
-    connectorIdsWithSharedCredentials(credentialRows.map((row) => row.connectorId)),
-    Promise.all(
-      channelRows.map(async (row) => [row.slug, await connectorConnected(row, null)] as const),
-    ).then(
-      (entries) => new Set(entries.filter(([, connected]) => connected).map(([slug]) => slug)),
+  const boundSecretIdentifiers = [
+    ...new Set(
+      credentialRows
+        .map((row) => row.authSecret)
+        .filter((identifier): identifier is string => Boolean(identifier)),
     ),
-  ]);
+  ];
+  const [actions, credentialConnectorIds, connectedChannelSlugs, validBoundSecrets] =
+    await Promise.all([
+      db
+        .select()
+        .from(executorConnectorActions)
+        .where(
+          inArray(
+            executorConnectorActions.connectorId,
+            conns.map((row) => row.connectorId),
+          ),
+        ),
+      connectorIdsWithSharedCredentials(credentialRows.map((row) => row.connectorId)),
+      Promise.all(
+        channelRows.map(async (row) => [row.slug, await connectorConnected(row, null)] as const),
+      ).then(
+        (entries) => new Set(entries.filter(([, connected]) => connected).map(([slug]) => slug)),
+      ),
+      boundSecretIdentifiers.length === 0
+        ? Promise.resolve([])
+        : db
+            .select({ identifier: projectSecrets.identifier })
+            .from(projectSecrets)
+            .where(
+              and(
+                eq(projectSecrets.projectId, projectId),
+                inArray(projectSecrets.identifier, boundSecretIdentifiers),
+                isNull(projectSecrets.ownerUserId),
+                eq(projectSecrets.active, true),
+                eq(projectSecrets.strategy, 'broker'),
+                eq(projectSecrets.consumer, 'connector'),
+              ),
+            ),
+    ]);
   const actionsByConnector = new Map<string, typeof actions>();
   for (const action of actions) {
     const current = actionsByConnector.get(action.connectorId) ?? [];
@@ -1041,8 +1033,18 @@ async function listConnectors(projectId: string): Promise<AdminConnectorView[]> 
   }
 
   const connectedSlugs = new Set(connectedChannelSlugs);
+  const storedCredentialSlugs = new Set<string>();
   for (const row of credentialRows) {
-    if (credentialConnectorIds.has(row.connectorId)) connectedSlugs.add(row.slug);
+    if (credentialConnectorIds.has(row.connectorId)) {
+      connectedSlugs.add(row.slug);
+      storedCredentialSlugs.add(row.slug);
+    }
+  }
+  const validBoundSecretIdentifiers = new Set(validBoundSecrets.map((row) => row.identifier));
+  for (const row of credentialRows) {
+    if (row.authSecret && validBoundSecretIdentifiers.has(row.authSecret)) {
+      connectedSlugs.add(row.slug);
+    }
   }
   const candidates = conns.map((row) => {
     const { auth, hasAuth } = authOf(row);
@@ -1065,9 +1067,70 @@ async function listConnectors(projectId: string): Promise<AdminConnectorView[]> 
       })),
       requestAuthType: auth.type,
       requiresAuth: hasAuth,
+      secretIdentifier: row.authSecret,
+      credentialSource: !hasAuth
+        ? ('none' as const)
+        : row.providerType === 'channel'
+          ? ('platform' as const)
+          : storedCredentialSlugs.has(row.slug)
+            ? ('stored' as const)
+            : row.authSecret
+              ? ('project_secret' as const)
+              : ('none' as const),
     };
   });
   return buildAdminConnectorViews(candidates, connectedSlugs);
+}
+
+async function setConnectorSecretBinding(
+  projectId: string,
+  slug: string,
+  secretIdentifier: string | null,
+) {
+  const [connector] = await db
+    .select()
+    .from(executorConnectors)
+    .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)))
+    .limit(1);
+  if (!connector) return { ok: false as const, error: 'connector not found', status: 404 };
+
+  if (secretIdentifier === null) {
+    await db
+      .update(executorConnectors)
+      .set({ authSecret: null, updatedAt: new Date() })
+      .where(eq(executorConnectors.connectorId, connector.connectorId));
+    return { ok: true as const };
+  }
+
+  const [secret] = await db
+    .select({ secretId: projectSecrets.secretId })
+    .from(projectSecrets)
+    .where(
+      and(
+        eq(projectSecrets.projectId, projectId),
+        eq(projectSecrets.identifier, secretIdentifier),
+        isNull(projectSecrets.ownerUserId),
+        eq(projectSecrets.active, true),
+        eq(projectSecrets.strategy, 'broker'),
+        eq(projectSecrets.consumer, 'connector'),
+      ),
+    )
+    .limit(1);
+  const validation = validateConnectorSecretBinding({
+    secretIdentifier,
+    requiresAuth: authOf(connector).hasAuth,
+    provider: connector.providerType,
+    authorizationStrategy: connector.authorizationStrategy,
+    hasStoredCredential: await credentialExists(connector.connectorId, null),
+    secretCompatible: Boolean(secret),
+  });
+  if (validation) return { ok: false as const, ...validation };
+
+  await db
+    .update(executorConnectors)
+    .set({ authSecret: secretIdentifier, updatedAt: new Date() })
+    .where(eq(executorConnectors.connectorId, connector.connectorId));
+  return { ok: true as const };
 }
 
 /**
@@ -1205,6 +1268,7 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
   deleteConnector: (projectId, slug) => deleteConnectorFromManifest(projectId, slug),
   setConnectorCredential: (projectId, slug, input) =>
     setConnectorCredentialShared(projectId, slug, input),
+  setConnectorSecretBinding,
   deleteConnectorCredential: async (projectId, slug) => {
     const [row] = await db
       .select({
@@ -1228,12 +1292,7 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
   setCredentialMode: (projectId, accountId, slug, mode) =>
     setConnectorCredentialModeInManifest(projectId, accountId, slug, mode),
   setAuthorizationStrategy: (projectId, accountId, slug, authorizationStrategy) =>
-    setConnectorAuthorizationStrategyInManifest(
-      projectId,
-      accountId,
-      slug,
-      authorizationStrategy,
-    ),
+    setConnectorAuthorizationStrategyInManifest(projectId, accountId, slug, authorizationStrategy),
   setSensitive: (projectId, accountId, slug, sensitive) =>
     setConnectorSensitiveInManifest(projectId, accountId, slug, sensitive),
   setConnectorName: (projectId, accountId, slug, name) =>

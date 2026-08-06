@@ -8,14 +8,15 @@
  * and gating the flow on it would trade real activation for a data point.
  */
 
-import { GlobeIcon } from '@phosphor-icons/react';
 import type { OnboardingCompanySize } from '@kortix/sdk';
+import { GlobeIcon } from '@phosphor-icons/react';
 
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { Label } from '@/components/ui/label';
+import { RadioGroup } from '@/components/ui/radio-group';
 
 import { COMPANY_SIZES } from '../onboarding-profile';
-import { ChoiceRow, StepShell } from '../step-shell';
+import { SelectionRow, StepShell } from '../step-shell';
 
 export function CompanyStep({
   domain,
@@ -63,16 +64,16 @@ export function CompanyStep({
 
         <div className="space-y-3">
           <Label>Company size</Label>
-          <div className="flex flex-col gap-2" role="radiogroup" aria-label="Company size">
+          <RadioGroup
+            value={size ?? ''}
+            onValueChange={(nextSize) => onSizeChange(nextSize as OnboardingCompanySize)}
+            aria-label="Company size"
+            className="gap-2"
+          >
             {COMPANY_SIZES.map((option) => (
-              <ChoiceRow
-                key={option}
-                selected={size === option}
-                label={`${option} people`}
-                onSelect={() => onSizeChange(option)}
-              />
+              <SelectionRow key={option} value={option} label={`${option} people`} />
             ))}
-          </div>
+          </RadioGroup>
         </div>
       </div>
     </StepShell>

@@ -9,7 +9,7 @@
  * where the catalogue call itself returns one.
  */
 
-import { PlusIcon as Plus, MagnifyingGlassIcon as Search } from '@phosphor-icons/react';
+import { MagnifyingGlassIcon, PlusIcon } from '@phosphor-icons/react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import { useState } from 'react';
@@ -18,7 +18,11 @@ import { Button } from '@/components/ui/button';
 import { EntityAvatar } from '@/components/ui/entity-avatar';
 import { FadedScrollArea } from '@/components/ui/faded-scroll-area';
 import { InfoBanner } from '@/components/ui/info-banner';
-import { Input } from '@/components/ui/input';
+import {
+  InputGroupSearch,
+  InputGroupSearchIcon,
+  InputGroupSearchInput,
+} from '@/components/ui/input-group';
 import Loading from '@/components/ui/loading';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -29,7 +33,7 @@ import { ConnectorProfileModal } from '@/features/workspace/customize/sections/c
 import { useToolConnect } from '@/hooks/connectors/use-tool-connect';
 import { listPipedreamApps } from '@kortix/sdk';
 
-import { ChoiceRow, StepShell } from '../step-shell';
+import { ActionRow, StepContext, StepShell } from '../step-shell';
 
 /** Slack has its own dedicated step, so keep it out of this list. */
 const SLACK_SLUGS = new Set(['slack', 'slack_v2']);
@@ -75,17 +79,33 @@ export function ToolsStep({
       onPrimary={onContinue}
       skipLabel="Skip"
       onSkip={onSkip}
+      context={
+        <StepContext>
+          <div className="bg-popover rounded-md border px-4 py-5">
+            <p className="text-foreground text-sm font-medium">
+              <span className="tabular-nums">{profileCount}</span>{' '}
+              {profileCount === 1 ? 'profile' : 'profiles'} connected
+            </p>
+            <p className="text-muted-foreground mt-1 text-xs leading-5 text-pretty">
+              Authorization happens with each provider. Kortix receives only the access that you
+              approve, and you can revoke it later.
+            </p>
+          </div>
+        </StepContext>
+      }
     >
       <div className="flex flex-col gap-4">
-        <div className="relative">
-          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-          <Input
+        <InputGroupSearch>
+          <InputGroupSearchIcon>
+            <MagnifyingGlassIcon />
+          </InputGroupSearchIcon>
+          <InputGroupSearchInput
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search 3,000+ apps…"
-            className="h-10 pl-9"
+            variant="popover"
           />
-        </div>
+        </InputGroupSearch>
 
         {notConfigured ? (
           <InfoBanner tone="neutral" title="App connect isn’t configured on this deployment">
@@ -113,9 +133,9 @@ export function ToolsStep({
               <>
                 <div className="flex flex-col gap-2">
                   {apps.map((app) => (
-                    <ChoiceRow
+                    <ActionRow
                       key={app.slug}
-                      selected={existingSlugs.includes(app.slug)}
+                      active={existingSlugs.includes(app.slug)}
                       label={app.name}
                       description={app.categories?.[0]}
                       aria-label={`Add ${app.name} profile`}
@@ -133,14 +153,14 @@ export function ToolsStep({
                             className="size-7 shrink-0 rounded-sm object-contain"
                           />
                         ) : (
-                          <EntityAvatar icon={Plus} size="sm" label={app.name} />
+                          <EntityAvatar icon={PlusIcon} size="sm" label={app.name} />
                         )
                       }
                       trailing={
                         connect.isPending && connect.variables?.appSlug === app.slug ? (
                           <Loading className="size-4 shrink-0" />
                         ) : (
-                          <Plus className="text-muted-foreground/50 size-4" />
+                          <PlusIcon className="text-muted-foreground/50 size-4" />
                         )
                       }
                     />
@@ -180,7 +200,9 @@ export function ToolsStep({
         title={`Add ${selectedApp?.name ?? 'app'}`}
         description="Create a connector profile before authorization. You can add more than one profile for the same app."
         initialName={selectedApp?.name ?? ''}
-        initialSlug={selectedApp ? proposeConnectorProfileSlug(selectedApp.slug, existingSlugs) : ''}
+        initialSlug={
+          selectedApp ? proposeConnectorProfileSlug(selectedApp.slug, existingSlugs) : ''
+        }
         existingSlugs={existingSlugs}
         pending={connect.isPending}
         onOpenChange={(open) => !open && setSelectedApp(null)}

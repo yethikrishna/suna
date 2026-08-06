@@ -13,15 +13,15 @@
  * deferring a legitimate answer rather than an escape hatch.
  */
 
-import { CheckIcon as Check, KeyIcon as Key, ClockIcon as Clock, SparkleIcon as Sparkle } from '@phosphor-icons/react';
+import { ClockIcon as Clock, KeyIcon as Key, SparkleIcon as Sparkle } from '@phosphor-icons/react';
 import { useState } from 'react';
 
-import { InfoBanner } from '@/components/ui/info-banner';
+import { RadioGroup } from '@/components/ui/radio-group';
 import { flattenModels } from '@/features/session/session-chat-input';
 import { useModelConnectionGate } from '@/features/session/use-model-connection-gate';
 import { useRuntimeProviders } from '@kortix/sdk/react';
 
-import { ChoiceRow, StepShell } from '../step-shell';
+import { SelectionRow, StepContext, StepShell } from '../step-shell';
 
 type PlanChoice = 'kortix' | 'byok' | 'later';
 
@@ -30,6 +30,42 @@ export function PlanStep({ onContinue }: { onContinue: () => void }) {
   const { openConnectProvider, openUpgrade, modal, hasSelectableModels, showUpgradeOption } =
     useModelConnectionGate(flattenModels(providers));
   const [choice, setChoice] = useState<PlanChoice | null>(null);
+
+  const context = (() => {
+    if (choice === 'kortix') {
+      return {
+        title: 'Kortix models',
+        copy: 'Continue to compare managed plans. Kortix handles provider setup and usage limits.',
+      };
+    }
+    if (choice === 'byok') {
+      return {
+        title: hasSelectableModels ? 'Add another provider' : 'Bring your own provider',
+        copy: 'Continue to connect a provider key. Your existing model access stays unchanged.',
+      };
+    }
+    if (choice === 'later') {
+      return {
+        title: hasSelectableModels ? 'Current model stays active' : 'Decide when you send a task',
+        copy: hasSelectableModels
+          ? 'Kortix keeps your current model connection. You can change it from project settings.'
+          : 'The composer will ask for model access before it sends your first task.',
+      };
+    }
+    return hasSelectableModels
+      ? {
+          title: 'A model is connected',
+          copy: showUpgradeOption
+            ? 'Keep it, add another provider, or compare Kortix plans.'
+            : 'Keep it or connect another provider. Billing options are unavailable here.',
+        }
+      : {
+          title: 'Choose your model access',
+          copy: showUpgradeOption
+            ? 'Use managed Kortix models, connect your own provider, or decide later.'
+            : 'Connect your own provider now, or let the composer ask when model access is required.',
+        };
+  })();
 
   // Nothing opens until Continue. This is the whole point of the step.
   const handleContinue = () => {
@@ -54,47 +90,50 @@ export function PlanStep({ onContinue }: { onContinue: () => void }) {
           choice === 'kortix' ? 'See plans' : choice === 'byok' ? 'Add a key' : 'Continue'
         }
         onPrimary={handleContinue}
+        context={
+          <StepContext>
+            <div className="bg-popover rounded-md border px-4 py-5">
+              <p className="text-foreground text-sm font-medium">{context.title}</p>
+              <p className="text-muted-foreground mt-1 text-xs leading-5 text-pretty">
+                {context.copy}
+              </p>
+            </div>
+          </StepContext>
+        }
       >
-        <div className="flex flex-col gap-2">
-          {/* A connected model is context, not an answer. The options stay —
-              removing them stranded anyone who wanted to add a second provider
-              or move onto a plan. */}
-          {hasSelectableModels && (
-            <InfoBanner tone="success" icon={Check} title="Model connected" className="mb-2">
-              You can switch models or add another provider at any time.
-            </InfoBanner>
+        {/* A connected model is context, not an answer. The options stay so the
+            user can add a provider or move onto a plan. */}
+        <RadioGroup
+          value={choice ?? ''}
+          onValueChange={(nextChoice) => setChoice(nextChoice as PlanChoice)}
+          aria-label="Model access"
+          className="gap-2"
+        >
+          {showUpgradeOption && (
+            <SelectionRow
+              value="kortix"
+              label="Use Kortix models"
+              description="Instant access, higher limits, nothing to configure"
+              leading={<Sparkle className="text-muted-foreground size-4 shrink-0" />}
+            />
           )}
-
-          <div className="flex flex-col gap-2" role="radiogroup" aria-label="Model access">
-            {showUpgradeOption && (
-              <ChoiceRow
-                selected={choice === 'kortix'}
-                label="Use Kortix models"
-                description="Instant access, higher limits, nothing to configure"
-                onSelect={() => setChoice('kortix')}
-                leading={<Sparkle className="text-muted-foreground size-4 shrink-0" />}
-              />
-            )}
-            <ChoiceRow
-              selected={choice === 'byok'}
-              label={hasSelectableModels ? 'Connect another provider' : 'Bring your own API key'}
-              description="Anthropic, OpenAI, or any other provider"
-              onSelect={() => setChoice('byok')}
-              leading={<Key className="text-muted-foreground size-4 shrink-0" />}
-            />
-            <ChoiceRow
-              selected={choice === 'later'}
-              label={hasSelectableModels ? 'Keep what I have' : 'Decide later'}
-              description={
-                hasSelectableModels
-                  ? 'Carry on with the model that’s already connected'
-                  : 'The composer will ask the first time you send a task'
-              }
-              onSelect={() => setChoice('later')}
-              leading={<Clock className="text-muted-foreground size-4 shrink-0" />}
-            />
-          </div>
-        </div>
+          <SelectionRow
+            value="byok"
+            label={hasSelectableModels ? 'Connect another provider' : 'Bring your own API key'}
+            description="Anthropic, OpenAI, or any other provider"
+            leading={<Key className="text-muted-foreground size-4 shrink-0" />}
+          />
+          <SelectionRow
+            value="later"
+            label={hasSelectableModels ? 'Keep what I have' : 'Decide later'}
+            description={
+              hasSelectableModels
+                ? 'Carry on with the model that’s already connected'
+                : 'The composer will ask the first time you send a task'
+            }
+            leading={<Clock className="text-muted-foreground size-4 shrink-0" />}
+          />
+        </RadioGroup>
       </StepShell>
     </>
   );

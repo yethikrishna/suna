@@ -97,7 +97,6 @@ describe('slack step', () => {
     // form is a second reflow mid-animation.
     expect(slack).toContain('h-[380px]');
   });
-
 });
 
 describe('company step', () => {
@@ -143,10 +142,9 @@ describe('plan step', () => {
   test('opens nothing on selection — the action is deferred to Continue', () => {
     expect(plan).not.toContain('openUpgrade();\n            }}');
     expect(plan).toContain('const handleContinue');
-    // Each onSelect does exactly one thing: record the choice.
-    for (const choice of ['kortix', 'byok', 'later']) {
-      expect(plan).toContain(`onSelect={() => setChoice('${choice}')}`);
-    }
+    // The controlled group does exactly one thing on selection: record the choice.
+    expect(plan).toContain("value={choice ?? ''}");
+    expect(plan).toContain('onValueChange={(nextChoice) => setChoice(nextChoice as PlanChoice)}');
   });
 
   // The modal that opens should never be a surprise, so the button names it.

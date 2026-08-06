@@ -96,6 +96,8 @@ export function StepShell({
 
       {children && <div className="mt-8">{children}</div>}
 
+      {context}
+
       {/* Skip and Continue are siblings with real distance between them and from
           the content above. A skip tucked directly under the primary reads as a
           footnote to it; side by side it reads as the other choice, which is
@@ -120,8 +122,6 @@ export function StepShell({
           {primaryLabel}
         </Button>
       </div>
-
-      {context}
     </div>
   );
 }
@@ -188,6 +188,7 @@ export function ActionRow({
   disabled,
   onSelect,
   onPreload,
+  'aria-label': ariaLabel,
 }: {
   label: string;
   description?: string;
@@ -197,12 +198,14 @@ export function ActionRow({
   disabled?: boolean;
   onSelect: () => void;
   onPreload?: () => void;
+  'aria-label'?: string;
 }) {
   return (
     <button
       type="button"
       disabled={disabled}
       aria-pressed={active === undefined ? undefined : active}
+      aria-label={ariaLabel}
       onClick={onSelect}
       onPointerEnter={onPreload}
       onFocus={onPreload}
@@ -213,73 +216,6 @@ export function ActionRow({
         <span className="block text-sm font-medium">{label}</span>
         {description && (
           <span className="text-muted-foreground block text-xs text-pretty">{description}</span>
-        )}
-      </span>
-      {trailing && <span className="shrink-0">{trailing}</span>}
-    </button>
-  );
-}
-
-/** @deprecated Use SelectionRow or ActionRow for new onboarding steps. */
-export function ChoiceRow({
-  selected,
-  label,
-  description,
-  onSelect,
-  leading,
-  trailing,
-  disabled,
-  onPreload,
-  'aria-label': ariaLabel,
-}: {
-  selected: boolean;
-  label: string;
-  description?: string;
-  onSelect: () => void;
-  leading?: ReactNode;
-  trailing?: ReactNode;
-  disabled?: boolean;
-  /**
-   * Fired on hover and focus, ahead of any click. Rows that reveal a
-   * lazily-loaded surface use this to fetch the chunk early — otherwise the
-   * download and parse land in the middle of the open animation and drop
-   * frames. Must stay idempotent and cheap; it can fire many times.
-   */
-  onPreload?: () => void;
-  /**
-   * Overrides the accessible name when the visible label alone would mislead.
-   * The tools step needs this: a connected app still offers "Add <app> profile",
-   * because a second profile for the same provider is legal and the row's
-   * selected state would otherwise read as "already done, nothing to do here".
-   */
-  'aria-label'?: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      aria-label={ariaLabel}
-      disabled={disabled}
-      onClick={onSelect}
-      onPointerEnter={onPreload}
-      onFocus={onPreload}
-      className={cn(rowClassName, selected && 'border-primary/40 bg-primary/[0.05]')}
-    >
-      {leading ?? (
-        <span
-          className={cn(
-            'flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors',
-            selected ? 'border-primary' : 'border-border',
-          )}
-        >
-          {selected && <span className="bg-primary size-2 rounded-full" />}
-        </span>
-      )}
-      <span className="min-w-0 flex-1">
-        <span className="text-foreground block truncate text-sm font-medium">{label}</span>
-        {description && (
-          <span className="text-muted-foreground block truncate text-xs">{description}</span>
         )}
       </span>
       {trailing && <span className="shrink-0">{trailing}</span>}

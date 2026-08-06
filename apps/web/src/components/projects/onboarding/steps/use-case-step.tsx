@@ -10,8 +10,10 @@
 
 import type { OnboardingUseCase } from '@kortix/sdk';
 
+import { RadioGroup } from '@/components/ui/radio-group';
+
 import { USE_CASE_OPTIONS } from '../onboarding-profile';
-import { ChoiceRow, StepShell } from '../step-shell';
+import { SelectionRow, StepShell } from '../step-shell';
 
 export function UseCaseStep({
   value,
@@ -34,17 +36,21 @@ export function UseCaseStep({
       skipLabel="Skip"
       onSkip={onSkip}
     >
-      <div className="flex flex-col gap-2" role="radiogroup" aria-label="Use case">
+      <RadioGroup
+        value={value ?? ''}
+        onValueChange={(nextValue) => onSelect(nextValue as OnboardingUseCase)}
+        aria-label="Use case"
+        className="gap-2"
+      >
         {USE_CASE_OPTIONS.map((option) => (
-          <ChoiceRow
+          <SelectionRow
             key={option.value}
-            selected={value === option.value}
+            value={option.value}
             label={option.label}
             description={option.description}
-            onSelect={() => onSelect(option.value)}
           />
         ))}
-      </div>
+      </RadioGroup>
     </StepShell>
   );
 }

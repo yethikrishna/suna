@@ -13,19 +13,19 @@
  * because an empty finish screen would punish them twice for skipping.
  */
 
+import type { OnboardingUseCase } from '@kortix/sdk';
 import {
   ArrowRightIcon as ArrowRight,
-  CheckCircleIcon as CheckCircle,
   CalendarBlankIcon as Calendar,
+  CheckCircleIcon as CheckCircle,
 } from '@phosphor-icons/react';
 import { motion, useReducedMotion } from 'motion/react';
-import type { OnboardingUseCase } from '@kortix/sdk';
 
 import { Button } from '@/components/ui/button';
 
 import { SEAL_TRANSITION } from '../motion';
 import { starterPromptsFor } from '../onboarding-profile';
-import { ChoiceRow, StepShell } from '../step-shell';
+import { ActionRow, StepContext, StepShell } from '../step-shell';
 
 export function DoneStep({
   useCase,
@@ -67,14 +67,26 @@ export function DoneStep({
             ? `${profileCount} ${profileCount === 1 ? 'tool' : 'tools'} connected and ready. Pick something for your agent to start on, or jump straight in.`
             : 'Pick something for your agent to start on, or jump straight in.'
         }
-        primaryLabel="Start building"
+        primaryLabel="Open project"
         onPrimary={onStart}
+        context={
+          profileCount > 0 ? (
+            <StepContext>
+              <div className="bg-popover rounded-md border px-4 py-5">
+                <p className="text-foreground text-sm font-medium">Setup summary</p>
+                <p className="text-muted-foreground mt-1 text-xs leading-5 text-pretty">
+                  <span className="text-foreground tabular-nums">{profileCount}</span>{' '}
+                  {profileCount === 1 ? 'tool is' : 'tools are'} connected and ready for your agent.
+                </p>
+              </div>
+            </StepContext>
+          ) : undefined
+        }
       >
         <div className="flex flex-col gap-2">
           {prompts.map((p) => (
-            <ChoiceRow
+            <ActionRow
               key={p.template}
-              selected={false}
               label={p.title}
               description={p.prompt}
               aria-label={`Start with: ${p.title}`}

@@ -39,8 +39,8 @@ GREEN:
 
 - Focused SDK tests: `33 pass`, `0 fail`, and `121 expect()` calls.
 - `pnpm --filter @kortix/sdk typecheck`: exit `0`.
-- `pnpm --filter @kortix/sdk test`: `1544 pass`, `2 skip`, `0 fail`, and
-  `6317 expect()` calls across `121` files.
+- `pnpm --filter @kortix/sdk test`: `1546 pass`, `0 fail`, and `6323 expect()`
+  calls across `121` files after rebasing onto `origin/main`.
 - `pnpm --filter @kortix/sdk run smoke:install`: exit `0`; the packed tarball
   imported and built successfully.
 

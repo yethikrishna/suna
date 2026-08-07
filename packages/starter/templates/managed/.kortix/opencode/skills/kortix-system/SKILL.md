@@ -159,6 +159,17 @@ project-scoped — it cannot enumerate other projects or hit account-level
 routes. Trying `kortix projects ls` from inside the sandbox returns 403;
 that's intentional. Use `kortix projects info` to inspect **this** project.
 
+**Secret capability discovery.** `$KORTIX_SECRET_CAPABILITIES` contains a
+value-free JSON catalog for this session. Check it before asking for a
+credential. It lists only secrets allowed by both the agent grant and session
+scope. A `sandbox` entry names the environment variable that contains the
+value. An `https_broker` entry must use `kortix secrets call IDENTIFIER URL
+[options]`; Kortix adds the value server-side only after the request matches the
+stored host, method, and path policy. A `kortix_service` entry is available only
+through its named service, such as a connector or the LLM gateway. Never print
+or return a secret value or an opaque broker handle. Use `kortix secrets ls
+--json` when you need the complete delivery policy.
+
 **Getting a credential — never punt to the dashboard.** When you need an API key
 or an app connected, **mint a setup link and surface the URL in the same turn** —
 don't tell the human to "open Customize → Connectors", and don't ask them to

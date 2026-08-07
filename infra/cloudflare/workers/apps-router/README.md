@@ -17,13 +17,6 @@ The workflow creates the proxied wildcard DNS record when it is absent. It
 refuses to replace a conflicting record. It also verifies the Worker route,
 secret bindings, public DNS, TLS, and the signed Dev routing path.
 
-Store its scoped token in the `CLOUDFLARE_APPS_EDGE_API_TOKEN` GitHub secret.
-Scope the token to the `kortix.com` zone. Grant `DNS Write`, `Workers Routes
-Write`, `SSL and Certificates Write`, and `Zone Read`. Grant `Workers Scripts
-Write` on the owning Cloudflare account so the workflow can verify Worker
-secret bindings. Do not reuse the broader deployment token for certificate
-management.
-
 Each API environment must receive the corresponding value as
 `KORTIX_APPS_EDGE_SECRET`. The API falls back to its existing `API_KEY_SECRET`
 when the dedicated value is absent. Do not store secret values in

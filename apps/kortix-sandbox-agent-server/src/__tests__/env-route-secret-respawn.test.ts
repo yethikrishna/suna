@@ -109,10 +109,7 @@ describe('env route — project-secret delta forces respawn, not dispose', () =>
       KORTIX_PROJECT_SECRET_NAMES: '',
       KORTIX_SECRET_CAPABILITIES: '{"version":1,"capabilities":[]}',
     } as NodeJS.ProcessEnv)
-    const app = buildOpencodeApp(baseConfig(), opencode, Date.now(), {
-      repoMaterializationError: null,
-      timeline: [],
-    }, store)
+    const app = buildTestApp(opencode, store)
 
     const { status } = await postEnv(app, {
       revision: 'rev-1',

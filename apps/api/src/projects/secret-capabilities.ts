@@ -42,7 +42,6 @@ function isKortixServiceConsumer(
   return (
     value === 'llm_gateway' ||
     value === 'connector' ||
-    value === 'executor' ||
     value === 'git_proxy'
   );
 }

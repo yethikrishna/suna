@@ -6,7 +6,7 @@ export const SECRET_CAPABILITIES_INSTRUCTION_PATH = '/tmp/kortix/secret-capabili
 
 const IDENTIFIER_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/
 const ENV_NAME_RE = /^[A-Z_][A-Z0-9_]{0,63}$/
-const SERVICE_CONSUMERS = new Set(['llm_gateway', 'connector', 'executor', 'git_proxy'])
+const SERVICE_CONSUMERS = new Set(['llm_gateway', 'connector', 'git_proxy'])
 const MAX_CATALOG_BYTES = 64 * 1024
 
 type CatalogEntry = {

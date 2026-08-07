@@ -53,6 +53,19 @@ var daemonProcessAlive = func(pid int) bool {
 	return pid > 0 && syscall.Kill(pid, 0) == nil
 }
 
+var daemonProcessMatchesExecutable = func(pid int) bool {
+	currentPath, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	current, err := os.Stat(currentPath)
+	if err != nil {
+		return false
+	}
+	process, err := os.Stat(fmt.Sprintf("/proc/%d/exe", pid))
+	return err == nil && os.SameFile(current, process)
+}
+
 func daemonize(pidPath, logPath string) error {
 	lock, err := os.OpenFile(daemonLockPath, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
@@ -66,7 +79,7 @@ func daemonize(pidPath, logPath string) error {
 
 	if raw, readErr := os.ReadFile(pidPath); readErr == nil {
 		pid, parseErr := strconv.Atoi(strings.TrimSpace(string(raw)))
-		if parseErr == nil && daemonProcessAlive(pid) {
+		if parseErr == nil && daemonProcessAlive(pid) && daemonProcessMatchesExecutable(pid) {
 			return nil
 		}
 	} else if !errors.Is(readErr, os.ErrNotExist) {
@@ -482,6 +495,12 @@ func startApp(spec appSpec, state *runtimeState) (*childProcess, error) {
 	return child, nil
 }
 
+func startReadinessWatch(ctx context.Context, spec appSpec, state *runtimeState) context.CancelFunc {
+	readyCtx, cancel := context.WithCancel(ctx)
+	go waitReady(readyCtx, spec, state)
+	return cancel
+}
+
 func run(ctx context.Context, spec appSpec, token string) error {
 	if err := spec.validate(); err != nil {
 		return err
@@ -516,9 +535,8 @@ func run(ctx context.Context, spec appSpec, token string) error {
 	}
 	defer os.Remove(caddyPath)
 
-	readyCtx, cancelReady := context.WithCancel(ctx)
-	go waitReady(readyCtx, spec, state)
-	defer cancelReady()
+	cancelReady := startReadinessWatch(ctx, spec, state)
+	defer func() { cancelReady() }()
 
 	for {
 		var appExited <-chan error
@@ -573,8 +591,7 @@ func run(ctx context.Context, spec appSpec, token string) error {
 				state.setStatus("failed")
 				return err
 			}
-			readyCtx, cancelReady = context.WithCancel(ctx)
-			go waitReady(readyCtx, spec, state)
+			cancelReady = startReadinessWatch(ctx, spec, state)
 		}
 	}
 }

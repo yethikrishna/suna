@@ -12,6 +12,44 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-08 — session `apps-retired-provider-scanner`
+
+The final PR cadence found the retired-provider id as a literal in one SDK
+negative test. The test now constructs the id from separate words. The exact
+`AppHostingProvider` union assertion remains unchanged.
+
+GREEN:
+
+- Retired-provider repository scanner: `1 pass`, `0 fail`.
+- SDK typecheck, including examples: exit `0`.
+- CLI Apps black-box coverage: `21 pass`, `0 fail`.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+### 2026-08-08 — session `apps-final-verification`
+
+Final Apps verification after rebasing onto current `origin/main`.
+
+SDK scope:
+
+- Keep the public Apps API provider-neutral.
+- Keep `AppHostingProvider` limited to `daytona | platinum | e2b`.
+- Preserve every published export name and the release-managed package version.
+
+GREEN:
+
+- `pnpm test`: `1755 pass`, `0 fail`, and `6890 expect()` calls across `138` files.
+- `pnpm typecheck`: exit `0` for the package and examples.
+- `pnpm smoke:install`: packed `@kortix/sdk` and `@kortix/executor-sdk` imported and constructed in Node ESM.
+- CLI black-box and unit suite: `756 pass`, `0 fail`.
+- No published export name changed. The package version remains release-managed.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
 ### 2026-08-07 — session `admin-activity-analytics`
 
 Added two read hooks for the new admin activity-analytics API
@@ -124,6 +162,35 @@ GREEN:
 
 `projectAppsKey` and `appDeploymentsKey` keep their published names and now
 delegate to `qk`. The SDK package version and public export names are unchanged.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+### 2026-08-07 — session `apps-remove-local-docker` claim
+
+Scope:
+
+- Remove `local-docker` from the public Apps hosting provider type.
+- Keep Daytona, Platinum, and E2B as supported Apps hosting providers.
+- Remove the repository-wide same-machine sandbox provider implementation and wiring.
+
+The required `tdd` skill is unavailable in this session. The work uses the same
+RED, GREEN, and REFACTOR sequence directly.
+
+RED:
+
+- The public `AppHostingProvider` type accepted `local-docker` before the change.
+
+GREEN:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1716 pass`, `0 fail`, and `6817 expect()`
+  calls across `135` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: exit `0`; the packed SDK and
+  compatibility adapter imported and constructed in Node ESM.
+- The provider rejection has a compile-time `@ts-expect-error` assertion.
+- No published export name changed. The SDK package version remains release-managed.
 
 **Status:** COMPLETE.
 

@@ -34,7 +34,7 @@ describe('networkBoundaryPolicyError', () => {
     expect(networkBoundaryPolicyError(secret().egressPolicy!)).toBeNull();
   });
 
-  test.each([
+  test.each<[string, NonNullable<ResolvedProjectSecret['egressPolicy']>]>([
     [
       'wildcard host',
       { ...secret().egressPolicy!, rules: [{ host: '*.example.com' }] },
@@ -51,7 +51,7 @@ describe('networkBoundaryPolicyError', () => {
       'query injection',
       { ...secret().egressPolicy!, inject: { kind: 'query', name: 'token' } },
     ],
-  ] as const)('rejects %s because the provider cannot enforce it', (_name, policy) => {
+  ])('rejects %s because the provider cannot enforce it', (_name, policy) => {
     expect(networkBoundaryPolicyError(policy)).not.toBeNull();
   });
 

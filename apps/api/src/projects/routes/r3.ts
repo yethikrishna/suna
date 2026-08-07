@@ -18,6 +18,8 @@ import { seedProjectDefaultModelOnConnect } from '../../llm-gateway/models/seed-
 import { createRoute, z } from '@hono/zod-openapi';
 import { SecretConsumerSchema, UpdateSecretStrategyInputSchema } from '@kortix/api-contract';
 import { parseEgressPolicy } from '../../secrets/strategy';
+import { networkBoundaryPolicyError } from '../../secrets/network-boundary';
+import { networkBoundaryDeliveryAvailable } from '../../secrets/network-boundary-availability';
 import {
   connectors,
   projectSecrets,
@@ -871,17 +873,28 @@ projectsApp.openapi(
         );
       }
       nextPolicy = policy.policy;
+      if (parsed.data.strategy === 'egress') {
+        const boundaryError = networkBoundaryPolicyError(policy.policy);
+        if (boundaryError) {
+          return c.json(
+            { error: boundaryError, code: 'secret_delivery_policy_invalid' },
+            400,
+          );
+        }
+      }
     } else if (parsed.data.egress_policy) {
       return c.json({ error: 'This consumer does not accept an outbound policy' }, 400);
     }
     if (parsed.data.strategy === 'egress') {
-      return c.json(
-        {
-          error: 'egress delivery is unavailable until its adapter is enabled',
-          code: 'secret_delivery_unavailable',
-        },
-        409,
-      );
+      if (!networkBoundaryDeliveryAvailable()) {
+        return c.json(
+          {
+            error: 'Network-boundary delivery requires the Platinum sandbox provider',
+            code: 'secret_delivery_unavailable',
+          },
+          409,
+        );
+      }
     }
     if (
       parsed.data.strategy === 'broker' &&

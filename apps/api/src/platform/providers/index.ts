@@ -2,6 +2,7 @@ import { config } from '../../config';
 import { DaytonaProvider } from './daytona';
 import { E2BProvider } from './e2b';
 import { PlatinumProvider } from './platinum';
+import type { NetworkBoundarySecretBinding } from '../../secrets/network-boundary';
 
 /**
  * Sandbox provider lineup. Extensible registry — adding a new runtime is
@@ -205,6 +206,11 @@ export interface SandboxProvider {
   resolveIngress(externalId: string, request: SandboxIngressRequest): Promise<ResolvedSandboxIngress>;
   ensureRunning(externalId: string): Promise<void>;
   getProvisioningStatus(sandboxId: string): Promise<ProvisioningStatus | null>;
+  /** Apply the exact server-owned network credentials for one sandbox. */
+  syncNetworkBoundary?(
+    externalId: string,
+    bindings: NetworkBoundarySecretBinding[],
+  ): Promise<{ state: 'armed'; attached: number }>;
   /**
    * List the running boxes this deployment owns, for the orphan-box reaper
    * (boxes still running on the provider with no live DB row). OPTIONAL: a

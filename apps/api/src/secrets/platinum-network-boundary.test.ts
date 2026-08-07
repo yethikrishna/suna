@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
 import type { NetworkBoundarySecretBinding } from './network-boundary';
+import * as realPlatinum from '../shared/platinum';
 
 type ExternalSecret = {
   id: string;
@@ -19,14 +20,8 @@ const calls: Array<{ path: string; method: string; body: unknown }> = [];
 let nextId = 1;
 let attachmentState: 'armed' | 'arming' | 'unavailable' = 'armed';
 
-mock.module('../config', () => ({
-  config: {
-    API_KEY_SECRET: 'network-boundary-test-root',
-    INTERNAL_KORTIX_ENV: 'test',
-  },
-}));
-
 mock.module('../shared/platinum', () => ({
+  ...realPlatinum,
   platinumJson: async (path: string, init: RequestInit = {}) => {
     const method = init.method ?? 'GET';
     const body = init.body ? JSON.parse(String(init.body)) : undefined;
@@ -103,6 +98,7 @@ mock.module('../shared/platinum', () => ({
 }));
 
 const { syncPlatinumNetworkBoundary } = await import('./platinum-network-boundary');
+const context = { environment: 'test', rootSecret: 'network-boundary-test-root' };
 
 function binding(value = 'Bearer first-value'): NetworkBoundarySecretBinding {
   return {
@@ -126,7 +122,7 @@ beforeEach(() => {
 
 describe('syncPlatinumNetworkBoundary', () => {
   test('creates a write-only provider secret and attaches the exact session set', async () => {
-    const result = await syncPlatinumNetworkBoundary('sandbox-1', [binding()]);
+    const result = await syncPlatinumNetworkBoundary('sandbox-1', [binding()], context);
 
     expect(result).toEqual({ state: 'armed', attached: 1 });
     expect([...external.values()]).toHaveLength(1);
@@ -140,20 +136,20 @@ describe('syncPlatinumNetworkBoundary', () => {
   });
 
   test('does not rotate an unchanged secret', async () => {
-    await syncPlatinumNetworkBoundary('sandbox-1', [binding()]);
+    await syncPlatinumNetworkBoundary('sandbox-1', [binding()], context);
     calls.length = 0;
 
-    await syncPlatinumNetworkBoundary('sandbox-1', [binding()]);
+    await syncPlatinumNetworkBoundary('sandbox-1', [binding()], context);
 
     expect(calls.some((call) => call.path.endsWith('/versions'))).toBe(false);
     expect(external.get('sec_1')?.current_gen).toBe(1);
   });
 
   test('rotates a changed value without returning it from Platinum', async () => {
-    await syncPlatinumNetworkBoundary('sandbox-1', [binding()]);
+    await syncPlatinumNetworkBoundary('sandbox-1', [binding()], context);
     calls.length = 0;
 
-    await syncPlatinumNetworkBoundary('sandbox-1', [binding('Bearer rotated-value')]);
+    await syncPlatinumNetworkBoundary('sandbox-1', [binding('Bearer rotated-value')], context);
 
     expect(calls.filter((call) => call.path.endsWith('/versions'))).toHaveLength(1);
     expect(external.get('sec_1')).toMatchObject({
@@ -163,10 +159,10 @@ describe('syncPlatinumNetworkBoundary', () => {
   });
 
   test('revokes the binding before erasing a removed provider replica', async () => {
-    await syncPlatinumNetworkBoundary('sandbox-1', [binding()]);
+    await syncPlatinumNetworkBoundary('sandbox-1', [binding()], context);
     calls.length = 0;
 
-    await syncPlatinumNetworkBoundary('sandbox-1', []);
+    await syncPlatinumNetworkBoundary('sandbox-1', [], context);
 
     expect(attached.get('sandbox-1')).toEqual([]);
     expect(external.size).toBe(0);
@@ -179,7 +175,7 @@ describe('syncPlatinumNetworkBoundary', () => {
   test('fails closed when the provider reports an unavailable binding', async () => {
     attachmentState = 'unavailable';
 
-    await expect(syncPlatinumNetworkBoundary('sandbox-1', [binding()])).rejects.toThrow(
+    await expect(syncPlatinumNetworkBoundary('sandbox-1', [binding()], context)).rejects.toThrow(
       'unavailable',
     );
   });

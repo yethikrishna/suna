@@ -1054,6 +1054,7 @@ export const SecretSchema = z.object({
   strategy: SecretDeliveryStrategySchema,
   consumer: SecretConsumerSchema.nullable(),
   delivery_status: SecretDeliveryStatusSchema,
+  network_boundary_available: z.boolean().optional(),
   egress_policy: SecretEgressPolicySchema.nullable(),
   strategy_locked: z.boolean(),
   last_rotated_at: z.string().nullable(),

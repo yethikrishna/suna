@@ -1,6 +1,5 @@
 import { createHash, createHmac } from 'node:crypto';
 
-import { config } from '../config';
 import { platinumJson } from '../shared/platinum';
 import type { NetworkBoundarySecretBinding } from './network-boundary';
 
@@ -29,28 +28,43 @@ function httpStatus(error: unknown): number | null {
   return match ? Number(match[1]) : null;
 }
 
-function replicaName(externalId: string, secretId: string): string {
+export interface PlatinumNetworkBoundaryContext {
+  environment: string;
+  rootSecret: string;
+}
+
+function replicaName(
+  externalId: string,
+  secretId: string,
+  context: PlatinumNetworkBoundaryContext,
+): string {
   const digest = createHash('sha256')
-    .update(`${config.INTERNAL_KORTIX_ENV}\0${externalId}\0${secretId}`)
+    .update(`${context.environment}\0${externalId}\0${secretId}`)
     .digest('hex');
   return `kortix-${digest.slice(0, 52)}`;
 }
 
-function fingerprint(value: string): string {
-  if (!config.API_KEY_SECRET) throw new Error('API_KEY_SECRET is required for network secrets');
-  return createHmac('sha256', config.API_KEY_SECRET).update(value).digest('hex');
+function fingerprint(value: string, context: PlatinumNetworkBoundaryContext): string {
+  if (!context.rootSecret) throw new Error('API_KEY_SECRET is required for network secrets');
+  return createHmac('sha256', context.rootSecret).update(value).digest('hex');
 }
 
-function policyFingerprint(binding: NetworkBoundarySecretBinding): string {
+function policyFingerprint(
+  binding: NetworkBoundarySecretBinding,
+  context: PlatinumNetworkBoundaryContext,
+): string {
   return fingerprint(JSON.stringify({
     hosts: [...binding.hosts].sort(),
     header: binding.header.toLowerCase(),
     onEcho: binding.onEcho,
-  }));
+  }), context);
 }
 
-function descriptionFor(binding: NetworkBoundarySecretBinding): string {
-  return `${DESCRIPTION_PREFIX} material=${fingerprint(binding.value)} policy=${policyFingerprint(binding)}`;
+function descriptionFor(
+  binding: NetworkBoundarySecretBinding,
+  context: PlatinumNetworkBoundaryContext,
+): string {
+  return `${DESCRIPTION_PREFIX} material=${fingerprint(binding.value, context)} policy=${policyFingerprint(binding, context)}`;
 }
 
 function descriptorFingerprints(description: string | null): {
@@ -77,10 +91,11 @@ async function readSecret(nameOrId: string): Promise<PlatinumSecret | null> {
 async function createSecret(
   name: string,
   binding: NetworkBoundarySecretBinding,
+  context: PlatinumNetworkBoundaryContext,
 ): Promise<PlatinumSecret> {
   const body = {
     name,
-    description: descriptionFor(binding),
+    description: descriptionFor(binding, context),
     value: binding.value,
     allow: binding.hosts,
     headers: [binding.header],
@@ -102,14 +117,15 @@ async function createSecret(
 async function ensureSecret(
   externalId: string,
   binding: NetworkBoundarySecretBinding,
+  context: PlatinumNetworkBoundaryContext,
 ): Promise<PlatinumSecret> {
-  const name = replicaName(externalId, binding.secretId);
+  const name = replicaName(externalId, binding.secretId, context);
   let secret = await readSecret(name);
-  if (!secret) return createSecret(name, binding);
+  if (!secret) return createSecret(name, binding, context);
 
   const stored = descriptorFingerprints(secret.description);
-  const material = fingerprint(binding.value);
-  const policy = policyFingerprint(binding);
+  const material = fingerprint(binding.value, context);
+  const policy = policyFingerprint(binding, context);
   if (stored.material !== material) {
     secret = await platinumJson<PlatinumSecret>(`/v1/secrets/${secret.id}/versions`, {
       method: 'POST',
@@ -120,7 +136,7 @@ async function ensureSecret(
     secret = await platinumJson<PlatinumSecret>(`/v1/secrets/${secret.id}`, {
       method: 'PATCH',
       body: JSON.stringify({
-        description: descriptionFor(binding),
+        description: descriptionFor(binding, context),
         allow: binding.hosts,
         headers: [binding.header],
         on_echo: binding.onEcho,
@@ -151,13 +167,14 @@ async function waitUntilArmed(
 export async function syncPlatinumNetworkBoundary(
   externalId: string,
   bindings: NetworkBoundarySecretBinding[],
+  context: PlatinumNetworkBoundaryContext,
 ): Promise<{ state: 'armed'; attached: number }> {
   const sandboxPath = `/v1/sandboxes/${encodeURIComponent(externalId)}/secrets`;
   const before = await platinumJson<PlatinumSandboxSecrets>(sandboxPath);
   const desired = await Promise.all(
     bindings.map(async (binding) => ({
       binding,
-      secret: await ensureSecret(externalId, binding),
+      secret: await ensureSecret(externalId, binding, context),
     })),
   );
   const updated = await platinumJson<PlatinumSandboxSecrets>(sandboxPath, {

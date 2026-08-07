@@ -1,5 +1,5 @@
 /**
- * Snapshot the starter template tree into `src/embedded.v2.generated.json`.
+ * Snapshot the starter template tree into `src/embedded.generated.json`.
  *
  * The runtime loader (`src/index.ts`) walks the template directories on disk
  * when they exist (the normal `bun run` / source-checkout path, so editing a
@@ -85,7 +85,7 @@ export function buildEmbeddedSnapshot(): Record<string, { files: RawFile[] }> {
   return out;
 }
 
-const OUTPUT_PATH = join(STARTER_ROOT, 'src', 'embedded.v2.generated.json');
+const OUTPUT_PATH = join(STARTER_ROOT, 'src', 'embedded.generated.json');
 
 if (import.meta.main) {
   const snapshot = buildEmbeddedSnapshot();

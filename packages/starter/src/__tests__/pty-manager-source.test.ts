@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import embeddedStarter from '../embedded.v2.generated.json' with { type: 'json' };
+import embeddedStarter from '../embedded.generated.json' with { type: 'json' };
 
 const baseManagerPath = '.kortix/opencode/plugins/opencode-pty/src/plugin/pty/manager.ts';
 const baseToolsPath = '.kortix/opencode/plugins/pty.ts';

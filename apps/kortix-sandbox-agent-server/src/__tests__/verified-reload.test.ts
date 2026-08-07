@@ -148,7 +148,7 @@ describe('reloadVerified orders verification before the restart', () => {
     // step bolted on after the damage. Nothing else in this file notices, which
     // is exactly why it is asserted here.
     const body = methodBody();
-    const verifyAt = body.indexOf('verifyCandidateBoots()');
+    const verifyAt = body.indexOf('verifyCandidateBoots(');
     const restartAt = body.indexOf('this.restart()');
     expect(verifyAt).toBeGreaterThan(-1);
     expect(restartAt).toBeGreaterThan(-1);
@@ -173,7 +173,7 @@ describe('callers get the outcome', () => {
       .split('\n')
       .filter((l) => !l.trim().startsWith('//'))
       .join('\n');
-    expect(code).toContain('this.reloadVerified()');
+    expect(code).toContain('this.reloadVerified(');
   });
 
   test('reloadConfig reports kept-old rather than claiming success', () => {
@@ -182,7 +182,7 @@ describe('callers get the outcome', () => {
   });
 
   test('the refresh route returns the outcome so CLI and web can show it', () => {
-    expect(REFRESH).toContain('reloadVerified()');
+    expect(REFRESH).toContain('opencode.reloadVerified(');
     expect(REFRESH).toContain('outcome: reload.outcome');
     // The reason has to reach the user — "reload failed" with no cause is the
     // whole complaint about the old behaviour.
@@ -193,5 +193,48 @@ describe('callers get the outcome', () => {
     // The pull succeeded; only the reload declined. Reporting ok:false would
     // hide a good pull behind a safety mechanism doing its job.
     expect(REFRESH).toContain('ok: true');
+  });
+});
+
+/**
+ * The fault-injection switch that makes the decline path provable on a real box.
+ *
+ * It exists because nothing else can reach that branch in production: the API
+ * validates agent configs against opencode's schema before they ever arrive at
+ * a sandbox, so no supported input produces a config that fails to boot. The
+ * branch is the whole safety mechanism, and "covered by unit tests only" is a
+ * weak place to leave it.
+ */
+describe('verify_fail fault injection', () => {
+  test('forces the verdict AFTER a real spawn, not instead of one', () => {
+    // A shortcut that returned early would prove the plumbing and nothing else.
+    // Spawning for real means the injected run exercises the same code as a
+    // genuine failure: candidate started, candidate retired, incumbent alive.
+    const body = reloadBody();
+    const spawnAt = body.indexOf('spawnChild(binaryPath');
+    const forceAt = body.indexOf('opts.forceFail');
+    expect(spawnAt).toBeGreaterThan(-1);
+    expect(forceAt).toBeGreaterThan(spawnAt);
+  });
+
+  test('still retires the candidate when injected', () => {
+    const body = reloadBody();
+    expect(body.indexOf('killProcessGroup(candidate')).toBeGreaterThan(
+      body.indexOf('opts.forceFail'),
+    );
+  });
+
+  test('the route only injects on an explicit opt-in', () => {
+    // Default MUST be a normal reload. A flag that defaulted on would turn
+    // every reload on the box into a no-op.
+    expect(REFRESH).toContain("c.req.query('verify_fail') === '1'");
+  });
+
+  test('injection cannot reach the restart', () => {
+    // Same guard as a real failure: decline returns before this.restart().
+    const method = SRC.slice(SRC.indexOf('async reloadVerified('));
+    const guardAt = method.indexOf('if (!proven.ok) return');
+    expect(guardAt).toBeGreaterThan(-1);
+    expect(guardAt).toBeLessThan(method.indexOf('this.restart()'));
   });
 });

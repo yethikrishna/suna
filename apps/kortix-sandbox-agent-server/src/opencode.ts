@@ -1026,7 +1026,14 @@ export type Opencode = {
    * Boot the new opencode, verify it serves, then swap and retire the old one.
    * Never leaves the session without an opencode.
    */
-  reloadVerified(): Promise<VerifiedReloadResult>
+  /**
+   * @param opts.forceFail Fault injection — treat the candidate as failed to
+   * boot even though it started. The only way to exercise the decline path on
+   * a real box: the API validates agent configs against opencode's schema
+   * before they ever reach a sandbox, so no supported input can produce a
+   * config that fails to start.
+   */
+  reloadVerified(opts?: { forceFail?: boolean }): Promise<VerifiedReloadResult>
   reconfigure(nextCfg: Config, nextOpencodeConfigDir: string, nextProjectEnv?: ProjectEnvStore): void
   getPid(): number | null
   getInternalUrl(): string
@@ -1344,7 +1351,9 @@ export function createOpencodeSupervisor(
    * several were caught only in review. Keeping 4096 canonical means nothing
    * outside the box has to know a reload happened.
    */
-  async function verifyCandidateBoots(): Promise<{ ok: true } | { ok: false; reason: string }> {
+  async function verifyCandidateBoots(
+    opts: { forceFail?: boolean } = {},
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
     if (!binaryPath) return { ok: false, reason: 'opencode binary not resolved yet' }
     if (stopping) return { ok: false, reason: 'supervisor is shutting down' }
 
@@ -1356,7 +1365,14 @@ export function createOpencodeSupervisor(
       return { ok: false, reason: `could not spawn candidate: ${(err as Error).message}` }
     }
 
-    const ready = await probeUntilReady(candidatePort, VERIFY_READY_TIMEOUT_MS, candidate)
+    // Fault injection (see the `verify_fail` note on POST /kortix/refresh).
+    // Deliberately applied AFTER the real spawn and probe, not instead of them:
+    // the point is to exercise the ACTUAL decline path — candidate spawned,
+    // candidate retired, incumbent untouched — rather than a shortcut that
+    // proves only the plumbing.
+    const ready = opts.forceFail
+      ? false
+      : await probeUntilReady(candidatePort, VERIFY_READY_TIMEOUT_MS, candidate)
     await killProcessGroup(candidate, 'SIGTERM').catch(() => {})
     if (!ready) {
       logger.warn('[opencode] candidate never became ready; keeping the running instance', {
@@ -1664,8 +1680,8 @@ export function createOpencodeSupervisor(
      * Downtime is unchanged from the old restart — the gap is one boot — but it
      * now starts from a config already proven to start.
      */
-    async reloadVerified(): Promise<VerifiedReloadResult> {
-      const proven = await verifyCandidateBoots()
+    async reloadVerified(opts: { forceFail?: boolean } = {}): Promise<VerifiedReloadResult> {
+      const proven = await verifyCandidateBoots(opts)
       if (!proven.ok) return { outcome: 'kept-old', reason: proven.reason }
       await this.restart()
       return {

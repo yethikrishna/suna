@@ -278,6 +278,21 @@ func childEnvironment(parent []string) []string {
 	return out
 }
 
+func caddyEnvironment(parent []string) []string {
+	env := childEnvironment(parent)
+	out := make([]string, 0, len(env)+2)
+	for _, item := range env {
+		if strings.HasPrefix(item, "XDG_CONFIG_HOME=") || strings.HasPrefix(item, "XDG_DATA_HOME=") {
+			continue
+		}
+		out = append(out, item)
+	}
+	return append(out,
+		"XDG_CONFIG_HOME=/tmp/kortix-caddy-config",
+		"XDG_DATA_HOME=/tmp/kortix-caddy-data",
+	)
+}
+
 type runtimeState struct {
 	startedAt time.Time
 	ready     atomic.Bool
@@ -492,7 +507,7 @@ func run(ctx context.Context, spec appSpec, token string) error {
 	}
 
 	caddyCmd := caddyCommand(caddyPath)
-	caddyCmd.Env = childEnvironment(os.Environ())
+	caddyCmd.Env = caddyEnvironment(os.Environ())
 	caddyCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	caddy, err := startLogged(caddyCmd, "caddy", state.logs)
 	if err != nil {

@@ -269,6 +269,7 @@ await writeFile('dist/index.html', '<main>${bundleMarker}</main>\\n');
       'FROM oven/bun:1.3.14-alpine',
       'WORKDIR /app',
       'COPY server.ts /app/server.ts',
+      'USER 65532:65532',
       '',
     ].join('\n'));
     await writeFile(join(dynamicSource, 'server.ts'), dynamicServer(dynamicMarkerV1));

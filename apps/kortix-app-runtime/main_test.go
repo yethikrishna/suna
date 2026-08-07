@@ -166,6 +166,18 @@ func TestChildEnvironmentRemovesControlSecrets(t *testing.T) {
 	}
 }
 
+func TestCaddyEnvironmentUsesWritableTemporaryState(t *testing.T) {
+	env := strings.Join(caddyEnvironment([]string{"HOME=/root", "PATH=/bin"}), "\n")
+	for _, required := range []string{
+		"XDG_CONFIG_HOME=/tmp/kortix-caddy-config",
+		"XDG_DATA_HOME=/tmp/kortix-caddy-data",
+	} {
+		if !strings.Contains(env, required) {
+			t.Fatalf("Caddy environment missing %q: %s", required, env)
+		}
+	}
+}
+
 func TestControlEndpointsRequireTokenAndExposeState(t *testing.T) {
 	state := &runtimeState{startedAt: time.Now().UTC(), status: "running", logs: newLogRing(10)}
 	state.ready.Store(true)

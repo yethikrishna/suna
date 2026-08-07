@@ -24,9 +24,9 @@ const CONFIG = await Bun.file(new URL('../config.ts', import.meta.url).pathname)
 const PROXY = await Bun.file(new URL('../proxy.ts', import.meta.url).pathname).text();
 const REFRESH = await Bun.file(new URL('../routes/refresh.ts', import.meta.url).pathname).text();
 
-/** `reloadVerified`'s body, comments stripped. */
+/** `verifyCandidateBoots`'s body, comments stripped. */
 function reloadBody(): string {
-  const start = SRC.indexOf('async function reloadVerified(');
+  const start = SRC.indexOf('async function verifyCandidateBoots(');
   expect(start).toBeGreaterThan(-1);
   const rest = SRC.slice(start);
   const end = rest.indexOf('\n  /**\n   * Poll the real session API');
@@ -46,56 +46,44 @@ describe('the candidate boots before anything is killed', () => {
     expect(body).toContain('supervise: false');
   });
 
-  test('verifies the candidate BEFORE retiring the old process', () => {
-    // The entire fix in one assertion. If the kill moves above the probe this
-    // is the kill-then-hope restart again, and nothing else here would notice.
+  test('the verdict comes from a real boot, not an assumption', () => {
     const probeAt = body.indexOf('probeUntilReady');
-    const killAt = body.indexOf('killProcessGroup(previous');
-    expect(probeAt).toBeGreaterThan(-1);
-    expect(killAt).toBeGreaterThan(-1);
-    expect(probeAt).toBeLessThan(killAt);
+    const spawnAt = body.indexOf('spawnChild(binaryPath');
+    expect(spawnAt).toBeGreaterThan(-1);
+    expect(probeAt).toBeGreaterThan(spawnAt);
   });
 
-  test('adopts the candidate before retiring the old one', () => {
-    // Retire first and any request landing in the gap has no opencode at all.
-    expect(body.indexOf('child = candidate')).toBeLessThan(
-      body.indexOf('killProcessGroup(previous'),
-    );
+  test('never touches the running opencode during verification', () => {
+    // The running instance keeps serving for the whole trial. Anything that
+    // stopped or replaced it here would reintroduce the outage this prevents.
+    expect(body).not.toContain('this.restart()');
+    expect(body).not.toContain("stop('SIGTERM')");
+    expect(body).not.toContain('child = candidate');
   });
 
-  test('strips the old exit handler before killing it', () => {
-    // The old child's handler nulls `child` and schedules a respawn. Left
-    // attached, killing it would erase the candidate we just adopted and
-    // respawn against what is now the standby port.
-    const detachAt = body.indexOf("removeAllListeners('exit')");
-    expect(detachAt).toBeGreaterThan(-1);
-    expect(detachAt).toBeLessThan(body.indexOf('killProcessGroup(previous'));
-  });
-
-  test('supervises the promoted candidate', () => {
-    // It was spawned unsupervised. Promoted without this it would die silently
-    // and never come back.
-    expect(body).toContain('superviseChild(candidate)');
+  test('always retires the candidate, pass or fail', () => {
+    // It was only ever a trial. Left running it holds the standby port and a
+    // second opencode against the same workspace.
+    expect(body).toContain('killProcessGroup(candidate');
   });
 });
 
 describe('when the candidate never comes up', () => {
   const body = reloadBody();
 
-  test('keeps the old process and says why', () => {
-    expect(body).toContain("outcome: 'kept-old'");
+  test('says why, so the caller can report a failed reload', () => {
+    // `verifyCandidateBoots` returns the verdict; `reloadVerified` turns a
+    // false into outcome: 'kept-old' with this reason attached.
     expect(body).toMatch(/reason:/);
+    const method = SRC.slice(SRC.indexOf('async reloadVerified('));
+    expect(method).toContain("outcome: 'kept-old'");
+    expect(method).toContain('proven.reason');
   });
 
-  test('kills the candidate, never the incumbent, on that branch', () => {
-    const failBranch = body.slice(body.indexOf('if (!ready)'), body.indexOf('if (previous) previous'));
-    expect(failBranch).toContain('killProcessGroup(candidate');
-    expect(failBranch).not.toContain('killProcessGroup(previous');
-  });
-
-  test('does not swap the ports on failure', () => {
-    const failBranch = body.slice(body.indexOf('if (!ready)'), body.indexOf('if (previous) previous'));
-    expect(failBranch).not.toContain('currentCfg.opencodeInternalPort =');
+  test('reports ok:false rather than throwing', () => {
+    // The caller turns this into a reported failed reload on a healthy session.
+    // A throw would read as a broken box.
+    expect(body).toContain('return { ok: false');
   });
 });
 
@@ -129,23 +117,63 @@ describe('the port pair', () => {
     expect(call).toContain('cfg.opencodeStandbyPort');
   });
 
-  test('a swap trades the two, so the live port always has a standby', () => {
+  test('the LIVE port never moves — the candidate only ever borrows the standby', () => {
+    // Serving from the standby would save a boot and is not worth it: the API
+    // decides from the port number whether traffic is the session's
+    // conversation, whether it may be publicly shared, whether it counts as
+    // preview use for the sandbox deadline, how Platinum rewrites ingress, and
+    // where an opencode PTY connects. Each fails silently if the live port
+    // moves. Keeping 4096 canonical means nothing outside the box has to know.
     const body = reloadBody();
-    expect(body).toContain('currentCfg.opencodeInternalPort = candidatePort');
-    expect(body).toContain('currentCfg.opencodeStandbyPort = livePort');
+    expect(body).not.toContain('currentCfg.opencodeInternalPort =');
+    expect(body).toContain('currentCfg.opencodeStandbyPort');
+  });
+});
+
+describe('reloadVerified orders verification before the restart', () => {
+  /** The method body, comments stripped. */
+  function methodBody(): string {
+    const start = SRC.indexOf('async reloadVerified(');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, SRC.indexOf('\n    },', start));
+    return body
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('//'))
+      .join('\n');
+  }
+
+  test('verifies BEFORE restarting — the entire point', () => {
+    // Restart first and this is the old kill-then-hope path with a verification
+    // step bolted on after the damage. Nothing else in this file notices, which
+    // is exactly why it is asserted here.
+    const body = methodBody();
+    const verifyAt = body.indexOf('verifyCandidateBoots()');
+    const restartAt = body.indexOf('this.restart()');
+    expect(verifyAt).toBeGreaterThan(-1);
+    expect(restartAt).toBeGreaterThan(-1);
+    expect(verifyAt).toBeLessThan(restartAt);
+  });
+
+  test('returns kept-old WITHOUT restarting when verification fails', () => {
+    // The early return is what protects the running opencode. Falling through
+    // to the restart would kill it for a config already known not to boot.
+    const body = methodBody();
+    const guardAt = body.indexOf('if (!proven.ok) return');
+    expect(guardAt).toBeGreaterThan(-1);
+    expect(guardAt).toBeLessThan(body.indexOf('this.restart()'));
   });
 });
 
 describe('callers get the outcome', () => {
-  test('reloadConfig no longer calls the kill-first restart', () => {
+  test('reloadConfig verifies before it restarts', () => {
     const reload = SRC.split('async reloadConfig(')[1]?.split('\n    },')[0] ?? '';
     const code = reload
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .split('\n')
       .filter((l) => !l.trim().startsWith('//'))
       .join('\n');
-    expect(code).toContain('reloadVerified()');
-    expect(code).not.toContain('this.restart()');
+    expect(code).toContain('this.reloadVerified()');
   });
 
   test('reloadConfig reports kept-old rather than claiming success', () => {

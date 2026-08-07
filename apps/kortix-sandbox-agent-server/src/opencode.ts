@@ -1326,55 +1326,46 @@ export function createOpencodeSupervisor(
    * process end when it is retired. That is expected and the CLI says so
    * up front; the guarantee here is that you are never left with nothing.
    */
-  async function reloadVerified(): Promise<VerifiedReloadResult> {
-    if (!binaryPath) return { outcome: 'kept-old', reason: 'opencode binary not resolved yet' }
-    if (stopping) return { outcome: 'kept-old', reason: 'supervisor is shutting down' }
+  /**
+   * Prove the new config actually BOOTS, without touching the running opencode.
+   *
+   * Spawns a candidate on the standby port while the live one keeps serving,
+   * waits for it to answer the real session API, then retires it. The verdict
+   * is all we want: a config that cannot start is discovered here, with the
+   * session still healthy, instead of after we have killed the only opencode.
+   *
+   * The candidate is deliberately NOT promoted to serve traffic. Doing so would
+   * be one boot cheaper and it is not worth it — opencode's port is not private
+   * to this process. The API decides from the port number whether traffic is
+   * the session's conversation (the per-session visibility gate), whether it
+   * may be publicly shared, whether it counts as preview use for the sandbox
+   * deadline, how Platinum rewrites ingress, and where an opencode PTY
+   * WebSocket connects. Each is a silent failure if the live port moves, and
+   * several were caught only in review. Keeping 4096 canonical means nothing
+   * outside the box has to know a reload happened.
+   */
+  async function verifyCandidateBoots(): Promise<{ ok: true } | { ok: false; reason: string }> {
+    if (!binaryPath) return { ok: false, reason: 'opencode binary not resolved yet' }
+    if (stopping) return { ok: false, reason: 'supervisor is shutting down' }
 
-    const previous = child
     const candidatePort = currentCfg.opencodeStandbyPort
-    const livePort = currentCfg.opencodeInternalPort
-
     let candidate: ChildProcess
     try {
       candidate = await spawnChild(binaryPath, { port: candidatePort, supervise: false })
     } catch (err) {
-      return { outcome: 'kept-old', reason: `could not spawn candidate: ${(err as Error).message}` }
+      return { ok: false, reason: `could not spawn candidate: ${(err as Error).message}` }
     }
 
     const ready = await probeUntilReady(candidatePort, VERIFY_READY_TIMEOUT_MS, candidate)
+    await killProcessGroup(candidate, 'SIGTERM').catch(() => {})
     if (!ready) {
-      // The verdict this whole path exists for. Retire the candidate and leave
-      // the running opencode exactly as it was.
-      await killProcessGroup(candidate, 'SIGTERM').catch(() => {})
       logger.warn('[opencode] candidate never became ready; keeping the running instance', {
         candidatePort,
-        livePort,
       })
-      return {
-        outcome: 'kept-old',
-        reason: 'the new opencode did not start; the previous one is still running',
-      }
+      return { ok: false, reason: 'the new opencode did not start; the previous one is still running' }
     }
-
-    // Promote. Order matters: adopt the candidate BEFORE retiring the old one,
-    // and strip the old child's exit handler first — it would otherwise fire on
-    // the kill below, null out the child we just adopted, and schedule a
-    // respawn against a port that is now the standby.
-    if (previous) previous.removeAllListeners('exit')
-    child = candidate
-    superviseChild(candidate)
-    currentCfg.opencodeInternalPort = candidatePort
-    currentCfg.opencodeStandbyPort = livePort
-    state = 'ok'
-    restartDelayMs = 500
-
-    if (previous) await killProcessGroup(previous, 'SIGTERM').catch(() => {})
-    logger.info('[opencode] swapped onto verified opencode', {
-      from: livePort,
-      to: candidatePort,
-      pid: candidate.pid ?? null,
-    })
-    return { outcome: 'swapped', port: candidatePort, pid: candidate.pid ?? null }
+    logger.info('[opencode] candidate config verified', { candidatePort })
+    return { ok: true }
   }
 
   /**
@@ -1644,7 +1635,7 @@ export function createOpencodeSupervisor(
       // Verified swap instead of the old kill-then-hope restart. A config that
       // cannot boot now leaves the running opencode in place and reports why,
       // rather than taking the session down with it.
-      const result = await reloadVerified()
+      const result = await this.reloadVerified()
       if (result.outcome === 'kept-old') {
         logger.warn('[opencode] reload kept the previous instance', { reason: result.reason })
         return 'kept-old'
@@ -1666,7 +1657,23 @@ export function createOpencodeSupervisor(
       return 'restarted'
     },
 
-    reloadVerified,
+    /**
+     * Verify first, then restart. Never kills the running opencode for a config
+     * that cannot boot.
+     *
+     * Downtime is unchanged from the old restart — the gap is one boot — but it
+     * now starts from a config already proven to start.
+     */
+    async reloadVerified(): Promise<VerifiedReloadResult> {
+      const proven = await verifyCandidateBoots()
+      if (!proven.ok) return { outcome: 'kept-old', reason: proven.reason }
+      await this.restart()
+      return {
+        outcome: 'swapped',
+        port: currentCfg.opencodeInternalPort,
+        pid: this.getPid(),
+      }
+    },
 
     reconfigure(nextCfg: Config, nextOpencodeConfigDir: string, nextProjectEnv?: ProjectEnvStore) {
       currentCfg = nextCfg

@@ -59,6 +59,7 @@ jobs:
               - 'apps/sandbox/**'
               - 'apps/cli/**'          # baked into the API image (sandbox kortix CLI)
               - 'packages/**'
+              - 'scripts/ci/cosign-sign-attest.sh'
               - 'infra/k8s/charts/kortix-api/**'
               - 'infra/k8s/envs/dev/**'
               - '.github/workflows/deploy-dev.yml'
@@ -258,8 +259,7 @@ jobs:
           REF: ${{ steps.digest.outputs.ref }}
         run: |
           set -euo pipefail
-          cosign sign --yes "$REF"
-          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$REF"
+          bash scripts/ci/cosign-sign-attest.sh "$REF" sbom.spdx.json
       - name: SLSA build provenance
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:

@@ -12,6 +12,27 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-07 — session `apps-query-key-integration` claim
+
+No **Now** task claimed. This is a narrow integration fix after merging current
+`main` into the Apps acceptance branch.
+
+Scope:
+
+- Add `qk.project.apps(projectId)` for the existing Apps list cache entry.
+- Replace the Apps UI's hand-written `project-apps` query key.
+- Preserve every published export name and the SDK package version.
+- Run RED, GREEN, full SDK gates, and the frontend lint/build gate.
+
+The required `tdd` skill is unavailable in this session. This work uses the
+required RED, GREEN, and REFACTOR sequence directly.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
+---
+
 ### 2026-08-07 — session `client-cache-unification` — guard hardening + 4 review follow-ups
 
 Closes the regression-prevention gap the fix-wave entry below left open, plus

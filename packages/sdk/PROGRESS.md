@@ -524,6 +524,34 @@ Required SDK gates are typecheck, the full test suite, and packed-install smoke.
 
 **SDK package shippable to production: NOT YET.**
 
+### 2026-08-07 — session `apps-experimental-gate` completion
+
+Implemented:
+
+- Added the additive `apps` key to `ExperimentalFeatureKey`.
+- Added project-contract coverage for `experimental.apps`.
+- Kept the existing Apps SDK client and React surface unchanged.
+
+Required gates:
+
+```text
+$ pnpm --filter @kortix/sdk typecheck
+exit 0
+
+$ pnpm --filter @kortix/sdk test
+1597 pass
+2 skip
+0 fail
+
+$ pnpm --filter @kortix/sdk run smoke:install
+OK: @kortix/sdk and @kortix/executor-sdk import and construct from packed tarballs
+install smoke test passed
+```
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
 ---
 
 ### 2026-08-04 — session `auth-cache-link-prefetch` completion
@@ -6770,3 +6798,17 @@ composes are tested directly.
 **Status:** COMPLETE.
 
 **SDK package shippable to production: YES.**
+### 2026-08-07 — session `apps-experimental-gate` claim
+
+Scope:
+
+- Add the additive `apps` experimental feature key to the public project contract.
+- Keep the existing Apps SDK surface unchanged.
+- Gate API, CLI, and web discovery and execution on the selected project's effective flag.
+
+The required `tdd` skill is unavailable in this session. The work uses the same
+RED, GREEN, and REFACTOR sequence directly.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**

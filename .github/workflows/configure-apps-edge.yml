@@ -47,7 +47,7 @@ jobs:
             any(.result[]; .pattern == "*.apps.kortix.com/*" and .script == "kortix-apps-router")
           ' <<<"$routes"
 
-          secrets="$(npx --yes wrangler@4.34.0 secret list --json)"
+          secrets="$(npx --yes wrangler@4.34.0 secret list --format json)"
           jq -e '
             map(.name) | sort ==
             ["DEV_EDGE_SECRET", "PREVIEW_EDGE_SECRET", "PROD_EDGE_SECRET", "STAGING_EDGE_SECRET"]

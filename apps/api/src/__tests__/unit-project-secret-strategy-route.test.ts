@@ -646,6 +646,35 @@ describe('POST /v1/projects/:projectId/secrets audit', () => {
     expect(row).toMatchObject({ strategy: 'denied', consumer: null });
   });
 
+  test('creates an enforceable network-boundary secret', async () => {
+    const policy = {
+      rules: [{ host: 'api.example.com' }],
+      inject: { kind: 'header', name: 'authorization', template: 'Bearer {{secret}}' },
+      on_no_match: 'deny',
+      tls: 'terminate',
+    };
+    const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'SERVICE_API_KEY',
+        value: 'plaintext-test-value',
+        strategy: 'egress',
+        consumer: 'network',
+        egress_policy: policy,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      strategy: 'egress',
+      consumer: 'network',
+      delivery_status: 'available',
+      egress_policy: policy,
+    });
+    expect(row).toMatchObject({ strategy: 'egress', consumer: 'network', egressPolicy: policy });
+  });
+
   test('rejects a creation consumer without a strategy', async () => {
     const response = await buildApp().request(`/v1/projects/${PROJECT_ID}/secrets`, {
       method: 'POST',

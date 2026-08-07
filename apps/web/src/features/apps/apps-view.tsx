@@ -21,7 +21,7 @@ import {
 import { useProjectCan } from '@/lib/use-project-can';
 import { cn } from '@/lib/utils';
 import { updateExperimentalFeature, type App, type AppDeployment } from '@kortix/sdk';
-import { useAppDeployments, useProjectApps } from '@kortix/sdk/react';
+import { qk, useAppDeployments, useProjectApps } from '@kortix/sdk/react';
 import {
   ArrowSquareOutIcon,
   CaretDownIcon,
@@ -111,7 +111,7 @@ export function AppsView({ projectId }: { projectId: string }) {
   const enableApps = useMutation({
     mutationFn: () => updateExperimentalFeature(projectId, 'apps', true),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] });
+      await queryClient.invalidateQueries({ queryKey: qk.project.detail(projectId) });
       successToast('Apps enabled for this project');
     },
     onError: (error: Error) => errorToast(error.message || 'Failed to enable Apps'),

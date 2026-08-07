@@ -27,9 +27,29 @@ Scope:
 The required `tdd` skill is unavailable in this session. This work uses the
 required RED, GREEN, and REFACTOR sequence directly.
 
-**Status:** IN PROGRESS.
+RED:
 
-**SDK package shippable to production: NOT YET.**
+- Focused tests failed in `4` places before the implementation: missing
+  `qk.project.apps`, missing `qk.project.appDeployments`, the legacy literal
+  guard, and the Apps invalidation expectations.
+
+GREEN:
+
+- Focused query-key, guard, and Apps hook tests: `66 pass`, `0 fail`.
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1711 pass`, `0 fail`, and `6804 expect()`
+  calls across `135` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: exit `0`; the packed SDK and
+  compatibility adapter imported and constructed.
+- Apps UI SDK-boundary test: `1 pass`, `0 fail`.
+- `pnpm --dir apps/web exec eslint src --quiet`: exit `0`.
+
+`projectAppsKey` and `appDeploymentsKey` keep their published names and now
+delegate to `qk`. The SDK package version and public export names are unchanged.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
 
 ---
 

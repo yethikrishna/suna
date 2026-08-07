@@ -123,8 +123,7 @@ export class AppHostingProvider {
 
   async createRuntime(input: StartAppRuntimeInput): Promise<AppRuntimeHandle> {
     const token = appControlToken(input.runtimeId, this.dependencies.controlSecret);
-    const provider = this.dependencies.runtimeProvider(input.provider);
-    const result = await provider.create({
+    const result = await this.dependencies.runtimeProvider(input.provider).create({
       accountId: input.accountId,
       userId: input.userId,
       name: input.name,
@@ -135,12 +134,6 @@ export class AppHostingProvider {
       publishedPorts: [APP_CONTROL_PORT, APP_INGRESS_PORT],
       envVars: { ...input.envVars, KORTIX_APPD_TOKEN: token },
     });
-    try {
-      await provider.ensureAppRuntimeStarted(result.externalId);
-    } catch (error) {
-      await provider.remove(result.externalId).catch(() => {});
-      throw error;
-    }
     return {
       ...result,
       provider: input.provider,
@@ -150,15 +143,11 @@ export class AppHostingProvider {
   }
 
   async start(provider: SandboxProviderName, externalId: string): Promise<void> {
-    const runtimeProvider = this.dependencies.runtimeProvider(provider);
-    await runtimeProvider.start(externalId);
-    await runtimeProvider.ensureAppRuntimeStarted(externalId);
+    await this.dependencies.runtimeProvider(provider).start(externalId);
   }
 
   async ensureRunning(provider: SandboxProviderName, externalId: string): Promise<void> {
-    const runtimeProvider = this.dependencies.runtimeProvider(provider);
-    await runtimeProvider.ensureRunning(externalId);
-    await runtimeProvider.ensureAppRuntimeStarted(externalId);
+    await this.dependencies.runtimeProvider(provider).ensureRunning(externalId);
   }
 
   async stop(provider: SandboxProviderName, externalId: string): Promise<void> {
@@ -187,9 +176,7 @@ export class AppHostingProvider {
   ): Promise<AppdStatus> {
     const response = await this.controlRequest(provider, externalId, runtimeId, '/v1/status');
     if (!response.ok) {
-      throw new Error(
-        `kortix-appd status returned ${response.status}: ${(await response.text()).slice(0, 300)}`,
-      );
+      throw new Error(`kortix-appd status returned ${response.status}: ${(await response.text()).slice(0, 300)}`);
     }
     return response.json() as Promise<AppdStatus>;
   }
@@ -212,9 +199,7 @@ export class AppHostingProvider {
       `/v1/logs?${query}`,
     );
     if (!response.ok) {
-      throw new Error(
-        `kortix-appd logs returned ${response.status}: ${(await response.text()).slice(0, 300)}`,
-      );
+      throw new Error(`kortix-appd logs returned ${response.status}: ${(await response.text()).slice(0, 300)}`);
     }
     return response.json();
   }

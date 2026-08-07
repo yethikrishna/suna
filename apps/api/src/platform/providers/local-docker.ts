@@ -65,10 +65,7 @@ const DEFAULT_MEMORY_GB = Number.parseFloat(process.env.LOCAL_DOCKER_MEMORY_GB |
 // daytona.ts's managedSandboxLabels() exactly — the reaper's
 // listManagedRunningSandboxes() scoping logic is provider-agnostic and reads
 // the SAME two labels regardless of provider.
-function managedLabels(
-  externalId: string,
-  workloadType: 'session' | 'app',
-): Record<string, string> {
+function managedLabels(externalId: string, workloadType: 'session' | 'app'): Record<string, string> {
   return {
     'kortix.managed': 'true',
     'kortix.env': config.INTERNAL_KORTIX_ENV,
@@ -136,9 +133,9 @@ async function assertDockerReachable(docker: Docker): Promise<void> {
     const detail = err instanceof Error ? err.message : String(err);
     throw new Error(
       `[local-docker] Docker daemon is not reachable (${detail}). The local-docker sandbox ` +
-        `provider requires the host's Docker socket mounted into kortix-api (self-host: select ` +
-        `"local-docker" at \`kortix self-host init\`, which wires this automatically) — or, ` +
-        `outside self-host, set LOCAL_DOCKER_SOCKET_PATH / DOCKER_HOST to a reachable Docker Engine.`,
+      `provider requires the host's Docker socket mounted into kortix-api (self-host: select ` +
+      `"local-docker" at \`kortix self-host init\`, which wires this automatically) — or, ` +
+      `outside self-host, set LOCAL_DOCKER_SOCKET_PATH / DOCKER_HOST to a reachable Docker Engine.`,
     );
   }
 }
@@ -192,8 +189,7 @@ function isMissingContainerError(err: unknown): boolean {
 function toStatus(info: Docker.ContainerInspectInfo): SandboxStatus {
   const state = info.State;
   if (state?.Running) return 'running';
-  if (state?.Status === 'exited' || state?.Status === 'created' || state?.Status === 'dead')
-    return 'stopped';
+  if (state?.Status === 'exited' || state?.Status === 'created' || state?.Status === 'dead') return 'stopped';
   return 'unknown';
 }
 
@@ -208,7 +204,9 @@ export class LocalDockerProvider implements SandboxProvider {
 
   readonly provisioning: ProvisioningTraits = {
     async: false,
-    stages: [{ id: 'creating', progress: 50, message: 'Starting local container...' }],
+    stages: [
+      { id: 'creating', progress: 50, message: 'Starting local container...' },
+    ],
   };
 
   /**
@@ -236,7 +234,7 @@ export class LocalDockerProvider implements SandboxProvider {
     if (!snapshot) {
       throw new Error(
         'local-docker create() called without opts.snapshot. Every sandbox must boot from a ' +
-          'per-project image built by apps/api/src/snapshots/builder.ts. There is no shared fallback.',
+        'per-project image built by apps/api/src/snapshots/builder.ts. There is no shared fallback.',
       );
     }
     assertWorkloadCredential(this.name, opts, opts.envVars ?? {});
@@ -280,9 +278,9 @@ export class LocalDockerProvider implements SandboxProvider {
     }
     const env = Object.entries(envVars).map(([k, v]) => `${k}=${v}`);
 
-    const publishedPorts = Array.from(
-      new Set(opts.publishedPorts ?? (workloadType === 'app' ? [7331, 8080] : [AGENT_PORT])),
-    );
+    const publishedPorts = Array.from(new Set(
+      opts.publishedPorts ?? (workloadType === 'app' ? [7331, 8080] : [AGENT_PORT]),
+    ));
     const exposedPorts = Object.fromEntries(publishedPorts.map((port) => [`${port}/tcp`, {}]));
     const portBindings = Object.fromEntries(
       publishedPorts.map((port) => [`${port}/tcp`, [{ HostIp: '127.0.0.1', HostPort: '0' }]]),
@@ -338,10 +336,6 @@ export class LocalDockerProvider implements SandboxProvider {
     };
   }
 
-  async ensureAppRuntimeStarted(_externalId: string): Promise<void> {
-    // Docker starts the image ENTRYPOINT on create and container restart.
-  }
-
   async start(externalId: string): Promise<void> {
     const docker = getDockerClient();
     await assertDockerReachable(docker);
@@ -389,10 +383,7 @@ export class LocalDockerProvider implements SandboxProvider {
     }
   }
 
-  async resolveIngress(
-    externalId: string,
-    request: SandboxIngressRequest,
-  ): Promise<ResolvedSandboxIngress> {
+  async resolveIngress(externalId: string, request: SandboxIngressRequest): Promise<ResolvedSandboxIngress> {
     // `pnpm worktree` runs kortix-api directly on the macOS host. The host
     // cannot resolve a container name from Docker's private DNS, so use the
     // loopback-only published port in that explicit development mode. Inspect
@@ -461,9 +452,7 @@ export class LocalDockerProvider implements SandboxProvider {
    * cross-provider logic uniform (and safe if a laptop ever runs two
    * kortix-api instances against the same daemon, e.g. dev + a worktree).
    */
-  async listManagedRunningSandboxes(): Promise<
-    Array<{ externalId: string; createdAt: Date | null }>
-  > {
+  async listManagedRunningSandboxes(): Promise<Array<{ externalId: string; createdAt: Date | null }>> {
     const docker = getDockerClient();
     await assertDockerReachable(docker);
     const containers = await docker.listContainers({
@@ -473,10 +462,7 @@ export class LocalDockerProvider implements SandboxProvider {
       }),
     });
     return containers.map((c) => ({
-      externalId:
-        c.Labels?.['kortix.sandbox'] ||
-        c.Names?.[0]?.replace(/^\//, '').replace(CONTAINER_PREFIX, '') ||
-        c.Id,
+      externalId: c.Labels?.['kortix.sandbox'] || c.Names?.[0]?.replace(/^\//, '').replace(CONTAINER_PREFIX, '') || c.Id,
       createdAt: c.Created ? new Date(c.Created * 1000) : null,
     }));
   }

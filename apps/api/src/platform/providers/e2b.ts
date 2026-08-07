@@ -24,7 +24,8 @@ import { assertWorkloadCredential, sandboxWorkloadType } from './index';
 // backstop and must not make sandbox creation plan-dependent.
 const E2B_RUNTIME_BACKSTOP_MS = 60 * 60 * 1000;
 const KORTIX_ENTRYPOINT = '/usr/local/bin/kortix-entrypoint';
-const KORTIX_ENTRYPOINT_COMMAND = `exec flock -n /run/kortix-entrypoint.lock ${KORTIX_ENTRYPOINT}`;
+const KORTIX_ENTRYPOINT_COMMAND =
+  `exec flock -n /run/kortix-entrypoint.lock ${KORTIX_ENTRYPOINT}`;
 const RUNTIME_ENV_PATH = '/etc/kortix/runtime-env.json';
 const KORTIX_HEALTH_WAIT =
   'for attempt in $(seq 1 180); do ' +
@@ -42,7 +43,11 @@ const MANAGED_METADATA = 'kortix_managed';
 const ENV_METADATA = 'kortix_env';
 // The E2B SDK accepts requestTimeoutMs, but a live kill call remained pending
 // after that budget. This outer timer bounds all permanent-removal call sites.
-const E2B_REMOVE_TIMEOUT_MS = configuredTimeoutMs('KORTIX_E2B_REMOVE_TIMEOUT_MS', 25_000, 1_000);
+const E2B_REMOVE_TIMEOUT_MS = configuredTimeoutMs(
+  'KORTIX_E2B_REMOVE_TIMEOUT_MS',
+  25_000,
+  1_000,
+);
 
 function apiOpts() {
   return { apiKey: config.E2B_API_KEY, requestTimeoutMs: 20_000 } as const;
@@ -50,12 +55,7 @@ function apiOpts() {
 
 function isMissingSandboxError(error: unknown): boolean {
   if (error instanceof SandboxNotFoundError) return true;
-  const err = error as {
-    status?: unknown;
-    statusCode?: unknown;
-    code?: unknown;
-    message?: unknown;
-  } | null;
+  const err = error as { status?: unknown; statusCode?: unknown; code?: unknown; message?: unknown } | null;
   if (err?.status === 404 || err?.statusCode === 404 || err?.code === 404) return true;
   return /not found|does not exist|no such sandbox/i.test(String(err?.message ?? error ?? ''));
 }
@@ -75,9 +75,7 @@ function validateRuntimeEnv(value: unknown, externalId: string): Record<string, 
   const envs: Record<string, string> = {};
   for (const [key, item] of Object.entries(value)) {
     if (typeof item !== 'string') {
-      throw new Error(
-        `[e2b] sandbox ${externalId} has a non-string persisted runtime environment value`,
-      );
+      throw new Error(`[e2b] sandbox ${externalId} has a non-string persisted runtime environment value`);
     }
     envs[key] = item;
   }
@@ -89,7 +87,10 @@ function validateRuntimeEnv(value: unknown, externalId: string): Record<string, 
   return envs;
 }
 
-async function persistRuntimeEnv(sandbox: E2BSandbox, envs: Record<string, string>): Promise<void> {
+async function persistRuntimeEnv(
+  sandbox: E2BSandbox,
+  envs: Record<string, string>,
+): Promise<void> {
   await sandbox.files.write(RUNTIME_ENV_PATH, JSON.stringify(envs), {
     user: 'root',
     requestTimeoutMs: 10_000,
@@ -116,7 +117,9 @@ async function loadRuntimeEnv(sandbox: E2BSandbox): Promise<Record<string, strin
 
 function requirePrivateTrafficToken(sandbox: E2BSandbox): string {
   if (!sandbox.trafficAccessToken) {
-    throw new Error(`[e2b] sandbox ${sandbox.sandboxId} has no private traffic access token`);
+    throw new Error(
+      `[e2b] sandbox ${sandbox.sandboxId} has no private traffic access token`,
+    );
   }
   return sandbox.trafficAccessToken;
 }
@@ -126,8 +129,8 @@ async function ensureKortixEntrypoint(
   envs?: Record<string, string>,
 ): Promise<void> {
   const processes = await sandbox.commands.list({ requestTimeoutMs: 10_000 });
-  const alreadyRunning = processes.some((process) =>
-    `${process.cmd} ${process.args.join(' ')}`.includes(KORTIX_ENTRYPOINT),
+  const alreadyRunning = processes.some(
+    (process) => `${process.cmd} ${process.args.join(' ')}`.includes(KORTIX_ENTRYPOINT),
   );
   if (!alreadyRunning) {
     // The guest lock is the cross-process/cross-replica authority. Two API
@@ -156,8 +159,8 @@ async function ensureAppEntrypoint(
   envs: Record<string, string>,
 ): Promise<void> {
   const processes = await sandbox.commands.list({ requestTimeoutMs: 10_000 });
-  const alreadyRunning = processes.some((process) =>
-    `${process.cmd} ${process.args.join(' ')}`.includes(KORTIX_APPD),
+  const alreadyRunning = processes.some(
+    (process) => `${process.cmd} ${process.args.join(' ')}`.includes(KORTIX_APPD),
   );
   if (!alreadyRunning) {
     await sandbox.commands.run(KORTIX_APPD_COMMAND, {
@@ -198,7 +201,8 @@ export class E2BProvider implements SandboxProvider {
       );
     }
 
-    const sandboxApiBase = config.KORTIX_URL.replace(/\/+$/, '')
+    const sandboxApiBase = config.KORTIX_URL
+      .replace(/\/+$/, '')
       .replace(/\/v1\/router$/, '')
       .replace(/\/v1$/, '');
     const envVars: Record<string, string> = {
@@ -252,9 +256,7 @@ export class E2BProvider implements SandboxProvider {
     } catch (error) {
       connectedSandboxes.delete(sandbox.sandboxId);
       await sandbox.kill({ requestTimeoutMs: 20_000 }).catch(() => false);
-      throw new Error(
-        `[e2b] failed to launch Kortix entrypoint: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      throw new Error(`[e2b] failed to launch Kortix entrypoint: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     const externalId = sandbox.sandboxId;
@@ -290,10 +292,6 @@ export class E2BProvider implements SandboxProvider {
       connectedSandboxes.delete(externalId);
       throw error;
     }
-  }
-
-  async ensureAppRuntimeStarted(_externalId: string): Promise<void> {
-    // E2B honors the image ENTRYPOINT and resumes the existing process tree.
   }
 
   async start(externalId: string): Promise<void> {
@@ -372,10 +370,7 @@ export class E2BProvider implements SandboxProvider {
 
   async resolveEndpoint(externalId: string): Promise<ResolvedEndpoint> {
     const ingress = await this.resolveIngress(externalId, { port: 8000, transport: 'http' });
-    const headers: Record<string, string> = {
-      ...ingress.headers,
-      'Content-Type': 'application/json',
-    };
+    const headers: Record<string, string> = { ...ingress.headers, 'Content-Type': 'application/json' };
     const serviceKey = await serviceKeyForExternalId(externalId).catch(() => null);
     if (serviceKey) headers.Authorization = `Bearer ${serviceKey}`;
     return { url: ingress.url, headers };
@@ -387,9 +382,7 @@ export class E2BProvider implements SandboxProvider {
     if (status === 'stopped') await this.start(externalId);
   }
 
-  async listManagedRunningSandboxes(): Promise<
-    Array<{ externalId: string; createdAt: Date | null }>
-  > {
+  async listManagedRunningSandboxes(): Promise<Array<{ externalId: string; createdAt: Date | null }>> {
     const paginator = Sandbox.list({
       ...apiOpts(),
       limit: 100,

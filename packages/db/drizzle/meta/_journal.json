@@ -295,6 +295,13 @@
       "when": 1786121841282,
       "tag": "20260807165721_remove_local_docker_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1786129586815,
+      "tag": "20260807190626_trial_and_entitlement_overrides",
+      "breakpoints": true
     }
   ]
 }

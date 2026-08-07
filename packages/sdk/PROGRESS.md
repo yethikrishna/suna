@@ -12,6 +12,47 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-07 — session `apps-query-key-integration` claim
+
+No **Now** task claimed. This is a narrow integration fix after merging current
+`main` into the Apps acceptance branch.
+
+Scope:
+
+- Add `qk.project.apps(projectId)` for the existing Apps list cache entry.
+- Replace the Apps UI's hand-written `project-apps` query key.
+- Preserve every published export name and the SDK package version.
+- Run RED, GREEN, full SDK gates, and the frontend lint/build gate.
+
+The required `tdd` skill is unavailable in this session. This work uses the
+required RED, GREEN, and REFACTOR sequence directly.
+
+RED:
+
+- Focused tests failed in `4` places before the implementation: missing
+  `qk.project.apps`, missing `qk.project.appDeployments`, the legacy literal
+  guard, and the Apps invalidation expectations.
+
+GREEN:
+
+- Focused query-key, guard, and Apps hook tests: `66 pass`, `0 fail`.
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1711 pass`, `0 fail`, and `6804 expect()`
+  calls across `135` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: exit `0`; the packed SDK and
+  compatibility adapter imported and constructed.
+- Apps UI SDK-boundary test: `1 pass`, `0 fail`.
+- `pnpm --dir apps/web exec eslint src --quiet`: exit `0`.
+
+`projectAppsKey` and `appDeploymentsKey` keep their published names and now
+delegate to `qk`. The SDK package version and public export names are unchanged.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+---
+
 ### 2026-08-07 — session `client-cache-unification` — guard hardening + 4 review follow-ups
 
 Closes the regression-prevention gap the fix-wave entry below left open, plus
@@ -1116,6 +1157,30 @@ Required SDK gates are typecheck, the full test suite, and packed-install smoke.
 **Status:** IN PROGRESS.
 
 **SDK package shippable to production: NOT YET.**
+
+### 2026-08-07 — session `apps-experimental-gate` completion
+
+The Apps project gate remains additive. The existing Apps SDK surface keeps all
+published names. `AppDeployment` now exposes immutable `created_by`,
+`source_session_id`, and `actor_type` provenance returned by the API.
+
+GREEN:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1597 pass`, `2 skip`, `0 fail`, and
+  `6547 expect()` calls across `127` files.
+- `pnpm --filter @kortix/sdk smoke:install`: exit `0`; the packed SDK imported
+  and `createKortix` constructed successfully.
+- `bun test src/core/rest/projects-client/apps.test.ts`: `5 pass`, `0 fail`.
+
+No public export name changed. The package version remains untouched.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+The complete Apps deployment matrix is a platform acceptance gate. It is not an
+SDK package gate and remains pending until the merged Dev deployment is live.
 
 ### 2026-08-07 — session `apps-experimental-gate` completion
 

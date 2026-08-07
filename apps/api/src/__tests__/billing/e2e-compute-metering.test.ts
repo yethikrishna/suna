@@ -47,6 +47,7 @@ interface InMemorySession {
 }
 
 let sessions: InMemorySession[] = [];
+let insertedComputeSessionData: Record<string, unknown> | null = null;
 let debitCalls: { accountId: string; amount: number; description: string; ledgerType: string }[] = [];
 let simulateUniqueViolationOnInsert = false;
 let holdFirstDebit = false;
@@ -56,6 +57,7 @@ let signalFirstDebitStarted: (() => void) | null = null;
 
 mock.module('../../billing/repositories/compute-sessions', () => ({
   insertComputeSession: async (data: any) => {
+    insertedComputeSessionData = data;
     if (simulateUniqueViolationOnInsert) {
       simulateUniqueViolationOnInsert = false;
       const err = new Error('duplicate open compute session') as Error & { code?: string };
@@ -74,9 +76,9 @@ mock.module('../../billing/repositories/compute-sessions', () => ({
       diskGb: data.diskGb,
       gpuCount: data.gpuCount ?? 0,
       state: data.state ?? 'active',
-      startedAt: new Date().toISOString(),
+      startedAt: data.startedAt ?? new Date().toISOString(),
       endedAt: null,
-      lastBilledAt: new Date().toISOString(),
+      lastBilledAt: data.lastBilledAt ?? new Date().toISOString(),
       costUsd: '0',
       ledgerId: null,
       metadata: data.metadata ?? {},
@@ -177,6 +179,7 @@ const SPEC = { cpuCores: 2, memoryGb: 4, diskGb: 20, gpuCount: 0 };
 
 beforeEach(() => {
   sessions = [];
+  insertedComputeSessionData = null;
   debitCalls = [];
   simulateUniqueViolationOnInsert = false;
   holdFirstDebit = false;
@@ -205,6 +208,17 @@ describe('compute metering — per-seat happy path', () => {
     expect(sessions[0].state).toBe('active');
     expect(sessions[0].endedAt).toBeNull();
     expect(debitCalls.length).toBe(0);
+  });
+
+  test('start pins the initial billing cursor to the stored start timestamp', async () => {
+    await startComputeSession({
+      sandboxId: 'sb_timestamp_precision',
+      accountId: 'acc_test_123',
+      spec: SPEC,
+    });
+
+    expect(typeof insertedComputeSessionData?.startedAt).toBe('string');
+    expect(insertedComputeSessionData?.lastBilledAt).toBe(insertedComputeSessionData?.startedAt);
   });
 
   test('pause finalizes the row, debits with compute_debit type, and matches cost formula', async () => {

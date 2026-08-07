@@ -109,6 +109,10 @@ export async function startComputeSession(opts: StartComputeOpts): Promise<strin
   const existing = await getOpenComputeSession(opts.sandboxId);
   if (existing) return existing.id;
 
+  // PostgreSQL defaults retain microseconds, but JavaScript Date reads only
+  // milliseconds. Pin both timestamps to one JavaScript instant so the first
+  // billing window cannot include a sub-millisecond interval before started_at.
+  const startedAt = new Date().toISOString();
   const row = await insertComputeSession({
     accountId: opts.accountId,
     sandboxId: opts.sandboxId,
@@ -120,6 +124,8 @@ export async function startComputeSession(opts: StartComputeOpts): Promise<strin
     diskGb: opts.spec.diskGb,
     gpuCount: opts.spec.gpuCount ?? 0,
     state: 'active',
+    startedAt,
+    lastBilledAt: startedAt,
     metadata: (opts.metadata ?? {}) as Record<string, unknown>,
     workloadType: opts.workloadType ?? 'session',
     appRuntimeId: opts.appRuntimeId ?? null,

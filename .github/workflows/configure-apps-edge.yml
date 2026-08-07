@@ -216,6 +216,9 @@ jobs:
               --write-out '%{http_code}' \
               "https://$host/"
           })"
+          echo "HTTP status: $status"
+          grep -Ei '^x-kortix-app-environment:' "$headers" || true
+          jq -c . "$body" || true
           test "$status" = 404
           grep -Eiq '^x-kortix-app-environment: dev\r?$' "$headers"
           jq -e '.error == "App not found"' "$body"

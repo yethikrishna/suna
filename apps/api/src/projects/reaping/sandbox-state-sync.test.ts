@@ -328,6 +328,6 @@ describe('the ended_at single-writer invariant', () => {
       }))
       .filter((entry) => entry.hits > 0);
 
-    expect(writers).toEqual([{ file: 'billing/services/compute-metering.ts', hits: 1 }]);
+    expect(writers).toEqual([{ file: 'billing/repositories/compute-sessions.ts', hits: 2 }]);
   });
 });

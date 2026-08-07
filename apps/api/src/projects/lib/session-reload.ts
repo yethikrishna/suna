@@ -112,6 +112,18 @@ export interface SessionReloadResult {
    * classified real successes as warnings and vice versa.
    */
   agent_files: ReloadAgentFiles;
+  /**
+   * How the box applied the new config, when it said.
+   *
+   * `kept-old` is the verified swap declining: the daemon booted the new
+   * opencode, it never started serving, so the previous one was left running.
+   * The push landed and the config did NOT take — which is a FAILED reload with
+   * a healthy session, a combination `applied` alone cannot express.
+   *
+   * `null` means the box did not say (a daemon older than the verified swap, or
+   * no reload was needed) — never "it worked".
+   */
+  opencode_reload: 'disposed' | 'restarted' | 'kept-old' | null;
   /** Present when nothing was applied. */
   reason?: string;
 }
@@ -305,6 +317,7 @@ export async function reloadSessionConfig(input: {
       repo_refreshed: false,
       commit_sha: null,
       agent_files: 'unknown',
+      opencode_reload: null,
       reason: 'no reachable sandbox',
     };
   }
@@ -322,6 +335,7 @@ export async function reloadSessionConfig(input: {
       repo_refreshed: false,
       commit_sha: before.commitSha,
       agent_files: 'unknown',
+      opencode_reload: null,
       reason:
         before.turnInFlight === true
           ? 'session is mid-turn'
@@ -372,7 +386,15 @@ export async function reloadSessionConfig(input: {
       synced: configDirSynced,
       reason: configDirReason,
     }),
-    ...(push.applied ? {} : { reason: push.reason ?? 'agent config unchanged' }),
+    opencode_reload: push.opencodeReload ?? null,
+    ...(push.applied
+      ? push.opencodeReload === 'kept-old'
+        ? {
+            reason:
+              'the new opencode did not start, so the session kept the config it was already running',
+          }
+        : {}
+      : { reason: push.reason ?? 'agent config unchanged' }),
   };
 }
 

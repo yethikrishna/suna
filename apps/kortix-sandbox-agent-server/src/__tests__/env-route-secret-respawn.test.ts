@@ -203,6 +203,35 @@ describe('env route — project-secret delta forces respawn, not dispose', () =>
     expect(calls[0]!.mustRespawn).toBe(true)
   })
 
+  it('removes a revoked project secret from the daemon environment', async () => {
+    const name = 'LIVE_REVOKE_TEST_KEY'
+    const previous = process.env[name]
+    process.env[name] = 'boot-value'
+
+    try {
+      const { opencode } = fakeOpencode()
+      const store = createProjectEnvStore({
+        KORTIX_PROJECT_SECRETS_REVISION: 'rev-1',
+        KORTIX_PROJECT_SECRET_NAMES: name,
+        [name]: 'boot-value',
+      } as NodeJS.ProcessEnv)
+      const app = buildTestApp(opencode, store)
+
+      const { status } = await postEnv(app, {
+        revision: 'rev-2',
+        env: {},
+        names: [],
+        refreshModels: true,
+      })
+
+      expect(status).toBe(200)
+      expect(process.env[name]).toBeUndefined()
+    } finally {
+      if (previous === undefined) delete process.env[name]
+      else process.env[name] = previous
+    }
+  })
+
   it('a pure MODEL change (no project-secret delta) keeps the dispose fast path', async () => {
     const { opencode, calls } = fakeOpencode()
     const store = createProjectEnvStore({

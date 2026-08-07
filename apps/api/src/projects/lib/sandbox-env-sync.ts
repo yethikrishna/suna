@@ -6,7 +6,7 @@ import { config } from '../../config';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { resolveLlmGatewayBaseUrl } from '../../llm-gateway/sandbox-base-url';
 import { nativeProviderEnvNames } from '../../llm-gateway/sandbox-credentials';
-import { getProvider, type ProviderName } from '../../platform/providers';
+import type { ProviderName } from '../../platform/providers';
 import {
   intersectSecretGrants,
   listProjectSecretsSnapshotForUser,
@@ -27,20 +27,9 @@ import {
   workspaceModeFromSessionMetadata,
 } from './session-sandbox-metadata';
 
-/**
- * The origin THIS sandbox should reach kortix-api's LLM-gateway surface at —
- * mirrors session-sandbox.ts's boot-time computation (see that file and
- * `local-docker.ts`'s `sandboxFacingApiOrigin()`). Every hot env-push call
- * site here recomputes the LLM-gateway base URL from scratch (a project's
- * gateway opt-in can toggle, or secrets can rotate, mid-session), so it must
- * ask the OWNING provider for its origin the same way the boot path does —
- * otherwise a same-machine provider's boot-time fix is silently undone by the
- * very next prompt or gateway-mode toggle, which re-pushes the generic public
- * origin over the daemon's `/kortix/env` and re-breaks connectivity.
- */
-export function llmGatewayBaseUrlForProvider(providerName: ProviderName): string {
-  const origin = getProvider(providerName).sandboxFacingApiOrigin?.() ?? config.KORTIX_URL;
-  return resolveLlmGatewayBaseUrl(origin);
+/** Resolve the LLM gateway URL used by every supported remote provider. */
+export function llmGatewayBaseUrlForProvider(_providerName: ProviderName): string {
+  return resolveLlmGatewayBaseUrl(config.KORTIX_URL);
 }
 
 const SANDBOX_SERVICE_PORT = 8000;

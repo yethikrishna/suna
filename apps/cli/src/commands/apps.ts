@@ -56,7 +56,7 @@ Subcommands:
     --build-command <command>       Bundle build command.
     --readiness-path <path>         Default: /.
     --spa | --no-spa                Static/bundle history fallback.
-    --provider <name>               daytona, platinum, e2b, or local-docker.
+    --provider <name>               daytona, platinum, or e2b.
     --no-wait                       Return after the deployment is queued.
     --wait-seconds <seconds>        Default: 1200.
   show <id|slug>                    Show an App and its deployments. --json.
@@ -327,8 +327,8 @@ interface DeployFlags {
 
 function deployFlags(rest: string[]): DeployFlags {
   const provider = takeFlagValue(rest, ['--provider']) as AppHostingProvider | undefined;
-  if (provider && !['daytona', 'platinum', 'e2b', 'local-docker'].includes(provider)) {
-    throw new Error('--provider must be daytona, platinum, e2b, or local-docker');
+  if (provider && !['daytona', 'platinum', 'e2b'].includes(provider)) {
+    throw new Error('--provider must be daytona, platinum, or e2b');
   }
   const spa = takeFlagBool(rest, ['--spa']);
   const noSpa = takeFlagBool(rest, ['--no-spa']);

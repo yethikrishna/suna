@@ -24,7 +24,6 @@ import {
 } from '../../llm-gateway/resolution/effective';
 import { nativeProviderEnvNames } from '../../llm-gateway/sandbox-credentials';
 import { auth, json } from '../../openapi';
-import { getProvider } from '../../platform/providers';
 import { sandboxFrontendBaseUrl } from '../../platform/sandbox-frontend-url';
 import { selectProvider } from '../../platform/services/provider-balancer';
 import { ProvisionTimeline } from '../../platform/services/provision-timeline';
@@ -527,16 +526,10 @@ export function proxyGitUrl(projectId: string): string {
  * "Unable to connect" boot error ~60s later. Detect it up front so session
  * creation fails fast with an actionable message instead.
  *
- * A same-machine provider (local-docker) has no such constraint — its
- * sandboxes reach kortix-api over the shared Docker network, not the public
- * internet — so this check is skipped for any provider whose
- * `requiresPublicCallback` capability is false (see platform/providers/index.ts).
- *
  * Returns a human-readable reason string when unreachable, or null when fine.
  */
 
-export function sandboxCallbackUnreachableReason(providerName: SandboxProviderName): string | null {
-  if (!getProvider(providerName).requiresPublicCallback) return null;
+export function sandboxCallbackUnreachableReason(): string | null {
   let host: string;
   try {
     host = new URL(deriveKortixApiBase()).hostname.toLowerCase();
@@ -1046,7 +1039,7 @@ export async function createProjectSession(input: {
   const providerName: SandboxProviderName =
     'provider' in picked ? (picked.provider as SandboxProviderName) : await selectProvider();
 
-  const callbackUnreachable = sandboxCallbackUnreachableReason(providerName);
+  const callbackUnreachable = sandboxCallbackUnreachableReason();
   if (callbackUnreachable) {
     return {
       error: { status: 503, body: { error: callbackUnreachable, code: 'KORTIX_URL_UNREACHABLE' } },

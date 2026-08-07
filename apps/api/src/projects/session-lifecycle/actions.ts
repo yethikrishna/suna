@@ -167,7 +167,7 @@ export async function restartSession(input: {
     };
   }
 
-  const restartUnreachable = sandboxCallbackUnreachableReason(providerName);
+  const restartUnreachable = sandboxCallbackUnreachableReason();
   if (restartUnreachable) {
     return {
       status: 503,

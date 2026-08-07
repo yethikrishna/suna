@@ -166,7 +166,6 @@ export function daytonaLifecycle(autoStopOverride?: number): {
 
 export class DaytonaProvider implements SandboxProvider {
   readonly name: ProviderName = 'daytona';
-  readonly requiresPublicCallback = true;
 
   readonly provisioning: ProvisioningTraits = {
     async: false,

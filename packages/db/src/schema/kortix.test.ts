@@ -84,7 +84,7 @@ describe('kortix enums', () => {
 
   test('sandbox_provider enum lists supported providers', () => {
     expect(sandboxProviderEnum.enumName).toBe('sandbox_provider');
-    expect(sandboxProviderEnum.enumValues).toEqual(['daytona', 'platinum', 'e2b', 'local-docker']);
+    expect(sandboxProviderEnum.enumValues).toEqual(['daytona', 'platinum', 'e2b']);
   });
 
   test('project_status enum is active or archived', () => {

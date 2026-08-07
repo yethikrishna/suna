@@ -98,7 +98,7 @@ async function seedStoppedRuntime(desiredState: 'running' | 'stopped' = 'running
     status: 'ready',
     sourceKind: 'oci_image',
     hostingType: 'sandbox',
-    hostingProvider: 'local-docker',
+    hostingProvider: 'daytona',
     runtimeVersion: 'test',
     createdBy: PROJECT_ID,
   });
@@ -106,7 +106,7 @@ async function seedStoppedRuntime(desiredState: 'running' | 'stopped' = 'running
     runtimeId: RUNTIME_ID,
     deploymentId: DEPLOYMENT_ID,
     accountId: ACCOUNT_ID,
-    provider: 'local-docker',
+    provider: 'daytona',
     externalId: 'app-lifecycle-race-runtime',
     status: 'stopped',
     controlTokenHash: '0'.repeat(64),

@@ -398,7 +398,7 @@ projectsApp.openapi(
       body: { content: { 'application/json': { schema: z.object({
         artifact_id: z.string().uuid(),
         source: SourceSchema,
-        provider: z.enum(['daytona', 'platinum', 'e2b', 'local-docker']).optional(),
+        provider: z.enum(['daytona', 'platinum', 'e2b']).optional(),
         environment: EnvironmentSchema.optional(),
         secrets: SecretMappingsSchema.optional(),
       }) } } },

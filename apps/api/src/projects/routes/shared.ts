@@ -299,7 +299,7 @@ export async function allocateRuntimeOnOpen(
 ): Promise<void> {
   const providerName = session.sandboxProvider as SandboxProviderName;
   if (!(config.ALLOWED_SANDBOX_PROVIDERS as readonly string[]).includes(providerName)) return;
-  if (sandboxCallbackUnreachableReason(providerName)) return;
+  if (sandboxCallbackUnreachableReason()) return;
   await db
     .update(projectSessions)
     .set({ status: 'provisioning', error: null, updatedAt: new Date() })

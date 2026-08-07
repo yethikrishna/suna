@@ -69,7 +69,7 @@ describe('AppHostingProvider', () => {
   test('builds the provider snapshot with the App runtime profile', async () => {
     const { hosting, builds } = dependencies();
     await hosting.buildImage({
-      provider: 'local-docker',
+      provider: 'daytona',
       snapshotName: 'kortix-app-deployment-1',
       slug: 'hello',
       sourceDir: '/tmp/source',

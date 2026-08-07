@@ -112,9 +112,35 @@ Claimed scope:
 The required `tdd` skill is unavailable in this session. This work will use the
 same RED, GREEN, and REFACTOR sequence directly.
 
-**Status:** IN PROGRESS.
+RED:
 
-**SDK package shippable to production: NOT YET.**
+- SDK deadline-policy coverage failed three assertions before the transport
+  classified client and API deadlines as silent.
+- Web coverage failed before `timeout-toast-policy.ts` existed and classified
+  `TIMEOUT` as `toast`.
+- API coverage failed before the response exposed `code: 'request_deadline'`.
+
+GREEN after rebasing onto `origin/main`:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- Full SDK suite: `1714 pass`, `0 fail`, and `6808 expect()` calls across `135`
+  files.
+- `pnpm --filter @kortix/sdk run smoke:install`: exit `0`; packed tarballs
+  imported and constructed `@kortix/sdk` and `@kortix/executor-sdk`.
+- Focused SDK transport suite: `29 pass`, `0 fail`.
+- Focused API deadline suite: `16 pass`, `0 fail`.
+- Focused web timeout-policy and session-create suite: `12 pass`, `0 fail`.
+- Complete web suite: `4814 pass`, `0 fail`.
+- API typecheck and focused web ESLint: exit `0`.
+- Authenticated HTTP proof against a local API with
+  `REQUEST_DEADLINE_MS=1`: HTTP `503`, `Retry-After: 10`, and
+  `code: 'request_deadline'` in the response body.
+
+No published SDK export changed. The package version was not edited.
+
+**Status:** COMPLETE in commit `9c5d9dc11d`.
+
+**SDK package shippable to production: YES.**
 
 ---
 
@@ -7444,3 +7470,30 @@ RED, GREEN, and REFACTOR sequence directly.
 **Status:** IN PROGRESS.
 
 **SDK package shippable to production: NOT YET.**
+
+### 2026-08-07 — session `no-timeout-toasts` completion
+
+Kept both request-safety deadlines. Added the stable API wire code
+`request_deadline`. The SDK normalizes typed and legacy API deadline responses,
+returns typed client `TIMEOUT` errors, and does not invoke the host global error
+handler for either class. The web host rejects these deadlines before telemetry
+or toast processing. The shared toast helper also rejects exact Kortix deadline
+messages when a direct caller has discarded the typed code. Unrelated `503`
+failures and third-party timeout messages remain visible.
+
+Verification after rebasing onto `origin/main`:
+
+- SDK typecheck: exit `0`.
+- SDK suite: `1714 pass`, `0 fail`, `6808 expect()` calls, `135` files.
+- SDK packed-install smoke: exit `0`.
+- API focused suite: `16 pass`, `0 fail`; API typecheck: exit `0`.
+- Web focused suite: `12 pass`, `0 fail`; complete suite: `4814 pass`, `0 fail`;
+  focused ESLint: exit `0`.
+- Authenticated local HTTP request with a 1 ms server deadline: HTTP `503`,
+  `Retry-After: 10`, and JSON `code: 'request_deadline'`.
+
+No SDK export or version changed.
+
+**Status:** COMPLETE in commit `9c5d9dc11d`.
+
+**SDK package shippable to production: YES.**

@@ -1407,8 +1407,8 @@ export function createOpencodeSupervisor(
     return false
   }
 
-  async function checkReady(): Promise<boolean> {
-    return probeOpencodeSessionApi(`http://127.0.0.1:${activePort}`, currentCfg.projectTarget, 2_000)
+  async function checkReady(port = activePort): Promise<boolean> {
+    return probeOpencodeSessionApi(`http://127.0.0.1:${port}`, currentCfg.projectTarget, 2_000)
   }
 
   /**
@@ -1498,7 +1498,12 @@ export function createOpencodeSupervisor(
     const interval = state === 'ok' ? READY_LIVENESS_MS : READY_POLL_MS
     readinessTimer = setTimeout(async () => {
       if (stopping) return
-      const ready = await checkReady()
+      const probedPort = activePort
+      const ready = await checkReady(probedPort)
+      if (probedPort !== activePort) {
+        scheduleReadinessProbe()
+        return
+      }
       if (ready) {
         markReady()
       } else if (state !== 'starting') {

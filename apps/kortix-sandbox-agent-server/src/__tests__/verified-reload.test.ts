@@ -98,6 +98,15 @@ describe('readiness means the session API answers', () => {
     const probe = SRC.slice(SRC.indexOf('async function probeUntilReady'));
     expect(probe).toContain('proc.exitCode !== null');
   });
+
+  test('a stale probe cannot downgrade a newly promoted process', () => {
+    const probe = SRC.slice(
+      SRC.indexOf('function scheduleReadinessProbe()'),
+      SRC.indexOf('\n  return {', SRC.indexOf('function scheduleReadinessProbe()')),
+    );
+    expect(probe).toContain('const probedPort = activePort');
+    expect(probe).toContain('if (probedPort !== activePort)');
+  });
 });
 
 describe('the port pair', () => {

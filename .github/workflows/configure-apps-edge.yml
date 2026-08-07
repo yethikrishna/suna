@@ -186,7 +186,9 @@ jobs:
       - name: Verify public DNS and TLS routing
         run: |
           set -euo pipefail
-          host="dev-edge-probe-invalid.apps.kortix.com"
+          # Keep the probe syntactically valid so the API host parser reaches
+          # the signed Apps route before returning the expected missing App.
+          host="dev-edge-probe-invalid-0000000000000000.apps.kortix.com"
           for attempt in $(seq 1 30); do
             answer="$({
               curl --silent --show-error --get \

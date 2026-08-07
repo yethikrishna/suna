@@ -1044,6 +1044,8 @@ export type Opencode = {
 
 export interface OpencodeSupervisorOptions {
   onStartupMark?: (label: string) => void
+  binaryPathOverride?: string
+  configPathOverride?: string
   /**
    * opencode died without anyone asking it to, and has just been respawned.
    *
@@ -1070,6 +1072,7 @@ export function createOpencodeSupervisor(
   let currentOpencodeConfigDir = opencodeConfigDir
   let currentProjectEnv = projectEnv
   let child: ChildProcess | null = null
+  let activePort = cfg.opencodeInternalPort
   let binaryPath: string | null = null
   let stopping = false
   let restartDelayMs = 500
@@ -1116,7 +1119,7 @@ export function createOpencodeSupervisor(
     bin: string,
     opts: { port?: number; supervise?: boolean } = {},
   ): Promise<ChildProcess> {
-    const port = opts.port ?? currentCfg.opencodeInternalPort
+    const port = opts.port ?? activePort
     const supervise = opts.supervise !== false
     sweepBunExtractions()
     try {
@@ -1162,6 +1165,7 @@ export function createOpencodeSupervisor(
       })
     }
     const configPath = await writeKortixOpencodeConfig(baseEnv, {
+      configPath: options.configPathOverride,
       injectedSkillsDir: join(currentOpencodeConfigDir, 'skills'),
       secretCapabilitiesInstructionPath,
     })
@@ -1196,12 +1200,8 @@ export function createOpencodeSupervisor(
     })
 
     if (supervise) {
-      superviseChild(proc)
       child = proc
-    } else {
-      proc.on('exit', (code, signal) => {
-        logger.warn('[opencode] candidate exited', { code, signal, port })
-      })
+      superviseChild(proc)
     }
     return proc
   }
@@ -1216,6 +1216,10 @@ export function createOpencodeSupervisor(
   function superviseChild(proc: ChildProcess) {
     proc.on('exit', (code, signal) => {
       logger.warn('[opencode] child exited', { code, signal })
+      if (child !== proc) {
+        logger.info('[opencode] retired child exit ignored', { pid: proc.pid })
+        return
+      }
       child = null
       state = stopping ? 'down' : 'starting'
       if (stopping) return
@@ -1320,44 +1324,36 @@ export function createOpencodeSupervisor(
    * with no opencode at all, and the reload had destroyed the very thing it was
    * supposed to update.
    *
-   * So: spawn the candidate on the standby port, prove it actually serves the
-   * session API, and only then swap to it and retire the old one. If it never
-   * comes up, the old opencode is still running and still serving — the reload
-   * reports failure and nothing was lost.
+   * So: spawn the candidate on the idle port, prove it actually serves the
+   * session API, promote that exact process, and only then retire the old one.
+   * If it never comes up, the old opencode remains active.
    *
    * The swap is a port trade, not a port allocation. Both halves are fixed at
    * startup and both are blocked in the web proxy's self-port set; picking an
    * ephemeral port would leave the live one unguarded (see config.ts).
    *
-   * There IS a brief cut at the swap — in-flight streams against the old
-   * process end when it is retired. That is expected and the CLI says so
-   * up front; the guarantee here is that you are never left with nothing.
+   * Existing streams end when the old process retires. New requests route to
+   * the promoted process before retirement starts.
    */
   /**
    * Prove the new config actually BOOTS, without touching the running opencode.
    *
-   * Spawns a candidate on the standby port while the live one keeps serving,
-   * waits for it to answer the real session API, then retires it. The verdict
-   * is all we want: a config that cannot start is discovered here, with the
-   * session still healthy, instead of after we have killed the only opencode.
-   *
-   * The candidate is deliberately NOT promoted to serve traffic. Doing so would
-   * be one boot cheaper and it is not worth it — opencode's port is not private
-   * to this process. The API decides from the port number whether traffic is
-   * the session's conversation (the per-session visibility gate), whether it
-   * may be publicly shared, whether it counts as preview use for the sandbox
-   * deadline, how Platinum rewrites ingress, and where an opencode PTY
-   * WebSocket connects. Each is a silent failure if the live port moves, and
-   * several were caught only in review. Keeping 4096 canonical means nothing
-   * outside the box has to know a reload happened.
+   * Spawns a candidate on the idle port while the live one keeps serving and
+   * waits for the real session API. A successful result owns a live process;
+   * the caller must either promote it or retire it.
    */
   async function verifyCandidateBoots(
     opts: { forceFail?: boolean } = {},
-  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  ): Promise<
+    | { ok: true; candidate: ChildProcess; port: number }
+    | { ok: false; reason: string }
+  > {
     if (!binaryPath) return { ok: false, reason: 'opencode binary not resolved yet' }
     if (stopping) return { ok: false, reason: 'supervisor is shutting down' }
 
-    const candidatePort = currentCfg.opencodeStandbyPort
+    const candidatePort = activePort === currentCfg.opencodeInternalPort
+      ? currentCfg.opencodeStandbyPort
+      : currentCfg.opencodeInternalPort
     let candidate: ChildProcess
     try {
       candidate = await spawnChild(binaryPath, { port: candidatePort, supervise: false })
@@ -1370,18 +1366,17 @@ export function createOpencodeSupervisor(
     // the point is to exercise the ACTUAL decline path — candidate spawned,
     // candidate retired, incumbent untouched — rather than a shortcut that
     // proves only the plumbing.
-    const ready = opts.forceFail
-      ? false
-      : await probeUntilReady(candidatePort, VERIFY_READY_TIMEOUT_MS, candidate)
-    await killProcessGroup(candidate, 'SIGTERM').catch(() => {})
+    const candidateReady = await probeUntilReady(candidatePort, VERIFY_READY_TIMEOUT_MS, candidate)
+    const ready = candidateReady && !opts.forceFail
     if (!ready) {
+      await killProcessGroup(candidate, 'SIGTERM').catch(() => {})
       logger.warn('[opencode] candidate never became ready; keeping the running instance', {
         candidatePort,
       })
       return { ok: false, reason: 'the new opencode did not start; the previous one is still running' }
     }
     logger.info('[opencode] candidate config verified', { candidatePort })
-    return { ok: true }
+    return { ok: true, candidate, port: candidatePort }
   }
 
   /**
@@ -1413,7 +1408,7 @@ export function createOpencodeSupervisor(
   }
 
   async function checkReady(): Promise<boolean> {
-    return probeOpencodeSessionApi(`http://127.0.0.1:${currentCfg.opencodeInternalPort}`, currentCfg.projectTarget, 2_000)
+    return probeOpencodeSessionApi(`http://127.0.0.1:${activePort}`, currentCfg.projectTarget, 2_000)
   }
 
   /**
@@ -1436,7 +1431,9 @@ export function createOpencodeSupervisor(
     const baseEnv = currentProjectEnv
       ? mergeProjectEnv(process.env, currentProjectEnv)
       : process.env
-    const written = await writeKortixOpencodeConfig(baseEnv).catch((err) => {
+    const written = await writeKortixOpencodeConfig(baseEnv, {
+      configPath: options.configPathOverride,
+    }).catch((err) => {
       logger.warn('[opencode] could not rewrite config for reload', {
         err: (err as Error).message,
       })
@@ -1445,7 +1442,7 @@ export function createOpencodeSupervisor(
     if (!written) return false
     try {
       const res = await fetch(
-        `http://127.0.0.1:${currentCfg.opencodeInternalPort}/global/dispose`,
+        `http://127.0.0.1:${activePort}/global/dispose`,
         { method: 'POST', signal: AbortSignal.timeout(15_000) },
       )
       // Content-type matters: the SPA catch-all also answers 200, so a status
@@ -1515,7 +1512,7 @@ export function createOpencodeSupervisor(
     async start() {
       stopping = false
       state = 'starting'
-      const bin = await detectOpencodeBinary()
+      const bin = options.binaryPathOverride ?? await detectOpencodeBinary()
       if (!bin) {
         logger.warn('[opencode] binary not found on PATH (and /usr/local/bin/opencode-kortix missing); daemon will continue, opencode reports as starting')
         state = 'starting'
@@ -1673,26 +1670,47 @@ export function createOpencodeSupervisor(
       return 'restarted'
     },
 
-    /**
-     * Verify first, then restart. Never kills the running opencode for a config
-     * that cannot boot.
-     *
-     * Downtime is unchanged from the old restart — the gap is one boot — but it
-     * now starts from a config already proven to start.
-     */
+    /** Promote the verified process before retiring the previous process. */
     async reloadVerified(opts: { forceFail?: boolean } = {}): Promise<VerifiedReloadResult> {
       const proven = await verifyCandidateBoots(opts)
       if (!proven.ok) return { outcome: 'kept-old', reason: proven.reason }
-      await this.restart()
+
+      const previous = child
+      const previousPort = activePort
+      activePort = proven.port
+      child = proven.candidate
+      superviseChild(proven.candidate)
+      if (proven.candidate.exitCode !== null || proven.candidate.signalCode !== null) {
+        child = previous
+        activePort = previousPort
+        return {
+          outcome: 'kept-old',
+          reason: 'the verified opencode exited before promotion; the previous one is still running',
+        }
+      }
+      markReady()
+      if (previous) await killProcessGroup(previous, 'SIGTERM').catch(() => {})
+      logger.info('[opencode] candidate promoted', {
+        port: activePort,
+        pid: proven.candidate.pid,
+        previousPort,
+        previousPid: previous?.pid ?? null,
+      })
       return {
         outcome: 'swapped',
-        port: currentCfg.opencodeInternalPort,
+        port: activePort,
         pid: this.getPid(),
       }
     },
 
     reconfigure(nextCfg: Config, nextOpencodeConfigDir: string, nextProjectEnv?: ProjectEnvStore) {
       currentCfg = nextCfg
+      if (
+        activePort !== nextCfg.opencodeInternalPort &&
+        activePort !== nextCfg.opencodeStandbyPort
+      ) {
+        activePort = nextCfg.opencodeInternalPort
+      }
       currentOpencodeConfigDir = nextOpencodeConfigDir
       if (nextProjectEnv) currentProjectEnv = nextProjectEnv
       state = 'starting'
@@ -1707,7 +1725,7 @@ export function createOpencodeSupervisor(
     },
 
     getInternalUrl() {
-      return `http://127.0.0.1:${currentCfg.opencodeInternalPort}`
+      return `http://127.0.0.1:${activePort}`
     },
 
     getBinaryPath() {

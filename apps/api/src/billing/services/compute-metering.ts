@@ -19,7 +19,6 @@
 // bills any session whose last_billed_at is > 1 hour ago, so a missed close
 // hook can never silently accrue 24h+ of uncharged compute.
 
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   appDeployments,
   appRuntimes,
@@ -28,19 +27,19 @@ import {
   sandboxComputeSessions,
   sessionSandboxes,
 } from '@kortix/db';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { config } from '../../config';
-import { getProvider, type ProviderName } from '../../platform/providers';
+import { type ProviderName, getProvider } from '../../platform/providers';
 import { getProviderComputeRateCard } from '../../platform/providers/compute-rates';
 import { db } from '../../shared/db';
 import {
-  insertComputeSession,
-  getOpenComputeSession,
-  getLatestComputeSession,
-  updateComputeSession,
-  claimComputeWindow,
-  releaseComputeWindow,
-  findStaleActiveSessions,
   type SandboxSpec,
+  claimComputeWindow,
+  findStaleActiveSessions,
+  getLatestComputeSession,
+  getOpenComputeSession,
+  insertComputeSession,
+  releaseComputeWindow,
 } from '../repositories/compute-sessions';
 import { getCreditAccount } from '../repositories/credit-accounts';
 import {
@@ -133,13 +132,15 @@ export async function startComputeSession(opts: StartComputeOpts): Promise<strin
 
 /**
  * Bill a partial window without closing the row. Updates `cost_usd` and
- * `last_billed_at`, emits a `compute_debit` ledger entry, returns new cost.
+ * `last_billed_at`, emits a `compute_debit` ledger entry, and optionally closes
+ * the row in the same compare-and-set as the final cursor move.
  * Used by both `pauseComputeSession` (final) and the cron tick (partial).
  */
 async function settleComputeWindow(
   row: typeof sandboxComputeSessions.$inferSelect,
   windowEnd: Date,
-): Promise<number> {
+  terminalState?: 'stopped' | 'finalized',
+): Promise<'settled' | 'contended' | 'debit_failed' | 'no_window'> {
   const lastBilled = new Date(row.lastBilledAt);
   // THE CLAMP — never bill past the last control-plane observation that the box
   // was alive, plus the provider's own auto-stop ceiling. A sandbox physically
@@ -152,11 +153,16 @@ async function settleComputeWindow(
     lastAliveAt: lastAliveAtOf(row),
     graceMs: computeLivenessGraceMs(),
   });
-  const durationSeconds = Math.max(0, (billableEnd.getTime() - lastBilled.getTime()) / 1000);
-  if (durationSeconds <= 0) {
+  // A terminal row cannot end before its billing cursor. The cursor can already
+  // be later than an evidenced stop after an earlier partial settle. Preserve
+  // that historical debit, close at the cursor, and never move time backwards.
+  const claimedEnd =
+    terminalState && billableEnd.getTime() < lastBilled.getTime() ? lastBilled : billableEnd;
+  const durationSeconds = Math.max(0, (claimedEnd.getTime() - lastBilled.getTime()) / 1000);
+  if (durationSeconds <= 0 && !terminalState) {
     // Nothing more is billable, but advance nothing either: `last_billed_at`
     // stays put so a box that comes back alive resumes from where it stopped.
-    return 0;
+    return 'no_window';
   }
 
   const spec: SandboxSpec = {
@@ -166,18 +172,6 @@ async function settleComputeWindow(
     gpuCount: row.gpuCount,
   };
   const windowCost = calculateComputeCost(spec, durationSeconds, row.provider as ProviderName);
-  if (windowCost <= 0) {
-    // Still CAS'd: an unconditional write here would clobber a cursor another
-    // settler had legitimately advanced.
-    await claimComputeWindow({
-      id: row.id,
-      expectedLastBilledAt: row.lastBilledAt,
-      nextLastBilledAt: billableEnd.toISOString(),
-      addCostUsd: 0,
-    });
-    return 0;
-  }
-
   // CLAIM BEFORE DEBITING. The order is the whole fix.
   //
   // This used to debit first and move the cursor afterwards, with the update
@@ -188,14 +182,17 @@ async function settleComputeWindow(
   const claimed = await claimComputeWindow({
     id: row.id,
     expectedLastBilledAt: row.lastBilledAt,
-    nextLastBilledAt: billableEnd.toISOString(),
+    nextLastBilledAt: claimedEnd.toISOString(),
     addCostUsd: windowCost,
+    terminalState,
   });
   if (!claimed) {
     // Someone else settled this window. Not an error, and not worth a warning
     // on a path that runs every few minutes for every live box.
-    return 0;
+    return 'contended';
   }
+
+  if (windowCost <= 0) return 'settled';
 
   // Debit the wallet. deductCredits already triggers auto-topup as a
   // fire-and-forget after a deduction (services/credits.ts:79).
@@ -210,7 +207,7 @@ async function settleComputeWindow(
       // of charging again. The CAS claim above already stops two settlers from
       // both billing; this covers the single settler that never learned its own
       // debit succeeded.
-      `compute:${row.id}:${billableEnd.toISOString()}`,
+      `compute:${row.id}:${claimedEnd.toISOString()}`,
     );
   } catch (err) {
     // Out of credits + no auto-topup. Hand the window back so the next tick can
@@ -218,19 +215,20 @@ async function settleComputeWindow(
     // outrun the ledger.
     const released = await releaseComputeWindow({
       id: row.id,
-      claimedLastBilledAt: billableEnd.toISOString(),
+      claimedLastBilledAt: claimedEnd.toISOString(),
       revertToLastBilledAt: row.lastBilledAt,
       subCostUsd: windowCost,
+      terminalState,
     });
     console.warn(
       `[compute-metering] failed to debit ${row.accountId} for session ${row.id}` +
         `${released ? '' : ' (window NOT released — another settler moved the cursor; seconds forfeited)'}:`,
       err instanceof Error ? err.message : String(err),
     );
-    return 0;
+    return 'debit_failed';
   }
 
-  return windowCost;
+  return 'settled';
 }
 
 /**
@@ -262,23 +260,32 @@ export async function pauseComputeSession(sandboxId: string, windowEnd?: Date): 
 }
 
 /**
- * THE ONLY writer of `sandbox_compute_sessions.ended_at`.
+ * THE ONLY service entry point that closes `sandbox_compute_sessions`.
  *
  * `ended_at` is what every downstream reader treats as "this window is closed
  * and will never accrue again" — `getOpenComputeSession` keys off `IS NULL`, the
  * usage rollup in projects/routes/gateway.ts coalesces to it, and the reimburse
- * script bounds refunds by it. Two independent writers is how a window ends up
- * settled to one instant and stamped with another. Settling and stamping happen
- * here, in that order, or not at all; the two exported closers differ only in
- * the terminal state they record.
+ * script bounds refunds by it. The repository claim writes `last_billed_at`,
+ * `cost_usd`, `state`, and `ended_at` in one compare-and-set. The two exported
+ * closers differ only in the terminal state they record.
  */
 async function closeComputeWindow(
   row: typeof sandboxComputeSessions.$inferSelect,
   state: 'stopped' | 'finalized',
   billThrough: Date,
 ): Promise<void> {
-  await settleComputeWindow(row, billThrough);
-  await updateComputeSession(row.id, { state, endedAt: billThrough.toISOString() });
+  let current = row;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await settleComputeWindow(current, billThrough, state);
+    if (result !== 'contended') return;
+
+    // A partial settler moved the cursor first. Reload and claim the remaining
+    // terminal window. A competing terminal settler leaves no open row.
+    const refreshed = await getOpenComputeSession(row.sandboxId);
+    if (!refreshed) return;
+    current = refreshed;
+  }
+  throw new Error(`compute close contention exceeded retry budget for ${row.id}`);
 }
 
 /**

@@ -49,6 +49,10 @@ interface InMemorySession {
 let sessions: InMemorySession[] = [];
 let debitCalls: { accountId: string; amount: number; description: string; ledgerType: string }[] = [];
 let simulateUniqueViolationOnInsert = false;
+let holdFirstDebit = false;
+let releaseFirstDebit: (() => void) | null = null;
+let firstDebitStarted: Promise<void> = Promise.resolve();
+let signalFirstDebitStarted: (() => void) | null = null;
 
 mock.module('../../billing/repositories/compute-sessions', () => ({
   insertComputeSession: async (data: any) => {
@@ -100,6 +104,7 @@ mock.module('../../billing/repositories/compute-sessions', () => ({
     expectedLastBilledAt: string;
     nextLastBilledAt: string;
     addCostUsd: number;
+    terminalState?: 'stopped' | 'finalized';
   }) => {
     const row = sessions.find((r: any) => r.id === input.id);
     if (!row) return false;
@@ -107,6 +112,10 @@ mock.module('../../billing/repositories/compute-sessions', () => ({
     if (row.lastBilledAt !== input.expectedLastBilledAt) return false;
     row.lastBilledAt = input.nextLastBilledAt;
     row.costUsd = String(Number(row.costUsd ?? 0) + input.addCostUsd);
+    if (input.terminalState) {
+      row.state = input.terminalState;
+      row.endedAt = input.nextLastBilledAt;
+    }
     return true;
   },
   releaseComputeWindow: async (input: {
@@ -114,18 +123,18 @@ mock.module('../../billing/repositories/compute-sessions', () => ({
     claimedLastBilledAt: string;
     revertToLastBilledAt: string;
     subCostUsd: number;
+    terminalState?: 'stopped' | 'finalized';
   }) => {
     const row = sessions.find((r: any) => r.id === input.id);
     if (!row) return false;
     if (row.lastBilledAt !== input.claimedLastBilledAt) return false;
     row.lastBilledAt = input.revertToLastBilledAt;
     row.costUsd = String(Number(row.costUsd ?? 0) - input.subCostUsd);
+    if (input.terminalState) {
+      row.state = 'active';
+      row.endedAt = null;
+    }
     return true;
-  },
-  updateComputeSession: async (id: string, patch: any) => {
-    const row = sessions.find((s) => s.id === id);
-    if (!row) return;
-    Object.assign(row, patch, { updatedAt: new Date().toISOString() });
   },
   findStaleActiveSessions: async (cutoff: Date) =>
     sessions.filter(
@@ -141,6 +150,12 @@ mock.module('../../billing/services/credits', () => ({
   getCreditSummary: async () => ({ total: 0, daily: 0, monthly: 0, extra: 0, canRun: true }),
   deductCredits: async (accountId: string, amount: number, description: string, ledgerType = 'usage') => {
     debitCalls.push({ accountId, amount, description, ledgerType });
+    if (holdFirstDebit && debitCalls.length === 1) {
+      signalFirstDebitStarted?.();
+      await new Promise<void>((resolve) => {
+        releaseFirstDebit = resolve;
+      });
+    }
     return { success: true, cost: amount, newBalance: 0, transactionId: 'tx_test' };
   },
   deductForLlmUsage: async () => ({ success: true, cost: 0, newBalance: 0, transactionId: null }),
@@ -164,6 +179,11 @@ beforeEach(() => {
   sessions = [];
   debitCalls = [];
   simulateUniqueViolationOnInsert = false;
+  holdFirstDebit = false;
+  releaseFirstDebit = null;
+  firstDebitStarted = new Promise<void>((resolve) => {
+    signalFirstDebitStarted = resolve;
+  });
   resetMockRegistry();
   // Default to a per-seat account so metering engages.
   mockRegistry.getCreditAccount = async () =>
@@ -209,6 +229,35 @@ describe('compute metering — per-seat happy path', () => {
 
     expect(sessions[0].state).toBe('stopped');
     expect(sessions[0].endedAt).not.toBeNull();
+  });
+
+  test('concurrent closes use one terminal cutoff and cannot bill past ended_at', async () => {
+    await startComputeSession({
+      sandboxId: 'sb_close_race',
+      accountId: 'acc_test_123',
+      spec: SPEC,
+    });
+
+    const initialCursor = new Date(Date.now() - 5_000);
+    const firstCutoff = new Date(initialCursor.getTime() + 1_000);
+    const secondCutoff = new Date(initialCursor.getTime() + 2_000);
+    sessions[0].lastBilledAt = initialCursor.toISOString();
+    holdFirstDebit = true;
+
+    const firstClose = pauseComputeSession('sb_close_race', firstCutoff);
+    await firstDebitStarted;
+
+    // The first debit is deliberately held between the cursor claim and the
+    // old non-atomic ended_at write. A second closer can otherwise claim the
+    // next 1s window and close later before the first caller writes backwards.
+    await pauseComputeSession('sb_close_race', secondCutoff);
+    releaseFirstDebit?.();
+    await firstClose;
+
+    expect(debitCalls).toHaveLength(1);
+    expect(sessions[0].state).toBe('stopped');
+    expect(sessions[0].lastBilledAt).toBe(firstCutoff.toISOString());
+    expect(sessions[0].endedAt).toBe(firstCutoff.toISOString());
   });
 
   test('resume opens a brand new row, old row stays closed', async () => {

@@ -40,7 +40,10 @@ import {
   hasRuntimeReadinessClock,
   staleOpencodeReadyReason,
 } from '../session-lifecycle/readiness-clocks';
-import { RUNTIME_WAKE_GRACE_MS } from '../session-lifecycle/runtime-wake-fence';
+import {
+  RUNTIME_WAKE_GRACE_MS,
+  waitForRuntimeWakeRunning,
+} from '../session-lifecycle/runtime-wake-fence';
 
 /**
  * Resume a hibernated (status='stopped') session sandbox IN PLACE instead of
@@ -134,6 +137,47 @@ export async function resumeStoppedSandbox(row: {
   void provider
     .start(externalId)
     .then(async () => {
+      const stopCancelledWake = () =>
+        provider
+          .stop(externalId)
+          .catch((err) =>
+            console.warn(
+              `[projects] failed to re-stop cancelled wake ${externalId} for session ${row.sessionId}:`,
+              err,
+            ),
+          );
+      // Check wake ownership before any provider-state polling. A manual stop
+      // clears runtimeWakeId. Its CAS loss must re-stop a late start() now, not
+      // after the running-state poll expires.
+      const [acceptedWake] = await db
+        .update(sessionSandboxes)
+        .set({
+          metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) || ${JSON.stringify({ runtimeWakeProviderStatus: 'accepted' })}::jsonb`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(sessionSandboxes.sandboxId, row.sandboxId),
+            eq(sessionSandboxes.externalId, externalId),
+            eq(sessionSandboxes.status, 'active'),
+            sql`${sessionSandboxes.metadata}->>'runtimeWakeId' = ${runtimeWakeId}`,
+          ),
+        )
+        .returning({ sandboxId: sessionSandboxes.sandboxId })
+        .catch((err) => {
+          console.warn(`[runtime-identity] failed to accept wake for ${row.sessionId}:`, err);
+          return [] as Array<{ sandboxId: string }>;
+        });
+      if (!acceptedWake) {
+        await stopCancelledWake();
+        return;
+      }
+      // Platinum can acknowledge start while getStatus() still reports the
+      // previous stopped state. Keep the wake fence until the provider proves
+      // the runtime is running. Clearing it on acknowledgement lets the next
+      // status poll close this meter and start a second wake for one resume.
+      const providerRunning = await waitForRuntimeWakeRunning(() => provider.getStatus(externalId));
+      if (!providerRunning) return;
       const [completedWake] = await db
         .update(sessionSandboxes)
         .set({
@@ -157,14 +201,7 @@ export async function resumeStoppedSandbox(row: {
         // A real stop won while start() was in flight. The first provider.stop()
         // can finish before this late start, so enforce the user's stopped state
         // once more after start() resolves.
-        await provider
-          .stop(externalId)
-          .catch((err) =>
-            console.warn(
-              `[projects] failed to re-stop cancelled wake ${externalId} for session ${row.sessionId}:`,
-              err,
-            ),
-          );
+        await stopCancelledWake();
       }
     })
     .catch(async (err) => {

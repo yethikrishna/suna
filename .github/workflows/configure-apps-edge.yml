@@ -220,5 +220,5 @@ jobs:
           grep -Ei '^x-kortix-app-environment:' "$headers" || true
           jq -c . "$body" || true
           test "$status" = 404
-          grep -Eiq '^x-kortix-app-environment: dev\r?$' "$headers"
+          tr -d '\r' < "$headers" | grep -Eiq '^x-kortix-app-environment: dev$'
           jq -e '.error == "App not found"' "$body"

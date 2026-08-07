@@ -99,10 +99,18 @@ describe("keyless image signing", () => {
 
   it("routes the Dev supply-chain gate through the retry-safe signer", () => {
     const yaml = readFileSync(workflow, "utf8");
+    const supplyChain = yaml.slice(
+      yaml.indexOf("  supply-chain:"),
+      yaml.indexOf("  migrate-db:"),
+    );
 
     expect(yaml).toContain(
       'bash scripts/ci/cosign-sign-attest.sh "$REF" sbom.spdx.json',
     );
     expect(yaml).not.toContain("cosign attest --yes --type spdxjson");
+    expect(supplyChain).toContain("uses: actions/checkout@v7");
+    expect(supplyChain.indexOf("uses: actions/checkout@v7")).toBeLessThan(
+      supplyChain.indexOf("bash scripts/ci/cosign-sign-attest.sh"),
+    );
   });
 });

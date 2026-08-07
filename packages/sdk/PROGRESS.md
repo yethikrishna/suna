@@ -97,6 +97,27 @@ entries and two poll loops. The SDK hook also spreads no `contract(...)`, so it
 inherits the host's global defaults.
 
 **Status:** COMPLETE.
+### 2026-08-07 — session `no-timeout-toasts` claim
+
+No **Now** task claimed. This is a user-directed timeout error-UX correction.
+
+Claimed scope:
+
+- Keep the API and SDK request deadlines as resource-safety boundaries.
+- Prevent client request deadlines and typed API request-deadline responses from
+  invoking the host's global error handler.
+- Preserve typed errors for callers that own explicit, actionable error UI.
+- Verify the background session-audit path and the complete SDK package gates.
+
+The required `tdd` skill is unavailable in this session. This work will use the
+same RED, GREEN, and REFACTOR sequence directly.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
+---
+
 ### 2026-08-06 — session `sdk-connectors-unified` claim
 
 No **Now** task claimed. This is the user-directed final SDK consolidation.

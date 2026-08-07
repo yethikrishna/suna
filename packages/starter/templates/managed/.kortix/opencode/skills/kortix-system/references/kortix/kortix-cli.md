@@ -127,8 +127,9 @@ If none resolve, the command errors with a pointer to `projects link`.
 
 ### Secrets
 
-Encrypted env vars stored on the project, injected as plain env
-into every session sandbox at boot.
+Encrypted project credentials. Delivery follows each secret's policy and the
+session's agent grant. Only `sandbox` delivery exposes plaintext as an
+environment variable.
 
 | Command | Effect |
 | --- | --- |
@@ -136,6 +137,12 @@ into every session sandbox at boot.
 | `kortix secrets set NAME=VALUE …` | Upsert one or more. `NAME=-` reads VALUE from stdin (so values never appear in shell history). |
 | `kortix secrets request NAME …` | **Mint a short-lived link for a human to ENTER the value(s)** — you never see/handle the raw key. Surface the URL (web: fill-in modal, Slack: tappable link). `--scope runtime\|connector` (default `runtime` = injected into the sandbox env), `--expires <minutes>` (default 30). Use this when you need a key you don't have. |
 | `kortix secrets unset NAME …` | Remove. |
+| `kortix secrets call IDENTIFIER URL [--method METHOD] [--header NAME:VALUE] [--data BODY\|--data-file PATH]` | Send one policy-bound HTTPS request. Kortix injects the secret server-side. |
+
+`$KORTIX_SECRET_CAPABILITIES` is the session's value-free machine-readable
+catalog. It contains only granted capabilities. Use `kortix secrets ls --json`
+for the full stored policy. Brokered and service-delivered secrets are not
+plaintext environment variables.
 
 > **Asking a human for a secret.** You usually don't *have* the value, so don't
 > use `set`. Run `kortix secrets request APOLLO_API_KEY` (or the `request_secret`

@@ -102,6 +102,30 @@ async function postEnv(
 }
 
 describe('env route — project-secret delta forces respawn, not dispose', () => {
+  it('a secret capability catalog change forces a respawn', async () => {
+    const { opencode, calls } = fakeOpencode()
+    const store = createProjectEnvStore({
+      KORTIX_PROJECT_SECRETS_REVISION: 'rev-1',
+      KORTIX_PROJECT_SECRET_NAMES: '',
+      KORTIX_SECRET_CAPABILITIES: '{"version":1,"capabilities":[]}',
+    } as NodeJS.ProcessEnv)
+    const app = buildTestApp(opencode, store)
+
+    const { status } = await postEnv(app, {
+      revision: 'rev-1',
+      env: {},
+      names: [],
+      opencodeEnv: {
+        KORTIX_SECRET_CAPABILITIES:
+          '{"version":1,"capabilities":[{"identifier":"WEATHER_API","delivery":"https_broker"}]}',
+      },
+      refreshModels: true,
+    })
+
+    expect(status).toBe(200)
+    expect(calls).toEqual([{ mustRespawn: true }])
+  })
+
   it('a project-secret CHANGE (value moved) forces a respawn', async () => {
     const { opencode, calls } = fakeOpencode()
     // Boot store already has API_KEY=v1.

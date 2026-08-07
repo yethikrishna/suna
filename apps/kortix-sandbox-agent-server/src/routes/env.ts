@@ -35,6 +35,7 @@ const OPENCODE_RUNTIME_ENV_NAMES = new Set([
   // is really running. Pushed with the config; allowlisted so the two cannot
   // drift apart on a live update.
   'KORTIX_COMPILED_AGENT_CONFIG_ETAG',
+  'KORTIX_SECRET_CAPABILITIES',
 ])
 
 function bearerToken(header: string | undefined): string | null {

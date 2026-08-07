@@ -58,6 +58,16 @@ describe('buildOpencodeConfigContent — injected managed skills', () => {
       await buildOpencodeConfigContent({}, { injectedSkillsDir: '/nonexistent-skills-dir' }),
     ).toBeUndefined()
   })
+
+  test('loads the generated secret capability guide without replacing project instructions', async () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'kortix-secret-guide-')), 'capabilities.md')
+    writeFileSync(file, '# Secret capabilities\n')
+    const content = await buildOpencodeConfigContent(
+      { OPENCODE_CONFIG_CONTENT: JSON.stringify({ instructions: ['/workspace/AGENTS.md'] }) },
+      { secretCapabilitiesInstructionPath: file },
+    )
+    expect(JSON.parse(content!).instructions).toEqual(['/workspace/AGENTS.md', file])
+  })
 })
 
 describe('buildOpencodeConfigContent — optional connector MCP server', () => {

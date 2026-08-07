@@ -182,6 +182,15 @@ async function main(): Promise<void> {
   if (!projectId) throw new Error(`project provision failed: ${project.status} ${project.text}`);
   log('project created', { project_id: projectId });
 
+  const enabled = await api(`/projects/${projectId}/experimental`, {
+    method: 'PATCH',
+    body: JSON.stringify({ feature: 'apps', enabled: true }),
+  });
+  if (enabled.status !== 200 || enabled.body?.experimental?.apps !== true) {
+    throw new Error(`Apps feature enable failed: ${enabled.status} ${enabled.text}`);
+  }
+  log('Apps feature enabled');
+
   const source = await mkdtemp(join(tmpdir(), 'kortix-apps-static-'));
   const bundleSource = await mkdtemp(join(tmpdir(), 'kortix-apps-bundle-'));
   const dynamicSource = await mkdtemp(join(tmpdir(), 'kortix-apps-dynamic-'));

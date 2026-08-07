@@ -1,4 +1,17 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+
+/**
+ * Outcome of a verified reload.
+ *
+ * `kept-old` is a SUCCESSFUL outcome of the safety mechanism, not a crash: the
+ * new config could not boot, so the running opencode was left alone. Callers
+ * must surface it as a failed reload with the reason, never as a plain error —
+ * the session is still healthy and the user needs to know their change did not
+ * take effect and why.
+ */
+export type VerifiedReloadResult =
+  | { outcome: 'swapped'; port: number; pid: number | null }
+  | { outcome: 'kept-old'; reason: string }
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
@@ -1008,7 +1021,12 @@ export type Opencode = {
   start(): Promise<void>
   stop(signal?: NodeJS.Signals): Promise<void>
   restart(): Promise<void>
-  reloadConfig(opts?: { mustRespawn?: boolean }): Promise<'disposed' | 'restarted'>
+  reloadConfig(opts?: { mustRespawn?: boolean }): Promise<'disposed' | 'restarted' | 'kept-old'>
+  /**
+   * Boot the new opencode, verify it serves, then swap and retire the old one.
+   * Never leaves the session without an opencode.
+   */
+  reloadVerified(): Promise<VerifiedReloadResult>
   reconfigure(nextCfg: Config, nextOpencodeConfigDir: string, nextProjectEnv?: ProjectEnvStore): void
   getPid(): number | null
   getInternalUrl(): string
@@ -1074,7 +1092,25 @@ export function createOpencodeSupervisor(
     } catch {}
   }
 
-  async function spawnChild(bin: string) {
+  /**
+   * Spawn an opencode.
+   *
+   * `port` defaults to the live half of the port pair and `supervise` to true —
+   * that is the ordinary child, the one `child` points at and the one whose
+   * exit triggers an automatic respawn.
+   *
+   * A verified reload passes the STANDBY port and `supervise: false` to boot a
+   * candidate alongside the running one. An unsupervised candidate must not
+   * touch `child`, must not flip `state`, and must not schedule a respawn when
+   * it exits: it is on trial, and a candidate that dies is a verdict, not an
+   * outage.
+   */
+  async function spawnChild(
+    bin: string,
+    opts: { port?: number; supervise?: boolean } = {},
+  ): Promise<ChildProcess> {
+    const port = opts.port ?? currentCfg.opencodeInternalPort
+    const supervise = opts.supervise !== false
     sweepBunExtractions()
     try {
       mkdirSync(OPENCODE_HOME, { recursive: true })
@@ -1128,16 +1164,10 @@ export function createOpencodeSupervisor(
     }
     startupMark('runtime-config-ready')
 
-    const args = [
-      'serve',
-      '--port',
-      String(currentCfg.opencodeInternalPort),
-      '--hostname',
-      '127.0.0.1',
-    ]
+    const args = ['serve', '--port', String(port), '--hostname', '127.0.0.1']
 
     const cwd = ensureCwdExists()
-    logger.info('[opencode] spawning', { bin, port: currentCfg.opencodeInternalPort, cwd })
+    logger.info('[opencode] spawning', { bin, port, cwd, supervise })
     // detached: true makes opencode the leader of its own process group, so
     // stop()/restart() can SIGTERM/SIGKILL the whole group (-pid) instead of
     // just this direct child. Without it, a grandchild opencode forks itself
@@ -1154,6 +1184,29 @@ export function createOpencodeSupervisor(
     })
     proc.once('spawn', () => startupMark('runtime-process-spawned'))
 
+    proc.on('error', (err) => {
+      logger.error('[opencode] spawn error', err)
+    })
+
+    if (supervise) {
+      superviseChild(proc)
+      child = proc
+    } else {
+      proc.on('exit', (code, signal) => {
+        logger.warn('[opencode] candidate exited', { code, signal, port })
+      })
+    }
+    return proc
+  }
+
+  /**
+   * Wire the auto-respawn contract onto a child.
+   *
+   * Split out of spawnChild so a promoted candidate gets exactly the same
+   * supervision the ordinary child has — a candidate promoted without this
+   * would die silently and never come back.
+   */
+  function superviseChild(proc: ChildProcess) {
     proc.on('exit', (code, signal) => {
       logger.warn('[opencode] child exited', { code, signal })
       child = null
@@ -1161,12 +1214,38 @@ export function createOpencodeSupervisor(
       if (stopping) return
       scheduleUnplannedRespawn()
     })
+  }
 
-    proc.on('error', (err) => {
-      logger.error('[opencode] spawn error', err)
+  /**
+   * Signal a process GROUP and resolve once it is gone (or the hard-kill
+   * deadline passes). Extracted from stop() so the verified reload can retire
+   * the old opencode with the same discipline.
+   */
+  function killProcessGroup(proc: ChildProcess, signal: NodeJS.Signals): Promise<void> {
+    const killGroup = (sig: NodeJS.Signals) => {
+      if (proc.pid) {
+        try {
+          process.kill(-proc.pid, sig)
+          return
+        } catch {}
+      }
+      proc.kill(sig)
+    }
+    return new Promise<void>((resolve) => {
+      if (proc.exitCode !== null || proc.signalCode !== null) return resolve()
+      proc.once('exit', () => resolve())
+      try {
+        killGroup(signal)
+      } catch {
+        return resolve()
+      }
+      setTimeout(() => {
+        try {
+          killGroup('SIGKILL')
+        } catch {}
+        resolve()
+      }, 5_000).unref()
     })
-
-    child = proc
   }
 
   function markReady() {
@@ -1220,6 +1299,110 @@ export function createOpencodeSupervisor(
           scheduleUnplannedRespawn()
         })
     }, delay)
+  }
+
+  /** How long a candidate opencode gets to start serving before we give up. */
+  const VERIFY_READY_TIMEOUT_MS = 90_000
+
+  /**
+   * Reload the config by BOOTING THE NEW OPENCODE FIRST.
+   *
+   * The old path was `stop()` then `start()`: kill the only opencode, then hope
+   * the replacement comes up. When it did not — a config the new build rejects,
+   * a bad agent file, a dependency install that fails — the session was left
+   * with no opencode at all, and the reload had destroyed the very thing it was
+   * supposed to update.
+   *
+   * So: spawn the candidate on the standby port, prove it actually serves the
+   * session API, and only then swap to it and retire the old one. If it never
+   * comes up, the old opencode is still running and still serving — the reload
+   * reports failure and nothing was lost.
+   *
+   * The swap is a port trade, not a port allocation. Both halves are fixed at
+   * startup and both are blocked in the web proxy's self-port set; picking an
+   * ephemeral port would leave the live one unguarded (see config.ts).
+   *
+   * There IS a brief cut at the swap — in-flight streams against the old
+   * process end when it is retired. That is expected and the CLI says so
+   * up front; the guarantee here is that you are never left with nothing.
+   */
+  async function reloadVerified(): Promise<VerifiedReloadResult> {
+    if (!binaryPath) return { outcome: 'kept-old', reason: 'opencode binary not resolved yet' }
+    if (stopping) return { outcome: 'kept-old', reason: 'supervisor is shutting down' }
+
+    const previous = child
+    const candidatePort = currentCfg.opencodeStandbyPort
+    const livePort = currentCfg.opencodeInternalPort
+
+    let candidate: ChildProcess
+    try {
+      candidate = await spawnChild(binaryPath, { port: candidatePort, supervise: false })
+    } catch (err) {
+      return { outcome: 'kept-old', reason: `could not spawn candidate: ${(err as Error).message}` }
+    }
+
+    const ready = await probeUntilReady(candidatePort, VERIFY_READY_TIMEOUT_MS, candidate)
+    if (!ready) {
+      // The verdict this whole path exists for. Retire the candidate and leave
+      // the running opencode exactly as it was.
+      await killProcessGroup(candidate, 'SIGTERM').catch(() => {})
+      logger.warn('[opencode] candidate never became ready; keeping the running instance', {
+        candidatePort,
+        livePort,
+      })
+      return {
+        outcome: 'kept-old',
+        reason: 'the new opencode did not start; the previous one is still running',
+      }
+    }
+
+    // Promote. Order matters: adopt the candidate BEFORE retiring the old one,
+    // and strip the old child's exit handler first — it would otherwise fire on
+    // the kill below, null out the child we just adopted, and schedule a
+    // respawn against a port that is now the standby.
+    if (previous) previous.removeAllListeners('exit')
+    child = candidate
+    superviseChild(candidate)
+    currentCfg.opencodeInternalPort = candidatePort
+    currentCfg.opencodeStandbyPort = livePort
+    state = 'ok'
+    restartDelayMs = 500
+
+    if (previous) await killProcessGroup(previous, 'SIGTERM').catch(() => {})
+    logger.info('[opencode] swapped onto verified opencode', {
+      from: livePort,
+      to: candidatePort,
+      pid: candidate.pid ?? null,
+    })
+    return { outcome: 'swapped', port: candidatePort, pid: candidate.pid ?? null }
+  }
+
+  /**
+   * Poll the real session API until the candidate serves it.
+   *
+   * Same probe the ordinary readiness check uses, for the reason it documents:
+   * opencode binds its port seconds before the project directory is usable, so
+   * a plain TCP or health check would call a half-open process "ready" and we
+   * would swap onto something that cannot answer a prompt.
+   *
+   * Gives up early if the candidate dies — no point waiting out the full
+   * timeout on a process that already exited.
+   */
+  async function probeUntilReady(
+    port: number,
+    timeoutMs: number,
+    proc: ChildProcess,
+  ): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if (stopping) return false
+      if (proc.exitCode !== null || proc.signalCode !== null) return false
+      if (await probeOpencodeSessionApi(`http://127.0.0.1:${port}`, currentCfg.projectTarget, 2_000)) {
+        return true
+      }
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    return false
   }
 
   async function checkReady(): Promise<boolean> {
@@ -1448,7 +1631,9 @@ export function createOpencodeSupervisor(
      * a future opencode that drops the endpoint degrades to today's behaviour
      * rather than silently not applying the config.
      */
-    async reloadConfig(opts: { mustRespawn?: boolean } = {}): Promise<'disposed' | 'restarted'> {
+    async reloadConfig(
+      opts: { mustRespawn?: boolean } = {},
+    ): Promise<'disposed' | 'restarted' | 'kept-old'> {
       // Some settings are not IN the config file — they shape the child's
       // PROCESS env at spawn, and a dispose cannot re-run that. The provider-key
       // deny-list is the live case: `withoutDeniedProviderEnv` strips native
@@ -1456,9 +1641,32 @@ export function createOpencodeSupervisor(
       // toggle would leave those keys exactly as they were — routing around the
       // gateway's budgets and logging, or failing to restore BYOK.
       if (!opts.mustRespawn && (await tryDisposeReload())) return 'disposed'
-      await this.restart()
+      // Verified swap instead of the old kill-then-hope restart. A config that
+      // cannot boot now leaves the running opencode in place and reports why,
+      // rather than taking the session down with it.
+      const result = await reloadVerified()
+      if (result.outcome === 'kept-old') {
+        logger.warn('[opencode] reload kept the previous instance', { reason: result.reason })
+        return 'kept-old'
+      }
+      // A swap strands the turn the retired process was running exactly as a
+      // restart did — same finalize, same reason (see restart()).
+      if (options.onUnplannedRespawn) {
+        const ready = await waitUntilReady(RESPAWN_FINALIZE_TIMEOUT_MS)
+        if (ready) {
+          try {
+            options.onUnplannedRespawn()
+          } catch (err) {
+            logger.warn('[opencode] post-swap finalize hook threw', {
+              err: (err as Error).message,
+            })
+          }
+        }
+      }
       return 'restarted'
     },
+
+    reloadVerified,
 
     reconfigure(nextCfg: Config, nextOpencodeConfigDir: string, nextProjectEnv?: ProjectEnvStore) {
       currentCfg = nextCfg

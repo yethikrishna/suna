@@ -193,7 +193,14 @@ export function buildOpencodeApp(
   app.route(
     '/web-proxy',
     createWebProxyRouter({
-      blockedSelfPorts: new Set([cfg.servicePort, cfg.opencodeInternalPort]),
+      // BOTH halves of the opencode port pair. A verified reload swaps which
+      // one is live, and this set is built once — blocking only the current
+      // half would leave the other reachable the moment they trade places.
+      blockedSelfPorts: new Set([
+        cfg.servicePort,
+        cfg.opencodeInternalPort,
+        cfg.opencodeStandbyPort,
+      ]),
     }),
   )
 

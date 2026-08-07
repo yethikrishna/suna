@@ -105,14 +105,30 @@ export function createRefreshRouter(cfg: Config, opencode: Opencode): Hono {
         const configDir = syncConfigDir
           ? await syncOpencodeConfigDirToBase(cfg, await resolveOpencodeConfigDirRelative(cfg), baseSha)
           : undefined
-        if (!skipRestart) await opencode.restart()
+        // Verified swap, not a kill-then-hope restart: boot the new opencode,
+        // prove it serves, and only then retire the running one. A config that
+        // cannot boot leaves the session on the opencode it already had.
+        const reload = skipRestart ? null : await opencode.reloadVerified()
         return c.json({
+          // The repo work succeeded either way; `reload.outcome` carries whether
+          // the new config actually took. Reporting ok:false here would hide a
+          // successful pull behind a reload that safely declined to swap.
           ok: true,
           repo: {
             before: repo.before,
             after: repo.after,
           },
           ...(configDir ? { config_dir: configDir } : {}),
+          ...(reload
+            ? {
+                reload: {
+                  outcome: reload.outcome,
+                  ...(reload.outcome === 'swapped'
+                    ? { port: reload.port, pid: reload.pid }
+                    : { reason: reload.reason }),
+                },
+              }
+            : {}),
           opencode: opencode.getState(),
           opencode_pid: opencode.getPid(),
         })

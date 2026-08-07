@@ -36,7 +36,8 @@ const SESSION_ROW = {
   accountId: 'acct-1',
 };
 let activeSandbox: { externalId: string; config: Record<string, unknown> } | null = SANDBOX_ROW;
-let daemonProof = true;
+let daemonProof = true
+let daemonReload: string | null = 'restarted';
 
 // Spread: the module also exports `agentConfigEtag`, which sandbox-env-sync now
 // imports. A partial mock silently drops it and the module fails to load.
@@ -103,6 +104,9 @@ const ORIGINAL_FETCH = globalThis.fetch;
     managed: 1,
     withheld: 0,
     agent_env_written: daemonProof,
+    // How the daemon applied it. 'kept-old' is the verified swap declining a
+    // config that would not boot — the push landed, the config did not.
+    opencode_reload: daemonReload,
   });
 };
 
@@ -128,6 +132,7 @@ beforeEach(() => {
   posted = [];
   activeSandbox = SANDBOX_ROW;
   daemonProof = true;
+  daemonReload = 'restarted';
 });
 
 describe('propagateProjectSecretsToActiveSandboxes', () => {
@@ -180,10 +185,27 @@ describe('pushSessionAgentConfigToSandbox', () => {
     // nothing — `refreshModels` is what makes the daemon restart it and apply.
     const result = await pushSessionAgentConfigToSandbox({ ...INPUT, baseRef: 'main' });
 
-    expect(result).toEqual({ applied: true });
+    expect(result).toMatchObject({ applied: true, opencodeReload: 'restarted' });
     expect(posted).toHaveLength(1);
     expect(posted[0].opencodeEnv?.KORTIX_COMPILED_AGENT_CONFIG).toBe(compiled as string);
     expect(posted[0].refreshModels).toBe(true);
+  });
+
+  test('a declined swap is reported, not hidden behind applied:true', async () => {
+    // The verified reload booted the new opencode, it never served, so the box
+    // kept the one it had. We DID push — `applied` stays true — but the config
+    // did not take, and only `opencodeReload` can say so. Collapsing this to a
+    // bare success is exactly the silent no-op the swap exists to prevent.
+    daemonReload = 'kept-old';
+    const result = await pushSessionAgentConfigToSandbox({ ...INPUT, baseRef: 'main' });
+    expect(result.applied).toBe(true);
+    expect(result.opencodeReload).toBe('kept-old');
+  });
+
+  test('an older daemon that says nothing reports null, never success', async () => {
+    daemonReload = null;
+    const result = await pushSessionAgentConfigToSandbox({ ...INPUT, baseRef: 'main' });
+    expect(result.opencodeReload).toBeNull();
   });
 
   test("recompiles from the SESSION's ref", async () => {

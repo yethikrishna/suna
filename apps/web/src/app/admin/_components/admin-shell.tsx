@@ -18,6 +18,7 @@ import { PROJECT_LANDING_PATH } from '@/lib/onboarding/landing-destination';
 const BREADCRUMBS: Record<string, string> = {
   '/admin': 'Overview',
   '/admin/accounts': 'Accounts',
+  '/admin/analytics': 'Analytics',
   '/admin/projects': 'Projects',
   '/admin/sandboxes': 'Sandboxes',
   '/admin/utils': 'Maintenance',

@@ -2,9 +2,9 @@
 
 
 import {
-  ActivityIcon as Activity,
   ArrowLeftIcon as ArrowLeft,
   CubeIcon as Boxes,
+  ChartLineUpIcon as ChartLineUp,
   KanbanIcon as FolderKanban,
   ShieldCheckIcon as ShieldCheck,
   UsersIcon as Users,
@@ -51,6 +51,11 @@ export function AdminSidebar() {
       href: '/admin/projects',
       label: 'Projects',
       icon: FolderKanban,
+    },
+    {
+      href: '/admin/analytics',
+      label: 'Analytics',
+      icon: ChartLineUp,
     },
     {
       href: '/admin/sandboxes',

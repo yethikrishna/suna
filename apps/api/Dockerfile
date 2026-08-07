@@ -21,9 +21,14 @@ FROM golang:1.25-bookworm AS app-runtime
 WORKDIR /runtime
 COPY apps/kortix-app-runtime/go.mod apps/kortix-app-runtime/main.go ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -buildvcs=false -trimpath -ldflags='-s -w' -o /out/kortix-appd . && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOBIN=/out go install \
-      -ldflags='-s -w' github.com/caddyserver/caddy/v2/cmd/caddy@v2.11.4
+    -buildvcs=false -trimpath -ldflags='-s -w' -o /out/kortix-appd .
+
+COPY apps/kortix-app-runtime/caddy/go.mod apps/kortix-app-runtime/caddy/go.sum ./caddy/
+RUN cd /runtime/caddy && go mod download
+COPY apps/kortix-app-runtime/caddy/main.go ./caddy/
+RUN cd /runtime/caddy && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+      -trimpath -ldflags='-s -w' -o /out/caddy .
 
 # ---- Sandbox Agent Stage ----
 # The API builds Daytona layered snapshots at runtime. Those snapshots bake the

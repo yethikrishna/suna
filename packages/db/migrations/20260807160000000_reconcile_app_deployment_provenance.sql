@@ -32,21 +32,17 @@ SET "actor_type" = 'human'
 WHERE "actor_type" IS NULL;
 
 ALTER TABLE "kortix"."app_deployments"
-  ALTER COLUMN "created_by" SET NOT NULL;
-ALTER TABLE "kortix"."app_deployments"
   ALTER COLUMN "actor_type" SET DEFAULT 'human';
-ALTER TABLE "kortix"."app_deployments"
-  ALTER COLUMN "actor_type" SET NOT NULL;
 
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
-    WHERE conname = 'app_deployments_source_session_fk'
+    WHERE conname = 'app_deployments_source_session_id_project_sessions_session_id_f'
       AND conrelid = 'kortix.app_deployments'::regclass
   ) THEN
     ALTER TABLE "kortix"."app_deployments"
-      ADD CONSTRAINT "app_deployments_source_session_fk"
+      ADD CONSTRAINT "app_deployments_source_session_id_project_sessions_session_id_f"
       FOREIGN KEY ("source_session_id")
       REFERENCES "kortix"."project_sessions"("session_id")
       ON DELETE SET NULL
@@ -61,6 +57,30 @@ BEGIN
     ALTER TABLE "kortix"."app_deployments"
       ADD CONSTRAINT "app_deployments_actor_type_check"
       CHECK ("actor_type" IN ('human', 'agent', 'service_account', 'system'))
+      NOT VALID;
+  END IF;
+
+  -- These validated checks let the cutover migration set the physical NOT NULL
+  -- flags without scanning app_deployments while it holds an ACCESS EXCLUSIVE lock.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'app_deployments_created_by_not_null'
+      AND conrelid = 'kortix.app_deployments'::regclass
+  ) THEN
+    ALTER TABLE "kortix"."app_deployments"
+      ADD CONSTRAINT "app_deployments_created_by_not_null"
+      CHECK ("created_by" IS NOT NULL)
+      NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'app_deployments_actor_type_not_null'
+      AND conrelid = 'kortix.app_deployments'::regclass
+  ) THEN
+    ALTER TABLE "kortix"."app_deployments"
+      ADD CONSTRAINT "app_deployments_actor_type_not_null"
+      CHECK ("actor_type" IS NOT NULL)
       NOT VALID;
   END IF;
 END $$;

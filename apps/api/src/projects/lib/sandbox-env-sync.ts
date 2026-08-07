@@ -6,7 +6,7 @@ import { config } from '../../config';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { resolveLlmGatewayBaseUrl } from '../../llm-gateway/sandbox-base-url';
 import { nativeProviderEnvNames } from '../../llm-gateway/sandbox-credentials';
-import type { ProviderName } from '../../platform/providers';
+import { getProvider, type ProviderName } from '../../platform/providers';
 import {
   intersectSecretGrants,
   listProjectSecretsSnapshotForUser,

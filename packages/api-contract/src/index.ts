@@ -854,7 +854,12 @@ export type SessionStartStage = z.infer<typeof SessionStartStageSchema>;
 
 export const SessionStartFailureSchema = z
   .object({
-    category: z.enum(['provider-capacity', 'git-auth', 'sandbox-provider']),
+    category: z.enum([
+      'provider-capacity',
+      'git-auth',
+      'unsupported-secret-delivery',
+      'sandbox-provider',
+    ]),
     message: z.string(),
     retryable: z.boolean(),
   })

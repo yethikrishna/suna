@@ -36,7 +36,7 @@ const SESSION_ROW = {
   accountId: 'acct-1',
 };
 let activeSandbox: { externalId: string; config: Record<string, unknown> } | null = SANDBOX_ROW;
-let daemonProof = true
+let daemonProof = true;
 let daemonReload: string | null = 'restarted';
 
 // Spread: the module also exports `agentConfigEtag`, which sandbox-env-sync now

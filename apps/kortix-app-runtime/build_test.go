@@ -38,8 +38,8 @@ func TestBuildPinsPatchedCaddyRelease(t *testing.T) {
 	}
 	for _, required := range []string{
 		"COPY apps/kortix-app-runtime/caddy/go.mod apps/kortix-app-runtime/caddy/go.sum ./caddy/",
-		"COPY apps/kortix-app-runtime/caddy/main.go ./caddy/",
-		"cd /runtime/caddy",
+		"COPY apps/kortix-app-runtime/caddy/main.go ./",
+		"WORKDIR /runtime/caddy",
 		"CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build",
 		"-o /out/caddy .",
 	} {
@@ -49,5 +49,8 @@ func TestBuildPinsPatchedCaddyRelease(t *testing.T) {
 	}
 	if strings.Contains(string(dockerfile), "GOBIN=/out go install") {
 		t.Fatal("apps/api/Dockerfile must not set GOBIN while cross-compiling Caddy")
+	}
+	if strings.Contains(string(dockerfile), "RUN cd /runtime/caddy") {
+		t.Fatal("apps/api/Dockerfile must use WORKDIR instead of RUN cd")
 	}
 }

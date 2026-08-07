@@ -24,10 +24,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -buildvcs=false -trimpath -ldflags='-s -w' -o /out/kortix-appd .
 
 COPY apps/kortix-app-runtime/caddy/go.mod apps/kortix-app-runtime/caddy/go.sum ./caddy/
-RUN cd /runtime/caddy && go mod download
-COPY apps/kortix-app-runtime/caddy/main.go ./caddy/
-RUN cd /runtime/caddy && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+WORKDIR /runtime/caddy
+RUN go mod download
+COPY apps/kortix-app-runtime/caddy/main.go ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
       -trimpath -ldflags='-s -w' -o /out/caddy .
 
 # ---- Sandbox Agent Stage ----

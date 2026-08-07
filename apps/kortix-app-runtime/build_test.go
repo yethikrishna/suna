@@ -25,4 +25,10 @@ func TestBuildPinsPatchedCaddyRelease(t *testing.T) {
 	if strings.Contains(string(dockerfile), "github.com/caddyserver/caddy/v2/cmd/caddy@v2.10.2") {
 		t.Fatal("apps/api/Dockerfile must not build the vulnerable Caddy v2.10.2 release")
 	}
+	if !strings.Contains(
+		string(dockerfile),
+		"CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOBIN=/out go install",
+	) {
+		t.Fatal("apps/api/Dockerfile must build a static Linux amd64 Caddy binary for Alpine App snapshots")
+	}
 }

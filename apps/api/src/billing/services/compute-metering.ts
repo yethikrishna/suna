@@ -75,8 +75,7 @@ export interface StartComputeOpts {
 
 /**
  * Compute the cost (in USD, pre-balance-deduction) for a window.
- * Hosted providers use one public customer rate. local-docker uses zero rates
- * because it runs on operator-owned hardware.
+ * All supported providers use one public customer rate.
  */
 export function calculateComputeCost(
   spec: SandboxSpec,

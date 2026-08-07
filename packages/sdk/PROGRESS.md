@@ -12,7 +12,7 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
-### 2026-08-07 — session `remove-local-docker` claim
+### 2026-08-07 — session `remove-local-docker`
 
 User-directed hard removal of the live `local-docker` sandbox provider.
 
@@ -23,10 +23,24 @@ SDK scope:
 - Preserve every published export name and the SDK package version.
 - Run RED, GREEN, and the complete SDK gates.
 
-The required `tdd` skill is unavailable in this session. This work uses the
+The required `tdd` skill was unavailable in this session. This work used the
 required RED, GREEN, and REFACTOR sequence directly.
 
-**Status:** IN PROGRESS.
+GREEN:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1716 pass`, `0 fail`, and `6817 expect()`
+  calls across `135` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: exit `0`; packed
+  `@kortix/sdk` and `@kortix/executor-sdk` imported and constructed in Node ESM.
+- Public export names and the package version are unchanged.
+- `AppHostingProvider` is exactly `daytona | platinum | e2b`.
+
+The removed string-literal union member is an intentional breaking public API
+change. It cannot publish as the current `0.12.6` patch release. The release
+train must classify it as a breaking SDK release before production publishing.
+
+**Status:** COMPLETE.
 
 **SDK package shippable to production: NOT YET.**
 

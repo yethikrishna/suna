@@ -32,9 +32,6 @@ export const sandboxProviderEnum = kortixSchema.enum('sandbox_provider', [
   'daytona',
   'platinum',
   'e2b',
-  // EXPERIMENTAL — same-machine Docker containers, see
-  // apps/api/src/platform/providers/local-docker.ts.
-  'local-docker',
 ]);
 
 export const projectStatusEnum = kortixSchema.enum('project_status', ['active', 'archived']);

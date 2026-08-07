@@ -18,7 +18,13 @@ import {
   updateApp,
   uploadAppArtifactArchive,
   type AppDeployment,
+  type AppHostingProvider,
 } from './apps';
+
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2)
+    ? true
+    : false;
 
 type Call = { url: string; method: string; body: unknown; headers: Headers };
 
@@ -46,6 +52,11 @@ beforeEach(() => {
 });
 
 const last = () => calls.at(-1)!;
+
+test('AppHostingProvider is exactly the supported hosted provider set', () => {
+  const exactProviderSet: Equal<AppHostingProvider, 'daytona' | 'platinum' | 'e2b'> = true;
+  expect(exactProviderSet).toBe(true);
+});
 
 test('AppDeployment exposes the immutable deploying actor', () => {
   const deployment = {

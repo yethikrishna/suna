@@ -439,7 +439,7 @@ The release is incomplete until these black-box cases pass:
 14. Runtime and build logs are visible through API, SDK, CLI, and UI.
 15. Compute billing opens and closes exactly once per runtime interval.
 16. The App budget blocks an unfunded wake.
-17. Daytona, Platinum, E2B, and local Docker satisfy provider contract tests.
+17. Daytona, Platinum, and E2B satisfy provider contract tests.
 18. The real CLI exits zero and prints the live URL.
 19. The deployed Dev hostname has a valid certificate and serves the App.
 20. The Dev API health version contains the merged commit SHA.

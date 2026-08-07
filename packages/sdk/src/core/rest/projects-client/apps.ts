@@ -3,7 +3,7 @@
 import { backendApi } from '../../http/api-client';
 import { unwrap } from './shared';
 
-export type AppHostingProvider = 'daytona' | 'platinum' | 'e2b' | 'local-docker';
+export type AppHostingProvider = 'daytona' | 'platinum' | 'e2b';
 export type AppDesiredState = 'running' | 'stopped';
 export type AppArtifactKind = 'archive' | 'oci_image';
 export type AppArtifactStatus = 'uploading' | 'uploaded' | 'ready' | 'rejected' | 'deleted';

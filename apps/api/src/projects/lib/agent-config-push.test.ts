@@ -16,8 +16,9 @@ process.env.KORTIX_URL = 'https://api.example.com';
 
 let compiled: string | null = '{"agent":{"support":{"prompt":"fresh"}}}';
 let compileThrows: Error | null = null;
-let compileCalls: Array<{ ref: string | null | undefined }> = [];
+let compileCalls: Array<{ ref: string | null | undefined; agent?: string }> = [];
 let posted: Array<{ opencodeEnv?: Record<string, string | null>; refreshModels?: boolean }> = [];
+let sessionMetadata: Record<string, unknown> | null = null;
 // One fake row that satisfies every select on this path — the sandbox lookup and
 // the session/project lookups `resolveSandboxEnvSnapshot` walks on its way to an
 // env snapshot. Cheaper than teaching the fake db which table it was asked for.
@@ -36,7 +37,7 @@ const SESSION_ROW = {
   accountId: 'acct-1',
 };
 let activeSandbox: { externalId: string; config: Record<string, unknown> } | null = SANDBOX_ROW;
-let daemonProof = true
+let daemonProof = true;
 let daemonReload: string | null = 'restarted';
 
 // Spread: the module also exports `agentConfigEtag`, which sandbox-env-sync now
@@ -48,6 +49,15 @@ mock.module('./compile-agent-config', () => ({
     if (compileThrows) throw compileThrows;
     return compiled;
   },
+  resolveSelectedAgentConfigForSession: async (
+    _project: unknown,
+    agentName: string,
+    baseRef?: string | null,
+  ) => {
+    compileCalls.push({ ref: baseRef, agent: agentName });
+    if (compileThrows) throw compileThrows;
+    return compiled;
+  },
 }));
 
 mock.module('../../shared/db', () => ({
@@ -55,7 +65,9 @@ mock.module('../../shared/db', () => ({
     select: () => ({
       from: () => ({
         where: () => {
-          const rows = activeSandbox ? [{ ...SESSION_ROW, ...activeSandbox }] : [];
+          const rows = activeSandbox
+            ? [{ ...SESSION_ROW, metadata: sessionMetadata, ...activeSandbox }]
+            : [];
           return {
             limit: async () => rows,
             then: (resolve: (value: typeof rows) => unknown, reject?: (reason: unknown) => unknown) =>
@@ -133,6 +145,7 @@ beforeEach(() => {
   activeSandbox = SANDBOX_ROW;
   daemonProof = true;
   daemonReload = 'restarted';
+  sessionMetadata = null;
 });
 
 describe('propagateProjectSecretsToActiveSandboxes', () => {
@@ -211,6 +224,22 @@ describe('pushSessionAgentConfigToSandbox', () => {
   test("recompiles from the SESSION's ref", async () => {
     await pushSessionAgentConfigToSandbox({ ...INPUT, baseRef: 'feature/x' });
     expect(compileCalls).toEqual([{ ref: 'feature/x' }]);
+  });
+
+  test('keeps runtime sessions on selected-agent compilation', async () => {
+    sessionMetadata = { workspace_mode: 'runtime' };
+
+    await pushSessionAgentConfigToSandbox({ ...INPUT, baseRef: 'main' });
+
+    expect(compileCalls).toEqual([{ ref: 'main', agent: 'support' }]);
+  });
+
+  test('keeps historical read sessions on selected-agent compilation', async () => {
+    sessionMetadata = { workspace_mode: 'read' };
+
+    await pushSessionAgentConfigToSandbox({ ...INPUT, baseRef: 'main' });
+
+    expect(compileCalls).toEqual([{ ref: 'main', agent: 'support' }]);
   });
 
   test('a project with no compiled config pushes NOTHING', async () => {

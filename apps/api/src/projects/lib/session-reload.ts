@@ -30,12 +30,20 @@
  */
 
 import { and, eq } from 'drizzle-orm';
-import { projects, sessionSandboxes } from '@kortix/db';
+import { projects, projectSessions, sessionSandboxes } from '@kortix/db';
 import { db } from '../../shared/db';
 import { resolveSandboxIngress } from '../../sandbox-proxy/backend';
 import { invalidateProjectMirror, type GitBackedProject } from '../git';
-import { agentConfigEtag, resolveCompiledAgentConfigForSession } from './compile-agent-config';
+import {
+  agentConfigEtag,
+  resolveCompiledAgentConfigForSession,
+  resolveSelectedAgentConfigForSession,
+} from './compile-agent-config';
 import { pushSessionAgentConfigToSandbox } from './sandbox-env-sync';
+import {
+  workspaceModeAllowsFullRepository,
+  workspaceModeFromSessionMetadata,
+} from './session-sandbox-metadata';
 
 const SANDBOX_SERVICE_PORT = 8000;
 
@@ -246,17 +254,30 @@ export async function readSandboxConfigState(input: {
 export async function latestAgentConfigEtag(input: {
   projectId: string;
   accountId: string;
+  sessionId?: string;
   baseRef?: string | null;
 }): Promise<string | null> {
-  const [project] = await db
-    .select({
-      repoUrl: projects.repoUrl,
-      defaultBranch: projects.defaultBranch,
-      manifestPath: projects.manifestPath,
-    })
-    .from(projects)
-    .where(and(eq(projects.projectId, input.projectId), eq(projects.accountId, input.accountId)))
-    .limit(1);
+  const [[project], [session]] = await Promise.all([
+    db
+      .select({
+        repoUrl: projects.repoUrl,
+        defaultBranch: projects.defaultBranch,
+        manifestPath: projects.manifestPath,
+      })
+      .from(projects)
+      .where(and(eq(projects.projectId, input.projectId), eq(projects.accountId, input.accountId)))
+      .limit(1),
+    input.sessionId
+      ? db
+          .select({
+            agentName: projectSessions.agentName,
+            metadata: projectSessions.metadata,
+          })
+          .from(projectSessions)
+          .where(eq(projectSessions.sessionId, input.sessionId))
+          .limit(1)
+      : Promise.resolve([]),
+  ]);
   if (!project?.defaultBranch) return null;
   const gitProject: GitBackedProject = {
     projectId: input.projectId,
@@ -268,9 +289,12 @@ export async function latestAgentConfigEtag(input: {
   // Without this, `stale: false` is answerable from a cache that predates the
   // very commit the caller is asking about.
   invalidateProjectMirror(input.projectId);
-  const compiled = await resolveCompiledAgentConfigForSession(gitProject, input.baseRef).catch(
-    () => null,
-  );
+  const compiled = await (
+    !workspaceModeAllowsFullRepository(workspaceModeFromSessionMetadata(session?.metadata)) &&
+    session?.agentName
+      ? resolveSelectedAgentConfigForSession(gitProject, session.agentName, input.baseRef)
+      : resolveCompiledAgentConfigForSession(gitProject, input.baseRef)
+  ).catch(() => null);
   return agentConfigEtag(compiled);
 }
 
@@ -370,6 +394,7 @@ export async function reloadSessionConfig(input: {
   const latest = await latestAgentConfigEtag({
     projectId: input.projectId,
     accountId: input.accountId,
+    sessionId: input.sessionId,
     baseRef: input.baseRef,
   });
 

@@ -12,6 +12,26 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-07 — session `remove-local-docker` claim
+
+User-directed hard removal of the live `local-docker` sandbox provider.
+
+SDK scope:
+
+- Remove `local-docker` from the published `AppHostingProvider` union.
+- Add a compile-time regression assertion for the exact remaining provider set.
+- Preserve every published export name and the SDK package version.
+- Run RED, GREEN, and the complete SDK gates.
+
+The required `tdd` skill is unavailable in this session. This work uses the
+required RED, GREEN, and REFACTOR sequence directly.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
+---
+
 ### 2026-08-07 — session `apps-query-key-integration` claim
 
 No **Now** task claimed. This is a narrow integration fix after merging current

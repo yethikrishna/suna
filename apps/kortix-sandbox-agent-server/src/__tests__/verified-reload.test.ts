@@ -6,10 +6,8 @@
  * agent file, a failed dependency install) the session was left with nothing,
  * and the reload had destroyed the thing it was meant to update.
  *
- * Marko's shape, from the call: "It actually has to keep the process running,
- * make sure that the new process works. If the new process works, swap out the
- * old process for the new one." So: boot the candidate, verify it SERVES, then
- * swap and retire the old one.
+ * The required shape is: boot the candidate, verify it serves, then promote it
+ * and retire the old process.
  *
  * These assert on source structure. The supervisor owns real child processes,
  * real ports and a real readiness probe; spawning opencode in unit tests would
@@ -25,7 +23,7 @@ const PROXY = await Bun.file(new URL('../proxy.ts', import.meta.url).pathname).t
 const REFRESH = await Bun.file(new URL('../routes/refresh.ts', import.meta.url).pathname).text();
 
 /** `verifyCandidateBoots`'s body, comments stripped. */
-function reloadBody(): string {
+function candidateBody(): string {
   const start = SRC.indexOf('async function verifyCandidateBoots(');
   expect(start).toBeGreaterThan(-1);
   const rest = SRC.slice(start);
@@ -39,7 +37,7 @@ function reloadBody(): string {
 }
 
 describe('the candidate boots before anything is killed', () => {
-  const body = reloadBody();
+  const body = candidateBody();
 
   test('spawns the candidate on the standby port, unsupervised', () => {
     expect(body).toContain('opencodeStandbyPort');
@@ -53,27 +51,21 @@ describe('the candidate boots before anything is killed', () => {
     expect(probeAt).toBeGreaterThan(spawnAt);
   });
 
-  test('never touches the running opencode during verification', () => {
-    // The running instance keeps serving for the whole trial. Anything that
-    // stopped or replaced it here would reintroduce the outage this prevents.
+  test('does not touch the running opencode before the verdict', () => {
     expect(body).not.toContain('this.restart()');
     expect(body).not.toContain("stop('SIGTERM')");
     expect(body).not.toContain('child = candidate');
   });
 
-  test('always retires the candidate, pass or fail', () => {
-    // It was only ever a trial. Left running it holds the standby port and a
-    // second opencode against the same workspace.
-    expect(body).toContain('killProcessGroup(candidate');
+  test('returns the live candidate after a successful probe', () => {
+    expect(body).toContain('return { ok: true, candidate, port: candidatePort }');
   });
 });
 
 describe('when the candidate never comes up', () => {
-  const body = reloadBody();
+  const body = candidateBody();
 
   test('says why, so the caller can report a failed reload', () => {
-    // `verifyCandidateBoots` returns the verdict; `reloadVerified` turns a
-    // false into outcome: 'kept-old' with this reason attached.
     expect(body).toMatch(/reason:/);
     const method = SRC.slice(SRC.indexOf('async reloadVerified('));
     expect(method).toContain("outcome: 'kept-old'");
@@ -81,9 +73,15 @@ describe('when the candidate never comes up', () => {
   });
 
   test('reports ok:false rather than throwing', () => {
-    // The caller turns this into a reported failed reload on a healthy session.
-    // A throw would read as a broken box.
     expect(body).toContain('return { ok: false');
+  });
+
+  test('retires only the failed candidate', () => {
+    const failureAt = body.indexOf('if (!ready)');
+    const retireAt = body.indexOf("await killProcessGroup(candidate, 'SIGTERM')", failureAt);
+    const returnAt = body.indexOf("return { ok: false, reason: 'the new opencode", failureAt);
+    expect(retireAt).toBeGreaterThan(failureAt);
+    expect(retireAt).toBeLessThan(returnAt);
   });
 });
 
@@ -99,6 +97,15 @@ describe('readiness means the session API answers', () => {
   test('gives up early if the candidate dies', () => {
     const probe = SRC.slice(SRC.indexOf('async function probeUntilReady'));
     expect(probe).toContain('proc.exitCode !== null');
+  });
+
+  test('a stale probe cannot downgrade a newly promoted process', () => {
+    const probe = SRC.slice(
+      SRC.indexOf('function scheduleReadinessProbe()'),
+      SRC.indexOf('\n  return {', SRC.indexOf('function scheduleReadinessProbe()')),
+    );
+    expect(probe).toContain('const probedPort = activePort');
+    expect(probe).toContain('if (probedPort !== activePort)');
   });
 });
 
@@ -117,20 +124,14 @@ describe('the port pair', () => {
     expect(call).toContain('cfg.opencodeStandbyPort');
   });
 
-  test('the LIVE port never moves — the candidate only ever borrows the standby', () => {
-    // Serving from the standby would save a boot and is not worth it: the API
-    // decides from the port number whether traffic is the session's
-    // conversation, whether it may be publicly shared, whether it counts as
-    // preview use for the sandbox deadline, how Platinum rewrites ingress, and
-    // where an opencode PTY connects. Each fails silently if the live port
-    // moves. Keeping 4096 canonical means nothing outside the box has to know.
-    const body = reloadBody();
-    expect(body).not.toContain('currentCfg.opencodeInternalPort =');
+  test('chooses the idle half relative to the current active port', () => {
+    const body = candidateBody();
+    expect(body).toContain('activePort === currentCfg.opencodeInternalPort');
     expect(body).toContain('currentCfg.opencodeStandbyPort');
   });
 });
 
-describe('reloadVerified orders verification before the restart', () => {
+describe('reloadVerified promotes the verified process', () => {
   /** The method body, comments stripped. */
   function methodBody(): string {
     const start = SRC.indexOf('async reloadVerified(');
@@ -143,25 +144,38 @@ describe('reloadVerified orders verification before the restart', () => {
       .join('\n');
   }
 
-  test('verifies BEFORE restarting — the entire point', () => {
-    // Restart first and this is the old kill-then-hope path with a verification
-    // step bolted on after the damage. Nothing else in this file notices, which
-    // is exactly why it is asserted here.
+  test('verifies before changing the active process', () => {
     const body = methodBody();
     const verifyAt = body.indexOf('verifyCandidateBoots(');
-    const restartAt = body.indexOf('this.restart()');
+    const promoteAt = body.indexOf('child = proven.candidate');
     expect(verifyAt).toBeGreaterThan(-1);
-    expect(restartAt).toBeGreaterThan(-1);
-    expect(verifyAt).toBeLessThan(restartAt);
+    expect(promoteAt).toBeGreaterThan(verifyAt);
   });
 
-  test('returns kept-old WITHOUT restarting when verification fails', () => {
-    // The early return is what protects the running opencode. Falling through
-    // to the restart would kill it for a config already known not to boot.
+  test('returns kept-old without promotion when verification fails', () => {
     const body = methodBody();
     const guardAt = body.indexOf('if (!proven.ok) return');
     expect(guardAt).toBeGreaterThan(-1);
-    expect(guardAt).toBeLessThan(body.indexOf('this.restart()'));
+    expect(guardAt).toBeLessThan(body.indexOf('child = proven.candidate'));
+  });
+
+  test('does not boot a second replacement after verification', () => {
+    expect(methodBody()).not.toContain('this.restart()');
+  });
+
+  test('switches routing before retiring the previous process', () => {
+    const body = methodBody();
+    const routeAt = body.indexOf('activePort = proven.port');
+    const childAt = body.indexOf('child = proven.candidate');
+    const retireAt = body.indexOf("killProcessGroup(previous, 'SIGTERM')");
+    expect(routeAt).toBeGreaterThan(-1);
+    expect(childAt).toBeGreaterThan(routeAt);
+    expect(retireAt).toBeGreaterThan(childAt);
+  });
+
+  test('supervises the promoted process', () => {
+    const body = methodBody();
+    expect(body).toContain('superviseChild(proven.candidate)');
   });
 });
 
@@ -210,7 +224,7 @@ describe('verify_fail fault injection', () => {
     // A shortcut that returned early would prove the plumbing and nothing else.
     // Spawning for real means the injected run exercises the same code as a
     // genuine failure: candidate started, candidate retired, incumbent alive.
-    const body = reloadBody();
+    const body = candidateBody();
     const spawnAt = body.indexOf('spawnChild(binaryPath');
     const forceAt = body.indexOf('opts.forceFail');
     expect(spawnAt).toBeGreaterThan(-1);
@@ -218,7 +232,7 @@ describe('verify_fail fault injection', () => {
   });
 
   test('still retires the candidate when injected', () => {
-    const body = reloadBody();
+    const body = candidateBody();
     expect(body.indexOf('killProcessGroup(candidate')).toBeGreaterThan(
       body.indexOf('opts.forceFail'),
     );
@@ -230,11 +244,10 @@ describe('verify_fail fault injection', () => {
     expect(REFRESH).toContain("c.req.query('verify_fail') === '1'");
   });
 
-  test('injection cannot reach the restart', () => {
-    // Same guard as a real failure: decline returns before this.restart().
+  test('injection cannot reach promotion', () => {
     const method = SRC.slice(SRC.indexOf('async reloadVerified('));
     const guardAt = method.indexOf('if (!proven.ok) return');
     expect(guardAt).toBeGreaterThan(-1);
-    expect(guardAt).toBeLessThan(method.indexOf('this.restart()'));
+    expect(guardAt).toBeLessThan(method.indexOf('child = proven.candidate'));
   });
 });

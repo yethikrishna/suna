@@ -120,7 +120,7 @@ export function buildOpencodeApp(
   const kortixRouter = new Hono()
   const healthRouter = createHealthRouter(cfg, opencode, bootTime, bootState, staticWebPort)
   const refreshRouter = createRefreshRouter(cfg, opencode)
-  const abortRouter = createAbortRouter(cfg)
+  const abortRouter = createAbortRouter(cfg, opencode)
   const envRouter = projectEnv
     ? createEnvRouter(cfg, opencode, projectEnv, { agentEnvFile })
     : null

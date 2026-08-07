@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
-import embeddedStarter from '../embedded.generated.json' with { type: 'json' };
+import embeddedStarter from '../embedded.v2.generated.json' with { type: 'json' };
 import { buildEmbeddedSnapshot } from '../../scripts/generate-embedded';
 
 /**
  * Guards against a stale committed snapshot. The compiled `kortix` binary
- * serves starter files from `embedded.generated.json`, so if a template file
+ * serves starter files from `embedded.v2.generated.json`, so if a template file
  * changes without regenerating the snapshot, the binary would ship the old
  * content. Regenerate with `bun run scripts/generate-embedded.ts`.
  */

@@ -22,7 +22,7 @@ import { join, relative, sep } from 'node:path';
 // source of truth in a source checkout (so editing a template just works),
 // but it does not survive `bun build --compile`; this snapshot is inlined
 // into the compiled binary and used as a fallback when the files are absent.
-import embeddedStarter from './embedded.generated.json' with { type: 'json' };
+import embeddedStarter from './embedded.v2.generated.json' with { type: 'json' };
 
 const EMBEDDED_STARTER = embeddedStarter as Record<string, { files: StarterFile[] }>;
 

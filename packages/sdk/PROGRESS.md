@@ -526,6 +526,30 @@ Required SDK gates are typecheck, the full test suite, and packed-install smoke.
 
 ### 2026-08-07 — session `apps-experimental-gate` completion
 
+The Apps project gate remains additive. The existing Apps SDK surface keeps all
+published names. `AppDeployment` now exposes immutable `created_by`,
+`source_session_id`, and `actor_type` provenance returned by the API.
+
+GREEN:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk test`: `1597 pass`, `2 skip`, `0 fail`, and
+  `6547 expect()` calls across `127` files.
+- `pnpm --filter @kortix/sdk smoke:install`: exit `0`; the packed SDK imported
+  and `createKortix` constructed successfully.
+- `bun test src/core/rest/projects-client/apps.test.ts`: `5 pass`, `0 fail`.
+
+No public export name changed. The package version remains untouched.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+The complete Apps deployment matrix is a platform acceptance gate. It is not an
+SDK package gate and remains pending until the merged Dev deployment is live.
+
+### 2026-08-07 — session `apps-experimental-gate` completion
+
 Implemented:
 
 - Added the additive `apps` key to `ExperimentalFeatureKey`.

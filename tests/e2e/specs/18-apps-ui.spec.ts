@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { loadEnv } from "../../src/core/env";
 import {
@@ -22,6 +22,30 @@ const password = "E2eAppsUi123!";
 const authOptions = { supabaseUrl, password };
 const api = createApiJsonClient(apiBase);
 
+async function dismissOnboarding(page: Page): Promise<void> {
+  await page.waitForTimeout(2_000);
+  for (let step = 0; step < 12; step += 1) {
+    const onboarding = page.getByRole("dialog").last();
+    if (!(await onboarding.isVisible().catch(() => false))) break;
+    const skip = onboarding
+      .getByRole("button", { name: /^(Skip|Not now|Maybe later)/i })
+      .last();
+    if (await skip.isVisible().catch(() => false)) {
+      await skip.click();
+    } else {
+      const primary = onboarding
+        .getByRole("button", {
+          name: /^(Continue|Done|Open project|Start building|Get started)$/i,
+        })
+        .last();
+      if (!(await primary.isVisible().catch(() => false))) break;
+      await primary.click();
+    }
+    await page.waitForTimeout(250);
+  }
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+}
+
 interface AccountSummary {
   account_id: string;
   personal_account?: boolean;
@@ -38,7 +62,7 @@ interface AppResponse {
 }
 
 test.describe("18 — Kortix Apps UI", () => {
-  test("gates Apps and renders an enabled project as a read-only deployment index", async ({
+  test("shows experimental Apps, enables it in place, and renders a read-only deployment index", async ({
     context,
     page,
   }, testInfo) => {
@@ -116,7 +140,8 @@ test.describe("18 — Kortix Apps UI", () => {
       await page.goto(`/projects/${project.id}`, {
         waitUntil: "domcontentloaded",
       });
-      await expect(page.getByRole("link", { name: "Apps" })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Apps" })).toBeVisible();
+      await dismissOnboarding(page);
 
       const disabledAppRequests: string[] = [];
       const recordDisabledRequest = (request: {
@@ -134,22 +159,33 @@ test.describe("18 — Kortix Apps UI", () => {
       await page.goto(`/projects/${project.id}/apps`, {
         waitUntil: "domcontentloaded",
       });
-      await expect(page.getByText("404", { exact: true })).toBeVisible();
       await expect(
         page.getByRole("heading", { name: "Apps", exact: true }),
-      ).toHaveCount(0);
+      ).toBeVisible();
+      await expect(
+        page.getByRole("main").getByText("Experimental", { exact: true }),
+      ).toBeVisible();
+      await expect(page.getByRole("button", { name: "Enable Apps" })).toBeVisible();
       expect(disabledAppRequests).toEqual([]);
       page.off("request", recordDisabledRequest);
 
-      const enabledProject = await api<{
-        experimental: Record<string, boolean>;
-      }>(
-        session.access_token,
-        "PATCH",
-        `/projects/${project.id}/experimental`,
-        { feature: "apps", enabled: true },
+      const enabledRequest = page.waitForRequest(
+        (request) =>
+          request.method() === "PATCH" &&
+          request.url().endsWith(`/v1/projects/${project.id}/experimental`),
       );
-      expect(enabledProject.experimental.apps).toBe(true);
+      const enabledResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === "PATCH" &&
+          response.url().endsWith(`/v1/projects/${project.id}/experimental`),
+      );
+      await page.getByRole("button", { name: "Enable Apps" }).click();
+      expect((await enabledRequest).postDataJSON()).toEqual({
+        feature: "apps",
+        enabled: true,
+      });
+      expect((await enabledResponse).status()).toBe(200);
+      await expect(page.getByText("No Apps deployed", { exact: true })).toBeVisible();
 
       const seeded = await api<AppResponse>(
         session.access_token,
@@ -178,28 +214,8 @@ test.describe("18 — Kortix Apps UI", () => {
       });
       expect((await listResponse).status()).toBe(200);
 
-      // First-run onboarding mounts after the project route has already loaded.
-      await page.waitForTimeout(2_000);
-      for (let step = 0; step < 12; step += 1) {
-        const onboarding = page.getByRole("dialog").last();
-        if (!(await onboarding.isVisible().catch(() => false))) break;
-        const skip = onboarding
-          .getByRole("button", { name: /^(Skip|Not now|Maybe later)/i })
-          .last();
-        if (await skip.isVisible().catch(() => false)) {
-          await skip.click();
-        } else {
-          const primary = onboarding
-            .getByRole("button", {
-              name: /^(Continue|Done|Open project|Start building|Get started)$/i,
-            })
-            .last();
-          if (!(await primary.isVisible().catch(() => false))) break;
-          await primary.click();
-        }
-        await page.waitForTimeout(250);
-      }
-      await expect(page.getByRole("dialog")).toHaveCount(0);
+      // First-run onboarding can remount after the feature mutation.
+      await dismissOnboarding(page);
 
       await expect(
         page.getByRole("heading", { name: "Apps", exact: true }),
@@ -207,6 +223,9 @@ test.describe("18 — Kortix Apps UI", () => {
       await expect(page.getByText("Seed App", { exact: true })).toBeVisible();
       await expect(
         page.getByText("Deploy from a terminal", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("main").getByText("Experimental", { exact: true }),
       ).toBeVisible();
       await expect(
         page.getByText("kortix apps deploy .", { exact: true }),
@@ -226,8 +245,9 @@ test.describe("18 — Kortix Apps UI", () => {
         seededRow.getByText(seeded.url, { exact: true }),
       ).toBeVisible();
       await expect(
-        seededRow.getByRole("button", { name: "Stop App" }),
+        seededRow.getByRole("button", { name: "Suspend App" }),
       ).toBeDisabled();
+      await expect(seededRow.getByText("Deploy to see a live preview.")).toBeVisible();
 
       const copy = seededRow.getByRole("button", { name: "Copy code" });
       await copy.click();

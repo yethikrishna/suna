@@ -86,9 +86,7 @@ export class PlatinumProvider implements SandboxProvider {
 
   readonly provisioning: ProvisioningTraits = {
     async: false,
-    stages: [
-      { id: 'creating', progress: 50, message: 'Creating sandbox...' },
-    ],
+    stages: [{ id: 'creating', progress: 50, message: 'Creating sandbox...' }],
   };
 
   async getProvisioningStatus(): Promise<ProvisioningStatus | null> {
@@ -104,7 +102,7 @@ export class PlatinumProvider implements SandboxProvider {
     if (!template) {
       throw new Error(
         'Platinum create() has no template: pass opts.snapshot or set PLATINUM_TEMPLATE ' +
-        '(a ready Platinum template id, e.g. kortix-computer).',
+          '(a ready Platinum template id, e.g. kortix-computer).',
       );
     }
     return this.provisionFromTemplate(template, opts);
@@ -118,7 +116,10 @@ export class PlatinumProvider implements SandboxProvider {
    * boot path can fall back to a name-boot; a transient 5xx (or any other error)
    * propagates UNCHANGED so it is surfaced/retried, never silently name-booted.
    */
-  async createFromExternalId(externalTemplateId: string, opts: CreateSandboxOpts): Promise<ProvisionResult> {
+  async createFromExternalId(
+    externalTemplateId: string,
+    opts: CreateSandboxOpts,
+  ): Promise<ProvisionResult> {
     if (!externalTemplateId || externalTemplateId.trim() === '') {
       throw new Error('[platinum] createFromExternalId called without a template id');
     }
@@ -134,10 +135,12 @@ export class PlatinumProvider implements SandboxProvider {
     }
   }
 
-  private async provisionFromTemplate(template: string, opts: CreateSandboxOpts): Promise<ProvisionResult> {
+  private async provisionFromTemplate(
+    template: string,
+    opts: CreateSandboxOpts,
+  ): Promise<ProvisionResult> {
     const workloadType = sandboxWorkloadType(opts);
-    const sandboxApiBase = config.KORTIX_URL
-      .replace(/\/+$/, '')
+    const sandboxApiBase = config.KORTIX_URL.replace(/\/+$/, '')
       .replace(/\/v1\/router$/, '')
       .replace(/\/v1$/, '');
 
@@ -223,13 +226,19 @@ export class PlatinumProvider implements SandboxProvider {
     let exposedUrl = '';
     const _tExpose0 = Date.now();
     try {
-      const exposed = await platinumJson<PlatinumExposedPort>(`/v1/sandboxes/${externalId}/expose`, {
-        method: 'POST',
-        body: JSON.stringify({ port: ingressPort, public: true }),
-      });
+      const exposed = await platinumJson<PlatinumExposedPort>(
+        `/v1/sandboxes/${externalId}/expose`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ port: ingressPort, public: true }),
+        },
+      );
       exposedUrl = (exposed.url ?? '').replace(/\/$/, '');
     } catch (err) {
-      console.warn(`[platinum] eager expose ${externalId}:${AGENT_PORT} failed (lazy fallback):`, err);
+      console.warn(
+        `[platinum] eager expose ${externalId}:${AGENT_PORT} failed (lazy fallback):`,
+        err,
+      );
     }
     const _exposeMs = Date.now() - _tExpose0;
 
@@ -250,7 +259,7 @@ export class PlatinumProvider implements SandboxProvider {
     // becomes usable without any create-path hang.
     console.log(
       `[platinum-timing] ${externalId} vm-running=${_vmMs}ms expose=${_exposeMs}ms ` +
-      `edge=${exposedUrl ? 'ready' : 'lazy'} total=${Date.now() - _t0}ms (runtime-ready deferred to FE poll, like daytona)`,
+        `edge=${exposedUrl ? 'ready' : 'lazy'} total=${Date.now() - _t0}ms (runtime-ready deferred to FE poll, like daytona)`,
     );
 
     return {
@@ -264,6 +273,11 @@ export class PlatinumProvider implements SandboxProvider {
         workloadType,
       },
     };
+  }
+
+  async ensureAppRuntimeStarted(_externalId: string): Promise<void> {
+    // Platinum honors the image ENTRYPOINT on create and resumes its process
+    // tree on wake. appd is therefore already running.
   }
 
   async start(externalId: string): Promise<void> {
@@ -330,18 +344,22 @@ export class PlatinumProvider implements SandboxProvider {
     return 'recovering';
   }
 
-  async resolveIngress(externalId: string, request: SandboxIngressRequest): Promise<ResolvedSandboxIngress> {
+  async resolveIngress(
+    externalId: string,
+    request: SandboxIngressRequest,
+  ): Promise<ResolvedSandboxIngress> {
     const route = this.routeIngress(request);
     const effectivePort = route.effectivePort;
     // Expose the requested port through Platinum's edge → https://<port>-<id>.sbx…
     // No preview token: the sandbox is gated by the serviceKey bearer the proxy
     // already adds. Idempotent — re-exposing returns the same URL.
-    const exposed = await platinumJson<PlatinumExposedPort>(
-      `/v1/sandboxes/${externalId}/expose`,
-      { method: 'POST', body: JSON.stringify({ port: effectivePort, public: true }) },
-    );
+    const exposed = await platinumJson<PlatinumExposedPort>(`/v1/sandboxes/${externalId}/expose`, {
+      method: 'POST',
+      body: JSON.stringify({ port: effectivePort, public: true }),
+    });
     const url = (exposed.url ?? '').replace(/\/$/, '');
-    if (!url) throw new Error(`[platinum] expose returned no URL for ${externalId}:${effectivePort}`);
+    if (!url)
+      throw new Error(`[platinum] expose returned no URL for ${externalId}:${effectivePort}`);
     return {
       url,
       headers: {},
@@ -375,7 +393,10 @@ export class PlatinumProvider implements SandboxProvider {
     // {url,port,...} — the array {expose:[...]} shape is only valid on the
     // create route's inline expose. Sending the array here 400s.
     const ingress = await this.resolveIngress(externalId, { port: AGENT_PORT, transport: 'http' });
-    const headers: Record<string, string> = { ...ingress.headers, 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = {
+      ...ingress.headers,
+      'Content-Type': 'application/json',
+    };
     try {
       const serviceKey = await serviceKeyForExternalId(externalId);
       if (serviceKey) headers['Authorization'] = `Bearer ${serviceKey}`;

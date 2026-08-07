@@ -196,6 +196,13 @@ export interface SandboxProvider {
 
   create(opts: CreateSandboxOpts): Promise<ProvisionResult>;
   /**
+   * Ensure the Kortix App supervisor is running after create or resume.
+   * Providers that honor the image ENTRYPOINT implement this as a no-op.
+   * Providers that replace ENTRYPOINT must start `/kortix/bin/kortix-appd`
+   * through their native process API. The operation must be idempotent.
+   */
+  ensureAppRuntimeStarted(externalId: string): Promise<void>;
+  /**
    * FIX-A: boot a sandbox from an EXACT provider template id (not a name). The
    * boot path uses this to honor a project's activated
    * `active_sandbox_external_template_id` pin, so the running sandbox is the
@@ -207,7 +214,10 @@ export interface SandboxProvider {
    * so the caller can fall back to a name-boot; a transient 5xx throws a normal
    * (retryable) error and MUST NOT be turned into a name fallback.
    */
-  createFromExternalId?(externalTemplateId: string, opts: CreateSandboxOpts): Promise<ProvisionResult>;
+  createFromExternalId?(
+    externalTemplateId: string,
+    opts: CreateSandboxOpts,
+  ): Promise<ProvisionResult>;
   start(externalId: string): Promise<void>;
   stop(externalId: string): Promise<void>;
   remove(externalId: string): Promise<void>;
@@ -229,7 +239,10 @@ export interface SandboxProvider {
    * silently broke every other provider's runtime connection (502/503). Keeping
    * it on the interface makes that regression a compile error.
    */
-  resolveIngress(externalId: string, request: SandboxIngressRequest): Promise<ResolvedSandboxIngress>;
+  resolveIngress(
+    externalId: string,
+    request: SandboxIngressRequest,
+  ): Promise<ResolvedSandboxIngress>;
   ensureRunning(externalId: string): Promise<void>;
   getProvisioningStatus(sandboxId: string): Promise<ProvisioningStatus | null>;
   /**

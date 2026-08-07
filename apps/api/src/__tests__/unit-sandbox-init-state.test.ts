@@ -21,7 +21,9 @@ describe('sandbox init state helpers', () => {
     const meta = buildSandboxInitFailureMetadata({}, new Error('boom'), 3, false);
     expect(meta.initStatus).toBe('failed');
     expect(meta.lastInitError).toBe('boom');
-    expect(meta.errorMessage).toBe('Initialization failed after 3 attempts. Reinitialize to retry.');
+    expect(meta.errorMessage).toBe(
+      'Initialization failed after 3 attempts. Reinitialize to retry.',
+    );
   });
 
   test('records the active capacity retry limit in retry metadata', () => {
@@ -35,7 +37,11 @@ describe('sandbox init state helpers', () => {
   });
 
   test('marks successful initialization as ready', () => {
-    const meta = buildSandboxInitSuccessMetadata({ serverType: 'basic' }, { provisioningStage: 'server_creating' }, 2);
+    const meta = buildSandboxInitSuccessMetadata(
+      { serverType: 'basic' },
+      { provisioningStage: 'server_creating' },
+      2,
+    );
     expect(meta.initStatus).toBe('ready');
     expect(meta.initAttempts).toBe(2);
     expect(meta.serverType).toBe('basic');
@@ -50,17 +56,32 @@ describe('sandbox init state helpers', () => {
       async create() {
         attempts += 1;
         if (attempts < 3) throw new Error(`attempt-${attempts}`);
-        return { externalId: 'machine-123', baseUrl: 'https://sandbox.example', metadata: { daytonaSandboxId: 'abc' } };
+        return {
+          externalId: 'machine-123',
+          baseUrl: 'https://sandbox.example',
+          metadata: { daytonaSandboxId: 'abc' },
+        };
       },
+      async ensureAppRuntimeStarted() {},
       async start() {},
       async stop() {},
       async remove() {},
-      async getStatus() { return 'unknown' as const; },
-      async resolveEndpoint() { return { url: '', headers: {} }; },
-      routeIngress(request: { port: number }) { return { effectivePort: request.port }; },
-      async resolveIngress(_externalId: string, request: { port: number }) { return { url: '', headers: {}, effectivePort: request.port }; },
+      async getStatus() {
+        return 'unknown' as const;
+      },
+      async resolveEndpoint() {
+        return { url: '', headers: {} };
+      },
+      routeIngress(request: { port: number }) {
+        return { effectivePort: request.port };
+      },
+      async resolveIngress(_externalId: string, request: { port: number }) {
+        return { url: '', headers: {}, effectivePort: request.port };
+      },
       async ensureRunning() {},
-      async getProvisioningStatus() { return null; },
+      async getProvisioningStatus() {
+        return null;
+      },
     };
 
     const result = await retrySandboxProvisionCreate(provider, {
@@ -84,15 +105,26 @@ describe('sandbox init state helpers', () => {
         attempts += 1;
         throw new Error('Maximum number of concurrent E2B sandboxes reached');
       },
+      async ensureAppRuntimeStarted() {},
       async start() {},
       async stop() {},
       async remove() {},
-      async getStatus() { return 'unknown' as const; },
-      async resolveEndpoint() { return { url: '', headers: {} }; },
-      routeIngress(request: { port: number }) { return { effectivePort: request.port }; },
-      async resolveIngress(_externalId: string, request: { port: number }) { return { url: '', headers: {}, effectivePort: request.port }; },
+      async getStatus() {
+        return 'unknown' as const;
+      },
+      async resolveEndpoint() {
+        return { url: '', headers: {} };
+      },
+      routeIngress(request: { port: number }) {
+        return { effectivePort: request.port };
+      },
+      async resolveIngress(_externalId: string, request: { port: number }) {
+        return { url: '', headers: {}, effectivePort: request.port };
+      },
       async ensureRunning() {},
-      async getProvisioningStatus() { return null; },
+      async getProvisioningStatus() {
+        return null;
+      },
     };
 
     await expect(

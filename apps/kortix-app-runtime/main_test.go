@@ -115,6 +115,18 @@ func TestStaticCaddyConfigSupportsSPAWithoutProxy(t *testing.T) {
 	}
 }
 
+func TestReadinessChecksPublicIngressForStaticAndDynamicApps(t *testing.T) {
+	for _, spec := range []appSpec{
+		{StaticRoot: "/srv", ReadinessPath: "/health"},
+		{Command: []string{"server"}, TargetPort: 3000, ReadinessPath: "/health"},
+	} {
+		want := "http://127.0.0.1:8080/health"
+		if got := spec.readinessURL(); got != want {
+			t.Fatalf("readiness URL = %q, want %q", got, want)
+		}
+	}
+}
+
 func TestLogRingIsBoundedAndCursorBased(t *testing.T) {
 	ring := newLogRing(3)
 	for _, line := range []string{"one", "two", "three", "four"} {

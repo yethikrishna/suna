@@ -374,17 +374,15 @@ await writeFile('dist/index.html', '<main>${bundleMarker}</main>\\n');
 
     const stopped = await cli(['apps', 'stop', dynamicV2.app.slug, '--json']);
     if (stopped.desired_state !== 'stopped') throw new Error(`manual stop failed: ${JSON.stringify(stopped)}`);
-    const stoppedResponse = await publicRequest(dynamicV2.app.url);
-    if (stoppedResponse.status !== 503 || stoppedResponse.body?.code !== 'app_stopped') {
-      throw new Error(`stopped App served traffic: ${stoppedResponse.status} ${stoppedResponse.text}`);
+    const wakeResponse = await publicRequest(dynamicV2.app.url);
+    if (wakeResponse.body?.marker !== dynamicMarkerV1) {
+      throw new Error(`first public request did not wake stopped App: ${wakeResponse.status} ${wakeResponse.text}`);
     }
-    const started = await cli(['apps', 'start', dynamicV2.app.slug, '--json']);
-    if (started.desired_state !== 'running') throw new Error(`manual start failed: ${JSON.stringify(started)}`);
-    const startedResponse = await publicRequest(dynamicV2.app.url);
-    if (startedResponse.body?.marker !== dynamicMarkerV1) {
-      throw new Error(`manual start did not restore traffic: ${startedResponse.text}`);
+    const awakened = await cli(['apps', 'show', dynamicV2.app.slug, '--json']);
+    if (awakened.app.desired_state !== 'running') {
+      throw new Error(`public request did not reactivate App: ${JSON.stringify(awakened)}`);
     }
-    log('manual stop and start passed');
+    log('manual stop and one-request public wake passed');
 
     await Bun.sleep(1_000);
     const [runtime] = await sql<{ runtime_id: string }[]>`

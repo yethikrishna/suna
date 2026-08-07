@@ -158,6 +158,12 @@ func (s appSpec) readinessPath() string {
 	return s.ReadinessPath
 }
 
+// Readiness must cover the complete public path. Probing the user process
+// directly can publish ready before Caddy accepts traffic after a cold start.
+func (s appSpec) readinessURL() string {
+	return fmt.Sprintf("http://127.0.0.1:%d%s", ingressPort, s.readinessPath())
+}
+
 func (s appSpec) restartLimit() int {
 	return s.RestartLimit
 }
@@ -418,11 +424,7 @@ func serveControl(ctx context.Context, token string, state *runtimeState) *http.
 }
 
 func waitReady(ctx context.Context, spec appSpec, state *runtimeState) {
-	port := spec.TargetPort
-	if spec.StaticRoot != "" {
-		port = ingressPort
-	}
-	url := fmt.Sprintf("http://127.0.0.1:%d%s", port, spec.readinessPath())
+	url := spec.readinessURL()
 	client := &http.Client{Timeout: 2 * time.Second}
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()

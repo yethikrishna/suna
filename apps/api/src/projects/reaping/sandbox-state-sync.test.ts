@@ -267,10 +267,11 @@ describe('reconcileSandboxRemovedByExternalId', () => {
     ];
 
     expect(await reconcileSandboxRemovedByExternalId('ext-1', NOW)).toBe(true);
-    // A webhook `removed` is one of only two genuine provider-removal signals,
-    // so it is the one shape allowed to stamp `provider_removed`. Every other
-    // preserve path (failed wake, failed restart, stalled provision) stamps its
-    // own reason — see stop-reason.ts.
+    // A webhook `removed` is one of the three genuine provider-removal signals
+    // (this, the reaper's status poll, and a /start status check that came back
+    // `removed`), so it is one of the shapes allowed to stamp `provider_removed`.
+    // Every other preserve path (failed wake, failed restart, stalled provision)
+    // stamps its own reason — see stop-reason.ts.
     expect(preserveCalls).toEqual([
       { sandboxId: 'sb-1', reason: 'provider_webhook_removed', stopReason: 'provider_removed' },
     ]);

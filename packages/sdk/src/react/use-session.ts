@@ -133,6 +133,73 @@ export function shouldPollSessionStart(
  * this option is true. Session readiness must continue because it gates the
  * runtime switch, event stream, and queued-prompt replay.
  */
+/**
+ * How long `/start` can return NEITHER data NOR an error before it counts as
+ * "given up" rather than "still working".
+ *
+ * `startProjectSession` swallows every 5xx/408/429/transport failure into a
+ * `null` result instead of throwing
+ * (`core/rest/projects-client/session-sandbox.ts`), so on a persistent
+ * outage `start.error` and `start.data` both stay `null` forever and
+ * `shouldPollSessionStart(null, null)` keeps returning `SESSION_START_POLL_MS`
+ * — there is no terminal stage and no error ever produced to observe.
+ * Without this ceiling, a caller waiting for `/start` to "settle" (e.g. the
+ * `phase` derivation below) can never learn it gave up, and a runtime error
+ * arriving alongside a wedged `/start` pins that caller in "still starting"
+ * forever — a silent hang, strictly worse than a visible error card.
+ *
+ * A genuine resume never trips this: every poll on a resuming box returns
+ * real `data` (a `stage`), so the inconclusive clock keeps resetting and this
+ * budget never starts counting — it only fires when `/start` itself has
+ * nothing to say, tick after tick. A cold sandbox resume can legitimately
+ * take tens of seconds end to end, but that legitimate case is exactly the
+ * one that keeps producing data and never reaches this bound; 45s (30
+ * consecutive empty ticks at `SESSION_START_POLL_MS`) is comfortably longer
+ * than that, while still short enough that a genuine `/start` outage reaches
+ * an error card in well under a minute instead of hanging indefinitely.
+ */
+export const START_INCONCLUSIVE_GIVE_UP_MS = 45_000;
+
+/**
+ * Has `/start` been returning nothing usable — no data, no error — for at
+ * least {@link START_INCONCLUSIVE_GIVE_UP_MS}? Kept separate from
+ * `shouldPollSessionStart` (which correctly keeps saying "poll again":
+ * retrying costs nothing) because "should the query retry" and "should a
+ * caller stop waiting on it" are different questions once the first answer
+ * is permanently yes.
+ */
+export function hasStartGivenUp(
+  data: SessionStartResult | null | undefined,
+  error: unknown,
+  inconclusiveSinceMs: number | null,
+  nowMs: number,
+): boolean {
+  if (data || error) return false;
+  return (
+    inconclusiveSinceMs !== null && nowMs - inconclusiveSinceMs >= START_INCONCLUSIVE_GIVE_UP_MS
+  );
+}
+
+/**
+ * Whether the `/start` poll should be treated as SETTLED — resolved, failed,
+ * or given up — for a caller (like `phase`, below) that needs to stop
+ * waiting on it. A disabled query settles immediately: a query that never
+ * runs was never "still working" in the first place.
+ */
+export function computeStartSettled(input: {
+  enabled: boolean;
+  isFetching: boolean;
+  data: SessionStartResult | null | undefined;
+  error: unknown;
+  inconclusiveSinceMs: number | null;
+  nowMs: number;
+}): boolean {
+  if (!input.enabled) return true;
+  if (input.isFetching) return false;
+  if (!shouldPollSessionStart(input.error, input.data)) return true;
+  return hasStartGivenUp(input.data, input.error, input.inconclusiveSinceMs, input.nowMs);
+}
+
 export const SESSION_START_POLL_OPTIONS = {
   refetchInterval: (query: {
     state: {
@@ -555,10 +622,11 @@ export function useSession(
   } = options;
 
   // 1. Drive /start until the runtime is ready (the server long-polls each tick).
+  const startEnabled = enabled && !!projectId && !!sessionId;
   const start = useQuery({
     queryKey: sessionStartKey(projectId, sessionId),
     queryFn: () => startProjectSession(projectId, sessionId, waitMs),
-    enabled: enabled && !!projectId && !!sessionId,
+    enabled: startEnabled,
     retry: (failureCount, error) => shouldRetrySessionStart(failureCount, error, sessionId),
     retryDelay: (failureCount, error) =>
       isSessionStartError(error) && error.status === 404
@@ -572,6 +640,28 @@ export function useSession(
   const sandbox = startData?.sandbox ?? null;
   const startReady = stage === 'ready';
   const terminal = stage === 'failed' || stage === 'stopped';
+
+  // Track how long /start has been returning nothing usable — no data, no
+  // error — so `computeStartSettled` can bound the "given up" case (see
+  // START_INCONCLUSIVE_GIVE_UP_MS) instead of waiting on a poll that a
+  // swallowed transport failure can keep alive forever. Resets the instant
+  // /start returns anything real.
+  const startInconclusiveSinceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (start.data || start.error) {
+      startInconclusiveSinceRef.current = null;
+    } else if (!start.isFetching && startInconclusiveSinceRef.current === null) {
+      startInconclusiveSinceRef.current = Date.now();
+    }
+  }, [start.data, start.error, start.isFetching]);
+  const startSettled = computeStartSettled({
+    enabled: startEnabled,
+    isFetching: start.isFetching,
+    data: start.data,
+    error: start.error,
+    inconclusiveSinceMs: startInconclusiveSinceRef.current,
+    nowMs: Date.now(),
+  });
 
   // 2. Point the SDK's runtime at this session's sandbox once ready. Track WHICH
   // sandbox we switched to (not a bare bool) so navigating between sessions (this
@@ -856,11 +946,11 @@ export function useSession(
     terminal,
     startError,
     runtimeError: runtimeSessionError,
-    // `start` is the /start useQuery (:557); `startError` is already derived
-    // above from `start.error`. `shouldPollSessionStart` (:119) is the EXISTING
-    // definition of "the poll is still working" — reuse it rather than inventing
-    // a second answer to the same question that can drift from the poll's own.
-    startSettled: !start.isFetching && !shouldPollSessionStart(start.error, start.data),
+    // `startSettled` is computed above via `computeStartSettled`, which wraps
+    // `shouldPollSessionStart` (the EXISTING definition of "the poll is still
+    // working") and additionally bounds the case where /start swallows a
+    // persistent failure into `null` forever — see START_INCONCLUSIVE_GIVE_UP_MS.
+    startSettled,
     switched,
   });
 

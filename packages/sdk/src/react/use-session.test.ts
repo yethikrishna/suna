@@ -54,7 +54,11 @@ import {
   shouldPollSessionStart,
   SESSION_START_POLL_OPTIONS,
   SESSION_START_POLL_MS,
+  hasStartGivenUp,
+  computeStartSettled,
+  START_INCONCLUSIVE_GIVE_UP_MS,
 } from './use-session';
+import { derivePhase } from './use-session-phase';
 import { clearSessionFresh, markSessionFresh } from '../core/http/fresh-sessions';
 import { SessionStartError } from '../core/rest/projects-client';
 
@@ -387,6 +391,144 @@ describe('shouldPollSessionStart', () => {
 describe('SESSION_START_POLL_OPTIONS', () => {
   test('keeps interval fetches active while the document is hidden', () => {
     expect(SESSION_START_POLL_OPTIONS.refetchIntervalInBackground).toBe(true);
+  });
+});
+
+// Fix round 1 on JAY-427, Important defect: `startProjectSession` swallows
+// every 5xx/408/429/transport failure into a `null` result instead of
+// throwing, so on a persistent /start outage `shouldPollSessionStart(null,
+// null)` polls forever with no error to observe — `startSettled` could never
+// become true, pinning `phase` at 'starting' forever when a runtime error
+// coexists with it. These tests pin the give-up bound that makes "settled"
+// reachable in bounded time, and the wiring (`computeStartSettled`) that the
+// hook's `phase` line actually calls.
+describe('hasStartGivenUp', () => {
+  test('never gives up while /start has SOMETHING to say — data or error', () => {
+    const longAgo = Date.now() - START_INCONCLUSIVE_GIVE_UP_MS * 10;
+    expect(hasStartGivenUp({ stage: 'starting' } as never, null, longAgo, Date.now())).toBe(false);
+    expect(hasStartGivenUp(null, new Error('boom'), longAgo, Date.now())).toBe(false);
+  });
+
+  test('does not give up before the budget elapses', () => {
+    const now = Date.now();
+    expect(hasStartGivenUp(null, null, now - (START_INCONCLUSIVE_GIVE_UP_MS - 1), now)).toBe(false);
+  });
+
+  test('gives up once the budget elapses with nothing but silence', () => {
+    const now = Date.now();
+    expect(hasStartGivenUp(null, null, now - START_INCONCLUSIVE_GIVE_UP_MS, now)).toBe(true);
+  });
+
+  test('no timestamp yet (the very first inconclusive tick) is never a give-up', () => {
+    expect(hasStartGivenUp(null, null, null, Date.now())).toBe(false);
+  });
+});
+
+describe('computeStartSettled', () => {
+  test('a disabled query settles immediately — it was never "still working" (Minor 1)', () => {
+    expect(
+      computeStartSettled({
+        enabled: false,
+        isFetching: false,
+        data: null,
+        error: null,
+        inconclusiveSinceMs: null,
+        nowMs: Date.now(),
+      }),
+    ).toBe(true);
+  });
+
+  test('a fetch in flight is never settled, no matter how stale the inconclusive clock is', () => {
+    expect(
+      computeStartSettled({
+        enabled: true,
+        isFetching: true,
+        data: null,
+        error: null,
+        inconclusiveSinceMs: Date.now() - START_INCONCLUSIVE_GIVE_UP_MS * 10,
+        nowMs: Date.now(),
+      }),
+    ).toBe(false);
+  });
+
+  test('a terminal stage settles immediately, same as today', () => {
+    expect(
+      computeStartSettled({
+        enabled: true,
+        isFetching: false,
+        data: { stage: 'failed' } as never,
+        error: null,
+        inconclusiveSinceMs: null,
+        nowMs: Date.now(),
+      }),
+    ).toBe(true);
+  });
+
+  test('the Important defect: persistent nulls settle only once the give-up budget elapses — never before, never spinning forever after', () => {
+    const since = Date.now();
+    expect(
+      computeStartSettled({
+        enabled: true,
+        isFetching: false,
+        data: null,
+        error: null,
+        inconclusiveSinceMs: since,
+        nowMs: since + START_INCONCLUSIVE_GIVE_UP_MS - 1,
+      }),
+    ).toBe(false);
+    expect(
+      computeStartSettled({
+        enabled: true,
+        isFetching: false,
+        data: null,
+        error: null,
+        inconclusiveSinceMs: since,
+        nowMs: since + START_INCONCLUSIVE_GIVE_UP_MS,
+      }),
+    ).toBe(true);
+  });
+
+  test('the crux line: a persistent /start outage + a live runtime error reaches phase "error" within the budget, not a permanent spinner', () => {
+    const since = Date.now();
+    const runtimeError = { status: 503, body: { error: 'sandbox not ready (status: stopped)' } };
+
+    // Still inside the budget: phase must stay 'starting', not flip to 'error'.
+    const stillWaiting = computeStartSettled({
+      enabled: true,
+      isFetching: false,
+      data: null,
+      error: null,
+      inconclusiveSinceMs: since,
+      nowMs: since + START_INCONCLUSIVE_GIVE_UP_MS - 1,
+    });
+    expect(
+      derivePhase({
+        terminal: false,
+        startError: null,
+        runtimeError,
+        startSettled: stillWaiting,
+        switched: false,
+      }),
+    ).toBe('starting');
+
+    // Budget elapsed with nothing but silence: this MUST reach 'error', not hang.
+    const gaveUp = computeStartSettled({
+      enabled: true,
+      isFetching: false,
+      data: null,
+      error: null,
+      inconclusiveSinceMs: since,
+      nowMs: since + START_INCONCLUSIVE_GIVE_UP_MS,
+    });
+    expect(
+      derivePhase({
+        terminal: false,
+        startError: null,
+        runtimeError,
+        startSettled: gaveUp,
+        switched: false,
+      }),
+    ).toBe('error');
   });
 });
 

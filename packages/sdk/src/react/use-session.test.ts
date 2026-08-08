@@ -1,17 +1,29 @@
-import { describe, expect, test, beforeEach, mock } from 'bun:test';
+import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
 // Mock the lowest network boundary the reply/send paths go through — the
 // OpenCode SDK client singleton — so the REAL `permissions.ts` wrappers and
 // `promptOpenCodeMessage` run for real, matching session.test.ts's approach of
 // stubbing the boundary rather than the wrapper.
-let permissionReplyImpl: (args: unknown) => Promise<{ data?: unknown; error?: unknown; response?: Response }> =
-  async () => ({ data: {} });
-let questionReplyImpl: (args: unknown) => Promise<{ data?: unknown; error?: unknown; response?: Response }> =
-  async () => ({ data: {} });
-let questionRejectImpl: (args: unknown) => Promise<{ data?: unknown; error?: unknown; response?: Response }> =
-  async () => ({ data: {} });
-let sessionPromptImpl: (args: unknown) => Promise<{ data?: unknown; error?: unknown; response?: Response }> =
-  async () => ({ data: {} });
+let permissionReplyImpl: (args: unknown) => Promise<{
+  data?: unknown;
+  error?: unknown;
+  response?: Response;
+}> = async () => ({ data: {} });
+let questionReplyImpl: (args: unknown) => Promise<{
+  data?: unknown;
+  error?: unknown;
+  response?: Response;
+}> = async () => ({ data: {} });
+let questionRejectImpl: (args: unknown) => Promise<{
+  data?: unknown;
+  error?: unknown;
+  response?: Response;
+}> = async () => ({ data: {} });
+let sessionPromptImpl: (args: unknown) => Promise<{
+  data?: unknown;
+  error?: unknown;
+  response?: Response;
+}> = async () => ({ data: {} });
 
 class RuntimeNotReadyError extends Error {
   constructor(message = '[opencode-sdk] Server URL not ready — sandbox is still loading') {
@@ -32,31 +44,31 @@ mock.module('../core/runtime/client', () => ({
   }),
 }));
 
-import { useOpenCodePendingStore } from '../browser/stores/opencode-pending-store';
 import {
   getSessionSyncController,
   resetSessionSyncControllers,
 } from '../browser/session-sync/session-sync-registry';
+import { useOpenCodePendingStore } from '../browser/stores/opencode-pending-store';
 import { BillingError } from '../core/http/api/errors';
+import { clearSessionFresh, markSessionFresh } from '../core/http/fresh-sessions';
+import { SessionStartError } from '../core/rest/projects-client';
 import { setCurrentRuntime } from '../core/session/current-runtime';
 import { promptOpenCodeMessage } from './use-opencode-sessions/messages';
 import {
-  answerQuestion,
-  rejectQuestion,
-  answerPermission,
-  beginRestPromptObservation,
-  sendRestPromptWithObservation,
-  classifySendError,
-  buildSessionCommandInput,
-  sendStateOnStart,
-  sendStateOnError,
-  shouldRetrySessionStart,
-  shouldPollSessionStart,
-  SESSION_START_POLL_OPTIONS,
   SESSION_START_POLL_MS,
+  SESSION_START_POLL_OPTIONS,
+  answerPermission,
+  answerQuestion,
+  beginRestPromptObservation,
+  buildSessionCommandInput,
+  classifySendError,
+  rejectQuestion,
+  sendRestPromptWithObservation,
+  sendStateOnError,
+  sendStateOnStart,
+  shouldPollSessionStart,
+  shouldRetrySessionStart,
 } from './use-session';
-import { clearSessionFresh, markSessionFresh } from '../core/http/fresh-sessions';
-import { SessionStartError } from '../core/rest/projects-client';
 
 function seedQuestion(id: string, sessionID = 'sess-1') {
   useOpenCodePendingStore.getState().addQuestion({
@@ -169,7 +181,9 @@ describe('rejectQuestion', () => {
     seedQuestion('q1');
     questionRejectImpl = async () => ({ error: { message: 'nope' } });
 
-    await expect(rejectQuestion('q1')).rejects.toMatchObject({ kind: 'runtime-error' });
+    await expect(rejectQuestion('q1')).rejects.toMatchObject({
+      kind: 'runtime-error',
+    });
     expect(useOpenCodePendingStore.getState().questions['q1']).toBeDefined();
   });
 });
@@ -185,15 +199,23 @@ describe('answerPermission', () => {
 
     await answerPermission('p1', 'once', 'go ahead');
 
-    expect(captured).toEqual({ requestID: 'p1', reply: 'once', message: 'go ahead' });
+    expect(captured).toEqual({
+      requestID: 'p1',
+      reply: 'once',
+      message: 'go ahead',
+    });
     expect(useOpenCodePendingStore.getState().permissions['p1']).toBeUndefined();
   });
 
   test('failure keeps the pending entry and throws a typed error', async () => {
     seedPermission('p1');
-    permissionReplyImpl = async () => ({ error: { message: 'denied by server' } });
+    permissionReplyImpl = async () => ({
+      error: { message: 'denied by server' },
+    });
 
-    await expect(answerPermission('p1', 'always')).rejects.toMatchObject({ kind: 'runtime-error' });
+    await expect(answerPermission('p1', 'always')).rejects.toMatchObject({
+      kind: 'runtime-error',
+    });
     expect(useOpenCodePendingStore.getState().permissions['p1']).toBeDefined();
   });
 });
@@ -212,7 +234,10 @@ describe('classifySendError', () => {
   });
 
   test('classifies a 402-shaped error as billing', () => {
-    const err = new Error('Payment Required') as Error & { status?: number; data?: unknown };
+    const err = new Error('Payment Required') as Error & {
+      status?: number;
+      data?: unknown;
+    };
     err.status = 402;
     err.data = { message: 'Insufficient credits. Balance: $-0.06' };
 
@@ -378,6 +403,14 @@ describe('shouldPollSessionStart', () => {
     expect(shouldPollSessionStart(null, at('stopped'))).toBe(false);
   });
 
+  test('stops when the server marks an otherwise non-terminal stage non-retriable', () => {
+    const failedWake = {
+      stage: 'starting',
+      retriable: false,
+    } as never;
+    expect(shouldPollSessionStart(null, failedWake)).toBe(false);
+  });
+
   test('stops on a terminal client error, which polling cannot fix', () => {
     const err = new SessionStartError('gone', { status: 403, terminal: true });
     expect(shouldPollSessionStart(err, at('provisioning'))).toBe(false);
@@ -414,27 +447,28 @@ describe('classifySendError — connector refusals', () => {
 
     expect(result.kind).toBe('connector');
     expect(result.connectors).toEqual([connection]);
-    expect(result.message).toBe(
-      'Connect the required connectors before continuing this session.',
-    );
+    expect(result.message).toBe('Connect the required connectors before continuing this session.');
   });
 
   test('classification keys on the CODE, never the prose', () => {
     // The message is written for humans and will be reworded.
-    expect(
-      classifySendError(refusal({ message: 'Connect the required connectors.' })).kind,
-    ).toBe('runtime-error');
+    expect(classifySendError(refusal({ message: 'Connect the required connectors.' })).kind).toBe(
+      'runtime-error',
+    );
   });
 
   test('a refusal naming no usable connection stays generic', () => {
     // A connect prompt that cannot say WHICH connector is worse than the generic
     // error it replaced.
-    expect(
-      classifySendError(refusal({ code: 'CONNECTOR_CONNECTION_REQUIRED' })).kind,
-    ).toBe('runtime-error');
+    expect(classifySendError(refusal({ code: 'CONNECTOR_CONNECTION_REQUIRED' })).kind).toBe(
+      'runtime-error',
+    );
     expect(
       classifySendError(
-        refusal({ code: 'CONNECTOR_CONNECTION_REQUIRED', connector_connections: [{ id: 'x' }] }),
+        refusal({
+          code: 'CONNECTOR_CONNECTION_REQUIRED',
+          connector_connections: [{ id: 'x' }],
+        }),
       ).kind,
     ).toBe('runtime-error');
   });

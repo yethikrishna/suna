@@ -22,60 +22,57 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { getClient, RuntimeNotReadyError } from '../core/runtime/client';
-import {
-  commitSessionRewind,
-  messagesBeforeRewind,
-  reconcileCommittedSessionRewind,
-  type SessionRewindState,
-} from '../core/session/rewind';
-import { useOpenCodeCompactionStore } from '../browser/stores/opencode-compaction-store';
-import { useOpenCodePendingStore } from '../browser/stores/opencode-pending-store';
-import {
-  setOpenCodeHealth,
-  setSandboxStatus,
-} from '../browser/stores/sandbox-connection-store';
-import { getSandboxUrlForExternalId } from '../browser/stores/server-store';
-import { useSyncStore } from '../browser/stores/sync-store';
 import {
   beginSessionPromptObservation,
   endSessionPromptObservation,
 } from '../browser/session-sync/session-sync-registry';
-import { setCurrentRuntime } from '../core/session/current-runtime';
+import { useOpenCodeCompactionStore } from '../browser/stores/opencode-compaction-store';
+import { useOpenCodePendingStore } from '../browser/stores/opencode-pending-store';
+import { setOpenCodeHealth, setSandboxStatus } from '../browser/stores/sandbox-connection-store';
+import { getSandboxUrlForExternalId } from '../browser/stores/server-store';
+import { useSyncStore } from '../browser/stores/sync-store';
+import { BillingError, parseBillingError } from '../core/http/api/errors';
+import { isSessionFresh } from '../core/http/fresh-sessions';
+import { formatOpenCodeRuntimeError } from '../core/http/opencode-errors';
 import {
-  isSessionStartError,
   type SessionStartResult,
+  isSessionStartError,
   sessionStartKey,
   startProjectSession,
 } from '../core/rest/projects-client';
-import { isSessionFresh } from '../core/http/fresh-sessions';
-import { BillingError, parseBillingError } from '../core/http/api/errors';
-import { formatOpenCodeRuntimeError } from '../core/http/opencode-errors';
-import { extractGatewayErrorDetails } from '../core/turns/errors';
-import { useCanonicalOpenCodeSession } from './use-canonical-opencode-session';
-import { useOpenCodeEventStream } from './use-opencode-events';
-import type { ModelKey } from './use-model-store';
-import { formatModelString } from './use-opencode-local';
-import { useProjectConfig } from './use-project-config';
-import { useProjectModels } from './use-project-models';
-import { usePermissionSelfHeal } from './use-permission-self-heal';
-import { useQuestionSelfHeal } from './use-question-self-heal';
-import { useRuntimePhase } from './use-runtime-phase';
-import { clearStartStash, readStartStash } from './session-start-stash';
-import { useSessionPicks } from './use-session-picks';
-import { useSessionSync } from './use-session-sync';
-import { reconcileHydratedSessionTitle } from './session-title-sync';
-import { useVisibleAgents } from './use-visible-agents';
+import { RuntimeNotReadyError, getClient } from '../core/runtime/client';
+import { setCurrentRuntime } from '../core/session/current-runtime';
 import {
+  type SessionRewindState,
+  commitSessionRewind,
+  messagesBeforeRewind,
+  reconcileCommittedSessionRewind,
+} from '../core/session/rewind';
+import { extractGatewayErrorDetails } from '../core/turns/errors';
+import { clearStartStash, readStartStash } from './session-start-stash';
+import { reconcileHydratedSessionTitle } from './session-title-sync';
+import { useCanonicalOpenCodeSession } from './use-canonical-opencode-session';
+import type { ModelKey } from './use-model-store';
+import { useOpenCodeEventStream } from './use-opencode-events';
+import { formatModelString } from './use-opencode-local';
+import {
+  type PromptPart,
   rejectQuestion as rejectQuestionApi,
   replyToPermission,
   replyToQuestion,
   useAbortOpenCodeSession,
   useExecuteOpenCodeCommand,
   useSendOpenCodeMessage,
-  type PromptPart,
 } from './use-opencode-sessions';
 import { unwrap } from './use-opencode-sessions/shared';
+import { usePermissionSelfHeal } from './use-permission-self-heal';
+import { useProjectConfig } from './use-project-config';
+import { useProjectModels } from './use-project-models';
+import { useQuestionSelfHeal } from './use-question-self-heal';
+import { useRuntimePhase } from './use-runtime-phase';
+import { useSessionPicks } from './use-session-picks';
+import { useSessionSync } from './use-session-sync';
+import { useVisibleAgents } from './use-visible-agents';
 
 /** Coarse session lifecycle for the host's top-level gating. */
 export type SessionPhase = 'starting' | 'ready' | 'error';
@@ -121,6 +118,7 @@ export function shouldPollSessionStart(
   data: SessionStartResult | null | undefined,
 ): number | false {
   if (isSessionStartError(error)) return false;
+  if (data?.retriable === false) return false;
   const stage = data?.stage;
   return stage === 'ready' || stage === 'failed' || stage === 'stopped'
     ? false
@@ -149,11 +147,7 @@ export const SESSION_START_POLL_OPTIONS = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Discriminant for `KortixSendError` — what kind of failure interrupted a send. */
-export type KortixSendErrorKind =
-  | 'billing'
-  | 'connector'
-  | 'runtime-not-ready'
-  | 'runtime-error';
+export type KortixSendErrorKind = 'billing' | 'connector' | 'runtime-not-ready' | 'runtime-error';
 
 /** One connector the session needs and has no usable connection for. */
 export interface KortixSendErrorConnector {
@@ -210,7 +204,6 @@ export interface KortixSendError {
 // fallback for callers that re-wrap the original error (losing the
 // `instanceof` chain) but still preserve its message.
 const RUNTIME_NOT_READY_MARKER = 'Server URL not ready';
-
 
 /**
  * Flip the optimistic message these parts belong to from `pending` to
@@ -285,9 +278,7 @@ function connectorRefusalConnections(error: unknown): KortixSendErrorConnector[]
       id: connection.id,
       slug: connection.slug,
       name:
-        typeof connection.name === 'string' && connection.name
-          ? connection.name
-          : connection.slug,
+        typeof connection.name === 'string' && connection.name ? connection.name : connection.slug,
       authorization_strategy: strategy,
     });
   }
@@ -311,7 +302,12 @@ export function classifySendError(error: unknown): KortixSendError {
   if (error && typeof error === 'object') {
     const parsed = parseBillingError(error);
     if (parsed instanceof BillingError) {
-      return { kind: 'billing', message: parsed.message, billing: parsed, cause: error };
+      return {
+        kind: 'billing',
+        message: parsed.message,
+        billing: parsed,
+        cause: error,
+      };
     }
     const connectors = connectorRefusalConnections(error);
     if (connectors) {
@@ -538,11 +534,7 @@ const DISABLED_CHAT_ENGINE_SYNC = {
   loadOlder: async () => {},
 };
 
-export function useSession(
-  projectId: string,
-  sessionId: string,
-  options: UseSessionOptions = {},
-) {
+export function useSession(projectId: string, sessionId: string, options: UseSessionOptions = {}) {
   const queryClient = useQueryClient();
   const titleRefreshAbortRef = useRef<AbortController | null>(null);
   const {
@@ -585,14 +577,17 @@ export function useSession(
     // the current runtime url. Every read (getClient, the SSE stream, files/
     // terminal/git) resolves through it. `stage==='ready'` is server-proven, so the
     // health effect below seeds connected+healthy with no client poll.
-    setCurrentRuntime(getSandboxUrlForExternalId(sandbox.external_id), sandbox.external_id, sandbox.sandbox_id);
+    setCurrentRuntime(
+      getSandboxUrlForExternalId(sandbox.external_id),
+      sandbox.external_id,
+      sandbox.sandbox_id,
+    );
     setSwitchedSandboxId(sandbox.sandbox_id);
   }, [startReady, sandbox, switchedSandboxId]);
   // Clear the current runtime when this session view unmounts.
   useEffect(() => () => setCurrentRuntime(null), []);
 
-  const switched =
-    startReady && !!sandbox && switchedSandboxId === sandbox.sandbox_id;
+  const switched = startReady && !!sandbox && switchedSandboxId === sandbox.sandbox_id;
 
   // 3. Keep the connection store healthy from server-truth while switched, with NO
   // poller. If the box later dies mid-session the SSE's own disconnect/heartbeat
@@ -680,13 +675,11 @@ export function useSession(
   const removeQuestion = useOpenCodePendingStore((s) => s.removeQuestion);
   const removePermission = useOpenCodePendingStore((s) => s.removePermission);
   const questions = useMemo(
-    () =>
-      switched ? Object.values(questionMap).filter((q) => q.sessionID === ocSessionId) : [],
+    () => (switched ? Object.values(questionMap).filter((q) => q.sessionID === ocSessionId) : []),
     [questionMap, ocSessionId, switched],
   );
   const permissions = useMemo(
-    () =>
-      switched ? Object.values(permissionMap).filter((p) => p.sessionID === ocSessionId) : [],
+    () => (switched ? Object.values(permissionMap).filter((p) => p.sessionID === ocSessionId) : []),
     [permissionMap, ocSessionId, switched],
   );
   const runtimeActionReady = switched && !!rootSessionId;
@@ -733,7 +726,10 @@ export function useSession(
   }, [userMsgCount, pending]);
   useEffect(() => {
     if (!pending) return;
-    const t = setTimeout(() => setSendState((s) => (s.pending ? { ...s, pending: null } : s)), 30_000);
+    const t = setTimeout(
+      () => setSendState((s) => (s.pending ? { ...s, pending: null } : s)),
+      30_000,
+    );
     return () => clearTimeout(t);
   }, [pending]);
 
@@ -765,22 +761,23 @@ export function useSession(
     // of being deleted by a rehydrate that only carries older turns.
     markDispatchedForPartIds(ocSessionId, parts);
 
-    await sendRestPromptWithObservation(
-      ocSessionId,
-      sandbox?.external_id ?? undefined,
-      () =>
-        sendMutation.mutateAsync({
-          sessionId: ocSessionId,
-          parts,
-          ...(Object.keys(opts).length ? { options: opts } : {}),
-        }),
+    await sendRestPromptWithObservation(ocSessionId, sandbox?.external_id ?? undefined, () =>
+      sendMutation.mutateAsync({
+        sessionId: ocSessionId,
+        parts,
+        ...(Object.keys(opts).length ? { options: opts } : {}),
+      }),
     );
     setRestRewind(commitSessionRewind);
   };
 
   const send = (
     text: string,
-    override?: { model?: ModelKey | null; agent?: string | null; variant?: string | null },
+    override?: {
+      model?: ModelKey | null;
+      agent?: string | null;
+      variant?: string | null;
+    },
   ) => {
     if (!runtimeActionReady) return;
     pendingBaseCount.current = userMsgCount;
@@ -870,7 +867,11 @@ export function useSession(
     if (sync.messages.length > 0) return;
     if (stash.model) picks.setModel(stash.model);
     if (stash.agent) picks.setAgent(stash.agent);
-    send(stash.prompt, { model: stash.model, agent: stash.agent, variant: stash.variant });
+    send(stash.prompt, {
+      model: stash.model,
+      agent: stash.agent,
+      variant: stash.variant,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, sync.isLoading, sync.messages.length, sessionId, replayStartStash, chatEngine]);
 

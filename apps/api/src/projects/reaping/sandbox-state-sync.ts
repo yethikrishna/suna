@@ -77,7 +77,10 @@ export async function applyStoppedState(write: StoppedStateWrite): Promise<void>
         metadata: sql`(coalesce(${sessionSandboxes.metadata}, '{}'::jsonb)
           - 'runtimeWakeStartedAt'
           - 'runtimeWakeId'
-          - 'runtimeWakeProviderStatus') || ${JSON.stringify(patch)}::jsonb`,
+          - 'runtimeWakeLeaseExpiresAt'
+          - 'runtimeWakeProviderStatus'
+          - 'runtimeWakeCleanupId'
+          - 'runtimeWakeCleanupLeaseExpiresAt') || ${JSON.stringify(patch)}::jsonb`,
       })
       .where(eq(sessionSandboxes.sandboxId, write.sandboxId));
     await tx

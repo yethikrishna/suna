@@ -287,7 +287,7 @@ export async function restartSession(input: {
           },
         };
       }
-      await preserveEstablishedRuntime(claim.row, 'restart_removed_runtime');
+      await preserveEstablishedRuntime(claim.row, 'restart_removed_runtime', 'restart_failed');
       return {
         status: 409,
         body: {
@@ -359,9 +359,11 @@ export async function restartSession(input: {
           if (recovery === 'running' || recovery === 'recovering') {
             await markInPlaceRuntimeRecoveryAccepted(claim, recovery).catch(() => null);
           } else {
-            await preserveEstablishedRuntime(claim.row, 'restart_post_start_removed').catch(
-              () => null,
-            );
+            await preserveEstablishedRuntime(
+              claim.row,
+              'restart_post_start_removed',
+              'restart_failed',
+            ).catch(() => null);
           }
           return;
         }
@@ -427,9 +429,11 @@ export async function restartSession(input: {
           if (recovery === 'running' || recovery === 'recovering') {
             await markInPlaceRuntimeRecoveryAccepted(claim, recovery).catch(() => null);
           } else {
-            await preserveEstablishedRuntime(claim.row, 'restart_missing_runtime').catch(
-              () => null,
-            );
+            await preserveEstablishedRuntime(
+              claim.row,
+              'restart_missing_runtime',
+              'restart_failed',
+            ).catch(() => null);
           }
           return;
         }

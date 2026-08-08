@@ -17,7 +17,12 @@ describe('STOP_REASONS', () => {
         'manual',
         'provider_reconcile',
         'provider_removed',
+        'provisioning_stalled',
+        'restart_failed',
         'run_cap',
+        'runtime_boot_failed',
+        'runtime_wake_failed',
+        'unusable_runtime_state',
         'wedged_backlog_remediation',
       ].sort(),
     );

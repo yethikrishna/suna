@@ -126,7 +126,7 @@ export async function reconcileSandboxRemovedByExternalId(externalId: string, no
     .limit(1);
   if (!row) return false;
   if (!row.externalId) return false;
-  await preserveEstablishedRuntime(row, 'provider_webhook_removed', now);
+  await preserveEstablishedRuntime(row, 'provider_webhook_removed', 'provider_removed', now);
   // The box is GONE at the provider — unlike an idle stop, nothing can wake it,
   // so its connector token is now a bearer credential with no owner. Nothing
   // else ever expires these (no expiresAt, exempt from PAT idle-revoke).

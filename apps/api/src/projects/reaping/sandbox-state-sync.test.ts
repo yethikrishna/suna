@@ -20,7 +20,7 @@ let updateCalls: UpdateCall[] = [];
 let cacheInvalidations: string[] = [];
 let selectedRows: any[] = [];
 let revokedTokens: Array<{ sessionId: string; accountId: string }> = [];
-let preserveCalls: Array<{ sandboxId: string; reason: string }> = [];
+let preserveCalls: Array<{ sandboxId: string; reason: string; stopReason: string }> = [];
 let inTransaction = false;
 
 mock.module('../../config', () => mockConfigModule());
@@ -81,8 +81,12 @@ mock.module('../../repositories/account-tokens', () => ({
 }));
 
 mock.module('../runtime-identity', () => ({
-  preserveEstablishedRuntime: async (row: { sandboxId: string }, reason: string) => {
-    preserveCalls.push({ sandboxId: row.sandboxId, reason });
+  preserveEstablishedRuntime: async (
+    row: { sandboxId: string },
+    reason: string,
+    stopReason: string,
+  ) => {
+    preserveCalls.push({ sandboxId: row.sandboxId, reason, stopReason });
     return row;
   },
 }));
@@ -263,7 +267,13 @@ describe('reconcileSandboxRemovedByExternalId', () => {
     ];
 
     expect(await reconcileSandboxRemovedByExternalId('ext-1', NOW)).toBe(true);
-    expect(preserveCalls).toEqual([{ sandboxId: 'sb-1', reason: 'provider_webhook_removed' }]);
+    // A webhook `removed` is one of only two genuine provider-removal signals,
+    // so it is the one shape allowed to stamp `provider_removed`. Every other
+    // preserve path (failed wake, failed restart, stalled provision) stamps its
+    // own reason — see stop-reason.ts.
+    expect(preserveCalls).toEqual([
+      { sandboxId: 'sb-1', reason: 'provider_webhook_removed', stopReason: 'provider_removed' },
+    ]);
     expect(revokedTokens).toEqual([{ sessionId: 'sess-1', accountId: 'acct-1' }]);
   });
 });

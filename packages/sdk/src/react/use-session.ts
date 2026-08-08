@@ -234,19 +234,30 @@ export function nextInconclusiveSince(input: {
  * or given up — for a caller (like `phase`, below) that needs to stop
  * waiting on it. A disabled query settles immediately: a query that never
  * runs was never "still working" in the first place.
+ *
+ * Takes `hasGivenUp` as an ALREADY-RESOLVED boolean, not a timestamp pair
+ * (round 3, JAY-427 review, Important). The caller previously stored this
+ * function's ENTIRE return value in `useState` — including the `!enabled ->
+ * true` branch — so a disabled->enabled transition (or a session switch)
+ * could read a stale `true` for one committed, painted frame, and a live
+ * `runtimeError` in that window rendered 'error' before a single real
+ * `/start` request had fired. `enabled`, `isFetching`, `data`, and `error`
+ * are cheap to read fresh on every call, so they no longer go through state
+ * at all — only `hasGivenUp` (via {@link hasStartGivenUp}) inherently needs
+ * wall-clock tracking, so it is the only piece the caller is allowed to
+ * latch.
  */
 export function computeStartSettled(input: {
   enabled: boolean;
   isFetching: boolean;
   data: SessionStartResult | null | undefined;
   error: unknown;
-  inconclusiveSinceMs: number | null;
-  nowMs: number;
+  hasGivenUp: boolean;
 }): boolean {
   if (!input.enabled) return true;
   if (input.isFetching) return false;
   if (!shouldPollSessionStart(input.error, input.data)) return true;
-  return hasStartGivenUp(input.data, input.error, input.inconclusiveSinceMs, input.nowMs);
+  return input.hasGivenUp;
 }
 
 /**
@@ -700,29 +711,27 @@ export function useSession(
   // START_INCONCLUSIVE_GIVE_UP_MS) instead of waiting on a poll that a
   // swallowed transport failure can keep alive forever. `nextInconclusiveSince`
   // owns the arm/reset decision (pure, unit-tested); the effects here are thin
-  // callers of it.
+  // callers of it. Only the RAW TIMESTAMP lives in a ref — `hasGivenUp` below
+  // is the one piece of *derived* state, and everything else `phase` needs
+  // (`enabled`/`isFetching`/`data`/`error`) is read fresh at render, never
+  // stored (see the comment on `startSettled` below for why).
   const startInconclusiveSinceRef = useRef<number | null>(null);
-  // A new session gets a fresh clock. This hook instance is reused across
-  // session navigation (see the switch effect below), and a stamp accumulated
-  // for a DIFFERENT (projectId, sessionId) must never bleed into this one's
-  // give-up budget. Declared before the arming effect so it clears first
-  // within the same commit when the session changes.
+  const [startGivenUp, setStartGivenUp] = useState(false);
+  // A new session gets a fresh clock AND a fresh give-up verdict. This hook
+  // instance is reused across session navigation (see the switch effect
+  // below), and neither may bleed from a DIFFERENT (projectId, sessionId)
+  // into this one's give-up budget. Declared before the arming effect so both
+  // clear first, within the same commit, when the session changes.
   useEffect(() => {
     startInconclusiveSinceRef.current = null;
+    setStartGivenUp(false);
   }, [projectId, sessionId]);
-  // `false` until the effect below runs its first pass — never `Date.now()`
-  // at mount, so this initializer stays fully render-pure (no exceptions, not
-  // even a lazy-initializer read). The one render this can lag by is
-  // inconsequential: `phase` only depends on `startSettled` through a branch
-  // gated on `runtimeError`, which cannot yet be non-null on the same render
-  // this hook first mounts (no runtime call has resolved anything yet).
-  const [startSettled, setStartSettled] = useState(false);
   useEffect(() => {
     // `Date.now()` lives here, not in the render body: reading it during
-    // render made `startSettled` render-impure (round 2, JAY-427 review,
-    // Minor 2) and a StrictMode/concurrent-render hazard. One read feeds both
-    // the arm decision and the settled decision, computed together so they
-    // never disagree about "now".
+    // render made this impure (round 2, JAY-427 review, Minor 2) and a
+    // StrictMode/concurrent-render hazard. One read feeds both the arm
+    // decision and the give-up decision, computed together so they never
+    // disagree about "now".
     const nowMs = Date.now();
     startInconclusiveSinceRef.current = nextInconclusiveSince({
       current: startInconclusiveSinceRef.current,
@@ -732,17 +741,31 @@ export function useSession(
       isFetching: start.isFetching,
       nowMs,
     });
-    setStartSettled(
-      computeStartSettled({
-        enabled: startEnabled,
-        isFetching: start.isFetching,
-        data: start.data,
-        error: start.error,
-        inconclusiveSinceMs: startInconclusiveSinceRef.current,
-        nowMs,
-      }),
+    setStartGivenUp(
+      hasStartGivenUp(start.data, start.error, startInconclusiveSinceRef.current, nowMs),
     );
   }, [startEnabled, start.data, start.error, start.isFetching]);
+  // `startEnabled`/`start.isFetching`/`start.data`/`start.error` are read
+  // FRESH here, on every render — never stored. Only `startGivenUp` comes
+  // from state. Round 3, JAY-427 review, Important defect: the PREVIOUS
+  // version stored `computeStartSettled`'s entire return value (including the
+  // `!enabled -> true` branch) via `useState`, so on the commit where
+  // `startEnabled` flipped from `false` to `true` (a billing unblock, or auth
+  // finishing load), this read the STALE stored `true` for one committed,
+  // painted frame — and with a live `runtimeError` already present, that
+  // frame rendered `phase === 'error'`, the exact premature panic card this
+  // task exists to remove. Reading `enabled`/`isFetching`/`data`/`error`
+  // fresh at render makes that structurally impossible: nothing here can ever
+  // be one render behind its own inputs except the one value that inherently
+  // needs wall-clock tracking (`startGivenUp`), and that value is now
+  // session-reset above too.
+  const startSettled = computeStartSettled({
+    enabled: startEnabled,
+    isFetching: start.isFetching,
+    data: start.data,
+    error: start.error,
+    hasGivenUp: startGivenUp,
+  });
 
   // 2. Point the SDK's runtime at this session's sandbox once ready. Track WHICH
   // sandbox we switched to (not a bare bool) so navigating between sessions (this

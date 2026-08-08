@@ -425,56 +425,61 @@ describe('hasStartGivenUp', () => {
   });
 });
 
+// Round 3 on JAY-427: `computeStartSettled` no longer takes a raw timestamp
+// pair (`inconclusiveSinceMs`/`nowMs`). It takes `hasGivenUp` — an
+// ALREADY-RESOLVED boolean the caller computed once, in its own effect, from
+// `hasStartGivenUp` (see that describe block above for the time-crossing
+// behavior itself). Every other input here (`enabled`, `isFetching`, `data`,
+// `error`) is read fresh, every call — the point of this signature change is
+// that NONE of those four can ever be stale, because they are never stored;
+// only `hasGivenUp` is state in the real hook, and it is the one piece that
+// inherently needs wall-clock tracking. See the `describe` block below this
+// one for the regression this was actually fixing.
 describe('computeStartSettled', () => {
-  test('a disabled query settles immediately — it was never "still working" (Minor 1)', () => {
+  test('a disabled query settles immediately — it was never "still working" (Minor 1, round 1)', () => {
     expect(
       computeStartSettled({
         enabled: false,
         isFetching: false,
         data: null,
         error: null,
-        inconclusiveSinceMs: null,
-        nowMs: Date.now(),
+        hasGivenUp: false,
       }),
     ).toBe(true);
   });
 
-  test('a fetch in flight is never settled, no matter how stale the inconclusive clock is', () => {
+  test('a fetch in flight is never settled, even with a stale hasGivenUp=true — the current tick already disproves it', () => {
     expect(
       computeStartSettled({
         enabled: true,
         isFetching: true,
         data: null,
         error: null,
-        inconclusiveSinceMs: Date.now() - START_INCONCLUSIVE_GIVE_UP_MS * 10,
-        nowMs: Date.now(),
+        hasGivenUp: true,
       }),
     ).toBe(false);
   });
 
-  test('a terminal stage settles immediately, same as today', () => {
+  test('a terminal stage settles immediately, same as today, regardless of hasGivenUp', () => {
     expect(
       computeStartSettled({
         enabled: true,
         isFetching: false,
         data: { stage: 'failed' } as never,
         error: null,
-        inconclusiveSinceMs: null,
-        nowMs: Date.now(),
+        hasGivenUp: false,
       }),
     ).toBe(true);
   });
 
-  test('the Important defect: persistent nulls settle only once the give-up budget elapses — never before, never spinning forever after', () => {
-    const since = Date.now();
+  test('an unresolved poll is settled only once hasGivenUp says so — the boolean passes through unchanged', () => {
     expect(
       computeStartSettled({
         enabled: true,
         isFetching: false,
         data: null,
         error: null,
-        inconclusiveSinceMs: since,
-        nowMs: since + START_INCONCLUSIVE_GIVE_UP_MS - 1,
+        hasGivenUp: false,
       }),
     ).toBe(false);
     expect(
@@ -483,10 +488,32 @@ describe('computeStartSettled', () => {
         isFetching: false,
         data: null,
         error: null,
-        inconclusiveSinceMs: since,
-        nowMs: since + START_INCONCLUSIVE_GIVE_UP_MS,
+        hasGivenUp: true,
       }),
     ).toBe(true);
+  });
+
+  test('round 3, the Important defect: disabled always wins over a stale hasGivenUp=true carried from a prior enabled window', () => {
+    // Round 2 fixed the RAW TIMESTAMP leaking across a disabled period. Round
+    // 3 found the DERIVED BOOLEAN (`startSettled`, stored via `useState`) had
+    // the same hole one layer up: the effect stored the FULL settled
+    // decision, including the `!enabled -> true` branch, so a disabled->
+    // enabled transition could read a stale `true` for one committed,
+    // painted frame — with a live runtimeError in that window, `derivePhase`
+    // rendered 'error' before a single real /start request had fired. Moving
+    // `enabled` (and isFetching, and the terminal-stage check) to be
+    // ALWAYS-FRESH render-time inputs — never state — makes this
+    // structurally impossible: `enabled: false` here wins regardless of what
+    // `hasGivenUp` claims, because `hasGivenUp` is never even consulted.
+    expect(
+      computeStartSettled({
+        enabled: false,
+        isFetching: false,
+        data: null,
+        error: null,
+        hasGivenUp: true,
+      }),
+    ).toBe(true); // "settled" (=inert), NOT because it gave up — because it's disabled.
   });
 
   test('the crux line: a persistent /start outage + a live runtime error reaches phase "error" within the budget, not a permanent spinner', () => {
@@ -494,39 +521,44 @@ describe('computeStartSettled', () => {
     const runtimeError = { status: 503, body: { error: 'sandbox not ready (status: stopped)' } };
 
     // Still inside the budget: phase must stay 'starting', not flip to 'error'.
-    const stillWaiting = computeStartSettled({
+    const stillWaitingGivenUp = hasStartGivenUp(
+      null,
+      null,
+      since,
+      since + START_INCONCLUSIVE_GIVE_UP_MS - 1,
+    );
+    const stillWaitingSettled = computeStartSettled({
       enabled: true,
       isFetching: false,
       data: null,
       error: null,
-      inconclusiveSinceMs: since,
-      nowMs: since + START_INCONCLUSIVE_GIVE_UP_MS - 1,
+      hasGivenUp: stillWaitingGivenUp,
     });
     expect(
       derivePhase({
         terminal: false,
         startError: null,
         runtimeError,
-        startSettled: stillWaiting,
+        startSettled: stillWaitingSettled,
         switched: false,
       }),
     ).toBe('starting');
 
     // Budget elapsed with nothing but silence: this MUST reach 'error', not hang.
-    const gaveUp = computeStartSettled({
+    const gaveUp = hasStartGivenUp(null, null, since, since + START_INCONCLUSIVE_GIVE_UP_MS);
+    const settledAfterGivingUp = computeStartSettled({
       enabled: true,
       isFetching: false,
       data: null,
       error: null,
-      inconclusiveSinceMs: since,
-      nowMs: since + START_INCONCLUSIVE_GIVE_UP_MS,
+      hasGivenUp: gaveUp,
     });
     expect(
       derivePhase({
         terminal: false,
         startError: null,
         runtimeError,
-        startSettled: gaveUp,
+        startSettled: settledAfterGivingUp,
         switched: false,
       }),
     ).toBe('error');
@@ -690,13 +722,17 @@ describe('nextInconclusiveSince', () => {
     });
     expect(current).toBe(enabledAt);
 
+    // Mirrors the real effect's two-step pipeline: hasStartGivenUp first
+    // (the time-aware part), then computeStartSettled (the always-fresh
+    // part) consumes that as a plain boolean.
+    const givenUpImmediatelyAfterEnabling = hasStartGivenUp(null, null, current, enabledAt);
+    expect(givenUpImmediatelyAfterEnabling).toBe(false);
     const settledImmediatelyAfterEnabling = computeStartSettled({
       enabled: true,
       isFetching: false,
       data: null,
       error: null,
-      inconclusiveSinceMs: current,
-      nowMs: enabledAt,
+      hasGivenUp: givenUpImmediatelyAfterEnabling,
     });
     expect(settledImmediatelyAfterEnabling).toBe(false);
   });

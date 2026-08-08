@@ -21,6 +21,9 @@ export const STOP_REASONS = [
   'provider_removed',
   /** A human stopped or deleted it. */
   'manual',
+  /** An ops sweep parked a wedged box outside the normal reaper. Not a user
+   *  action — misattributing it to `manual` would hide the backlog it clears. */
+  'wedged_backlog_remediation',
 ] as const;
 
 export type StopReason = (typeof STOP_REASONS)[number];

@@ -191,10 +191,15 @@ describe('applyStoppedState', () => {
   // whatever a concurrent writer put in the column in between — the
   // `runtimeWakeId` wake fence (projects/routes/shared.ts) and, one table over,
   // the `lastAliveAt` stamp the compute clamp bills against.
+  //
+  // The fixture deliberately avoids a `stopReason` key inside `metadata` here:
+  // `write.stopReason` (top-level, required) always wins over one nested in
+  // `metadata` — see the precedence test below — so putting it here would
+  // read as though the nested value mattered when it never lands.
   test('REGRESSION: the caller patch is MERGED into jsonb, never assigned', async () => {
     await applyStoppedState({
       ...write,
-      metadata: { stopReason: 'manual', stoppedBy: 'user-1' },
+      metadata: { stoppedBy: 'user-1' },
     });
 
     const metadata = sandboxUpdate()?.updates.metadata;
@@ -207,10 +212,10 @@ describe('applyStoppedState', () => {
   });
 
   test('the caller patch is the whole merge', async () => {
-    await applyStoppedState({ ...write, metadata: { stopReason: 'manual' } });
+    await applyStoppedState({ ...write, metadata: { customField: 'x' } });
 
     const rendered = describeSql(sandboxUpdate()?.updates.metadata);
-    expect(rendered).toContain('stopReason');
+    expect(rendered).toContain('customField');
   });
 
   test('drops the proxy cache, and tolerates a row with no external id', async () => {
@@ -281,6 +286,23 @@ describe('applyStoppedState — stopReason', () => {
     // refs) — describeSql renders it to text the same way every other test in
     // this file asserts against it; a raw JSON.stringify throws on the cycle.
     expect(describeSql(update!.updates.metadata)).toContain('deadline_expired');
+  });
+
+  // The top-level field is the one source of truth for WHY a box parked. A
+  // caller-supplied `metadata.stopReason` (e.g. an older copy-pasted patch)
+  // must never leak into the write — only the required top-level value can.
+  test('the top-level stopReason wins over a conflicting metadata.stopReason', async () => {
+    await applyStoppedState({
+      sandboxId: 'sb-1',
+      sessionId: 'se-1',
+      externalId: 'ext-1',
+      stopReason: 'run_cap',
+      metadata: { stopReason: 'manual' },
+    });
+
+    const rendered = describeSql(sandboxUpdate()?.updates.metadata);
+    expect(rendered).toContain('run_cap');
+    expect(rendered).not.toContain('manual');
   });
 });
 

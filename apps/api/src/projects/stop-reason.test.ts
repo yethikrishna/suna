@@ -18,6 +18,7 @@ describe('STOP_REASONS', () => {
         'provider_reconcile',
         'provider_removed',
         'run_cap',
+        'wedged_backlog_remediation',
       ].sort(),
     );
   });

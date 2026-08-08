@@ -15,6 +15,7 @@ import { invalidateProviderCache } from '../../sandbox-proxy';
 import { pauseComputeSession } from '../../billing/services/compute-metering';
 import { revokeSessionConnectorTokens } from '../../repositories/account-tokens';
 import { preserveEstablishedRuntime } from '../runtime-identity';
+import type { StopReason } from '../stop-reason';
 
 /** Merge keys into a jsonb metadata column without clobbering siblings. */
 export function mergeMetadata(patch: Record<string, unknown>) {
@@ -25,7 +26,9 @@ export interface StoppedStateWrite {
   sandboxId: string;
   sessionId: string;
   externalId: string | null;
-  /** Extra keys to record about WHY it stopped. Merged, never assigned. */
+  /** WHY this box parked. Required — the classification query groups on it. */
+  stopReason: StopReason;
+  /** Extra keys to record about the stop. Merged, never assigned. */
   metadata?: Record<string, unknown>;
   now?: Date;
 }
@@ -59,14 +62,14 @@ export async function applyStoppedState(write: StoppedStateWrite): Promise<void>
   await pauseComputeSession(write.sandboxId).catch((err) =>
     console.warn(`[reaper] pauseComputeSession failed for ${write.sandboxId}:`, err instanceof Error ? err.message : err),
   );
-  const patch = { ...(write.metadata ?? {}) };
+  const patch = { ...(write.metadata ?? {}), stopReason: write.stopReason, stoppedAt: now.toISOString() };
   await db.transaction(async (tx) => {
     await tx
       .update(sessionSandboxes)
       .set({
         status: 'stopped',
         updatedAt: now,
-        ...(Object.keys(patch).length ? { metadata: mergeMetadata(patch) } : {}),
+        metadata: mergeMetadata(patch),
       })
       .where(eq(sessionSandboxes.sandboxId, write.sandboxId));
     await tx
@@ -97,6 +100,7 @@ export async function reconcileSandboxStoppedByExternalId(externalId: string, no
     sandboxId: row.sandboxId,
     sessionId: row.sessionId,
     externalId,
+    stopReason: 'provider_reconcile',
     now,
   });
   return true;

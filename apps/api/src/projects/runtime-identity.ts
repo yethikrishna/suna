@@ -4,6 +4,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { endComputeSession, reopenComputeForSandbox } from '../billing/services/compute-metering';
 import type { ProviderName } from '../platform/providers';
 import { db } from '../shared/db';
+import type { StopReason } from './stop-reason';
 
 export const RUNTIME_IDENTITY_UNAVAILABLE = 'runtime_identity_unavailable';
 export const RUNTIME_IDENTITY_ERROR =
@@ -197,6 +198,10 @@ export async function preserveEstablishedRuntime(
     runtimeUnavailableReason: reason,
     runtimeUnavailableAt: now.toISOString(),
     preservedExternalId: externalId,
+    // Path D2. NOT resumable in place — /start must branch on
+    // runtimeIdentityState, not on the bare `stopped` status (see Task 7).
+    stopReason: 'provider_removed' satisfies StopReason,
+    stoppedAt: now.toISOString(),
   });
 
   let preserved: typeof sessionSandboxes.$inferSelect | null = null;

@@ -116,6 +116,7 @@ const write = {
   sandboxId: 'sb-1',
   sessionId: 'sess-1',
   externalId: 'ext-1',
+  stopReason: 'deadline_expired' as const,
   now: NOW,
 };
 
@@ -175,10 +176,15 @@ describe('applyStoppedState', () => {
     expect(sandboxUpdate()?.updates.status).toBe('stopped');
   });
 
-  test('no caller patch writes no metadata at all', async () => {
+  // stopReason is now required on every write, so the metadata merge is never
+  // empty even when the caller has no extra patch of its own — it always
+  // carries at least stopReason + stoppedAt.
+  test('no caller patch still merges stopReason and stoppedAt', async () => {
     await applyStoppedState(write);
 
-    expect(sandboxUpdate()?.updates.metadata).toBeUndefined();
+    const rendered = describeSql(sandboxUpdate()?.updates.metadata);
+    expect(rendered).toContain('deadline_expired');
+    expect(rendered).toContain('stoppedAt');
   });
 
   // The lost update: a whole-object write assembled from a stale SELECT drops
@@ -254,6 +260,27 @@ describe('reconcileSandboxRemovedByExternalId', () => {
     expect(await reconcileSandboxRemovedByExternalId('ext-1', NOW)).toBe(true);
     expect(preserveCalls).toEqual([{ sandboxId: 'sb-1', reason: 'provider_webhook_removed' }]);
     expect(revokedTokens).toEqual([{ sessionId: 'sess-1', accountId: 'acct-1' }]);
+  });
+});
+
+describe('applyStoppedState — stopReason', () => {
+  test('merges the reason into the sandbox metadata patch', async () => {
+    // (state is reset by the file's top-level beforeEach, run before every test)
+    await applyStoppedState({
+      sandboxId: 'sb-1',
+      sessionId: 'se-1',
+      externalId: 'ext-1',
+      stopReason: 'deadline_expired',
+    });
+    const update = sandboxUpdate();
+    expect(update).toBeDefined();
+    // The write must be a jsonb MERGE, never a whole-object assign — a concurrent
+    // writer's runtimeWakeId / lastAliveAt live in the same column.
+    expect(update!.updates.metadata).toBeDefined();
+    // `updates.metadata` is a drizzle SQL AST (circular via its column/table
+    // refs) — describeSql renders it to text the same way every other test in
+    // this file asserts against it; a raw JSON.stringify throws on the cycle.
+    expect(describeSql(update!.updates.metadata)).toContain('deadline_expired');
   });
 });
 

@@ -140,6 +140,7 @@ export async function reapAndReconcileSandboxes(now = new Date()): Promise<ReapR
               sandboxId: row.sandboxId,
               sessionId: row.sessionId,
               externalId: row.externalId,
+              stopReason: 'provider_reconcile',
               now,
             });
             result.reconciled += 1;

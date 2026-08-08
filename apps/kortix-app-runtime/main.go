@@ -28,6 +28,9 @@ const (
 	defaultReadinessPath = "/"
 	defaultLogCapacity   = 10000
 	shutdownGrace        = 10 * time.Second
+	daemonPIDPath        = "/tmp/kortix-appd.pid"
+	daemonLogPath        = "/tmp/kortix-appd-bootstrap.log"
+	daemonLockPath       = "/tmp/kortix-appd-bootstrap.lock"
 )
 
 var caddyCommand = func(configPath string) *exec.Cmd {
@@ -36,6 +39,86 @@ var caddyCommand = func(configPath string) *exec.Cmd {
 		path = "/kortix/bin/caddy"
 	}
 	return exec.Command(path, "run", "--config", configPath, "--adapter", "caddyfile")
+}
+
+var daemonCommand = func() (*exec.Cmd, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("resolve appd executable: %w", err)
+	}
+	return exec.Command(executable), nil
+}
+
+var daemonProcessAlive = func(pid int) bool {
+	return pid > 0 && syscall.Kill(pid, 0) == nil
+}
+
+var daemonProcessMatchesExecutable = func(pid int) bool {
+	currentPath, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	current, err := os.Stat(currentPath)
+	if err != nil {
+		return false
+	}
+	process, err := os.Stat(fmt.Sprintf("/proc/%d/exe", pid))
+	return err == nil && os.SameFile(current, process)
+}
+
+func daemonize(pidPath, logPath string) error {
+	lock, err := os.OpenFile(daemonLockPath, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return fmt.Errorf("open daemon lock: %w", err)
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("lock daemon bootstrap: %w", err)
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) //nolint:errcheck
+
+	if raw, readErr := os.ReadFile(pidPath); readErr == nil {
+		pid, parseErr := strconv.Atoi(strings.TrimSpace(string(raw)))
+		if parseErr == nil && daemonProcessAlive(pid) && daemonProcessMatchesExecutable(pid) {
+			return nil
+		}
+	} else if !errors.Is(readErr, os.ErrNotExist) {
+		return fmt.Errorf("read daemon pid: %w", readErr)
+	}
+
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("open daemon log: %w", err)
+	}
+	defer logFile.Close()
+	null, err := os.Open(os.DevNull)
+	if err != nil {
+		return fmt.Errorf("open null input: %w", err)
+	}
+	defer null.Close()
+
+	cmd, err := daemonCommand()
+	if err != nil {
+		return err
+	}
+	cmd.Stdin = null
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.Env = os.Environ()
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start appd daemon: %w", err)
+	}
+	pid := cmd.Process.Pid
+	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(pid)+"\n"), 0600); err != nil {
+		_ = cmd.Process.Kill()
+		return fmt.Errorf("write daemon pid: %w", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if !daemonProcessAlive(pid) {
+		return fmt.Errorf("appd daemon %d exited during bootstrap", pid)
+	}
+	return cmd.Process.Release()
 }
 
 type appSpec struct {
@@ -86,6 +169,12 @@ func (s appSpec) readinessPath() string {
 		return defaultReadinessPath
 	}
 	return s.ReadinessPath
+}
+
+// Readiness must cover the complete public path. Probing the user process
+// directly can publish ready before Caddy accepts traffic after a cold start.
+func (s appSpec) readinessURL() string {
+	return fmt.Sprintf("http://127.0.0.1:%d%s", ingressPort, s.readinessPath())
 }
 
 func (s appSpec) restartLimit() int {
@@ -200,6 +289,21 @@ func childEnvironment(parent []string) []string {
 		}
 	}
 	return out
+}
+
+func caddyEnvironment(parent []string) []string {
+	env := childEnvironment(parent)
+	out := make([]string, 0, len(env)+2)
+	for _, item := range env {
+		if strings.HasPrefix(item, "XDG_CONFIG_HOME=") || strings.HasPrefix(item, "XDG_DATA_HOME=") {
+			continue
+		}
+		out = append(out, item)
+	}
+	return append(out,
+		"XDG_CONFIG_HOME=/tmp/kortix-caddy-config",
+		"XDG_DATA_HOME=/tmp/kortix-caddy-data",
+	)
 }
 
 type runtimeState struct {
@@ -348,11 +452,7 @@ func serveControl(ctx context.Context, token string, state *runtimeState) *http.
 }
 
 func waitReady(ctx context.Context, spec appSpec, state *runtimeState) {
-	port := spec.TargetPort
-	if spec.StaticRoot != "" {
-		port = ingressPort
-	}
-	url := fmt.Sprintf("http://127.0.0.1:%d%s", port, spec.readinessPath())
+	url := spec.readinessURL()
 	client := &http.Client{Timeout: 2 * time.Second}
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
@@ -395,6 +495,12 @@ func startApp(spec appSpec, state *runtimeState) (*childProcess, error) {
 	return child, nil
 }
 
+func startReadinessWatch(ctx context.Context, spec appSpec, state *runtimeState) context.CancelFunc {
+	readyCtx, cancel := context.WithCancel(ctx)
+	go waitReady(readyCtx, spec, state)
+	return cancel
+}
+
 func run(ctx context.Context, spec appSpec, token string) error {
 	if err := spec.validate(); err != nil {
 		return err
@@ -420,7 +526,7 @@ func run(ctx context.Context, spec appSpec, token string) error {
 	}
 
 	caddyCmd := caddyCommand(caddyPath)
-	caddyCmd.Env = childEnvironment(os.Environ())
+	caddyCmd.Env = caddyEnvironment(os.Environ())
 	caddyCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	caddy, err := startLogged(caddyCmd, "caddy", state.logs)
 	if err != nil {
@@ -429,9 +535,8 @@ func run(ctx context.Context, spec appSpec, token string) error {
 	}
 	defer os.Remove(caddyPath)
 
-	readyCtx, cancelReady := context.WithCancel(ctx)
-	go waitReady(readyCtx, spec, state)
-	defer cancelReady()
+	cancelReady := startReadinessWatch(ctx, spec, state)
+	defer func() { cancelReady() }()
 
 	for {
 		var appExited <-chan error
@@ -486,8 +591,7 @@ func run(ctx context.Context, spec appSpec, token string) error {
 				state.setStatus("failed")
 				return err
 			}
-			readyCtx, cancelReady = context.WithCancel(ctx)
-			go waitReady(readyCtx, spec, state)
+			cancelReady = startReadinessWatch(ctx, spec, state)
 		}
 	}
 }
@@ -513,6 +617,12 @@ func loadSpec() (appSpec, error) {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--daemon" {
+		if err := daemonize(daemonPIDPath, daemonLogPath); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	spec, err := loadSpec()
 	if err != nil {
 		log.Fatal(err)

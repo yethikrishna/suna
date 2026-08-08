@@ -221,7 +221,7 @@ const TIERS: readonly CommandTier[] = [
           {
             name: 'apps',
             args: '<subcommand>',
-            blurb: 'Deploy and operate serverless Apps with stable Kortix URLs',
+            blurb: 'Experimental: deploy serverless Apps with stable Kortix URLs',
           },
           {
             name: 'marketplace',
@@ -293,7 +293,10 @@ function tierBand(label: string): string {
 }
 
 function renderHelp(): string {
-  const allCommands = TIERS.flatMap((t) => t.sections.flatMap((s) => s.commands));
+  const visibleCommands = (commands: readonly Command[]) => commands;
+  const allCommands = TIERS.flatMap((t) =>
+    t.sections.flatMap((s) => visibleCommands(s.commands)),
+  );
   const labelWidth = Math.max(
     ...allCommands.map((c) => (c.args ? `${c.name} ${c.args}` : c.name).length),
   );
@@ -302,7 +305,9 @@ function renderHelp(): string {
   lines.push(header('Kortix CLI', VERSION));
   lines.push(rule());
   for (const tier of TIERS) {
-    const sections = tier.sections.filter((s) => s.commands.length > 0);
+    const sections = tier.sections
+      .map((section) => ({ ...section, commands: visibleCommands(section.commands) }))
+      .filter((s) => s.commands.length > 0);
     if (sections.length === 0) continue;
     lines.push('');
     lines.push(tierBand(tier.label));

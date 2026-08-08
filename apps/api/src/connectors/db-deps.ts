@@ -45,6 +45,7 @@ import type { ChannelPlatform } from '../projects/connectors';
 import { invalidateProjectMirror } from '../projects/git';
 import { loadProjectForUser } from '../projects/lib/access';
 import { connectorAuthorizationMatchesStrategy } from '../projects/lib/connector-authorization-strategy';
+import { reconcileStoredSessionAgentGrant } from '../projects/lib/session-token-grant';
 import { getProjectSecretValueForConsumer } from '../projects/secrets';
 import {
   canonicalConnectorAlias,
@@ -53,7 +54,6 @@ import {
 } from '../projects/lib/session-connector-bindings';
 import { validateAccountToken } from '../repositories/account-tokens';
 import { db } from '../shared/db';
-import { recordAuditEvent } from '../shared/audit';
 import { executeComputerCall } from '../tunnel/core/rpc-core';
 import { connectorAttachmentStore } from './attachments';
 import { hideSupersededSlack } from './channel-rules';
@@ -114,7 +114,6 @@ import { resolveShareSubject } from './share';
 import { getConnectorCatalogDetail, listConnectorCatalog } from './connector-catalog';
 import { discoverDraftConnectorAuth, syncProjectConnectors } from './sync';
 import type { ActionBinding, Risk } from './types';
-import { executionAuditEvent } from './call-audit';
 
 /** Which policy scope decided an action — surfaced so the editor can say so. */
 type EffectiveSource = EffectiveResolveResult['source'];
@@ -523,11 +522,6 @@ export function makeDbGatewayDeps(principal: ConnectorPrincipal): GatewayDeps {
         })
         .returning({ id: connectorCalls.executionId });
       if (!row?.id) return null;
-      try {
-        await recordAuditEvent(executionAuditEvent(rec, row.id));
-      } catch (error) {
-        console.error('[connector] Failed to record central audit event:', error);
-      }
       return row.id;
     },
     consumeApprovedExecution: consumeApprovedExecution,
@@ -783,13 +777,19 @@ async function resolvePrincipal(c: Context): Promise<ConnectorPrincipal | null> 
     c.req.header('X-Kortix-Session-Id') ?? null,
   );
   if (!sessionIdentity.ok) return null;
+  const agentGrant = sessionIdentity.sessionId
+    ? await reconcileStoredSessionAgentGrant({
+        projectId: result.projectId,
+        sessionId: sessionIdentity.sessionId,
+      })
+    : (result.agentGrant ?? null);
   return {
     userId: result.userId,
     accountId: result.accountId,
     projectId: result.projectId,
     sessionId: sessionIdentity.sessionId,
     subject: await resolveShareSubject(result.userId),
-    agentGrant: result.agentGrant ?? null,
+    agentGrant,
   };
 }
 
@@ -844,13 +844,21 @@ async function resolveProjectPrincipal(
   );
   if (!sessionIdentity.ok) return null;
 
+  const storedAgentGrant = (c.get('agentGrant') as ConnectorPrincipal['agentGrant']) ?? null;
+  const agentGrant = sessionIdentity.sessionId
+    ? await reconcileStoredSessionAgentGrant({
+        projectId,
+        sessionId: sessionIdentity.sessionId,
+      })
+    : storedAgentGrant;
+
   return {
     userId,
     accountId,
     projectId,
     sessionId: sessionIdentity.sessionId,
     subject: await resolveShareSubject(userId),
-    agentGrant: (c.get('agentGrant') as ConnectorPrincipal['agentGrant']) ?? null,
+    agentGrant,
   };
 }
 

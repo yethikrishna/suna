@@ -27,6 +27,7 @@ export {
   accountMembersRelations,
   accountGithubInstallationsRelations,
   auditEvents,
+  auditSessionSequences,
   usageEvents,
   gatewayRequestLogs,
   gatewayApiKeys,
@@ -105,6 +106,7 @@ export {
   // Billing v2 — per-seat + compute metering + per-member YOLO
   sandboxComputeSessions,
   apps,
+  appAccessGrants,
   appArtifacts,
   appDeployments,
   appRuntimes,
@@ -169,6 +171,7 @@ export {
   scimTokens,
   // Audit webhooks
   auditWebhooks,
+  auditWebhookDeliveries,
   // SAML SSO
   accountSsoProviders,
   accountSsoGroupMappings,

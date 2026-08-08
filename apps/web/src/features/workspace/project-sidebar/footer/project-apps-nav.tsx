@@ -1,6 +1,8 @@
 'use client';
 
 import { SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar';
+import { Badge } from '@/components/ui/badge';
+import { useAppsFeatureEnabled } from '@/hooks/projects/use-apps-feature-enabled';
 import { useIsMobile } from '@/hooks/utils';
 import { GlobeIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
@@ -13,11 +15,15 @@ export function ProjectAppsNavItem() {
   const projectId = params?.id;
   const isMobile = useIsMobile();
   const { setOpenMobile } = useSidebar();
+  const appsGate = useAppsFeatureEnabled(projectId);
   const handleClick = useCallback(() => {
     if (isMobile) setOpenMobile(false);
   }, [isMobile, setOpenMobile]);
 
   if (!projectId) return null;
+  /* Fail-closed: the entry exists only after the project opts into the `apps`
+     experiment in Settings → Experimental. Loading counts as disabled. */
+  if (!appsGate.enabled) return null;
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -29,6 +35,9 @@ export function ProjectAppsNavItem() {
         <Link href={`/projects/${projectId}/apps`} prefetch onClick={handleClick}>
           <GlobeIcon />
           Apps
+          <Badge aria-hidden size="xs" variant="beta" className="ml-auto">
+            Experimental
+          </Badge>
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>

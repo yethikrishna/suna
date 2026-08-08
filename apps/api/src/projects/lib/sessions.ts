@@ -8,8 +8,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { isMetaAgentName, META_AGENT_NAME, META_SANDBOX_SLUG } from '@kortix/shared';
 import { checkBillingActive } from '../../billing/services/billing-gate';
-import { getCachedAccountTier } from '../../billing/services/entitlements';
-import { tierGrantsAllModels } from '../../billing/services/tiers';
+import { accountMayUseManagedModels } from '../../billing/services/entitlements';
 import { type SandboxProviderName, config } from '../../config';
 import { agentMayUseConnector } from '../../iam/agent-scope';
 import { setContextField } from '../../lib/request-context';
@@ -24,7 +23,6 @@ import {
 } from '../../llm-gateway/resolution/effective';
 import { nativeProviderEnvNames } from '../../llm-gateway/sandbox-credentials';
 import { auth, json } from '../../openapi';
-import { getProvider } from '../../platform/providers';
 import { sandboxFrontendBaseUrl } from '../../platform/sandbox-frontend-url';
 import { selectProvider } from '../../platform/services/provider-balancer';
 import { ProvisionTimeline } from '../../platform/services/provision-timeline';
@@ -87,7 +85,7 @@ import {
   titleSourceForCreate,
 } from '../session-title-generate';
 import { canOverride, resolveSessionOrigin } from './session-origin';
-import { sessionCreatedAuditEvent } from './session-audit';
+import { sessionCreatedAuditAttribution } from './session-audit';
 import {
   resolveSessionSandboxSlug,
   workspaceModeAllowsFullRepository,
@@ -527,16 +525,10 @@ export function proxyGitUrl(projectId: string): string {
  * "Unable to connect" boot error ~60s later. Detect it up front so session
  * creation fails fast with an actionable message instead.
  *
- * A same-machine provider (local-docker) has no such constraint — its
- * sandboxes reach kortix-api over the shared Docker network, not the public
- * internet — so this check is skipped for any provider whose
- * `requiresPublicCallback` capability is false (see platform/providers/index.ts).
- *
  * Returns a human-readable reason string when unreachable, or null when fine.
  */
 
-export function sandboxCallbackUnreachableReason(providerName: SandboxProviderName): string | null {
-  if (!getProvider(providerName).requiresPublicCallback) return null;
+export function sandboxCallbackUnreachableReason(): string | null {
   let host: string;
   try {
     host = new URL(deriveKortixApiBase()).hostname.toLowerCase();
@@ -789,9 +781,7 @@ export async function createProjectSession(input: {
     };
   }
 
-  const freeModelsOnly = config.KORTIX_BILLING_INTERNAL_ENABLED
-    ? !tierGrantsAllModels(await getCachedAccountTier(accountId))
-    : false;
+  const freeModelsOnly = !(await accountMayUseManagedModels(accountId));
   const llmGatewayEnabled = projectLlmGatewayEnabled(project.metadata);
 
   // Model: normalize + fail-fast at create. An unservable / retired / typo'd
@@ -1046,7 +1036,7 @@ export async function createProjectSession(input: {
   const providerName: SandboxProviderName =
     'provider' in picked ? (picked.provider as SandboxProviderName) : await selectProvider();
 
-  const callbackUnreachable = sandboxCallbackUnreachableReason(providerName);
+  const callbackUnreachable = sandboxCallbackUnreachableReason();
   if (callbackUnreachable) {
     return {
       error: { status: 503, body: { error: callbackUnreachable, code: 'KORTIX_URL_UNREACHABLE' } },
@@ -1143,6 +1133,27 @@ export async function createProjectSession(input: {
   // would have used, instead of leaking the scaffolding into a project-visible
   // title when this create-time attempt fails.
   const explicitTitleSource = normalizeString(body.title_source ?? body.titleSource);
+  const invocationSource =
+    typeof (input.metadata as Record<string, unknown> | undefined)?.source === 'string'
+      ? ((input.metadata as Record<string, unknown>).source as string)
+      : null;
+  const auditAttribution = sessionCreatedAuditAttribution({
+    accountId,
+    projectId,
+    sessionId,
+    actorUserId: userId,
+    requestingPrincipalType: input.requestingPrincipalType,
+    inSession: input.inSession,
+    origin,
+    invocationSource,
+    clientReportedSource: input.request?.clientReportedSource ?? null,
+    callerSessionId: input.callerSessionId,
+    agentName,
+    visibility,
+    sandboxProvider: providerName,
+    connectorBindingCount: validatedConnectorBindings.bindings.length,
+    secretAllowlistCount: secretsAllowlist?.length ?? 0,
+  });
   const requestMetadata = normalizeJsonObject(body.metadata);
   const metadata = {
     ...requestMetadata,
@@ -1161,6 +1172,14 @@ export async function createProjectSession(input: {
     ...(input.callerSessionId ? { spawned_by_session: input.callerSessionId } : {}),
     workspace_mode: workspaceMode,
     sandbox_slug: sandboxSlug,
+    audit_v2: {
+      actor_type: auditAttribution.actorType,
+      authoritative_source: auditAttribution.authoritativeSource,
+      client_reported_source: auditAttribution.clientReportedSource,
+      initiator_actor_type: auditAttribution.initiatorActorType,
+      initiator_actor_id: auditAttribution.initiatorActorId,
+      delegation_depth: auditAttribution.delegationDepth,
+    },
   };
 
   let sessionRow: ProjectSessionRow | null = null;
@@ -1253,31 +1272,6 @@ export async function createProjectSession(input: {
   }
 
   setContextField('sessionId', sessionId);
-
-  try {
-    await recordAuditEvent(
-      sessionCreatedAuditEvent({
-        accountId,
-        projectId,
-        sessionId,
-        actorUserId: userId,
-        requestingPrincipalType: input.requestingPrincipalType,
-        inSession: input.inSession,
-        origin,
-        invocationSource:
-          typeof (input.metadata as Record<string, unknown> | undefined)?.source === 'string'
-            ? ((input.metadata as Record<string, unknown>).source as string)
-            : null,
-        agentName,
-        visibility,
-        sandboxProvider: providerName,
-        connectorBindingCount: validatedConnectorBindings.bindings.length,
-        secretAllowlistCount: secretsAllowlist?.length ?? 0,
-      }),
-    );
-  } catch (error) {
-    console.error('[projects] Failed to record session creation audit event:', error);
-  }
 
   // A prompt supplied at create is baked into KORTIX_INITIAL_PROMPT and runs
   // inside the box — it never crosses the API again, so this is the only moment

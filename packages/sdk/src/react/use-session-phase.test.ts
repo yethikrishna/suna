@@ -27,7 +27,17 @@ describe('derivePhase', () => {
     expect(derivePhase({ ...base, switched: true })).toBe('ready');
   });
 
-  test('a removed runtime stays an error — it can never wake, so never show waking', () => {
+  // PRECEDENCE, not clairvoyance. `derivePhase` cannot tell a removed runtime
+  // from a parked one and this test does not claim it can: a provider_removed
+  // row answers the proxy with the same `sandbox not ready (status: stopped)`
+  // string a waking box does, and the copy the user reads is chosen downstream
+  // from that raw string, not here. What is pinned is that the `terminal`
+  // branch is checked FIRST, so a 503 arriving alongside a terminal /start
+  // stage cannot pull the phase back down to 'starting'. That a removed
+  // runtime never renders as waking on apps/web follows from /start reporting
+  // stage 'failed'/'stopped' — this branch shadowing the 503 one — and not
+  // from anything derivePhase knows about the error.
+  test('a terminal stage wins over a runtime 503 that arrives with it', () => {
     expect(derivePhase({ ...base, terminal: true, runtimeError: RUNTIME_503 })).toBe('error');
   });
 });

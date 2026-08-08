@@ -25,10 +25,17 @@ export type StoppableBox = Pick<
   'sandboxId' | 'sessionId' | 'externalId' | 'provider'
 >;
 
+/**
+ * `stopReason` is REQUIRED, not defaulted. It used to default to
+ * `'deadline_expired'`, which meant a new caller silently inherited that
+ * reason without ever having to think about it — exactly backwards for a
+ * field the classification query groups on. Every caller now names its own
+ * reason explicitly; see box-reaper.ts and parkBoxAtRunCap below.
+ */
 export async function stopExpiredBox(
   row: StoppableBox,
   now: Date,
-  stopReason: StopReason = 'deadline_expired',
+  stopReason: StopReason,
 ): Promise<StopBoxOutcome> {
   // LAST-MOMENT RE-CHECK. `row.deadlineAt` came from the batch snapshot, taken
   // BEFORE this row's multi-second `getStatus` round-trip. A prompt (or a human

@@ -124,7 +124,7 @@ export async function reapAndReconcileSandboxes(now = new Date()): Promise<ReapR
           // round-trip, so this decision is provisional: stopExpiredBox re-reads
           // the deadline against a fresh clock immediately before issuing the
           // stop, and returns 'skipped' if a prompt arrived in the meantime.
-          const outcome = await stopExpiredBox(row, now);
+          const outcome = await stopExpiredBox(row, now, 'deadline_expired');
           result[outcome] += 1;
           if (outcome === 'stopped') result.billingClosed += 1;
           continue;

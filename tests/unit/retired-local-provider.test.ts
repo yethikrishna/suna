@@ -1,19 +1,24 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { extname, join, relative, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { extname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const root = resolve(import.meta.dirname, '../..');
-const retiredProviderIds = [
-  ['local', 'docker'].join('-'),
-  ['local', 'docker'].join('_'),
-];
+const retiredProviderIds = [['local', 'docker'].join('-'), ['local', 'docker'].join('_')];
 const scannedExtensions = new Set([
-  '.cjs', '.js', '.json', '.md', '.mjs', '.sh', '.sql', '.ts', '.tsx', '.yaml', '.yml',
+  '.cjs',
+  '.js',
+  '.json',
+  '.md',
+  '.mjs',
+  '.sh',
+  '.sql',
+  '.ts',
+  '.tsx',
+  '.yaml',
+  '.yml',
 ]);
-const excludedPrefixes = [
-  'packages/db/drizzle/meta/',
-  'packages/db/migrations/',
-];
+const excludedPrefixes = ['packages/db/drizzle/meta/', 'packages/db/migrations/'];
 const excludedFiles = new Set([
   // Historical decision record. It documents why the provider was removed and
   // why smolVM is not its replacement on ordinary VPS hosts.
@@ -25,21 +30,20 @@ const excludedFiles = new Set([
   'tests/unit/retired-local-provider.test.ts',
 ]);
 
-function sourceFiles(directory: string): string[] {
-  const files: string[] = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (entry.name === '.git' || entry.name === 'node_modules') continue;
-    const absolute = join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...sourceFiles(absolute));
-    else if (scannedExtensions.has(extname(entry.name))) files.push(absolute);
-  }
-  return files;
+function sourceFiles(): Array<{ absolute: string; path: string }> {
+  return execFileSync('git', ['ls-files', '-co', '--exclude-standard', '-z'], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+    .split('\0')
+    .filter(Boolean)
+    .filter((path) => scannedExtensions.has(extname(path)))
+    .map((path) => ({ absolute: resolve(root, path), path }));
 }
 
 describe('retired local sandbox provider', () => {
   it('has no live code, test, CLI, SDK, web, or documentation surface', () => {
-    const offenders = sourceFiles(root)
-      .map((absolute) => ({ absolute, path: relative(root, absolute) }))
+    const offenders = sourceFiles()
       .filter(({ path }) => !excludedFiles.has(path))
       .filter(({ path }) => !excludedPrefixes.some((prefix) => path.startsWith(prefix)))
       .flatMap(({ absolute, path }) => {

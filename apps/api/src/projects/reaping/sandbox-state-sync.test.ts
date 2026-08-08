@@ -6,14 +6,12 @@
 // SELECTed moments earlier, dropping whatever a concurrent writer had put there
 // in between, and the money-critical "settle the meter before flipping the
 // status" order was carried by a comment repeated in each copy.
-//
-// Mocks are process-global (`mock.module`) — run this file in its own
-// `bun test <file>` invocation, same caveat as ../sandbox-reaper.test.ts.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { projectSessions, sessionSandboxes } from '@kortix/db';
 import * as realComputeMetering from '../../billing/services/compute-metering';
+import { mockConfigModule } from './test-support/mock-config';
 
 type UpdateCall = { table: unknown; updates: Record<string, unknown>; inTransaction: boolean };
 
@@ -25,7 +23,7 @@ let revokedTokens: Array<{ sessionId: string; accountId: string }> = [];
 let preserveCalls: Array<{ sandboxId: string; reason: string }> = [];
 let inTransaction = false;
 
-mock.module('../../config', () => ({ config: { KORTIX_SANDBOX_AUTOSTOP_MINUTES: 15 } }));
+mock.module('../../config', () => mockConfigModule());
 
 const updater = (table: unknown) => ({
   set: (updates: Record<string, unknown>) => ({

@@ -9,7 +9,8 @@ import {
   OPENCODE_SESSION_PIN_PATH,
   resolveKortixRuntimeStateDirectory,
   resolveOpenCodeAuditSpoolPath,
-  writePrivateRuntimeStateFile,
+  writeOpenCodeSeedBakedPin,
+  writeOpenCodeSessionPin,
 } from '../runtime-state'
 
 describe('sandbox runtime state paths', () => {
@@ -43,16 +44,32 @@ describe('sandbox runtime state paths', () => {
     ).toBe('/tmp/explicit-spool.json')
   })
 
-  test('writes state with a private directory and private file mode', () => {
+  test('writes validated session state with private directory and file modes', async () => {
     const root = mkdtempSync(join(tmpdir(), 'kortix-runtime-state-'))
-    const path = join(root, 'nested', 'pin')
+    const priorStateDirectory = process.env.KORTIX_RUNTIME_STATE_DIR
     try {
-      writePrivateRuntimeStateFile(path, 'ses_private')
-      expect(readFileSync(path, 'utf8')).toBe('ses_private')
-      expect(statSync(join(root, 'nested')).mode & 0o777).toBe(0o700)
-      expect(statSync(path).mode & 0o777).toBe(0o600)
+      process.env.KORTIX_RUNTIME_STATE_DIR = root
+      const fresh = await import(`../runtime-state.ts?test=${crypto.randomUUID()}`)
+      fresh.writeOpenCodeSessionPin('ses_private')
+      fresh.writeOpenCodeSeedBakedPin('ses_seed')
+      const sessionPath = join(root, 'opencode-session-id')
+      const seedPath = join(root, 'opencode-seed-baked-id')
+      expect(readFileSync(sessionPath, 'utf8')).toBe('ses_private')
+      expect(readFileSync(seedPath, 'utf8')).toBe('ses_seed')
+      expect(statSync(root).mode & 0o777).toBe(0o700)
+      expect(statSync(sessionPath).mode & 0o777).toBe(0o600)
+      expect(statSync(seedPath).mode & 0o777).toBe(0o600)
     } finally {
+      if (priorStateDirectory === undefined) delete process.env.KORTIX_RUNTIME_STATE_DIR
+      else process.env.KORTIX_RUNTIME_STATE_DIR = priorStateDirectory
       rmSync(root, { recursive: true, force: true })
     }
+  })
+
+  test('rejects malformed OpenCode session ids before any write', () => {
+    expect(() => writeOpenCodeSessionPin('../escape')).toThrow('malformed OpenCode session id')
+    expect(() => writeOpenCodeSeedBakedPin('ses_valid\ninjected')).toThrow(
+      'malformed OpenCode session id',
+    )
   })
 })

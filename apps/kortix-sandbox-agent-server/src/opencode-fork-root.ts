@@ -18,7 +18,6 @@
  * daemon restarts reuse the fork's own root via the normal idempotent path.
  */
 
-import { OPENCODE_SEED_BAKED_PIN_PATH } from './runtime-state'
 export { OPENCODE_SEED_BAKED_PIN_PATH } from './runtime-state'
 
 /** Well-known marker recording the SEED's pre-baked root id. Lives next to

@@ -34,10 +34,37 @@ export const OPENCODE_SEED_BAKED_PIN_PATH = join(
   'opencode-seed-baked-id',
 )
 
-export function writePrivateRuntimeStateFile(path: string, value: string): void {
+const OPENCODE_SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/
+
+function validatedOpenCodeSessionId(value: string): string {
+  if (!OPENCODE_SESSION_ID.test(value)) {
+    throw new Error('refusing to persist a malformed OpenCode session id')
+  }
+  return value
+}
+
+function ensurePrivateRuntimeStateDirectory(path: string): void {
   const directory = dirname(path)
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   chmodSync(directory, 0o700)
-  writeFileSync(path, value, { encoding: 'utf8', mode: 0o600 })
-  chmodSync(path, 0o600)
+}
+
+export function writeOpenCodeSessionPin(sessionId: string): void {
+  const validatedSessionId = validatedOpenCodeSessionId(sessionId)
+  ensurePrivateRuntimeStateDirectory(OPENCODE_SESSION_PIN_PATH)
+  writeFileSync(OPENCODE_SESSION_PIN_PATH, validatedSessionId, {
+    encoding: 'utf8',
+    mode: 0o600,
+  })
+  chmodSync(OPENCODE_SESSION_PIN_PATH, 0o600)
+}
+
+export function writeOpenCodeSeedBakedPin(sessionId: string): void {
+  const validatedSessionId = validatedOpenCodeSessionId(sessionId)
+  ensurePrivateRuntimeStateDirectory(OPENCODE_SEED_BAKED_PIN_PATH)
+  writeFileSync(OPENCODE_SEED_BAKED_PIN_PATH, validatedSessionId, {
+    encoding: 'utf8',
+    mode: 0o600,
+  })
+  chmodSync(OPENCODE_SEED_BAKED_PIN_PATH, 0o600)
 }

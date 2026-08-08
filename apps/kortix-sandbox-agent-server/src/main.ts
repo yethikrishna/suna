@@ -34,7 +34,8 @@ import { auditRelayToken, createAuditRelay } from './opencode-audit-relay'
 import {
   OPENCODE_SESSION_PIN_PATH,
   resolveOpenCodeAuditSpoolPath,
-  writePrivateRuntimeStateFile,
+  writeOpenCodeSeedBakedPin,
+  writeOpenCodeSessionPin,
 } from './runtime-state'
 import { createProjectEnvStore } from './project-env'
 import { startProxy } from './proxy'
@@ -308,7 +309,7 @@ async function main() {
           // existing, so writing the marker first guarantees every fork that
           // inherits the pin also inherits the marker (else it can't rotate).
           markSeedBakedSession(session.id)
-          writePrivateRuntimeStateFile(OPENCODE_SESSION_PIN_PATH, session.id)
+          writeOpenCodeSessionPin(session.id)
           bootMark('seed-opencode-session')
           logger.info('[seed] pre-created root opencode session', { sessionId: session.id })
         }
@@ -668,7 +669,7 @@ async function runWarmSeedMode(
           // existing, so writing the marker first guarantees every fork that
           // inherits the pin also inherits the marker (else it can't rotate).
           markSeedBakedSession(session.id)
-          writePrivateRuntimeStateFile(OPENCODE_SESSION_PIN_PATH, session.id)
+          writeOpenCodeSessionPin(session.id)
           bootMark('seed-opencode-session')
           logger.info('[seed] pre-created + pinned root opencode session', { sessionId: session.id })
         }
@@ -969,7 +970,7 @@ export async function finalizeOrphanedTurn(
  *  file (the in-sandbox source of truth read by abort/relay/turn-end). */
 function pinOpencodeSessionFile(sessionId: string): void {
   try {
-    writePrivateRuntimeStateFile(OPENCODE_SESSION_PIN_PATH, sessionId)
+    writeOpenCodeSessionPin(sessionId)
   } catch (err) {
     logger.warn('[boot] failed to pin opencode session id', err)
   }
@@ -980,7 +981,7 @@ function pinOpencodeSessionFile(sessionId: string): void {
  *  snapshot next to the pin, so every fork inherits it. See opencode-fork-root.ts. */
 function markSeedBakedSession(sessionId: string): void {
   try {
-    writePrivateRuntimeStateFile(OPENCODE_SEED_BAKED_PIN_PATH, sessionId)
+    writeOpenCodeSeedBakedPin(sessionId)
   } catch (err) {
     logger.warn('[seed] failed to write seed-baked session marker', err)
   }

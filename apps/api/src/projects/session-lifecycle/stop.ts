@@ -66,10 +66,9 @@ export async function stopSession(input: {
       sandboxId: sandbox.sandboxId,
       sessionId,
       externalId: sandbox.externalId,
+      stopReason: 'manual',
       metadata: {
-        stoppedAt: now.toISOString(),
         stoppedBy: userId,
-        stopReason: 'manual',
         runtimeWakeCleanupUntilAt: new Date(
           now.getTime() + RUNTIME_WAKE_LATE_START_GUARD_MS,
         ).toISOString(),
@@ -103,7 +102,8 @@ export async function stopSession(input: {
       sandboxId: sandbox.sandboxId,
       sessionId,
       externalId: sandbox.externalId,
-      metadata: { stoppedAt: now.toISOString(), stoppedBy: userId, stopReason: 'manual' },
+      stopReason: 'manual',
+      metadata: { stoppedBy: userId },
       now,
     });
   }

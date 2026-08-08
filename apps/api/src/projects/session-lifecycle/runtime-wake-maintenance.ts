@@ -108,6 +108,8 @@ export async function reconcileRuntimeWakeFences(now = new Date()): Promise<{
             Object.assign(patch, {
               runtimeWakeError: 'wake_lease_expired',
               runtimeWakeFailedAt: claimedAt.toISOString(),
+              stopReason: 'runtime_wake_failed',
+              stoppedAt: claimedAt.toISOString(),
               runtimeWakeRetryAfterAt: new Date(
                 claimedAt.getTime() + RUNTIME_WAKE_RETRY_COOLDOWN_MS,
               ).toISOString(),

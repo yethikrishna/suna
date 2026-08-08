@@ -35,6 +35,7 @@ import {
   retireUnmaterializedRuntime,
 } from '../runtime-identity';
 import { inspectSandboxRuntime } from '../runtime-inspection';
+import type { StopReason } from '../stop-reason';
 import {
   RUNTIME_READINESS_CLOCK_KEYS,
   hasRuntimeReadinessClock,
@@ -197,6 +198,8 @@ export async function resumeStoppedSandbox(row: {
       const failurePatch = {
         runtimeWakeError: reason,
         runtimeWakeFailedAt: failedAt.toISOString(),
+        stopReason: 'runtime_wake_failed',
+        stoppedAt: failedAt.toISOString(),
         runtimeWakeRetryAfterAt: new Date(
           failedAt.getTime() + RUNTIME_WAKE_RETRY_COOLDOWN_MS,
         ).toISOString(),
@@ -660,6 +663,11 @@ async function preserveEstablishedRuntimeOnOpen(
   sessionId: string,
   row: typeof sessionSandboxes.$inferSelect,
   reason: string,
+  /** WHICH park this is, for the classification query. Explicit per call site:
+   *  this helper serves four unrelated populations (a stalled provision, a
+   *  failed wake, a failed boot, a real provider removal) and cannot tell them
+   *  apart from the inside. */
+  stopReason: StopReason,
 ): Promise<SessionStartResult> {
   if (!row.externalId) {
     await retireUnmaterializedRuntime(row, reason);
@@ -673,7 +681,7 @@ async function preserveEstablishedRuntimeOnOpen(
       reason,
     };
   }
-  const preserved = await preserveEstablishedRuntime(row, reason);
+  const preserved = await preserveEstablishedRuntime(row, reason, stopReason);
   return {
     stage: 'failed',
     agent_name: visible.row.agentName ?? 'default',
@@ -789,6 +797,7 @@ export async function openSession(args: {
           sessionId,
           row,
           'non_usable_established_runtime',
+          'unusable_runtime_state',
         );
       }
       if (row) await retireUnmaterializedRuntime(row, 'non_usable_unmaterialized_runtime');
@@ -812,6 +821,7 @@ export async function openSession(args: {
       sessionId,
       row,
       staleProvisioning,
+      'provisioning_stalled',
     );
   }
 
@@ -926,6 +936,9 @@ export async function openSession(args: {
       sessionId,
       claim.row,
       'runtime_removed',
+      // The provider itself answered `removed` and in-place recovery came back
+      // unavailable — a real Path D2 removal, not a wake that ran out of time.
+      'provider_removed',
     );
   }
 
@@ -950,6 +963,7 @@ export async function openSession(args: {
         sessionId,
         row,
         staleWake,
+        'runtime_wake_failed',
       );
     }
     if (providerStatus === 'stopped') {
@@ -1040,6 +1054,7 @@ export async function openSession(args: {
         sessionId,
         row,
         staleBoot,
+        'runtime_boot_failed',
       );
     }
     await markOpencodeReadyWaitStarted(row, ensured.reason);

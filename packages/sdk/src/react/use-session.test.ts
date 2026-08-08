@@ -56,6 +56,7 @@ import {
   SESSION_START_POLL_MS,
   hasStartGivenUp,
   computeStartSettled,
+  nextInconclusiveSince,
   START_INCONCLUSIVE_GIVE_UP_MS,
 } from './use-session';
 import { derivePhase } from './use-session-phase';
@@ -529,6 +530,175 @@ describe('computeStartSettled', () => {
         switched: false,
       }),
     ).toBe('error');
+  });
+});
+
+// Fix round 2 on JAY-427, Important defect: the effect that stamped
+// `startInconclusiveSinceRef` had no `enabled` guard, so it armed the clock
+// even while the /start query was disabled (auth load, billing-blocked). The
+// stale stamp then carried into the enabled window, and the first
+// non-fetching null tick after enabling could already read as "given up" —
+// reintroducing the exact premature error card commit f49e9e38c2 removed.
+// `nextInconclusiveSince` is the extracted, unit-testable arm/reset decision
+// the effect now just calls; these tests pin the invariant directly, since
+// the previous round's composed `computeStartSettled` + `derivePhase` test
+// could not see this bug (it hand-fed `inconclusiveSinceMs` and never
+// exercised how that value gets PRODUCED).
+describe('nextInconclusiveSince', () => {
+  test('stays null while disabled, even with a fetch settled and nothing to show', () => {
+    expect(
+      nextInconclusiveSince({
+        current: null,
+        enabled: false,
+        hasData: false,
+        hasError: false,
+        isFetching: false,
+        nowMs: Date.now(),
+      }),
+    ).toBeNull();
+  });
+
+  test('the Important defect: disabling clears an existing stamp — it must not survive into the enabled window', () => {
+    const staleStamp = Date.now() - START_INCONCLUSIVE_GIVE_UP_MS * 10;
+    expect(
+      nextInconclusiveSince({
+        current: staleStamp,
+        enabled: false,
+        hasData: false,
+        hasError: false,
+        isFetching: false,
+        nowMs: Date.now(),
+      }),
+    ).toBeNull();
+  });
+
+  test('arms fresh at nowMs on the first genuinely inconclusive tick while enabled', () => {
+    const now = Date.now();
+    expect(
+      nextInconclusiveSince({
+        current: null,
+        enabled: true,
+        hasData: false,
+        hasError: false,
+        isFetching: false,
+        nowMs: now,
+      }),
+    ).toBe(now);
+  });
+
+  test('keeps the original stamp on later inconclusive ticks — the clock only starts once', () => {
+    const armedAt = Date.now() - 1_000;
+    expect(
+      nextInconclusiveSince({
+        current: armedAt,
+        enabled: true,
+        hasData: false,
+        hasError: false,
+        isFetching: false,
+        nowMs: Date.now(),
+      }),
+    ).toBe(armedAt);
+  });
+
+  test('clears the instant data arrives', () => {
+    const armedAt = Date.now() - 1_000;
+    expect(
+      nextInconclusiveSince({
+        current: armedAt,
+        enabled: true,
+        hasData: true,
+        hasError: false,
+        isFetching: false,
+        nowMs: Date.now(),
+      }),
+    ).toBeNull();
+  });
+
+  test('clears the instant an error arrives', () => {
+    const armedAt = Date.now() - 1_000;
+    expect(
+      nextInconclusiveSince({
+        current: armedAt,
+        enabled: true,
+        hasData: false,
+        hasError: true,
+        isFetching: false,
+        nowMs: Date.now(),
+      }),
+    ).toBeNull();
+  });
+
+  test('a fetch in flight keeps counting toward an existing stamp — it does not reset the clock', () => {
+    const armedAt = Date.now() - 1_000;
+    expect(
+      nextInconclusiveSince({
+        current: armedAt,
+        enabled: true,
+        hasData: false,
+        hasError: false,
+        isFetching: true,
+        nowMs: Date.now(),
+      }),
+    ).toBe(armedAt);
+  });
+
+  test('a fetch in flight with nothing armed yet stays null — not yet inconclusive', () => {
+    expect(
+      nextInconclusiveSince({
+        current: null,
+        enabled: true,
+        hasData: false,
+        hasError: false,
+        isFetching: true,
+        nowMs: Date.now(),
+      }),
+    ).toBeNull();
+  });
+
+  test('round 2 regression: sitting disabled past the budget, then enabling, does not pre-consume the grace window', () => {
+    let current: number | null = null;
+    const disabledStart = Date.now() - START_INCONCLUSIVE_GIVE_UP_MS * 2;
+    // Simulate ticks while disabled (e.g. auth still loading, or
+    // billing-blocked) for well over a full budget's worth of time — the ref
+    // must never arm.
+    for (
+      let t = disabledStart;
+      t < disabledStart + START_INCONCLUSIVE_GIVE_UP_MS;
+      t += SESSION_START_POLL_MS
+    ) {
+      current = nextInconclusiveSince({
+        current,
+        enabled: false,
+        hasData: false,
+        hasError: false,
+        isFetching: false,
+        nowMs: t,
+      });
+    }
+    expect(current).toBeNull();
+
+    // Now enable it. The very first non-fetching, dataless tick must arm
+    // FRESH at "now", not read as already-given-up from the disabled period.
+    const enabledAt = Date.now();
+    current = nextInconclusiveSince({
+      current,
+      enabled: true,
+      hasData: false,
+      hasError: false,
+      isFetching: false,
+      nowMs: enabledAt,
+    });
+    expect(current).toBe(enabledAt);
+
+    const settledImmediatelyAfterEnabling = computeStartSettled({
+      enabled: true,
+      isFetching: false,
+      data: null,
+      error: null,
+      inconclusiveSinceMs: current,
+      nowMs: enabledAt,
+    });
+    expect(settledImmediatelyAfterEnabling).toBe(false);
   });
 });
 

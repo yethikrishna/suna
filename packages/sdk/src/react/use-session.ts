@@ -129,11 +129,6 @@ export function shouldPollSessionStart(
 }
 
 /**
- * TanStack Query pauses interval fetches while the document is hidden unless
- * this option is true. Session readiness must continue because it gates the
- * runtime switch, event stream, and queued-prompt replay.
- */
-/**
  * How long `/start` can return NEITHER data NOR an error before it counts as
  * "given up" rather than "still working".
  *
@@ -153,10 +148,21 @@ export function shouldPollSessionStart(
  * budget never starts counting — it only fires when `/start` itself has
  * nothing to say, tick after tick. A cold sandbox resume can legitimately
  * take tens of seconds end to end, but that legitimate case is exactly the
- * one that keeps producing data and never reaches this bound; 45s (30
- * consecutive empty ticks at `SESSION_START_POLL_MS`) is comfortably longer
- * than that, while still short enough that a genuine `/start` outage reaches
- * an error card in well under a minute instead of hanging indefinitely.
+ * one that keeps producing data and never reaches this bound.
+ *
+ * **Worst-case actual flip time is ~61.5s, not 45s** — say so accurately
+ * rather than understate it (round 2, JAY-427 review, Minor 1). 45s is 30
+ * consecutive empty poll intervals at `SESSION_START_POLL_MS` (1.5s each),
+ * but the budget is only ever CHECKED at a poll tick, and `waitMs` (default
+ * `15_000`, the server-side long-poll budget passed to `startProjectSession`)
+ * means a single tick's request can itself take up to ~15s before resolving.
+ * So the tick that finally crosses the 45s line can itself land up to one
+ * full cycle late: `45_000 + (waitMs + SESSION_START_POLL_MS)` ≈
+ * `45_000 + 16_500` = `61_500`ms in the worst case. That is still acceptable:
+ * it is a finite, single-digit-minutes ceiling on a failure this task
+ * otherwise made hang forever, and erring toward a LATE flip (never early)
+ * is the safe direction — it never cuts short a legitimate wake, only delays
+ * how quickly a genuine outage surfaces its error card.
  */
 export const START_INCONCLUSIVE_GIVE_UP_MS = 45_000;
 
@@ -181,6 +187,49 @@ export function hasStartGivenUp(
 }
 
 /**
+ * Compute the next value for the "inconclusive since" clock that feeds
+ * {@link hasStartGivenUp}, given one poll tick's outcome. Pure and separate
+ * from the `useEffect` that calls it so the arm/reset decision is
+ * unit-testable without rendering the hook — round 2 of the JAY-427 review
+ * found the effect version of this logic wrong in a way the pure
+ * `computeStartSettled` tests could not catch (it armed while the query was
+ * DISABLED, and the stale stamp then carried into the enabled window,
+ * consuming the whole grace period before a single real `/start` request had
+ * fired).
+ *
+ * The invariant: the clock may only measure time during which the query was
+ * actually able to run for THIS session.
+ * - Disabled → always `null`. A query that cannot fetch has neither "given
+ *   up" nor is it "still working" — it hasn't started. This is what round 2's
+ *   Important defect violated: a stamp taken while disabled must not survive
+ *   into the enabled window.
+ * - Data or error arrived → clear to `null`. The poll said SOMETHING.
+ * - Enabled, inconclusive (no data, no error), not mid-fetch → arm at
+ *   `nowMs` if nothing is armed yet; otherwise keep the existing stamp — the
+ *   clock starts once, at the FIRST inconclusive tick, not every tick.
+ * - Mid-fetch → keep whatever is already armed; a fetch in flight is not
+ *   itself informative either way, and time spent waiting on it still counts.
+ *
+ * Session-identity resetting (`projectId`/`sessionId` changing under a reused
+ * hook instance) is handled by a separate effect, not here — this function
+ * has no session id to key on by design, matching the narrow input the
+ * `useEffect` actually has on each tick.
+ */
+export function nextInconclusiveSince(input: {
+  current: number | null;
+  enabled: boolean;
+  hasData: boolean;
+  hasError: boolean;
+  isFetching: boolean;
+  nowMs: number;
+}): number | null {
+  if (!input.enabled) return null;
+  if (input.hasData || input.hasError) return null;
+  if (input.isFetching) return input.current;
+  return input.current ?? input.nowMs;
+}
+
+/**
  * Whether the `/start` poll should be treated as SETTLED — resolved, failed,
  * or given up — for a caller (like `phase`, below) that needs to stop
  * waiting on it. A disabled query settles immediately: a query that never
@@ -200,6 +249,11 @@ export function computeStartSettled(input: {
   return hasStartGivenUp(input.data, input.error, input.inconclusiveSinceMs, input.nowMs);
 }
 
+/**
+ * TanStack Query pauses interval fetches while the document is hidden unless
+ * this option is true. Session readiness must continue because it gates the
+ * runtime switch, event stream, and queued-prompt replay.
+ */
 export const SESSION_START_POLL_OPTIONS = {
   refetchInterval: (query: {
     state: {
@@ -644,24 +698,51 @@ export function useSession(
   // Track how long /start has been returning nothing usable — no data, no
   // error — so `computeStartSettled` can bound the "given up" case (see
   // START_INCONCLUSIVE_GIVE_UP_MS) instead of waiting on a poll that a
-  // swallowed transport failure can keep alive forever. Resets the instant
-  // /start returns anything real.
+  // swallowed transport failure can keep alive forever. `nextInconclusiveSince`
+  // owns the arm/reset decision (pure, unit-tested); the effects here are thin
+  // callers of it.
   const startInconclusiveSinceRef = useRef<number | null>(null);
+  // A new session gets a fresh clock. This hook instance is reused across
+  // session navigation (see the switch effect below), and a stamp accumulated
+  // for a DIFFERENT (projectId, sessionId) must never bleed into this one's
+  // give-up budget. Declared before the arming effect so it clears first
+  // within the same commit when the session changes.
   useEffect(() => {
-    if (start.data || start.error) {
-      startInconclusiveSinceRef.current = null;
-    } else if (!start.isFetching && startInconclusiveSinceRef.current === null) {
-      startInconclusiveSinceRef.current = Date.now();
-    }
-  }, [start.data, start.error, start.isFetching]);
-  const startSettled = computeStartSettled({
-    enabled: startEnabled,
-    isFetching: start.isFetching,
-    data: start.data,
-    error: start.error,
-    inconclusiveSinceMs: startInconclusiveSinceRef.current,
-    nowMs: Date.now(),
-  });
+    startInconclusiveSinceRef.current = null;
+  }, [projectId, sessionId]);
+  // `false` until the effect below runs its first pass — never `Date.now()`
+  // at mount, so this initializer stays fully render-pure (no exceptions, not
+  // even a lazy-initializer read). The one render this can lag by is
+  // inconsequential: `phase` only depends on `startSettled` through a branch
+  // gated on `runtimeError`, which cannot yet be non-null on the same render
+  // this hook first mounts (no runtime call has resolved anything yet).
+  const [startSettled, setStartSettled] = useState(false);
+  useEffect(() => {
+    // `Date.now()` lives here, not in the render body: reading it during
+    // render made `startSettled` render-impure (round 2, JAY-427 review,
+    // Minor 2) and a StrictMode/concurrent-render hazard. One read feeds both
+    // the arm decision and the settled decision, computed together so they
+    // never disagree about "now".
+    const nowMs = Date.now();
+    startInconclusiveSinceRef.current = nextInconclusiveSince({
+      current: startInconclusiveSinceRef.current,
+      enabled: startEnabled,
+      hasData: !!start.data,
+      hasError: !!start.error,
+      isFetching: start.isFetching,
+      nowMs,
+    });
+    setStartSettled(
+      computeStartSettled({
+        enabled: startEnabled,
+        isFetching: start.isFetching,
+        data: start.data,
+        error: start.error,
+        inconclusiveSinceMs: startInconclusiveSinceRef.current,
+        nowMs,
+      }),
+    );
+  }, [startEnabled, start.data, start.error, start.isFetching]);
 
   // 2. Point the SDK's runtime at this session's sandbox once ready. Track WHICH
   // sandbox we switched to (not a bare bool) so navigating between sessions (this

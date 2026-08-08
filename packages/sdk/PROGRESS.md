@@ -12,6 +12,36 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-08 — session `sandbox-agent-lifecycle` claim
+
+No **Now** task claimed. This is the user-directed sandbox lifecycle and billing
+correctness refactor.
+
+Claimed SDK scope:
+
+- Stop automatic `/start` polling after a bounded terminal wake failure.
+- Preserve the existing published session APIs and all exported names.
+- Keep runtime identity session-scoped and provider-agnostic.
+- Add failing SDK tests before implementation.
+- Run SDK typecheck, the complete SDK suite, and packed-install smoke.
+
+The required `tdd` skill is unavailable in this session. This work uses the
+required RED, GREEN, and REFACTOR sequence directly.
+
+GREEN:
+
+- `pnpm --filter @kortix/sdk test`: `1806 pass`, `0 fail` after merging current `origin/main`.
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed-install import and construction passed.
+- SDK wake polling stops on the server's bounded `retriable: false` response.
+- No published export name or package version changed.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
+---
+
 ### 2026-08-08 — session `feature-flags-web`
 
 Backlog **B48** — canonical feature-flag naming plus one gating primitive, so the
@@ -72,6 +102,8 @@ copy is now inconsistent with the platform's naming.
 **Status:** COMPLETE.
 
 **SDK package shippable to production: YES.**
+
+---
 
 ### 2026-08-08 — session `apps-retired-provider-scanner`
 

@@ -122,7 +122,18 @@ export function createNewSessionScopeDraft(
     draft.secrets = null;
   }
   if (catalog.connector_connections.status === 'ready') {
-    draft.connector_bindings = {};
+    // A browser-created session commits the visible connector selection before
+    // startup. Start from every strategy-compatible default that the agent grant
+    // exposes, not an empty fail-closed map. The create payload remains a complete
+    // explicit selection, so a later user deselection stays effective.
+    draft.connector_bindings = Object.fromEntries(
+      catalog.connector_connections.items.flatMap((connector) => {
+        const connection =
+          connector.connections.find((candidate) => candidate.is_default) ??
+          connector.connections[0];
+        return connection ? [[connector.slug, { connection_id: connection.connection_id }]] : [];
+      }),
+    );
     draft.require_connectors = [];
   }
   return draft;

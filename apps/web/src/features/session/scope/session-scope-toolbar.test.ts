@@ -69,18 +69,23 @@ describe('createNewSessionScopeInitialization', () => {
     // `null` is the no-override state — the session inherits the agent's grant,
     // exactly like a server-created session. `[]` would be an explicit "inject
     // zero project secrets", which silently denied every browser-created session
-    // its grant. The connector axes stay opt-in (empty defaults) per the scope
-    // opt-in design; only secrets default to unrestricted.
+    // its grant. Connector access starts from every visible default connection.
+    // The create payload remains a complete fail-closed selection, so later
+    // user changes remain effective.
     expect(createNewSessionScopeInitialization(catalog())).toEqual({
       draft: {
         secrets: null,
-        connector_bindings: {},
+        connector_bindings: {
+          mail: { connection_id: 'connection-mail' },
+        },
         require_connectors: [],
       },
       commit: {
         draft: {
           secrets: null,
-          connector_bindings: {},
+          connector_bindings: {
+            mail: { connection_id: 'connection-mail' },
+          },
           require_connectors: [],
         },
         availability: {
@@ -100,12 +105,16 @@ describe('createNewSessionScopeInitialization', () => {
       ),
     ).toEqual({
       draft: {
-        connector_bindings: {},
+        connector_bindings: {
+          mail: { connection_id: 'connection-mail' },
+        },
         require_connectors: [],
       },
       commit: {
         draft: {
-          connector_bindings: {},
+          connector_bindings: {
+            mail: { connection_id: 'connection-mail' },
+          },
           require_connectors: [],
         },
         availability: {

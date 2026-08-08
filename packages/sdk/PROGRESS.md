@@ -12,6 +12,28 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-08 — session `sandbox-agent-lifecycle` claim
+
+No **Now** task claimed. This is the user-directed sandbox lifecycle and billing
+correctness refactor.
+
+Claimed SDK scope:
+
+- Stop automatic `/start` polling after a bounded terminal wake failure.
+- Preserve the existing published session APIs and all exported names.
+- Keep runtime identity session-scoped and provider-agnostic.
+- Add failing SDK tests before implementation.
+- Run SDK typecheck, the complete SDK suite, and packed-install smoke.
+
+The required `tdd` skill is unavailable in this session. This work uses the
+required RED, GREEN, and REFACTOR sequence directly.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
+---
+
 ### 2026-08-08 — session `apps-retired-provider-scanner`
 
 The final PR cadence found the retired-provider id as a literal in one SDK

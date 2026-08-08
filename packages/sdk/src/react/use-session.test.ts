@@ -448,16 +448,34 @@ describe('computeStartSettled', () => {
     ).toBe(true);
   });
 
-  test('a fetch in flight is never settled, even with a stale hasGivenUp=true — the current tick already disproves it', () => {
+  test('a fetch in flight is unsettled only while /start has NOT given up', () => {
     expect(
       computeStartSettled({
         enabled: true,
         isFetching: true,
         data: null,
         error: null,
-        hasGivenUp: true,
+        hasGivenUp: false,
       }),
     ).toBe(false);
+  });
+
+  // Round 4, JAY-427 review, Important defect: `hasGivenUp` was tested AFTER
+  // `isFetching`, and /start keeps polling after give-up —
+  // `shouldPollSessionStart(null, null)` returns 1500ms forever. So past the
+  // 45s budget this function answered false while a poll was in flight and
+  // true in the gap between polls, `phase` oscillated 'starting' <-> 'error',
+  // and the runtime error card blinked on and off once per poll cycle for the
+  // whole outage. `startGivenUp` is sticky by construction (the effect only
+  // clears it when /start actually answers, or the session changes, or the
+  // query is disabled), so give-up now short-circuits ABOVE the fetch check
+  // and both frames of the cycle agree.
+  test('once /start has given up, both frames of the poll cycle read settled — no 1500ms blink', () => {
+    const givenUp = { enabled: true, data: null, error: null, hasGivenUp: true } as const;
+    // Mid-poll. Under the old ordering this was `false` — the blink's OFF frame.
+    expect(computeStartSettled({ ...givenUp, isFetching: true })).toBe(true);
+    // Between polls. Was already `true`, which is what made the two disagree.
+    expect(computeStartSettled({ ...givenUp, isFetching: false })).toBe(true);
   });
 
   test('a terminal stage settles immediately, same as today, regardless of hasGivenUp', () => {

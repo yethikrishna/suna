@@ -246,6 +246,16 @@ export function nextInconclusiveSince(input: {
  * at all — only `hasGivenUp` (via {@link hasStartGivenUp}) inherently needs
  * wall-clock tracking, so it is the only piece the caller is allowed to
  * latch.
+ *
+ * ORDER IS LOAD-BEARING: `hasGivenUp` is tested BEFORE `isFetching` (round 4,
+ * JAY-427 review, Important). Giving up does not stop the poll —
+ * `shouldPollSessionStart(null, null)` keeps returning 1500ms for as long as
+ * the outage lasts — so with the fetch check first, this answered false
+ * mid-poll and true between polls, forever. `phase` flipped 'starting' <->
+ * 'error' with it and the runtime error card blinked on and off once per poll
+ * cycle. Give-up is a sticky verdict (the caller's effect clears it only when
+ * /start actually answers, when the session changes, or when the query is
+ * disabled), so once it is in, no single in-flight tick may take it back out.
  */
 export function computeStartSettled(input: {
   enabled: boolean;
@@ -255,9 +265,9 @@ export function computeStartSettled(input: {
   hasGivenUp: boolean;
 }): boolean {
   if (!input.enabled) return true;
+  if (input.hasGivenUp) return true;
   if (input.isFetching) return false;
-  if (!shouldPollSessionStart(input.error, input.data)) return true;
-  return input.hasGivenUp;
+  return !shouldPollSessionStart(input.error, input.data);
 }
 
 /**

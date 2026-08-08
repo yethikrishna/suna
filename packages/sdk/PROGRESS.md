@@ -28,9 +28,17 @@ Claimed SDK scope:
 The required `tdd` skill is unavailable in this session. This work uses the
 required RED, GREEN, and REFACTOR sequence directly.
 
-**Status:** IN PROGRESS.
+GREEN:
 
-**SDK package shippable to production: NOT YET.**
+- `pnpm --filter @kortix/sdk test`: `1786 pass`, `2 skip`, `0 fail`.
+- `pnpm --filter @kortix/sdk typecheck`: exit `0`.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed-install import and construction passed.
+- SDK wake polling stops on the server's bounded `retriable: false` response.
+- No published export name or package version changed.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
 
 ---
 

@@ -77,6 +77,10 @@ mock.module('./session-lifecycle/undelivered-prompts', () => ({
   reconcileUndeliveredPrompts: async () => ({ claimed: 0, succeeded: 0, failed: 0, queued: 0 }),
 }));
 
+mock.module('./session-lifecycle/runtime-wake-maintenance', () => ({
+  reconcileRuntimeWakeFences: async () => ({ checked: 0, stopped: 0, errors: 0 }),
+}));
+
 mock.module('./sandbox-reaper', () => ({
   ...realSandboxReaper,
   reapAndReconcileSandboxes: () => reapAndReconcileSandboxesImpl(),

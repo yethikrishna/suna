@@ -151,9 +151,9 @@ export function shouldPollSessionStart(
  * one that keeps producing data and never reaches this bound.
  *
  * **Worst-case actual flip time is ~61.5s, not 45s** — say so accurately
- * rather than understate it (round 2, JAY-427 review, Minor 1). 45s is 30
- * consecutive empty poll intervals at `SESSION_START_POLL_MS` (1.5s each),
- * but the budget is only ever CHECKED at a poll tick, and `waitMs` (default
+ * rather than understate it. 45s is 30 consecutive empty poll intervals at
+ * `SESSION_START_POLL_MS` (1.5s each), but the budget is only ever CHECKED
+ * at a poll tick, and `waitMs` (default
  * `15_000`, the server-side long-poll budget passed to `startProjectSession`)
  * means a single tick's request can itself take up to ~15s before resolving.
  * So the tick that finally crosses the 45s line can itself land up to one
@@ -190,19 +190,18 @@ export function hasStartGivenUp(
  * Compute the next value for the "inconclusive since" clock that feeds
  * {@link hasStartGivenUp}, given one poll tick's outcome. Pure and separate
  * from the `useEffect` that calls it so the arm/reset decision is
- * unit-testable without rendering the hook — round 2 of the JAY-427 review
- * found the effect version of this logic wrong in a way the pure
- * `computeStartSettled` tests could not catch (it armed while the query was
+ * unit-testable without rendering the hook — an earlier version of this
+ * logic lived only in the effect and was wrong in a way the pure
+ * `computeStartSettled` tests could not catch: it armed while the query was
  * DISABLED, and the stale stamp then carried into the enabled window,
  * consuming the whole grace period before a single real `/start` request had
- * fired).
+ * fired.
  *
  * The invariant: the clock may only measure time during which the query was
  * actually able to run for THIS session.
  * - Disabled → always `null`. A query that cannot fetch has neither "given
- *   up" nor is it "still working" — it hasn't started. This is what round 2's
- *   Important defect violated: a stamp taken while disabled must not survive
- *   into the enabled window.
+ *   up" nor is it "still working" — it hasn't started. A stamp taken while
+ *   disabled must not survive into the enabled window.
  * - Data or error arrived → clear to `null`. The poll said SOMETHING.
  * - Enabled, inconclusive (no data, no error), not mid-fetch → arm at
  *   `nowMs` if nothing is armed yet; otherwise keep the existing stamp — the
@@ -235,22 +234,21 @@ export function nextInconclusiveSince(input: {
  * waiting on it. A disabled query settles immediately: a query that never
  * runs was never "still working" in the first place.
  *
- * Takes `hasGivenUp` as an ALREADY-RESOLVED boolean, not a timestamp pair
- * (round 3, JAY-427 review, Important). The caller previously stored this
- * function's ENTIRE return value in `useState` — including the `!enabled ->
- * true` branch — so a disabled->enabled transition (or a session switch)
- * could read a stale `true` for one committed, painted frame, and a live
- * `runtimeError` in that window rendered 'error' before a single real
- * `/start` request had fired. `enabled`, `isFetching`, `data`, and `error`
- * are cheap to read fresh on every call, so they no longer go through state
- * at all — only `hasGivenUp` (via {@link hasStartGivenUp}) inherently needs
- * wall-clock tracking, so it is the only piece the caller is allowed to
- * latch.
+ * Takes `hasGivenUp` as an ALREADY-RESOLVED boolean, not a timestamp pair.
+ * The caller previously stored this function's ENTIRE return value in
+ * `useState` — including the `!enabled -> true` branch — so a
+ * disabled->enabled transition (or a session switch) could read a stale
+ * `true` for one committed, painted frame, and a live `runtimeError` in that
+ * window rendered 'error' before a single real `/start` request had fired.
+ * `enabled`, `isFetching`, `data`, and `error` are cheap to read fresh on
+ * every call, so they no longer go through state at all — only `hasGivenUp`
+ * (via {@link hasStartGivenUp}) inherently needs wall-clock tracking, so it
+ * is the only piece the caller is allowed to latch.
  *
- * ORDER IS LOAD-BEARING: `hasGivenUp` is tested BEFORE `isFetching` (round 4,
- * JAY-427 review, Important). Giving up does not stop the poll —
- * `shouldPollSessionStart(null, null)` keeps returning 1500ms for as long as
- * the outage lasts — so with the fetch check first, this answered false
+ * ORDER IS LOAD-BEARING: `hasGivenUp` must be tested BEFORE `isFetching`.
+ * Giving up does not stop the poll — `shouldPollSessionStart(null, null)`
+ * keeps returning 1500ms for as long as the outage lasts — so with the
+ * fetch check first, this answered false
  * mid-poll and true between polls, forever. `phase` flipped 'starting' <->
  * 'error' with it and the runtime error card blinked on and off once per poll
  * cycle. Give-up is a sticky verdict (the caller's effect clears it only when
@@ -738,10 +736,9 @@ export function useSession(
   }, [projectId, sessionId]);
   useEffect(() => {
     // `Date.now()` lives here, not in the render body: reading it during
-    // render made this impure (round 2, JAY-427 review, Minor 2) and a
-    // StrictMode/concurrent-render hazard. One read feeds both the arm
-    // decision and the give-up decision, computed together so they never
-    // disagree about "now".
+    // render made this impure and a StrictMode/concurrent-render hazard. One
+    // read feeds both the arm decision and the give-up decision, computed
+    // together so they never disagree about "now".
     const nowMs = Date.now();
     startInconclusiveSinceRef.current = nextInconclusiveSince({
       current: startInconclusiveSinceRef.current,
@@ -757,18 +754,18 @@ export function useSession(
   }, [startEnabled, start.data, start.error, start.isFetching]);
   // `startEnabled`/`start.isFetching`/`start.data`/`start.error` are read
   // FRESH here, on every render — never stored. Only `startGivenUp` comes
-  // from state. Round 3, JAY-427 review, Important defect: the PREVIOUS
-  // version stored `computeStartSettled`'s entire return value (including the
-  // `!enabled -> true` branch) via `useState`, so on the commit where
-  // `startEnabled` flipped from `false` to `true` (a billing unblock, or auth
-  // finishing load), this read the STALE stored `true` for one committed,
-  // painted frame — and with a live `runtimeError` already present, that
-  // frame rendered `phase === 'error'`, the exact premature panic card this
-  // task exists to remove. Reading `enabled`/`isFetching`/`data`/`error`
-  // fresh at render makes that structurally impossible: nothing here can ever
-  // be one render behind its own inputs except the one value that inherently
-  // needs wall-clock tracking (`startGivenUp`), and that value is now
-  // session-reset above too.
+  // from state. The PREVIOUS version stored `computeStartSettled`'s entire
+  // return value (including the `!enabled -> true` branch) via `useState`,
+  // so on the commit where `startEnabled` flipped from `false` to `true` (a
+  // billing unblock, or auth finishing load), this read the STALE stored
+  // `true` for one committed, painted frame — and with a live `runtimeError`
+  // already present, that frame rendered `phase === 'error'`, the exact
+  // premature panic card this task exists to remove. Reading
+  // `enabled`/`isFetching`/`data`/`error` fresh at render makes that
+  // structurally impossible: nothing here can ever be one render behind its
+  // own inputs except the one value that inherently needs wall-clock
+  // tracking (`startGivenUp`), and that value is now session-reset above
+  // too.
   const startSettled = computeStartSettled({
     enabled: startEnabled,
     isFetching: start.isFetching,

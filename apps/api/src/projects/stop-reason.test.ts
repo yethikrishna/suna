@@ -1,4 +1,4 @@
-// The stop vocabulary is CLOSED. The classification query in JAY-424 groups on
+// The stop vocabulary is CLOSED. A downstream classification query groups on
 // it, and a free-text reason makes that query silently incomplete rather than
 // loudly wrong.
 import { describe, expect, test } from 'bun:test';

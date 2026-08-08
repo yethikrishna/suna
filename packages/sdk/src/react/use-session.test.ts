@@ -395,14 +395,13 @@ describe('SESSION_START_POLL_OPTIONS', () => {
   });
 });
 
-// Fix round 1 on JAY-427, Important defect: `startProjectSession` swallows
-// every 5xx/408/429/transport failure into a `null` result instead of
-// throwing, so on a persistent /start outage `shouldPollSessionStart(null,
-// null)` polls forever with no error to observe — `startSettled` could never
-// become true, pinning `phase` at 'starting' forever when a runtime error
-// coexists with it. These tests pin the give-up bound that makes "settled"
-// reachable in bounded time, and the wiring (`computeStartSettled`) that the
-// hook's `phase` line actually calls.
+// `startProjectSession` swallows every 5xx/408/429/transport failure into a
+// `null` result instead of throwing, so on a persistent /start outage
+// `shouldPollSessionStart(null, null)` polls forever with no error to
+// observe — `startSettled` could never become true, pinning `phase` at
+// 'starting' forever when a runtime error coexists with it. These tests pin
+// the give-up bound that makes "settled" reachable in bounded time, and the
+// wiring (`computeStartSettled`) that the hook's `phase` line actually calls.
 describe('hasStartGivenUp', () => {
   test('never gives up while /start has SOMETHING to say — data or error', () => {
     const longAgo = Date.now() - START_INCONCLUSIVE_GIVE_UP_MS * 10;
@@ -425,8 +424,8 @@ describe('hasStartGivenUp', () => {
   });
 });
 
-// Round 3 on JAY-427: `computeStartSettled` no longer takes a raw timestamp
-// pair (`inconclusiveSinceMs`/`nowMs`). It takes `hasGivenUp` — an
+// `computeStartSettled` no longer takes a raw timestamp pair
+// (`inconclusiveSinceMs`/`nowMs`). It takes `hasGivenUp` — an
 // ALREADY-RESOLVED boolean the caller computed once, in its own effect, from
 // `hasStartGivenUp` (see that describe block above for the time-crossing
 // behavior itself). Every other input here (`enabled`, `isFetching`, `data`,
@@ -436,7 +435,7 @@ describe('hasStartGivenUp', () => {
 // inherently needs wall-clock tracking. See the `describe` block below this
 // one for the regression this was actually fixing.
 describe('computeStartSettled', () => {
-  test('a disabled query settles immediately — it was never "still working" (Minor 1, round 1)', () => {
+  test('a disabled query settles immediately — it was never "still working"', () => {
     expect(
       computeStartSettled({
         enabled: false,
@@ -460,13 +459,13 @@ describe('computeStartSettled', () => {
     ).toBe(false);
   });
 
-  // Round 4, JAY-427 review, Important defect: `hasGivenUp` was tested AFTER
-  // `isFetching`, and /start keeps polling after give-up —
-  // `shouldPollSessionStart(null, null)` returns 1500ms forever. So past the
-  // 45s budget this function answered false while a poll was in flight and
-  // true in the gap between polls, `phase` oscillated 'starting' <-> 'error',
-  // and the runtime error card blinked on and off once per poll cycle for the
-  // whole outage. `startGivenUp` is sticky by construction (the effect only
+  // `hasGivenUp` must be tested BEFORE `isFetching`. /start keeps polling
+  // after give-up — `shouldPollSessionStart(null, null)` returns 1500ms
+  // forever. So past the 45s budget this function answered false while a
+  // poll was in flight and true in the gap between polls, `phase` oscillated
+  // 'starting' <-> 'error', and the runtime error card blinked on and off
+  // once per poll cycle for the whole outage. `startGivenUp` is sticky by
+  // construction (the effect only
   // clears it when /start actually answers, or the session changes, or the
   // query is disabled), so give-up now short-circuits ABOVE the fetch check
   // and both frames of the cycle agree.
@@ -511,18 +510,19 @@ describe('computeStartSettled', () => {
     ).toBe(true);
   });
 
-  test('round 3, the Important defect: disabled always wins over a stale hasGivenUp=true carried from a prior enabled window', () => {
-    // Round 2 fixed the RAW TIMESTAMP leaking across a disabled period. Round
-    // 3 found the DERIVED BOOLEAN (`startSettled`, stored via `useState`) had
-    // the same hole one layer up: the effect stored the FULL settled
-    // decision, including the `!enabled -> true` branch, so a disabled->
-    // enabled transition could read a stale `true` for one committed,
-    // painted frame — with a live runtimeError in that window, `derivePhase`
-    // rendered 'error' before a single real /start request had fired. Moving
-    // `enabled` (and isFetching, and the terminal-stage check) to be
-    // ALWAYS-FRESH render-time inputs — never state — makes this
-    // structurally impossible: `enabled: false` here wins regardless of what
-    // `hasGivenUp` claims, because `hasGivenUp` is never even consulted.
+  test('disabled always wins over a stale hasGivenUp=true carried from a prior enabled window', () => {
+    // An earlier fix addressed the RAW TIMESTAMP leaking across a disabled
+    // period. This test pins a second instance of the same hole one layer
+    // up, in the DERIVED BOOLEAN (`startSettled`, stored via `useState`): the
+    // effect stored the FULL settled decision, including the `!enabled ->
+    // true` branch, so a disabled -> enabled transition could read a stale
+    // `true` for one committed, painted frame — with a live runtimeError in
+    // that window, `derivePhase` rendered 'error' before a single real
+    // /start request had fired. Moving `enabled` (and isFetching, and the
+    // terminal-stage check) to be ALWAYS-FRESH render-time inputs — never
+    // state — makes this structurally impossible: `enabled: false` here
+    // wins regardless of what `hasGivenUp` claims, because `hasGivenUp` is
+    // never even consulted.
     expect(
       computeStartSettled({
         enabled: false,
@@ -583,17 +583,17 @@ describe('computeStartSettled', () => {
   });
 });
 
-// Fix round 2 on JAY-427, Important defect: the effect that stamped
-// `startInconclusiveSinceRef` had no `enabled` guard, so it armed the clock
-// even while the /start query was disabled (auth load, billing-blocked). The
-// stale stamp then carried into the enabled window, and the first
-// non-fetching null tick after enabling could already read as "given up" —
-// reintroducing the exact premature error card commit f49e9e38c2 removed.
-// `nextInconclusiveSince` is the extracted, unit-testable arm/reset decision
-// the effect now just calls; these tests pin the invariant directly, since
-// the previous round's composed `computeStartSettled` + `derivePhase` test
-// could not see this bug (it hand-fed `inconclusiveSinceMs` and never
-// exercised how that value gets PRODUCED).
+// The effect that stamped `startInconclusiveSinceRef` had no `enabled`
+// guard, so it armed the clock even while the /start query was disabled
+// (auth load, billing-blocked). The stale stamp then carried into the
+// enabled window, and the first non-fetching null tick after enabling could
+// already read as "given up" — reintroducing the exact premature error card
+// commit f49e9e38c2 removed. `nextInconclusiveSince` is the extracted,
+// unit-testable arm/reset decision the effect now just calls; these tests
+// pin the invariant directly, since the earlier composed
+// `computeStartSettled` + `derivePhase` test could not see this bug (it
+// hand-fed `inconclusiveSinceMs` and never exercised how that value gets
+// PRODUCED).
 describe('nextInconclusiveSince', () => {
   test('stays null while disabled, even with a fetch settled and nothing to show', () => {
     expect(
@@ -608,7 +608,7 @@ describe('nextInconclusiveSince', () => {
     ).toBeNull();
   });
 
-  test('the Important defect: disabling clears an existing stamp — it must not survive into the enabled window', () => {
+  test('disabling clears an existing stamp — it must not survive into the enabled window', () => {
     const staleStamp = Date.now() - START_INCONCLUSIVE_GIVE_UP_MS * 10;
     expect(
       nextInconclusiveSince({
@@ -705,7 +705,7 @@ describe('nextInconclusiveSince', () => {
     ).toBeNull();
   });
 
-  test('round 2 regression: sitting disabled past the budget, then enabling, does not pre-consume the grace window', () => {
+  test('sitting disabled past the budget, then enabling, does not pre-consume the grace window', () => {
     let current: number | null = null;
     const disabledStart = Date.now() - START_INCONCLUSIVE_GIVE_UP_MS * 2;
     // Simulate ticks while disabled (e.g. auth still loading, or

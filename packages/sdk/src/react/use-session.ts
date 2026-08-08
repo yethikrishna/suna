@@ -63,6 +63,7 @@ import { useQuestionSelfHeal } from './use-question-self-heal';
 import { useRuntimePhase } from './use-runtime-phase';
 import { clearStartStash, readStartStash } from './session-start-stash';
 import { useSessionPicks } from './use-session-picks';
+import { derivePhase } from './use-session-phase';
 import { useSessionSync } from './use-session-sync';
 import { reconcileHydratedSessionTitle } from './session-title-sync';
 import { useVisibleAgents } from './use-visible-agents';
@@ -851,8 +852,17 @@ export function useSession(
   };
 
   const runtimeSessionError = canonicalSession.error;
-  const phase: SessionPhase =
-    terminal || startError || runtimeSessionError ? 'error' : switched ? 'ready' : 'starting';
+  const phase: SessionPhase = derivePhase({
+    terminal,
+    startError,
+    runtimeError: runtimeSessionError,
+    // `start` is the /start useQuery (:557); `startError` is already derived
+    // above from `start.error`. `shouldPollSessionStart` (:119) is the EXISTING
+    // definition of "the poll is still working" — reuse it rather than inventing
+    // a second answer to the same question that can drift from the poll's own.
+    startSettled: !start.isFetching && !shouldPollSessionStart(start.error, start.data),
+    switched,
+  });
 
   // 10. Replay the new-session hand-off once ready + thread empty (exactly once).
   // Force-disabled when `chatEngine` is off: this reads `sync.isLoading`/

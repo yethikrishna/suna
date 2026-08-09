@@ -12,6 +12,36 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-09 — session `computers-connector-grouping` claim
+
+No **Now** task claimed. This is the user-directed Computers connector profile refactor.
+
+Claimed SDK scope:
+
+- Add an optional machine-id allowlist to the existing connector draft and config types.
+- Preserve every existing published name and wire route.
+- Add failing REST client coverage before implementation.
+- Run SDK typecheck, the complete SDK suite, and packed-install smoke.
+
+The required `tdd` skill is unavailable in this session. This work uses the
+required RED, GREEN, and REFACTOR sequence directly.
+
+RED:
+
+- Connector draft and config types rejected `tunnel_ids` / `tunnelIds` before implementation.
+
+GREEN:
+
+- Focused connector REST client suite: `38 pass`, `0 fail`.
+- `pnpm --filter @kortix/sdk test`: `1807 pass`, `2 skip`, `0 fail`, `7001 expect()` calls.
+- `pnpm --filter @kortix/sdk typecheck`: exit `0` for the package and examples.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed-install import and construction passed.
+- No published export name or package version changed.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
 ### 2026-08-09 — session `release-codeql-connector-url` claim
 
 No **Now** task claimed. This is a narrow production-release security gate fix.

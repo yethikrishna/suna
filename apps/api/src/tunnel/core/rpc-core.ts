@@ -9,8 +9,7 @@
  * Connector maps it onto a CallResult.
  *
  * The computer helpers (`listAccountComputers`, `executeComputerCall`) sit here
- * too. New connectors bind one tunnel id. The selector path remains only for
- * durable sessions bound to the retired aggregate connector.
+ * too. A connector profile supplies an allowlist of account-owned tunnel ids.
  */
 import { tunnelConnections, tunnelPermissionRequests } from '@kortix/db';
 import {
@@ -19,7 +18,7 @@ import {
   TunnelMethods,
   TunnelRelayError,
 } from 'agent-tunnel';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../../shared/db';
 import { notifyPermissionRequest } from '../routes/permission-requests';
 import { buildRequestSummary, finishAuditLog, startAuditLog } from './audit-logger';
@@ -231,7 +230,7 @@ function estimateBytes(result: unknown): number {
 
 // ─── Computer connector helpers ───────────────────────────────────────────────
 
-/** Legacy aggregate machine-list shape. New connector profiles do not expose it. */
+/** Profile-scoped machine-list shape exposed by `list_computers`. */
 export interface ComputerMachine {
   id: string;
   name: string;
@@ -240,12 +239,24 @@ export interface ComputerMachine {
   platform: string | null;
 }
 
-/** Legacy aggregate helper: list account machines with DB-backed online status. */
-export async function listAccountComputers(accountId: string): Promise<ComputerMachine[]> {
+/** List assigned account machines with DB-backed online status. Null is legacy all-account access. */
+export async function listAccountComputers(
+  accountId: string,
+  allowedTunnelIds: readonly string[] | null = null,
+): Promise<ComputerMachine[]> {
+  const allowed = allowedTunnelIds === null ? null : [...new Set(allowedTunnelIds)];
+  if (allowed?.length === 0) return [];
   const rows = await db
     .select()
     .from(tunnelConnections)
-    .where(eq(tunnelConnections.accountId, accountId));
+    .where(
+      allowed
+        ? and(
+            eq(tunnelConnections.accountId, accountId),
+            inArray(tunnelConnections.tunnelId, allowed),
+          )
+        : eq(tunnelConnections.accountId, accountId),
+    );
   return rows.map((r) => ({
     id: r.tunnelId,
     name: r.name,
@@ -258,17 +269,15 @@ export async function listAccountComputers(accountId: string): Promise<ComputerM
 
 type ResolveResult = { ok: true; tunnelId: string } | { ok: false; message: string };
 
-/** Legacy aggregate helper: resolve a selector to an account-owned tunnel id. */
+/** Resolve a selector inside one connector profile's already-filtered machine set. */
 async function resolveComputerTunnel(
-  accountId: string,
+  machines: ComputerMachine[],
   selector: string | null,
 ): Promise<ResolveResult> {
-  const machines = await listAccountComputers(accountId);
   if (machines.length === 0) {
     return {
       ok: false,
-      message:
-        'No machines are connected to this account. Connect one in Computers (or run `kortix tunnel`).',
+      message: 'No machines are assigned to this Computers connector profile.',
     };
   }
   if (selector) {
@@ -284,7 +293,7 @@ async function resolveComputerTunnel(
     }
     return {
       ok: false,
-      message: `No machine matches "${selector}". Available: ${machines.map((m) => m.name).join(', ')}.`,
+      message: `Machine "${selector}" is not assigned to this connector profile. Available: ${machines.map((m) => m.name).join(', ')}.`,
     };
   }
   const online = machines.filter((m) => m.online);
@@ -314,57 +323,30 @@ export type ComputerCallOutcome =
   | { ok: false; kind: 'error'; message: string };
 
 /**
- * Execute one machine-bound `computer` connector action. The account lookup
- * verifies the materialized tunnel id before relay. A deleted or cross-account
- * tunnel fails closed.
+ * Execute one Computers connector action. Listing and selection use the same
+ * server-side allowlist. The DB query also verifies account ownership, so a
+ * stale, deleted, unassigned, or cross-account tunnel fails closed.
  */
 export async function executeComputerCall(input: {
   accountId: string;
   projectId?: string | null;
   sessionId?: string | null;
   actorUserId?: string | null;
-  tunnelId: string | null;
-  /** Compatibility only for the retired aggregate connector. */
-  selector?: string | null;
+  /** Null is accepted only for legacy aggregate rows and means all account machines. */
+  allowedTunnelIds: string[] | null;
+  selector: string | null;
   method: string;
   args: Record<string, unknown>;
 }): Promise<ComputerCallOutcome> {
-  let tunnelId = input.tunnelId;
-  if (tunnelId) {
-    const [bound] = await db
-      .select({ tunnelId: tunnelConnections.tunnelId })
-      .from(tunnelConnections)
-      .where(
-        and(
-          eq(tunnelConnections.accountId, input.accountId),
-          eq(tunnelConnections.tunnelId, tunnelId),
-        ),
-      )
-      .limit(1);
-    if (!bound) {
-      return {
-        ok: false,
-        kind: 'no_machine',
-        message: 'This computer is no longer connected',
-      };
-    }
-    tunnelId = bound.tunnelId;
-  } else {
-    // Existing sessions can remain bound to the retired aggregate connector.
-    // Keep its selector path until those durable bindings age out.
-    if (input.method === 'list_computers') {
-      return {
-        ok: true,
-        data: { computers: await listAccountComputers(input.accountId) },
-      };
-    }
-    const resolved = await resolveComputerTunnel(input.accountId, input.selector ?? null);
-    if (!resolved.ok) return { ok: false, kind: 'no_machine', message: resolved.message };
-    tunnelId = resolved.tunnelId;
+  const machines = await listAccountComputers(input.accountId, input.allowedTunnelIds);
+  if (input.method === 'list_computers') {
+    return { ok: true, data: { computers: machines } };
   }
+  const resolved = await resolveComputerTunnel(machines, input.selector);
+  if (!resolved.ok) return { ok: false, kind: 'no_machine', message: resolved.message };
 
   const outcome = await executeTunnelRpc({
-    tunnelId,
+    tunnelId: resolved.tunnelId,
     accountId: input.accountId,
     projectId: input.projectId,
     sessionId: input.sessionId,

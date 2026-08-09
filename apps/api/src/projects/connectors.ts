@@ -83,9 +83,10 @@ export type ConnectorAuthorizationStrategy = (typeof CONNECTOR_AUTHORIZATION_STR
  *
  *  - `kortix_slack` → channel only (the Slack channel materializes under it; see
  *    connector/channels.ts SLACK_CHANNEL_CONNECTOR_SLUG).
- *  - `computer`     → computer only (retired aggregate compatibility slug).
- * Per-machine connector slugs are synthetic `computer-<tunnel-uuid>` values
- * and never pass through manifest parsing.
+ *  - `computer`     → computer only (default Computers profile slug).
+ * Additional Computers profile slugs are created through the connector API.
+ * They never pass through manifest parsing because machine ids are account
+ * control-plane identities, not repository configuration.
  * See KORTIX-206 + docs/specs/computer-connector.md. The pairs themselves are
  * canonically defined in `@kortix/manifest-schema` (imported above) — this
  * `export` just preserves this module's existing public surface, since
@@ -195,8 +196,10 @@ export interface ConnectorSpec {
   baseUrl: string | null;
   /** channel: chat platform (slack | …) — selects the fixed action catalog + API base. */
   platform: ChannelPlatform | null;
-  /** computer: immutable account-scoped tunnel bound to this synthetic profile. */
+  /** computer: legacy single-machine binding. */
   tunnelId?: string | null;
+  /** computer: account-scoped machine allowlist for this profile. */
+  tunnelIds?: string[] | null;
   /** openapi/postman/graphql/http: a URL or repo-relative file path. Optional for graphql. */
   spec: string | null;
   // ── shared ──
@@ -379,7 +382,7 @@ export function manifestHashForConnector(spec: ConnectorSpec): string {
     endpoint: spec.endpoint,
     baseUrl: spec.baseUrl,
     platform: spec.platform,
-    tunnelId: spec.tunnelId ?? null,
+    tunnelIds: spec.tunnelIds ?? (spec.tunnelId ? [spec.tunnelId] : null),
     spec: spec.spec,
     auth: spec.auth,
     authAuto: spec.authAuto ?? false,
@@ -594,11 +597,11 @@ function parseProviderFields(
   }
 
   if (provider === 'computer') {
-    // Synth-only: connecting a machine over the Agent Computer Tunnel auto-
-    // materializes a single `computer` connector. It can't be declared by hand.
+    // API-only: profiles select account-owned machines through the connector
+    // API. Tunnel ids must not enter repository configuration.
     return err(
       slug,
-      'provider="computer" is managed automatically when you connect a machine (Computers) — it cannot be declared in kortix.yaml',
+      'provider="computer" is managed through the connector API (Computers) — it cannot be declared in kortix.yaml',
       filename,
     );
   }

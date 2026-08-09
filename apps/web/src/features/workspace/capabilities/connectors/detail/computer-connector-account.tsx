@@ -1,64 +1,82 @@
 'use client';
 
-import type { AdminConnector } from '@kortix/sdk';
+import { createConnector, getConnectorConfig, type AdminConnector } from '@kortix/sdk';
 import { formatRelative } from '@kortix/shared';
 import { ArrowRightIcon, MonitorIcon } from '@phosphor-icons/react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { InlineMeta } from '@/components/ui/inline-meta';
+import { Checkbox } from '@/components/ui/checkbox';
+import { InfoBanner } from '@/components/ui/info-banner';
 import { Label } from '@/components/ui/label';
+import Loading from '@/components/ui/loading';
 import { Skeleton } from '@/components/ui/skeleton';
+import { errorToast, successToast } from '@/components/ui/toast';
 import { ErrorState } from '@/features/layout/section/error-state';
 import { useTunnelConnections } from '@/hooks/tunnel/use-tunnel';
 import { useTunnelRealtimeSync } from '@/hooks/tunnel/use-tunnel-realtime';
 import { cn } from '@/lib/utils';
 
-const COMPUTER_PROFILE_PREFIX = 'computer-';
+export function normalizeMachineSelection(values: readonly unknown[]): string[] {
+  return [
+    ...new Set(
+      values.filter((value): value is string => typeof value === 'string' && value.length > 0),
+    ),
+  ].sort();
+}
 
-/** The per-machine connector slug contains the immutable tunnel UUID. */
-export function computerTunnelId(slug: string): string | null {
-  if (!slug.startsWith(COMPUTER_PROFILE_PREFIX)) return null;
-  const tunnelId = slug.slice(COMPUTER_PROFILE_PREFIX.length);
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tunnelId)
-    ? tunnelId.toLowerCase()
-    : null;
+export function machineSelectionChanged(
+  current: readonly unknown[],
+  saved: readonly unknown[],
+): boolean {
+  return (
+    JSON.stringify(normalizeMachineSelection(current)) !==
+    JSON.stringify(normalizeMachineSelection(saved))
+  );
 }
 
 function machineValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-export function ComputerConnectorAccount({
-  projectId,
-  connector,
+export function ComputerMachineSelector({
+  selectedIds,
+  onSelectedIdsChange,
+  disabled = false,
+  visibleIds,
 }: {
-  projectId: string;
-  connector: AdminConnector;
+  selectedIds: readonly string[];
+  onSelectedIdsChange: (ids: string[]) => void;
+  disabled?: boolean;
+  /** Restrict read-only views to the profile's assigned set. */
+  visibleIds?: readonly string[];
 }) {
-  const tunnelId = computerTunnelId(connector.slug);
   const connectionsQuery = useTunnelConnections();
   useTunnelRealtimeSync();
+  const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const visible = useMemo(() => (visibleIds ? new Set(visibleIds) : null), [visibleIds]);
 
   if (connectionsQuery.isLoading) {
     return (
       <div className="space-y-2">
-        <Skeleton className="h-4 w-20 rounded-sm" />
-        <Skeleton className="h-32 rounded-md" />
+        {[0, 1, 2].map((index) => (
+          <Skeleton key={index} className="h-16 rounded-md" />
+        ))}
       </div>
     );
   }
-
   if (connectionsQuery.isError) {
     return (
       <ErrorState
         size="sm"
-        title="Couldn’t load this computer"
+        title="Couldn’t load computers"
         description={
           connectionsQuery.error instanceof Error
             ? connectionsQuery.error.message
-            : 'The computer connection could not be read.'
+            : 'The paired computer fleet could not be read.'
         }
         action={
           <Button variant="outline" size="sm" onClick={() => void connectionsQuery.refetch()}>
@@ -68,64 +86,182 @@ export function ComputerConnectorAccount({
       />
     );
   }
+  const machines = (connectionsQuery.data ?? []).filter(
+    (connection) => visible === null || visible.has(connection.tunnelId),
+  );
+  if (machines.length === 0) {
+    return (
+      <InfoBanner
+        tone="neutral"
+        title={visible ? 'No assigned computers are available' : 'No paired computers'}
+      >
+        {visible
+          ? 'The assigned computers are no longer present in this account fleet.'
+          : 'Pair a computer from the Computers page before creating a connector profile.'}
+      </InfoBanner>
+    );
+  }
 
-  const connection = connectionsQuery.data?.find((item) => item.tunnelId === tunnelId);
-  if (!tunnelId || !connection) {
+  return (
+    <ul className="space-y-2">
+      {machines.map((connection) => {
+        const platform = machineValue(connection.machineInfo.platform);
+        const arch = machineValue(connection.machineInfo.arch);
+        const lastSeen = connection.lastHeartbeatAt
+          ? (formatRelative(connection.lastHeartbeatAt, { maxRelativeDays: null }) ?? 'Unknown')
+          : 'Never';
+        return (
+          <li key={connection.tunnelId} className="bg-popover rounded-md border px-1 py-1">
+            <Checkbox
+              checked={selected.has(connection.tunnelId)}
+              disabled={disabled}
+              onCheckedChange={(checked) => {
+                const next = new Set(selected);
+                if (checked === true) next.add(connection.tunnelId);
+                else next.delete(connection.tunnelId);
+                onSelectedIdsChange([...next]);
+              }}
+              className="min-h-14 py-2"
+              label={
+                <span className="flex min-w-0 items-center gap-3">
+                  <span
+                    className={cn(
+                      'flex size-9 shrink-0 items-center justify-center rounded-sm',
+                      connection.isLive
+                        ? 'bg-kortix-green/15 text-kortix-green'
+                        : 'bg-primary/5 text-muted-foreground',
+                    )}
+                  >
+                    <MonitorIcon className="size-5" weight="fill" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-foreground truncate text-sm font-medium">
+                        {connection.name}
+                      </span>
+                      <Badge variant={connection.isLive ? 'success' : 'outline'} size="xs">
+                        {connection.isLive ? 'Online' : 'Offline'}
+                      </Badge>
+                    </span>
+                    <span className="text-muted-foreground mt-0.5 block text-xs">
+                      {[platform, arch].filter(Boolean).join(' ') || 'Unknown platform'} &bull; Last
+                      seen {lastSeen}
+                    </span>
+                  </span>
+                </span>
+              }
+            />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+export function ComputerConnectorAccount({
+  projectId,
+  connector,
+  canWrite,
+  onChanged,
+}: {
+  projectId: string;
+  connector: AdminConnector;
+  canWrite: boolean;
+  onChanged: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const configQuery = useQuery({
+    queryKey: ['connector-config', projectId, connector.slug],
+    queryFn: () => getConnectorConfig(projectId, connector.slug),
+  });
+  const savedIds = configQuery.data?.tunnelIds ?? [];
+  const [selection, setSelection] = useState<string[] | null>(null);
+  const selectedIds = selection ?? savedIds;
+
+  const save = useMutation({
+    mutationFn: () =>
+      createConnector(projectId, {
+        slug: connector.slug,
+        name: connector.name,
+        provider: 'computer',
+        tunnel_ids: normalizeMachineSelection(selectedIds),
+      }),
+    onSuccess: () => {
+      successToast('Computer assignments saved');
+      setSelection(null);
+      void queryClient.invalidateQueries({
+        queryKey: ['connector-config', projectId, connector.slug],
+      });
+      onChanged();
+    },
+    onError: (error: Error) => errorToast(error.message || 'Failed to save computer assignments'),
+  });
+
+  if (configQuery.isLoading) {
+    return <Skeleton className="h-40 rounded-md" />;
+  }
+  if (configQuery.isError) {
     return (
       <ErrorState
         size="sm"
-        title="Computer disconnected"
-        description="This connector profile no longer has a connected computer. Refresh the connector list to remove it."
+        title="Couldn’t load computer assignments"
+        description={(configQuery.error as Error).message}
+        action={
+          <Button variant="outline" size="sm" onClick={() => void configQuery.refetch()}>
+            Retry
+          </Button>
+        }
       />
     );
   }
 
-  const hostname = machineValue(connection.machineInfo.hostname);
-  const platform = machineValue(connection.machineInfo.platform);
-  const arch = machineValue(connection.machineInfo.arch);
-  const lastSeen = connection.lastHeartbeatAt
-    ? (formatRelative(connection.lastHeartbeatAt, { maxRelativeDays: null }) ?? 'Unknown')
-    : 'Never';
-
+  const dirty = machineSelectionChanged(selectedIds, savedIds);
   return (
-    <section className="space-y-2">
-      <Label>Computer</Label>
-      <div className="bg-popover overflow-hidden rounded-md border">
-        <div className="flex flex-col gap-4 px-4 py-5 sm:flex-row sm:items-start">
-          <span
-            className={cn(
-              'flex size-9 shrink-0 items-center justify-center rounded-sm',
-              connection.isLive
-                ? 'bg-kortix-green/15 text-kortix-green'
-                : 'bg-primary/5 text-muted-foreground',
-            )}
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-1">
+          <Label>Assigned computers</Label>
+          <p className="text-muted-foreground text-xs text-pretty">
+            Agents using this connector can list and target only these computers.
+          </p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="shrink-0 gap-1.5">
+          <Link href={`/projects/${projectId}/customize/computers`}>
+            Manage fleet
+            <ArrowRightIcon className="size-3.5 shrink-0" />
+          </Link>
+        </Button>
+      </div>
+
+      <ComputerMachineSelector
+        selectedIds={selectedIds}
+        onSelectedIdsChange={setSelection}
+        disabled={!canWrite || save.isPending}
+        visibleIds={canWrite ? undefined : savedIds}
+      />
+
+      {canWrite ? (
+        <div className="border-border/60 flex justify-end gap-2 border-t pt-4">
+          {dirty ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={save.isPending}
+              onClick={() => setSelection(null)}
+            >
+              Reset
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            disabled={!dirty || selectedIds.length === 0 || save.isPending}
+            onClick={() => save.mutate()}
           >
-            <MonitorIcon className="size-5" weight="fill" />
-          </span>
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-foreground truncate text-sm font-medium">{connection.name}</p>
-              <Badge variant={connection.isLive ? 'success' : 'outline'} size="sm">
-                {connection.isLive ? 'Online' : 'Offline'}
-              </Badge>
-            </div>
-            <InlineMeta className="flex-wrap">
-              {hostname}
-              {[platform, arch].filter(Boolean).join(' ') || null}
-              {`Last seen ${lastSeen}`}
-            </InlineMeta>
-            <p className="text-muted-foreground font-mono text-xs break-all">
-              {connection.tunnelId}
-            </p>
-          </div>
-          <Button asChild variant="outline" size="sm" className="shrink-0 gap-1.5">
-            <Link href={`/projects/${projectId}/customize/computers`}>
-              Manage computer
-              <ArrowRightIcon className="size-3.5 shrink-0" />
-            </Link>
+            {save.isPending ? <Loading className="size-4 shrink-0" /> : null}
+            Save assignments
           </Button>
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }

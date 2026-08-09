@@ -64,7 +64,8 @@ export function connectorConfig(
         // through the shared tunnel RPC core, not executeCall. Carry explicit
         // `none` auth so authOf() resolves hasAuth=false.
         return {
-          tunnel_id: spec.tunnelId ?? null,
+          tunnel_ids: spec.tunnelIds ?? (spec.tunnelId ? [spec.tunnelId] : []),
+          computer_profile: true,
           auth: { type: 'none', in: 'header', name: null, prefix: null },
         };
       default:

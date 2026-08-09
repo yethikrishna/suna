@@ -1,4 +1,4 @@
-# Computer connector profiles
+# Computers connector profiles
 
 **Status:** Implemented specification
 
@@ -6,130 +6,127 @@
 
 ## Goal
 
-Represent each connected machine as one standalone Connector profile.
+Treat Computers as one regular connector provider. A connector profile selects
+one or more account-owned machines. Connector grants, tool policies, audit, and
+session exposure apply to the profile.
 
-The profile is the machine selector. Connector grants and tool policies can
-therefore allow one machine and block another. Tool calls never receive an
-account-wide machine selector.
-
-The dedicated Computers page remains the account-level lifecycle surface. It
-pairs machines, shows online state, and manages tunnel capability grants.
+The Computers page remains the account fleet surface. It pairs machines, shows
+online state, and manages tunnel capability permissions. Pairing does not grant
+any project access.
 
 ## Product contract
 
-- One heartbeat-bearing tunnel creates one `computer` connector in each project
-  owned by the same account.
-- The connector name is the tunnel connection name.
-- The connector slug is `computer-<full-tunnel-uuid>`.
-- The connector config stores the immutable `tunnel_id`.
-- The connector catalog contains the machine operations only.
-- The catalog does not contain `list_computers`.
-- Tool input schemas do not contain a `computer` field.
-- The Connectors page shows each machine as a normal connector card.
-- Each machine profile has an Accounts tab that identifies its bound machine.
-- Each machine profile has an independent Tools policy tab.
-- The Computers page remains the fleet-management page.
+- Computers appears in the normal connector catalog.
+- A user creates a connector profile and selects one or more paired machines.
+- One machine can belong to multiple connector profiles.
+- A project can contain multiple profiles with different or overlapping sets.
+- The connector config stores selected machine ids in `tunnel_ids`.
+- Every profile exposes `list_computers`.
+- `list_computers` returns only machines assigned to that profile.
+- Every machine action accepts an optional `computer` name or id selector.
+- The selector can resolve only inside the profile's assigned set.
+- A selector is optional when exactly one assigned machine is online.
+- Each profile has normal Accounts, Tools, and Settings tabs.
+- The Accounts tab edits the profile's assigned machine set.
+- The Tools tab edits the profile's independent tool policy.
+- The Settings tab edits normal connector grants and settings.
 - Computer operations appear under Connectors in the account audit log.
 
-## Why the connector is per machine
+## Identity and storage
 
-The old aggregate design created one `computer` connector that fronted every
-machine in the account. Each tool accepted a machine name or id. That design
-created three security problems:
-
-1. A connector grant implicitly granted discovery of every machine.
-2. One connector policy applied to every machine.
-3. A mutable name or caller-supplied id selected the execution target.
-
-The per-machine design makes the connector identity the authorization target.
-The gateway reads the tunnel id from server-side connector config. The caller
-cannot redirect a call to a different machine.
-
-## Identity and materialization
-
-`synthesizeComputerConnectors(projectId, declared)` queries the project's
-account for `tunnel_connections` rows with `last_heartbeat_at IS NOT NULL`.
-It emits one synthetic `ConnectorSpec` per row.
-
-The synthetic spec has these fixed values:
+Computers profiles are project-scoped connector rows with these fixed values:
 
 ```text
-slug                   computer-<full-tunnel-uuid>
-name                   <tunnel connection name>
 provider               computer
 credential_mode        shared
 authorization_strategy project
 auth.type               none
-tunnel_id               <full-tunnel-uuid>
+config.computer_profile true
+config.tunnel_ids       [<tunnel uuid>, ...]
 ```
 
-The full UUID prevents collisions. The tunnel id does not change when the user
-renames the machine. The rename updates only the connector display name.
+The user chooses the connector name and slug. The first suggested slug is
+`computers`. Additional profiles use another available slug. Machine ids are
+stable tunnel UUIDs. Renaming a paired machine does not change a profile.
 
-A pairing row without a heartbeat does not create a connector. A machine that
-connected once remains materialized while offline. Deleting the tunnel removes
-its connector unless a durable session binding still references the row. A
-referenced row becomes disabled until that binding ages out.
+Profiles do not live in `kortix.yaml`. Tunnel ids are account control-plane
+identities. The normal connector API creates, updates, renames, and deletes the
+DB-backed profiles.
+
+The API validates every selected machine:
+
+1. The profile contains between 1 and 100 unique UUIDs.
+2. Every UUID belongs to the project's account.
+3. Every selected machine completed at least one tunnel connection.
+
+An empty set fails closed. Pairing a machine creates only a fleet record. It
+does not create a connector profile or grant access to a project.
 
 ## Catalog
 
-Every machine profile receives the same native catalog from
+Every Computers profile receives the native catalog from
 `apps/api/src/connectors/computers.ts`:
 
+- `list_computers`
 - `fs.read`, `fs.write`, `fs.list`, `fs.stat`, `fs.delete`
 - `shell.exec`
 - curated `desktop.cua.*` operations
 - `desktop.cua.call` for the computer-use long tail
 
-Each action uses `{ kind: 'tunnel', method }`. Its input schema contains only
-the operation inputs. The connector slug selects the machine.
+Each machine action uses `{ kind: 'tunnel', method }`. The action schema includes
+the optional `computer` selector plus the operation inputs. `list_computers` has
+no selector because it lists the profile's complete allowed set.
 
-Example:
+Examples:
 
 ```bash
-kortix connectors call computer-11111111-1111-4111-8111-111111111111 \
-  fs.read '{"path":"/etc/hosts"}'
+kortix connectors call studio-computers.list_computers '{}'
+
+kortix connectors call studio-computers.fs.read \
+  '{"computer":"MacBook-Pro-9.local","path":"/etc/hosts"}'
 ```
 
 ## Execution
 
-The gateway resolves the materialized connector and passes its `tunnel_id` to
-`executeComputerCall`.
+The gateway loads `config.tunnel_ids` from the materialized connector. It passes
+that server-side allowlist and the optional selector to `executeComputerCall`.
 
 ```text
 connector call
   -> connector grant
   -> connector tool policy
-  -> bound tunnel ownership check
+  -> profile machine allowlist
+  -> account ownership check
   -> tunnel capability and scope check
   -> WebSocket relay
   -> tunnel audit and connector audit
 ```
 
-`executeComputerCall` verifies both `account_id` and `tunnel_id` against
-`tunnel_connections` before relay. A deleted tunnel or a tunnel owned by a
-different account returns `no_machine`. The gateway never accepts a selector
-for a per-machine connector.
+`listAccountComputers` applies the profile allowlist and `account_id` in the same
+database query. `list_computers` returns that filtered result. Other actions
+resolve their selector only against that result. An unassigned, deleted, or
+cross-account machine returns `no_machine` before tunnel permission evaluation.
 
-The direct `POST /v1/tunnel/rpc/:tunnelId` route and Connector execution share
-`executeTunnelRpc`. This keeps rate limits, tunnel permissions, relay errors,
-and tunnel audit behavior identical.
+The direct `POST /v1/tunnel/rpc/:tunnelId` route and connector execution share
+`executeTunnelRpc`. Rate limits, tunnel permissions, relay errors, and tunnel
+audit behavior stay identical.
 
 ## Permission model
 
 Two permission layers remain intentional:
 
-1. Connector grants and connector tool policies decide which project members,
-   agents, and sessions can use this machine profile and which tools can run.
+1. Connector grants and connector tool policies decide who can use the profile
+   and which tools can run.
 2. Tunnel permissions decide which filesystem paths, shell commands, and
-   desktop features the machine exposes.
+   desktop features each selected machine exposes.
 
-Both layers are per machine because both resolve through the bound tunnel id.
+The connector profile authorizes membership in a machine set. Tunnel
+permissions remain specific to each machine.
 
-## Lifecycle reconciliation
+## Fleet lifecycle
 
-`reconcileComputerConnectors(accountId)` synchronizes all projects for the
-account. These lifecycle events call it:
+The Computers page manages account-level tunnel records. These events reconcile
+the connector materializer without changing profile membership:
 
 - the first authenticated WebSocket connection;
 - tunnel rename or capability update;
@@ -137,12 +134,13 @@ account. These lifecycle events call it:
 - device approval as a repair path;
 - normal project connector synchronization.
 
-The first WebSocket connection writes `last_heartbeat_at` before reconciliation.
-The machine profile therefore appears only after a real agent connects.
+Deleting a paired machine removes it from the fleet. A stale profile reference
+then fails closed because account ownership resolution cannot find the machine.
+The user can update or delete that profile through the connector API.
 
 ## Audit model
 
-New central audit events use:
+Central audit events use:
 
 ```text
 source        connector
@@ -151,40 +149,35 @@ resource_type computer_tunnel
 resource_id   <tunnel-id>
 ```
 
-The account Audit page has one Connectors quick filter. The API includes legacy
-`computer.*` events when that filter is active. The UI does not expose a second
-Computer quick-filter category.
-
-The tunnel audit log remains the machine-level technical record. Connector
-calls also write the standard Connector call record.
+The account Audit page uses the regular Connectors filter. The UI does not
+expose a separate COMPUTER category. Historical `computer.*` events remain
+included by the connector audit reconciliation path.
 
 ## Compatibility and migration
 
-The retired aggregate connector used slug `computer`, exposed
-`list_computers`, and accepted `args.computer`.
+The original aggregate `computer` row can omit `tunnel_ids`. A null allowlist is
+accepted only for that compatibility row and means all account machines. This
+keeps durable session bindings operational while profiles migrate.
 
-Compatibility is limited to durable bindings that already reference that
-aggregate row:
+PR #6287 briefly created one `computer-<uuid>` profile per machine. The next
+connector sync folds those generated rows into one `computer` profile with a
+`tunnel_ids` array. Profiles marked `computer_profile: true` are explicit and
+remain independent.
 
-- gateway execution recognizes only the exact legacy slug `computer`;
-- legacy calls can still use `list_computers` and `args.computer`;
-- new per-machine catalogs never expose those inputs;
-- user-facing connector lists hide the aggregate row after at least one
-  per-machine profile exists;
-- historical `computer.*` audit events remain visible under Connectors.
-
-No database migration rewrites session bindings. Reconciliation creates the new
-profiles. The legacy row can age out without breaking an active durable session.
+Legacy `config.tunnel_id` values normalize to a one-element allowlist. New and
+updated profiles always store `config.tunnel_ids`.
 
 ## Verification requirements
 
-1. Two tunnels create two connector rows with different `tunnel_id` values.
-2. Neither catalog contains `list_computers` or a `computer` input field.
-3. A policy change on one profile does not change the other profile.
-4. A call through one profile reaches only its bound tunnel.
-5. A cross-account or deleted `tunnel_id` fails closed.
-6. A rename updates the connector name without changing its slug.
-7. A delete removes or disables only the deleted machine profile.
-8. A never-connected pairing row creates no profile.
-9. The Audit page groups new and legacy computer events under Connectors.
-10. The deployed web UI shows each machine as its own connector profile.
+1. One profile can contain two assigned machines.
+2. `list_computers` returns exactly those two machines.
+3. A call can target either assigned machine.
+4. An unassigned machine id fails closed.
+5. A cross-account machine id fails closed.
+6. Two profiles can contain overlapping machine sets.
+7. Policies and grants remain independent per profile.
+8. Updating assignments preserves the profile's policies and sensitive state.
+9. Pairing a machine does not create a connector profile.
+10. Audit actions use `connector.computer.*` under the Connectors category.
+11. The Accounts tab can create and update one-machine and multi-machine sets.
+12. The deployed UI shows Computers in the normal connector catalog.

@@ -341,6 +341,7 @@ export interface ConnectorRouterDeps {
     endpoint: string | null;
     baseUrl: string | null;
     spec: string | null;
+    tunnelIds?: string[];
     auth: {
       type:
         | 'none'

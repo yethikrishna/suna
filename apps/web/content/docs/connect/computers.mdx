@@ -28,20 +28,23 @@ permission request. You approve or deny each request on the Computers page.
 
 ## How the agent reaches a computer
 
-Connecting a machine creates one standalone
-[connector](/docs/connect/connectors) profile for that machine. Connecting two
-machines creates two profiles. Each profile has its own agent grants and tool
-policies, so a project can allow one machine without allowing the other.
+Pairing adds a machine to your account fleet. It does not grant a project access.
+Add **Computers** from the project's [connector](/docs/connect/connectors)
+catalog, then select one or more paired machines for that profile.
 
-The connector profile selects the machine. Tool inputs contain only the
-operation arguments, such as `{ "path": "/etc/hosts" }`. They do not accept a
-machine name or id. The connector slug includes the immutable tunnel id, for
-example `computer-11111111-1111-4111-8111-111111111111`.
+One profile can contain one machine or a group. You can create multiple profiles
+with different or overlapping groups. Each profile has independent agent grants
+and tool policies.
+
+The `list_computers` tool returns only machines assigned to the active profile.
+Other tools accept an optional `computer` name or id from that result. The
+selector is optional when exactly one assigned machine is online.
 
 ```bash
-kortix connectors call \
-  computer-11111111-1111-4111-8111-111111111111.fs.read \
-  '{"path":"/etc/hosts"}'
+kortix connectors call studio-computers.list_computers '{}'
+
+kortix connectors call studio-computers.fs.read \
+  '{"computer":"MacBook-Pro-9.local","path":"/etc/hosts"}'
 ```
 
 A computer has no credential. The live tunnel connection is the credential.
@@ -49,7 +52,6 @@ Per-machine filesystem, shell, and desktop access also lives in the tunnel
 permission layer. The connector policy and tunnel permission must both allow a
 call.
 
-You configure computers from the dashboard, not from `kortix.yaml`. Connecting
-a machine creates its connector profile automatically — you never add it by
-hand. Use the Computers page to pair, rename, and remove machines. Use each
-profile's Tools tab to configure its Connector policy.
+You configure Computers profiles from the dashboard, not from `kortix.yaml`.
+Use the Computers page to pair, rename, and remove machines. Use a profile's
+Accounts tab to select machines. Use its Tools tab to configure connector policy.

@@ -1,111 +1,58 @@
 /**
- * Real-DB integration coverage for per-machine computer connectors.
+ * Real-DB integration coverage for grouped Computers connector profiles.
  *
- * The suite proves the full control-plane contract below HTTP: heartbeat-based
- * synthesis, one materialized connector per tunnel, immutable routing,
- * independent policies, lifecycle reconciliation, and legacy aggregate
- * compatibility for durable session bindings.
+ * This suite proves explicit profile creation, one-to-many tunnel assignment,
+ * profile-scoped discovery and routing, independent policies, account-boundary
+ * enforcement, and the connector audit namespace.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   accounts,
   auditEvents,
   connectorActions,
-  connectorConnections,
+  connectorPolicies,
   connectors,
-  projectSessionConnectorBindings,
-  projectSessions,
   projects,
-  tunnelAuditLogs,
   tunnelConnections,
   tunnelPermissions,
 } from '@kortix/db';
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { synthesizeComputerConnectors } from '../connectors/computer-materialize';
-import { computerConnectorSlug } from '../connectors/computers';
 import { dbConnectorRouterDeps } from '../connectors/db-deps';
-import { reconcileComputerConnectors, syncProjectConnectors } from '../connectors/sync';
 import { db } from '../shared/db';
-import { executeComputerCall, listAccountComputers } from '../tunnel/core/rpc-core';
+import { executeComputerCall } from '../tunnel/core/rpc-core';
 
 let projectId = '';
 let accountId = '';
 let otherAccountId = '';
-let firstTunnelId = '';
-let secondTunnelId = '';
-let neverConnectedTunnelId = '';
+let studioTunnelId = '';
+let travelTunnelId = '';
+let unassignedTunnelId = '';
 let crossAccountTunnelId = '';
-let fixtureRoot = '';
-let previousGitCacheDir: string | undefined;
 
-const firstSlug = () => computerConnectorSlug(firstTunnelId);
-const secondSlug = () => computerConnectorSlug(secondTunnelId);
-
-function git(args: string[], cwd: string): void {
-  execFileSync('git', args, {
-    cwd,
-    stdio: 'pipe',
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-  });
-}
-
-async function sync(): Promise<void> {
-  const result = await syncProjectConnectors(projectId, accountId);
-  expect(result.errors).toEqual([]);
-}
+const GROUP_SLUG = 'team-computers';
+const TRAVEL_SLUG = 'travel-computer';
 
 beforeAll(async () => {
   await db.execute(sql`alter type kortix.connector_provider add value if not exists 'computer'`);
-  await db.execute(sql`
-    alter table kortix.tunnel_connections
-      add column if not exists relay_owner_id varchar(255),
-      add column if not exists relay_owner_instance varchar(255),
-      add column if not exists relay_owner_started_at timestamp with time zone,
-      add column if not exists relay_owner_heartbeat_at timestamp with time zone
-  `);
-
-  fixtureRoot = await mkdtemp(join(tmpdir(), 'kortix-computer-profiles-'));
-  previousGitCacheDir = process.env.KORTIX_GIT_CACHE_DIR;
-  process.env.KORTIX_GIT_CACHE_DIR = join(fixtureRoot, 'git-cache');
-  const repository = join(fixtureRoot, 'repository');
-  mkdirSync(repository, { recursive: true });
-  git(['init', '-b', 'main'], repository);
-  git(['config', 'user.email', 'computer-connector@kortix.test'], repository);
-  git(['config', 'user.name', 'Computer Connector Test'], repository);
-  writeFileSync(
-    join(repository, 'kortix.yaml'),
-    ['kortix_version: 2', 'project:', '  name: Computer Connector Test', ''].join('\n'),
-    'utf8',
-  );
-  git(['add', 'kortix.yaml'], repository);
-  git(['commit', '-m', 'initial'], repository);
-
   projectId = crypto.randomUUID();
   accountId = crypto.randomUUID();
   otherAccountId = crypto.randomUUID();
   await db.insert(accounts).values([
-    { accountId, name: `computer-profiles-${accountId}` },
+    { accountId, name: `computer-groups-${accountId}` },
     {
       accountId: otherAccountId,
-      name: `computer-profiles-other-${otherAccountId}`,
+      name: `computer-groups-other-${otherAccountId}`,
     },
   ]);
   await db.insert(projects).values({
     projectId,
     accountId,
-    name: `computer-profiles-${projectId}`,
-    repoUrl: repository,
-    defaultBranch: 'main',
-    manifestPath: 'kortix.yaml',
+    name: `computer-groups-${projectId}`,
+    repoUrl: 'https://example.invalid/computer-groups.git',
     metadata: {},
   });
-
   const inserted = await db
     .insert(tunnelConnections)
     .values([
@@ -135,9 +82,10 @@ beforeAll(async () => {
       },
       {
         accountId,
-        name: 'Never Connected',
-        capabilities: [],
+        name: 'Unassigned Mac',
+        capabilities: ['filesystem'],
         status: 'offline',
+        lastHeartbeatAt: new Date(),
       },
       {
         accountId: otherAccountId,
@@ -151,25 +99,27 @@ beforeAll(async () => {
       tunnelId: tunnelConnections.tunnelId,
       name: tunnelConnections.name,
     });
-
-  firstTunnelId = inserted.find((row) => row.name === 'Studio Mac')!.tunnelId;
-  secondTunnelId = inserted.find((row) => row.name === 'Travel Mac')!.tunnelId;
-  neverConnectedTunnelId = inserted.find((row) => row.name === 'Never Connected')!.tunnelId;
+  studioTunnelId = inserted.find((row) => row.name === 'Studio Mac')!.tunnelId;
+  travelTunnelId = inserted.find((row) => row.name === 'Travel Mac')!.tunnelId;
+  unassignedTunnelId = inserted.find((row) => row.name === 'Unassigned Mac')!.tunnelId;
   crossAccountTunnelId = inserted.find((row) => row.name === 'Other Account Mac')!.tunnelId;
+
+  const created = await dbConnectorRouterDeps.createConnector!(projectId, accountId, {
+    slug: GROUP_SLUG,
+    name: 'Team computers',
+    provider: 'computer',
+    tunnel_ids: [studioTunnelId, travelTunnelId],
+    create_only: true,
+  });
+  expect(created.ok).toBe(true);
 });
 
 afterAll(async () => {
-  if (projectId) {
-    await db
-      .delete(projectSessionConnectorBindings)
-      .where(eq(projectSessionConnectorBindings.projectId, projectId));
-    await db.delete(projectSessions).where(eq(projectSessions.projectId, projectId));
-    await db.delete(projects).where(eq(projects.projectId, projectId));
-  }
+  if (projectId) await db.delete(projects).where(eq(projects.projectId, projectId));
   const tunnelIds = [
-    firstTunnelId,
-    secondTunnelId,
-    neverConnectedTunnelId,
+    studioTunnelId,
+    travelTunnelId,
+    unassignedTunnelId,
     crossAccountTunnelId,
   ].filter(Boolean);
   if (tunnelIds.length) {
@@ -177,304 +127,190 @@ afterAll(async () => {
   }
   const accountIds = [accountId, otherAccountId].filter(Boolean);
   if (accountIds.length) await db.delete(accounts).where(inArray(accounts.accountId, accountIds));
-  if (previousGitCacheDir === undefined) delete process.env.KORTIX_GIT_CACHE_DIR;
-  else process.env.KORTIX_GIT_CACHE_DIR = previousGitCacheDir;
-  if (fixtureRoot) await rm(fixtureRoot, { recursive: true, force: true });
 });
 
-describe('per-machine computer connectors — real DB', () => {
-  test('synthesizes one stable connector profile per heartbeat-bearing tunnel', async () => {
-    const specs = await synthesizeComputerConnectors(projectId, []);
-    expect(specs).toHaveLength(2);
-    expect(specs.map((spec) => spec.slug).sort()).toEqual([firstSlug(), secondSlug()].sort());
-    expect(specs.map((spec) => spec.name).sort()).toEqual(['Studio Mac', 'Travel Mac']);
-    expect(specs.map((spec) => spec.tunnelId).sort()).toEqual(
-      [firstTunnelId, secondTunnelId].sort(),
-    );
-    expect(specs.every((spec) => spec.provider === 'computer' && spec.auth.type === 'none')).toBe(
-      true,
-    );
-    expect(specs.some((spec) => spec.tunnelId === neverConnectedTunnelId)).toBe(false);
-  });
-
-  test('materializes two regular connectors with independent bound configs and catalogs', async () => {
-    await sync();
-    const rows = await db
+describe('grouped Computers connector profiles — real DB', () => {
+  test('stores one regular connector with two assigned machine ids and the full catalog', async () => {
+    const [row] = await db
       .select()
       .from(connectors)
-      .where(and(eq(connectors.projectId, projectId), eq(connectors.providerType, 'computer')));
-    expect(rows).toHaveLength(2);
+      .where(and(eq(connectors.projectId, projectId), eq(connectors.slug, GROUP_SLUG)));
+    expect(row?.providerType).toBe('computer');
+    expect((row?.config as Record<string, unknown>).tunnel_ids).toEqual([
+      studioTunnelId,
+      travelTunnelId,
+    ]);
+    expect((row?.config as Record<string, unknown>).computer_profile).toBe(true);
 
-    for (const row of rows) {
-      const config = row.config as Record<string, unknown>;
-      const expectedTunnelId = row.slug === firstSlug() ? firstTunnelId : secondTunnelId;
-      expect(config.tunnel_id).toBe(expectedTunnelId);
+    const actions = await db
+      .select()
+      .from(connectorActions)
+      .where(eq(connectorActions.connectorId, row!.connectorId));
+    expect(actions.some((action) => action.path === 'list_computers')).toBe(true);
+    expect(actions.some((action) => action.path === 'fs.read')).toBe(true);
+    const read = actions.find((action) => action.path === 'fs.read')!;
+    expect(
+      (read.inputSchema as { properties?: Record<string, unknown> }).properties?.computer,
+    ).toBeDefined();
+  });
 
-      const actions = await db
-        .select()
-        .from(connectorActions)
-        .where(eq(connectorActions.connectorId, row.connectorId));
-      expect(actions.length).toBeGreaterThan(5);
-      expect(actions.some((action) => action.path === 'list_computers')).toBe(false);
-      expect(actions.some((action) => action.path === 'fs.read')).toBe(true);
-      for (const action of actions) {
-        expect((action.binding as { kind: string }).kind).toBe('tunnel');
-        const schema = action.inputSchema as {
-          properties?: Record<string, unknown>;
-        } | null;
-        expect(schema?.properties?.computer).toBeUndefined();
-      }
+  test('sync synthesis reads the stored profile instead of generating one connector per tunnel', async () => {
+    const specs = await synthesizeComputerConnectors(projectId, []);
+    expect(specs).toHaveLength(1);
+    expect(specs[0]?.slug).toBe(GROUP_SLUG);
+    expect(specs[0]?.tunnelIds).toEqual([studioTunnelId, travelTunnelId]);
+  });
+
+  test('config returns the selected machines through the normal connector API model', async () => {
+    const config = await dbConnectorRouterDeps.getConnectorConfig!(projectId, GROUP_SLUG);
+    expect(config?.provider).toBe('computer');
+    expect(config?.tunnelIds).toEqual([studioTunnelId, travelTunnelId]);
+  });
+
+  test('list_computers returns only machines assigned to the profile', async () => {
+    const result = await executeComputerCall({
+      accountId,
+      projectId,
+      allowedTunnelIds: [studioTunnelId, travelTunnelId],
+      selector: null,
+      method: 'list_computers',
+      args: {},
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const ids = (result.data as { computers: Array<{ id: string }> }).computers.map(
+      (computer) => computer.id,
+    );
+    expect(ids.sort()).toEqual([studioTunnelId, travelTunnelId].sort());
+    expect(ids).not.toContain(unassignedTunnelId);
+  });
+
+  test('assigned selection reaches tunnel authorization while unassigned selection fails first', async () => {
+    const assigned = await executeComputerCall({
+      accountId,
+      projectId,
+      allowedTunnelIds: [studioTunnelId, travelTunnelId],
+      selector: studioTunnelId,
+      method: 'fs.read',
+      args: { path: '/etc/hosts' },
+    });
+    expect(assigned.ok).toBe(false);
+    if (!assigned.ok) expect(assigned.kind).toBe('permission_required');
+
+    const unassigned = await executeComputerCall({
+      accountId,
+      projectId,
+      allowedTunnelIds: [studioTunnelId, travelTunnelId],
+      selector: unassignedTunnelId,
+      method: 'fs.read',
+      args: { path: '/etc/hosts' },
+    });
+    expect(unassigned.ok).toBe(false);
+    if (!unassigned.ok) {
+      expect(unassigned.kind).toBe('no_machine');
+      expect(unassigned.message).toContain('not assigned');
     }
   });
 
-  test('settings resolve each synthetic profile as a regular connector', async () => {
-    const policies = await dbConnectorRouterDeps.getConnectorPolicies!(projectId, firstSlug());
-    expect(policies).not.toBeNull();
-    expect(Array.isArray(policies!.policies)).toBe(true);
-
-    const config = await dbConnectorRouterDeps.getConnectorConfig!(projectId, secondSlug());
-    expect(config).not.toBeNull();
-    expect(config!.provider).toBe('computer');
-    expect(config!.slug).toBe(secondSlug());
+  test('a cross-account id in a forged allowlist still fails closed', async () => {
+    const result = await executeComputerCall({
+      accountId,
+      projectId,
+      allowedTunnelIds: [crossAccountTunnelId],
+      selector: crossAccountTunnelId,
+      method: 'fs.read',
+      args: { path: '/x' },
+    });
+    expect(result).toEqual({
+      ok: false,
+      kind: 'no_machine',
+      message: 'No machines are assigned to this Computers connector profile.',
+    });
   });
 
-  test('stores policies and sensitive state independently per machine profile', async () => {
+  test('multiple profiles can overlap and keep independent policies', async () => {
+    const created = await dbConnectorRouterDeps.createConnector!(projectId, accountId, {
+      slug: TRAVEL_SLUG,
+      name: 'Travel computer',
+      provider: 'computer',
+      tunnel_ids: [travelTunnelId],
+      create_only: true,
+    });
+    expect(created.ok).toBe(true);
     const policyWrite = await dbConnectorRouterDeps.setConnectorPolicies!(
       projectId,
       accountId,
-      firstSlug(),
+      TRAVEL_SLUG,
       [{ match: 'fs.read', action: 'block' }],
     );
     expect(policyWrite.ok).toBe(true);
-    const sensitiveWrite = await dbConnectorRouterDeps.setSensitive!(
+
+    const groupPolicies = await dbConnectorRouterDeps.getConnectorPolicies!(projectId, GROUP_SLUG);
+    const travelPolicies = await dbConnectorRouterDeps.getConnectorPolicies!(
       projectId,
-      accountId,
-      firstSlug(),
-      true,
+      TRAVEL_SLUG,
     );
-    expect(sensitiveWrite.ok).toBe(true);
-
-    await sync();
-
-    const firstPolicies = await dbConnectorRouterDeps.getConnectorPolicies!(projectId, firstSlug());
-    const secondPolicies = await dbConnectorRouterDeps.getConnectorPolicies!(
-      projectId,
-      secondSlug(),
-    );
-    expect(firstPolicies?.policies).toEqual([{ match: 'fs.read', action: 'block' }]);
-    expect(secondPolicies?.policies).toEqual([]);
-
-    const listed = await dbConnectorRouterDeps.listConnectors(projectId);
-    expect(listed.find((connector) => connector.slug === firstSlug())?.sensitive).toBe(true);
-    expect(listed.find((connector) => connector.slug === secondSlug())?.sensitive).toBe(false);
+    expect(groupPolicies?.policies).toEqual([]);
+    expect(travelPolicies?.policies).toEqual([{ match: 'fs.read', action: 'block' }]);
   });
 
-  test('routes a call only through the connector-bound tunnel', async () => {
-    const first = await executeComputerCall({
-      accountId,
-      projectId,
-      tunnelId: firstTunnelId,
-      method: 'fs.read',
-      args: { path: '/etc/hosts' },
+  test('updating a profile replaces its allowlist without changing its policy rows', async () => {
+    const updated = await dbConnectorRouterDeps.createConnector!(projectId, accountId, {
+      slug: TRAVEL_SLUG,
+      name: 'Travel and studio',
+      provider: 'computer',
+      tunnel_ids: [travelTunnelId, studioTunnelId],
     });
-    expect(first.ok).toBe(false);
-    if (!first.ok) expect(first.kind).toBe('permission_required');
-
-    const second = await executeComputerCall({
-      accountId,
-      projectId,
-      tunnelId: secondTunnelId,
-      method: 'fs.read',
-      args: { path: '/etc/hosts' },
-    });
-    expect(second.ok).toBe(false);
-    if (!second.ok) expect(second.kind).toBe('permission_required');
+    expect(updated.ok).toBe(true);
+    const config = await dbConnectorRouterDeps.getConnectorConfig!(projectId, TRAVEL_SLUG);
+    expect(config?.tunnelIds).toEqual([travelTunnelId, studioTunnelId]);
+    const [policy] = await db
+      .select()
+      .from(connectorPolicies)
+      .innerJoin(connectors, eq(connectors.connectorId, connectorPolicies.connectorId))
+      .where(and(eq(connectors.projectId, projectId), eq(connectors.slug, TRAVEL_SLUG)));
+    expect(policy?.connector_policies.action).toBe('block');
   });
 
-  test('fails closed for a cross-account or deleted bound tunnel id', async () => {
-    const crossAccount = await executeComputerCall({
-      accountId,
-      tunnelId: crossAccountTunnelId,
-      method: 'fs.read',
-      args: { path: '/x' },
-    });
-    expect(crossAccount).toEqual({
-      ok: false,
-      kind: 'no_machine',
-      message: 'This computer is no longer connected',
-    });
-
-    const [temporary] = await db
-      .insert(tunnelConnections)
-      .values({
-        accountId,
-        name: 'Deleted Mac',
-        capabilities: ['filesystem'],
-        status: 'offline',
-        lastHeartbeatAt: new Date(),
-      })
-      .returning({ tunnelId: tunnelConnections.tunnelId });
-    await db.delete(tunnelConnections).where(eq(tunnelConnections.tunnelId, temporary!.tunnelId));
-    const deleted = await executeComputerCall({
-      accountId,
-      tunnelId: temporary!.tunnelId,
-      method: 'fs.read',
-      args: { path: '/x' },
-    });
-    expect(deleted.ok).toBe(false);
-    if (!deleted.ok) expect(deleted.kind).toBe('no_machine');
-  });
-
-  test('keeps permissions and audit isolated to the selected profile', async () => {
+  test('connector calls remain authoritative connector audit events', async () => {
     await db.insert(tunnelPermissions).values({
-      tunnelId: firstTunnelId,
+      tunnelId: studioTunnelId,
       accountId,
       capability: 'filesystem',
       scope: {},
       status: 'active',
     });
-    const first = await executeComputerCall({
+    await executeComputerCall({
       accountId,
       projectId,
-      tunnelId: firstTunnelId,
+      allowedTunnelIds: [studioTunnelId],
+      selector: studioTunnelId,
       method: 'fs.read',
       args: { path: '/etc/hosts' },
     });
-    expect(first.ok).toBe(false);
-    if (!first.ok) expect(first.kind).toBe('error');
-
-    const second = await executeComputerCall({
-      accountId,
-      projectId,
-      tunnelId: secondTunnelId,
-      method: 'fs.read',
-      args: { path: '/etc/hosts' },
-    });
-    expect(second.ok).toBe(false);
-    if (!second.ok) expect(second.kind).toBe('permission_required');
-
-    const audits = await db
+    const rows = await db
       .select({
-        tunnelId: tunnelAuditLogs.tunnelId,
-        phase: tunnelAuditLogs.phase,
-      })
-      .from(tunnelAuditLogs)
-      .where(eq(tunnelAuditLogs.operation, 'fs.read'));
-    expect(audits.some((row) => row.tunnelId === firstTunnelId && row.phase === 'failed')).toBe(
-      true,
-    );
-    expect(audits.some((row) => row.tunnelId === secondTunnelId)).toBe(false);
-
-    const centralized = await db
-      .select({
-        authoritativeSource: auditEvents.authoritativeSource,
         action: auditEvents.action,
-        resourceId: auditEvents.resourceId,
+        authoritativeSource: auditEvents.authoritativeSource,
       })
       .from(auditEvents)
       .where(
         and(
           eq(auditEvents.projectId, projectId),
-          eq(auditEvents.resourceId, firstTunnelId),
+          eq(auditEvents.resourceId, studioTunnelId),
           eq(auditEvents.action, 'connector.computer.fs.read'),
         ),
       );
-    expect(centralized.some((row) => row.authoritativeSource === 'connector')).toBe(true);
+    expect(rows.some((row) => row.authoritativeSource === 'connector')).toBe(true);
   });
 
-  test('rename updates profile names and delete removes only that profile', async () => {
-    await db
-      .update(tunnelConnections)
-      .set({ name: 'Renamed Studio Mac' })
-      .where(eq(tunnelConnections.tunnelId, firstTunnelId));
-    await reconcileComputerConnectors(accountId);
-
-    const [renamed] = await db
-      .select({ name: connectors.name })
-      .from(connectors)
-      .where(and(eq(connectors.projectId, projectId), eq(connectors.slug, firstSlug())));
-    expect(renamed?.name).toBe('Renamed Studio Mac');
-
-    await db.delete(tunnelConnections).where(eq(tunnelConnections.tunnelId, secondTunnelId));
-    await reconcileComputerConnectors(accountId);
+  test('deleting one profile leaves the other profile intact', async () => {
+    const deleted = await dbConnectorRouterDeps.deleteConnector!(projectId, TRAVEL_SLUG);
+    expect(deleted.ok).toBe(true);
     const remaining = await db
       .select({ slug: connectors.slug })
       .from(connectors)
       .where(and(eq(connectors.projectId, projectId), eq(connectors.providerType, 'computer')));
-    expect(remaining.map((row) => row.slug)).toEqual([firstSlug()]);
-    secondTunnelId = '';
-  });
-
-  test('retains the aggregate selector only for legacy durable bindings', async () => {
-    const sessionId = `legacy-computer-${crypto.randomUUID()}`;
-    const [aggregate] = await db
-      .insert(connectors)
-      .values({
-        accountId,
-        projectId,
-        slug: 'computer',
-        name: 'Computers',
-        providerType: 'computer',
-        enabled: false,
-        status: 'disabled',
-        config: {},
-      })
-      .returning({ connectorId: connectors.connectorId });
-    const [connection] = await db
-      .insert(connectorConnections)
-      .values({
-        accountId,
-        projectId,
-        connectorId: aggregate!.connectorId,
-        label: 'Computers',
-        isDefault: true,
-      })
-      .returning({ connectionId: connectorConnections.connectionId });
-    await db.insert(projectSessions).values({
-      sessionId,
-      accountId,
-      projectId,
-      branchName: `session/${sessionId}`,
-      connectorBindingsConfigured: true,
-    });
-    await db.insert(projectSessionConnectorBindings).values({
-      sessionId,
-      accountId,
-      projectId,
-      connectorAlias: 'computer',
-      connectorId: aggregate!.connectorId,
-      connectionId: connection!.connectionId,
-    });
-
-    await sync();
-
-    const [preserved] = await db
-      .select({ enabled: connectors.enabled, status: connectors.status })
-      .from(connectors)
-      .where(eq(connectors.connectorId, aggregate!.connectorId));
-    expect(preserved).toEqual({ enabled: true, status: 'active' });
-
-    const adminConnectors = await dbConnectorRouterDeps.listConnectors(projectId);
-    expect(adminConnectors.some((connector) => connector.slug === 'computer')).toBe(false);
-
-    const listed = await executeComputerCall({
-      accountId,
-      tunnelId: null,
-      method: 'list_computers',
-      args: {},
-    });
-    expect(listed.ok).toBe(true);
-    const machines = await listAccountComputers(accountId);
-    expect(machines.some((machine) => machine.id === firstTunnelId)).toBe(true);
-
-    const selected = await executeComputerCall({
-      accountId,
-      tunnelId: null,
-      selector: firstTunnelId,
-      method: 'fs.read',
-      args: { path: '/etc/hosts' },
-    });
-    expect(selected.ok).toBe(false);
-    if (!selected.ok) expect(selected.kind).toBe('error');
+    expect(remaining.map((row) => row.slug)).toEqual([GROUP_SLUG]);
   });
 });

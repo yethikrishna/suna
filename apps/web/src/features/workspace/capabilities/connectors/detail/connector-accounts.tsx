@@ -57,7 +57,14 @@ export function ConnectorAccounts({
     isPipedream && canManageConnections && connector.authorizationStrategy === 'user';
 
   if (isComputer) {
-    return <ComputerConnectorAccount projectId={projectId} connector={connector} />;
+    return (
+      <ComputerConnectorAccount
+        projectId={projectId}
+        connector={connector}
+        canWrite={canWrite}
+        onChanged={onChanged}
+      />
+    );
   }
 
   if (isPipedream) {

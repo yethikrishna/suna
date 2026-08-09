@@ -820,6 +820,8 @@ export interface ConnectorConfig {
   endpoint: string | null;
   baseUrl: string | null;
   spec: string | null;
+  /** Machine ids assigned to a Computers connector profile. */
+  tunnelIds?: string[];
   auth: {
     type: ConnectorRequestAuthType;
     in: 'header' | 'query' | 'cookie';
@@ -875,6 +877,8 @@ export interface ConnectorDraftInput {
   endpoint?: string;
   baseUrl?: string;
   spec?: string;
+  /** Account-owned machine ids assigned to a Computers connector profile. */
+  tunnel_ids?: string[];
   /** Credential storage mode. `shared` is the only mode (`per_user` was
    *  removed 2026-07-05). */
   credential?: 'shared';

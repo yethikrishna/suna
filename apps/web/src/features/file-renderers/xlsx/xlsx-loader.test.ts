@@ -81,6 +81,28 @@ describe('readSpreadsheetBlobWithRetry', () => {
     expect(attempts).toBe(2);
   });
 
+  test('uses the uploaded-file startup retry window', async () => {
+    const expected = new Blob(['spreadsheet']);
+    const delays: number[] = [];
+    let attempts = 0;
+
+    const result = await readSpreadsheetBlobWithRetry(
+      '/workspace/uploads/report.xlsx',
+      async () => {
+        attempts += 1;
+        if (attempts <= 3) throw new Error('Upload is still copying');
+        return expected;
+      },
+      async (delayMs) => {
+        delays.push(delayMs);
+      },
+    );
+
+    expect(result).toBe(expected);
+    expect(attempts).toBe(4);
+    expect(delays).toEqual([2_000, 2_000, 2_000]);
+  });
+
   test('stops before another read when the renderer is cancelled', async () => {
     const abortController = new AbortController();
     let attempts = 0;

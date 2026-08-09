@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { KortixLoader } from '@/components/ui/kortix-loader';
+import { readRuntimeFileWithRetry } from '@/features/files/api/runtime-file-read';
 import { cn } from '@/lib/utils';
 import {
   FileXlsIcon as FileSpreadsheet,
@@ -9,7 +10,6 @@ import {
 } from '@phosphor-icons/react';
 import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useState } from 'react';
-import { readSpreadsheetBlobWithRetry } from './xlsx-loader';
 import { XlsxViewerPreview } from './xlsx-viewer';
 
 export function isBlobUrl(path: string): boolean {
@@ -66,9 +66,13 @@ export function XlsxRenderer({
           return;
         }
         const { readFileAsBlob } = await import('@/features/files/api/runtime-files');
-        const blob = await readSpreadsheetBlobWithRetry(
+        const blob = await readRuntimeFileWithRetry(
           xlsxPath,
-          readFileAsBlob,
+          async () => {
+            const blob = await readFileAsBlob(xlsxPath);
+            if (!blob || blob.size === 0) throw new Error('Empty file received');
+            return blob;
+          },
           undefined,
           abortController.signal,
         );

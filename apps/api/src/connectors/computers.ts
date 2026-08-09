@@ -6,9 +6,9 @@
  * live WS relay IS the credential, and per-machine auth/scope is enforced by the
  * tunnel permission layer at call time.
  *
- * Each connected machine is one connector profile bound to one immutable
- * tunnel id. Tool schemas therefore describe only the operation inputs. The
- * connector identity selects the machine. The gateway routes `tunnel` bindings
+ * One connector profile contains one or more selected machines. Tool schemas
+ * include a machine selector, and the gateway restricts it to the profile's
+ * server-side allowlist. The gateway routes `tunnel` bindings
  * through the shared tunnel RPC core
  * (`tunnel/core/rpc-core.ts`), NOT executeCall. See
  * docs/specs/computer-connector.md.
@@ -17,13 +17,13 @@ import type { ActionBinding, NormalizedAction, Risk } from './types';
 
 /** Human label for the computer connector (UI default name). */
 export function computerLabel(): string {
-  return 'Computer';
+  return 'Computers';
 }
 
 /** Legacy aggregate slug. Kept for existing session bindings during migration. */
 export const COMPUTER_SLUG = 'computer';
 
-/** Stable project connector slug for one tunnel. The full UUID avoids collisions. */
+/** Legacy per-machine slug. Kept only for compatibility and migration. */
 export function computerConnectorSlug(tunnelId: string): string {
   return `computer-${tunnelId.toLowerCase()}`;
 }
@@ -40,7 +40,17 @@ interface ComputerActionDef {
   /** JSON-schema properties for the operation itself. */
   properties: Record<string, { type: string; description: string }>;
   required: string[];
+  /** Meta actions run server-side and do not accept a machine selector. */
+  meta?: boolean;
 }
+
+const COMPUTER_SELECTOR = {
+  computer: {
+    type: 'string',
+    description:
+      'Target machine name or id from list_computers. Optional when exactly one assigned machine is online.',
+  },
+} as const;
 
 /**
  * The computer catalog. `fs.*` + `shell.exec` are fully typed; the high-value
@@ -49,6 +59,17 @@ interface ComputerActionDef {
  * the long tail is reachable without hand-maintaining every schema.
  */
 const COMPUTER_ACTIONS: ComputerActionDef[] = [
+  {
+    path: 'list_computers',
+    method: 'list_computers',
+    name: 'List computers',
+    description:
+      'List the machines assigned to this connector profile — id, name, online status, declared capabilities, and platform. Use this to choose a `computer` for the other actions.',
+    risk: 'read',
+    properties: {},
+    required: [],
+    meta: true,
+  },
   // ── filesystem ──────────────────────────────────────────────────────────
   {
     path: 'fs.read',
@@ -277,7 +298,7 @@ const COMPUTER_ACTIONS: ComputerActionDef[] = [
 
 function toAction(def: ComputerActionDef): NormalizedAction {
   const binding: ActionBinding = { kind: 'tunnel', method: def.method };
-  const properties = def.properties;
+  const properties = def.meta ? def.properties : { ...COMPUTER_SELECTOR, ...def.properties };
   const inputSchema = Object.keys(properties).length
     ? {
         type: 'object',
@@ -296,7 +317,7 @@ function toAction(def: ComputerActionDef): NormalizedAction {
   };
 }
 
-/** The fixed catalog for every machine-bound computer connector. */
+/** The fixed catalog for every Computers connector profile. */
 export function computerCatalog(): NormalizedAction[] {
   return COMPUTER_ACTIONS.map(toAction);
 }

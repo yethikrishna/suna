@@ -7,10 +7,12 @@ import {
   connectorProjectPolicies,
   connectorProjectSettings,
   projectSecrets,
+  projectSessionConnectorBindings,
   projectSessions,
   projects,
+  tunnelConnections,
 } from '@kortix/db';
-import { sanitizeConnectorHeaders } from '@kortix/manifest-schema';
+import { sanitizeConnectorHeaders, SLUG_RE } from '@kortix/manifest-schema';
 import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 /**
  * Production wiring for the connector router — DB-backed ConnectorRouterDeps +
@@ -57,7 +59,8 @@ import { validateAccountToken } from '../repositories/account-tokens';
 import { db } from '../shared/db';
 import { executeComputerCall } from '../tunnel/core/rpc-core';
 import { connectorAttachmentStore } from './attachments';
-import { COMPUTER_SLUG } from './computers';
+import { computerProfileSpec } from './computer-materialize';
+import { COMPUTER_SLUG, computerLabel } from './computers';
 import { hideSupersededSlack } from './channel-rules';
 import { buildAdminConnectorViews } from './connector-list';
 import { validateConnectorSecretBinding } from './connector-secret-binding';
@@ -117,6 +120,7 @@ import { resolveShareSubject } from './share';
 import { getConnectorCatalogDetail, listConnectorCatalog } from './connector-catalog';
 import {
   discoverDraftConnectorAuth,
+  materializeComputerConnectorProfile,
   setMaterializedComputerConnectorPolicies,
   syncProjectConnectors,
 } from './sync';
@@ -137,17 +141,16 @@ function isUuid(value: string): boolean {
   return UUID_REGEX.test(value);
 }
 
-function hideLegacyComputerAggregate<
-  T extends { providerType: string; slug: string; config: unknown },
->(rows: T[]): T[] {
-  const hasPerMachineProfile = rows.some(
-    (row) =>
-      row.providerType === 'computer' &&
-      typeof (row.config as Record<string, unknown> | null)?.tunnel_id === 'string',
-  );
-  return hasPerMachineProfile
-    ? rows.filter((row) => !(row.providerType === 'computer' && row.slug === COMPUTER_SLUG))
-    : rows;
+function computerTunnelIds(configValue: unknown, slug: string): string[] | null {
+  const config = (configValue ?? {}) as Record<string, unknown>;
+  if (Array.isArray(config.tunnel_ids)) {
+    return [
+      ...new Set(config.tunnel_ids.filter((value): value is string => typeof value === 'string')),
+    ];
+  }
+  if (typeof config.tunnel_id === 'string') return [config.tunnel_id];
+  // Compatibility for durable sessions bound to the original aggregate row.
+  return slug === COMPUTER_SLUG ? null : [];
 }
 
 /** How long an unconsumed human approve stays claimable by a fresh call. Long
@@ -396,10 +399,8 @@ function toGatewayConnector(
     slug: row.slug,
     provider: row.providerType,
     platform: channelPlatform(row.config),
-    tunnelId:
-      row.providerType === 'computer' && typeof config.tunnel_id === 'string'
-        ? config.tunnel_id
-        : null,
+    tunnelIds:
+      row.providerType === 'computer' ? computerTunnelIds(row.config, row.slug) : undefined,
     baseUrl: baseUrlOf(row),
     auth,
     headers: headersOf(row),
@@ -562,15 +563,14 @@ export function makeDbGatewayDeps(principal: ConnectorPrincipal): GatewayDeps {
       runPipedreamAction(projectId, connectorSlug, app, actionKey, args, accountId, userId),
     executePipedreamProxy: ({ projectId, connectorSlug, args, accountId, userId }) =>
       runPipedreamProxy(projectId, connectorSlug, args, accountId, userId),
-    // Computer connectors relay through the shared tunnel RPC core (permission
-    // check → relay → audit). The machine is resolved from the `computer`
-    // immutable tunnel id, scoped to this account.
+    // Computers connectors relay through the shared tunnel RPC core (profile
+    // allowlist → account ownership → permission check → relay → audit).
     executeComputerCall: ({
       accountId,
       projectId,
       sessionId,
       actorUserId,
-      tunnelId,
+      allowedTunnelIds,
       selector,
       method,
       args,
@@ -580,7 +580,7 @@ export function makeDbGatewayDeps(principal: ConnectorPrincipal): GatewayDeps {
         projectId,
         sessionId,
         actorUserId,
-        tunnelId,
+        allowedTunnelIds,
         selector,
         method,
         args,
@@ -944,13 +944,11 @@ async function resolveProjectPrincipal(
 
 /** The catalog a principal can actually use (agent grant + credential present + not blocked). */
 async function listCatalog(p: ConnectorPrincipal): Promise<CatalogConnector[]> {
-  const conns = hideLegacyComputerAggregate(
-    hideSupersededSlack(
-      await db
-        .select()
-        .from(connectors)
-        .where(and(eq(connectors.projectId, p.projectId), eq(connectors.enabled, true))),
-    ),
+  const conns = hideSupersededSlack(
+    await db
+      .select()
+      .from(connectors)
+      .where(and(eq(connectors.projectId, p.projectId), eq(connectors.enabled, true))),
   );
 
   // Project-scoped layer is the same for every connector in this list — load once.
@@ -1090,10 +1088,8 @@ async function resolveSecretReader(
 
 /** Admin list — sharing + credential mode + whether the shared credential is set. */
 async function listConnectors(projectId: string): Promise<AdminConnectorView[]> {
-  const conns = hideLegacyComputerAggregate(
-    hideSupersededSlack(
-      await db.select().from(connectors).where(eq(connectors.projectId, projectId)),
-    ),
+  const conns = hideSupersededSlack(
+    await db.select().from(connectors).where(eq(connectors.projectId, projectId)),
   );
   if (conns.length === 0) return [];
 
@@ -1378,6 +1374,8 @@ async function getConnectorConfig(
     endpoint: cfg.endpoint ?? null,
     baseUrl: baseUrlOf(row),
     spec: cfg.spec ?? null,
+    tunnelIds:
+      row.providerType === 'computer' ? (computerTunnelIds(row.config, row.slug) ?? []) : undefined,
     auth: {
       type: auth.type,
       in: auth.in,
@@ -1422,10 +1420,18 @@ async function setComputerConnectorPolicies(
   const allowedActions = new Set<PolicyAction>(['always_run', 'require_approval', 'block']);
   for (const [index, policy] of policies.entries()) {
     if (typeof policy?.match !== 'string' || !policy.match.trim()) {
-      return { ok: false, error: `rule #${index + 1}: \`match\` is required`, status: 400 };
+      return {
+        ok: false,
+        error: `rule #${index + 1}: \`match\` is required`,
+        status: 400,
+      };
     }
     if (!isValidMatcher(policy.match.trim())) {
-      return { ok: false, error: `rule #${index + 1}: invalid regex pattern`, status: 400 };
+      return {
+        ok: false,
+        error: `rule #${index + 1}: invalid regex pattern`,
+        status: 400,
+      };
     }
     if (!allowedActions.has(policy.action as PolicyAction)) {
       return {
@@ -1464,6 +1470,143 @@ async function setComputerConnectorSensitive(
   return { ok: true };
 }
 
+const MAX_COMPUTERS_PER_PROFILE = 100;
+
+async function upsertComputerConnectorProfile(
+  projectId: string,
+  accountId: string,
+  draft: Record<string, unknown>,
+): Promise<ConnectorCrudResult | null> {
+  if (draft.provider !== 'computer') return null;
+  const slug = typeof draft.slug === 'string' ? draft.slug.trim() : '';
+  if (!SLUG_RE.test(slug)) {
+    return { ok: false, error: 'invalid connector slug', status: 400 };
+  }
+  const rawTunnelIds = draft.tunnel_ids;
+  if (!Array.isArray(rawTunnelIds)) {
+    return { ok: false, error: 'tunnel_ids must be an array', status: 400 };
+  }
+  const tunnelIds = [
+    ...new Set(rawTunnelIds.filter((value): value is string => typeof value === 'string')),
+  ];
+  if (tunnelIds.length === 0) {
+    return { ok: false, error: 'select at least one computer', status: 400 };
+  }
+  if (tunnelIds.length !== rawTunnelIds.length || tunnelIds.some((value) => !isUuid(value))) {
+    return {
+      ok: false,
+      error: 'tunnel_ids must contain unique UUIDs',
+      status: 400,
+    };
+  }
+  if (tunnelIds.length > MAX_COMPUTERS_PER_PROFILE) {
+    return {
+      ok: false,
+      error: `a Computers profile can contain at most ${MAX_COMPUTERS_PER_PROFILE} machines`,
+      status: 400,
+    };
+  }
+  const owned = await db
+    .select({ tunnelId: tunnelConnections.tunnelId })
+    .from(tunnelConnections)
+    .where(
+      and(
+        eq(tunnelConnections.accountId, accountId),
+        inArray(tunnelConnections.tunnelId, tunnelIds),
+        isNotNull(tunnelConnections.lastHeartbeatAt),
+      ),
+    );
+  if (owned.length !== tunnelIds.length) {
+    return {
+      ok: false,
+      error: 'every selected computer must belong to this account and have connected before',
+      status: 400,
+    };
+  }
+
+  const [existing] = await db
+    .select({
+      connectorId: connectors.connectorId,
+      providerType: connectors.providerType,
+      name: connectors.name,
+      config: connectors.config,
+    })
+    .from(connectors)
+    .where(and(eq(connectors.projectId, projectId), eq(connectors.slug, slug)))
+    .limit(1);
+  if (existing && existing.providerType !== 'computer') {
+    return {
+      ok: false,
+      error: `Connector slug "${slug}" already exists`,
+      status: 409,
+    };
+  }
+  if (existing && draft.create_only === true) {
+    return {
+      ok: false,
+      error: `Connector slug "${slug}" already exists`,
+      status: 409,
+    };
+  }
+  const requestedName = typeof draft.name === 'string' ? draft.name.trim() : '';
+  const name = requestedName || existing?.name || computerLabel();
+  if (name.length > 255) return { ok: false, error: 'name is too long (max 255)', status: 400 };
+  await materializeComputerConnectorProfile({
+    projectId,
+    accountId,
+    existingId: existing?.connectorId ?? null,
+    spec: computerProfileSpec({
+      slug,
+      name,
+      tunnelIds,
+      sensitive: (existing?.config as { sensitive?: unknown } | null)?.sensitive === true,
+    }),
+  });
+  return { ok: true, sync: { synced: 1, errors: [] } };
+}
+
+async function deleteComputerConnectorProfile(
+  projectId: string,
+  slug: string,
+): Promise<ConnectorCrudResult | null> {
+  const [row] = await db
+    .select({
+      connectorId: connectors.connectorId,
+      providerType: connectors.providerType,
+    })
+    .from(connectors)
+    .where(and(eq(connectors.projectId, projectId), eq(connectors.slug, slug)))
+    .limit(1);
+  if (!row || row.providerType !== 'computer') return null;
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(projectSessionConnectorBindings)
+      .where(eq(projectSessionConnectorBindings.connectorId, row.connectorId));
+    await tx.delete(connectors).where(eq(connectors.connectorId, row.connectorId));
+  });
+  return { ok: true };
+}
+
+async function setComputerConnectorName(
+  projectId: string,
+  accountId: string,
+  slug: string,
+  name: string,
+): Promise<ConnectorCrudResult | null> {
+  const connectorId = await computerConnectorId(projectId, accountId, slug);
+  if (!connectorId) return null;
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, error: 'name is required', status: 400 };
+  if (trimmed.length > 255) {
+    return { ok: false, error: 'name is too long (max 255)', status: 400 };
+  }
+  await db
+    .update(connectors)
+    .set({ name: trimmed, updatedAt: new Date() })
+    .where(eq(connectors.connectorId, connectorId));
+  return { ok: true };
+}
+
 export const dbConnectorRouterDeps: ConnectorRouterDeps = {
   attachmentStore: connectorAttachmentStore,
   resolvePrincipal,
@@ -1481,9 +1624,12 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
     invalidateProjectMirror(projectId);
     return syncProjectConnectors(projectId, accountId, { force: true });
   },
-  createConnector: (projectId, accountId, draft) =>
+  createConnector: async (projectId, accountId, draft) =>
+    (await upsertComputerConnectorProfile(projectId, accountId, draft)) ??
     upsertConnectorInManifest(projectId, accountId, draft as unknown as ConnectorDraft),
-  deleteConnector: (projectId, slug) => deleteConnectorFromManifest(projectId, slug),
+  deleteConnector: async (projectId, slug) =>
+    (await deleteComputerConnectorProfile(projectId, slug)) ??
+    deleteConnectorFromManifest(projectId, slug),
   setConnectorCredential: (projectId, slug, input) =>
     setConnectorCredentialShared(projectId, slug, input),
   setConnectorSecretBinding,
@@ -1515,7 +1661,8 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
   setSensitive: async (projectId, accountId, slug, sensitive) =>
     (await setComputerConnectorSensitive(projectId, accountId, slug, sensitive)) ??
     setConnectorSensitiveInManifest(projectId, accountId, slug, sensitive),
-  setConnectorName: (projectId, accountId, slug, name) =>
+  setConnectorName: async (projectId, accountId, slug, name) =>
+    (await setComputerConnectorName(projectId, accountId, slug, name)) ??
     setConnectorNameInManifest(projectId, accountId, slug, name),
   getConnectorPolicies,
   getConnectorConfig,

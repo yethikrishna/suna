@@ -729,6 +729,25 @@ async function upsertConnector(
   }
 }
 
+/** Materialize one platform-managed Computers profile without writing kortix.yaml. */
+export async function materializeComputerConnectorProfile(input: {
+  projectId: string;
+  accountId: string;
+  spec: ConnectorSpec;
+  existingId: string | null;
+}): Promise<void> {
+  if (input.spec.provider !== 'computer') {
+    throw new Error('computer profile materialization requires provider="computer"');
+  }
+  await upsertConnector(
+    input.projectId,
+    input.accountId,
+    input.spec,
+    { actions: computerCatalog(), server: null },
+    input.existingId,
+  );
+}
+
 /** Fetch + normalize a connector's catalog. Best-effort; never throws. */
 export async function resolveCatalog(
   project: GitBackedProject,

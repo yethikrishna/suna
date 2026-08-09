@@ -46,17 +46,10 @@ export interface GatewayConnector {
   connectionMetadata?: Record<string, unknown>;
   slug: string;
   provider:
-    | 'pipedream'
-    | 'mcp'
-    | 'openapi'
-    | 'postman'
-    | 'graphql'
-    | 'http'
-    | 'channel'
-    | 'computer';
+    'pipedream' | 'mcp' | 'openapi' | 'postman' | 'graphql' | 'http' | 'channel' | 'computer';
   platform?: string | null;
-  /** Machine identity for a per-computer connector. Null only on legacy aggregate rows. */
-  tunnelId?: string | null;
+  /** Server-side machine allowlist for a Computers connector profile. */
+  tunnelIds?: string[] | null;
   /** server / base_url / endpoint / url, per provider (null for some). */
   baseUrl: string | null;
   auth: ConnectorAuth;
@@ -199,17 +192,16 @@ export interface GatewayDeps {
   }): Promise<ExecResult>;
   /**
    * Computer (Agent Computer Tunnel) execution — required for `computer`
-   * connectors. Verifies the bound `tunnelId` belongs to `accountId`, then
-   * relays `method` through the tunnel permission/relay/audit core.
+   * connectors. Verifies the selected machine belongs to both `accountId` and
+   * the connector profile allowlist, then relays through the tunnel core.
    */
   executeComputerCall?(input: {
     accountId: string;
     projectId: string;
     sessionId: string | null;
     actorUserId: string;
-    tunnelId: string | null;
-    /** Compatibility only for the retired aggregate `computer` connector. */
-    selector?: string | null;
+    allowedTunnelIds: string[] | null;
+    selector: string | null;
     method: string;
     args: Record<string, unknown>;
   }): Promise<ComputerCallOutcome>;
@@ -633,34 +625,31 @@ export async function handleCall(deps: GatewayDeps, input: CallInput): Promise<C
   }
 
   try {
-    // Computer (Agent Computer Tunnel): relay through the shared tunnel RPC core
-    // instead of an HTTP call. The connector itself binds the machine.
+    // Computers (Agent Computer Tunnel): relay through the shared tunnel RPC
+    // core. The connector profile owns the machine allowlist.
     if (connector.provider === 'computer') {
       if (action.binding.kind !== 'tunnel') {
         throw new Error(`computer connector has unexpected binding kind "${action.binding.kind}"`);
       }
       if (!deps.executeComputerCall) throw new Error('computer runner not wired');
-      if (!connector.tunnelId && connector.slug !== 'computer') {
+      if (connector.tunnelIds && connector.tunnelIds.length === 0) {
         return {
           status: 'error',
-          reason: 'computer connector has no bound machine',
+          reason: 'computer connector has no assigned machines',
         };
       }
-      const legacySelector =
-        connector.slug === 'computer' && typeof executionArgs.computer === 'string'
-          ? executionArgs.computer.trim() || null
-          : null;
-      const callArgs =
-        connector.slug === 'computer'
-          ? Object.fromEntries(Object.entries(executionArgs).filter(([key]) => key !== 'computer'))
-          : executionArgs;
+      const selector =
+        typeof executionArgs.computer === 'string' ? executionArgs.computer.trim() || null : null;
+      const callArgs = Object.fromEntries(
+        Object.entries(executionArgs).filter(([key]) => key !== 'computer'),
+      );
       const outcome = await deps.executeComputerCall({
         accountId: input.accountId,
         projectId: input.projectId,
         sessionId: input.sessionId ?? null,
         actorUserId: input.subject.userId,
-        tunnelId: connector.tunnelId ?? null,
-        ...(connector.slug === 'computer' ? { selector: legacySelector } : {}),
+        allowedTunnelIds: connector.tunnelIds ?? null,
+        selector,
         method: action.binding.method,
         args: callArgs,
       });

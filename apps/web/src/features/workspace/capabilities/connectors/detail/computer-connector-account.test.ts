@@ -1,16 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 
-import { computerTunnelId } from './computer-connector-account';
+import { machineSelectionChanged, normalizeMachineSelection } from './computer-connector-account';
 
-describe('computerTunnelId', () => {
-  test('reads the immutable tunnel UUID from a per-machine connector slug', () => {
-    expect(computerTunnelId('computer-11111111-1111-4111-8111-111111111111')).toBe(
-      '11111111-1111-4111-8111-111111111111',
-    );
+describe('Computers profile machine selection', () => {
+  test('normalizes duplicates and ignores non-string values', () => {
+    expect(normalizeMachineSelection(['b', 'a', 'b', null])).toEqual(['a', 'b']);
   });
 
-  test('rejects the retired aggregate slug and malformed profile slugs', () => {
-    expect(computerTunnelId('computer')).toBeNull();
-    expect(computerTunnelId('computer-not-a-uuid')).toBeNull();
+  test('compares selections independent of display order', () => {
+    expect(machineSelectionChanged(['b', 'a'], ['a', 'b'])).toBe(false);
+    expect(machineSelectionChanged(['a'], ['a', 'b'])).toBe(true);
   });
 });

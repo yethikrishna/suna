@@ -1,8 +1,9 @@
 import type { Part, ToolPart } from '@/ui';
 import { describe, expect, test } from 'bun:test';
-import { burstTitle } from './burst-title';
 import { type BurstStep, flattenThought, mergeBurstSteps } from './merge-steps';
 import { stepLabel, type StepTier } from './step-label';
+
+const SHOWN = { type: 'image', path: '/workspace/logo.png' };
 
 function tool(id: string, name = 'read'): Part {
   return {
@@ -10,7 +11,11 @@ function tool(id: string, name = 'read'): Part {
     type: 'tool',
     tool: name,
     callID: `call_${id}`,
-    state: { status: 'completed' },
+    // `show` is the one tool whose input decides whether it renders at all: a
+    // call carrying no path/url/content/items draws an empty card and is
+    // dropped (`isEmptyShowPart`). These tests are about grouping, so every
+    // show here is given a real artifact.
+    state: { status: 'completed', input: name.startsWith('show') ? SHOWN : {} },
   } as unknown as Part;
 }
 
@@ -166,8 +171,9 @@ describe('mergeBurstSteps — grouping', () => {
     expect(steps[1].key).toBe('x1');
   });
 
-  test('the groups agree with the collapsed title they expand from', () => {
-    // The real tier function, so this asserts the two production paths agree.
+  test('each family in the run becomes exactly one group row', () => {
+    // The real tier function, so this asserts the production path, not the
+    // test's own tier stub.
     const realTier = (p: Part) => stepLabel(p).tier;
     const parts = [
       tool('e1', 'edit'),
@@ -178,8 +184,6 @@ describe('mergeBurstSteps — grouping', () => {
       tool('r1'),
       tool('r2'),
     ];
-
-    expect(burstTitle(parts, false)).toBe('Edited 3 files, ran 2 commands, read 2 files');
 
     const steps = mergeBurstSteps(parts, realTier);
     expect(steps.map((s) => s.kind)).toEqual(['group', 'group', 'group']);

@@ -55,6 +55,7 @@ import {
   normalizePostmanCollection,
 } from './normalize';
 import { browsePipedreamApps, pipedreamCatalog, pipedreamConfigured } from './pipedream';
+import type { PolicyAction } from './policy';
 import { resolvePostmanSource, type PostmanSourceDocument } from './postman-source';
 import { parseSpecDocument } from './spec-doc';
 import {
@@ -69,6 +70,32 @@ import type { HttpRouteSpec, NormalizedAction } from './types';
 export interface SyncResult {
   synced: number;
   errors: Array<{ slug: string; error: string }>;
+}
+
+/**
+ * Replace policies on one synthetic computer profile.
+ *
+ * Computer profiles have no manifest entry, but connector policy tables still
+ * keep the same single writer as manifest-derived connectors: this materializer.
+ */
+export async function setMaterializedComputerConnectorPolicies(
+  connectorId: string,
+  policies: Array<{ match: string; action: PolicyAction }>,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(connectorPolicies).where(eq(connectorPolicies.connectorId, connectorId));
+    if (policies.length > 0) {
+      await tx.insert(connectorPolicies).values(
+        policies.map((policy, position) => ({
+          connectorId,
+          match: policy.match,
+          action: policy.action,
+          position,
+          conditions: null,
+        })),
+      );
+    }
+  });
 }
 
 function connectorAuthTimeoutMs(): number {

@@ -115,7 +115,11 @@ import type {
 } from './router';
 import { resolveShareSubject } from './share';
 import { getConnectorCatalogDetail, listConnectorCatalog } from './connector-catalog';
-import { discoverDraftConnectorAuth, syncProjectConnectors } from './sync';
+import {
+  discoverDraftConnectorAuth,
+  setMaterializedComputerConnectorPolicies,
+  syncProjectConnectors,
+} from './sync';
 import type { ActionBinding, Risk } from './types';
 
 /** Which policy scope decided an action — surfaced so the editor can say so. */
@@ -1432,20 +1436,13 @@ async function setComputerConnectorPolicies(
     }
   }
 
-  await db.transaction(async (tx) => {
-    await tx.delete(connectorPolicies).where(eq(connectorPolicies.connectorId, connectorId));
-    if (policies.length > 0) {
-      await tx.insert(connectorPolicies).values(
-        policies.map((policy, position) => ({
-          connectorId,
-          match: policy.match.trim(),
-          action: policy.action as PolicyAction,
-          position,
-          conditions: null,
-        })),
-      );
-    }
-  });
+  await setMaterializedComputerConnectorPolicies(
+    connectorId,
+    policies.map((policy) => ({
+      match: policy.match.trim(),
+      action: policy.action as PolicyAction,
+    })),
+  );
   return { ok: true };
 }
 

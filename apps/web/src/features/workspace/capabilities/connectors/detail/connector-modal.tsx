@@ -286,7 +286,7 @@ function ConnectorModalBody({
               projectId={projectId}
               slug={connector.slug}
               displayName={displayName}
-              canWrite={canWrite}
+              canWrite={canWrite && !isComputer}
               disabled={strategyUpdating}
               onChanged={onChanged}
             />

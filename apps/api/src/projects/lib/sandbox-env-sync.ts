@@ -6,7 +6,11 @@ import { config } from '../../config';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { resolveLlmGatewayBaseUrl } from '../../llm-gateway/sandbox-base-url';
 import { nativeProviderEnvNames } from '../../llm-gateway/sandbox-credentials';
-import { getProvider, type ProviderName } from '../../platform/providers';
+import {
+  getProvider,
+  shouldSyncProviderNetworkBoundary,
+  type ProviderName,
+} from '../../platform/providers';
 import {
   intersectSecretGrants,
   listProjectSecretsSnapshotForUser,
@@ -43,7 +47,7 @@ async function syncProviderNetworkBoundary(
   externalId: string,
   bindings: NetworkBoundarySecretBinding[],
 ): Promise<void> {
-  if (bindings.length === 0 && providerName !== 'platinum') return;
+  if (!shouldSyncProviderNetworkBoundary(providerName, bindings.length)) return;
   const provider = getProvider(providerName);
   if (!provider.syncNetworkBoundary) {
     throw new Error(

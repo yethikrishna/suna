@@ -172,6 +172,19 @@ describe('syncPlatinumNetworkBoundary', () => {
     expect(deleteIndex).toBeGreaterThan(putIndex);
   });
 
+  test('does not wait for an empty attachment set to become armed', async () => {
+    await syncPlatinumNetworkBoundary('sandbox-1', [binding()], context);
+    calls.length = 0;
+    attachmentState = 'arming';
+
+    await syncPlatinumNetworkBoundary('sandbox-1', [], context);
+
+    expect(
+      calls.filter((call) => call.method === 'GET' && call.path.endsWith('/secrets')),
+    ).toHaveLength(1);
+    expect(attached.get('sandbox-1')).toEqual([]);
+  });
+
   test('fails closed when the provider reports an unavailable binding', async () => {
     attachmentState = 'unavailable';
 

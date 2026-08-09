@@ -16,6 +16,19 @@ import type { NetworkBoundarySecretBinding } from '../../secrets/network-boundar
  */
 export type ProviderName = 'daytona' | 'platinum' | 'e2b';
 
+const NETWORK_BOUNDARY_SYNC_MODE: Record<ProviderName, 'on-demand' | 'authoritative'> = {
+  daytona: 'on-demand',
+  platinum: 'authoritative',
+  e2b: 'on-demand',
+};
+
+export function shouldSyncProviderNetworkBoundary(
+  name: ProviderName,
+  bindingCount: number,
+): boolean {
+  return bindingCount > 0 || NETWORK_BOUNDARY_SYNC_MODE[name] === 'authoritative';
+}
+
 /**
  * Thrown by the Daytona warm path when the experimental memory-snapshot restore
  * comes up WITHOUT the baked runtime (its filesystem layer is dropped ~half the

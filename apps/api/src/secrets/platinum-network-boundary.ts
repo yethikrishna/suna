@@ -187,10 +187,10 @@ export async function syncPlatinumNetworkBoundary(
       })),
     }),
   });
-  await waitUntilArmed(externalId, updated);
+  if (desired.length > 0) await waitUntilArmed(externalId, updated);
 
   const desiredIds = new Set(desired.map(({ secret }) => secret.id));
-  const removed = [...new Set(before.secrets.map((item) => item.secret_id))]
+  const removed = [...new Set((before.secrets ?? []).map((item) => item.secret_id))]
     .filter((secretId) => !desiredIds.has(secretId));
   for (const secretId of removed) {
     await platinumJson(`/v1/secrets/${encodeURIComponent(secretId)}`, { method: 'DELETE' });

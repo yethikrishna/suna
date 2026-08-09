@@ -32,6 +32,13 @@ function reasoning(id: string, text: string): Part {
   return { id, type: 'reasoning', text } as unknown as Part;
 }
 
+/** A reasoning fragment the model has finished emitting. */
+function settledReasoning(id: string, text: string): Part {
+  return { id, type: 'reasoning', text, time: { start: 1, end: 2 } } as unknown as Part;
+}
+
+const isRunning = (step: BurstStep) => (step as Extract<BurstStep, { kind: 'thought' }>).running;
+
 /** Anything named `memory` is machinery; everything else is real work. */
 const tierOf = (part: Part): StepTier => {
   const name = (part as { tool?: string }).tool;
@@ -92,6 +99,60 @@ describe('mergeBurstSteps', () => {
     );
     const keys = steps.map((s) => s.key);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe('mergeBurstSteps — which thought is still live', () => {
+  test('a thought whose last fragment has ended is not running', () => {
+    const steps = mergeBurstSteps([settledReasoning('r1', 'done thinking')], tierOf);
+    expect(isRunning(steps[0])).toBe(false);
+  });
+
+  test('a thought whose last fragment has no end time is running', () => {
+    const steps = mergeBurstSteps([reasoning('r1', 'still thinking')], tierOf);
+    expect(isRunning(steps[0])).toBe(true);
+  });
+
+  test('the run takes its verdict from the LAST fragment, not the first', () => {
+    // Fragments arrive one at a time and each closes as the next opens, so an
+    // early fragment carrying an end time says nothing about the run.
+    const steps = mergeBurstSteps(
+      [settledReasoning('r1', 'first'), reasoning('r2', 'second')],
+      tierOf,
+    );
+    expect(steps).toHaveLength(1);
+    expect(isRunning(steps[0])).toBe(true);
+  });
+
+  test('a thought with any later step is finished, whatever its own time says', () => {
+    // The structural rule, and the one that survives a provider that never
+    // writes `time.end`: the model cannot call a tool and then keep thinking in
+    // the same reasoning block. More reasoning after the tool is a NEW row.
+    const steps = mergeBurstSteps([reasoning('r1', 'a'), tool('t1')], tierOf);
+    expect(steps.map((s) => s.kind)).toEqual(['thought', 'part']);
+    expect(isRunning(steps[0])).toBe(false);
+  });
+
+  test('only the final thought of several can be live', () => {
+    const steps = mergeBurstSteps(
+      [
+        reasoning('r1', 'a'),
+        tool('t1'),
+        reasoning('r2', 'b'),
+        tool('t2', 'bash'),
+        reasoning('r3', 'c'),
+      ],
+      tierOf,
+    );
+    expect(steps.filter((s) => s.kind === 'thought').map(isRunning)).toEqual([false, false, true]);
+  });
+
+  test('dropped plumbing after a thought does not settle it', () => {
+    // Plumbing renders no row, so it is not evidence the model stopped
+    // thinking — and it must not be treated as a later step.
+    const steps = mergeBurstSteps([reasoning('r1', 'a'), tool('m1', 'memory')], tierOf);
+    expect(steps).toHaveLength(1);
+    expect(isRunning(steps[0])).toBe(true);
   });
 });
 

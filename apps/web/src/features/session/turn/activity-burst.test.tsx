@@ -527,14 +527,107 @@ describe('ActivityBurst', () => {
   });
 
   test('a thought opens itself while the model is still thinking', () => {
+    // The live thought is the LAST row, which is the only place one can be:
+    // a tool call after it means the model closed that reasoning block to make
+    // the call. The fixture used to put a running bash after the thought and
+    // still expect it open — the exact shape this row must NOT treat as live.
     const markup = renderBurst(
       [
+        done('1', 'bash'),
         { id: 'r', type: 'reasoning', text: 'Weighing two schemas' } as unknown as Part,
-        tool('1', 'bash', { status: 'running' }),
       ],
       { working: true, isTrailing: true },
     );
     expect(markup).toContain('Weighing two schemas');
+  });
+
+  test('a tool call after a thought settles it, even with no end time on the part', () => {
+    // The structural half of the rule, and the half that survives a provider
+    // that never writes `time.end`: the model cannot call a tool and keep
+    // writing the same reasoning block.
+    const markup = renderBurst(
+      [
+        { id: 'r', type: 'reasoning', text: 'Weighing two schemas' } as unknown as Part,
+        tool('1', 'bash', { status: 'running', input: { command: 'ls' } }),
+      ],
+      { working: true, isTrailing: true },
+    );
+    expect(markup).toContain('Thinking');
+    expect(markup).not.toContain('Weighing two schemas');
+    expect(shimmeringThoughts(markup)).toBe(0);
+  });
+
+  /**
+   * A `Thinking` row rendered by `TextShimmer` rather than a plain span.
+   * `bg-clip-text` is the shimmer's signature; the caret is a SIBLING of the
+   * label, so the shimmering span closes on the word itself.
+   */
+  const shimmeringThoughts = (markup: string) =>
+    markup.match(/bg-clip-text[^>]*>Thinking</g)?.length ?? 0;
+
+  const thinking = (id: string, text: string, end?: number) =>
+    ({
+      id,
+      type: 'reasoning',
+      text,
+      time: end === undefined ? { start: 1 } : { start: 1, end },
+    }) as unknown as Part;
+
+  test('only the LIVE thought shimmers — settled ones in the same burst do not', () => {
+    // The regression: the burst hands ONE running flag to every row, and a
+    // trailing burst is running for the whole turn — so a 27-step burst
+    // shimmered every `Thinking` row it had ever emitted.
+    const markup = renderBurst(
+      [
+        thinking('r1', 'Weighing the first schema', 2),
+        done('1', 'bash'),
+        thinking('r2', 'Weighing the second schema', 4),
+        done('2', 'read', { filePath: '/workspace/main.ts' }),
+        thinking('r3', 'Weighing the third schema'),
+      ],
+      { working: true, isTrailing: true },
+    );
+    expect(markup).toContain('Thinking');
+    expect(shimmeringThoughts(markup)).toBe(1);
+  });
+
+  test('a settled thought stays CLOSED while later work runs', () => {
+    // The same flag force-opens every past thought, so finished reasoning
+    // unfurled its whole paragraph under a row the reader never opened.
+    const markup = renderBurst(
+      [
+        thinking('r1', 'Weighing the first schema', 2),
+        done('1', 'bash'),
+        thinking('r2', 'Weighing the second schema'),
+      ],
+      { working: true, isTrailing: true },
+    );
+    expect(markup).not.toContain('Weighing the first schema');
+    expect(markup).toContain('Weighing the second schema');
+  });
+
+  test('a thought that ended stops shimmering even as the last row of a working burst', () => {
+    // The gap between a closed reasoning block and the next tool call. The
+    // summary line still says the turn is working; the thought must not claim
+    // the model is still thinking.
+    const markup = renderBurst(
+      [thinking('r1', 'Weighing the first schema', 2), done('1', 'bash')],
+      {
+        working: true,
+        isTrailing: true,
+      },
+    );
+    expect(shimmeringThoughts(markup)).toBe(0);
+    expect(markup).not.toContain('Weighing the first schema');
+  });
+
+  test('a settled turn shimmers no thought at all', () => {
+    const markup = renderBurst([
+      thinking('r1', 'Weighing the first schema'),
+      done('1', 'bash'),
+      thinking('r2', 'Weighing the second schema'),
+    ]);
+    expect(shimmeringThoughts(markup)).toBe(0);
   });
 
   test('a bare single step is still running-aware', () => {

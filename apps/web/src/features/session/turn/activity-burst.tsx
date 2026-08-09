@@ -35,7 +35,7 @@ import { normalizeActivityToolName } from '../session-activity-groups';
 import { ActivityFileChipStep, isFileChipPart } from './activity-file-chips';
 import { ActivityStep, iconFor } from './activity-step';
 import { burstSummary, burstSummaryLabel } from './burst-summary';
-import { flattenThought, mergeBurstSteps } from './merge-steps';
+import { flattenThought, mergeBurstSteps, reasoningIsRunning } from './merge-steps';
 import { samePartsList } from './same-parts';
 import { stepLabel } from './step-label';
 
@@ -95,6 +95,12 @@ function ThoughtStepBody({ texts, running }: { texts: ReadonlyArray<string>; run
  * the one time the text is worth more than the label, and closes when the run
  * settles — unless the reader has taken control, in which case their choice wins
  * permanently. Same rule, same shape, as the burst around it.
+ *
+ * `running` is THIS thought's own state, never the burst's. A trailing burst
+ * reports running for the whole working turn on purpose — that is what stops
+ * the disclosure blinking shut in the gaps between SSE tool calls — so a
+ * burst-wide flag here made every thought in the turn shimmer at once and
+ * unfurl reasoning that closed twenty steps ago. `mergeBurstSteps` decides.
  *
  * `bare` — this thought IS the whole burst — drops the glyph for the reason
  * every bare row does: the icon is the rail's anchor, and one row has no rail.
@@ -301,10 +307,7 @@ export function burstIsRunning(
   return parts.some((part) => {
     const state = (part as { state?: { status?: string } }).state;
     if (state?.status === 'pending' || state?.status === 'running') return true;
-    if (isReasoningPart(part)) {
-      const end = (part as { time?: { end?: number } }).time?.end;
-      return !(typeof end === 'number' && end > 0);
-    }
+    if (isReasoningPart(part)) return reasoningIsRunning(part);
     return false;
   });
 }
@@ -484,7 +487,7 @@ function ActivityBurstImpl({
           position — which would snap shut a row the reader had just opened and
           throw away the tool renderer's own scroll state. So bare swaps the
           trigger's CONTENTS for an empty node, never the node itself. */}
-      <DisclosureTrigger className='select-none'>
+      <DisclosureTrigger className="select-none">
         {bare ? (
           <div className="hidden" aria-hidden />
         ) : (
@@ -568,10 +571,16 @@ function ActivityBurstImpl({
 							    open state so it can open itself while the model thinks. */}
               {steps.map((step) =>
                 step.kind === 'thought' ? (
+                  /* `step.running`, not the burst's — a trailing burst reports
+                     running for the whole turn by design, so passing that flag
+                     down made every thought the turn ever emitted shimmer and
+                     force its paragraph open. Still gated on the burst: once
+                     the turn stops working, nothing in it is live, whatever a
+                     part's timestamps say. */
                   <ThoughtChainStep
                     key={step.key}
                     texts={step.texts}
-                    running={running}
+                    running={running && step.running}
                     bare={bare}
                   />
                 ) : (

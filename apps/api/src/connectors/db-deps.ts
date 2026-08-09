@@ -153,6 +153,37 @@ function computerTunnelIds(configValue: unknown, slug: string): string[] | null 
   return slug === COMPUTER_SLUG ? null : [];
 }
 
+function isLegacyComputerAggregate(row: {
+  providerType: string;
+  slug: string;
+  config: unknown;
+}): boolean {
+  if (row.providerType !== 'computer' || row.slug !== COMPUTER_SLUG) return false;
+  const config = (row.config ?? {}) as Record<string, unknown>;
+  return !Array.isArray(config.tunnel_ids) && typeof config.tunnel_id !== 'string';
+}
+
+async function principalHasLegacyComputerBinding(
+  principal: ConnectorPrincipal,
+  connectorId: string,
+): Promise<boolean> {
+  if (!principal.sessionId) return false;
+  const [binding] = await db
+    .select({ connectorId: projectSessionConnectorBindings.connectorId })
+    .from(projectSessionConnectorBindings)
+    .where(
+      and(
+        eq(projectSessionConnectorBindings.accountId, principal.accountId),
+        eq(projectSessionConnectorBindings.projectId, principal.projectId),
+        eq(projectSessionConnectorBindings.sessionId, principal.sessionId),
+        eq(projectSessionConnectorBindings.connectorAlias, COMPUTER_SLUG),
+        eq(projectSessionConnectorBindings.connectorId, connectorId),
+      ),
+    )
+    .limit(1);
+  return binding !== undefined;
+}
+
 /** How long an unconsumed human approve stays claimable by a fresh call. Long
  *  enough for the "agent gave up → approve lands → nudge/`continue` retries"
  *  round-trip, short enough that a stale yes can't silently authorize a much
@@ -451,6 +482,12 @@ export function makeDbGatewayDeps(principal: ConnectorPrincipal): GatewayDeps {
         .where(and(eq(connectors.projectId, projectId), eq(connectors.slug, slug)))
         .limit(1);
       if (!row) return null;
+      if (
+        isLegacyComputerAggregate(row) &&
+        !(await principalHasLegacyComputerBinding(principal, row.connectorId))
+      ) {
+        return null;
+      }
       const connection = await resolveActiveConnectorConnection(principal, row);
       if (!connection) return null;
       return toGatewayConnector(row, connection);
@@ -959,6 +996,12 @@ async function listCatalog(p: ConnectorPrincipal): Promise<CatalogConnector[]> {
 
   const out: CatalogConnector[] = [];
   for (const row of conns) {
+    if (
+      isLegacyComputerAggregate(row) &&
+      !(await principalHasLegacyComputerBinding(p, row.connectorId))
+    ) {
+      continue;
+    }
     // Per-agent assignment: an agent only sees connectors its grant lists —
     // consistent with the call gate, so it never lists a tool it can't invoke.
     // This is the ONLY access gate — connectors are project-wide visible to
@@ -1090,7 +1133,7 @@ async function resolveSecretReader(
 async function listConnectors(projectId: string): Promise<AdminConnectorView[]> {
   const conns = hideSupersededSlack(
     await db.select().from(connectors).where(eq(connectors.projectId, projectId)),
-  );
+  ).filter((row) => !isLegacyComputerAggregate(row));
   if (conns.length === 0) return [];
 
   const credentialRows = conns.filter((row) => {

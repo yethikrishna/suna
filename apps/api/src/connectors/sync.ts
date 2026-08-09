@@ -492,8 +492,8 @@ export async function syncProjectConnectors(
       if (bound) {
         if (e.providerType === 'computer' && e.slug === COMPUTER_SLUG) {
           // Existing sessions can remain durably bound to the retired aggregate
-          // connector. Keep that row executable but hide it from new catalogs
-          // and admin lists when per-machine profiles exist.
+          // connector. DB-backed catalog and call resolution expose this row only
+          // to a session with an exact durable binding.
           await db
             .update(connectors)
             .set({ enabled: true, status: 'active', updatedAt: new Date() })

@@ -156,8 +156,11 @@ included by the connector audit reconciliation path.
 ## Compatibility and migration
 
 The original aggregate `computer` row can omit `tunnel_ids`. A null allowlist is
-accepted only for that compatibility row and means all account machines. This
-keeps durable session bindings operational while profiles migrate.
+accepted only for that compatibility row and means all account machines. The API
+hides this row from connector administration and unbound principals. Only a
+session with an exact durable binding to the row can discover or call it. This
+keeps existing sessions operational without granting legacy aggregate access to
+new sessions or project-level callers.
 
 PR #6287 briefly created one `computer-<uuid>` profile per machine. The next
 connector sync folds those generated rows into one `computer` profile with a

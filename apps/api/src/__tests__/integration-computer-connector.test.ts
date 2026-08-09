@@ -10,8 +10,11 @@ import {
   accounts,
   auditEvents,
   connectorActions,
+  connectorConnections,
   connectorPolicies,
   connectors,
+  projectSessionConnectorBindings,
+  projectSessions,
   projects,
   tunnelConnections,
   tunnelPermissions,
@@ -30,6 +33,10 @@ let studioTunnelId = '';
 let travelTunnelId = '';
 let unassignedTunnelId = '';
 let crossAccountTunnelId = '';
+const LEGACY_CONNECTOR_ID = crypto.randomUUID();
+const LEGACY_CONNECTION_ID = crypto.randomUUID();
+const LEGACY_SESSION_ID = crypto.randomUUID();
+const LEGACY_USER_ID = crypto.randomUUID();
 
 const GROUP_SLUG = 'team-computers';
 const TRAVEL_SLUG = 'travel-computer';
@@ -112,9 +119,59 @@ beforeAll(async () => {
     create_only: true,
   });
   expect(created.ok).toBe(true);
+
+  await db.insert(connectors).values({
+    connectorId: LEGACY_CONNECTOR_ID,
+    accountId,
+    projectId,
+    slug: 'computer',
+    name: 'Legacy Computers',
+    providerType: 'computer',
+    config: { auth: { type: 'none', in: 'header', name: null, prefix: null } },
+    authorizationStrategy: 'project',
+  });
+  await db.insert(connectorActions).values({
+    connectorId: LEGACY_CONNECTOR_ID,
+    path: 'list_computers',
+    name: 'List computers',
+    description: 'List connected computers.',
+    inputSchema: { type: 'object', properties: {} },
+    risk: 'read',
+    binding: { kind: 'tunnel', method: 'list_computers' },
+  });
+  await db.insert(connectorConnections).values({
+    connectionId: LEGACY_CONNECTION_ID,
+    accountId,
+    projectId,
+    connectorId: LEGACY_CONNECTOR_ID,
+    label: 'Legacy default',
+    isDefault: true,
+  });
+  await db.insert(projectSessions).values({
+    sessionId: LEGACY_SESSION_ID,
+    accountId,
+    projectId,
+    branchName: LEGACY_SESSION_ID,
+    createdBy: LEGACY_USER_ID,
+    connectorBindingsConfigured: true,
+  });
+  await db.insert(projectSessionConnectorBindings).values({
+    sessionId: LEGACY_SESSION_ID,
+    accountId,
+    projectId,
+    connectorAlias: 'computer',
+    connectorId: LEGACY_CONNECTOR_ID,
+    connectionId: LEGACY_CONNECTION_ID,
+    source: 'request',
+    createdBy: LEGACY_USER_ID,
+  });
 });
 
 afterAll(async () => {
+  await db
+    .delete(projectSessionConnectorBindings)
+    .where(eq(projectSessionConnectorBindings.sessionId, LEGACY_SESSION_ID));
+  await db.delete(projectSessions).where(eq(projectSessions.sessionId, LEGACY_SESSION_ID));
   if (projectId) await db.delete(projects).where(eq(projects.projectId, projectId));
   const tunnelIds = [
     studioTunnelId,
@@ -228,6 +285,42 @@ describe('grouped Computers connector profiles — real DB', () => {
     });
   });
 
+  test('legacy aggregate is hidden from admin and unbound project principals', async () => {
+    const admin = await dbConnectorRouterDeps.listConnectors(projectId);
+    expect(admin.map((connector) => connector.slug)).not.toContain('computer');
+
+    const principal = {
+      userId: LEGACY_USER_ID,
+      accountId,
+      projectId,
+      sessionId: null,
+      subject: { userId: LEGACY_USER_ID, groupIds: [] },
+      agentGrant: null,
+    };
+    const catalog = await dbConnectorRouterDeps.listCatalog(principal);
+    expect(catalog.map((connector) => connector.slug)).not.toContain('computer');
+    const deps = dbConnectorRouterDeps.makeGatewayDeps(principal);
+    expect(await deps.loadConnectorBySlug(projectId, 'computer')).toBeNull();
+  });
+
+  test('legacy aggregate remains callable only for its exact durable session binding', async () => {
+    const principal = {
+      userId: LEGACY_USER_ID,
+      accountId,
+      projectId,
+      sessionId: LEGACY_SESSION_ID,
+      subject: { userId: LEGACY_USER_ID, groupIds: [] },
+      agentGrant: null,
+    };
+    const catalog = await dbConnectorRouterDeps.listCatalog(principal);
+    expect(catalog.map((connector) => connector.slug)).toContain('computer');
+    const deps = dbConnectorRouterDeps.makeGatewayDeps(principal);
+    expect(await deps.loadConnectorBySlug(projectId, 'computer')).toMatchObject({
+      connectorId: LEGACY_CONNECTOR_ID,
+      tunnelIds: null,
+    });
+  });
+
   test('multiple profiles can overlap and keep independent policies', async () => {
     const created = await dbConnectorRouterDeps.createConnector!(projectId, accountId, {
       slug: TRAVEL_SLUG,
@@ -308,9 +401,15 @@ describe('grouped Computers connector profiles — real DB', () => {
     const deleted = await dbConnectorRouterDeps.deleteConnector!(projectId, TRAVEL_SLUG);
     expect(deleted.ok).toBe(true);
     const remaining = await db
-      .select({ slug: connectors.slug })
+      .select({ slug: connectors.slug, config: connectors.config })
       .from(connectors)
       .where(and(eq(connectors.projectId, projectId), eq(connectors.providerType, 'computer')));
-    expect(remaining.map((row) => row.slug)).toEqual([GROUP_SLUG]);
+    expect(
+      remaining
+        .filter(
+          (row) => (row.config as Record<string, unknown> | null)?.computer_profile === true,
+        )
+        .map((row) => row.slug),
+    ).toEqual([GROUP_SLUG]);
   });
 });

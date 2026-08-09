@@ -27,6 +27,7 @@ import {
   workspaceModeFromSessionMetadata,
 } from './session-sandbox-metadata';
 import { resolveSessionNetworkBoundary } from './network-secret-boundary';
+import type { NetworkBoundarySecretBinding } from '../../secrets/network-boundary';
 
 /** Resolve the LLM gateway URL used by every supported remote provider. */
 export function llmGatewayBaseUrlForProvider(_providerName: ProviderName): string {
@@ -36,6 +37,21 @@ export function llmGatewayBaseUrlForProvider(_providerName: ProviderName): strin
 const SANDBOX_SERVICE_PORT = 8000;
 const FANOUT_CONCURRENCY = 6;
 const ENV_PUSH_TIMEOUT_MS = 15_000;
+
+async function syncProviderNetworkBoundary(
+  providerName: ProviderName,
+  externalId: string,
+  bindings: NetworkBoundarySecretBinding[],
+): Promise<void> {
+  if (bindings.length === 0 && providerName !== 'platinum') return;
+  const provider = getProvider(providerName);
+  if (!provider.syncNetworkBoundary) {
+    throw new Error(
+      `Sandbox provider ${providerName} does not support network-boundary secret delivery`,
+    );
+  }
+  await provider.syncNetworkBoundary(externalId, bindings);
+}
 
 export interface SandboxEnvSnapshot {
   env: Record<string, string>;
@@ -328,20 +344,12 @@ export async function syncSandboxEnvForPrompt(args: {
     args.requestedAgent,
   );
   if (!snapshot) return;
-  const provider = getProvider(args.providerName);
   const networkBoundary = await resolveSessionNetworkBoundary(
     args.projectId,
     args.sessionId,
     args.requestedAgent,
   );
-  if (networkBoundary.length > 0 && !provider.syncNetworkBoundary) {
-    throw new Error(
-      `Sandbox provider ${args.providerName} does not support network-boundary secret delivery`,
-    );
-  }
-  if (networkBoundary.length > 0) {
-    await provider.syncNetworkBoundary!(args.externalId, networkBoundary);
-  }
+  await syncProviderNetworkBoundary(args.providerName, args.externalId, networkBoundary);
   const llmGatewayEnabled = await resolveProjectLlmGatewayEnabled(args.projectId);
   const { opencodeState } = await postEnvToDaemon({
     previewUrl: args.previewUrl,
@@ -446,16 +454,8 @@ export async function propagateProjectSecretsToActiveSandboxes(
         snapshot = await resolveSandboxEnvSnapshot(projectId, row.sessionId);
         if (!snapshot) throw new Error('session env snapshot is unavailable');
         const providerName = row.provider as ProviderName;
-        const provider = getProvider(providerName);
         const networkBoundary = await resolveSessionNetworkBoundary(projectId, row.sessionId);
-        if (networkBoundary.length > 0 && !provider.syncNetworkBoundary) {
-          throw new Error(
-            `Sandbox provider ${providerName} does not support network-boundary secret delivery`,
-          );
-        }
-        if (provider.syncNetworkBoundary) {
-          await provider.syncNetworkBoundary(row.externalId, networkBoundary);
-        }
+        await syncProviderNetworkBoundary(providerName, row.externalId, networkBoundary);
         const { url, headers } = await resolveSandboxIngress(row.externalId, { port: SANDBOX_SERVICE_PORT, transport: 'http' });
         const proof = await postEnvToDaemon({
           previewUrl: url,

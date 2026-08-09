@@ -9,6 +9,7 @@ import {
 } from '@phosphor-icons/react';
 import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useState } from 'react';
+import { readSpreadsheetBlobWithRetry } from './xlsx-loader';
 import { XlsxViewerPreview } from './xlsx-viewer';
 
 export function isBlobUrl(path: string): boolean {
@@ -53,6 +54,7 @@ export function XlsxRenderer({
     if (!xlsxPath) return;
     let cancelled = false;
     let objectUrl: string | null = null;
+    const abortController = new AbortController();
 
     setSrc(null);
     setError(null);
@@ -64,12 +66,17 @@ export function XlsxRenderer({
           return;
         }
         const { readFileAsBlob } = await import('@/features/files/api/runtime-files');
-        const blob = await readFileAsBlob(xlsxPath);
+        const blob = await readSpreadsheetBlobWithRetry(
+          xlsxPath,
+          readFileAsBlob,
+          undefined,
+          abortController.signal,
+        );
         if (cancelled) return;
-        if (!blob || blob.size === 0) throw new Error('Empty file received');
         objectUrl = URL.createObjectURL(blob);
         setSrc(objectUrl);
       } catch (e) {
+        if (abortController.signal.aborted) return;
         console.error('[XlsxRenderer] Error:', e);
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load spreadsheet');
       }
@@ -77,6 +84,7 @@ export function XlsxRenderer({
 
     return () => {
       cancelled = true;
+      abortController.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [xlsxPath, attempt]);

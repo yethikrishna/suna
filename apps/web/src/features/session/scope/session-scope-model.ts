@@ -189,14 +189,15 @@ export function resetSessionConnectorBindings(
 }
 
 /**
- * How an inherited axis reads in the UI — named for where the default really
- * comes from, per axis. Secrets: `intersectSecretGrants(grant, null)` returns
- * the AGENT's grant untouched, so the inherited state is the agent's. Connectors:
- * the agent's grant gates the set, but each granted alias resolves to the
- * PROJECT's default connection (`resolveProjectDefaultConnectorConnection`).
+ * How an inherited axis reads in the UI — the agent defines both defaults.
+ * Secrets: `intersectSecretGrants(grant, null)` returns the AGENT's grant
+ * untouched. Connectors: the agent's grant decides WHICH connectors the session
+ * may use; each granted alias then resolves to the project's default connection
+ * (`resolveProjectDefaultConnectorConnection`) — a resolution detail the row
+ * description carries, not the label.
  */
 export const SESSION_SCOPE_SECRETS_INHERITED_LABEL = 'Agent default';
-export const SESSION_SCOPE_CONNECTORS_INHERITED_LABEL = 'Project default';
+export const SESSION_SCOPE_CONNECTORS_INHERITED_LABEL = 'Agent default';
 
 export function sessionSecretsSummary(draft: SessionScopeDraft): string {
   if (draft.secrets === undefined) return 'Unchanged';

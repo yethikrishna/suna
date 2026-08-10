@@ -33,7 +33,7 @@ const rows = (overrides: Partial<SessionOverrideRow>[] = []): SessionOverrideRow
 
 function render(props: Partial<React.ComponentProps<typeof SessionOverridesControlContent>> = {}) {
   return renderToStaticMarkup(
-    <SessionOverridesControlContent rows={rows()} onSave={() => {}} {...props} />,
+    <SessionOverridesControlContent rows={rows()} onSave={() => true} {...props} />,
   );
 }
 
@@ -92,34 +92,30 @@ describe('SessionOverridesControlContent', () => {
 
   test('uses a non-submit toolbar trigger inside the composer', () => {
     const html = renderToStaticMarkup(
-      <SessionOverridesControl rows={rows()} onSave={() => {}} />,
+      <SessionOverridesControl rows={rows()} onSave={() => true} />,
     );
 
     expect(html).toContain('aria-label="Session overrides"');
     expect(html).toContain('type="button"');
   });
 
-  test('the trigger stays quiet until an override is in force', () => {
-    // Everything inherited: icon only, in the toolbar's muted tone.
+  test('the trigger is an icon and nothing else, overrides or not', () => {
+    // The composer bar says nothing about the axes — muted icon only, even
+    // while overrides are in force. The panel is where overrides live.
     const quiet = renderToStaticMarkup(
-      <SessionOverridesControl rows={rows()} onSave={() => {}} />,
+      <SessionOverridesControl rows={rows()} onSave={() => true} />,
     );
     expect(quiet).toContain('text-muted-foreground');
     expect(quiet).not.toContain('Session<');
 
-    // Exactly one override: the trigger names the overridden axis.
-    const one = renderToStaticMarkup(
-      <SessionOverridesControl rows={rows([{}, { overridden: true }])} onSave={() => {}} />,
-    );
-    expect(one).toContain('Secrets');
-
-    // Several: a count, not a list.
-    const two = renderToStaticMarkup(
+    const withOverrides = renderToStaticMarkup(
       <SessionOverridesControl
         rows={rows([{ overridden: true }, { overridden: true }])}
-        onSave={() => {}}
+        onSave={() => true}
       />,
     );
-    expect(two).toContain('2 overrides');
+    // Row names/counts never leak onto the closed trigger.
+    expect(withOverrides).not.toContain('2 overrides');
+    expect(withOverrides).not.toContain('>Agent<');
   });
 });

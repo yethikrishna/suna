@@ -13,7 +13,10 @@ import type { SessionScopeCommit } from '@/features/session/scope/session-scope-
 import type { Agent, ProviderListResponse } from '@kortix/sdk/react';
 import { useProjectSession } from '@kortix/sdk/react';
 
-import { SessionOverridesToolbar } from './session-overrides-toolbar';
+import {
+  SessionOverridesToolbar,
+  type SessionOverrideSlot,
+} from './session-overrides-toolbar';
 
 export interface SessionOverridesComposerProps {
   projectId: string;
@@ -38,6 +41,12 @@ export interface SessionOverridesComposerProps {
    * this — so only a difference from it is an override worth badging.
    */
   defaultModel?: { providerID: string; modelID: string } | null;
+
+  /**
+   * Pre-create only: a live sandbox-template chooser for the session about to
+   * be created. Absent for existing sessions, whose environment is fixed.
+   */
+  sandboxSlot?: SessionOverrideSlot;
 }
 
 /**
@@ -64,6 +73,7 @@ export function SessionOverridesComposer({
   onModelChange,
   providers,
   defaultModel,
+  sandboxSlot,
 }: SessionOverridesComposerProps) {
   const sessionRow = useProjectSession(projectId, sessionId, { enabled: Boolean(sessionId) });
   const effort = useReasoningEffortControl(selectedModel, projectId);
@@ -166,6 +176,7 @@ export function SessionOverridesComposer({
       model={modelSlot}
       reasoningEffort={effortSlot}
       sandbox={sandbox}
+      sandboxSlot={sandboxSlot}
     />
   );
 }

@@ -69,6 +69,11 @@ export interface SessionOverridesToolbarProps {
   reasoningEffort?: SessionOverrideSlot;
   /** Create-time only. Shown so the session's environment is not a mystery. */
   sandbox?: { slug: string | null; provider: string | null };
+  /**
+   * Pre-create only: the sandbox template IS still choosable, so the row gets
+   * a real editor instead of the read-only summary.
+   */
+  sandboxSlot?: SessionOverrideSlot;
 }
 
 function activeScopeSignature(scope: SessionScope | undefined): string {
@@ -108,6 +113,7 @@ export function SessionOverridesToolbar({
   model,
   reasoningEffort,
   sandbox,
+  sandboxSlot,
 }: SessionOverridesToolbarProps) {
   const { scope, catalog, saveScope, isLoading, isScopeLoading } = useSessionScope({
     projectId,
@@ -152,8 +158,8 @@ export function SessionOverridesToolbar({
     !hasAvailableScopeAxis(activeCatalog) ||
     (Boolean(sessionId) && (!scope || isScopeLoading));
 
-  const handleSave = useCallback(async () => {
-    if (!catalog || !initialized) return;
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (!catalog || !initialized) return false;
     try {
       const result = await commitSessionScopeDraft({
         sessionId,
@@ -170,8 +176,10 @@ export function SessionOverridesToolbar({
       } else if (!sessionId) {
         successToast('Session overrides configured');
       }
+      return true;
     } catch (error) {
       errorToast(error instanceof Error ? error.message : 'Session overrides could not be saved');
+      return false;
     }
   }, [
     catalog,
@@ -272,8 +280,8 @@ export function SessionOverridesToolbar({
           : 'Unavailable',
       overridden: sessionConnectorsAreOverridden(draft),
       description:
-        'Which connected accounts this session may use. By default every connector the agent grants resolves to the project’s default connection; pick here only to pin this session to something else.',
-      resetLabel: 'Reset to project default',
+        'Which connected accounts this session may use. The default is the agent’s grant — each granted connector uses the project’s default connection; pick here only to pin this session to something else.',
+      resetLabel: 'Reset to agent default',
       editor: (
         <SessionConnectorsEditor
           draft={draft}
@@ -284,28 +292,48 @@ export function SessionOverridesToolbar({
       ),
       onReset: () => onChange(resetSessionConnectorBindings(draft, activeCatalog)),
     });
-    list.push({
-      id: 'sandbox',
-      name: 'Sandbox',
-      icon: Cpu,
-      hint: 'Fixed at session start',
-      summary: sandbox?.slug ?? 'Default template',
-      description:
-        'The machine image this session runs on. It is chosen when the session is created and cannot be changed afterwards — start a new session to use a different one.',
-      readOnly: true,
-      editor: (
-        <dl className="text-sm">
-          <div className="border-border flex items-center justify-between gap-3 border-b py-2">
-            <dt className="text-muted-foreground text-xs">Template</dt>
-            <dd className="text-foreground truncate text-xs">{sandbox?.slug ?? 'Project default'}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-3 py-2">
-            <dt className="text-muted-foreground text-xs">Provider</dt>
-            <dd className="text-foreground truncate text-xs">{sandbox?.provider ?? 'Automatic'}</dd>
-          </div>
-        </dl>
-      ),
-    });
+    if (sandboxSlot) {
+      // Pre-create: the template is still a real choice.
+      list.push({
+        id: 'sandbox',
+        name: 'Sandbox',
+        icon: Cpu,
+        hint: 'Where it runs',
+        summary: sandboxSlot.summary,
+        overridden: sandboxSlot.overridden,
+        description:
+          sandboxSlot.description ??
+          'The machine image this session will run on. It is fixed once the session starts — by default the agent’s environment, then the project or platform default.',
+        editor: sandboxSlot.control,
+        onReset: sandboxSlot.onReset,
+        resetLabel: sandboxSlot.resetLabel,
+      });
+    } else {
+      list.push({
+        id: 'sandbox',
+        name: 'Sandbox',
+        icon: Cpu,
+        hint: 'Fixed at session start',
+        summary: sandbox?.slug ?? 'Default template',
+        description:
+          'The machine image this session runs on. It is chosen when the session is created and cannot be changed afterwards — start a new session to use a different one.',
+        readOnly: true,
+        editor: (
+          <dl className="text-sm">
+            <div className="border-border flex items-center justify-between gap-3 border-b py-2">
+              <dt className="text-muted-foreground text-xs">Template</dt>
+              <dd className="text-foreground truncate text-xs">
+                {sandbox?.slug ?? 'Default template'}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-muted-foreground text-xs">Provider</dt>
+              <dd className="text-foreground truncate text-xs">{sandbox?.provider ?? 'Automatic'}</dd>
+            </div>
+          </dl>
+        ),
+      });
+    }
     return list;
   }, [
     activeCatalog,
@@ -316,6 +344,7 @@ export function SessionOverridesToolbar({
     onChange,
     reasoningEffort,
     sandbox,
+    sandboxSlot,
     saveScope.isPending,
   ]);
 

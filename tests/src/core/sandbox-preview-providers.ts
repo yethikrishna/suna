@@ -26,6 +26,7 @@ import {
   exec as execPlatinum,
   observePlatinumSandboxStart,
   observePlatinumWorker,
+  platinumWarmReadinessTimeoutMs,
   stat as statPlatinum,
   waitForWarmSandbox,
 } from './platinum-ci';
@@ -192,7 +193,7 @@ export async function deployPlatinumPreview(
       startedAt,
       readSandbox: () => api.json<PlatinumSandbox>(`/v1/sandboxes/${created.id}`),
     });
-    await waitForWarmSandbox(api, sandboxId);
+    await waitForWarmSandbox(api, sandboxId, platinumWarmReadinessTimeoutMs(sandbox.via));
     let previewUrl = sandbox.exposed?.find((item) => item.port === 8080)?.url;
     if (!previewUrl) {
       const exposed = await api.json<{ url: string }>(`/v1/sandboxes/${sandboxId}/expose`, {

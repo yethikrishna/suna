@@ -39,7 +39,7 @@ GREEN:
 - The SDK parses split SSE frames, preserves `ApiError` status and code values,
   and rejects a stream that closes without a terminal result.
 - Focused session REST suite: `39 pass`, `0 fail`.
-- `pnpm --filter @kortix/sdk test`: `1848 pass`, `0 fail`, `7092 expect()` calls.
+- `pnpm --filter @kortix/sdk test`: `1848 pass`, `0 fail`, `7093 expect()` calls.
 - `pnpm --filter @kortix/sdk typecheck`: exit `0` for the package and examples.
 - `pnpm --filter @kortix/sdk smoke:install`: packed-install import and construction passed.
 - Public-surface snapshots contain additive reload stream names only. The package

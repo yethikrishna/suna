@@ -467,7 +467,7 @@ function reloadStreamResponse(frames: string[], status = 200): Response {
 
 test('reloadProjectSessionConfigStream requests SSE and reports each server phase', async () => {
   const events: unknown[] = [];
-  const fetchStub = mock(async (_url: unknown, opts: { body?: string; headers?: unknown } = {}) => {
+  const fetchStub = mock(async (_url: unknown, opts: { body?: string; headers?: HeadersInit } = {}) => {
     expect(JSON.parse(opts.body ?? '{}')).toEqual({ refresh_repo: false });
     expect(new Headers(opts.headers).get('accept')).toBe('text/event-stream');
     return reloadStreamResponse([

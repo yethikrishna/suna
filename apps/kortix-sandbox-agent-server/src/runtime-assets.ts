@@ -187,6 +187,11 @@ async function replaceCli(
     `.kortix.download.${process.pid}.${Math.random().toString(36).slice(2, 10)}`,
   )
   try {
+    // Buffered, not streamed. `Bun.write(path, response)` hangs on a streamed
+    // Response in this runtime (a known incident in this repo), and a
+    // hash-while-streaming pipeline is more machinery than the numbers justify:
+    // the binary is ~100 MB on a sandbox with at least 4 GB, the buffer is
+    // transient, and the reconcile runs at most once per session start.
     const bytes = Buffer.from(body)
     await writeFile(tmpPath, bytes)
     const actual = createHash('sha256').update(bytes).digest('hex')

@@ -353,8 +353,12 @@ export function secretDeliveryBlockedReason(
   if (strategy !== 'egress' && strategy !== 'broker') return null;
   if (!config) return null;
   if (config.agent_discovery === 'opencode') return 'no_agent_grant';
-  if (config.agents.length === 0) return null;
-  const granted = config.agents.some((agent) => {
+  // Anything other than the two known modes is a config we do not understand —
+  // including a partial object from a caller that resolved only part of it.
+  if (config.agent_discovery !== 'declarative') return null;
+  const agents = config.agents;
+  if (!Array.isArray(agents) || agents.length === 0) return null;
+  const granted = agents.some((agent) => {
     const env = agent.scope?.env;
     return Array.isArray(env) && grantAdmits(env, identifier);
   });

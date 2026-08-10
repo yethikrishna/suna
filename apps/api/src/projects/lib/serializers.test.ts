@@ -219,11 +219,11 @@ describe('secretDeliveryBlockedReason', () => {
         {
           name: 'build',
           description: null,
+          mode: null,
           path: '.opencode/agent/build.md',
           source: 'opencode',
           enabled: true,
-          scope: { env: undefined, connectors: undefined },
-        } as SecretAgentGrantConfig['agents'][number],
+        },
       ],
     };
     expect(secretDeliveryBlockedReason('BOUNDARY_TEST', 'egress', config)).toBe('no_agent_grant');
@@ -232,6 +232,20 @@ describe('secretDeliveryBlockedReason', () => {
   test('runtime secrets are unaffected by opencode discovery', () => {
     const config: SecretAgentGrantConfig = { agent_discovery: 'opencode', agents: [] };
     expect(secretDeliveryBlockedReason('BOUNDARY_TEST', 'runtime', config)).toBeNull();
+  });
+
+  // A caller may hand over a config it only partly resolved. Reading `agents`
+  // off it threw a TypeError and turned GET /secrets into a 500, so the shape is
+  // checked rather than trusted.
+  test.each([
+    ['an empty object', {}],
+    ['a missing agents array', { agent_discovery: 'declarative' }],
+    ['a non-array agents field', { agent_discovery: 'declarative', agents: null }],
+    ['an unknown discovery mode', { agent_discovery: 'something-else', agents: [] }],
+  ])('survives %s and reports null', (_label, config) => {
+    expect(
+      secretDeliveryBlockedReason('BOUNDARY_TEST', 'egress', config as SecretAgentGrantConfig),
+    ).toBeNull();
   });
 
   test('no config at all reports null', () => {

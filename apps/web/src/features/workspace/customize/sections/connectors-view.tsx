@@ -169,7 +169,6 @@ import {
   connectorSyncErrorForSlug,
   createOnlyConnectorDraft,
   type EasyConnectApp,
-  easyConnectUnavailableReason,
   proposeConnectorConnectionSlug,
 } from './connector-connection-form';
 import { AuthorizationStrategyField, ConnectorConnectionModal } from './connector-connection-modal';
@@ -3969,7 +3968,6 @@ function AppCatalogue({
         }
         existingSlugs={existingSlugs}
         pending={addApp.isPending}
-        unavailableReason={easyConnectUnavailableReason(selectedApp)}
         onOpenChange={(open) => !open && setSelectedApp(null)}
         onSubmit={(connector) => addApp.mutate(connector)}
       />

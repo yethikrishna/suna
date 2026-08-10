@@ -758,8 +758,12 @@ function SessionTurnImpl({
   const turnErrorIsAbort = useMemo(() => {
     for (const msg of turn.assistantMessages) {
       const err = (msg.info as { error?: unknown }).error;
-      if (!err) continue;
-      return typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError';
+      if (!err || typeof err !== 'object') continue;
+      // Narrow to a string BEFORE comparing — `name` is `unknown` here, and
+      // comparing that to a literal is the inconvertible-types smell CodeQL
+      // flags (and would silently be false for a boxed String or a symbol).
+      const name = (err as { name?: unknown }).name;
+      return typeof name === 'string' && name === 'AbortError';
     }
     return false;
   }, [turn]);

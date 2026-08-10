@@ -67,7 +67,10 @@ describe('wiring', () => {
 
   test('the transcript reads the structured error name', () => {
     const src = code(CHAT);
-    expect(src).toContain("name?: unknown }).name === 'AbortError'");
+    // Narrowed to a string before the comparison — comparing the raw `unknown`
+    // to a literal is the inconvertible-types smell CodeQL flags, and it would
+    // read false for a boxed String.
+    expect(src).toContain("typeof name === 'string' && name === 'AbortError'");
   });
 
   test('BOTH render sites pass it', () => {

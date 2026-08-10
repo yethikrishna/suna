@@ -167,10 +167,16 @@ jobs:
   # TF_APPLY_ROLE_ARN_DEV is set — so merging this before the IAM role exists
   # cannot break the dev pipeline. The image jobs below treat a SKIPPED
   # terraform job as a pass and a FAILED one as a blocker.
+  #
+  # The `github.ref` condition keeps the documented "manual branch run" of this
+  # workflow working: terraform-apply.yml refuses any commit that is not on
+  # `main`, so on a branch dispatch this job would fail and block the image
+  # deploys. Skipping is the correct outcome there — a branch run deploys
+  # images, never infrastructure.
   terraform-dev:
     name: Apply dev Terraform
     needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.terraform == 'true' && vars.TF_APPLY_ROLE_ARN_DEV != '' }}
+    if: ${{ needs.detect-changes.outputs.terraform == 'true' && vars.TF_APPLY_ROLE_ARN_DEV != '' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
       id-token: write

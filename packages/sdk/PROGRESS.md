@@ -48,6 +48,24 @@ GREEN:
 
 **SDK package shippable to production: YES.**
 
+### 2026-08-10 — session `gateway-error-chain` claim
+
+No **Now** task claimed. This is the user-directed LLM gateway failure-handling refactor.
+
+Claimed SDK scope:
+
+- Preserve structured retry details from the OpenCode status payload.
+- Keep the existing retry message and every published name backward compatible.
+- Add failing retry-detail normalization coverage before implementation.
+- Run SDK typecheck, the complete SDK suite, and packed-install smoke.
+
+The required `tdd` skill is unavailable in this session. This work uses the required
+RED, GREEN, and REFACTOR sequence directly.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
 ### 2026-08-10 — session `reload-live-status` claim
 
 No **Now** task claimed. This is the user-directed live session-config reload status work.

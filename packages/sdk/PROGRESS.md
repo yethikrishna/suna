@@ -62,9 +62,32 @@ Claimed SDK scope:
 The required `tdd` skill is unavailable in this session. This work uses the required
 RED, GREEN, and REFACTOR sequence directly.
 
-**Status:** IN PROGRESS.
+RED:
 
-**SDK package shippable to production: NOT YET.**
+- Retry normalization tests failed because gateway details and ordered attempt
+  failures were absent from `RetryInfo` and `TurnError`.
+
+GREEN:
+
+- The SDK normalizes direct, nested, OpenCode `responseBody`, wrapped-cause,
+  JSON-string, and embedded-JSON gateway failure envelopes.
+- The SDK keeps legacy retry messages and adds optional typed gateway details.
+- Focused turns suite: `55 pass`, `0 fail`, `113 expect()` calls.
+
+REFACTOR:
+
+- Shared normalization owns status, code, request, model, provider, and ordered
+  attempt-failure parsing.
+- Malformed status and code values are rejected instead of exposed as trusted data.
+- Public-surface snapshots contain two additive type names and zero removals.
+- `pnpm --filter @kortix/sdk test`: `1855 pass`, `0 fail`, `7112 expect()` calls.
+- `pnpm --filter @kortix/sdk typecheck`: exit `0` for the package and examples.
+- `pnpm --filter @kortix/sdk smoke:install`: packed-install import and construction passed.
+- Root `pnpm test`: all five core lanes passed in `33.1s`.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
 
 ### 2026-08-10 — session `reload-live-status` claim
 

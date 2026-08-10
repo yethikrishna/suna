@@ -21,6 +21,41 @@ linked, not inlined.
 
 ## Register
 
+### One CREATE INDEX CONCURRENTLY per table at a time (2026-08-10)
+
+**When:** building indexes on a live table (runbooks, .concurrent.ts migrations).
+Two concurrent CIC builds on the same table starve each other's
+lock-acquisition points — every acquisition 55P03s until one finishes. Build
+strictly serially. If a builder's client process dies, its CIC keeps running
+SERVER-side, holds ShareUpdateExclusive, and its final commit is unreliable —
+find it in `pg_stat_progress_create_index`, `pg_terminate_backend` it, and
+`DROP INDEX CONCURRENTLY` the INVALID shell before rebuilding (`IF NOT EXISTS`
+silently keeps invalid shells).
+*Incident:* v0.12.7 audit-v2 index pass — parallel lanes 55P03-thrashed, a
+killed lane left an orphaned build that starved the retry run.
+
+### The Vercel prod build must be handed the release version (2026-08-10)
+
+**When:** touching deploy-prod's Vercel deploy or apps/web/next.config version
+resolution. The Vercel build (rootDirectory apps/web) cannot reliably read the
+repo-root VERSION file, so runtime-config reports "dev" and
+frontend-auth-proof's `VERSION === X.Y.Z` check fails. Pass
+`--build-env NEXT_PUBLIC_KORTIX_VERSION=<version>` on every prod deploy (the
+`deploy-web-vercel` job does); the project env `NEXT_PUBLIC_KORTIX_VERSION` is
+a static fallback that goes stale — the build-env override wins.
+*Incident:* v0.12.7 frontend served VERSION "dev"; gate exhausted 30 attempts;
+fixed by `vercel redeploy` after setting the env.
+
+### An audit reconstruction trigger is only safe with its dedup index (2026-08-10)
+
+**When:** installing triggers that INSERT INTO audit_events with
+source_ledger/source_record_id set. The prepare-trigger's duplicate check needs
+`idx_audit_events_source_phase`; without it every triggered insert seq-scans
+the whole table and times out the OUTER statement — cron trigger dispatch
+failed prod-wide for ~80 min. Order in any reconcile: dedup index BEFORE (or
+immediately after) trigger install, never "later with the other indexes."
+*Incident:* v0.12.7 reconcile installed triggers at 17:56, index landed 19:29.
+
 ### Never backfill data inside a single-transaction migration (2026-08-10)
 
 **When:** writing any `.sql` migration under `packages/db/migrations/`.

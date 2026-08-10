@@ -24,6 +24,7 @@ import Loading from '@/components/ui/loading';
 import { SidebarContext } from '@/components/ui/sidebar';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { openSessionQuickView } from '@/features/session/open-session-quick-view';
+import { LEGACY_PALETTE_HIDDEN } from '@/features/workspace/command-palette-visibility';
 import {
   consumePendingCommandPalette,
   OPEN_COMMAND_PALETTE_EVENT,
@@ -124,28 +125,6 @@ function sanitizeCmdkValue(value: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 }
-
-const LEGACY_PALETTE_HIDDEN = new Set([
-  'workspace',
-  'dashboard',
-  'scheduled-tasks',
-  'files',
-  'tunnel',
-  'running-services-cmd',
-  'agent-browser-cmd',
-  'internal-browser-cmd',
-  'desktop-cmd',
-  'templates',
-  'changelog',
-  'credits-explained',
-  'secrets-manager',
-  'api-keys',
-  'llm-providers',
-  'open-terminal',
-  'restart-config',
-  'restart-full',
-  'ssh-quick',
-]);
 
 const SUBMENU_PAGE_BY_ID: Record<string, PalettePage> = {
   'nav-projects': 'projects',

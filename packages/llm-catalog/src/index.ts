@@ -507,15 +507,21 @@ export function pricingRefLookupCandidates(pricingRef: string): string[] {
 // markup, so the gateway enforces budgets/logging/spend on all of them. GLM
 // runs through AsterLab. DeepSeek V4 Flash runs on OpenRouter.
 //
-// 2026-08-10: the lineup is deliberately slimmed to GLM 5.2 + DeepSeek V4
-// Flash. Claude Opus 4.8 / Claude Sonnet 4.6 (Bedrock) and Kimi K3 (AsterLab)
-// are deactivated — their entries are kept below, commented out, so
+// 2026-08-10: Claude Opus 4.8 / Claude Sonnet 4.6 (Bedrock) and Kimi K3
+// (AsterLab) are deactivated — their entries are kept below, commented out, so
 // reactivation is a diff-review away. Consequences of a removed id:
 // stored account/project/agent defaults pointing at one degrade to the
 // platform default via `degradeUnservableDefault` (the servability probe
 // throws `model_not_found`), and an explicit request errors with
-// `model_not_found`. NOTE: neither remaining model has vision — the managed
-// lineup cannot accept image input; that needs a BYOK provider key.
+// `model_not_found`.
+//
+// Same day, three cheap near-frontier models were added (all OpenRouter
+// transport): Muse Spark 1.2, MiniMax M3, and GPT-5.6 Luna. All three carry
+// vision, which restores an image-input path after the Claude removal
+// (LLM_GATEWAY_VISION_MODEL defaults to gpt-5.6-luna, the cheapest vision
+// model), and DeepSeek V4 Flash became the platform default (cheapest
+// credible agentic coder; beats GLM 5.2 on every published agentic
+// benchmark while costing ~10x less per unit of work).
 export const MANAGED_MODELS: ManagedModel[] = [
   // {
   //   id: 'claude-opus-4.8',
@@ -646,6 +652,98 @@ export const MANAGED_MODELS: ManagedModel[] = [
       allow_fallbacks: true,
     },
   },
+  {
+    // Meta's Muse Spark 1.2 via OpenRouter. Exactly ONE endpoint serves the
+    // standard slug (Meta first-party: 1_048_576 ctx, tools, 100% 30m uptime
+    // measured 2026-08-10), so the pin is trivial. NEVER switch this to the
+    // `meta/muse-spark-1.2-contributor` slug — its 10x-cheaper tier grants
+    // Meta training rights over prompts and completions, which is
+    // disqualifying for customer sessions. `pricingRef` is the model's REAL
+    // models.dev id (live api.json has it as of 2026-08-10; the committed
+    // catalog.generated.json snapshot predates the 2026-08-05 release, so
+    // snapshot-only consumers fall back to the synthetic capability record
+    // until the next snapshot regen — the served runtime catalog fetches
+    // live models.dev and resolves it).
+    id: 'muse-spark-1.2',
+    name: 'Muse Spark 1.2',
+    upstreamModelId: 'meta/muse-spark-1.2',
+    transport: 'openrouter',
+    pricingRef: 'meta/muse-spark-1.2',
+    pricing: {
+      inputPerMillion: 1.25,
+      cachedInputPerMillion: 0.15,
+      outputPerMillion: 4.25,
+    },
+    tier: 'balanced',
+    vision: true,
+    limit: { context: 1_048_576, output: 131_072 },
+    openrouterProvider: {
+      order: ['meta'],
+      allow_fallbacks: true,
+    },
+  },
+  {
+    // MiniMax M3 via OpenRouter. 9 endpoints serve the slug (measured
+    // 2026-08-10) and they are NOT interchangeable:
+    //  - `gmicloud` (the cheapest, $0.24/$0.96) advertises NO tool support —
+    //    routing there breaks the agent harness outright, hence the explicit
+    //    `ignore`;
+    //  - `parasail` caps max_completion_tokens at 32_768 and `venice` at
+    //    65_536 against the 131_072 this entry advertises;
+    //  - context spans 256_000 (morph) to 1_048_576 (parasail).
+    // Order: `minimax` first (first-party, 524_288 ctx, 512_000 max out,
+    // 99.85% uptime), then `novita` (1_000_000 ctx, 131_072 max out, 99.88%).
+    // The advertised limit is the SAFE INTERSECTION of the two pinned hosts
+    // (ctx 524_288, output 131_072) so a session sized to this entry can land
+    // on either without truncation.
+    id: 'minimax-m3',
+    name: 'MiniMax M3',
+    upstreamModelId: 'minimax/minimax-m3',
+    transport: 'openrouter',
+    pricingRef: 'openrouter/minimax/minimax-m3',
+    pricing: {
+      inputPerMillion: 0.3,
+      cachedInputPerMillion: 0.06,
+      outputPerMillion: 1.2,
+    },
+    tier: 'balanced',
+    vision: true,
+    limit: { context: 524_288, output: 131_072 },
+    openrouterProvider: {
+      order: ['minimax', 'novita'],
+      ignore: ['gmicloud'],
+      allow_fallbacks: true,
+    },
+  },
+  {
+    // OpenAI's GPT-5.6 Luna via OpenRouter. First-party OpenAI endpoints plus
+    // Azure and Bedrock all advertise tools + 1_050_000 ctx / 128_000 max out
+    // (measured 2026-08-10); pin `openai` for cache locality. `pricingRef`
+    // resolves to the REAL models.dev openrouter entry — temperature:false
+    // (Luna rejects a client-sent temperature; advertising support would 400
+    // the turn) and the none→max effort ladder. `pricing` is OpenAI's
+    // published post-2026-07-30 rate ($0.20/$1.20, $0.02 cache read).
+    // KNOWN CAVEAT: measured TTFT at MAX reasoning effort is ~144s (median
+    // 1.87s at defaults) — fine for background agents, poor for interactive
+    // max-effort use.
+    id: 'gpt-5.6-luna',
+    name: 'GPT-5.6 Luna',
+    upstreamModelId: 'openai/gpt-5.6-luna',
+    transport: 'openrouter',
+    pricingRef: 'openrouter/openai/gpt-5.6-luna',
+    pricing: {
+      inputPerMillion: 0.2,
+      cachedInputPerMillion: 0.02,
+      outputPerMillion: 1.2,
+    },
+    tier: 'balanced',
+    vision: true,
+    limit: { context: 1_050_000, output: 128_000 },
+    openrouterProvider: {
+      order: ['openai'],
+      allow_fallbacks: true,
+    },
+  },
 ];
 
 const MANAGED_BY_ID = new Map(MANAGED_MODELS.map((m) => [m.id, m] as const));
@@ -665,7 +763,7 @@ export const MANAGED_FLAGSHIP_MODEL_ID = (
 ).id;
 
 /** Concrete Kortix-managed default used when no account or project default exists. */
-export const PLATFORM_DEFAULT_MODEL_ID = 'glm-5.2';
+export const PLATFORM_DEFAULT_MODEL_ID = 'deepseek-v4-flash';
 
 function modelsByWireId(catalog: Catalog): Map<string, CatalogModel> {
   const byId = new Map<string, CatalogModel>();

@@ -87,30 +87,20 @@ gh run list --repo kortix-ai/suna --branch staging --limit 10
 `qa-staging` must target `staging.kortix.com` / `staging-api.kortix.com`. A green
 run against dev is not a staging gate.
 
-### Step 3.6 — cost the pending PROD migrations (2026-08-10 outage lesson)
+### Step 3.6 — cost the pending PROD migrations
 
-Ordering-correct is not enough; a pending migration can be **too expensive to run
-in the deploy**. The v0.12.7 promote took prod down ~30 min because
-`centralized_audit_v2` ran two full-table UPDATEs over 30.5M rows inside the same
-transaction as its ALTER TABLEs (ACCESS EXCLUSIVE held for the whole backfill).
-
-Before every promote:
+Diff prod's `kortix_migrations.pgmigrations` against the promoted tree and cost
+every pending migration at prod data volume (a tag tree containing a file is
+NOT proof it ran — only the ledger is):
 ```bash
-# What has prod actually applied? (tag trees are NOT proof — v0.12.6's tag
-# contained audit-v2, but prod's ledger had never run it)
 psql "$(aws secretsmanager get-secret-value --secret-id kortix-prod-env \
   --query SecretString --output text | jq -r .DATABASE_URL)" \
   -Atc "select name from kortix_migrations.pgmigrations order by id desc limit 5;"
-# Diff that against packages/db/migrations on the promoted ref → the PENDING set.
 ```
-For each pending migration ask: does it contain top-level DML (`UPDATE`/`INSERT
-INTO`/`DELETE FROM`/data-modifying `WITH`), and how big is the target table on
-prod? Anything that rewrites a large hot table must run as a **supervised batched
-out-of-band pass first** (short-tx DDL → triggers → chunked, committed updates
-under `kortix.audit_maintenance='on'` → CONCURRENTLY indexes → ledger rows), and
-only then the deploy — see [[v0127-release-outage-audit-v2]] memory for the
-worked pattern. The migration lint (`backfill-safe` guard) blocks new offenders,
-but grandfathered files and judgment cases still need this check.
+Anything that rewrites a large hot table runs as a supervised batched
+out-of-band pass BEFORE the deploy. Full rule + the worked pattern: the
+**learnings** skill ("Never backfill data inside a single-transaction
+migration" / "Cost every pending prod migration", 2026-08-10 v0.12.7 outage).
 
 ### Step 4 — run Promote to Production
 

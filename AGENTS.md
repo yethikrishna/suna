@@ -111,6 +111,16 @@ and actual Merit/Skill. It's hard, because you have to not only be very smart bu
 also crazy driven to push like a motherfucker and want to feel every edge and
 corner to make sure the output is good.
 
+## Learnings: incident rules live in the `learnings` skill
+
+`.claude/skills/learnings/SKILL.md` is the append-only register of rules paid
+for with real downtime — each with the incident that taught it and the
+automation that enforces it. Load it before writing or reviewing a DB
+migration, touching deploy/release workflows, planning a promote, or responding
+to a prod incident. After resolving ANY incident or near-miss, append its rule
+there in the same session — an incident that leaves no learning behind is not
+finished.
+
 ## How to communicate: precise, technically accurate, no fluff
 
 Write every response — chat, PR text, commit messages, code comments, docs — in

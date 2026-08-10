@@ -266,6 +266,7 @@ describe('SessionConfigIndicator wiring', () => {
   test('the ⋯ item and the chip share ONE mutation, so pending state cannot disagree', () => {
     expect(source).toContain('const reloadConfig = useReloadSessionConfig(');
     expect(source).toContain('isPending={reloadConfig.isPending}');
+    expect(source).toContain('phase={reloadConfig.phase}');
     expect(source).toContain('disabled={reloadConfig.isPending}');
   });
 

@@ -24,13 +24,16 @@ import Loading from '@/components/ui/loading';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { buildAgentGitReconciliationPrompt } from '@/features/session/agent-git-reconciliation';
+import { reloadProgressText } from '@/hooks/projects/session-reload-progress';
 import {
   type ReloadBusyReason,
   useSessionConfigFreshness,
 } from '@/hooks/projects/use-session-config-freshness';
 import { useChatSendStore } from '@/stores/chat-send-store';
+import type { SessionReloadPhase } from '@kortix/sdk';
 import { ArrowsClockwiseIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
+import { SessionReloadProgressView } from './session-reload-progress-view';
 
 /** The server's two refusals, as something a person would actually read. */
 const BUSY_COPY: Record<ReloadBusyReason, { title: string; body: string; tail: string }> = {
@@ -53,6 +56,7 @@ export function SessionConfigIndicator({
   baseRef,
   reload,
   isPending,
+  phase,
   canReload,
 }: {
   projectId: string;
@@ -62,6 +66,7 @@ export function SessionConfigIndicator({
   /** Hoisted to the header so the ⋯ item and this chip share one pending state. */
   reload: (vars?: { force?: boolean }) => void;
   isPending: boolean;
+  phase: SessionReloadPhase | null;
   canReload: boolean;
 }) {
   const { notice } = useSessionConfigFreshness(projectId, sessionId);
@@ -93,22 +98,36 @@ export function SessionConfigIndicator({
   // The confirm is rendered by the header, not here — see `SessionConfigReloadConfirm`.
   // This component may vanish the moment a reload lands, and a dialog that
   // unmounts mid-question is worse than no dialog.
-  if (notice.kind === 'hidden') return null;
+  if (notice.kind === 'hidden' && !isPending) return null;
 
-  const label = 'Agent config update available';
+  const label = isPending ? reloadProgressText(phase) : 'Agent config update available';
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <Hint side="bottom" sideOffset={4} delayDuration={300} label={label}>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={label} className="relative">
-            <span className="relative inline-flex">
-              <ArrowsClockwiseIcon className="text-foreground size-4" />
-              <span
-                className="ring-background bg-kortix-orange absolute -top-1 -right-1 size-2 rounded-full ring-2"
-                aria-hidden
-              />
-            </span>
+          <Button
+            variant="ghost"
+            size={isPending ? 'sm' : 'icon'}
+            aria-label={label}
+            className={isPending ? 'h-8 max-w-56 gap-1.5 px-2' : 'relative'}
+          >
+            {isPending ? (
+              <>
+                <Loading className="size-3.5 shrink-0" />
+                <span className="truncate text-xs" aria-live="polite">
+                  {reloadProgressText(phase)}
+                </span>
+              </>
+            ) : (
+              <span className="relative inline-flex">
+                <ArrowsClockwiseIcon className="text-foreground size-4" />
+                <span
+                  className="ring-background bg-kortix-orange absolute -top-1 -right-1 size-2 rounded-full ring-2"
+                  aria-hidden
+                />
+              </span>
+            )}
           </Button>
         </PopoverTrigger>
       </Hint>
@@ -121,29 +140,45 @@ export function SessionConfigIndicator({
             </span>
             <div className="min-w-0">
               <h3 className="text-foreground truncate text-sm font-semibold tracking-tight">
-                {label}
+                {isPending ? 'Reloading agent config' : label}
               </h3>
             </div>
           </div>
 
-          <p className="text-muted-foreground mt-2.5 text-xs leading-relaxed">
-            A newer agent config is available. Reloading restarts the agent runtime and leaves every
-            project file and commit unchanged.
-          </p>
+          {isPending ? (
+            <SessionReloadProgressView phase={phase} />
+          ) : (
+            <>
+              <p className="text-muted-foreground mt-2.5 text-xs leading-relaxed">
+                A newer agent config is available. Reloading restarts the agent runtime and leaves
+                every project file and commit unchanged.
+              </p>
 
-          <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
-            If the branch is behind, ask the agent to merge the latest base branch, resolve
-            conflicts, test the result, commit it, and reload safely.
-          </p>
+              <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+                If the branch is behind, ask the agent to merge the latest base branch, resolve
+                conflicts, test the result, commit it, and reload safely.
+              </p>
 
-          <p className="text-muted-foreground mt-2.5 font-mono text-[11px]">
-            <span className="text-foreground/80">{notice.running}</span>
-            {' → '}
-            <span className="text-foreground/80">{notice.latest}</span>
-          </p>
+              <p className="text-muted-foreground mt-2.5 font-mono text-[11px]">
+                <span className="text-foreground/80">
+                  {notice.kind === 'stale' ? notice.running : '—'}
+                </span>
+                {' → '}
+                <span className="text-foreground/80">
+                  {notice.kind === 'stale' ? notice.latest : '—'}
+                </span>
+              </p>
+            </>
+          )}
         </div>
 
-        {canReload ? (
+        {isPending ? (
+          <div className="px-4 py-2.5">
+            <p className="text-muted-foreground text-xs">
+              Keep this page open. The session remains available after the runtime swap completes.
+            </p>
+          </div>
+        ) : canReload ? (
           <div className="border-border flex flex-wrap items-center gap-2 border-t px-3 py-2.5">
             <Button size="sm" disabled={isPending} onClick={() => reload()}>
               {isPending ? (

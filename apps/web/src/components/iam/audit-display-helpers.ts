@@ -110,6 +110,8 @@ const ROUTE_LABEL_OVERRIDES: Record<string, string> = {
   'POST /v1/projects/:projectId/sessions/:sessionId/question': 'Answered session question',
   'POST /v1/projects/:projectId/sessions/:sessionId/commit-push':
     'Committed and pushed session changes',
+  'POST /v1/projects/:projectId/sessions/:sessionId/reload': 'Reloaded session agent config',
+  'POST /v1/projects/:projectId/sessions/:sessionId/reload-stream': 'Reloaded session agent config',
   'POST /v1/projects/:projectId/turn-stream': 'Streamed session turn',
   'POST /v1/projects/:projectId/turn-question': 'Submitted session question',
   'POST /v1/projects/:projectId/sessions/warm': 'Warmed session sandbox',

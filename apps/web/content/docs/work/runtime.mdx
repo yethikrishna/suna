@@ -49,6 +49,8 @@ Use **Ask Agent: Sync Branch & Reload** from the session command palette when th
 
 The agent finishes with `kortix sessions reload "$KORTIX_SESSION_ID" --project "$KORTIX_PROJECT_ID" --no-repo --force --yes`. `--no-repo` is required because the agent already reconciled the branch. The reload replaces the OpenCode runtime after the replacement becomes healthy. It ends the current turn, so send `continue` after the runtime returns.
 
+The session header reports each server-confirmed reload phase in real time. A web reload checks the session, compiles the agent config, applies and validates the runtime replacement, then confirms the active config. It does not refresh the repository. The CLI can refresh the repository unless you pass `--no-repo`.
+
 ## Layout inside the sandbox
 
 ```

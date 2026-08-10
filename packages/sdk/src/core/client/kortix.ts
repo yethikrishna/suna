@@ -951,6 +951,13 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
         forgetReady();
         return P.reloadProjectSessionConfig(projectId, sessionId, input);
       },
+      /** Reload config with server-observed progress events. */
+      reloadConfigStream: (
+        ...args: DropFirst2<Parameters<typeof P.reloadProjectSessionConfigStream>>
+      ) => {
+        forgetReady();
+        return P.reloadProjectSessionConfigStream(projectId, sessionId, ...args);
+      },
       setSharing: (intent: Parameters<typeof P.setProjectSessionSharing>[2]) =>
         P.setProjectSessionSharing(projectId, sessionId, intent),
       previews: () => P.getSessionPreviewCandidates(projectId, sessionId),

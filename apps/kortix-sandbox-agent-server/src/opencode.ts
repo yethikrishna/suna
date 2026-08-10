@@ -803,24 +803,28 @@ type KortixGatewayModel = {
 }
 
 export const MINIMAL_FALLBACK_MODELS: Record<string, KortixGatewayModel> = {
-  'claude-opus-4.8': {
-    name: 'Claude Opus 4.8',
-    provider: 'kortix',
-    reasoning: true,
-    tool_call: true,
-    attachment: true,
-    temperature: true,
-    limit: { context: 1_000_000, output: 64_000 },
-  },
-  'claude-sonnet-4.6': {
-    name: 'Claude Sonnet 4.6',
-    provider: 'kortix',
-    reasoning: true,
-    tool_call: true,
-    attachment: true,
-    temperature: true,
-    limit: { context: 1_000_000, output: 64_000 },
-  },
+  // 2026-08-10 managed slim-down: Claude Opus 4.8 / Claude Sonnet 4.6 / Kimi K3
+  // deactivated in @kortix/llm-catalog MANAGED_MODELS — kept commented out here
+  // to match, so this fallback map never advertises a model the gateway
+  // resolves as model_not_found.
+  // 'claude-opus-4.8': {
+  //   name: 'Claude Opus 4.8',
+  //   provider: 'kortix',
+  //   reasoning: true,
+  //   tool_call: true,
+  //   attachment: true,
+  //   temperature: true,
+  //   limit: { context: 1_000_000, output: 64_000 },
+  // },
+  // 'claude-sonnet-4.6': {
+  //   name: 'Claude Sonnet 4.6',
+  //   provider: 'kortix',
+  //   reasoning: true,
+  //   tool_call: true,
+  //   attachment: true,
+  //   temperature: true,
+  //   limit: { context: 1_000_000, output: 64_000 },
+  // },
   // Managed default for fresh sessions. Bare id = Kortix-managed.
   'glm-5.2': {
     name: 'GLM 5.2',
@@ -837,15 +841,15 @@ export const MINIMAL_FALLBACK_MODELS: Record<string, KortixGatewayModel> = {
   // `temperature:false` (it rejects a client-sent temperature), matching
   // capabilitiesOf() in the served catalog. Must NOT advertise temperature
   // support or OpenCode sends one and 400s the turn.
-  'kimi-k3': {
-    name: 'Kimi K3',
-    provider: 'kortix',
-    reasoning: true,
-    tool_call: true,
-    attachment: true,
-    temperature: false,
-    limit: { context: 1_048_576, output: 131_072 },
-  },
+  // 'kimi-k3': {
+  //   name: 'Kimi K3',
+  //   provider: 'kortix',
+  //   reasoning: true,
+  //   tool_call: true,
+  //   attachment: true,
+  //   temperature: false,
+  //   limit: { context: 1_048_576, output: 131_072 },
+  // },
   'openai/gpt-5.5': {
     name: 'GPT-5.5',
     provider: 'openai',

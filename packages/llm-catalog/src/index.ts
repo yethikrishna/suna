@@ -504,42 +504,51 @@ export function pricingRefLookupCandidates(pricingRef: string): string[] {
 // (`anthropic/claude-...` → the user's own key) without the two ever colliding.
 //
 // Every managed model runs through OUR keys and is billed as Kortix credits with
-// markup, so the gateway enforces budgets/logging/spend on all of them. Claude
-// runs on Bedrock (the proven Anthropic-payload InvokeModel transport). GLM
-// runs through AsterLab. DeepSeek V4 Flash remains on OpenRouter.
+// markup, so the gateway enforces budgets/logging/spend on all of them. GLM
+// runs through AsterLab. DeepSeek V4 Flash runs on OpenRouter.
+//
+// 2026-08-10: the lineup is deliberately slimmed to GLM 5.2 + DeepSeek V4
+// Flash. Claude Opus 4.8 / Claude Sonnet 4.6 (Bedrock) and Kimi K3 (AsterLab)
+// are deactivated — their entries are kept below, commented out, so
+// reactivation is a diff-review away. Consequences of a removed id:
+// stored account/project/agent defaults pointing at one degrade to the
+// platform default via `degradeUnservableDefault` (the servability probe
+// throws `model_not_found`), and an explicit request errors with
+// `model_not_found`. NOTE: neither remaining model has vision — the managed
+// lineup cannot accept image input; that needs a BYOK provider key.
 export const MANAGED_MODELS: ManagedModel[] = [
-  {
-    id: 'claude-opus-4.8',
-    name: 'Claude Opus 4.8',
-    upstreamModelId: 'us.anthropic.claude-opus-4-8',
-    transport: 'bedrock',
-    pricingRef: 'anthropic/claude-opus-4-8',
-    pricing: {
-      inputPerMillion: 5,
-      cachedInputPerMillion: 0.5,
-      cacheWritePerMillion: 6.25,
-      outputPerMillion: 25,
-    },
-    tier: 'flagship',
-    vision: true,
-    limit: { context: 1_000_000, output: 64_000 },
-  },
-  {
-    id: 'claude-sonnet-4.6',
-    name: 'Claude Sonnet 4.6',
-    upstreamModelId: 'us.anthropic.claude-sonnet-4-6',
-    transport: 'bedrock',
-    pricingRef: 'anthropic/claude-sonnet-4-6',
-    pricing: {
-      inputPerMillion: 3,
-      cachedInputPerMillion: 0.3,
-      cacheWritePerMillion: 3.75,
-      outputPerMillion: 15,
-    },
-    tier: 'balanced',
-    vision: true,
-    limit: { context: 1_000_000, output: 64_000 },
-  },
+  // {
+  //   id: 'claude-opus-4.8',
+  //   name: 'Claude Opus 4.8',
+  //   upstreamModelId: 'us.anthropic.claude-opus-4-8',
+  //   transport: 'bedrock',
+  //   pricingRef: 'anthropic/claude-opus-4-8',
+  //   pricing: {
+  //     inputPerMillion: 5,
+  //     cachedInputPerMillion: 0.5,
+  //     cacheWritePerMillion: 6.25,
+  //     outputPerMillion: 25,
+  //   },
+  //   tier: 'flagship',
+  //   vision: true,
+  //   limit: { context: 1_000_000, output: 64_000 },
+  // },
+  // {
+  //   id: 'claude-sonnet-4.6',
+  //   name: 'Claude Sonnet 4.6',
+  //   upstreamModelId: 'us.anthropic.claude-sonnet-4-6',
+  //   transport: 'bedrock',
+  //   pricingRef: 'anthropic/claude-sonnet-4-6',
+  //   pricing: {
+  //     inputPerMillion: 3,
+  //     cachedInputPerMillion: 0.3,
+  //     cacheWritePerMillion: 3.75,
+  //     outputPerMillion: 15,
+  //   },
+  //   tier: 'balanced',
+  //   vision: true,
+  //   limit: { context: 1_000_000, output: 64_000 },
+  // },
   {
     id: 'glm-5.2',
     name: 'GLM 5.2',
@@ -552,36 +561,38 @@ export const MANAGED_MODELS: ManagedModel[] = [
       cacheWritePerMillion: 1,
       outputPerMillion: 4,
     },
-    tier: 'balanced',
+    // Flagship since the Bedrock Claude deactivation: MANAGED_FLAGSHIP_MODEL_ID
+    // and resolvePlatformDefaultModelId's degrade order both key off this tier.
+    tier: 'flagship',
     vision: false,
     limit: { context: 1_000_000, output: 131_072 },
   },
-  {
-    // Kimi K3 (Moonshot AI) served through AsterLab's OpenAI-compatible
-    // endpoint — same `aster` transport + ASTER_API_KEY as GLM 5.2, so no new
-    // credential is needed. AsterLab accepts the bare `kimi-k3` slug on
-    // https://api.asterlab.ai/v1/chat/completions. `pricingRef` resolves to a
-    // REAL models.dev entry (moonshotai/kimi-k3), so capability lookups borrow
-    // the real reasoning_options (toggle + effort low/high/max) and
-    // temperature:false (K3 rejects a client-sent temperature) instead of the
-    // permissive synthetic fallback. `pricing` is the published Moonshot
-    // upstream rate ($3/$15, $0.30 cache read); Aster is an OpenAI-compatible
-    // proxy — verify against Aster's own price list and adjust via the
-    // LLM_GATEWAY_MANAGED_MODELS overlay if Aster's rate differs.
-    id: 'kimi-k3',
-    name: 'Kimi K3',
-    upstreamModelId: 'kimi-k3',
-    transport: 'aster',
-    pricingRef: 'moonshotai/kimi-k3',
-    pricing: {
-      inputPerMillion: 3,
-      cachedInputPerMillion: 0.3,
-      outputPerMillion: 15,
-    },
-    tier: 'balanced',
-    vision: true,
-    limit: { context: 1_048_576, output: 131_072 },
-  },
+  // {
+  //   // Kimi K3 (Moonshot AI) served through AsterLab's OpenAI-compatible
+  //   // endpoint — same `aster` transport + ASTER_API_KEY as GLM 5.2, so no new
+  //   // credential is needed. AsterLab accepts the bare `kimi-k3` slug on
+  //   // https://api.asterlab.ai/v1/chat/completions. `pricingRef` resolves to a
+  //   // REAL models.dev entry (moonshotai/kimi-k3), so capability lookups borrow
+  //   // the real reasoning_options (toggle + effort low/high/max) and
+  //   // temperature:false (K3 rejects a client-sent temperature) instead of the
+  //   // permissive synthetic fallback. `pricing` is the published Moonshot
+  //   // upstream rate ($3/$15, $0.30 cache read); Aster is an OpenAI-compatible
+  //   // proxy — verify against Aster's own price list and adjust via the
+  //   // LLM_GATEWAY_MANAGED_MODELS overlay if Aster's rate differs.
+  //   id: 'kimi-k3',
+  //   name: 'Kimi K3',
+  //   upstreamModelId: 'kimi-k3',
+  //   transport: 'aster',
+  //   pricingRef: 'moonshotai/kimi-k3',
+  //   pricing: {
+  //     inputPerMillion: 3,
+  //     cachedInputPerMillion: 0.3,
+  //     outputPerMillion: 15,
+  //   },
+  //   tier: 'balanced',
+  //   vision: true,
+  //   limit: { context: 1_048_576, output: 131_072 },
+  // },
   {
     id: 'deepseek-v4-flash',
     name: 'DeepSeek V4 Flash',

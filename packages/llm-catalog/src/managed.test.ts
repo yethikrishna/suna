@@ -10,14 +10,10 @@ import {
 } from './index';
 
 describe('managed catalog', () => {
+  // 2026-08-10 slim-down: claude-opus-4.8 / claude-sonnet-4.6 / kimi-k3 are
+  // deactivated (commented out in MANAGED_MODELS, reactivatable by diff).
   test('exposes the managed lineup', () => {
-    expect(DEFAULT_MANAGED_MODEL_IDS).toEqual([
-      'claude-opus-4.8',
-      'claude-sonnet-4.6',
-      'glm-5.2',
-      'kimi-k3',
-      'deepseek-v4-flash',
-    ]);
+    expect(DEFAULT_MANAGED_MODEL_IDS).toEqual(['glm-5.2', 'deepseek-v4-flash']);
   });
 
   test('the haiku/sonnet branded ids are gone from the served catalog', () => {
@@ -25,8 +21,8 @@ describe('managed catalog', () => {
     expect(DEFAULT_MANAGED_MODEL_IDS).not.toContain('kortix-basic');
   });
 
-  test('Opus is the single flagship', () => {
-    expect(MANAGED_FLAGSHIP_MODEL_ID).toBe('claude-opus-4.8');
+  test('GLM 5.2 is the single flagship', () => {
+    expect(MANAGED_FLAGSHIP_MODEL_ID).toBe('glm-5.2');
     expect(MANAGED_MODELS.filter((m) => m.tier === 'flagship')).toHaveLength(1);
   });
 
@@ -121,8 +117,6 @@ describe('managed catalog', () => {
 
 describe('managed resolution + back-compat aliases', () => {
   test('resolves current ids', () => {
-    expect(getManagedModel('claude-opus-4.8')?.name).toBe('Claude Opus 4.8');
-    expect(getManagedModel('claude-opus-4.8')?.transport).toBe('bedrock');
     expect(getManagedModel('glm-5.2')?.name).toBe('GLM 5.2');
     expect(getManagedModel('glm-5.2')?.transport).toBe('aster');
     expect(getManagedModel('glm-5.2')?.upstreamModelId).toBe('glm-5.2');
@@ -131,16 +125,6 @@ describe('managed resolution + back-compat aliases', () => {
       cachedInputPerMillion: 0.2,
       cacheWritePerMillion: 1,
       outputPerMillion: 4,
-    });
-    expect(getManagedModel('kimi-k3')?.name).toBe('Kimi K3');
-    expect(getManagedModel('kimi-k3')?.transport).toBe('aster');
-    expect(getManagedModel('kimi-k3')?.upstreamModelId).toBe('kimi-k3');
-    expect(getManagedModel('kimi-k3')?.vision).toBe(true);
-    expect(getManagedModel('kimi-k3')?.limit).toEqual({ context: 1_048_576, output: 131_072 });
-    expect(getManagedModel('kimi-k3')?.pricing).toEqual({
-      inputPerMillion: 3,
-      cachedInputPerMillion: 0.3,
-      outputPerMillion: 15,
     });
     expect(getManagedModel('deepseek-v4-flash')?.providerBrand).toBeUndefined();
     expect(getManagedModel('deepseek-v4-flash')?.pricing).toEqual({
@@ -161,6 +145,10 @@ describe('managed resolution + back-compat aliases', () => {
       'qwen3-max',
       'minimax-m2.5',
       'kimi-k2',
+      // 2026-08-10 slim-down (commented out, not aliased):
+      'claude-opus-4.8',
+      'claude-sonnet-4.6',
+      'kimi-k3',
     ]) {
       expect(getManagedModel(old), `${old} should be gone`).toBeUndefined();
       expect(isManagedModelId(old), `${old} should be gone`).toBe(false);

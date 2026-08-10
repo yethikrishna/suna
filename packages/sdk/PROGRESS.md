@@ -8385,3 +8385,23 @@ activity, and the account cell's `/admin/accounts?search=<ownerEmail>` href).
 this entry is the handoff record).
 
 **SDK package shippable to production: YES.**
+
+---
+
+## 2026-08-11 — admin member-role mutation + exact-id account lookup (branch `billing-revamp-pr1`)
+
+Part of the billing-revamp PR1 (enterprise-entitlement primitive fix, expiring
+trial grants, admin role control). SDK surface additions in
+`src/react/use-admin-accounts.ts`, TDD (`use-admin-accounts.test.ts`, RED→GREEN):
+
+- `useAdminSetMemberRole` + `adminMemberRolePath` + type `AdminAccountMemberRole`
+  — POST `/admin/api/accounts/{id}/members/{userId}/role` (platform-admin
+  override; server refuses demoting the last owner).
+- `useAdminAccount` + `adminAccountLookupPath` — live single-account row via the
+  list route's new exact-id `accountId` filter; fixes the admin sheet's stale
+  pre-mutation snapshot when list filters no longer match the row.
+
+Both surface snapshots re-recorded — additive only (5 names runtime, 5 type),
+no rename, no removal.
+
+**Status:** COMPLETE on branch `billing-revamp-pr1`, commit `0c295a7652`.

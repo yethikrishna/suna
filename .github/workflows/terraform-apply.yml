@@ -116,7 +116,10 @@ jobs:
           TRUSTED_BRANCH: ${{ inputs.trusted_branch }}
         run: |
           set -euo pipefail
-          git fetch --no-tags --quiet origin "$TRUSTED_BRANCH"
+          # Explicit refspec: this must update refs/remotes/origin/<branch> to the
+          # live tip, not just FETCH_HEAD, and it must fail if the branch is gone.
+          git fetch --no-tags --quiet origin \
+            "+refs/heads/${TRUSTED_BRANCH}:refs/remotes/origin/${TRUSTED_BRANCH}"
           head="$(git rev-parse HEAD)"
           if ! git merge-base --is-ancestor "$head" "origin/${TRUSTED_BRANCH}"; then
             echo "::error::${head} is not reachable from origin/${TRUSTED_BRANCH}. Refusing to apply ${TF_ROOT}."

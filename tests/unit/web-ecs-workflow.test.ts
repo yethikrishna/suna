@@ -156,16 +156,29 @@ describe('web ECS migration', () => {
     expect(workflow).toContain('"- **Frontend:** https://${web}"');
   });
 
-  it('disables Vercel for Dev and PR previews only', () => {
+  it('disables Vercel auto-deploys everywhere except staging', () => {
     const config = read('apps/web/vercel.json');
     const ignore = read('apps/web/scripts/vercel-ignore.sh');
 
     expect(config).toContain('"main": false');
     expect(config).toContain('"staging": true');
-    expect(config).toContain('"prod": true');
+    // prod must NOT auto-deploy on push: during the 2026-08-10 v0.12.7 rollout
+    // the auto-deployed new frontend called routes the still-old API lacked
+    // and every project load failed. kortix.com deploys only from
+    // deploy-prod.yml's deploy-web-vercel job, after verify-live-version.
+    expect(config).toContain('"prod": false');
+    expect(ignore).toContain('prod deploys only via deploy-prod.yml');
     expect(ignore).not.toContain('KORTIX_PREVIEW_APPROVED_SHA');
     expect(ignore).not.toContain('*:main');
     expect(ignore).toContain('dev and PR previews deploy on ECS only');
+  });
+
+  it('deploys the prod Vercel frontend only after the API serves the release', () => {
+    const workflow = read('.github/workflows/deploy-prod.yml');
+    expect(workflow).toContain('deploy-web-vercel:');
+    expect(workflow).toMatch(/deploy-web-vercel:\s*\n\s*name:[^\n]*\n\s*needs: \[version, verify-live-version\]/);
+    expect(workflow).toContain('prj_SoUUSNJPvOTDneE0E7faWHFuWMAY');
+    expect(workflow).toMatch(/frontend-auth-proof:\s*\n\s*name:[^\n]*\n\s*needs: \[[^\]]*deploy-web-vercel\]/);
   });
 
   it('uses Basic auth credentials in QA instead of Vercel bypass headers', () => {

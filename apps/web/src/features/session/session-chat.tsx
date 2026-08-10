@@ -743,6 +743,27 @@ function SessionTurnImpl({
     return undefined;
   }, [turn]);
 
+  /**
+   * Was the turn ACTUALLY aborted, as opposed to failing with a message that
+   * happens to contain the word?
+   *
+   * `getTurnError` flattens the structured error to a display string and drops
+   * its `name`, so the banner was left substring-matching "abort" over arbitrary
+   * prose — which renders a genuine failure as a muted "Interrupted" and hides
+   * what really went wrong. The identity is right here on the message; read it.
+   *
+   * Both real producers set `name: 'AbortError'`: opencode's own abort, and the
+   * optimistic patch applied when the user hits Stop.
+   */
+  const turnErrorIsAbort = useMemo(() => {
+    for (const msg of turn.assistantMessages) {
+      const err = (msg.info as { error?: unknown }).error;
+      if (!err) continue;
+      return typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError';
+    }
+    return false;
+  }, [turn]);
+
   // The gateway's structured fields (provider/suggestion/request_id) for
   // `turnError`, when recoverable — lets TurnErrorDisplay render WHICH
   // provider failed and WHAT to do about it instead of only the raw message.
@@ -1164,6 +1185,7 @@ function SessionTurnImpl({
           <TurnErrorDisplay
             errorText={turnError}
             errorDetails={turnErrorDetails}
+            isAbort={turnErrorIsAbort}
             className="mt-2"
           />
         )}
@@ -1439,7 +1461,13 @@ function SessionTurnImpl({
       )}
 
       {/* ── Error (abort / failure banner) ── */}
-      {turnError && <TurnErrorDisplay errorText={turnError} errorDetails={turnErrorDetails} />}
+      {turnError && (
+        <TurnErrorDisplay
+          errorText={turnError}
+          errorDetails={turnErrorDetails}
+          isAbort={turnErrorIsAbort}
+        />
+      )}
 
       {/* Question prompt — now rendered inside the chat input card (questionSlot) */}
 

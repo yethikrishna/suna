@@ -107,7 +107,7 @@ order:
 ```json
 {
   "message": "req_...: All upstream candidates failed: openai-codex/gpt-5.6-sol [HTTP 400, context_length_exceeded]: ...; aster/glm-5.2 [stream_probe_timeout]: ...",
-  "code": "upstream_error",
+  "code": "context_length_exceeded",
   "provider": "aster",
   "request_id": "req_...",
   "attempt_failures": [
@@ -138,6 +138,13 @@ The same array exists under `error.attempt_failures` for OpenAI-compatible
 clients. Each message is capped at 500 characters. The composite message is
 capped at 2,000 characters. The full chain is also stored in
 `gateway_request_logs.metadata.attemptFailures` and Langfuse metadata.
+
+If any exhausted candidate reports `context_length_exceeded`, the top-level
+`code`, nested `error.code`, and nested `error.type` keep that canonical value.
+The HTTP status can remain `502` because the configured route was exhausted.
+OpenCode 1.17.11 reads nested `error.code` and converts this response into a
+`ContextOverflowError`. Its session processor then creates an automatic
+compaction turn. A later fallback timeout must not replace this classification.
 
 OpenCode 1.17.11 copies `APIError.data.message` into `session.status.message`
 but does not copy `responseBody`. The top-level message therefore contains the

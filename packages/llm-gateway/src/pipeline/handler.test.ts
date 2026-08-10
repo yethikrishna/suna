@@ -1808,7 +1808,15 @@ describe("gateway.chatCompletions — empty-completion failover", () => {
 
     expect(res.status).toBe(502);
     const body = await res.json();
-    expect(body.code).toBe('upstream_error');
+    // OpenCode 1.17.11 parseAPICallError() recognizes this exact nested code
+    // and converts the failed turn into ContextOverflowError. The processor
+    // then requests automatic compaction instead of applying ordinary retry.
+    expect(body.code).toBe('context_length_exceeded');
+    expect(body.error).toMatchObject({
+      type: 'context_length_exceeded',
+      code: 'context_length_exceeded',
+    });
+    expect(body.upstream_code).toBe('context_length_exceeded');
     expect(body.message).toContain('openai-codex');
     expect(body.message).toContain(body.request_id);
     expect(body.message).toContain('HTTP 400');
@@ -1851,6 +1859,7 @@ describe("gateway.chatCompletions — empty-completion failover", () => {
         { provider: 'openai-codex', code: 'context_length_exceeded', status: 400 },
         { provider: 'aster', code: 'stream_probe_timeout' },
       ],
+      errorCode: 'context_length_exceeded',
     });
     expect(traces[0].metadata).toMatchObject({
       gatewayFailure: {

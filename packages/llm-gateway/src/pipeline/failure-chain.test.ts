@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { GatewayAttemptFailure } from '../domain';
-import { appendAttemptFailure, failureChainMessage } from './failure-chain';
+import {
+  appendAttemptFailure,
+  exhaustedRouteErrorCode,
+  failureChainMessage,
+} from './failure-chain';
 
 function failure(overrides: Partial<GatewayAttemptFailure> = {}): GatewayAttemptFailure {
   return {
@@ -68,5 +72,35 @@ describe('gateway failure chain', () => {
     const message = failureChainMessage(chain, 'fallback', 'req_test');
     expect(message).toHaveLength(2_000);
     expect(message.endsWith('…')).toBe(true);
+  });
+
+  test('preserves context overflow when a later fallback times out', () => {
+    expect(
+      exhaustedRouteErrorCode([
+        failure(),
+        failure({
+          attempt: 2,
+          provider: 'aster',
+          routeModel: 'glm-5.2',
+          resolvedModel: 'glm-5.2',
+          stage: 'stream_probe',
+          status: undefined,
+          code: 'stream_probe_timeout',
+          message: 'upstream stream probe timeout exceeded',
+        }),
+      ]),
+    ).toBe('context_length_exceeded');
+  });
+
+  test('classifies other failed attempts as upstream errors', () => {
+    expect(exhaustedRouteErrorCode([failure({ code: 'stream_probe_timeout' })])).toBe(
+      'upstream_error',
+    );
+  });
+
+  test('keeps an all-empty route distinct', () => {
+    expect(exhaustedRouteErrorCode([failure({ code: 'empty_completion' })])).toBe(
+      'empty_completion',
+    );
   });
 });

@@ -27,6 +27,7 @@ import { type RoutedUpstreamCandidate, runFailover } from './failover';
 import {
   appendAttemptFailure,
   errorFrameCode,
+  exhaustedRouteErrorCode,
   failureChainMessage,
   failureChainMetadata,
 } from './failure-chain';
@@ -684,9 +685,7 @@ export async function handleChatCompletions(
       // Prefer the real upstream cause (overloaded, request too large, content
       // filter) that a candidate reported over the generic "empty" message that
       // would otherwise bury it.
-      const errorCode = attemptFailures.some((failure) => failure.code !== 'empty_completion')
-        ? 'upstream_error'
-        : 'empty_completion';
+      const errorCode = exhaustedRouteErrorCode(attemptFailures);
       const message = failureChainMessage(
         attemptFailures,
         'All upstream candidates returned an empty completion',
@@ -722,7 +721,11 @@ export async function handleChatCompletions(
         gatewayErrorBody({
           message,
           code: errorCode,
-          upstreamCode: lastErrorFrame?.code,
+          // Keep both code locations canonical for OpenAI-compatible clients.
+          // OpenCode 1.17.11 reads nested `error.code` from responseBody to
+          // decide whether it must compact after a provider rejection.
+          upstreamCode:
+            errorCode === 'context_length_exceeded' ? errorCode : lastErrorFrame?.code,
           provider: failedDescriptor?.provider ?? tried.at(-1) ?? '',
           requestedModel,
           resolvedModel: failedDescriptor?.resolvedModel ?? routedModel,

@@ -116,3 +116,22 @@ export function failureChainMetadata(
     probeTimedOut: chain.some((failure) => failure.code === 'stream_probe_timeout'),
   };
 }
+
+/**
+ * Select the client-visible code after every route candidate is exhausted.
+ *
+ * Context overflow takes precedence over later fallback failures. OpenCode
+ * uses `error.code === "context_length_exceeded"` to start automatic
+ * compaction. Replacing that code with a later timeout's generic classification
+ * turns a recoverable overflow into an ordinary retry loop.
+ */
+export function exhaustedRouteErrorCode(
+  chain: readonly GatewayAttemptFailure[],
+): 'context_length_exceeded' | 'upstream_error' | 'empty_completion' {
+  if (chain.some((failure) => failure.code === 'context_length_exceeded')) {
+    return 'context_length_exceeded';
+  }
+  return chain.some((failure) => failure.code !== 'empty_completion')
+    ? 'upstream_error'
+    : 'empty_completion';
+}

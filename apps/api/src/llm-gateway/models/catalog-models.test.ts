@@ -22,6 +22,30 @@ describe('gatewayModelCatalog — served catalog', () => {
     });
   });
 
+  // Regression: managedModels() used to hardcode `temperature: true` for the
+  // whole managed lineup. gpt-5.6-luna REJECTS a client-sent temperature —
+  // OpenCode reads this served record, so advertising support 400s every
+  // Luna turn. Capabilities must come from the real catalog record via
+  // pricingRef; curated vision/limit still win.
+  test('managed gpt-5.6-luna serves its REAL capabilities (temperature:false, effort ladder)', () => {
+    const luna = full['gpt-5.6-luna'];
+    expect(luna).toBeDefined();
+    expect(luna?.temperature).toBe(false);
+    expect(luna?.reasoning_options?.[0]?.values).toEqual([
+      'none',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
+    // Curated fields win over the models.dev record.
+    expect(luna?.attachment).toBe(true);
+    expect(luna?.limit?.context).toBe(1_050_000);
+    // Unresolvable pricingRef (glm-5.2) keeps the permissive defaults.
+    expect(full['glm-5.2']?.temperature).toBe(true);
+  });
+
   test('every served model carries a positive context limit', () => {
     const missing = Object.entries(full)
       .filter(([, m]) => !(typeof m.limit?.context === 'number' && m.limit.context > 0))

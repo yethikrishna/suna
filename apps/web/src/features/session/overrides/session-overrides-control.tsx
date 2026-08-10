@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import Loading from '@/components/ui/loading';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { ResetAxisButton } from '@/features/session/scope/session-scope-control';
 import { SlidersHorizontalIcon as SlidersHorizontal } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { type ReactNode, useState } from 'react';
@@ -27,8 +28,13 @@ export interface SessionOverrideRow {
   overridden?: boolean;
   /** Sentence explaining what an override on this axis does, in the detail pane. */
   description: string;
-  /** The axis editor. `null` renders the unavailable note instead. */
+  /** The axis editor. */
   editor: ReactNode;
+  /**
+   * Drops the override on this axis. Rendered BESIDE the editor, so an empty
+   * catalog can never hide the only way back to the default.
+   */
+  onReset?: () => void;
   /** Shown instead of the editor when the axis cannot be edited here. */
   readOnly?: boolean;
 }
@@ -71,10 +77,15 @@ export function SessionOverridesControlContent({
   const controlsDisabled = disabled || saving;
 
   return (
-    <div className="flex max-h-[min(520px,calc(100vh-2rem))] flex-col">
+    <div
+      // Radix reports how much room it actually has; without this the panel is
+      // taller than the gap above the composer on a short or narrow viewport and
+      // its first row slides off the top of the screen.
+      className="flex max-h-[min(520px,var(--radix-popover-content-available-height))] flex-col"
+    >
       <div className="border-border flex min-h-0 flex-1 flex-col sm:flex-row">
         <ul
-          className="border-border flex shrink-0 flex-col gap-0.5 overflow-y-auto border-b p-1.5 sm:w-[212px] sm:border-r sm:border-b-0"
+          className="border-border flex max-h-[45%] shrink-0 flex-col gap-0.5 overflow-y-auto border-b p-1.5 sm:max-h-none sm:w-[212px] sm:border-r sm:border-b-0"
           aria-label="Session overrides"
         >
           {rows.map((row) => {
@@ -125,6 +136,9 @@ export function SessionOverridesControlContent({
                 {focused.description}
               </p>
               <div className="mt-3">{focused.editor}</div>
+              {focused.overridden && focused.onReset ? (
+                <ResetAxisButton disabled={controlsDisabled} onReset={focused.onReset} />
+              ) : null}
             </>
           ) : null}
           {notice ? <div className="mt-3">{notice}</div> : null}
@@ -171,6 +185,7 @@ export function SessionOverridesControl({
         side="top"
         align="end"
         sideOffset={8}
+        collisionPadding={12}
         className="w-[min(620px,calc(100vw-2rem))] overflow-hidden p-0 shadow-md"
         // The model, agent and effort editors are themselves popovers rendered
         // into their own portal. Radix sees that portal as "outside", so an

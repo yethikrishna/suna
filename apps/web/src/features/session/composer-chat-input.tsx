@@ -160,6 +160,7 @@ export function ComposerChatInput({
           selectedModel={local.model.currentKey ?? null}
           onModelChange={(m) => local.model.set(m ?? undefined, { recent: true })}
           providers={providers}
+          defaultModel={local.model.defaults.resolveDefaultFor(selectedAgentName ?? undefined)}
         />
       ) : null,
     [

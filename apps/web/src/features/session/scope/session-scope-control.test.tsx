@@ -80,24 +80,6 @@ describe('session scope editors', () => {
     expect(html).not.toContain('Reset to project default');
   });
 
-  test('offers the way out of an override, and only when one exists', () => {
-    // An override that cannot be switched off is a trap: the session keeps a
-    // frozen selection while the project's defaults move on.
-    expect(renderSecrets({ secrets: ['CALENDAR_TOKEN'] })).toContain('Reset to project default');
-    expect(
-      renderConnectors({
-        connector_bindings: { calendar: { connection_id: 'connection-calendar' } },
-        connector_bindings_inherited: false,
-      }),
-    ).toContain('Reset to project default');
-    expect(
-      renderConnectors({
-        connector_bindings: { calendar: { connection_id: 'connection-calendar' } },
-        connector_bindings_inherited: true,
-      }),
-    ).not.toContain('Reset to project default');
-  });
-
   test('shows the connection picker only for a selected connector', () => {
     const html = renderConnectors({
       connector_bindings: { calendar: { connection_id: 'connection-calendar' } },

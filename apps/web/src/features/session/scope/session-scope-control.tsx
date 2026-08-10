@@ -14,10 +14,6 @@ import {
 import { ArrowCounterClockwiseIcon as ArrowCounterClockwise } from '@phosphor-icons/react';
 
 import {
-  resetSessionConnectorBindings,
-  resetSessionSecrets,
-  sessionConnectorsAreOverridden,
-  sessionSecretsAreOverridden,
   type SessionScopeConnectorOption,
   type SessionScopeDraft,
   type SessionScopeSelectionCatalog,
@@ -137,6 +133,9 @@ export function setSessionConnectorEnabled(
 /**
  * The way OUT of an override. An override you cannot switch off is a trap: the
  * session keeps a frozen selection while the project's own defaults move on.
+ *
+ * Rendered by the overrides panel BESIDE an axis editor, never inside it: an
+ * empty catalog must not be able to hide the only way back to the default.
  */
 export function ResetAxisButton({
   disabled = false,
@@ -221,9 +220,6 @@ export function SessionSecretsEditor({
           No secrets are available for this agent.
         </p>
       )}
-      {sessionSecretsAreOverridden(draft) ? (
-        <ResetAxisButton disabled={disabled} onReset={() => onChange(resetSessionSecrets(draft))} />
-      ) : null}
     </div>
   );
 }
@@ -343,12 +339,6 @@ export function SessionConnectorsEditor({
           );
         })}
       </ul>
-      {sessionConnectorsAreOverridden(draft) ? (
-        <ResetAxisButton
-          disabled={disabled}
-          onReset={() => onChange(resetSessionConnectorBindings(draft, catalog))}
-        />
-      ) : null}
     </div>
   );
 }

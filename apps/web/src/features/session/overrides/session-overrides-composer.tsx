@@ -32,6 +32,12 @@ export interface SessionOverridesComposerProps {
   selectedModel: { providerID: string; modelID: string } | null;
   onModelChange?: (model: { providerID: string; modelID: string } | null) => void;
   providers?: ProviderListResponse;
+  /**
+   * What the model resolves to with no session pick (agent → project → account
+   * → platform). The composer always HAS a selected model — it is seeded from
+   * this — so only a difference from it is an override worth badging.
+   */
+  defaultModel?: { providerID: string; modelID: string } | null;
 }
 
 /**
@@ -57,6 +63,7 @@ export function SessionOverridesComposer({
   selectedModel,
   onModelChange,
   providers,
+  defaultModel,
 }: SessionOverridesComposerProps) {
   const sessionRow = useProjectSession(projectId, sessionId, { enabled: Boolean(sessionId) });
   const effort = useReasoningEffortControl(selectedModel, projectId);
@@ -90,7 +97,11 @@ export function SessionOverridesComposer({
   const modelSlot = useMemo(
     () => ({
       summary: currentModel?.modelName ?? 'Project default',
-      overridden: Boolean(selectedModel),
+      overridden:
+        Boolean(selectedModel) &&
+        Boolean(defaultModel) &&
+        (selectedModel?.providerID !== defaultModel?.providerID ||
+          selectedModel?.modelID !== defaultModel?.modelID),
       control: (
         <ModelSelector
           models={models}
@@ -103,7 +114,15 @@ export function SessionOverridesComposer({
         />
       ),
     }),
-    [currentModel?.modelName, models, modelsLoading, onModelChange, providers, selectedModel],
+    [
+      currentModel?.modelName,
+      defaultModel,
+      models,
+      modelsLoading,
+      onModelChange,
+      providers,
+      selectedModel,
+    ],
   );
 
   const effortSlot = useMemo(

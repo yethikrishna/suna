@@ -20,6 +20,8 @@ import {
 } from '@/features/session/scope/session-scope-control';
 import {
   createSessionScopeDraft,
+  resetSessionConnectorBindings,
+  resetSessionSecrets,
   sessionConnectorsAreOverridden,
   sessionConnectorsSummary,
   sessionSecretsAreOverridden,
@@ -244,6 +246,7 @@ export function SessionOverridesToolbar({
           onChange={onChange}
         />
       ),
+      onReset: () => onChange(resetSessionSecrets(draft)),
     });
     list.push({
       id: 'connectors',
@@ -265,6 +268,7 @@ export function SessionOverridesToolbar({
           onChange={onChange}
         />
       ),
+      onReset: () => onChange(resetSessionConnectorBindings(draft, activeCatalog)),
     });
     list.push({
       id: 'sandbox',

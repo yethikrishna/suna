@@ -67,6 +67,19 @@ describe('SessionOverridesControlContent', () => {
     expect(html).toContain('2 selected');
   });
 
+  test('offers the way out of an override, and only when one exists', () => {
+    // The reset lives in the PANEL, beside the editor — an axis whose catalog
+    // came back empty must not be able to hide the only way back to the
+    // default.
+    const overridden = render({
+      rows: rows([{ overridden: true, onReset: () => {} }, {}]),
+    });
+    const inherited = render({ rows: rows([{ onReset: () => {} }, {}]) });
+
+    expect(overridden).toContain('Reset to project default');
+    expect(inherited).not.toContain('Reset to project default');
+  });
+
   test('disables only the save action while a save is impossible', () => {
     const html = render({ saveDisabled: true });
 

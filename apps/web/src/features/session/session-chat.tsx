@@ -3607,6 +3607,7 @@ export function SessionChat({
           selectedModel={local.model.currentKey ?? null}
           onModelChange={handleModelChange}
           providers={providers}
+          defaultModel={local.model.defaults.resolveDefaultFor(sessionScopeAgentName)}
         />
       ) : undefined,
     [
@@ -3614,6 +3615,7 @@ export function SessionChat({
       handleModelChange,
       local.agent.list,
       local.model.currentKey,
+      local.model.defaults,
       local.model.list,
       lockedAgentName,
       projectConfig?.open_code_default_agent,

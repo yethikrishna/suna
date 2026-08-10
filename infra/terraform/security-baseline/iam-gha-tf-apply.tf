@@ -117,23 +117,23 @@ resource "aws_iam_role_policy" "gha_tf_apply_iam" {
 #
 # These two roots are not environment infrastructure. They manage the account
 # security baseline itself: IAM roles that are NOT kortix-<env>-* prefixed
-# (whatsapp-gateway-*, bedrock-logs), IAM groups and their memberships, the
-# account password policy, CloudTrail, GuardDuty in 17 regions, the S3 account
-# public-access block, WAF, and the compliance Lambdas.
+# (whatsapp-gateway-*, bedrock-logs, vpc-flow-logs-role), IAM groups and their
+# memberships, the account password policy, CloudTrail, GuardDuty in 17 regions,
+# the S3 account public-access block, WAF, and the compliance Lambdas.
 #
-# There is no useful resource-level scope for that: the role must be able to
-# manage arbitrarily named IAM roles, including its own. So this grant is
-# IAM-wide, which is admin-equivalent in the limit — a caller that can attach a
-# policy to a role it controls can grant itself anything.
+# `iam:*` on `*` would be the easy grant and the wrong one: it is
+# admin-equivalent, because a caller that can attach a policy to a role it
+# controls can grant itself anything. Instead every IAM principal these two
+# roots manage is enumerated below. A newly named role fails the apply with an
+# explicit AccessDenied rather than silently widening the grant — which is the
+# correct failure mode for the stack that defines the account's security
+# controls.
 #
-# What actually contains it:
-#   1. the OIDC subject is pinned to `environment:infra-global`, and that
-#      environment is restricted to the `main` deployment branch;
-#   2. terraform-apply-global.yml runs only on push to main, i.e. only after a
-#      reviewed PR merged;
-#   3. the Deny below removes the one escalation that survives a merge review —
-#      minting a long-lived human credential (IAM user, access key, console
-#      password) that outlives the workflow run.
+# Containment on top of that: the OIDC subject is pinned to
+# `environment:infra-global` (restrict that environment to the `main` deployment
+# branch), terraform-apply-global.yml runs only on push to main, and the Deny at
+# the end blocks minting a long-lived human credential that would outlive the
+# workflow run.
 resource "aws_iam_role" "gha_tf_apply_global" {
   name = "kortix-gha-tf-apply-global"
 
@@ -162,13 +162,42 @@ resource "aws_iam_role" "gha_tf_apply_global" {
   }
 }
 
-# checkov:skip=CKV_AWS_274: see the comment above — security-baseline manages the
-# account IAM surface, so PowerUserAccess plus IAM write is the minimum that can
-# apply it. Containment is the environment-scoped OIDC subject, the main-branch
-# restriction, and the credential-minting Deny below.
+# checkov:skip=CKV_AWS_274: PowerUserAccess is what compliance-monitoring and
+# security-baseline need outside IAM (CloudTrail, GuardDuty, KMS, S3, WAF,
+# Lambda, EventBridge, Backup) and it explicitly excludes IAM. The IAM half is
+# the enumerated, resource-scoped inline policy below.
 resource "aws_iam_role_policy_attachment" "gha_tf_apply_global_power_user" {
   role       = aws_iam_role.gha_tf_apply_global.name
   policy_arn = "arn:aws:iam::aws:policy/PowerUserAccess"
+}
+
+locals {
+  # Every IAM role the two account-global roots declare, by ARN pattern.
+  # Cross-check when adding an aws_iam_role to either root: an unlisted name
+  # makes `terraform apply` fail with AccessDenied.
+  gha_tf_apply_global_roles = [
+    # kortix-gha-*, kortix-guardduty-event-forwarder
+    "arn:aws:iam::${local.account_id}:role/kortix-*",
+    # compliance-monitoring: KortixEc2CpuAlarmReconciler
+    "arn:aws:iam::${local.account_id}:role/Kortix*",
+    # legacy-roles.tf
+    "arn:aws:iam::${local.account_id}:role/whatsapp-gateway-*",
+    "arn:aws:iam::${local.account_id}:role/bedrock-logs",
+    # main.tf service-delivery roles
+    "arn:aws:iam::${local.account_id}:role/cloudtrail-cloudwatch-logs-role",
+    "arn:aws:iam::${local.account_id}:role/vpc-flow-logs-role",
+    "arn:aws:iam::${local.account_id}:role/AWSBackupDefaultServiceRole",
+  ]
+
+  # Derived from iam-groups.tf so the two never drift apart.
+  gha_tf_apply_global_groups = [
+    for group in keys(local.groups) :
+    "arn:aws:iam::${local.account_id}:group/${group}"
+  ]
+  gha_tf_apply_global_users = [
+    for user in keys(local.user_groups) :
+    "arn:aws:iam::${local.account_id}:user/${user}"
+  ]
 }
 
 resource "aws_iam_role_policy" "gha_tf_apply_global_iam" {
@@ -177,35 +206,138 @@ resource "aws_iam_role_policy" "gha_tf_apply_global_iam" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
-        Sid      = "ManageAccountIamBaseline"
-        Effect   = "Allow"
-        Action   = ["iam:*"]
-        Resource = "*"
+        Sid    = "ManageBaselineRoles"
+        Effect = "Allow"
+        Action = [
+          "iam:AttachRolePolicy",
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:DeleteRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:GetRole",
+          "iam:GetRolePolicy",
+          "iam:ListAttachedRolePolicies",
+          "iam:ListRolePolicies",
+          "iam:ListRoleTags",
+          "iam:PassRole",
+          "iam:PutRolePolicy",
+          "iam:TagRole",
+          "iam:UntagRole",
+          "iam:UpdateAssumeRolePolicy",
+          "iam:UpdateRole",
+          "iam:UpdateRoleDescription",
+        ]
+        Resource = local.gha_tf_apply_global_roles
       },
       {
-        # Everything above is reviewable in a Terraform plan. Creating a human
-        # credential is not something any root here does, and it is the one
-        # escalation that keeps working after the workflow run ends.
-        Sid    = "DenyLongLivedCredentialMinting"
-        Effect = "Deny"
+        # GuardDuty, WAF, Backup, and Config create their own service-linked
+        # roles on first use in a region.
+        Sid      = "CreateServiceLinkedRoles"
+        Effect   = "Allow"
+        Action   = ["iam:CreateServiceLinkedRole"]
+        Resource = "arn:aws:iam::${local.account_id}:role/aws-service-role/*"
+      },
+      {
+        Sid    = "ManageBaselineCustomerPolicies"
+        Effect = "Allow"
         Action = [
-          "iam:CreateUser",
-          "iam:DeleteUser",
-          "iam:CreateAccessKey",
-          "iam:UpdateAccessKey",
-          "iam:CreateLoginProfile",
-          "iam:UpdateLoginProfile",
-          "iam:CreateServiceSpecificCredential",
-          "iam:ResetServiceSpecificCredential",
-          "iam:UploadSigningCertificate",
-          "iam:UploadSSHPublicKey",
-          "iam:DeleteVirtualMFADevice",
+          "iam:CreatePolicy",
+          "iam:CreatePolicyVersion",
+          "iam:DeletePolicy",
+          "iam:DeletePolicyVersion",
+          "iam:GetPolicy",
+          "iam:GetPolicyVersion",
+          "iam:ListEntitiesForPolicy",
+          "iam:ListPolicyVersions",
+          "iam:TagPolicy",
+          "iam:UntagPolicy",
+        ]
+        Resource = "arn:aws:iam::${local.account_id}:policy/kortix-*"
+      },
+      {
+        Sid    = "ManageBaselineGroups"
+        Effect = "Allow"
+        Action = [
+          "iam:AddUserToGroup",
+          "iam:AttachGroupPolicy",
+          "iam:CreateGroup",
+          "iam:DeleteGroup",
+          "iam:DeleteGroupPolicy",
+          "iam:DetachGroupPolicy",
+          "iam:GetGroup",
+          "iam:GetGroupPolicy",
+          "iam:ListAttachedGroupPolicies",
+          "iam:ListGroupPolicies",
+          "iam:PutGroupPolicy",
+          "iam:RemoveUserFromGroup",
+        ]
+        Resource = local.gha_tf_apply_global_groups
+      },
+      {
+        Sid      = "ReadGitHubOidcProvider"
+        Effect   = "Allow"
+        Action   = ["iam:GetOpenIDConnectProvider"]
+        Resource = data.aws_iam_openid_connect_provider.github_actions.arn
+      },
+      {
+        # checkov:skip=CKV_AWS_355: IAM account-level actions have no
+        # resource-level permission — AWS requires "*" for the password policy
+        # and the account-wide List/Get calls Terraform makes while refreshing.
+        # The action list is closed and grants no write outside the password
+        # policy.
+        Sid    = "AccountLevelIamControls"
+        Effect = "Allow"
+        Action = [
+          "iam:DeleteAccountPasswordPolicy",
+          "iam:GetAccountPasswordPolicy",
+          "iam:GetAccountSummary",
+          "iam:ListAccountAliases",
+          "iam:ListGroups",
+          "iam:ListOpenIDConnectProviders",
+          "iam:ListPolicies",
+          "iam:ListRoles",
+          "iam:ListUsers",
+          "iam:UpdateAccountPasswordPolicy",
         ]
         Resource = "*"
       },
-    ]
+      {
+        # Belt and braces over the closed action lists above: no root here mints
+        # a human credential, and that is the one escalation that keeps working
+        # after the workflow run ends.
+        Sid    = "DenyLongLivedCredentialMinting"
+        Effect = "Deny"
+        Action = [
+          "iam:CreateAccessKey",
+          "iam:CreateLoginProfile",
+          "iam:CreateServiceSpecificCredential",
+          "iam:CreateUser",
+          "iam:DeleteUser",
+          "iam:DeleteVirtualMFADevice",
+          "iam:ResetServiceSpecificCredential",
+          "iam:UpdateAccessKey",
+          "iam:UpdateLoginProfile",
+          "iam:UploadSSHPublicKey",
+          "iam:UploadSigningCertificate",
+        ]
+        Resource = "*"
+      },
+      ],
+      # aws_iam_user_group_membership reads a user's current groups before it
+      # reconciles them. It never creates or modifies the user. Emitted
+      # conditionally: an IAM statement with an empty Resource list is a
+      # MalformedPolicyDocument, and iam-groups.tf's member lists can legitimately
+      # empty out (memberships are managed out-of-band).
+      length(local.gha_tf_apply_global_users) == 0 ? [] : [
+        {
+          Sid      = "ReadBaselineGroupMembers"
+          Effect   = "Allow"
+          Action   = ["iam:GetUser", "iam:ListGroupsForUser"]
+          Resource = local.gha_tf_apply_global_users
+        },
+    ])
   })
 }
 

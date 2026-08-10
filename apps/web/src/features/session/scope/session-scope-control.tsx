@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  ArrowCounterClockwiseIcon as ArrowCounterClockwise,
   CaretDownIcon as ChevronDown,
   KeyIcon as KeyRound,
   PlugIcon as PlugZap,
@@ -23,10 +24,16 @@ import {
 } from '@phosphor-icons/react';
 import { useState } from 'react';
 
-import type {
-  SessionScopeConnectorOption,
-  SessionScopeDraft,
-  SessionScopeSelectionCatalog,
+import {
+  resetSessionConnectorBindings,
+  resetSessionSecrets,
+  sessionConnectorsAreOverridden,
+  sessionConnectorsSummary,
+  sessionSecretsAreOverridden,
+  sessionSecretsSummary,
+  type SessionScopeConnectorOption,
+  type SessionScopeDraft,
+  type SessionScopeSelectionCatalog,
 } from './session-scope-model';
 
 export interface SessionScopeControlContentProps {
@@ -148,17 +155,24 @@ export function setSessionConnectorEnabled(
       };
 }
 
-function secretSummary(draft: SessionScopeDraft): string {
-  if (draft.secrets === null) return 'All allowed';
-  if (draft.secrets === undefined) return 'Unchanged';
-  if (draft.secrets.length === 0) return 'None selected';
-  return `${draft.secrets.length} selected`;
-}
-
-function connectorSummary(draft: SessionScopeDraft): string {
-  if (draft.connector_bindings === undefined) return 'Unchanged';
-  const count = Object.keys(draft.connector_bindings).length;
-  return count === 0 ? 'None selected' : `${count} selected`;
+/**
+ * The way OUT of an override. An override you cannot switch off is a trap: the
+ * session keeps a frozen selection while the project's own defaults move on.
+ */
+function ResetAxisButton({ disabled, onReset }: { disabled: boolean; onReset: () => void }) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      disabled={disabled}
+      className="text-muted-foreground h-8 w-full justify-start px-3"
+      onClick={onReset}
+    >
+      <ArrowCounterClockwise className="size-3.5 shrink-0" />
+      Reset to project default
+    </Button>
+  );
 }
 
 export function SessionScopeControlContent({
@@ -206,7 +220,7 @@ export function SessionScopeControlContent({
                 </span>
               </span>
               <Badge variant="secondary" size="xs" className="tabular-nums">
-                {catalog.secrets.status === 'ready' ? secretSummary(draft) : 'Unavailable'}
+                {catalog.secrets.status === 'ready' ? sessionSecretsSummary(draft) : 'Unavailable'}
               </Badge>
               <ChevronDown className="text-muted-foreground size-3.5 transition-transform group-data-[state=open]:rotate-180" />
             </Button>
@@ -220,11 +234,17 @@ export function SessionScopeControlContent({
               </div>
             ) : (
               <div className="p-1">
+                {sessionSecretsAreOverridden(draft) ? (
+                  <ResetAxisButton
+                    disabled={controlsDisabled}
+                    onReset={() => onChange(resetSessionSecrets(draft))}
+                  />
+                ) : null}
                 <Checkbox
                   checked={draft.secrets === null}
                   disabled={controlsDisabled}
                   className="min-h-10"
-                  label="Allow every available secret"
+                  label="Use the project default"
                   onCheckedChange={(checked) =>
                     onChange(setAllSessionSecrets(draft, checked === true))
                   }
@@ -300,7 +320,7 @@ export function SessionScopeControlContent({
               </span>
               <Badge variant="secondary" size="xs" className="tabular-nums">
                 {catalog.connector_connections.status === 'ready'
-                  ? connectorSummary(draft)
+                  ? sessionConnectorsSummary(draft)
                   : 'Unavailable'}
               </Badge>
               <ChevronDown className="text-muted-foreground size-3.5 transition-transform group-data-[state=open]:rotate-180" />
@@ -319,6 +339,14 @@ export function SessionScopeControlContent({
               </p>
             ) : (
               <ul className="space-y-1 p-1">
+                {sessionConnectorsAreOverridden(draft) ? (
+                  <li>
+                    <ResetAxisButton
+                      disabled={controlsDisabled}
+                      onReset={() => onChange(resetSessionConnectorBindings(draft, catalog))}
+                    />
+                  </li>
+                ) : null}
                 {catalog.connector_connections.items.map((connector) => {
                   const currentConnection =
                     draft.connector_bindings?.[connector.slug]?.connection_id;

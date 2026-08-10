@@ -99,14 +99,29 @@ describe('SessionScopeControlContent', () => {
     expect(html).toContain('Changes apply to the next prompt.');
   });
 
-  test('distinguishes unrestricted secret access from an explicit empty allowlist', () => {
-    const allHtml = renderControl({ secrets: null, connector_bindings: {} });
+  test('distinguishes an inherited default from an explicit empty allowlist', () => {
+    // "None selected" for an inheriting session was a lie in both directions:
+    // it under-reported what the session can read, and it invited a Save that
+    // wrote the zero-access override the label claimed already existed.
+    const inheritedHtml = renderControl({ secrets: null, connector_bindings: {} });
     const noneHtml = renderControl({ secrets: [], connector_bindings: {} });
 
-    expect(allHtml).toContain('All allowed');
-    expect(noneHtml).toContain('None selected');
-    expect(allHtml).not.toContain('aria-checked="true"');
+    expect(inheritedHtml).toContain('Project default');
+    expect(inheritedHtml).not.toContain('None selected');
+    expect(noneHtml).toContain('None allowed');
+    expect(inheritedHtml).not.toContain('aria-checked="true"');
     expect(noneHtml).not.toContain('aria-checked="true"');
+  });
+
+  test('reports inherited connector access as the project default', () => {
+    const html = renderControl({
+      secrets: null,
+      connector_bindings: { calendar: { connection_id: 'connection-calendar' } },
+      connector_bindings_inherited: true,
+    });
+
+    expect(html).not.toContain('None selected');
+    expect(html.match(/>Project default</g)).toHaveLength(2);
   });
 
   test('distinguishes an omitted secret axis from an explicit empty allowlist', () => {
@@ -114,7 +129,7 @@ describe('SessionScopeControlContent', () => {
     const noneHtml = renderControl({ secrets: [], connector_bindings: {} });
 
     expect(unchangedHtml).toContain('Unchanged');
-    expect(noneHtml).toContain('None selected');
+    expect(noneHtml).toContain('None allowed');
   });
 
   test('shows catalog failures without converting them into empty selections', () => {
@@ -131,7 +146,7 @@ describe('SessionScopeControlContent', () => {
     );
 
     expect(html.match(/>Unavailable</g)).toHaveLength(2);
-    expect(html).not.toContain('None selected');
+    expect(html).not.toContain('None allowed');
   });
 
   test('shows saving state and the non-retroactive warning', () => {

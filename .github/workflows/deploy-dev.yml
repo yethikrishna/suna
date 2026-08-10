@@ -180,6 +180,7 @@ jobs:
       aws_region: us-west-2
       role_arn: ${{ vars.TF_APPLY_ROLE_ARN_DEV }}
       github_environment: dev
+      trusted_branch: main
       cloudflare: true
     secrets: inherit
 

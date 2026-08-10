@@ -126,6 +126,7 @@ jobs:
       aws_region: eu-west-2
       role_arn: ${{ vars.TF_APPLY_ROLE_ARN_PROD }}
       github_environment: prod
+      trusted_branch: prod
       cloudflare: true
     secrets: inherit
 

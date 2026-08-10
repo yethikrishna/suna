@@ -47,6 +47,7 @@ jobs:
       aws_region: us-west-2
       role_arn: ${{ vars.TF_APPLY_ROLE_ARN_GLOBAL }}
       github_environment: infra-global
+      trusted_branch: main
     secrets: inherit
 
   security-baseline:
@@ -62,4 +63,5 @@ jobs:
       aws_region: us-west-2
       role_arn: ${{ vars.TF_APPLY_ROLE_ARN_GLOBAL }}
       github_environment: infra-global
+      trusted_branch: main
     secrets: inherit

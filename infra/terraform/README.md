@@ -84,7 +84,7 @@ Then set the repository variables (`gh variable set`):
 | `TF_APPLY_ROLE_ARN_GLOBAL` | `gha_tf_apply_role_arn_global` |
 
 Each role's trust policy pins the OIDC subject to a GitHub **environment**, so
-the environments must exist with a matching deployment-branch restriction:
+the environments must exist. Give each one a deployment-branch restriction too:
 
 | Environment | Deployment branch | Used by |
 | --- | --- | --- |
@@ -93,9 +93,17 @@ the environments must exist with a matching deployment-branch restriction:
 | `prod` | `prod` | `deploy-prod.yml` |
 | `infra-global` | `main` | `terraform-apply-global.yml` |
 
+The branch restriction is defence in depth, not the primary control.
+`terraform-apply.yml` takes a required `trusted_branch` input and refuses to
+mint AWS credentials unless the checked-out commit is reachable from
+`origin/<trusted_branch>`. That guard runs in-workflow, before
+`configure-aws-credentials`, and therefore holds even if the environment is
+misconfigured. It is what stops a `workflow_dispatch` from an arbitrary branch
+applying attacker-authored Terraform with the production role.
+
 Do **not** add required reviewers to `prod`. `deploy-prod.yml` runs unattended
 after a reviewed release PR merges; a reviewer gate there pauses every release
-at the Terraform step. The branch restriction is the control that costs nothing.
+at the Terraform step.
 
 Until those variables are set, every apply job skips and the image deploys still
 run. `terraform-ci.yml`'s `apply-pipeline-health` job fails on the daily

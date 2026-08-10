@@ -10,9 +10,12 @@
 # TRUST: the GitHub environment is part of the OIDC subject, so a workflow that
 # does not declare `environment: <name>` cannot assume the matching role. This
 # is the same containment the prod-use2 bootstrap role uses
-# (iam-gha-prod-use2-terraform.tf). Pair each environment with a deployment
-# branch restriction (dev -> main, staging -> staging, prod -> prod,
-# infra-global -> main) so the subject cannot be minted from a stray branch.
+# (iam-gha-prod-use2-terraform.tf). The environment name alone is not enough,
+# because it says nothing about which branch ran: terraform-apply.yml therefore
+# refuses to mint credentials unless the checked-out commit is reachable from
+# its required `trusted_branch` (dev -> main, staging -> staging, prod -> prod,
+# infra-global -> main). Set the matching deployment-branch restriction on each
+# environment as well.
 #
 # PERMISSIONS: PowerUserAccess plus a narrow inline IAM grant, matching the
 # prod-use2 role. PowerUserAccess covers everything a root builds (VPC, ECS,

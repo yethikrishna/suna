@@ -55,6 +55,12 @@ on:
         description: GitHub environment. Part of the OIDC subject, so it is required.
         required: true
         type: string
+      trusted_branch:
+        description: >-
+          Branch the applied commit must be reachable from (main, staging, prod).
+          Enforced in-workflow before any credential is minted.
+        required: true
+        type: string
       cloudflare:
         description: Pass CLOUDFLARE_API_TOKEN as TF_VAR_cloudflare_api_token.
         required: false
@@ -91,6 +97,32 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          # Full history: the trusted-branch guard below needs a merge base.
+          fetch-depth: 0
+
+      # Runs BEFORE configure-aws-credentials, so untrusted code never reaches a
+      # credential. The GitHub environment alone is not a sufficient gate: it is
+      # part of the OIDC subject, but the deployment-branch restriction that
+      # backs it is out-of-band repository configuration, and three of the four
+      # callers are workflow_dispatch-able from an arbitrary branch. Without
+      # this step, anyone who can dispatch deploy-prod.yml from a branch could
+      # apply arbitrary Terraform with the production role.
+      #
+      # Reachability, not `github.ref`: it is correct for push, dispatch, and
+      # workflow_run alike, and it proves the applied commit is merged rather
+      # than merely running under a trusted-looking ref.
+      - name: Enforce a trusted branch
+        env:
+          TRUSTED_BRANCH: ${{ inputs.trusted_branch }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --quiet origin "$TRUSTED_BRANCH"
+          head="$(git rev-parse HEAD)"
+          if ! git merge-base --is-ancestor "$head" "origin/${TRUSTED_BRANCH}"; then
+            echo "::error::${head} is not reachable from origin/${TRUSTED_BRANCH}. Refusing to apply ${TF_ROOT}."
+            exit 1
+          fi
+          echo "${head} is reachable from origin/${TRUSTED_BRANCH}."
 
       - name: Require the root to exist
         run: |

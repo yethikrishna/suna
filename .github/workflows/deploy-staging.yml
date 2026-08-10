@@ -108,6 +108,7 @@ jobs:
       aws_region: us-west-2
       role_arn: ${{ vars.TF_APPLY_ROLE_ARN_STAGING }}
       github_environment: staging
+      trusted_branch: staging
       cloudflare: true
       ref: ${{ needs.preflight.outputs.sha }}
     secrets: inherit
@@ -127,6 +128,7 @@ jobs:
       aws_region: us-west-2
       role_arn: ${{ vars.TF_APPLY_ROLE_ARN_STAGING }}
       github_environment: staging
+      trusted_branch: staging
       cloudflare: true
       ref: ${{ needs.preflight.outputs.sha }}
     secrets: inherit

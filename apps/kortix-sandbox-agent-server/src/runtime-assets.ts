@@ -303,14 +303,13 @@ export async function reconcileRuntimeAssets(
 
   const state = await readState(statePath)
   const nextState: RuntimeAssetsState = { ...state }
+  // 'skipped' holds when a branch below never reassigns — e.g. a checkout that
+  // never built the CLI (manifest.cli_sha256 null): nothing to converge on.
   let cli: ReconcileOutcome = 'skipped'
-  let skills: ReconcileOutcome = 'skipped'
+  let skills: ReconcileOutcome
 
   // ── CLI ────────────────────────────────────────────────────────────────────
-  if (!manifest.cli_sha256) {
-    // A checkout that never built the CLI. Nothing to converge on.
-    cli = 'skipped'
-  } else {
+  if (manifest.cli_sha256) {
     try {
       const local = await localCliSha(cliPath, state)
       if (local && local.sha === manifest.cli_sha256) {

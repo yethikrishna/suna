@@ -24,14 +24,14 @@ import {
 } from '@/features/session/header/session-config-indicator';
 import { SessionPendingApprovalsIndicator } from '@/features/session/header/session-pending-approvals-indicator';
 import { openSessionQuickView } from '@/features/session/open-session-quick-view';
-import { RenameSessionModal } from '@/features/workspace/project-sidebar/modal/rename-session-modal';
-import { SessionDeleteModal } from '@/features/workspace/project-sidebar/modal/session-delete-modal';
-import { ShareSessionModal } from '@/features/workspace/project-sidebar/modal/share-session-modal';
 import {
   sidebarOpenerLabel,
   useDesktopShell,
   useShowPageSidebarOpener,
 } from '@/features/workspace/project-layout/sidebar-opener';
+import { RenameSessionModal } from '@/features/workspace/project-sidebar/modal/rename-session-modal';
+import { SessionDeleteModal } from '@/features/workspace/project-sidebar/modal/session-delete-modal';
+import { ShareSessionModal } from '@/features/workspace/project-sidebar/modal/share-session-modal';
 import { useReloadSessionConfig } from '@/hooks/projects/use-session-config-freshness';
 import { cn } from '@/lib/utils';
 import {
@@ -344,6 +344,8 @@ export function SessionSiteHeader({
               <SessionConfigIndicator
                 projectId={projectId!}
                 sessionId={projectSessionId!}
+                chatSessionId={sessionId}
+                baseRef={projectSession?.base_ref}
                 reload={reloadConfig.reload}
                 isPending={reloadConfig.isPending}
                 canReload={canShare}

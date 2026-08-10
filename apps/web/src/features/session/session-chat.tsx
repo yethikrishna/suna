@@ -28,7 +28,7 @@ import {
   parseSystemNotifications,
   stripSystemPtyText,
 } from './message-parsing';
-import type { QueueDrainGates } from './message-queue-boundary';
+import { type QueueDrainGates, shouldQueueInsteadOfSend } from './message-queue-boundary';
 import { ActivityBurst } from './turn/activity-burst';
 import { planAnchorMessageId } from './turn/plan-anchor';
 import { segmentTurn } from './turn/segment-turn';
@@ -3127,9 +3127,39 @@ export function SessionChat({
   const registerSender = useChatSendStore((s) => s.registerSender);
   const unregisterSender = useChatSendStore((s) => s.unregisterSender);
   useEffect(() => {
-    registerSender(sessionId, (text: string) => handleSend(text));
+    registerSender(
+      sessionId,
+      async (text: string) => {
+        const shouldQueue = shouldQueueInsteadOfSend({
+          isBusy:
+            isBusy || hasActiveQuestion || hasPendingApproval || pendingPermissions.length > 0,
+          pendingCount: sessionQueue.pending.length,
+          hasInFlight: !!sessionQueue.inFlightId,
+        });
+        if (shouldQueue) {
+          handleQueueMessage(text);
+          return 'queued';
+        }
+        await handleSend(text);
+        return 'sent';
+      },
+      projectSessionId ? [projectSessionId] : [],
+    );
     return () => unregisterSender(sessionId);
-  }, [sessionId, handleSend, registerSender, unregisterSender]);
+  }, [
+    sessionId,
+    projectSessionId,
+    isBusy,
+    hasActiveQuestion,
+    hasPendingApproval,
+    pendingPermissions.length,
+    sessionQueue.pending.length,
+    sessionQueue.inFlightId,
+    handleSend,
+    handleQueueMessage,
+    registerSender,
+    unregisterSender,
+  ]);
 
   // Release queued messages, one per turn, only when the turn actually ended.
   //

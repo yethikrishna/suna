@@ -13,4 +13,12 @@ describe('SessionConfigIndicator notification level', () => {
     expect(source).not.toContain("warningToast('Agent config is out of date'");
     expect(source).not.toContain('duration: Number.POSITIVE_INFINITY');
   });
+
+  test('offers agent-driven reconciliation without changing Git in the browser', () => {
+    expect(source).toContain('Ask agent to sync');
+    expect(source).toContain('buildAgentGitReconciliationPrompt');
+    expect(source).toContain('sendToSession(');
+    expect(source).toContain('chatSessionId,');
+    expect(source).not.toContain("systemReload('full')");
+  });
 });

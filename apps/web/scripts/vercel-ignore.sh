@@ -52,11 +52,22 @@ if ! printf '%s\n' "$changed" | grep -qvE "$SAFE"; then
 fi
 
 # ── Stage 2: deploy-target gate ──────────────────────────────────────────────
-# FE-relevant changes are present. The permanent environments always deploy;
-# per-PR previews are OPT-IN (previews on every PR were the bulk of build spend).
+# FE-relevant changes are present. Staging always deploys; per-PR previews are
+# OPT-IN (previews on every PR were the bulk of build spend).
+#
+# `prod` is NOT here: a push to prod must never auto-deploy the frontend.
+# The 2026-08-10 v0.12.7 outage shipped the new frontend to kortix.com while
+# the API was still on the old version (its prerequisite migration failed), so
+# every access check called a route that did not exist yet. The prod frontend
+# deploys ONLY from deploy-prod.yml's `deploy-web-vercel` job, which runs after
+# `verify-live-version` proves the API serves the release. Belt-and-braces with
+# `git.deploymentEnabled.prod: false` in vercel.json.
 REF="${VERCEL_GIT_COMMIT_REF:-}"
 case "${VERCEL_ENV:-}:$REF" in
-  production:*|*:staging|*:prod)
+  *:prod)
+    echo "vercel-ignore: prod deploys only via deploy-prod.yml after the API is live — skipping auto build."
+    exit 0 ;;
+  production:*|*:staging)
     echo "vercel-ignore: environment branch (${REF:-$VERCEL_ENV}) — building frontend."
     exit 1 ;;
 esac

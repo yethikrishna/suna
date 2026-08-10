@@ -825,7 +825,17 @@ export const MINIMAL_FALLBACK_MODELS: Record<string, KortixGatewayModel> = {
   //   temperature: true,
   //   limit: { context: 1_000_000, output: 64_000 },
   // },
-  // Managed default for fresh sessions. Bare id = Kortix-managed.
+  // Managed default for fresh sessions (PLATFORM_DEFAULT_MODEL_ID).
+  // Bare id = Kortix-managed.
+  'deepseek-v4-flash': {
+    name: 'DeepSeek V4 Flash',
+    provider: 'kortix',
+    reasoning: true,
+    tool_call: true,
+    attachment: false,
+    temperature: true,
+    limit: { context: 1_048_576, output: 64_000 },
+  },
   'glm-5.2': {
     name: 'GLM 5.2',
     provider: 'kortix',
@@ -834,6 +844,37 @@ export const MINIMAL_FALLBACK_MODELS: Record<string, KortixGatewayModel> = {
     attachment: false,
     temperature: true,
     limit: { context: 1_000_000, output: 131_072 },
+  },
+  'muse-spark-1.2': {
+    name: 'Muse Spark 1.2',
+    provider: 'kortix',
+    reasoning: true,
+    tool_call: true,
+    attachment: true,
+    temperature: true,
+    limit: { context: 1_048_576, output: 131_072 },
+  },
+  'minimax-m3': {
+    name: 'MiniMax M3',
+    provider: 'kortix',
+    reasoning: true,
+    tool_call: true,
+    attachment: true,
+    temperature: true,
+    limit: { context: 524_288, output: 131_072 },
+  },
+  // temperature:false — Luna rejects a client-sent temperature (models.dev
+  // openrouter/openai/gpt-5.6-luna), same regression class as the OpenAI
+  // reasoning-model guard below. Must NOT advertise temperature support or
+  // OpenCode sends one and 400s the turn.
+  'gpt-5.6-luna': {
+    name: 'GPT-5.6 Luna',
+    provider: 'kortix',
+    reasoning: true,
+    tool_call: true,
+    attachment: true,
+    temperature: false,
+    limit: { context: 1_050_000, output: 128_000 },
   },
   // Second Kortix-managed AsterLab model (Kimi K3). Same `kortix` provider
   // branding + `aster` transport (ASTER_API_KEY) as GLM 5.2.

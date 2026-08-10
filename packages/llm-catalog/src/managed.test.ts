@@ -10,10 +10,17 @@ import {
 } from './index';
 
 describe('managed catalog', () => {
-  // 2026-08-10 slim-down: claude-opus-4.8 / claude-sonnet-4.6 / kimi-k3 are
-  // deactivated (commented out in MANAGED_MODELS, reactivatable by diff).
+  // 2026-08-10: claude-opus-4.8 / claude-sonnet-4.6 / kimi-k3 deactivated
+  // (commented out in MANAGED_MODELS, reactivatable by diff); muse-spark-1.2,
+  // minimax-m3, and gpt-5.6-luna added the same day.
   test('exposes the managed lineup', () => {
-    expect(DEFAULT_MANAGED_MODEL_IDS).toEqual(['glm-5.2', 'deepseek-v4-flash']);
+    expect(DEFAULT_MANAGED_MODEL_IDS).toEqual([
+      'glm-5.2',
+      'deepseek-v4-flash',
+      'muse-spark-1.2',
+      'minimax-m3',
+      'gpt-5.6-luna',
+    ]);
   });
 
   test('the haiku/sonnet branded ids are gone from the served catalog', () => {

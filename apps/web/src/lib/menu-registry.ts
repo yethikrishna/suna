@@ -319,6 +319,7 @@ export const menuRegistry: MenuItemDef[] = [
     kind: 'action',
     actionId: 'restartConfig',
     keywords: 'reload restart config agents skills commands',
+    requiresSession: true,
   },
   {
     id: 'restart-full',
@@ -332,6 +333,7 @@ export const menuRegistry: MenuItemDef[] = [
     kind: 'action',
     actionId: 'restartFull',
     keywords: 'reload restart full services kill nuclear pull refresh workspace',
+    requiresSession: true,
   },
 
   // ──────────────────────────────────────────────────────────────────────────

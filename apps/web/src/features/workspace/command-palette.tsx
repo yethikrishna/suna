@@ -23,6 +23,7 @@ import {
 import Loading from '@/components/ui/loading';
 import { SidebarContext } from '@/components/ui/sidebar';
 import { errorToast, successToast } from '@/components/ui/toast';
+import { buildAgentGitReconciliationPrompt } from '@/features/session/agent-git-reconciliation';
 import { openSessionQuickView } from '@/features/session/open-session-quick-view';
 import { LEGACY_PALETTE_HIDDEN } from '@/features/workspace/command-palette-visibility';
 import {
@@ -37,9 +38,10 @@ import { useNewProjectSession } from '@/hooks/projects/use-new-project-session';
 import { resolveCustomizeOverlayHref } from '@/lib/customize-sections';
 import { type MenuItemDef, type SettingsTabId, getItemsForSurface } from '@/lib/menu-registry';
 import { PROJECT_LANDING_PATH } from '@/lib/onboarding/landing-destination';
-import { cn } from '@/lib/utils';
-import { useCurrentAccountStore } from '@/stores/current-account-store';
 import { useProjectFeatureFlags } from '@/lib/use-project-feature-flags';
+import { cn } from '@/lib/utils';
+import { useChatSendStore } from '@/stores/chat-send-store';
+import { useCurrentAccountStore } from '@/stores/current-account-store';
 import { useCustomizeStore } from '@/stores/customize-store';
 import { useProjectSessionTabsStore } from '@/stores/project-session-tabs-store';
 import {
@@ -400,6 +402,10 @@ export function CommandPalette() {
     enabled: open && !!projectId,
     ...contract('inventory'),
   });
+  const sendToSession = useChatSendStore((state) => state.sendToSession);
+  const currentProjectSession = projectSessionsList?.find(
+    (session) => session.session_id === currentSessionId,
+  );
 
   // The registry's `requiresFlag` gate. One primitive (`useFeatureFlag`, via
   // `useProjectFeatureFlags`) decides for every surface, so a palette entry can
@@ -1140,16 +1146,24 @@ export function CommandPalette() {
       .catch((err: unknown) => errorToast(reloadErrorMessage(err)));
   }, [close]);
 
-  const handleRestartFull = useCallback(() => {
+  const handleReconcileSession = useCallback(() => {
+    if (!currentSessionId) return;
     close();
-    systemReload('full')
-      .then((r) =>
-        r.success
-          ? successToast('Workspace pulled and runtime restarted')
-          : errorToast(r.errors[0] ?? 'The sandbox did not confirm the restart'),
+    sendToSession(
+      currentSessionId,
+      buildAgentGitReconciliationPrompt(currentProjectSession?.base_ref),
+    )
+      .then((disposition) =>
+        successToast(
+          disposition === 'queued'
+            ? 'Branch sync queued after the current turn'
+            : 'Asked the agent to sync the branch',
+        ),
       )
-      .catch((err: unknown) => errorToast(reloadErrorMessage(err)));
-  }, [close]);
+      .catch((err: unknown) =>
+        errorToast(err instanceof Error ? err.message : 'Could not reach the agent'),
+      );
+  }, [close, currentProjectSession?.base_ref, currentSessionId, sendToSession]);
 
   const actionHandlers: Record<string, () => void> = useMemo(
     () => ({
@@ -1169,7 +1183,7 @@ export function CommandPalette() {
       openProviderModal: handleOpenProviderModal,
       generateSSHKey: handleGenerateSSHKey,
       restartConfig: handleRestartConfig,
-      restartFull: handleRestartFull,
+      reconcileSession: handleReconcileSession,
     }),
     [
       handleNewSession,
@@ -1188,7 +1202,7 @@ export function CommandPalette() {
       handleOpenProviderModal,
       handleGenerateSSHKey,
       handleRestartConfig,
-      handleRestartFull,
+      handleReconcileSession,
     ],
   );
 

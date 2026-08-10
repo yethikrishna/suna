@@ -246,6 +246,8 @@ describe('SessionConfigIndicator wiring', () => {
     expect(mount).toBeTruthy();
     expect(mount).toContain('sessionId={projectSessionId!}');
     expect(mount).not.toContain('sessionId={sessionId}');
+    expect(mount).toContain('chatSessionId={sessionId}');
+    expect(mount).toContain('baseRef={projectSession?.base_ref}');
   });
 
   test('both reload entry points are gated on canShare', () => {

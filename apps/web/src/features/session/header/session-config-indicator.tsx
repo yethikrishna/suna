@@ -22,10 +22,13 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import Hint from '@/components/ui/hint';
 import Loading from '@/components/ui/loading';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { errorToast, successToast } from '@/components/ui/toast';
+import { buildAgentGitReconciliationPrompt } from '@/features/session/agent-git-reconciliation';
 import {
   type ReloadBusyReason,
   useSessionConfigFreshness,
 } from '@/hooks/projects/use-session-config-freshness';
+import { useChatSendStore } from '@/stores/chat-send-store';
 import { ArrowsClockwiseIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
 
@@ -46,12 +49,16 @@ const BUSY_COPY: Record<ReloadBusyReason, { title: string; body: string; tail: s
 export function SessionConfigIndicator({
   projectId,
   sessionId,
+  chatSessionId,
+  baseRef,
   reload,
   isPending,
   canReload,
 }: {
   projectId: string;
   sessionId: string;
+  chatSessionId: string;
+  baseRef?: string | null;
   /** Hoisted to the header so the ⋯ item and this chip share one pending state. */
   reload: (vars?: { force?: boolean }) => void;
   isPending: boolean;
@@ -59,6 +66,29 @@ export function SessionConfigIndicator({
 }) {
   const { notice } = useSessionConfigFreshness(projectId, sessionId);
   const [open, setOpen] = useState(false);
+  const [isAskingAgent, setIsAskingAgent] = useState(false);
+  const sendToSession = useChatSendStore((state) => state.sendToSession);
+
+  const askAgentToSync = async () => {
+    if (isAskingAgent) return;
+    setIsAskingAgent(true);
+    try {
+      const disposition = await sendToSession(
+        chatSessionId,
+        buildAgentGitReconciliationPrompt(baseRef),
+      );
+      successToast(
+        disposition === 'queued'
+          ? 'Branch sync queued after the current turn'
+          : 'Asked the agent to sync the branch',
+      );
+      setOpen(false);
+    } catch (error) {
+      errorToast(error instanceof Error ? error.message : 'Could not reach the agent');
+    } finally {
+      setIsAskingAgent(false);
+    }
+  };
 
   // The confirm is rendered by the header, not here — see `SessionConfigReloadConfirm`.
   // This component may vanish the moment a reload lands, and a dialog that
@@ -101,6 +131,11 @@ export function SessionConfigIndicator({
             project file and commit unchanged.
           </p>
 
+          <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+            If the branch is behind, ask the agent to merge the latest base branch, resolve
+            conflicts, test the result, commit it, and reload safely.
+          </p>
+
           <p className="text-muted-foreground mt-2.5 font-mono text-[11px]">
             <span className="text-foreground/80">{notice.running}</span>
             {' → '}
@@ -109,7 +144,7 @@ export function SessionConfigIndicator({
         </div>
 
         {canReload ? (
-          <div className="border-border flex items-center gap-2 border-t px-3 py-2.5">
+          <div className="border-border flex flex-wrap items-center gap-2 border-t px-3 py-2.5">
             <Button size="sm" disabled={isPending} onClick={() => reload()}>
               {isPending ? (
                 <Loading className="size-3.5 shrink-0" />
@@ -117,6 +152,15 @@ export function SessionConfigIndicator({
                 <ArrowsClockwiseIcon className="size-3.5 shrink-0" />
               )}
               Reload config
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isPending || isAskingAgent}
+              onClick={askAgentToSync}
+            >
+              {isAskingAgent ? <Loading className="size-3.5 shrink-0" /> : null}
+              Ask agent to sync
             </Button>
           </div>
         ) : (

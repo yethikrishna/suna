@@ -42,6 +42,7 @@ adminApp.openapi(
     request: {
       query: z.object({
         search: z.string().optional(),
+        accountId: z.string().optional(),
         tier: z.string().optional(),
         paymentStatus: z.string().optional(),
         paid: z.string().optional(),
@@ -70,6 +71,7 @@ adminApp.openapi(
 
     const {
       search,
+      accountId: accountIdFilter,
       tierValues,
       paymentStatusValues,
       paidOnly,
@@ -94,6 +96,8 @@ adminApp.openapi(
       SELECT count(*)::int FROM kortix.account_members am WHERE am.account_id = ${accounts.accountId})`;
 
     const conds: any[] = [];
+    // Exact-id lookup — the sheet's live row, immune to the list's filters.
+    if (accountIdFilter) conds.push(eq(accounts.accountId, accountIdFilter));
     if (search) {
       conds.push(
         or(
@@ -245,6 +249,106 @@ adminApp.openapi(
     return c.json({ users });
   } catch (e: any) {
     return c.json({ users: [], error: e?.message || String(e) }, 500);
+  }
+  },
+);
+
+// ── Set a member's role ──────────────────────────────────────────────────────
+// Platform-admin override of the in-account role system: the customer-facing
+// PATCH /accounts/:id/members/:userId requires the caller to be a member (and
+// owner-role changes require an owner), which support staff are not. This route
+// bypasses membership but keeps the one hard invariant: an account never drops
+// to zero owners.
+adminApp.openapi(
+  createRoute({
+    method: 'post',
+    path: '/api/accounts/{id}/members/{userId}/role',
+    tags: ['admin'],
+    summary: "Set an account member's role (platform-admin override)",
+    ...auth,
+    request: {
+      params: z.object({ id: z.string(), userId: z.string() }),
+      body: {
+        content: {
+          'application/json': { schema: z.object({ role: z.string() }) },
+        },
+      },
+    },
+    responses: {
+      200: json(
+        z.object({ ok: z.boolean(), user_id: z.string(), account_role: z.string() }),
+        'Updated member role',
+      ),
+      400: json(z.record(z.string(), z.any()), 'Bad request'),
+      404: json(z.record(z.string(), z.any()), 'Not a member'),
+      500: json(z.record(z.string(), z.any()), 'Server error'),
+      ...errors(401, 403),
+    },
+  }),
+  async (c: any) => {
+  try {
+    const accountId = c.req.param('id');
+    const userId = c.req.param('userId');
+    const actorUserId = c.get('userId') as string | undefined;
+    const body = await c.req.json().catch(() => ({}));
+    const roleRaw = String(body.role || '').trim();
+
+    if (roleRaw !== 'owner' && roleRaw !== 'admin' && roleRaw !== 'member') {
+      return c.json({ error: 'role must be one of owner|admin|member' }, 400);
+    }
+    const role = roleRaw;
+
+    const { db } = await import('../shared/db');
+    const { accountMembers } = await import('@kortix/db');
+    const { and, eq } = await import('drizzle-orm');
+
+    const [target] = await db
+      .select({ accountRole: accountMembers.accountRole })
+      .from(accountMembers)
+      .where(and(eq(accountMembers.accountId, accountId), eq(accountMembers.userId, userId)))
+      .limit(1);
+    if (!target) return c.json({ error: 'user is not a member of this account' }, 404);
+    if (target.accountRole === role) {
+      return c.json({ ok: true, user_id: userId, account_role: role });
+    }
+
+    // Never demote the last owner — an ownerless account is unrecoverable
+    // through the product (every owner-gated route would 403 forever).
+    if (target.accountRole === 'owner' && role !== 'owner') {
+      const owners = await db
+        .select({ userId: accountMembers.userId })
+        .from(accountMembers)
+        .where(and(eq(accountMembers.accountId, accountId), eq(accountMembers.accountRole, 'owner')));
+      if (owners.length <= 1) {
+        return c.json({ error: 'cannot demote the last owner of an account' }, 400);
+      }
+    }
+
+    await db
+      .update(accountMembers)
+      .set({ accountRole: role })
+      .where(and(eq(accountMembers.accountId, accountId), eq(accountMembers.userId, userId)));
+
+    try {
+      const { recordAuditEvent } = await import('../shared/audit');
+      await recordAuditEvent({
+        accountId,
+        actorUserId,
+        action: 'admin.account.member_role.set',
+        resourceType: 'account_member',
+        resourceId: userId,
+        before: { account_role: target.accountRole },
+        after: { account_role: role },
+        ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || null,
+        userAgent: c.req.header('user-agent') || null,
+      });
+    } catch {
+      /* audit is best-effort — never block the role change */
+    }
+
+    return c.json({ ok: true, user_id: userId, account_role: role });
+  } catch (e: any) {
+    return c.json({ error: e?.message || String(e) }, 500);
   }
   },
 );
@@ -625,6 +729,20 @@ adminApp.openapi(
 
     const { isValidTier } = await import('../billing/services/tiers');
     if (!isValidTier(tier)) return c.json({ error: `unknown tier "${tier}"` }, 400);
+
+    // Enterprise is an ENTITLEMENT, not a tier. A `tier='enterprise'` write is
+    // clobbered by the next Stripe subscription sync (webhooks.ts writes the
+    // price-resolved tier back), which silently reverts the account. The flag
+    // survives sync — refuse the wrong primitive here.
+    if (tier === 'enterprise') {
+      return c.json(
+        {
+          error:
+            "enterprise is not assignable as a tier — use POST /admin/api/accounts/{id}/enterprise-entitlement instead (the flag survives Stripe subscription sync; a tier write does not)",
+        },
+        400,
+      );
+    }
 
     const { getSubscriptionInfo, upsertCreditAccount } = await import(
       '../billing/repositories/credit-accounts'

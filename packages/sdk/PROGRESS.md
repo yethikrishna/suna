@@ -12,6 +12,25 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-10 — session `reload-live-status` claim
+
+No **Now** task claimed. This is the user-directed live session-config reload status work.
+
+Claimed SDK scope:
+
+- Add an additive streamed reload method beside the existing JSON method.
+- Preserve the existing reload route, result type, facade methods, and every published name.
+- Report only server-confirmed phases. Do not synthesize time-based progress.
+- Add failing stream parser and error coverage before implementation.
+- Run SDK typecheck, the complete SDK suite, and packed-install smoke.
+
+The required `tdd` skill is unavailable in this session. This work uses the required
+RED, GREEN, and REFACTOR sequence directly.
+
+**Status:** IN PROGRESS.
+
+**SDK package shippable to production: NOT YET.**
+
 ### 2026-08-10 — session `stream-cache-throttle` claim
 
 No **Now** task claimed. This is a user-directed browser performance fix in the

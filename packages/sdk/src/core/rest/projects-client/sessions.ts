@@ -1,6 +1,6 @@
 // Project sessions — session CRUD, sharing, public shares, preview candidates.
 
-import { backendApi } from '../../http/api-client';
+import { ApiError, type ApiClientOptions, backendApi } from '../../http/api-client';
 import { markSessionFresh } from '../../http/fresh-sessions';
 import { type ConnectorSharing, unwrap } from './shared';
 import type { AuditEvent } from './audit';
@@ -632,9 +632,47 @@ export interface SessionReloadResult {
     | 'not-applicable'
     | 'not-requested'
     | 'unknown';
+  /** Runtime replacement outcome. Absent when an older API did not report it. */
+  opencode_reload?: 'disposed' | 'restarted' | 'kept-old' | null;
+  /** True when the replacement ended an incomplete turn. */
+  turn_ended?: boolean | null;
   /** Why nothing was applied. Internal wording — map it, don't render it. */
   reason?: string;
   detail: string;
+}
+
+/** Server-observed boundaries for a live session-config reload. */
+export type SessionReloadPhase =
+  | 'checking-session'
+  | 'refreshing-workspace'
+  | 'compiling-config'
+  | 'applying-config'
+  | 'confirming-config';
+
+/** One frame from the streamed session-config reload route. */
+export type SessionReloadStreamEvent =
+  | { type: 'phase'; phase: SessionReloadPhase }
+  | { type: 'done'; result: SessionReloadResult }
+  | {
+      type: 'error';
+      error: string;
+      code?: string;
+      status?: number;
+      reason?: string;
+    };
+
+function parseSessionReloadStreamFrame(frame: string): SessionReloadStreamEvent | null {
+  const dataLines = frame
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).replace(/^ /, ''));
+  if (dataLines.length === 0) return null;
+
+  try {
+    return JSON.parse(dataLines.join('\n')) as SessionReloadStreamEvent;
+  } catch (cause) {
+    throw new Error('reloadProjectSessionConfigStream received an invalid SSE frame', { cause });
+  }
 }
 
 /**
@@ -662,6 +700,84 @@ export async function reloadProjectSessionConfig(
       { showErrors: false },
     ),
   );
+}
+
+/**
+ * Reload a running session while reporting server-observed progress.
+ *
+ * This runs the same reload core as {@link reloadProjectSessionConfig}. The
+ * separate route preserves the existing JSON contract used by CLI clients.
+ * The `applying-config` phase includes the daemon's verified runtime swap. The
+ * server cannot observe its internal boot and promotion steps separately, so
+ * this method does not fabricate them.
+ *
+ * Requires a `fetch` implementation with a readable response body. React Native
+ * callers must use {@link reloadProjectSessionConfig} instead.
+ */
+export async function reloadProjectSessionConfigStream(
+  projectId: string,
+  sessionId: string,
+  input: { refresh_repo?: boolean; force?: boolean },
+  onEvent: (event: SessionReloadStreamEvent) => void,
+  options: ApiClientOptions = {},
+): Promise<SessionReloadResult> {
+  const response = await backendApi.postStream(
+    `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/reload-stream`,
+    input,
+    options,
+  );
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as {
+      error?: string;
+      code?: string;
+      reason?: string;
+    } | null;
+    throw new ApiError(body?.error || `Reload failed: HTTP ${response.status}`, {
+      status: response.status,
+      code: body?.code,
+      data: body,
+    });
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Reload stream is unavailable on this runtime (no response body)');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let settled: SessionReloadResult | null = null;
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let boundary = buffer.indexOf('\n\n');
+      while (boundary !== -1) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf('\n\n');
+
+        const event = parseSessionReloadStreamFrame(frame);
+        if (!event) continue;
+        onEvent(event);
+        if (event.type === 'error') {
+          throw new ApiError(event.error, {
+            status: event.status,
+            code: event.code,
+            data: { reason: event.reason },
+          });
+        }
+        if (event.type === 'done') settled = event.result;
+      }
+    }
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+
+  if (!settled) throw new Error('Reload stream ended without a result');
+  return settled;
 }
 
 /**

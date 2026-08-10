@@ -50,7 +50,7 @@ import {
   QuestionPrompt,
   type QuestionPromptHandle,
 } from '@/features/session/question-prompt';
-import { SessionScopeToolbar } from '@/features/session/scope/session-scope-toolbar';
+import { SessionOverridesComposer } from '@/features/session/overrides/session-overrides-composer';
 import { SessionActionPanelColumn } from '@/features/session/session-action-panel-column';
 import {
   type AttachedFile,
@@ -3597,13 +3597,37 @@ export function SessionChat({
   const chatToolbarSlot = useMemo(
     () =>
       projectId && projectSessionId ? (
-        <SessionScopeToolbar
+        <SessionOverridesComposer
           projectId={projectId}
           sessionId={projectSessionId}
-          agentName={sessionScopeAgentName}
+          agents={local.agent.list}
+          selectedAgent={sessionScopeAgentName ?? null}
+          onAgentChange={lockedAgentName ? undefined : handleAgentChange}
+          agentLocked={!!lockedAgentName}
+          defaultAgentName={projectConfig?.open_code_default_agent}
+          models={local.model.list}
+          modelsLoading={providersLoading}
+          selectedModel={local.model.currentKey ?? null}
+          onModelChange={handleModelChange}
+          providers={providers}
+          defaultModel={local.model.defaults.resolveDefaultFor(sessionScopeAgentName)}
         />
       ) : undefined,
-    [projectId, projectSessionId, sessionScopeAgentName],
+    [
+      handleAgentChange,
+      handleModelChange,
+      local.agent.list,
+      local.model.currentKey,
+      local.model.defaults,
+      local.model.list,
+      lockedAgentName,
+      projectConfig?.open_code_default_agent,
+      projectId,
+      projectSessionId,
+      providers,
+      providersLoading,
+      sessionScopeAgentName,
+    ],
   );
 
   const chatInputSlot = useMemo(

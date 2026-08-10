@@ -12,6 +12,42 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-10 — session `session-overrides-ux` claim
+
+No **Now** task claimed. This is user-directed session-scope correctness work.
+
+Claimed SDK scope:
+
+- `SessionScope` gains `connector_bindings_configured` and
+  `connector_bindings_inherit_unbound`. Both are always emitted by the API.
+- `SessionScopeInput.connector_bindings` widens to accept `null`, the verb that
+  CLEARS a connector override.
+- Additive only. No published name changes. The `version` field is untouched.
+
+The `tdd` skill is unavailable in this session. The required RED → GREEN →
+REFACTOR sequence was followed directly.
+
+RED — `pnpm --filter @kortix/sdk typecheck`:
+
+```
+src/core/rest/projects-client/sessions.test.ts(577,17): error TS2339: Property 'connector_bindings_configured' does not exist on type 'SessionScope'.
+src/core/rest/projects-client/sessions.test.ts(578,17): error TS2339: Property 'connector_bindings_inherit_unbound' does not exist on type 'SessionScope'.
+src/core/rest/projects-client/sessions.test.ts(597,61): error TS2322: Type 'null' is not assignable to type 'SessionConnectorBindingsInput | undefined'.
+src/core/rest/projects-client/sessions.test.ts(602,17): error TS2339: Property 'connector_bindings_configured' does not exist on type 'SessionScope'.
+```
+
+GREEN:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit `0` for the package and examples.
+- `pnpm --filter @kortix/sdk test`: `1847 pass`, `2 skip`, `0 fail`, 141 files.
+- `pnpm --filter @kortix/sdk smoke:install`: packed-install import + construction passed.
+- Public-surface snapshot unchanged — the change adds fields to existing types,
+  not new export names.
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**
+
 ### 2026-08-10 — session `reload-live-status` claim
 
 No **Now** task claimed. This is the user-directed live session-config reload status work.

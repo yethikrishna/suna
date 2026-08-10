@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -153,16 +153,12 @@ describe('web ECS migration', () => {
   });
 
   it('uses Basic auth credentials in QA instead of Vercel bypass headers', () => {
-    for (const file of [
-      'tests/playwright.config.ts',
-      'tests/visual/playwright.config.ts',
-      'tests/accessibility/playwright.config.ts',
-      'tests/e2e/examples/playwright.config.ts',
-    ]) {
-      const config = read(file);
-      expect(config).toContain('WEB_PROTECTION_PASSWORD');
-      expect(config).toContain("username: 'kortix'");
-      expect(config).not.toContain('x-vercel-protection-bypass');
-    }
+    const config = read('tests/playwright.config.ts');
+    expect(config).toContain('WEB_PROTECTION_PASSWORD');
+    expect(config).toContain("username: 'kortix'");
+    expect(config).not.toContain('x-vercel-protection-bypass');
+    expect(existsSync(resolve(root, 'tests/visual/playwright.config.ts'))).toBe(false);
+    expect(existsSync(resolve(root, 'tests/accessibility/playwright.config.ts'))).toBe(false);
+    expect(existsSync(resolve(root, 'tests/e2e/examples/playwright.config.ts'))).toBe(false);
   });
 });

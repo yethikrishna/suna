@@ -153,8 +153,10 @@ describe('createSessionScopeDraft', () => {
 });
 
 describe('session scope summaries', () => {
-  test('names an inherited axis the project default, never "none"', () => {
-    expect(sessionSecretsSummary({ secrets: null })).toBe('Project default');
+  test('names an inherited axis after its real source, never "none"', () => {
+    // Secrets inherit the AGENT's grant; connectors resolve to the PROJECT's
+    // default connections. Each axis names where its default actually lives.
+    expect(sessionSecretsSummary({ secrets: null })).toBe('Agent default');
     expect(
       sessionConnectorsSummary({
         connector_bindings: { mail: { connection_id: 'connection-mail-1' } },

@@ -90,13 +90,18 @@ export function SessionOverridesComposer({
           disabled={agentLocked}
         />
       ),
+      onReset:
+        !agentLocked && onAgentChange && defaultAgentName
+          ? () => onAgentChange(defaultAgentName)
+          : undefined,
+      resetLabel: 'Reset to project default',
     }),
     [agentLocked, agents, defaultAgentName, onAgentChange, selectedAgent],
   );
 
   const modelSlot = useMemo(
     () => ({
-      summary: currentModel?.modelName ?? 'Project default',
+      summary: currentModel?.modelName ?? 'Default',
       overridden:
         Boolean(selectedModel) &&
         Boolean(defaultModel) &&
@@ -109,10 +114,16 @@ export function SessionOverridesComposer({
           selectedModel={selectedModel}
           onSelect={onModelChange ?? (() => {})}
           providers={providers}
-          unsetLabel="Project default"
+          unsetLabel="Default"
           disabled={!onModelChange}
         />
       ),
+      // Re-selecting the resolved default IS the reset: the store has no
+      // "unset" (set(undefined) re-persists its fallback), and selected ==
+      // default is what clears the override flag.
+      onReset:
+        onModelChange && defaultModel ? () => onModelChange(defaultModel) : undefined,
+      resetLabel: 'Reset to default',
     }),
     [
       currentModel?.modelName,

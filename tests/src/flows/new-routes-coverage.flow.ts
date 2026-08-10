@@ -422,6 +422,7 @@ flow(
     routes: [
       'GET /v1/projects/:projectId/sessions/:sessionId/config',
       'POST /v1/projects/:projectId/sessions/:sessionId/reload',
+      'POST /v1/projects/:projectId/sessions/:sessionId/reload-stream',
     ],
   },
   async (ctx) => {
@@ -440,6 +441,12 @@ flow(
         { params: sessionParams },
       );
       reload.status(401);
+      const reloadStream = await anon.post(
+        '/v1/projects/:projectId/sessions/:sessionId/reload-stream',
+        {},
+        { params: sessionParams },
+      );
+      reloadStream.status(401);
     });
 
     await ctx.step('an unknown project hides both — no existence oracle', async () => {
@@ -455,6 +462,12 @@ flow(
         { params: sessionParams },
       );
       reload.status(404);
+      const reloadStream = await owner.post(
+        '/v1/projects/:projectId/sessions/:sessionId/reload-stream',
+        {},
+        { params: sessionParams },
+      );
+      reloadStream.status(404);
     });
 
     await ctx.step('a malformed session id is rejected before any lookup', async () => {

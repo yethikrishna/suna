@@ -90,6 +90,41 @@ runtimeAssetsApp.openapi(
   },
 );
 
+/**
+ * Shared by GET and HEAD. HEAD is registered explicitly below because nothing in
+ * the stack synthesizes it, and it is the only way to read `Content-Length`
+ * without transferring ~100 MB — which is what both a size check and the ke2e
+ * flow need.
+ */
+async function serveCli(c: {
+  req: { header: (name: string) => string | undefined; method: string };
+  header: (name: string, value: string) => void;
+  json: (body: unknown, status: 404) => Response;
+  body: (body: ReadableStream | null, status: 200 | 304) => Response;
+}): Promise<Response> {
+  const manifest = await runtimeAssetsManifest();
+  if (!manifest.cli_sha256 || manifest.cli_size === null) {
+    return c.json(
+      { error: true, message: 'This deploy carries no sandbox CLI binary', status: 404 },
+      404,
+    );
+  }
+  const etag = `"${manifest.cli_sha256}"`;
+  c.header('ETag', etag);
+  c.header('Cache-Control', 'no-cache');
+  if (etagMatches(c.req.header('If-None-Match'), etag)) return c.body(null, 304);
+  c.header('Content-Type', 'application/octet-stream');
+  c.header('Content-Length', String(manifest.cli_size));
+  c.header('X-Kortix-Cli-Sha256', manifest.cli_sha256);
+  if (manifest.cli_version) c.header('X-Kortix-Cli-Version', manifest.cli_version);
+  if (c.req.method === 'HEAD') return c.body(null, 200);
+  // Streamed, not read into memory: this is ~100 MB and several sandboxes can
+  // converge at once after a deploy.
+  return c.body(Bun.file(runtimeCliBinaryPath()).stream(), 200);
+}
+
+runtimeAssetsApp.on('HEAD', '/cli', (c) => serveCli(c as never));
+
 runtimeAssetsApp.openapi(
   createRoute({
     method: 'get',
@@ -110,27 +145,7 @@ runtimeAssetsApp.openapi(
       ...errors(401, 404),
     },
   }),
-  async (c) => {
-    const manifest = await runtimeAssetsManifest();
-    if (!manifest.cli_sha256 || manifest.cli_size === null) {
-      return c.json(
-        { error: true, message: 'This deploy carries no sandbox CLI binary', status: 404 },
-        404,
-      );
-    }
-    const etag = `"${manifest.cli_sha256}"`;
-    c.header('ETag', etag);
-    c.header('Cache-Control', 'no-cache');
-    if (etagMatches(c.req.header('If-None-Match'), etag)) return c.body(null, 304);
-    c.header('Content-Type', 'application/octet-stream');
-    c.header('Content-Length', String(manifest.cli_size));
-    c.header('X-Kortix-Cli-Sha256', manifest.cli_sha256);
-    if (manifest.cli_version) c.header('X-Kortix-Cli-Version', manifest.cli_version);
-    if (c.req.method === 'HEAD') return c.body(null, 200);
-    // Streamed, not read into memory: this is ~100 MB and several sandboxes can
-    // converge at once after a deploy.
-    return c.body(Bun.file(runtimeCliBinaryPath()).stream(), 200);
-  },
+  (c) => serveCli(c as never) as never,
 );
 
 runtimeAssetsApp.openapi(

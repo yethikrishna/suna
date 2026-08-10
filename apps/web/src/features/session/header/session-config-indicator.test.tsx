@@ -22,3 +22,15 @@ describe('SessionConfigIndicator notification level', () => {
     expect(source).not.toContain("systemReload('full')");
   });
 });
+
+describe('SessionConfigIndicator live reload status', () => {
+  test('stays visible while a reload is running even after staleness clears', () => {
+    expect(source).toContain("if (notice.kind === 'hidden' && !isPending) return null");
+  });
+
+  test('announces the server-confirmed phase and renders the ordered progress list', () => {
+    expect(source).toContain('aria-live="polite"');
+    expect(source).toContain('<SessionReloadProgressView phase={phase} />');
+    expect(source).toContain('reloadProgressText(phase)');
+  });
+});

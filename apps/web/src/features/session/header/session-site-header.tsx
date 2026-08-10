@@ -348,6 +348,7 @@ export function SessionSiteHeader({
                 baseRef={projectSession?.base_ref}
                 reload={reloadConfig.reload}
                 isPending={reloadConfig.isPending}
+                phase={reloadConfig.phase}
                 canReload={canShare}
               />
             )}

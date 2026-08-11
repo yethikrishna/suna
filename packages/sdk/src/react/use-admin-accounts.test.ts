@@ -4,6 +4,7 @@ import {
   adminMemberRolePath,
   useAdminAccount,
   useAdminSetMemberRole,
+  type AdminAccount,
   type AdminAccountMemberRole,
 } from './use-admin-accounts';
 
@@ -36,5 +37,30 @@ describe('admin member-role mutation contract', () => {
   test('role union covers exactly the three account roles', () => {
     const roles: AdminAccountMemberRole[] = ['owner', 'admin', 'member'];
     expect(roles).toHaveLength(3);
+  });
+});
+
+describe('admin accounts list — resolved plan block', () => {
+  // The console must never re-derive a plan label from the raw tier key: that
+  // is how "· legacy" got hand-maintained in the page and drifted from the
+  // server. The list route now ships the resolved plan; this pins its shape,
+  // and that it stays OPTIONAL so a console pointed at an older API still
+  // type-checks (and falls back at runtime).
+  test('AdminAccount carries the resolved plan, and it is optional', () => {
+    const grandfathered: Pick<AdminAccount, 'plan'> = {
+      plan: {
+        key: 'per_seat',
+        family: 'team',
+        label: 'Team',
+        sublabel: '$40/seat/mo · grandfathered',
+        status: 'grandfathered',
+        is_grandfathered: true,
+      },
+    };
+    const olderApi: Pick<AdminAccount, 'plan'> = {};
+
+    expect(grandfathered.plan?.label).toBe('Team');
+    expect(grandfathered.plan?.sublabel).toContain('grandfathered');
+    expect(olderApi.plan).toBeUndefined();
   });
 });

@@ -226,6 +226,21 @@ projectsApp.openapi(
       projectId,
       PROJECT_ACTIONS.PROJECT_AGENT_WRITE,
     );
+    // BOTH leaves, because this route straddles two boundaries. Writing the
+    // agent entry is `project.agent.write`, but deciding what to write means
+    // reading secret metadata, and the secrets list itself is gated on
+    // `project.secret.read` (r3.ts). They are separate entries in
+    // iam/role-perms.ts, so a role can hold one without the other — and with
+    // only the write leaf the 404/409/200 split below would answer "does this
+    // identifier exist, and is its delivery denied?" for a caller deliberately
+    // kept off the secrets surface. Assert the read leaf before the lookup.
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_SECRET_READ,
+    );
     // Belt over the central agent-grant fold, which is not enough here: that
     // fold passes an agent session whose grant is NULL (an ungoverned project —
     // `agentMayPerform(null)` is true), and an ungoverned project is exactly the

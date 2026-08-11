@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { projectSecrets } from '@kortix/db';
 import { Hono } from 'hono';
+import { PROJECT_ACTIONS } from '../iam/actions';
 import * as realAccess from '../projects/lib/access';
 import * as realTriggers from '../projects/lib/triggers';
 import { parseManifestString, synthesizeBlankManifest } from '../projects/triggers';
@@ -15,9 +16,12 @@ const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const ACCOUNT_ID = '44444444-4444-4444-8444-444444444444';
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 
-const PROJECT_ACTIONS = {
-  PROJECT_AGENT_WRITE: 'project.agent.write',
-};
+// The `../iam` barrel is stubbed to keep its heavy dependency graph out of this
+// unit test, but the action strings come from the REAL leaf — `iam/actions.ts`
+// has no imports of its own, so there is no reason to hand-copy them. A
+// hand-written subset silently resolves every unlisted key to `undefined`: the
+// `project.secret.read` assertion this suite now pins read as `undefined` and
+// the capability check passed while enforcing nothing.
 mock.module('../iam', () => ({ PROJECT_ACTIONS }));
 
 type SecretFixture = { identifier: string; ownerUserId: string | null; strategy: string };
@@ -187,7 +191,12 @@ describe('POST /v1/projects/:projectId/secrets/:identifier/grant', () => {
       already_granted: false,
       adopted_governance: false,
     });
-    expect(capabilities).toEqual(['project.agent.write']);
+    // BOTH leaves: the route writes the agent entry (`project.agent.write`) and
+    // reads secret metadata to decide what to write, and the secrets surface is
+    // gated separately on `project.secret.read`. Asserting the exact pair keeps
+    // the read leaf from being dropped — without it the 404/409/200 split is an
+    // existence oracle for a caller barred from the secrets list.
+    expect(capabilities).toEqual(['project.agent.write', 'project.secret.read']);
     expect(commits).toHaveLength(1);
     expect(commits[0]?.message).toBe('chore(agents): grant BROKER_KEY to support');
     const support = agentsOf(commits[0]!.raw).support;

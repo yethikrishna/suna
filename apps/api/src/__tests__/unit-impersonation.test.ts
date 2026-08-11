@@ -228,11 +228,45 @@ describe('decideImpersonation', () => {
       '/v1/p/sandbox/8000/session',
       // Near-misses for the new patterns — these must stay reachable.
       '/v1/projects/p1/sessions/s1/messages',
+      // Audit READ (not the webhooks sub-route) stays open for support.
       '/v1/accounts/33333333-3333-4333-8333-333333333333/audit',
-      '/v1/accounts/33333333-3333-4333-8333-333333333333/iam/roles',
-      '/v1/tunnel/device-auth/start',
     ]) {
       expect(isImpersonationForbiddenPath(path, 'POST')).toBe(false);
+    }
+  });
+
+  // Regression guard for the security review of PR6: every route that mints
+  // durable access outliving the 1h grant MUST be refused for state changes.
+  // A hand-maintained deny-list drifts; this list is the contract.
+  test('every durable-access route is refused for state-changing methods', () => {
+    const ACC = '/v1/accounts/33333333-3333-4333-8333-333333333333';
+    for (const path of [
+      // Membership — account-scoped AND project-scoped invite (both INSERT
+      // account_members directly / return an invite_url).
+      `${ACC}/members`,
+      `${ACC}/invites`,
+      '/v1/projects/p1/access/invite',
+      '/v1/account-invites/abc',
+      // IAM durable principals: super-admin PATCH, group/role/policy writes.
+      `${ACC}/iam/members/u1/super-admin`,
+      `${ACC}/iam/groups/g1/members`,
+      `${ACC}/iam/roles`,
+      `${ACC}/iam/policies`,
+      // Identity the operator could log in through afterwards.
+      `${ACC}/iam/sso/provider`,
+      `${ACC}/iam/scim/tokens`,
+      // Audit exfiltration.
+      `${ACC}/audit/webhooks`,
+      '/v1/projects/p1/audit/webhooks',
+      // Machine credentials — the whole tunnel management surface, incl. the
+      // device-auth approve path that the single connections entry missed.
+      '/v1/tunnel/connections',
+      '/v1/tunnel/device-auth/CODE123/approve',
+      '/v1/tunnel/permissions/x',
+      // Public shares without expiry = permanent unauthenticated link.
+      '/v1/projects/p1/sessions/s1/public-shares',
+    ]) {
+      expect(isImpersonationForbiddenPath(path, 'POST'), `POST ${path}`).toBe(true);
     }
   });
 });

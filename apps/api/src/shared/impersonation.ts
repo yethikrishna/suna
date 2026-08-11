@@ -143,16 +143,41 @@ const IMPERSONATION_FORBIDDEN_ROUTES: ForbiddenRoute[] = [
   // the first thing a support question needs.
   { re: /^\/v1\/accounts\/[^/]+\/members(\/|$)/ },
   { re: /^\/v1\/accounts\/[^/]+\/invites(\/|$)/ },
+  // The account-scoped IAM surface adds durable principals too — the
+  // account-members POST above is only one door. `iam/members` carries the
+  // super-admin PATCH, `iam/groups` adds a principal to a policy-bearing
+  // group, and both outlive the grant. Refuse the whole IAM subtree's
+  // state changes (reads stay open for support).
+  { re: /^\/v1\/accounts\/[^/]+\/iam\/members(\/|$)/ },
+  { re: /^\/v1\/accounts\/[^/]+\/iam\/groups(\/|$)/ },
+  { re: /^\/v1\/accounts\/[^/]+\/iam\/roles(\/|$)/ },
+  { re: /^\/v1\/accounts\/[^/]+\/iam\/policies(\/|$)/ },
+  // Project-scoped invite is a full member-add primitive: an existing user is
+  // INSERTed into account_members directly (role from the body, `manager`
+  // accepted), and an unknown email returns the invite_url in the response.
+  // Same permanent-access outcome as the account-scoped member route above.
+  { re: /^\/v1\/projects\/[^/]+\/access(\/|$)/ },
+  { re: /^\/v1\/account-invites(\/|$)/ },
+  // Audit webhooks. Pointing the customer's audit stream at an operator URL
+  // exfiltrates their events and survives the grant.
+  { re: /^\/v1\/accounts\/[^/]+\/audit\/webhooks(\/|$)/ },
+  { re: /^\/v1\/projects\/[^/]+\/audit\/webhooks(\/|$)/ },
   // Identity. An SSO provider the operator controls would let them
-  // authenticate INTO the customer's account directly afterwards.
+  // authenticate INTO the customer's account directly afterwards. Covers
+  // sso, scim (directory sync), and the token routes above.
   { re: /^\/v1\/accounts\/[^/]+\/iam\/sso(\/|$)/ },
+  { re: /^\/v1\/accounts\/[^/]+\/iam\/scim(\/|$)/ },
   // Public shares. `expires_at` is optional, and the consuming route
   // (`/v1/public/session-shares/:shareId`) is mounted before auth — an
   // omitted expiry is a permanent unauthenticated link to a customer session.
   { re: /^\/v1\/projects\/[^/]+\/sessions\/[^/]+\/public-shares(\/|$)/ },
-  // Tunnels: creating one, or rotating its token, mints a long-lived
-  // credential to a real machine. Listing the fleet is a read.
-  { re: /^\/v1\/tunnel\/connections(\/|$)/ },
+  // Tunnels: the whole management surface. Creating a connection, rotating a
+  // token, or APPROVING a device-auth code (`device-auth/:code/approve`, the
+  // CLI's real tunnel-creation path) all mint a long-lived credential to a
+  // real machine with shell/filesystem grants. The single `connections` entry
+  // covered one of four mutating families; block the subtree. Listing is a
+  // read and stays open.
+  { re: /^\/v1\/tunnel(\/|$)/ },
 ];
 
 /** HTTP methods that cannot change state, so cannot create durable access. */

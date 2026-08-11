@@ -124,6 +124,7 @@ flow(
       "GET /v1/projects/:projectId/secrets",
       "PUT /v1/projects/:projectId/secrets/:identifier/strategy",
       "POST /v1/projects/:projectId/secrets/:identifier/broker",
+      "POST /v1/projects/:projectId/secrets/:identifier/grant",
       "POST /v1/projects/:projectId/secrets/sync",
       "GET /v1/accounts/:accountId/audit",
     ],
@@ -252,6 +253,49 @@ flow(
           .has("$.egress_policy", policy);
       } else {
         r.status(409).body().has("$.code", "secret_delivery_unavailable");
+      }
+    });
+
+    await ctx.step("granting the secret to an agent writes the manifest roster", async () => {
+      // An egress/broker secret reaches a session only when an agent's manifest
+      // `secrets:` list names its identifier, so the dashboard offers the edit
+      // inline. The first grant on an ungoverned project also switches the
+      // project to deny-by-default, which is what `adopted_governance` reports.
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .post(
+          "/v1/projects/:projectId/secrets/:identifier/grant",
+          { agent: "kortix" },
+          { params: { projectId: p.id, identifier: "CONTROL_PLANE_KEY" } },
+        );
+      r.status(200)
+        .body()
+        .has("$.identifier", "CONTROL_PLANE_KEY")
+        .has("$.agent", "kortix")
+        .has("$.already_granted", false);
+    });
+
+    await ctx.step("re-granting the same secret is idempotent", async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .post(
+          "/v1/projects/:projectId/secrets/:identifier/grant",
+          { agent: "kortix" },
+          { params: { projectId: p.id, identifier: "CONTROL_PLANE_KEY" } },
+        );
+      r.status(200).body().has("$.already_granted", true).has("$.adopted_governance", false);
+    });
+
+    await ctx.step("the granted secret no longer reports a missing agent grant", async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .get("/v1/projects/:projectId/secrets", { params: { projectId: p.id } });
+      r.status(200);
+      const items = r.json<{ items?: Array<{ identifier: string; delivery_blocked_reason: string | null }> }>().items ?? [];
+      const row = items.find((item) => item.identifier === "CONTROL_PLANE_KEY");
+      if (!row) throw new Error("CONTROL_PLANE_KEY missing from the secrets list");
+      if (row.delivery_blocked_reason !== null) {
+        throw new Error(`expected no block reason after granting, got ${row.delivery_blocked_reason}`);
       }
     });
 

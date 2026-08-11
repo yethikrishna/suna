@@ -8405,3 +8405,62 @@ Both surface snapshots re-recorded — additive only (5 names runtime, 5 type),
 no rename, no removal.
 
 **Status:** COMPLETE on branch `billing-revamp-pr1`, commit `0c295a7652`.
+
+---
+
+## 2026-08-11 — resolved-plan selector + admin plan block (branch `billing-revamp-pr3`)
+
+Part of billing-revamp PR3 (the API half landed in `f92564a8`, which added the
+resolved `plan` block to `/billing/account-state`). This is the SDK half: the
+contract for that block and the one selector every host reads it through, so no
+host re-derives a plan name from `subscription.tier_key` again.
+
+Additive surface, TDD (RED → GREEN), no rename, no removal, `version` untouched:
+
+- `src/core/rest/projects-client/billing.ts`
+  - `AccountState.plan?` — `{ key, family, label, sublabel, status, shape,
+    rank, is_grandfathered }`, optional so a client on an older API still
+    type-checks.
+  - `resolvedPlan(state)` → `ResolvedPlanView { family, label, sublabel,
+    isGrandfathered }`. Reads the `plan` block; falls back to
+    `tier.display_name ?? tier_key` + a three-way family guess when the API is
+    older than the resolver.
+  - `PlanFamily` (`'free' | 'team' | 'enterprise'`), `ResolvedPlanView`.
+  - `AccountStateAppAccessView.plan?` — the login gate's projection now carries
+    the resolved plan key it was already receiving on the wire.
+- `src/react/use-admin-accounts.ts` — `AdminAccountPlan` + optional
+  `AdminAccount.plan`, matching the admin list route's new block.
+
+RED (before implementation):
+
+```
+SyntaxError: Export named 'resolvedPlan' not found in module '…/billing.ts'
+src/react/use-admin-accounts.test.ts(50,45): error TS2344: Type '"plan"' does not satisfy the constraint 'keyof AdminAccount'.
+src/core/rest/projects-client/billing.test.ts(350,5): error TS2353: Object literal may only specify known properties, and 'plan' does not exist in type 'AccountStateAppAccessView'.
+```
+
+GREEN:
+
+- `bun run typecheck`: exit `0` for the package and `examples/tsconfig.json`.
+- `pnpm test -- --sdk-only` (worktree root, the sanctioned lane): `1855 pass`,
+  `0 fail`, `7120 expect()` across `142` files (was `1852 pass / 2 skip` before
+  this change).
+- `bun run smoke:install`: `✔ install smoke test passed`.
+
+Both surface snapshots re-recorded. The diff is **9 insertions, 0 deletions** —
+`resolvedPlan` in the runtime snapshot (root + `./react` subpath), and
+`resolvedPlan` + `PlanFamily` + `ResolvedPlanView` + `AdminAccountPlan` in the
+type snapshot. No subpath added, so the three-synchronized-edits rule does not
+apply.
+
+Verified against the live worktree stack (web `:15400`, API `:15408`): a
+Chromium run drove `/admin/accounts` and asserted 15 conditions, including that
+a trialing per-seat account renders `Team` (stored `tier` still `per_seat`), a
+grandfathered per-seat account renders `Team · $40/seat/mo · grandfathered`, and
+the string `· legacy` appears nowhere. `GET /v1/billing/account-state` returned
+`plan = {"key":"team","family":"team","label":"Team","sublabel":null,"status":"retired","shape":"flat","rank":8,"is_grandfathered":false}`
+while `subscription.tier_key` stayed `per_seat`.
+
+**Status:** COMPLETE on branch `billing-revamp-pr3`.
+
+**SDK package shippable to production: YES.**

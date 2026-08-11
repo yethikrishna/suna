@@ -68,6 +68,11 @@ adminApp.openapi(
     const { and, asc, desc, eq, ilike, gte, lte, inArray, notInArray, isNotNull, isNull, or, sql } =
       await import('drizzle-orm');
     const { parseAdminAccountsListQuery, UNPAID_TIERS } = await import('./accounts-query');
+    // PURE resolver — no I/O, no cache, no clock of its own. It runs over the
+    // row this query already selects, so the `plan` block below costs zero
+    // extra queries (no N+1) and reports the same plan every server gate
+    // enforces for that account.
+    const { resolveBillingFromRow } = await import('../billing/services/resolve-billing');
 
     const {
       search,
@@ -144,6 +149,14 @@ adminApp.openapi(
         provider: creditAccounts.provider,
         planType: creditAccounts.planType,
         stripeSubscriptionId: creditAccounts.stripeSubscriptionId,
+        // Read by resolveBillingFromRow's per-seat self-heal (a live seat
+        // subscription outranks a stale non-paid `tier`). Not rendered.
+        stripeSubscriptionStatus: creditAccounts.stripeSubscriptionStatus,
+        // Read by resolveBillingFromRow's session-limit override. Not rendered
+        // either, but the resolver takes ONE row and answers the WHOLE billing
+        // question from it — handing it a partial row silently mis-answers the
+        // parts this projection does not happen to render today.
+        maxConcurrentSessions: creditAccounts.maxConcurrentSessions,
         billingModel: creditAccounts.billingModel,
         seatCount: creditAccounts.seatCount,
         trialStatus: creditAccounts.trialStatus,
@@ -171,39 +184,58 @@ adminApp.openapi(
       .leftJoin(creditAccounts, eq(creditAccounts.accountId, accounts.accountId))
       .where(where);
 
-    const list = rows.map((r) => ({
-      accountId: r.accountId,
-      name: r.name,
-      ownerEmail: r.ownerEmail ?? null,
-      memberCount: Number(r.memberCount ?? 0),
-      balance: r.balance ?? null,
-      expiringCredits: r.expiringCredits ?? null,
-      nonExpiringCredits: r.nonExpiringCredits ?? null,
-      dailyCreditsBalance: r.dailyCreditsBalance ?? null,
-      tier: r.tier ?? null,
-      paymentStatus: r.paymentStatus ?? null,
-      provider: r.provider ?? null,
-      planType: r.planType ?? null,
-      stripeSubscriptionId: r.stripeSubscriptionId ?? null,
-      billingModel: r.billingModel ?? null,
-      seatCount: r.seatCount ?? null,
-      trial: {
-        status: r.trialStatus ?? 'none',
-        tier: r.trialTier ?? null,
-        seats: r.trialSeats ?? null,
-        startedAt: r.trialStartedAt ?? null,
-        endsAt: r.trialEndsAt ?? null,
-        note: r.trialNote ?? null,
-      },
-      managedModelsOverride: r.managedModelsOverride ?? null,
-      demoEnterprise: r.demoEnterprise ?? false,
-      enterpriseEntitled: r.enterpriseEntitled ?? false,
-      // Stripe customer id/email aren't on credit_accounts — left null until a
-      // billing-customers join is added; the console degrades gracefully.
-      billingCustomerId: null,
-      billingCustomerEmail: null,
-      createdAt: r.createdAt ? new Date(r.createdAt as any).toISOString() : null,
-    }));
+    const now = Date.now();
+    const list = rows.map((r) => {
+      // The plan the account BEHAVES as: an active admin trial and the
+      // per-seat self-heal overlay the stored `tier`, and that is what every
+      // gate enforces. `tier` below stays the STORED column — the tier filter
+      // matches on it server-side, so the two must keep meaning the same thing.
+      const resolved = resolveBillingFromRow(r, now);
+      return {
+        accountId: r.accountId,
+        name: r.name,
+        ownerEmail: r.ownerEmail ?? null,
+        memberCount: Number(r.memberCount ?? 0),
+        balance: r.balance ?? null,
+        expiringCredits: r.expiringCredits ?? null,
+        nonExpiringCredits: r.nonExpiringCredits ?? null,
+        dailyCreditsBalance: r.dailyCreditsBalance ?? null,
+        tier: r.tier ?? null,
+        // RESOLVED plan, named the way the product names plans (Free / Team /
+        // Enterprise + a qualifier). The console renders this instead of mapping
+        // the raw key onto a hand-maintained label table of its own.
+        plan: {
+          key: resolved.plan.key,
+          family: resolved.plan.family,
+          label: resolved.display.label,
+          sublabel: resolved.display.sublabel,
+          status: resolved.plan.status,
+          is_grandfathered: resolved.plan.status === 'grandfathered',
+        },
+        paymentStatus: r.paymentStatus ?? null,
+        provider: r.provider ?? null,
+        planType: r.planType ?? null,
+        stripeSubscriptionId: r.stripeSubscriptionId ?? null,
+        billingModel: r.billingModel ?? null,
+        seatCount: r.seatCount ?? null,
+        trial: {
+          status: r.trialStatus ?? 'none',
+          tier: r.trialTier ?? null,
+          seats: r.trialSeats ?? null,
+          startedAt: r.trialStartedAt ?? null,
+          endsAt: r.trialEndsAt ?? null,
+          note: r.trialNote ?? null,
+        },
+        managedModelsOverride: r.managedModelsOverride ?? null,
+        demoEnterprise: r.demoEnterprise ?? false,
+        enterpriseEntitled: r.enterpriseEntitled ?? false,
+        // Stripe customer id/email aren't on credit_accounts — left null until a
+        // billing-customers join is added; the console degrades gracefully.
+        billingCustomerId: null,
+        billingCustomerEmail: null,
+        createdAt: r.createdAt ? new Date(r.createdAt as any).toISOString() : null,
+      };
+    });
 
     return c.json({ accounts: list, total: Number(total ?? 0), page, limit, summary: null });
   } catch (e: any) {

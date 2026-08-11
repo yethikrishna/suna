@@ -2865,6 +2865,29 @@ export const creditAccounts = kortixSchema.table(
     // even on a tier that normally grants managed models. Resolved in
     // billing/services/entitlements alongside the tier cache.
     managedModelsOverride: boolean('managed_models_override'),
+    // Per-account entitlement overrides, each with an OPTIONAL EXPIRY. One
+    // column instead of one column per override: the four legacy override
+    // columns above (enterprise_entitled, demo_enterprise,
+    // managed_models_override, max_concurrent_sessions) each needed a
+    // migration, a repository accessor, an admin route, and a resolver branch,
+    // and none of them can expire — every temporary grant had to be swept by
+    // hand or left on forever.
+    //
+    // Shape (billing/services/entitlement-overrides.ts is the parser):
+    //   { "<key>": { "value": <boolean|number>, "expires_at"?: "<ISO 8601>" } }
+    // Keys: enterpriseEntitled, demoEnterprise, managedModelsOverride,
+    // maxConcurrentSessions, computeRateMultiplier, and the per-entitlement
+    // booleans sso / scim / rbac / auditAccess / managedModels.
+    //
+    // Read by resolveBillingFromRow, which takes a key here over the matching
+    // legacy column and ignores an entry whose expires_at has passed. The
+    // legacy columns are still written (one-release compatibility) — this
+    // column is additive, and an API version that has never heard of it simply
+    // ignores it. Defaults to '{}' so every row parses without a null check.
+    entitlementOverrides: jsonb('entitlement_overrides')
+      .$type<Record<string, { value: boolean | number; expires_at?: string }>>()
+      .default({})
+      .notNull(),
   },
   (table) => [
     index('kortix_credit_accounts_account_id_idx').on(table.accountId),

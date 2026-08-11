@@ -168,6 +168,10 @@ adminApp.openapi(
         managedModelsOverride: creditAccounts.managedModelsOverride,
         demoEnterprise: creditAccounts.demoEnterprise,
         enterpriseEntitled: creditAccounts.enterpriseEntitled,
+        // Same reason as maxConcurrentSessions above: the resolver reads the
+        // JSONB overrides FIRST, so a projection without them reports the
+        // legacy columns' answer for an account whose real answer expired.
+        entitlementOverrides: creditAccounts.entitlementOverrides,
         ownerEmail,
         memberCount,
       })
@@ -229,6 +233,12 @@ adminApp.openapi(
         managedModelsOverride: r.managedModelsOverride ?? null,
         demoEnterprise: r.demoEnterprise ?? false,
         enterpriseEntitled: r.enterpriseEntitled ?? false,
+        // The stored override map, exactly as PUT /accounts/{id}/overrides left
+        // it. Expiry is NOT applied here — the console shows an operator what
+        // is on the row, including entries that have lapsed; `resolved` above
+        // is what the gates enforce.
+        entitlementOverrides: r.entitlementOverrides ?? {},
+        computeRateMultiplier: resolved.compute.rateMultiplier,
         // Stripe customer id/email aren't on credit_accounts — left null until a
         // billing-customers join is added; the console degrades gracefully.
         billingCustomerId: null,
@@ -1242,6 +1252,118 @@ adminApp.openapi(
       }
 
       return c.json({ ok: true, enabled: body.enabled });
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 500);
+    }
+  },
+);
+
+// ── Set per-account entitlement overrides (the JSONB map) ────────────────────
+// One route for every override an account can carry, each with an OPTIONAL
+// EXPIRY — which the four single-purpose routes above cannot express at all
+// (their columns have nowhere to put a date, so every grant they make is
+// permanent until someone remembers to undo it).
+//
+// MERGE-PATCH semantics (RFC 7386, scoped to the known keys): a key present
+// with an entry sets it, a key present with `null` deletes it, and a key that
+// is absent is left exactly as it was. That is what makes the route safe to
+// call from a form that only knows about one field.
+adminApp.openapi(
+  createRoute({
+    method: 'put',
+    path: '/api/accounts/{id}/overrides',
+    tags: ['admin'],
+    summary: "Merge-patch an account's entitlement overrides",
+    ...auth,
+    request: {
+      params: z.object({ id: z.string() }),
+      body: {
+        content: {
+          'application/json': {
+            // Deliberately loose HERE and strict in `validateOverridePatch`:
+            // the domain rules (known keys, value type per key, ranges, ISO
+            // expiry) are one pure function that unit tests can drive, not a
+            // schema the tests would have to go through HTTP to exercise.
+            schema: z.record(
+              z.string(),
+              z
+                .object({
+                  value: z.union([z.boolean(), z.number()]),
+                  expires_at: z.string().optional(),
+                })
+                .nullable(),
+            ),
+          },
+        },
+      },
+    },
+    responses: {
+      200: json(
+        z.object({ ok: z.boolean(), overrides: z.record(z.string(), z.any()) }),
+        'Stored entitlement overrides',
+      ),
+      400: json(z.record(z.string(), z.any()), 'Bad request'),
+      500: json(z.record(z.string(), z.any()), 'Server error'),
+      ...errors(401, 403),
+    },
+  }),
+  async (c: any) => {
+    try {
+      const accountId = c.req.param('id');
+      const actorUserId = (c.get('userId') as string | undefined) ?? null;
+      const raw = await c.req.json().catch(() => null);
+
+      const {
+        legacyMirrorPatch,
+        mergeOverridePatch,
+        toStoredOverrides,
+        validateOverridePatch,
+      } = await import('../billing/services/entitlement-overrides');
+      const validated = validateOverridePatch(raw);
+      if (!validated.ok) return c.json({ error: validated.error }, 400);
+
+      const { getCreditAccount } = await import('../billing/repositories/credit-accounts');
+      const { applyAdminOverride } = await import('../billing/services/account-write-owner');
+      const before = (await getCreditAccount(accountId))?.entitlementOverrides ?? {};
+      const merged = mergeOverridePatch(before, validated.patch);
+
+      await applyAdminOverride(
+        accountId,
+        {
+          entitlementOverrides: toStoredOverrides(merged),
+          // Mirror the four legacy columns for one release, so an API task
+          // that predates this column still resolves a PERMANENT override the
+          // same way. A timed entry clears its column instead — see
+          // legacyMirrorPatch for why mirroring it would defeat the expiry.
+          ...legacyMirrorPatch(validated.patch),
+        },
+        { userId: actorUserId, action: 'admin.account.overrides.set' },
+      );
+
+      // Two caches read these values: the unified billing cache (invalidated by
+      // applyAdminOverride) and the legacy per-process limit cache.
+      const { clearAccountLimitCache } = await import('../shared/account-limits');
+      clearAccountLimitCache();
+
+      const stored = (await getCreditAccount(accountId))?.entitlementOverrides ?? {};
+      try {
+        const { recordAuditEvent } = await import('../shared/audit');
+        await recordAuditEvent({
+          accountId,
+          actorUserId,
+          action: 'admin.account.overrides.set',
+          resourceType: 'credit_account',
+          resourceId: accountId,
+          before: { entitlement_overrides: before },
+          after: { entitlement_overrides: stored },
+          ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || null,
+          userAgent: c.req.header('user-agent') || null,
+        });
+      } catch {
+        /* audit is best-effort — never block the override change */
+      }
+
+      return c.json({ ok: true, overrides: stored });
     } catch (e: any) {
       return c.json({ error: e?.message || String(e) }, 500);
     }

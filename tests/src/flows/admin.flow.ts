@@ -715,6 +715,132 @@ flow("ADM-18", { domain: "admin", routes: ["GET /v1/admin/api/accounts"] }, asyn
   }
 });
 
+// ADM-23 — the entitlement-override map. One route for every override an
+// account can carry, each with an OPTIONAL EXPIRY, which the single-purpose
+// column routes above cannot express at all. Scoped to a FRESH run-owned team
+// account, like every other write in this file.
+flow(
+  "ADM-23",
+  { domain: "admin", routes: ["PUT /v1/admin/api/accounts/:id/overrides"] },
+  async (ctx) => {
+    await ctx.step("ANON → 401", async () => {
+      const r = await ctx.client
+        .as(ctx.P.ANON)
+        .put("/v1/admin/api/accounts/:id/overrides", { sso: { value: true } }, { params: { id: NOPE } });
+      r.status(401);
+    });
+    await ctx.step("non-admin OWNER → 403", async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .put("/v1/admin/api/accounts/:id/overrides", { sso: { value: true } }, { params: { id: NOPE } });
+      r.status(403);
+    });
+    if (ctx.env.capabilities.admin) {
+      const admin = ctx.client.withBearer(ctx.env.adminToken!, "ADMIN_TOKEN");
+      const team = await ctx.fixtures.team({ name: ctx.fixtures.name("adm23-ovr") });
+      const expires = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+
+      await ctx.step("admin: an unknown key → 400 (typos are not silently dropped)", async () => {
+        const r = await admin.put(
+          "/v1/admin/api/accounts/:id/overrides",
+          { superAdmin: { value: true } },
+          { params: { id: team.id } },
+        );
+        r.status(400);
+      });
+      await ctx.step("admin: a wrong-typed value → 400", async () => {
+        const r = await admin.put(
+          "/v1/admin/api/accounts/:id/overrides",
+          { sso: { value: 1 } },
+          { params: { id: team.id } },
+        );
+        r.status(400);
+      });
+      await ctx.step("admin: computeRateMultiplier above the 10× ceiling → 400", async () => {
+        const r = await admin.put(
+          "/v1/admin/api/accounts/:id/overrides",
+          { computeRateMultiplier: { value: 50 } },
+          { params: { id: team.id } },
+        );
+        r.status(400);
+      });
+      await ctx.step("admin: a non-ISO expires_at → 400", async () => {
+        const r = await admin.put(
+          "/v1/admin/api/accounts/:id/overrides",
+          { sso: { value: true, expires_at: "next tuesday" } },
+          { params: { id: team.id } },
+        );
+        r.status(400);
+      });
+
+      await ctx.step("admin sets a timed sso override → 200, stored with its expiry", async () => {
+        const r = await admin.put(
+          "/v1/admin/api/accounts/:id/overrides",
+          { sso: { value: true, expires_at: expires } },
+          { params: { id: team.id } },
+        );
+        r.status(200)
+          .body()
+          .has("$.ok", true)
+          .has("$.overrides.sso.value", true)
+          .has("$.overrides.sso.expires_at", expires);
+      });
+      await ctx.step("a second patch MERGES — the untouched key survives", async () => {
+        const r = await admin.put(
+          "/v1/admin/api/accounts/:id/overrides",
+          { computeRateMultiplier: { value: 0 } },
+          { params: { id: team.id } },
+        );
+        r.status(200)
+          .body()
+          .has("$.overrides.sso.value", true)
+          .has("$.overrides.computeRateMultiplier.value", 0);
+      });
+      await ctx.step("null deletes exactly that key", async () => {
+        const r = await admin.put(
+          "/v1/admin/api/accounts/:id/overrides",
+          { sso: null },
+          { params: { id: team.id } },
+        );
+        r.status(200)
+          .body()
+          .has("$.overrides.sso", undefined)
+          .has("$.overrides.computeRateMultiplier.value", 0);
+      });
+      await ctx.step(
+        "a PERMANENT legacy-column key mirrors onto the column the accounts list renders",
+        async () => {
+          const set = await admin.put(
+            "/v1/admin/api/accounts/:id/overrides",
+            { enterpriseEntitled: { value: true } },
+            { params: { id: team.id } },
+          );
+          set.status(200).body().has("$.overrides.enterpriseEntitled.value", true);
+          const list = await admin.get("/v1/admin/api/accounts", {
+            query: { accountId: team.id, limit: "1" },
+          });
+          list.status(200).body().has("$.accounts[0].enterpriseEntitled", true);
+        },
+      );
+      await ctx.step(
+        "a TIMED one clears the column instead, so the fallback cannot outlive the expiry",
+        async () => {
+          const set = await admin.put(
+            "/v1/admin/api/accounts/:id/overrides",
+            { enterpriseEntitled: { value: true, expires_at: expires } },
+            { params: { id: team.id } },
+          );
+          set.status(200).body().has("$.overrides.enterpriseEntitled.expires_at", expires);
+          const list = await admin.get("/v1/admin/api/accounts", {
+            query: { accountId: team.id, limit: "1" },
+          });
+          list.status(200).body().has("$.accounts[0].enterpriseEntitled", false);
+        },
+      );
+    }
+  },
+);
+
 // ADM-20 — the fleet projects list. Asserted against a FRESH run-owned project
 // so the never-run defaults (sessionCount 0, lastSessionAt null) are exact
 // rather than whatever the first page happens to hold. The two sanitizer steps

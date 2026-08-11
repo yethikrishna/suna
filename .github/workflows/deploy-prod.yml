@@ -107,20 +107,47 @@ jobs:
           fi
 
   # ── Apply production Terraform before any image rolls ───────────────────────
-  # Scope: environments/prod-web only. environments/prod reads an
-  # operator-local, gitignored terraform.tfvars (it pins api_image to the
-  # release tag and sets api_environment), so CI would plan against inputs no
-  # operator ever used. That root stays manual until those inputs move into
-  # variables this workflow supplies — see terraform-apply.yml.
+  # Two roots, applied in order: environments/prod (the api.kortix.com ALB, ECS
+  # service, gateway and certs) then environments/prod-web (the frontend
+  # service). environments/prod used to be excluded here because it read an
+  # operator-local, gitignored terraform.tfvars; every value from that file is
+  # committed now except `api_image`, which this workflow supplies as the
+  # release tag it is shipping — see terraform-apply.yml.
   #
   # Skipped while TF_APPLY_ROLE_ARN_PROD is unset, so merging this before the
   # IAM role exists cannot break a release. Once set, a failed apply blocks the
   # release: shipping an image onto infrastructure that failed to converge is
   # exactly the state this pipeline exists to prevent.
-  terraform-prod:
-    name: Apply prod Terraform
+  terraform-prod-api:
+    name: Apply prod API Terraform
     needs: version
     if: vars.TF_APPLY_ROLE_ARN_PROD != ''
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/terraform-apply.yml
+    with:
+      tf_root: infra/terraform/environments/prod
+      # The release this run publishes. retag-images creates the tag in
+      # parallel; nothing here pulls the image, and the ECS service ignores
+      # task_definition changes, so the ordering is infrastructure-then-image as
+      # documented. Planning the real version keeps the root from ever seeding a
+      # task-definition that points at a stale release.
+      api_image: kortix/kortix-api:${{ needs.version.outputs.version }}
+      aws_region: eu-west-2
+      role_arn: ${{ vars.TF_APPLY_ROLE_ARN_PROD }}
+      github_environment: prod
+      trusted_branch: prod
+      cloudflare: true
+    secrets: inherit
+
+  terraform-prod:
+    name: Apply prod web Terraform
+    needs: [version, terraform-prod-api]
+    if: >-
+      ${{ always()
+        && vars.TF_APPLY_ROLE_ARN_PROD != ''
+        && (needs.terraform-prod-api.result == 'success' || needs.terraform-prod-api.result == 'skipped') }}
     permissions:
       contents: read
       id-token: write
@@ -844,15 +871,18 @@ jobs:
   # active backend serves old code.
   deploy-ecs:
     name: Deploy API + gateway to prod (ECS Fargate)
-    needs: [version, retag-images, verify-image-commits, migrate-db, terraform-prod]
-    # `always()` is required because terraform-prod is SKIPPED while
+    needs: [version, retag-images, verify-image-commits, migrate-db, terraform-prod-api, terraform-prod]
+    # `always()` is required because both terraform jobs are SKIPPED while
     # TF_APPLY_ROLE_ARN_PROD is unset. Every other upstream stays required, so
-    # this remains the hard gate described above.
+    # this remains the hard gate described above. Both roots are listed: a
+    # failed terraform-prod-api skips terraform-prod, and a skip alone must not
+    # read as a pass for the root that actually failed.
     if: >-
       ${{ always()
         && needs.retag-images.result == 'success'
         && needs.verify-image-commits.result == 'success'
         && needs.migrate-db.result == 'success'
+        && (needs.terraform-prod-api.result == 'success' || needs.terraform-prod-api.result == 'skipped')
         && (needs.terraform-prod.result == 'success' || needs.terraform-prod.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:

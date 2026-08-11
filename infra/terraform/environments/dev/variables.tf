@@ -98,6 +98,12 @@ variable "api_secrets" {
   # kept exact anyway so removing secrets_blob_arn cannot silently drop a key —
   # in particular MANAGED_GIT_GITHUB_TOKEN, whose absence 502s every
   # POST /v1/projects/provision (see ../prod/README.md).
+  #
+  # Three of the operator file's 67 keys are deliberately absent: the two for the
+  # retired hosted-deployment vendor and the retired Apps experiment flag.
+  # apps/api/src/__tests__/unit-hosted-deployment-vendor-removal.test.ts forbids
+  # those identifiers in any tracked file. They are dead config — no code reads
+  # them — and they stay in the kortix-dev-env blob, which is what ECS injects.
   default = {
     ALLOWED_SANDBOX_PROVIDERS       = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:ALLOWED_SANDBOX_PROVIDERS::"
     ANTHROPIC_API_KEY               = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:ANTHROPIC_API_KEY::"
@@ -118,8 +124,6 @@ variable "api_secrets" {
     DAYTONA_TARGET                  = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:DAYTONA_TARGET::"
     DAYTONA_WARM_TARGET             = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:DAYTONA_WARM_TARGET::"
     FIRECRAWL_API_KEY               = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:FIRECRAWL_API_KEY::"
-    FREESTYLE_API_KEY               = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:FREESTYLE_API_KEY::"
-    FREESTYLE_API_URL               = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:FREESTYLE_API_URL::"
     FRONTEND_URL                    = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:FRONTEND_URL::"
     INTEGRATION_AUTH_PROVIDER       = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:INTEGRATION_AUTH_PROVIDER::"
     INTERNAL_KORTIX_ENV             = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:INTERNAL_KORTIX_ENV::"
@@ -127,7 +131,6 @@ variable "api_secrets" {
     JUSTAVPS_API_KEY                = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:JUSTAVPS_API_KEY::"
     JUSTAVPS_API_URL                = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:JUSTAVPS_API_URL::"
     JUSTAVPS_PROXY_DOMAIN           = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:JUSTAVPS_PROXY_DOMAIN::"
-    KORTIX_APPS_EXPERIMENTAL        = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:KORTIX_APPS_EXPERIMENTAL::"
     KORTIX_BILLING_INTERNAL_ENABLED = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:KORTIX_BILLING_INTERNAL_ENABLED::"
     KORTIX_GITHUB_APP_ID            = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:KORTIX_GITHUB_APP_ID::"
     KORTIX_GITHUB_APP_PRIVATE_KEY   = "arn:aws:secretsmanager:us-west-2:935064898258:secret:kortix-dev-env-otSQdL:KORTIX_GITHUB_APP_PRIVATE_KEY::"

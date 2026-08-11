@@ -51,12 +51,19 @@ through `terraform-apply.yml`'s `api_image` input (exported as
 | `environments/dev` | `kortix/kortix-api:dev-<sha8>` | `deploy-dev.yml` -> `needs.tag-api.outputs.image`, falling back to the committed `:dev-latest` when no API image was built |
 | `environments/prod` | `kortix/kortix-api:<version>` | `deploy-prod.yml` -> `needs.version.outputs.version` |
 
-`api_secrets` is committed verbatim from the operator files. It is inert today —
-both roots pass `secrets_blob_arn`, and `modules/ecs-api` reads `var.secrets`
-only when that is empty (`main.tf:134` for the execution-role Resource list,
-`main.tf:459` for the container definition) — but it stays exact so removing the
-blob cannot silently drop a key. In prod that key is `MANAGED_GIT_GITHUB_TOKEN`,
-whose absence 502s every `POST /v1/projects/provision`.
+`api_secrets` is committed from the operator files, minus the keys of the
+retired hosted-deployment vendor and the retired Apps experiment flag (3 in dev,
+2 in prod), which
+`apps/api/src/__tests__/unit-hosted-deployment-vendor-removal.test.ts` forbids in
+any tracked file. Nothing reads them, and they remain in the env blob that ECS
+actually injects. Everything else is verbatim.
+
+`api_secrets` is inert today — both roots pass `secrets_blob_arn`, and
+`modules/ecs-api` reads `var.secrets` only when that is empty (`main.tf:134` for
+the execution-role Resource list, `main.tf:459` for the container definition) —
+but it stays exact so removing the blob cannot silently drop a key. In prod that
+key is `MANAGED_GIT_GITHUB_TOKEN`, whose absence 502s every
+`POST /v1/projects/provision`.
 
 Never commit a `terraform.tfvars` here. The committed defaults hold config and
 Secrets Manager ARNs only; the values behind those ARNs stay in Secrets Manager,

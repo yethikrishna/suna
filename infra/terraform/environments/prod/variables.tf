@@ -115,6 +115,12 @@ variable "api_secrets" {
   # definition, main.tf:134 for the execution-role Resource list). The map is
   # kept exact anyway so removing secrets_blob_arn cannot silently drop a key —
   # above all MANAGED_GIT_GITHUB_TOKEN (see README.md and its comment below).
+  #
+  # Two of the operator file's 100 keys are deliberately absent: both belong to
+  # the retired hosted-deployment vendor.
+  # apps/api/src/__tests__/unit-hosted-deployment-vendor-removal.test.ts forbids
+  # those identifiers in any tracked file. They are dead config — no code reads
+  # them — and they stay in the kortix-prod-env blob, which is what ECS injects.
   default = {
     ALLOWED_SANDBOX_PROVIDERS       = "arn:aws:secretsmanager:eu-west-2:935064898258:secret:kortix-prod-env-omifd2:ALLOWED_SANDBOX_PROVIDERS::"
     ANTHROPIC_API_KEY               = "arn:aws:secretsmanager:eu-west-2:935064898258:secret:kortix-prod-env-omifd2:ANTHROPIC_API_KEY::"
@@ -139,8 +145,6 @@ variable "api_secrets" {
     ENCRYPTION_KEY                  = "arn:aws:secretsmanager:eu-west-2:935064898258:secret:kortix-prod-env-omifd2:ENCRYPTION_KEY::"
     ENV_MODE                        = "arn:aws:secretsmanager:eu-west-2:935064898258:secret:kortix-prod-env-omifd2:ENV_MODE::"
     FIRECRAWL_API_KEY               = "arn:aws:secretsmanager:eu-west-2:935064898258:secret:kortix-prod-env-omifd2:FIRECRAWL_API_KEY::"
-    FREESTYLE_API_KEY               = "arn:aws:secretsmanager:eu-west-2:935064898258:secret:kortix-prod-env-omifd2:FREESTYLE_API_KEY::"
-    FREESTYLE_API_URL               = "arn:aws:secretsmanager:eu-west-2:935064898258:secret:kortix-prod-env-omifd2:FREESTYLE_API_URL::"
     FRONTEND_URL                    = "arn:aws:secretsmanager:eu-west-2:935064898258:secret:kortix-prod-env-omifd2:FRONTEND_URL::"
     GEMINI_API_KEY                  = "arn:aws:secretsmanager:eu-west-2:935064898258:secret:kortix-prod-env-omifd2:GEMINI_API_KEY::"
     GROQ_API_KEY                    = "arn:aws:secretsmanager:eu-west-2:935064898258:secret:kortix-prod-env-omifd2:GROQ_API_KEY::"

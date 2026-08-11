@@ -21,6 +21,11 @@ import { analyticsApp } from './analytics';
 
 export const adminApp = makeOpenApiApp<AppEnv>();
 
+// `account_id` reaches Postgres as a `uuid`, where a malformed value is a
+// 22P02 cast error long before any guard runs — a 500 on input the caller
+// controls. Shape-check first so a typo is a clean 400.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Every admin route requires a logged-in platform admin.
 adminApp.use('*', supabaseAuth, requireAdmin);
 
@@ -1652,5 +1657,227 @@ adminApp.openapi(
       },
       providers, latencyByDay, volumeByDay, migrations, recentErrors,
     });
+  },
+);
+
+// ── Act-as impersonation ─────────────────────────────────────────────────────
+// "Open this customer's account" for support and debugging. The grant is a ROW
+// (kortix.impersonation_grants), never a token: the client only ever holds an
+// id, and ownership, expiry, revocation and the operator's CURRENT platform
+// role are re-read on every request that presents it (shared/impersonation.ts +
+// middleware/impersonation.ts). Revocation is therefore instant, and demoting
+// an operator kills their live sessions mid-flight.
+//
+// These three routes are themselves unreachable from inside an impersonated
+// session — /v1/admin/* is on the forbidden list — so a session can neither
+// mint a second grant nor extend itself.
+
+// Mint a grant. TTL is capped at one hour and written by the server; the
+// request cannot ask for longer.
+adminApp.openapi(
+  createRoute({
+    method: 'post',
+    path: '/api/impersonate',
+    tags: ['admin'],
+    summary: 'Start acting as an account',
+    ...auth,
+    request: {
+      body: {
+        content: {
+          'application/json': {
+            schema: z.object({
+              account_id: z.string(),
+              reason: z.string().max(500).optional(),
+            }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: json(
+        z.object({
+          grant_id: z.string(),
+          account_id: z.string(),
+          expires_at: z.string(),
+        }),
+        'Impersonation grant',
+      ),
+      400: json(z.record(z.string(), z.any()), 'Bad request'),
+      404: json(z.record(z.string(), z.any()), 'Account not found'),
+      500: json(z.record(z.string(), z.any()), 'Server error'),
+      ...errors(401, 403),
+    },
+  }),
+  async (c: any) => {
+    try {
+      const adminUserId = c.get('userId') as string;
+      const body = await c.req.json().catch(() => null);
+      const accountId = typeof body?.account_id === 'string' ? body.account_id.trim() : '';
+      const reasonRaw = typeof body?.reason === 'string' ? body.reason.trim() : '';
+      const reason = reasonRaw ? reasonRaw.slice(0, 500) : null;
+      if (!UUID_RE.test(accountId)) {
+        return c.json({ error: 'account_id must be a uuid' }, 400);
+      }
+
+      const { db } = await import('../shared/db');
+      const { accounts } = await import('@kortix/db');
+      const { eq } = await import('drizzle-orm');
+      // Refuse a grant on an account that does not exist. A row pointing at a
+      // typo'd uuid would sit in the table looking like a real support session.
+      const [account] = await db
+        .select({ accountId: accounts.accountId, name: accounts.name })
+        .from(accounts)
+        .where(eq(accounts.accountId, accountId))
+        .limit(1);
+      if (!account) return c.json({ error: 'account not found' }, 404);
+
+      const { createImpersonationGrant, impersonationExpiryFrom, IMPERSONATION_START_ACTION } =
+        await import('../shared/impersonation');
+      const expiresAt = impersonationExpiryFrom(new Date());
+      const grant = await createImpersonationGrant({
+        adminUserId,
+        targetAccountId: accountId,
+        reason,
+        expiresAt,
+      });
+
+      // Audited against the TARGET account, not ours: the customer's own audit
+      // log (and any audit webhook they have configured) is where "an operator
+      // entered your account" has to appear. `actorUserId` is the real admin.
+      const { recordAuditEvent } = await import('../shared/audit');
+      await recordAuditEvent({
+        accountId,
+        actorUserId: adminUserId,
+        actorType: 'human',
+        action: IMPERSONATION_START_ACTION,
+        resourceType: 'account',
+        resourceId: accountId,
+        metadata: {
+          grant_id: grant.id,
+          impersonator_user_id: adminUserId,
+          target_account_id: accountId,
+          reason,
+          expires_at: expiresAt.toISOString(),
+        },
+        ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || null,
+        userAgent: c.req.header('user-agent') || null,
+      });
+
+      return c.json({
+        grant_id: grant.id,
+        account_id: accountId,
+        account_name: account.name ?? null,
+        expires_at: expiresAt.toISOString(),
+      });
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 500);
+    }
+  },
+);
+
+// Stop acting. Scoped to the caller's own grants — a non-owner gets the same
+// 404 as a nonexistent id, so this is not an enumeration oracle either.
+adminApp.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/api/impersonate/{grantId}',
+    tags: ['admin'],
+    summary: 'Stop acting as an account',
+    ...auth,
+    request: { params: z.object({ grantId: z.string() }) },
+    responses: {
+      200: json(
+        z.object({ ok: z.boolean(), grant_id: z.string(), revoked_at: z.string().nullable() }),
+        'Revoked grant',
+      ),
+      404: json(z.record(z.string(), z.any()), 'Grant not found'),
+      500: json(z.record(z.string(), z.any()), 'Server error'),
+      ...errors(401, 403),
+    },
+  }),
+  async (c: any) => {
+    try {
+      const adminUserId = c.get('userId') as string;
+      const grantId = c.req.param('grantId');
+      const { revokeImpersonationGrant, IMPERSONATION_STOP_ACTION } = await import(
+        '../shared/impersonation'
+      );
+      const grant = await revokeImpersonationGrant({ grantId, adminUserId });
+      if (!grant) return c.json({ error: 'grant not found' }, 404);
+
+      const { recordAuditEvent } = await import('../shared/audit');
+      await recordAuditEvent({
+        accountId: grant.targetAccountId,
+        actorUserId: adminUserId,
+        actorType: 'human',
+        action: IMPERSONATION_STOP_ACTION,
+        resourceType: 'account',
+        resourceId: grant.targetAccountId,
+        metadata: {
+          grant_id: grant.id,
+          impersonator_user_id: adminUserId,
+          target_account_id: grant.targetAccountId,
+        },
+        ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || null,
+        userAgent: c.req.header('user-agent') || null,
+      });
+
+      return c.json({
+        ok: true,
+        grant_id: grant.id,
+        revoked_at: grant.revokedAt ? grant.revokedAt.toISOString() : null,
+      });
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 500);
+    }
+  },
+);
+
+// The caller's live grants. Lets a console that lost its sessionStorage (new
+// tab, cleared storage, another device) find the session it is still inside
+// and exit it, instead of waiting out the hour.
+adminApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/api/impersonate/active',
+    tags: ['admin'],
+    summary: 'List the caller-held impersonation grants',
+    ...auth,
+    responses: {
+      200: json(
+        z.object({ grants: z.array(z.record(z.string(), z.any())) }),
+        'Active grants',
+      ),
+      500: json(z.record(z.string(), z.any()), 'Server error'),
+      ...errors(401, 403),
+    },
+  }),
+  async (c: any) => {
+    try {
+      const adminUserId = c.get('userId') as string;
+      const { listActiveImpersonationGrants } = await import('../shared/impersonation');
+      const grants = await listActiveImpersonationGrants(adminUserId);
+      const { db } = await import('../shared/db');
+      const { accounts } = await import('@kortix/db');
+      const { inArray } = await import('drizzle-orm');
+      const names = new Map<string, string | null>();
+      if (grants.length > 0) {
+        const rows = await db
+          .select({ accountId: accounts.accountId, name: accounts.name })
+          .from(accounts)
+          .where(inArray(accounts.accountId, grants.map((g) => g.targetAccountId)));
+        for (const row of rows) names.set(row.accountId, row.name ?? null);
+      }
+      return c.json({
+        grants: grants.map((g) => ({
+          grant_id: g.id,
+          account_id: g.targetAccountId,
+          account_name: names.get(g.targetAccountId) ?? null,
+          expires_at: g.expiresAt.toISOString(),
+        })),
+      });
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 500);
+    }
   },
 );

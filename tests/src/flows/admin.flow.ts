@@ -1103,3 +1103,184 @@ flow("ADM-22", { domain: "admin", routes: ["GET /v1/admin/analytics/usage"] }, a
     });
   }
 });
+
+// IMP-1 — act-as impersonation, end to end. The one flow where a platform
+// admin's requests land on ANOTHER account, so it asserts both directions:
+// the grant works exactly as far as it should, and not one route further.
+flow(
+  "IMP-1",
+  {
+    domain: "admin",
+    routes: [
+      "POST /v1/admin/api/impersonate",
+      "DELETE /v1/admin/api/impersonate/:grantId",
+      "GET /v1/admin/api/impersonate/active",
+      "POST /v1/accounts/:accountId/members",
+    ],
+  },
+  async (ctx) => {
+    await ctx.step("ANON → 401", async () => {
+      const r = await ctx.client
+        .as(ctx.P.ANON)
+        .post("/v1/admin/api/impersonate", { account_id: NOPE });
+      r.status(401);
+    });
+    await ctx.step("non-admin OWNER → 403", async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .post("/v1/admin/api/impersonate", { account_id: NOPE });
+      r.status(403);
+    });
+    await ctx.step("ANON cannot revoke either", async () => {
+      const r = await ctx.client
+        .as(ctx.P.ANON)
+        .del("/v1/admin/api/impersonate/:grantId", { params: { grantId: NOPE } });
+      r.status(401);
+    });
+
+    if (!ctx.env.capabilities.admin) return;
+
+    const admin = ctx.client.withBearer(ctx.env.adminToken!, "ADMIN_TOKEN");
+    const victim = await ctx.fixtures.team({ name: ctx.fixtures.name("imp1-victim") });
+    let grantId = "";
+
+    await ctx.step("a grant on a nonexistent account → 404, not a dangling row", async () => {
+      // A FRESH random uuid, not the shared NOPE constant: the all-zeros uuid
+      // is a real `accounts` row on a local database (a bootstrap leftover),
+      // and this is the one step in the file whose route actually resolves the
+      // account id rather than failing auth before it looks.
+      const r = await admin.post("/v1/admin/api/impersonate", {
+        account_id: crypto.randomUUID(),
+      });
+      r.status(404);
+    });
+    await ctx.step("a malformed account id → 400", async () => {
+      const r = await admin.post("/v1/admin/api/impersonate", { account_id: "not-a-uuid" });
+      r.status(400);
+    });
+
+    await ctx.step("admin mints a grant → 200 with a server-chosen expiry ≤ 1h", async () => {
+      const r = await admin.post("/v1/admin/api/impersonate", {
+        account_id: victim.id,
+        reason: "ke2e IMP-1",
+      });
+      r.status(200).body().exists("$.grant_id").has("$.account_id", victim.id);
+      const body = r.json<{ grant_id: string; expires_at: string }>();
+      grantId = body.grant_id;
+      const ttlMs = Date.parse(body.expires_at) - Date.now();
+      if (!(ttlMs > 0 && ttlMs <= 60 * 60 * 1000 + 60_000)) {
+        throw new Error(`expires_at is not within the one-hour cap: ${body.expires_at}`);
+      }
+    });
+
+    const acting = (headers: Record<string, string> = {}) => ({
+      headers: { "x-kortix-impersonate": grantId, ...headers },
+    });
+
+    await ctx.step("acting-as, /v1/accounts is the TARGET account only", async () => {
+      const r = await admin.get("/v1/accounts", acting());
+      r.status(200);
+      const accounts = r.json<Array<{ account_id: string }>>();
+      if (accounts.length !== 1 || accounts[0]?.account_id !== victim.id) {
+        throw new Error(
+          `acting-as should see exactly the target account, got ${JSON.stringify(accounts.map((a) => a.account_id))}`,
+        );
+      }
+    });
+
+    const renamed = ctx.fixtures.name("imp1-renamed");
+    await ctx.step("acting-as, a customer-visible WRITE lands on the target", async () => {
+      const r = await admin.patch(
+        "/v1/accounts/:accountId",
+        { name: renamed },
+        { params: { accountId: victim.id }, ...acting() },
+      );
+      r.status(200);
+    });
+    await ctx.step("the write is visible on the target account, read back as ADMIN", async () => {
+      const r = await admin.get("/v1/admin/api/accounts", {
+        query: { accountId: victim.id, limit: "1" },
+      });
+      r.status(200).body().has("$.accounts[0].name", renamed);
+    });
+
+    await ctx.step("acting-as CANNOT reach the admin console (no nesting)", async () => {
+      const list = await admin.get("/v1/admin/api/accounts", acting());
+      list.status(403).body().has("$.code", "impersonation_invalid");
+      const nested = await admin.post(
+        "/v1/admin/api/impersonate",
+        { account_id: victim.id },
+        acting(),
+      );
+      nested.status(403).body().has("$.code", "impersonation_invalid");
+    });
+
+    await ctx.step("acting-as CANNOT mint a credential that outlives the grant", async () => {
+      const r = await admin.post("/v1/accounts/tokens", { name: "imp1-should-fail" }, acting());
+      r.status(403).body().has("$.code", "impersonation_invalid");
+    });
+
+    // The cheapest way to turn one hour of act-as into permanent, unmarked
+    // access: add yourself to the customer's account. Blocked with the same
+    // 403 as a credential mint, for the same reason.
+    await ctx.step("acting-as CANNOT grant itself durable membership", async () => {
+      const r = await admin.post(
+        "/v1/accounts/:accountId/members",
+        { email: "imp1-should-fail@ke2e.kortix.test", role: "admin" },
+        { params: { accountId: victim.id }, ...acting() },
+      );
+      r.status(403).body().has("$.code", "impersonation_invalid");
+    });
+
+    await ctx.step("a grant id nobody holds → 403, never a fall-back to own account", async () => {
+      const r = await admin.get("/v1/accounts", {
+        headers: { "x-kortix-impersonate": NOPE },
+      });
+      r.status(403).body().has("$.code", "impersonation_invalid");
+    });
+    await ctx.step("a garbage grant id → 403, not a 500", async () => {
+      const r = await admin.get("/v1/accounts", {
+        headers: { "x-kortix-impersonate": "'; drop table --" },
+      });
+      r.status(403);
+    });
+    await ctx.step("the OWNER presenting the ADMIN's real grant → 403", async () => {
+      const r = await ctx.client.as(ctx.P.OWNER).get("/v1/accounts", acting());
+      r.status(403).body().has("$.code", "impersonation_invalid");
+    });
+
+    await ctx.step("the grant is listed as active while it lives", async () => {
+      const r = await admin.get("/v1/admin/api/impersonate/active");
+      r.status(200);
+      const grants = r.json<{ grants: Array<{ grant_id: string; account_id: string }> }>().grants;
+      if (!grants.some((g) => g.grant_id === grantId && g.account_id === victim.id)) {
+        throw new Error(`active grants did not include ${grantId}`);
+      }
+    });
+
+    await ctx.step("admin revokes → 200", async () => {
+      const r = await admin.del("/v1/admin/api/impersonate/:grantId", {
+        params: { grantId },
+      });
+      r.status(200).body().has("$.ok", true).has("$.grant_id", grantId);
+    });
+    await ctx.step("the revoked grant stops working on the very next request", async () => {
+      const r = await admin.get("/v1/accounts", acting());
+      r.status(403).body().has("$.code", "impersonation_invalid");
+    });
+    await ctx.step("and it is gone from the active list", async () => {
+      const r = await admin.get("/v1/admin/api/impersonate/active");
+      r.status(200);
+      const grants = r.json<{ grants: Array<{ grant_id: string }> }>().grants;
+      if (grants.some((g) => g.grant_id === grantId)) {
+        throw new Error(`revoked grant ${grantId} is still listed as active`);
+      }
+    });
+    await ctx.step("revoking a grant the caller does not hold → 404", async () => {
+      const r = await admin.del("/v1/admin/api/impersonate/:grantId", {
+        params: { grantId: NOPE },
+      });
+      r.status(404);
+    });
+  },
+);

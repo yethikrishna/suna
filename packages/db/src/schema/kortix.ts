@@ -3652,6 +3652,41 @@ export const platformUserRoles = kortixSchema.table(
   ],
 );
 
+// ─── Impersonation Grants ───────────────────────────────────────────────────
+// A platform admin acting as an account ("open as account") holds a row here.
+// The row IS the capability: the request header carries only the grant id, and
+// every check (owner, expiry, revocation, platform role) is re-read server-side
+// on every request. Nothing about the grant is stateless or self-asserted, so
+// revoking it takes effect immediately and a leaked id is useless to anyone but
+// the admin it was minted for — who already has the platform role.
+//
+// `expires_at` is written by the API and capped at one hour. There is no
+// deletion path: a stopped grant keeps its row with `revoked_at` set, because
+// the audit trail of who acted as whom must outlive the session.
+export const impersonationGrants = kortixSchema.table(
+  'impersonation_grants',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    /** The REAL platform admin. Never the target account's user. */
+    adminUserId: uuid('admin_user_id').notNull(),
+    /** The account whose context the admin acts in. */
+    targetAccountId: uuid('target_account_id').notNull(),
+    /** Operator-supplied justification, surfaced in the audit trail. */
+    reason: text('reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (table) => [
+    // The one list query: "which grants does this admin still hold?" —
+    // GET /admin/api/impersonate/active, and the console's exit affordance.
+    index('idx_impersonation_grants_admin_expires').on(table.adminUserId, table.expiresAt),
+    // The other read direction: "who has been inside this account?", for an
+    // incident review that starts from the customer, not from the operator.
+    index('idx_impersonation_grants_target').on(table.targetAccountId),
+  ],
+);
+
 // ─── Access Control ─────────────────────────────────────────────────────────
 
 export const accessRequestStatusEnum = kortixSchema.enum('access_request_status', [

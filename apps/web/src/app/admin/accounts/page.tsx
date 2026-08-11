@@ -11,6 +11,7 @@ import {
   CaretLeftIcon as ChevronLeft,
   CaretRightIcon as ChevronRight,
   CreditCardIcon as CreditCard,
+  EyeIcon as Eye,
   ArrowSquareOutIcon as ExternalLink,
   FunnelIcon as Filter,
   KanbanIcon as FolderKanban,
@@ -68,6 +69,7 @@ import {
   useAdminAccountProjects,
   useAdminAccountUsers,
   useAdminAccounts,
+  useAdminImpersonate,
   useAdminDebitCredits,
   useAdminGrantCredits,
   useAdminGrantTrial,
@@ -85,6 +87,7 @@ import {
   type AdminAccountsSortDir,
 } from '@/hooks/admin/use-admin-accounts';
 import { useDebounce } from '@/hooks/use-debounced-value';
+import { clearLastProjectId } from '@/lib/onboarding/last-project-cookie';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
@@ -1166,6 +1169,86 @@ function AccountDetailSheet({
   );
 }
 
+/**
+ * "Open as account" — mint a one-hour act-as grant and walk into the product
+ * as this customer.
+ *
+ * Behind a confirm, because it is the single most invasive thing this console
+ * can do: from the click on, everything the operator sees and every write they
+ * make lands on the customer's account, and the customer's own audit log
+ * records it. The reason box is optional but asked for by default — it is what
+ * makes the audit row answer "why" and not just "who".
+ *
+ * The navigation is a full page load, not a router push: the SDK's request
+ * layer starts attaching the grant to every call, and a soft transition would
+ * leave a React Query cache full of the OPERATOR's data behind a banner
+ * naming the customer.
+ */
+function OpenAsAccountButton({ account }: { account: AdminAccount }) {
+  const impersonate = useAdminImpersonate();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+
+  const start = () => {
+    impersonate.mutate(
+      { accountId: account.accountId, reason: reason.trim() || undefined },
+      {
+        onSuccess: () => {
+          setOpen(false);
+          // Drop the "project you had open last" cookie first: it points at one
+          // of the OPERATOR's own projects, and the landing door reads it. The
+          // API now (correctly) refuses that project inside a session, because
+          // impersonation confines the operator to one account.
+          clearLastProjectId();
+          // Land on the customer's ACCOUNT page, not the landing door. The
+          // landing door is `/projects/start`, which AUTO-PROVISIONS a first
+          // project for an account that has none — so simply opening a quiet
+          // customer's account would silently create a project inside it. The
+          // account page creates nothing and is where a support question about
+          // billing, members or entitlements actually lives.
+          //
+          // A HARD load, deliberately — a router push would keep the React
+          // Query cache this console filled with the operator's own data.
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+          window.location.assign(`/accounts/${account.accountId}`);
+        },
+        onError: (error) => errorToast(error.message || 'Could not open the account'),
+      },
+    );
+  };
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="gap-1.5">
+        <Eye className="h-3.5 w-3.5" />
+        Open as account
+      </Button>
+      <ConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={`Act as ${account.name || 'this account'}?`}
+        description={
+          <span className="space-y-3">
+            <span className="block">
+              For up to one hour, everything you do lands on this account. Every change you
+              make is written to the customer's own audit log with your identity attached.
+            </span>
+            <Input
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Reason (e.g. ticket #1234)"
+              maxLength={500}
+            />
+          </span>
+        }
+        confirmLabel="Open as account"
+        onConfirm={start}
+        isPending={impersonate.isPending}
+      />
+    </>
+  );
+}
+
 function AccountDetail({ account }: { account: AdminAccount }) {
   const usersQuery = useAdminAccountUsers(account.accountId);
   const projectsQuery = useAdminAccountProjects(account.accountId);
@@ -1195,6 +1278,9 @@ function AccountDetail({ account }: { account: AdminAccount }) {
           </span>
           <span className="font-mono text-xs">{account.accountId}</span>
         </SheetDescription>
+        <div className="pt-3">
+          <OpenAsAccountButton account={account} />
+        </div>
         {actions.length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-3">
             {actions.map((a) => (

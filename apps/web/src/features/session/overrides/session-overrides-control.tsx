@@ -14,10 +14,10 @@ import { type ReactNode, useState } from 'react';
  * One overridable axis of a session.
  *
  * `summary` is what the axis is set to RIGHT NOW, and for an axis nobody
- * touched that string names its real source — "Agent default" for secrets (the
- * agent's grant), "Project default" for connectors (the project's default
- * connections) — never "none". `overridden` is what earns the badge: a session
- * should look inherited until the user deliberately takes it off the default.
+ * touched that string names its real source (usually "Agent default" — the
+ * agent's grant defines the defaults) — never "none". `overridden` is what
+ * earns the badge: a session should look inherited until the user deliberately
+ * takes it off the default.
  */
 export interface SessionOverrideRow {
   id: string;
@@ -49,7 +49,13 @@ export interface SessionOverridesControlProps {
   saveDisabled?: boolean;
   /** Extra note above the footer — e.g. the non-retroactive secrets warning. */
   notice?: ReactNode;
-  onSave: () => void;
+  /**
+   * Commits the scope draft. Resolves `true` when the save succeeded (or there
+   * was nothing to write) — the popover closes on it, which is the visible
+   * result of the click. Agent/model/effort apply the moment they are picked;
+   * only secrets/connectors wait for Save.
+   */
+  onSave: () => boolean | Promise<boolean>;
 }
 
 /**
@@ -169,20 +175,21 @@ export function SessionOverridesControlContent({
   );
 }
 
-export function SessionOverridesControl({ ...contentProps }: SessionOverridesControlProps) {
-  // The trigger stays quiet: an icon like every other toolbar control, in the
-  // same muted tone as the agent/model selectors beside it. It only ever grows
-  // text when an override is actually in force — the one overridden axis's
-  // name, or a count — so the composer says nothing while everything inherits.
-  const overridden = contentProps.rows.filter((row) => row.overridden);
-  const triggerText =
-    overridden.length === 1
-      ? overridden[0].name
-      : overridden.length > 1
-        ? `${overridden.length} overrides`
-        : null;
+export function SessionOverridesControl({ onSave, ...contentProps }: SessionOverridesControlProps) {
+  const [open, setOpen] = useState(false);
+  // Closing the panel is the visible result of a successful Save. A failed
+  // save keeps it open — the error toast plus a still-open panel says
+  // "not saved" without losing the draft.
+  const saveAndClose = async () => {
+    const saved = await onSave();
+    if (saved) setOpen(false);
+    return saved;
+  };
+  // The trigger is an icon and nothing else, in the same muted tone as the
+  // agent/model selectors beside it — the axes and their overrides live inside
+  // the panel, never on the composer bar.
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -193,7 +200,6 @@ export function SessionOverridesControl({ ...contentProps }: SessionOverridesCon
           className="text-muted-foreground hover:text-foreground data-[state=open]:text-foreground"
         >
           <SlidersHorizontal className="size-3.5 shrink-0" />
-          {triggerText}
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -210,7 +216,7 @@ export function SessionOverridesControl({ ...contentProps }: SessionOverridesCon
           if (target?.closest('[data-radix-popper-content-wrapper]')) event.preventDefault();
         }}
       >
-        <SessionOverridesControlContent {...contentProps} />
+        <SessionOverridesControlContent {...contentProps} onSave={saveAndClose} />
       </PopoverContent>
     </Popover>
   );

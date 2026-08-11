@@ -256,47 +256,42 @@ flow(
       }
     });
 
-    await ctx.step("granting the secret to an agent writes the manifest roster", async () => {
-      // An egress/broker secret reaches a session only when an agent's manifest
-      // `secrets:` list names its identifier, so the dashboard offers the edit
-      // inline. The first grant on an ungoverned project also switches the
-      // project to deny-by-default, which is what `adopted_governance` reports.
+    // The grant route's success path commits kortix.yaml, and the local profile
+    // has no writable git backend — every sibling manifest-writing route
+    // (agents/:agentName/scope in IAM-*, agents/:agentName/config in PROJ-*) is
+    // covered the same way, at the boundary the profile can reach. The commit
+    // itself is covered by apps/api/src/__tests__/unit-secret-grant-route.test.ts.
+    await ctx.step("granting an unknown secret is refused", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
           "/v1/projects/:projectId/secrets/:identifier/grant",
           { agent: "kortix" },
-          { params: { projectId: p.id, identifier: "CONTROL_PLANE_KEY" } },
+          { params: { projectId: p.id, identifier: "NO_SUCH_SECRET" } },
         );
-      r.status(200)
-        .body()
-        .has("$.identifier", "CONTROL_PLANE_KEY")
-        .has("$.agent", "kortix")
-        .has("$.already_granted", false);
+      r.status(404);
     });
 
-    await ctx.step("re-granting the same secret is idempotent", async () => {
+    await ctx.step("granting rejects a malformed identifier before touching the manifest", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
           "/v1/projects/:projectId/secrets/:identifier/grant",
           { agent: "kortix" },
-          { params: { projectId: p.id, identifier: "CONTROL_PLANE_KEY" } },
+          { params: { projectId: p.id, identifier: "not a valid identifier" } },
         );
-      r.status(200).body().has("$.already_granted", true).has("$.adopted_governance", false);
+      r.status(400);
     });
 
-    await ctx.step("the granted secret no longer reports a missing agent grant", async () => {
+    await ctx.step("granting requires an agent name", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get("/v1/projects/:projectId/secrets", { params: { projectId: p.id } });
-      r.status(200);
-      const items = r.json<{ items?: Array<{ identifier: string; delivery_blocked_reason: string | null }> }>().items ?? [];
-      const row = items.find((item) => item.identifier === "CONTROL_PLANE_KEY");
-      if (!row) throw new Error("CONTROL_PLANE_KEY missing from the secrets list");
-      if (row.delivery_blocked_reason !== null) {
-        throw new Error(`expected no block reason after granting, got ${row.delivery_blocked_reason}`);
-      }
+        .post(
+          "/v1/projects/:projectId/secrets/:identifier/grant",
+          {},
+          { params: { projectId: p.id, identifier: "CONTROL_PLANE_KEY" } },
+        );
+      r.status(400).body().has("$.code", "invalid_body");
     });
 
     await ctx.step("transparent egress rejects controls the provider cannot enforce", async () => {

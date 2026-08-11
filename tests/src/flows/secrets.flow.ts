@@ -284,6 +284,10 @@ flow(
     });
 
     await ctx.step("granting requires an agent name", async () => {
+      // Status only: the OpenAPI request validator rejects the body before the
+      // handler runs, so the envelope is its ZodError shape, not the handler's
+      // `{ code: 'invalid_body' }`. The handler's own codes are asserted in
+      // apps/api/src/__tests__/unit-secret-grant-route.test.ts.
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
@@ -291,7 +295,7 @@ flow(
           {},
           { params: { projectId: p.id, identifier: "CONTROL_PLANE_KEY" } },
         );
-      r.status(400).body().has("$.code", "invalid_body");
+      r.status(400);
     });
 
     await ctx.step("transparent egress rejects controls the provider cannot enforce", async () => {

@@ -49,6 +49,7 @@ import {
   triggerSpecToTomlEntry,
 } from '../triggers';
 import { parseGitHubRepoUrl, resolveProjectGitAuth, withProjectGitAuth } from './git';
+import { drainMonitorEvents } from './monitor-observer';
 import {
   type ProjectRow,
   type RequestAuditContext,
@@ -57,6 +58,14 @@ import {
   normalizeBoolean,
   normalizeString,
 } from './serializers';
+
+/**
+ * Who asked for this fire. `monitor` is the third trigger type's source
+ * (docs/specs/2026-08-12-monitors.md): the observer draining a monitor event
+ * off `project_monitor_events`. It rides the identical downstream path as
+ * `cron` — the session it mints is stamped `trigger:monitor`.
+ */
+export type TriggerFireSource = 'cron' | 'webhook' | 'manual' | 'monitor';
 
 export function normalizeSignatureHeader(value: string | null): string | null {
   const header = normalizeString(value);
@@ -890,7 +899,7 @@ async function enqueueTriggerPrompt(input: {
   sessionId: string;
   actor: string;
   text: string;
-  source: 'cron' | 'webhook' | 'manual';
+  source: TriggerFireSource;
   triggerSlug: string;
   idempotencyKey?: string | null;
 }): Promise<'queued' | 'no-session' | 'failed'> {
@@ -932,7 +941,7 @@ export async function fireGitTrigger(input: {
   project: ProjectRow;
   payload: Record<string, unknown>;
   renderedPrompt: string;
-  source: 'cron' | 'webhook' | 'manual';
+  source: TriggerFireSource;
   idempotencyKey?: string | null;
   request?: RequestAuditContext;
 }): Promise<{
@@ -1297,6 +1306,19 @@ export function startProjectTriggerScheduler(): void {
       })
       .catch((error) => {
         console.error('[project-triggers] scheduler tick failed:', error);
+      });
+
+    // Monitor events land in their own append-only log, so they drain beside
+    // the execution queue rather than through it — one slow monitor fire must
+    // not stall a due cron slot, and vice versa.
+    drainMonitorEvents()
+      .then((result) => {
+        if (result.fired || result.failed || result.skipped) {
+          console.log('[project-monitors] event drain completed', result);
+        }
+      })
+      .catch((error) => {
+        console.error('[project-monitors] event drain failed:', error);
       });
 
     // Connector reconcile backstop — slower cadence than the trigger sweep so

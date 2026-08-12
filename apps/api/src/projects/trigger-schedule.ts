@@ -3,7 +3,9 @@ import { Cron } from 'croner';
 
 export interface TriggerScheduleSpec {
   slug: string;
-  type: 'cron' | 'webhook';
+  /** `monitor` never schedules — `nextTriggerScheduleSlot` returns null for it,
+   *  so the cron sweep's `trigger_type = 'cron'` claim can never see one. */
+  type: 'cron' | 'webhook' | 'monitor';
   enabled: boolean;
   cron: string | null;
   runAt: string | null;

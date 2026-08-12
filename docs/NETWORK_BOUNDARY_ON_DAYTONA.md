@@ -61,10 +61,15 @@ The pinned SDK (`@daytonaio/sdk@0.184.0`) exposes, at create **and** live via
 
 - `networkBlockAll` — default-deny egress
 - `networkAllowList` — CIDR allow-list
-- `outboundProxyUrl` — chain egress to a proxy **you** operate
 
 Documented as *"the runner applies iptables rules to the sandbox container"* — i.e. on the
-host, outside guest control. **We pass none of these today.**
+host, outside guest control. **We pass neither today.**
+
+> **`outboundProxyUrl` does not exist.** An earlier draft listed it here as a third option
+> and built all of Track B on it. It is absent from the pinned SDK's typings, and the API
+> silently ignores it — see §7, which is now a settled negative result, not a pending
+> experiment. Treat any vendor-proxy-chaining design as unavailable until Daytona ships the
+> feature.
 
 What Daytona does **not** have: a secret store, TLS termination, header injection, or any
 `on_echo` equivalent. Zero of the ten Platinum primitives the boundary depends on. So the
@@ -294,24 +299,65 @@ Non-negotiables:
 - **Honest labelling.** If the §7 experiment fails, the UI must say *cooperative on Daytona,
   enforced on Platinum* — in the product, not only in docs.
 
-## 7. The blocking experiment — run before writing any Track B code
+## 7. The blocking experiment — RUN. Result: `outboundProxyUrl` is ignored
 
-Cheap, and it can kill the plan.
+Run 2026-08-12 against `app.daytona.io/api` on throwaway sandboxes from
+`kortix-default-b539f1be09d3`, control vs treatment, deleted after.
 
-1. Create a Daytona sandbox with `outboundProxyUrl` pointed at a sink we control.
-2. From inside the guest, attempt egress that deliberately ignores the proxy:
-   - `curl --noproxy '*' https://api.github.com/rate_limit`
-   - a raw Python socket to a public IP on 443
-   - an outbound SSH connection
-   - the same three again after `sudo -i`
-3. **If all are dropped** → `outboundProxyUrl` is enforced. Track B delivers a Platinum-class
-   guarantee on Daytona; proceed.
-4. **If any succeeds** → it is cooperative. Track B becomes leak-prevention only, and the
-   product must say so. Track A becomes the security story.
+Treatment set `outboundProxyUrl` to `http://198.51.100.7:3128` — RFC 5737 TEST-NET-2, which
+cannot route anywhere. If the runner forced egress through it, every request would die.
 
-Secondary experiments, only if (3): `networkBlockAll` + `networkAllowList` restricted to the
-proxy CIDR, live `updateNetworkSettings()` on a running sandbox, and behaviour on
-resume/CoW-restore.
+| probe | control (no options) | `outboundProxyUrl` set |
+| --- | --- | --- |
+| `curl https://api.github.com/rate_limit` | 200 | **200** |
+| `curl --noproxy '*'` | 200 | 200 |
+| `$HTTPS_PROXY` / `$https_proxy` in guest | unset | **unset** |
+| raw Python socket to `140.82.121.6:443` | CONNECTED | CONNECTED |
+| DNS | RESOLVED | RESOLVED |
+| `sudo -n curl` (root) | 200 | 200 |
+
+Identical in every cell. The field is not enforced and not even **applied** — the runner
+does not so much as set the proxy env var. Consistent with the API validator, which is
+lenient about unknown properties: a deliberately invented `zzTotallyMadeUpField` produced
+no complaint either, so a clean 200 on create says nothing about a field being real.
+
+**Consequence: the transparent-redirect architecture in §6 Track B is unbuildable as
+written.** Daytona gives us a funnel we can close (§6b) but no vendor mechanism to redirect
+traffic into a proxy.
+
+### 7.1 What Track B has to look like instead
+
+Split the two properties, because on Daytona they now come from different places:
+
+- **Enforcement** comes from `networkAllowList` restricted to the Kortix proxy's address.
+  Runner-applied, root-proof, already measured (§6b). Nothing escapes the guest, ever.
+- **Transparency** cannot come from the runner. The guest has to be *pointed* at the proxy:
+  `HTTPS_PROXY`/`HTTP_PROXY` in the sandbox env, and for clients that ignore those, an
+  `LD_PRELOAD` socket shim (proxychains-style).
+
+The pleasant property of that split: the transparency layer is removable and its removal is
+**fail-closed**. An agent that unsets `HTTPS_PROXY` does not gain a bypass — the allow-list
+still permits only the proxy, so it simply loses network. Security does not depend on the
+part the guest can touch.
+
+The unpleasant one: **in-guest transparent redirect is impossible**, so any client that
+honours neither the env var nor the shim gets no network at all. That is not hypothetical —
+Node/Bun `fetch` (undici) ignores `HTTP_PROXY` by default, and agents write `fetch` code
+constantly. Note also that in-guest `iptables` is doubly out: it is absent from the image
+*and* the container holds no capabilities (`CapEff: 0000000000000000`, §3.1), so even root
+cannot install a redirect rule.
+
+So the honest positioning of Track B on Daytona is **enforced, selectively transparent** —
+strictly weaker on ergonomics than Platinum, identical on confidentiality. Any UI copy must
+say which one a project is getting.
+
+### 7.2 Still worth measuring before building
+
+- `domainAllowList` (surfaced in a validation error, absent from the SDK typings): if it
+  accepts DNS names it removes the CIDR-only constraint and the DNS breakage in §6b.
+- Live `updateNetworkSettings()` on a running sandbox, and behaviour across resume /
+  CoW-restore — the allow-list must survive both or the funnel has a hole.
+- Whether the proxy can be reached over Daytona's own network without a public address.
 
 ## 8. What I would not build
 

@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 567,
+  "count": 568,
   "routes": [
     {
       "method": "GET",
@@ -1657,6 +1657,10 @@
     {
       "method": "GET",
       "path": "/v1/projects/:projectId/model-picker"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/:projectId/monitors/ingest"
     },
     {
       "method": "GET",

@@ -89,7 +89,10 @@ function truncateToBytes(value: string, maxBytes: number): string {
   // encoded form fits (a multi-byte tail can still overshoot).
   let out = value.slice(0, maxBytes);
   while (out.length > 0 && Buffer.byteLength(out, 'utf8') > maxBytes) {
-    out = out.slice(0, Math.max(0, out.length - Math.ceil((Buffer.byteLength(out, 'utf8') - maxBytes) / 2)));
+    out = out.slice(
+      0,
+      Math.max(0, out.length - Math.ceil((Buffer.byteLength(out, 'utf8') - maxBytes) / 2)),
+    );
   }
   return out;
 }
@@ -161,10 +164,7 @@ export interface MonitorRateWindow {
  * never dropped: the log is the contract, and "we silently ate your events"
  * is exactly the failure mode monitors exist to remove.
  */
-export function monitorRateVerdict(
-  window: MonitorRateWindow,
-  now: Date,
-): 'accept' | 'suppress' {
+export function monitorRateVerdict(window: MonitorRateWindow, now: Date): 'accept' | 'suppress' {
   if (window.suppressedUntil && window.suppressedUntil.getTime() > now.getTime()) return 'suppress';
   if (window.hourCount >= MONITOR_RATE_SUSTAINED_PER_HOUR) return 'suppress';
   if (window.burstCount >= MONITOR_RATE_BURST) return 'suppress';
@@ -206,7 +206,8 @@ export function nextMonitorSuppression(input: {
     };
   }
 
-  const previousEpisodeStart = previousUntil === null ? null : previousUntil - MONITOR_SUPPRESSION_MS;
+  const previousEpisodeStart =
+    previousUntil === null ? null : previousUntil - MONITOR_SUPPRESSION_MS;
   const withinWindow =
     previousEpisodeStart !== null && nowMs - previousEpisodeStart <= MONITOR_SUPPRESSION_WINDOW_MS;
   const suppressionCount = withinWindow ? currentCount + 1 : 1;

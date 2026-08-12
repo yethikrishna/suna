@@ -9,17 +9,18 @@
  * granted: the box can only append events to its own project's log.
  *
  * Accepted events are appended to `project_monitor_events`, which doubles as
- * the fire queue; the leader-elected observer drains it (../lib/monitor-observer.ts).
+ * the fire queue; the observer drains it (../lib/monitor-observer.ts).
  */
-import { projects } from '@kortix/db';
+
 import { createRoute, z } from '@hono/zod-openapi';
+import { projects } from '@kortix/db';
 import { eq } from 'drizzle-orm';
 import { requireFeatureFlag } from '../../feature-flags/gate';
 import { auth, errors, json } from '../../openapi';
 import { db } from '../../shared/db';
 import { AnyObject, projectsApp } from '../lib/app';
-import { ingestMonitorEvents, loadMonitorBoxForToken } from '../lib/monitor-ingest';
 import { parseMonitorIngestBody } from '../lib/monitor-events';
+import { ingestMonitorEvents, loadMonitorBoxForToken } from '../lib/monitor-ingest';
 import { readBody } from '../lib/serializers';
 
 const MonitorIngestResultSchema = z.object({

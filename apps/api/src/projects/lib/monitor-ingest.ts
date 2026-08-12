@@ -6,7 +6,7 @@
  * (./monitor-observer.ts) drains. Every bound it enforces is platform-side:
  * the runner is repo code and cannot be trusted to police itself.
  */
-import { projectMonitorBoxes, projectTriggerRuntime, projectMonitorEvents } from '@kortix/db';
+import { projectMonitorBoxes, projectMonitorEvents, projectTriggerRuntime } from '@kortix/db';
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { db } from '../../shared/db';
 import {
@@ -81,7 +81,10 @@ export async function ingestMonitorEvents(input: {
 
   const slugs = [...new Set(input.events.map((event) => event.slug))];
   const windows = new Map<string, { hourCount: number; burstCount: number }>();
-  const runtimes = new Map<string, { suppressedUntil: Date | null; suppressionCount: number | null }>();
+  const runtimes = new Map<
+    string,
+    { suppressedUntil: Date | null; suppressionCount: number | null }
+  >();
   for (const slug of slugs) {
     windows.set(slug, await countMonitorRateWindow(input.projectId, slug, now));
     runtimes.set(slug, await loadMonitorRuntimeState(input.projectId, slug));

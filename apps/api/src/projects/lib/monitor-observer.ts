@@ -212,11 +212,7 @@ export async function processMonitorEvent(
  * A failed attempt stays `pending` so the next tick retries it, until the
  * attempt ceiling turns it into a dead-lettered `failed` row.
  */
-async function failMonitorEvent(
-  row: MonitorEventRow,
-  now: Date,
-  error: string,
-): Promise<'failed'> {
+async function failMonitorEvent(row: MonitorEventRow, now: Date, error: string): Promise<'failed'> {
   const terminal = row.attempts >= MONITOR_EVENT_MAX_ATTEMPTS;
   await db
     .update(projectMonitorEvents)

@@ -277,7 +277,14 @@ export async function buildOpencodeConfigContent(
         type: 'local',
         // Use the absolute path so OpenCode's MCP launcher does not depend on
         // PATH propagation. The normal agent path is still `kortix connectors`.
-        command: ['/usr/local/bin/kortix', 'connector', 'mcp'],
+        //
+        // `connectors`, plural — it must match a real CLI command. Between
+        // 2026-08-06 (e868be1d6c) and this fix it read `connector`, which the
+        // CLI router rejects with "unknown command", so OpenCode's launcher
+        // got exit 2 and the MCP server never started. The CLI now also
+        // accepts the singular as an alias, which recovers snapshots baked
+        // with the old string.
+        command: ['/usr/local/bin/kortix', 'connectors', 'mcp'],
         enabled: true,
         environment: {
           // Proxy mode: the MCP talks to the localhost connector proxy with a

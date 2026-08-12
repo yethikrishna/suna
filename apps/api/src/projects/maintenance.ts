@@ -398,6 +398,7 @@ export async function runProjectMaintenance(): Promise<void> {
         monitorBoxes.restarted ||
         monitorBoxes.stopped ||
         monitorBoxes.disabledOverCap ||
+        monitorBoxes.deferred ||
         monitorBoxes.errors ||
         monitorEventsPurged,
     );

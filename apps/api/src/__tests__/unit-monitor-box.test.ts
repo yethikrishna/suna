@@ -11,6 +11,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import {
+  MONITOR_CREATES_PER_PASS,
   MONITOR_DEFAULT_MONTHLY_BUDGET_USD,
   MONITOR_MAX_ENABLED,
   type MonitorBoxSnapshot,
@@ -338,6 +339,35 @@ describe('reconcileMonitorBoxesWithStore', () => {
     ]);
     // Per-month epoch + seq 0 + ON CONFLICT DO NOTHING = one notice a month.
     expect(store.lifecycle[0]!.epoch).toBe('platform:budget:2026-08');
+  });
+
+  test('provisioning is bounded per pass; the overflow is deferred, not dropped', async () => {
+    const projects = Array.from({ length: MONITOR_CREATES_PER_PASS + 3 }, (_, index) =>
+      project({ projectId: `p-${index}` }),
+    );
+    const store = recordingStore(projects);
+    const result = await reconcileMonitorBoxesWithStore(store);
+    expect(result.created).toBe(MONITOR_CREATES_PER_PASS);
+    expect(result.deferred).toBe(3);
+    // Deferred, not lost: the same projects still want a box on the next tick.
+    expect(store.calls.filter((call) => call.startsWith('create:'))).toHaveLength(
+      MONITOR_CREATES_PER_PASS,
+    );
+  });
+
+  test('a restart still STOPS a drifted box even when the create budget is spent', async () => {
+    const drifted = box({ manifestRevision: 'stale' });
+    const projects = [
+      ...Array.from({ length: MONITOR_CREATES_PER_PASS }, (_, index) =>
+        project({ projectId: `p-${index}` }),
+      ),
+      project({ projectId: 'p-drifted', box: drifted }),
+    ];
+    const store = recordingStore(projects);
+    const result = await reconcileMonitorBoxesWithStore(store);
+    // Running the WRONG manifest is worse than being briefly unwatched.
+    expect(store.calls).toContain('stop:box-1:manifest revision drift');
+    expect(result.deferred).toBe(1);
   });
 
   test('one project throwing does not stop the others from converging', async () => {

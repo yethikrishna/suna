@@ -23,6 +23,18 @@ export const MONITOR_DEFAULT_MONTHLY_BUDGET_USD = 75;
 export const MONITOR_MAX_MONTHLY_BUDGET_USD = 1000;
 /** How long an event row is kept before the retention sweep deletes it. */
 export const MONITOR_EVENT_RETENTION_DAYS = 30;
+/**
+ * Boxes PROVISIONED per pass.
+ *
+ * Bounded like every other periodic sweep here (RECONCILE_MISSING_BATCH_SIZE,
+ * ORPHAN_REAP_MAX_PER_PASS): a create is a ~70 s provider call, so an unbounded
+ * pass over a fleet that all wants a box at once would hold the maintenance
+ * lock past its stall watchdog. Stopping and observing stay unbounded — they
+ * are cheap, and they are the direction that saves money. Nothing starves: a
+ * project that got no box this tick still wants one on the next.
+ */
+export const MONITOR_CREATES_PER_PASS = 10;
+
 /** Box row statuses that count as live (the partial unique index's set). */
 export const MONITOR_LIVE_BOX_STATUSES = [
   'provisioning',
@@ -247,6 +259,8 @@ export interface MonitorReconcileResult {
   stopped: number;
   observed: number;
   disabledOverCap: number;
+  /** Boxes this pass wanted to build but deferred to the next tick. */
+  deferred: number;
   errors: number;
 }
 
@@ -258,6 +272,7 @@ export function emptyMonitorReconcileResult(): MonitorReconcileResult {
     stopped: 0,
     observed: 0,
     disabledOverCap: 0,
+    deferred: 0,
     errors: 0,
   };
 }
@@ -354,11 +369,22 @@ export async function reconcileMonitorBoxesWithStore(
         case 'none':
           break;
         case 'create':
+          if (result.created + result.restarted >= MONITOR_CREATES_PER_PASS) {
+            result.deferred += 1;
+            break;
+          }
           await store.createBox(project, selected, monitorManifestRevision(selected));
           result.created += 1;
           break;
         case 'restart':
+          // A restart's STOP is not deferred: leaving a box running the wrong
+          // manifest is worse than leaving the project briefly unwatched, and
+          // the next tick rebuilds it through the `create` branch above.
           await store.stopBox(project, project.box!, decision.reason);
+          if (result.created + result.restarted >= MONITOR_CREATES_PER_PASS) {
+            result.deferred += 1;
+            break;
+          }
           await store.createBox(project, selected, monitorManifestRevision(selected));
           result.restarted += 1;
           break;

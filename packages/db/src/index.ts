@@ -140,6 +140,8 @@ export {
   // Platform User Roles
   platformRoleEnum,
   platformUserRoles,
+  // Impersonation
+  impersonationGrants,
   // Access Control
   accessRequestStatusEnum,
   platformSettings,

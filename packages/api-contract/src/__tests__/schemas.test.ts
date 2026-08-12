@@ -115,6 +115,7 @@ function projectFixture(overrides: Record<string, unknown> = {}) {
       review_center: false,
       meta_agent: false,
       apps: false,
+      monitors: false,
     },
     experimental_features: [],
     default_sandbox_provider: null,
@@ -638,6 +639,7 @@ describe('envelopes', () => {
       'review_center',
       'meta_agent',
       'apps',
+      'monitors',
     ]);
   });
 

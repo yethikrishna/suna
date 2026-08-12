@@ -126,6 +126,7 @@ Compared with the network boundary:
 | host matching | exact only | wildcards, paths, methods |
 | injection slots | one header | header, query, JSON body |
 | per-request audit | no | **yes** |
+| **credential echoed by upstream** | connection cut (`on_echo`) | **redacted, response still returned** |
 | transparent to the agent | **yes** | no — must call `kortix secrets call` |
 | TLS interception needed | yes (Platinum's) | **none** |
 
@@ -133,10 +134,100 @@ On **confidentiality the broker is equal**, on **authorization and audit it is s
 it needs no MITM. Its only deficit is transparency. An agent that ignores the broker does not
 get a weaker credential — it gets **no** credential.
 
+**Correction to an earlier draft of this doc.** It claimed `on_echo` had no broker equivalent.
+It does: `redactSecretFromResponse` (`apps/api/src/secrets/http-broker.ts:350`) scrubs the
+value from the response body in four representations — raw, URL-encoded, base64, and
+JSON-escaped — and returns the rest of the response normally. That is *better* than the
+boundary's behaviour, not worse: Platinum kills the connection, which surfaces as
+`curl: (52) Empty reply from server` and is the single largest source of "this feature is
+broken" reports we have had (§4). The broker gives the agent a usable response with
+`[REDACTED]` where the credential would have been. Verified live — see §5.1.
+
 **Why customers do not have it: reach, not capability.** `kortix secrets call` is a string in a
-system-prompt file. There is no MCP tool for it
-(`apps/cli/src/connector-gateway/mcp.ts` has eight connector tools and no secret tool), and
-models reach for tools far more reliably than for documented shell commands.
+system-prompt file, and models reach for tools far more reliably than for documented shell
+commands.
+
+### 5.1 Verified live on dev, 2026-08-12
+
+Project `kaab-demo`, secret `BROKER_PROOF`, policy `broker`/`http_broker` with
+`--allow-host postman-echo.com --allow-method GET --inject-header x-proof-token`. A real
+session agent ran `kortix secrets call BROKER_PROOF https://postman-echo.com/get`:
+
+```
+Upstream status: 200
+{"args":{},"headers":{"host":"postman-echo.com",…,"x-proof-token":"[REDACTED]",…}}
+```
+
+Three facts in one response: the header **arrived at the upstream** (so Kortix injected it
+outside the sandbox), the call **succeeded** (200), and the echoed value came back
+**redacted** rather than killing the connection.
+
+The authorization gate was also observed working: before the agent's `secrets:` grant named
+`BROKER_PROOF`, the identical call returned
+`✗ secret delivery denied: agent_grant_excludes`.
+
+**Caveat — this ran on Platinum.** `kaab-demo` inherits the dev platform default, which is
+Platinum, so this proves the broker works but not yet that it works on Daytona. The broker
+executes entirely in the API process (`http-broker.ts`) and touches no provider API, so
+there is no mechanism by which the provider could matter — but that is an argument, not a
+measurement, and this doc does not accept arguments where a measurement is available.
+Daytona confirmation is tracked in §5.2.
+
+### 5.2 The MCP tool, end to end — and the premise it disproved
+
+`secret_call` verified live on dev (2026-08-12, commit `3d03cc68`), invoked as a real MCP
+`tools/call` inside a sandbox:
+
+```json
+{"ok": true, "status": 200,
+ "body": "{\"headers\":{\"x-proof-token\":\"[REDACTED]\", …},\"url\":\"https://postman-echo.com/get\"}"}
+```
+
+The tool works. **But the reason given for building it does not hold.** §6 argued that
+`kortix secrets call` was unreachable in practice because "models reach for tools far more
+reliably than for documented shell commands". Tested with a prompt that named neither the
+tool nor the command — *"Fetch https://postman-echo.com/get with our BROKER_PROOF credential
+attached"* — the agent went straight to the CLI on its first move:
+
+> `BROKER_PROOF`: HTTPS broker. Use `kortix secrets call BROKER_PROOF <https-url> [options]`.
+> So I need to use `kortix secrets call BROKER_PROOF https://postman-echo.com/get`.
+
+One turn, `200`, header injected. It never considered the MCP tool — reasonably, because the
+capabilities instruction it reads (`secret-capabilities.ts`) names the CLI command and says
+nothing about a tool.
+
+So the honest scoring of Track A step 1: the broker was **already discoverable** through the
+instruction file, and the tool is a second door onto the same room rather than the first door
+onto a locked one. It is still worth having (a host that only speaks MCP now has a path, and
+tool calls are structured where shell output is not), but it was not the highest-leverage
+change in this doc and this section should be read before anyone repeats that claim.
+
+If the tool is meant to be the preferred path, the instruction renderer has to say so —
+that is a one-line change in `secret-capabilities.ts`, not a new capability.
+
+### 5.3 Where the broker is NOT equivalent to Platinum
+
+Worth stating plainly, because a passing end-to-end test makes them look identical and they
+are not:
+
+| | Platinum boundary | broker (today, any provider) |
+| --- | --- | --- |
+| agent calls the API itself | works | works |
+| a Python script the agent writes | **works** | **no credential** |
+| a third-party SDK / CLI in the sandbox | **works** | **no credential** |
+| `curl` in a Makefile, a test suite, a build step | **works** | **no credential** |
+
+Platinum injects for *any* process making an allow-listed HTTPS request; the broker injects
+only for requests routed through `secret_call` / `kortix secrets call`. Everything else in
+the sandbox gets an unauthenticated request, not a failed one — which fails at the upstream
+rather than locally, and is the more confusing failure.
+
+Closing that gap is exactly Track B, and §6b establishes its precondition holds: Daytona's
+egress control is enforced on the runner and root inside the guest cannot bypass it.
+
+Note also that the agent, unprompted, described the broker's injection as happening "at the
+network boundary". The two mechanisms are already being conflated in transcripts; the naming
+in the product should separate them.
 
 ## 6. Recommendation — two tracks, in this order
 
@@ -145,12 +236,38 @@ models reach for tools far more reliably than for documented shell commands.
 The fastest path to a real capability for Daytona customers.
 
 1. **Add an MCP tool** for the broker so the model discovers it the way it discovers everything
-   else. Highest-leverage single change in this doc.
+   else. **Done** — `secret_call` in `apps/cli/src/connector-gateway/mcp.ts`.
+
+   This step was written on a false premise and the premise had to be fixed first. The doc
+   assumed the `kortix-connectors` MCP server was a live surface with eight tools on it. It is
+   not, for two independent reasons found while implementing:
+
+   - **It was broken.** The daemon registered `kortix connector mcp` (singular) while the CLI
+     only routes `connectors`. OpenCode's launcher got `unknown command` and exit 2, so the
+     server never started. Introduced by e868be1d6c on 2026-08-06 — the same commit that
+     renamed `executor` → `connectors` — and invisible because the daemon's unit tests were
+     updated to assert the typo'd literal. Fixed, with a CLI-side guard that now runs the argv
+     the daemon registers and requires a clean JSON-RPC handshake.
+   - **It is disabled.** `KORTIX_CONNECTORS_MCP_ENABLED` appears in tests and nowhere else —
+     no values.yaml, no env profile. The CLI is the deliberate agent-facing default
+     (87ad9a3665, "refactor executor to prefer cli surface").
+
+   So `secret_call` is correct and tested but reaches no production agent until that flag is
+   turned on. **That flag flip is a product decision, not a bug fix** — it adds nine tools to
+   every agent's context — and is deliberately left to the owner rather than taken here.
+   Until then the live channel for broker discovery remains the capabilities instruction file
+   (`/tmp/kortix/secret-capabilities.md`), which already names `kortix secrets call`.
 2. **Stop offering `egress` on projects that cannot run it.** Already partly done — the UI now
    gates on the project's active provider — but the *strategy picker* should present the broker
    as the Daytona-native option rather than showing a disabled control.
-3. **Fix the dead limb**: `broker`/`git_proxy` advertises `delivery_status:'available'`
-   (`apps/api/src/projects/lib/serializers.ts:451`) while no execution path implements it.
+3. ~~**Fix the dead limb**: `broker`/`git_proxy` advertises `delivery_status:'available'`
+   while no execution path implements it.~~ **Withdrawn — the claim was false.** `git_proxy`
+   is consumed at `apps/api/src/projects/lib/git.ts:569`, which resolves the git credential
+   server-side for push/pull. It is narrow (one call site, one fixed key
+   `KORTIX_GIT_AUTH_TOKEN`) but it is live. And `delivery_status` documents itself, in a
+   comment directly above the branch, as "does this *deployment* support the mode" — not
+   "will this particular secret be consumed" — so `available` is the correct value under the
+   field's own semantics. Nothing to fix.
 4. **Docs**: one page, "which delivery mode do I want", with the table from §5.
 
 ### Track B — an enforced Kortix egress proxy (gated on the §7 experiment)
@@ -177,53 +294,9 @@ Non-negotiables:
 - **Honest labelling.** If the §7 experiment fails, the UI must say *cooperative on Daytona,
   enforced on Platinum* — in the product, not only in docs.
 
-## 6b. EXPERIMENT RESULT — the funnel is real and root-proof
+## 7. The blocking experiment — run before writing any Track B code
 
-Run 2026-08-11 against `api.daytona.io` with a throwaway sandbox on
-`kortix-default-b539f1be09d3`, driving the SDK directly (no Kortix code in the path).
-
-**`networkBlockAll: true`**
-
-| probe | result |
-| --- | --- |
-| `curl https://api.github.com/rate_limit` | `000` |
-| `curl --noproxy '*'` | `000` |
-| raw Python socket to `140.82.121.6:443` | **Connection refused** |
-| DNS (`getent hosts`) | timeout |
-| **`sudo -n curl`** (as **root**) | **`000`** |
-| `sudo -n iptables -F` | `iptables: command not found` |
-| control: same sandbox, `networkBlockAll: false` | all **200 / CONNECTED** |
-
-**`networkAllowList: 140.82.112.0/20`** (GitHub's range; `networkBlockAll` must be OFF —
-the two are mutually exclusive, `400 DaytonaValidationError`)
-
-| probe | result |
-| --- | --- |
-| allowed CIDR, by IP | **200** |
-| allowed host **by DNS name** | `000` |
-| `1.1.1.1`, `example.com` | `000` |
-| **root**, not-allowed host | `000` |
-
-**Verdicts**
-
-1. **Daytona's egress control is enforced on the runner and root inside cannot bypass it.**
-   `iptables` is not even present in the guest because the rules do not live there. This is a
-   genuine non-bypassable funnel — the precondition for Track B. The `outboundProxyUrl`
-   enforcement claim no longer has to be taken on faith; the same mechanism demonstrably holds
-   against root.
-2. **`networkBlockAll` and the allow-lists are mutually exclusive.** Allow-list mode is
-   `networkAllowList` alone. The SDK error also reveals a `domainAllowList`, which is not in the
-   typings we read and should be investigated — a domain allow-list would solve DNS more cleanly
-   than a CIDR one.
-3. **DNS is the first real design constraint.** With a CIDR allow-list, name resolution fails —
-   the resolver is not in the list, so only literal IPs work. Track B must either allow the
-   resolver explicitly, resolve names at the proxy (guest sends `CONNECT host:443` to the proxy
-   and never resolves anything itself), or use `domainAllowList`. **Proxy-side resolution is the
-   right answer** and is what the prior art does.
-
-## 7. Remaining experiment — `outboundProxyUrl` specifically
-
-§6b removes the risk from this, but the proxy path itself is still unexercised.
+Cheap, and it can kill the plan.
 
 1. Create a Daytona sandbox with `outboundProxyUrl` pointed at a sink we control.
 2. From inside the guest, attempt egress that deliberately ignores the proxy:
@@ -231,10 +304,10 @@ the two are mutually exclusive, `400 DaytonaValidationError`)
    - a raw Python socket to a public IP on 443
    - an outbound SSH connection
    - the same three again after `sudo -i`
-3. **If all are dropped** → proceed. (§6b already shows the enforcement mechanism holds against
-   root, so the expected answer is yes; this confirms it for the proxy-chaining path specifically.)
-4. **If any succeeds** → belt-and-braces: pin egress with `networkAllowList` restricted to the
-   proxy's CIDR, which §6b proves is enforced. Either way Track B is viable.
+3. **If all are dropped** → `outboundProxyUrl` is enforced. Track B delivers a Platinum-class
+   guarantee on Daytona; proceed.
+4. **If any succeeds** → it is cooperative. Track B becomes leak-prevention only, and the
+   product must say so. Track A becomes the security story.
 
 Secondary experiments, only if (3): `networkBlockAll` + `networkAllowList` restricted to the
 proxy CIDR, live `updateNetworkSettings()` on a running sandbox, and behaviour on
@@ -251,10 +324,7 @@ resume/CoW-restore.
 
 ## 9. Open questions
 
-1. Does `outboundProxyUrl` block non-conforming clients on its own? (§7 — no longer blocking:
-   `networkAllowList` is proven enforced and can pin egress to the proxy regardless.)
-1b. What is `domainAllowList`? It appears in a server-side validation error but not in the
-   typings we read. A domain allow-list may remove the DNS problem entirely.
+1. Does `outboundProxyUrl` actually block non-conforming clients? (§7 — blocking)
 2. Are we willing to operate a credential-handling MITM for customer traffic, with the
    compliance surface that implies?
 3. Should the guest get a **placeholder** instead of nothing, matching the rest of the industry?

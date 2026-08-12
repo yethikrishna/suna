@@ -34,6 +34,11 @@ export interface MonitorBoxRow {
  * project AND account so a token from another tenant's box can never ingest
  * here (spec §"Security model": "only accepts events for that box's own
  * project").
+ *
+ * The token's sandbox id is the `box_id`, NOT the provider's external id: the
+ * token has to exist before `provider.create()` is called (it is injected as
+ * the box's env), so at mint time there is no external id yet. This mirrors a
+ * session, whose token is likewise minted against the internal `sandbox_id`.
  */
 export async function loadMonitorBoxForToken(input: {
   projectId: string;
@@ -49,7 +54,7 @@ export async function loadMonitorBoxForToken(input: {
     .from(projectMonitorBoxes)
     .where(
       and(
-        eq(projectMonitorBoxes.externalId, input.sandboxId),
+        eq(projectMonitorBoxes.boxId, input.sandboxId),
         eq(projectMonitorBoxes.projectId, input.projectId),
         eq(projectMonitorBoxes.accountId, input.accountId),
         inArray(projectMonitorBoxes.status, [...LIVE_BOX_STATUSES]),

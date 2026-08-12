@@ -263,6 +263,7 @@ export function renderMonitorLifecyclePrompt(
     restart_budget_exhausted: `The monitor exhausted its restart budget: ${command} kept failing on restart, so the platform stopped restarting it and moved to slow retries.`,
     silent: `The monitor produced no event inside its \`expect_event_within\` window. ${command} is running but silent, which usually means the source it watches is stalled — or the monitor is.`,
     suppressed: `The monitor breached its event-rate bound and is suppressed. Events are still logged but no longer fire sessions until the suppression window ends.`,
+    budget_exceeded: `The project's monitor box was STOPPED because this month's monitor compute budget is spent. No monitor in this project is running until the budget is raised or the billing month rolls over.`,
   };
   const lines = [
     `Monitor "${spec.name}" (${spec.slug}) reported a lifecycle event: ${event}.`,

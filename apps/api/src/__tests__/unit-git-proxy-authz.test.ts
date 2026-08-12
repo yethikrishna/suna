@@ -43,7 +43,6 @@ mock.module('../shared/db', () => ({
           innerJoin: () => ({ where: () => ({ limit: async () => rows() }) }),
           // Monitor-box lookup (loadMonitorBoxForToken) has no join.
           where: () => ({ limit: async () => rows() }),
-          where: () => ({ limit: async () => rows() }),
         }),
       };
     },

@@ -59,6 +59,35 @@ export interface MonitorCatalogRow {
 }
 
 /** The subset of a box row the decision needs. */
+/**
+ * The secret grant a SHARED monitor box may hold, given each enabled
+ * monitor's agent grant: the intersection. Every monitor process runs
+ * same-UID in one microVM, so any secret in the box is readable by every
+ * monitor — a secret ships only when every agent is granted it. 'all' is an
+ * unscoped grant: it imposes no restriction on the others, and all-'all'
+ * stays 'all'. `withheldByAgent` names, per agent, the identifiers narrowed
+ * away (empty list = an unscoped grant was narrowed to the shared set), so
+ * callers can surface the withholding instead of failing silently.
+ */
+export function intersectMonitorSecretGrants(grants: Map<string, string[] | 'all'>): {
+  grant: string[] | 'all';
+  withheldByAgent: Map<string, string[]>;
+} {
+  const scoped = [...grants.values()].filter((g): g is string[] => Array.isArray(g));
+  const grant: string[] | 'all' =
+    scoped.length === 0 ? 'all' : scoped.reduce((acc, g) => acc.filter((id) => g.includes(id)));
+  const withheldByAgent = new Map<string, string[]>();
+  if (Array.isArray(grant)) {
+    for (const [agent, g] of grants) {
+      const withheld = g === 'all' ? [] : g.filter((id) => !grant.includes(id));
+      if (withheld.length > 0 || (g === 'all' && scoped.length > 0)) {
+        withheldByAgent.set(agent, withheld);
+      }
+    }
+  }
+  return { grant, withheldByAgent };
+}
+
 export interface MonitorBoxSnapshot {
   boxId: string;
   status: string;

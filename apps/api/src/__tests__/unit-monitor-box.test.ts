@@ -20,6 +20,7 @@ import {
   type MonitorProjectSnapshot,
   buildMonitorEnvPayload,
   decideMonitorBox,
+  intersectMonitorSecretGrants,
   monitorManifestRevision,
   monitorMonthlyBudgetUsd,
   platformMonitorEpoch,
@@ -386,5 +387,56 @@ describe('reconcileMonitorBoxesWithStore', () => {
     const result = await reconcileMonitorBoxesWithStore(store);
     expect(result.errors).toBe(1);
     expect(store.calls.some((call) => call.startsWith('create:p-good'))).toBe(true);
+  });
+});
+
+describe('intersectMonitorSecretGrants', () => {
+  // The shared box runs every monitor as one UID — any secret in the box is
+  // readable by every monitor process, so a secret ships only when EVERY
+  // enabled monitor's agent is granted it (Strix HIGH on PR #6413).
+  test('one distinct agent keeps its grant unchanged', () => {
+    const scoped = intersectMonitorSecretGrants(new Map([['default', ['a', 'b']]]));
+    expect(scoped.grant).toEqual(['a', 'b']);
+    expect(scoped.withheldByAgent.size).toBe(0);
+    const unscoped = intersectMonitorSecretGrants(new Map([['default', 'all' as const]]));
+    expect(unscoped.grant).toBe('all');
+    expect(unscoped.withheldByAgent.size).toBe(0);
+  });
+
+  test('mixed agents intersect, and withheld identifiers are named per agent', () => {
+    const { grant, withheldByAgent } = intersectMonitorSecretGrants(
+      new Map([
+        ['oncall', ['shared', 'pagerduty-key']],
+        ['reporter', ['shared', 'sheets-key']],
+      ]),
+    );
+    expect(grant).toEqual(['shared']);
+    expect(withheldByAgent.get('oncall')).toEqual(['pagerduty-key']);
+    expect(withheldByAgent.get('reporter')).toEqual(['sheets-key']);
+  });
+
+  test('an unscoped agent imposes no restriction but is itself narrowed', () => {
+    const { grant, withheldByAgent } = intersectMonitorSecretGrants(
+      new Map<string, string[] | 'all'>([
+        ['default', 'all'],
+        ['scoped', ['only-this']],
+      ]),
+    );
+    expect(grant).toEqual(['only-this']);
+    // Narrowed from unscoped: flagged with an empty identifier list.
+    expect(withheldByAgent.get('default')).toEqual([]);
+    expect(withheldByAgent.has('scoped')).toBe(false);
+  });
+
+  test('disjoint scoped grants intersect to nothing — the box gets no secrets', () => {
+    const { grant, withheldByAgent } = intersectMonitorSecretGrants(
+      new Map([
+        ['a', ['x']],
+        ['b', ['y']],
+      ]),
+    );
+    expect(grant).toEqual([]);
+    expect(withheldByAgent.get('a')).toEqual(['x']);
+    expect(withheldByAgent.get('b')).toEqual(['y']);
   });
 });

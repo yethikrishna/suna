@@ -473,6 +473,55 @@ general egress alongside injection. Stricter is defensible — arguably it is th
 "network boundary" should have had all along — but it is a behaviour difference, not parity,
 and the UI has to say so.
 
+#### 7.4.1 The shim, proven end to end
+
+Built as a second rule mode on the same proxy (`mode: 'broker'`), so the CONNECT and
+TLS-termination machinery is the code already tested in §7.3 rather than a parallel
+implementation. Run inside a **real Kortix session** against the **real dev broker**, with an
+unmodified `curl` and `https_proxy` pointed at the local shim:
+
+```
+SHIM_READY
+--- ca: done.
+--- curl through the shim:
+{"args":{},"headers":{"host":"postman-echo.com","accept":"*/*",
+ "x-proof-token":"[REDACTED]","user-agent":"curl/8.5.0", …},
+ "url":"https://postman-echo.com/get"}
+```
+
+The chain: unmodified client → in-guest shim (terminates TLS, holds nothing) → Kortix broker
+(holds the credential, injects, redacts) → real upstream. **The credential reached the
+destination and was never in the guest.** That is the Platinum property, on a provider with
+no credential edge of its own.
+
+`[REDACTED]` is the broker's server-side scrub of the echoed value, so injection and
+echo-protection are both visible in the one response.
+
+Caveats, stated rather than implied:
+
+- This session was Platinum-backed (`kaab-demo` follows the dev default). The shim is
+  provider-agnostic by construction — it is in-guest code plus HTTPS to the Kortix API, and
+  touches no provider surface — but "provider-agnostic by construction" is an argument, and
+  the Daytona re-run is pending only because dev Daytona provisioning is currently failing
+  (`/start` succeeds, the sandbox never reaches running).
+- No allow-list was applied in this run. Enforcement was measured separately (§7.2); this run
+  measured injection.
+
+### 7.5 What is left
+
+Ordered by what blocks a customer using it:
+
+1. **Provisioning wiring.** Ship the shim in the sandbox image, start it at boot with the
+   session's own token, install the ephemeral CA into the guest trust store and the
+   per-runtime env vars, set `HTTPS_PROXY`, and set `networkAllowList` to the Kortix API.
+2. **Allow-list survival across resume / CoW-restore.** The funnel must not open on restore.
+3. **Clients that ignore `HTTPS_PROXY`** — Node/Bun `fetch` (undici) is the common one.
+   Either an `LD_PRELOAD` shim or documentation; silently losing network is not acceptable.
+4. **Dev Daytona provisioning is broken**, which blocks the Daytona re-run of §7.4.1.
+5. **The Daytona snapshot quota is exhausted** (225 of 200), which fails every CI run that
+   builds a snapshot. Needs a quota raise or a retention policy; the bulk is live product
+   data (`kortix-meta-*`, `kortix-app-*`), not garbage.
+
 
 - **Provisioning wiring.** Mint the CA per session, push it into the guest trust store plus
   the ~11 per-runtime env vars, set `HTTPS_PROXY`, and set `networkAllowList` to the proxy.

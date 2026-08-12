@@ -3088,7 +3088,9 @@ export const sandboxComputeSessions = kortixSchema.table(
   (table) => [
     check(
       'sandbox_compute_sessions_workload_type_check',
-      sql`${table.workloadType} IN ('session', 'app')`,
+      // 'monitor' = the per-project monitor box. Its `sandbox_id` IS
+      // `project_monitor_boxes.box_id`; it needs no dedicated join column.
+      sql`${table.workloadType} IN ('session', 'app', 'monitor')`,
     ),
     index('idx_sandbox_compute_sessions_account_time').on(table.accountId, table.startedAt),
     index('idx_sandbox_compute_sessions_provider_time').on(table.provider, table.startedAt),

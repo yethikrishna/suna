@@ -8307,3 +8307,55 @@ activity, and the account cell's `/admin/accounts?search=<ownerEmail>` href).
 this entry is the handoff record).
 
 **SDK package shippable to production: YES.**
+
+## Session `monitors` — `type: monitor` on the trigger client (2026-08-12)
+
+No **Now** task claimed. This is the SDK half of the Monitors feature
+(`docs/specs/2026-08-12-monitors.md`), the third trigger type. The server side
+(manifest, DB, ingest, observer, box runtime) already landed on branch
+`monitors`; this change makes the published trigger client able to read and
+write it.
+
+Claimed SDK scope, in `core/rest/projects-client/triggers.ts` only:
+
+- Widen `ProjectTriggerType` with `'monitor'`.
+- Add the four monitor read fields to `ProjectTrigger`, matching
+  `TriggerSchema` in `@kortix/api-contract` (`run`, `mode`, `interval_seconds`,
+  `expect_event_within_seconds` — all nullable, like `cron`/`secret_env`).
+- Add the monitor draft fields the server's `parseTriggerDraft` accepts to
+  `CreateProjectTriggerInput` / `UpdateProjectTriggerInput` (`run`, `mode`,
+  `interval`, `expect_event_within` — durations are literals, never numbers).
+- One new exported type, `ProjectMonitorMode` (`'poll' | 'stream'`).
+
+**Additive only.** No name was renamed or removed, no optional field became
+required, no subpath was added (the client rides the existing
+`projects-client` barrel), and the package `version` is untouched.
+
+The required `tdd` skill was unavailable in this session. The RED → GREEN →
+REFACTOR sequence was followed directly.
+
+RED — `pnpm --filter @kortix/sdk typecheck` before implementation, with the new
+`src/core/rest/projects-client/triggers.test.ts` in place: **exit 2**, 17
+errors, including `Module '"./triggers"' has no exported member
+'ProjectMonitorMode'`, `Type '"monitor"' is not assignable to type
+'ProjectTriggerType'`, `Property 'run' does not exist on type 'ProjectTrigger'`,
+and `'mode' does not exist in type 'UpdateProjectTriggerInput'`.
+
+GREEN:
+
+- `bun test src/core/rest/projects-client/triggers.test.ts`: `6 pass`, `0 fail`,
+  `22 expect()` calls.
+- `pnpm --filter @kortix/sdk typecheck`: exit `0` for the package and examples.
+- `pnpm --filter @kortix/sdk test`: `1852 pass`, `2 skip`, `0 fail`,
+  `7109 expect()` calls across `142` files. Session baseline measured on the
+  branch before the change: `1846 pass`, `2 skip`, `0 fail`, `141` files.
+- `pnpm --filter @kortix/sdk run smoke:install`: `✔ install smoke test passed`.
+
+`public-type-surface.snapshot.json` was re-recorded: **2 insertions, 0
+deletions** — `ProjectMonitorMode` on `.` and `./projects-client`. Purely
+additive, so no consumer breaks. The runtime surface snapshot is unchanged (the
+addition is a type, not a value).
+
+**Status:** COMPLETE.
+
+**SDK package shippable to production: YES.**

@@ -390,10 +390,55 @@ rather than try to express policy as vendor allow-list entries.
 `HTTPS_PROXY` names that IP, so the guest never resolves anything; the proxy resolves
 upstream names on its behalf. That sidesteps the resolver variability entirely.
 
-### 7.3 Still unmeasured
+### 7.3 The proxy — built, and proven in a real Daytona guest
 
-- Allow-list survival across resume / CoW-restore — the funnel must not open on restore.
-- Where the proxy runs so a sandbox can reach it (public address vs Daytona-internal).
+`apps/api/src/secrets/egress-proxy/` (`ca.ts`, `proxy.ts`). CONNECT to a host carrying an
+injection rule is terminated with a per-sandbox ephemeral CA, the header is added, and the
+credential is redacted from the response. A host with no rule is tunnelled blind.
+
+11 tests, no mocks: real HTTPS upstream, real CONNECT, real interception. Live run on a
+throwaway Daytona sandbox (`kortix-default-b539f1be09d3`), proxy bundled and executed inside
+the guest, CA installed into the system store with `update-ca-certificates`:
+
+```
+curl/8.5.0            {"headers":{…,"x-proof-token":"[REDACTED]",…},"url":"https://postman-echo.com/get"}
+python-requests/2.34.2 {"headers":{…,"x-proof-token":"[REDACTED]",…}}
+api.github.com (no rule) -> 200      # tunnelled untouched
+credential in guest env  -> 0 occurrences
+```
+
+Two independent TLS stacks (curl/OpenSSL and python-requests) both accepted the ephemeral CA
+and both reached the upstream **with the credential attached, having never held it**. The
+`[REDACTED]` in the echo is the response-scrubbing working on the same request — injection
+and echo-protection demonstrated in one call.
+
+> **What this run does and does not show.** The proxy ran *inside* the sandbox, which is not
+> where it runs in production. Its location is not what was under test: enforcement is the
+> allow-list's job and was measured separately (§7.2). What this shows is that the injection
+> mechanism survives contact with a real Linux guest — cert trust, ordinary HTTP clients, a
+> real upstream. Note also that the credential was present in the guest in this run, inside
+> the proxy bundle itself; in production that bundle is not in the guest.
+
+Two runtime divergences shaped the implementation and are worth knowing before anyone
+refactors it — both measured, both silent failures rather than errors:
+
+- **`http.Server.emit('connection', socket)` is a no-op under Bun.** The canonical way to run
+  an HTTP parser over a socket you already own does nothing; the request event never fires
+  and the connection hangs. The same script works under Node.
+- **`SNICallback` never fires under Bun.** The handshake completes against a default
+  certificate instead, so a single listener choosing certs per SNI cannot work.
+
+Hence: a real loopback TLS listener per terminated host, each with a static leaf.
+
+### 7.4 Remaining before this is a product
+
+- **Where the proxy runs.** It needs an address the sandbox can reach and the allow-list can
+  pin. This is the main open infrastructure question.
+- **Provisioning wiring.** Mint the CA per session, push it into the guest trust store plus
+  the ~11 per-runtime env vars, set `HTTPS_PROXY`, and set `networkAllowList` to the proxy.
+- **Allow-list survival across resume / CoW-restore** — the funnel must not open on restore.
+- **Clients that ignore `HTTPS_PROXY`** (notably Node/Bun `fetch`) reach nothing once the
+  allow-list is on. Needs either an `LD_PRELOAD` shim or honest documentation.
 
 ## 8. What I would not build
 

@@ -1,8 +1,14 @@
 # Network-boundary secrets on Daytona
 
-**Status:** proposal, awaiting one blocking experiment
-**Author:** drafted 2026-08-11
+**Status:** mechanism built and proven end to end (§7.3, §7.4.1); not yet wired into
+provisioning (§7.5)
+**Author:** drafted 2026-08-11, substantially revised 2026-08-12 after measurement
 **Problem owner:** production runs on Daytona; the feature exists only on Platinum
+
+> **Read §7 before §3.** Several claims in the early sections were written from vendor docs
+> and general knowledge, then disproved by measurement. Where they conflict, the measured
+> result in §7 wins. The wrong claims are left in place with corrections attached rather than
+> quietly edited, because the pattern of *how* they were wrong is the useful part.
 
 ---
 
@@ -76,13 +82,19 @@ What Daytona does **not** have: a secret store, TLS termination, header injectio
 feature cannot be ported provider-natively; it can only be **rebuilt** with Daytona supplying
 the funnel and Kortix supplying the injection.
 
-### 3.3 The claim the whole design rests on
+### 3.3 ~~The claim the whole design rests on~~ — settled, and it was moot
 
 Daytona's docs state: *"Clients that do not respect `HTTP_PROXY` are blocked at egress."*
 
-If true, `outboundProxyUrl` is an **enforced** chaining point and a Kortix-operated proxy gets
-the same class of guarantee as Platinum. If false, it is **cooperative** and a determined agent
-walks around it. **This is unverified and is the first thing to test** (§7).
+The original plan hung on whether that made `outboundProxyUrl` **enforced** or merely
+**cooperative**. The question turned out not to matter: **`outboundProxyUrl` is not
+implemented at all** (§7). The sentence in the vendor docs describes a feature this API does
+not have.
+
+Worth keeping as a marker: a whole architecture was designed around one sentence of vendor
+documentation, and the field it referred to did not exist. The lesson generalises past this
+doc — before building on a provider capability, send it a request that must fail if the
+capability is real.
 
 ## 4. Prior art
 

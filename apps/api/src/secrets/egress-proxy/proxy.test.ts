@@ -288,3 +288,144 @@ describe('ephemeral CA', () => {
     expect(createEphemeralCa('s1').fingerprint).not.toBe(createEphemeralCa('s2').fingerprint);
   });
 });
+
+/**
+ * Shim mode: the proxy runs INSIDE the guest and must never hold a credential.
+ * It terminates TLS and relays to the Kortix broker, which injects.
+ */
+describe('egress proxy — broker (in-guest shim) mode', () => {
+  let kortix: http.Server;
+  let kortixPort = 0;
+  let shim: http.Server;
+  let shimPort = 0;
+  const brokerCalls: Array<{ path: string; auth: string | undefined; body: Record<string, unknown> }> = [];
+  let brokerReply: () => { status: number; payload: unknown } = () => ({ status: 200, payload: null });
+
+  const shimCa = createEphemeralCa('shim-fixture');
+
+  beforeAll(async () => {
+    // Stands in for the Kortix API's broker route. Plain HTTP on loopback: the
+    // relay leg's TLS belongs to the runtime's fetch, not to code under test,
+    // and using https here would only be testing whether the fixture's CA is
+    // installed. Production points `apiUrl` at the real https API.
+    kortix = http.createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
+      req.on('end', () => {
+        brokerCalls.push({
+          path: req.url ?? '',
+          auth: req.headers.authorization,
+          body: JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'),
+        });
+        const { status, payload } = brokerReply();
+        res.writeHead(status, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(payload));
+      });
+    });
+    await new Promise<void>((r) => kortix.listen(0, '127.0.0.1', r));
+    kortixPort = (kortix.address() as AddressInfo).port;
+
+    shim = await createEgressProxy({
+      ca: shimCa,
+      resolveRules: () => [
+        {
+          mode: 'broker',
+          hosts: [POLICY_HOST],
+          identifier: 'BROKER_PROOF',
+          apiUrl: `http://127.0.0.1:${kortixPort}/v1`,
+          token: 'session-token',
+          projectId: 'proj-1',
+        },
+      ],
+    });
+    await new Promise<void>((r) => shim.listen(0, '127.0.0.1', r));
+    shimPort = (shim.address() as AddressInfo).port;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((r) => shim.close(() => r()));
+    await new Promise<void>((r) => kortix.close(() => r()));
+  });
+
+  function throughShim(path: string): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+      const socket = net.connect(shimPort, '127.0.0.1', () => {
+        socket.write(
+          `CONNECT ${POLICY_HOST}:443 HTTP/1.1\r\nHost: ${POLICY_HOST}:443\r\nProxy-Authorization: Bearer t\r\n\r\n`,
+        );
+      });
+      let buf = '';
+      const onData = (chunk: Buffer) => {
+        buf += chunk.toString('utf8');
+        if (!buf.includes('\r\n\r\n')) return;
+        socket.removeListener('data', onData);
+        if (Number(buf.split(' ')[1]) !== 200) {
+          socket.destroy();
+          reject(new Error(buf.split('\r\n')[0]));
+          return;
+        }
+        speakHttps(socket, POLICY_HOST, path, shimCa.certPem).then(resolve, reject);
+      };
+      socket.on('data', onData);
+      socket.once('error', reject);
+    });
+  }
+
+  test('relays to the broker route and returns its response', async () => {
+    brokerCalls.length = 0;
+    brokerReply = () => ({
+      status: 200,
+      payload: {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+        body_base64: Buffer.from('{"created":true}').toString('base64'),
+      },
+    });
+
+    const res = await throughShim('/things?x=1');
+
+    expect(brokerCalls).toHaveLength(1);
+    expect(brokerCalls[0].path).toBe('/v1/projects/proj-1/secrets/BROKER_PROOF/broker');
+    expect(brokerCalls[0].auth).toBe('Bearer session-token');
+    // The shim reconstructs the guest's intended URL for Kortix to perform.
+    expect(brokerCalls[0].body.url).toBe(`https://${POLICY_HOST}/things?x=1`);
+    expect(brokerCalls[0].body.method).toBe('GET');
+    // Upstream status and body are passed through untouched.
+    expect(res.status).toBe(201);
+    expect(res.body).toBe('{"created":true}');
+  });
+
+  test('holds no credential — nothing secret is sent to Kortix or configured locally', async () => {
+    brokerCalls.length = 0;
+    brokerReply = () => ({
+      status: 200,
+      payload: { status: 200, headers: {}, body_base64: Buffer.from('ok').toString('base64') },
+    });
+
+    await throughShim('/x');
+
+    // The whole request the shim made, serialised: it names an identifier and
+    // carries the session's own token, and contains no secret value. This is
+    // the property that lets this component run inside an untrusted guest.
+    const sent = JSON.stringify(brokerCalls[0]);
+    expect(sent).toContain('BROKER_PROOF');
+    expect(sent).not.toContain(SECRET);
+    // And the rule the shim was configured with has no value field at all.
+    expect(JSON.stringify(shim.listeners('connect'))).not.toContain(SECRET);
+  });
+
+  test("surfaces the broker's refusal verbatim instead of a generic proxy error", async () => {
+    brokerCalls.length = 0;
+    brokerReply = () => ({
+      status: 403,
+      payload: { error: 'secret delivery denied', code: 'agent_grant_excludes' },
+    });
+
+    const res = await throughShim('/x');
+
+    // An agent that sees "agent_grant_excludes" can act on it; a bare 502
+    // costs it a turn of guessing.
+    expect(res.status).toBe(403);
+    expect(res.body).toContain('agent_grant_excludes');
+  });
+});

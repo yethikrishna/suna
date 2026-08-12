@@ -38,8 +38,14 @@ import tls from 'node:tls';
 import { redactSecretFromResponse } from '../http-broker';
 import { LeafIssuer, type EphemeralCa } from './ca';
 
-/** One host→header rule. `hosts` match exactly: no wildcards, no suffixes. */
-export interface EgressInjectionRule {
+/**
+ * Inject the credential here, in this process. Used when the proxy runs
+ * OUTSIDE the guest and is trusted to hold the secret.
+ *
+ * `hosts` match exactly: no wildcards, no suffixes.
+ */
+export interface EgressInjectRule {
+  readonly mode?: 'inject';
   readonly hosts: readonly string[];
   readonly header: string;
   readonly value: string;
@@ -57,6 +63,37 @@ export interface EgressInjectionRule {
   readonly onEcho?: 'redact' | 'block';
 }
 
+/**
+ * Relay the request to Kortix and let IT inject. Used when the proxy runs
+ * INSIDE the guest, where holding the credential would defeat the point.
+ *
+ * This is the shim of docs §7.4: it terminates the guest's TLS (which can only
+ * be done in the guest) but never possesses a secret (which must not be). The
+ * far end is the existing broker route, already shipped and verified live, so
+ * the credential, the host/method policy, and echo redaction all stay
+ * server-side exactly as they are today.
+ *
+ * An agent that reads, patches, or kills this component learns nothing. Under
+ * the runner allow-list it also loses its own networking, so tampering is
+ * fail-closed.
+ */
+export interface EgressBrokerRule {
+  readonly mode: 'broker';
+  readonly hosts: readonly string[];
+  /** Secret identifier, NOT a value. The guest may see this. */
+  readonly identifier: string;
+  /** Kortix API base, e.g. `https://dev-api.kortix.com/v1`. */
+  readonly apiUrl: string;
+  /** The session's own token — already in the guest; grants no new authority. */
+  readonly token: string;
+  readonly projectId: string;
+}
+
+export type EgressRule = EgressInjectRule | EgressBrokerRule;
+
+/** @deprecated Use {@link EgressInjectRule}. Kept so callers keep compiling. */
+export type EgressInjectionRule = EgressInjectRule;
+
 export interface EgressProxyOptions {
   readonly ca: EphemeralCa;
   /**
@@ -64,7 +101,7 @@ export interface EgressProxyOptions {
    * connection with 407 — a sandbox must identify itself before the proxy will
    * carry a byte for it, so one sandbox can never borrow another's injection.
    */
-  readonly resolveRules: (token: string | null) => readonly EgressInjectionRule[] | null;
+  readonly resolveRules: (token: string | null) => readonly EgressRule[] | null;
   /**
    * Test seam: extra `https.request` options for the upstream leg, so a test
    * can redirect `api.example.com` to a local HTTPS server and hand over its
@@ -98,11 +135,74 @@ function proxyToken(req: http.IncomingMessage): string | null {
 }
 
 function ruleFor(
-  rules: readonly EgressInjectionRule[],
+  rules: readonly EgressRule[],
   host: string,
-): EgressInjectionRule | null {
+): EgressRule | null {
   const needle = host.toLowerCase();
   return rules.find((rule) => rule.hosts.some((h) => h.toLowerCase() === needle)) ?? null;
+}
+
+/**
+ * Hand the guest's request to Kortix, which holds the credential.
+ *
+ * Deliberately the SAME broker route `kortix secrets call` and the `secret_call`
+ * MCP tool already use — so the shim inherits a path that is shipped, tested,
+ * and verified live rather than opening a second way to spend a secret. The
+ * host/method policy, the injection, and the echo redaction all happen there.
+ */
+async function relayToBroker(
+  rule: EgressBrokerRule,
+  host: string,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  body: Buffer,
+): Promise<void> {
+  // Forward only the request's own headers. Nothing secret is added here —
+  // that is the entire point of this mode.
+  const forwarded: Record<string, string> = {};
+  for (const [name, value] of Object.entries(req.headers)) {
+    const lower = name.toLowerCase();
+    if (['proxy-authorization', 'connection', 'host', 'content-length'].includes(lower)) continue;
+    if (typeof value === 'string') forwarded[lower] = value;
+  }
+
+  const response = await fetch(
+    `${rule.apiUrl.replace(/\/$/, '')}/projects/${rule.projectId}/secrets/${encodeURIComponent(rule.identifier)}/broker`,
+    {
+      method: 'POST',
+      headers: { authorization: `Bearer ${rule.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        url: `https://${host}${req.url ?? '/'}`,
+        method: (req.method ?? 'GET').toUpperCase(),
+        ...(Object.keys(forwarded).length > 0 ? { headers: forwarded } : {}),
+        ...(body.length > 0 ? { body_base64: body.toString('base64') } : {}),
+      }),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    },
+  );
+
+  if (!response.ok) {
+    // Surface Kortix's own refusal verbatim: a denied grant or an out-of-policy
+    // host must reach the agent as that, not as a generic proxy error it will
+    // waste a turn guessing about.
+    const detail = await response.text().catch(() => '');
+    res.writeHead(response.status, { 'content-type': 'application/json' });
+    res.end(detail || JSON.stringify({ error: 'broker refused the request' }));
+    return;
+  }
+
+  const result = (await response.json()) as {
+    status: number;
+    headers: Record<string, string>;
+    body_base64: string;
+  };
+  const out = Buffer.from(result.body_base64 ?? '', 'base64');
+  const headers: Record<string, string> = { ...(result.headers ?? {}) };
+  delete headers['transfer-encoding'];
+  headers['content-length'] = String(out.length);
+  if (/close/i.test(String(req.headers.connection ?? ''))) headers.connection = 'close';
+  res.writeHead(result.status ?? 502, headers);
+  res.end(out);
 }
 
 function parseTarget(target: string): { host: string; port: number } | null {
@@ -136,7 +236,7 @@ export async function createEgressProxy(options: EgressProxyOptions): Promise<ht
    * unique per connection and is what the inner server sees as
    * `req.socket.remotePort`.
    */
-  const bindings = new Map<number, { rule: EgressInjectionRule; host: string }>();
+  const bindings = new Map<number, { rule: EgressRule; host: string }>();
   const onTerminatedRequest: http.RequestListener = (req, res) => {
     const binding = bindings.get(req.socket.remotePort ?? -1);
     const rule = binding?.rule;
@@ -149,6 +249,15 @@ export async function createEgressProxy(options: EgressProxyOptions): Promise<ht
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
     req.on('end', () => {
+      if (rule.mode === 'broker') {
+        void relayToBroker(rule, host, req, res, Buffer.concat(chunks)).catch((err: Error) => {
+          fail('broker', err);
+          if (!res.headersSent) res.writeHead(502);
+          res.end('kortix egress shim: broker relay failed');
+        });
+        return;
+      }
+
       // Strip hop-by-hop and any client-supplied copy of the managed header:
       // the injected value must be the ONLY one on the wire, or an agent could
       // shadow it and learn whether its guess matched.

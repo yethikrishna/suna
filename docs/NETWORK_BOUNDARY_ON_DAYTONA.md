@@ -351,13 +351,49 @@ So the honest positioning of Track B on Daytona is **enforced, selectively trans
 strictly weaker on ergonomics than Platinum, identical on confidentiality. Any UI copy must
 say which one a project is getting.
 
-### 7.2 Still worth measuring before building
+### 7.2 Phase-1 measurements — RUN 2026-08-12
 
-- `domainAllowList` (surfaced in a validation error, absent from the SDK typings): if it
-  accepts DNS names it removes the CIDR-only constraint and the DNS breakage in §6b.
-- Live `updateNetworkSettings()` on a running sandbox, and behaviour across resume /
-  CoW-restore — the allow-list must survive both or the funnel has a hole.
-- Whether the proxy can be reached over Daytona's own network without a public address.
+Control-vs-treatment on throwaway sandboxes from `kortix-default-b539f1be09d3`.
+
+**`domainAllowList` does nothing.** With `domainAllowList: 'api.github.com'`, the listed
+host, an unlisted host, and a raw IP all returned 200 for both the user and root —
+byte-identical to a sandbox created with no options at all. Like `outboundProxyUrl`, the
+API accepts it and drops it. Only `networkBlockAll` and `networkAllowList` are real.
+
+> A first pass at this looked like an *inverted* allow-list (listed host `000`, unlisted
+> host `200`, root reaching what the user could not) and would have gone into this doc as a
+> security finding. It was a transient `curl 000`. Every probe here is now three
+> repetitions; single-shot `curl` exit codes are not evidence.
+
+**A CIDR allow-list needs the DNS resolvers in it.** This is the load-bearing result:
+
+| create option | github | example.com | DNS | root → github |
+| --- | --- | --- | --- | --- |
+| `networkAllowList: 140.82.112.0/20` | 000 | 000 | **timeout** | 000 |
+| `…/20` + `1.1.1.1/32,8.8.8.8/32,169.254.0.0/16` | **200** | **000** | RESOLVED | 200 (listed host) |
+
+With the resolver ranges added, the funnel behaves exactly as Track B needs: the listed
+destination is reachable, everything else is refused, and root is refused too.
+
+**The funnel can be closed on a RUNNING sandbox.** `sandbox.updateNetworkSettings({
+networkBlockAll: true })` on a live, previously-open sandbox took effect immediately — all
+egress, DNS, and root egress went to 000 without a restart.
+
+**Upstream IPs are not stable.** `api.github.com` resolved to `172.182.252.137` in one
+sandbox and `140.82.112.6` in another, and the resolver set itself varied
+(`1.1.1.1 / 1.0.0.1 / 100.65.160.1` vs `1.1.1.1 / 1.0.0.1 / 8.8.8.8`). Allow-listing an
+*upstream* by CIDR is therefore unreliable by construction. Allow-listing **our own proxy**
+is not — we own that address. This is another reason the design must funnel through a proxy
+rather than try to express policy as vendor allow-list entries.
+
+**Consequence for the guest's DNS:** none needed. The allow-list pins the proxy by IP and
+`HTTPS_PROXY` names that IP, so the guest never resolves anything; the proxy resolves
+upstream names on its behalf. That sidesteps the resolver variability entirely.
+
+### 7.3 Still unmeasured
+
+- Allow-list survival across resume / CoW-restore — the funnel must not open on restore.
+- Where the proxy runs so a sandbox can reach it (public address vs Daytona-internal).
 
 ## 8. What I would not build
 

@@ -430,10 +430,50 @@ refactors it — both measured, both silent failures rather than errors:
 
 Hence: a real loopback TLS listener per terminated host, each with a static leaf.
 
-### 7.4 Remaining before this is a product
+### 7.4 Where the proxy runs — split it, and the answer falls out
 
-- **Where the proxy runs.** It needs an address the sandbox can reach and the allow-list can
-  pin. This is the main open infrastructure question.
+The obvious reading of §7.3 is "stand up a public Kortix proxy service": new deployment, new
+TLS surface, a stable address to pin, and Kortix terminating customer traffic at a brand-new
+internet-facing box. That is a lot of new exposure for a credential-handling MITM.
+
+There is a better shape, and it comes from noticing that the proxy does two separable jobs:
+
+1. **Terminate the guest's TLS** so an ordinary client can be intercepted. Must happen
+   *inside* the guest — it is the guest's own connection.
+2. **Hold the credential and call the upstream.** Must happen *outside* the guest.
+
+Nothing requires those to be the same process. Split them:
+
+```
+guest client ──HTTPS──▶ in-guest shim ──HTTPS──▶ Kortix API ──▶ upstream
+                        (ephemeral CA;            (holds the credential,
+                         holds NO secret)          injects, redacts)
+```
+
+The in-guest shim is the proxy in this directory with its injection step replaced by a call
+to the existing broker route — the one already proven end to end in §5.1. It terminates TLS,
+reads the request, and relays it to Kortix, which does what it already does today: resolve
+the secret, apply the host/method policy, inject, perform the request, redact the echo.
+
+Why this is the better answer here:
+
+- **No new public infrastructure.** Sandboxes already reach the Kortix API — it is how every
+  session works. The allow-list pins that address, which we already own and which is stable.
+- **The in-guest component holds no secret.** It is fully untrusted. An agent that reads it,
+  patches it, or kills it learns nothing; under the allow-list, killing it costs the agent
+  its own networking. Fail-closed, and security never rests on guest-side code.
+- **Kortix does not MITM arbitrary traffic.** Only requests the shim relays reach us, and only
+  policy hosts have rules. We are not terminating the whole internet on a shared box.
+- **It reuses a proven path.** The broker is shipped, tested, and verified live; this makes it
+  transparent rather than replacing it.
+
+The consequence to state plainly: with the allow-list pinned to Kortix, a session in boundary
+mode can reach **only its approved hosts**. That is stricter than Platinum, which permits
+general egress alongside injection. Stricter is defensible — arguably it is the posture a
+"network boundary" should have had all along — but it is a behaviour difference, not parity,
+and the UI has to say so.
+
+
 - **Provisioning wiring.** Mint the CA per session, push it into the guest trust store plus
   the ~11 per-runtime env vars, set `HTTPS_PROXY`, and set `networkAllowList` to the proxy.
 - **Allow-list survival across resume / CoW-restore** — the funnel must not open on restore.

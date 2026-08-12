@@ -186,11 +186,11 @@ describe('secret_call MCP tool', () => {
   });
 
   test('sends only the identifier — the request carries no credential field', async () => {
-    // The confidentiality property the broker actually provides: the guest
-    // names a secret, it never holds or transmits one. (It does NOT protect
-    // against an upstream that echoes the credential back in its response —
-    // that is the network boundary's `on_echo`, which the broker has no
-    // equivalent for. Do not extend this test to imply otherwise.)
+    // The confidentiality property the broker provides: the guest names a
+    // secret, it never holds or transmits one. An upstream that echoes the
+    // credential back is handled server-side by `redactSecretFromResponse`
+    // (apps/api/src/secrets/http-broker.ts) — out of scope for this tool test,
+    // which only proves the request side.
     respondWith = () =>
       jsonResponse({
         status: 200,

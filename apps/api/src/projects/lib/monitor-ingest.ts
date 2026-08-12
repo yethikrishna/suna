@@ -161,7 +161,11 @@ async function countMonitorRateWindow(
   const [row] = await db
     .select({
       hourCount: sql<number>`count(*)`,
-      burstCount: sql<number>`count(*) filter (where ${projectMonitorEvents.ingestedAt} >= ${new Date(now.getTime() - MONITOR_BURST_WINDOW_MS)})`,
+      // The burst cutoff is interpolated as an ISO string + cast, NOT a Date:
+      // inside a raw sql`` fragment drizzle does not apply the column's driver
+      // mapping, and postgres.js cannot bind a Date instance (500 on ingest —
+      // caught live 2026-08-12).
+      burstCount: sql<number>`count(*) filter (where ${projectMonitorEvents.ingestedAt} >= ${new Date(now.getTime() - MONITOR_BURST_WINDOW_MS).toISOString()}::timestamptz)`,
     })
     .from(projectMonitorEvents)
     .where(

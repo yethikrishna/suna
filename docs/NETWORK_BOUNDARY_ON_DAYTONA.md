@@ -515,8 +515,7 @@ Ordered by what blocks a customer using it:
    session's own token, install the ephemeral CA into the guest trust store and the
    per-runtime env vars, set `HTTPS_PROXY`, and set `networkAllowList` to the Kortix API.
 2. **Allow-list survival across resume / CoW-restore.** The funnel must not open on restore.
-3. **Clients that ignore `HTTPS_PROXY`** — Node/Bun `fetch` (undici) is the common one.
-   Either an `LD_PRELOAD` shim or documentation; silently losing network is not acceptable.
+3. **Clients that ignore `HTTPS_PROXY`** — measured, and less bad than assumed (§7.6).
 4. **Dev Daytona provisioning is broken**, which blocks the Daytona re-run of §7.4.1.
 5. **The Daytona snapshot quota is exhausted** (225 of 200), which fails every CI run that
    builds a snapshot. Needs a quota raise or a retention policy; the bulk is live product
@@ -554,3 +553,34 @@ Ordered by what blocks a customer using it:
 - `apps/web/content/docs/project/secrets.mdx` — the user-facing explainer
 - `.claude/skills/learnings/SKILL.md` — "A per-turn hot path must not contain an unbounded
   third-party round-trip", the incident that came out of this feature
+
+### 7.6 Which in-guest clients actually honour the proxy — measured
+
+Once the allow-list permits only the proxy, a client that ignores `https_proxy` reaches
+**nothing**. §7.1 asserted from general knowledge that Node/Bun `fetch` was the problem case.
+Measured in a real guest, that was half wrong:
+
+| client | routed through the proxy? |
+| --- | --- |
+| `curl` 8.5.0 | yes |
+| `bun` `fetch` | **yes** — the earlier claim that it would not was wrong |
+| `node` `fetch` (undici) | **no**, goes direct |
+| `node` with `NODE_USE_ENV_PROXY=1` | **yes** |
+| `python3` `requests` | yes, but needs `REQUESTS_CA_BUNDLE` or it fails cert verification |
+| `git` 2.43.0 | yes — **after fixing a bug in this proxy**, below |
+
+So the mitigation is a handful of environment variables set at provision — `NODE_USE_ENV_PROXY`,
+`REQUESTS_CA_BUNDLE`, and the rest of the per-runtime CA vars — not an `LD_PRELOAD` shim. That
+is a much smaller and much less fragile piece of work than §7.1 assumed.
+
+**The git bug, because it is the kind that only real clients find.** `git` sends
+`CONNECT`, receives the 407 challenge, and retries with credentials **on the same
+connection** (`Proxy-Connection: Keep-Alive`). Node hands the raw socket to the `connect`
+handler, so after the 407 nothing is parsing that socket and the retry went into the void:
+`fatal: unable to access …: Proxy CONNECT aborted`. Every clone, fetch, and push through the
+proxy failed, while `curl` was unaffected because it opened a new connection.
+
+The fix is two headers on the 407 — `Content-Length: 0` and `Connection: close` — telling the
+client to reconnect rather than reuse. Verified after the change: `git ls-remote` returns the
+real SHA and `git clone` completes, with injection and blind tunnelling both still correct.
+Pinned by a regression test that asserts the framing.

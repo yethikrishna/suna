@@ -389,12 +389,26 @@ export async function createEgressProxy(options: EgressProxyOptions): Promise<ht
   server.on('connect', (req: http.IncomingMessage, socket: Duplex, head: Buffer) => {
     const rules = options.resolveRules(proxyToken(req));
     if (!rules) {
-      socket.end('HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="kortix"\r\n\r\n');
+      // `Content-Length: 0` + `Connection: close` are load-bearing, not
+      // decoration. Node hands us the raw socket on `connect`, so once this
+      // request is answered nothing is parsing that socket any more — a client
+      // that retries with credentials on the SAME connection is talking to
+      // nobody. git does exactly that: it sends `Proxy-Connection: Keep-Alive`,
+      // gets the challenge, and retries in place. Without these headers its
+      // retry vanished and it reported `Proxy CONNECT aborted` (measured
+      // against git 2.43.0 in a real sandbox). Announcing the close makes the
+      // client open a fresh connection for the authenticated attempt.
+      socket.end(
+        'HTTP/1.1 407 Proxy Authentication Required\r\n' +
+          'Proxy-Authenticate: Basic realm="kortix"\r\n' +
+          'Content-Length: 0\r\n' +
+          'Connection: close\r\n\r\n',
+      );
       return;
     }
     const target = parseTarget(req.url ?? '');
     if (!target) {
-      socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+      socket.end('HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n');
       return;
     }
 

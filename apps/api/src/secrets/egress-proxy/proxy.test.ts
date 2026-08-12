@@ -252,6 +252,33 @@ describe('egress proxy', () => {
     await expect(connect(POLICY_HOST, 443, null)).rejects.toThrow(/407/);
   });
 
+  test('the 407 announces its own close, so a client can retry with credentials', async () => {
+    // git sends `Proxy-Connection: Keep-Alive`, takes the challenge, and
+    // retries on the SAME socket. Node detaches that socket on `connect`, so
+    // nothing parses the retry — without these two headers git reported
+    // `Proxy CONNECT aborted` and every clone through the proxy failed
+    // (measured, git 2.43.0 in a Daytona guest). Announcing the close is what
+    // makes the client open a fresh connection instead.
+    const raw = await new Promise<string>((resolve, reject) => {
+      const socket = net.connect(proxyPort, '127.0.0.1', () => {
+        socket.write(
+          `CONNECT ${POLICY_HOST}:443 HTTP/1.1\r\nHost: ${POLICY_HOST}:443\r\nProxy-Connection: Keep-Alive\r\n\r\n`,
+        );
+      });
+      let buf = '';
+      socket.on('data', (c: Buffer) => {
+        buf += c.toString('utf8');
+      });
+      socket.on('close', () => resolve(buf));
+      socket.once('error', reject);
+    });
+
+    expect(raw).toContain('407 Proxy Authentication Required');
+    expect(raw).toContain('Proxy-Authenticate: Basic');
+    expect(raw.toLowerCase()).toContain('content-length: 0');
+    expect(raw.toLowerCase()).toContain('connection: close');
+  });
+
   test('rejects an unknown proxy credential', async () => {
     await expect(connect(POLICY_HOST, 443, 'not-a-real-token')).rejects.toThrow(/407/);
   });

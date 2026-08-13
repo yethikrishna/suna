@@ -210,10 +210,24 @@ projectsApp.openapi(
         )
         .orderBy(desc(projectSessionSecretHandles.revision))
         .limit(1);
+      // The snapshot must match the delivery mode this request is being served
+      // under. A broker secret's snapshot carries `kortix_fetch`; a boundary
+      // policy carries no backend at all — `networkBoundaryPolicyError` rejects
+      // one that does — so demanding `kortix_fetch` of both would make a
+      // boundary handle permanently invalid.
+      //
+      // Still checked, not skipped: the snapshot is what the request is
+      // executed against, so a row whose policy is neither shape must not be
+      // spent.
+      const handlePolicyValid = handle
+        ? isBoundarySecret
+          ? networkBoundaryPolicyError(handle.policySnapshot) === null
+          : handle.policySnapshot.backend === 'kortix_fetch'
+        : false;
       if (
         !handle ||
         (handle.expiresAt !== null && handle.expiresAt.getTime() <= Date.now()) ||
-        handle.policySnapshot.backend !== 'kortix_fetch'
+        !handlePolicyValid
       ) {
         await recordAuditEvent({
           ...auditBase,

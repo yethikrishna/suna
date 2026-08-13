@@ -117,6 +117,7 @@ function projectFixture(overrides: Record<string, unknown> = {}) {
       apps: false,
       monitors: false,
       network_boundary_shim: false,
+      warm_sessions: false,
     },
     experimental_features: [],
     default_sandbox_provider: null,
@@ -664,6 +665,7 @@ describe('envelopes', () => {
       'apps',
       'monitors',
       'network_boundary_shim',
+      'warm_sessions',
     ]);
   });
 

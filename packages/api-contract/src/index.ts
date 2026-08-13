@@ -62,6 +62,7 @@ export const FeatureFlagMapSchema = z.object({
   apps: z.boolean(),
   monitors: z.boolean(),
   network_boundary_shim: z.boolean(),
+  warm_sessions: z.boolean(),
 });
 export type FeatureFlagMap = z.infer<typeof FeatureFlagMapSchema>;
 

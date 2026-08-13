@@ -12,6 +12,17 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-13 — session `grok-4-6-managed`
+
+No public SDK API changes. The playground's compile-time `MODEL_IDS` union now
+matches `@kortix/llm-catalog` after adding `grok-4.6`. It also includes the
+three managed ids added on 2026-08-10. The package version is unchanged.
+
+Verification: SDK typecheck exits `0`; SDK tests report `1903 pass`, `0 fail`,
+and `7250` assertions across `145` files; packed-install smoke passes.
+
+**Status:** COMPLETE. SDK package shippable to production: YES.
+
 ### 2026-08-11 — session `billing-revamp-pr5-ui` claim
 
 No **Now** task claimed. User-directed work: the UI half of PR5 (the admin

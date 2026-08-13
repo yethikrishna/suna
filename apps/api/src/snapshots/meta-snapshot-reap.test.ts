@@ -19,6 +19,16 @@ import { describe, expect, test } from 'bun:test';
 import { config } from '../config';
 import { metaSnapshotName, reapSupersededMetaSnapshots } from './builder';
 
+/**
+ * No-op protection lookup: "nothing was built recently".
+ *
+ * Injected in every test that asserts WHICH names are deleted. Without it the
+ * reap uses the real DB-backed query, and the result then depends on whether a
+ * database is reachable — these tests passed locally and failed in CI for
+ * exactly that reason. The DB-backed path has its own test below.
+ */
+const NOTHING_RECENT = async () => new Set<string>();
+
 function fakeProvider(names: string[]) {
   const deleted: string[] = [];
   return {
@@ -53,7 +63,7 @@ describe('meta snapshot reap', () => {
     const foreign = others.map((e) => `kortix-meta-${e}-${'f'.repeat(16)}`);
     const provider = fakeProvider([metaSnapshotName(HASH_A), ...foreign]);
 
-    await reapSupersededMetaSnapshots(provider, metaSnapshotName(HASH_B));
+    await reapSupersededMetaSnapshots(provider, metaSnapshotName(HASH_B), NOTHING_RECENT);
 
     // Only our own superseded image goes.
     expect(provider.deleted).toEqual([metaSnapshotName(HASH_A)]);
@@ -64,7 +74,7 @@ describe('meta snapshot reap', () => {
     const keep = metaSnapshotName(HASH_B);
     const provider = fakeProvider([keep, metaSnapshotName(HASH_A)]);
 
-    await reapSupersededMetaSnapshots(provider, keep);
+    await reapSupersededMetaSnapshots(provider, keep, NOTHING_RECENT);
 
     expect(provider.deleted).not.toContain(keep);
     expect(provider.deleted).toContain(metaSnapshotName(HASH_A));
@@ -77,7 +87,7 @@ describe('meta snapshot reap', () => {
     const legacy = `kortix-meta-${'c'.repeat(16)}`;
     const provider = fakeProvider([legacy, metaSnapshotName(HASH_A)]);
 
-    await reapSupersededMetaSnapshots(provider, metaSnapshotName(HASH_B));
+    await reapSupersededMetaSnapshots(provider, metaSnapshotName(HASH_B), NOTHING_RECENT);
 
     expect(provider.deleted).not.toContain(legacy);
   });
@@ -92,14 +102,14 @@ describe('meta snapshot reap', () => {
       deleteSnapshot: async () => {},
     };
     await expect(
-      reapSupersededMetaSnapshots(provider, metaSnapshotName(HASH_B)),
+      reapSupersededMetaSnapshots(provider, metaSnapshotName(HASH_B), NOTHING_RECENT),
     ).resolves.toBeUndefined();
   });
 
   test('nothing to reap is not an error', async () => {
     const keep = metaSnapshotName(HASH_B);
     const provider = fakeProvider([keep]);
-    await reapSupersededMetaSnapshots(provider, keep);
+    await reapSupersededMetaSnapshots(provider, keep, NOTHING_RECENT);
     expect(provider.deleted).toEqual([]);
   });
 });

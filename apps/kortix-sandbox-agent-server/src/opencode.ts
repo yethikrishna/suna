@@ -905,6 +905,23 @@ export const MINIMAL_FALLBACK_MODELS: Record<string, KortixGatewayModel> = {
     temperature: false,
     limit: { context: 1_050_000, output: 128_000 },
   },
+  'grok-4.6': {
+    name: 'Grok 4.6',
+    provider: 'kortix',
+    reasoning: true,
+    reasoning_options: [{ type: 'effort', values: ['low', 'medium', 'high', 'xhigh'] }],
+    tool_call: true,
+    attachment: true,
+    structured_output: true,
+    temperature: true,
+    limit: { context: 500_000, output: 500_000 },
+    cost: {
+      input: 2,
+      output: 6,
+      cache_read: 0.5,
+      context_over_200k: { input: 4, output: 12, cache_read: 1 },
+    },
+  },
   // Second Kortix-managed AsterLab model (Kimi K3). Same `kortix` provider
   // branding + `aster` transport (ASTER_API_KEY) as GLM 5.2.
   // `temperature:false` — models.dev advertises Kimi K3 as

@@ -457,6 +457,13 @@ export interface ManagedModel {
     outputPerMillion: number;
     cachedInputPerMillion?: number;
     cacheWritePerMillion?: number;
+    contextOver200k?: {
+      inputPerMillion: number;
+      outputPerMillion: number;
+      cachedInputPerMillion?: number;
+      cacheWritePerMillion?: number;
+      contextThreshold: number;
+    };
   };
   tier: 'flagship' | 'balanced' | 'fast';
   // Vision (image input). Curated explicitly: managed slugs don't all exist on
@@ -523,6 +530,35 @@ export function pricingRefLookupCandidates(pricingRef: string): string[] {
 // credible agentic coder; beats GLM 5.2 on every published agentic
 // benchmark while costing ~10x less per unit of work).
 export const MANAGED_MODELS: ManagedModel[] = [
+  {
+    // Grok 4.6 through OpenRouter's first-party xAI endpoint. The explicit
+    // xAI preference keeps routing on the model owner while fallbacks preserve
+    // availability. The pricingRef supplies its context tier: $2/$6 per
+    // million input/output tokens, doubled above a 200k-token prompt.
+    id: 'grok-4.6',
+    name: 'Grok 4.6',
+    upstreamModelId: 'x-ai/grok-4.6',
+    transport: 'openrouter',
+    pricingRef: 'openrouter/x-ai/grok-4.6',
+    pricing: {
+      inputPerMillion: 2,
+      cachedInputPerMillion: 0.5,
+      outputPerMillion: 6,
+      contextOver200k: {
+        inputPerMillion: 4,
+        cachedInputPerMillion: 1,
+        outputPerMillion: 12,
+        contextThreshold: 200_000,
+      },
+    },
+    tier: 'flagship',
+    vision: true,
+    limit: { context: 500_000, output: 500_000 },
+    openrouterProvider: {
+      order: ['xai'],
+      allow_fallbacks: true,
+    },
+  },
   // {
   //   id: 'claude-opus-4.8',
   //   name: 'Claude Opus 4.8',
@@ -567,9 +603,7 @@ export const MANAGED_MODELS: ManagedModel[] = [
       cacheWritePerMillion: 1,
       outputPerMillion: 4,
     },
-    // Flagship since the Bedrock Claude deactivation: MANAGED_FLAGSHIP_MODEL_ID
-    // and resolvePlatformDefaultModelId's degrade order both key off this tier.
-    tier: 'flagship',
+    tier: 'balanced',
     vision: false,
     limit: { context: 1_000_000, output: 131_072 },
   },

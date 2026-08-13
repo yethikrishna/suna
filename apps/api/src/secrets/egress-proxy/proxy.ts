@@ -33,7 +33,6 @@ import type { Duplex } from 'node:stream';
 import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
-import tls from 'node:tls';
 
 import { redactSecretFromResponse } from '../http-broker';
 import { LeafIssuer, type EphemeralCa } from './ca';

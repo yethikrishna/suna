@@ -519,19 +519,60 @@ Caveats, stated rather than implied:
 - No allow-list was applied in this run. Enforcement was measured separately (§7.2); this run
   measured injection.
 
-### 7.5 What is left
+### 7.5 Wiring — what is done, what is left
 
-Ordered by what blocks a customer using it:
+#### Done: the server half (behind `EGRESS_SHIM_ENABLED`, default OFF)
 
-1. **Provisioning wiring.** Ship the shim in the sandbox image, start it at boot with the
-   session's own token, install the ephemeral CA into the guest trust store and the
-   per-runtime env vars, set `HTTPS_PROXY`, and set `networkAllowList` to the Kortix API.
-2. **Allow-list survival across resume / CoW-restore.** The funnel must not open on restore.
-3. **Clients that ignore `HTTPS_PROXY`** — measured, and less bad than assumed (§7.6).
-4. **Dev Daytona provisioning is broken**, which blocks the Daytona re-run of §7.4.1.
-5. **The Daytona snapshot quota is exhausted** (225 of 200), which fails every CI run that
-   builds a snapshot. Needs a quota raise or a retention policy; the bulk is live product
-   data (`kortix-meta-*`, `kortix-app-*`), not garbage.
+Three gates stood between a non-Platinum project and this feature.
+
+1. **The relay route.** `POST /projects/:id/secrets/:identifier/broker` rejected anything that
+   was not `strategy:'broker'`. It now also accepts `egress`/`network`. This cost almost
+   nothing: a boundary policy *is* a `SecretEgressPolicy`, and `prepareSecretBrokerRequest`
+   reads only `rules` and `inject` — never `backend` — so the existing engine executes it
+   unchanged. The policy is re-validated at request time rather than trusted from the row.
+   Audit metadata now derives the consumer instead of hardcoding `http_broker`.
+2. **`networkBoundaryDeliveryAvailable()`** was `config.isPlatinumEnabled()` alone. That one
+   expression is why no production project could ever use this feature.
+3. **The provider gate — in TWO places.** `startNetworkBoundaryArm`
+   (`projects/lib/sandbox-env-sync.ts`) and a duplicated pre-check in
+   `platform/services/session-sandbox.ts`, sharing a message string. Relaxing only the first
+   still fails provisioning, one frame later. Both now consult the shim. The post-create call
+   also dropped a `provider.syncNetworkBoundary!` non-null assertion that was safe only while
+   the pre-check guaranteed the method existed — with a shim-backed provider reaching it, that
+   would have been a TypeError at provision time instead of a clean skip.
+
+**The flag defaults OFF deliberately.** Turning it on makes the API *advertise* boundary
+delivery to non-Platinum projects — the save gate, `delivery_status`, and the web control all
+read it. Until the guest actually runs the shim, that is a feature that looks available and
+silently does nothing, which is the failure this whole document exists to unpick. Flip it once
+a fresh sandbox has been *observed* running the shim, not merely once the code is merged.
+
+#### Left: the guest half
+
+1. **Ship the shim and start it.** No new image artifact is needed — the daemon already ships
+   in the image and already starts child processes, so it can host the shim. It needs the
+   session token, project id, and the host->identifier rules (no values).
+2. **Trust the CA.** Install the ephemeral CA into the system store *and* the per-runtime env
+   vars. §7.6 measured which ones actually matter.
+3. **Point the clients.** `HTTPS_PROXY` plus `NODE_USE_ENV_PROXY=1` and `REQUESTS_CA_BUNDLE`.
+4. **The web gate.** `apps/web/.../secret-delivery.ts` requires the project to run Platinum and
+   does **not** read `network_boundary_available`. That is correct while the flag is off, and
+   wrong the moment it flips — the API has to expose which mode applies
+   (`provider-edge` vs `in-guest-shim`) and the web has to read it. Belongs with this half,
+   not before it.
+5. **Optional: the allow-list.** Not required for the security property — an agent that
+   bypasses the shim gets an *unauthenticated* request, not a credential — so it is egress
+   restriction, a separate feature. It also needs a stable Kortix egress address, which
+   `dev-api` (Cloudflare-fronted) does not provide.
+
+#### Blocked on infrastructure, not code
+
+- **Dev Daytona provisioning is failing** (`/start` succeeds, the sandbox never reaches
+  running), which blocks the Daytona re-run of §7.4.1.
+- **The Daytona snapshot quota is exhausted** — 225 of 200 — so every CI run that builds a
+  snapshot fails, on any PR. Deleting all 18 CI snapshots only reaches 207; the bulk is live
+  product data (`kortix-meta-*` 117, `kortix-app-*` 38). Needs a quota raise or a retention
+  policy.
 
 
 - **Provisioning wiring.** Mint the CA per session, push it into the guest trust store plus

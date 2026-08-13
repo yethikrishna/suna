@@ -23,12 +23,21 @@ import { resolveFeatureFlag } from '../feature-flags/registry';
  * human decision — and a per-project one lets a single project opt in and be
  * verified before anything else is exposed to it.
  */
-export function networkBoundaryDeliveryAvailable(projectMetadata?: unknown): boolean {
+export function networkBoundaryDeliveryAvailable(projectMetadata: unknown): boolean {
   return config.isPlatinumEnabled() || networkBoundaryShimAvailable(projectMetadata);
 }
 
-/** Has this project opted into the in-guest shim path? */
-export function networkBoundaryShimAvailable(projectMetadata?: unknown): boolean {
+/**
+ * Has this project opted into the in-guest shim path?
+ *
+ * The parameter is REQUIRED on all three functions here. It was optional, which
+ * made `networkBoundaryDeliveryAvailable()` — no argument — compile and quietly
+ * return the pre-flag Platinum-only verdict. `buildSecretView` was hardened
+ * against exactly that and this gate was not, so the compile-time guarantee
+ * stopped one call short of the thing it guards. A caller with no project must
+ * now write `undefined` and mean it.
+ */
+export function networkBoundaryShimAvailable(projectMetadata: unknown): boolean {
   if (projectMetadata === undefined) return false;
   return resolveFeatureFlag(projectMetadata, 'network_boundary_shim');
 }
@@ -42,7 +51,7 @@ export function networkBoundaryShimAvailable(projectMetadata?: unknown): boolean
  */
 export function networkBoundaryMode(
   providerName: string,
-  projectMetadata?: unknown,
+  projectMetadata: unknown,
 ): 'provider-edge' | 'in-guest-shim' | null {
   if (providerName === 'platinum' && config.isPlatinumEnabled()) return 'provider-edge';
   if (networkBoundaryShimAvailable(projectMetadata)) return 'in-guest-shim';

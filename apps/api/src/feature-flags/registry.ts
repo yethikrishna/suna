@@ -268,12 +268,18 @@ const FLAGS: readonly FeatureFlagDef[] = [
     // whole feature exists to remove.
     platformDefault: () => false,
     enforcement: 'behavioral',
+    // Exactly two effects. An earlier version of this note also claimed the
+    // flag governs whether the broker route serves egress/network secrets — it
+    // does not. That route accepts them unconditionally and holds no reference
+    // to any flag; it was widened separately. Overstating what a flag governs
+    // is how someone later flips it expecting the wrong thing to change.
     enforcementNote:
       'On ⇒ networkBoundaryDeliveryAvailable() accepts this project without ' +
-      'Platinum, provisioning stops treating a missing provider edge as fatal, ' +
-      'and the broker route serves egress/network secrets (secrets/' +
-      'network-boundary-availability.ts, projects/lib/sandbox-env-sync.ts, ' +
-      'platform/services/session-sandbox.ts).',
+      'Platinum, and provisioning stops treating a missing provider edge as ' +
+      'fatal (secrets/network-boundary-availability.ts, projects/lib/' +
+      'sandbox-env-sync.ts, platform/services/session-sandbox.ts). ' +
+      'OFF again with a boundary secret still saved ⇒ new sessions fail to ' +
+      'provision until the secret changes delivery.',
   },
 ];
 

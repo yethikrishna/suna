@@ -575,10 +575,21 @@ short-circuits the provider question when it is on, because the shim runs nowher
 provider edge. Both blocked-state messages now name the flag: neither state says "not available
 in this deployment" any more, because neither is true — both are one opt-in away.
 
-`buildSecretView` takes the project metadata through an OPTIONAL argument, which is a trap
-worth naming: a caller that omits it still typechecks and silently reports the pre-flag
-Platinum-only answer. `loadSecretViewsForUser` therefore looks the metadata up itself rather
-than making five routes remember to pass it — only two of them have the project row in scope.
+`buildSecretView` takes the project metadata through a REQUIRED argument, and so do the three
+functions in `network-boundary-availability.ts`. That is the second answer to this problem; the
+first two were both wrong and are worth recording, because the failure mode is invisible.
+
+An OPTIONAL argument was the original. It let a caller omit the project and still typecheck,
+silently reporting the pre-flag Platinum-only answer — a wrong feature verdict that no test
+happened to look at. The second attempt had `loadSecretViewsForUser` read
+`projects.metadata` itself so no route had to remember. That hid a DB read inside a serializer
+and broke 22 route tests whose mock whitelists the tables it will serve; the mock was right.
+
+Required is the answer: tsc names every caller, and all five have the project row in scope. One
+caveat found the hard way — a required POSITIONAL parameter is not enough. The type is
+`unknown`, so it accepts anything, and a call site that had been passing `agentGrants` in that
+slot compiled while feeding the grants config in as the project metadata. The signature is
+named options for that reason.
 
 #### Blocked on infrastructure, not code
 

@@ -162,8 +162,15 @@ export function AppsView({ projectId }: { projectId: string }) {
   const appsGate = useFeatureFlag(projectId, 'apps');
   const apps = useProjectApps(appsGate.enabled ? projectId : null);
   const searchParams = useSearchParams();
+  // Apps own their leaves — the routes assert project.app.write for policy and
+  // shape changes and project.app.deploy for anything that changes what the
+  // public hostname serves. Gating on project.customize.write let a custom role
+  // that granted Apps still render read-only, and one that revoked Apps still
+  // render the controls.
   const canWrite =
-    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_CUSTOMIZE_WRITE).allowed === true;
+    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_APP_WRITE).allowed === true;
+  const canDeploy =
+    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_APP_DEPLOY).allowed === true;
 
   useEffect(() => {
     const target = searchParams.get('open_app');
@@ -236,7 +243,13 @@ export function AppsView({ projectId }: { projectId: string }) {
       ) : apps.data?.length ? (
         <ul className="grid gap-4 md:grid-cols-2">
           {apps.data.map((app) => (
-            <AppRow key={app.app_id} projectId={projectId} app={app} canWrite={canWrite} />
+            <AppRow
+              key={app.app_id}
+              projectId={projectId}
+              app={app}
+              canWrite={canWrite}
+              canDeploy={canDeploy}
+            />
           ))}
         </ul>
       ) : (
@@ -272,7 +285,17 @@ export function AppsView({ projectId }: { projectId: string }) {
   );
 }
 
-function AppRow({ projectId, app, canWrite }: { projectId: string; app: App; canWrite: boolean }) {
+function AppRow({
+  projectId,
+  app,
+  canWrite,
+  canDeploy,
+}: {
+  projectId: string;
+  app: App;
+  canWrite: boolean;
+  canDeploy: boolean;
+}) {
   const apps = useProjectApps(projectId);
   const deployments = useAppDeployments(projectId, app.app_id);
   const access = useAppAccess(projectId, app.app_id);
@@ -369,7 +392,7 @@ function AppRow({ projectId, app, canWrite }: { projectId: string; app: App; can
               </Button>
             </Hint>
           ) : null}
-          {canWrite ? (
+          {canDeploy ? (
             <Hint label={app.desired_state === 'running' ? 'Suspend App' : 'Wake App'}>
               <Button
                 size="icon"
@@ -431,7 +454,7 @@ function AppRow({ projectId, app, canWrite }: { projectId: string; app: App; can
                   key={deployment.deployment_id}
                   deployment={deployment}
                   active={deployment.deployment_id === app.active_deployment_id}
-                  canWrite={canWrite}
+                  canDeploy={canDeploy}
                   rollbackPending={deployments.rollback.isPending}
                   onRollback={async () => {
                     try {
@@ -650,13 +673,13 @@ function AppAccessForm({
 function DeploymentRow({
   deployment,
   active,
-  canWrite,
+  canDeploy,
   rollbackPending,
   onRollback,
 }: {
   deployment: AppDeployment;
   active: boolean;
-  canWrite: boolean;
+  canDeploy: boolean;
   rollbackPending: boolean;
   onRollback: () => void;
 }) {
@@ -671,7 +694,7 @@ function DeploymentRow({
         {deployment.hosting_provider ? ` · ${deployment.hosting_provider}` : ''}
       </span>
       {active ? <span className="text-muted-foreground text-xs">Live</span> : null}
-      {canWrite && deployment.status === 'ready' && !active ? (
+      {canDeploy && deployment.status === 'ready' && !active ? (
         <Button size="xs" variant="ghost" disabled={rollbackPending} onClick={onRollback}>
           {rollbackPending ? <Loading /> : <ClockCounterClockwiseIcon className="size-3.5" />}
           Roll back

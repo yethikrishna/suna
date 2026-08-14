@@ -25,17 +25,13 @@ import { and, count, eq, inArray, isNull } from 'drizzle-orm';
 import { config } from '../config';
 import { assertAppBudgetAvailable } from './budget';
 import { checkBillingActive } from '../billing/services/billing-gate';
-import { getTier, isPaidTier } from '../billing/services/tiers';
+import { getTier } from '../billing/services/tiers';
 import { resolveAccountTier } from '../shared/account-limits';
 import { db } from '../shared/db';
 import { SANDBOX_SPEC_LIMITS } from '../snapshots/dockerfile-layer';
 
 /** An App machine may not exceed what a session sandbox may. */
 export const APP_MACHINE_LIMITS = SANDBOX_SPEC_LIMITS;
-
-/** Apps an account may own concurrently. Archived (deleted) Apps do not count. */
-export const FREE_TIER_APP_LIMIT = 1;
-export const MAX_APPS_PER_ACCOUNT = 100;
 
 /** Per-App monthly compute safety limit — the spec default, now bounded. */
 export const DEFAULT_APP_MONTHLY_BUDGET_USD = 5;
@@ -147,8 +143,14 @@ export async function assertAppAccountFunded(accountId: string): Promise<void> {
 /* ─── 3. App count ───────────────────────────────────────────────────────── */
 
 /**
- * Apps an account may own. Uncapped when billing is off (local / self-hosted)
- * and for Enterprise; one for a free account, mirroring its single project.
+ * Apps an account may own. Deliberately NOT a new plan dimension: no plan in
+ * PLAN_CATALOG prices Apps, so inventing a number here would be a pricing
+ * decision wearing an engineering hat. The bound is the plan's existing
+ * concurrent-workload allowance, which is a real, per-tier value — an account
+ * may own as many Apps as it may run sessions. Uncapped when billing is off
+ * (local / self-hosted) and for Enterprise; an operator can override it.
+ *
+ * If Apps ever get their own plan entitlement, this is the one place to read it.
  */
 export async function maxAppsForAccount(accountId: string): Promise<number> {
   if (!billingEnabled()) return Number.MAX_SAFE_INTEGER;
@@ -156,7 +158,7 @@ export async function maxAppsForAccount(accountId: string): Promise<number> {
   if (override !== null) return override;
   const tier = (await resolveAccountTier(accountId)) ?? 'free';
   if (tier === 'enterprise') return Number.MAX_SAFE_INTEGER;
-  return isPaidTier(tier) ? MAX_APPS_PER_ACCOUNT : FREE_TIER_APP_LIMIT;
+  return getTier(tier).concurrentSessionLimit;
 }
 
 export async function countAccountApps(accountId: string): Promise<number> {

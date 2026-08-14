@@ -556,18 +556,60 @@ is the failure this whole document exists to unpick. What the flag really assert
 project's sandbox image runs the shim", a fact the API cannot introspect. Turn it on once a
 fresh sandbox has been *observed* running the shim, not merely once the code is merged.
 
-#### Left: the guest half
+#### Done: the guest half
 
-1. **Ship the shim and start it.** No new image artifact is needed — the daemon already ships
-   in the image and already starts child processes, so it can host the shim. It needs the
-   session token, project id, and the host->identifier rules (no values).
-2. **Trust the CA.** Install the ephemeral CA into the system store *and* the per-runtime env
-   vars. §7.6 measured which ones actually matter.
-3. **Point the clients.** `HTTPS_PROXY` plus `NODE_USE_ENV_PROXY=1` and `REQUESTS_CA_BUNDLE`.
-4. **Optional: the allow-list.** Not required for the security property — an agent that
+Built as `apps/kortix-sandbox-agent-server/src/egress-shim/`. Items 1-3 below were the plan;
+all three shipped. Item 4 remains optional and unbuilt.
+
+1. **The shim runs in the daemon.** No new image artifact — the daemon already ships in the
+   image, so it hosts the shim on loopback `4321`. It needed the session token, project id and
+   host->identifier rules, and **every one of those was already injected at provision**: the
+   rules are the `delivery:'network'` entries of `KORTIX_SECRET_CAPABILITIES`, and the rest are
+   `KORTIX_PROJECT_ID` / `KORTIX_API_URL` / `KORTIX_CLI_TOKEN`. No new API plumbing at all.
+2. **The CA is trusted.** Minted per sandbox at boot, key held in memory only and dropped on
+   shutdown. Written as a bundle of the SYSTEM roots plus our CA, and installed into the OS
+   store best-effort.
+3. **The clients are pointed at it.** The measured set from §7.6, delivered to the agent's
+   shells through `agent-env.sh` (BASH_ENV) and to the opencode process for its in-process
+   HTTP clients.
+4. **Optional: the allow-list.** Still not required for the security property — an agent that
    bypasses the shim gets an *unauthenticated* request, not a credential — so it is egress
    restriction, a separate feature. It also needs a stable Kortix egress address, which
    `dev-api` (Cloudflare-fronted) does not provide.
+
+**Broker mode only.** The API-side ancestor had an `inject` mode that held the credential
+literally. It is absent from the guest copy on purpose: a binary running inside the sandbox
+must be structurally incapable of holding the thing this design exists to keep out. The
+API-side proxy had no production caller and was deleted.
+
+**`KORTIX_CLI_TOKEN`, not `KORTIX_TOKEN`.** The sandbox holds two credentials and the obvious
+one is wrong. `KORTIX_TOKEN`/`KORTIX_SANDBOX_TOKEN` is the daemon's own identity and carries no
+user, so project-scoped routes reject it — the broker route requires `authType==='pat'` plus a
+session id plus an agent grant. Reaching for the obvious name yields a 403 on every relay.
+Absent `KORTIX_CLI_TOKEN`, the shim does not start and says which piece was missing.
+
+**Two defects found by an adversarial pass over the first draft**, both now pinned by tests:
+
+- *gzip silently defeated echo redaction.* The broker redacts by scanning response BYTES; a
+  compressed body does not contain them. `curl` offers gzip by default and the broker does not
+  block `accept-encoding`, so forwarding the guest's value returned echoed credentials intact.
+  The shim forces `identity`.
+- *Only 4 of the 12 headers the broker REJECTS were stripped.* `sanitizeHeaders` 400s rather
+  than stripping, so a cookie-bearing client or `curl -H 'Authorization: …'` hard-failed. The
+  full set is stripped, and a test reads the broker's real list off disk so the copy cannot
+  drift.
+
+**A third Bun divergence, measured** (bun 1.3.14 vs node v22.22.0): Bun fires `'upgrade'`, but
+a write from that handler never reaches the client — a websocket attempt hung forever with
+nothing in the log. It is reset instead. This joins `emit('connection')` being a no-op and
+`SNICallback` never firing; all three shape this file's architecture.
+
+**Known limits of the relay path**, inherited from the broker and worth stating: it is fully
+buffered, so no streaming, SSE, or websockets; 1 MiB request / 5 MiB response caps; redirects
+are followed server-side and the guest never sees a 3xx; the response header whitelist drops
+`set-cookie` and friends. And echo semantics differ from Platinum — the edge BLOCKS, the broker
+REDACTS — so the same secret behaves differently depending on which mechanism serves it. The
+capability catalog still advertises `on_echo:'block'`, which is wrong for shim projects.
 
 The web gate moved into the *done* half along with the flag. `networkBoundaryAvailability`
 (`apps/web/.../secret-delivery.ts`) reads `project.experimental.network_boundary_shim` and

@@ -554,8 +554,24 @@ async function connectorGateRefusal(
 // that name before the session's bound agent has even loaded.
 function isConcreteAgentSwitch(requestedAgent: string | null, sessionAgent: string): boolean {
   if (!requestedAgent) return false;
+  // Asking for the sentinel is asking for "this session's own agent" — never a
+  // switch, and there is no concrete agent to authorize.
   if (requestedAgent === DEFAULT_AGENT_SENTINEL) return false;
-  if (sessionAgent === DEFAULT_AGENT_SENTINEL) return false;
+  // NOTE: there is deliberately NO `sessionAgent === DEFAULT_AGENT_SENTINEL`
+  // carve-out here. There used to be, and it was an authorization bypass
+  // (CWE-863): the body's `agent` is only stripped when the REQUESTED agent is
+  // the sentinel (see the `bodyWithoutPromptAgent` call site), so a
+  // `default`-bound session naming a CONCRETE agent really did run that agent
+  // and really did have the token re-minted to its connector/Kortix-CLI grant —
+  // while skipping the `project.agent.read` check entirely. Anyone who could
+  // use a default-bound session could therefore run any agent in the project.
+  //
+  // The carve-out was written for the old 409 refusal, where it was right: the
+  // client resolves "the default" to a concrete name for display and echoes it
+  // back, and refusing that ordinary echo 409'd every new session. It is wrong
+  // for an authorization check. Authorizing the echo is correct and cheap — the
+  // caller genuinely is asking to run that agent, and a member entitled to it
+  // passes exactly as they do on the concrete-to-concrete path.
   return requestedAgent !== sessionAgent;
 }
 

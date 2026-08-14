@@ -53,6 +53,7 @@ import {
 import {
   PROXY_RETRY_BUDGET_MS,
   isLongTurnCompletionRequest,
+  isUploadRequest,
   proxyAttemptTimeoutMs,
 } from '../preview-retry-budget';
 import { claimPromptDelivery, promptDeliveryKey, releasePromptDelivery } from '../prompt-dedupe';
@@ -1036,8 +1037,17 @@ export async function forwardToSandbox(
   // providers there is no such signal, so the preview proxy never errors the row;
   // liveness is owned by the health-check loop + reconciler, not a port request.
   let sawDeadSignal = false;
-  // False until this request reaches the non-idempotent upstream prompt fetch.
-  // Pre-prompt failures, such as env synchronization, are safe to retry.
+  // A file upload is non-replayable for the same reason a prompt delivery is,
+  // and the consequence is worse. The daemon NEVER overwrites: it writes with
+  // O_CREAT|O_EXCL and, on collision, suffixes the name. So re-sending a body it
+  // already wrote does not get absorbed — it lands a SECOND file. With this loop
+  // retrying up to 4 times and the SDK retrying up to 3 on top, one user action
+  // could deposit up to 12 copies and still report failure.
+  const uploadDelivery = isUploadRequest({ method, path: remainingPath });
+  // Requests whose body must never be sent twice.
+  const nonReplayableWrite = promptDelivery || uploadDelivery;
+  // False until this request reaches the non-idempotent upstream fetch.
+  // Failures before it, such as env synchronization, are safe to retry.
   let promptDeliveryMayHaveReachedUpstream = false;
   // A blocking session-turn (`POST /session/:id/message`) whose single attempt
   // (it gets ~the whole remaining budget, see proxyAttemptTimeoutMs) still hit
@@ -1239,7 +1249,7 @@ export async function forwardToSandbox(
       );
       let upstream: Response;
       try {
-        if (promptDelivery) promptDeliveryMayHaveReachedUpstream = true;
+        if (nonReplayableWrite) promptDeliveryMayHaveReachedUpstream = true;
         upstream = await fetch(targetUrl, {
           method,
           headers,
@@ -1303,12 +1313,12 @@ export async function forwardToSandbox(
       }
 
       if (upstream.status === 502 || upstream.status === 503) {
-        // A prompt-delivery POST is NEVER retried on a 5xx: an upstream 502 can
-        // mean the sandbox already accepted the message (the gateway just dropped
-        // the response), so re-POSTing would enqueue it twice. Pass the upstream
-        // response straight through to the passthrough below. GET/idempotent
-        // requests retry as before.
-        if (!promptDelivery && attempt < MAX_RETRIES) {
+        // A prompt-delivery or upload POST is NEVER retried on a 5xx: an upstream
+        // 502 can mean the sandbox already accepted the body (the gateway just
+        // dropped the response), so re-POSTing would enqueue the message twice or
+        // write the file twice. Pass the upstream response straight through to the
+        // passthrough below. GET/idempotent requests retry as before.
+        if (!nonReplayableWrite && attempt < MAX_RETRIES) {
           // Port not ready yet — sandbox is booting (container running, port down).
           console.warn(
             `[PREVIEW] Sandbox ${sandboxId}:${port} returned ${upstream.status} (port not ready, attempt ${attempt + 1}/${MAX_RETRIES + 1})`,
@@ -1320,7 +1330,7 @@ export async function forwardToSandbox(
         // Retries exhausted and the port still isn't answering. Show the friendly
         // "port unreachable" page to browsers instead of the upstream's bare 5xx;
         // programmatic clients still get the real status + JSON via passthrough.
-        if (!promptDelivery && isBrowserNavigation(incomingHeaders)) {
+        if (!nonReplayableWrite && isBrowserNavigation(incomingHeaders)) {
           void markSandboxUsed(sandboxId);
           return portUnreachableResponse({
             port,
@@ -1447,17 +1457,18 @@ export async function forwardToSandbox(
         break;
       }
 
-      // A prompt-delivery POST must NOT be blindly retried on an ambiguous
-      // failure: a timeout / abort / connection reset can mean the sandbox
-      // already received and accepted the message, so re-POSTing would enqueue
-      // it twice. Only retry when the error PROVES nothing reached the box (the
-      // upstream refused the connection). Any other error stops here and returns
-      // the friendly unreachable response below. (The Daytona "no IP / no runner"
-      // 400 branch — a rejection before opencode — retries in the response path
-      // above, which is safe.)
+      // A prompt-delivery or upload POST must NOT be blindly retried on an
+      // ambiguous failure: a timeout / abort / connection reset can mean the
+      // sandbox already received and accepted the body, so re-POSTing would
+      // enqueue the message twice or write the file twice. Only retry when the
+      // error PROVES nothing reached the box (the upstream refused the
+      // connection). Any other error stops here and returns the friendly
+      // unreachable response below. (The Daytona "no IP / no runner" 400 branch —
+      // a rejection before opencode — retries in the response path above, which
+      // is safe.)
       if (
         promptDeliveryMayHaveReachedUpstream &&
-        promptDelivery &&
+        nonReplayableWrite &&
         !isConnectionRefusedError(err)
       ) {
         // Ambiguous: the box may already hold the message. Keep the dedupe
@@ -1595,6 +1606,11 @@ export async function resolvePreviewWsUpstream(opts: {
   return { ok: true, url: upstreamUrl.toString(), headers };
 }
 
+// The largest body the proxy will accept, matching Bun's own default socket
+// ceiling (128 MiB). Declared here so the limit is a stated number the client is
+// told about, rather than an implicit runtime default it discovers by failing.
+export const MAX_PROXY_BODY_BYTES = 128 * 1024 * 1024;
+
 // === Route handlers: ALL /:sandboxId/:port(/*) ===
 //
 // Thin wrappers around forwardToSandbox — extract params from the Hono context.
@@ -1611,6 +1627,37 @@ preview.all('/:sandboxId/:port/*', async (c) => {
   const userId = c.get('userId') as string;
 
   const method = c.req.method;
+
+  // Refuse an over-large body BEFORE reading it, and say so in a response the
+  // client can actually read.
+  //
+  // Neither Bun.serve call sets `maxRequestBodySize`, so the effective ceiling is
+  // Bun's 128 MiB default, enforced at the SOCKET. That returns a bare 413 with
+  // an EMPTY body and no CORS headers, so a cross-origin browser upload surfaces
+  // as an opaque network/CORS failure rather than "your file is too big", and the
+  // SDK can only render `Upload failed (413): Request Entity Too Large` — no
+  // filename, no stated limit. Checking Content-Length here gets in front of the
+  // socket and returns a real JSON body through `jsonProxyError`, which attaches
+  // the CORS headers every other proxy response carries.
+  //
+  // Content-Length is client-supplied and absent on a chunked body, so this is
+  // the friendly path, not the enforcement boundary. The socket limit remains the
+  // hard stop.
+  const contentLength = Number(c.req.header('content-length') ?? '');
+  if (Number.isFinite(contentLength) && contentLength > MAX_PROXY_BODY_BYTES) {
+    return jsonProxyError(
+      {
+        error: `Request body is ${Math.round(contentLength / 1_048_576)} MB, over the ${Math.round(MAX_PROXY_BODY_BYTES / 1_048_576)} MB limit.`,
+        message: `Request body is ${Math.round(contentLength / 1_048_576)} MB, over the ${Math.round(MAX_PROXY_BODY_BYTES / 1_048_576)} MB limit.`,
+        code: 'UPLOAD_TOO_LARGE',
+        max_bytes: MAX_PROXY_BODY_BYTES,
+        received_bytes: contentLength,
+      },
+      413,
+      c.req.header('Origin') || '',
+    );
+  }
+
   let body: ArrayBuffer | undefined;
   if (method !== 'GET' && method !== 'HEAD') {
     body = await c.req.raw.clone().arrayBuffer();

@@ -201,6 +201,13 @@ A self-host has no Cloudflare Apps Worker to sign requests; its own reverse
 proxy is the trust boundary, and `KORTIX_APPS_ALLOW_DIRECT_EDGE=true` tells the
 API to accept direct App traffic. `kortix self-host configure` sets both.
 
+`X-Kortix-App-Host` is an EDGE-SIGNED field: the Worker sets it and the HMAC
+covers it. It is authoritative only where that signature is verified. In
+direct-edge mode nothing verifies a signature, so the API ignores the header
+entirely and routes on the real `Host` — otherwise any caller able to reach the
+public API origin could name any App in the header and be proxied into it, past
+that App's access policy.
+
 ## Cloudflare routing
 
 A dedicated `infra/cloudflare/workers/apps-router` Worker owns

@@ -413,10 +413,32 @@ export interface ResolvedAppRequest extends ResolvedAppHost {
   publicHost: string;
 }
 
+/**
+ * Direct-edge mode: no Cloudflare Apps Worker fronts this deployment, so the
+ * operator's own reverse proxy is the trust boundary and requests arrive
+ * unsigned. See verifyAppEdgeRequest.
+ */
+function appDirectEdgeMode(): boolean {
+  return process.env.KORTIX_APPS_ALLOW_DIRECT_EDGE === 'true';
+}
+
+/**
+ * The public hostname a request targets.
+ *
+ * `x-kortix-app-host` is an EDGE-SIGNED field: the Apps Worker sets it and the
+ * HMAC verifyAppEdgeRequest checks covers it, which is what binds the header to
+ * a real edge. It is therefore only trustworthy where that signature is also
+ * verified.
+ *
+ * In direct-edge mode nothing verifies a signature, so trusting the header
+ * would let ANY caller who can reach the public API origin name any App —
+ * `x-kortix-app-host: <env>-<slug>-<route-key>.apps.<domain>` — and have the
+ * API proxy them into it, past the App's own access policy. There, only the
+ * real Host header decides which App (if any) a request is for.
+ */
 export function resolveAppRequest(request: Request, url: URL): ResolvedAppRequest | null {
-  const publicHost = (request.headers.get(EDGE_HOST_HEADER) || url.hostname)
-    .toLowerCase()
-    .replace(/\.$/, '');
+  const claimedHost = appDirectEdgeMode() ? null : request.headers.get(EDGE_HOST_HEADER);
+  const publicHost = (claimedHost || url.hostname).toLowerCase().replace(/\.$/, '');
   const matched = resolveAppHost(publicHost);
   return matched ? { ...matched, publicHost } : null;
 }
@@ -450,7 +472,10 @@ export function verifyAppEdgeRequest(
   publicHost = url.hostname,
 ): boolean {
   if (local && (process.env.KORTIX_APPS_ALLOW_LOCAL_EDGE !== 'false')) return true;
-  if (process.env.KORTIX_APPS_ALLOW_DIRECT_EDGE === 'true') return true;
+  // Unsigned by design — the operator's reverse proxy is the trust boundary.
+  // resolveAppRequest refuses the caller-supplied host header in this mode, so
+  // the App being served is the one the real Host header names.
+  if (appDirectEdgeMode()) return true;
   const host = request.headers.get(EDGE_HOST_HEADER);
   const timestamp = request.headers.get(EDGE_TIMESTAMP_HEADER);
   const signature = request.headers.get(EDGE_SIGNATURE_HEADER);

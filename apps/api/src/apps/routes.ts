@@ -24,6 +24,7 @@ import { AppHostingProvider } from './hosting';
 import { deploymentEventsAsLogs } from './logs';
 import { ensureAppRuntimeRunning, loadPublicApp } from './public-proxy';
 import { type AppSourceSpec } from './spec';
+import { appPublicUrl } from './hostnames';
 import { AppBudgetExceededError } from './budget';
 import {
   APP_MACHINE_LIMITS,
@@ -156,14 +157,7 @@ function sourceFromWire(input: z.infer<typeof SourceSchema>): AppSourceSpec {
   }
 }
 
-export function appPublicUrl(row: { slug: string; routeKey: string }): string {
-  const localPort = process.env.KORTIX_APPS_LOCAL_PORT || String(config.PORT);
-  if (process.env.KORTIX_APPS_LOCAL === 'true' || config.KORTIX_URL.includes('localhost')) {
-    return `http://${row.routeKey}.apps.localhost:${localPort}`;
-  }
-  const domain = (process.env.KORTIX_APPS_BASE_DOMAIN || 'apps.kortix.com').replace(/^\.+|\.+$/g, '');
-  return `https://${config.INTERNAL_KORTIX_ENV}-${row.slug}-${row.routeKey}.${domain}`;
-}
+export { appPublicUrl } from './hostnames';
 
 function serializeApp(row: typeof apps.$inferSelect) {
   return {

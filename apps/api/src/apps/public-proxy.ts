@@ -13,6 +13,7 @@ import { AppAccountUnfundedError, AppLimitError, assertAppComputeAllowed } from 
 import { AppHostingProvider } from './hosting';
 import { resolveFeatureFlag } from '../feature-flags/registry';
 import { enqueueCurrentAppRuntime } from './deployment-worker';
+import { resolveAppHost, type ResolvedAppHost } from './hostnames';
 import {
   appAccessCookie,
   appAccessCookieName,
@@ -405,28 +406,11 @@ export async function authorizeAppRequest(
   return appAccessResponse(request, app);
 }
 
-export interface ResolvedAppHost {
-  routeKey: string;
-  local: boolean;
-}
+export type { ResolvedAppHost } from './hostnames';
+export { resolveAppHost } from './hostnames';
 
 export interface ResolvedAppRequest extends ResolvedAppHost {
   publicHost: string;
-}
-
-export function resolveAppHost(hostname: string): ResolvedAppHost | null {
-  const host = hostname.toLowerCase().replace(/\.$/, '');
-  const local = /^([a-f0-9]{16})\.apps\.localhost$/.exec(host);
-  if (local) return { routeKey: local[1]!, local: true };
-  const domain = (process.env.KORTIX_APPS_BASE_DOMAIN || 'apps.kortix.com')
-    .toLowerCase()
-    .replace(/^\.+|\.+$/g, '');
-  if (!host.endsWith(`.${domain}`)) return null;
-  const label = host.slice(0, -(domain.length + 1));
-  if (label.includes('.')) return null;
-  const match = /^(dev|staging|prod|preview)-[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?-([a-f0-9]{16})$/.exec(label);
-  if (!match || match[1] !== config.INTERNAL_KORTIX_ENV) return null;
-  return { routeKey: match[2]!, local: false };
 }
 
 export function resolveAppRequest(request: Request, url: URL): ResolvedAppRequest | null {

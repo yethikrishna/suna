@@ -190,11 +190,6 @@ export function AppsView({ projectId }: { projectId: string }) {
       description="Deploy apps to stable Kortix URLs. They wake on request and stop when idle."
       docs="/docs/sdk/apps"
       className="max-w-5xl"
-      action={
-        <Badge size="sm" variant="beta">
-          Experimental
-        </Badge>
-      }
       showSidebarToggleButton
     >
       {appsGate.isLoading ? (

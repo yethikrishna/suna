@@ -1,26 +1,39 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
-
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { Agent, MessageWithParts, ProviderListResponse } from '@kortix/sdk/react';
-import { PaperclipIcon as Paperclip } from '@phosphor-icons/react';
+import type { ProviderListResponse } from '@kortix/sdk/react';
 
 import type { FlatModel } from '../model-flatten';
 import type { ModelDefaultControls } from '../model-selector';
 import { ModelSelector } from '../model-selector';
-import { VoiceRecorder } from '../voice-recorder';
-import { AgentSelector } from './agent-selector';
+import { ReasoningEffortSelector } from '../reasoning-effort-selector';
 import { SendStopControl } from './send-stop-control';
-import { TokenProgress } from './token-progress';
-import { VariantSelector } from './variant-selector';
 
 /**
- * The composer's bottom toolbar — the familiar one.
+ * The composer's bottom toolbar — the familiar one, now scoped to the two
+ * controls that describe WHAT will answer.
  *
- *  - LEFT: attach, agent, model, variant, reasoning effort — all inline, all
- *    always visible, each showing its current value at rest.
- *  - RIGHT: token progress (ambient, no label), voice, send/stop.
+ *  - LEFT: model, reasoning effort — inline, showing their current value at
+ *    rest. Variant (thinking mode) stays folded inside the model popover: it
+ *    is a setting on top of the selected model, not a peer of it. Reasoning
+ *    effort is NOT — it is a per-project setting, so it sits beside the model
+ *    rather than two clicks inside it.
+ *  - RIGHT: voice, send/stop.
+ *
+ * Attach, agent, and token progress used to sit here. They now live in the
+ * row BELOW the card (`composer.tsx`, directly after the card element) so the
+ * card holds the message and the controls that shape the reply, while the
+ * under-row holds what you bring to it (files, agent) and what it costs
+ * (context ring, hard right). Do not re-add them here — they would render
+ * twice.
+ *
+ * Reasoning effort's placement is contested and was resolved deliberately.
+ * `main` removed it from this bar (PR #6381: "it lives inside the
+ * session-overrides panel — the bar keeps only agent + model") and its
+ * overrides panel does carry a working control. This branch keeps it here as
+ * well, by explicit decision, which means it is reachable from both places.
+ * If that duplication is unwanted, the fix is to delete the
+ * `ReasoningEffortSelector` render below plus the `reasoningMenuOpen` pair —
+ * not to assume a merge dropped it by accident.
  *
  * Two earlier passes are recorded here so they are not re-attempted:
  *
@@ -31,18 +44,11 @@ import { VariantSelector } from './variant-selector';
  *     Removed: it traded a glanceable row for a click and a guess, and the two
  *     most-changed controls stopped showing which agent and model were active
  *     without opening a menu. Simplifying the TRANSCRIPT was the goal; the
- *     composer was already fine.
+ *     composer was already fine. Task 10's popover-fold keeps agent and model
+ *     glanceable at rest — only variant/effort, which are secondary to the
+ *     model choice, moved behind a click.
  */
 export interface ComposerToolbarProps {
-  onAttachClick: () => void;
-
-  /** Already filtered to non-hidden, non-subagent agents (`primaryAgents` in
-   *  session-chat-input.tsx) — this component does no further filtering. */
-  agents: Agent[];
-  selectedAgent: string | null;
-  onAgentChange?: (agentName: string | null) => void;
-  agentSelectorLocked: boolean;
-
   models: FlatModel[];
   /** Threaded through to ModelSelector so it can show its loading state —
    *  added on main while this toolbar was being extracted. */
@@ -52,15 +58,32 @@ export interface ComposerToolbarProps {
   modelDefaultControls?: ModelDefaultControls;
   providers?: ProviderListResponse;
   modelRequired: boolean;
+  /**
+   * Lets the composer open the model popover from outside the toolbar — the
+   * `/` palette's "Switch model" and "Set reasoning effort" rows. Both land on
+   * this one control: reasoning effort is a footer row INSIDE the model
+   * popover, not a popover of its own (see `model-selector.tsx`).
+   *
+   * Optional, so a toolbar rendered without them behaves exactly as before,
+   * with `ModelSelector` owning its own open state.
+   */
+  modelMenuOpen?: boolean;
+  onModelMenuOpenChange?: (open: boolean) => void;
+  /** Same, for the reasoning-effort dropdown — the `/` palette's "Set
+   *  reasoning effort" row. A separate pair because it is now a separate
+   *  control, not a section inside the model popover. */
+  reasoningMenuOpen?: boolean;
+  onReasoningMenuOpenChange?: (open: boolean) => void;
 
   variants: string[];
   selectedVariant: string | null;
   onVariantChange?: (variant: string | null) => void;
 
-  messages: MessageWithParts[] | undefined;
-  onContextClick?: () => void;
+  projectId: string | undefined;
 
   toolbarSlot?: React.ReactNode;
+  /** Rendered FIRST in the left cluster, before the model selector. */
+  leading?: React.ReactNode;
 
   onTranscription: (text: string) => void;
   voiceDisabled: boolean;
@@ -82,11 +105,6 @@ export interface ComposerToolbarProps {
 }
 
 export function ComposerToolbar({
-  onAttachClick,
-  agents,
-  selectedAgent,
-  onAgentChange,
-  agentSelectorLocked,
   models,
   modelsLoading,
   selectedModel,
@@ -94,12 +112,16 @@ export function ComposerToolbar({
   modelDefaultControls,
   providers,
   modelRequired,
+  modelMenuOpen,
+  onModelMenuOpenChange,
+  reasoningMenuOpen,
+  onReasoningMenuOpenChange,
   variants,
   selectedVariant,
   onVariantChange,
-  messages,
-  onContextClick,
+  projectId,
   toolbarSlot,
+  leading,
   onTranscription,
   voiceDisabled,
   isSending,
@@ -117,47 +139,13 @@ export function ComposerToolbar({
   modelUnavailable,
   onSubmit,
 }: ComposerToolbarProps) {
-  const tHardcodedUi = useTranslations('hardcodedUi');
-
-  const showAgent = agents.length > 0 && !!(onAgentChange || agentSelectorLocked);
   const showModel = (models.length > 0 || modelRequired) && !!onModelChange;
-  const showVariant = variants.length > 0 && !!onVariantChange;
 
   return (
-    <div className="mb-1.5 flex items-center justify-between gap-1 overflow-visible pr-1.5 pl-2">
-      {/* LEFT */}
-      <div className="flex min-w-0 items-center gap-0 overflow-visible">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onAttachClick}
-              className="text-muted-foreground hover:text-foreground hover:bg-muted inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors"
-              aria-label="Attach files"
-            >
-              <Paperclip className="h-4 w-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <p>
-              {tHardcodedUi.raw('componentsSessionSessionChatInput.line2252JsxTextAttachFiles')}
-            </p>
-          </TooltipContent>
-        </Tooltip>
+    <div className="kortix-composer-toolbar flex items-center justify-between gap-1 overflow-visible">
+      <div className="flex min-w-0 items-center gap-1 overflow-visible">
+        {leading}
 
-        {/* Agent, model, variant and reasoning effort sit INLINE, always
-            visible — the composer people already know. An earlier pass hid
-            them behind a "…" popover; that traded one glanceable row for a
-            click and a guess, and the two most-changed controls (agent and
-            model) stopped showing their current value at rest. */}
-        {showAgent && (
-          <AgentSelector
-            agents={agents}
-            selectedAgent={selectedAgent}
-            onSelect={onAgentChange ?? (() => {})}
-            disabled={agentSelectorLocked}
-          />
-        )}
         {showModel && (
           <ModelSelector
             models={models}
@@ -166,32 +154,25 @@ export function ComposerToolbar({
             onSelect={onModelChange!}
             providers={providers}
             defaultControls={modelDefaultControls}
-          />
-        )}
-        {showVariant && (
-          <VariantSelector
+            triggerLabelClassName="max-w-[7rem]"
             variants={variants}
             selectedVariant={selectedVariant}
-            onSelect={onVariantChange!}
+            onVariantChange={onVariantChange}
+            projectId={projectId}
+            open={modelMenuOpen}
+            onOpenChange={onModelMenuOpenChange}
           />
         )}
-        {/* Reasoning effort deliberately does NOT render on the bar — it lives
-            inside the session-overrides panel. The bar keeps only agent + model. */}
+
+        <ReasoningEffortSelector
+          model={selectedModel}
+          projectId={projectId}
+          open={reasoningMenuOpen}
+          onOpenChange={onReasoningMenuOpenChange}
+        />
       </div>
 
-      {/* RIGHT: ambient token progress, any slot content, voice, send/stop. */}
-      <div className="flex shrink-0 items-center gap-0">
-        <TokenProgress
-          messages={messages}
-          models={models}
-          selectedModel={selectedModel}
-          onContextClick={onContextClick}
-        />
-
-        {toolbarSlot}
-
-        <VoiceRecorder onTranscription={onTranscription} disabled={voiceDisabled} />
-
+      <div className="flex shrink-0 items-center gap-1.5">
         <SendStopControl
           isSending={isSending}
           isBusy={isBusy}

@@ -8742,3 +8742,23 @@ Nothing removed, nothing renamed.
 exactly ONE `handleSend` call per batch. A loop would reintroduce RC4 from
 `docs/superpowers/specs/2026-08-05-session-message-queue-design.md` —
 `handleSend` resolves on the server's 204 ACK, not on turn end.
+
+### 2026-08-13 — merge `main` → `message-input`: `claimBatch` learns command boundaries
+
+Semantic merge fix, TDD (RED first). `main` brought batch drain (`claimBatch`,
+`inFlightIds`); this branch brought `command` entries on `QueuedMessage`. Git
+auto-merged both cleanly into code that compiled but was wrong: `claimBatch`
+would merge a queued `/` command's args into a plain text prompt.
+
+**Changed** — `core/session/message-queue.ts`: `claimBatch` now claims a
+command entry alone and stops a text batch before a command entry. Additive
+behavior change, no public name touched, no snapshot drift.
+
+**Evidence** — `pnpm --filter @kortix/sdk test`: 1922 pass, 0 fail (145 files;
++2 new `claimBatch` command tests). `typecheck` clean. `smoke:install` passed
+(`✔ install smoke test passed`).
+
+**Host side (context):** `apps/web` `mergeQueuedBatch` now carries the head
+entry's `clientMessageId` in `overrides`, preserving the branch's retry-dedupe
+guarantee through the batch path; `session-chat.tsx` `sendQueuedBatch` =
+command dispatch (batch of one, guaranteed by `claimBatch`) + merged text send.

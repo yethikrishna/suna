@@ -58,6 +58,26 @@ export interface QueuedMessageInput<TFile = unknown, TMention = unknown> {
   agent?: string | null;
   model?: { providerID: string; modelID: string } | null;
   variant?: string | null;
+  /**
+   * A `/` slash command, when this entry runs one instead of sending `text`.
+   *
+   * The queue held only prompts, so a host with a command to send had nowhere
+   * to put it and ran it immediately — straight past a busy agent, ahead of
+   * everything already waiting. Ordering is the queue's entire purpose, and a
+   * command is a turn like any other; the only difference is which call puts it
+   * on the wire, which is the host's business at dispatch time.
+   *
+   * `name`, not a resolved command object: entries are serialized to survive a
+   * reload, and the command list is re-read when the entry actually runs, so a
+   * queued command can never go stale against a list that changed underneath
+   * it. `text` still carries the arguments, so an entry stays renderable and
+   * editable with no special case.
+   */
+  command?: {
+    name: string;
+    /** Where the chip sat in `text`, for display. See the host's serializer. */
+    split?: { before: string; after: string };
+  };
   createdAt: number;
 }
 
@@ -204,9 +224,11 @@ export function claimNext<TFile, TMention>(
  * here is one prompt, so there is no second turn to interleave with.
  *
  * The batch is the maximal leading run that shares the head's `agent`, `model`
- * and `variant` (see `sameDispatchOptions`). In practice that is the whole
- * queue; it is short only when the user changed model mid-queue, and then the
- * remainder goes out on the turn after under its own settings.
+ * and `variant` (see `sameDispatchOptions`) and contains no `command` entry —
+ * a command is its own turn, so it always claims alone. In practice that is
+ * the whole queue; it is short only when the user changed model mid-queue or
+ * queued a `/` command, and then the remainder goes out on the turn after
+ * under its own settings.
  *
  * Returns `claimed: []` when the queue is empty or something is already in
  * flight, so a caller that races itself sends once.
@@ -218,8 +240,21 @@ export function claimBatch<TFile, TMention>(
   const head = state.pending[0];
   if (!head) return { state, claimed: [] };
 
+  // A `/` command claims alone. It dispatches through the host's command path
+  // (a server-expanded template), so it cannot share a prompt with text
+  // entries — merged, its args would go out as literal prose with no command
+  // at all. The batch likewise stops *before* a command, which then heads its
+  // own claim on the turn after.
   let size = 1;
-  while (size < state.pending.length && sameDispatchOptions(head, state.pending[size])) size += 1;
+  if (!head.command) {
+    while (
+      size < state.pending.length &&
+      !state.pending[size].command &&
+      sameDispatchOptions(head, state.pending[size])
+    ) {
+      size += 1;
+    }
+  }
 
   const claimed = state.pending
     .slice(0, size)

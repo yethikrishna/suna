@@ -9,7 +9,6 @@ import {
   type AttachedFile,
   SessionChatInput,
   type SessionChatInputProps,
-  type TrackedMention,
 } from '@/features/session/session-chat-input';
 import { useRuntimeConfig } from '@kortix/sdk/react';
 import { type ModelKey, useSessionModelSelection } from '@kortix/sdk/react';
@@ -52,6 +51,8 @@ export function ComposerChatInput({
   prefill,
   inputSlot,
   toolbarSlot,
+  underbarPlacement,
+  slashMenuPlacement,
   cardClassName,
   boundAgentName,
   clearOnSend,
@@ -92,6 +93,8 @@ export function ComposerChatInput({
   } | null;
   inputSlot?: ReactNode;
   toolbarSlot?: ReactNode;
+  underbarPlacement?: SessionChatInputProps['underbarPlacement'];
+  slashMenuPlacement?: SessionChatInputProps['slashMenuPlacement'];
   /** Extra classes for the input card (e.g. the project-home radius override). */
   cardClassName?: string;
   /** Immutable project-session agent. When set, sends are locked to this agent. */
@@ -103,7 +106,11 @@ export function ComposerChatInput({
   queuePaused?: SessionChatInputProps['queuePaused'];
   queueIsRunning?: SessionChatInputProps['queueIsRunning'];
   onSendQueuedMessageNow?: SessionChatInputProps['onSendQueuedMessageNow'];
-  onQueueMessage?: (text: string, files?: AttachedFile[], mentions?: TrackedMention[]) => void;
+  // Mirrored from the composer rather than re-typed, like every other queue
+  // prop here. The re-typed copy silently lagged a parameter behind: it stopped
+  // at `mentions`, so the `command` argument the composer has passed since
+  // 27279d2232 was invisible to every host reading this file for the contract.
+  onQueueMessage?: SessionChatInputProps['onQueueMessage'];
   onRemoveQueuedMessage?: (id: string) => void;
   onEditQueuedMessage?: (id: string, text: string) => void;
   onReorderQueuedMessage?: (id: string, toIndex: number) => void;
@@ -149,8 +156,10 @@ export function ComposerChatInput({
     },
     [selectedAgentName],
   );
-  // Every axis a session can override, in one popover — built from the SAME
-  // agent/model/effort controls this toolbar already renders.
+  // The axes a session can override that have no control of their own —
+  // secrets, connectors, sandbox. Agent, model and effort are NOT passed: this
+  // toolbar already renders each of them, and a second live control one click
+  // away is a duplicate, not a convenience. See SessionOverridesComposer.
   const sessionScopeToolbar = useMemo(
     () =>
       projectId ? (
@@ -158,33 +167,11 @@ export function ComposerChatInput({
           projectId={projectId}
           sessionId={sessionId}
           onCommittedDraft={sessionId ? undefined : handleCommittedScope}
-          agents={local.agent.list}
           selectedAgent={selectedAgentName}
-          onAgentChange={lockedAgentName ? undefined : (name) => local.agent.set(name ?? undefined)}
-          agentLocked={!!lockedAgentName}
-          defaultAgentName={projectConfig?.open_code_default_agent}
-          models={local.model.list}
-          modelsLoading={providersLoading}
-          selectedModel={local.model.currentKey ?? null}
-          onModelChange={(m) => local.model.set(m ?? undefined, { recent: true })}
-          providers={providers}
-          defaultModel={local.model.defaults.resolveDefaultFor(selectedAgentName ?? undefined)}
           sandboxSlot={sandboxSlot}
         />
       ) : null,
-    [
-      handleCommittedScope,
-      local.agent,
-      local.model,
-      lockedAgentName,
-      projectConfig?.open_code_default_agent,
-      projectId,
-      providers,
-      providersLoading,
-      sandboxSlot,
-      selectedAgentName,
-      sessionId,
-    ],
+    [handleCommittedScope, projectId, sandboxSlot, selectedAgentName, sessionId],
   );
 
   const combinedToolbarSlot = useMemo(
@@ -236,6 +223,8 @@ export function ComposerChatInput({
       prefill={prefill}
       inputSlot={inputSlot}
       toolbarSlot={combinedToolbarSlot}
+      underbarPlacement={underbarPlacement}
+      slashMenuPlacement={slashMenuPlacement}
       cardClassName={cardClassName}
       sessionId={sessionId}
       projectId={projectId}

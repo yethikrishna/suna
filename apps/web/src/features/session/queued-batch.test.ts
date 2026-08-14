@@ -42,7 +42,22 @@ describe('mergeQueuedBatch', () => {
       message('second', { agent: 'build', model, variant: 'thinking' }),
     ]);
 
-    expect(merged?.overrides).toEqual({ agent: 'build', model, variant: 'thinking' });
+    expect(merged?.overrides).toEqual({
+      agent: 'build',
+      model,
+      variant: 'thinking',
+      clientMessageId: 'cm_first',
+    });
+  });
+
+  test('carries the head entry`s clientMessageId, so a retried entry re-sends one wire messageID', () => {
+    // A retry preserves `clientMessageId` (the store moves the entry, it does
+    // not re-create it). Sending it again makes the retried request body
+    // byte-identical, so the proxy's body-hash dedupe absorbs a prompt the
+    // server already accepted instead of delivering it twice.
+    const merged = mergeQueuedBatch([message('first'), message('second')]);
+
+    expect(merged?.overrides.clientMessageId).toBe('cm_first');
   });
 
   test('preserves the difference between an unresolved and an absent capture', () => {
@@ -52,6 +67,7 @@ describe('mergeQueuedBatch', () => {
       agent: undefined,
       model: undefined,
       variant: undefined,
+      clientMessageId: 'cm_a',
     });
     expect(mergeQueuedBatch([message('a', { agent: null })])?.overrides.agent).toBeNull();
   });

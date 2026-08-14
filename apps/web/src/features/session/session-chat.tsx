@@ -1716,6 +1716,15 @@ export function SessionChat({
   // runtime is connected + healthy). We need it here too so the render logic
   // can tell "still booting" apart from "genuinely gone".
   const runtimeReady = useRuntimeReady();
+  // Mirror it into a ref for `checkReadiness` below. That callback is invoked by
+  // `replayStartStash`'s own poll loop, so reading `runtimeReady` from the
+  // closure would pin the value captured when the effect first ran and never
+  // observe the runtime binding. Written in an effect, never during render —
+  // a render-phase ref write is what deadlocked the session shell before.
+  const runtimeReadyRef = useRef(runtimeReady);
+  useEffect(() => {
+    runtimeReadyRef.current = runtimeReady;
+  }, [runtimeReady]);
   const { data: session, isFetched: sessionFetched } = useRuntimeSession(sessionId);
   // useSessionSync is the SINGLE source of truth for messages (matches OpenCode SolidJS).
   // It fetches on first access, then SSE events keep it up to date.
@@ -1915,12 +1924,48 @@ export function SessionChat({
           selectedModelForSend = localModelSendKey;
         }
         if (!selectedModelForSend) return null;
+
+        // A first send that carries LOCAL files must also wait for this
+        // session's runtime to bind. `buildParts` below uploads them, and the
+        // upload resolves its base from the current-runtime store, which is
+        // empty until `useSession` binds it (startReady + sandbox.external_id).
+        // Model readiness can resolve from cached account defaults well before
+        // that, so without this an ordinary "type a prompt, attach a file, hit
+        // send on a brand-new session" raced the binding and the upload went
+        // out against an unresolved base. The SDK now refuses that outright
+        // (RuntimeNotReadyError) instead of issuing a relative-URL fetch to the
+        // WEB origin, so the failure is safe — but failing is still the wrong
+        // answer when waiting is available. Returning null keeps
+        // `replayStartStash` polling, exactly like an unresolved model.
+        //
+        // `useRuntimeReady` is the right gate rather than a bare url check: it
+        // already requires BOTH a healthy connection and a resolved url, and it
+        // falls back to `getActiveOpenCodeUrl()` so the self-hosted
+        // default-sandbox case (where the store url stays null) is not stalled
+        // forever.
+        //
+        // Only gated on LOCAL files: a text-only prompt, or one carrying
+        // already-remote parts, needs no upload and must not be delayed.
+        const hasLocalUpload = usePendingFilesStore
+          .getState()
+          .files.some((file) => file.kind === 'local');
+        if (hasLocalUpload && !runtimeReadyRef.current) return null;
+
         return { options };
       },
       onReadinessTimeout: () => {
+        // Report the blocker that actually held the send. Readiness now has two
+        // conditions — a selectable model, and a bound runtime when there are
+        // local files to upload — so always saying "no model available" would
+        // send someone to the model picker for a sandbox that never started.
+        const stalledOnRuntime =
+          !runtimeReadyRef.current &&
+          usePendingFilesStore.getState().files.some((file) => file.kind === 'local');
         setCommandError({
           kind: 'runtime-error',
-          message: NO_MODEL_AVAILABLE_MESSAGE,
+          message: stalledOnRuntime
+            ? 'The sandbox did not finish starting, so the attached files could not be uploaded. Try sending again.'
+            : NO_MODEL_AVAILABLE_MESSAGE,
           cause: null,
         });
       },

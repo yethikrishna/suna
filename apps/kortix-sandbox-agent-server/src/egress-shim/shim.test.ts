@@ -52,14 +52,51 @@ async function startShim(
   return { port: (server.address() as net.AddressInfo).port, calls }
 }
 
-/** Speak CONNECT by hand so the assertions are about bytes, not a client lib. */
-function connect(port: number, target: string): Promise<{ status: string; socket: net.Socket }> {
+/**
+ * Speak CONNECT by hand so the assertions are about bytes, not a client lib.
+ *
+ * Returns any bytes that arrived in the SAME segment as the CONNECT response.
+ * An upstream that writes immediately (as the tunnel tests' do) can have its
+ * payload coalesced into the segment carrying `200 Connection Established`;
+ * reading the "next" chunk for it then waits forever. That is a test bug, not a
+ * shim bug, and it passed locally and failed in CI before this.
+ */
+function connect(
+  port: number,
+  target: string,
+): Promise<{ status: string; rest: string; socket: net.Socket }> {
   return new Promise((resolve, reject) => {
     const socket = net.connect(port, '127.0.0.1', () => {
       socket.write(`CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n\r\n`)
     })
-    socket.once('data', (chunk) => resolve({ status: chunk.toString('utf8'), socket }))
+    socket.once('data', (chunk: Buffer) => {
+      const text = chunk.toString('utf8')
+      const sep = text.indexOf('\r\n\r\n')
+      resolve({
+        status: sep < 0 ? text : text.slice(0, sep + 4),
+        rest: sep < 0 ? '' : text.slice(sep + 4),
+        socket,
+      })
+    })
     socket.once('error', reject)
+  })
+}
+
+/** Read until `needle` appears, seeded with whatever already arrived. */
+function readUntil(socket: net.Socket, seed: string, needle: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let buf = seed
+    if (buf.includes(needle)) return resolve(buf)
+    const onData = (c: Buffer) => {
+      buf += c.toString('utf8')
+      if (buf.includes(needle)) {
+        socket.off('data', onData)
+        resolve(buf)
+      }
+    }
+    socket.on('data', onData)
+    socket.once('error', reject)
+    setTimeout(() => reject(new Error(`timed out waiting for ${needle}; got ${JSON.stringify(buf)}`)), 4000)
   })
 }
 
@@ -213,14 +250,11 @@ describe('what gets terminated', () => {
     const upstreamPort = (upstream.address() as net.AddressInfo).port
 
     const { port } = await startShim()
-    const { status, socket } = await connect(port, `127.0.0.1:${upstreamPort}`)
+    const { status, rest, socket } = await connect(port, `127.0.0.1:${upstreamPort}`)
     expect(status).toContain('200 Connection Established')
 
-    const echoed = await new Promise<string>((resolve) => {
-      socket.once('data', (c) => resolve(c.toString('utf8')))
-      socket.write('RAW-BYTES')
-    })
-    expect(echoed).toBe('RAW-BYTES')
+    socket.write('RAW-BYTES')
+    expect(await readUntil(socket, rest, 'RAW-BYTES')).toContain('RAW-BYTES')
     socket.destroy()
     upstream.close()
   })
@@ -241,9 +275,8 @@ describe('what gets terminated', () => {
     const { port, calls } = await startShim({
       rules: [{ hosts: ['127.0.0.1'], identifier: 'DEMO_TOKEN' }],
     })
-    const { socket } = await connect(port, `127.0.0.1:${upstreamPort}`)
-    const got = await new Promise<string>((resolve) => socket.once('data', (c) => resolve(String(c))))
-    expect(got).toBe('PLAIN')
+    const { rest, socket } = await connect(port, `127.0.0.1:${upstreamPort}`)
+    expect(await readUntil(socket, rest, 'PLAIN')).toContain('PLAIN')
     expect(calls).toHaveLength(0)
     socket.destroy()
     upstream.close()

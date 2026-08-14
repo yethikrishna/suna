@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { config } from '../../config';
 import { PROJECT_ACTIONS, authorize } from '../../iam';
 import { getTraceHeaders, setContextField } from '../../lib/request-context';
 import type { ProviderName } from '../../platform/providers';
@@ -12,7 +11,6 @@ import {
 } from '../../projects/lib/prompt-connector-preflight';
 import { syncSandboxEnvForPrompt } from '../../projects/lib/sandbox-env-sync';
 import {
-  AgentSecretGrantMismatchError,
   SecretGrantResolutionError,
 } from '../../projects/lib/secret-grant';
 import {
@@ -451,17 +449,11 @@ async function agentSwitchRefusal(
   origin?: string,
 ): Promise<Response | null> {
   const sessionAgent = record.agentName ?? DEFAULT_AGENT_SENTINEL;
-  // Agent-lock enforcement is OFF by default — in-session agent switching is
-  // allowed. The 409 only fires when KORTIX_ENFORCE_SESSION_AGENT_LOCK is
-  // explicitly enabled.
-  if (
-    requestedAgent &&
-    config.KORTIX_ENFORCE_SESSION_AGENT_LOCK &&
-    isProhibitedAgentSwitch(requestedAgent, sessionAgent)
-  ) {
-    return agentSwitchConflictResponse(sessionAgent, requestedAgent, origin);
-  }
-  if (!isProhibitedAgentSwitch(requestedAgent, sessionAgent)) return null;
+  // In-session agent switching is allowed, unconditionally. What remains is an
+  // AUTHORIZATION question, not an immutability one: may THIS caller run THAT
+  // agent? The grant the switched-to agent runs under is re-scoped separately
+  // (env sync + token re-mint) before the prompt is forwarded.
+  if (!isConcreteAgentSwitch(requestedAgent, sessionAgent)) return null;
   const switchedToAgent = requestedAgent as string;
   if (!userId) {
     // A switch is an authorization decision and there is no principal to decide
@@ -571,23 +563,6 @@ async function connectorGateRefusal(
   );
 }
 
-function agentSwitchConflictResponse(
-  expectedAgent: string,
-  requestedAgent: string,
-  origin?: string,
-): Response {
-  return jsonProxyError(
-    {
-      error: 'agent switch requires a new session',
-      code: 'AGENT_SWITCH_REQUIRES_NEW_SESSION',
-      expected_agent: expectedAgent,
-      requested_agent: requestedAgent,
-    },
-    409,
-    origin,
-  );
-}
-
 /**
  * Map a secret-grant failure from the pre-prompt env sync onto its response, or
  * null when the error is an ordinary env-sync failure the caller should handle
@@ -598,13 +573,11 @@ function agentSwitchConflictResponse(
  * that env must not reach OpenCode. See projects/lib/secret-grant.ts.
  */
 export function secretGrantErrorResponse(err: unknown, origin?: string): Response | null {
-  // The prompt asked for an agent whose grant differs from the session's. 409,
-  // matching the existing agent-immutability contract the web client already
-  // codes against — re-scoping now cannot un-read what the session's agent
-  // already pulled into the box.
-  if (err instanceof AgentSecretGrantMismatchError) {
-    return agentSwitchConflictResponse(err.sessionAgent, err.requestedAgent, origin);
-  }
+  // NOTE: no branch here returns 409. A prompt naming a different agent is
+  // never refused — it is re-scoped. Every case below is "we could not APPLY
+  // the re-scope", which is a 503 the client should retry, not a permanent
+  // conflict the user must resolve by starting a new session.
+  //
   // We could not establish what this agent may read. 503 rather than 502: the
   // sandbox is fine, our ability to VERIFY entitlement is what failed, and
   // retrying is the correct client response.
@@ -638,21 +611,23 @@ export function secretGrantErrorResponse(err: unknown, origin?: string): Respons
 // can never use it to escalate into another agent's connector / Kortix-CLI grant.
 const DEFAULT_AGENT_SENTINEL = 'default';
 
-// A prompt's explicit `agent` only constitutes a prohibited switch when it would
-// run a DIFFERENT *concrete* agent than the one this session's connector token was
-// minted for. That — and only that — is the escalation the policy prevents (see
-// docs/specs/2026-06-28-token-session-agent-identity.md). The sentinel 'default'
-// is non-binding on EITHER side: a session stored as 'default' has no privileged
-// agent-specific grant to inherit, and a prompt asking for 'default' just means
-// "this session's own default agent".
+// True when a prompt's explicit `agent` would run a DIFFERENT *concrete* agent
+// than the one this session booted with. That is the only case worth an
+// authorization check — the caller must hold `project.agent.read` on the agent
+// being switched TO (see docs/specs/2026-06-28-token-session-agent-identity.md).
 //
-// Without this, the client's perfectly ordinary behaviour read as a bogus switch:
-// it resolves "the default" to a concrete name (e.g. `kortix`) for display and
-// echoes it back on follow-up turns — and a first-turn race can send that name
-// before the session's bound agent has even loaded. Comparing the concrete echo
-// against the stored sentinel 409'd every "start a new session, send a second
-// message" flow (the false AGENT_SWITCH_REQUIRES_NEW_SESSION reports).
-function isProhibitedAgentSwitch(requestedAgent: string | null, sessionAgent: string): boolean {
+// This predicate does NOT refuse the switch. It used to gate a 409; it now gates
+// only the 403 authz check in `agentSwitchRefusal`.
+//
+// The sentinel 'default' is non-binding on EITHER side: a session stored as
+// 'default' has no privileged agent-specific grant to inherit, and a prompt
+// asking for 'default' just means "this session's own default agent".
+//
+// Without that carve-out, the client's perfectly ordinary behaviour read as a
+// switch: it resolves "the default" to a concrete name (e.g. `kortix`) for
+// display and echoes it back on follow-up turns — and a first-turn race can send
+// that name before the session's bound agent has even loaded.
+function isConcreteAgentSwitch(requestedAgent: string | null, sessionAgent: string): boolean {
   if (!requestedAgent) return false;
   if (requestedAgent === DEFAULT_AGENT_SENTINEL) return false;
   if (sessionAgent === DEFAULT_AGENT_SENTINEL) return false;
@@ -1137,9 +1112,8 @@ export async function forwardToSandbox(
             // projects/lib/secret-grant.ts.
             requestedAgent,
           });
-          // The env sync above applied the running agent's secret grant, or
-          // refused it when the optional strict lock is enabled. Re-point the
-          // token's connector/CLI grant at the agent that will actually run — it was
+          // The env sync above applied the running agent's secret grant. Re-point
+          // the token's connector/CLI grant at the agent that will actually run — it was
           // frozen at mint from the BOOT agent, and those gates read it at call
           // time. Only on a real switch: an ordinary turn resolves to the
           // session's own agent and skips the manifest read entirely.

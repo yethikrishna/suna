@@ -136,7 +136,7 @@ export interface SessionChatInputProps {
   agents?: Agent[];
   selectedAgent?: string | null;
   onAgentChange?: (agentName: string | null | undefined) => void;
-  /** Show the selected agent but prevent switching inside an immutable session. */
+  /** Show the selected agent but prevent switching — a meta session pins its own agent. */
   agentSelectorLocked?: boolean;
   commands?: Command[];
   onCommand?: (command: Command, args?: string) => void;

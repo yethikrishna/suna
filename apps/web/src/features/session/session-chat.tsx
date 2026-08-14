@@ -1760,13 +1760,10 @@ export function SessionChat({
     boundAgentName,
     defaultAgentName: projectConfig?.open_code_default_agent,
   });
-  // Session agent-lock is DISABLED (mirrors the backend KORTIX_ENFORCE_SESSION_AGENT_LOCK,
-  // default off): the picker still defaults to the session's agent (seeded via
-  // useRuntimeLocal's boundAgentName) but stays switchable — sends use the current
-  // pick, not a forced lock. Flip to true to restore the hard lock once per-agent
-  // connector-token scoping lands (see docs/specs/2026-06-28-agent-defaults-todo.md).
-  const SESSION_AGENT_LOCK_ENABLED: boolean = false;
-  const lockedAgentName = SESSION_AGENT_LOCK_ENABLED ? boundAgentName?.trim() || null : null;
+  // The agent picker defaults to the session's agent (seeded via useRuntimeLocal's
+  // boundAgentName) but stays switchable: sends use the current pick. Switching
+  // mid-session is allowed everywhere — the grant re-mint re-resolves the
+  // connector tokens for the newly picked agent on every turn.
   const localAgentSet = local.agent.set;
   const localModelCurrentKey = local.model.currentKey;
   // Wire model to SEND: `auto` when on the default (gateway resolves it), else
@@ -1901,10 +1898,8 @@ export function SessionChat({
             (m) => m.providerID === model.providerID && m.modelID === model.modelID,
           ) && localModelVisible(model);
         if (stash.agent) {
-          if (!lockedAgentName || stash.agent === lockedAgentName) {
-            options.agent = stash.agent;
-            localAgentSet(stash.agent);
-          }
+          options.agent = stash.agent;
+          localAgentSet(stash.agent);
         }
         if (stash.model && isSelectableModel(stash.model as ModelKey)) {
           options.model = stash.model;
@@ -1914,9 +1909,6 @@ export function SessionChat({
         if (stash.variant) {
           options.variant = stash.variant;
           localVariantSet(stash.variant);
-        }
-        if (lockedAgentName) {
-          options.agent = lockedAgentName;
         }
         if (!selectedModelForSend && localModelSendKey) {
           options.model = localModelSendKey;
@@ -2010,7 +2002,6 @@ export function SessionChat({
     localModelSet,
     localModelVisible,
     localVariantSet,
-    lockedAgentName,
     projectId,
     projectSessionId,
     session?.directory,
@@ -2243,12 +2234,12 @@ export function SessionChat({
         // "resolve this when the message actually sends". A session queued
         // during boot has no model resolved yet, and `null` would lock that
         // in as "send no model at all".
-        agent: lockedAgentName ?? local.agent.current?.name ?? undefined,
+        agent: local.agent.current?.name ?? undefined,
         model: local.model.sendKey ?? undefined,
         variant: local.model.variant.current ?? undefined,
       });
     },
-    [sessionId, lockedAgentName, local.agent, local.model],
+    [sessionId, local.agent, local.model],
   );
 
   const handleRemoveQueuedMessage = useCallback(
@@ -2972,9 +2963,7 @@ export function SessionChat({
       const overrideAgent = overrides?.agent;
       const overrideModel = overrides?.model;
       const overrideVariant = overrides?.variant;
-      if (lockedAgentName) {
-        options.agent = lockedAgentName;
-      } else if (overrideAgent !== undefined) {
+      if (overrideAgent !== undefined) {
         if (overrideAgent) options.agent = overrideAgent;
       } else if (local.agent.current) {
         options.agent = local.agent.current.name;
@@ -3152,7 +3141,6 @@ export function SessionChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       sessionId,
-      lockedAgentName,
       local.agent.current,
       local.model.currentKey,
       local.model.sendKey,
@@ -3447,7 +3435,7 @@ export function SessionChat({
       // SSE delivers it. Commands use the blocking /command endpoint
       // which can take minutes; using TQ would cause retry on timeout.
       commandInFlightRef.current = true;
-      const agent = lockedAgentName || local.agent.current?.name;
+      const agent = local.agent.current?.name;
       const variant = local.model.variant.current;
       void (
         sessionState?.runCommand(cmd.name, args || '', {
@@ -3479,7 +3467,6 @@ export function SessionChat({
     [
       sessionId,
       scrollToBottom,
-      lockedAgentName,
       sessionState,
       executeCommand,
       local.agent.current,
@@ -3567,22 +3554,21 @@ export function SessionChat({
 
   const chatModelDefaultControls: ModelDefaultControls = useMemo(
     () => ({
-      agentName: lockedAgentName ?? local.agent.current?.name,
+      agentName: local.agent.current?.name,
       onSetAccountDefault: (m) => {
         void local.model.defaults.setAccountDefault(m);
       },
-      onSetAgentDefault:
-        lockedAgentName || local.agent.current
-          ? (m) => {
-              const name = lockedAgentName ?? local.agent.current?.name;
-              if (name) void local.model.defaults.setAgentDefault(name, m);
-            }
-          : undefined,
+      onSetAgentDefault: local.agent.current
+        ? (m) => {
+            const name = local.agent.current?.name;
+            if (name) void local.model.defaults.setAgentDefault(name, m);
+          }
+        : undefined,
       onSetProjectDefault: (m) => {
         void local.model.defaults.setProjectDefault(m);
       },
     }),
-    [lockedAgentName, local.agent, local.model.defaults],
+    [local.agent, local.model.defaults],
   );
 
   const handleVariantChange = useCallback(
@@ -3601,7 +3587,7 @@ export function SessionChat({
   }, []);
 
   const chatCommands = useMemo(() => commands || [], [commands]);
-  const sessionScopeAgentName = lockedAgentName ?? local.agent.current?.name;
+  const sessionScopeAgentName = local.agent.current?.name;
 
   const chatToolbarSlot = useMemo(
     () =>
@@ -3611,8 +3597,7 @@ export function SessionChat({
           sessionId={projectSessionId}
           agents={local.agent.list}
           selectedAgent={sessionScopeAgentName ?? null}
-          onAgentChange={lockedAgentName ? undefined : handleAgentChange}
-          agentLocked={!!lockedAgentName}
+          onAgentChange={handleAgentChange}
           defaultAgentName={projectConfig?.open_code_default_agent}
           models={local.model.list}
           modelsLoading={providersLoading}
@@ -3629,7 +3614,6 @@ export function SessionChat({
       local.model.currentKey,
       local.model.defaults,
       local.model.list,
-      lockedAgentName,
       projectConfig?.open_code_default_agent,
       projectId,
       projectSessionId,
@@ -4160,9 +4144,8 @@ export function SessionChat({
                 onStop={handleStop}
                 escCount={escCount}
                 agents={local.agent.list}
-                selectedAgent={lockedAgentName ?? local.agent.current?.name ?? null}
-                onAgentChange={lockedAgentName ? undefined : handleAgentChange}
-                agentSelectorLocked={!!lockedAgentName}
+                selectedAgent={local.agent.current?.name ?? null}
+                onAgentChange={handleAgentChange}
                 commands={chatCommands}
                 onCommand={handleCommand}
                 models={local.model.list}

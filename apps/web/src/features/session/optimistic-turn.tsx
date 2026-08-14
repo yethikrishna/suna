@@ -117,12 +117,16 @@ function OptimisticUserBubble({
   const attachments = useMemo(
     (): NormalizedAttachment[] =>
       files.map((f, i) => ({
-        key: `optimistic:${f.path}:${i}`,
+        // Position first: an in-flight ref has no path to key on, and two
+        // attachments with the same name would otherwise share a key.
+        key: `optimistic:${i}:${f.pending ?? f.path}`,
         filename: getFilename(f.filename || f.path),
         mime: f.mime,
-        src: f.path,
-        path: f.path,
-        pending: deferPreview,
+        // An upload that has not landed has no sandbox path to resolve. Passing
+        // the old PREDICTED path made the tile fetch a file that did not exist.
+        src: f.path || undefined,
+        path: f.path || undefined,
+        pending: deferPreview || Boolean(f.pending) || !f.path,
       })),
     [files, deferPreview],
   );

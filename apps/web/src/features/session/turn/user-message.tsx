@@ -395,9 +395,22 @@ export interface NormalizedAttachment {
   pending?: boolean;
 }
 
+/**
+ * The attachment strip's input: message file-parts plus parsed upload refs.
+ *
+ * Uploads are keyed by POSITION first, then by their pending id or path. Keying
+ * on the path alone was a duplicate-key generator: an optimistic ref carries no
+ * path at all until the daemon answers, and three screenshots pasted in one
+ * message are all named `image.png`, so they used to produce three identical
+ * `upload:/workspace/uploads/image.png` keys and React collapsed them.
+ *
+ * A ref with no path is still in flight, so it renders `pending` — a spinner
+ * over its own name — instead of asking the sandbox for a file that does not
+ * exist yet.
+ */
 export function normalizeAttachments(
   parts: FilePart[],
-  uploads: ReadonlyArray<{ path: string; mime: string; filename: string }>,
+  uploads: ReadonlyArray<{ path: string; mime: string; filename: string; pending?: string }>,
 ): NormalizedAttachment[] {
   return [
     ...parts.map((file) => ({
@@ -406,12 +419,13 @@ export function normalizeAttachments(
       mime: file.mime,
       src: file.url,
     })),
-    ...uploads.map((file) => ({
-      key: `upload:${file.path}`,
+    ...uploads.map((file, index) => ({
+      key: `upload:${index}:${file.pending ?? file.path}`,
       filename: file.filename || getFilename(file.path),
       mime: file.mime,
-      src: file.path,
-      path: file.path,
+      src: file.path || undefined,
+      path: file.path || undefined,
+      pending: Boolean(file.pending) || !file.path,
     })),
   ];
 }

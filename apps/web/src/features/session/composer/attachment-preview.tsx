@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { getFileIcon } from '@/features/project-files';
+import { isImageExtension } from '@/features/session/attachment-mime';
 import { cn } from '@/lib/utils';
 import { XIcon as X } from '@phosphor-icons/react';
 
@@ -17,13 +18,14 @@ function AttachmentThumbnail({ af, name }: { af: AttachedFile; name: string }) {
   const [textPreview, setTextPreview] = useState<string | null>(null);
   const ext = name.split('.').pop()?.toLowerCase() || '';
 
-  // Check if this is an image — be generous with detection
+  // Check if this is an image — be generous with detection. The extension list
+  // is shared with the upload ref (`attachment-mime.ts`), so a PNG the browser
+  // handed over with an empty `type` is a picture in the composer AND in the
+  // transcript. It used to be a picture here and a generic icon there.
   const isImg =
     af.isImage ||
     (af.kind === 'local' && af.file.type.startsWith('image/')) ||
-    ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'heic', 'heif', 'avif'].includes(
-      ext,
-    );
+    isImageExtension(name);
 
   // HEIC: convert to JPEG for preview (browsers can't render HEIC natively)
   const isHeic = ext === 'heic' || ext === 'heif';

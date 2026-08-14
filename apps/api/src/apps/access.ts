@@ -248,6 +248,78 @@ export async function appAccessibleToUser(
   });
 }
 
+/**
+ * The subset of `appsForProject` this user may actually open.
+ *
+ * The list route used to return every App in the project, so a member saw
+ * `private` Apps owned by someone else and `restricted` Apps they hold no grant
+ * for. They could not open them — the access-session route already refuses — but
+ * the name, URL, deployment status and live preview tile were all on screen.
+ * Listing is disclosure, so the list is now filtered by the same decision that
+ * governs opening.
+ *
+ * Batched on purpose. `appAccessibleToUser` resolves project authorization and
+ * the share subject per call, which is one `authorize()` round-trip per App;
+ * a project with 30 Apps paid 30 of them to render one page. Both are identical
+ * across every App in a project, so they are resolved ONCE here, and grants are
+ * loaded only for the `restricted` Apps that actually need them. The per-App
+ * verdict then comes from the pure `appAccessDecision`, so this function and
+ * `appAccessibleToUser` cannot drift apart on policy.
+ */
+export async function filterAppsAccessibleToUser<
+  T extends {
+    appId: string;
+    accountId: string;
+    projectId: string;
+    accessMode: string;
+    createdBy: string | null;
+  },
+>(appsForProject: T[], userId: string): Promise<T[]> {
+  if (!appsForProject.length) return [];
+
+  // Every row here belongs to one project, so this is one decision, not N.
+  const first = appsForProject[0]!;
+  const projectAccess = await authorize(userId, first.accountId, PROJECT_ACTIONS.PROJECT_READ, {
+    type: 'project',
+    id: first.projectId,
+  });
+  if (!projectAccess.allowed) return [];
+
+  const subject = await resolveShareSubject(userId);
+
+  const restrictedIds = appsForProject
+    .filter((app) => app.accessMode === 'restricted')
+    .map((app) => app.appId);
+  const grantsByApp = new Map<string, SecretGrant[]>();
+  if (restrictedIds.length) {
+    const rows = await db
+      .select({
+        appId: appAccessGrants.appId,
+        principalType: appAccessGrants.principalType,
+        principalId: appAccessGrants.principalId,
+      })
+      .from(appAccessGrants)
+      .where(inArray(appAccessGrants.appId, restrictedIds));
+    for (const row of rows) {
+      const list = grantsByApp.get(row.appId) ?? [];
+      list.push({
+        principalType: row.principalType as 'member' | 'group',
+        principalId: row.principalId,
+      });
+      grantsByApp.set(row.appId, list);
+    }
+  }
+
+  return appsForProject.filter((app) =>
+    appAccessDecision({
+      mode: app.accessMode as AppAccessMode,
+      ownerId: app.createdBy,
+      grants: app.accessMode === 'restricted' ? (grantsByApp.get(app.appId) ?? []) : [],
+      subject,
+    }),
+  );
+}
+
 export function appAccessSessionUrl(
   url: string,
   app: { appId: string; accessRevision: number },

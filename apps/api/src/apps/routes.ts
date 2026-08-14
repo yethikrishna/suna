@@ -32,6 +32,7 @@ import { requireFeatureFlag } from '../feature-flags/gate';
 import {
   appAccessibleToUser,
   appAccessSessionUrl,
+  filterAppsAccessibleToUser,
   persistAppAccessPolicy,
   serializeAppAccessPolicy,
   validateAppAccessPrincipals,
@@ -245,7 +246,14 @@ projectsApp.openapi(
     const rows = await db.select().from(apps)
       .where(and(eq(apps.projectId, projectId), isNull(apps.deletedAt)))
       .orderBy(desc(apps.createdAt));
-    return c.json({ apps: rows.map(serializeApp) });
+    // Listing is disclosure. This route used to return every App in the
+    // project, so a member saw the name, URL, deployment status and live
+    // preview of `private` Apps owned by someone else and `restricted` Apps
+    // they hold no grant for — all of which the access-session route then
+    // refused to open. The list is now filtered by that same decision, so
+    // there is one answer to "may I see this App", not two.
+    const visible = await filterAppsAccessibleToUser(rows, gate.userId);
+    return c.json({ apps: visible.map(serializeApp) });
   },
 );
 

@@ -649,10 +649,13 @@ export async function ensureAppRuntimeRunning(
       sandboxId: running.runtimeId,
       accountId: running.accountId,
       provider,
+      // The machine the provider really allocates — see hosting.effectiveMachine.
       spec: {
-        cpuCores: app.cpuCores,
-        memoryGb: app.memoryGb,
-        diskGb: app.diskGb,
+        ...hosting.effectiveMachine(provider, {
+          cpuCores: app.cpuCores,
+          memoryGb: app.memoryGb,
+          diskGb: app.diskGb,
+        }),
         gpuCount: 0,
       },
       workloadType: 'app',

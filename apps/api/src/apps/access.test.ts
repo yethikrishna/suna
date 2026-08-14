@@ -37,11 +37,11 @@ describe('Kortix App access', () => {
 
   test('scopes the App to the team the same way a session is scoped', () => {
     const GROUP_ID = '44444444-4444-4444-8444-444444444444';
-    const owner = { userId: OWNER_ID, groupIds: [] };
+    const owner = { userId: OWNER_ID, groupIds: [] as string[] };
     const member = { userId: MEMBER_ID, groupIds: [GROUP_ID] };
     const visible = (
       mode: Parameters<typeof appTeamScope>[0],
-      subject: typeof owner,
+      subject: { userId: string; groupIds: string[] },
       grants: Array<{ principalType: 'member' | 'group'; principalId: string }> = [],
       isProjectManager = false,
     ) => appVisibleToSubject({ mode, ownerId: OWNER_ID, grants, subject, isProjectManager });

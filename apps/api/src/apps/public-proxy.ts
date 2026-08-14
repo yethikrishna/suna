@@ -8,7 +8,8 @@ import {
 } from '../billing/services/compute-metering';
 import { config, type SandboxProviderName } from '../config';
 import { db } from '../shared/db';
-import { AppBudgetExceededError, assertAppBudgetAvailable } from './budget';
+import { AppBudgetExceededError } from './budget';
+import { AppAccountUnfundedError, AppLimitError, assertAppComputeAllowed } from './limits';
 import { AppHostingProvider } from './hosting';
 import { resolveFeatureFlag } from '../feature-flags/registry';
 import { enqueueCurrentAppRuntime } from './deployment-worker';
@@ -49,7 +50,13 @@ type PublicDeploymentStatus =
   | 'failed'
   | 'cancelled';
 
-type PublicAppStatus = PublicDeploymentStatus | 'waiting' | 'starting' | 'budget';
+type PublicAppStatus =
+  | PublicDeploymentStatus
+  | 'waiting'
+  | 'starting'
+  | 'budget'
+  | 'unfunded'
+  | 'capacity';
 
 const PUBLIC_STATUS_COPY: Record<PublicAppStatus, {
   title: string;
@@ -112,6 +119,20 @@ const PUBLIC_STATUS_COPY: Record<PublicAppStatus, {
     code: 'app_budget_exceeded',
     progress: false,
     httpStatus: 402,
+  },
+  unfunded: {
+    title: 'App paused',
+    message: 'This Kortix account cannot start compute right now. The owner can restore it in Billing.',
+    code: 'app_account_unfunded',
+    progress: false,
+    httpStatus: 402,
+  },
+  capacity: {
+    title: 'App paused',
+    message: 'This account is already running its maximum number of Apps. The owner can stop one in Kortix Apps.',
+    code: 'app_concurrency_limit',
+    progress: false,
+    httpStatus: 429,
   },
   failed: {
     title: 'Deployment failed',
@@ -548,7 +569,11 @@ export async function ensureAppRuntimeRunning(
   if (loaded.runtime.status === 'deleted') {
     throw new Error('App runtime cannot wake from deleted');
   }
-  await assertAppBudgetAvailable(app.appId, Number(app.monthlyBudgetUsd));
+  // Account entitlement, account App-concurrency, then this App's own monthly
+  // budget. The runtime being woken is excluded from the concurrency count —
+  // it already holds its own live row, and counting it would stop an account at
+  // exactly the cap from waking the very App it owns.
+  await assertAppComputeAllowed(app, { excludeRuntimeId: loaded.runtime.runtimeId });
 
   const owner = `${config.INTERNAL_KORTIX_ENV}:${process.pid}:${randomUUID()}`;
   const now = new Date();
@@ -732,6 +757,14 @@ export async function handleAppPublicRequest(request: Request): Promise<Response
     runtime = await ensureAppRuntimeRunning(loaded, hosting);
   } catch (error) {
     if (error instanceof AppBudgetExceededError) return appPublicBudgetResponse(request, state.app);
+    // An unfunded account or an account at its App-concurrency cap is a paused
+    // App, not a broken one. Say so instead of showing an endless spinner.
+    if (error instanceof AppAccountUnfundedError) {
+      return appPublicStatusResponse(request, state.app, { status: 'unfunded' });
+    }
+    if (error instanceof AppLimitError && error.code === 'app_concurrency_limit') {
+      return appPublicStatusResponse(request, state.app, { status: 'capacity' });
+    }
     return appPublicUnavailableResponse(request, state.app);
   }
   const now = new Date();

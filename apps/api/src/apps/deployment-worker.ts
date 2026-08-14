@@ -19,7 +19,8 @@ import { downloadAppArtifact, extractAppArchive } from './artifacts';
 import { resolveAppRuntimeEnvironment } from './environment';
 import { AppHostingProvider } from './hosting';
 import { normalizeAppBuild, type AppSourceSpec } from './spec';
-import { assertAppBudgetAvailable } from './budget';
+import { AppBudgetExceededError } from './budget';
+import { AppAccountUnfundedError, AppLimitError, assertAppComputeAllowed } from './limits';
 import { appRuntimeArtifactDigest } from './runtime-artifacts';
 import { appDeploymentFailureDisposition } from './deployment-failures';
 
@@ -382,7 +383,24 @@ export async function driveAppDeployment(
       );
     }
 
-    await assertAppBudgetAvailable(context.app.appId, Number(context.app.monthlyBudgetUsd));
+    // Entitlement, concurrency and budget, before a build burns provider time.
+    // A refusal here is permanent: the operator must fund the account, stop an
+    // App, or raise the budget and then deploy again. Retrying three times on a
+    // 30s backoff would only restate the same answer.
+    try {
+      await assertAppComputeAllowed(context.app);
+    } catch (error) {
+      if (error instanceof AppBudgetExceededError) {
+        throw new PermanentAppDeploymentError(error.message, 'app_budget_exceeded');
+      }
+      if (error instanceof AppAccountUnfundedError) {
+        throw new PermanentAppDeploymentError(error.message, 'account_unfunded');
+      }
+      if (error instanceof AppLimitError) {
+        throw new PermanentAppDeploymentError(error.message, error.code);
+      }
+      throw error;
+    }
 
     const snapshotName = `kortix-app-${claimed.deploymentId.replaceAll('-', '')}`;
     await setDeploymentStatus(claimed.deploymentId, owner, 'building', {

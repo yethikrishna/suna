@@ -25,6 +25,14 @@ import { deploymentEventsAsLogs } from './logs';
 import { ensureAppRuntimeRunning, loadPublicApp } from './public-proxy';
 import { type AppSourceSpec } from './spec';
 import { AppBudgetExceededError } from './budget';
+import {
+  APP_MACHINE_LIMITS,
+  AppAccountUnfundedError,
+  AppLimitError,
+  assertAppBudgetWithinLimits,
+  assertAppMachineWithinLimits,
+  assertAppQuotaAvailable,
+} from './limits';
 import { assertProjectCapability, loadProjectForUser } from '../projects/lib/access';
 import { callerKortixSessionId } from '../projects/lib/caller-session';
 import { projectsApp } from '../projects/lib/app';
@@ -39,6 +47,32 @@ import {
   validateAppAccessPrincipals,
   type AppAccessMode,
 } from './access';
+
+/** The machine bounds an App shares with a session sandbox. Stated here so the
+ *  published OpenAPI schema carries the real ceiling instead of a number the
+ *  runtime would refuse. */
+const CpuSchema = z.number().int().min(APP_MACHINE_LIMITS.cpu.min).max(APP_MACHINE_LIMITS.cpu.max);
+const MemorySchema = z.number().int().min(APP_MACHINE_LIMITS.memory.min).max(APP_MACHINE_LIMITS.memory.max);
+const DiskSchema = z.number().int().min(APP_MACHINE_LIMITS.disk.min).max(APP_MACHINE_LIMITS.disk.max);
+
+/** Translate an App resource refusal into its documented HTTP answer. */
+function appLimitResponse(c: any, error: unknown): Response | null {
+  if (error instanceof AppLimitError) {
+    return c.json({ error: error.message, code: error.code, ...error.detail }, error.status);
+  }
+  if (error instanceof AppAccountUnfundedError) {
+    return c.json({ error: error.message, code: error.reason, ...error.detail }, 402);
+  }
+  if (error instanceof AppBudgetExceededError) {
+    return c.json({
+      error: error.message,
+      code: 'app_budget_exceeded',
+      spent_usd: error.spentUsd,
+      budget_usd: error.budgetUsd,
+    }, 402);
+  }
+  return null;
+}
 
 const AppObject = z.object({}).passthrough().openapi('KortixApp');
 const DeploymentObject = z.object({}).passthrough().openapi('KortixAppDeployment');
@@ -384,14 +418,14 @@ projectsApp.openapi(
       params: z.object({ projectId: z.string().uuid() }),
       body: { content: { 'application/json': { schema: z.object({
         slug: z.string().min(1).max(63), name: z.string().min(1).max(200),
-        cpu: z.number().int().min(1).max(64).default(1),
-        memory_gb: z.number().int().min(1).max(512).default(2),
-        disk_gb: z.number().int().min(1).max(2048).default(10),
+        cpu: CpuSchema.default(1),
+        memory_gb: MemorySchema.default(2),
+        disk_gb: DiskSchema.default(10),
         idle_timeout_seconds: z.number().int().min(120).max(86400).default(300),
         monthly_budget_usd: z.number().min(0).max(100000).default(5),
       }) } } },
     },
-    responses: { 201: json(AppObject, 'App'), ...errors(400, 403, 404, 409) },
+    responses: { 201: json(AppObject, 'App'), ...errors(400, 402, 403, 404, 409) },
   }),
   async (c: any) => {
     const projectId = c.req.param('projectId');
@@ -400,6 +434,15 @@ projectsApp.openapi(
     const body = c.req.valid('json');
     const slug = body.slug.toLowerCase();
     if (!APP_SLUG.test(slug)) return c.json({ error: 'slug must contain lowercase letters, numbers, and single hyphens' }, 400);
+    try {
+      assertAppMachineWithinLimits({ cpu: body.cpu, memoryGb: body.memory_gb, diskGb: body.disk_gb });
+      assertAppBudgetWithinLimits(body.monthly_budget_usd);
+      await assertAppQuotaAvailable(loaded.row.accountId);
+    } catch (error) {
+      const refusal = appLimitResponse(c, error);
+      if (refusal) return refusal;
+      throw error;
+    }
     try {
       const [row] = await db.insert(apps).values({
         accountId: loaded.row.accountId, projectId, slug, name: body.name.trim(),
@@ -506,12 +549,12 @@ projectsApp.openapi(
     request: {
       params: z.object({ projectId: z.string().uuid(), appId: z.string().uuid() }),
       body: { content: { 'application/json': { schema: z.object({
-        name: z.string().min(1).max(200).optional(), cpu: z.number().int().min(1).max(64).optional(),
-        memory_gb: z.number().int().min(1).max(512).optional(), disk_gb: z.number().int().min(1).max(2048).optional(),
+        name: z.string().min(1).max(200).optional(), cpu: CpuSchema.optional(),
+        memory_gb: MemorySchema.optional(), disk_gb: DiskSchema.optional(),
         idle_timeout_seconds: z.number().int().min(120).max(86400).optional(), monthly_budget_usd: z.number().min(0).max(100000).optional(),
       }) } } },
     },
-    responses: { 200: json(AppObject, 'App'), ...errors(403, 404) },
+    responses: { 200: json(AppObject, 'App'), ...errors(400, 403, 404) },
   }),
   async (c: any) => {
     const { projectId, appId } = c.req.param();
@@ -521,6 +564,14 @@ projectsApp.openapi(
       return c.json({ error: 'Not found' }, 404);
     }
     const body = c.req.valid('json');
+    try {
+      assertAppMachineWithinLimits({ cpu: body.cpu, memoryGb: body.memory_gb, diskGb: body.disk_gb });
+      assertAppBudgetWithinLimits(body.monthly_budget_usd);
+    } catch (error) {
+      const refusal = appLimitResponse(c, error);
+      if (refusal) return refusal;
+      throw error;
+    }
     const [row] = await db.update(apps).set({
       ...(body.name !== undefined ? { name: body.name.trim() } : {}),
       ...(body.cpu !== undefined ? { cpuCores: body.cpu } : {}),
@@ -711,7 +762,7 @@ for (const action of ['start', 'stop'] as const) {
     createRoute({
       method: 'post', path: `/{projectId}/apps/{appId}/${action}`, tags: ['apps'], summary: `${action} an App`, ...auth,
       request: { params: z.object({ projectId: z.string().uuid(), appId: z.string().uuid() }) },
-      responses: { 200: json(AppObject, 'App'), ...errors(402, 403, 404, 409, 503) },
+      responses: { 200: json(AppObject, 'App'), ...errors(402, 403, 404, 409, 429, 503) },
     }),
     async (c: any) => {
       const { projectId, appId } = c.req.param();
@@ -751,14 +802,8 @@ for (const action of ['start', 'stop'] as const) {
           if (error instanceof Response) {
             return c.json(await error.json(), error.status as 402 | 409 | 503);
           }
-          if (error instanceof AppBudgetExceededError) {
-            return c.json({
-              error: error.message,
-              code: 'app_budget_exceeded',
-              spent_usd: error.spentUsd,
-              budget_usd: error.budgetUsd,
-            }, 402);
-          }
+          const refusal = appLimitResponse(c, error);
+          if (refusal) return refusal;
           return c.json({
             error: 'App start failed',
             detail: error instanceof Error ? error.message : String(error),
@@ -774,7 +819,7 @@ projectsApp.openapi(
   createRoute({
     method: 'post', path: '/{projectId}/apps/{appId}/rollback', tags: ['apps'], summary: 'Roll back an App', ...auth,
     request: { params: z.object({ projectId: z.string().uuid(), appId: z.string().uuid() }), body: { content: { 'application/json': { schema: z.object({ deployment_id: z.string().uuid() }) } } } },
-    responses: { 200: json(AppObject, 'App'), ...errors(402, 403, 404, 409, 503) },
+    responses: { 200: json(AppObject, 'App'), ...errors(402, 403, 404, 409, 429, 503) },
   }),
   async (c: any) => {
     const { projectId, appId } = c.req.param();
@@ -802,14 +847,8 @@ projectsApp.openapi(
       await db.update(apps).set({ desiredState: app.desiredState, updatedAt: new Date() })
         .where(eq(apps.appId, appId));
       if (error instanceof Response) return c.json(await error.json(), error.status as 402 | 409 | 503);
-      if (error instanceof AppBudgetExceededError) {
-        return c.json({
-          error: error.message,
-          code: 'app_budget_exceeded',
-          spent_usd: error.spentUsd,
-          budget_usd: error.budgetUsd,
-        }, 402);
-      }
+      const refusal = appLimitResponse(c, error);
+      if (refusal) return refusal;
       return c.json({
         error: 'Rollback runtime failed to start',
         detail: error instanceof Error ? error.message : String(error),

@@ -772,7 +772,8 @@
     "validateProjectManifest",
     "validateReferralCode",
     "validateToken",
-    "verifyGatewayProvider"
+    "verifyGatewayProvider",
+    "writeFile"
   ],
   "./react": [
     "ADMIN_ANALYTICS_DEFAULT_DAYS",
@@ -1921,7 +1922,8 @@
     "toSandboxAbsolutePath",
     "toWorkspaceRelative",
     "uploadFile",
-    "uploadTimeoutMsForBytes"
+    "uploadTimeoutMsForBytes",
+    "writeFile"
   ],
   "./session": [
     "PREVIEW_PROBE_TIMEOUT_MS",

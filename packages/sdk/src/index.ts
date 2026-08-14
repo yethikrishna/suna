@@ -67,6 +67,7 @@ export {
   toSandboxAbsolutePath,
   toWorkspaceRelative,
   uploadFile,
+  writeFile,
 } from './core/files/client';
 export type * from './core/files/types';
 

@@ -2054,6 +2054,7 @@
     "WorktreeResetInput",
     "WorktreeResetResponse",
     "WorktreeResetResponses",
+    "WriteFileResult",
     "__getConfigResolver",
     "__setConfigResolver",
     "acceptAccountInvite",
@@ -2803,7 +2804,8 @@
     "validateProjectManifest",
     "validateReferralCode",
     "validateToken",
-    "verifyGatewayProvider"
+    "verifyGatewayProvider",
+    "writeFile"
   ],
   "./react": [
     "ADMIN_ANALYTICS_DEFAULT_DAYS",
@@ -6128,6 +6130,7 @@
     "SANDBOX_FS_ROOTS",
     "ServerHealth",
     "UploadResult",
+    "WriteFileResult",
     "copyFile",
     "createFile",
     "deleteFile",
@@ -6148,7 +6151,8 @@
     "toSandboxAbsolutePath",
     "toWorkspaceRelative",
     "uploadFile",
-    "uploadTimeoutMsForBytes"
+    "uploadTimeoutMsForBytes",
+    "writeFile"
   ],
   "./session": [
     "ConvertRuntimePresentationOptions",

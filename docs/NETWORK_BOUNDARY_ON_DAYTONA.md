@@ -633,21 +633,75 @@ caveat found the hard way — a required POSITIONAL parameter is not enough. The
 slot compiled while feeding the grants config in as the project metadata. The signature is
 named options for that reason.
 
-#### Blocked on infrastructure, not code
+### 7.7 PARITY, PROVEN ON DAYTONA
 
-- **Dev Daytona provisioning is failing** (`/start` succeeds, the sandbox never reaches
-  running), which blocks the Daytona re-run of §7.4.1.
-- **The Daytona snapshot quota is exhausted** — 225 of 200 — so every CI run that builds a
-  snapshot fails, on any PR. Deleting all 18 CI snapshots only reaches 207; the bulk is live
-  product data (`kortix-meta-*` 117, `kortix-app-*` 38). Needs a quota raise or a retention
-  policy.
+The whole point of this document, measured end to end on a real Daytona sandbox on dev
+(`ed82f4f969`), with every link real and nothing stubbed:
 
+```
+agent curl ──▶ in-guest shim ──▶ Kortix broker route ──▶ postman-echo.com
+```
 
-- **Provisioning wiring.** Mint the CA per session, push it into the guest trust store plus
-  the ~11 per-runtime env vars, set `HTTPS_PROXY`, and set `networkAllowList` to the proxy.
+An unmodified `curl` inside the guest:
+
+```json
+{"headers":{"host":"postman-echo.com","accept-encoding":"gzip, br","accept":"*/*",
+ "x-parity":"Bearer [REDACTED]","user-agent":"curl/8.5.0"},
+ "url":"https://postman-echo.com/get"}
+```
+
+One response proves three things at once, which is why an echo endpoint is the right probe
+HERE and the wrong one under Platinum's edge (§7.6):
+
+- `x-parity` is present → **the credential was injected**
+- the value reads `[REDACTED]` → **the echo was scrubbed server-side**
+- the real value appears nowhere → **it never entered the sandbox**
+
+`python-requests/2.34.2` returns the same, and `env` inside the guest contains neither the
+value nor the key. An unruled host (`example.com`) still answers 200 through a blind tunnel,
+so pinned-certificate and mTLS clients are untouched. **14 assertions, 0 failures.**
+
+This is the Platinum property on a provider with no credential edge of its own.
+
+#### What running it for real caught that nothing local did
+
+Both bugs passed every unit test and every `curl` probe:
+
+1. **The CA was unusable by Python.** No Subject Key Identifier on the CA, no Authority Key
+   Identifier on the leaves, so OpenSSL could not bind a leaf to its issuer.
+   `CERTIFICATE_VERIFY_FAILED ... Missing Authority Key Identifier`. curl accepted the same
+   chain, so only a real Python client in a real guest surfaced it. The first fix was worse:
+   forge's parsed `subjectKeyIdentifier` is a hex STRING, and feeding it back produced an AKI
+   pointing at an issuer that does not exist — every handshake then failed.
+   `generateSubjectKeyIdentifier().getBytes()` is the correct source.
+2. **gzip silently defeated echo redaction.** The broker redacts by scanning response BYTES; a
+   compressed body does not contain them, and `curl` offers gzip by default. Visible in the
+   run above as the shim forcing `accept-encoding: identity`.
+
+That is now three bugs in this feature that ONLY a real client in a real guest found — the
+`git` 407 framing bug of §7.6 was the first. The pattern is worth naming: this component's
+correctness is defined by what heterogeneous third-party clients accept, and no amount of
+in-process testing substitutes for running them.
+
+#### Getting a dev session at all
+
+Dev enforces billing (`billingStateAllowsRun` admits only `active`), so a fresh account 402s
+on session create and the feature cannot be reached. Funding one the way CI does —
+`tests/src/fixtures/billing.ts`, a real Stripe **test-mode** subscription — is the unblock.
+Note the account becomes runnable from the SUBSCRIPTION alone; the forged credit-purchase
+webhook returns 400 against dev because the deployed API validates the signature against AWS
+Secrets Manager rather than `.env.dev`.
+
+#### Still open
+
 - **Allow-list survival across resume / CoW-restore** — the funnel must not open on restore.
-- **Clients that ignore `HTTPS_PROXY`** (notably Node/Bun `fetch`) reach nothing once the
-  allow-list is on. Needs either an `LD_PRELOAD` shim or honest documentation.
+  Not required for the security property (an agent that bypasses the shim gets an
+  UNAUTHENTICATED request, never a credential), so this is egress restriction, a separate
+  feature.
+- **The relay's shape**, inherited from the broker: fully buffered, so no streaming, SSE or
+  websockets; 1 MiB request / 5 MiB response caps; redirects followed server-side.
+- **Daytona snapshot quota** — 225 of 200 at the time of writing; the bulk is live product
+  data (`kortix-meta-*` 117, `kortix-app-*` 38). Needs a retention policy, not a one-off purge.
 
 ## 8. What I would not build
 

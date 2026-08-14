@@ -1161,6 +1161,13 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
         findText: async (pattern: string) => F.findText(pattern, (await ensureReady()).runtimeUrl),
         upload: async (file: File | Blob, targetPath?: string, filename?: string) =>
           F.uploadFile(file, targetPath, filename, (await ensureReady()).runtimeUrl),
+        /**
+         * Overwrite `filePath` in place. The daemon's upload endpoint never
+         * overwrites (it uniquifies a colliding name), so a plain `upload` over
+         * an existing path silently writes a DIFFERENT file — see `writeFile`.
+         */
+        write: async (filePath: string, content: Blob | File) =>
+          F.writeFile(filePath, content, (await ensureReady()).runtimeUrl),
         create: async (filePath: string) =>
           F.createFile(filePath, (await ensureReady()).runtimeUrl),
         copy: async (sourcePath: string, destPath: string) =>

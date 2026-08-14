@@ -313,12 +313,10 @@ async function resolveOwnerRawEnv(
   // NOT necessarily `row.agentName`: in-session agent switching is allowed and
   // nothing ever updates that column. Resolving from the stale column let a
   // session created under a broad agent run a narrow one while still being
-  // re-pushed the broad agent's full env on every turn. A switch that would
-  // change the grant now throws AgentSecretGrantMismatchError (→ 409) rather
-  // than quietly re-scoping, because a later narrowing cannot un-read what the
-  // previous agent already pulled into the box when the optional strict lock
-  // is enabled. By default, the hot push replaces the env with the running
-  // agent's grant before the prompt is forwarded.
+  // re-pushed the broad agent's full env on every turn. The hot push replaces
+  // the env with the RUNNING agent's grant before the prompt is forwarded. A
+  // switch is never refused — see secret-grant.ts for why refusing protected
+  // nothing that was still protectable.
   const [project] = await db
     .select({
       repoUrl: projects.repoUrl,
@@ -336,7 +334,6 @@ async function resolveOwnerRawEnv(
     manifestPath: project?.manifestPath,
     sessionAgent: row.agentName ?? DEFAULT_AGENT_SENTINEL,
     requestedAgent,
-    enforceGrantLock: config.KORTIX_ENFORCE_AGENT_SECRET_GRANT_LOCK,
   });
 
   // THE CLOBBER FIX: apply the SAME per-session secrets narrowing as boot
@@ -546,9 +543,15 @@ export async function syncSandboxEnvForPrompt(args: {
   if (!snapshot) return;
   // Resolving the bindings stays FAIL-CLOSED: it re-reads the agent's grant, and
   // an unresolvable grant must refuse the prompt (the caller maps
-  // SecretGrantResolutionError / AgentSecretGrantMismatchError to its own
-  // response). In practice `resolveSandboxEnvSnapshot` above already resolved the
-  // same grant and threw first — this line cannot silently widen anything.
+  // SecretGrantResolutionError to its own 503).
+  //
+  // This line used to be justified with "resolveSandboxEnvSnapshot above already
+  // resolved the same grant and threw first". That was false, and it is how the
+  // removed grant lock kept 409-ing real switches while its config flag was off:
+  // the call above passed the flag explicitly (false, so it did NOT throw) while
+  // this leg omitted it and landed on the resolver's `?? true` default, so THIS
+  // was the line that threw. The parameter is gone, so the two legs can no
+  // longer disagree about policy — they share one resolver with one behavior.
   const networkBoundary = await resolveSessionNetworkBoundary(
     args.projectId,
     args.sessionId,

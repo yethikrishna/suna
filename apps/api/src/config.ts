@@ -257,23 +257,6 @@ const envSchema = z.object({
   // (consumed by daytonaLifecycle()). Main's 3-day auto-archive default already
   // keeps a hibernated box in the fast-resume "stopped" tier far longer than the
   // earlier 120m, so the pause/resume win is subsumed there.
-  // Lock a session to the agent it booted with: the preview proxy 409s a prompt
-  // that asks OpenCode to run a different agent. GATED OFF by default — it was
-  // added for a future per-agent connector-token auth model that isn't built yet,
-  // and meanwhile it blocks legitimate in-session agent switching and
-  // false-positives on new sessions (the picker can send the first agent in the
-  // list before the session's real default resolves). TODO(marko): re-enable once
-  // the connector token is re-minted per requested agent before tool execution.
-  KORTIX_ENFORCE_SESSION_AGENT_LOCK: optBoolFalse,
-
-  // Optional strict lock for operators that require one immutable secret grant
-  // per sandbox. OFF by default: an in-session agent switch re-resolves the
-  // running agent's grant, replaces the OpenCode env, and re-mints the session
-  // token's connector/Kortix-CLI grant before the prompt is forwarded. Enabling
-  // this flag refuses only switches whose secret grants differ. See
-  // projects/lib/secret-grant.ts.
-  KORTIX_ENFORCE_AGENT_SECRET_GRANT_LOCK: optBoolFalse,
-
   // Mandatory declared agents (docs/specs/2026-07-05-agent-first-config-unification.md
   // §2.1/§3 Phase 2). GATED OFF platform-wide by default — flipping it on would
   // immediately reject every session/trigger on a pre-existing, agent-less project.
@@ -990,8 +973,6 @@ export const config = {
   CODE_STORAGE_API_BASE: env.CODE_STORAGE_API_BASE,
   CODE_STORAGE_GIT_HOST: env.CODE_STORAGE_GIT_HOST,
   KORTIX_GIT_PROXY: env.KORTIX_GIT_PROXY,
-  KORTIX_ENFORCE_SESSION_AGENT_LOCK: env.KORTIX_ENFORCE_SESSION_AGENT_LOCK,
-  KORTIX_ENFORCE_AGENT_SECRET_GRANT_LOCK: env.KORTIX_ENFORCE_AGENT_SECRET_GRANT_LOCK,
   KORTIX_REQUIRE_DECLARED_AGENTS: env.KORTIX_REQUIRE_DECLARED_AGENTS,
 
   // ─── Legacy migration ─────────────────────────────────────────────────────

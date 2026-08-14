@@ -133,13 +133,9 @@ export function ComposerChatInput({
     boundAgentName,
     defaultAgentName: projectConfig?.open_code_default_agent,
   });
-  // Session agent-lock disabled (see KORTIX_ENFORCE_SESSION_AGENT_LOCK / session-chat.tsx):
-  // the new-session picker is switchable; the chosen agent rides through on create.
-  const SESSION_AGENT_LOCK_ENABLED: boolean = false;
-  const lockedAgentName =
-    isMetaAgentName(boundAgentName) || SESSION_AGENT_LOCK_ENABLED
-      ? boundAgentName?.trim() || null
-      : null;
+  // The meta agent is the only thing that pins the picker: a meta session must
+  // keep running its own agent. Every other session is freely switchable.
+  const lockedAgentName = isMetaAgentName(boundAgentName) ? boundAgentName?.trim() || null : null;
   const selectedAgentName = lockedAgentName ?? local.agent.current?.name ?? null;
 
   useEffect(() => {

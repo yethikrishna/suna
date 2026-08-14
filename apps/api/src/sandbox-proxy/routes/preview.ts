@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { config } from '../../config';
 import { PROJECT_ACTIONS, authorize } from '../../iam';
 import { getTraceHeaders, setContextField } from '../../lib/request-context';
 import type { ProviderName } from '../../platform/providers';
@@ -45,7 +44,6 @@ import {
 import {
   DEFAULT_AGENT_SENTINEL,
   type PrePromptEnvSyncDeps,
-  agentSwitchConflictResponse,
   bodyWithoutPromptAgent,
   errorMessage,
   jsonProxyError,
@@ -57,6 +55,7 @@ import {
 import {
   PROXY_RETRY_BUDGET_MS,
   isLongTurnCompletionRequest,
+  isUploadRequest,
   proxyAttemptTimeoutMs,
 } from '../preview-retry-budget';
 import {
@@ -420,17 +419,11 @@ async function agentSwitchRefusal(
   origin?: string,
 ): Promise<Response | null> {
   const sessionAgent = record.agentName ?? DEFAULT_AGENT_SENTINEL;
-  // Agent-lock enforcement is OFF by default — in-session agent switching is
-  // allowed. The 409 only fires when KORTIX_ENFORCE_SESSION_AGENT_LOCK is
-  // explicitly enabled.
-  if (
-    requestedAgent &&
-    config.KORTIX_ENFORCE_SESSION_AGENT_LOCK &&
-    isProhibitedAgentSwitch(requestedAgent, sessionAgent)
-  ) {
-    return agentSwitchConflictResponse(sessionAgent, requestedAgent, origin);
-  }
-  if (!isProhibitedAgentSwitch(requestedAgent, sessionAgent)) return null;
+  // In-session agent switching is allowed, unconditionally. What remains is an
+  // AUTHORIZATION question, not an immutability one: may THIS caller run THAT
+  // agent? The grant the switched-to agent runs under is re-scoped separately
+  // (env sync + token re-mint) before the prompt is forwarded.
+  if (!isConcreteAgentSwitch(requestedAgent, sessionAgent)) return null;
   const switchedToAgent = requestedAgent as string;
   if (!userId) {
     // A switch is an authorization decision and there is no principal to decide
@@ -548,16 +541,37 @@ async function connectorGateRefusal(
 // agent-specific grant to inherit, and a prompt asking for 'default' just means
 // "this session's own default agent".
 //
-// Without this, the client's perfectly ordinary behaviour read as a bogus switch:
-// it resolves "the default" to a concrete name (e.g. `kortix`) for display and
-// echoes it back on follow-up turns — and a first-turn race can send that name
-// before the session's bound agent has even loaded. Comparing the concrete echo
-// against the stored sentinel 409'd every "start a new session, send a second
-// message" flow (the false AGENT_SWITCH_REQUIRES_NEW_SESSION reports).
-function isProhibitedAgentSwitch(requestedAgent: string | null, sessionAgent: string): boolean {
+// This predicate does NOT refuse the switch. It used to gate a 409; it now gates
+// only the 403 authz check in `agentSwitchRefusal`.
+//
+// The sentinel 'default' is non-binding on EITHER side: a session stored as
+// 'default' has no privileged agent-specific grant to inherit, and a prompt
+// asking for 'default' just means "this session's own default agent".
+//
+// Without that carve-out, the client's perfectly ordinary behaviour read as a
+// switch: it resolves "the default" to a concrete name (e.g. `kortix`) for
+// display and echoes it back on follow-up turns — and a first-turn race can send
+// that name before the session's bound agent has even loaded.
+function isConcreteAgentSwitch(requestedAgent: string | null, sessionAgent: string): boolean {
   if (!requestedAgent) return false;
+  // Asking for the sentinel is asking for "this session's own agent" — never a
+  // switch, and there is no concrete agent to authorize.
   if (requestedAgent === DEFAULT_AGENT_SENTINEL) return false;
-  if (sessionAgent === DEFAULT_AGENT_SENTINEL) return false;
+  // NOTE: there is deliberately NO `sessionAgent === DEFAULT_AGENT_SENTINEL`
+  // carve-out here. There used to be, and it was an authorization bypass
+  // (CWE-863): the body's `agent` is only stripped when the REQUESTED agent is
+  // the sentinel (see the `bodyWithoutPromptAgent` call site), so a
+  // `default`-bound session naming a CONCRETE agent really did run that agent
+  // and really did have the token re-minted to its connector/Kortix-CLI grant —
+  // while skipping the `project.agent.read` check entirely. Anyone who could
+  // use a default-bound session could therefore run any agent in the project.
+  //
+  // The carve-out was written for the old 409 refusal, where it was right: the
+  // client resolves "the default" to a concrete name for display and echoes it
+  // back, and refusing that ordinary echo 409'd every new session. It is wrong
+  // for an authorization check. Authorizing the echo is correct and cheap — the
+  // caller genuinely is asking to run that agent, and a member entitled to it
+  // passes exactly as they do on the concrete-to-concrete path.
   return requestedAgent !== sessionAgent;
 }
 
@@ -966,8 +980,17 @@ export async function forwardToSandbox(
   // providers there is no such signal, so the preview proxy never errors the row;
   // liveness is owned by the health-check loop + reconciler, not a port request.
   let sawDeadSignal = false;
-  // False until this request reaches the non-idempotent upstream prompt fetch.
-  // Pre-prompt failures, such as env synchronization, are safe to retry.
+  // A file upload is non-replayable for the same reason a prompt delivery is,
+  // and the consequence is worse. The daemon NEVER overwrites: it writes with
+  // O_CREAT|O_EXCL and, on collision, suffixes the name. So re-sending a body it
+  // already wrote does not get absorbed — it lands a SECOND file. With this loop
+  // retrying up to 4 times and the SDK retrying up to 3 on top, one user action
+  // could deposit up to 12 copies and still report failure.
+  const uploadDelivery = isUploadRequest({ method, path: remainingPath });
+  // Requests whose body must never be sent twice.
+  const nonReplayableWrite = promptDelivery || uploadDelivery;
+  // False until this request reaches the non-idempotent upstream fetch.
+  // Failures before it, such as env synchronization, are safe to retry.
   let promptDeliveryMayHaveReachedUpstream = false;
   // A blocking session-turn (`POST /session/:id/message`) whose single attempt
   // (it gets ~the whole remaining budget, see proxyAttemptTimeoutMs) still hit
@@ -1139,7 +1162,7 @@ export async function forwardToSandbox(
       );
       let upstream: Response;
       try {
-        if (promptDelivery) promptDeliveryMayHaveReachedUpstream = true;
+        if (nonReplayableWrite) promptDeliveryMayHaveReachedUpstream = true;
         upstream = await fetch(targetUrl, {
           method,
           headers,
@@ -1203,12 +1226,12 @@ export async function forwardToSandbox(
       }
 
       if (upstream.status === 502 || upstream.status === 503) {
-        // A prompt-delivery POST is NEVER retried on a 5xx: an upstream 502 can
-        // mean the sandbox already accepted the message (the gateway just dropped
-        // the response), so re-POSTing would enqueue it twice. Pass the upstream
-        // response straight through to the passthrough below. GET/idempotent
-        // requests retry as before.
-        if (!promptDelivery && attempt < MAX_RETRIES) {
+        // A prompt-delivery or upload POST is NEVER retried on a 5xx: an upstream
+        // 502 can mean the sandbox already accepted the body (the gateway just
+        // dropped the response), so re-POSTing would enqueue the message twice or
+        // write the file twice. Pass the upstream response straight through to the
+        // passthrough below. GET/idempotent requests retry as before.
+        if (!nonReplayableWrite && attempt < MAX_RETRIES) {
           // Port not ready yet — sandbox is booting (container running, port down).
           console.warn(
             `[PREVIEW] Sandbox ${sandboxId}:${port} returned ${upstream.status} (port not ready, attempt ${attempt + 1}/${MAX_RETRIES + 1})`,
@@ -1220,7 +1243,7 @@ export async function forwardToSandbox(
         // Retries exhausted and the port still isn't answering. Show the friendly
         // "port unreachable" page to browsers instead of the upstream's bare 5xx;
         // programmatic clients still get the real status + JSON via passthrough.
-        if (!promptDelivery && isBrowserNavigation(incomingHeaders)) {
+        if (!nonReplayableWrite && isBrowserNavigation(incomingHeaders)) {
           void markSandboxUsed(sandboxId);
           return portUnreachableResponse({
             port,
@@ -1347,17 +1370,18 @@ export async function forwardToSandbox(
         break;
       }
 
-      // A prompt-delivery POST must NOT be blindly retried on an ambiguous
-      // failure: a timeout / abort / connection reset can mean the sandbox
-      // already received and accepted the message, so re-POSTing would enqueue
-      // it twice. Only retry when the error PROVES nothing reached the box (the
-      // upstream refused the connection). Any other error stops here and returns
-      // the friendly unreachable response below. (The Daytona "no IP / no runner"
-      // 400 branch — a rejection before opencode — retries in the response path
-      // above, which is safe.)
+      // A prompt-delivery or upload POST must NOT be blindly retried on an
+      // ambiguous failure: a timeout / abort / connection reset can mean the
+      // sandbox already received and accepted the body, so re-POSTing would
+      // enqueue the message twice or write the file twice. Only retry when the
+      // error PROVES nothing reached the box (the upstream refused the
+      // connection). Any other error stops here and returns the friendly
+      // unreachable response below. (The Daytona "no IP / no runner" 400 branch —
+      // a rejection before opencode — retries in the response path above, which
+      // is safe.)
       if (
         promptDeliveryMayHaveReachedUpstream &&
-        promptDelivery &&
+        nonReplayableWrite &&
         !isConnectionRefusedError(err)
       ) {
         // Ambiguous: the box may already hold the message. Keep the dedupe
@@ -1495,6 +1519,11 @@ export async function resolvePreviewWsUpstream(opts: {
   return { ok: true, url: upstreamUrl.toString(), headers };
 }
 
+// The largest body the proxy will accept, matching Bun's own default socket
+// ceiling (128 MiB). Declared here so the limit is a stated number the client is
+// told about, rather than an implicit runtime default it discovers by failing.
+export const MAX_PROXY_BODY_BYTES = 128 * 1024 * 1024;
+
 // === Route handlers: ALL /:sandboxId/:port(/*) ===
 //
 // Thin wrappers around forwardToSandbox — extract params from the Hono context.
@@ -1511,6 +1540,37 @@ preview.all('/:sandboxId/:port/*', async (c) => {
   const userId = c.get('userId') as string;
 
   const method = c.req.method;
+
+  // Refuse an over-large body BEFORE reading it, and say so in a response the
+  // client can actually read.
+  //
+  // Neither Bun.serve call sets `maxRequestBodySize`, so the effective ceiling is
+  // Bun's 128 MiB default, enforced at the SOCKET. That returns a bare 413 with
+  // an EMPTY body and no CORS headers, so a cross-origin browser upload surfaces
+  // as an opaque network/CORS failure rather than "your file is too big", and the
+  // SDK can only render `Upload failed (413): Request Entity Too Large` — no
+  // filename, no stated limit. Checking Content-Length here gets in front of the
+  // socket and returns a real JSON body through `jsonProxyError`, which attaches
+  // the CORS headers every other proxy response carries.
+  //
+  // Content-Length is client-supplied and absent on a chunked body, so this is
+  // the friendly path, not the enforcement boundary. The socket limit remains the
+  // hard stop.
+  const contentLength = Number(c.req.header('content-length') ?? '');
+  if (Number.isFinite(contentLength) && contentLength > MAX_PROXY_BODY_BYTES) {
+    return jsonProxyError(
+      {
+        error: `Request body is ${Math.round(contentLength / 1_048_576)} MB, over the ${Math.round(MAX_PROXY_BODY_BYTES / 1_048_576)} MB limit.`,
+        message: `Request body is ${Math.round(contentLength / 1_048_576)} MB, over the ${Math.round(MAX_PROXY_BODY_BYTES / 1_048_576)} MB limit.`,
+        code: 'UPLOAD_TOO_LARGE',
+        max_bytes: MAX_PROXY_BODY_BYTES,
+        received_bytes: contentLength,
+      },
+      413,
+      c.req.header('Origin') || '',
+    );
+  }
+
   let body: ArrayBuffer | undefined;
   if (method !== 'GET' && method !== 'HEAD') {
     body = await c.req.raw.clone().arrayBuffer();

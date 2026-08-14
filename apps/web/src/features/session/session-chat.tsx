@@ -1725,6 +1725,15 @@ export function SessionChat({
   // runtime is connected + healthy). We need it here too so the render logic
   // can tell "still booting" apart from "genuinely gone".
   const runtimeReady = useRuntimeReady();
+  // Mirror it into a ref for `checkReadiness` below. That callback is invoked by
+  // `replayStartStash`'s own poll loop, so reading `runtimeReady` from the
+  // closure would pin the value captured when the effect first ran and never
+  // observe the runtime binding. Written in an effect, never during render —
+  // a render-phase ref write is what deadlocked the session shell before.
+  const runtimeReadyRef = useRef(runtimeReady);
+  useEffect(() => {
+    runtimeReadyRef.current = runtimeReady;
+  }, [runtimeReady]);
   const { data: session, isFetched: sessionFetched } = useRuntimeSession(sessionId);
   // useSessionSync is the SINGLE source of truth for messages (matches OpenCode SolidJS).
   // It fetches on first access, then SSE events keep it up to date.
@@ -1769,13 +1778,10 @@ export function SessionChat({
     boundAgentName,
     defaultAgentName: projectConfig?.open_code_default_agent,
   });
-  // Session agent-lock is DISABLED (mirrors the backend KORTIX_ENFORCE_SESSION_AGENT_LOCK,
-  // default off): the picker still defaults to the session's agent (seeded via
-  // useRuntimeLocal's boundAgentName) but stays switchable — sends use the current
-  // pick, not a forced lock. Flip to true to restore the hard lock once per-agent
-  // connector-token scoping lands (see docs/specs/2026-06-28-agent-defaults-todo.md).
-  const SESSION_AGENT_LOCK_ENABLED: boolean = false;
-  const lockedAgentName = SESSION_AGENT_LOCK_ENABLED ? boundAgentName?.trim() || null : null;
+  // The agent picker defaults to the session's agent (seeded via useRuntimeLocal's
+  // boundAgentName) but stays switchable: sends use the current pick. Switching
+  // mid-session is allowed everywhere — the grant re-mint re-resolves the
+  // connector tokens for the newly picked agent on every turn.
   const localAgentSet = local.agent.set;
   const localModelCurrentKey = local.model.currentKey;
   // Wire model to SEND: `auto` when on the default (gateway resolves it), else
@@ -1917,10 +1923,8 @@ export function SessionChat({
             (m) => m.providerID === model.providerID && m.modelID === model.modelID,
           ) && localModelVisible(model);
         if (stash.agent) {
-          if (!lockedAgentName || stash.agent === lockedAgentName) {
-            options.agent = stash.agent;
-            localAgentSet(stash.agent);
-          }
+          options.agent = stash.agent;
+          localAgentSet(stash.agent);
         }
         if (stash.model && isSelectableModel(stash.model as ModelKey)) {
           options.model = stash.model;
@@ -1931,20 +1935,53 @@ export function SessionChat({
           options.variant = stash.variant;
           localVariantSet(stash.variant);
         }
-        if (lockedAgentName) {
-          options.agent = lockedAgentName;
-        }
         if (!selectedModelForSend && localModelSendKey) {
           options.model = localModelSendKey;
           selectedModelForSend = localModelSendKey;
         }
         if (!selectedModelForSend) return null;
+
+        // A first send that carries LOCAL files must also wait for this
+        // session's runtime to bind. `buildParts` below uploads them, and the
+        // upload resolves its base from the current-runtime store, which is
+        // empty until `useSession` binds it (startReady + sandbox.external_id).
+        // Model readiness can resolve from cached account defaults well before
+        // that, so without this an ordinary "type a prompt, attach a file, hit
+        // send on a brand-new session" raced the binding and the upload went
+        // out against an unresolved base. The SDK now refuses that outright
+        // (RuntimeNotReadyError) instead of issuing a relative-URL fetch to the
+        // WEB origin, so the failure is safe — but failing is still the wrong
+        // answer when waiting is available. Returning null keeps
+        // `replayStartStash` polling, exactly like an unresolved model.
+        //
+        // `useRuntimeReady` is the right gate rather than a bare url check: it
+        // already requires BOTH a healthy connection and a resolved url, and it
+        // falls back to `getActiveOpenCodeUrl()` so the self-hosted
+        // default-sandbox case (where the store url stays null) is not stalled
+        // forever.
+        //
+        // Only gated on LOCAL files: a text-only prompt, or one carrying
+        // already-remote parts, needs no upload and must not be delayed.
+        const hasLocalUpload = usePendingFilesStore
+          .getState()
+          .files.some((file) => file.kind === 'local');
+        if (hasLocalUpload && !runtimeReadyRef.current) return null;
+
         return { options };
       },
       onReadinessTimeout: () => {
+        // Report the blocker that actually held the send. Readiness now has two
+        // conditions — a selectable model, and a bound runtime when there are
+        // local files to upload — so always saying "no model available" would
+        // send someone to the model picker for a sandbox that never started.
+        const stalledOnRuntime =
+          !runtimeReadyRef.current &&
+          usePendingFilesStore.getState().files.some((file) => file.kind === 'local');
         setCommandError({
           kind: 'runtime-error',
-          message: NO_MODEL_AVAILABLE_MESSAGE,
+          message: stalledOnRuntime
+            ? 'The sandbox did not finish starting, so the attached files could not be uploaded. Try sending again.'
+            : NO_MODEL_AVAILABLE_MESSAGE,
           cause: null,
         });
       },
@@ -2026,7 +2063,6 @@ export function SessionChat({
     localModelSet,
     localModelVisible,
     localVariantSet,
-    lockedAgentName,
     projectId,
     projectSessionId,
     session?.directory,
@@ -2264,13 +2300,13 @@ export function SessionChat({
         // "resolve this when the message actually sends". A session queued
         // during boot has no model resolved yet, and `null` would lock that
         // in as "send no model at all".
-        agent: lockedAgentName ?? local.agent.current?.name ?? undefined,
+        agent: local.agent.current?.name ?? undefined,
         model: local.model.sendKey ?? undefined,
         variant: local.model.variant.current ?? undefined,
         command,
       });
     },
-    [sessionId, lockedAgentName, local.agent, local.model],
+    [sessionId, local.agent, local.model],
   );
 
   const handleRemoveQueuedMessage = useCallback(
@@ -3003,9 +3039,7 @@ export function SessionChat({
       const overrideAgent = overrides?.agent;
       const overrideModel = overrides?.model;
       const overrideVariant = overrides?.variant;
-      if (lockedAgentName) {
-        options.agent = lockedAgentName;
-      } else if (overrideAgent !== undefined) {
+      if (overrideAgent !== undefined) {
         if (overrideAgent) options.agent = overrideAgent;
       } else if (local.agent.current) {
         options.agent = local.agent.current.name;
@@ -3197,7 +3231,6 @@ export function SessionChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       sessionId,
-      lockedAgentName,
       local.agent.current,
       local.model.currentKey,
       local.model.sendKey,
@@ -3595,7 +3628,7 @@ export function SessionChat({
       // SSE delivers it. Commands use the blocking /command endpoint
       // which can take minutes; using TQ would cause retry on timeout.
       commandInFlightRef.current = true;
-      const agent = lockedAgentName || local.agent.current?.name;
+      const agent = local.agent.current?.name;
       const variant = local.model.variant.current;
       void (
         sessionState?.runCommand(cmd.name, args || '', {
@@ -3628,7 +3661,6 @@ export function SessionChat({
     [
       sessionId,
       scrollToBottom,
-      lockedAgentName,
       sessionState,
       executeCommand,
       local.agent.current,
@@ -3736,7 +3768,7 @@ export function SessionChat({
   }, []);
 
   const chatCommands = useMemo(() => commands || [], [commands]);
-  const sessionScopeAgentName = lockedAgentName ?? local.agent.current?.name;
+  const sessionScopeAgentName = local.agent.current?.name;
 
   const chatToolbarSlot = useMemo(
     () =>
@@ -4255,9 +4287,8 @@ export function SessionChat({
                 onStop={handleStop}
                 escCount={escCount}
                 agents={local.agent.list}
-                selectedAgent={lockedAgentName ?? local.agent.current?.name ?? null}
-                onAgentChange={lockedAgentName ? undefined : handleAgentChange}
-                agentSelectorLocked={!!lockedAgentName}
+                selectedAgent={local.agent.current?.name ?? null}
+                onAgentChange={handleAgentChange}
                 commands={chatCommands}
                 onCommand={handleCommand}
                 models={local.model.list}

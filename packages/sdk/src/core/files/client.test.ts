@@ -656,3 +656,32 @@ test('createFile keeps returning UploadResult[] — the published shape', async 
   expect(Array.isArray(results)).toBe(true);
   expect(results[0]).toEqual({ path: '/workspace/x.md', size: 0 });
 });
+
+// REGRESSION (CodeQL js/polynomial-redos, HIGH). `writeFile` normalised its
+// argument with `replace(/\/+$/, '')`. That pattern is UNANCHORED, so on a long
+// run of slashes not at the end the engine retries it from every position —
+// O(n^2). `filePath` comes from host UI input, so it is uncontrolled: a pasted
+// path was enough to stall the tab. Replaced with an index walk.
+test('a trailing-slash path with a pathological slash run normalises in linear time', async () => {
+  routeDaemon((url) => {
+    if (url.endsWith('/file/upload')) return jsonOk([{ path: '/workspace/dir/.tmp', size: 1 }]);
+    return undefined;
+  });
+
+  // Behaviour first: trailing slashes are stripped, the rest is untouched.
+  await F.writeFile('/workspace/dir/notes.md///', new Blob(['x']));
+  const upload = calls.find((c) => c.url.includes('/file/upload'));
+  const form = upload?.raw as FormData;
+  expect(String(form.get('path'))).toBe('/workspace/dir');
+  expect(String(form.get('filename'))).toContain('notes.md');
+
+  // Then the property the regex broke. The pathological shape is a long run of
+  // '/' with a non-slash AFTER it, so the old pattern backtracked over the whole
+  // run at every offset. 200k chars finished in ~1s even then, so assert a bound
+  // tight enough that a quadratic implementation cannot pass.
+  const hostile = `/workspace/a${'/'.repeat(200_000)}b.txt`;
+  const started = performance.now();
+  await F.writeFile(hostile, new Blob(['x'])).catch(() => undefined);
+  expect(performance.now() - started).toBeLessThan(1_000);
+});
+

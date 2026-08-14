@@ -469,6 +469,23 @@ export async function copyFile(sourcePath: string, destPath: string, baseUrl?: s
 // ── overwrite-in-place ───────────────────────────────────────────────────────
 
 /** Parent directory of an absolute sandbox path ('/workspace/a/b.md' → '/workspace/a'). */
+/**
+ * Strip trailing `/` without a regex.
+ *
+ * The obvious `replace(/\/+$/, '')` is POLYNOMIAL (CodeQL js/polynomial-redos):
+ * `\/+$` is unanchored, so on `"a" + "/".repeat(n) + "b"` the engine retries the
+ * whole run from every position — O(n²). `filePath` arrives from host UI input,
+ * so it is uncontrolled. An index walk is O(n) and needs no backtracking.
+ *
+ * `toSandboxAbsolutePath`'s `/^\/+/` is fine by contrast: anchored at the start,
+ * so it is only ever attempted at position 0.
+ */
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47 /* '/' */) end--;
+  return value.slice(0, end);
+}
+
 function sandboxDirname(absPath: string): string {
   const index = absPath.lastIndexOf('/');
   return index <= 0 ? '/' : absPath.slice(0, index);
@@ -522,7 +539,7 @@ export async function writeFile(
   baseUrl?: string,
 ): Promise<WriteFileResult> {
   const base = requireBaseUrl(baseUrl);
-  const absPath = toSandboxAbsolutePath(filePath.trim().replace(/\/+$/, ''));
+  const absPath = toSandboxAbsolutePath(stripTrailingSlashes(filePath.trim()));
   const name = sandboxBasename(absPath);
   if (!name) {
     throw new ApiError(`writeFile needs a file path, got "${filePath}"`, { code: 'INVALID_PATH' });

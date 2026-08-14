@@ -141,6 +141,18 @@ const envSchema = z.object({
   // Global background-worker switch. API-only and migration-shadow deployments
   // keep request handling active while disabling every recurring write loop.
   KORTIX_WORKERS_ENABLED: optBoolTrue,
+  /**
+   * Enforce the sandbox egress pin on the secret-broker route (default ON).
+   *
+   * A kill switch, not a feature flag. The pin blocks a session token used from
+   * outside its own sandbox — but the broker route also serves
+   * `kortix secrets call` and the connector MCP, so if a provider ever
+   * reassigns a running sandbox's egress address the pin would 403 real work.
+   * Set this to `false` to fall back to log-only while that is investigated,
+   * instead of reverting a deploy. Watch for `[secret-broker] refused an
+   * off-sandbox token use`.
+   */
+  KORTIX_SANDBOX_EGRESS_PIN_ENFORCED: optBoolTrue,
   // Kortix-owned session titles: the moment a session's first prompt text is
   // known server-side (at create when it carries one, else on the first HTTP
   // prompt), generate the title ourselves via the internal LLM gateway instead
@@ -927,6 +939,7 @@ export const config = {
   // Single master switch — see schema docstring above.
   KORTIX_BILLING_INTERNAL_ENABLED: env.KORTIX_BILLING_INTERNAL_ENABLED,
   KORTIX_WORKERS_ENABLED: env.KORTIX_WORKERS_ENABLED,
+  KORTIX_SANDBOX_EGRESS_PIN_ENFORCED: env.KORTIX_SANDBOX_EGRESS_PIN_ENFORCED,
   SESSION_TITLE_GENERATION_ENABLED: env.SESSION_TITLE_GENERATION_ENABLED,
   KORTIX_TEMPLATES_ENABLED: env.KORTIX_TEMPLATES_ENABLED,
   OPENAPI_PUBLIC_DOCS: env.OPENAPI_PUBLIC_DOCS,

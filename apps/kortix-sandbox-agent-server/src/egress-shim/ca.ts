@@ -81,6 +81,13 @@ export function createEphemeralCa(label: string, ttlMs: number = DEFAULT_CA_TTL_
     // be used to mint another CA.
     { name: 'basicConstraints', cA: true, pathLenConstraint: 0, critical: true },
     { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true },
+    // Required, not decorative. Python's OpenSSL refuses a chain whose leaf
+    // carries no Authority Key Identifier, and an AKI can only reference a
+    // Subject Key Identifier that exists on the issuer. Without this pair
+    // `requests` fails with `CERTIFICATE_VERIFY_FAILED ... Missing Authority
+    // Key Identifier` while curl accepts the same certificate — measured in a
+    // real Daytona guest, which is the only place it showed up.
+    { name: 'subjectKeyIdentifier' },
   ])
   cert.sign(keys.privateKey, forge.md.sha256.create())
 
@@ -104,11 +111,21 @@ export class LeafIssuer {
    */
   private readonly caKey: forge.pki.rsa.PrivateKey
   private readonly notAfter: Date
+  /** The CA's own key id, so each leaf's AKI can point back at it. */
+  private readonly caSubjectKeyId: string
 
   constructor(ca: EphemeralCa) {
     this.caCert = forge.pki.certificateFromPem(ca.certPem)
     this.caKey = forge.pki.privateKeyFromPem(ca.keyPem) as forge.pki.rsa.PrivateKey
     this.notAfter = ca.notAfter
+    // forge computes this from the public key when the extension is generated;
+    // read it back off the parsed cert so the leaf references the real bytes
+    // rather than a recomputation that could drift.
+    // forge's own derivation of the CA public key's identifier, as raw octets.
+    // Reading the parsed extension back gives a hex string that forge then
+    // re-encodes wrongly, producing a chain OpenSSL rejects with "unable to
+    // verify the first certificate" — measured.
+    this.caSubjectKeyId = this.caCert.generateSubjectKeyIdentifier().getBytes()
   }
 
   /**
@@ -134,6 +151,13 @@ export class LeafIssuer {
       { name: 'basicConstraints', cA: false, critical: true },
       { name: 'keyUsage', digitalSignature: true, keyEncipherment: true, critical: true },
       { name: 'extKeyUsage', serverAuth: true },
+      // See the CA's subjectKeyIdentifier above: this is the half Python
+      // actually looks for.
+      { name: 'subjectKeyIdentifier' },
+      // keyIdentifier ONLY. The issuer+serial form (`authorityCertIssuer` +
+      // `serialNumber`) is also legal ASN.1 but forge emits it in a shape
+      // OpenSSL would not chain; the bare key id is what Python asks for.
+      { name: 'authorityKeyIdentifier', keyIdentifier: this.caSubjectKeyId },
       {
         name: 'subjectAltName',
         // type 2 = dNSName, type 7 = iPAddress. A literal-IP destination needs

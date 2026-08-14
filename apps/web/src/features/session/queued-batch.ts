@@ -30,6 +30,10 @@ export interface MergedQueuedBatch {
     agent?: string | null;
     model?: { providerID: string; modelID: string } | null;
     variant?: string | null;
+    /** The head entry's stable key. A retried entry drains as a batch of one,
+     *  so re-sending its id makes the retry byte-identical on the wire and the
+     *  proxy's body-hash dedupe absorbs a prompt the server already accepted. */
+    clientMessageId?: string;
   };
 }
 
@@ -75,6 +79,11 @@ export function mergeQueuedBatch(batch: WebQueuedMessage[]): MergedQueuedBatch |
     // Spread verbatim, including `undefined`. `handleSend` reads `undefined` as
     // "resolve when this sends" and `null` as "send none at all"; coercing one
     // into the other strips the user's model from the send.
-    overrides: { agent: head.agent, model: head.model, variant: head.variant },
+    overrides: {
+      agent: head.agent,
+      model: head.model,
+      variant: head.variant,
+      clientMessageId: head.clientMessageId,
+    },
   };
 }

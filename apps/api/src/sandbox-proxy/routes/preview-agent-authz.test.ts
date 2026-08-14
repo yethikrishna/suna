@@ -1,7 +1,7 @@
 // A prompt that names a CONCRETE different agent must be AUTHORIZED for that
 // agent before anything acts on it.
 //
-// `project.agent.read` was asserted only at session create (projects/routes/r7.ts),
+// `project.agent.read` was asserted only at session create (projects/routes/project-sessions.ts),
 // against `body.agent_name`. The prompt path never re-checked, so a member scoped
 // to agent A could create the session as A and then prompt `{"agent":"B"}` — and
 // `remintGrantForAgentSwitch` would hand them B's connector / Kortix-CLI grant,
@@ -32,7 +32,7 @@ let authorizeAllowed = true;
 let remintCalls: Array<{ requestedAgent: string | null }> = [];
 let envSyncCalls: Array<{ requestedAgent: string | null | undefined }> = [];
 
-mock.module('../../config', () => ({ config: { KORTIX_ENFORCE_SESSION_AGENT_LOCK: false } }));
+mock.module('../../config', () => ({ config: {} }));
 mock.module('../../lib/request-context', () => ({
   ...realRequestContext,
   getTraceHeaders: () => ({}),

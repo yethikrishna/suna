@@ -200,6 +200,27 @@ describe('claimBatch', () => {
     expect(state.inFlightIds).toEqual(['a', 'b']);
   });
 
+  test('a command at the head claims alone, whatever waits behind it', () => {
+    // A command entry dispatches through the host's command path — a template
+    // the server expands into its own turn. It cannot share a prompt with
+    // text messages; merging would send its literal args as prose.
+    const { state, claimed } = claimBatch(
+      queueOfInputs({ ...item('a'), command: { name: 'review' } }, item('b'), item('c')),
+    );
+
+    expect(claimed.map((m) => m.id)).toEqual(['a']);
+    expect(state.inFlightIds).toEqual(['a']);
+  });
+
+  test('a text batch stops before a command entry', () => {
+    const { state, claimed } = claimBatch(
+      queueOfInputs(item('a'), item('b'), { ...item('c'), command: { name: 'review' } }),
+    );
+
+    expect(claimed.map((m) => m.id)).toEqual(['a', 'b']);
+    expect(state.inFlightIds).toEqual(['a', 'b']);
+  });
+
   test('stops at a change of agent or variant too', () => {
     expect(
       claimBatch(

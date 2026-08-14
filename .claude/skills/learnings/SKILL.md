@@ -21,6 +21,33 @@ linked, not inlined.
 
 ## Register
 
+### A platform-injected principal must never have its authority re-derived from user config (2026-08-13)
+
+**When:** touching code that RE-resolves an already-minted credential —
+`remintGrantForAgentSwitch` / `reconcileStoredSessionAgentGrant`
+(`apps/api/src/projects/lib/session-token-grant.ts`), which run on EVERY prompt
+and every connector call. The `meta` coordinator is injected by
+`addPlatformMetaAgent` and appears in no `kortix.yaml`, so resolving it through
+the manifest returns "unlisted agent": deny-all on a governed project,
+UNRESTRICTED on an ungoverned one. Both are destructive — the deny-all was
+WRITTEN over the coordinator's real grant on its first turn, and the null made
+the re-mint refuse the turn outright. Branch for the platform-owned principal in
+the ONE pure resolver every path shares (`grantFromLoadedAgents`); a special case
+at the mint alone is exactly what the re-mint then erases.
+Two traps cost hours here. A comment asserting a fast path is not evidence the
+fast path exists — `preview.ts:1144` says an ordinary turn "skips the manifest
+read entirely" while the callee has no early return at all; read the callee. And
+`authorizeV2` returns `super_admin` BEFORE the agent-grant fold, while a personal
+account's primary owner has `is_super_admin = true` — so this entire bug class is
+invisible on a laptop until you clear that flag.
+*Incident:* the meta coordinator could not list or spawn sessions for the account
+owner running it; `kortix sessions ls` / `new` 403'd from turn one onward, and
+the 403 blamed their role (that misdiagnosis fixed separately in #6443).
+*Enforcer:* `apps/api/src/__tests__/unit-meta-agent-grant-resolution.test.ts`
+pins resolution for governed / ungoverned / unreadable manifests, the `skip`
+re-mint decision, and the old destructive `write` as a regression guard. Nothing
+enforces the comment-vs-callee or super-admin traps — those are prose only.
+
 ### Anything created per-deploy needs a reaper, and the reaper needs a namespace (2026-08-12)
 
 **When:** adding or reviewing code that creates a named provider-side artifact
@@ -230,3 +257,134 @@ grep -E treats `\t` in single quotes as a literal `t` while macOS grep interpret
 it, so a locally-green pattern can be dead on ubuntu runners. Use ANSI-C
 quoting (`$'\t'`) and test the exact pattern in an ubuntu container.
 *Incident:* staging web verify failed twice on the same one-line assertion.
+
+### A TLS/proxy component is only as correct as the third-party clients that accept it (2026-08-14)
+
+**When:** shipping anything that terminates TLS, mints certificates, or sits in
+front of other people's HTTP clients (the in-guest egress shim, any MITM proxy).
+Unit tests and a `curl` probe are NOT evidence. Three separate bugs in this one
+component passed every in-process test and every curl check, and each was found
+only by running a real heterogeneous client in a real guest:
+
+- `git` sends CONNECT, gets a 407, and retries **on the same socket**. Without
+  `Content-Length: 0` + `Connection: close` on the challenge the retry vanishes
+  and every clone fails, while curl is unaffected because it reconnects.
+- Python's OpenSSL refuses a chain whose leaf carries no **Authority Key
+  Identifier** (`CERTIFICATE_VERIFY_FAILED ... Missing Authority Key
+  Identifier`); curl accepts the identical certificate. An AKI also needs a
+  **Subject Key Identifier** on the issuer to point at, and node-forge's PARSED
+  `subjectKeyIdentifier` is a hex string — feeding it back yields an AKI naming
+  an issuer that does not exist and breaks every handshake. Use
+  `caCert.generateSubjectKeyIdentifier().getBytes()`.
+- `curl` offers `Accept-Encoding: gzip` by default. Any redaction that scans
+  response BYTES is silently defeated by a compressed body, so a credential
+  echoed back returns intact. Force `identity` on the relayed request.
+
+Run the real clients — `curl`, `python3 -m requests`, `git`, `node fetch` — in a
+real sandbox before claiming a proxy works, and assert on what the UPSTREAM
+received, not on the absence of an error.
+*Incident:* the Daytona network-boundary shim shipped to dev broken for every
+Python client; caught by a live probe, not by 27 green tests.
+
+### Bun diverges from Node in three load-bearing ways around raw sockets and TLS (2026-08-14)
+
+**When:** writing socket/TLS code that runs under Bun (the API and the sandbox
+daemon both do). Measured, bun 1.3.14 vs node v22.22.0:
+
+- `http.Server.emit('connection', socket)` is a **no-op** — the request event
+  never fires and the connection hangs with nothing in any log. Use a real
+  loopback listener and pipe into it.
+- `SNICallback` **never fires** — the handshake completes against a default
+  certificate. Bind one static-cert listener per terminated host instead.
+- The `'upgrade'` event fires, but a write from that handler **never reaches the
+  client**; Node delivers the same bytes. Destroy the socket rather than trying
+  to answer.
+
+All three fail SILENTLY (a hang, or the wrong certificate), never an exception.
+*Incident:* each cost a debugging cycle in the egress proxy/shim.
+
+### A path allowlist that gates non-idempotency must list EVERY turn-creating endpoint (2026-08-11)
+
+**When:** touching the sandbox proxy's retry loop, or adding an OpenCode endpoint
+that starts an agent turn.
+`routes/preview.ts` derived "is this safe to retry?" from
+`shouldSyncProjectEnvBeforeProxy`, a predicate named after env sync whose regex
+listed only `/session/:id/{message,prompt_async}`. `POST /session/:id/command` —
+what every `/` slash-command posts to — matched neither that nor
+`isLongTurnCompletionRequest`. One omission silently disabled FOUR independent
+safeguards at once: no dedupe claim, retry-on-5xx allowed, retry-on-ambiguous-
+timeout allowed, and a 15s connect cap applied to an endpoint that blocks for the
+whole turn. `MAX_RETRIES = 3` then re-POSTed the non-idempotent body, so one user
+submit ran the agent four times and billed four turns.
+**Rules:** (1) a predicate that answers "may I send this twice?" gets its OWN
+name and its own list — never reuse one written for a different question, because
+adding an endpoint to one concern silently opts it into or out of the other;
+(2) any new turn-creating path must be added to `isNonIdempotentSessionWrite`
+(`sandbox-proxy/prompt-dedupe.ts`) AND `isLongTurnCompletionRequest`
+(`sandbox-proxy/preview-retry-budget.ts`) in the same commit.
+**Enforcement:** both predicates are unit-tested per endpoint in
+`prompt-dedupe.test.ts` / `preview-retry-budget.test.ts`. Black-box proof: two
+identical `/command` POSTs must yield exactly one new user message.
+*Incident:* session `9f6b0d87`, one `/webapp` submit recorded as 4 identical user
+messages 11.0s / 11.8s / 13.7s apart (attempt timeout + `RETRY_DELAYS_MS`
+[250, 1000, 3000]).
+
+### Two proxy layers must agree on which upstream calls legitimately block (2026-08-11)
+
+**When:** changing a timeout in `kortix-sandbox-agent-server/src/proxy.ts` or
+`apps/api/src/sandbox-proxy/`, or adding an OpenCode endpoint that withholds
+headers until its work completes.
+The daemon bounded EVERY proxied header wait at `UPSTREAM_RESPONSE_TIMEOUT_MS =
+10_000`, reasoning only about SSE (headers arrive fast) and a wedged opencode.
+`POST /session/:id/command` emits nothing until the whole turn finishes, so
+every command over 10s was aborted and answered `502 {"error":"upstream
+unreachable"}` — the banner users saw in chat, on a healthy turn. Its own
+comment said the 502 exists so "apps/api's retry+auto-wake loop can act on it
+immediately" — and that loop assumed idempotency. **A fail-fast designed to
+trigger a retry met a retry loop that assumed it was safe to repeat.** One
+`/webapp` submit ran the agent four times, each retry aborting the turn the
+previous one started, which is where the "Interrupted" labels came from.
+**Rules:** (1) a header-wait timeout is only valid for endpoints that ANSWER
+fast — blocking-turn endpoints need their own generous bound
+(`isBlockingTurnRequest` / `LONG_TURN_RESPONSE_TIMEOUT_MS`); (2) when one layer
+fails fast *expecting* another to retry, the retry decision must be written down
+in both layers, never inferred; (3) a client must not render a
+delivered-then-disconnected prompt as a failed send — the retry it invites is
+what aborts the live turn (`delivered-but-disconnected.ts`).
+**Enforcement:** `blocking-turn-timeout.test.ts` drives BOTH layers' predicates
+with the same inputs and requires identical verdicts (verified falsifiable — it
+goes red when either side drifts).
+**Deployment trap:** the daemon ships inside the sandbox image, so this fix
+reaches only sandboxes created from a NEW snapshot. Existing sessions keep the
+10s bound; the web-side classifier is what covers them.
+*Incident:* session `9f6b0d87`.
+
+### A control split across API and daemon is only live when BOTH halves are (2026-08-14)
+
+**When:** shipping any security control whose two halves live in `apps/api` and
+`apps/kortix-sandbox-agent-server`. The API half goes live the moment Deploy Dev
+finishes. The daemon half does NOT: it is baked into the sandbox image, reaches
+a guest only through a new meta-snapshot build, and the fingerprint that
+triggers that build hashes `apps/kortix-sandbox-agent-server/src`. Until an
+image carrying the new daemon exists, the API half is running against old
+guests and the control does nothing.
+
+The sandbox egress pin hit this exactly: the API mount was verifiably live
+(boot-timeline went 403 → 401 on the same request), but a real exfiltrated-token
+attack still SUCCEEDED because the box's baked daemon still sent the wrong
+token, so nothing wrote a pin. The identical test passed later, unchanged, once
+a sandbox with the new daemon existed.
+
+Two rules:
+
+- **Never conclude "the control does not work" from one post-deploy run.** Prove
+  which half is live first. An API-side before/after on the same request is
+  cheap and decisive (`403 handler-guard` → `401 middleware`).
+- **A control that fails OPEN is the right default while it propagates** — the
+  pin allows `unpinned`, so old guests kept working and nothing regressed
+  during the lag. A fail-closed control shipped this way is an outage.
+
+Do not read a fast `session_start_timeline.totalMs` as proof of a warm-pool box
+either: `KORTIX_WARM_SNAPSHOT_ENABLED` defaults false, and ~2s is also what
+creating a container from an ALREADY-BUILT image costs.
+*Incident:* the token-binding verification failed twice before the image landed.

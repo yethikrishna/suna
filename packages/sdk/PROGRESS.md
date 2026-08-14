@@ -12,96 +12,57 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
-### 2026-08-14 — session `agent-switch-upload` — files transport: 4 upload defects
+### 2026-08-13 — session `warm-index` — warm-session decline must not toast
 
-**Done.** Claimed nothing in **Now**; user-directed work on `core/files/client.ts`
-from a four-agent audit of file upload. Branch `agent-switch-upload`, not
-committed by this session. Appended `B50` to Backlog.
+**Done.** `ensureWarmProjectSession` posted WITHOUT `showErrors: false`, so its
+recoverable `409 WARM_SESSION_UNAVAILABLE` reached `platformConfig().onError` and
+became an error toast on an ordinary project page view. The browser fires that
+call on every project visit and ignores every failure by contract, so the toast
+was pure noise — and an account sitting at its concurrent-session cap saw it
+every time. `claimWarmProjectSession` already had the flag for exactly this
+reason (B26); this brings its sibling in line.
 
-1. **Empty base url posted user bytes to the WRONG ORIGIN.** Every op did
-   `baseUrl: string = getActiveOpenCodeUrl()`, which returns `''` on a
-   billing-enabled deployment until a session runtime binds. `fetch('' +
-   '/file/upload')` is a RELATIVE url, so the browser POSTed the user's file and
-   their bearer token to the WEB origin and got the Next.js 404 HTML shell back
-   ("Upload failed (404): Not Found"). Every op now resolves through
-   `requireBaseUrl()`, which throws the EXISTING `RuntimeNotReadyError` (same
-   class the send path throws) on an empty or blank base url — including one
-   passed explicitly, which must never fall back to the module global.
-   `getFileStatus`/`uploadFile`/`createFile` became `async` so the refusal
-   rejects instead of throwing synchronously; their `.d.ts` signatures are
-   unchanged (`baseUrl: string = …` and `baseUrl?: string` both emit `?`).
-2. **No overwrite-in-place primitive.** The daemon writes with `flag:'wx'` and
-   uniquifies on `EEXIST`, so "save an edited file" wrote a DIFFERENT file while
-   the viewer re-read the original path — silent data loss under a "File saved"
-   toast. Added `writeFile(path, content, baseUrl?)`: ensure parent → upload to
-   a temp name → rename the **daemon-returned** path over the target, with the
-   original moved aside first and restored if the swap fails. Modelled on
-   `apps/cli` `writeSessionFile`, minus `node:path` (isomorphic core) and with a
-   guarded `crypto.randomUUID` (secure-context trap, see `platform/session-id.ts`).
-   Exposed as `files.write` and `session(pid,sid).files.write`.
-3. **`copyFile` bypassed the SDK auth seam.** `uploadToPath` called bare
-   `fetch()` with a hand-rolled `Authorization` header, losing the size-scaled
-   deadline, the 401 refresh-and-retry, `X-Kortix-Client`, and
-   `platformConfig().fetch` (so mobile/whitelabel injected fetches were skipped).
-   Now `authenticatedFetch`, with `uploadTimeoutMsForBytes(content.size)`.
-4. **`createFile` wrote a space into every "empty" file.** The `new File([' '])`
-   hack existed because Bun 1.3.14's multipart parser DROPS `filename` on a
-   zero-length part, landing a file named `undefined`. The name now travels as
-   its own `filename` form field (daemon reads it as `filenameHint`), so
-   `createFile` produces a genuinely 0-byte file.
+Also marked `claimWarmProjectSession` and `sessions.claimWarm` `@deprecated`. A
+warm session is an ordinary session, so the API's send path no longer claims
+anything — it navigates to the session and prompts it, and the first prompt makes
+it visible. The export STAYS: it has shipped in every published version since
+v0.11.0 (verified against the 0.11.0 and 0.12.8 tarballs), so removing it would
+404 an external consumer at runtime. Removal belongs to the next major.
 
-**Rollout follow-up (same session).** Defect 4 as first written required the
-daemon and the SDK to ship together — and they **cannot**. The daemon is baked
-into the sandbox image (`/usr/local/bin/kortix-agent`,
-`apps/sandbox/Dockerfile:223`) and `/v1/runtime-assets` reconciles only
-`cli_sha256` + `managed_skills_hash` (`apps/api/src/runtime-assets/manifest.ts:51-97`)
-— it does not ship the daemon. So the SDK deploys with the web app while every
-pre-rebuild sandbox keeps its old daemon, and there a 0-byte `createFile` would
-land as a file literally named `undefined` — now user-visible through the file
-explorer's new "New File" button.
+RED first:
 
-Fixed by implementing `createFile` on `writeFile`: renaming the
-daemon-**reported** path onto the requested path is version-agnostic (new daemon
-renames the temp name, old daemon renames `undefined`). Concurrency holds on the
-old fleet too — the daemon's `O_EXCL` + suffix retry gives the second caller
-`undefined-<suffix>`, and each call renames only the path it was told, so two
-creates cannot cross. `createFile` still returns `UploadResult[]`; the published
-shape is unchanged. The `filename` form field stays on `uploadFile` (correct for
-the new daemon, skipped as a plain string part by the old one).
+```
+$ bun test packages/sdk/src/core/rest/projects-client/sessions.test.ts
+(fail) ensureWarmProjectSession keeps a declined warm session out of the global error sink
+error: expect(received).not.toHaveBeenCalled()
+Expected number of calls: 0
+Received number of calls: 1
+ 40 pass
+ 1 fail
+```
 
-3 tests added, RED first — the failure was the regression verbatim
-(`createFile` returned `/workspace/undefined`). One EXISTING test from earlier
-in this same session, `createFile writes a genuinely EMPTY file — no space
-byte`, was rewritten: it pinned the MECHANISM (`last()` is the upload) rather
-than the behaviour. Every behavioural assertion is kept and one is added
-(0 bytes, name survives, file lands at the requested path). Called out here
-because changing a test is a decision, not a fix.
+GREEN after the fix:
 
-`UPLOAD_TIMEOUT_CEILING_MS` (15 min) reviewed and **deliberately unchanged** —
-the API proxy's 50s `PROXY_RETRY_BUDGET_MS` starts AFTER the request body is
-buffered (`preview.ts` awaits `c.req.raw.clone().arrayBuffer()` before
-`proxyStartedAt`), so client-visible time is `body upload + ≤50s`, not 50s
-total. Clamping to ~60s would abort exactly the large uploads the scaled
-deadline exists to protect. Reasoning recorded in the constant's doc comment.
+```
+$ bun test packages/sdk/src/core/rest/projects-client/sessions.test.ts
+ 41 pass
+ 0 fail
+Ran 41 tests across 1 file. [35.00ms]
+```
 
-RED first: 11 new tests failed on the unmodified tree, one per defect
-(`RuntimeNotReadyError` not thrown, `F.writeFile is not a function`,
-`copy` never reached the injected fetch, `filename` field `null`, empty-file
-size `1`). GREEN: `35 pass, 0 fail` in `core/files/client.test.ts`.
+No exported name, signature or type changed. Public-surface snapshots unchanged.
+The `version` field was not touched.
 
-Gates:
+**Housekeeping:** removed two committed diff3 conflict markers (`||||||| b55497c392`
+from #6437, `||||||| f398f755c2` from #6244). Neither had matching `<<<<<<<` /
+`>>>>>>>` lines, so nothing ever flagged them.
 
-- `bun test --isolate` — `1920 pass, 0 fail, 7330 expect()` across 145 files
-  (baseline on this tree before the change: `1904 pass, 2 skip, 0 fail`).
-- `bun run typecheck` — exit 0 (package + examples).
-- `bun run smoke:install` — `install smoke test passed`.
-- `pnpm test -- --sdk-only` (repo root) — `PASS sdk 22.7s`, `1917 pass, 0 fail`.
+**Claim note:** the claim was recorded with the work rather than before it — this
+change was a one-file bug fix discovered mid-refactor, not a scheduled task.
 
-Both surface snapshots re-recorded and reviewed: **+2 runtime names, +4
-type-level names (`writeFile`, `WriteFileResult`), 0 removals — purely
-additive.**
+**SDK package shippable to production: YES.**
 
-Shippable to production: YES.
+---
 
 ### 2026-08-13 — session `runtime-identity-ux` — error message: sentence over slug
 
@@ -130,7 +91,6 @@ package and deserves its own task. Filed under Next.
 
 ---
 
-||||||| b55497c392
 ### 2026-08-13 — session `warm-index` claim — DONE
 
 Additive only: registered the `warm_sessions` project feature flag key so the
@@ -2389,7 +2349,6 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B47 | **A reload reported success while the agent kept running the old prompt.** `SessionReloadResult` exposed `applied` (the compiled config was pushed) but nothing about whether the agent files opencode actually READS were updated — and those came apart in production. Verified on dev: marker present in `~/.config/kortix-opencode.json`, absent from opencode's `/config` and `/agent`, because `OPENCODE_CONFIG_DIR` points into the session's working tree and its `.md` files win. | Additive: `config_dir_synced?: boolean | null` and `config_dir_reason?: string` on `SessionReloadResult`. Tri-state on purpose — `false` is a deliberate refusal (the session edited its own agent files), `null` is an older daemon that could not say. | **DONE 2026-08-03** — session `stale-session-ui`; typecheck exit 0; full suite 1419 pass / 1 fail across 117 files (the failure, `fetchCostExportCsv`, is PRE-EXISTING — passes in isolation, fails identically on a clean tree); packed-install smoke pass; type snapshot re-recorded and reviewed as **purely additive, 0 removals** |
 | B48 | **Canonical feature-flag naming + one gating primitive.** The platform renamed the system to "Feature flags" (`FeatureFlag*` in `@kortix/api-contract`, `FeatureFlagStabilitySchema` = experimental\|beta\|stable, gated routes returning `403 {code:'feature_disabled', feature}`, canonical `PATCH /projects/:id/features`). The SDK still exposed only `Experimental*` names, had no runtime key list for cross-package drift tests, no typed narrowing for the 403, and no shared React gate hook — so every host hand-rolled `project?.experimental?.<key> === true`. | Additive only: `FeatureFlagKey`, `FeatureFlagView` (stability widened to `'experimental'\|'beta'\|'stable'`), `FEATURE_FLAG_KEYS`, `updateFeatureFlag` (canonical `/features` route), `isFeatureDisabledError`, `FeatureDisabledError`, `useFeatureFlag`, and `project(id).updateFeatureFlag` on the facade. Every `Experimental*` name kept as a `@deprecated` alias; `updateExperimentalFeature` keeps its `/experimental` wire path for older deployed APIs. | **DONE 2026-08-08** — session `feature-flags-web`; TDD RED first on all four (`Export named 'FEATURE_FLAG_KEYS' not found`, `Export named 'isFeatureDisabledError' not found`, `Cannot find module './use-feature-flag'`); GREEN at `1777 pass, 0 fail, 6965 expect()` across `139` files; `typecheck` exit 0 (package + examples); `smoke:install` packed + installed + imported OK. Both surface snapshots re-recorded and reviewed: **11 + 20 insertions, 0 removals — purely additive** |
 | B49 | **`applyOptimisticAbort` marks a turn errored but never ends it.** It sets `error: AbortError` and flips the session idle, but leaves `time.completed` unset — and an aborted turn may never receive a `message.updated` that sets it. Any host predicate written as `!lastAssistant.time?.completed` therefore stays true for the life of the tab after every stop. It wedged `apps/web`'s message-queue drain gate permanently: every message typed after an interrupt queued behind one that could never be released. | `src/react/use-session-send.ts:271-296` — sets `error`, no `time.completed`. Worked around host-side in `apps/web/src/features/session/assistant-turn-open.ts` (errored ⇒ ended), which is a patch on the symptom; the SDK should end the turn it aborts. | OPEN |
-| B50 | **`apps/cli` and `apps/mobile` still hand-roll overwrite-in-place.** The SDK now owns it (`files.writeFile`, session-scoped `session(pid,sid).files.write`), but the two host copies remain: `apps/cli/src/commands/sessions-files.ts:90-121` (`writeSessionFile`, temp-upload → rename-over-target with backup/rollback — the model the SDK version was built from) and the weaker `apps/mobile/lib/files/hooks.ts:229-292`. Two divergent copies of a data-loss-critical primitive. | Point both at `files.writeFile` and delete the local copies. Host-only change; no SDK edit needed. | OPEN |
 
 ## DISCOVERED THIS SESSION — append freely
 
@@ -8456,7 +8415,6 @@ would now fail to compile. Flagging rather than burying it.
 made; this entry is the handoff record).
 
 **SDK package shippable to production: YES.**
-||||||| f398f755c2
 
 ### 2026-08-07 — session `connectors-grid`: `listPipedreamApps` forwards the catalogue total
 
@@ -8784,3 +8742,23 @@ Nothing removed, nothing renamed.
 exactly ONE `handleSend` call per batch. A loop would reintroduce RC4 from
 `docs/superpowers/specs/2026-08-05-session-message-queue-design.md` —
 `handleSend` resolves on the server's 204 ACK, not on turn end.
+
+### 2026-08-13 — merge `main` → `message-input`: `claimBatch` learns command boundaries
+
+Semantic merge fix, TDD (RED first). `main` brought batch drain (`claimBatch`,
+`inFlightIds`); this branch brought `command` entries on `QueuedMessage`. Git
+auto-merged both cleanly into code that compiled but was wrong: `claimBatch`
+would merge a queued `/` command's args into a plain text prompt.
+
+**Changed** — `core/session/message-queue.ts`: `claimBatch` now claims a
+command entry alone and stops a text batch before a command entry. Additive
+behavior change, no public name touched, no snapshot drift.
+
+**Evidence** — `pnpm --filter @kortix/sdk test`: 1922 pass, 0 fail (145 files;
++2 new `claimBatch` command tests). `typecheck` clean. `smoke:install` passed
+(`✔ install smoke test passed`).
+
+**Host side (context):** `apps/web` `mergeQueuedBatch` now carries the head
+entry's `clientMessageId` in `overrides`, preserving the branch's retry-dedupe
+guarantee through the batch path; `session-chat.tsx` `sendQueuedBatch` =
+command dispatch (batch of one, guaranteed by `claimBatch`) + merged text send.

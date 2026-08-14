@@ -43,7 +43,7 @@ let parkCalls: unknown[] = [];
 let upstreamPort = 3000;
 
 mock.module('../../config', () => ({
-  config: { KORTIX_ENFORCE_SESSION_AGENT_LOCK: false },
+  config: {},
 }));
 mock.module('../../lib/request-context', () => ({
   ...realRequestContext,

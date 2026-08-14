@@ -16,7 +16,7 @@ import { useAuth } from '@/features/providers/auth-provider';
 import { InstantSessionShell } from '@/features/session/instant-session-shell';
 import { ProviderFailureRecovery } from '@/features/session/provider-failure-recovery';
 import {
-  pendingSessionPromptFromMetadata,
+  pendingSessionPromptForRecovery,
   provisioningFailurePresentation,
   startStashFromPendingSessionPrompt,
 } from '@/features/session/provisioning-failure';
@@ -63,7 +63,9 @@ import {
   useSessionSwitchStore,
 } from '@/stores/session-switch-store';
 import { useUpgradeDialogStore } from '@/stores/upgrade-dialog-store';
+import { projectSessionsRefetchInterval } from '@/features/workspace/project-sidebar/project-session-list-helpers';
 import {
+  type ProjectSession,
   formatRuntimeError,
   getProjectDetail,
   listProjectSessions,
@@ -168,11 +170,28 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
     queryKey: qk.project.sessions(projectId),
     queryFn: () => listProjectSessions(projectId),
     enabled: !!user && !!projectId,
+    // This query feeds the session HEADER's title. It had no interval at all,
+    // so it never refetched — the header was only ever correct because it
+    // shares this cache entry with the sidebar's list, and went stale the
+    // moment the sidebar was unmounted or had stopped polling. The name is
+    // written server-side seconds AFTER the first prompt with no event to
+    // announce it (see `sessionTitleHasLanded`), so a query that never
+    // refetches can never show it.
+    //
+    // `hasOpenSession: true` unconditionally: this route IS an open session.
+    refetchInterval: (query) =>
+      projectSessionsRefetchInterval({
+        sessions: query.state.data as ProjectSession[] | undefined,
+        hasOpenSession: true,
+      }),
     refetchOnWindowFocus: false,
     ...contract('inventory'),
   });
   const currentProjectSession = projectSessions?.find((item) => item.session_id === sessionId);
-  const pendingPrompt = pendingSessionPromptFromMetadata(currentProjectSession?.metadata);
+  const pendingPrompt = pendingSessionPromptForRecovery(
+    sessionId,
+    currentProjectSession?.metadata,
+  );
   const initialOpenCodeSessionId = findInitialSessionPin(projectSessions, sessionId);
 
   // ONE hook owns the runtime: POST /start (idempotent provision/resume + the

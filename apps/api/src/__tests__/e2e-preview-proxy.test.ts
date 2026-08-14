@@ -970,10 +970,10 @@ describe('Preview proxy: forwarding', () => {
     });
   });
 
-  // Agent-lock enforcement is OFF by default (KORTIX_ENFORCE_SESSION_AGENT_LOCK
-  // unset) — in-session agent switching is allowed. A prompt may run a different
-  // concrete agent than the session booted with, and it's forwarded untouched.
-  test('allows in-session agent switching by default (no 409, concrete agent forwarded)', async () => {
+  // In-session agent switching is allowed, unconditionally — there is no flag and
+  // no refusal. A prompt may run a different concrete agent than the session
+  // booted with, and it is forwarded untouched.
+  test('allows in-session agent switching (no 409, concrete agent forwarded)', async () => {
     mockDbSandbox = { ...mockDbSandbox, agentName: 'reviewer' };
     mockFetchResponses = [
       { status: 200, body: '{"ok":true,"changed":true,"revision":"rev"}' },

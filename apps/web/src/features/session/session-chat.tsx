@@ -6,6 +6,7 @@ import { SessionApprovalPrompt } from '@/features/session/session-approval-promp
 import { isPendingAction, useSessionAudit } from '@/features/session/session-audit-shared';
 import { SessionPermissionPrompt } from '@/features/session/session-permission-prompt';
 import { useSessionWallpaperLayer } from '@/features/session/session-wallpaper-layer';
+import { errorMessageOf, isDeliveredButDisconnected } from '@/lib/delivered-but-disconnected';
 import {
   WarningIcon as AlertTriangle,
   ArrowBendUpLeftIcon,
@@ -16,7 +17,6 @@ import {
   ArrowSquareOutIcon as ExternalLink,
   StackIcon as Layers,
   ArrowCounterClockwiseIcon as RotateCcw,
-  TerminalWindowIcon as Terminal,
 } from '@phosphor-icons/react';
 import { AnimatePresence, m } from 'motion/react';
 import { useTranslations } from 'next-intl';
@@ -31,14 +31,18 @@ import {
 } from './message-parsing';
 import { type QueueDrainGates, shouldQueueInsteadOfSend } from './message-queue-boundary';
 import { mergeQueuedBatch } from './queued-batch';
+import { createQueueUndoAction } from './queued-message-restore';
 import { ActivityBurst } from './turn/activity-burst';
+import { ExpandableOutput } from './turn/expandable-output';
 import { planAnchorMessageId } from './turn/plan-anchor';
 import { segmentTurn } from './turn/segment-turn';
 import { stabilizeTurns } from './turn/stable-turns';
 import { ThrottledMarkdown } from './turn/throttled-markdown';
+import { TurnViewport } from './turn/turn-viewport';
 import { UserMessage } from './turn/user-message';
 import { useMessageQueueDrain } from './use-message-queue-drain';
 
+import { Composer as SessionChatInput } from '@/features/session/composer/composer';
 import { ConnectorRequiredNotice } from '@/features/session/connector-required-notice';
 import { SessionSiteHeader } from '@/features/session/header/session-site-header';
 import { NO_MODEL_AVAILABLE_MESSAGE } from '@/features/session/model-availability';
@@ -53,11 +57,7 @@ import {
   type QuestionPromptHandle,
 } from '@/features/session/question-prompt';
 import { SessionActionPanelColumn } from '@/features/session/session-action-panel-column';
-import {
-  type AttachedFile,
-  SessionChatInput,
-  type TrackedMention,
-} from '@/features/session/session-chat-input';
+import type { AttachedFile, TrackedMention } from '@/features/session/session-chat-input';
 import { SessionContextModal } from '@/features/session/session-context-modal';
 import { SessionRetryDisplay, TurnErrorDisplay } from '@/features/session/session-error-banner';
 import { SessionWelcome } from '@/features/session/session-welcome';
@@ -73,8 +73,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Disclosure, DisclosureContent, DisclosureTrigger } from '@/components/ui/disclosure';
 import Loading from '@/components/ui/loading';
-import { errorToast, infoToast } from '@/components/ui/toast';
-import { searchWorkspaceFiles } from '@/features/files';
+import { dismissToast, errorToast, infoToast } from '@/components/ui/toast';
 import { uploadFile } from '@/features/files/api/runtime-files';
 import { OptimisticTurn } from '@/features/session/optimistic-turn';
 import { useUserPreferencesStore } from '@/stores/user-preferences-store';
@@ -193,7 +192,7 @@ import {
   useSessionStateStore,
   useSessionSync,
 } from '@kortix/sdk/react';
-import { SandboxUrlDetector } from './sandbox-url-detector';
+import { CodeBlockEndpoints, SandboxUrlDetector } from './sandbox-url-detector';
 import { sessionComposerReadiness } from './session-composer-readiness';
 import { captureTurnScrollAnchor, restoreTurnScrollAnchor } from './session-history-scroll';
 import { resolveSessionContentState } from './session-load-state';
@@ -1412,19 +1411,29 @@ function SessionTurnImpl({
             !hasSteps &&
             response &&
             (commandForTurn ? (
-              <div className="border-border/60 from-muted/15 to-background overflow-hidden rounded-2xl border bg-gradient-to-b">
-                <div className="border-border/50 bg-muted/25 flex items-center gap-2 border-b px-3 py-2">
-                  <Terminal className="text-muted-foreground size-3.5 shrink-0" />
-                  <span className="text-foreground font-mono text-xs">/{commandForTurn.name}</span>
-                  {commandForTurn.args && (
-                    <span className="text-muted-foreground truncate text-xs">
-                      {commandForTurn.args}
+              <div className="space-y-2">
+                <div className="bg-secondary flex w-full flex-col overflow-hidden rounded-lg">
+                  <div className="text-foreground flex min-w-0 items-center justify-between gap-2 p-3 pb-0 text-xs [&>svg]:size-4">
+                    <span
+                      className="bg-popover text-foreground/95 dark:bg-card min-w-0 truncate rounded-[calc(var(--radius-sm)-0.5px)] border px-1.5 py-[0.08rem] align-baseline font-mono text-[0.95em] font-medium wrap-anywhere whitespace-nowrap"
+                      title={`/${commandForTurn.name}`}
+                    >
+                      {commandForTurn.name}
                     </span>
-                  )}
+                  </div>
+                  {/* Command output clamps to a readable height and opens from a
+                      centred toggle on the fade. `from-secondary` matches the
+                      panel this sits on — the gradient has to dissolve into the
+                      surface, not paint a band over it. */}
+                  <ExpandableOutput
+                    className="min-h-0"
+                    fadeClassName="from-secondary"
+                    contentClassName="px-4 py-3 text-sm"
+                  >
+                    <SandboxUrlDetector content={response} isStreaming={false} />
+                  </ExpandableOutput>
                 </div>
-                <div className="px-3 py-2.5 text-sm">
-                  <SandboxUrlDetector content={response} isStreaming={false} />
-                </div>
+                <CodeBlockEndpoints content={response} />
               </div>
             ) : (
               <div className="text-sm">
@@ -1852,10 +1861,17 @@ export function SessionChat({
   }, [sessionPrefill, sessionId]);
   // Map of user message IDs → command info, so UserMessage can render
   // a compact command pill instead of the raw expanded template text.
-  const commandMessagesRef = useRef<Map<string, { name: string; args?: string }>>(new Map());
+  const commandMessagesRef = useRef<
+    Map<string, { name: string; args?: string; split?: { before: string; after: string } }>
+  >(new Map());
   // Stash the pending command info so we can associate it with the user message
   // even if the busy signal arrives before the message list updates.
-  const pendingCommandStashRef = useRef<{ name: string; args?: string } | null>(null);
+  const pendingCommandStashRef = useRef<{
+    name: string;
+    args?: string;
+    /** Where the chip sat in `args` — display only. See `handleCommand`. */
+    split?: { before: string; after: string };
+  } | null>(null);
   // Track whether a pending prompt send is in flight (dashboard→session flow).
   // Keeps isBusy true until the server acknowledges with a busy status.
   const [pendingSendInFlight, setPendingSendInFlight] = useState(false);
@@ -2266,7 +2282,12 @@ export function SessionChat({
   // if this component mounts late.
 
   const handleQueueMessage = useCallback(
-    (text: string, files?: AttachedFile[], mentions?: TrackedMention[]) => {
+    (
+      text: string,
+      files?: AttachedFile[],
+      mentions?: TrackedMention[],
+      command?: { name: string; split?: { before: string; after: string } },
+    ) => {
       // Capture the agent, model and variant AS THEY ARE NOW. A message queued
       // under one model must not send under whatever is selected minutes later
       // when its turn comes up — `handleSend`'s `overrides` parameter has
@@ -2282,6 +2303,7 @@ export function SessionChat({
         agent: local.agent.current?.name ?? undefined,
         model: local.model.sendKey ?? undefined,
         variant: local.model.variant.current ?? undefined,
+        command,
       });
     },
     [sessionId, local.agent, local.model],
@@ -2299,29 +2321,30 @@ export function SessionChat({
       // Undo rather than a confirm dialog. A queue is something you curate —
       // gating every removal behind a modal would make it unusable, and the
       // thing being removed is a draft, not data. Reversible beats guarded.
+      //
+      // The toast is given an explicit id so the button can close it: `toast`
+      // hands its own id only to its render callback, and `options.button` is
+      // rendered verbatim, so without this the button has nothing to dismiss and
+      // sits there for the full 5s after it has already been pressed. See
+      // `createQueueUndoAction`, which also latches — a double-click beats the
+      // dismiss, and re-running the restore would put the entry back twice
+      // (two prompts, or two runs of the same `/command`).
+      const undoToastId = `queue-undo-${sessionId}-${removed.id}`;
+      // Everything the entry carried, minus the queue's own bookkeeping — see
+      // `restoreQueuedMessage`. The field list that used to be written out here
+      // dropped `command` and `files`, turning an undone `/webapp` into a plain
+      // (often empty) message.
+      const undo = createQueueUndoAction({
+        sessionId,
+        removed,
+        index,
+        dismiss: () => dismissToast(undoToastId),
+      });
       infoToast('Removed from queue', {
+        id: undoToastId,
         duration: 5000,
         button: (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              const current = useMessageQueueStore.getState();
-              current.enqueue(sessionId, {
-                text: removed.text,
-                mentions: removed.mentions,
-                agent: removed.agent,
-                model: removed.model,
-                variant: removed.variant,
-              });
-              // Put it back where it was, not at the tail.
-              if (index >= 0) {
-                const restored = current.getSessionQueue(sessionId).pending;
-                const last = restored[restored.length - 1];
-                if (last) current.reorder(sessionId, last.id, index);
-              }
-            }}
-          >
+          <Button size="sm" variant="outline" onClick={undo}>
             Undo
           </Button>
         ),
@@ -2909,6 +2932,14 @@ export function SessionChat({
         agent?: string | null;
         model?: { providerID: string; modelID: string } | null;
         variant?: string | null;
+        /**
+         * The queue entry's stable key, when this send is a queued entry being
+         * dispatched. Re-dispatching the SAME entry (a retry) re-sends one wire
+         * `messageID` so the sandbox proxy still recognises the delivery;
+         * a different entry, even with identical text, gets its own. Omitted
+         * for a direct composer send, which has no retry path.
+         */
+        clientMessageId?: string;
       },
     ) => {
       setCommandError(null);
@@ -3095,10 +3126,20 @@ export function SessionChat({
       // callers (queue drain, input box) can handle send failures, but the
       // actual response body still arrives via the sync store.
       //
-      // Don't send part IDs or messageID — let the server generate them with
-      // its own clock. Client-generated IDs can sort before server IDs due to
-      // clock skew (browser vs Docker container), causing the server's loop to
-      // exit immediately thinking the prompt was already answered.
+      // Don't send part IDs. `ascendingId` encodes the HIGH bits of the id
+      // clock where opencode encodes the LOW 48 (see the warning on it in the
+      // SDK), so a client id of that shape sorts before EVERY server id: the
+      // server's "has this prompt already been answered?" ordering check reads
+      // a stale assistant reply as the answer and the turn never runs.
+      //
+      // The `messageID` is a different matter and IS sent — by the SDK, not
+      // from here. `promptOpenCodeMessage` mints it in opencode's own wire
+      // format and places it above everything already in this session's
+      // transcript, which is what makes it safe; without one, two identical
+      // prompts inside 60s hash to a single proxy delivery and the second is
+      // silently dropped. Do not "restore" the old no-messageID behaviour on
+      // the strength of the part-id reasoning above — they are not the same
+      // hazard, and the mint is the guard against this one.
       const mappedParts = parts.map((p: any) => {
         if (p.type === 'file')
           return {
@@ -3152,6 +3193,9 @@ export function SessionChat({
                 ...(selectedAgent ? { agent: selectedAgent } : {}),
                 ...(selectedModel ? { model: selectedModel } : {}),
                 ...(selectedVariant ? { variant: selectedVariant } : {}),
+                ...(overrides?.clientMessageId
+                  ? { clientMessageId: overrides.clientMessageId }
+                  : {}),
               });
               return { ok: true } as const;
             } catch (cause) {
@@ -3165,6 +3209,7 @@ export function SessionChat({
             sessionId,
             messageId: messageID,
             parts: mappedParts,
+            ...(overrides?.clientMessageId ? { clientMessageId: overrides.clientMessageId } : {}),
             options: {
               // Pass the session's directory so opencode resolves project-scoped
               // agents (.opencode/agent/*.md under the project) and applies them
@@ -3259,8 +3304,13 @@ export function SessionChat({
       pendingPermissionCount: pendingPermissions.length,
       isPaused: false,
       readOnly: !!readOnly,
+      // Holds a queued message while the sandbox is stopped or waking, and
+      // releases it by itself when the box answers. This is what makes leaving
+      // the composer ENABLED safe — see `sessionComposerReadiness`.
+      runtimeReady,
     }),
     [
+      runtimeReady,
       isServerBusy,
       pendingSendInFlight,
       isOptimisticCompacting,
@@ -3272,18 +3322,62 @@ export function SessionChat({
     ],
   );
 
+  /** See `sendQueuedBatch`'s command branch for why this is a ref. */
+  const handleCommandRef = useRef<
+    ((command: Command, args?: string, split?: { before: string; after: string }) => boolean) | null
+  >(null);
+
   const sendQueuedBatch = useCallback(
     async (batch: WebQueuedMessage[]) => {
+      const head = batch[0];
+      if (!head) return;
+
+      // A queued `/` command runs through the command path, not the prompt
+      // path. `runCommand` expands a server-side template; sending the same
+      // entry as text would deliver the literal arguments with no command at
+      // all. `claimBatch` guarantees a command arrives alone — it can never
+      // share a prompt with text entries. The command list is re-read HERE
+      // rather than captured at enqueue, so an entry can never dispatch a
+      // command that has since been removed.
+      if (head.command) {
+        const resolved = commands?.find((c) => c.name === head.command!.name);
+        if (!resolved) {
+          throw new Error(`Command /${head.command.name} is no longer available`);
+        }
+        // Through a ref, not the binding. `handleCommand` is declared ~180
+        // lines BELOW this callback, so naming it in the dependency array
+        // would read a `const` in its temporal dead zone — a ReferenceError
+        // thrown during render, every render. The ref is written in an effect
+        // after both exist, and only ever read here at dispatch time.
+        const dispatched = handleCommandRef.current?.(
+          resolved,
+          head.text || undefined,
+          head.command.split,
+        );
+        // A swallowed dispatch must REJECT. The drain marks a resolved send
+        // complete and deletes the entry, so reporting success here would drop
+        // the command silently — the one outcome a queue must never have.
+        // Throwing puts it in `failed` with a reason and a retry button.
+        if (!dispatched) {
+          throw new Error('Another command is still being sent — this one was not dispatched');
+        }
+        return;
+      }
+
       // ONE `handleSend` for the whole batch, never a loop over it. `handleSend`
       // resolves when the server ACKs the prompt (204), not when the turn ends,
       // so a second call would land its message inside the first one's live
       // turn — RC4 in the design doc, and the reason this queue exists.
-      // `mergeQueuedBatch` decides what the single prompt contains.
+      // `mergeQueuedBatch` decides what the single prompt contains, including
+      // the head's `clientMessageId` so a RETRY of an entry re-sends the same
+      // wire `messageID` — without it the retry mints a new one, the request
+      // body differs, and the proxy's 60s body-hash dedupe delivers a prompt
+      // that already reached opencode a second time.
       const merged = mergeQueuedBatch(batch);
       if (!merged) return;
       await handleSend(merged.text, merged.files, merged.mentions, merged.overrides);
     },
-    [handleSend],
+    [handleSend, commands],
   );
 
   const queueDrain = useMessageQueueDrain({
@@ -3443,19 +3537,61 @@ export function SessionChat({
   // the old executeCommand.isPending check from the TQ mutation).
   const commandInFlightRef = useRef(false);
 
+  // Publish `handleCommand` for `sendQueuedBatch`, which is declared above it
+  // and therefore cannot name it directly (temporal dead zone). Written on
+  // every commit so the queue always dispatches through the CURRENT closure,
+  // not one captured when the callback was first created.
+  useEffect(() => {
+    handleCommandRef.current = handleCommand;
+  });
+
   const handleCommand = useCallback(
-    (cmd: Command, args?: string) => {
-      if (commandInFlightRef.current) return;
+    (cmd: Command, args?: string, split?: { before: string; after: string }): boolean => {
+      // Returns whether the command was DISPATCHED, not whether it succeeded.
+      // The queue needs that distinction: a swallowed dispatch that reports
+      // success has its entry marked complete and deleted, so the command is
+      // lost with nothing on screen to say so. See `sendQueuedBatch`.
+      if (commandInFlightRef.current) return false;
       setCommandError(null);
 
       playSound('send');
-      const label = args ? `/${cmd.name} ${args}` : `/${cmd.name}`;
+      // Rebuild the sentence the way it was WRITTEN, not command-first. This
+      // used to be `/${name} ${args}` unconditionally, which is why typing
+      // `explain /webapp to me` produced `/webapp explain to me` — the chip's
+      // position is not recoverable from `args`, so it has to be carried
+      // (`split`, from the editor's serializer) or it is lost here.
+      const label = split
+        ? [split.before, `/${cmd.name}`, split.after].filter(Boolean).join(' ')
+        : args
+          ? `/${cmd.name} ${args}`
+          : `/${cmd.name}`;
       const selectedModel = local.model.sendKey ?? undefined;
       const handleCommandError = (err?: unknown) => {
+        // A command that was DELIVERED and then lost its connection is not a
+        // failed command. `/command` blocks for the whole turn, so both proxy
+        // hops routinely stop waiting while opencode is still working — and the
+        // request was already on the wire when they did. Clearing the session
+        // to `idle` and painting an error here told the user their message had
+        // not sent while the agent was actively answering it, and invited the
+        // retry that aborts the live turn and stamps it "Interrupted".
+        // See `delivered-but-disconnected.ts`.
+        if (isDeliveredButDisconnected(errorMessageOf(err))) {
+          setPendingCommand(null);
+          setPendingUserMessage(null);
+          setPendingUserMessageId(null);
+          pendingCommandStashRef.current = null;
+          // `pollingActive` and the session status stay put on purpose: the
+          // turn is live and SSE owns it from here.
+          return;
+        }
         setPendingCommand(null);
         setPendingUserMessage(null);
         setPendingUserMessageId(null);
         setPollingActive(false);
+        // Release the drain gate taken at dispatch. The 30s safety timeout
+        // would eventually do it, but until then the whole queue is frozen
+        // behind a command that already failed.
+        setPendingSendInFlight(false);
         pendingCommandStashRef.current = null;
         useSessionStateStore.getState().setStatus(sessionId, { type: 'idle' });
         setCommandError(classifySessionError(err));
@@ -3468,10 +3604,22 @@ export function SessionChat({
       pendingCommandStashRef.current = {
         name: cmd.name,
         args: args || cmd.description,
+        // Carried to `UserMessage` via `commandMessagesRef` so the sent bubble
+        // draws the chip where it was typed. Display only.
+        split,
       };
       setPendingUserMessage(label);
       setPendingUserMessageId(null);
       setPollingActive(true);
+      // Closes the queue drain's `pendingSendInFlight` gate SYNCHRONOUSLY, the
+      // way `beginOptimisticSend` does for an ordinary prompt. Without it a
+      // command dispatched from the queue left every gate clear: the drain's
+      // 700ms settle window would elapse before the server reported busy, the
+      // next queued message would go out, and a new prompt mid-turn aborts the
+      // one running — the "Interrupted" symptom the queue exists to prevent.
+      // Self-clearing: the effect above drops it as soon as the server reports
+      // busy or an assistant reply lands, with a 30s safety timeout behind it.
+      setPendingSendInFlight(true);
       lastSendTimeRef.current = Date.now();
 
       // Match SolidJS reference (submit.ts:259-289): fire command
@@ -3507,6 +3655,7 @@ export function SessionChat({
           commandInFlightRef.current = false;
         });
       setTimeout(() => scrollToBottom(), 50);
+      return true;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -3520,14 +3669,6 @@ export function SessionChat({
       local.model.variant.current,
     ],
   );
-
-  const handleFileSearch = useCallback(async (query: string): Promise<string[]> => {
-    try {
-      return await searchWorkspaceFiles(query);
-    } catch {
-      return [];
-    }
-  }, []);
 
   const pathname = usePathname();
   const router = useRouter();
@@ -3597,23 +3738,18 @@ export function SessionChat({
     [local.model],
   );
 
+  // Only the ACCOUNT default is settable from the picker now — it is the one
+  // scope with no screen of its own. The project default lives in the provider
+  // modal's Models tab and the agent default on the agent's detail page, both
+  // of which also SHOW and can CLEAR what is set. See ModelDefaultControls.
   const chatModelDefaultControls: ModelDefaultControls = useMemo(
     () => ({
-      agentName: local.agent.current?.name,
+      accountDefault: local.model.defaults.accountDefault ?? null,
       onSetAccountDefault: (m) => {
         void local.model.defaults.setAccountDefault(m);
       },
-      onSetAgentDefault: local.agent.current
-        ? (m) => {
-            const name = local.agent.current?.name;
-            if (name) void local.model.defaults.setAgentDefault(name, m);
-          }
-        : undefined,
-      onSetProjectDefault: (m) => {
-        void local.model.defaults.setProjectDefault(m);
-      },
     }),
-    [local.agent, local.model.defaults],
+    [local.model.defaults],
   );
 
   const handleVariantChange = useCallback(
@@ -3640,58 +3776,15 @@ export function SessionChat({
         <SessionOverridesComposer
           projectId={projectId}
           sessionId={projectSessionId}
-          agents={local.agent.list}
           selectedAgent={sessionScopeAgentName ?? null}
-          onAgentChange={handleAgentChange}
-          defaultAgentName={projectConfig?.open_code_default_agent}
-          models={local.model.list}
-          modelsLoading={providersLoading}
-          selectedModel={local.model.currentKey ?? null}
-          onModelChange={handleModelChange}
-          providers={providers}
-          defaultModel={local.model.defaults.resolveDefaultFor(sessionScopeAgentName)}
         />
       ) : undefined,
-    [
-      handleAgentChange,
-      handleModelChange,
-      local.agent.list,
-      local.model.currentKey,
-      local.model.defaults,
-      local.model.list,
-      projectConfig?.open_code_default_agent,
-      projectId,
-      projectSessionId,
-      providers,
-      providersLoading,
-      sessionScopeAgentName,
-    ],
+    [projectId, projectSessionId, sessionScopeAgentName],
   );
 
   const chatInputSlot = useMemo(
     () => (
       <>
-        {sessionState?.rewindMessageId ? (
-          <div className="border-border/60 bg-muted/40 flex items-center gap-2 rounded-md border px-3 py-2">
-            <RotateCcw className="text-muted-foreground size-3.5 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <p className="text-foreground text-xs font-medium">Session rewound</p>
-              <p className="text-muted-foreground text-xs">
-                Sending a new prompt commits this path. Restore keeps the removed messages and file
-                changes.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              disabled={sessionState.rewindPending}
-              onClick={() => void handleRestoreRewind()}
-            >
-              {sessionState.rewindPending ? <Loading /> : 'Restore'}
-            </Button>
-          </div>
-        ) : null}
         {/* Connector actions a policy gated for approval — pauses the run
             until the human decides. Self-hides when nothing's pending. */}
         <SessionApprovalPrompt />
@@ -3708,7 +3801,7 @@ export function SessionChat({
             className={cn(
               'overflow-hidden transition-[max-height,opacity,transform] ease-in-out',
               questionPromptVisible
-                ? 'max-h-[520px] translate-y-0 opacity-100 duration-300'
+                ? 'max-h-130 translate-y-0 opacity-100 duration-300'
                 : 'pointer-events-none max-h-0 -translate-y-1 opacity-0 duration-320',
             )}
           >
@@ -3726,9 +3819,6 @@ export function SessionChat({
     ),
     [
       sessionId,
-      sessionState?.rewindMessageId,
-      sessionState?.rewindPending,
-      handleRestoreRewind,
       pendingPermissions,
       handlePermissionReply,
       renderedQuestion,
@@ -3738,6 +3828,18 @@ export function SessionChat({
       handleQuestionActionChange,
     ],
   );
+
+  // The rewound-path notice lives on the composer toolbar, beside send/stop —
+  // send is what commits the path, so the control sits at the moment of
+  // commitment instead of in a banner above the card. No manual useMemo: the
+  // React Compiler memoizes this component, and a hand-written dependency list
+  // narrower than `sessionState` makes it skip the whole component.
+  const composerRewind = sessionState?.rewindMessageId
+    ? {
+        pending: sessionState.rewindPending,
+        onRestore: () => void handleRestoreRewind(),
+      }
+    : undefined;
 
   // ============================================================================
   // Loading / Not-found states
@@ -3895,7 +3997,7 @@ export function SessionChat({
                 <div
                   ref={contentRef}
                   role="log"
-                  className="mx-auto w-full max-w-3xl min-w-0 px-4 py-6 pb-32"
+                  className="mx-auto w-full max-w-3xl min-w-0 px-4 py-6 pb-32 md:pr-1"
                 >
                   <div className="flex min-w-0 flex-col">
                     {/* Optimistic turn — the user's message plus the waiting row,
@@ -3982,13 +4084,10 @@ export function SessionChat({
                         // Fall through to the normal turn renderer instead.
 
                         return (
-                          <div
+                          <TurnViewport
                             key={turn.userMessage.info.id}
-                            data-turn-id={turn.userMessage.info.id}
-                            className={cn(
-                              '[contain-intrinsic-size:auto_600px] [content-visibility:auto]',
-                              turnIndex === 0 ? '' : 'mt-12',
-                            )}
+                            turnId={turn.userMessage.info.id}
+                            className={turnIndex === 0 ? '' : 'mt-12'}
                           >
                             {/* Compaction divider — shown before the first turn after compaction */}
                             {hasCompaction && (
@@ -4025,7 +4124,7 @@ export function SessionChat({
                                 !!readOnly || !sessionState || isBusy || sessionState.rewindPending
                               }
                             />
-                          </div>
+                          </TurnViewport>
                         );
                       })}
                     </ToolActivateContext.Provider>
@@ -4119,9 +4218,7 @@ export function SessionChat({
 
               <div
                 className={cn(
-                  'absolute bottom-4 left-1/2 z-20 -translate-x-1/2',
-                  'transition-[opacity,translate,scale] ease-[cubic-bezier(0.23,1,0.32,1)]',
-                  'motion-reduce:translate-y-0 motion-reduce:scale-100 motion-reduce:transition-[opacity]',
+                  'absolute bottom-4 left-1/2 z-20 -translate-x-1/2 transition-[opacity,translate,scale] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:translate-y-0 motion-reduce:scale-100 motion-reduce:transition-opacity',
                   showScrollButton
                     ? 'translate-y-0 scale-100 opacity-100 duration-150'
                     : 'pointer-events-none translate-y-1 scale-[0.97] opacity-0 duration-100',
@@ -4133,7 +4230,7 @@ export function SessionChat({
                   aria-hidden={!showScrollButton}
                   tabIndex={showScrollButton ? undefined : -1}
                   className={cn(
-                    'hit-area-2 shadow-xs',
+                    'hit-area-2 hover:bg-secondary border-border border shadow-xs',
                     'transition-[scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96]',
                   )}
                   onClick={smoothScrollToAbsoluteBottom}
@@ -4175,6 +4272,7 @@ export function SessionChat({
                         : null
                 }
                 isBusy={isBusy}
+                rewind={composerRewind}
                 queuedMessages={queuedMessages}
                 failedQueuedMessages={failedQueuedMessages}
                 queueInFlightIds={queueInFlightIds}
@@ -4203,7 +4301,6 @@ export function SessionChat({
                 messages={messages}
                 sessionId={sessionId}
                 projectId={projectId}
-                onFileSearch={handleFileSearch}
                 providers={providers}
                 modelRequired
                 modelsLoading={providersLoading}
@@ -4231,8 +4328,8 @@ export function SessionChat({
                 // The shell can now render on a cached transcript alone, i.e. before
                 // the sandbox answers — so sending has to be gated separately from
                 // reading. See sessionComposerReadiness.
-                disabled={composerReadiness.disabled}
-                placeholder={composerReadiness.placeholder}
+                runtimeReady={composerReadiness.ready}
+                notice={composerReadiness.notice}
               />
               <ConfirmDialog
                 open={!!rewindTarget}

@@ -5448,6 +5448,24 @@
     "componentsSessionSandboxImage": {
       "line96JsxTextImageUnavailable": "Imagen no disponible"
     },
+    "featuresSessionComposerTokenProgress": {
+      "titleHealthy": "Espacio de conversación",
+      "titleWarning": "Se está llenando",
+      "titleDanger": "Casi lleno",
+      "percentFull": "{percent}% lleno",
+      "tipWarning": "Los chats largos pueden olvidar mensajes anteriores.",
+      "tipDanger": "Los mensajes antiguos pueden desaparecer pronto.",
+      "viewDetails": "Ver detalles",
+      "labelInput": "Entrada",
+      "labelCached": "En caché",
+      "labelOutput": "Salida",
+      "labelReasoning": "Razonamiento",
+      "usedCount": "{used} usados",
+      "remainingCount": "{remaining} restantes",
+      "windowMeta": "ventana de {limit}",
+      "modelUnknown": "Modelo actual",
+      "meterLabel": "Uso del contexto"
+    },
     "componentsSessionSessionActionsPanel": {
       "line152JsxTextNoActionsYet": "Aún no hay acciones.",
       "line185JsxAttrAriaLabelPreviousAction": "Acción anterior",

@@ -299,6 +299,13 @@ function AppRow({
   const [accessOpen, setAccessOpen] = useState(false);
   const latest = deployments.data?.[0];
   const busy = apps.start.isPending || apps.stop.isPending || apps.remove.isPending;
+  // `desired_state` is INTENT and defaults to 'running' the moment an App row is
+  // created, so a never-deployed App used to render a green "Running" badge with
+  // no runtime behind it. Only an App with an active deployment can be running —
+  // which is also why the Suspend/Wake control is disabled without one, and why
+  // the API answers 409 'App has no active deployment' there.
+  const deployed = Boolean(app.active_deployment_id);
+  const live = deployed && app.desired_state === 'running';
 
   const lifecycle = async (action: 'start' | 'stop') => {
     try {
@@ -323,9 +330,7 @@ function AppRow({
         <div
           className={cn(
             'flex size-9 shrink-0 items-center justify-center rounded-sm',
-            app.desired_state === 'running'
-              ? 'bg-kortix-green/15 text-kortix-green'
-              : 'bg-muted text-muted-foreground',
+            live ? 'bg-kortix-green/15 text-kortix-green' : 'bg-muted text-muted-foreground',
           )}
         >
           <GlobeIcon className="size-5" weight="fill" />
@@ -333,8 +338,8 @@ function AppRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-foreground truncate text-sm font-medium">{app.name}</p>
-            <Badge size="xs" variant={app.desired_state === 'running' ? 'success' : 'muted'}>
-              {app.desired_state === 'running' ? 'Running' : 'Suspended'}
+            <Badge size="xs" variant={live ? 'success' : 'muted'}>
+              {!deployed ? 'Not deployed' : app.desired_state === 'running' ? 'Running' : 'Suspended'}
             </Badge>
             {latest ? (
               <Badge size="xs" variant={deploymentTone(latest.status)}>

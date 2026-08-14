@@ -88,6 +88,20 @@ test('Apps UI is operational only and has no creation action or modal', () => {
   expect(view).toContain('className="max-w-5xl"');
 });
 
+test('an App with no deployment never claims to be Running', () => {
+  // `desired_state` defaults to 'running' when the App row is created, so
+  // reading the badge off it alone painted a green "Running" pill on an App
+  // that had never been deployed and had no runtime at all.
+  const view = readFileSync(resolve(root, 'features/apps/apps-view.tsx'), 'utf8');
+
+  expect(view).toContain('const deployed = Boolean(app.active_deployment_id);');
+  expect(view).toContain("const live = deployed && app.desired_state === 'running';");
+  expect(view).toContain("!deployed ? 'Not deployed'");
+  // The badge and its tint must both follow real state, not intent.
+  expect(view).not.toContain("variant={app.desired_state === 'running' ? 'success' : 'muted'}");
+  expect(view).not.toContain("{app.desired_state === 'running' ? 'Running' : 'Suspended'}");
+});
+
 test('a suspended App preview issues the request that wakes its active deployment', () => {
   const view = readFileSync(resolve(root, 'features/apps/apps-view.tsx'), 'utf8');
 

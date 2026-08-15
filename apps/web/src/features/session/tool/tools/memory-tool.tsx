@@ -60,6 +60,34 @@ export function memoryToolTitle(command: string): string {
   return 'Memory';
 }
 
+/**
+ * The ONE file a memory row is about: the name it shows and the file it opens.
+ *
+ * Both come out of the same call on purpose. They were resolved separately for
+ * one commit and immediately disagreed: a completed rename displayed its
+ * DESTINATION and opened its SOURCE — the one name the rename had just removed,
+ * so clicking the row opened a file that no longer existed.
+ *
+ * A rename is about where the file ended up. `path` is where it came from (see
+ * the caller: `input.path` falls back to `input.old_path`), so a rename resolves
+ * to `new_path`. That field can be absent — mid-stream, or on a malformed
+ * call — and the source is then the only name the row can truthfully give, for
+ * both the label and the click. Every other command already targets `path`.
+ *
+ * `subtitle` is `openPath` made relative, minus two cases that earn no line:
+ * an empty path, and the memory ROOT — `memoryRelPath` answers `'memory'` for
+ * it, which only repeats the title's noun ("Memory read · memory").
+ */
+export function memoryRowTarget(
+  command: string,
+  path: string,
+  newPath: string,
+): { openPath: string; subtitle: string | undefined } {
+  const openPath = command === 'rename' ? newPath || path : path;
+  const relative = memoryRelPath(openPath);
+  return { openPath, subtitle: relative && relative !== 'memory' ? relative : undefined };
+}
+
 export function MemoryTool({ part, defaultOpen, forceOpen, locked }: ToolProps) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const input = partInput(part);
@@ -89,22 +117,15 @@ export function MemoryTool({ part, defaultOpen, forceOpen, locked }: ToolProps) 
 
   const relPath = memoryRelPath(path);
   const ext = (relPath.split('.').pop() || 'md').toLowerCase();
-  const isFileTarget = command !== 'view' || /\.\w+$/.test(path);
 
-  /**
-   * What the call touched, as the row's subtitle.
-   *
-   * A rename is named by its DESTINATION — `path`/`old_path` is where the file
-   * came from, which is the one name that no longer exists once the call lands.
-   * The destination streams in separately, so an in-flight rename shows the
-   * source until it arrives rather than an empty line.
-   *
-   * `memoryRelPath` answers `'memory'` for the memory root itself, which as a
-   * subtitle only repeats the title's noun ("Memory read · memory"). A row
-   * shows a target when there is one to show.
-   */
-  const target = command === 'rename' ? memoryRelPath(newPath) || relPath : relPath;
-  const subtitle = target && target !== 'memory' ? target : undefined;
+  // The row's label and its click target, resolved once. `relPath` above stays
+  // the BODY's name for the file — a rename's diff/label is about where the file
+  // came from — so the two must not be collapsed into one.
+  const { openPath, subtitle } = memoryRowTarget(command, path, newPath);
+
+  // A directory listing has nothing to open. Asked of `openPath`, not `path`,
+  // so it answers for the same file the click would actually receive.
+  const isFileTarget = command !== 'view' || /\.\w+$/.test(openPath);
 
   // Both of these scan the whole output — `failed` copies it with `trim()`, and
   // `isErrorOutput` runs `JSON.parse` over it. They live in the body, so a
@@ -227,7 +248,7 @@ export function MemoryTool({ part, defaultOpen, forceOpen, locked }: ToolProps) 
         subtitle,
       }}
       onSubtitleClick={
-        path && isFileTarget && command !== 'delete' ? () => openPreview(path) : undefined
+        openPath && isFileTarget && command !== 'delete' ? () => openPreview(openPath) : undefined
       }
       defaultOpen={defaultOpen}
       forceOpen={forceOpen}

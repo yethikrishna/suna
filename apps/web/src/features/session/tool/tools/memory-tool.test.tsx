@@ -1,9 +1,10 @@
+import { memoryRelPath } from '@/features/session/tool/shared/memory-helpers';
 import type { ToolPart } from '@/ui';
 import { describe, expect, test } from 'bun:test';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryTool, memoryToolTitle } from './memory-tool';
+import { MemoryTool, memoryRowTarget, memoryToolTitle } from './memory-tool';
 
 /**
  * The contract this file pins (spec W8).
@@ -15,6 +16,13 @@ import { MemoryTool, memoryToolTitle } from './memory-tool';
  * WHICH memory file either one touched.
  *
  * Now the title reports what happened and the subtitle names the target.
+ *
+ * The subtitle's text and the file the click opens both come from ONE call to
+ * `memoryRowTarget`. Resolved separately they immediately disagreed on a
+ * rename — the row showed the destination and opened the source, a name the
+ * rename had just removed. The click itself cannot be dispatched here (no DOM),
+ * so the agreement is asserted on that resolver directly, and the rendered
+ * subtitle is checked against the same call's answer.
  *
  * The harness renders to static markup (this app has no DOM in tests), so the
  * assertions are anchored to the trigger's own elements: the title is the
@@ -65,6 +73,53 @@ describe('memoryToolTitle', () => {
   });
 });
 
+describe('memoryRowTarget — the row opens the file it names', () => {
+  const DRAFT = '.kortix/memory/draft.md';
+  const FINAL = '.kortix/memory/notes/final.md';
+
+  test('a rename names AND opens its destination', () => {
+    const { openPath, subtitle } = memoryRowTarget('rename', DRAFT, FINAL);
+
+    expect(subtitle).toBe('notes/final.md');
+    expect(openPath).toBe(FINAL);
+    // The agreement itself, in one assertion. This is the defect that shipped
+    // for a commit: the row displayed `notes/final.md` and opened `draft.md` —
+    // the name the rename had just removed — so the click landed on a file that
+    // no longer existed.
+    expect(memoryRelPath(openPath)).toBe(subtitle);
+  });
+
+  test('a rename with no destination in its input falls back to the source, for BOTH', () => {
+    // `new_path` can be missing on a half-streamed or malformed call. The source
+    // is then the only name the row can truthfully give, and the label and the
+    // click must still give the same one.
+    const { openPath, subtitle } = memoryRowTarget('rename', DRAFT, '');
+
+    expect(openPath).toBe(DRAFT);
+    expect(memoryRelPath(openPath)).toBe(subtitle);
+  });
+
+  test('every other command targets its own path', () => {
+    for (const command of ['view', 'create', 'insert', 'str_replace', 'delete']) {
+      const { openPath, subtitle } = memoryRowTarget(command, FINAL, '');
+      expect(openPath).toBe(FINAL);
+      expect(memoryRelPath(openPath)).toBe(subtitle);
+    }
+  });
+
+  test('the memory root and an empty path earn no subtitle, and stay in step', () => {
+    // `memoryRelPath` answers 'memory' for the root, which as a subtitle only
+    // repeats the title's noun. The row still knows what it would open.
+    const root = memoryRowTarget('view', '.kortix/memory', '');
+    expect(root.openPath).toBe('.kortix/memory');
+    expect(root.subtitle).toBeUndefined();
+
+    const nothing = memoryRowTarget('', '', '');
+    expect(nothing.openPath).toBe('');
+    expect(nothing.subtitle).toBeUndefined();
+  });
+});
+
 describe('MemoryTool — the trigger says what happened, and to what', () => {
   test('a write titles itself an update and names the file it wrote', () => {
     const markup = render(
@@ -95,13 +150,23 @@ describe('MemoryTool — the trigger says what happened, and to what', () => {
     );
 
     expect(markup).toContain('>Memory updated</span>');
-    expect(markup).toContain('title="notes/final.md">notes/final.md</span>');
+    // Rendered from the SAME resolution the click uses, so the row cannot show
+    // one file and open another.
+    const { subtitle } = memoryRowTarget(
+      'rename',
+      '.kortix/memory/draft.md',
+      '.kortix/memory/notes/final.md',
+    );
+    expect(subtitle).toBe('notes/final.md');
+    expect(markup).toContain(`title="${subtitle}">${subtitle}</span>`);
     expect(markup).not.toContain('title="draft.md"');
   });
 
-  test('a rename whose destination has not streamed in yet shows the source', () => {
-    // `new_path` arrives separately. An empty subtitle would drop the one thing
-    // the row can still truthfully say.
+  test('a completed rename carrying no new_path is labelled by its source', () => {
+    // Not a claim about streaming — this is a settled part whose input simply
+    // has no destination. An empty subtitle would drop the one thing the row can
+    // still truthfully say, and `memoryRowTarget` above pins that the click
+    // falls back to the same file.
     const markup = render(memoryPart({ command: 'rename', old_path: '.kortix/memory/draft.md' }));
 
     expect(markup).toContain('title="draft.md">draft.md</span>');

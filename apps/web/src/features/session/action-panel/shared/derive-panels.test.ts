@@ -512,9 +512,39 @@ describe('deriveContext', () => {
     expect(web).toEqual([]);
   });
 
-  it('still surfaces a genuine unrecognized tool in the tools bucket (not swallowed by the hidden filter)', () => {
+  it('still surfaces a non-hidden tool in the tools bucket (not swallowed by the hidden filter)', () => {
     const { tools } = deriveContext([part('memory', { command: 'delete', path: '/mem/x.md' })]);
     expect(tools.some((t) => t.label === 'Memory')).toBe(true);
+  });
+
+  // ─── memory (W8): what the agent remembers is context the reader can ask
+  // about, so the memory tool has to be a nameable row here — plainly worded,
+  // and carrying its calls so the chip can open to what it actually did. It
+  // reaches the bucket through the generic branch (`humanizeToolName`), which
+  // is why the LABEL is what needs pinning: the family is not `file`, `web`,
+  // `edit` or `create`, and nothing else names it. ────────────────────────────
+
+  it('surfaces a completed memory call as a Context tool row labelled Memory', () => {
+    const { tools, files, web } = deriveContext([
+      part('memory', { command: 'create', path: '.kortix/memory/notes.md' }),
+    ]);
+    expect(tools).toHaveLength(1);
+    expect(tools[0].kind).toBe('tool');
+    expect(tools[0].label).toBe('Memory');
+    // The chip opens to the call's own tool view, so the part must ride along.
+    expect(tools[0].parts).toHaveLength(1);
+    // A memory path is not a workspace file and memory is not a web source.
+    expect(files).toEqual([]);
+    expect(web).toEqual([]);
+  });
+
+  it('folds every memory call of a run into ONE row carrying all of them', () => {
+    const { tools } = deriveContext([
+      part('memory', { command: 'view', path: '.kortix/memory' }),
+      part('memory', { command: 'str_replace', path: '.kortix/memory/notes.md' }),
+    ]);
+    expect(tools).toHaveLength(1);
+    expect(tools[0].parts).toHaveLength(2);
   });
 
   // ─── BUG 3 — a failed call didn't successfully look at anything, so it

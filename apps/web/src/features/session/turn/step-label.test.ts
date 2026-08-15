@@ -61,10 +61,20 @@ describe('stepLabel', () => {
     });
   });
 
-  test('memory tools are tier plumbing', () => {
-    expect(stepLabel(tool('memory')).tier).toBe('plumbing');
+  test('memory LOOKUPS are tier plumbing (W8)', () => {
+    // The agent consulting itself. Nothing changed, so nothing is owed a row.
     expect(stepLabel(tool('get_mem')).tier).toBe('plumbing');
     expect(stepLabel(tool('memory_search')).tier).toBe('plumbing');
+  });
+
+  test('the memory EDITOR is primary — an update the reader must be able to see', () => {
+    // `memory` create/insert/str_replace/rename/delete change what the agent
+    // remembers in every later turn. It was plumbing, which made the most
+    // consequential thing a session can do invisible in chat.
+    expect(stepLabel(tool('memory')).tier).toBe('primary');
+    // Tool granularity: `view` rides along rather than adding a second copy of
+    // the command table to this pipeline. The row names which it was.
+    expect(stepLabel(tool('memory', { command: 'view' })).tier).toBe('primary');
   });
 
   test('dcp and context tools are tier plumbing', () => {

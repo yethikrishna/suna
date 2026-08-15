@@ -29,6 +29,37 @@ import { type ReactNode, useContext, useMemo } from 'react';
 
 import { memoryRelPath, parseMemoryView } from '@/features/session/tool/shared/memory-helpers';
 
+/** The commands that CHANGE what the agent will remember. `view` is the only read. */
+const MEMORY_UPDATE_COMMANDS: ReadonlySet<string> = new Set([
+  'create',
+  'insert',
+  'str_replace',
+  'rename',
+  'delete',
+]);
+
+/**
+ * The row's title, from the command the call ran.
+ *
+ * The `memory` tool multiplexes six commands over one name, so the old fixed
+ * "Memory" title said only that the tool ran — a write and a read were the same
+ * row. Two outcomes are worth telling apart: the call changed what the agent
+ * remembers, or it did not.
+ *
+ * An unrecognised command — or one that has not finished streaming — falls back
+ * to the bare noun. A guessed verb is worse than no verb.
+ *
+ * This is the chat row's own title and lives here. The Easy panel's sentences
+ * for the same family are `narrateStep('memory', …)` in
+ * `action-panel/shared/narration.ts`; the two surfaces word it differently on
+ * purpose and neither derives from the other.
+ */
+export function memoryToolTitle(command: string): string {
+  if (MEMORY_UPDATE_COMMANDS.has(command)) return 'Memory updated';
+  if (command === 'view') return 'Memory read';
+  return 'Memory';
+}
+
 export function MemoryTool({ part, defaultOpen, forceOpen, locked }: ToolProps) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const input = partInput(part);
@@ -59,6 +90,21 @@ export function MemoryTool({ part, defaultOpen, forceOpen, locked }: ToolProps) 
   const relPath = memoryRelPath(path);
   const ext = (relPath.split('.').pop() || 'md').toLowerCase();
   const isFileTarget = command !== 'view' || /\.\w+$/.test(path);
+
+  /**
+   * What the call touched, as the row's subtitle.
+   *
+   * A rename is named by its DESTINATION — `path`/`old_path` is where the file
+   * came from, which is the one name that no longer exists once the call lands.
+   * The destination streams in separately, so an in-flight rename shows the
+   * source until it arrives rather than an empty line.
+   *
+   * `memoryRelPath` answers `'memory'` for the memory root itself, which as a
+   * subtitle only repeats the title's noun ("Memory read · memory"). A row
+   * shows a target when there is one to show.
+   */
+  const target = command === 'rename' ? memoryRelPath(newPath) || relPath : relPath;
+  const subtitle = target && target !== 'memory' ? target : undefined;
 
   // Both of these scan the whole output — `failed` copies it with `trim()`, and
   // `isErrorOutput` runs `JSON.parse` over it. They live in the body, so a
@@ -177,8 +223,8 @@ export function MemoryTool({ part, defaultOpen, forceOpen, locked }: ToolProps) 
     <BasicTool
       icon={<Brain className="size-3.5 shrink-0" />}
       trigger={{
-        title: 'Memory',
-        // subtitle: command === 'rename' ? memoryRelPath(newPath) : relPath,
+        title: memoryToolTitle(command),
+        subtitle,
       }}
       onSubtitleClick={
         path && isFileTarget && command !== 'delete' ? () => openPreview(path) : undefined

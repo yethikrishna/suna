@@ -15,13 +15,30 @@ function out(overrides: Partial<OutputItem> & Pick<OutputItem, 'name'>): OutputI
   } as OutputItem;
 }
 
-function renderOutputRows(outputs: OutputItem[]): string {
+function renderOutputRows(outputs: OutputItem[], initialShowAll?: boolean): string {
   return renderToStaticMarkup(
     <TooltipProvider>
-      <OutputRows outputs={outputs} onOpenOutput={() => {}} />
+      <OutputRows outputs={outputs} onOpenOutput={() => {}} initialShowAll={initialShowAll} />
     </TooltipProvider>,
   );
 }
+
+/** 12 outputs across 4 kinds, in already-deliverable-first order — exactly the
+ *  shape `groupOutputsByKind` groups (>10, mixed) and `OutputRows` folds (>8). */
+const MIXED_KIND_FIXTURE: OutputItem[] = [
+  { callID: 'c1', name: 'report.pdf', kind: 'file' },
+  { callID: 'c2', name: 'summary.docx', kind: 'file' },
+  { callID: 'c3', name: 'budget.xlsx', kind: 'file' },
+  { callID: 'c4', name: 'photo1.png', kind: 'image' },
+  { callID: 'c5', name: 'photo2.png', kind: 'image' },
+  { callID: 'c6', name: 'photo3.png', kind: 'image' },
+  { callID: 'c7', name: 'clip1.mp4', kind: 'video' },
+  { callID: 'c8', name: 'clip2.mp4', kind: 'video' },
+  { callID: 'c9', name: 'clip3.mp4', kind: 'video' },
+  { callID: 'c10', name: 'Deck 1', kind: 'presentation' },
+  { callID: 'c11', name: 'Deck 2', kind: 'presentation' },
+  { callID: 'c12', name: 'Deck 3', kind: 'presentation' },
+];
 
 describe('OutputRows display (W3/W11)', () => {
   test('title wins over filename; kind label rides right; fresh mark shows', () => {
@@ -186,5 +203,61 @@ describe('OutputsCard "download all" header action (W15)', () => {
       </TooltipProvider>,
     );
     expect(html).not.toContain('aria-label="Download all"');
+  });
+});
+
+describe('OutputRows kind-group headers on the expanded list (Task 9)', () => {
+  test('a mixed 12-output fixture shows one labeled header per kind, in first-appearance order', () => {
+    const html = renderOutputRows(MIXED_KIND_FIXTURE, true);
+
+    // Each header is a standalone `<p>` — capture its class list and text so
+    // order, labels, and per-group padding can all be asserted from the same
+    // match instead of guessing at substring positions.
+    const headers = [...html.matchAll(/<p class="([^"]*)">([^<]*)<\/p>/g)];
+    expect(headers.map((m) => m[2])).toEqual(['Documents', 'Images', 'Videos', 'Presentations']);
+
+    // Every row from all 4 kinds is present — the expanded view is the WHOLE
+    // list, not just the pre-fold slice.
+    for (const o of MIXED_KIND_FIXTURE) expect(html).toContain(o.name);
+  });
+
+  test('group headers carry the specified rhythm; only the first skips the top pad', () => {
+    const html = renderOutputRows(MIXED_KIND_FIXTURE, true);
+    const headers = [...html.matchAll(/<p class="([^"]*)">([^<]*)<\/p>/g)];
+    expect(headers).toHaveLength(4);
+
+    const [firstClass, ...restClasses] = headers.map((m) => m[1]);
+    for (const cls of [firstClass, ...restClasses]) {
+      expect(cls).toContain('text-xs');
+      expect(cls).toContain('font-medium');
+      expect(cls).toContain('text-muted-foreground');
+      expect(cls).toContain('px-1');
+      expect(cls).toContain('pb-1');
+    }
+    expect(firstClass).not.toContain('pt-2');
+    for (const cls of restClasses) expect(cls).toContain('pt-2');
+  });
+
+  test('the collapsed pre-fold view of the same fixture stays a flat list — no group headers', () => {
+    const html = renderOutputRows(MIXED_KIND_FIXTURE); // initialShowAll defaults to false
+    expect(html).not.toMatch(/<p class="[^"]*text-muted-foreground[^"]*">/);
+    // Fold semantics are untouched: 8 visible, 4 behind "N more files".
+    expect(html).toContain('4 more files');
+  });
+
+  test('an expanded list under the threshold (<=10) stays flat, even with mixed kinds', () => {
+    const html = renderOutputRows(MIXED_KIND_FIXTURE.slice(0, 10), true);
+    expect(html).not.toMatch(/<p class="[^"]*text-muted-foreground[^"]*">/);
+    for (const o of MIXED_KIND_FIXTURE.slice(0, 10)) expect(html).toContain(o.name);
+  });
+
+  test('an expanded single-kind list never groups, however long', () => {
+    const files = Array.from({ length: 15 }, (_, i) => ({
+      callID: `f${i}`,
+      name: `report-${i}.pdf`,
+      kind: 'file' as const,
+    }));
+    const html = renderOutputRows(files, true);
+    expect(html).not.toMatch(/<p class="[^"]*text-muted-foreground[^"]*">/);
   });
 });

@@ -80,8 +80,10 @@ function ImageThumb({ path, callID, name }: { path: string; callID: string; name
   }, [path, cacheKey, src, failed]);
 
   if (!src || failed) {
+    // `size-4`, like every other leading glyph in this list — the fallback
+    // stands where the thumbnail will, so it must not be a smaller mark.
     const Ico = KIND_ICON.image;
-    return <Ico className="text-muted-foreground size-3.5" />;
+    return <Ico className="text-muted-foreground size-4" />;
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -101,11 +103,17 @@ function ImageThumb({ path, callID, name }: { path: string; callID: string; name
  * thumbnail (W13): the icon says "picture," the thumb shows which one.
  */
 function OutputIcon({ output }: { output: OutputItem }) {
-  const tile = ' flex size-7 shrink-0 items-center justify-center rounded-sm';
+  const tile = 'flex size-7 shrink-0 items-center justify-center rounded-sm';
+  /** A quiet ground under the glyph, the same treatment the Context card's
+   *  `FileList` tiles carry. Without it the leading mark floats and the list
+   *  loses the left edge the eye reads down. A real thumbnail is its own
+   *  anchor and fills the whole tile, so it stays bare — a ground under a
+   *  transparent PNG would read as a backing colour the image doesn't have. */
+  const groundedTile = `${tile} bg-muted/70`;
 
   if (output.kind === 'file') {
     return (
-      <span className={tile}>
+      <span className={groundedTile}>
         {getFileIcon(output.name, { className: 'size-4', variant: 'monochrome' })}
       </span>
     );
@@ -121,7 +129,7 @@ function OutputIcon({ output }: { output: OutputItem }) {
 
   const Ico = KIND_ICON[output.kind];
   return (
-    <span className={tile}>
+    <span className={groundedTile}>
       <Ico className="text-muted-foreground size-4" />
     </span>
   );
@@ -177,7 +185,10 @@ export function OutputRows({
               type="button"
               disabled={!isOpenable(o)}
               onClick={() => isOpenable(o) && onOpenOutput(o)}
-              className="hover:bg-accent -mx-0.5 flex w-full items-center gap-2.5 rounded-sm px-1 py-1.5 text-left disabled:cursor-default"
+              // `py-2` puts the row at ~44px — a real touch target — and the
+              // transition/press pair is the one the Context card's rows use,
+              // so the two cards sharing this panel move identically.
+              className="hover:bg-accent -mx-0.5 flex w-full items-center gap-2.5 rounded-sm px-1 py-2 text-left transition-[background-color,transform] active:scale-[0.98] disabled:cursor-default"
             >
               <OutputIcon output={o} />
               <span className="text-foreground min-w-0 flex-1 truncate text-sm">
@@ -200,7 +211,11 @@ export function OutputRows({
         <button
           type="button"
           onClick={() => setShowAll(true)}
-          className="text-muted-foreground hover:text-foreground hover:bg-accent -mx-0.5 mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-1 py-1.5 text-left text-sm transition-colors"
+          // Same rhythm and press feedback as the rows above it. `color` rides
+          // along in the transition list because this row also lightens its
+          // label on hover — `transition-colors` would have swept in
+          // border-color and fill with it.
+          className="text-muted-foreground hover:text-foreground hover:bg-accent -mx-0.5 mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-1 py-2 text-left text-sm transition-[background-color,color,transform] active:scale-[0.98]"
         >
           <span className="flex size-7 shrink-0 items-center justify-center">
             <ChevronDown className="size-3.5" />

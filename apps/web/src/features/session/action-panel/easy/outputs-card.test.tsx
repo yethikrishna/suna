@@ -7,7 +7,12 @@ import { OutputRows, OutputsCard } from './outputs-card';
 /** A minimal file output — defaults to a plausible scaffolding-free file so
  * callers only need to override what the test cares about. */
 function out(overrides: Partial<OutputItem> & Pick<OutputItem, 'name'>): OutputItem {
-  return { callID: `c-${overrides.name}`, kind: 'file', path: overrides.name, ...overrides } as OutputItem;
+  return {
+    callID: `c-${overrides.name}`,
+    kind: 'file',
+    path: overrides.name,
+    ...overrides,
+  } as OutputItem;
 }
 
 function renderOutputRows(outputs: OutputItem[]): string {
@@ -101,6 +106,42 @@ describe('OutputRows folds scaffolding behind "more files" (W16)', () => {
     const html = renderOutputRows([out({ name: 'a.json' }), out({ name: 'b.json' })]);
     expect(html).toContain('a.json');
     expect(html).toContain('b.json');
+  });
+});
+
+describe('OutputRows rhythm matches the Context card (W5)', () => {
+  /**
+   * New contract, replacing the untracked `py-1.5` + no-motion rows: every row
+   * in this list is `py-2` (~44px, a real touch target) and carries the same
+   * transition + press scale the Context card's rows use, so the two cards
+   * sharing one panel move identically. Pinned because that parity was lost
+   * once already — the Context rows gained motion and these did not.
+   */
+  test('rows and the fold row carry the shared padding and press feedback', () => {
+    const html = renderOutputRows(
+      Array.from({ length: 9 }, (_, i) => out({ name: `report-${i}.pdf` })),
+    );
+    // Sliced per button: an assertion over the whole list would be satisfied
+    // by either row type alone, and the point is that BOTH carry it.
+    const firstRow = html.slice(html.indexOf('<button'), html.indexOf('</button>'));
+    expect(firstRow).toContain('py-2');
+    expect(firstRow).toContain('transition-[background-color,transform]');
+    expect(firstRow).toContain('active:scale-[0.98]');
+
+    // The fold row is the last button rendered. It keeps a `color` transition
+    // of its own for the muted → foreground hover on its label.
+    const foldRow = html.slice(html.lastIndexOf('<button'));
+    expect(foldRow).toContain('1 more file');
+    expect(foldRow).toContain('py-2');
+    expect(foldRow).toContain('transition-[background-color,color,transform]');
+    expect(foldRow).toContain('active:scale-[0.98]');
+  });
+
+  // A row's leading mark sits on a tile, not loose in the gutter — the same
+  // ground the Context card's file tiles use. A thumbnail fills its own tile,
+  // so that one stays bare.
+  test('a non-thumbnail row gets a grounded leading tile', () => {
+    expect(renderOutputRows([out({ name: 'report.pdf' })])).toContain('bg-muted/70');
   });
 });
 

@@ -19,6 +19,7 @@
 
 import { Badge } from '@/components/ui/badge';
 import { FaviconAvatar } from '@/components/ui/favicon-avatar';
+import { getFileIcon } from '@/features/project-files';
 import { cn } from '@/lib/utils';
 import {
   CaretRightIcon as ChevronRight,
@@ -49,6 +50,7 @@ export function ContextCard({
   tools,
   sessionId,
   onOpenDetail,
+  onOpenFile,
 }: {
   files: ContextItem[];
   web: ContextItem[];
@@ -56,6 +58,10 @@ export function ContextCard({
   sessionId: string;
   /** Detail replaces the whole panel — so the panel, not this card, owns it. */
   onOpenDetail: (detail: Detail) => void;
+  /** Opens a "Files read" row in the file viewer, with the ordered path list
+   *  of every OTHER openable row in the group so the viewer can wire prev/next
+   *  nav across the read set — see `FileList`. */
+  onOpenFile: (path: string, allPaths: string[]) => void;
 }) {
   const groups: ContextGroup[] = [];
 
@@ -75,7 +81,7 @@ export function ContextCard({
       label: 'Files read',
       count: files.length,
       icon: <FileText className="text-muted-foreground size-3.5 shrink-0" />,
-      body: <FileList items={files} />,
+      body: <FileList items={files} onOpenFile={onOpenFile} />,
     });
   }
 
@@ -178,19 +184,63 @@ function WebSourceList({ items }: { items: ContextItem[] }) {
   );
 }
 
-function FileList({ items }: { items: ContextItem[] }) {
+/**
+ * Every item carries its own per-extension glyph, the same tile the files
+ * explorer and the Outputs card use — a `.md` reads as a `.md` here too, not
+ * as an anonymous document. An item with a `path` opens in the file viewer:
+ * clicking it calls `onOpenFile` with its own path plus the ordered path list
+ * of every OTHER openable item in the group, so the viewer can wire prev/next
+ * nav across the whole read set. An item without a `path` (`deriveContext`
+ * only sets one when a `read` call actually resolved to a real file) stays a
+ * plain row — nothing to open, so no button semantics to fake.
+ */
+function FileList({
+  items,
+  onOpenFile,
+}: {
+  items: ContextItem[];
+  onOpenFile: (path: string, allPaths: string[]) => void;
+}) {
+  const allPaths = items.flatMap((it) => (it.path ? [it.path] : []));
+
   return (
     <ul className="flex min-w-0 flex-col gap-1.5">
-      {items.map((it) => (
-        <li key={it.callID} className={ROW}>
-          <span className="bg-muted/70 flex size-7 shrink-0 items-center justify-center rounded-md">
-            <FileText className="text-muted-foreground size-3.5" />
-          </span>
-          <span className="text-foreground truncate text-sm">{it.label}</span>
-        </li>
-      ))}
+      {items.map((it) =>
+        it.path ? (
+          <li key={it.callID}>
+            <button
+              type="button"
+              onClick={() => onOpenFile(it.path as string, allPaths)}
+              className={cn(
+                ROW,
+                'hover:bg-muted cursor-pointer transition-[background-color,transform] active:scale-[0.98]',
+              )}
+            >
+              <span className="bg-muted/70 flex size-7 shrink-0 items-center justify-center rounded-md">
+                {getFileIcon(basename(it.label), { className: 'size-4', variant: 'monochrome' })}
+              </span>
+              <span className="text-foreground truncate text-sm">{it.label}</span>
+            </button>
+          </li>
+        ) : (
+          <li key={it.callID} className={ROW}>
+            <span className="bg-muted/70 flex size-7 shrink-0 items-center justify-center rounded-md">
+              <FileText className="text-muted-foreground size-3.5" />
+            </span>
+            <span className="text-foreground truncate text-sm">{it.label}</span>
+          </li>
+        ),
+      )}
     </ul>
   );
+}
+
+/** Last path segment — `getFileIcon` keys off the extension, and `it.label`
+ *  can occasionally BE a full path (`deriveContext`'s `label: ... || path`
+ *  fallback), which would otherwise feed it directory segments instead of a
+ *  filename. */
+function basename(path: string): string {
+  return path.split('/').filter(Boolean).pop() ?? path;
 }
 
 /** The URL, minus the ceremony a non-technical reader doesn't need. */

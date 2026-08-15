@@ -25,6 +25,7 @@
 import { useOptionalSessionPanel } from '../session-panel-provider';
 import { AppsCard } from './apps-card';
 import { ContextCard } from './context-card';
+import { pathOutput } from './easy-panel-logic';
 import { OutputsCard } from './outputs-card';
 
 export function EasyPanel() {
@@ -62,6 +63,9 @@ export function EasyPanel() {
         tools={context.tools}
         sessionId={sessionId}
         onOpenDetail={openDetail}
+        onOpenFile={(path, allPaths) =>
+          handleOpenOutput(pathOutput(path), allPaths.map(pathOutput))
+        }
       />
       {apps.length > 0 && <AppsCard apps={apps} onOpenApp={(a) => handleOpenOutput(a, apps)} />}
     </div>

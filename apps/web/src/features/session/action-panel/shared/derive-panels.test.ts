@@ -485,6 +485,13 @@ describe('deriveContext', () => {
     expect(files).toHaveLength(1);
   });
 
+  it('carries the real path on a completed read so the file can be opened later', () => {
+    const { files } = deriveContext([part('read', { filePath: '/a/one.ts' })]);
+    expect(files.map((f) => ({ kind: f.kind, path: f.path }))).toEqual([
+      { kind: 'file', path: '/a/one.ts' },
+    ]);
+  });
+
   it('excludes written files from context — they are outputs, not inputs', () => {
     const { files } = deriveContext([part('write', { filePath: '/a/new.md' })]);
     expect(files).toEqual([]);

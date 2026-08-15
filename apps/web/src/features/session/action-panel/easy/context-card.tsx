@@ -25,6 +25,21 @@
  * hoisted to `EasyPanel` (`connectAppsOpen` / `onToggleConnectApps`) so this
  * component stays hook-free, which is what lets `context-card.test.tsx` keep
  * calling it as a plain function instead of mounting it for real.
+ *
+ * **Non-empty footer row (Task 7).** Once the card has real rows, the
+ * empty-state buttons are gone (`PanelCard`'s `isEmpty` ternary renders
+ * `emptyActions` XOR `children` — never both), so a quiet "Connect apps" row
+ * sits after the group list instead — the same `ConnectAppsStrip` reveal,
+ * the same `connectAppsOpen` / `onToggleConnectApps` state, just a second
+ * toggle for it. Styled after the "N more files" fold row in
+ * `outputs-card.tsx` (muted label, glyph in a `size-7` box, `hover:` lightens
+ * to `text-foreground`) rather than the empty state's outlined `Button` —
+ * this row is a footnote, not an invitation.
+ *
+ * Both toggles point `aria-controls` at the SAME strip container id
+ * (`connectAppsStripId` below) — only one of the two branches this id lives
+ * in is ever mounted at once (the `isEmpty` ternary again), so the id stays
+ * unique in the DOM despite two possible toggles for it.
  */
 
 import { Badge } from '@/components/ui/badge';
@@ -92,6 +107,10 @@ export function ContextCard({
   connectAppsOpen: boolean;
   onToggleConnectApps: () => void;
 }) {
+  // Shared by both toggles — see this file's header comment on why one id is
+  // safe despite two possible triggers for it.
+  const connectAppsStripId = `context-card-connect-apps-${sessionId}`;
+
   const groups: ContextGroup[] = [];
 
   if (web.length) {
@@ -166,13 +185,14 @@ export function ContextCard({
               className="gap-1.5"
               onClick={onToggleConnectApps}
               aria-expanded={connectAppsOpen}
+              aria-controls={connectAppsStripId}
             >
               <PlugsConnected className="size-3.5" />
               Connect apps
             </Button>
           </div>
           {connectAppsOpen && (
-            <div className="text-left">
+            <div id={connectAppsStripId} className="text-left">
               <ConnectAppsStrip projectId={projectId} />
             </div>
           )}
@@ -206,6 +226,26 @@ export function ContextCard({
           </li>
         ))}
       </ul>
+      {/* Non-empty footer row (Task 7) — see this file's header comment. Only
+          reachable here, inside `children`, which `PanelCard` renders
+          exclusively in the non-empty branch of its `isEmpty` ternary. */}
+      <button
+        type="button"
+        onClick={onToggleConnectApps}
+        aria-expanded={connectAppsOpen}
+        aria-controls={connectAppsStripId}
+        className="text-muted-foreground hover:text-foreground hover:bg-accent -mx-0.5 mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-1 py-1.5 text-left text-sm transition-colors"
+      >
+        <span className="flex size-7 shrink-0 items-center justify-center">
+          <PlugsConnected className="size-3.5" />
+        </span>
+        <span className="truncate">Connect apps</span>
+      </button>
+      {connectAppsOpen && (
+        <div id={connectAppsStripId} className="mt-1">
+          <ConnectAppsStrip projectId={projectId} />
+        </div>
+      )}
     </PanelCard>
   );
 }

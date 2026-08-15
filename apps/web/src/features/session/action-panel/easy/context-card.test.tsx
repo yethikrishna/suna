@@ -150,6 +150,25 @@ function buttonTags(html: string): string[] {
 }
 
 /**
+ * `buttonTags`, minus the Task 7 "Connect apps" footer toggle.
+ *
+ * The footer row is the only group-list `<button>` carrying `aria-controls`
+ * — every group row opens the detail layer and has no such attribute — so
+ * that's the marker used to separate "one button per group" assertions from
+ * the footer, which exists once regardless of how many groups there are.
+ */
+function groupRowTags(html: string): string[] {
+  return buttonTags(html).filter((tag) => !tag.includes('aria-controls'));
+}
+
+/** How many times `needle` occurs in `haystack` — used to prove text renders
+ *  exactly once rather than merely "at least once" (catches an accidental
+ *  double-render the empty state and the footer would otherwise both pass). */
+function countOccurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
+
+/**
  * A group row's markup, minus its count `Badge`.
  *
  * The count badge is a legitimate `rounded-full` control (see `badge.tsx`'s
@@ -185,6 +204,14 @@ function buttonsIn(node: ReactNode, found: ReactElement[] = []): ReactElement[] 
   return found;
 }
 
+/** `buttonsIn`, minus the Task 7 footer toggle — see `groupRowTags` for why
+ *  `aria-controls` is what separates it from a group row's own button. */
+function groupRowsIn(node: ReactNode): ReactElement[] {
+  return buttonsIn(node).filter(
+    (el) => !('aria-controls' in (el.props as Record<string, unknown>)),
+  );
+}
+
 /**
  * Every unrendered element of a given `type` (e.g. the `Button` component
  * itself) in a React tree, in document order.
@@ -214,7 +241,9 @@ function elementsOfType<P>(
 describe('ContextCard groups are rows, not pills (W1)', () => {
   test('every group control is a full-width row button, never a pill', () => {
     const html = renderToStaticMarkup(<>{cardBody()}</>);
-    const tags = buttonTags(html);
+    // `groupRowTags` excludes the Task 7 "Connect apps" footer toggle, which
+    // also renders here (the card is non-empty) but isn't a group row.
+    const tags = groupRowTags(html);
     expect(tags).toHaveLength(3); // one per group
     for (const tag of tags) {
       expect(tag).toContain('w-full');
@@ -247,7 +276,8 @@ describe('ContextCard groups are rows, not pills (W1)', () => {
 
   test('a row opens that group in the detail layer', () => {
     const opened: Detail[] = [];
-    const rows = buttonsIn(cardBody((detail) => opened.push(detail)));
+    // `groupRowsIn` excludes the Task 7 footer toggle — see its comment.
+    const rows = groupRowsIn(cardBody((detail) => opened.push(detail)));
     expect(rows).toHaveLength(3);
 
     for (const row of rows) {
@@ -275,7 +305,9 @@ describe('"Files read" rows open the file viewer (Task 3)', () => {
     const opened: Detail[] = [];
     const onOpenFile = (path: string, allPaths: string[]) => calls.push({ path, allPaths });
 
-    const rows = buttonsIn(
+    // `groupRowsIn` excludes the Task 7 footer toggle, which also renders
+    // here (the card is non-empty) but isn't a group row.
+    const rows = groupRowsIn(
       cardBody(
         (detail) => opened.push(detail),
         onOpenFile,
@@ -322,14 +354,17 @@ describe('"Files read" rows open the file viewer (Task 3)', () => {
 describe('Empty-state actions: Add context / Connect apps (Task 5)', () => {
   const empty = { files: [], web: [], tools: [] };
 
-  test('both actions render only in the empty state — the non-empty card shows neither', () => {
+  test('"Add context" renders only in the empty state — the non-empty card shows neither empty-state button', () => {
     const emptyHtml = renderExpanded(empty);
     expect(emptyHtml).toContain('Add context');
     expect(emptyHtml).toContain('Connect apps');
 
+    // Task 7 gives the non-empty card its OWN "Connect apps" footer row, so
+    // that text alone no longer proves the empty-state button is gone — see
+    // the "Non-empty footer row" describe block below for the directional
+    // pin between the empty-state button and the footer row.
     const fullHtml = renderExpanded({ files, web, tools });
     expect(fullHtml).not.toContain('Add context');
-    expect(fullHtml).not.toContain('Connect apps');
   });
 
   test('"Add context" calls onAddContext and nothing else', () => {
@@ -386,5 +421,82 @@ describe('Empty-state actions: Add context / Connect apps (Task 5)', () => {
       <>{emptyActionsOf(empty, { connectAppsOpen: true, projectId: undefined })}</>,
     );
     expect(html).not.toContain('Gmail');
+  });
+});
+
+describe('Non-empty footer row: + Connect apps (Task 7)', () => {
+  const nonEmpty = { files, web, tools };
+  const empty = { files: [], web: [], tools: [] };
+
+  test('the footer row renders only when non-empty; the empty-state actions never render when non-empty (both directions pinned)', () => {
+    const emptyHtml = renderExpanded(empty);
+    const fullHtml = renderExpanded(nonEmpty);
+
+    // `-mx-0.5 mt-0.5` sits only on the footer row's className — the
+    // empty-state "Connect apps" button is a shadcn `outline`-variant
+    // `Button`, whose classes never include it — so it's a clean marker for
+    // "the footer row is on the page" independent of the shared label text.
+    expect(emptyHtml).not.toContain('-mx-0.5 mt-0.5');
+    expect(fullHtml).toContain('-mx-0.5 mt-0.5');
+
+    // "Connect apps" renders exactly once per state — the empty-state button
+    // in emptyHtml, the footer row in fullHtml — never both at once. A
+    // regression that rendered the empty-state actions ALONGSIDE the footer
+    // (or vice versa) would push either count to 2.
+    expect(countOccurrences(emptyHtml, 'Connect apps')).toBe(1);
+    expect(countOccurrences(fullHtml, 'Connect apps')).toBe(1);
+
+    // The empty state's "Add context" button never renders once the card has
+    // rows — the footer row has no equivalent of its own.
+    expect(emptyHtml).toContain('Add context');
+    expect(fullHtml).not.toContain('Add context');
+  });
+
+  test('the footer toggle reveals the SAME ConnectAppsStrip the empty-state toggle opens — no second state', () => {
+    const closedHtml = renderExpanded(nonEmpty, { connectAppsOpen: false, projectId: 'p1' });
+    // 'Gmail' is a `ConnectAppsStrip` row label (`DEFAULT_CONNECTORS`) —
+    // absent whenever the strip itself is absent.
+    expect(closedHtml).not.toContain('Gmail');
+
+    const openHtml = renderExpanded(nonEmpty, { connectAppsOpen: true, projectId: 'p1' });
+    expect(openHtml).toContain('Gmail');
+  });
+
+  test('the footer row calls onToggleConnectApps and nothing else', () => {
+    let toggleCalls = 0;
+    let openDetailCalls = 0;
+    // All buttons in document order: 3 group rows, then the footer toggle —
+    // `buttonsIn` (unfiltered) is what proves the footer sits AFTER the
+    // group list, not `groupRowsIn`, which would exclude it entirely.
+    const rows = buttonsIn(
+      cardBody(
+        () => openDetailCalls++,
+        undefined,
+        nonEmpty,
+        { onToggleConnectApps: () => toggleCalls++ },
+      ),
+    );
+    expect(rows).toHaveLength(4); // 3 group rows + the footer toggle
+    const footer = rows[3];
+
+    (footer.props as { onClick?: () => void }).onClick?.();
+
+    expect(toggleCalls).toBe(1);
+    expect(openDetailCalls).toBe(0);
+  });
+
+  test('both toggles share one aria-controls target — the strip container id (Minor carried from Task 5 review)', () => {
+    const stripId = 'context-card-connect-apps-s1'; // sessionId is 's1' in cardBody/renderExpanded
+    const fullOpenHtml = renderExpanded(nonEmpty, { connectAppsOpen: true, projectId: 'p1' });
+    expect(fullOpenHtml).toContain(`aria-controls="${stripId}"`);
+    expect(fullOpenHtml).toContain(`id="${stripId}"`);
+
+    const emptyOpenHtml = renderExpanded(empty, { connectAppsOpen: true, projectId: 'p1' });
+    expect(emptyOpenHtml).toContain(`aria-controls="${stripId}"`);
+    expect(emptyOpenHtml).toContain(`id="${stripId}"`);
+
+    // Mutation check: a wrong id (stale/typo'd) would never appear in either
+    // render — proving this assertion isn't vacuously true for any string.
+    expect(fullOpenHtml).not.toContain('aria-controls="context-card-connect-apps-WRONG"');
   });
 });

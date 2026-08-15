@@ -1,14 +1,16 @@
 'use client';
 
 /**
- * `ContextCard` — "what the agent LOOKED AT," as badges.
+ * `ContextCard` — "what the agent LOOKED AT," as rows.
  *
  * It used to be three labelled lists ("Web sources", "Files read", "Tools
- * used") stacked inside the card, which turned a summary into a wall of rows.
- * Now the card holds one flat wrap of badges — a source is a *thing the agent
- * consulted*, and a badge says that in one glance. Tapping one slides open the
- * `DetailLayer` — the same surface a Progress step opens, so there is exactly
- * one rule to learn.
+ * used") stacked inside the card, which turned a summary into a wall of rows;
+ * then one flat wrap of pills, which gave every group a different width and
+ * left the counts scattered across the card with nothing to line them up.
+ * Now each group is one full-width row — icon, name, count, chevron — the same
+ * row language the Outputs card uses, so the two cards sharing one panel read
+ * as one system. Tapping a row slides open the `DetailLayer` — the same
+ * surface a Progress step opens, so there is exactly one rule to learn.
  *
  * In the detail, web sources get the treatment they deserve — the site's own
  * favicon, the page title, and the real URL — instead of being flattened into
@@ -18,7 +20,11 @@
 import { Badge } from '@/components/ui/badge';
 import { FaviconAvatar } from '@/components/ui/favicon-avatar';
 import { cn } from '@/lib/utils';
-import { FileTextIcon as FileText, GlobeIcon as Globe } from '@phosphor-icons/react';
+import {
+  CaretRightIcon as ChevronRight,
+  FileTextIcon as FileText,
+  GlobeIcon as Globe,
+} from '@phosphor-icons/react';
 import type { ContextItem } from '../shared/derive-panels';
 import type { StepFamily } from '../shared/narration';
 import { familyForTool } from '../shared/narration';
@@ -27,13 +33,13 @@ import { ToolParts } from './detail-view';
 import { PanelCard } from './panel-card';
 import { StepIcon } from './step-icon';
 
-/** One badge = one group of things the agent consulted. */
+/** One row = one group of things the agent consulted. */
 interface ContextGroup {
   id: string;
   label: string;
   count: number;
   icon: React.ReactNode;
-  /** What the detail view shows when this badge is opened. */
+  /** What the detail view shows when this row is opened. */
   body: React.ReactNode;
 }
 
@@ -73,15 +79,15 @@ export function ContextCard({
     });
   }
 
-  // Every other tool the agent reached for keeps its own badge, with the same
+  // Every other tool the agent reached for keeps its own row, with the same
   // family glyph it wears in the Progress stepper — one tool, one icon, both
-  // places. A tool badge's detail shows what it actually did.
+  // places. A tool row's detail shows what it actually did.
   for (const tool of tools) {
     const family: StepFamily =
       (familyForTool(tool.parts?.[0]?.tool ?? '') as StepFamily) ?? 'other';
-    // `deriveContext` skips *fully* errored calls, but this chip aggregates ALL
+    // `deriveContext` skips *fully* errored calls, but this row aggregates ALL
     // calls to that tool — one failed call among several is exactly what a
-    // status="done" badge would hide (W7).
+    // status="done" glyph would hide (W7).
     const failed = (tool.parts ?? []).some(
       (p) => (p.state as { status?: string } | undefined)?.status === 'error',
     );
@@ -101,26 +107,34 @@ export function ContextCard({
       isEmpty={groups.length === 0}
       emptyArt={<ContextArt />}
       emptyText="Track tools and referenced files used in this task."
-      // The only card with a full p-4 body: badges are free-floating pills with
-      // no inset of their own, so the padding has to come from here.
-      contentClassName="border-border border-t p-4"
+      // The same dense gutter Outputs uses. Rows carry their own inset, so the
+      // body only has to keep them off the card's edge — a full `p-4` frame
+      // belonged to free-floating pills, not to a list.
+      contentClassName="border-border border-t px-2 py-2"
     >
-      <div className="flex flex-wrap gap-1.5">
+      <ul className="flex flex-col gap-0">
         {groups.map((g) => (
-          <button
-            key={g.id}
-            type="button"
-            onClick={() => onOpenDetail({ key: g.id, title: g.label, icon: g.icon, body: g.body })}
-            className="border-border bg-popover hover:bg-muted flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border py-1 pr-2 pl-2.5 transition-[background-color,transform] active:scale-[0.98]"
-          >
-            {g.icon}
-            <span className="text-foreground truncate text-sm">{g.label}</span>
-            <Badge variant="secondary" size="sm" className="tabular-nums">
-              {g.count}
-            </Badge>
-          </button>
+          <li key={g.id} className="flex items-center">
+            <button
+              type="button"
+              onClick={() =>
+                onOpenDetail({ key: g.id, title: g.label, icon: g.icon, body: g.body })
+              }
+              className="hover:bg-accent -mx-0.5 flex min-h-10 w-full cursor-pointer items-center gap-2.5 rounded-sm px-1 py-1.5 text-left transition-[background-color,transform] active:scale-[0.98]"
+            >
+              {/* A fixed leading box rather than the bare glyph: the group icons
+                  are not one size (`size-3.5` here, `size-4` from `StepIcon`),
+                  so without it every row's label would start at its own x. */}
+              <span className="flex size-7 shrink-0 items-center justify-center">{g.icon}</span>
+              <span className="text-foreground min-w-0 flex-1 truncate text-sm">{g.label}</span>
+              <Badge variant="secondary" size="sm" className="tabular-nums">
+                {g.count}
+              </Badge>
+              <ChevronRight className="text-muted-foreground size-3.5 shrink-0" />
+            </button>
+          </li>
         ))}
-      </div>
+      </ul>
     </PanelCard>
   );
 }

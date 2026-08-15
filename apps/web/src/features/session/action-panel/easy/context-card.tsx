@@ -15,9 +15,20 @@
  * In the detail, web sources get the treatment they deserve — the site's own
  * favicon, the page title, and the real URL — instead of being flattened into
  * a bare line of text.
+ *
+ * **Empty-state actions (Task 5).** An empty card used to be a dead promise —
+ * a sentence with nothing to act on. Two quiet actions sit under it now:
+ * "Add context" hands the user straight to the composer's attach flow
+ * (`onAddContext`, a plain callback — see `easy-panel.tsx` for what it's
+ * wired to), and "Connect apps" reveals `ConnectAppsStrip` (Task 6) in place.
+ * The open/closed state for the strip is NOT local `useState` here — it's
+ * hoisted to `EasyPanel` (`connectAppsOpen` / `onToggleConnectApps`) so this
+ * component stays hook-free, which is what lets `context-card.test.tsx` keep
+ * calling it as a plain function instead of mounting it for real.
  */
 
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { FaviconAvatar } from '@/components/ui/favicon-avatar';
 import { getFileIcon } from '@/features/project-files';
 import { cn } from '@/lib/utils';
@@ -25,10 +36,13 @@ import {
   CaretRightIcon as ChevronRight,
   FileTextIcon as FileText,
   GlobeIcon as Globe,
+  PlugsConnectedIcon as PlugsConnected,
+  PlusIcon as Plus,
 } from '@phosphor-icons/react';
 import type { ContextItem } from '../shared/derive-panels';
 import type { StepFamily } from '../shared/narration';
 import { familyForTool, narrateFailedStep, narrateStep } from '../shared/narration';
+import { ConnectAppsStrip } from './connect-apps-strip';
 import type { Detail } from './detail-view';
 import { ToolParts } from './detail-view';
 import { PanelCard } from './panel-card';
@@ -51,6 +65,10 @@ export function ContextCard({
   sessionId,
   onOpenDetail,
   onOpenFile,
+  onAddContext,
+  projectId,
+  connectAppsOpen,
+  onToggleConnectApps,
 }: {
   files: ContextItem[];
   web: ContextItem[];
@@ -62,6 +80,17 @@ export function ContextCard({
    *  of every OTHER openable row in the group so the viewer can wire prev/next
    *  nav across the read set — see `FileList`. */
   onOpenFile: (path: string, allPaths: string[]) => void;
+  /** Empty-state "Add context" button. A plain callback, same pattern as
+   *  `onOpenFile` — this card grows no store dependency of its own; see
+   *  `easy-panel.tsx` for what it's wired to. */
+  onAddContext: () => void;
+  /** For `ConnectAppsStrip`, when the empty-state "Connect apps" toggle has
+   *  it open — the strip needs a project to declare a connector against. */
+  projectId: string | undefined;
+  /** Whether `ConnectAppsStrip` is open under the empty-state buttons. Owned
+   *  by `EasyPanel`, not local state — see this file's header comment. */
+  connectAppsOpen: boolean;
+  onToggleConnectApps: () => void;
 }) {
   const groups: ContextGroup[] = [];
 
@@ -124,6 +153,31 @@ export function ContextCard({
       isEmpty={groups.length === 0}
       emptyArt={<ContextArt />}
       emptyText="Track tools and referenced files used in this task."
+      emptyActions={
+        <div className="flex w-full flex-col items-stretch gap-3">
+          <div className="flex items-center justify-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={onAddContext}>
+              <Plus className="size-3.5" />
+              Add context
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={onToggleConnectApps}
+              aria-expanded={connectAppsOpen}
+            >
+              <PlugsConnected className="size-3.5" />
+              Connect apps
+            </Button>
+          </div>
+          {connectAppsOpen && (
+            <div className="text-left">
+              <ConnectAppsStrip projectId={projectId} />
+            </div>
+          )}
+        </div>
+      }
       // The same dense gutter Outputs uses. Rows carry their own inset, so the
       // body only has to keep them off the card's edge — a full `p-4` frame
       // belonged to free-floating pills, not to a list.

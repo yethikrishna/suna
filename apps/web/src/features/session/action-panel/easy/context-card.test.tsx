@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import type { ToolPart } from '@/ui';
 import { describe, expect, test } from 'bun:test';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
@@ -5,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { ContextItem } from '../shared/derive-panels';
 import { ContextCard } from './context-card';
 import type { Detail } from './detail-view';
+import { PanelCard, type PanelCardProps } from './panel-card';
 
 const web: ContextItem[] = [
   { callID: 'w1', label: 'Kortix docs', kind: 'web', url: 'https://kortix.com/docs' },
@@ -56,9 +58,90 @@ function cardBody(
   onOpenDetail: (detail: Detail) => void = () => {},
   onOpenFile: (path: string, allPaths: string[]) => void = () => {},
   items: { files: ContextItem[]; web: ContextItem[]; tools: ContextItem[] } = { files, web, tools },
+  emptyStateProps: {
+    onAddContext?: () => void;
+    projectId?: string;
+    connectAppsOpen?: boolean;
+    onToggleConnectApps?: () => void;
+  } = {},
 ): ReactNode {
-  const card = ContextCard({ ...items, sessionId: 's1', onOpenDetail, onOpenFile });
+  const card = ContextCard({
+    ...items,
+    sessionId: 's1',
+    onOpenDetail,
+    onOpenFile,
+    onAddContext: emptyStateProps.onAddContext ?? (() => {}),
+    projectId: emptyStateProps.projectId,
+    connectAppsOpen: emptyStateProps.connectAppsOpen ?? false,
+    onToggleConnectApps: emptyStateProps.onToggleConnectApps ?? (() => {}),
+  });
   return (card as ReactElement<{ children?: ReactNode }>).props.children;
+}
+
+/**
+ * The `emptyActions` prop `ContextCard` hands `PanelCard` — the "Add
+ * context" / "Connect apps" block (Task 5). `PanelCard` only renders this
+ * inside its own collapsed-by-default `DisclosureContent` (see `cardBody`'s
+ * comment for why a whole-card render shows none of it), so — same move as
+ * `cardBody` reaching for `children` — this reaches for the prop directly
+ * instead of mounting anything.
+ */
+function emptyActionsOf(
+  items: { files: ContextItem[]; web: ContextItem[]; tools: ContextItem[] },
+  emptyStateProps: {
+    onAddContext?: () => void;
+    projectId?: string;
+    connectAppsOpen?: boolean;
+    onToggleConnectApps?: () => void;
+  } = {},
+): ReactNode {
+  const card = ContextCard({
+    ...items,
+    sessionId: 's1',
+    onOpenDetail: () => {},
+    onOpenFile: () => {},
+    onAddContext: emptyStateProps.onAddContext ?? (() => {}),
+    projectId: emptyStateProps.projectId,
+    connectAppsOpen: emptyStateProps.connectAppsOpen ?? false,
+    onToggleConnectApps: emptyStateProps.onToggleConnectApps ?? (() => {}),
+  }) as ReactElement<PanelCardProps>;
+  return card.props.emptyActions;
+}
+
+/**
+ * The card's FULL markup, `PanelCard` and all, forced open via
+ * `defaultExpanded` — the one place in this file that actually mounts
+ * `PanelCard` rather than reaching into an unrendered element's props. Needed
+ * here specifically to prove the acceptance rule "both actions render ONLY in
+ * the empty state": that gate lives inside `PanelCard`'s own `isEmpty`
+ * ternary (`panel-card.tsx`), not in `ContextCard`, so nothing short of a
+ * real render of that ternary can catch a regression that flips it.
+ *
+ * `defaultExpanded` is safe to force here without a DOM: `PanelCard` seeds
+ * its `expanded` state from that prop via plain `useState(defaultExpanded)`,
+ * which resolves on the FIRST render `renderToStaticMarkup` performs — no
+ * `useEffect` (which SSR never runs) required.
+ */
+function renderExpanded(
+  items: { files: ContextItem[]; web: ContextItem[]; tools: ContextItem[] },
+  emptyStateProps: {
+    onAddContext?: () => void;
+    projectId?: string;
+    connectAppsOpen?: boolean;
+    onToggleConnectApps?: () => void;
+  } = {},
+): string {
+  const card = ContextCard({
+    ...items,
+    sessionId: 's1',
+    onOpenDetail: () => {},
+    onOpenFile: () => {},
+    onAddContext: emptyStateProps.onAddContext ?? (() => {}),
+    projectId: emptyStateProps.projectId,
+    connectAppsOpen: emptyStateProps.connectAppsOpen ?? false,
+    onToggleConnectApps: emptyStateProps.onToggleConnectApps ?? (() => {}),
+  }) as ReactElement<PanelCardProps>;
+  return renderToStaticMarkup(<PanelCard {...card.props} defaultExpanded />);
 }
 
 /** The opening tag of every `<button>` in the rendered body, in document order. */
@@ -99,6 +182,32 @@ function buttonsIn(node: ReactNode, found: ReactElement[] = []): ReactElement[] 
   const element = node as ReactElement<{ children?: ReactNode }>;
   if (element.type === 'button') found.push(element);
   buttonsIn(element.props.children, found);
+  return found;
+}
+
+/**
+ * Every unrendered element of a given `type` (e.g. the `Button` component
+ * itself) in a React tree, in document order.
+ *
+ * "Add context" / "Connect apps" (Task 5) are `<Button>` components, not raw
+ * `<button>` elements — `buttonsIn`'s `element.type === 'button'` check can
+ * never match a component reference, only the host-element string. Matching
+ * on the imported `Button` reference directly reaches the exact element the
+ * card constructed — same idea as `buttonsIn`, generalized past host tags.
+ */
+function elementsOfType<P>(
+  node: ReactNode,
+  type: unknown,
+  found: ReactElement<P>[] = [],
+): ReactElement<P>[] {
+  if (Array.isArray(node)) {
+    for (const child of node) elementsOfType(child, type, found);
+    return found;
+  }
+  if (!isValidElement(node)) return found;
+  const element = node as ReactElement<{ children?: ReactNode }>;
+  if (element.type === type) found.push(element as ReactElement<P>);
+  elementsOfType(element.props.children, type, found);
   return found;
 }
 
@@ -207,5 +316,75 @@ describe('"Files read" rows open the file viewer (Task 3)', () => {
     const html = renderToStaticMarkup(<>{list}</>);
     expect(html).toContain('notes.txt');
     expect(buttonTags(html)).toHaveLength(2);
+  });
+});
+
+describe('Empty-state actions: Add context / Connect apps (Task 5)', () => {
+  const empty = { files: [], web: [], tools: [] };
+
+  test('both actions render only in the empty state — the non-empty card shows neither', () => {
+    const emptyHtml = renderExpanded(empty);
+    expect(emptyHtml).toContain('Add context');
+    expect(emptyHtml).toContain('Connect apps');
+
+    const fullHtml = renderExpanded({ files, web, tools });
+    expect(fullHtml).not.toContain('Add context');
+    expect(fullHtml).not.toContain('Connect apps');
+  });
+
+  test('"Add context" calls onAddContext and nothing else', () => {
+    let addContextCalls = 0;
+    let toggleCalls = 0;
+    const buttons = elementsOfType<{ onClick?: () => void }>(
+      emptyActionsOf(empty, {
+        onAddContext: () => addContextCalls++,
+        onToggleConnectApps: () => toggleCalls++,
+      }),
+      Button,
+    );
+    expect(buttons).toHaveLength(2); // Add context, Connect apps
+
+    (buttons[0].props as { onClick?: () => void }).onClick?.();
+
+    expect(addContextCalls).toBe(1);
+    expect(toggleCalls).toBe(0);
+  });
+
+  test('"Connect apps" calls onToggleConnectApps and nothing else', () => {
+    let addContextCalls = 0;
+    let toggleCalls = 0;
+    const buttons = elementsOfType<{ onClick?: () => void }>(
+      emptyActionsOf(empty, {
+        onAddContext: () => addContextCalls++,
+        onToggleConnectApps: () => toggleCalls++,
+      }),
+      Button,
+    );
+
+    (buttons[1].props as { onClick?: () => void }).onClick?.();
+
+    expect(toggleCalls).toBe(1);
+    expect(addContextCalls).toBe(0);
+  });
+
+  test('connectAppsOpen reveals ConnectAppsStrip under the buttons; closed hides it', () => {
+    const closedHtml = renderToStaticMarkup(
+      <>{emptyActionsOf(empty, { connectAppsOpen: false, projectId: 'p1' })}</>,
+    );
+    // 'Gmail' is a `ConnectAppsStrip` row label (`DEFAULT_CONNECTORS`) — absent
+    // whenever the strip itself is absent.
+    expect(closedHtml).not.toContain('Gmail');
+
+    const openHtml = renderToStaticMarkup(
+      <>{emptyActionsOf(empty, { connectAppsOpen: true, projectId: 'p1' })}</>,
+    );
+    expect(openHtml).toContain('Gmail');
+  });
+
+  test('connectAppsOpen without a projectId renders no strip — ConnectAppsStrip needs one to declare a connector against', () => {
+    const html = renderToStaticMarkup(
+      <>{emptyActionsOf(empty, { connectAppsOpen: true, projectId: undefined })}</>,
+    );
+    expect(html).not.toContain('Gmail');
   });
 });

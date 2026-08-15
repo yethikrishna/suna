@@ -342,7 +342,9 @@ describe('deriveContext', () => {
     // fallback must be the human-readable domain, never the bare URL.
     expect(web[0].label).toBe('example.com');
     expect(web[0].label).not.toMatch(/^https?:\/\//);
-    expect(tools.some((t) => t.label === 'Bash')).toBe(true);
+    // Contract change: the `run` family now labels its row "Terminal" — see
+    // `contextLabelForTool`. It used to read "Bash", a shell's name.
+    expect(tools.some((t) => t.label === 'Terminal')).toBe(true);
   });
 
   // ─── BUG 1 — anything that produced an Output must never also appear in
@@ -520,9 +522,9 @@ describe('deriveContext', () => {
   // ─── memory (W8): what the agent remembers is context the reader can ask
   // about, so the memory tool has to be a nameable row here — plainly worded,
   // and carrying its calls so the chip can open to what it actually did. It
-  // reaches the bucket through the generic branch (`humanizeToolName`), which
-  // is why the LABEL is what needs pinning: the family is not `file`, `web`,
-  // `edit` or `create`, and nothing else names it. ────────────────────────────
+  // reaches the bucket through the generic branch (`contextLabelForTool`),
+  // which is why the LABEL is what needs pinning: the family is not `file`,
+  // `web`, `edit` or `create`, and nothing else names it. ────────────────────
 
   it('surfaces a completed memory call as a Context tool row labelled Memory', () => {
     const { tools, files, web } = deriveContext([
@@ -545,6 +547,30 @@ describe('deriveContext', () => {
     ]);
     expect(tools).toHaveLength(1);
     expect(tools[0].parts).toHaveLength(2);
+  });
+
+  it('folds EVERY memory spelling into the one "Memory" row', () => {
+    // The lookup tools are the same feature under other names — humanized per
+    // tool they used to sit beside "Memory" as "Memory Search" / "Get Mem" /
+    // "Mem Search" / "Ltm Search", four extra rows for one thing. The fold is
+    // by LABEL, so the family label (`contextLabelForTool`) is what merges them.
+    const { tools } = deriveContext([
+      part('memory', { command: 'view', path: '.kortix/memory' }),
+      part('memory_search', { query: 'deploy checklist' }),
+      part('get_mem', {}),
+      part('mem_search', { query: 'deploy checklist' }),
+      part('ltm_search', { query: 'deploy checklist' }),
+    ]);
+    expect(tools).toHaveLength(1);
+    expect(tools[0].label).toBe('Memory');
+    // Every call rides on the one row, so its detail still shows all five.
+    expect(tools[0].parts).toHaveLength(5);
+  });
+
+  it('labels a shell call "Terminal", never "Bash"', () => {
+    const { tools } = deriveContext([part('bash', { command: 'ls' })]);
+    expect(tools).toHaveLength(1);
+    expect(tools[0].label).toBe('Terminal');
   });
 
   // ─── BUG 3 — a failed call didn't successfully look at anything, so it

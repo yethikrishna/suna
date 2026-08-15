@@ -778,7 +778,7 @@ export function ToolParts({
   // A step's own icon already went red for this (StepIcon, ContextCard) — but
   // that glance lives on the panel's home, one screen back. Once the user has
   // actually opened the failed step, the detail must say so too, not just show
-  // a tool view that looks the same as a success (W7).
+  // a tool view that looks the same as a success (failed-call aggregation).
   const failed = visible.some(
     (part) => (part.state as { status?: string } | undefined)?.status === 'error',
   );

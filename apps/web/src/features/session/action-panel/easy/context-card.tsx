@@ -40,6 +40,13 @@
  * (`connectAppsStripId` below) — only one of the two branches this id lives
  * in is ever mounted at once (the `isEmpty` ternary again), so the id stays
  * unique in the DOM despite two possible toggles for it.
+ *
+ * **Neither toggle renders without a `projectId`.** `ConnectAppsStrip` needs
+ * one to declare a connector against and returns `null` without it, so a
+ * toggle rendered anyway is a control that reveals nothing: `aria-expanded`
+ * flips, an empty container mounts, and the user is told something opened
+ * that did not. There is no project-less version of connecting an app, so the
+ * affordance is absent rather than inert.
  */
 
 import { Badge } from '@/components/ui/badge';
@@ -99,8 +106,9 @@ export function ContextCard({
    *  `onOpenFile` — this card grows no store dependency of its own; see
    *  `easy-panel.tsx` for what it's wired to. */
   onAddContext: () => void;
-  /** For `ConnectAppsStrip`, when the empty-state "Connect apps" toggle has
-   *  it open — the strip needs a project to declare a connector against. */
+  /** For `ConnectAppsStrip`, when a "Connect apps" toggle has it open — the
+   *  strip needs a project to declare a connector against. Undefined also
+   *  removes both toggles; see this file's header comment. */
   projectId: string | undefined;
   /** Whether `ConnectAppsStrip` is open under the empty-state buttons. Owned
    *  by `EasyPanel`, not local state — see this file's header comment. */
@@ -110,6 +118,9 @@ export function ContextCard({
   // Shared by both toggles — see this file's header comment on why one id is
   // safe despite two possible triggers for it.
   const connectAppsStripId = `context-card-connect-apps-${sessionId}`;
+  // No project, no connector to declare — so no toggle either, in EITHER
+  // branch. See this file's header comment.
+  const canConnectApps = Boolean(projectId);
 
   const groups: ContextGroup[] = [];
 
@@ -141,7 +152,7 @@ export function ContextCard({
       (familyForTool(tool.parts?.[0]?.tool ?? '') as StepFamily) ?? 'other';
     // `deriveContext` skips *fully* errored calls, but this row aggregates ALL
     // calls to that tool — one failed call among several is exactly what a
-    // status="done" glyph would hide (W7).
+    // status="done" glyph would hide (failed-call aggregation).
     const failed = (tool.parts ?? []).some(
       (p) => (p.state as { status?: string } | undefined)?.status === 'error',
     );
@@ -179,17 +190,19 @@ export function ContextCard({
               <Plus className="size-3.5" />
               Add context
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={onToggleConnectApps}
-              aria-expanded={connectAppsOpen}
-              aria-controls={connectAppsStripId}
-            >
-              <PlugsConnected className="size-3.5" />
-              Connect apps
-            </Button>
+            {canConnectApps && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={onToggleConnectApps}
+                aria-expanded={connectAppsOpen}
+                aria-controls={connectAppsStripId}
+              >
+                <PlugsConnected className="size-3.5" />
+                Connect apps
+              </Button>
+            )}
           </div>
           <ConnectAppsReveal
             id={connectAppsStripId}
@@ -230,28 +243,32 @@ export function ContextCard({
       {/* Non-empty footer row (Task 7) — see this file's header comment. Only
           reachable here, inside `children`, which `PanelCard` renders
           exclusively in the non-empty branch of its `isEmpty` ternary. */}
-      <button
-        type="button"
-        onClick={onToggleConnectApps}
-        aria-expanded={connectAppsOpen}
-        aria-controls={connectAppsStripId}
-        // `color` rides the transition list because the label lightens on
-        // hover, and the press scale is the one every row in both cards uses —
-        // the same treatment the Outputs fold row carries, so a footnote row
-        // moves identically wherever it appears.
-        className="text-muted-foreground hover:text-foreground hover:bg-accent -mx-0.5 mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-1 py-1.5 text-left text-sm transition-[background-color,color,transform] active:scale-[0.98]"
-      >
-        <span className="flex size-7 shrink-0 items-center justify-center">
-          <PlugsConnected className="size-3.5" />
-        </span>
-        <span className="truncate">Connect apps</span>
-      </button>
-      <ConnectAppsReveal
-        id={connectAppsStripId}
-        open={connectAppsOpen}
-        projectId={projectId}
-        className="mt-1"
-      />
+      {canConnectApps && (
+        <>
+          <button
+            type="button"
+            onClick={onToggleConnectApps}
+            aria-expanded={connectAppsOpen}
+            aria-controls={connectAppsStripId}
+            // `color` rides the transition list because the label lightens on
+            // hover, and the press scale is the one every row in both cards
+            // uses — the same treatment the Outputs fold row carries, so a
+            // footnote row moves identically wherever it appears.
+            className="text-muted-foreground hover:text-foreground hover:bg-accent -mx-0.5 mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-1 py-1.5 text-left text-sm transition-[background-color,color,transform] active:scale-[0.98]"
+          >
+            <span className="flex size-7 shrink-0 items-center justify-center">
+              <PlugsConnected className="size-3.5" />
+            </span>
+            <span className="truncate">Connect apps</span>
+          </button>
+          <ConnectAppsReveal
+            id={connectAppsStripId}
+            open={connectAppsOpen}
+            projectId={projectId}
+            className="mt-1"
+          />
+        </>
+      )}
     </PanelCard>
   );
 }
@@ -390,13 +407,25 @@ function prettyUrl(url: string): string {
   return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
-/** Soft placeholder art — overlapping note cards, matching the reference. */
+/**
+ * Soft placeholder art — overlapping note cards, matching the reference.
+ *
+ * The hairlines are `border-border` at full alpha, not `border-border/60`.
+ * Dark's `--border` (oklch 0.2686) already sits only 0.077 L above the card it
+ * draws on (`--card`, oklch 0.1913) — that IS the theme's hairline contrast —
+ * so taking 60% of it left the whole illustration effectively unrendered on
+ * dark. The fills are the same story: `bg-muted/30` over dark's card resolves
+ * to ~0.201 L against a 0.1913 ground, a 0.01 difference. `/50` and `/70` keep
+ * the two-card depth order while landing where the eye can find them. Light is
+ * unaffected in kind — `--border` is that theme's hairline too — and the fills
+ * stay soft there because `--muted` is only 0.024 L off `--card`.
+ */
 function ContextArt() {
   return (
     <div aria-hidden className="relative h-16 w-24">
-      <span className="border-border/60 bg-muted/30 absolute top-3 left-0 h-10 w-8 rounded-sm border" />
-      <span className="border-border/60 bg-muted/40 absolute top-1.5 left-6 h-12 w-9 rounded-sm border" />
-      <span className="border-border/60 absolute top-3 left-14 h-10 w-8 rounded-sm border border-dashed bg-transparent" />
+      <span className="border-border bg-muted/50 absolute top-3 left-0 h-10 w-8 rounded-sm border" />
+      <span className="border-border bg-muted/70 absolute top-1.5 left-6 h-12 w-9 rounded-sm border" />
+      <span className="border-border absolute top-3 left-14 h-10 w-8 rounded-sm border border-dashed bg-transparent" />
     </div>
   );
 }

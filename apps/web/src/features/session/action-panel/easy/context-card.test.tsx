@@ -14,6 +14,9 @@ const web: ContextItem[] = [
 const files: ContextItem[] = [
   { callID: 'f1', label: 'report.md', kind: 'file', path: 'report.md' },
 ];
+// `Terminal` is the label production genuinely derives for the `run` family —
+// `deriveContext` routes the generic branch through `contextLabelForTool`
+// (narration.ts), which maps `run` → "Terminal" and `memory` → "Memory".
 const tools: ContextItem[] = [
   {
     callID: 't1',
@@ -25,7 +28,8 @@ const tools: ContextItem[] = [
   },
 ];
 
-/** One tool row whose calls are a mix of success and failure — the W7 case:
+/** One tool row whose calls are a mix of success and failure — the failed-call
+ *  aggregation case:
  *  `deriveContext` only DROPS a fully-errored call, so a tool that succeeded
  *  nine times and failed once still reaches this row with `state.status ===
  *  'error'` sitting among its `parts`. */
@@ -255,7 +259,7 @@ describe('ContextCard groups are rows, not pills (W1)', () => {
     expect(withoutBadgeMarkup(html)).not.toContain('rounded-full');
   });
 
-  test('a tool row with one failed call among successes shows the error glyph (W7, R8 #2)', () => {
+  test('a tool row with one failed call among successes shows the error glyph (failed-call aggregation, R8 #2)', () => {
     const html = renderToStaticMarkup(
       <>{cardBody(undefined, undefined, { files: [], web: [], tools: toolsWithAFailedCall })}</>,
     );
@@ -354,8 +358,10 @@ describe('"Files read" rows open the file viewer (Task 3)', () => {
 describe('Empty-state actions: Add context / Connect apps (Task 5)', () => {
   const empty = { files: [], web: [], tools: [] };
 
+  // Every case below passes `projectId` because "Connect apps" now renders
+  // only with one — see the "no projectId" describe block for that gate.
   test('"Add context" renders only in the empty state — the non-empty card shows neither empty-state button', () => {
-    const emptyHtml = renderExpanded(empty);
+    const emptyHtml = renderExpanded(empty, { projectId: 'p1' });
     expect(emptyHtml).toContain('Add context');
     expect(emptyHtml).toContain('Connect apps');
 
@@ -363,7 +369,7 @@ describe('Empty-state actions: Add context / Connect apps (Task 5)', () => {
     // that text alone no longer proves the empty-state button is gone — see
     // the "Non-empty footer row" describe block below for the directional
     // pin between the empty-state button and the footer row.
-    const fullHtml = renderExpanded({ files, web, tools });
+    const fullHtml = renderExpanded({ files, web, tools }, { projectId: 'p1' });
     expect(fullHtml).not.toContain('Add context');
   });
 
@@ -372,6 +378,7 @@ describe('Empty-state actions: Add context / Connect apps (Task 5)', () => {
     let toggleCalls = 0;
     const buttons = elementsOfType<{ onClick?: () => void }>(
       emptyActionsOf(empty, {
+        projectId: 'p1',
         onAddContext: () => addContextCalls++,
         onToggleConnectApps: () => toggleCalls++,
       }),
@@ -390,6 +397,7 @@ describe('Empty-state actions: Add context / Connect apps (Task 5)', () => {
     let toggleCalls = 0;
     const buttons = elementsOfType<{ onClick?: () => void }>(
       emptyActionsOf(empty, {
+        projectId: 'p1',
         onAddContext: () => addContextCalls++,
         onToggleConnectApps: () => toggleCalls++,
       }),
@@ -429,8 +437,10 @@ describe('Non-empty footer row: + Connect apps (Task 7)', () => {
   const empty = { files: [], web: [], tools: [] };
 
   test('the footer row renders only when non-empty; the empty-state actions never render when non-empty (both directions pinned)', () => {
-    const emptyHtml = renderExpanded(empty);
-    const fullHtml = renderExpanded(nonEmpty);
+    // `projectId` is required for either "Connect apps" affordance to render
+    // at all now — see the "no projectId" describe block below.
+    const emptyHtml = renderExpanded(empty, { projectId: 'p1' });
+    const fullHtml = renderExpanded(nonEmpty, { projectId: 'p1' });
 
     // `-mx-0.5 mt-0.5` sits only on the footer row's className — the
     // empty-state "Connect apps" button is a shadcn `outline`-variant
@@ -473,7 +483,7 @@ describe('Non-empty footer row: + Connect apps (Task 7)', () => {
         () => openDetailCalls++,
         undefined,
         nonEmpty,
-        { onToggleConnectApps: () => toggleCalls++ },
+        { projectId: 'p1', onToggleConnectApps: () => toggleCalls++ },
       ),
     );
     expect(rows).toHaveLength(4); // 3 group rows + the footer toggle
@@ -498,5 +508,68 @@ describe('Non-empty footer row: + Connect apps (Task 7)', () => {
     // Mutation check: a wrong id (stale/typo'd) would never appear in either
     // render — proving this assertion isn't vacuously true for any string.
     expect(fullOpenHtml).not.toContain('aria-controls="context-card-connect-apps-WRONG"');
+  });
+});
+
+/**
+ * `ConnectAppsStrip` returns null without a `projectId` (it has no project to
+ * declare a connector against), so a toggle rendered anyway is a dead control:
+ * pressing it flips `aria-expanded` over an empty container. Both affordances
+ * — the empty state's button and the non-empty footer row — are gated on the
+ * project, in both directions.
+ */
+describe('Connect apps needs a project — no projectId, no toggle', () => {
+  const nonEmpty = { files, web, tools };
+  const empty = { files: [], web: [], tools: [] };
+
+  test('without a projectId neither affordance renders', () => {
+    const emptyHtml = renderExpanded(empty);
+    const fullHtml = renderExpanded(nonEmpty);
+
+    expect(emptyHtml).not.toContain('Connect apps');
+    expect(fullHtml).not.toContain('Connect apps');
+    // Nothing claims to control the strip either — no `aria-expanded` over an
+    // element that was never mounted.
+    expect(emptyHtml).not.toContain('aria-controls="context-card-connect-apps-s1"');
+    expect(fullHtml).not.toContain('aria-controls="context-card-connect-apps-s1"');
+    // `-mx-0.5 mt-0.5` is the footer row's own marker (see the Task 7 block).
+    expect(fullHtml).not.toContain('-mx-0.5 mt-0.5');
+
+    // The rest of the card is untouched: only the connect affordance is gone.
+    expect(emptyHtml).toContain('Add context');
+    expect(fullHtml).toContain('Web sources');
+  });
+
+  test('with a projectId both affordances render', () => {
+    const emptyHtml = renderExpanded(empty, { projectId: 'p1' });
+    const fullHtml = renderExpanded(nonEmpty, { projectId: 'p1' });
+
+    expect(emptyHtml).toContain('Connect apps');
+    expect(fullHtml).toContain('Connect apps');
+    expect(fullHtml).toContain('-mx-0.5 mt-0.5');
+  });
+
+  test('the empty-state toggle itself is absent, not merely inert, without a project', () => {
+    // Reaches the constructed `Button` elements directly — a toggle that
+    // rendered but did nothing would still show up here as a second button.
+    const withProject = elementsOfType<{ onClick?: () => void }>(
+      emptyActionsOf(empty, { projectId: 'p1' }),
+      Button,
+    );
+    expect(withProject).toHaveLength(2); // Add context, Connect apps
+
+    const withoutProject = elementsOfType<{ onClick?: () => void }>(
+      emptyActionsOf(empty, { projectId: undefined }),
+      Button,
+    );
+    expect(withoutProject).toHaveLength(1); // Add context only
+  });
+
+  test('the footer toggle itself is absent, not merely inert, without a project', () => {
+    const withProject = buttonsIn(cardBody(undefined, undefined, nonEmpty, { projectId: 'p1' }));
+    expect(withProject).toHaveLength(4); // 3 group rows + the footer toggle
+
+    const withoutProject = buttonsIn(cardBody(undefined, undefined, nonEmpty, {}));
+    expect(withoutProject).toHaveLength(3); // the 3 group rows, nothing else
   });
 });

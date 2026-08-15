@@ -65,6 +65,16 @@ describe('stepLabel', () => {
     // The agent consulting itself. Nothing changed, so nothing is owed a row.
     expect(stepLabel(tool('get_mem')).tier).toBe('plumbing');
     expect(stepLabel(tool('memory_search')).tier).toBe('plumbing');
+    // Every spelling of the lookup, or the policy contradicts itself: the same
+    // read renders as a chat step or not depending on which name the model
+    // emitted. `narration.ts` puts all four in the one `memory` family.
+    expect(stepLabel(tool('mem_search')).tier).toBe('plumbing');
+    expect(stepLabel(tool('ltm_search')).tier).toBe('plumbing');
+    // …and they read as recalls, not as a raw tool name under "Used".
+    expect(stepLabel(tool('mem_search')).verb).toBe('Recalled');
+    expect(stepLabel(tool('ltm_search', { query: 'deploy checklist' })).object).toBe(
+      'deploy checklist',
+    );
   });
 
   test('the memory EDITOR is primary — an update the reader must be able to see', () => {

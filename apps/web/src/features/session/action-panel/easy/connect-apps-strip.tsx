@@ -9,13 +9,15 @@
  * reach for, one click from connected, so the first thing a project owner
  * sees is a start, not a blank promise.
  *
- * **Row idiom matches `ContextCard`'s** (`hover:bg-accent rounded-sm px-1
- * py-1.5 gap-2.5`, `size-7` leading box) — this strip is meant to live beside
- * or inside that card, so the two must read as one system. Unlike a
- * `ContextCard` row, the whole row is not a button: a nested "Connect"
- * `<button>` inside a row `<button>` is invalid HTML (`PanelCard`'s header
- * hit the same constraint — see its own comment), so the row is a plain
- * `<div>` and only "Connect" carries a click.
+ * **Row idiom matches `ContextCard`'s** (`rounded-sm px-1 py-1.5 gap-2.5`,
+ * `size-7` leading box) — this strip is meant to live beside or inside that
+ * card, so the two must read as one system. Unlike a `ContextCard` row, the
+ * whole row is not a button: a nested "Connect" `<button>` inside a row
+ * `<button>` is invalid HTML (`PanelCard`'s header hit the same constraint —
+ * see its own comment), so the row is a plain `<div>` and only "Connect"
+ * carries a click. The row therefore carries NO `hover:` state either: a
+ * pointer tint on a `<div>` that answers no click promises an affordance the
+ * row does not have, and the nested Connect button already has its own.
  *
  * **Connect is a two-step sequence: declare, then open the gate.**
  * `ConnectorRequiredNotice`'s `openConnectorGate` call (this strip's model for
@@ -150,9 +152,9 @@ export const DEFAULT_CONNECTORS: readonly DefaultConnector[] = [
 ];
 
 /** Full-width row, matching `ContextCard`'s dense idiom minus the click
- *  semantics — see this file's header for why it's a `div`, not a `button`. */
-const ROW_CLASS =
-  'hover:bg-accent -mx-0.5 flex min-h-10 w-full items-center gap-2.5 rounded-sm px-1 py-1.5';
+ *  semantics AND minus its hover tint — see this file's header for why it's a
+ *  `div`, not a `button`, and why a non-interactive row carries no `hover:`. */
+const ROW_CLASS = '-mx-0.5 flex min-h-10 w-full items-center gap-2.5 rounded-sm px-1 py-1.5';
 
 /**
  * Declare this connector in the project's manifest (idempotent on a slug it

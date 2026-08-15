@@ -366,12 +366,19 @@ export function OutputsCard({
   );
 }
 
-/** Soft placeholder art — a stacked-document glyph, matching the reference. */
+/**
+ * Soft placeholder art — a stacked-document glyph, matching the reference.
+ *
+ * Full-alpha `border-border` and `bg-muted/50` for the same reason
+ * `ContextArt` (context-card.tsx) carries them: on dark, `--border` at 60%
+ * and `--muted` at 30% both resolve to within ~0.03 L of `--card`, which left
+ * the frame invisible in exactly the state whose whole job is to be seen.
+ */
 function OutputsArt() {
   return (
     <div
       aria-hidden
-      className="border-border/60 bg-muted/30 flex h-16 w-20 items-end justify-center gap-1 rounded-md border p-3"
+      className="border-border bg-muted/50 flex h-16 w-20 items-end justify-center gap-1 rounded-md border p-3"
     >
       <span className="bg-muted-foreground/30 h-4 w-1.5 rounded-sm" />
       <span className="bg-muted-foreground/30 h-7 w-1.5 rounded-sm" />

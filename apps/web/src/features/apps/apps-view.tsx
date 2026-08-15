@@ -83,21 +83,6 @@ function appCommand(app: App): string {
   return `kortix apps deploy . --app ${app.app_id}`;
 }
 
-/**
- * What the badge says, and whether the tile is lit.
- *
- * `desired_state` is a WISH, not an observation: a freshly created App is
- * `running` before anything has ever been deployed to it. Rendering that as a
- * green "Running" told people their App was up when the same card said "Deploy
- * to see a live preview" directly above it. Nothing deployed reads as exactly
- * that, and the tile stays neutral.
- */
-function appStatus(app: App): { label: string; tone: 'success' | 'muted'; live: boolean } {
-  if (!app.active_deployment_id) return { label: 'Not deployed', tone: 'muted', live: false };
-  const live = app.desired_state === 'running';
-  return { label: live ? 'Running' : 'Suspended', tone: live ? 'success' : 'muted', live };
-}
-
 function AppPreview({
   app,
   url,
@@ -105,9 +90,9 @@ function AppPreview({
   /**
    * `false` on a CARD: the card is one big button, and a live iframe would
    * swallow every click meant for it (and let someone interact with a page
-   * inside a 300px tile). The card renders the same frame purely as a thumbnail
-   * and the card's own overlay takes the click. `true` in the detail modal,
-   * where the App is the point and the frame is the App.
+   * inside a 300px tile). The card renders the frame purely as a thumbnail and
+   * the card takes the click. `true` in the detail modal, where the frame IS
+   * the App.
    */
   interactive,
   className,
@@ -120,7 +105,11 @@ function AppPreview({
 }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
-  const frame = cn('bg-muted/20 relative overflow-hidden', !interactive && 'aspect-video', className);
+  const frame = cn(
+    'bg-muted/20 relative overflow-hidden',
+    !interactive && 'aspect-video',
+    className,
+  );
 
   if (!app.active_deployment_id) {
     return (
@@ -200,8 +189,15 @@ export function AppsView({ projectId }: { projectId: string }) {
   const appsGate = useFeatureFlag(projectId, 'apps');
   const apps = useProjectApps(appsGate.enabled ? projectId : null);
   const searchParams = useSearchParams();
+  // Apps own their leaves — the routes assert project.app.write for policy and
+  // shape changes and project.app.deploy for anything that changes what the
+  // public hostname serves. Gating on project.customize.write let a custom role
+  // that granted Apps still render read-only, and one that revoked Apps still
+  // render the controls.
   const canWrite =
-    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_CUSTOMIZE_WRITE).allowed === true;
+    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_APP_WRITE).allowed === true;
+  const canDeploy =
+    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_APP_DEPLOY).allowed === true;
   // Which App the detail modal is showing. Held by id, not by object, so a
   // refetch (a lifecycle toggle, a rollback) re-renders the modal against the
   // fresh row instead of a stale copy captured at click time.
@@ -226,11 +222,6 @@ export function AppsView({ projectId }: { projectId: string }) {
       description="Deploy apps to stable Kortix URLs. They wake on request and stop when idle."
       docs="/docs/sdk/apps"
       className="max-w-5xl"
-      action={
-        <Badge size="sm" variant="beta">
-          Experimental
-        </Badge>
-      }
       showSidebarToggleButton
     >
       {appsGate.isLoading ? (
@@ -322,6 +313,7 @@ export function AppsView({ projectId }: { projectId: string }) {
           projectId={projectId}
           app={openApp}
           canWrite={canWrite}
+          canDeploy={canDeploy}
           open
           onOpenChange={(next) => {
             if (!next) setOpenAppId(null);
@@ -341,16 +333,17 @@ function AppCard({
   app: App;
   onOpen: () => void;
 }) {
-  // SESSION only. The access POLICY is an admin read that 403s for an ordinary
-  // member, and the card never shows it — the detail modal asks for it.
+  // SESSION only. The access POLICY is an administrative read that 403s for an
+  // ordinary member, and the card never renders it — the detail modal asks.
   const access = useAppAccess(projectId, app.app_id, { policy: false });
-  const status = appStatus(app);
+  const deployed = Boolean(app.active_deployment_id);
+  const live = deployed && app.desired_state === 'running';
 
   return (
     <li>
-      {/* The whole card is one control. Everything that used to be a row of six
-          icon buttons now lives at the top of the detail modal, so there is
-          exactly one thing to click here and no nested hit areas. */}
+      {/* One control per card. Everything that used to be a row of six icon
+          buttons now lives at the top of the detail modal, so there is exactly
+          one thing to click and no nested hit areas. */}
       <button
         type="button"
         onClick={onOpen}
@@ -369,8 +362,7 @@ function AppCard({
             accessError={access.session.isError}
             interactive={false}
           />
-          {/* A 1px inset hairline so the thumbnail never bleeds into the panel
-              edge — the image-outline rule, black in light and white in dark. */}
+          {/* Hairline so the thumbnail never bleeds into the panel edge. */}
           <span className="pointer-events-none absolute inset-0 outline outline-black/10 -outline-offset-1 dark:outline-white/10" />
         </div>
 
@@ -378,20 +370,20 @@ function AppCard({
           <span
             className={cn(
               'flex size-9 shrink-0 items-center justify-center rounded-sm',
-              status.live ? 'bg-kortix-green/15' : 'bg-muted',
+              live ? 'bg-kortix-green/15' : 'bg-muted',
             )}
           >
             <GlobeIcon
               weight="fill"
-              className={cn('size-5', status.live ? 'text-kortix-green' : 'text-muted-foreground')}
+              className={cn('size-5', live ? 'text-kortix-green' : 'text-muted-foreground')}
             />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-foreground truncate text-sm font-medium">{app.name}</p>
             <p className="text-muted-foreground truncate font-mono text-xs">{app.url}</p>
           </div>
-          <Badge size="xs" variant={status.tone}>
-            {status.label}
+          <Badge size="xs" variant={live ? 'success' : 'muted'}>
+            {!deployed ? 'Not deployed' : app.desired_state === 'running' ? 'Running' : 'Suspended'}
           </Badge>
         </div>
       </button>
@@ -410,12 +402,14 @@ function AppDetailModal({
   projectId,
   app,
   canWrite,
+  canDeploy,
   open,
   onOpenChange,
 }: {
   projectId: string;
   app: App;
   canWrite: boolean;
+  canDeploy: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -426,7 +420,8 @@ function AppDetailModal({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const latest = deployments.data?.[0];
-  const status = appStatus(app);
+  const deployed = Boolean(app.active_deployment_id);
+  const live = deployed && app.desired_state === 'running';
   const running = app.desired_state === 'running';
   const busy = apps.start.isPending || apps.stop.isPending || apps.remove.isPending;
   const liveUrl = access.session.data?.url ?? app.url;
@@ -450,8 +445,8 @@ function AppDetailModal({
         // Radix focuses the first focusable descendant on open, which is an
         // action in the bar — and a focused icon button shows its Hint, so the
         // modal opened with a black tooltip sitting over its own controls.
-        // Focus the dialog instead: the focus trap still holds, keyboard users
-        // Tab into the bar from the top, and nothing pops unbidden.
+        // Focus the dialog instead: the focus trap still holds, Tab still walks
+        // into the bar, and nothing pops unbidden.
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           (event.currentTarget as HTMLElement | null)?.focus?.();
@@ -464,36 +459,39 @@ function AppDetailModal({
             <span
               className={cn(
                 'flex size-8 shrink-0 items-center justify-center rounded-sm',
-                status.live ? 'bg-kortix-green/15' : 'bg-muted',
+                live ? 'bg-kortix-green/15' : 'bg-muted',
               )}
             >
               <GlobeIcon
                 weight="fill"
-                className={cn('size-4', status.live ? 'text-kortix-green' : 'text-muted-foreground')}
+                className={cn('size-4', live ? 'text-kortix-green' : 'text-muted-foreground')}
               />
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="text-foreground truncate text-sm font-medium">{app.name}</p>
-                <Badge size="xs" variant={status.tone}>
-                  {status.label}
+                <Badge size="xs" variant={live ? 'success' : 'muted'}>
+                  {!deployed ? 'Not deployed' : running ? 'Running' : 'Suspended'}
                 </Badge>
                 {latest ? (
                   <Badge size="xs" variant={deploymentTone(latest.status)}>
                     {latest.status}
                   </Badge>
                 ) : null}
+                <Badge size="xs" variant="outline">
+                  {ACCESS_COPY[app.access_mode].label}
+                </Badge>
               </div>
               <p className="text-muted-foreground truncate font-mono text-xs">{app.url}</p>
             </div>
 
             <ButtonGroup>
-              {canWrite ? (
+              {canDeploy ? (
                 <Hint label={running ? 'Suspend App' : 'Wake App'}>
                   <Button
                     size="icon"
                     variant="outline"
-                    disabled={busy || !app.active_deployment_id}
+                    disabled={busy || !deployed}
                     aria-label={running ? 'Suspend App' : 'Wake App'}
                     onClick={() => lifecycle(running ? 'stop' : 'start')}
                   >
@@ -532,7 +530,12 @@ function AppDetailModal({
               </Hint>
               <Hint label="Open in a new tab">
                 <Button asChild size="icon" variant="outline">
-                  <a href={liveUrl} target="_blank" rel="noopener noreferrer" aria-label="Open in a new tab">
+                  <a
+                    href={liveUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Open in a new tab"
+                  >
                     <ArrowSquareOutIcon className="size-4 shrink-0" />
                   </a>
                 </Button>
@@ -591,7 +594,7 @@ function AppDetailModal({
                       key={deployment.deployment_id}
                       deployment={deployment}
                       active={deployment.deployment_id === app.active_deployment_id}
-                      canWrite={canWrite}
+                      canDeploy={canDeploy}
                       rollbackPending={deployments.rollback.isPending}
                       onRollback={async () => {
                         try {
@@ -645,6 +648,7 @@ function AppDetailModal({
     </Modal>
   );
 }
+
 
 const ACCESS_COPY: Record<AppAccessMode, { label: string; desc: string }> = {
   private: { label: 'Only you', desc: 'Only the App creator can open it' },
@@ -815,13 +819,13 @@ function AppAccessForm({
 function DeploymentRow({
   deployment,
   active,
-  canWrite,
+  canDeploy,
   rollbackPending,
   onRollback,
 }: {
   deployment: AppDeployment;
   active: boolean;
-  canWrite: boolean;
+  canDeploy: boolean;
   rollbackPending: boolean;
   onRollback: () => void;
 }) {
@@ -836,7 +840,7 @@ function DeploymentRow({
         {deployment.hosting_provider ? ` · ${deployment.hosting_provider}` : ''}
       </span>
       {active ? <span className="text-muted-foreground text-xs">Live</span> : null}
-      {canWrite && deployment.status === 'ready' && !active ? (
+      {canDeploy && deployment.status === 'ready' && !active ? (
         <Button size="xs" variant="ghost" disabled={rollbackPending} onClick={onRollback}>
           {rollbackPending ? <Loading /> : <ClockCounterClockwiseIcon className="size-3.5" />}
           Roll back

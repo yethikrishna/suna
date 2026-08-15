@@ -248,76 +248,126 @@ export async function appAccessibleToUser(
   });
 }
 
-/**
- * The subset of `appsForProject` this user may actually open.
+/* ─── Team scoping — who on the team sees this App ────────────────────────────
  *
- * The list route used to return every App in the project, so a member saw
- * `private` Apps owned by someone else and `restricted` Apps they hold no grant
- * for. They could not open them — the access-session route already refuses — but
- * the name, URL, deployment status and live preview tile were all on screen.
- * Listing is disclosure, so the list is now filtered by the same decision that
- * governs opening.
+ * The same model sessions use (see connectors/share.ts `isSessionVisibleTo`):
+ * an App is `private` to the member who made it, `restricted` to an allow-list
+ * of members and groups, or visible to the whole project. Apps carry two extra
+ * modes that only describe PUBLIC traffic — `public` and `password` — and both
+ * are team-visible: a password protects the App's hostname from the internet,
+ * it never hides the App from the teammates who operate it.
  *
- * Batched on purpose. `appAccessibleToUser` resolves project authorization and
- * the share subject per call, which is one `authorize()` round-trip per App;
- * a project with 30 Apps paid 30 of them to render one page. Both are identical
- * across every App in a project, so they are resolved ONCE here, and grants are
- * loaded only for the `restricted` Apps that actually need them. The per-App
- * verdict then comes from the pure `appAccessDecision`, so this function and
- * `appAccessibleToUser` cannot drift apart on policy.
+ * Before this, `access_mode` governed public traffic only, so a private App was
+ * still listed, renamed, resized, redeployed, and deleted by every project
+ * member. The management plane now honors the same policy.
  */
-export async function filterAppsAccessibleToUser<
-  T extends {
-    appId: string;
-    accountId: string;
-    projectId: string;
-    accessMode: string;
-    createdBy: string | null;
-  },
->(appsForProject: T[], userId: string): Promise<T[]> {
-  if (!appsForProject.length) return [];
 
-  // Every row here belongs to one project, so this is one decision, not N.
-  const first = appsForProject[0]!;
-  const projectAccess = await authorize(userId, first.accountId, PROJECT_ACTIONS.PROJECT_READ, {
-    type: 'project',
-    id: first.projectId,
-  });
-  if (!projectAccess.allowed) return [];
+/** Who a mode exposes the App to inside the team, before owner/manager. */
+export type AppTeamScope = 'owner' | 'shared' | 'team';
 
-  const subject = await resolveShareSubject(userId);
+export function appTeamScope(mode: AppAccessMode): AppTeamScope {
+  if (mode === 'private') return 'owner';
+  if (mode === 'restricted') return 'shared';
+  return 'team';
+}
 
-  const restrictedIds = appsForProject
-    .filter((app) => app.accessMode === 'restricted')
-    .map((app) => app.appId);
-  const grantsByApp = new Map<string, SecretGrant[]>();
-  if (restrictedIds.length) {
-    const rows = await db
-      .select({
-        appId: appAccessGrants.appId,
-        principalType: appAccessGrants.principalType,
-        principalId: appAccessGrants.principalId,
-      })
-      .from(appAccessGrants)
-      .where(inArray(appAccessGrants.appId, restrictedIds));
-    for (const row of rows) {
-      const list = grantsByApp.get(row.appId) ?? [];
-      list.push({
-        principalType: row.principalType as 'member' | 'group',
-        principalId: row.principalId,
-      });
-      grantsByApp.set(row.appId, list);
-    }
+/**
+ * Pure: may this subject see and operate the App? The App's creator always can,
+ * and so does a project manager — otherwise a private App becomes unmanageable
+ * the moment the member who created it leaves the account.
+ */
+export function appVisibleToSubject(input: {
+  mode: AppAccessMode;
+  ownerId: string | null;
+  grants: SecretGrant[];
+  subject: ShareSubject;
+  isProjectManager: boolean;
+}): boolean {
+  if (input.isProjectManager) return true;
+  if (input.ownerId && input.ownerId === input.subject.userId) return true;
+  switch (appTeamScope(input.mode)) {
+    case 'team':
+      return true;
+    case 'shared':
+      return input.grants.some((grant) =>
+        grant.principalType === 'member'
+          ? grant.principalId === input.subject.userId
+          : input.subject.groupIds.includes(grant.principalId),
+      );
+    case 'owner':
+      return false;
   }
+}
 
-  return appsForProject.filter((app) =>
-    appAccessDecision({
-      mode: app.accessMode as AppAccessMode,
-      ownerId: app.createdBy,
-      grants: app.accessMode === 'restricted' ? (grantsByApp.get(app.appId) ?? []) : [],
-      subject,
-    }),
+/** Bulk-load App grants → map appId → grants. Mirrors loadSessionGrants. */
+export async function loadAppAccessGrantsFor(
+  appIds: string[],
+): Promise<Map<string, SecretGrant[]>> {
+  const out = new Map<string, SecretGrant[]>();
+  if (appIds.length === 0) return out;
+  const rows = await db.select({
+    appId: appAccessGrants.appId,
+    principalType: appAccessGrants.principalType,
+    principalId: appAccessGrants.principalId,
+  }).from(appAccessGrants).where(inArray(appAccessGrants.appId, appIds));
+  for (const row of rows) {
+    const list = out.get(row.appId) ?? [];
+    list.push({
+      principalType: row.principalType as 'member' | 'group',
+      principalId: row.principalId,
+    });
+    out.set(row.appId, list);
+  }
+  return out;
+}
+
+interface TeamScopedApp {
+  appId: string;
+  accountId: string;
+  projectId: string;
+  accessMode: string;
+  createdBy: string | null;
+}
+
+async function projectManager(accountId: string, projectId: string, userId: string): Promise<boolean> {
+  const verdict = await authorize(
+    userId,
+    accountId,
+    PROJECT_ACTIONS.PROJECT_MEMBERS_MANAGE,
+    { type: 'project', id: projectId },
   );
+  return verdict.allowed;
+}
+
+/**
+ * The subset of `rows` this user may see. One subject resolution, one manager
+ * verdict, and one grant query for the whole page — never per App.
+ */
+export async function filterAppsVisibleToUser<T extends TeamScopedApp>(
+  rows: T[],
+  userId: string,
+): Promise<T[]> {
+  if (rows.length === 0) return [];
+  const first = rows[0]!;
+  const [subject, isProjectManager, grants] = await Promise.all([
+    resolveShareSubject(userId),
+    projectManager(first.accountId, first.projectId, userId),
+    loadAppAccessGrantsFor(
+      rows.filter((row) => row.accessMode === 'restricted').map((row) => row.appId),
+    ),
+  ]);
+  return rows.filter((row) => appVisibleToSubject({
+    mode: row.accessMode as AppAccessMode,
+    ownerId: row.createdBy,
+    grants: grants.get(row.appId) ?? [],
+    subject,
+    isProjectManager,
+  }));
+}
+
+/** Single-App form of {@link filterAppsVisibleToUser}. */
+export async function appVisibleToUser(app: TeamScopedApp, userId: string): Promise<boolean> {
+  return (await filterAppsVisibleToUser([app], userId)).length === 1;
 }
 
 export function appAccessSessionUrl(

@@ -162,8 +162,15 @@ export function AppsView({ projectId }: { projectId: string }) {
   const appsGate = useFeatureFlag(projectId, 'apps');
   const apps = useProjectApps(appsGate.enabled ? projectId : null);
   const searchParams = useSearchParams();
+  // Apps own their leaves — the routes assert project.app.write for policy and
+  // shape changes and project.app.deploy for anything that changes what the
+  // public hostname serves. Gating on project.customize.write let a custom role
+  // that granted Apps still render read-only, and one that revoked Apps still
+  // render the controls.
   const canWrite =
-    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_CUSTOMIZE_WRITE).allowed === true;
+    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_APP_WRITE).allowed === true;
+  const canDeploy =
+    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_APP_DEPLOY).allowed === true;
 
   useEffect(() => {
     const target = searchParams.get('open_app');
@@ -183,11 +190,6 @@ export function AppsView({ projectId }: { projectId: string }) {
       description="Deploy apps to stable Kortix URLs. They wake on request and stop when idle."
       docs="/docs/sdk/apps"
       className="max-w-5xl"
-      action={
-        <Badge size="sm" variant="beta">
-          Experimental
-        </Badge>
-      }
       showSidebarToggleButton
     >
       {appsGate.isLoading ? (
@@ -236,7 +238,13 @@ export function AppsView({ projectId }: { projectId: string }) {
       ) : apps.data?.length ? (
         <ul className="grid gap-4 md:grid-cols-2">
           {apps.data.map((app) => (
-            <AppRow key={app.app_id} projectId={projectId} app={app} canWrite={canWrite} />
+            <AppRow
+              key={app.app_id}
+              projectId={projectId}
+              app={app}
+              canWrite={canWrite}
+              canDeploy={canDeploy}
+            />
           ))}
         </ul>
       ) : (
@@ -272,7 +280,17 @@ export function AppsView({ projectId }: { projectId: string }) {
   );
 }
 
-function AppRow({ projectId, app, canWrite }: { projectId: string; app: App; canWrite: boolean }) {
+function AppRow({
+  projectId,
+  app,
+  canWrite,
+  canDeploy,
+}: {
+  projectId: string;
+  app: App;
+  canWrite: boolean;
+  canDeploy: boolean;
+}) {
   const apps = useProjectApps(projectId);
   const deployments = useAppDeployments(projectId, app.app_id);
   const access = useAppAccess(projectId, app.app_id);
@@ -281,6 +299,13 @@ function AppRow({ projectId, app, canWrite }: { projectId: string; app: App; can
   const [accessOpen, setAccessOpen] = useState(false);
   const latest = deployments.data?.[0];
   const busy = apps.start.isPending || apps.stop.isPending || apps.remove.isPending;
+  // `desired_state` is INTENT and defaults to 'running' the moment an App row is
+  // created, so a never-deployed App used to render a green "Running" badge with
+  // no runtime behind it. Only an App with an active deployment can be running —
+  // which is also why the Suspend/Wake control is disabled without one, and why
+  // the API answers 409 'App has no active deployment' there.
+  const deployed = Boolean(app.active_deployment_id);
+  const live = deployed && app.desired_state === 'running';
 
   const lifecycle = async (action: 'start' | 'stop') => {
     try {
@@ -305,9 +330,7 @@ function AppRow({ projectId, app, canWrite }: { projectId: string; app: App; can
         <div
           className={cn(
             'flex size-9 shrink-0 items-center justify-center rounded-sm',
-            app.desired_state === 'running'
-              ? 'bg-kortix-green/15 text-kortix-green'
-              : 'bg-muted text-muted-foreground',
+            live ? 'bg-kortix-green/15 text-kortix-green' : 'bg-muted text-muted-foreground',
           )}
         >
           <GlobeIcon className="size-5" weight="fill" />
@@ -315,8 +338,8 @@ function AppRow({ projectId, app, canWrite }: { projectId: string; app: App; can
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-foreground truncate text-sm font-medium">{app.name}</p>
-            <Badge size="xs" variant={app.desired_state === 'running' ? 'success' : 'muted'}>
-              {app.desired_state === 'running' ? 'Running' : 'Suspended'}
+            <Badge size="xs" variant={live ? 'success' : 'muted'}>
+              {!deployed ? 'Not deployed' : app.desired_state === 'running' ? 'Running' : 'Suspended'}
             </Badge>
             {latest ? (
               <Badge size="xs" variant={deploymentTone(latest.status)}>
@@ -369,7 +392,7 @@ function AppRow({ projectId, app, canWrite }: { projectId: string; app: App; can
               </Button>
             </Hint>
           ) : null}
-          {canWrite ? (
+          {canDeploy ? (
             <Hint label={app.desired_state === 'running' ? 'Suspend App' : 'Wake App'}>
               <Button
                 size="icon"
@@ -431,7 +454,7 @@ function AppRow({ projectId, app, canWrite }: { projectId: string; app: App; can
                   key={deployment.deployment_id}
                   deployment={deployment}
                   active={deployment.deployment_id === app.active_deployment_id}
-                  canWrite={canWrite}
+                  canDeploy={canDeploy}
                   rollbackPending={deployments.rollback.isPending}
                   onRollback={async () => {
                     try {
@@ -650,13 +673,13 @@ function AppAccessForm({
 function DeploymentRow({
   deployment,
   active,
-  canWrite,
+  canDeploy,
   rollbackPending,
   onRollback,
 }: {
   deployment: AppDeployment;
   active: boolean;
-  canWrite: boolean;
+  canDeploy: boolean;
   rollbackPending: boolean;
   onRollback: () => void;
 }) {
@@ -671,7 +694,7 @@ function DeploymentRow({
         {deployment.hosting_provider ? ` · ${deployment.hosting_provider}` : ''}
       </span>
       {active ? <span className="text-muted-foreground text-xs">Live</span> : null}
-      {canWrite && deployment.status === 'ready' && !active ? (
+      {canDeploy && deployment.status === 'ready' && !active ? (
         <Button size="xs" variant="ghost" disabled={rollbackPending} onClick={onRollback}>
           {rollbackPending ? <Loading /> : <ClockCounterClockwiseIcon className="size-3.5" />}
           Roll back

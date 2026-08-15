@@ -39,7 +39,7 @@ interface AppResponse {
 }
 
 test.describe('18 — Kortix Apps UI', () => {
-  test('shows experimental Apps, enables it in place, and renders a read-only deployment index', async ({
+  test('gates Apps on its flag, enables it in place, and renders a read-only deployment index', async ({
     context,
     page,
   }, testInfo) => {
@@ -118,9 +118,11 @@ test.describe('18 — Kortix Apps UI', () => {
       });
       await dismissOnboarding(page);
       await expect(page.getByRole('heading', { name: 'Apps', exact: true })).toBeVisible();
-      await expect(page.getByRole('main').getByText('Experimental', { exact: true })).toBeVisible();
+      // Apps is a STABLE flag: still opt-in per project, but no surface calls
+      // it experimental any more.
+      await expect(page.getByRole('main').getByText('Experimental', { exact: true })).toHaveCount(0);
       // The gate screen never self-enables: it points at Settings →
-      // Experimental and there is no Enable button on the feature's own page.
+      // Feature flags and there is no Enable button on the feature's own page.
       await expect(page.getByText('is off for this project')).toBeVisible();
       await expect(page.getByRole('button', { name: 'Enable Apps' })).toHaveCount(0);
       expect(disabledAppRequests).toEqual([]);
@@ -192,7 +194,7 @@ test.describe('18 — Kortix Apps UI', () => {
       await expect(page.getByRole('heading', { name: 'Apps', exact: true })).toBeVisible();
       await expect(page.getByText('Seed App', { exact: true })).toBeVisible();
       await expect(page.getByText('Deploy from a terminal', { exact: true })).toBeVisible();
-      await expect(page.getByRole('main').getByText('Experimental', { exact: true })).toBeVisible();
+      await expect(page.getByRole('main').getByText('Experimental', { exact: true })).toHaveCount(0);
       await expect(page.getByText('kortix apps deploy .', { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'New App' })).toHaveCount(0);
       await expect(page.getByRole('dialog', { name: 'Create App' })).toHaveCount(0);

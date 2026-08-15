@@ -28,7 +28,7 @@ import {
 } from '@phosphor-icons/react';
 import type { ContextItem } from '../shared/derive-panels';
 import type { StepFamily } from '../shared/narration';
-import { familyForTool } from '../shared/narration';
+import { familyForTool, narrateFailedStep, narrateStep } from '../shared/narration';
 import type { Detail } from './detail-view';
 import { ToolParts } from './detail-view';
 import { PanelCard } from './panel-card';
@@ -97,12 +97,23 @@ export function ContextCard({
     const failed = (tool.parts ?? []).some(
       (p) => (p.state as { status?: string } | undefined)?.status === 'error',
     );
+    // The row's detail opens straight onto raw tool views (W3) — a plain
+    // sentence above them, in the same voice the Progress stepper narrates
+    // with, is what tells a non-technical reader what they're looking at
+    // before they have to parse a diff or a JSON blob. Reuses `narrateStep`/
+    // `narrateFailedStep` — the same pair `group-steps.ts`'s `finalize` calls
+    // for the Progress card's own step label — rather than a second sentence
+    // table (the rule `narration.ts:12-14` and `derive-panels.ts:1-14` both
+    // enforce).
+    const summary = failed
+      ? narrateFailedStep(family, tool.parts ?? [])
+      : narrateStep(family, tool.parts ?? []);
     groups.push({
       id: tool.callID,
       label: tool.label,
       count: tool.parts?.length ?? 1,
       icon: <StepIcon family={family} status={failed ? 'error' : 'done'} />,
-      body: <ToolParts parts={tool.parts ?? []} sessionId={sessionId} />,
+      body: <ToolParts parts={tool.parts ?? []} sessionId={sessionId} summary={summary} />,
     });
   }
 

@@ -1,10 +1,66 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { Button } from '@/components/ui/button';
 import { useConnectorGateStore } from '@/stores/connector-gate-store';
-import { ConnectAppsStrip, DEFAULT_CONNECTORS } from './connect-apps-strip';
+
+/**
+ * `ConnectAppsStrip`'s Connect button now runs `createConnector` (from
+ * `@kortix/sdk`) before it ever opens the gate — see the component's own
+ * header comment for why. `mock.module` replaces `@kortix/sdk` for the rest
+ * of this file's run, so the real module is spread first (repo convention —
+ * see `connect-apps-strip.tsx`'s task brief / CLAUDE.md: "if you mock.module
+ * the gate store, spread the real module"). Only `createConnector` is
+ * overridden; everything else (`ApiError` included — the component's own
+ * `err instanceof ApiError` check needs the SAME class reference the mock
+ * throws) stays the genuine export.
+ *
+ * `@/components/ui/toast` is mocked too, same spread rule — not to assert on
+ * toast copy (out of scope here), but because `errorToast`/`warningToast`
+ * read `window.innerWidth` (`toast.tsx:206`/`:242`) and this Bun run has no
+ * DOM. Without the mock, the failure/sync-error branches this file exists to
+ * pin would throw a `ReferenceError` from INSIDE the component's own `catch`,
+ * masking the real assertion under an unrelated crash.
+ *
+ * Both mocks are registered, then the SUT is imported dynamically — same
+ * order `session-audit-shared.test.ts` uses — so `connect-apps-strip.tsx`'s
+ * own static imports resolve to the mocked bindings rather than ones already
+ * captured by an earlier import.
+ */
+type CreateConnectorCall = { projectId: string; draft: Record<string, unknown> };
+let createConnectorCalls: CreateConnectorCall[] = [];
+let createConnectorImpl: (
+  projectId: string,
+  draft: Record<string, unknown>,
+) => Promise<{ ok: boolean; sync?: { synced: number; errors: Array<{ slug: string; error: string }> } }> =
+  async () => ({ ok: true });
+
+const realSdk = await import('@kortix/sdk');
+
+await mock.module('@kortix/sdk', () => ({
+  ...realSdk,
+  createConnector: async (projectId: string, draft: Record<string, unknown>) => {
+    createConnectorCalls.push({ projectId, draft });
+    return createConnectorImpl(projectId, draft);
+  },
+}));
+
+const realToast = await import('@/components/ui/toast');
+const toastCalls: Array<{ kind: 'error' | 'warning'; message: string }> = [];
+
+await mock.module('@/components/ui/toast', () => ({
+  ...realToast,
+  errorToast: (message: string) => {
+    toastCalls.push({ kind: 'error', message });
+  },
+  warningToast: (message: string) => {
+    toastCalls.push({ kind: 'warning', message });
+  },
+}));
+
+const { ApiError } = realSdk;
+const { ConnectAppsStrip, DEFAULT_CONNECTORS } = await import('./connect-apps-strip');
 
 /**
  * `ConnectAppsStrip` holds no hooks of its own (see its header comment on
@@ -37,6 +93,22 @@ function buttonsIn(node: ReactNode, found: ReactElement[] = []): ReactElement[] 
   return found;
 }
 
+/** Every "Connect" row button — never the `asChild` "View all" control,
+ *  which has no `onClick` (its click is the plain `<Link>` navigation). */
+function connectButtonsIn(node: ReactNode): ReactElement[] {
+  return buttonsIn(node).filter((b) => typeof (b.props as { onClick?: unknown }).onClick === 'function');
+}
+
+function connectButtonFor(node: ReactNode, slug: string): ReactElement {
+  const index = DEFAULT_CONNECTORS.findIndex((c) => c.slug === slug);
+  return connectButtonsIn(node)[index];
+}
+
+async function clickConnect(node: ReactNode, slug: string): Promise<void> {
+  const button = connectButtonFor(node, slug) as ReactElement<{ onClick?: () => Promise<void> }>;
+  await button.props.onClick?.();
+}
+
 beforeEach(() => {
   useConnectorGateStore.setState({
     isOpen: false,
@@ -44,6 +116,9 @@ beforeEach(() => {
     connectorConnections: [],
     retry: null,
   });
+  createConnectorCalls = [];
+  createConnectorImpl = async () => ({ ok: true });
+  toastCalls.length = 0;
 });
 
 describe('ConnectAppsStrip', () => {
@@ -63,19 +138,29 @@ describe('ConnectAppsStrip', () => {
     expect(html.match(/<button[^>]*>/g)).toHaveLength(DEFAULT_CONNECTORS.length);
   });
 
-  test('Connect opens the gate for exactly that one connector, project-owned, with a no-op retry', () => {
+  test('Connect declares the connector (create_only, project-owned), THEN opens the gate for exactly that one, with a no-op retry', async () => {
     const tree = strip('proj-1');
-    // Every `<Button>` in the tree, filtered to the ones that carry an
-    // `onClick` — "Connect" rows, never the `asChild` "View all" control,
-    // which has none (its click is the plain `<Link>` navigation).
-    const connectButtons = buttonsIn(tree).filter(
-      (b) => typeof (b.props as { onClick?: unknown }).onClick === 'function',
-    );
-    expect(connectButtons).toHaveLength(DEFAULT_CONNECTORS.length);
+    await clickConnect(tree, 'gmail');
 
-    const gmailIndex = DEFAULT_CONNECTORS.findIndex((c) => c.slug === 'gmail');
-    (connectButtons[gmailIndex].props as { onClick?: () => void }).onClick?.();
+    // The declare call — pinned so a future edit can't skip straight to the
+    // gate (the exact regression the review caught: doing that 404s against
+    // `reconcileConnection` on a project that has never declared this
+    // connector).
+    expect(createConnectorCalls).toHaveLength(1);
+    expect(createConnectorCalls[0].projectId).toBe('proj-1');
+    expect(createConnectorCalls[0].draft).toMatchObject({
+      slug: 'gmail',
+      name: 'Gmail',
+      provider: 'pipedream',
+      app: 'gmail',
+      authorization_strategy: 'project',
+      create_only: true,
+    });
 
+    // The declare resolves BEFORE the gate opens — a same-tick synchronous
+    // check here would pass even if the two were reordered, so the pinned
+    // fact is "the awaited click leaves the gate open", not "it opens
+    // eventually".
     const state = useConnectorGateStore.getState();
     expect(state.isOpen).toBe(true);
     expect(state.projectId).toBe('proj-1');
@@ -86,6 +171,54 @@ describe('ConnectAppsStrip', () => {
     ]);
     expect(state.retry).not.toBeNull();
     expect(() => state.retry?.()).not.toThrow();
+  });
+
+  test('a 409 (already declared) is treated as success — the gate still opens', async () => {
+    createConnectorImpl = async () => {
+      throw new ApiError('Connector slug "gmail" already exists', { status: 409 });
+    };
+
+    const tree = strip('proj-1');
+    await clickConnect(tree, 'gmail');
+
+    expect(createConnectorCalls).toHaveLength(1);
+    const state = useConnectorGateStore.getState();
+    expect(state.isOpen).toBe(true);
+    expect(state.connectorConnections).toEqual([
+      { id: 'gmail', slug: 'gmail', name: 'Gmail', authorization_strategy: 'project' },
+    ]);
+    // No error surfaced for the idempotent path — a 409 here is success, not
+    // a failure the user needs to see.
+    expect(toastCalls).toEqual([]);
+  });
+
+  test('a non-409 declare failure stops short of the gate and surfaces errorToast', async () => {
+    createConnectorImpl = async () => {
+      throw new ApiError('project not found', { status: 404 });
+    };
+
+    const tree = strip('proj-1');
+    await clickConnect(tree, 'gmail');
+
+    expect(createConnectorCalls).toHaveLength(1);
+    expect(useConnectorGateStore.getState().isOpen).toBe(false);
+    expect(toastCalls).toEqual([{ kind: 'error', message: 'project not found' }]);
+  });
+
+  test('a sync failure (manifest written, sync failed) stops short of the gate and surfaces warningToast', async () => {
+    createConnectorImpl = async () => ({
+      ok: true,
+      sync: { synced: 0, errors: [{ slug: 'gmail', error: 'upstream app not found' }] },
+    });
+
+    const tree = strip('proj-1');
+    await clickConnect(tree, 'gmail');
+
+    expect(createConnectorCalls).toHaveLength(1);
+    expect(useConnectorGateStore.getState().isOpen).toBe(false);
+    expect(toastCalls).toHaveLength(1);
+    expect(toastCalls[0].kind).toBe('warning');
+    expect(toastCalls[0].message).toContain('upstream app not found');
   });
 
   test('View all links to the canonical connectors route, never a ?section= deep link', () => {

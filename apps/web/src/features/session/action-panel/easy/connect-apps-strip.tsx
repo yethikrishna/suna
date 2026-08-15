@@ -17,12 +17,47 @@
  * hit the same constraint — see its own comment), so the row is a plain
  * `<div>` and only "Connect" carries a click.
  *
- * **The gate opens for ONE connector at a time.** `openConnectorGate` is the
- * same store `ConnectorRequiredNotice` uses for a failed-send refusal, but
- * that caller hands it every connector a blocked turn needs; this one hands
- * it a single-item list — "connect this app, in place, no navigation" — so
- * the modal it opens shows exactly the row that was clicked, nothing else.
- * `retry` is a no-op: there is no refused send waiting behind this click.
+ * **Connect is a two-step sequence: declare, then open the gate.**
+ * `ConnectorRequiredNotice`'s `openConnectorGate` call (this strip's model for
+ * the store call itself — see below) only ever fires for a connector the
+ * project ALREADY has a manifest row for, because the server only refuses a
+ * send over a connector it already knows about. This strip's whole reason to
+ * exist is the opposite case — a brand-new project with nothing declared —
+ * so calling the gate directly would send `usePipedreamConnectProject` (which
+ * the dialog drives) into `reconcileConnection`, which 404s
+ * (`apps/api/src/projects/routes/r4.ts:688`, "Connector not found") when no
+ * `connectors` row exists yet. Declaring the row first is what the
+ * connectors page's own Add flow (`EasyConnectAddFlow`) already does before
+ * IT ever opens a connection dialog — `createConnector` +
+ * `buildEasyConnectConnectorDraft`, both imported from there rather than
+ * re-implemented, are the exact functions that write the manifest entry and
+ * trigger the server-side sync. This strip reuses those two functions
+ * directly instead of the whole `EasyConnectAddFlow` component: that
+ * component's job is naming a NEW connection through a modal (name/slug
+ * chosen by the user), which would turn one click into two steps for a
+ * connector whose name and slug are already fixed. `declareThenOpenGate`
+ * below is the smallest reuse that keeps this a single click.
+ *
+ * **Declaring is idempotent.** `buildEasyConnectConnectorDraft` sets
+ * `create_only: true` (via `createOnlyConnectorDraft`), so a slug the
+ * manifest already carries — an earlier click here, or the connectors page's
+ * own Add flow having already added it — 409s with `ApiError`. That 409 is
+ * caught and treated as success: the row is exactly as declared as a fresh
+ * `createConnector` call would have left it, so the gate opens the same way
+ * either path. Any OTHER failure (network, a genuine validation error) stops
+ * short of the gate and surfaces `errorToast` instead — opening a gate for a
+ * connector that was never declared would just move the 404 one step later.
+ * A partial failure (manifest written, sync failed —
+ * `connectorSyncErrorForSlug`) also stops short: the DB row `reconcileConnection`
+ * needs isn't there yet either, so the gate would 404 just the same.
+ *
+ * **The gate then opens for ONE connector at a time.** `openConnectorGate` is
+ * the same store `ConnectorRequiredNotice` uses for a failed-send refusal,
+ * but that caller hands it every connector a blocked turn needs; this one
+ * hands it a single-item list — "connect this app, in place, no
+ * navigation" — so the modal it opens shows exactly the row that was
+ * clicked, nothing else. `retry` is a no-op: there is no refused send
+ * waiting behind this click.
  *
  * **Read via `getState()`, not the `useConnectorGateStore(selector)` hook.**
  * The action is a stable reference created once by `create()`, so nothing
@@ -43,8 +78,14 @@
  */
 
 import { Button } from '@/components/ui/button';
+import { errorToast, warningToast } from '@/components/ui/toast';
 import { FaviconAvatar } from '@/components/ui/favicon-avatar';
+import {
+  buildEasyConnectConnectorDraft,
+  connectorSyncErrorForSlug,
+} from '@/features/workspace/customize/sections/connector-connection-form';
 import { useConnectorGateStore } from '@/stores/connector-gate-store';
+import { ApiError, createConnector } from '@kortix/sdk';
 import Link from 'next/link';
 
 interface DefaultConnector {
@@ -113,6 +154,51 @@ export const DEFAULT_CONNECTORS: readonly DefaultConnector[] = [
 const ROW_CLASS =
   'hover:bg-accent -mx-0.5 flex min-h-10 w-full items-center gap-2.5 rounded-sm px-1 py-1.5';
 
+/**
+ * Declare this connector in the project's manifest (idempotent on a slug it
+ * already carries), then open the gate for it — see this file's header for
+ * why both steps exist and why a 409 falls through instead of stopping.
+ */
+async function declareThenOpenGate(projectId: string, connector: DefaultConnector) {
+  try {
+    const draft = buildEasyConnectConnectorDraft(
+      { slug: connector.slug, name: connector.name },
+      { name: connector.name, slug: connector.slug, authorizationStrategy: 'project' },
+    );
+    const result = await createConnector(projectId, draft);
+    const syncError = connectorSyncErrorForSlug(result, connector.slug);
+    if (syncError) {
+      warningToast(
+        `Added ${connector.name} to the manifest, but synchronization failed: ${syncError}. Use Sync to retry.`,
+      );
+      return;
+    }
+  } catch (err) {
+    // 409 = already declared — `create_only` makes this the idempotent case
+    // (an earlier click here, or the connectors page's own Add flow already
+    // added it), so fall through to the gate exactly as a fresh declare
+    // would. Any other failure stops here: opening the gate for a connector
+    // that was never declared would just move the 404 one step later.
+    if (!(err instanceof ApiError) || err.status !== 409) {
+      errorToast(err instanceof Error ? err.message : `Couldn't add ${connector.name}`);
+      return;
+    }
+  }
+
+  useConnectorGateStore.getState().openConnectorGate({
+    projectId,
+    connectorConnections: [
+      {
+        id: connector.slug,
+        slug: connector.slug,
+        name: connector.name,
+        authorization_strategy: 'project',
+      },
+    ],
+    retry: () => {},
+  });
+}
+
 export function ConnectAppsStrip({ projectId }: { projectId: string | undefined }) {
   if (!projectId) return null;
 
@@ -133,20 +219,7 @@ export function ConnectAppsStrip({ projectId }: { projectId: string | undefined 
                 size="sm"
                 variant="outline"
                 className="shrink-0"
-                onClick={() =>
-                  useConnectorGateStore.getState().openConnectorGate({
-                    projectId,
-                    connectorConnections: [
-                      {
-                        id: connector.slug,
-                        slug: connector.slug,
-                        name: connector.name,
-                        authorization_strategy: 'project',
-                      },
-                    ],
-                    retry: () => {},
-                  })
-                }
+                onClick={() => declareThenOpenGate(projectId, connector)}
               >
                 Connect
               </Button>

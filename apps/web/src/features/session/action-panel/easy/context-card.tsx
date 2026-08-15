@@ -191,11 +191,12 @@ export function ContextCard({
               Connect apps
             </Button>
           </div>
-          {connectAppsOpen && (
-            <div id={connectAppsStripId} className="text-left">
-              <ConnectAppsStrip projectId={projectId} />
-            </div>
-          )}
+          <ConnectAppsReveal
+            id={connectAppsStripId}
+            open={connectAppsOpen}
+            projectId={projectId}
+            className="text-left"
+          />
         </div>
       }
       // The same dense gutter Outputs uses. Rows carry their own inset, so the
@@ -234,19 +235,51 @@ export function ContextCard({
         onClick={onToggleConnectApps}
         aria-expanded={connectAppsOpen}
         aria-controls={connectAppsStripId}
-        className="text-muted-foreground hover:text-foreground hover:bg-accent -mx-0.5 mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-1 py-1.5 text-left text-sm transition-colors"
+        // `color` rides the transition list because the label lightens on
+        // hover, and the press scale is the one every row in both cards uses —
+        // the same treatment the Outputs fold row carries, so a footnote row
+        // moves identically wherever it appears.
+        className="text-muted-foreground hover:text-foreground hover:bg-accent -mx-0.5 mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-1 py-1.5 text-left text-sm transition-[background-color,color,transform] active:scale-[0.98]"
       >
         <span className="flex size-7 shrink-0 items-center justify-center">
           <PlugsConnected className="size-3.5" />
         </span>
         <span className="truncate">Connect apps</span>
       </button>
-      {connectAppsOpen && (
-        <div id={connectAppsStripId} className="mt-1">
-          <ConnectAppsStrip projectId={projectId} />
-        </div>
-      )}
+      <ConnectAppsReveal
+        id={connectAppsStripId}
+        open={connectAppsOpen}
+        projectId={projectId}
+        className="mt-1"
+      />
     </PanelCard>
+  );
+}
+
+/**
+ * The strip's container, in the one shape both toggles reveal it in.
+ *
+ * Two branches render it — under the empty-state buttons and under the footer
+ * row — and they differ only in the wrapper's spacing class. Written twice,
+ * the `id` (which `aria-controls` points at from both toggles) and the
+ * open-gate were two copies to keep in step; here they are one.
+ */
+function ConnectAppsReveal({
+  id,
+  open,
+  projectId,
+  className,
+}: {
+  id: string;
+  open: boolean;
+  projectId: string | undefined;
+  className: string;
+}) {
+  if (!open) return null;
+  return (
+    <div id={id} className={className}>
+      <ConnectAppsStrip projectId={projectId} />
+    </div>
   );
 }
 
@@ -321,7 +354,11 @@ function FileList({
                 'hover:bg-muted cursor-pointer transition-[background-color,transform] active:scale-[0.98]',
               )}
             >
-              <span className="bg-muted/70 flex size-7 shrink-0 items-center justify-center rounded-md">
+              {/* `rounded-sm` (6px) inside the row's `rounded-md` (8px): a
+                  tile is a status tile, and a tile that matched its own row's
+                  radius read as a second card rather than a mark inside one.
+                  Same tile the Outputs card's `OutputIcon` draws. */}
+              <span className="bg-muted/70 flex size-7 shrink-0 items-center justify-center rounded-sm">
                 {getFileIcon(basename(it.label), { className: 'size-4', variant: 'monochrome' })}
               </span>
               <span className="text-foreground truncate text-sm">{it.label}</span>
@@ -329,7 +366,7 @@ function FileList({
           </li>
         ) : (
           <li key={it.callID} className={ROW}>
-            <span className="bg-muted/70 flex size-7 shrink-0 items-center justify-center rounded-md">
+            <span className="bg-muted/70 flex size-7 shrink-0 items-center justify-center rounded-sm">
               <FileText className="text-muted-foreground size-3.5" />
             </span>
             <span className="text-foreground truncate text-sm">{it.label}</span>

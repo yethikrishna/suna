@@ -28,6 +28,10 @@ import { useCallback, useMemo } from 'react';
 /** A YAML frontmatter block at the very top of a document. */
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
 
+/** A YAML block-scalar header and nothing else — `|`, `>`, and their
+ *  indentation/chomping indicators in either order (`|-`, `>2`, `|2-`, `>-2`). */
+const BLOCK_SCALAR_HEADER = /^[|>](?:[+-]?\d?|\d?[+-]?)$/;
+
 /**
  * The skill's one-line purpose, or '' when the output does not carry one.
  *
@@ -50,7 +54,16 @@ export function parseSkillPurpose(content: string): string {
   const line = frontmatter[1].match(/^description[ \t]*:[ \t]*(.+)$/im);
   if (!line) return '';
 
-  const quoted = line[1].trim().match(/^(['"])([\s\S]*)\1$/);
+  const raw = line[1].trim();
+  // A YAML block scalar puts the value on the FOLLOWING lines: `description: |`
+  // and `description: >` (with optional indentation/chomping indicators —
+  // `|-`, `>2`, `|2-`) carry nothing on the `description:` line itself. Read as
+  // a plain value, the header became a one-character subtitle: a row titled
+  // "webapp" with "|" under it. Only this line is ever parsed, so the honest
+  // answer is no subtitle — the row already reads fine without one.
+  if (BLOCK_SCALAR_HEADER.test(raw)) return '';
+
+  const quoted = raw.match(/^(['"])([\s\S]*)\1$/);
   const value = (quoted ? quoted[2] : line[1]).trim().replace(/\s+/g, ' ');
   if (!value) return '';
 

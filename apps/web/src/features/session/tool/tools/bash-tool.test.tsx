@@ -403,6 +403,32 @@ describe('BashTool trigger renders the title the helper answers (W9)', () => {
     expect(html).toContain('Running command');
     expect(html).not.toContain('Install the workspace dependencies');
   });
+
+  test('an ORPHANED running call — no ToolRunningContext — falls back to the description title', () => {
+    // `running` comes from context, not from `state.status`, so a `running`
+    // part rendered outside a provider (a replayed transcript, a dev-tools
+    // one-off, the panel's own detail views) takes the SETTLED branch and is
+    // titled by its description. Pinned so a future change to that fallback is
+    // a deliberate one: the alternatives (shimmer without a live stream, or a
+    // bare "Ran command" on a call that has not returned) are both worse, but
+    // neither is currently guarded by anything.
+    const orphaned = {
+      type: 'tool',
+      tool: 'bash',
+      callID: 'call-1',
+      state: {
+        status: 'running',
+        input: { command: 'pnpm install', description: 'install the workspace dependencies' },
+        metadata: {},
+      },
+    } as unknown as ToolPart;
+    const html = renderToStaticMarkup(withProviders(<BashTool part={orphaned} />));
+
+    expect(triggerTitle(html)).toBe(
+      '<span class="min-w-0 truncate text-foreground">Install the workspace dependencies</span>',
+    );
+    expect(html).not.toContain('Running command');
+  });
 });
 
 describe('BashTool card, for the cases with nothing to show', () => {

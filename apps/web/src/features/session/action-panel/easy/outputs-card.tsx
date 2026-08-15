@@ -275,7 +275,10 @@ export function OutputRows({
           </span>
           {/* Say what they are, not just how many — "8 more" is a mystery box;
               "8 more files" is a decision the user can make without clicking. */}
-          <span className="truncate">
+          {/* `tabular-nums`: the count climbs while a run streams outputs in,
+              and proportional digits shift the whole label sideways each time
+              it crosses a width boundary (9 → 10 → 100). */}
+          <span className="truncate tabular-nums">
             {hidden} more {hidden === 1 ? 'file' : 'files'}
           </span>
         </button>

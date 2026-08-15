@@ -100,6 +100,28 @@ describe('parseSkillPurpose', () => {
     );
   });
 
+  test('a single-quoted value is unwrapped exactly like a double-quoted one', () => {
+    // YAML treats both quote styles as the same scalar; the parser must not
+    // pick one and hand the other back with its quotes still attached.
+    expect(
+      parseSkillPurpose(frontmatter("description: 'Deploy Kortix Apps. Use for deploys.'")),
+    ).toBe('Deploy Kortix Apps.');
+  });
+
+  test('a block scalar has no value on its own line — the subtitle is omitted, not a bare | or >', () => {
+    // `description: |` puts the text on the FOLLOWING lines. Read as a plain
+    // value, the header itself became the subtitle: a row titled "webapp" with
+    // a single "|" under it. Every indicator spelling fails closed.
+    for (const header of ['|', '>', '|-', '>-', '|+', '>2', '|2-']) {
+      expect(parseSkillPurpose(frontmatter(`description: ${header}\n  Build a web app.`))).toBe('');
+    }
+    // Mutation check: a value that merely STARTS with one of those characters
+    // is a real description and must still come through.
+    expect(parseSkillPurpose(frontmatter('description: |pipe| is the delimiter.'))).toBe(
+      '|pipe| is the delimiter.',
+    );
+  });
+
   test('no frontmatter at all — the subtitle is simply omitted', () => {
     expect(parseSkillPurpose('# Webapp\nBuild a web app.')).toBe('');
   });

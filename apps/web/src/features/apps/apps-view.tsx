@@ -83,6 +83,21 @@ function appCommand(app: App): string {
   return `kortix apps deploy . --app ${app.app_id}`;
 }
 
+/**
+ * What the badge says, and whether the tile is lit.
+ *
+ * `desired_state` is a WISH, not an observation: a freshly created App is
+ * `running` before anything has ever been deployed to it. Rendering that as a
+ * green "Running" told people their App was up when the same card said "Deploy
+ * to see a live preview" directly above it. Nothing deployed reads as exactly
+ * that, and the tile stays neutral.
+ */
+function appStatus(app: App): { label: string; tone: 'success' | 'muted'; live: boolean } {
+  if (!app.active_deployment_id) return { label: 'Not deployed', tone: 'muted', live: false };
+  const live = app.desired_state === 'running';
+  return { label: live ? 'Running' : 'Suspended', tone: live ? 'success' : 'muted', live };
+}
+
 function AppPreview({
   app,
   url,
@@ -329,7 +344,7 @@ function AppCard({
   // SESSION only. The access POLICY is an admin read that 403s for an ordinary
   // member, and the card never shows it — the detail modal asks for it.
   const access = useAppAccess(projectId, app.app_id, { policy: false });
-  const running = app.desired_state === 'running';
+  const status = appStatus(app);
 
   return (
     <li>
@@ -363,20 +378,20 @@ function AppCard({
           <span
             className={cn(
               'flex size-9 shrink-0 items-center justify-center rounded-sm',
-              running ? 'bg-kortix-green/15' : 'bg-muted',
+              status.live ? 'bg-kortix-green/15' : 'bg-muted',
             )}
           >
             <GlobeIcon
               weight="fill"
-              className={cn('size-5', running ? 'text-kortix-green' : 'text-muted-foreground')}
+              className={cn('size-5', status.live ? 'text-kortix-green' : 'text-muted-foreground')}
             />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-foreground truncate text-sm font-medium">{app.name}</p>
             <p className="text-muted-foreground truncate font-mono text-xs">{app.url}</p>
           </div>
-          <Badge size="xs" variant={running ? 'success' : 'muted'}>
-            {running ? 'Running' : 'Suspended'}
+          <Badge size="xs" variant={status.tone}>
+            {status.label}
           </Badge>
         </div>
       </button>
@@ -411,6 +426,7 @@ function AppDetailModal({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const latest = deployments.data?.[0];
+  const status = appStatus(app);
   const running = app.desired_state === 'running';
   const busy = apps.start.isPending || apps.stop.isPending || apps.remove.isPending;
   const liveUrl = access.session.data?.url ?? app.url;
@@ -431,7 +447,16 @@ function AppDetailModal({
       <ModalContent
         side="fullscreen"
         showCloseButton={false}
-        className="border-border bg-background! inset-0! h-dvh! max-h-none! min-h-dvh! w-auto! max-w-none! translate-x-0! translate-y-0! gap-0! space-y-0! overflow-hidden! rounded-none! border-0! md:inset-4! md:h-auto! md:min-h-0! md:rounded-md! md:border!"
+        // Radix focuses the first focusable descendant on open, which is an
+        // action in the bar — and a focused icon button shows its Hint, so the
+        // modal opened with a black tooltip sitting over its own controls.
+        // Focus the dialog instead: the focus trap still holds, keyboard users
+        // Tab into the bar from the top, and nothing pops unbidden.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          (event.currentTarget as HTMLElement | null)?.focus?.();
+        }}
+        className="border-border bg-background! focus:outline-none focus-visible:outline-none inset-0! h-dvh! max-h-none! min-h-dvh! w-auto! max-w-none! translate-x-0! translate-y-0! gap-0! space-y-0! overflow-hidden! rounded-none! border-0! md:inset-4! md:h-auto! md:min-h-0! md:rounded-md! md:border!"
         aria-label={`${app.name} App`}
       >
         <div className="flex h-full min-h-0 flex-col">
@@ -439,19 +464,19 @@ function AppDetailModal({
             <span
               className={cn(
                 'flex size-8 shrink-0 items-center justify-center rounded-sm',
-                running ? 'bg-kortix-green/15' : 'bg-muted',
+                status.live ? 'bg-kortix-green/15' : 'bg-muted',
               )}
             >
               <GlobeIcon
                 weight="fill"
-                className={cn('size-4', running ? 'text-kortix-green' : 'text-muted-foreground')}
+                className={cn('size-4', status.live ? 'text-kortix-green' : 'text-muted-foreground')}
               />
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="text-foreground truncate text-sm font-medium">{app.name}</p>
-                <Badge size="xs" variant={running ? 'success' : 'muted'}>
-                  {running ? 'Running' : 'Suspended'}
+                <Badge size="xs" variant={status.tone}>
+                  {status.label}
                 </Badge>
                 {latest ? (
                   <Badge size="xs" variant={deploymentTone(latest.status)}>

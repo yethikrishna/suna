@@ -95,9 +95,7 @@ export function TaskTool({ part, defaultOpen, forceOpen, locked }: ToolProps) {
       >
         {childSessionId ? (
           <div className="flex flex-col gap-2">
-            {childToolParts.length > 0 && (
-              <SubAgentActivity childSessionId={childSessionId} parts={childToolParts} />
-            )}
+            <SubAgentActivity childSessionId={childSessionId} parts={childToolParts} />
             {/* Rendered even before the first step arrives: a sub-agent that has
                 only just started has nothing to list, and the full view is then
                 the only way to watch it — the body must not be a dead end. */}

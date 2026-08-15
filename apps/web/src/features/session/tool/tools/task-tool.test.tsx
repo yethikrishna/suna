@@ -1,5 +1,8 @@
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { ToolSurfaceContext } from '@/features/session/tool/shared/infrastructure';
+import {
+  BoundActivateContext,
+  ToolSurfaceContext,
+} from '@/features/session/tool/shared/infrastructure';
 import type { MessageWithParts, ToolPart } from '@/ui';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, mock, test } from 'bun:test';
@@ -121,8 +124,23 @@ function withProviders(node: ReactNode) {
   );
 }
 
-function render(part: ToolPart, opts: { open?: boolean; panel?: boolean } = {}) {
-  const tool = <TaskTool part={part} defaultOpen={opts.open} />;
+function render(
+  part: ToolPart,
+  opts: {
+    open?: boolean;
+    panel?: boolean;
+    forceOpen?: boolean;
+    locked?: boolean;
+    /** Bind the chat's "open this tool in the side panel" context. */
+    activatable?: boolean;
+  } = {},
+) {
+  let tool = (
+    <TaskTool part={part} defaultOpen={opts.open} forceOpen={opts.forceOpen} locked={opts.locked} />
+  );
+  if (opts.activatable) {
+    tool = <BoundActivateContext.Provider value={() => {}}>{tool}</BoundActivateContext.Provider>;
+  }
   return renderToStaticMarkup(
     withProviders(
       opts.panel ? (
@@ -154,11 +172,18 @@ describe('TaskTool — the row expands in place', () => {
   test('the trigger keeps its title, live subtitle and step badge', () => {
     childMessages = CHILD_MESSAGES;
     const markup = render(taskPart({}));
-    expect(markup).toContain('Agent · explorer');
-    expect(markup).toContain('Find the bug');
+    // Anchored to the trigger's own elements, never to bare text: the modal
+    // stub carries `data-title="Agent · explorer: Find the bug"` in this same
+    // markup, so a loose `toContain('Agent · explorer')` passes with the whole
+    // trigger deleted.
+    expect(markup).toContain('>Agent · explorer</span>');
+    expect(markup).toContain('title="Find the bug">Find the bug</span>');
     // A settled call counts its steps; the badge is inline-suppressed by the
-    // shell, so the panel surface is where it is visible.
-    expect(render(taskPart({}), { panel: true })).toContain('2 steps');
+    // shell, so the panel surface is where it is visible — and there the title
+    // is an `h3`, not the inline row's span.
+    const panelMarkup = render(taskPart({}), { panel: true });
+    expect(panelMarkup).toContain('>Agent · explorer</h3>');
+    expect(panelMarkup).toContain('>2 steps</span>');
   });
 
   test('while it runs the subtitle is the sub-agent last step, not the description', () => {
@@ -207,6 +232,23 @@ describe('TaskTool — the row expands in place', () => {
     expect(markup).not.toContain('data-sub-session-modal');
   });
 
+  test('forceOpen and locked reach the shell — a pending prompt keeps the row open', () => {
+    // `BasicTool` hands a row to `ActivatableToolRow` (click leaves for the side
+    // panel) when an activate context is bound and the row is neither locked nor
+    // forced open. `ToolPartRenderer` sets both flags for a call that is waiting
+    // on a permission or a question, and this component used to accept only
+    // `forceOpen` — so `locked` was dropped and a prompted row could be routed
+    // away from its own prompt. Each flag alone must hold the disclosure.
+    childMessages = CHILD_MESSAGES;
+
+    // Control: neither flag → the shell routes the click to the side panel, and
+    // there is no open state to report.
+    expect(render(taskPart({}), { activatable: true })).not.toContain('aria-expanded');
+
+    expect(render(taskPart({}), { activatable: true, forceOpen: true })).toContain('aria-expanded');
+    expect(render(taskPart({}), { activatable: true, locked: true })).toContain('aria-expanded');
+  });
+
   test('the panel surface renders the same activity and action, expanded', () => {
     // `PanelTool` has no disclosure: it renders the body outright. The activity
     // list and the action must both survive that surface.
@@ -226,17 +268,35 @@ describe('the never-rendered rightAccessory prop is gone, not merely unused', ()
   const toolsDir = __dirname;
   const sharedDir = join(__dirname, '..', 'shared');
 
+  // `scripts/split-tool-renderers.ts` carries a copy of `BasicToolProps` in the
+  // string it writes `shared/types.ts` from, so it is the one file that can
+  // mechanically regenerate the prop. It is swept with the rest.
+  const generator = join(
+    __dirname,
+    '..',
+    '..',
+    '..',
+    '..',
+    '..',
+    'scripts',
+    'split-tool-renderers.ts',
+  );
+
   const files = [
     ...readdirSync(toolsDir)
       .filter((f) => f.endsWith('.tsx') && !f.endsWith('.test.tsx'))
       .map((f) => join(toolsDir, f)),
     join(sharedDir, 'types.ts'),
     join(sharedDir, 'infrastructure.tsx'),
+    generator,
   ];
 
   test('sanity: the sweep reads real files', () => {
     expect(files.length).toBeGreaterThan(50);
     expect(readFileSync(join(sharedDir, 'types.ts'), 'utf8')).toContain('BasicToolProps');
+    // The generator path resolves — otherwise its test would fail on ENOENT
+    // rather than silently passing on an empty read.
+    expect(readFileSync(generator, 'utf8')).toContain('export interface BasicToolProps');
   });
 
   for (const file of files) {

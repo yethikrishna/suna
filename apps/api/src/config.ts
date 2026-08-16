@@ -125,6 +125,16 @@ const envSchema = z.object({
     .string()
     .min(1, 'SUPABASE_URL is required')
     .refine((v) => /^https?:\/\//.test(v), { message: 'SUPABASE_URL must be a valid HTTP(S) URL' }),
+  // Public origin for CLIENT-facing Supabase Storage URLs. On a self-host box
+  // SUPABASE_URL is an internal Docker hostname (http://supabase-kong:8000) that
+  // no browser/CLI/remote-sandbox can resolve; this is the box's public origin
+  // (e.g. https://essentia.kortix.cloud) used to rewrite signed URLs on the way
+  // out (see toPublicStorageUrl). Optional: unset on managed cloud, where
+  // SUPABASE_URL is already public and no rewrite is needed.
+  SUPABASE_PUBLIC_URL: z
+    .string()
+    .refine((v) => v === '' || /^https?:\/\//.test(v), { message: 'SUPABASE_PUBLIC_URL must be a valid HTTP(S) URL' })
+    .optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
 
   // ── API Key Hashing (REQUIRED) ───────────────────────────────────────────
@@ -160,6 +170,12 @@ const envSchema = z.object({
   // disables title generation entirely — nothing else writes `metadata.name`,
   // so sessions then stay untitled and clients fall back to their display chain.
   SESSION_TITLE_GENERATION_ENABLED: optBoolTrue,
+  // Personalized starter-prompt suggestions: fire-and-forget generation of
+  // per-project starter prompts via the internal LLM gateway, cached in
+  // `projects.metadata.starter_suggestions`. On by default; the kill-switch
+  // disables generation entirely — the route then falls back to its static
+  // default prompts, and no cache is ever written.
+  STARTER_SUGGESTIONS_ENABLED: optBoolTrue,
   // EXPERIMENTAL: the "Use this template" install feature — the /v1/templates
   // routes plus the use-case-page button + install wizard. Single kill-switch;
   // off by default so it stays hidden in prod while templates are authored.
@@ -924,6 +940,7 @@ export const config = {
   KORTIX_WORKERS_ENABLED: env.KORTIX_WORKERS_ENABLED,
   KORTIX_SANDBOX_EGRESS_PIN_ENFORCED: env.KORTIX_SANDBOX_EGRESS_PIN_ENFORCED,
   SESSION_TITLE_GENERATION_ENABLED: env.SESSION_TITLE_GENERATION_ENABLED,
+  STARTER_SUGGESTIONS_ENABLED: env.STARTER_SUGGESTIONS_ENABLED,
   KORTIX_TEMPLATES_ENABLED: env.KORTIX_TEMPLATES_ENABLED,
   OPENAPI_PUBLIC_DOCS: env.OPENAPI_PUBLIC_DOCS,
   ENTERPRISE_LICENSE_AVAILABLE: env.ENTERPRISE_LICENSE_AVAILABLE,
@@ -934,6 +951,7 @@ export const config = {
 
   // ─── Supabase ──────────────────────────────────────────────────────────────
   SUPABASE_URL: env.SUPABASE_URL,
+  SUPABASE_PUBLIC_URL: env.SUPABASE_PUBLIC_URL,
   SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
 
   // ─── API Key Hashing ──────────────────────────────────────────────────────

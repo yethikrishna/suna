@@ -20,6 +20,7 @@ const {
   verifyAppEdgeRequest,
 } = await import('./public-proxy');
 const { createAppAccessToken } = await import('./access');
+const { config } = await import('../config');
 
 describe('Apps public edge', () => {
   test('public Apps bypass browser authentication', async () => {
@@ -214,6 +215,46 @@ describe('Apps public edge', () => {
     expect(appRuntimeNeedsWake({ status: 'stopped', idleDeadlineAt: null }, now)).toBe(true);
   });
 
+  test('direct-edge mode refuses a caller-supplied App host header', () => {
+    // x-kortix-app-host is an EDGE-SIGNED field. In direct-edge mode (a
+    // self-host with no Apps Worker, which `kortix self-host configure` now
+    // sets up) nothing verifies a signature, so trusting the header would let
+    // anyone who can reach the public API origin name any App and be proxied
+    // into it, past that App's access policy. Only the real Host header counts.
+    const spoofed = 'dev-victim-bbbbbbbbbbbbbbbb.apps.kortix.com';
+    const request = new Request('https://api.kortix.com/secret', {
+      headers: { 'x-kortix-app-host': spoofed },
+    });
+    const url = new URL(request.url);
+
+    process.env.KORTIX_APPS_ALLOW_DIRECT_EDGE = 'true';
+    try {
+      // api.kortix.com is not an App hostname, so the request is not an App
+      // request at all — it falls through to the ordinary API.
+      expect(resolveAppRequest(request, url)).toBeNull();
+
+      // A real App hostname still resolves, from the Host header alone.
+      const direct = new Request(`https://${spoofed}/`, {
+        headers: { 'x-kortix-app-host': 'dev-other-cccccccccccccccc.apps.kortix.com' },
+      });
+      expect(resolveAppRequest(direct, new URL(direct.url))).toEqual({
+        routeKey: 'bbbbbbbbbbbbbbbb',
+        local: false,
+        publicHost: spoofed,
+      });
+    } finally {
+      delete process.env.KORTIX_APPS_ALLOW_DIRECT_EDGE;
+    }
+
+    // With the Worker in front, the header IS the signed edge contract and
+    // stays authoritative — verifyAppEdgeRequest checks the HMAC over it.
+    expect(resolveAppRequest(request, url)).toEqual({
+      routeKey: 'bbbbbbbbbbbbbbbb',
+      local: false,
+      publicHost: spoofed,
+    });
+  });
+
   test('resolves local and environment-scoped production hostnames', () => {
     expect(resolveAppHost('aaaaaaaaaaaaaaaa.apps.localhost')).toEqual({
       routeKey: 'aaaaaaaaaaaaaaaa', local: true,
@@ -389,6 +430,41 @@ describe('Apps public edge', () => {
       "default-src 'self'; script-src 'self'; frame-ancestors 'self' https://kortix.com https://*.kortix.com http://localhost:* http://127.0.0.1:*",
     );
     expect(result.get('content-security-policy-report-only')).toBe("img-src 'self'");
+  });
+
+  test('allows a self-host frontend origin to frame its own App previews', () => {
+    const original = config.FRONTEND_URL;
+    try {
+      config.FRONTEND_URL = 'https://essentia.kortix.cloud';
+      const result = appPublicResponseHeaders(
+        new Headers({ 'content-security-policy': "default-src 'self'; frame-ancestors 'none'" }),
+      );
+      const csp = result.get('content-security-policy') || '';
+      // The operator's own frontend origin — and a wildcard for its domain — must
+      // appear, or the dashboard preview iframe is blocked on self-host.
+      expect(csp).toContain('https://essentia.kortix.cloud');
+      expect(csp).toContain('https://*.kortix.cloud');
+      // Managed cloud + localhost stay allowed too.
+      expect(csp).toContain('https://kortix.com');
+      expect(csp).toContain('http://localhost:*');
+      // Upstream frame-ancestors is stripped, ours wins.
+      expect(csp).not.toContain("frame-ancestors 'none'");
+    } finally {
+      config.FRONTEND_URL = original;
+    }
+  });
+
+  test('does not duplicate localhost when FRONTEND_URL is a dev origin', () => {
+    const original = config.FRONTEND_URL;
+    try {
+      config.FRONTEND_URL = 'http://localhost:3000';
+      const result = appPublicResponseHeaders(new Headers());
+      expect(result.get('content-security-policy')).toBe(
+        "frame-ancestors 'self' https://kortix.com https://*.kortix.com http://localhost:* http://127.0.0.1:*",
+      );
+    } finally {
+      config.FRONTEND_URL = original;
+    }
   });
 
   test('renders a branded, auto-refreshing browser page while an App is building', async () => {

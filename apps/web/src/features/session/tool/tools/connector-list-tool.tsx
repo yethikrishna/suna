@@ -1,15 +1,14 @@
 'use client';
 import { Badge } from '@/components/ui/badge';
+import { TextShimmer } from '@/components/ui/text-shimmer';
 import {
   BasicTool,
   isErrorOutput,
   partInput,
   partOutput,
-  ToolEmptyState,
   ToolOutputFallback,
 } from '@/features/session/tool/shared/infrastructure';
 import { ToolRegistry } from '@/features/session/tool/shared/registry';
-import { ToolResultCard } from '@/features/session/tool/shared/result-card';
 import type { ToolProps } from '@/features/session/tool/shared/types';
 import { PlugIcon as Plug } from '@phosphor-icons/react';
 import { useMemo } from 'react';
@@ -38,7 +37,7 @@ export function ConnectorListTool({ part, defaultOpen, forceOpen }: ToolProps) {
       forceOpen={forceOpen}
     >
       {connectors.length > 0 ? (
-        <ToolResultCard bodyClassName="space-y-1">
+        <div className="space-y-1 p-2">
           {connectors.map((conn: ConnectorEntry) => (
             <div
               key={conn.name}
@@ -56,17 +55,15 @@ export function ConnectorListTool({ part, defaultOpen, forceOpen }: ToolProps) {
               </Badge>
             </div>
           ))}
-        </ToolResultCard>
+        </div>
       ) : isError ? (
         <ToolOutputFallback output={output} toolName="connector_list" />
       ) : output ? (
-        <ToolResultCard>
-          <ToolEmptyState message="No connectors found." />
-        </ToolResultCard>
+        <div className="text-muted-foreground p-3 text-xs">No connectors found</div>
       ) : (
-        <ToolResultCard>
-          <ToolEmptyState message="Loading connectors…" />
-        </ToolResultCard>
+        <div className="p-3">
+          <TextShimmer>Loading...</TextShimmer>
+        </div>
       )}
     </BasicTool>
   );

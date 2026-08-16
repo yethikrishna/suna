@@ -11,7 +11,6 @@ import {
 } from '@/features/session/tool/shared/infrastructure';
 import { OutputBlock, ToolField, ToolSection } from '@/features/session/tool/shared/output-block';
 import { ToolRegistry } from '@/features/session/tool/shared/registry';
-import { ToolResultCard } from '@/features/session/tool/shared/result-card';
 import type { ToolProps } from '@/features/session/tool/shared/types';
 import { parseMemorySearchOutput } from '@/lib/utils/memory-search-output';
 import { MagnifyingGlassIcon as Search } from '@phosphor-icons/react';
@@ -46,61 +45,64 @@ export function MemorySearchTool({ part, defaultOpen, forceOpen, locked }: ToolP
       forceOpen={forceOpen}
       locked={locked}
     >
-      {parsed.hits.length > 0 ? (
-        <ToolResultCard bodyClassName="space-y-1.5">
-          {(query || source) && (
-            <ToolSection label="Request" className="px-2 pt-1.5">
-              <div className="flex flex-wrap items-center gap-1.5">
-                {source && <ToolField label="Source" value={source} />}
-                {query && <ToolField label="Query" value={query} mono />}
-              </div>
-            </ToolSection>
-          )}
-          {parsed.hits.map((hit) => {
-            const sourceLabel =
-              hit.source === 'ltm' ? 'LTM' : hit.source === 'obs' ? 'Observation' : 'Memory';
-            return (
-              <div key={`${hit.source}-${hit.id}-${hit.type}`} className="px-2 py-1.5 text-xs">
-                <div className="mb-1.5 flex items-center gap-1.5">
-                  <span className="text-muted-foreground text-xs">
-                    {sourceLabel} / {hit.type}
-                  </span>
-                  <span className="text-muted-foreground/60 font-mono text-xs">#{hit.id}</span>
-                  {hit.confidence != null && (
-                    <span className="text-muted-foreground/60 ml-auto text-xs">
-                      {Math.round(hit.confidence * 100)}
-                      {tHardcodedUi.raw('componentsSessionToolRenderers.line2011JsxTextConf')}
+      <div className="space-y-2.5 p-2.5">
+        {(query || source) && (
+          <ToolSection label="Request">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {source && <ToolField label="Source" value={source} />}
+              {query && <ToolField label="Query" value={query} mono />}
+            </div>
+          </ToolSection>
+        )}
+
+        {parsed.hits.length > 0 ? (
+          <div className="space-y-1.5">
+            {parsed.hits.map((hit) => {
+              const sourceLabel =
+                hit.source === 'ltm' ? 'LTM' : hit.source === 'obs' ? 'Observation' : 'Memory';
+              return (
+                // Card wrapper, not OutputBlock — holds composed fields, not output text.
+                <div
+                  key={`${hit.source}-${hit.id}-${hit.type}`}
+                  className="bg-muted/20 rounded-sm px-3 py-2 text-xs"
+                >
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <span className="text-muted-foreground text-xs">
+                      {sourceLabel} / {hit.type}
                     </span>
+                    <span className="text-muted-foreground/60 font-mono text-xs">#{hit.id}</span>
+                    {hit.confidence != null && (
+                      <span className="text-muted-foreground/60 ml-auto text-xs">
+                        {Math.round(hit.confidence * 100)}
+                        {tHardcodedUi.raw('componentsSessionToolRenderers.line2011JsxTextConf')}
+                      </span>
+                    )}
+                  </div>
+                  <OutputBlock text={hit.content} markdown />
+                  {hit.files.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {hit.files.map((file) => (
+                        <span
+                          key={file}
+                          className="bg-background text-muted-foreground inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-xs"
+                        >
+                          {file}
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
-                <OutputBlock text={hit.content} markdown />
-                {hit.files.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {hit.files.map((file) => (
-                      <span
-                        key={file}
-                        className="bg-background text-muted-foreground inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-xs"
-                      >
-                        {file}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </ToolResultCard>
-      ) : parsed.matched ? (
-        <ToolResultCard>
+              );
+            })}
+          </div>
+        ) : parsed.matched ? (
           <ToolEmptyState message={isStreaming ? 'Searching memory...' : 'No memories found.'} />
-        </ToolResultCard>
-      ) : output ? (
-        <ToolOutputFallback output={output} isStreaming={isStreaming} toolName="ltm_search" />
-      ) : (
-        <ToolResultCard>
+        ) : output ? (
+          <ToolOutputFallback output={output} isStreaming={isStreaming} toolName="ltm_search" />
+        ) : (
           <ToolEmptyState message={isStreaming ? 'Searching memory...' : 'No search output yet.'} />
-        </ToolResultCard>
-      )}
+        )}
+      </div>
     </BasicTool>
   );
 }

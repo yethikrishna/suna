@@ -14,6 +14,9 @@ import { AppHostingProvider } from './hosting';
 import { resolveFeatureFlag } from '../feature-flags/registry';
 import { enqueueCurrentAppRuntime } from './deployment-worker';
 import { resolveAppHost, type ResolvedAppHost } from './hostnames';
+import { validateAccountToken } from '../repositories/account-tokens';
+import { validateServiceAccountToken } from '../repositories/service-accounts';
+import { isAccountToken, isServiceAccountToken } from '../shared/crypto';
 import {
   appAccessCookie,
   appAccessCookieName,
@@ -336,6 +339,50 @@ function appAccessResponse(
   });
 }
 
+
+/**
+ * A Kortix credential presented as a bearer token, resolved to the identity it
+ * carries — or null when there is no usable one.
+ *
+ * WHY THE GATEWAY NEEDS THIS
+ *
+ * Every other way into a non-public App is a browser flow: a five-minute
+ * exchange URL, an eight-hour cookie, an HTML password form. That makes
+ * `project` access and programmatic access mutually exclusive, and the two are
+ * wanted together constantly — an agent publishing to its own App, a connector
+ * built from the App's OpenAPI document, CI checking a deploy. The only way to
+ * have both was to make the App `public` and re-implement authorization inside
+ * it, which is exactly the thing an access mode is supposed to save you from.
+ *
+ * A PAT already carries the minting user's identity and a service-account token
+ * its own principal, and both are exactly what the App access policy is written
+ * in terms of — so the decision below is the SAME `verifyUserAccess` the cookie
+ * path uses. This adds a way to present an identity, not a way to skip one.
+ *
+ * `password` mode is deliberately excluded: there the secret IS the password,
+ * and a Kortix credential is not it.
+ */
+async function kortixCredentialUser(request: Request): Promise<string | null> {
+  const header = request.headers.get('authorization') ?? '';
+  if (!/^bearer /i.test(header)) return null;
+  const token = header.slice(7).trim();
+  if (!token) return null;
+
+  try {
+    if (isServiceAccountToken(token)) {
+      const account = await validateServiceAccountToken(token);
+      return account.isValid && account.serviceAccountId ? account.serviceAccountId : null;
+    }
+    if (isAccountToken(token)) {
+      const pat = await validateAccountToken(token);
+      return pat.isValid && pat.userId ? pat.userId : null;
+    }
+  } catch {
+    // A malformed or revoked credential is "no identity", not a 500.
+  }
+  return null;
+}
+
 export async function authorizeAppRequest(
   request: Request,
   url: URL,
@@ -377,6 +424,15 @@ export async function authorizeAppRequest(
   ) {
     return null;
   }
+  // A Kortix credential, for callers that are not browsers. Checked after the
+  // cookie so the common path stays one HMAC verification with no database
+  // work, and before the challenge so an API client gets its answer instead of
+  // an HTML login page it cannot read.
+  if (app.accessMode !== 'password') {
+    const userId = await kortixCredentialUser(request);
+    if (userId && await verifyUserAccess(app, userId)) return null;
+  }
+
   if (app.accessMode === 'password' && request.method === 'POST' && url.pathname === '/_kortix/access/password') {
     const form = await request.formData().catch(() => null);
     const password = String(form?.get('password') ?? '');

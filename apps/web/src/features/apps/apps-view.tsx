@@ -333,9 +333,13 @@ function AppCard({
   app: App;
   onOpen: () => void;
 }) {
-  // SESSION only. The access POLICY is an administrative read that 403s for an
-  // ordinary member, and the card never renders it — the detail modal asks.
-  const access = useAppAccess(projectId, app.app_id, { policy: false });
+  // SESSION only, and only when the viewer may actually open this App. The
+  // access POLICY is an administrative read that 403s for an ordinary member,
+  // and the card never renders it — the detail modal asks. The SESSION 403s for
+  // any App the viewer may see but not open, which is a state the server now
+  // reports up front instead of leaving the card to discover it by failing.
+  const canAccess = app.viewer_can_access !== false;
+  const access = useAppAccess(projectId, app.app_id, { policy: false, session: canAccess });
   const deployed = Boolean(app.active_deployment_id);
   const live = deployed && app.desired_state === 'running';
 
@@ -359,7 +363,7 @@ function AppCard({
             key={app.active_deployment_id ?? app.app_id}
             app={app}
             url={access.session.data?.url ?? null}
-            accessError={access.session.isError}
+            accessError={!canAccess || access.session.isError}
             interactive={false}
           />
           {/* Hairline so the thumbnail never bleeds into the panel edge. */}
@@ -415,7 +419,8 @@ function AppDetailModal({
 }) {
   const apps = useProjectApps(projectId);
   const deployments = useAppDeployments(projectId, app.app_id);
-  const access = useAppAccess(projectId, app.app_id, { policy: canWrite });
+  const canAccess = app.viewer_can_access !== false;
+  const access = useAppAccess(projectId, app.app_id, { policy: canWrite, session: canAccess });
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
@@ -558,7 +563,7 @@ function AppDetailModal({
               key={app.active_deployment_id ?? app.app_id}
               app={app}
               url={access.session.data?.url ?? null}
-              accessError={access.session.isError}
+              accessError={!canAccess || access.session.isError}
               interactive
               className="absolute inset-0 size-full"
             />

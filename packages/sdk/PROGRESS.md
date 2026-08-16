@@ -910,6 +910,25 @@ $ pnpm --filter @kortix/sdk run smoke:install
 
 ---
 
+### 2026-08-17 — session `trigger-admin-access` claim
+
+No **Now** task claimed. This is the user-directed correction to trigger-created
+session authorization.
+
+Claimed SDK scope, documentation only:
+
+- Clarify that project managers can open trigger-created sessions in every
+  access mode.
+- Preserve the default-private policy and every existing exported name.
+- Leave the package `version` unchanged.
+- Run SDK typecheck, the complete SDK suite, and packed-install smoke.
+
+The required `tdd` skill is unavailable in this session. Authorization behavior
+will use the required RED, GREEN, and REFACTOR sequence in API tests before the
+SDK documentation changes.
+
+---
+
 ### 2026-08-13 — session `warm-index` — warm-session decline must not toast
 
 **Done.** `ensureWarmProjectSession` posted WITHOUT `showErrors: false`, so its

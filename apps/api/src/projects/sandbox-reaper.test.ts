@@ -324,7 +324,10 @@ const {
   observeSandboxTurn,
 } = sandboxReaper;
 
-const reapAndReconcileSandboxes = (now?: Date) =>
+const reapAndReconcileSandboxes = (
+  now?: Date,
+  scope?: { sandboxIds?: readonly string[]; activeTurnsOnly?: boolean },
+) =>
   sandboxReaper.reapAndReconcileSandboxes(now, {
     renewActiveSandboxTurn: async (sandboxId: string, token: string) => {
       activeTurnRenewalCalls.push({ sandboxId, token });
@@ -358,7 +361,7 @@ const reapAndReconcileSandboxes = (now?: Date) =>
       });
       return true;
     },
-  });
+  }, scope);
 
 const HOUR = 3_600_000;
 
@@ -563,6 +566,45 @@ describe('reapAndReconcileSandboxes — the one rule: deadline_at <= now', () =>
     expect(r.stopped).toBe(0);
     expect(r.lifecycleRenewed).toBe(1);
     expect(timeoutRenewals).toEqual([{ provider: 'daytona', externalId: 'ext-1' }]);
+  });
+
+  test('the fast renewal lane excludes every row without durable turn authority', async () => {
+    candidates = [
+      candidate({
+        sandboxId: 'sb-active',
+        externalId: 'ext-active',
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurns: {
+            'turn-token': {
+              token: 'turn-token',
+              state: 'active',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_turn_1',
+            },
+          },
+        },
+      }),
+      candidate({
+        sandboxId: 'sb-idle',
+        externalId: 'ext-idle',
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: null,
+      }),
+    ];
+    statusByExternal['ext-active'] = 'running';
+    statusByExternal['ext-idle'] = 'running';
+    turnObservationByToken['turn-token'] = 'active';
+    activeTurnRenewalBySandbox['sb-active'] = 'renewed';
+
+    const result = await reapAndReconcileSandboxes(NOW, {
+      activeTurnsOnly: true,
+    });
+
+    expect(result.candidates).toBe(1);
+    expect(result.lifecycleRenewed).toBe(1);
+    expect(statusCalls).toEqual(['ext-active']);
+    expect(stops).toEqual([]);
   });
 
   test('recovers an accepted prompt whose post-delivery database promotion failed', async () => {

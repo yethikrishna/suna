@@ -97,7 +97,9 @@ const DEFAULT_REAPER_DEPENDENCIES: SandboxReaperDependencies = {
 
 export interface SandboxReaperScope {
   /** Optional operational/test scope. Production maintenance omits it. */
-  sandboxIds: readonly string[];
+  sandboxIds?: readonly string[];
+  /** Fast lifecycle lane. Excludes every row without durable turn authority. */
+  activeTurnsOnly?: boolean;
 }
 
 /**
@@ -113,8 +115,9 @@ export async function reapAndReconcileSandboxes(
   scope?: SandboxReaperScope,
 ): Promise<ReapResult> {
   const dependencies = { ...DEFAULT_REAPER_DEPENDENCIES, ...dependencyOverrides };
-  const candidatePredicate = reapCandidatePredicate(scope?.sandboxIds);
-  const rows = await selectReapCandidates(candidatePredicate);
+  const activeTurnsOnly = scope?.activeTurnsOnly === true;
+  const candidatePredicate = reapCandidatePredicate(scope?.sandboxIds, activeTurnsOnly);
+  const rows = await selectReapCandidates(candidatePredicate, activeTurnsOnly);
 
   const result: ReapResult = {
     ...EMPTY_REAP_RESULT,

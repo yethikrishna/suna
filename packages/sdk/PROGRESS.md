@@ -10433,3 +10433,39 @@ holes + 2 hygiene issues. All fixed, TDD RED first (3 new tests):
 **Evidence** — SDK: 2122 pass, 0 fail, 148 files; typecheck clean;
 smoke:install passed. Web tsc clean apart from the known baseline; eslint
 clean on the drain hook.
+
+### 2026-08-18 — step5: shared open-turn predicate with retryable semantics (branch `server-truth-m1`)
+
+`apps/web/src/features/session/assistant-turn-open.ts` carried a private copy of
+the open-turn rule and it had drifted from the sandbox daemon's
+(`apps/kortix-sandbox-agent-server/src/opencode-turn-state.ts:89-93`). The web
+ended the turn on ANY `info.error`; the daemon keeps it open when
+`error.data.isRetryable === true`. During a provider 429/5xx backoff OpenCode
+stamps `info.error` and keeps writing the SAME assistant message, so
+`hasIncompleteAssistant` (session-chat.tsx:2278) flipped false, the queue's drain
+gate opened, and the web sent the next queued message into a live turn.
+
+- NEW `src/core/turns/open-turn.ts` — `hasOpenAssistantTurn`,
+  `isRetryableTurnError`, `OpenTurnMessageLike`. Zero imports, no globals
+  (`isomorphic-core`). Strict `data.isRetryable === true`; completion outranks
+  retry; a terminal error (AbortError et al.) still CLOSES the turn — that is the
+  original queue-wedge fix and it is pinned by its own test.
+- Barrel: one line in `src/core/turns/index.ts`. No new subpath, no
+  `package.json` edit — `src/index.ts:403` already re-exports `./core/turns`.
+- `apps/web/.../assistant-turn-open.ts` is now a 2-line re-export shim; the
+  `AssistantTurnMessage` type alias is kept so no importer breaks.
+- Snapshots re-recorded: +10 lines, 0 removals — the 3 new names under `.` and
+  `./turns` only.
+
+TDD: SDK test written and run RED first (`Cannot find module './open-turn'`), then
+GREEN 14/14. Web test 15 run RED against the old implementation for the right
+reason (`Expected: true, Received: false` on the retryable case) before the shim
+conversion, then GREEN 10/10.
+
+**Evidence** — SDK: baseline 2128 pass / 148 files → 2142 pass, 0 fail, 149 files
+(+14, exactly the new file); typecheck clean; smoke:install passed. Web:
+assistant-turn-open 10 pass / 0 fail; `tsc --noEmit` 15 lines, all the known
+`@types/bun` `test.each` noise in the 3 documented files; eslint clean (no output)
+on both touched web files.
+
+**Shippable to production: YES.**

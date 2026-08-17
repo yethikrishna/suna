@@ -33,12 +33,20 @@ let activeTurnRenewalBySandbox: Record<string, 'renewed' | 'inactive'> = {};
 let activeTurnRenewalCalls: Array<{ sandboxId: string; token: string }> = [];
 let deliveringTurnObservationBySandbox: Record<string, 'active' | 'terminal' | 'unknown'> = {};
 let turnObservationByToken: Record<string, 'active' | 'terminal' | 'unknown'> = {};
+/** The daemon's own word for HOW the turn ended, when it reported one. */
+let daemonTurnEndBySandbox: Record<string, 'completed' | 'failed' | 'abandoned'> = {};
 let deliveringTurnRecoveryCalls: Array<{
   sandboxId: string;
   token: string;
   observation: 'active' | 'terminal' | 'unknown';
+  reason?: string;
 }> = [];
 let clearedTurnCalls: Array<{ sandboxId: string; token: string }> = [];
+// Recorded separately from `clearedTurnCalls` so the ledger reason is asserted
+// on its own, without every existing exact-equality assertion having to carry
+// it.
+let clearedTurnReasons: Array<string | undefined> = [];
+let ledgerSettleStatements: string[] = [];
 let huskFinalizeCalls: Array<{
   sandboxId: string;
   externalId: string;
@@ -172,6 +180,13 @@ mock.module('../shared/db', () => ({
   db: {
     transaction: async function <T>(fn: (tx: any) => Promise<T>): Promise<T> {
       return fn(this);
+    },
+    // The stop writer settles this sandbox's still-open session_turns rows in
+    // the same transaction that erases its turn authority (see
+    // reaping/sandbox-state-sync.ts). Recorded, not ignored, so a stop that
+    // silently stopped settling the ledger shows up here.
+    execute: async (statement: unknown) => {
+      ledgerSettleStatements.push(describeSql(statement));
     },
     select: (projection?: Record<string, unknown>) => ({
       from: (table: unknown) => {
@@ -351,27 +366,37 @@ const reapAndReconcileSandboxes = (
       _externalId: string,
       sandboxId?: string,
       turn?: { token?: string },
-    ) =>
-      (turn?.token ? turnObservationByToken[turn.token] : undefined) ??
-      deliveringTurnObservationBySandbox[sandboxId ?? ''] ??
-      'unknown',
+    ) => ({
+      observation:
+        (turn?.token ? turnObservationByToken[turn.token] : undefined) ??
+        deliveringTurnObservationBySandbox[sandboxId ?? ''] ??
+        'unknown',
+      endReason: daemonTurnEndBySandbox[sandboxId ?? ''] ?? null,
+    }),
     reconcileSandboxTurnDelivery: async (
       sandboxId: string,
       token: string,
       observation: 'active' | 'terminal' | 'unknown',
+      reason?: string,
     ) => {
-      deliveringTurnRecoveryCalls.push({ sandboxId, token, observation });
+      deliveringTurnRecoveryCalls.push({ sandboxId, token, observation, reason });
       return observation === 'active'
         ? 'active'
         : observation === 'terminal'
           ? 'inactive'
           : 'deferred';
     },
-    clearSandboxTurn: async (sandboxId: string, token: string) => {
+    clearSandboxTurn: async (
+      sandboxId: string,
+      token: string,
+      _graceMs?: number,
+      reason?: string,
+    ) => {
       clearedTurnCalls.push({
         sandboxId,
         token,
       });
+      clearedTurnReasons.push(reason);
       lifecycleCallOrder.push(`clear:${token}`);
       return true;
     },
@@ -414,8 +439,11 @@ beforeEach(() => {
   activeTurnRenewalCalls = [];
   deliveringTurnObservationBySandbox = {};
   turnObservationByToken = {};
+  daemonTurnEndBySandbox = {};
   deliveringTurnRecoveryCalls = [];
   clearedTurnCalls = [];
+  clearedTurnReasons = [];
+  ledgerSettleStatements = [];
   huskFinalizeCalls = [];
   huskOutcomeBySandbox = {};
   lifecycleCallOrder = [];
@@ -474,7 +502,7 @@ describe('provider-neutral turn observation', () => {
         { opencodeSessionId: 'ses_root', messageId: 'msg_turn_1' },
       );
 
-      expect(observation).toBe('active');
+      expect(observation).toEqual({ observation: 'active', endReason: null });
       expect((requested as URL | null)?.pathname).toBe('/kortix/health');
       expect((requested as URL | null)?.searchParams.get('turn')).toBe('1');
       expect((requested as URL | null)?.searchParams.get('turn_session_id')).toBe('ses_root');
@@ -495,7 +523,64 @@ describe('provider-neutral turn observation', () => {
         },
         'ext-1',
       ),
-    ).toBe('unknown');
+    ).toEqual({ observation: 'unknown', endReason: null });
+  });
+
+  // `turn_in_flight: false` is several different endings and only the daemon
+  // holds the messages that tell them apart. It reports which one; the control
+  // plane writes that word into session_turns.end_reason instead of guessing.
+  test('carries the daemon-reported end reason through with the terminal answer', async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ turn_in_flight: false, turn_end: 'failed' }),
+    });
+    try {
+      expect(
+        await observeSandboxTurn(
+          { resolveEndpoint: async () => ({ url: `http://127.0.0.1:${server.port}`, headers: {} }) },
+          'ext-1',
+          'sb-1',
+          { opencodeSessionId: 'ses_root', messageId: 'msg_turn_1' },
+        ),
+      ).toEqual({ observation: 'terminal', endReason: 'failed' });
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test('a daemon that reports no end reason leaves it unset', async () => {
+    // Every box running an agent build from before turn_end exists answers like
+    // this, so it must be an ordinary case, not a parse failure.
+    const server = Bun.serve({ port: 0, fetch: () => Response.json({ turn_in_flight: false }) });
+    try {
+      expect(
+        await observeSandboxTurn(
+          { resolveEndpoint: async () => ({ url: `http://127.0.0.1:${server.port}`, headers: {} }) },
+          'ext-1',
+        ),
+      ).toEqual({ observation: 'terminal', endReason: null });
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test('a sandbox cannot name a reason the control plane reserves for itself', async () => {
+    // The box is the subject of the judgement. 'runtime_gone' is written only
+    // by the stop writers, and free text would end up in the ledger column.
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ turn_in_flight: false, turn_end: 'runtime_gone' }),
+    });
+    try {
+      expect(
+        await observeSandboxTurn(
+          { resolveEndpoint: async () => ({ url: `http://127.0.0.1:${server.port}`, headers: {} }) },
+          'ext-1',
+        ),
+      ).toEqual({ observation: 'terminal', endReason: null });
+    } finally {
+      server.stop(true);
+    }
   });
 });
 
@@ -1017,6 +1102,203 @@ describe('reapAndReconcileSandboxes — the one rule: deadline_at <= now', () =>
     expect(huskFinalizeCalls).toEqual([]);
     expect(clearedTurnCalls).toEqual([]);
     expect(r.lifecycleRenewed).toBe(1);
+  });
+
+  // `end_reason` exists to separate "the turn finished" from "the runtime went
+  // away mid-turn" and from "the prompt never landed". `terminal` alone proves
+  // NONE of those — it is only `turn_in_flight === false`, which the daemon
+  // answers for a completion, a hard model error and a message it never
+  // received alike. So the reason is the daemon's word, never an assumption.
+  const activeTurnCandidate = (deadlineAt: Date) =>
+    candidate({
+      deadlineAt,
+      metadata: {
+        activeTurns: {
+          'active-token': {
+            token: 'active-token',
+            state: 'active',
+            opencodeSessionId: 'ses_root',
+            messageId: 'msg_turn_1',
+          },
+        },
+      },
+    });
+
+  test('a terminal daemon observation settles the ledger with the reason the daemon reported', async () => {
+    candidates = [activeTurnCandidate(new Date(NOW.getTime() + HOUR))];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    daemonTurnEndBySandbox['sb-1'] = 'completed';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(clearedTurnCalls).toEqual([{ sandboxId: 'sb-1', token: 'active-token' }]);
+    expect(clearedTurnReasons).toEqual(['completed']);
+  });
+
+  test('a turn the model killed is recorded failed, exactly as the session.error relay records it', async () => {
+    // Same real event, two observers. If the ~20s pass wins the race it must
+    // not rename the outcome — the relay writes 'failed' (completeSandboxTurn)
+    // and the first settle is final.
+    candidates = [activeTurnCandidate(new Date(NOW.getTime() + HOUR))];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    daemonTurnEndBySandbox['sb-1'] = 'failed';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(clearedTurnReasons).toEqual(['failed']);
+  });
+
+  test('a husk the reaper had to force-close is failed, never completed', async () => {
+    // The finalizer just ABORTED an assistant message that was still open. A
+    // turn the control plane had to end did not finish.
+    candidates = [activeTurnCandidate(new Date(NOW.getTime() + HOUR))];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    huskOutcomeBySandbox['sb-1'] = 'finalized';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(r.husksFinalized).toBe(1);
+    expect(clearedTurnReasons).toEqual(['failed']);
+  });
+
+  test('a terminal answer no observer can explain is recorded unknown', async () => {
+    // An agent build from before turn_end, or an OpenCode state its messages
+    // cannot classify. The turn is over; nothing here says how. Naming it
+    // 'completed' would make end_reason unable to answer its one question.
+    candidates = [activeTurnCandidate(new Date(NOW.getTime() + HOUR))];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    huskOutcomeBySandbox['sb-1'] = 'not_husk';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(clearedTurnReasons).toEqual(['unknown']);
+  });
+
+  test('a delivering turn the daemon never saw is reconciled as abandoned', async () => {
+    // The prompt is not in the root at all. The user watched their message
+    // vanish; the ledger has to say so.
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurns: {
+            'delivering-token': {
+              token: 'delivering-token',
+              state: 'delivering',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_turn_1',
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    daemonTurnEndBySandbox['sb-1'] = 'abandoned';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(deliveringTurnRecoveryCalls).toEqual([
+      {
+        sandboxId: 'sb-1',
+        token: 'delivering-token',
+        observation: 'terminal',
+        reason: 'abandoned',
+      },
+    ]);
+  });
+
+  test('an unreadable daemon past its deadline settles the ledger as a lost runtime', async () => {
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurns: {
+            'active-token': {
+              token: 'active-token',
+              state: 'active',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_turn_1',
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'unknown';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(clearedTurnCalls).toEqual([{ sandboxId: 'sb-1', token: 'active-token' }]);
+    // Nothing here proves the turn finished, so the default reason stands.
+    expect(clearedTurnReasons).toEqual([undefined]);
+  });
+
+  // The stop erases activeTurns, after which no token-scoped settle can ever
+  // fire again for this box. If the ledger is not settled here it claims the
+  // turn is still running for ever.
+  test('parking an expired box settles its still-open ledger rows', async () => {
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurns: {
+            'active-token': {
+              token: 'active-token',
+              state: 'delivering',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_turn_1',
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'unknown';
+
+    expect((await reapAndReconcileSandboxes(NOW)).stopped).toBe(1);
+
+    const stopSettles = ledgerSettleStatements.filter((statement) =>
+      statement.includes('sb-1'),
+    );
+    expect(stopSettles).toHaveLength(1);
+    expect(stopSettles[0]).toContain('UPDATE kortix.session_turns');
+    expect(stopSettles[0]).toContain('runtime_gone');
+  });
+
+  // The last line of defence for the one property this ledger has to have:
+  // every row reaches `ended`. A stop's settle is savepoint-bounded and can roll
+  // back, a row can predate this code, and a session_sandboxes row can be
+  // deleted out from under its history — each leaves a row answering "is a turn
+  // running?" with a permanent yes.
+  test('every pass settles ledger rows left open on a box that is no longer running', async () => {
+    candidates = [];
+
+    await reapAndReconcileSandboxes(NOW);
+
+    // Runs even with nothing to reap — that is exactly when orphans linger.
+    const backstop = ledgerSettleStatements.find((statement) =>
+      statement.includes('NOT EXISTS'),
+    );
+    expect(backstop).toContain('UPDATE kortix.session_turns');
+    expect(backstop).toContain("state <> 'ended'");
+    expect(backstop).toContain('runtime_gone');
+    // Scoped by the SANDBOX's status, so a turn on a live box is never touched.
+    expect(backstop).toContain("status IN ('active', 'provisioning')");
+  });
+
+  test('a scoped lane never runs the platform-wide backstop', async () => {
+    // The fast active-turn lane and the operational per-sandbox scope both ask
+    // about specific rows. A platform-wide sweep inside them would settle turns
+    // the caller never asked about.
+    await reapAndReconcileSandboxes(NOW, { activeTurnsOnly: true });
+    await reapAndReconcileSandboxes(NOW, { sandboxIds: ['sb-1'] });
+
+    expect(ledgerSettleStatements.filter((s) => s.includes('NOT EXISTS'))).toEqual([]);
   });
 
   test("a 'not_husk' outcome clears exactly as before", async () => {

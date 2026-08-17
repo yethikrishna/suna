@@ -42,9 +42,11 @@ import { runtimeWakeInProgress } from '../session-lifecycle/runtime-wake-fence';
 import {
   type SandboxTurnDeliveryReconciliation,
   type SandboxTurnObservation,
+  type SessionTurnEndReason,
   clearSandboxTurn,
   reconcileSandboxTurnDelivery,
   renewActiveSandboxTurn,
+  settleOrphanedSandboxTurns,
   storedSandboxTurns,
 } from '../sandbox-turn-lifecycle';
 import {
@@ -68,6 +70,7 @@ export interface ReapResult {
   skipped: number; // deadline still in the future, or provider said 'unknown'
   lifecycleRenewed: number; // provider-native timer renewed for a live Kortix deadline
   husksFinalized: number; // an orphaned open assistant turn we closed server-side
+  turnsSettled: number; // ledger rows still open on a box that is no longer running
   errors: number;
 }
 
@@ -81,6 +84,7 @@ export const EMPTY_REAP_RESULT: ReapResult = {
   skipped: 0,
   lifecycleRenewed: 0,
   husksFinalized: 0,
+  turnsSettled: 0,
   errors: 0,
 };
 
@@ -129,6 +133,13 @@ export async function reapAndReconcileSandboxes(
     candidates: rows.length,
     matching: rows.length,
   };
+  // The ledger's backstop, and the reason "every session_turns row reaches
+  // ended" is a property of the system rather than a claim about five call
+  // sites. Deliberately BEFORE the empty-batch return: a box with no candidates
+  // is exactly the state an orphaned row is stranded in. Only the unscoped
+  // platform pass runs it — a scoped lane asks about specific rows and must not
+  // settle turns its caller never named.
+  if (!scope) result.turnsSettled = await settleOrphanedSandboxTurns();
   if (rows.length === 0) return result;
 
   result.matching = await countReapCandidates(candidatePredicate, rows.length);
@@ -170,12 +181,17 @@ export async function reapAndReconcileSandboxes(
               if (turn.state === 'delivering' && row.deadlineAt.getTime() > now.getTime()) {
                 continue;
               }
-              const observation = await dependencies.observeSandboxTurn(
+              const { observation, endReason } = await dependencies.observeSandboxTurn(
                 provider,
                 row.externalId,
                 row.sandboxId,
                 turn,
               );
+              // Whether the control plane had to END an assistant message that
+              // OpenCode was still holding open. It is evidence about HOW the
+              // turn finished — a turn somebody else had to close did not
+              // complete — so it is read at this scope, not inside the branch.
+              let huskFinalized = false;
               // The daemon reported no turn in flight, but OpenCode can still be
               // holding an assistant message that was never closed (a killed
               // model call, a lost session.idle). Clearing the record here
@@ -193,13 +209,20 @@ export async function reapAndReconcileSandboxes(
                   opencodeSessionId: turn.opencodeSessionId,
                   messageId: turn.messageId,
                 });
-                if (huskOutcome === 'finalized') result.husksFinalized += 1;
+                if (huskOutcome === 'finalized') {
+                  huskFinalized = true;
+                  result.husksFinalized += 1;
+                }
               }
               if (turn.state === 'delivering') {
                 const reconciliation = await dependencies.reconcileSandboxTurnDelivery(
                   row.sandboxId,
                   turn.token,
                   observation,
+                  // Only the daemon can say what happened to a prompt it may
+                  // never have received; with no word from it the delivery was
+                  // never confirmed, which is what `abandoned` names.
+                  endReason ?? undefined,
                 );
                 if (reconciliation === 'active') {
                   observedActiveTokens.push(turn.token);
@@ -210,7 +233,9 @@ export async function reapAndReconcileSandboxes(
                   // Unknown OpenCode state cannot renew itself forever. The
                   // original delivery grace has expired, so remove only this
                   // token. A concurrent prompt has a different token and the
-                  // final stop claim will refuse to race it.
+                  // final stop claim will refuse to race it. The runtime never
+                  // confirmed this turn, so the ledger keeps the default
+                  // `runtime_gone` — nothing here proves it finished.
                   await dependencies.clearSandboxTurn(row.sandboxId, turn.token);
                 }
               } else if (observation === 'active') {
@@ -224,8 +249,23 @@ export async function reapAndReconcileSandboxes(
                 // that owns turn authority — so a daemon we cannot reach would
                 // buy itself compute it can no longer justify. The husk repair
                 // is best-effort; the deadline is not.
-                await dependencies.clearSandboxTurn(row.sandboxId, turn.token);
+                //
+                // THE REASON IS NEVER ASSUMED. `terminal` is only
+                // turn_in_flight === false, and the daemon answers that for a
+                // completion, for a hard model error and for a prompt it never
+                // received alike — it proves the turn is over and nothing more.
+                // Its own `turn_end` is the authority; failing that, a husk
+                // this pass had to force-close is a turn that did NOT finish;
+                // failing both, the honest record is that nobody can say.
+                await dependencies.clearSandboxTurn(
+                  row.sandboxId,
+                  turn.token,
+                  undefined,
+                  endReason ?? (huskFinalized ? 'failed' : 'unknown'),
+                );
               } else if (row.deadlineAt.getTime() <= now.getTime()) {
+                // Unreadable daemon plus an expired deadline: the runtime is
+                // the thing that went away, so the default reason stands.
                 await dependencies.clearSandboxTurn(row.sandboxId, turn.token);
               }
             }
@@ -336,6 +376,39 @@ export async function reapAndReconcileSandboxes(
 }
 
 /**
+ * The reasons a SANDBOX is allowed to name. `runtime_gone` is deliberately not
+ * one of them: the box is the subject of the judgement, and that value is only
+ * ever written by the control plane's own stop writers. Anything else the
+ * daemon sends — free text, a value from a newer agent build — is dropped, so a
+ * box can never put an unconstrained string into the ledger column.
+ */
+const DAEMON_REPORTABLE_END_REASONS = new Set<SessionTurnEndReason>([
+  'completed',
+  'failed',
+  'abandoned',
+]);
+
+function daemonReportedEndReason(value: unknown): SessionTurnEndReason | null {
+  return DAEMON_REPORTABLE_END_REASONS.has(value as SessionTurnEndReason)
+    ? (value as SessionTurnEndReason)
+    : null;
+}
+
+export interface SandboxTurnReading {
+  observation: SandboxTurnObservation;
+  /**
+   * HOW the daemon says the turn ended, when `observation` is `terminal` and it
+   * could tell. `null` is the ordinary answer for an agent build that predates
+   * `turn_end` and for an OpenCode state its messages cannot classify — the
+   * caller decides what to record, and must not invent a completion.
+   */
+  endReason: SessionTurnEndReason | null;
+}
+
+/** A fresh value per call: an exported function must not hand out a shared object. */
+const unreadableTurn = (): SandboxTurnReading => ({ observation: 'unknown', endReason: null });
+
+/**
  * Observe only a control-plane-minted `delivering` record through the common
  * daemon health contract. The provider adapter resolves transport and auth.
  */
@@ -344,7 +417,7 @@ export async function observeSandboxTurn(
   externalId: string,
   _sandboxId?: string,
   identity?: { token?: string; opencodeSessionId: string; messageId: string | null },
-): Promise<SandboxTurnObservation> {
+): Promise<SandboxTurnReading> {
   try {
     const endpoint = await provider.resolveEndpoint(externalId);
     const url = new URL(`${endpoint.url.replace(/\/$/, '')}/kortix/health`);
@@ -359,12 +432,14 @@ export async function observeSandboxTurn(
       headers: endpoint.headers,
       signal: AbortSignal.timeout(10_000),
     });
-    if (!response.ok) return 'unknown';
-    const body = (await response.json()) as { turn_in_flight?: unknown };
-    if (body.turn_in_flight === true) return 'active';
-    if (body.turn_in_flight === false) return 'terminal';
-    return 'unknown';
+    if (!response.ok) return unreadableTurn();
+    const body = (await response.json()) as { turn_in_flight?: unknown; turn_end?: unknown };
+    if (body.turn_in_flight === true) return { observation: 'active', endReason: null };
+    if (body.turn_in_flight === false) {
+      return { observation: 'terminal', endReason: daemonReportedEndReason(body.turn_end) };
+    }
+    return unreadableTurn();
   } catch {
-    return 'unknown';
+    return unreadableTurn();
   }
 }

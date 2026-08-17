@@ -17,9 +17,11 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { finalizeOrphanedTurn } from '../main'
 import { inspectOpencodeRoot,
+  observeOpencodeDelivery,
   opencodeDeliveryInFlight,
   opencodeTurnInFlight,
 } from '../opencode-turn-state';
+import { createHealthRouter, observeRequestedTurn } from '../routes/health';
 
 const BASE = 'http://127.0.0.1:4096';
 const WORKSPACE = '/workspace';
@@ -278,5 +280,196 @@ describe('opencodeDeliveryInFlight — lifecycle acceptance recovery', () => {
   test('a missing user message after delivery grace is terminal', async () => {
     stubFetch([]);
     expect(await opencodeDeliveryInFlight(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toBe(false);
+  });
+});
+
+/**
+ * `turn_in_flight: false` is FOUR different outcomes, and the control plane
+ * writes exactly one of them into `kortix.session_turns.end_reason`. Only this
+ * daemon can tell them apart — it is the process holding the message list — so
+ * it names the outcome and the API stops guessing 'completed' for every one.
+ */
+describe('observeOpencodeDelivery — WHY the turn is not in flight', () => {
+  test("a client-minted message that never reached OpenCode is 'abandoned'", async () => {
+    // The user's prompt vanished. Recording this as 'completed' is the exact
+    // mislabel that makes end_reason unable to name a lost delivery.
+    stubFetch([{ info: { id: 'msg_other', role: 'user' } }]);
+    expect(await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toEqual({
+      inFlight: false,
+      end: 'abandoned',
+    });
+  });
+
+  test("a terminal model error is 'failed', the same word the session.error relay writes", async () => {
+    stubFetch([
+      { info: { id: 'msg_turn_1', role: 'user' } },
+      {
+        info: {
+          role: 'assistant',
+          parentID: 'msg_turn_1',
+          time: {},
+          error: { name: 'APIError', data: { isRetryable: false } },
+        },
+      },
+    ]);
+    expect(await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toEqual({
+      inFlight: false,
+      end: 'failed',
+    });
+  });
+
+  test("a completed assistant is 'completed'", async () => {
+    stubFetch([
+      { info: { id: 'msg_turn_1', role: 'user' } },
+      { info: { role: 'assistant', parentID: 'msg_turn_1', time: { completed: 1234 } } },
+    ]);
+    expect(await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toEqual({
+      inFlight: false,
+      end: 'completed',
+    });
+  });
+
+  test("an assistant message left open on an idle root is 'failed'", async () => {
+    // The husk a killed model call leaves. Through the relay this same end
+    // arrives as session.error and is written 'failed'; observing it late must
+    // not rename it.
+    stubFetch(
+      [
+        { info: { id: 'msg_turn_1', role: 'user' } },
+        { info: { role: 'assistant', parentID: 'msg_turn_1', time: {} } },
+      ],
+      { sessionStatus: { [SESSION]: { type: 'idle' } } },
+    );
+    expect(await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toEqual({
+      inFlight: false,
+      end: 'failed',
+    });
+  });
+
+  test('a delivered prompt that produced nothing on an idle root names no outcome', async () => {
+    // The message landed, so it was not abandoned, and no assistant message
+    // says how it ended. An honest null beats an invented reason.
+    stubFetch([{ info: { id: 'msg_turn_1', role: 'user' } }], {
+      sessionStatus: { [SESSION]: { type: 'idle' } },
+    });
+    expect(await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toEqual({
+      inFlight: false,
+      end: null,
+    });
+  });
+
+  test('a newer turn on the root ends this one with the reason its own messages carry', async () => {
+    stubFetch(
+      [
+        { info: { id: 'msg_turn_1', role: 'user' } },
+        { info: { role: 'assistant', parentID: 'msg_turn_1', time: { completed: 7 } } },
+        { info: { id: 'msg_turn_2', role: 'user' } },
+      ],
+      { sessionStatus: { [SESSION]: { type: 'busy' } } },
+    );
+    expect(await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toEqual({
+      inFlight: false,
+      end: 'completed',
+    });
+    // The root's status describes the NEWER turn, so it is never consulted.
+    expect(calls.some((url) => url.includes('/session/status'))).toBe(false);
+  });
+
+  test('a running turn and an unreadable box name no outcome', async () => {
+    stubFetch(
+      [
+        { info: { id: 'msg_turn_1', role: 'user' } },
+        { info: { role: 'assistant', parentID: 'msg_turn_1', time: {} } },
+      ],
+      { sessionStatus: { [SESSION]: { type: 'busy' } } },
+    );
+    expect(await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toEqual({
+      inFlight: true,
+      end: null,
+    });
+
+    stubFetch(null, { messagesOk: false });
+    expect(await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toEqual({
+      inFlight: null,
+      end: null,
+    });
+  });
+});
+
+describe('observeRequestedTurn — what /kortix/health?turn=1 answers with', () => {
+  test('a message-scoped request carries the outcome the messages prove', async () => {
+    stubFetch([
+      { info: { id: 'msg_turn_1', role: 'user' } },
+      { info: { role: 'assistant', parentID: 'msg_turn_1', time: { completed: 1234 } } },
+    ]);
+    expect(
+      await observeRequestedTurn(BASE, WORKSPACE, { sessionId: SESSION, messageId: 'msg_turn_1' }),
+    ).toEqual({ inFlight: false, end: 'completed' });
+  });
+
+  test('a root-scoped request cannot attribute an outcome to one turn', async () => {
+    // Without a message id the answer is about the whole root, so naming an
+    // end reason would attribute another turn's outcome to this one.
+    stubFetch(assistantTurn(1_700_000_000));
+    expect(
+      await observeRequestedTurn(BASE, WORKSPACE, { sessionId: SESSION, messageId: null }),
+    ).toEqual({ inFlight: false, end: null });
+  });
+
+  test('/kortix/health?turn=1 puts the outcome on the wire as turn_end', async () => {
+    // The cross-process contract: the control plane writes this value straight
+    // into session_turns.end_reason and cannot derive it, because only this
+    // process holds the message list.
+    stubFetch([
+      { info: { id: 'msg_turn_1', role: 'user' } },
+      {
+        info: {
+          role: 'assistant',
+          parentID: 'msg_turn_1',
+          time: {},
+          error: { name: 'APIError', data: { isRetryable: false } },
+        },
+      },
+    ]);
+    const router = createHealthRouter(
+      { projectTarget: '/workspace', autoClone: false, sandboxToken: '' } as never,
+      {
+        getState: () => 'ok',
+        getInternalUrl: () => BASE,
+        getPid: () => 1,
+        getActivePort: () => 4096,
+      } as never,
+      Date.now(),
+      { repoMaterializationError: null, timeline: [] },
+    );
+
+    const body = (await (
+      await router.request(`/?turn=1&turn_session_id=${SESSION}&turn_message_id=msg_turn_1`)
+    ).json()) as Record<string, unknown>;
+
+    expect(body.turn_in_flight).toBe(false);
+    expect(body.turn_end).toBe('failed');
+  });
+
+  test('/kortix/health without ?turn=1 still answers nothing about turns', async () => {
+    stubFetch(assistantTurn(undefined));
+    const router = createHealthRouter(
+      { projectTarget: '/workspace', autoClone: false, sandboxToken: '' } as never,
+      {
+        getState: () => 'ok',
+        getInternalUrl: () => BASE,
+        getPid: () => 1,
+        getActivePort: () => 4096,
+      } as never,
+      Date.now(),
+      { repoMaterializationError: null, timeline: [] },
+    );
+
+    const body = (await (await router.request('/')).json()) as Record<string, unknown>;
+
+    // Health is polled every few seconds on every idle box; the turn read costs
+    // a call into opencode and stays opt-in.
+    expect('turn_in_flight' in body).toBe(false);
+    expect('turn_end' in body).toBe(false);
   });
 });

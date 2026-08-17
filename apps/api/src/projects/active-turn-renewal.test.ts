@@ -19,6 +19,7 @@ function reapResult(overrides: Partial<ReapResult> = {}): ReapResult {
     skipped: 0,
     lifecycleRenewed: 0,
     husksFinalized: 0,
+    turnsSettled: 0,
     errors: 0,
     ...overrides,
   };

@@ -24,9 +24,12 @@ let events: string[] = [];
 let updateCalls: UpdateCall[] = [];
 let cacheInvalidations: string[] = [];
 let selectedRows: Array<Record<string, unknown>> = [];
+let executedStatements: Array<{ sql: unknown; inTransaction: boolean }> = [];
 let revokedTokens: Array<{ sessionId: string; accountId: string }> = [];
 let preserveCalls: Array<{ sandboxId: string; reason: string; stopReason: string }> = [];
 let inTransaction = false;
+/** When set, every `tx.execute` fails with this message. */
+let executeThrows: string | null = null;
 
 mock.module('../../config', () => mockConfigModule());
 
@@ -39,19 +42,46 @@ const updater = (table: unknown) => ({
   }),
 });
 
+const executor = async (statement: unknown) => {
+  events.push('execute');
+  executedStatements.push({ sql: statement, inTransaction });
+  if (executeThrows) throw new Error(executeThrows);
+};
+
+/**
+ * A nested drizzle transaction, which the postgres.js driver implements as
+ * `savepoint sN` / `rollback to sN` + rethrow. Emulated here because that is
+ * exactly the mechanism keeping a failed ledger write from taking the stop's
+ * two status flips down with it.
+ */
+const savepoint = async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
+  events.push('savepoint:begin');
+  try {
+    const result = await fn(transactionScope);
+    events.push('savepoint:release');
+    return result;
+  } catch (error) {
+    events.push('savepoint:rollback');
+    throw error;
+  }
+};
+
+const transactionScope = { update: updater, execute: executor, transaction: savepoint };
+
 mock.module('../../shared/db', () => ({
   db: {
     transaction: async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
       events.push('tx:begin');
       inTransaction = true;
       try {
-        return await fn({ update: updater });
+        return await fn(transactionScope);
       } finally {
         inTransaction = false;
         events.push('tx:commit');
       }
     },
     update: updater,
+    execute: executor,
     select: () => ({
       from: () => ({
         where: () => ({ limit: async () => selectedRows }),
@@ -137,9 +167,11 @@ beforeEach(() => {
   updateCalls = [];
   cacheInvalidations = [];
   selectedRows = [];
+  executedStatements = [];
   revokedTokens = [];
   preserveCalls = [];
   inTransaction = false;
+  executeThrows = null;
 });
 
 describe('applyStoppedState', () => {
@@ -210,6 +242,65 @@ describe('applyStoppedState', () => {
     expect(rendered).toContain("- 'activeTurn'");
     expect(rendered).toContain("- 'activeTurns'");
     expect(rendered).toContain("- 'lifecycleStopClaim'");
+  });
+
+  // Erasing the turn authority above makes every token-scoped ledger settle
+  // impossible afterwards: they all CAS against the metadata entry this
+  // statement just deleted. A turn that was in flight would keep claiming to be
+  // running for ever — the exact stuck-busy signal session_turns exists to
+  // answer. So the settle rides in the SAME transaction.
+  test('settles every open session_turns row of the sandbox, inside the stop transaction', async () => {
+    await applyStoppedState(write);
+
+    expect(executedStatements).toHaveLength(1);
+    const [settle] = executedStatements;
+    expect(settle.inTransaction).toBe(true);
+    const rendered = describeSql(settle.sql);
+    expect(rendered).toContain('UPDATE kortix.session_turns');
+    expect(rendered).toContain("state = 'ended'");
+    expect(rendered).toContain('runtime_gone');
+    expect(rendered).toContain('sb-1');
+    // Keyed by sandbox and scoped to rows that are still open.
+    expect(rendered).toContain('sandbox_id');
+    expect(rendered).toContain("state <> 'ended'");
+    // Ordered after the erasure, never before: a settle that ran first would
+    // leave a turn started in between unsettled.
+    expect(events.indexOf('update:sandbox')).toBeLessThan(events.indexOf('execute'));
+    expect(events.indexOf('execute')).toBeLessThan(events.indexOf('tx:commit'));
+  });
+
+  // THE PROVIDER BOX IS ALREADY OFF by the time this runs (stop-box.ts calls
+  // provider.stop() before applyStoppedState, and so does parkEstablishedRuntime).
+  // If a session_turns failure could abort this transaction, the row would stay
+  // 'active' and its session 'running' against a dead box, with metering already
+  // paused — and every retry would fail identically for as long as the cause
+  // lasted (a lock timeout, a rollout ahead of migrate-db, a migration holding
+  // ACCESS EXCLUSIVE). A best-effort observation table must never own that.
+  test('a failing ledger settle rolls back to its savepoint and the stop still commits', async () => {
+    executeThrows = 'relation "kortix.session_turns" does not exist';
+    const error = console.error;
+    console.error = () => {};
+    try {
+      await expect(applyStoppedState(write)).resolves.toBeUndefined();
+    } finally {
+      console.error = error;
+    }
+
+    // Both status flips are still there, and the transaction still committed.
+    expect(sandboxUpdate()?.updates.status).toBe('stopped');
+    expect(sessionUpdate()?.updates.status).toBe('stopped');
+    expect(events).toContain('tx:commit');
+    // Bounded by a savepoint, so only the ledger statement is undone. Without
+    // one, Postgres marks the whole transaction aborted and both flips are lost.
+    expect(events).toContain('savepoint:rollback');
+    expect(events.indexOf('savepoint:begin')).toBeLessThan(events.indexOf('execute'));
+  });
+
+  test('a successful ledger settle releases its savepoint', async () => {
+    await applyStoppedState(write);
+
+    expect(events).toContain('savepoint:release');
+    expect(events).not.toContain('savepoint:rollback');
   });
 
   // The lost update: a whole-object write assembled from a stale SELECT drops

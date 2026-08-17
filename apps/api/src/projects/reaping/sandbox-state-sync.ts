@@ -15,6 +15,7 @@ import { revokeSessionConnectorTokens } from '../../repositories/account-tokens'
 import { invalidateProviderCache } from '../../sandbox-proxy';
 import { db } from '../../shared/db';
 import { preserveEstablishedRuntime } from '../runtime-identity';
+import { settleOpenSandboxTurns } from '../sandbox-turn-lifecycle';
 import { runtimeWakeInProgress } from '../session-lifecycle/runtime-wake-fence';
 import type { StopReason } from '../stop-reason';
 
@@ -54,7 +55,10 @@ export interface StoppedStateWrite {
  *      window is settled against the state it was actually billed under;
  *   2. flip `session_sandboxes` and `project_sessions` in ONE transaction, so
  *      there is no window where the box is parked but the session still claims
- *      to be running (and no way for a caller to do one and forget the other);
+ *      to be running (and no way for a caller to do one and forget the other),
+ *      and settle every still-open `session_turns` row of this sandbox in that
+ *      SAME transaction — the statement below erases the turn authority those
+ *      rows are settled against, so this is the last moment anything can;
  *   3. drop the proxy's provider cache.
  * Metadata is ALWAYS a jsonb merge — this module has no whole-object writer.
  */
@@ -105,6 +109,16 @@ export async function applyStoppedState(write: StoppedStateWrite): Promise<void>
       .update(projectSessions)
       .set({ status: 'stopped', updatedAt: now })
       .where(eq(projectSessions.sessionId, write.sessionId));
+    // A turn that was in flight when the box parked ended because the runtime
+    // went away — that is precisely what `end_reason = 'runtime_gone'` records.
+    // Keyed by sandbox, not by token: the statement above just deleted the
+    // `activeTurns` entry every token-scoped settle CASes against, so nothing
+    // after this transaction could ever close these rows and they would claim a
+    // turn is still running forever. In the transaction on purpose — a stop
+    // that is not durable together with its ledger settle recreates the bug —
+    // and inside a SAVEPOINT, so this observation table can never abort a stop
+    // whose provider box is already off (see settleOpenSandboxTurns).
+    await settleOpenSandboxTurns(tx, write.sandboxId, 'runtime_gone');
   });
   if (write.externalId) invalidateProviderCache(write.externalId);
 }

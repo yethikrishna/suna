@@ -8,6 +8,8 @@ import {
   isImmediateOfflineSignal,
   isImmediateOfflineStatus,
   nextPollDelay,
+  RUNTIME_EVIDENCE_FRESH_MS,
+  shouldIgnoreProbeFailure,
   POLL_CONNECTED,
   POLL_FAILING,
   POLL_UNREACHABLE,
@@ -15,6 +17,7 @@ import {
 } from './use-runtime-reconnect';
 import {
   incrementSandboxFail,
+  noteRuntimeEvidence,
   requestRuntimeReconnect,
   resetSandboxFail,
   useSandboxConnectionStore,
@@ -167,5 +170,29 @@ describe('sandbox-connection-store recovery resets counters', () => {
 
     incrementSandboxFail();
     expect(useSandboxConnectionStore.getState().failCount).toBe(1);
+  });
+});
+
+describe('live SSE evidence vetoes probe failures', () => {
+  test('a probe failure is ignored while runtime events are provably flowing', () => {
+    // An SSE frame that arrived 2s ago is proof the runtime is reachable —
+    // a slow/timed-out health probe on a loaded box must not override it.
+    expect(shouldIgnoreProbeFailure(10_000 - 2_000, 10_000)).toBe(true);
+  });
+
+  test('a probe failure counts once the event stream has gone quiet', () => {
+    expect(
+      shouldIgnoreProbeFailure(60_000 - RUNTIME_EVIDENCE_FRESH_MS - 1, 60_000),
+    ).toBe(false);
+  });
+
+  test('no recorded evidence never vetoes a failure', () => {
+    expect(shouldIgnoreProbeFailure(null, 10_000)).toBe(false);
+  });
+
+  test('noteRuntimeEvidence records the arrival time in the store', () => {
+    useSandboxConnectionStore.setState({ lastRuntimeEvidenceAt: null });
+    noteRuntimeEvidence(1234);
+    expect(useSandboxConnectionStore.getState().lastRuntimeEvidenceAt).toBe(1234);
   });
 });

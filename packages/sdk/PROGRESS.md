@@ -8796,3 +8796,25 @@ stop → resume left `/session/status` = `busy` and blocking
 busy for a dead turn, so the client MUST reconcile on a bounded clock.
 
 Additive only: one new exported const, no renames, no snapshot removals.
+
+### 2026-08-17 (same session, follow-up) — live SSE evidence vetoes health-probe failures
+
+Third defect in the same stuck-session cluster, seen live on Essentia: during a
+heavy turn (PDF/asset generation) the `/kortix/health` probe times out, two
+consecutive misses flip the connection store to `unreachable`, which tears down
+the SSE stream (`use-opencode-events` gates on `status === 'connected'`) and
+routes every send to the wake queue ("Waking this session up…") — against a
+runtime that is provably up, mid-turn, and serving the Files panel.
+
+**Changed** — `browser/stores/sandbox-connection-store.ts` gains
+`lastRuntimeEvidenceAt` + `noteRuntimeEvidence()` (called on every delivered SSE
+frame, 1s write granularity); `react/use-runtime-reconnect.ts` gains
+`RUNTIME_EVIDENCE_FRESH_MS = 15_000` + pure `shouldIgnoreProbeFailure()`, and
+the probe failure path discards a failure while evidence is fresh. If the
+stream really is dead, evidence goes stale in 15s and failures count again.
+
+**Evidence** — TDD RED first (4 new tests; suite failed on missing export).
+`pnpm --filter @kortix/sdk test`: 1950 pass, 0 fail, 145 files. `typecheck`
+clean. `smoke:install` passed. Surface snapshots re-recorded — additive only
+(`RUNTIME_EVIDENCE_FRESH_MS`, `shouldIgnoreProbeFailure`,
+`noteRuntimeEvidence`).

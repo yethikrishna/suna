@@ -141,6 +141,24 @@ export function canDrainQueue(gates: QueueDrainGates): boolean {
 }
 
 /**
+ * Whether a husk-released dispatch must be ABANDONED because the world changed
+ * during its runtime confirmation round-trip.
+ *
+ * The husk path is the one dispatch that is not synchronous with its gate
+ * evaluation: `stepDrainMachine` flags it (`viaHusk`), the drain hook then
+ * awaits one authoritative status read before claiming, and that await is a
+ * full HTTP round-trip during which the user can press Stop, stage a revert,
+ * or the server can report busy. Every gate is rechecked here EXCEPT
+ * `hasIncompleteAssistant` — that is the husk itself, the one gate this
+ * dispatch exists to override; rechecking it would make every husk dispatch
+ * abort itself.
+ */
+export function shouldAbortHuskDispatch(gates: QueueDrainGates, isPaused: boolean): boolean {
+  if (isPaused) return true;
+  return !canDrainQueue({ ...gates, hasIncompleteAssistant: false });
+}
+
+/**
  * Whether a message the user just submitted should join the queue rather than
  * go straight out.
  *

@@ -6,6 +6,7 @@ import {
   canDrainQueue,
   createDrainMachine,
   planDrainTick,
+  shouldAbortHuskDispatch,
   shouldClearPause,
   shouldQueueInsteadOfSend,
   stepDrainMachine,
@@ -511,5 +512,33 @@ describe('husk dispatches are flagged for runtime confirmation', () => {
       now: OPEN_TURN_HUSK_MS + QUEUE_SETTLE_MS,
     });
     expect(action).toEqual({ kind: 'dispatch', viaHusk: true });
+  });
+});
+
+describe('shouldAbortHuskDispatch — the post-confirmation recheck', () => {
+  const HUSK_ONLY = { ...CLEAR, hasIncompleteAssistant: true };
+
+  test('a husk dispatch whose gates stayed clear proceeds', () => {
+    expect(shouldAbortHuskDispatch(HUSK_ONLY, false)).toBe(false);
+  });
+
+  test('a Stop pressed during the confirmation round-trip aborts the dispatch', () => {
+    // The interrupt must never be followed a beat later by exactly the
+    // message the user was trying to get ahead of.
+    expect(shouldAbortHuskDispatch(HUSK_ONLY, true)).toBe(true);
+  });
+
+  test('a revert staged during the round-trip aborts — the prompt belongs to an abandoned trajectory', () => {
+    expect(shouldAbortHuskDispatch({ ...HUSK_ONLY, revertStaged: true }, false)).toBe(true);
+  });
+
+  test('the server flipping busy during the round-trip aborts', () => {
+    expect(shouldAbortHuskDispatch({ ...HUSK_ONLY, isServerBusy: true }, false)).toBe(true);
+  });
+
+  test('the open assistant husk itself never aborts — it is what this dispatch overrides', () => {
+    // hasIncompleteAssistant is the one gate the husk path exists to bypass;
+    // rechecking it would make every husk dispatch abort itself.
+    expect(shouldAbortHuskDispatch({ ...CLEAR, hasIncompleteAssistant: true }, false)).toBe(false);
   });
 });

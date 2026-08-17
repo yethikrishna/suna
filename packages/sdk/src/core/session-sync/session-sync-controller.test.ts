@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { Message, Part, SessionStatus } from '@opencode-ai/sdk/v2/client';
 import {
   PROMPT_OBSERVATION_STALL_MS,
+  PROMPT_STALL_MAX_ATTEMPTS,
   SESSION_SYNC_PAGE_SIZE,
   SessionSyncController,
   createHttpSessionSyncController,
@@ -832,15 +833,128 @@ describe('SessionSyncController stall expiry is authoritative, not blind', () =>
     controller.destroy();
   });
 
-  test('expiry with the status read failing releases the override (never latches on an unreachable runtime)', async () => {
+  test('expiry with the status read failing releases after the bounded retry budget (never latches on an unreachable runtime)', async () => {
     const { controller, clock } = observedController(async () => {
       throw new Error('proxy down');
     });
     controller.beginPromptObservation();
+    // One failure alone must NOT release — a transient 502 at the 10s mark
+    // could unmask a live turn. Every window retries, and only exhausting
+    // the budget releases.
+    for (let attempt = 0; attempt < PROMPT_STALL_MAX_ATTEMPTS; attempt++) {
+      expect(controller.getSnapshot().isPromptObservedBusy).toBe(true);
+      clock.advance(PROMPT_OBSERVATION_STALL_MS + 1);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(controller.getSnapshot().isPromptObservedBusy).toBe(false);
+    controller.destroy();
+  });
+});
+
+describe('SessionSyncController stall resolve is epoched, deadlined, and retried', () => {
+  test('a late status answer from a PREVIOUS observation never touches the current one', async () => {
+    const clock = createClock();
+    let resolveStatus!: (status: SessionStatus) => void;
+    const statuses: SessionStatus[] = [];
+    const controller = new SessionSyncController({
+      sessionId: 'session-1',
+      loadPage: async () => page([]),
+      loadStatus: () => new Promise<SessionStatus>((resolve) => (resolveStatus = resolve)),
+      hydrate: () => {},
+      markLoaded: () => {},
+      setStatus: (status) => statuses.push(status),
+      scheduler: clock.scheduler,
+      livenessIntervalMs: 10_000,
+    });
+
+    // Turn A: observation runs its stall out; the status read parks.
+    controller.beginPromptObservation();
+    controller.observePromptActivity();
+    clock.advance(PROMPT_OBSERVATION_STALL_MS + 1);
+    const resolveTurnA = resolveStatus;
+
+    // Turn A ends normally; turn B begins a NEW observation.
+    controller.endPromptObservation();
+    controller.beginPromptObservation();
+    expect(controller.getSnapshot().isPromptObservedBusy).toBe(true);
+
+    // Turn A's parked read finally answers idle — 700ms stale. It must be
+    // discarded: not written to the store, not allowed to clear B's override.
+    resolveTurnA({ type: 'idle' } as SessionStatus);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(controller.getSnapshot().isPromptObservedBusy).toBe(true);
+    expect(statuses).toEqual([]);
+    controller.destroy();
+  });
+
+  test('a parked stall status read re-arms the deadline instead of latching busy forever', async () => {
+    const clock = createClock();
+    let statusCalls = 0;
+    const controller = new SessionSyncController({
+      sessionId: 'session-1',
+      loadPage: async () => page([]),
+      loadStatus: () => {
+        statusCalls += 1;
+        return new Promise<SessionStatus>(() => {}); // parks forever
+      },
+      hydrate: () => {},
+      markLoaded: () => {},
+      scheduler: clock.scheduler,
+      livenessIntervalMs: 10_000,
+    });
+
+    controller.beginPromptObservation();
+    controller.observePromptActivity();
+
+    // Each stall window issues one deadlined read; after the bounded retry
+    // budget the override releases rather than painting busy forever.
+    for (let attempt = 0; attempt < PROMPT_STALL_MAX_ATTEMPTS; attempt++) {
+      clock.advance(PROMPT_OBSERVATION_STALL_MS + 1);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      clock.advance(10_000 + 1); // the read's own deadline
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    clock.advance(1_000);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(statusCalls).toBe(PROMPT_STALL_MAX_ATTEMPTS);
+    expect(controller.getSnapshot().isPromptObservedBusy).toBe(false);
+    controller.destroy();
+  });
+
+  test('a single transient status failure retries instead of releasing over a possibly-live turn', async () => {
+    const clock = createClock();
+    let statusCalls = 0;
+    const controller = new SessionSyncController({
+      sessionId: 'session-1',
+      loadPage: async () => page([]),
+      loadStatus: async () => {
+        statusCalls += 1;
+        if (statusCalls === 1) throw new Error('transient 502');
+        return { type: 'busy' } as SessionStatus;
+      },
+      hydrate: () => {},
+      markLoaded: () => {},
+      scheduler: clock.scheduler,
+      livenessIntervalMs: 10_000,
+    });
+
+    controller.beginPromptObservation();
+    controller.observePromptActivity();
     clock.advance(PROMPT_OBSERVATION_STALL_MS + 1);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(controller.getSnapshot().isPromptObservedBusy).toBe(false);
+    // First read failed — still busy, retry armed.
+    expect(controller.getSnapshot().isPromptObservedBusy).toBe(true);
+
+    clock.advance(PROMPT_OBSERVATION_STALL_MS + 1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Second read answered busy — override stays, turn was live all along.
+    expect(statusCalls).toBe(2);
+    expect(controller.getSnapshot().isPromptObservedBusy).toBe(true);
     controller.destroy();
   });
 });

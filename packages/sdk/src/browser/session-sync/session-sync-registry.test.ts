@@ -240,3 +240,25 @@ describe('loadSessionRuntimeStatus', () => {
     expect(await loadSessionRuntimeStatus('ses-1', client)).toBeNull();
   });
 });
+
+describe('loadSessionRuntimeStatus binds the client method', () => {
+  test('a client whose status() reads `this` (like the real SDK) works', async () => {
+    // The real @opencode-ai/sdk SessionClient.status() dereferences
+    // `this.client`. Detaching the method (`const f = s.status; await f()`)
+    // makes `this` undefined and throws before any request goes out — which
+    // silently disabled every status reconciliation against a real client
+    // while all the plain-object test fakes kept passing.
+    class RealisticSession {
+      private answer = { data: { 'ses-1': { type: 'busy' } } };
+      async messages() {
+        return { data: [] };
+      }
+      async status() {
+        // Throws exactly like the SDK if called detached.
+        return (this as RealisticSession).answer;
+      }
+    }
+    const client = { session: new RealisticSession() } as never;
+    expect(await loadSessionRuntimeStatus('ses-1', client)).toEqual({ type: 'busy' });
+  });
+});

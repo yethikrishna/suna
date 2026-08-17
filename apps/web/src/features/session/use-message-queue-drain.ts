@@ -55,10 +55,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createDrainMachine,
   planDrainTick,
+  shouldAbortHuskDispatch,
   shouldClearPause,
   type DrainMachine,
   type QueueDrainGates,
 } from './message-queue-boundary';
+
+/**
+ * Cap on the husk-confirmation status read. Without it, a runtime that never
+ * answers strands the queue: the drain machine was already reset before the
+ * read went out, so nothing re-arms a tick. On timeout the dispatch proceeds
+ * — the send outcome is the arbiter, and a failed send lands in the failed
+ * lane, which is honest.
+ */
+const HUSK_CONFIRM_TIMEOUT_MS = 5_000;
 
 export interface UseMessageQueueDrainOptions {
   sessionId: string;
@@ -177,11 +187,17 @@ export function useMessageQueueDrain({
           // can also be lost status events over a LIVE turn. Ask the runtime
           // once before committing the send; a busy answer heals the store
           // (closing the isServerBusy gate) instead of dispatching into the
-          // turn. An unreachable runtime falls through to dispatch: the send
-          // itself will fail and land in the failed lane, which is honest.
+          // turn. The read is deadlined (HUSK_CONFIRM_TIMEOUT_MS): a runtime
+          // that never answers must not strand the queue. On timeout or
+          // error the dispatch proceeds — the send outcome is the arbiter.
           void (async () => {
             try {
-              const current = await loadSessionRuntimeStatus(sessionId);
+              const current = await Promise.race([
+                loadSessionRuntimeStatus(sessionId),
+                new Promise<null>((resolve) =>
+                  setTimeout(() => resolve(null), HUSK_CONFIRM_TIMEOUT_MS),
+                ),
+              ]);
               if (current && current.type !== 'idle') {
                 useSessionStateStore.getState().setStatus(sessionId, current);
                 tickRef.current();
@@ -189,6 +205,18 @@ export function useMessageQueueDrain({
               }
             } catch {
               // Unreachable — proceed; the send outcome is the arbiter.
+            }
+            // The await above is a full round-trip; the user may have pressed
+            // Stop, staged a revert, or the server may have reported busy in
+            // the meantime. Recheck everything except the husk itself.
+            if (
+              shouldAbortHuskDispatch(
+                gatesRef.current,
+                gatesRef.current.isPaused || pausedRef.current,
+              )
+            ) {
+              tickRef.current();
+              return;
             }
             const claimed = useMessageQueueStore.getState().claimBatch(sessionId);
             void dispatchClaimed(claimed);

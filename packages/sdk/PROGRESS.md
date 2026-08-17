@@ -10303,3 +10303,33 @@ defects fixed:
 `typecheck` clean. `smoke:install` passed. apps/web `tsc` clean apart from the
 known `test.each` baseline; eslint clean on changed files. Snapshots additive
 only (`loadSessionRuntimeStatus`).
+
+### 2026-08-17 (same session, follow-up 4) — confirmation-fleet fixes
+
+A 4-agent confirmation fleet re-attacked the audit fixes; 2 of 4 dimensions
+survived with executed proofs. All fixed:
+
+1. **Detached client method (latent on main, root cause).** Both
+   `loadSessionRuntimeStatus` and the registry controller's `loadStatus`
+   detached `client.session.status` before calling it; the real SDK method
+   dereferences `this.client`, so every status reconciliation against a real
+   client threw TypeError silently — only plain-object fakes passed. Bound
+   calls now; class-based regression test added.
+2. **Stall resolve epoched + deadlined + retried.** `resolvePromptStall` now
+   captures `promptObservationEpoch` (bumped on begin/clear) and discards
+   late answers from prior observations; the status read is deadlined at
+   `livenessIntervalMs`; a failed/timed-out read retries next window up to
+   `PROMPT_STALL_MAX_ATTEMPTS = 3` (transient 502 never unmasks a live turn;
+   a dead runtime still releases in ~30s). 3 new controller tests.
+3. **Husk-confirm window.** The confirmation round-trip is capped at
+   `HUSK_CONFIRM_TIMEOUT_MS = 5s` (never strands the queue), and after the
+   await the dispatch rechecks every gate except the husk itself via new pure
+   `shouldAbortHuskDispatch` (Stop pressed / revert staged / server busy
+   during the round-trip now abort). 5 new boundary tests.
+
+Confirmation fleet also proved: drain-wake originals CLOSED (real-React
+harness, pre-fix counterfactuals), revert of b66158a311 residue-free.
+
+**Evidence** — SDK: 2119 pass, 0 fail, 148 files; typecheck clean;
+smoke:install passed. Web: boundary tests 54 pass / 0 fail; tsc clean apart
+from the known baseline; eslint clean.

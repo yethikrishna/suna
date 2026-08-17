@@ -958,3 +958,69 @@ describe('SessionSyncController stall resolve is epoched, deadlined, and retried
     controller.destroy();
   });
 });
+
+describe('SessionSyncController stall answers stale WITHIN one observation are discarded', () => {
+  test('an idle answer that was overtaken by proof-of-life mid-flight never releases the override', async () => {
+    const clock = createClock();
+    let resolveStatus!: (status: SessionStatus) => void;
+    const statuses: SessionStatus[] = [];
+    const controller = new SessionSyncController({
+      sessionId: 'session-1',
+      loadPage: async () => page([]),
+      loadStatus: () => new Promise<SessionStatus>((resolve) => (resolveStatus = resolve)),
+      hydrate: () => {},
+      markLoaded: () => {},
+      setStatus: (status) => statuses.push(status),
+      scheduler: clock.scheduler,
+      livenessIntervalMs: 10_000,
+    });
+
+    // Prompt accepted; the turn has not started yet (queued behind a restart).
+    controller.beginPromptObservation();
+    clock.advance(PROMPT_OBSERVATION_STALL_MS + 1);
+    // The stall's status read goes out — honestly idle AT ISSUE TIME.
+    const answer = resolveStatus;
+
+    // The turn starts while the read is in flight: assistant output arrives.
+    controller.observePromptActivity();
+    clock.advance(1_000);
+    controller.noteActivity();
+
+    // The 3s-late idle answer lands. It was overtaken — discard it entirely:
+    // no store write, no release.
+    answer({ type: 'idle' } as SessionStatus);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(controller.getSnapshot().isPromptObservedBusy).toBe(true);
+    expect(statuses).toEqual([]);
+    controller.destroy();
+  });
+
+  test('a genuinely idle answer with a re-entrant setStatus wrapper still gets the settlement window', async () => {
+    const clock = createClock();
+    let resolveStatus!: (status: SessionStatus) => void;
+    const controller = new SessionSyncController({
+      sessionId: 'session-1',
+      loadPage: async () => page([]),
+      loadStatus: () => new Promise<SessionStatus>((resolve) => (resolveStatus = resolve)),
+      hydrate: () => {},
+      markLoaded: () => {},
+      // The real registry wrapper re-enters observePromptStatus synchronously.
+      setStatus: (status) => controller.observePromptStatus(status),
+      scheduler: clock.scheduler,
+      livenessIntervalMs: 10_000,
+    });
+
+    controller.beginPromptObservation();
+    controller.observePromptActivity(); // running
+    clock.advance(PROMPT_OBSERVATION_STALL_MS + 1);
+    resolveStatus({ type: 'idle' } as SessionStatus);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Still inside the settlement window — released only after it elapses.
+    expect(controller.getSnapshot().isPromptObservedBusy).toBe(true);
+    clock.advance(600);
+    expect(controller.getSnapshot().isPromptObservedBusy).toBe(false);
+    controller.destroy();
+  });
+});

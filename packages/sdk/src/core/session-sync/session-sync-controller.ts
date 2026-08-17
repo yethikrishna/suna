@@ -241,6 +241,10 @@ export class SessionSyncController {
    *  NEWER observation (a parked read can outlive the turn it asked about). */
   private promptObservationEpoch = 0;
   private promptStallFailures = 0;
+  /** Bumped by markPromptRunning; lets an in-flight stall read detect that
+   *  proof-of-life OVERTOOK it inside the same observation. */
+  private promptRunningGeneration = 0;
+  private promptStallDeadlineTimer: unknown;
   private lastActivityAt: number;
   private listeners = new Set<() => void>();
   private destroyed = false;
@@ -364,6 +368,8 @@ export class SessionSyncController {
     this.stopLivenessTimer();
     this.clearPromptSettlementTimer();
     this.clearPromptStallTimer();
+    this.cancelTimer(this.promptStallDeadlineTimer);
+    this.promptStallDeadlineTimer = undefined;
     this.listeners.clear();
   }
 
@@ -555,6 +561,7 @@ export class SessionSyncController {
     this.clearPromptSettlementTimer();
     this.promptObservationPhase = 'running';
     this.promptStallFailures = 0;
+    this.promptRunningGeneration += 1;
     this.armPromptStallTimer();
   }
 
@@ -598,6 +605,12 @@ export class SessionSyncController {
    */
   private async resolvePromptStall(): Promise<void> {
     const epoch = this.promptObservationEpoch;
+    // Stamp the read at ISSUE time. An answer is only as fresh as the moment
+    // it was asked: a turn that starts (or streams any frame) while the read
+    // is in flight has overtaken it, and an honest-at-issue-time idle answer
+    // must then be discarded — not applied over newer proof-of-life.
+    const issueRunningGeneration = this.promptRunningGeneration;
+    const issueActivityAt = this.lastActivityAt;
     if (this.options.loadStatus) {
       let failed = false;
       let status: SessionStatus | undefined;
@@ -617,6 +630,16 @@ export class SessionSyncController {
       // ends, a new prompt begins a new observation, and only then does the
       // stale answer land. Discard anything from an older epoch outright.
       if (this.destroyed || this.promptObservationEpoch !== epoch) return;
+      // Same discard WITHIN the observation: proof-of-life that arrived after
+      // the read was issued outranks the read's answer. Fresh evidence also
+      // re-armed the stall deadline via noteActivity/markPromptRunning, so
+      // returning here leaves a live retry armed — nothing is dropped.
+      if (
+        this.promptRunningGeneration !== issueRunningGeneration ||
+        this.lastActivityAt !== issueActivityAt
+      ) {
+        return;
+      }
       if (!failed && status !== undefined) {
         // Push the authoritative answer into the host store, and let the
         // normal observation path act on it: busy re-arms the stall via
@@ -627,6 +650,11 @@ export class SessionSyncController {
           this.markPromptRunning();
           return;
         }
+        // The registry's setStatus wrapper re-enters observePromptStatus
+        // synchronously, which for an idle answer in 'running' has already
+        // moved the phase to 'settling'. Settlement owns the release then —
+        // clearing here instead would skip the 500ms window entirely.
+        if (this.promptObservationPhase === 'settling') return;
         if (this.promptObservationPhase === 'running') {
           this.schedulePromptSettlement();
           return;
@@ -656,19 +684,25 @@ export class SessionSyncController {
       const handle = this.startTimer(() => {
         if (settled) return;
         settled = true;
+        this.promptStallDeadlineTimer = undefined;
         resolve(undefined);
       }, timeoutMs);
+      // Tracked so destroy() can cancel it — otherwise every destroyed
+      // controller kept a live deadline timeout for up to timeoutMs.
+      this.promptStallDeadlineTimer = handle;
       work.then(
         (value) => {
           if (settled) return;
           settled = true;
           this.cancelTimer(handle);
+          this.promptStallDeadlineTimer = undefined;
           resolve(value);
         },
         (error) => {
           if (settled) return;
           settled = true;
           this.cancelTimer(handle);
+          this.promptStallDeadlineTimer = undefined;
           reject(error);
         },
       );

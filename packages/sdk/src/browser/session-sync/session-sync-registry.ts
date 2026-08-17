@@ -264,8 +264,17 @@ export async function loadSessionRuntimeStatus(
   // detachment silently disabled status reconciliation against real clients
   // while every plain-object test fake kept passing.
   if (!client.session.status) return null;
-  const result = await client.session.status();
-  return result.data?.[sessionId] ?? ({ type: 'idle' } as SessionStatus);
+  const result = (await client.session.status()) as {
+    data?: Record<string, SessionStatus>;
+    error?: unknown;
+  };
+  // The generated client RESOLVES with { error } on HTTP failure. Mapping
+  // that to "idle" told callers a failing runtime was authoritatively done —
+  // and starved every retry budget built on thrown errors. Fail loudly.
+  if (result.error !== undefined || result.data === undefined) {
+    throw new Error(`session status read failed: ${JSON.stringify(result.error ?? 'no data')}`);
+  }
+  return result.data[sessionId] ?? ({ type: 'idle' } as SessionStatus);
 }
 
 export function loadSessionTranscriptMessages(

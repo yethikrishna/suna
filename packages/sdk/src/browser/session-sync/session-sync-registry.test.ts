@@ -262,3 +262,18 @@ describe('loadSessionRuntimeStatus binds the client method', () => {
     expect(await loadSessionRuntimeStatus('ses-1', client)).toEqual({ type: 'busy' });
   });
 });
+
+describe('loadSessionRuntimeStatus refuses to launder failures into idle', () => {
+  test('an SDK-style resolved error response throws instead of reporting idle', async () => {
+    // The generated client RESOLVES with { error } on HTTP failure. Mapping
+    // that to "idle" told every caller a failing runtime was authoritatively
+    // done — which defeats retry budgets built on thrown errors.
+    const client = {
+      session: {
+        messages: async () => ({ data: [] }),
+        status: async () => ({ error: { message: 'ECONNREFUSED' } }),
+      },
+    } as never;
+    await expect(loadSessionRuntimeStatus('ses-1', client)).rejects.toThrow();
+  });
+});

@@ -143,6 +143,18 @@ export function useMessageQueueDrain({
   }, [hydrated]);
 
   const tickRef = useRef<() => void>(() => {});
+  // The husk-confirmation round-trip is the ONE dispatch decision detached
+  // from a synchronous tick. It must die with the component: an unmounted
+  // hook's frozen refs would otherwise approve a dispatch for a session the
+  // user already left — through a runtime pointer that may meanwhile aim at
+  // a DIFFERENT session's sandbox.
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
 
   const dispatchClaimed = useCallback(
     async (claimed: WebQueuedMessage[]) => {
@@ -206,9 +218,13 @@ export function useMessageQueueDrain({
             } catch {
               // Unreachable — proceed; the send outcome is the arbiter.
             }
-            // The await above is a full round-trip; the user may have pressed
-            // Stop, staged a revert, or the server may have reported busy in
-            // the meantime. Recheck everything except the husk itself.
+            // The await above is a full round-trip; the component may have
+            // unmounted, the user may have pressed Stop or staged a revert,
+            // or the server may have reported busy in the meantime. An
+            // unmounted hook's refs are frozen at values that BY CONSTRUCTION
+            // approve the dispatch, so liveness is checked first, then every
+            // gate except the husk itself.
+            if (!aliveRef.current) return;
             if (
               shouldAbortHuskDispatch(
                 gatesRef.current,

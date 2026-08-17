@@ -10333,3 +10333,30 @@ harness, pre-fix counterfactuals), revert of b66158a311 residue-free.
 **Evidence** — SDK: 2119 pass, 0 fail, 148 files; typecheck clean;
 smoke:install passed. Web: boundary tests 54 pass / 0 fail; tsc clean apart
 from the known baseline; eslint clean.
+
+### 2026-08-17 (same session, follow-up 5) — round-2 confirmation fixes
+
+The r2 confirmation fleet verified all prior fixes closed, and found 2 new
+holes + 2 hygiene issues. All fixed, TDD RED first (3 new tests):
+
+1. **Intra-observation staleness.** A stall status read issued while the
+   runtime was honestly idle could be OVERTAKEN by the turn starting mid-
+   flight; the late idle answer then released the override and wrote stale
+   idle into the store — a stuck-IDLE latch over a live turn. `resolvePromptStall`
+   now stamps `promptRunningGeneration` + `lastActivityAt` at issue time and
+   discards overtaken answers entirely (fresh evidence has already re-armed
+   the deadline). Also: an idle answer whose re-entrant setStatus wrapper
+   moved the phase to 'settling' now lets settlement own the release instead
+   of clearing instantly (the 500ms window was being skipped).
+2. **Husk confirm escapes the component lifetime.** The detached confirmation
+   IIFE could approve a dispatch AFTER unmount, with frozen refs that by
+   construction approve, through a runtime pointer re-aimed at ANOTHER
+   session's sandbox. `aliveRef` liveness guard checked before the claim.
+3. **`loadSessionRuntimeStatus` laundered failures into idle.** The generated
+   client RESOLVES with `{error}` on HTTP failure; mapping that to idle
+   starved every thrown-error retry budget. Now throws on `error`/missing data.
+4. **destroy() leak**: the stall deadline timer is tracked and cancelled.
+
+**Evidence** — SDK: 2122 pass, 0 fail, 148 files; typecheck clean;
+smoke:install passed. Web tsc clean apart from the known baseline; eslint
+clean on the drain hook.

@@ -22,6 +22,32 @@ const {
 const { createAppAccessToken } = await import('./access');
 
 describe('Apps public edge', () => {
+  test('recognises a dead E2B runtime, which is a 502 and not a throw', () => {
+    // The outage this pins. An App ran fine after every deploy and then served
+    // `{"message":"The sandbox is running but port is not open","port":8080}`
+    // for hours, with desired_state `running` and a `ready` deployment, until a
+    // human rolled back to force a new runtime.
+    //
+    // Nothing recovered it because recovery only fired on a THROWN fetch or a
+    // Daytona 400 — and a provider edge that can still see the sandbox answers
+    // with an ordinary 502 instead. The runtime was gone; the response was not
+    // an error the App produced.
+    const dead = '{"sandboxId":"is3w07miuo2i3gz63g2su","message":"The sandbox is running but port is not open","port":8080,"code":502}';
+    expect(appProviderStoppedResponse('e2b', 502, dead)).toBe(true);
+    expect(appProviderStoppedResponse('e2b', 503, 'connection refused')).toBe(true);
+    expect(appProviderStoppedResponse('e2b', 504, 'sandbox not found')).toBe(true);
+
+    // An App's OWN 502 must still reach the reader. Recovering there would hide
+    // a broken upstream behind an endless "starting" page.
+    expect(appProviderStoppedResponse('e2b', 502, '{"error":"Upstream request failed"}')).toBe(false);
+    expect(appProviderStoppedResponse('e2b', 500, dead)).toBe(false);
+    expect(appProviderStoppedResponse('e2b', 200, dead)).toBe(false);
+
+    // Daytona's shape is unchanged.
+    expect(appProviderStoppedResponse('daytona', 400, 'no IP address found')).toBe(true);
+    expect(appProviderStoppedResponse('daytona', 502, 'port is not open')).toBe(false);
+  });
+
   const projectApp = {
     appId: '11111111-1111-4111-8111-111111111111',
     accountId: '99999999-9999-4999-8999-999999999999',
@@ -41,14 +67,15 @@ describe('Apps public edge', () => {
     // recognised Kortix credential resolves to no identity, and no identity is
     // refused exactly as before — this path adds a way to PRESENT an identity,
     // never a way to skip one.
-    for (const headers of [
+    const cases: Record<string, string>[] = [
       {},
       { authorization: 'Bearer not-a-kortix-token' },
       { authorization: 'Bearer ' },
       { authorization: 'Basic a29ydGl4OnNlY3JldA==' },
       // The App's own write key is not a Kortix credential either.
       { authorization: 'Bearer e09d1f2a3b4c5d6e7f8090a1b2c3d4e5' },
-    ]) {
+    ];
+    for (const headers of cases) {
       const denied = await authorizeAppRequest(
         apiRequest(headers),
         new URL('https://dev-project-cccccccccccccccc.apps.kortix.com/api/things'),

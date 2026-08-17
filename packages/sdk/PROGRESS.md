@@ -10213,3 +10213,59 @@ bb7b36a41d), SDK-side residuals:
 - RED-proven: session-title-sync gate (1 failing test before the gate),
   stash TTL (import failure then behavioral), both suites green after
   (6 pass / 21 pass).
+
+### 2026-08-17 — bounded prompt-observation + un-parked status poll (branch `stuck-busy-latch`)
+
+Fixes the "session stuck working forever" class (turn finished but the UI shows
+"Gathering thoughts…"/"Sharing the result…"/stop-button until a hard refresh;
+queue drain gate held closed by the phantom busy).
+
+**Changed** — `core/session-sync/session-sync-controller.ts`, TDD (4 RED tests
+first):
+
+1. `PROMPT_OBSERVATION_STALL_MS = 10_000` (new export): the REST-prompt busy
+   override now expires unless renewed by proof the turn is alive
+   (`noteActivity` on any SSE frame for the session, `observePromptStatus`
+   busy/retry, `observePromptActivity`). Before, `awaiting-work` ignored idle
+   *forever* — a prompt the runtime accepted but never turned into a turn, or a
+   lost `session.idle` frame, pinned the UI busy until reload. Expiry only
+   stops the override; a genuinely-busy runtime still reports busy.
+2. `checkLiveness` no longer awaits the transcript tail unboundedly. A parked
+   sandbox-proxy read (wedged opencode: never answers, never errors) used to
+   block `reconcileStatus` on EVERY subsequent poll — `reconcile('poll')`
+   returns the same in-flight `tailRequest`, so one parked read disabled status
+   reconciliation permanently. That is the "only a hard refresh fixes it"
+   signature. The tail race is bounded at `livenessIntervalMs`; the status poll
+   always runs.
+
+**Evidence** — `pnpm --filter @kortix/sdk test`: 1944 pass, 0 fail, 145 files
+(baseline this session on clean main: 1940 pass / 1942). `typecheck` clean.
+`smoke:install`: `✔ install smoke test passed`. Ground truth from a live
+worktree-stack probe (project af8b0482, session 289bdc5b, Platinum): mid-turn
+stop → resume left `/session/status` = `busy` and blocking
+`POST /session/:id/message` 504s after the ALB budget — the runtime can claim
+busy for a dead turn, so the client MUST reconcile on a bounded clock.
+
+Additive only: one new exported const, no renames, no snapshot removals.
+
+### 2026-08-17 (same session, follow-up) — live SSE evidence vetoes health-probe failures
+
+Third defect in the same stuck-session cluster, seen live on Essentia: during a
+heavy turn (PDF/asset generation) the `/kortix/health` probe times out, two
+consecutive misses flip the connection store to `unreachable`, which tears down
+the SSE stream (`use-opencode-events` gates on `status === 'connected'`) and
+routes every send to the wake queue ("Waking this session up…") — against a
+runtime that is provably up, mid-turn, and serving the Files panel.
+
+**Changed** — `browser/stores/sandbox-connection-store.ts` gains
+`lastRuntimeEvidenceAt` + `noteRuntimeEvidence()` (called on every delivered SSE
+frame, 1s write granularity); `react/use-runtime-reconnect.ts` gains
+`RUNTIME_EVIDENCE_FRESH_MS = 15_000` + pure `shouldIgnoreProbeFailure()`, and
+the probe failure path discards a failure while evidence is fresh. If the
+stream really is dead, evidence goes stale in 15s and failures count again.
+
+**Evidence** — TDD RED first (4 new tests; suite failed on missing export).
+`pnpm --filter @kortix/sdk test`: 1950 pass, 0 fail, 145 files. `typecheck`
+clean. `smoke:install` passed. Surface snapshots re-recorded — additive only
+(`RUNTIME_EVIDENCE_FRESH_MS`, `shouldIgnoreProbeFailure`,
+`noteRuntimeEvidence`).

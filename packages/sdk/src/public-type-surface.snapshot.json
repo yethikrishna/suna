@@ -3134,6 +3134,7 @@
     "isSubdomainPreviewUrl",
     "isTransientSendStatus",
     "kortixKeys",
+    "loadSessionRuntimeStatus",
     "loadSessionTranscriptMessages",
     "logRuntimeEvent",
     "markOptimisticSendDispatched",

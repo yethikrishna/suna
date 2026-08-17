@@ -10337,3 +10337,94 @@ stream really is dead, evidence goes stale in 15s and failures count again.
 clean. `smoke:install` passed. Surface snapshots re-recorded — additive only
 (`RUNTIME_EVIDENCE_FRESH_MS`, `shouldIgnoreProbeFailure`,
 `noteRuntimeEvidence`).
+
+### 2026-08-17 (same session, follow-up 3) — adversarial audit fixes
+
+An 82-agent adversarial workflow attacked the day's five fixes: 22 raw claims,
+10 survived 3-lens verification with executed-test proofs. All confirmed
+defects fixed:
+
+1. **Blind stall expiry (critical class).** The 10s override expiry could
+   unmask a LIVE turn (no SSE frame for 10s + a stale idle in the store) and —
+   by flipping isBusy false — stop the liveness polling that was its own
+   justification (`checkLiveness`'s guard makes the first poll land at 2×
+   interval, never within the stall window). Expiry is now authoritative:
+   `resolvePromptStall` polls `/session/status` first; busy keeps the override
+   and re-arms; idle settles through the settlement window; unreachable
+   releases. 3 new controller tests.
+2. **Husk dispatch into a live turn.** `stepDrainMachine`/`planDrainTick` now
+   flag a husk-released dispatch (`viaHusk`), and the drain hook confirms
+   idleness via new `loadSessionRuntimeStatus` (SDK react export; registry +
+   3 tests) before sending — a busy answer heals the store instead.
+3. **`gates.runtimeReady` missing from the drain effect deps** — a message
+   queued against a sleeping sandbox never sent on wake. Added.
+4. **Retry was a silent no-op** — the wake selector summed pending+failed,
+   invariant under retry. Split into two lane selectors; pause-lift now keys
+   on pending-lane growth (enqueue AND retry lift it).
+5. **Failed-lane preservation reverted** (`git revert b66158a311`): proven
+   double-preservation (the composer already restores text+files on a failed
+   await), an unimplemented dedupe promise, and no agent/model capture. The
+   composer restore is the single mechanism; the refresh-mid-flight hole is a
+   documented residual.
+
+**Evidence** — `pnpm --filter @kortix/sdk test`: 2115 pass, 0 fail, 148 files.
+`typecheck` clean. `smoke:install` passed. apps/web `tsc` clean apart from the
+known `test.each` baseline; eslint clean on changed files. Snapshots additive
+only (`loadSessionRuntimeStatus`).
+
+### 2026-08-17 (same session, follow-up 4) — confirmation-fleet fixes
+
+A 4-agent confirmation fleet re-attacked the audit fixes; 2 of 4 dimensions
+survived with executed proofs. All fixed:
+
+1. **Detached client method (latent on main, root cause).** Both
+   `loadSessionRuntimeStatus` and the registry controller's `loadStatus`
+   detached `client.session.status` before calling it; the real SDK method
+   dereferences `this.client`, so every status reconciliation against a real
+   client threw TypeError silently — only plain-object fakes passed. Bound
+   calls now; class-based regression test added.
+2. **Stall resolve epoched + deadlined + retried.** `resolvePromptStall` now
+   captures `promptObservationEpoch` (bumped on begin/clear) and discards
+   late answers from prior observations; the status read is deadlined at
+   `livenessIntervalMs`; a failed/timed-out read retries next window up to
+   `PROMPT_STALL_MAX_ATTEMPTS = 3` (transient 502 never unmasks a live turn;
+   a dead runtime still releases in ~30s). 3 new controller tests.
+3. **Husk-confirm window.** The confirmation round-trip is capped at
+   `HUSK_CONFIRM_TIMEOUT_MS = 5s` (never strands the queue), and after the
+   await the dispatch rechecks every gate except the husk itself via new pure
+   `shouldAbortHuskDispatch` (Stop pressed / revert staged / server busy
+   during the round-trip now abort). 5 new boundary tests.
+
+Confirmation fleet also proved: drain-wake originals CLOSED (real-React
+harness, pre-fix counterfactuals), revert of b66158a311 residue-free.
+
+**Evidence** — SDK: 2119 pass, 0 fail, 148 files; typecheck clean;
+smoke:install passed. Web: boundary tests 54 pass / 0 fail; tsc clean apart
+from the known baseline; eslint clean.
+
+### 2026-08-17 (same session, follow-up 5) — round-2 confirmation fixes
+
+The r2 confirmation fleet verified all prior fixes closed, and found 2 new
+holes + 2 hygiene issues. All fixed, TDD RED first (3 new tests):
+
+1. **Intra-observation staleness.** A stall status read issued while the
+   runtime was honestly idle could be OVERTAKEN by the turn starting mid-
+   flight; the late idle answer then released the override and wrote stale
+   idle into the store — a stuck-IDLE latch over a live turn. `resolvePromptStall`
+   now stamps `promptRunningGeneration` + `lastActivityAt` at issue time and
+   discards overtaken answers entirely (fresh evidence has already re-armed
+   the deadline). Also: an idle answer whose re-entrant setStatus wrapper
+   moved the phase to 'settling' now lets settlement own the release instead
+   of clearing instantly (the 500ms window was being skipped).
+2. **Husk confirm escapes the component lifetime.** The detached confirmation
+   IIFE could approve a dispatch AFTER unmount, with frozen refs that by
+   construction approve, through a runtime pointer re-aimed at ANOTHER
+   session's sandbox. `aliveRef` liveness guard checked before the claim.
+3. **`loadSessionRuntimeStatus` laundered failures into idle.** The generated
+   client RESOLVES with `{error}` on HTTP failure; mapping that to idle
+   starved every thrown-error retry budget. Now throws on `error`/missing data.
+4. **destroy() leak**: the stall deadline timer is tracked and cancelled.
+
+**Evidence** — SDK: 2122 pass, 0 fail, 148 files; typecheck clean;
+smoke:install passed. Web tsc clean apart from the known baseline; eslint
+clean on the drain hook.

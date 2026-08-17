@@ -6,6 +6,7 @@ import {
   canDrainQueue,
   createDrainMachine,
   planDrainTick,
+  shouldAbortHuskDispatch,
   shouldClearPause,
   shouldQueueInsteadOfSend,
   stepDrainMachine,
@@ -476,5 +477,68 @@ describe('dead-turn husk override', () => {
     if (action.kind === 'wait') {
       expect(action.ms).toBe(OPEN_TURN_HUSK_MS - 1_000);
     }
+  });
+});
+
+describe('husk dispatches are flagged for runtime confirmation', () => {
+  const HUSK_ONLY = { ...CLEAR, hasIncompleteAssistant: true };
+
+  test('a dispatch released by the husk override carries viaHusk so the caller confirms idle with the runtime first', () => {
+    let machine = createDrainMachine();
+    machine = stepDrainMachine(machine, HUSK_ONLY, 0).machine;
+    machine = stepDrainMachine(machine, HUSK_ONLY, OPEN_TURN_HUSK_MS).machine;
+    const step = stepDrainMachine(machine, HUSK_ONLY, OPEN_TURN_HUSK_MS + QUEUE_SETTLE_MS);
+    expect(step.dispatch).toBe(true);
+    expect(step.viaHusk).toBe(true);
+  });
+
+  test('an ordinary all-gates-clear dispatch is not flagged', () => {
+    let machine = createDrainMachine();
+    machine = stepDrainMachine(machine, CLEAR, 0).machine;
+    const step = stepDrainMachine(machine, CLEAR, QUEUE_SETTLE_MS);
+    expect(step.dispatch).toBe(true);
+    expect(step.viaHusk).toBeFalsy();
+  });
+
+  test('planDrainTick surfaces the flag on the dispatch action', () => {
+    let machine = createDrainMachine();
+    machine = stepDrainMachine(machine, HUSK_ONLY, 0).machine;
+    machine = stepDrainMachine(machine, HUSK_ONLY, OPEN_TURN_HUSK_MS).machine;
+    const { action } = planDrainTick({
+      machine,
+      gates: HUSK_ONLY,
+      pendingCount: 1,
+      sending: false,
+      now: OPEN_TURN_HUSK_MS + QUEUE_SETTLE_MS,
+    });
+    expect(action).toEqual({ kind: 'dispatch', viaHusk: true });
+  });
+});
+
+describe('shouldAbortHuskDispatch — the post-confirmation recheck', () => {
+  const HUSK_ONLY = { ...CLEAR, hasIncompleteAssistant: true };
+
+  test('a husk dispatch whose gates stayed clear proceeds', () => {
+    expect(shouldAbortHuskDispatch(HUSK_ONLY, false)).toBe(false);
+  });
+
+  test('a Stop pressed during the confirmation round-trip aborts the dispatch', () => {
+    // The interrupt must never be followed a beat later by exactly the
+    // message the user was trying to get ahead of.
+    expect(shouldAbortHuskDispatch(HUSK_ONLY, true)).toBe(true);
+  });
+
+  test('a revert staged during the round-trip aborts — the prompt belongs to an abandoned trajectory', () => {
+    expect(shouldAbortHuskDispatch({ ...HUSK_ONLY, revertStaged: true }, false)).toBe(true);
+  });
+
+  test('the server flipping busy during the round-trip aborts', () => {
+    expect(shouldAbortHuskDispatch({ ...HUSK_ONLY, isServerBusy: true }, false)).toBe(true);
+  });
+
+  test('the open assistant husk itself never aborts — it is what this dispatch overrides', () => {
+    // hasIncompleteAssistant is the one gate the husk path exists to bypass;
+    // rechecking it would make every husk dispatch abort itself.
+    expect(shouldAbortHuskDispatch({ ...CLEAR, hasIncompleteAssistant: true }, false)).toBe(false);
   });
 });

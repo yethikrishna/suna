@@ -32,7 +32,7 @@ export interface ReapCandidate {
 }
 
 /** Rows the sweep is allowed to examine: our own `active` rows with a box behind them. */
-export function reapCandidatePredicate(sandboxIds?: readonly string[]) {
+export function reapCandidatePredicate(sandboxIds?: readonly string[], activeTurnsOnly = false) {
   return and(
     eq(sessionSandboxes.status, 'active'),
     isNotNull(sessionSandboxes.externalId),
@@ -41,6 +41,7 @@ export function reapCandidatePredicate(sandboxIds?: readonly string[]) {
         ? inArray(sessionSandboxes.sandboxId, [...sandboxIds])
         : sql`false`
       : undefined,
+    activeTurnsOnly ? activeTurnAuthorityPredicate() : undefined,
   );
 }
 
@@ -77,6 +78,7 @@ export function activeTurnAuthorityPredicate() {
  */
 export async function selectReapCandidates(
   predicate: ReturnType<typeof reapCandidatePredicate>,
+  activeTurnsOnly = false,
 ): Promise<ReapCandidate[]> {
   const projection = {
     sandboxId: sessionSandboxes.sandboxId,
@@ -100,6 +102,8 @@ export async function selectReapCandidates(
       visitOrder,
     )
     .limit(batchSize)) as ReapCandidate[];
+
+  if (activeTurnsOnly) return turnRows;
 
   const regularRows = (await db
     .select(projection)

@@ -241,9 +241,10 @@ export function stepDrainMachine(
   now: number,
   settleMs: number = QUEUE_SETTLE_MS,
   huskMs: number = OPEN_TURN_HUSK_MS,
-): { machine: DrainMachine; dispatch: boolean } {
+): { machine: DrainMachine; dispatch: boolean; viaHusk?: boolean } {
   // `isServerBusy` is one of the gates, so a running turn lands here too and
   // resets the clock. There is no separate busy branch to keep in sync.
+  let viaHusk = false;
   if (!canDrainQueue(gates)) {
     // The husk clock runs only while the open assistant message is the SOLE
     // reason the drain is blocked. Any other closed gate — the server saying
@@ -258,7 +259,11 @@ export function stepDrainMachine(
       return { machine: { clearSince: null, openTurnOnlySince }, dispatch: false };
     }
     // Husk expired — fall through with the gate overridden; the normal settle
-    // window still applies from this point.
+    // window still applies from this point. The dispatch is flagged so the
+    // caller confirms idleness with the runtime before sending: the husk
+    // reasoning is an inference from silence, and silence can also mean lost
+    // status events over a live turn.
+    viaHusk = true;
   }
 
   const clearSince = machine.clearSince ?? now;
@@ -271,7 +276,11 @@ export function stepDrainMachine(
   // gate synchronously — but when a send fails without ever reaching the server
   // the gates stay clear, and this is what keeps the next message a full settle
   // window behind rather than following it in the same instant.
-  return { machine: { clearSince: null, openTurnOnlySince: null }, dispatch: true };
+  return {
+    machine: { clearSince: null, openTurnOnlySince: null },
+    dispatch: true,
+    ...(viaHusk ? { viaHusk: true } : {}),
+  };
 }
 
 /**
@@ -281,7 +290,12 @@ export function stepDrainMachine(
  */
 export type DrainAction =
   | { kind: 'idle' }
-  | { kind: 'dispatch' }
+  | {
+      kind: 'dispatch';
+      /** The husk override released this dispatch — confirm idleness with the
+       *  runtime before actually sending. See `stepDrainMachine`. */
+      viaHusk?: boolean;
+    }
   | { kind: 'wait'; ms: number };
 
 /**
@@ -312,8 +326,15 @@ export function planDrainTick(input: {
     return { machine: input.machine, action: { kind: 'idle' } };
   }
 
-  const { machine, dispatch } = stepDrainMachine(input.machine, input.gates, input.now, settleMs);
-  if (dispatch) return { machine, action: { kind: 'dispatch' } };
+  const { machine, dispatch, viaHusk } = stepDrainMachine(
+    input.machine,
+    input.gates,
+    input.now,
+    settleMs,
+  );
+  if (dispatch) {
+    return { machine, action: { kind: 'dispatch', ...(viaHusk ? { viaHusk: true } : {}) } };
+  }
 
   if (machine.clearSince === null) {
     // Waiting out a dead-turn husk. Nothing re-renders while it merely ages,

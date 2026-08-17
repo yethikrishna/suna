@@ -10269,3 +10269,37 @@ stream really is dead, evidence goes stale in 15s and failures count again.
 clean. `smoke:install` passed. Surface snapshots re-recorded — additive only
 (`RUNTIME_EVIDENCE_FRESH_MS`, `shouldIgnoreProbeFailure`,
 `noteRuntimeEvidence`).
+
+### 2026-08-17 (same session, follow-up 3) — adversarial audit fixes
+
+An 82-agent adversarial workflow attacked the day's five fixes: 22 raw claims,
+10 survived 3-lens verification with executed-test proofs. All confirmed
+defects fixed:
+
+1. **Blind stall expiry (critical class).** The 10s override expiry could
+   unmask a LIVE turn (no SSE frame for 10s + a stale idle in the store) and —
+   by flipping isBusy false — stop the liveness polling that was its own
+   justification (`checkLiveness`'s guard makes the first poll land at 2×
+   interval, never within the stall window). Expiry is now authoritative:
+   `resolvePromptStall` polls `/session/status` first; busy keeps the override
+   and re-arms; idle settles through the settlement window; unreachable
+   releases. 3 new controller tests.
+2. **Husk dispatch into a live turn.** `stepDrainMachine`/`planDrainTick` now
+   flag a husk-released dispatch (`viaHusk`), and the drain hook confirms
+   idleness via new `loadSessionRuntimeStatus` (SDK react export; registry +
+   3 tests) before sending — a busy answer heals the store instead.
+3. **`gates.runtimeReady` missing from the drain effect deps** — a message
+   queued against a sleeping sandbox never sent on wake. Added.
+4. **Retry was a silent no-op** — the wake selector summed pending+failed,
+   invariant under retry. Split into two lane selectors; pause-lift now keys
+   on pending-lane growth (enqueue AND retry lift it).
+5. **Failed-lane preservation reverted** (`git revert b66158a311`): proven
+   double-preservation (the composer already restores text+files on a failed
+   await), an unimplemented dedupe promise, and no agent/model capture. The
+   composer restore is the single mechanism; the refresh-mid-flight hole is a
+   documented residual.
+
+**Evidence** — `pnpm --filter @kortix/sdk test`: 2115 pass, 0 fail, 148 files.
+`typecheck` clean. `smoke:install` passed. apps/web `tsc` clean apart from the
+known `test.each` baseline; eslint clean on changed files. Snapshots additive
+only (`loadSessionRuntimeStatus`).

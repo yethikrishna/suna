@@ -195,8 +195,10 @@ const PROMPT_IDLE_SETTLEMENT_MS = 500;
  * expiring early is bounded by the accuracy of the runtime status, while the
  * cost of never expiring is a session that lies until reload.
  *
- * One liveness interval (10s) is the natural bound — by then this controller has
- * polled `/session/status` at least once and holds an authoritative answer.
+ * When the deadline fires, the controller does not clear blindly: it polls
+ * `/session/status` once and only releases the override on an authoritative
+ * idle answer (or an unreachable runtime) — see `resolvePromptStall`. A busy
+ * answer keeps the override and re-arms the deadline.
  */
 export const PROMPT_OBSERVATION_STALL_MS = 10_000;
 
@@ -562,10 +564,45 @@ export class SessionSyncController {
     this.promptStallTimer = this.startTimer(() => {
       this.promptStallTimer = undefined;
       if (this.destroyed || this.promptObservationPhase === 'idle') return;
-      // Hand authority back to the runtime's own status. This never forces the
-      // session idle — a session that is genuinely working still reports busy.
-      this.clearPromptObservation();
+      void this.resolvePromptStall();
     }, PROMPT_OBSERVATION_STALL_MS);
+  }
+
+  /**
+   * The stall deadline fired: no proof-of-life arrived for a whole window.
+   * ASK the runtime before dropping the override — a blind clear here was a
+   * proven defect: a live turn that emits no SSE frame for 10s (a reasoning
+   * model before its first token, one long tool call) would be unmasked as
+   * idle, and — because dropping the override flips `isBusy` false, which
+   * stops the liveness polling via `setBusy(false)` — the authoritative poll
+   * that could have corrected it never ran. Polling here closes that hole:
+   * a busy answer keeps the override (and re-arms this deadline); an idle
+   * answer, or an unreachable runtime, releases it.
+   */
+  private async resolvePromptStall(): Promise<void> {
+    if (this.options.loadStatus) {
+      try {
+        const status = await this.options.loadStatus();
+        if (this.destroyed || this.promptObservationPhase === 'idle') return;
+        // Push the authoritative answer into the host store, and let the
+        // normal observation path act on it: busy re-arms the stall via
+        // markPromptRunning; idle settles through the settlement window.
+        this.options.setStatus?.(status);
+        if (status.type !== 'idle') {
+          this.markPromptRunning();
+          return;
+        }
+        if (this.promptObservationPhase === 'running') {
+          this.schedulePromptSettlement();
+          return;
+        }
+      } catch {
+        // Unreachable runtime — fall through to releasing the override. A
+        // dead box must never keep a session rendered busy forever.
+      }
+    }
+    if (this.destroyed || this.promptObservationPhase === 'idle') return;
+    this.clearPromptObservation();
   }
 
   /** Drop the busy override and its timers, leaving the liveness timer alone. */

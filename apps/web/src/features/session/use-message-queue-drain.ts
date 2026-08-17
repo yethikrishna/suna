@@ -50,6 +50,7 @@
  */
 
 import { useMessageQueueStore, type WebQueuedMessage } from '@/stores/message-queue-store';
+import { loadSessionRuntimeStatus, useSessionStateStore } from '@kortix/sdk/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createDrainMachine,
@@ -171,6 +172,29 @@ export function useMessageQueueDrain({
 
     switch (action.kind) {
       case 'dispatch': {
+        if (action.viaHusk) {
+          // The husk override inferred "dead turn" from silence — but silence
+          // can also be lost status events over a LIVE turn. Ask the runtime
+          // once before committing the send; a busy answer heals the store
+          // (closing the isServerBusy gate) instead of dispatching into the
+          // turn. An unreachable runtime falls through to dispatch: the send
+          // itself will fail and land in the failed lane, which is honest.
+          void (async () => {
+            try {
+              const current = await loadSessionRuntimeStatus(sessionId);
+              if (current && current.type !== 'idle') {
+                useSessionStateStore.getState().setStatus(sessionId, current);
+                tickRef.current();
+                return;
+              }
+            } catch {
+              // Unreachable — proceed; the send outcome is the arbiter.
+            }
+            const claimed = useMessageQueueStore.getState().claimBatch(sessionId);
+            void dispatchClaimed(claimed);
+          })();
+          return;
+        }
         // Everything waiting, as one prompt.
         const claimed = useMessageQueueStore.getState().claimBatch(sessionId);
         void dispatchClaimed(claimed);
@@ -213,25 +237,34 @@ export function useMessageQueueDrain({
     gates.isPaused,
     gates.readOnly,
     gates.revertStaged,
+    // Proven defect when missing: a message queued against a sleeping sandbox
+    // (runtimeReady false is the ONLY closed gate) never woke the drain when
+    // the box came up — it sat until some unrelated render happened to tick.
+    gates.runtimeReady,
   ]);
 
   // Re-evaluate when the queue itself changes — a new message on an already
-  // idle session has nothing else to wake it.
-  const pendingCount = useMessageQueueStore(
-    (s) => (s.queues[sessionId]?.pending.length ?? 0) + (s.queues[sessionId]?.failed.length ?? 0),
+  // idle session has nothing else to wake it. The two lanes are separate
+  // dependencies on purpose: Retry moves an entry failed -> pending, which
+  // keeps the SUM constant — a single summed selector made retry a silent
+  // no-op (proven), the drain never ticking for the restored entry.
+  const pendingLaneCount = useMessageQueueStore(
+    (s) => s.queues[sessionId]?.pending.length ?? 0,
   );
-  const previousCountRef = useRef(pendingCount);
+  const failedLaneCount = useMessageQueueStore((s) => s.queues[sessionId]?.failed.length ?? 0);
+  const previousCountRef = useRef(pendingLaneCount);
   useEffect(() => {
-    // Queueing something new lifts a pause left by the stop button. Without
-    // this, stop wedges the queue forever: everything typed afterwards lands
-    // behind messages that never drain. Whatever the stop meant, it did not
-    // mean "discard what I type from now on".
-    if (shouldClearPause(previousCountRef.current, pendingCount)) {
+    // Anything that GROWS the pending lane lifts a pause left by the stop
+    // button — enqueueing something new, and equally Retry on a failed row:
+    // both are the user saying "I want this sent". Without this, stop wedges
+    // the queue forever: everything afterwards lands behind messages that
+    // never drain.
+    if (shouldClearPause(previousCountRef.current, pendingLaneCount)) {
       setPausedState(false);
     }
-    previousCountRef.current = pendingCount;
+    previousCountRef.current = pendingLaneCount;
     tick();
-  }, [tick, pendingCount, setPausedState]);
+  }, [tick, pendingLaneCount, failedLaneCount, setPausedState]);
 
   const pause = useCallback(() => {
     setPausedState(true);

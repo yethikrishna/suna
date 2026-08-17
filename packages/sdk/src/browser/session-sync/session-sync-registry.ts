@@ -246,6 +246,22 @@ export function endSessionPromptObservation(sessionId: string, runtimeScope?: st
   findExistingSessionEntry(sessionId, runtimeScope)?.controller.endPromptObservation();
 }
 
+/**
+ * One authoritative read of a session's runtime status. `null` when the
+ * runtime exposes no status endpoint — the caller decides what silence means.
+ * A session absent from the snapshot is authoritatively idle: the runtime
+ * enumerates every session it is working on.
+ */
+export async function loadSessionRuntimeStatus(
+  sessionId: string,
+  client: SessionMessageClient = getClient(),
+): Promise<SessionStatus | null> {
+  const loadStatus = client.session.status;
+  if (!loadStatus) return null;
+  const result = await loadStatus();
+  return result.data?.[sessionId] ?? ({ type: 'idle' } as SessionStatus);
+}
+
 export function loadSessionTranscriptMessages(
   sessionId: string,
 ): Promise<SessionSyncPage['messages']> {

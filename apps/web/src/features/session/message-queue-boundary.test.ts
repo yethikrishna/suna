@@ -478,3 +478,38 @@ describe('dead-turn husk override', () => {
     }
   });
 });
+
+describe('husk dispatches are flagged for runtime confirmation', () => {
+  const HUSK_ONLY = { ...CLEAR, hasIncompleteAssistant: true };
+
+  test('a dispatch released by the husk override carries viaHusk so the caller confirms idle with the runtime first', () => {
+    let machine = createDrainMachine();
+    machine = stepDrainMachine(machine, HUSK_ONLY, 0).machine;
+    machine = stepDrainMachine(machine, HUSK_ONLY, OPEN_TURN_HUSK_MS).machine;
+    const step = stepDrainMachine(machine, HUSK_ONLY, OPEN_TURN_HUSK_MS + QUEUE_SETTLE_MS);
+    expect(step.dispatch).toBe(true);
+    expect(step.viaHusk).toBe(true);
+  });
+
+  test('an ordinary all-gates-clear dispatch is not flagged', () => {
+    let machine = createDrainMachine();
+    machine = stepDrainMachine(machine, CLEAR, 0).machine;
+    const step = stepDrainMachine(machine, CLEAR, QUEUE_SETTLE_MS);
+    expect(step.dispatch).toBe(true);
+    expect(step.viaHusk).toBeFalsy();
+  });
+
+  test('planDrainTick surfaces the flag on the dispatch action', () => {
+    let machine = createDrainMachine();
+    machine = stepDrainMachine(machine, HUSK_ONLY, 0).machine;
+    machine = stepDrainMachine(machine, HUSK_ONLY, OPEN_TURN_HUSK_MS).machine;
+    const { action } = planDrainTick({
+      machine,
+      gates: HUSK_ONLY,
+      pendingCount: 1,
+      sending: false,
+      now: OPEN_TURN_HUSK_MS + QUEUE_SETTLE_MS,
+    });
+    expect(action).toEqual({ kind: 'dispatch', viaHusk: true });
+  });
+});

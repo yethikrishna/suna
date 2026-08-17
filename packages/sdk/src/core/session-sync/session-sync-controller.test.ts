@@ -706,7 +706,7 @@ describe('SessionSyncController prompt observation', () => {
     return { controller, clock };
   }
 
-  test('releases the busy override when the accepted prompt never starts work', () => {
+  test('releases the busy override when the accepted prompt never starts work', async () => {
     const { controller, clock } = createObservedController();
 
     controller.beginPromptObservation();
@@ -714,16 +714,19 @@ describe('SessionSyncController prompt observation', () => {
 
     // The runtime is idle and stays idle: the prompt never became a turn.
     // Every idle observation lands while the phase is still "awaiting-work",
-    // which is exactly the state that used to ignore idle forever.
+    // which is exactly the state that used to ignore idle forever. Release
+    // happens after the expiry's own authoritative status poll (idle here)
+    // resolves — hence the microtask flush.
     for (let elapsed = 0; elapsed < PROMPT_OBSERVATION_STALL_MS; elapsed += 1_000) {
       controller.observePromptStatus({ type: 'idle' } as SessionStatus);
       clock.advance(1_000);
     }
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(controller.getSnapshot().isPromptObservedBusy).toBe(false);
   });
 
-  test('releases the busy override when the runtime goes quiet without an idle event', () => {
+  test('releases the busy override when the runtime goes quiet without an idle event', async () => {
     const { controller, clock } = createObservedController();
 
     controller.beginPromptObservation();
@@ -731,8 +734,12 @@ describe('SessionSyncController prompt observation', () => {
     expect(controller.getSnapshot().isPromptObservedBusy).toBe(true);
 
     // Work started, then every completion signal is lost — no session.idle,
-    // no status poll, no further events.
+    // no status poll, no further events. The expiry's authoritative status
+    // poll (idle in this harness) settles the release; running phase routes
+    // through the 500ms settlement window first.
     clock.advance(PROMPT_OBSERVATION_STALL_MS);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    clock.advance(600);
 
     expect(controller.getSnapshot().isPromptObservedBusy).toBe(false);
   });
@@ -777,6 +784,63 @@ describe('SessionSyncController prompt observation', () => {
     await flush();
 
     expect(statuses).toEqual([{ type: 'idle' } as SessionStatus]);
+    controller.destroy();
+  });
+});
+
+describe('SessionSyncController stall expiry is authoritative, not blind', () => {
+  function observedController(statusAnswer: () => Promise<SessionStatus>) {
+    const clock = createClock();
+    const statuses: SessionStatus[] = [];
+    const controller = new SessionSyncController({
+      sessionId: 'session-1',
+      loadPage: async () => page([]),
+      loadStatus: statusAnswer,
+      hydrate: () => {},
+      markLoaded: () => {},
+      setStatus: (status) => statuses.push(status),
+      scheduler: clock.scheduler,
+      livenessIntervalMs: 10_000,
+    });
+    return { controller, clock, statuses };
+  }
+
+  test('expiry with the runtime answering busy KEEPS the override — a live turn is never unmasked', async () => {
+    const { controller, clock, statuses } = observedController(
+      async () => ({ type: 'busy' }) as SessionStatus,
+    );
+    controller.beginPromptObservation();
+    // No SSE frames at all — a reasoning model before its first token.
+    clock.advance(PROMPT_OBSERVATION_STALL_MS + 1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(controller.getSnapshot().isPromptObservedBusy).toBe(true);
+    // The authoritative busy answer must also be pushed into the store.
+    expect(statuses).toContainEqual({ type: 'busy' } as SessionStatus);
+    controller.destroy();
+  });
+
+  test('expiry with the runtime answering idle releases the override', async () => {
+    const { controller, clock } = observedController(
+      async () => ({ type: 'idle' }) as SessionStatus,
+    );
+    controller.beginPromptObservation();
+    clock.advance(PROMPT_OBSERVATION_STALL_MS + 1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(controller.getSnapshot().isPromptObservedBusy).toBe(false);
+    controller.destroy();
+  });
+
+  test('expiry with the status read failing releases the override (never latches on an unreachable runtime)', async () => {
+    const { controller, clock } = observedController(async () => {
+      throw new Error('proxy down');
+    });
+    controller.beginPromptObservation();
+    clock.advance(PROMPT_OBSERVATION_STALL_MS + 1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(controller.getSnapshot().isPromptObservedBusy).toBe(false);
     controller.destroy();
   });
 });

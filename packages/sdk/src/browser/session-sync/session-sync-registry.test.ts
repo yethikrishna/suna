@@ -3,6 +3,7 @@ import type { Message } from '@opencode-ai/sdk/v2/client';
 import { useSyncStore } from '../stores/sync-store';
 import { setCurrentRuntime } from '../../core/session/current-runtime';
 import {
+  loadSessionRuntimeStatus,
   ACTIVE_SESSION_PREFETCH_SOURCE,
   beginSessionPromptObservation,
   clearActiveSessionPrefetches,
@@ -210,5 +211,32 @@ describe('REST prompt observation events', () => {
     expect(() =>
       noteSessionSyncEvent({ type: 'sync' } as unknown as { type?: string; properties: unknown }),
     ).not.toThrow();
+  });
+});
+
+describe('loadSessionRuntimeStatus', () => {
+  test('returns the authoritative runtime status for one session', async () => {
+    const client = {
+      session: {
+        messages: async () => ({ data: [] }),
+        status: async () => ({ data: { 'ses-1': { type: 'busy' } } }),
+      },
+    } as never;
+    expect(await loadSessionRuntimeStatus('ses-1', client)).toEqual({ type: 'busy' });
+  });
+
+  test('a session absent from the snapshot is authoritatively idle', async () => {
+    const client = {
+      session: {
+        messages: async () => ({ data: [] }),
+        status: async () => ({ data: {} }),
+      },
+    } as never;
+    expect(await loadSessionRuntimeStatus('ses-1', client)).toEqual({ type: 'idle' });
+  });
+
+  test('a runtime without a status endpoint returns null (caller decides)', async () => {
+    const client = { session: { messages: async () => ({ data: [] }) } } as never;
+    expect(await loadSessionRuntimeStatus('ses-1', client)).toBeNull();
   });
 });

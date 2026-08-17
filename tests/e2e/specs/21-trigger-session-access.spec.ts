@@ -119,10 +119,12 @@ test.describe('21 — Trigger-created session access UI', () => {
       await dismissOnboarding(page);
 
       const { section } = await openTriggerAccess(page, projectId);
-      const privateOption = section.getByRole('radio', { name: /Only the trigger agent/ });
+      const privateOption = section.getByRole('radio', {
+        name: /Trigger agent and project managers/,
+      });
       await expect(privateOption).toBeChecked();
       await expect(
-        section.getByText('No teammates can open these sessions unless you add them.'),
+        section.getByText('Project managers can always open trigger-created sessions.'),
       ).toBeVisible();
 
       await section.getByRole('radio', { name: /Selected teammates/ }).click();

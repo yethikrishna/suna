@@ -927,6 +927,47 @@ The required `tdd` skill is unavailable in this session. Authorization behavior
 will use the required RED, GREEN, and REFACTOR sequence in API tests before the
 SDK documentation changes.
 
+Completed the trigger-session manager-access correction. SDK and reference
+documentation now state that project managers retain access in every trigger
+session mode. The session-list contract now states that both scopes omit rows
+the caller cannot open. No exported name or type changed. The package version
+remains unchanged.
+
+RED evidence:
+
+```text
+bun test --isolate --env-file=scripts/test.env src/projects/lib/session-inventory.test.ts
+14 pass, 1 fail
+manager inventory returned human-private with canAccess=false
+
+bun test --isolate --env-file=scripts/test.env src/__tests__/e2e-project-session-contract.test.ts -t 'rejects client-supplied trigger authorization metadata at session create'
+0 pass, 1 fail
+Expected 400, Received 201
+```
+
+Final gates:
+
+```text
+pnpm test -- --id TRG-14
+1/1 passed, 0 failed, 0 skipped
+
+pnpm test -- --full
+PASS full 210.9s
+PASS api-cli-flows 22.8s
+PASS sdk 24.6s
+PASS flow-runner-unit 2.7s
+PASS route-coverage 0.1s
+PASS worktree-unit 0.1s
+PASS browser 58.8s
+PASS package-quality 114.5s
+
+SDK suite: 2093 pass, 0 fail
+SDK typecheck: clean
+SDK packed-install smoke: passed
+```
+
+**SDK package shippable to production: YES.**
+
 ---
 
 ### 2026-08-13 — session `warm-index` — warm-session decline must not toast

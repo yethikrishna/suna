@@ -3,6 +3,7 @@ import { type Page, expect, test } from '@playwright/test';
 import { loadEnv } from '../../src/core/env';
 import {
   createDatabaseProject,
+  createDatabaseSession,
   deleteDatabaseProject,
   setDatabaseEnterpriseDemo,
 } from '../../src/fixtures/database-project';
@@ -90,6 +91,28 @@ test.describe('21 — Trigger-created session access UI', () => {
       });
       projectId = project.id;
 
+      const ownSessionId = await createDatabaseSession(env, {
+        projectId,
+        accountId,
+        userId: user.id,
+        visibility: 'private',
+        metadata: { custom_name: 'My private chat' },
+      });
+      const sharedTriggerSessionId = await createDatabaseSession(env, {
+        projectId,
+        accountId,
+        userId: crypto.randomUUID(),
+        visibility: 'private',
+        metadata: {
+          custom_name: 'Shared scheduled session',
+          source: 'trigger:scheduler',
+          trigger_kind: 'git',
+          trigger_slug: 'access-policy-ui',
+          trigger_source: 'cron',
+          trigger_type: 'cron',
+        },
+      });
+
       const group = await api<{ group_id: string }>(
         session.access_token,
         'POST',
@@ -117,6 +140,36 @@ test.describe('21 — Trigger-created session access UI', () => {
       await selectAccountForUi(page, accountId);
       await page.goto(`/projects/${projectId}`, { waitUntil: 'domcontentloaded' });
       await dismissOnboarding(page);
+
+      const ownSidebarRow = page.locator(`a[href$="/sessions/${ownSessionId}"]`);
+      const sharedSidebarRow = page.locator(`a[href$="/sessions/${sharedTriggerSessionId}"]`);
+      await expect(ownSidebarRow).toBeVisible();
+      await expect(ownSidebarRow.locator('[data-session-shared="true"]')).toHaveCount(0);
+      await expect(sharedSidebarRow).toBeVisible();
+      await expect(sharedSidebarRow.getByText('Shared', { exact: true })).toBeVisible();
+      await expect(sharedSidebarRow.locator('[data-session-shared="true"]')).toHaveAttribute(
+        'aria-label',
+        /^Shared by /,
+      );
+
+      await page.goto(`/projects/${projectId}/sessions`, {
+        waitUntil: 'domcontentloaded',
+      });
+      const ownInventoryRow = page.getByLabel('Show details for My private chat');
+      const sharedInventoryRow = page.getByLabel('Show details for Shared scheduled session');
+      await expect(ownInventoryRow).toBeVisible();
+      await expect(ownInventoryRow.locator('[data-session-shared="true"]')).toHaveCount(0);
+      await expect(sharedInventoryRow).toBeVisible();
+      await expect(sharedInventoryRow.getByText('Shared', { exact: true })).toBeVisible();
+
+      await page.getByRole('button', { name: 'Search', exact: true }).click();
+      const palette = page.getByRole('dialog');
+      await expect(palette).toBeVisible();
+      const sharedPaletteRow = palette.locator('[cmdk-item]', {
+        hasText: 'Shared scheduled session',
+      });
+      await expect(sharedPaletteRow.getByText('Shared', { exact: true })).toBeVisible();
+      await page.keyboard.press('Escape');
 
       const { section } = await openTriggerAccess(page, projectId);
       const privateOption = section.getByRole('radio', {

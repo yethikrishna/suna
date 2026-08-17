@@ -10269,26 +10269,3 @@ stream really is dead, evidence goes stale in 15s and failures count again.
 clean. `smoke:install` passed. Surface snapshots re-recorded — additive only
 (`RUNTIME_EVIDENCE_FRESH_MS`, `shouldIgnoreProbeFailure`,
 `noteRuntimeEvidence`).
-
-### 2026-08-17 (same session, follow-up 2) — `enqueueFailed`: a failed direct send keeps its text
-
-Fifth defect in the stuck-session cluster (user report: sent "hello", bubble
-vanished, prompt never landed anywhere). A DIRECT composer send that fails can
-end in `optimisticRemove` (recovery rehydrate empty/failed) — the typed text
-was gone: no row, no retry, nothing after refresh. `failInFlight` could not
-cover it because nothing was ever queued.
-
-**Changed** — `core/session/message-queue.ts` gains pure `enqueueFailed(state,
-input, error)`: lands a never-queued entry directly in the persisted `failed`
-lane with `attempts: 1` + `lastError`. Host wiring (apps/web): store action
-`enqueueFailed` (mints ids, accepts the failed send's own wire `messageID` as
-`clientMessageId` so a retry dedupes at the proxy), called from both
-`session-chat` failure branches (upload-build failure and network failure),
-gated on `!overrides?.clientMessageId` so queue-dispatched batches are not
-double-set-aside (the drain's `fail()` already covers them).
-
-**Evidence** — TDD RED first (2 new SDK tests). `pnpm --filter @kortix/sdk
-test`: 2111 pass, 0 fail, 148 files. `typecheck` clean. `smoke:install`
-passed. Surface snapshots re-recorded — additive only (`enqueueFailed`).
-apps/web `tsc` clean apart from the known `test.each` baseline; eslint 0
-errors on changed files.

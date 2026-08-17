@@ -169,6 +169,13 @@ export interface SessionChatInputProps {
     files?: AttachedFile[];
     mode?: 'replace' | 'merge';
   } | null;
+  /**
+   * A fresh (never-before-seen) value asks the composer to open its attach
+   * (file-picker) flow — the empty Context card's "Add context" button.
+   * Id-keyed exactly like `prefill.id`: a repeat request bumps to a new id
+   * so the effect below fires again even if the composer never unmounted.
+   */
+  attachRequestId?: number | null;
 
   providers?: ProviderListResponse;
   threadContext?: {
@@ -221,6 +228,7 @@ export interface SessionChatInputProps {
   questionCanAct?: boolean;
   onQuestionAction?: () => void;
   escCount?: number;
+  parentClassName?: string;
 }
 
 /**
@@ -278,6 +286,12 @@ const EMPTY_QUEUE: QueuedMessageView[] = [];
 /** Same, for the in-flight ids. */
 const EMPTY_QUEUE_IN_FLIGHT: string[] = [];
 
+/** Stable empty defaults so a fresh `[]` per render never breaks memoization. */
+const EMPTY_AGENTS: Agent[] = [];
+const EMPTY_COMMANDS: Command[] = [];
+const EMPTY_MODELS: FlatModel[] = [];
+const EMPTY_VARIANTS: string[] = [];
+
 /** Stable identities for the command-chip subscription below. */
 const NO_SUBSCRIPTION = () => {};
 const NO_COMMAND_CHIP = () => null;
@@ -324,17 +338,17 @@ function ComposerImpl({
   stopDisabled = false,
   isSending = false,
   rewind,
-  agents = [],
+  agents = EMPTY_AGENTS,
   selectedAgent = null,
   onAgentChange,
   agentSelectorLocked = false,
-  commands = [],
+  commands = EMPTY_COMMANDS,
   onCommand,
-  models = [],
+  models = EMPTY_MODELS,
   selectedModel = null,
   onModelChange,
   modelDefaultControls,
-  variants = [],
+  variants = EMPTY_VARIANTS,
   selectedVariant = null,
   onVariantChange,
   messages,
@@ -349,6 +363,7 @@ function ComposerImpl({
   autoFocus,
   placeholder = 'Ask anything...',
   prefill = null,
+  attachRequestId = null,
   providers,
   threadContext,
   onContextClick,
@@ -366,6 +381,7 @@ function ComposerImpl({
   questionCanAct = true,
   onQuestionAction,
   escCount = 0,
+  parentClassName,
 }: SessionChatInputProps) {
   const tHardcodedUi = useTranslations('hardcodedUi');
 
@@ -427,6 +443,15 @@ function ComposerImpl({
   const handleAttachClick = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
+
+  // "Add context" (Task 5): a fresh `attachRequestId` opens the same file
+  // picker `handleAttachClick` opens for a manual click or the `/attach-file`
+  // command — see `session-composer-prefill-store.ts` for the held/id-keyed
+  // handoff this consumes.
+  useEffect(() => {
+    if (attachRequestId == null) return;
+    handleAttachClick();
+  }, [attachRequestId, handleAttachClick]);
 
   const dragHasFiles = useCallback((e: React.DragEvent<HTMLElement>) => {
     return Array.from(e.dataTransfer?.types ?? []).includes('Files');
@@ -1060,7 +1085,17 @@ function ComposerImpl({
   const showQueueStrip = Boolean(threadContext || inputSlot || queueHasRows);
 
   return (
-    <div className={COMPOSER_SHELL_CLASS}>
+    <div
+      className={cn(
+        COMPOSER_SHELL_CLASS,
+        // `'below'` docks the `/` menu as an overlay of later siblings
+        // (starter suggestions). `twMerge` replaces the shell's `z-10` so
+        // this stacking context sits above them; the dock's own `z-99` only
+        // ranks inside this shell and cannot do that job.
+        slashMenuPlacement === 'below' && 'z-50',
+        parentClassName,
+      )}
+    >
       {/*
         The "still waking" notice. Above the card, in flow, so it pushes the
         composer down rather than covering anything — the same reasoning as the
@@ -1398,9 +1433,15 @@ function ComposerImpl({
         gap moves to the dock. The horizontal inset mirrors the shell's
         `px-4 md:pr-1` gutter so the menu stays flush with the card edges.
         Empty (menu closed) it has zero height and intercepts nothing.
+
+        `z-99` only beats siblings inside THIS shell (the card is
+        `isolate z-10`). The shell itself is raised to `z-50` when placement
+        is `'below'` so this whole stacking context sits above later siblings
+        (starter suggestions). A z-index on those siblings that exceeds `z-50`
+        would cover the menu again — they must stay unstacked.
       */}
       {slashMenuPlacement === 'below' && (
-        <div id={dockId} className="absolute top-full left-4 right-4 md:right-1 mt-2.5" />
+        <div id={dockId} className="absolute top-full left-4 right-4 md:right-1 mt-3.5 z-99" />
       )}
     </div>
   );

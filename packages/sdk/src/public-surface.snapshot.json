@@ -2007,6 +2007,7 @@
     "createSessionQueue",
     "editQueued",
     "enqueue",
+    "enqueueFailed",
     "failInFlight",
     "inFlightIdsOf",
     "removeQueued",

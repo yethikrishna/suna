@@ -3241,6 +3241,21 @@ export function SessionChat({
         abandonOptimisticSend(sessionId, messageID);
         const classified = classifySessionError(err);
         setCommandError(classified);
+        // Same text-preservation rule as the network-failure branch below:
+        // the dropped optimistic bubble must leave a retryable failed-lane
+        // row behind, never silently swallow what the user typed.
+        if (!overrides?.clientMessageId) {
+          useMessageQueueStore.getState().enqueueFailed(
+            sessionId,
+            {
+              text: rawText,
+              ...(files?.length ? { files } : {}),
+              ...(mentions?.length ? { mentions } : {}),
+            },
+            classified.message,
+            messageID,
+          );
+        }
         throw err instanceof Error ? err : new Error(classified.message);
       }
       textPrompt.text = built.text;
@@ -3396,6 +3411,30 @@ export function SessionChat({
           });
       if (!result.ok) {
         setCommandError(result.error);
+        // A queue-dispatched batch (clientMessageId set) is set aside by the
+        // drain's own fail() handler — adding a second row here would
+        // duplicate it. A DIRECT composer send has no queue row at all, and
+        // its optimistic bubble can be removed by recovery — before this, the
+        // failed prompt's text simply vanished (nothing on screen, nothing to
+        // retry, gone on refresh). Land it in the persisted failed lane with
+        // its reason. `messageID` rides along as the clientMessageId so a
+        // retry after a failed-but-actually-accepted send (a 504 whose prompt
+        // landed) dedupes at the proxy instead of sending twice.
+        if (!overrides?.clientMessageId) {
+          useMessageQueueStore.getState().enqueueFailed(
+            sessionId,
+            {
+              text: rawText,
+              ...(files?.length ? { files } : {}),
+              ...(mentions?.length ? { mentions } : {}),
+              ...(overrides?.agent !== undefined ? { agent: overrides.agent } : {}),
+              ...(overrides?.model !== undefined ? { model: overrides.model } : {}),
+              ...(overrides?.variant !== undefined ? { variant: overrides.variant } : {}),
+            },
+            result.error.message,
+            messageID,
+          );
+        }
         throw result.cause instanceof Error ? result.cause : new Error(result.error.message);
       }
 

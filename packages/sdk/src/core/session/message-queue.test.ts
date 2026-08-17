@@ -5,6 +5,7 @@ import {
   claimNext,
   completeInFlight,
   createSessionQueue,
+  enqueueFailed,
   editQueued,
   enqueue,
   failInFlight,
@@ -463,5 +464,48 @@ describe('reorderQueued', () => {
     reorderQueued(before, 'c', 0);
 
     expect(before).toEqual(snapshot);
+  });
+});
+
+describe('enqueueFailed', () => {
+  test('lands a never-queued failed send directly in the failed lane with its reason', () => {
+    // A DIRECT composer send that failed never went through the queue, so
+    // failInFlight cannot set it aside — and before this existed, the failed
+    // prompt's text was simply lost (optimistic bubble removed, nothing to
+    // retry). The failed lane is the durable, persisted place for it.
+    const state = createSessionQueue();
+    const next = enqueueFailed(
+      state,
+      {
+        id: 'q-1',
+        clientMessageId: 'msg-abc',
+        text: 'hello',
+        createdAt: 1,
+      },
+      'send failed: 504',
+    );
+    expect(next.pending).toEqual([]);
+    expect(next.failed).toHaveLength(1);
+    expect(next.failed[0]).toMatchObject({
+      id: 'q-1',
+      clientMessageId: 'msg-abc',
+      text: 'hello',
+      attempts: 1,
+      lastError: 'send failed: 504',
+    });
+    // Never blocks the queue: nothing is claimed by landing in failed.
+    expect(next.inFlightId ?? null).toBeNull();
+  });
+
+  test('retryFailed puts it back at the tail with the SAME clientMessageId so the proxy dedupes a double-send', () => {
+    const state = enqueueFailed(
+      createSessionQueue(),
+      { id: 'q-1', clientMessageId: 'msg-abc', text: 'hello', createdAt: 1 },
+      'boom',
+    );
+    const retried = retryFailed(state, 'q-1');
+    expect(retried.failed).toEqual([]);
+    expect(retried.pending[0]).toMatchObject({ clientMessageId: 'msg-abc', text: 'hello' });
+    expect(retried.pending[0].lastError).toBeUndefined();
   });
 });

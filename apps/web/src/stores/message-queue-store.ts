@@ -37,6 +37,7 @@ import {
   createSessionQueue,
   editQueued,
   enqueue as enqueueIn,
+  enqueueFailed as enqueueFailedIn,
   failInFlight,
   inFlightIdsOf,
   removeQueued,
@@ -104,6 +105,19 @@ interface MessageQueueState {
   getInFlightIds: (sessionId: string) => string[];
 
   enqueue: (sessionId: string, input: EnqueueInput) => void;
+  /**
+   * Set aside a DIRECT send that failed without ever being queued, so its text
+   * survives in the failed lane with retry instead of vanishing with the
+   * removed optimistic bubble. `clientMessageId` is the failed send's own wire
+   * message id — a retry then dedupes at the proxy if the prompt actually
+   * landed despite the error.
+   */
+  enqueueFailed: (
+    sessionId: string,
+    input: EnqueueInput,
+    error: string,
+    clientMessageId?: string,
+  ) => void;
   /**
    * Hand a queue from one session-id namespace to another — the queue twin of
    * `migrateStash`. The instant shell enqueues under the ROUTE session id
@@ -301,6 +315,21 @@ export const useMessageQueueStore = create<MessageQueueState>((set, get) => {
           clientMessageId: nextId('cm'),
           createdAt: Date.now(),
         }),
+      ),
+
+    enqueueFailed: (sessionId, input, error, clientMessageId) =>
+      mutate(sessionId, (queue) =>
+        enqueueFailedIn(
+          queue,
+          {
+            // Same spread-not-field-list rule as `enqueue` above.
+            ...input,
+            id: nextId('q'),
+            clientMessageId: clientMessageId ?? nextId('cm'),
+            createdAt: Date.now(),
+          },
+          error,
+        ),
       ),
 
     adoptSessionQueue: (fromSessionId, toSessionId) => {

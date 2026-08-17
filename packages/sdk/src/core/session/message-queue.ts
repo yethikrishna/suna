@@ -312,6 +312,27 @@ export function failInFlight<TFile, TMention>(
   };
 }
 
+/**
+ * Set aside a send that failed WITHOUT ever being queued — a direct composer
+ * send whose POST errored. `failInFlight` cannot cover it (nothing was
+ * claimed), and before this existed the failed prompt's text was simply lost:
+ * the optimistic bubble was removed on recovery and no row anywhere offered a
+ * retry. The failed lane is durable (hosts persist it) and already has retry
+ * UX. Carry the send's own `clientMessageId` so a retry after a
+ * failed-but-actually-accepted send (e.g. a 504 whose prompt landed) is
+ * absorbed by the proxy's duplicate protection instead of sent twice.
+ */
+export function enqueueFailed<TFile, TMention>(
+  state: SessionQueue<TFile, TMention>,
+  input: QueuedMessageInput<TFile, TMention>,
+  error: string,
+): SessionQueue<TFile, TMention> {
+  return {
+    ...state,
+    failed: [...state.failed, { ...input, attempts: 1, lastError: error }],
+  };
+}
+
 /** Put a failed item back at the tail, with its error cleared. */
 export function retryFailed<TFile, TMention>(
   state: SessionQueue<TFile, TMention>,

@@ -504,6 +504,62 @@ export async function getSessionTranscript(
   );
 }
 
+/** 'delivering' — the control plane minted the turn but has not confirmed
+ *  OpenCode received it. 'active' — the runtime accepted it and is working. */
+export type SessionTurnState = 'delivering' | 'active';
+
+/** A turn the control plane's lifecycle authority is holding open right now. */
+export interface SessionTurn {
+  turn_token: string;
+  state: SessionTurnState;
+  message_id: string | null;
+  opencode_session_id: string | null;
+  /** Null only for a legacy authority record written before the control plane
+   *  recorded a start instant. The turn is running either way — a missing
+   *  timestamp is not a reason to read it as idle. */
+  started_at: string | null;
+  /** When the runtime confirmed the turn. Null while it is still `delivering`,
+   *  and null for an accepted turn whose ledger row never landed. */
+  accepted_at: string | null;
+}
+
+/** How the most recent turn ended. Present only when no turn is running —
+ *  it is what separates "this session has never run a turn" from "the last
+ *  one just finished". */
+export interface SessionTurnEnded {
+  turn_token: string;
+  end_reason: string | null;
+  ended_at: string | null;
+}
+
+export interface SessionTurnStatus {
+  /** Every turn running right now, newest start first. EMPTY means idle —
+   *  a session can hold more than one open turn (a trigger delivery and a web
+   *  prompt, say), so this is a list and never a single turn. */
+  turns: SessionTurn[];
+  last_ended?: SessionTurnEnded;
+}
+
+/** Server truth about this session's running turns (`GET .../turn`), answered
+ *  independently of the live stream.
+ *
+ *  `turns` comes from the control plane's LIFECYCLE AUTHORITY — the same record
+ *  the reaper renews deadlines from — so it is true for a turn the durable
+ *  ledger has not recorded yet (a boot prompt has no ledger row until the
+ *  runtime accepts it) and false for a stale ledger row left open by a write
+ *  that failed. `last_ended` is history, and history comes from the ledger,
+ *  which retains terminal rows the authority erases. */
+export async function getSessionTurn(
+  projectId: string,
+  sessionId: string,
+): Promise<SessionTurnStatus> {
+  return unwrap(
+    await backendApi.get<SessionTurnStatus>(
+      `/projects/${projectId}/sessions/${sessionId}/turn`,
+    ),
+  );
+}
+
 /** One line of a session's voice-call transcript (`kortix.voice_call_turns`).
  *  'user'/'agent' are either side of the spoken conversation; 'tool' is a
  *  record of an `ask_kortix`/`run_command` call the voice-agent worker made

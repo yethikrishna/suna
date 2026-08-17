@@ -12,6 +12,79 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-17 — session `server-truth-m1` — step 2: `getSessionTurn`, the server-truth turn reader — DONE
+
+**Files:** `packages/sdk/src/core/rest/projects-client/sessions.ts` (+`.test.ts`),
+`packages/sdk/src/core/client/kortix.ts` (the `session()` handle only),
+`packages/sdk/src/public-surface.snapshot.json`,
+`packages/sdk/src/public-type-surface.snapshot.json`. API-side work in the same
+commit is outside this package (`apps/api/src/projects/routes/r8.ts`).
+
+**What.** Step 1 landed `kortix.session_turns`, a durable per-turn ledger that
+retains terminal rows. Step 2 exposes the answer it was built for: `GET
+/v1/projects/:projectId/sessions/:sessionId/turn` and a framework-free reader.
+**Exposure only** — no phase-machine change, no drain change, no React hook, no
+`apps/web` consumer.
+
+New public names (permanent): `getSessionTurn`, `SessionTurn`, `SessionTurnEnded`,
+`SessionTurnStatus`, `SessionTurnState`. No new subpath: `src/index.ts` already
+re-exports `./core/rest/projects-client`, whose barrel already re-exports
+`./sessions`, so the three-synchronized-edit rule does not apply here. Facade:
+`kortix.session(p, s).turn()`.
+
+**`turns` is a LIST, and liveness is NOT read from the ledger.** Two properties
+of the server decide the published shape, so they are recorded here:
+
+1. The lifecycle authority (`session_sandboxes.metadata.activeTurns`) is
+   token-keyed and holds N concurrent open turns — a trigger delivery and a web
+   prompt are separate tokens, and `session_turns` has no unique constraint on
+   `session_id`. `turn: SessionTurn | null` would have reported the older of two
+   genuinely running turns as not running, and widening a published field later
+   is a major. So: `turns: SessionTurn[]`, newest start first, empty === idle.
+2. Every ledger write is a best-effort SECOND round trip whose failure the API
+   swallows. A running turn can therefore have NO row (a boot prompt has none
+   until the runtime accepts it, ~19–25s into a session start) and a finished
+   turn can keep an OPEN row for ever. `turns` is answered from the authority
+   and only decorated from the ledger; `last_ended` is history, which only the
+   ledger retains.
+
+`started_at` is therefore `string | null` — null for a legacy authority record
+that carries no start instant. A running turn is still reported; a missing
+timestamp is not a reason to publish "idle".
+
+**Wire keys are snake_case**, matching every other payload on this surface
+(`opencode_session_id`, `change_requests`, `session_id`). A camelCase body would
+have been the only one on the session surface, and these are published type names
+that cannot be renamed later without a major.
+
+`last_ended` is **optional, not nullable** — its absence is the only thing that
+separates "this session has never run a turn" from "the last one just ended".
+`activeTurns` cannot answer that at all: it is erased when a turn ends.
+
+**RED first.** Added five tests to `sessions.test.ts`, ran them, watched all five
+fail on `SyntaxError: Export named 'getSessionTurn' not found in module
+.../sessions.ts` — then implemented. The list shape added a sixth (`carries every
+concurrent turn through`); that file is 51 pass / 0 fail (was 45).
+
+**Gates (real output).**
+- baseline before any edit: `2122 pass, 0 fail`, `Ran 2122 tests across 148 files`
+- `pnpm --filter @kortix/sdk test` → `2128 pass, 0 fail`, `Ran 2128 tests across
+  148 files` (+6, exactly the new tests)
+- `pnpm --filter @kortix/sdk typecheck` → clean. The fixtures are annotated
+  (`const turn: SessionTurn`, `satisfies SessionTurnStatus`) so the annotation is
+  a second assertion. Proven load-bearing: renaming `turns` on the interface
+  makes `tsc` fail with `TS2353 ... 'turns' does not exist in type
+  'SessionTurnStatus'` in four places.
+- `pnpm --filter @kortix/sdk run smoke:install` → `OK: @kortix/sdk and
+  @kortix/executor-sdk import and construct from packed tarballs` / `✔ install
+  smoke test passed`
+- snapshots regenerated with `UPDATE_SURFACE_SNAPSHOT=1` /
+  `UPDATE_TYPE_SURFACE_SNAPSHOT=1`; diff reviewed and **purely additive** — 12
+  insertions, 0 deletions, exactly the five names above under `.`. No removal, no
+  rename. The shape change above touches field names inside those types, which
+  the snapshots do not record; it is pre-release either way, since no consumer
+  reads this endpoint yet.
+
 ### 2026-08-16 — session `session-middle-stop` — T22 (client half, JAY-600): a rewind renders truthfully and the web never prompts across it — DONE
 
 **Files:** `packages/sdk/src/core/session/rewind.ts` (+`.test.ts`),

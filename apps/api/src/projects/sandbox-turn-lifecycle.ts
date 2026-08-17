@@ -47,6 +47,12 @@ export type SandboxTurnDeliveryReconciliation = 'active' | 'inactive' | 'deferre
 export interface StoredSandboxTurn extends SandboxTurnIdentity {
   token: string;
   state: 'delivering' | 'active';
+  /**
+   * When the control plane minted this turn. Null for a legacy `activeTurn`
+   * record written before `activeTurns` existed — those carry no start instant,
+   * and inventing one would make a reader trust a number nobody measured.
+   */
+  startedAtMs: number | null;
 }
 
 let databasePromise: Promise<typeof import('../shared/db')['db']> | null = null;
@@ -416,6 +422,10 @@ function parseStoredSandboxTurn(value: unknown, expectedToken?: string): StoredS
     state: turn.state,
     opencodeSessionId: typeof turn.opencodeSessionId === 'string' ? turn.opencodeSessionId : '',
     messageId: typeof turn.messageId === 'string' ? turn.messageId : null,
+    startedAtMs:
+      typeof turn.startedAtMs === 'number' && Number.isFinite(turn.startedAtMs)
+        ? turn.startedAtMs
+        : null,
   };
 }
 

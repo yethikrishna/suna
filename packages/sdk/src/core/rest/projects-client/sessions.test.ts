@@ -1,7 +1,12 @@
 import { beforeEach, expect, mock, test } from 'bun:test';
 import { configureKortix } from '../../http/config';
 import { clearSessionFresh, isSessionFresh } from '../../http/fresh-sessions';
-import type { CreateProjectSessionInput, ProjectSession } from './sessions';
+import type {
+  CreateProjectSessionInput,
+  ProjectSession,
+  SessionTurn,
+  SessionTurnStatus,
+} from './sessions';
 import {
   createProjectSession,
   createSessionPublicShare,
@@ -14,6 +19,7 @@ import {
   getSessionAudit,
   getSessionPreviewCandidates,
   getSessionTranscript,
+  getSessionTurn,
   getVoiceTranscript,
   listProjectSessions,
   listSessionPublicShares,
@@ -344,6 +350,97 @@ test('getSessionTranscript builds the query string from limit/chars options', as
 
   await getSessionTranscript('P1', 'S1');
   expect(last().url).toBe('http://test.local/projects/P1/sessions/S1/transcript');
+});
+
+test('getSessionTurn hits GET /projects/:id/sessions/:id/turn', async () => {
+  nextResponse = { status: 200, body: { turns: [] } };
+  await getSessionTurn('P1', 'S1');
+  expect(last().url).toBe('http://test.local/projects/P1/sessions/S1/turn');
+  expect(last().method).toBe('GET');
+});
+
+// The wire keys are snake_case and this reader hands them through UNTRANSLATED.
+// Deep equality is the point: every other payload on the session surface is
+// snake_case, and these names are a published type, so a later camelCase
+// "tidy-up" would be a breaking change for every installed consumer.
+test('getSessionTurn returns a live turn verbatim', async () => {
+  // Typed, not inferred: the annotation is a second assertion — it fails to
+  // compile if a field is renamed, dropped, or retyped on the published shape.
+  const turn: SessionTurn = {
+    turn_token: 't1',
+    state: 'active',
+    message_id: 'msg_1',
+    opencode_session_id: 'ses_root',
+    started_at: '2026-08-17T00:00:00.000Z',
+    accepted_at: '2026-08-17T00:00:01.000Z',
+  };
+  nextResponse = { status: 200, body: { turns: [turn] } satisfies SessionTurnStatus };
+  const result = await getSessionTurn('P1', 'S1');
+  expect(result).toEqual({ turns: [turn] });
+});
+
+// `turns` is a LIST because a session really can hold two open turns at once —
+// a trigger delivery and a web prompt land as separate tokens. A reader that
+// collapsed them would report the older one as not running, which is the
+// phantom-idle this endpoint exists to end.
+test('getSessionTurn carries every concurrent turn through', async () => {
+  const turns: SessionTurn[] = [
+    {
+      turn_token: 't-web',
+      state: 'delivering',
+      message_id: 'msg_B',
+      opencode_session_id: null,
+      started_at: '2026-08-17T12:00:02.000Z',
+      accepted_at: null,
+    },
+    {
+      turn_token: 't-trigger',
+      state: 'active',
+      message_id: 'msg_A',
+      opencode_session_id: 'ses_root',
+      started_at: '2026-08-17T12:00:00.000Z',
+      accepted_at: '2026-08-17T12:00:00.400Z',
+    },
+  ];
+  nextResponse = { status: 200, body: { turns } satisfies SessionTurnStatus };
+  const result = await getSessionTurn('P1', 'S1');
+  expect(result.turns).toEqual(turns);
+});
+
+test('getSessionTurn surfaces last_ended when nothing is running', async () => {
+  nextResponse = {
+    status: 200,
+    body: {
+      turns: [],
+      last_ended: {
+        turn_token: 't0',
+        end_reason: 'runtime_gone',
+        ended_at: '2026-08-17T00:00:09.000Z',
+      },
+    } satisfies SessionTurnStatus,
+  };
+  const result = await getSessionTurn('P1', 'S1');
+  expect(result.turns).toEqual([]);
+  expect(result.last_ended).toEqual({
+    turn_token: 't0',
+    end_reason: 'runtime_gone',
+    ended_at: '2026-08-17T00:00:09.000Z',
+  });
+});
+
+// The whole reason `last_ended` is OPTIONAL rather than nullable: its absence is
+// what separates "this session has never run a turn" from "the last one just
+// finished", and a caller cannot make that call from an empty `turns` alone.
+test('getSessionTurn distinguishes a session that never ran a turn', async () => {
+  nextResponse = { status: 200, body: { turns: [] } satisfies SessionTurnStatus };
+  const result = await getSessionTurn('P1', 'S1');
+  expect(result.turns).toEqual([]);
+  expect(result.last_ended).toBeUndefined();
+});
+
+test('getSessionTurn throws on a failed request', async () => {
+  nextResponse = { status: 404, body: { error: 'Not found' } };
+  expect(getSessionTurn('P1', 'S1')).rejects.toThrow();
 });
 
 test('getVoiceTranscript hits GET .../voice-transcript and builds the query string from cursor/limit', async () => {

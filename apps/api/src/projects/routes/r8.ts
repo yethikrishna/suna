@@ -17,8 +17,8 @@ import {
   resolveBranchAheadState,
 } from '../git';
 import { createRoute, z } from '@hono/zod-openapi';
-import { changeRequests, projectSessions, sessionSandboxes } from '@kortix/db';
-import { and, desc, eq } from 'drizzle-orm';
+import { changeRequests, projectSessions, sessionSandboxes, sessionTurns } from '@kortix/db';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   assertAgentSessionWorkspaceAllowsRepository,
   assertProjectCapability,
@@ -32,6 +32,7 @@ import { sandboxTokenMayActOnSession } from '../lib/sandbox-token-session';
 import { AnyObject, ChangeRequestSchema, SessionStartResultSchema, projectsApp } from '../lib/app';
 import { withProjectGitAuth } from '../lib/git';
 import { UUID_V4_REGEX, normalizeString, readBody } from '../lib/serializers';
+import { storedSandboxTurns } from '../sandbox-turn-lifecycle';
 import { continueSession, restartSession, startSession, stopSession } from '../session-lifecycle';
 import { isWarmProjectSession } from '../lib/warm-sessions';
 import { dropWarmSessionMarkerOnAdopt } from './warm-sessions';
@@ -238,6 +239,223 @@ projectsApp.openapi(
       userId: loaded.userId,
     });
     return c.json(result.body, result.status as any);
+  },
+);
+
+const SessionTurnSchema = z.object({
+  turn_token: z.string(),
+  state: z.enum(['delivering', 'active']),
+  message_id: z.string().nullable(),
+  opencode_session_id: z.string().nullable(),
+  started_at: z.string().nullable(),
+  accepted_at: z.string().nullable(),
+});
+
+const SessionTurnLastEndedSchema = z.object({
+  turn_token: z.string(),
+  end_reason: z.string().nullable(),
+  ended_at: z.string().nullable(),
+});
+
+const SessionTurnResponseSchema = z.object({
+  // A LIST, not one turn: `activeTurns` is token-keyed exactly so concurrent
+  // prompts (a trigger delivery and a web prompt, say) do not clobber each
+  // other, `beginSandboxTurn` merges into it with no single-turn guard, and
+  // `session_turns` has no unique constraint on `session_id`. Returning only
+  // the newest would make the older — genuinely running — turn look idle to a
+  // caller reconciling by `message_id`.
+  turns: z.array(SessionTurnSchema),
+  last_ended: SessionTurnLastEndedSchema.optional(),
+});
+
+const RUNNING_SANDBOX_STATUSES: ReadonlySet<string> = new Set(['active', 'provisioning']);
+
+// GET /v1/projects/:projectId/sessions/:sessionId/turn
+// Server truth about which turns are running right now, and how the last one
+// ended. It reads BOTH stores, because neither can answer alone:
+//
+//  - `session_sandboxes.metadata.activeTurns` is the LIFECYCLE AUTHORITY. It is
+//    written in the same statement that grants the turn and erased in the same
+//    statement that ends it, so it — and only it — answers "is a turn running".
+//    It cannot answer anything about a turn that is over: "cleared" and "never
+//    ran" are the same read there, and it records no end reason.
+//  - `kortix.session_turns` retains the terminal row, which is why `last_ended`
+//    can exist at all. But every ledger write is a best-effort SECOND round trip
+//    whose failure `recordTurnLedger` swallows, so it is not proof of anything
+//    on its own: a running turn can have NO row (a boot prompt has none until
+//    the daemon confirms acceptance, ~19-25s into a session start, and any
+//    swallowed INSERT leaves none for the whole turn), and a finished turn can
+//    keep an OPEN row for ever (a swallowed settle on a box that keeps running
+//    is never reached by settleOrphanedSandboxTurns, which closes rows only once
+//    their sandbox has stopped).
+//
+// So: liveness from the authority, detail and history from the ledger. Reading
+// liveness from the ledger would serve both a false idle and a permanent
+// phantom-busy as truth — the exact failures this endpoint exists to end.
+
+projectsApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{projectId}/sessions/{sessionId}/turn',
+    tags: ['sessions'],
+    summary: 'GET /:projectId/sessions/:sessionId/turn',
+    ...auth,
+    request: {
+      params: z.object({ projectId: z.string(), sessionId: z.string() }),
+    },
+    responses: {
+      200: json(SessionTurnResponseSchema, 'Current turn'),
+      ...errors(400, 404),
+    },
+  }),
+  async (c: any) => {
+    const projectId = c.req.param('projectId');
+    const sessionId = c.req.param('sessionId');
+    if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+    // A read, not a mutation: the 'read' tier plus the session-content leaf,
+    // exactly like GET /sessions/:sessionId. No agent-scope assert and no
+    // canManageSharing check — an agent may ask whether its own turn is live,
+    // and a shared viewer may see that the session is busy.
+    const loaded = await loadProjectForUser(c, projectId, 'read');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_SESSION_READ,
+    );
+
+    // `callerKortixSessionId`, never the raw `c.get('sessionId')`: under a
+    // Supabase JWT that var holds the BROWSER LOGIN's id, and every KaaB
+    // isolation guard reads a non-null caller session as "a sandbox acting for
+    // one end-user, narrow it". Passing it raw 404s a signed-in human on any
+    // sibling `origin='backend'` session — one the same user's GET /sessions
+    // list returns, because project-sessions.ts goes through the helper.
+    const visible = await loadVisibleSession(loaded, sessionId, callerKortixSessionId(c));
+    if (!visible) return c.json({ error: 'Not found' }, 404);
+
+    // `session_sandboxes.session_id` is UNIQUE, so this is the session's one
+    // box. A box that is not running holds no live turn whatever its metadata
+    // still says — the same predicate settleOrphanedSandboxTurns uses to close
+    // every ledger row left open on a stopped box. Served by
+    // idx_session_sandboxes_session (plain Index Scan; measured, see below).
+    const [box] = await db
+      .select({ status: sessionSandboxes.status, metadata: sessionSandboxes.metadata })
+      .from(sessionSandboxes)
+      .where(eq(sessionSandboxes.sessionId, sessionId))
+      .limit(1);
+    const authority =
+      box && RUNNING_SANDBOX_STATUSES.has(box.status) ? storedSandboxTurns(box.metadata) : [];
+
+    // Decoration only, keyed by the tokens the authority already named: the
+    // ledger owns `accepted_at`, and it fills in an identity the authority may
+    // not carry yet. It never adds or removes a turn — an open row whose token
+    // the authority no longer holds is a swallowed settle, not a running turn.
+    // Bounded by the authority's own token list, so this is a primary-key
+    // lookup and needs no ORDER BY and no LIMIT: measured as `Index Scan using
+    // session_turns_pkey (turn_token = ANY (...))`, with the session scope as a
+    // filter — kept because a token must never read another session's row.
+    const ledger = new Map<
+      string,
+      {
+        messageId: string | null;
+        opencodeSessionId: string | null;
+        startedAt: Date;
+        acceptedAt: Date | null;
+      }
+    >();
+    if (authority.length > 0) {
+      const rows = await db
+        .select({
+          turnToken: sessionTurns.turnToken,
+          messageId: sessionTurns.messageId,
+          opencodeSessionId: sessionTurns.opencodeSessionId,
+          startedAt: sessionTurns.startedAt,
+          acceptedAt: sessionTurns.acceptedAt,
+        })
+        .from(sessionTurns)
+        .where(
+          and(
+            eq(sessionTurns.sessionId, sessionId),
+            inArray(
+              sessionTurns.turnToken,
+              authority.map((turn) => turn.token),
+            ),
+          ),
+        );
+      for (const row of rows) ledger.set(row.turnToken, row);
+    }
+
+    const live = authority
+      .map((turn) => {
+        const row = ledger.get(turn.token);
+        // The authority's own instant first: it is what the grant statement
+        // wrote. The ledger start is the fallback for a legacy `activeTurn`
+        // record, which carries none.
+        const startedAt =
+          turn.startedAtMs !== null ? new Date(turn.startedAtMs) : (row?.startedAt ?? null);
+        return {
+          startedAtMs: startedAt ? startedAt.getTime() : null,
+          turn: {
+            turn_token: turn.token,
+            // State comes from the authority: `acceptSandboxTurn` promotes the
+            // authority entry in statement one and UPSERTs the ledger in
+            // statement two, so a swallowed second write leaves the row saying
+            // `delivering` for a turn OpenCode has accepted.
+            state: turn.state,
+            message_id: turn.messageId ?? row?.messageId ?? null,
+            opencode_session_id: turn.opencodeSessionId || row?.opencodeSessionId || null,
+            started_at: startedAt ? startedAt.toISOString() : null,
+            accepted_at: row?.acceptedAt ? row.acceptedAt.toISOString() : null,
+          },
+        };
+      })
+      // Newest start first, then by token so two turns minted in the same
+      // millisecond — or two legacy records with no instant at all — still
+      // come back in a stable order.
+      .sort(
+        (a, b) =>
+          (b.startedAtMs ?? 0) - (a.startedAtMs ?? 0) ||
+          a.turn.turn_token.localeCompare(b.turn.turn_token),
+      )
+      .map((entry) => entry.turn);
+    if (live.length > 0) return c.json({ turns: live });
+
+    const [ended] = await db
+      .select({
+        turnToken: sessionTurns.turnToken,
+        endReason: sessionTurns.endReason,
+        endedAt: sessionTurns.endedAt,
+      })
+      .from(sessionTurns)
+      .where(and(eq(sessionTurns.sessionId, sessionId), eq(sessionTurns.state, 'ended')))
+      // `ended_at` is nullable, so it cannot order this on its own. Measured
+      // with EXPLAIN ANALYZE on real Postgres at 20k rows over 200 sessions:
+      // `Bitmap Index Scan on session_turns_session_idx` for the session scope,
+      // then a top-N heapsort over that session's rows only — the index orders
+      // by started_at, not by ended_at, so the sort is expected and bounded by
+      // one session's history.
+      .orderBy(desc(sessionTurns.endedAt), desc(sessionTurns.startedAt))
+      .limit(1);
+    // `last_ended` is OMITTED, never null: its absence is the only thing that
+    // separates "this session has never run a turn" from "the last one ended".
+    // It is HISTORY, and history is what the swallowed ledger write costs: a
+    // lost settle leaves the previous terminal row as the newest one. Liveness
+    // above does not depend on it.
+    return c.json({
+      turns: [],
+      ...(ended
+        ? {
+            last_ended: {
+              turn_token: ended.turnToken,
+              end_reason: ended.endReason,
+              ended_at: ended.endedAt ? ended.endedAt.toISOString() : null,
+            },
+          }
+        : {}),
+    });
   },
 );
 

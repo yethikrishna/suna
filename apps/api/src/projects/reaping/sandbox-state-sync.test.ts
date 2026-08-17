@@ -482,14 +482,38 @@ describe('the ended_at single-writer invariant', () => {
     return out;
   }
 
+  // `endedAt:` is a proxy for "assigns this column", and the bare string also
+  // appears in code that has nothing to do with compute sessions — a drizzle
+  // SELECT projection on another table with an `ended_at` column reads
+  // `endedAt: someTable.endedAt` (kortix.session_turns has one, and
+  // projects/routes/r8.ts projects it). Scope the scan to modules that could
+  // actually write THIS column: composing that statement means naming the
+  // table, through the drizzle symbol or in raw SQL. A module that never names
+  // it cannot assign it, so excluding those loses no writer — and the
+  // assertion below still pins the surviving writer by file AND hit count.
+  const NAMES_COMPUTE_SESSIONS = /sandboxComputeSessions|sandbox_compute_sessions/;
+
   test('exactly one module assigns sandbox_compute_sessions.ended_at', () => {
     const writers = sourceFiles(API_SRC)
-      .map((file) => ({
-        file: file.slice(API_SRC.length + 1),
-        hits: (readFileSync(file, 'utf8').match(/endedAt:\s/g) ?? []).length,
+      .map((file) => ({ file: file.slice(API_SRC.length + 1), src: readFileSync(file, 'utf8') }))
+      .filter((entry) => NAMES_COMPUTE_SESSIONS.test(entry.src))
+      .map((entry) => ({
+        file: entry.file,
+        hits: (entry.src.match(/endedAt:\s/g) ?? []).length,
       }))
       .filter((entry) => entry.hits > 0);
 
     expect(writers).toEqual([{ file: 'billing/repositories/compute-sessions.ts', hits: 2 }]);
+  });
+
+  // The scoping above is only sound if it cannot hide a writer. Prove the
+  // filter admits the module that owns the column rather than merely counting
+  // zero everywhere.
+  test('the scan still reaches the module that owns the column', () => {
+    const owner = sourceFiles(API_SRC).find((file) =>
+      file.endsWith(join('billing', 'repositories', 'compute-sessions.ts')),
+    );
+    expect(owner).toBeDefined();
+    expect(NAMES_COMPUTE_SESSIONS.test(readFileSync(owner as string, 'utf8'))).toBe(true);
   });
 });

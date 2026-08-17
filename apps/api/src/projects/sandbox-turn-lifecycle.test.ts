@@ -105,6 +105,10 @@ describe('daemon-delivered initial turn authority', () => {
       state: 'delivering',
       opencodeSessionId: 'ses_root',
       messageId: 'msg_turn_1',
+      // A legacy `activeTurn` record predates `startedAtMs`. Null, never a
+      // synthesized "now": GET .../turn publishes this instant, and inventing
+      // one would report a start nobody measured.
+      startedAtMs: null,
     });
     expect(
       deliveringSandboxTurn({ activeTurn: { token: 'turn-token', state: 'active' } }),
@@ -131,12 +135,15 @@ describe('daemon-delivered initial turn authority', () => {
             state: 'active',
             opencodeSessionId: 'ses_a',
             messageId: 'msg_a',
+            startedAtMs: 1700,
           },
           'token-delivering': {
             token: 'token-delivering',
             state: 'delivering',
             opencodeSessionId: 'ses_b',
             messageId: 'msg_b',
+            // Not a number: a corrupt instant reads as "unknown", not as 1970.
+            startedAtMs: 'soon',
           },
         },
         activeTurn: {
@@ -152,18 +159,21 @@ describe('daemon-delivered initial turn authority', () => {
         state: 'active',
         opencodeSessionId: 'ses_a',
         messageId: 'msg_a',
+        startedAtMs: 1700,
       },
       {
         token: 'token-delivering',
         state: 'delivering',
         opencodeSessionId: 'ses_b',
         messageId: 'msg_b',
+        startedAtMs: null,
       },
       {
         token: 'legacy-token',
         state: 'active',
         opencodeSessionId: 'ses_legacy',
         messageId: null,
+        startedAtMs: null,
       },
     ]);
   });

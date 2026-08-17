@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
+  type ActiveTurnRenewalDependencies,
   activeTurnRenewalIntervalMs,
   runActiveTurnRenewal,
   startActiveTurnRenewal,
@@ -69,7 +70,7 @@ describe('active-turn lifecycle renewal loop', () => {
     const cancelled: Array<ReturnType<typeof setTimeout>> = [];
     const timer = 101 as unknown as ReturnType<typeof setTimeout>;
 
-    const dependencies = {
+    const dependencies: ActiveTurnRenewalDependencies = {
       reap: async () => {
         runs += 1;
         return reapResult();

@@ -39,6 +39,19 @@ let deliveringTurnRecoveryCalls: Array<{
   observation: 'active' | 'terminal' | 'unknown';
 }> = [];
 let clearedTurnCalls: Array<{ sandboxId: string; token: string }> = [];
+let huskFinalizeCalls: Array<{
+  sandboxId: string;
+  externalId: string;
+  opencodeSessionId: string;
+  messageId: string | null;
+}> = [];
+let huskOutcomeBySandbox: Record<
+  string,
+  'finalized' | 'not_husk' | 'unreadable' | 'unconfirmed'
+> = {};
+/** Records husk-finalize and turn-clear calls in the order the pass makes them,
+ *  so a test can assert the husk is closed BEFORE its record is deleted. */
+let lifecycleCallOrder: string[] = [];
 
 /**
  * What the DB returns for the LAST-MOMENT deadline re-read, when it differs from
@@ -359,7 +372,18 @@ const reapAndReconcileSandboxes = (
         sandboxId,
         token,
       });
+      lifecycleCallOrder.push(`clear:${token}`);
       return true;
+    },
+    finalizeHuskTurn: async (target: {
+      sandboxId: string;
+      externalId: string;
+      opencodeSessionId: string;
+      messageId: string | null;
+    }) => {
+      huskFinalizeCalls.push(target);
+      lifecycleCallOrder.push(`husk:${target.opencodeSessionId}`);
+      return huskOutcomeBySandbox[target.sandboxId] ?? 'not_husk';
     },
   }, scope);
 
@@ -392,6 +416,9 @@ beforeEach(() => {
   turnObservationByToken = {};
   deliveringTurnRecoveryCalls = [];
   clearedTurnCalls = [];
+  huskFinalizeCalls = [];
+  huskOutcomeBySandbox = {};
+  lifecycleCallOrder = [];
   freshDeadlineBySandbox = {};
   stopClaimDeniedBySandbox = {};
 });
@@ -826,6 +853,197 @@ describe('reapAndReconcileSandboxes — the one rule: deadline_at <= now', () =>
     expect(stops).toEqual([]);
     expect(result.stopped).toBe(0);
     expect(result.lifecycleRenewed).toBe(1);
+    // Both records share ONE OpenCode root, and the abort the finalizer can
+    // issue is root-scoped. The finalizer is therefore handed the terminal
+    // turn's OWN message identity — never the live sibling's — which is the
+    // only thing that lets it refuse to abort while `msg_second` is streaming
+    // (husk-finalizer.test.ts proves the refusal against the real module).
+    expect(huskFinalizeCalls).toEqual([
+      {
+        sandboxId: 'sb-1',
+        externalId: 'ext-1',
+        opencodeSessionId: 'ses_root',
+        messageId: 'msg_first',
+      },
+    ]);
+  });
+
+  // ── the husk: "no turn in flight" is NOT "the assistant message is closed" ──
+  // The daemon answers `turn_in_flight: false` the moment OpenCode's root goes
+  // idle, even when the last assistant message was never completed. Deleting the
+  // turn record on that evidence alone leaves every client streaming the root
+  // spinning forever, with no record left that anything ran.
+  test('an accepted turn observed terminal finalizes the husk BEFORE clearing the record', async () => {
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurns: {
+            'active-token': {
+              token: 'active-token',
+              state: 'active',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_turn_1',
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    huskOutcomeBySandbox['sb-1'] = 'finalized';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(huskFinalizeCalls).toEqual([
+      {
+        sandboxId: 'sb-1',
+        externalId: 'ext-1',
+        opencodeSessionId: 'ses_root',
+        messageId: 'msg_turn_1',
+      },
+    ]);
+    expect(lifecycleCallOrder).toEqual(['husk:ses_root', 'clear:active-token']);
+    expect(r.husksFinalized).toBe(1);
+  });
+
+  // A finalizer that cannot read the box must not become a reason to KEEP the
+  // box. The record still holds the four-hour turn grant here; only the clear
+  // pulls the deadline in to the idle tail (clearSandboxTurn), and
+  // claimExpiredSandboxStop refuses to stop a box that owns turn authority. So
+  // an unreachable daemon that held its record would keep billing compute for
+  // the rest of the grant. Terminal evidence clears, whatever the finalizer did.
+  test('an unreadable transcript never holds the record: terminal evidence still clears', async () => {
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() + HOUR),
+        metadata: {
+          activeTurns: {
+            'active-token': {
+              token: 'active-token',
+              state: 'active',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_turn_1',
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    huskOutcomeBySandbox['sb-1'] = 'unreadable';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(clearedTurnCalls).toEqual([{ sandboxId: 'sb-1', token: 'active-token' }]);
+    expect(r.husksFinalized).toBe(0);
+    expect(r.stopped).toBe(0);
+  });
+
+  test('an unreadable transcript clears and stops once the deadline has expired', async () => {
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurns: {
+            'active-token': {
+              token: 'active-token',
+              state: 'active',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_turn_1',
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    huskOutcomeBySandbox['sb-1'] = 'unreadable';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(clearedTurnCalls).toEqual([{ sandboxId: 'sb-1', token: 'active-token' }]);
+    expect(r.stopped).toBe(1);
+  });
+
+  test('a turn with no opencodeSessionId is never handed to the finalizer', async () => {
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurns: {
+            'active-token': {
+              token: 'active-token',
+              state: 'active',
+              opencodeSessionId: null,
+              messageId: 'msg_turn_1',
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(huskFinalizeCalls).toEqual([]);
+    expect(clearedTurnCalls).toEqual([{ sandboxId: 'sb-1', token: 'active-token' }]);
+    expect(r.husksFinalized).toBe(0);
+  });
+
+  test('an active observation never touches the finalizer', async () => {
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurns: {
+            'active-token': {
+              token: 'active-token',
+              state: 'active',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_turn_1',
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['active-token'] = 'active';
+    activeTurnRenewalBySandbox['sb-1'] = 'renewed';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(huskFinalizeCalls).toEqual([]);
+    expect(clearedTurnCalls).toEqual([]);
+    expect(r.lifecycleRenewed).toBe(1);
+  });
+
+  test("a 'not_husk' outcome clears exactly as before", async () => {
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurns: {
+            'active-token': {
+              token: 'active-token',
+              state: 'active',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_turn_1',
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    huskOutcomeBySandbox['sb-1'] = 'not_husk';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(clearedTurnCalls).toEqual([{ sandboxId: 'sb-1', token: 'active-token' }]);
+    expect(r.husksFinalized).toBe(0);
+    expect(r.stopped).toBe(1);
   });
 
   test('a stale legacy terminal contraction cannot stop a newer active turn', async () => {

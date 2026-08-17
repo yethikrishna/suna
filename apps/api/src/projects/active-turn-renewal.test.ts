@@ -18,6 +18,7 @@ function reapResult(overrides: Partial<ReapResult> = {}): ReapResult {
     billingClosed: 0,
     skipped: 0,
     lifecycleRenewed: 0,
+    husksFinalized: 0,
     errors: 0,
     ...overrides,
   };

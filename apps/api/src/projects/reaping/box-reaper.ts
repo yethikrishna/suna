@@ -53,6 +53,7 @@ import {
   reapCandidatePredicate,
   selectReapCandidates,
 } from './box-queries';
+import { finalizeHuskTurn } from './husk-finalizer';
 import { decideReconcile } from './policy';
 import { applyStoppedState } from './sandbox-state-sync';
 import { stopExpiredBox } from './stop-box';
@@ -66,6 +67,7 @@ export interface ReapResult {
   billingClosed: number;
   skipped: number; // deadline still in the future, or provider said 'unknown'
   lifecycleRenewed: number; // provider-native timer renewed for a live Kortix deadline
+  husksFinalized: number; // an orphaned open assistant turn we closed server-side
   errors: number;
 }
 
@@ -78,6 +80,7 @@ export const EMPTY_REAP_RESULT: ReapResult = {
   billingClosed: 0,
   skipped: 0,
   lifecycleRenewed: 0,
+  husksFinalized: 0,
   errors: 0,
 };
 
@@ -86,6 +89,7 @@ export interface SandboxReaperDependencies {
   observeSandboxTurn: typeof observeSandboxTurn;
   reconcileSandboxTurnDelivery: typeof reconcileSandboxTurnDelivery;
   clearSandboxTurn: typeof clearSandboxTurn;
+  finalizeHuskTurn: typeof finalizeHuskTurn;
 }
 
 const DEFAULT_REAPER_DEPENDENCIES: SandboxReaperDependencies = {
@@ -93,6 +97,7 @@ const DEFAULT_REAPER_DEPENDENCIES: SandboxReaperDependencies = {
   observeSandboxTurn,
   reconcileSandboxTurnDelivery,
   clearSandboxTurn,
+  finalizeHuskTurn,
 };
 
 export interface SandboxReaperScope {
@@ -171,6 +176,25 @@ export async function reapAndReconcileSandboxes(
                 row.sandboxId,
                 turn,
               );
+              // The daemon reported no turn in flight, but OpenCode can still be
+              // holding an assistant message that was never closed (a killed
+              // model call, a lost session.idle). Clearing the record here
+              // without closing that message leaves every client streaming this
+              // root spinning forever. Close it through the session-scoped
+              // OpenCode abort — /kortix/abort resolves the PINNED session, not
+              // this turn's session, so it cannot be used here.
+              // `messageId` is what keeps that abort honest: every prompt of a
+              // session shares one root, so the finalizer must prove the open
+              // assistant message answers THIS record before it aborts.
+              if (observation === 'terminal' && turn.opencodeSessionId) {
+                const huskOutcome = await dependencies.finalizeHuskTurn({
+                  sandboxId: row.sandboxId,
+                  externalId: row.externalId,
+                  opencodeSessionId: turn.opencodeSessionId,
+                  messageId: turn.messageId,
+                });
+                if (huskOutcome === 'finalized') result.husksFinalized += 1;
+              }
               if (turn.state === 'delivering') {
                 const reconciliation = await dependencies.reconcileSandboxTurnDelivery(
                   row.sandboxId,
@@ -192,6 +216,14 @@ export async function reapAndReconcileSandboxes(
               } else if (observation === 'active') {
                 observedActiveTokens.push(turn.token);
               } else if (observation === 'terminal') {
+                // Terminal evidence removes the record, whatever the finalizer
+                // managed to close. Holding the record to retry an unreadable
+                // finalize would keep the box's four-hour turn grant instead of
+                // letting clearSandboxTurn pull the deadline in to the 15-minute
+                // idle tail, and claimExpiredSandboxStop refuses to stop a box
+                // that owns turn authority — so a daemon we cannot reach would
+                // buy itself compute it can no longer justify. The husk repair
+                // is best-effort; the deadline is not.
                 await dependencies.clearSandboxTurn(row.sandboxId, turn.token);
               } else if (row.deadlineAt.getTime() <= now.getTime()) {
                 await dependencies.clearSandboxTurn(row.sandboxId, turn.token);

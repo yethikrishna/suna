@@ -52,6 +52,11 @@ import {
   startSession,
   stopSession,
 } from '../session-lifecycle';
+import {
+  PROMPT_TEXT_PREVIEW_CHARS,
+  flattenPromptText,
+  sanitizeInboxPromptParts,
+} from '../session-lifecycle/prompt-parts';
 import { isWarmProjectSession } from '../lib/warm-sessions';
 import { dropWarmSessionMarkerOnAdopt } from './warm-sessions';
 import { refreshCrTips } from './shared';
@@ -496,8 +501,6 @@ projectsApp.openapi(
 // live turn does not hold a prompt back: OpenCode queues it by arrival.
 
 const PROMPT_WIRE_MESSAGE_ID = /^msg_[0-9a-f]{12}[A-Za-z0-9]{14}$/;
-const PROMPT_MAX_PARTS = 64;
-const PROMPT_TEXT_PREVIEW_CHARS = 2000;
 const PROMPT_LIST_LIMIT = 200;
 
 const SessionPromptSchema = z.object({
@@ -609,15 +612,6 @@ function serializeRemovedPrompt(row: PromptRow) {
   };
 }
 
-/** Flatten a prompt body to the plain text every pre-inbox reader still wants
- *  (the title generator, the dead-letter alert, `GET /prompts`'s preview). */
-function flattenPromptText(parts: Array<{ type: string; text?: string }>): string {
-  return parts
-    .filter((part) => part.type === 'text' && typeof part.text === 'string')
-    .map((part) => part.text as string)
-    .join('\n')
-    .trim();
-}
 
 projectsApp.openapi(
   createRoute({
@@ -676,22 +670,10 @@ projectsApp.openapi(
       // dropped turn is worse than a refused request.
       return c.json({ error: 'message_id must be an OpenCode wire message id' }, 400);
     }
-    if (rawParts.length < 1 || rawParts.length > PROMPT_MAX_PARTS) {
-      return c.json({ error: `parts must hold 1..${PROMPT_MAX_PARTS} entries` }, 400);
-    }
-    const parts = rawParts.map((part: any) => ({
-      type: part?.type === 'file' || part?.type === 'agent' ? part.type : 'text',
-      ...(typeof part?.text === 'string' ? { text: part.text } : {}),
-      ...(typeof part?.mime === 'string' ? { mime: part.mime } : {}),
-      ...(typeof part?.url === 'string' ? { url: part.url } : {}),
-      ...(typeof part?.filename === 'string' ? { filename: part.filename } : {}),
-      ...(typeof part?.name === 'string' ? { name: part.name } : {}),
-      ...(part?.source === undefined ? {} : { source: part.source }),
-    }));
+    const sanitized = sanitizeInboxPromptParts(rawParts);
+    if ('error' in sanitized) return c.json({ error: sanitized.error }, 400);
+    const parts = sanitized.parts;
     const text = flattenPromptText(parts);
-    if (!text && !parts.some((part: any) => part.type !== 'text')) {
-      return c.json({ error: 'parts must carry text' }, 400);
-    }
 
     const overridesInput = (body.overrides ?? {}) as Record<string, unknown>;
     const model = overridesInput.model as { providerID?: unknown; modelID?: unknown } | null;

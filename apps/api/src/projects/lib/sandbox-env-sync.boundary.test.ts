@@ -15,7 +15,7 @@
 // The probe is the secret-CRUD fan-out rather than the prompt path, because the
 // fan-out is the caller that does NOT fail soft — a refusal reaches its report
 // verbatim, which is the only place the decision is observable as a message.
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 
 import * as realProviders from '../../platform/providers';
 import * as realSecrets from '../secrets';
@@ -148,6 +148,13 @@ const ORIGINAL_FETCH = globalThis.fetch;
 
 const { __resetNetworkBoundaryArmCacheForTests, propagateProjectSecretsToActiveSandboxes } =
   await import('./sandbox-env-sync');
+
+// The stub above is installed at module scope, so without this every file that
+// runs after this one in the same process inherits it. That is the leak class
+// this suite already gets bitten by; ORIGINAL_FETCH exists to be put back.
+afterAll(() => {
+  (globalThis as { fetch: unknown }).fetch = ORIGINAL_FETCH;
+});
 
 beforeEach(() => {
   __resetNetworkBoundaryArmCacheForTests();

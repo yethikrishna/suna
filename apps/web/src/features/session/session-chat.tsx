@@ -2152,6 +2152,16 @@ export function SessionChat({
     () => (messages ? [...messages].reverse().find((m) => m.info.role === 'user') : undefined),
     [messages],
   );
+  // A NEW user bubble in the transcript is a queue row that just landed —
+  // OpenCode persisted a forwarded prompt. Re-read the inbox NOW so the row
+  // leaves the strip in the same beat its bubble appears, instead of on the
+  // next poll: the two were visible together for up to a poll interval.
+  const newestUserBubbleId = lastUserMessage?.info.id;
+  useEffect(() => {
+    if (!newestUserBubbleId) return;
+    void promptInbox.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newestUserBubbleId]);
   const lastUserMsgIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!lastUserMessage) return;

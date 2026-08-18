@@ -40,7 +40,7 @@ import { mintSessionWireMessageId } from './use-opencode-sessions/messages';
  * they can SEE it. Not polling an empty list meant only a full page load ever
  * showed those rows — and the same gap hid a prompt queued from a second tab.
  */
-export const SESSION_PROMPTS_POLL_MS = 3_000;
+export const SESSION_PROMPTS_POLL_MS = 1_000;
 /** The floor for an EMPTY list. Slow enough to be free, fast enough that a
  *  prompt handed back by the server appears while the user is still looking. */
 export const SESSION_PROMPTS_IDLE_POLL_MS = 15_000;

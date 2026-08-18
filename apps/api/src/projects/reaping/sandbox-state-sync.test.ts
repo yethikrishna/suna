@@ -17,6 +17,8 @@ import { mockConfigModule } from './test-support/mock-config';
 type UpdateCall = {
   table: unknown;
   updates: Record<string, unknown>;
+  /** The WHERE the write was guarded by — a CAS is only a CAS if it is there. */
+  predicate: unknown;
   inTransaction: boolean;
 };
 
@@ -30,14 +32,17 @@ let preserveCalls: Array<{ sandboxId: string; reason: string; stopReason: string
 let inTransaction = false;
 /** When set, every `tx.execute` fails with this message. */
 let executeThrows: string | null = null;
+/** When set, every `db.update(...).where(...)` fails with this message. */
+let updateThrows: string | null = null;
 
 mock.module('../../config', () => mockConfigModule());
 
 const updater = (table: unknown) => ({
   set: (updates: Record<string, unknown>) => ({
-    where: async () => {
+    where: async (predicate?: unknown) => {
       events.push(`update:${table === sessionSandboxes ? 'sandbox' : 'session'}`);
-      updateCalls.push({ table, updates, inTransaction });
+      updateCalls.push({ table, updates, predicate, inTransaction });
+      if (updateThrows) throw new Error(updateThrows);
     },
   }),
 });
@@ -127,25 +132,27 @@ mock.module('../runtime-identity', () => ({
 }));
 
 const {
+  MIDTURN_STOP_CONFIRMATION_MS,
   applyStoppedState,
+  clearPendingStopObservation,
+  decideStoppedObservation,
+  markPendingStopObservation,
   reconcileSandboxRemovedByExternalId,
   reconcileSandboxStoppedByExternalId,
 } = await import('./sandbox-state-sync');
 
-/** Flatten a drizzle SQL expression (including its bound params) to text, so a
- *  test can assert what the write actually asks Postgres to do. */
+/** Flatten a drizzle SQL expression (including its bound params and the nested
+ *  fragments an `and(...)` composes) to text, so a test can assert what the
+ *  write actually asks Postgres to do. */
 function describeSql(expression: unknown): string {
-  const chunks = (expression as { queryChunks?: unknown[] } | null)?.queryChunks ?? [];
-  return chunks
-    .map((chunk) => {
-      if (typeof chunk === 'string') return chunk;
-      if (!chunk || typeof chunk !== 'object') return '';
-      const value = (chunk as { value?: unknown }).value;
-      if (Array.isArray(value)) return value.join('');
-      if (typeof value === 'string') return value;
-      return (chunk as { name?: string }).name ?? '';
-    })
-    .join(' ');
+  if (expression === null || expression === undefined) return '';
+  if (typeof expression === 'string') return expression;
+  if (typeof expression !== 'object') return String(expression);
+  const node = expression as { queryChunks?: unknown[]; value?: unknown; name?: unknown };
+  if (Array.isArray(node.queryChunks)) return node.queryChunks.map(describeSql).join(' ');
+  if (Array.isArray(node.value)) return node.value.join('');
+  if (typeof node.value === 'string' || typeof node.value === 'number') return String(node.value);
+  return typeof node.name === 'string' ? node.name : '';
 }
 
 const isSqlExpression = (value: unknown): boolean =>
@@ -172,6 +179,7 @@ beforeEach(() => {
   preserveCalls = [];
   inTransaction = false;
   executeThrows = null;
+  updateThrows = null;
 });
 
 describe('applyStoppedState', () => {
@@ -379,6 +387,69 @@ describe('reconcileSandboxStoppedByExternalId', () => {
     expect(events).toEqual([]);
   });
 
+  const midTurnRow = (extraMetadata: Record<string, unknown> = {}) => [
+    {
+      sandboxId: 'sb-1',
+      sessionId: 'sess-1',
+      status: 'active',
+      metadata: {
+        activeTurns: {
+          'turn-1': {
+            token: 'turn-1',
+            state: 'active',
+            opencodeSessionId: 'ses_root',
+            messageId: 'msg_1',
+          },
+        },
+        ...extraMetadata,
+      },
+    },
+  ];
+
+  test('a first OBSERVED stop mid-turn records the marker instead of parking', async () => {
+    selectedRows = midTurnRow();
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      expect(
+        await reconcileSandboxStoppedByExternalId('ext-1', NOW, { confirmMidTurnStop: true }),
+      ).toBe(false);
+    } finally {
+      console.warn = warn;
+    }
+
+    // No meter settle, no status flip — the row is still live.
+    expect(events).not.toContain('pause:sb-1');
+    expect(sessionUpdate()).toBeUndefined();
+    expect(describeSql(sandboxUpdate()?.updates.metadata)).toContain('pendingStopObservedAtMs');
+  });
+
+  test('a second observed stop a pass later parks the box', async () => {
+    selectedRows = midTurnRow({
+      pendingStopObservedAtMs: NOW.getTime() - MIDTURN_STOP_CONFIRMATION_MS,
+    });
+
+    expect(
+      await reconcileSandboxStoppedByExternalId('ext-1', NOW, { confirmMidTurnStop: true }),
+    ).toBe(true);
+    expect(events).toContain('pause:sb-1');
+    expect(sessionUpdate()?.updates.status).toBe('stopped');
+  });
+
+  // Account deletion, the orphan-box sweep, and the access path in
+  // projects/routes/shared.ts all call this AFTER stopping the box themselves.
+  // Making those wait for a second observation would leave the row `active`
+  // against a box that is off — still billing — and shared.ts reads the row back
+  // expecting `stopped` before it resumes it, so a deferred park breaks session
+  // access outright.
+  test('REGRESSION: a caller that already stopped the box parks it unconditionally', async () => {
+    selectedRows = midTurnRow();
+
+    expect(await reconcileSandboxStoppedByExternalId('ext-1', NOW)).toBe(true);
+    expect(events).toContain('pause:sb-1');
+    expect(sandboxUpdate()?.updates.status).toBe('stopped');
+  });
+
   test('an expired wake fence does not hide a provider-stopped sandbox', async () => {
     selectedRows = [
       {
@@ -394,6 +465,174 @@ describe('reconcileSandboxStoppedByExternalId', () => {
 
     expect(await reconcileSandboxStoppedByExternalId('ext-1', NOW)).toBe(true);
     expect(events).toContain('pause:sb-1');
+  });
+});
+
+// ═══ THE MID-TURN PARK THIS CLOSES ═══
+// Incident 2026-08-17T20:40:03Z (session 0fc6897a, Daytona f468056d): ONE
+// provider read of `stopped` durably parked a box that was running a turn,
+// `stopReason: provider_reconcile`. `stopping` and `pending_stop` both map to
+// `stopped` (platform/providers/daytona-state.ts), so a box mid-transition — or
+// a single misread — settles its turns `runtime_gone` and kicks its client to
+// the wake flow with no way back. This is the wake fence, mirrored to the stop
+// direction: while turn authority exists the park needs TWO observations.
+describe('decideStoppedObservation — one stopped read is not proof mid-turn', () => {
+  const turn = {
+    activeTurns: {
+      'turn-1': {
+        token: 'turn-1',
+        state: 'active',
+        opencodeSessionId: 'ses_root',
+        messageId: 'msg_1',
+      },
+    },
+  };
+
+  test('REGRESSION: a box with NO turn authority parks on the first read', () => {
+    // An idle box must not gain a pass of latency, or every ordinary park is
+    // one reaper cadence later and its meter runs that much longer.
+    expect(decideStoppedObservation(null, NOW)).toBe('park');
+    expect(decideStoppedObservation({}, NOW)).toBe('park');
+    expect(decideStoppedObservation({ activeTurns: {} }, NOW)).toBe('park');
+  });
+
+  test('a first stopped read on a box holding a turn awaits confirmation', () => {
+    expect(decideStoppedObservation(turn, NOW)).toBe('await_confirmation');
+  });
+
+  test('a second read a full pass later confirms the park', () => {
+    const observedAtMs = NOW.getTime() - MIDTURN_STOP_CONFIRMATION_MS;
+    expect(
+      decideStoppedObservation({ ...turn, pendingStopObservedAtMs: observedAtMs }, NOW),
+    ).toBe('park');
+  });
+
+  test('a second read INSIDE the same pass window is not a second pass', () => {
+    // Two observations that could come from one provider transition prove
+    // nothing. Only a marker that survived a whole pass does.
+    expect(
+      decideStoppedObservation(
+        { ...turn, pendingStopObservedAtMs: NOW.getTime() - MIDTURN_STOP_CONFIRMATION_MS + 1 },
+        NOW,
+      ),
+    ).toBe('await_confirmation');
+  });
+
+  test('a marker nothing can read is not a confirmation', () => {
+    // Fails toward the LIVE box: a hand-edited or truncated value must not park
+    // a running turn, and markPendingStopObservation overwrites it.
+    for (const value of ['soon', null, Number.NaN, -1, {}]) {
+      expect(decideStoppedObservation({ ...turn, pendingStopObservedAtMs: value }, NOW)).toBe(
+        'await_confirmation',
+      );
+    }
+  });
+
+  test('a marker from the future cannot confirm', () => {
+    expect(
+      decideStoppedObservation({ ...turn, pendingStopObservedAtMs: NOW.getTime() + 60_000 }, NOW),
+    ).toBe('await_confirmation');
+  });
+
+  test('the confirmation window is shorter than one active-turn renewal pass', () => {
+    // The lane runs every 20s (projects/active-turn-renewal.ts). A window at or
+    // above that cadence costs a second pass for every genuine park.
+    expect(MIDTURN_STOP_CONFIRMATION_MS).toBeLessThan(20_000);
+  });
+});
+
+describe('the pending stop marker', () => {
+  const stampedAtMs = (): number => {
+    const match = /"pendingStopObservedAtMs":(\d+)/.exec(
+      describeSql(sandboxUpdate()?.updates.metadata),
+    );
+    return match ? Number(match[1]) : Number.NaN;
+  };
+
+  test('records the observation instant as a merge, never an assign', async () => {
+    await markPendingStopObservation('sb-1');
+
+    const rendered = describeSql(sandboxUpdate()?.updates.metadata);
+    expect(rendered).toContain('pendingStopObservedAtMs');
+    // activeTurns and lastAliveAt live in this column too.
+    expect(rendered).toContain('coalesce');
+  });
+
+  // ═══ THE SHORTENED WINDOW THIS CLOSES ═══
+  // The reaper captures ONE `now` at pass start and carries it through a batch
+  // of up to 100 provider round-trips. Stamping the marker with that clock
+  // backdates the window by however long the pass took to reach the row, so a
+  // slow pass plus one read from either of the other two observers — both of
+  // which use a fresh clock — confirms a park inside ONE provider transition,
+  // which is precisely what the 15s window exists to make impossible.
+  test('REGRESSION: stamps the instant of THIS observation, not a caller pass clock', async () => {
+    const before = Date.now();
+    await markPendingStopObservation('sb-1');
+    const after = Date.now();
+
+    expect(stampedAtMs()).toBeGreaterThanOrEqual(before);
+    expect(stampedAtMs()).toBeLessThanOrEqual(after);
+  });
+
+  test('never resets a marker that is already counting', async () => {
+    // A second pass must be able to CONFIRM. If each pass rewrote the instant,
+    // the window would restart for ever and the box could never park. So the
+    // write is a CAS: it lands only when no readable marker is there yet.
+    await markPendingStopObservation('sb-1');
+
+    const predicate = describeSql(sandboxUpdate()?.predicate);
+    expect(predicate).toContain('pendingStopObservedAtMs');
+    expect(predicate).toContain('sb-1');
+    // Only a live row — a parked box has already erased its marker.
+    expect(predicate).toContain('active');
+  });
+
+  // ═══ THE PERMANENT VETO THIS CLOSES ═══
+  // reconcileSandboxStoppedByExternalId applies the confirmation gate to every
+  // row that is not already stopped/archived, and `provisioning` rows hold turn
+  // authority: claimInPlaceRuntimeRecovery keeps external_id and the whole
+  // metadata object (activeTurns included), and beginSandboxTurn accepts
+  // `status IN ('active','provisioning')`. A CAS that matched only `active`
+  // wrote nothing there, so the decision stayed `await_confirmation` FOR EVER:
+  // the row never parked, the box was never swept, and its session_turns rows
+  // answered "a turn is running" permanently — the stuck-forever class this
+  // branch exists to remove.
+  test('REGRESSION: the CAS matches every row the gate is applied to', async () => {
+    await markPendingStopObservation('sb-1');
+
+    const predicate = describeSql(sandboxUpdate()?.predicate);
+    expect(predicate).toContain('active');
+    expect(predicate).toContain('provisioning');
+  });
+
+  test('a running observation drops the marker', async () => {
+    await clearPendingStopObservation('sb-1');
+
+    expect(describeSql(sandboxUpdate()?.updates.metadata)).toContain(
+      "- 'pendingStopObservedAtMs'",
+    );
+  });
+
+  test('a failed marker write never fails the pass', async () => {
+    updateThrows = 'db down';
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      await expect(markPendingStopObservation('sb-1')).resolves.toBeUndefined();
+      await expect(clearPendingStopObservation('sb-1')).resolves.toBeUndefined();
+    } finally {
+      console.warn = warn;
+    }
+  });
+
+  test('the stop write erases the marker, so a resumed box starts clean', async () => {
+    // Otherwise a box that was parked, resumed, and given a new turn parks again
+    // on the very first transient stopped read — the marker is already aged.
+    await applyStoppedState(write);
+
+    expect(describeSql(sandboxUpdate()?.updates.metadata)).toContain(
+      "- 'pendingStopObservedAtMs'",
+    );
   });
 });
 

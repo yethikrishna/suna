@@ -7,7 +7,12 @@ import { mockConfigModule } from './reaping/test-support/mock-config';
 // ── mock state ──────────────────────────────────────────────────────────────
 let candidates: any[] = [];
 let appRuntimeKeepRows: any[] = [];
-let statusByExternal: Record<string, 'running' | 'stopped' | 'removed' | 'unknown'> = {};
+// `terminal` is a real provider answer (Daytona `error`, Platinum `failed`), so
+// the fixture has to be able to express it — see decideReconcile.
+let statusByExternal: Record<
+  string,
+  'running' | 'stopped' | 'removed' | 'terminal' | 'unknown'
+> = {};
 let stopErrorByExternal: Record<string, Error> = {};
 let stops: string[] = [];
 let stopsByProvider: Array<{ provider: string; externalId: string }> = [];
@@ -33,6 +38,11 @@ let activeTurnRenewalBySandbox: Record<string, 'renewed' | 'inactive'> = {};
 let activeTurnRenewalCalls: Array<{ sandboxId: string; token: string }> = [];
 let deliveringTurnObservationBySandbox: Record<string, 'active' | 'terminal' | 'unknown'> = {};
 let turnObservationByToken: Record<string, 'active' | 'terminal' | 'unknown'> = {};
+/** Every record this pass actually PROBED. The drip is counted from probes, so
+ *  a test has to be able to tell "the daemon said nothing" from "nobody asked". */
+let turnObservationCalls: Array<{ sandboxId: string; token: string }> = [];
+/** Did the daemon ANSWER this token's probe at all? False = nothing came back. */
+let daemonAnsweredByToken: Record<string, boolean> = {};
 /** The daemon's own word for HOW the turn ended, when it reported one. */
 let daemonTurnEndBySandbox: Record<string, 'completed' | 'failed' | 'abandoned'> = {};
 let deliveringTurnRecoveryCalls: Array<{
@@ -42,6 +52,8 @@ let deliveringTurnRecoveryCalls: Array<{
   reason?: string;
 }> = [];
 let clearedTurnCalls: Array<{ sandboxId: string; token: string }> = [];
+/** Sandboxes handed the bounded `turn_unconfirmed` deadline drip this pass. */
+let unconfirmedTurnDrips: string[] = [];
 // Recorded separately from `clearedTurnCalls` so the ledger reason is asserted
 // on its own, without every existing exact-equality assertion having to carry
 // it.
@@ -366,13 +378,21 @@ const reapAndReconcileSandboxes = (
       _externalId: string,
       sandboxId?: string,
       turn?: { token?: string },
-    ) => ({
-      observation:
-        (turn?.token ? turnObservationByToken[turn.token] : undefined) ??
-        deliveringTurnObservationBySandbox[sandboxId ?? ''] ??
-        'unknown',
-      endReason: daemonTurnEndBySandbox[sandboxId ?? ''] ?? null,
-    }),
+    ) => {
+      turnObservationCalls.push({ sandboxId: sandboxId ?? '', token: turn?.token ?? '' });
+      return {
+        observation:
+          (turn?.token ? turnObservationByToken[turn.token] : undefined) ??
+          deliveringTurnObservationBySandbox[sandboxId ?? ''] ??
+          'unknown',
+        endReason: daemonTurnEndBySandbox[sandboxId ?? ''] ?? null,
+        // The daemon answering AT ALL is a separate fact from what it said. The
+        // default is true because the ordinary unreadable answer is a 200 from
+        // an agent build that omits the turn fields; a daemon that answers
+        // nothing is the explicit case each test opts into.
+        daemonAnswered: daemonAnsweredByToken[turn?.token ?? ''] ?? true,
+      };
+    },
     reconcileSandboxTurnDelivery: async (
       sandboxId: string,
       token: string,
@@ -410,6 +430,10 @@ const reapAndReconcileSandboxes = (
       lifecycleCallOrder.push(`husk:${target.opencodeSessionId}`);
       return huskOutcomeBySandbox[target.sandboxId] ?? 'not_husk';
     },
+    extendUnconfirmedTurnDeadline: async (sandboxId: string) => {
+      unconfirmedTurnDrips.push(sandboxId);
+      return true;
+    },
   }, scope);
 
 const HOUR = 3_600_000;
@@ -439,10 +463,13 @@ beforeEach(() => {
   activeTurnRenewalCalls = [];
   deliveringTurnObservationBySandbox = {};
   turnObservationByToken = {};
+  turnObservationCalls = [];
+  daemonAnsweredByToken = {};
   daemonTurnEndBySandbox = {};
   deliveringTurnRecoveryCalls = [];
   clearedTurnCalls = [];
   clearedTurnReasons = [];
+  unconfirmedTurnDrips = [];
   ledgerSettleStatements = [];
   huskFinalizeCalls = [];
   huskOutcomeBySandbox = {};
@@ -502,7 +529,7 @@ describe('provider-neutral turn observation', () => {
         { opencodeSessionId: 'ses_root', messageId: 'msg_turn_1' },
       );
 
-      expect(observation).toEqual({ observation: 'active', endReason: null });
+      expect(observation).toEqual({ observation: 'active', endReason: null, daemonAnswered: true });
       expect((requested as URL | null)?.pathname).toBe('/kortix/health');
       expect((requested as URL | null)?.searchParams.get('turn')).toBe('1');
       expect((requested as URL | null)?.searchParams.get('turn_session_id')).toBe('ses_root');
@@ -523,7 +550,42 @@ describe('provider-neutral turn observation', () => {
         },
         'ext-1',
       ),
-    ).toEqual({ observation: 'unknown', endReason: null });
+    ).toEqual({ observation: 'unknown', endReason: null, daemonAnswered: false });
+  });
+
+  // ═══ THE TWO KINDS OF `unknown` ═══
+  // The reaper's drip may keep a box alive on the first and must never keep one
+  // alive on the second, so the reading has to tell them apart. A build that
+  // predates the turn fields answers 200 without them
+  // (apps/kortix-sandbox-agent-server/src/routes/health.ts adds them only when
+  // it can observe the turn) — the runtime is UP and only its account of the
+  // turn is missing. Nothing coming back is the opposite fact.
+  test('a 200 without the turn fields is unknown, but the daemon ANSWERED', async () => {
+    const server = Bun.serve({ port: 0, fetch: () => Response.json({ daemon: 'ok' }) });
+    try {
+      expect(
+        await observeSandboxTurn(
+          { resolveEndpoint: async () => ({ url: `http://127.0.0.1:${server.port}`, headers: {} }) },
+          'ext-1',
+        ),
+      ).toEqual({ observation: 'unknown', endReason: null, daemonAnswered: true });
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test('a non-2xx is the proxy refusing, not the daemon answering', async () => {
+    const server = Bun.serve({ port: 0, fetch: () => new Response('bad gateway', { status: 502 }) });
+    try {
+      expect(
+        await observeSandboxTurn(
+          { resolveEndpoint: async () => ({ url: `http://127.0.0.1:${server.port}`, headers: {} }) },
+          'ext-1',
+        ),
+      ).toEqual({ observation: 'unknown', endReason: null, daemonAnswered: false });
+    } finally {
+      server.stop(true);
+    }
   });
 
   // `turn_in_flight: false` is several different endings and only the daemon
@@ -542,7 +604,7 @@ describe('provider-neutral turn observation', () => {
           'sb-1',
           { opencodeSessionId: 'ses_root', messageId: 'msg_turn_1' },
         ),
-      ).toEqual({ observation: 'terminal', endReason: 'failed' });
+      ).toEqual({ observation: 'terminal', endReason: 'failed', daemonAnswered: true });
     } finally {
       server.stop(true);
     }
@@ -558,7 +620,7 @@ describe('provider-neutral turn observation', () => {
           { resolveEndpoint: async () => ({ url: `http://127.0.0.1:${server.port}`, headers: {} }) },
           'ext-1',
         ),
-      ).toEqual({ observation: 'terminal', endReason: null });
+      ).toEqual({ observation: 'terminal', endReason: null, daemonAnswered: true });
     } finally {
       server.stop(true);
     }
@@ -577,7 +639,7 @@ describe('provider-neutral turn observation', () => {
           { resolveEndpoint: async () => ({ url: `http://127.0.0.1:${server.port}`, headers: {} }) },
           'ext-1',
         ),
-      ).toEqual({ observation: 'terminal', endReason: null });
+      ).toEqual({ observation: 'terminal', endReason: null, daemonAnswered: true });
     } finally {
       server.stop(true);
     }
@@ -747,7 +809,12 @@ describe('reapAndReconcileSandboxes — the one rule: deadline_at <= now', () =>
     expect(timeoutRenewals).toEqual([{ provider: 'daytona', externalId: 'ext-1' }]);
   });
 
-  test('does not probe a delivery before its grace deadline', async () => {
+  test('never ACTS on a terminal read before the delivery grace deadline', async () => {
+    // A delivering record can precede OpenCode persistence by a few seconds, so
+    // inside its grace `turn_in_flight === false` proves nothing — the prompt
+    // may simply not have landed yet. The record IS still probed (that answer is
+    // the only evidence the drip below can be counted from); what the grace
+    // suppresses is acting on it.
     candidates = [
       candidate({
         deadlineAt: new Date(NOW.getTime() + 1),
@@ -767,8 +834,42 @@ describe('reapAndReconcileSandboxes — the one rule: deadline_at <= now', () =>
     const r = await reapAndReconcileSandboxes(NOW);
 
     expect(deliveringTurnRecoveryCalls).toEqual([]);
+    expect(clearedTurnCalls).toEqual([]);
+    expect(huskFinalizeCalls).toEqual([]);
+    expect(turnObservationCalls).toEqual([{ sandboxId: 'sb-1', token: 'delivery-token' }]);
     expect(r.stopped).toBe(0);
     expect(r.lifecycleRenewed).toBe(1);
+  });
+
+  test('promotes a delivering record the daemon confirms in flight inside its grace', async () => {
+    // The repair is safe in the other direction: `turn_in_flight === true` is
+    // positive proof the prompt reached OpenCode, so the record earns its
+    // acceptance immediately instead of waiting out a grace it no longer needs.
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() + 60_000),
+        metadata: {
+          activeTurn: {
+            token: 'delivery-token',
+            state: 'delivering',
+            opencodeSessionId: 'ses_root',
+            messageId: 'msg_turn_1',
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'active';
+    activeTurnRenewalBySandbox['sb-1'] = 'renewed';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(deliveringTurnRecoveryCalls).toEqual([
+      { sandboxId: 'sb-1', token: 'delivery-token', observation: 'active' },
+    ]);
+    expect(activeTurnRenewalCalls).toEqual([{ sandboxId: 'sb-1', token: 'delivery-token' }]);
+    expect(unconfirmedTurnDrips).toEqual([]);
+    expect(r.stopped).toBe(0);
   });
 
   test('repairs a lost terminal relay before the prior active grant expires', async () => {
@@ -1238,6 +1339,343 @@ describe('reapAndReconcileSandboxes — the one rule: deadline_at <= now', () =>
     expect(clearedTurnReasons).toEqual([undefined]);
   });
 
+  // ═══ THE SILENT RENEWAL STARVATION THIS CLOSES ═══
+  // Incident 2026-08-17T20:40:03Z (session 0fc6897a): `deadlineGrant` stayed
+  // `boot_floor` for the box's whole life. The daemon on that warm snapshot
+  // answered the turn probe with nothing readable, so `observeSandboxTurn`
+  // never returned `active`, `renewActiveSandboxTurn` never ran, and the box
+  // reached its 15-minute resume floor mid-turn. A provider-RUNNING box holding
+  // a RECENT control-plane-minted turn record is far more likely mid-turn with
+  // a mute daemon than abandoned, so it gets a bounded drip instead of silence.
+  const unknownTurnCandidate = (startedAtMs: number | null, deadlineAt = new Date(NOW.getTime() + 60_000)) =>
+    candidate({
+      deadlineAt,
+      metadata: {
+        activeTurns: {
+          'mute-token': {
+            token: 'mute-token',
+            state: 'active',
+            opencodeSessionId: 'ses_root',
+            messageId: 'msg_turn_1',
+            ...(startedAtMs === null ? {} : { startedAtMs }),
+          },
+        },
+      },
+    });
+
+  test('REGRESSION: a daemon that answers without describing the turn is drip-extended', async () => {
+    candidates = [unknownTurnCandidate(NOW.getTime() - 10 * 60_000)];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['mute-token'] = 'unknown';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual(['sb-1']);
+    // Nothing else changes: the record is untouched and the box lives on.
+    expect(clearedTurnCalls).toEqual([]);
+    expect(activeTurnRenewalCalls).toEqual([]);
+    expect(r.stopped).toBe(0);
+    expect(r.lifecycleRenewed).toBe(1);
+  });
+
+  // ═══ THE BILLED DEAD TIME THIS CLOSES ═══
+  // A daemon that answers NOTHING — an unreachable box, a wedged opencode, a
+  // sandbox whose daemon never bound its port — is not evidence of live work.
+  // Dripping it replaces the bound its record actually carries with a horizon
+  // per pass for as long as the record stays fresh, which on a boot record is
+  // the difference between ~15 minutes and hours of billed dead time. The drip
+  // needs the runtime to ANSWER; only what it said may be unreadable.
+  test('REGRESSION: a daemon that answers nothing at all earns no drip', async () => {
+    candidates = [unknownTurnCandidate(NOW.getTime() - 60_000)];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['mute-token'] = 'unknown';
+    daemonAnsweredByToken['mute-token'] = false;
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual([]);
+  });
+
+  test('one answering probe is enough when a sibling probe times out', async () => {
+    // Two records, one daemon. An answer about either proves the runtime is up.
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() + 60_000),
+        metadata: {
+          activeTurns: {
+            'mute-token': {
+              token: 'mute-token',
+              state: 'active',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_mute',
+              startedAtMs: NOW.getTime() - 60_000,
+            },
+            'timeout-token': {
+              token: 'timeout-token',
+              state: 'active',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_timeout',
+              startedAtMs: NOW.getTime() - 30_000,
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['mute-token'] = 'unknown';
+    turnObservationByToken['timeout-token'] = 'unknown';
+    daemonAnsweredByToken['timeout-token'] = false;
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual(['sb-1']);
+  });
+
+  test('a turn record older than the four-hour grant gets no drip', async () => {
+    // Past the grant the record is no longer evidence of live work, so an
+    // unreadable daemon stops buying compute and the box dies on its deadline.
+    candidates = [unknownTurnCandidate(NOW.getTime() - 5 * HOUR)];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['mute-token'] = 'unknown';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual([]);
+  });
+
+  test('a record with no start instant gets no drip — freshness must be proven', async () => {
+    // A legacy `activeTurn` written before startedAtMs existed carries no start
+    // instant. Inventing one would make every box with an unreadable daemon
+    // immortal.
+    candidates = [unknownTurnCandidate(null)];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['mute-token'] = 'unknown';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual([]);
+  });
+
+  test('a daemon that ANSWERS is never drip-extended', async () => {
+    // The terminal path is untouched: a daemon that says "no turn" still pulls
+    // the deadline in to the idle tail.
+    candidates = [unknownTurnCandidate(NOW.getTime() - 60_000)];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['mute-token'] = 'terminal';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual([]);
+    expect(clearedTurnCalls).toEqual([{ sandboxId: 'sb-1', token: 'mute-token' }]);
+  });
+
+  test('one readable turn is enough — a renewed box needs no drip', async () => {
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() + 60_000),
+        metadata: {
+          activeTurns: {
+            'mute-token': {
+              token: 'mute-token',
+              state: 'active',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_mute',
+              startedAtMs: NOW.getTime() - 60_000,
+            },
+            'live-token': {
+              token: 'live-token',
+              state: 'active',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_live',
+              startedAtMs: NOW.getTime() - 30_000,
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['mute-token'] = 'unknown';
+    turnObservationByToken['live-token'] = 'active';
+    activeTurnRenewalBySandbox['sb-1'] = 'renewed';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual([]);
+    expect(activeTurnRenewalCalls).toEqual([{ sandboxId: 'sb-1', token: 'live-token' }]);
+  });
+
+  // ═══ THE SHAPE THE INCIDENT ACTUALLY HAD ═══
+  // A session created with an initial prompt carries a `delivering` record
+  // (initialSandboxTurnMetadata) that ONLY the daemon's `turn_accepted` callback
+  // promotes. The incident's daemon was mute, so the record never left
+  // `delivering` and `deadlineGrant` never left `boot_floor` — a box dying on a
+  // 15-minute floor mid-turn is by definition a box whose record was never
+  // accepted. While such a record was skipped instead of probed,
+  // `unreadableTurns` stayed 0 and the drip's `unreadableTurns === turns.length`
+  // could never hold; once the floor lapsed the record WAS probed but the drip
+  // was then blocked by its own `deadlineAt > now` guard. The two conditions
+  // were mutually exclusive, so the drip could never fire for the one shape it
+  // was written for.
+  const bootDeliveringCandidate = (startedAtMs: number) =>
+    candidate({
+      deadlineAt: new Date(NOW.getTime() + 10 * 60_000),
+      metadata: {
+        activeTurns: {
+          'boot-token': {
+            token: 'boot-token',
+            state: 'delivering',
+            opencodeSessionId: null,
+            messageId: 'msg_boot',
+            startedAtMs,
+          },
+        },
+      },
+    });
+
+  test('REGRESSION: an answering daemon on a boot DELIVERING record is drip-extended', async () => {
+    candidates = [bootDeliveringCandidate(NOW.getTime() - 5 * 60_000)];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['boot-token'] = 'unknown';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(turnObservationCalls).toEqual([{ sandboxId: 'sb-1', token: 'boot-token' }]);
+    expect(unconfirmedTurnDrips).toEqual(['sb-1']);
+    expect(clearedTurnCalls).toEqual([]);
+    expect(r.stopped).toBe(0);
+  });
+
+  // ═══ THE DELIVERY GRACE THIS PROTECTS ═══
+  // `delivering` means NOTHING has confirmed the prompt reached OpenCode, and
+  // sandbox-deadline-policy.ts is explicit about what such a record is worth:
+  // "a failed delivery expires on this short grace instead of retaining a
+  // four-hour active-turn window". Measuring a delivering record against the
+  // four-hour TURN grant hands it that window one horizon at a time — the drip
+  // becomes the thing that defeats the grace, and a box whose prompt never
+  // landed bills for hours instead of minutes.
+  test('REGRESSION: a delivering record past its delivery grace earns no drip', async () => {
+    candidates = [bootDeliveringCandidate(NOW.getTime() - 20 * 60_000)];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['boot-token'] = 'unknown';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual([]);
+  });
+
+  test('an ACCEPTED record keeps the full four-hour bound', async () => {
+    // The asymmetry is the point: acceptance is proof the prompt reached
+    // OpenCode, so the record is measured against the turn grant. A delivering
+    // record has no such proof and is measured against its own delivery grace.
+    candidates = [unknownTurnCandidate(NOW.getTime() - 3 * HOUR)];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['mute-token'] = 'unknown';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual(['sb-1']);
+  });
+
+  test('a delivering record inside its grace does not suppress the drip for the box', async () => {
+    // The mixed shape: a second prompt still `delivering` beside an accepted
+    // record the daemon will not answer for. Both are mute, so the box is still
+    // mid-turn behind a mute daemon and still earns its horizon.
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() + 60_000),
+        metadata: {
+          activeTurns: {
+            'mute-token': {
+              token: 'mute-token',
+              state: 'active',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_mute',
+              startedAtMs: NOW.getTime() - 60_000,
+            },
+            'delivery-token': {
+              token: 'delivery-token',
+              state: 'delivering',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_turn_1',
+              startedAtMs: NOW.getTime() - 1_000,
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['mute-token'] = 'unknown';
+    turnObservationByToken['delivery-token'] = 'unknown';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual(['sb-1']);
+    expect(clearedTurnCalls).toEqual([]);
+  });
+
+  test('a delivering record with no start instant still gets no drip', async () => {
+    // Freshness must be PROVEN, whatever the record's state. Inventing a start
+    // instant would make every box with an unreachable daemon immortal.
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() + 60_000),
+        metadata: {
+          activeTurns: {
+            'delivery-token': {
+              token: 'delivery-token',
+              state: 'delivering',
+              opencodeSessionId: 'ses_root',
+              messageId: 'msg_turn_1',
+            },
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['delivery-token'] = 'unknown';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual([]);
+  });
+
+  test('REGRESSION: an already-expired deadline is never resurrected by the drip', async () => {
+    // Once the deadline has passed with nothing but unknown evidence, the
+    // existing path clears the record and parks the box. The drip is a
+    // PRE-expiry extension, not a way back from one.
+    candidates = [
+      unknownTurnCandidate(NOW.getTime() - 60_000, new Date(NOW.getTime() - 1)),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['mute-token'] = 'unknown';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual([]);
+    expect(clearedTurnCalls).toEqual([{ sandboxId: 'sb-1', token: 'mute-token' }]);
+    expect(r.stopped).toBe(1);
+  });
+
+  test('a box the provider is not running gets no drip', async () => {
+    // The drip's whole premise is a box the PROVIDER says is up. A stopped or
+    // unknown box never reaches the running branch at all.
+    candidates = [unknownTurnCandidate(NOW.getTime() - 60_000)];
+    statusByExternal['ext-1'] = 'unknown';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual([]);
+  });
+
+  test('a box with no turn record at all is never drip-extended', async () => {
+    candidates = [candidate({ deadlineAt: new Date(NOW.getTime() + 60_000) })];
+    statusByExternal['ext-1'] = 'running';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(unconfirmedTurnDrips).toEqual([]);
+  });
+
   // The stop erases activeTurns, after which no token-scoped settle can ever
   // fire again for this box. If the ledger is not settled here it claims the
   // turn is still running for ever.
@@ -1557,6 +1995,112 @@ describe('reapAndReconcileSandboxes — the one rule: deadline_at <= now', () =>
     expect(r.reconciled).toBe(0);
     expect(r.billingClosed).toBe(0);
     expect(pausedCompute).toEqual([]);
+  });
+
+  // ═══ THE MID-TURN PARK THIS CLOSES ═══
+  // Incident 2026-08-17T20:40:03Z (session 0fc6897a, Daytona f468056d): one
+  // provider read of `stopped` durably parked a box that was running a turn,
+  // `stopReason: provider_reconcile`, and Daytona's own autoStopInterval was 720
+  // — the provider never stopped it. `stopping` and `pending_stop` both map to
+  // `stopped` (platform/providers/daytona-state.ts), so a box mid-transition, or
+  // one transient misread, settled its turns `runtime_gone` and kicked its
+  // client to the wake flow. While turn authority exists the park needs TWO
+  // observations, one pass apart — the wake fence, mirrored to the stop side.
+  const midTurnCandidate = (over: Partial<any> = {}, extraMetadata: Record<string, unknown> = {}) =>
+    candidate({
+      metadata: {
+        activeTurns: {
+          'active-token': {
+            token: 'active-token',
+            state: 'active',
+            opencodeSessionId: 'ses_root',
+            messageId: 'msg_turn_1',
+            startedAtMs: NOW.getTime() - 60_000,
+          },
+        },
+        ...extraMetadata,
+      },
+      ...over,
+    });
+
+  test('REGRESSION: one stopped read cannot park a box that is running a turn', async () => {
+    candidates = [midTurnCandidate()];
+    statusByExternal['ext-1'] = 'stopped';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(r.reconciled).toBe(0);
+    expect(r.skipped).toBe(1);
+    expect(r.billingClosed).toBe(0);
+    expect(pausedCompute).toEqual([]);
+    expect(
+      updateCalls.some((c) => c.table === sessionSandboxes && c.updates.status === 'stopped'),
+    ).toBe(false);
+    // The observation is RECORDED, so the next pass can confirm it.
+    expect(
+      rowUpdates().some((c) =>
+        describeSql(c.updates.metadata).includes('pendingStopObservedAtMs'),
+      ),
+    ).toBe(true);
+  });
+
+  test('a second stopped read one pass later parks the box exactly as before', async () => {
+    candidates = [
+      midTurnCandidate({}, { pendingStopObservedAtMs: NOW.getTime() - 20_000 }),
+    ];
+    statusByExternal['ext-1'] = 'stopped';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(r.reconciled).toBe(1);
+    expect(r.billingClosed).toBe(1);
+    expect(pausedCompute).toEqual(['sb-1']);
+    // The park still settles the turns it erases authority for.
+    expect(ledgerSettleStatements.some((s) => s.includes('runtime_gone'))).toBe(true);
+  });
+
+  test('a running read between the two clears the pending marker', async () => {
+    candidates = [
+      midTurnCandidate({ deadlineAt: new Date(NOW.getTime() + HOUR) }, {
+        pendingStopObservedAtMs: NOW.getTime() - 20_000,
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['active-token'] = 'active';
+    activeTurnRenewalBySandbox['sb-1'] = 'renewed';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(r.reconciled).toBe(0);
+    expect(
+      rowUpdates().some((c) =>
+        describeSql(c.updates.metadata).includes("- 'pendingStopObservedAtMs'"),
+      ),
+    ).toBe(true);
+  });
+
+  test('a running box with no marker pays for no extra write', async () => {
+    candidates = [midTurnCandidate({ deadlineAt: new Date(NOW.getTime() + HOUR) })];
+    statusByExternal['ext-1'] = 'running';
+    turnObservationByToken['active-token'] = 'active';
+    activeTurnRenewalBySandbox['sb-1'] = 'renewed';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(rowUpdates()).toEqual([]);
+  });
+
+  test('a terminal provider state parks a turn-holding box on the FIRST read', async () => {
+    // Daytona `error` / Platinum `failed`. There is no transitional state that
+    // maps to `terminal`, so a second observation would only cost the box's
+    // client another pass of waiting for an answer that cannot change.
+    candidates = [midTurnCandidate()];
+    statusByExternal['ext-1'] = 'terminal';
+
+    const r = await reapAndReconcileSandboxes(NOW);
+
+    expect(r.reconciled).toBe(1);
+    expect(pausedCompute).toEqual(['sb-1']);
   });
 
   test('never acts on transient unknown provider state, expired or not', async () => {

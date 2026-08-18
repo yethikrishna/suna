@@ -9,19 +9,149 @@
  */
 
 import { projectSessions, sessionSandboxes } from '@kortix/db';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { pauseComputeSession } from '../../billing/services/compute-metering';
 import { revokeSessionConnectorTokens } from '../../repositories/account-tokens';
 import { invalidateProviderCache } from '../../sandbox-proxy';
 import { db } from '../../shared/db';
 import { preserveEstablishedRuntime } from '../runtime-identity';
-import { settleOpenSandboxTurns } from '../sandbox-turn-lifecycle';
+import { settleOpenSandboxTurns, storedSandboxTurns } from '../sandbox-turn-lifecycle';
 import { runtimeWakeInProgress } from '../session-lifecycle/runtime-wake-fence';
 import type { StopReason } from '../stop-reason';
 
 /** Merge keys into a jsonb metadata column without clobbering siblings. */
 export function mergeMetadata(patch: Record<string, unknown>) {
   return sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`;
+}
+
+/**
+ * How long a first provider-`stopped` observation must age before a second one
+ * may park a box that still holds turn authority.
+ *
+ * Shorter than the 20-second active-turn renewal pass
+ * (projects/active-turn-renewal.ts), so a genuine park costs exactly one extra
+ * pass, and long enough that two reads inside one provider transition can never
+ * both count.
+ */
+export const MIDTURN_STOP_CONFIRMATION_MS = 15_000;
+
+export type StoppedObservationDecision = 'park' | 'await_confirmation';
+
+/**
+ * May a single provider-`stopped` read park this box?
+ *
+ * Incident 2026-08-17T20:40:03Z (session 0fc6897a, Daytona f468056d): it did,
+ * mid-turn, `stopReason: provider_reconcile` — while Daytona's own
+ * `autoStopInterval` was 720 minutes and nothing had asked for a stop.
+ * `stopping` and `pending_stop` both map to `stopped`
+ * (platform/providers/daytona-state.ts), so a box mid-transition — or one
+ * transient misread — settled its turns `runtime_gone` and kicked its client to
+ * the wake flow with the turn's work lost.
+ *
+ * This is `runtimeWakeInProgress` mirrored to the stop direction, with the same
+ * asymmetry: uncertainty must fail toward the LIVE box. So a marker that cannot
+ * be read is not a confirmation — it is re-recorded (see
+ * {@link markPendingStopObservation}) rather than trusted.
+ *
+ * A box with NO turn authority parks on the first read, exactly as before. An
+ * idle box must not gain a pass of latency: its meter runs for that pass.
+ */
+export function decideStoppedObservation(
+  metadata: Record<string, unknown> | null | undefined,
+  now: Date,
+): StoppedObservationDecision {
+  if (storedSandboxTurns(metadata).length === 0) return 'park';
+  const observedAtMs = Number(metadata?.pendingStopObservedAtMs);
+  if (!Number.isFinite(observedAtMs) || observedAtMs <= 0) return 'await_confirmation';
+  return now.getTime() - observedAtMs >= MIDTURN_STOP_CONFIRMATION_MS
+    ? 'park'
+    : 'await_confirmation';
+}
+
+/**
+ * Record the FIRST stopped observation of a box that still holds a turn.
+ *
+ * A CAS, not a stamp: the write lands only while the row carries no readable
+ * marker. A pass that rewrote the instant every time would restart the
+ * confirmation window for ever and the box could never park at all. The same
+ * predicate lets a garbage value be replaced, so an unreadable marker cannot
+ * strand a box either.
+ *
+ * TAKES NO CLOCK. The window measures the distance between two OBSERVATIONS, so
+ * it must start at the instant this one happened. The reaper captures one `now`
+ * at pass start and carries it through a batch of up to 100 provider
+ * round-trips; stamping that value backdates the window by however long the
+ * pass took to reach the row, and a slow pass plus one read from either of the
+ * other two observers then confirms a park inside a SINGLE provider transition
+ * — exactly what the 15s window exists to make impossible.
+ *
+ * The status arm matches every row the gate is applied to, not just `active`.
+ * `claimInPlaceRuntimeRecovery` (projects/runtime-identity.ts) sets
+ * `provisioning` while KEEPING `external_id` and the whole metadata object, so
+ * such a row holds turn authority, `beginSandboxTurn` accepts it, and
+ * `reconcileSandboxStoppedByExternalId` reaches this write for it. A CAS that
+ * matched only `active` wrote nothing there, so the decision stayed
+ * `await_confirmation` for ever: the row never parked and its ledger rows
+ * claimed a turn was running for the rest of time.
+ *
+ * Best-effort by construction — a lost marker costs one more pass of
+ * confirmation, never a wrong park.
+ */
+export async function markPendingStopObservation(sandboxId: string): Promise<void> {
+  const observedAt = new Date();
+  await db
+    .update(sessionSandboxes)
+    .set({
+      metadata: mergeMetadata({ pendingStopObservedAtMs: observedAt.getTime() }),
+      updatedAt: observedAt,
+    })
+    .where(
+      and(
+        eq(sessionSandboxes.sandboxId, sandboxId),
+        sql`${sessionSandboxes.status} IN ('active', 'provisioning')`,
+        sql`(
+          ${sessionSandboxes.metadata}->>'pendingStopObservedAtMs' IS NULL
+          OR ${sessionSandboxes.metadata}->>'pendingStopObservedAtMs' !~ '^[0-9]+$')`,
+      ),
+    )
+    .catch((err) =>
+      console.warn(
+        `[reaper] pending stop marker failed for ${sandboxId}:`,
+        err instanceof Error ? err.message : err,
+      ),
+    );
+}
+
+/**
+ * Drop the pending marker: the provider says this box is running.
+ *
+ * A confirmation is about ONE provider transition, so a `running` answer ends
+ * it. Without that, a box that survived a transient `stopped` read carries an
+ * aged marker, and the NEXT transient read — minutes or hours later, mid a
+ * different turn, with hundreds of healthy reads in between — parks it on what
+ * is really one observation.
+ *
+ * EVERY OBSERVER THAT POLLS MUST CALL THIS, and both do: the reaper's status
+ * poll (reaping/box-reaper.ts, the 20s active-turn lane, which visits every row
+ * holding turn authority) and the session access path
+ * (projects/routes/shared.ts, polled ~1/s by the web client). Only those two can
+ * ARM a marker repeatedly. The webhook ingress can arm one on a transitional
+ * `stopping` delivery, and either poller drops it on its next running read.
+ */
+export async function clearPendingStopObservation(sandboxId: string): Promise<void> {
+  await db
+    .update(sessionSandboxes)
+    .set({
+      metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) - 'pendingStopObservedAtMs'`,
+      updatedAt: new Date(),
+    })
+    .where(eq(sessionSandboxes.sandboxId, sandboxId))
+    .catch((err) =>
+      console.warn(
+        `[reaper] pending stop marker clear failed for ${sandboxId}:`,
+        err instanceof Error ? err.message : err,
+      ),
+    );
 }
 
 export interface StoppedStateWrite {
@@ -93,6 +223,10 @@ export async function applyStoppedState(write: StoppedStateWrite): Promise<void>
         // retain authority that a later resume could misread. Still a MERGE,
         // never a whole-object assign — a concurrent writer's lastAliveAt lives
         // in this column too.
+        //
+        // `pendingStopObservedAtMs` goes with them: a box that is parked, woken,
+        // and given a new turn must earn its confirmation again from scratch, or
+        // the stale marker parks it on the first transient stopped read.
         metadata: sql`(coalesce(${sessionSandboxes.metadata}, '{}'::jsonb)
           - 'runtimeWakeStartedAt'
           - 'runtimeWakeId'
@@ -102,6 +236,7 @@ export async function applyStoppedState(write: StoppedStateWrite): Promise<void>
           - 'runtimeWakeCleanupLeaseExpiresAt'
           - 'activeTurn'
           - 'activeTurns'
+          - 'pendingStopObservedAtMs'
           - 'lifecycleStopClaim') || ${JSON.stringify(patch)}::jsonb`,
       })
       .where(eq(sessionSandboxes.sandboxId, write.sandboxId));
@@ -123,6 +258,31 @@ export async function applyStoppedState(write: StoppedStateWrite): Promise<void>
   if (write.externalId) invalidateProviderCache(write.externalId);
 }
 
+export interface StoppedReconcileOptions {
+  /**
+   * Is this an UNSOLICITED provider observation, rather than the consequence of
+   * a stop this control plane just issued?
+   *
+   * Only an observation can be a misread, and only an observation may be made
+   * to wait for a second one while a turn is open. Three callers pass it: the
+   * provider webhook ingress (platform/webhooks/sandbox-webhooks.ts, whose
+   * `classifyLifecycle` maps the transitional `stopping` / `archiving` straight
+   * to `stopped`), the session access path in projects/routes/shared.ts — which
+   * polls `provider.getStatus` every second and stops nothing itself, and which
+   * therefore authored the 2026-08-17 mid-turn park — and, through its own copy
+   * of the same gate, the reaper's status poll. All three read the row back and
+   * must handle it still being `active`.
+   *
+   * Every other caller has ALREADY stopped the box and must park the row
+   * unconditionally, or it keeps billing against a box that is off: account
+   * deletion (billing/services/account-deletion.ts) and the orphan-box sweep
+   * (reaping/orphan-boxes.ts), both of which call `provider.stop()` first.
+   * Default false for exactly that reason: a caller that forgets this flag gets
+   * today's behaviour, never a row left active against a dead box.
+   */
+  confirmMidTurnStop?: boolean;
+}
+
 /**
  * Close billing + reconcile a sandbox the PROVIDER reports stopped/archived,
  * keyed by external id. Returns true if it transitioned a live row.
@@ -130,6 +290,7 @@ export async function applyStoppedState(write: StoppedStateWrite): Promise<void>
 export async function reconcileSandboxStoppedByExternalId(
   externalId: string,
   now = new Date(),
+  options: StoppedReconcileOptions = {},
 ): Promise<boolean> {
   const [row] = await db
     .select({
@@ -144,6 +305,20 @@ export async function reconcileSandboxStoppedByExternalId(
   if (!row) return false;
   if (row.status === 'stopped' || row.status === 'archived') return false;
   if (runtimeWakeInProgress(row.metadata, now)) return false;
+  // While a turn is open, one OBSERVED `stopped` is not proof — see
+  // decideStoppedObservation. The order is fixed: already-stopped, then the wake
+  // fence, then this confirmation, then the durable stop.
+  if (
+    options.confirmMidTurnStop === true &&
+    decideStoppedObservation(row.metadata, now) === 'await_confirmation'
+  ) {
+    console.warn(
+      `[reaper] provider reported ${externalId} stopped mid-turn; awaiting confirmation`,
+      { sandboxId: row.sandboxId, sessionId: row.sessionId },
+    );
+    await markPendingStopObservation(row.sandboxId);
+    return false;
+  }
   // A stopped box stays stopped: passive /v1/p traffic (markSandboxUsed heal /
   // wakeSandbox) must not resurrect it. That used to need an `idleQuiesced`
   // flag written here; the heal now refuses any row whose deadline has passed —

@@ -38,11 +38,14 @@ import { type SandboxProvider, type SandboxStatus, getProvider } from '../../pla
 import { invalidateProviderCache } from '../../sandbox-proxy';
 import { REAP_CONCURRENCY } from '../reaper-constants';
 import { preserveEstablishedRuntime } from '../runtime-identity';
+import { extendUnconfirmedTurnDeadline } from '../sandbox-deadline';
+import { turnDeliveryGraceMs, turnGrantMs } from '../sandbox-deadline-policy';
 import { runtimeWakeInProgress } from '../session-lifecycle/runtime-wake-fence';
 import {
   type SandboxTurnDeliveryReconciliation,
   type SandboxTurnObservation,
   type SessionTurnEndReason,
+  type StoredSandboxTurn,
   clearSandboxTurn,
   reconcileSandboxTurnDelivery,
   renewActiveSandboxTurn,
@@ -57,7 +60,12 @@ import {
 } from './box-queries';
 import { finalizeHuskTurn } from './husk-finalizer';
 import { decideReconcile } from './policy';
-import { applyStoppedState } from './sandbox-state-sync';
+import {
+  applyStoppedState,
+  clearPendingStopObservation,
+  decideStoppedObservation,
+  markPendingStopObservation,
+} from './sandbox-state-sync';
 import { stopExpiredBox } from './stop-box';
 
 export interface ReapResult {
@@ -94,6 +102,7 @@ export interface SandboxReaperDependencies {
   reconcileSandboxTurnDelivery: typeof reconcileSandboxTurnDelivery;
   clearSandboxTurn: typeof clearSandboxTurn;
   finalizeHuskTurn: typeof finalizeHuskTurn;
+  extendUnconfirmedTurnDeadline: typeof extendUnconfirmedTurnDeadline;
 }
 
 const DEFAULT_REAPER_DEPENDENCIES: SandboxReaperDependencies = {
@@ -102,6 +111,7 @@ const DEFAULT_REAPER_DEPENDENCIES: SandboxReaperDependencies = {
   reconcileSandboxTurnDelivery,
   clearSandboxTurn,
   finalizeHuskTurn,
+  extendUnconfirmedTurnDeadline,
 };
 
 export interface SandboxReaperScope {
@@ -164,6 +174,14 @@ export async function reapAndReconcileSandboxes(
               err instanceof Error ? err.message : err,
             ),
           );
+          // A running box has answered the pending-stop question. Dropping the
+          // marker here is what keeps the confirmation about THIS provider
+          // transition: an aged marker left on a healthy box would let the next
+          // transient `stopped` read, hours later, park it on one observation.
+          // Only rows that carry one pay for the write.
+          if (row.metadata?.pendingStopObservedAtMs !== undefined) {
+            await clearPendingStopObservation(row.sandboxId);
+          }
           // Close the only non-atomic gap in the contract. The API writes a
           // token-bound `delivering` record before the request can reach
           // OpenCode. If OpenCode accepts it and the promotion write then fails,
@@ -171,22 +189,54 @@ export async function reapAndReconcileSandboxes(
           // cannot create a record or select its token.
           const turns = storedSandboxTurns(row.metadata);
           const observedActiveTokens: string[] = [];
+          // Records this pass PROBED and the daemon answered with nothing
+          // readable. Counted, not inferred: the drip below needs `every record
+          // answered unknown`, which is a statement about answers, not about
+          // records. EVERY record is probed, so the count is complete.
+          let unreadableTurns = 0;
+          // Probes the daemon ANSWERED, whatever it said. A separate fact from
+          // the observation, and the drip below needs it: an answer proves the
+          // runtime is up and only its description of the turn is missing (an
+          // agent build that omits the turn fields returns 200 without them —
+          // apps/kortix-sandbox-agent-server/src/routes/health.ts). Nothing
+          // coming back at all proves the opposite, and a box like that must
+          // die on the bound its record already carries.
+          let answeredProbes = 0;
           if (turns.length > 0) {
             for (const turn of turns) {
               // A delivering record can precede OpenCode persistence by a few
-              // seconds. Observe it only after its delivery grace expires.
-              // An accepted active record is safe to observe on every pass.
-              // This repairs a terminal relay that cannot reach the API while
-              // the API can still reach the daemon.
-              if (turn.state === 'delivering' && row.deadlineAt.getTime() > now.getTime()) {
-                continue;
-              }
-              const { observation, endReason } = await dependencies.observeSandboxTurn(
-                provider,
-                row.externalId,
-                row.sandboxId,
-                turn,
-              );
+              // seconds, so inside its delivery grace `turn_in_flight === false`
+              // proves nothing — the prompt may simply not have landed yet.
+              // What the grace suppresses is ACTING on that answer, not asking
+              // the question.
+              //
+              // It used to skip the probe outright, and that made the drip below
+              // unreachable for the incident's own shape: a boot prompt's record
+              // is `delivering` until the daemon calls back `turn_accepted`
+              // (routes/r4.ts), a mute daemon never calls back, and an unprobed
+              // record can never make `unreadableTurns === turns.length` hold
+              // while `deadlineAt > now`. The two conditions were mutually
+              // exclusive, so a box dying on the 15-minute boot floor mid-turn —
+              // `deadlineGrant: boot_floor`, exactly the 2026-08-17 row — got no
+              // drip at all. Probing costs one daemon round-trip; the answer is
+              // what keeps the box alive.
+              const withinDeliveryGrace =
+                turn.state === 'delivering' && row.deadlineAt.getTime() > now.getTime();
+              const { observation, endReason, daemonAnswered } =
+                await dependencies.observeSandboxTurn(
+                  provider,
+                  row.externalId,
+                  row.sandboxId,
+                  turn,
+                );
+              if (observation === 'unknown') unreadableTurns += 1;
+              if (daemonAnswered) answeredProbes += 1;
+              // Inside the delivery grace only a POSITIVE answer may be acted
+              // on: `active` is proof the prompt reached OpenCode and promotes
+              // the record early. `terminal` and `unknown` are the ambiguous
+              // ones the grace exists to absorb, and neither has any work to do
+              // here — the deadline cannot have passed while the grace holds.
+              if (withinDeliveryGrace && observation !== 'active') continue;
               // Whether the control plane had to END an assistant message that
               // OpenCode was still holding open. It is evidence about HOW the
               // turn finished — a turn somebody else had to close did not
@@ -288,6 +338,58 @@ export async function reapAndReconcileSandboxes(
             result.skipped += 1;
             continue;
           }
+          // A RENEWAL THAT STARVES MUST NOT BE SILENT.
+          //
+          // Incident 2026-08-17T20:40:03Z (session 0fc6897a, Daytona f468056d):
+          // every probe of this box's turn came back `unknown` — the daemon on
+          // that warm snapshot answers the turn question with neither `true`
+          // nor `false` — so `renewActiveSandboxTurn` never ran and
+          // `deadlineGrant` never left `boot_floor`. The box died on the
+          // 15-minute resume floor WHILE ITS TURN WAS RUNNING.
+          //
+          // A provider-RUNNING box whose DAEMON ANSWERS, holding a turn record
+          // the control plane minted minutes ago, is far more likely mid-turn
+          // behind an agent build that cannot describe the turn than abandoned.
+          // So it gets a bounded drip — one liveness horizon — instead of
+          // nothing. Four conditions keep it honest, and the box authors none
+          // of them:
+          //   - EVERY record answered `unknown`. One readable turn renews (or
+          //     clears) through the paths above, so a box with any answer at all
+          //     is decided by that answer and never reaches here. Every record
+          //     is probed, including a delivery inside its grace: the grace
+          //     withholds ACTION on an ambiguous answer, not the question;
+          //   - at least one probe was ANSWERED. A daemon nothing can reach is
+          //     not evidence of live work in either direction, and dripping it
+          //     would replace the bound its record already carries with a fresh
+          //     horizon every 20s — a mute box billing for hours instead of
+          //     dying on its grace. Unreachable is not unreadable;
+          //   - a record is still fresh FOR ITS OWN STATE (see
+          //     hasFreshTurnRecord). Past that the record is no longer evidence
+          //     of live work, the drip stops, and the box dies on its deadline
+          //     like anything else;
+          //   - the deadline has NOT already passed. This is a pre-expiry
+          //     extension, not a way back from one: once it expires on nothing
+          //     but unknown evidence the loop above has already cleared the
+          //     records and the ordinary stop stands.
+          // The `terminal` path is deliberately untouched — a daemon that
+          // ANSWERS "no turn" still pulls the deadline in, exactly as today.
+          if (
+            turns.length > 0 &&
+            unreadableTurns === turns.length &&
+            answeredProbes > 0 &&
+            row.deadlineAt.getTime() > now.getTime() &&
+            hasFreshTurnRecord(turns, now)
+          ) {
+            const extended = await dependencies.extendUnconfirmedTurnDeadline(row.sandboxId);
+            console.warn('[reaper] turn observation unknown; drip-extending', {
+              sandboxId: row.sandboxId,
+              externalId: row.externalId,
+              provider: row.provider,
+              turns: turns.length,
+              deadlineAt: row.deadlineAt.toISOString(),
+              extended,
+            });
+          }
           // THE ONE RULE. `deadline_at` is pushed out only by a
           // control-plane-OBSERVED turn start and pulled in by a
           // sandbox-reported turn end, so this comparison is the whole
@@ -321,6 +423,30 @@ export async function reapAndReconcileSandboxes(
             break;
           case 'reconcile-stopped':
             if (providerStatus === 'stopped' && runtimeWakeInProgress(row.metadata, now)) {
+              result.skipped += 1;
+              break;
+            }
+            // `stopped` is the one reconcile state a TRANSITION can produce:
+            // Daytona's `stopping` and `pending_stop` both map to it. While a
+            // turn is open that single read is not proof — a second one, a pass
+            // later, is (decideStoppedObservation). `terminal` is excluded on
+            // purpose: nothing transitional maps to it, so a second observation
+            // would only make a dead box's client wait another pass for an
+            // answer that cannot change.
+            if (
+              providerStatus === 'stopped' &&
+              decideStoppedObservation(row.metadata, now) === 'await_confirmation'
+            ) {
+              console.warn('[reaper] provider reported stopped mid-turn; awaiting confirmation', {
+                sandboxId: row.sandboxId,
+                externalId: row.externalId,
+                provider: row.provider,
+                turns: storedSandboxTurns(row.metadata).map((turn) => turn.token),
+              });
+              // No clock is passed on purpose: `now` is this PASS's start, and
+              // a batch of provider round-trips can be minutes older than the
+              // observation it would be stamped on. See markPendingStopObservation.
+              await markPendingStopObservation(row.sandboxId);
               result.skipped += 1;
               break;
             }
@@ -376,6 +502,36 @@ export async function reapAndReconcileSandboxes(
 }
 
 /**
+ * Is ANY of these turn records still recent enough to be evidence that work is
+ * running behind a daemon that cannot describe it?
+ *
+ * `startedAtMs` is written by the control plane when it mints the record and by
+ * nothing else. A record without one — a legacy `activeTurn` from before the
+ * field existed — carries no start instant, and inventing one would make every
+ * box with a silent daemon immortal. So an unproven age is never fresh.
+ *
+ * THE BOUND IS THE RECORD'S OWN STATE, and that asymmetry is the point:
+ *   - `active` — the API's own upstream response, or daemon evidence tied to
+ *     this token, proved the prompt reached OpenCode. Worth the turn grant, the
+ *     same value an observed turn renews with.
+ *   - `delivering` — NOTHING has confirmed it reached OpenCode.
+ *     `turnDeliveryGraceMs` states exactly what such a record is worth ("a
+ *     failed delivery expires on this short grace instead of retaining a
+ *     four-hour active-turn window"), and measuring it against the TURN grant
+ *     instead hands it that window one horizon at a time: the drip becomes the
+ *     thing that defeats the grace, and a box whose prompt never landed bills
+ *     for hours instead of minutes.
+ */
+function hasFreshTurnRecord(turns: StoredSandboxTurn[], now: Date): boolean {
+  return turns.some((turn) => {
+    if (turn.startedAtMs === null) return false;
+    const ageMs = now.getTime() - turn.startedAtMs;
+    const boundMs = turn.state === 'delivering' ? turnDeliveryGraceMs() : turnGrantMs();
+    return ageMs >= 0 && ageMs < boundMs;
+  });
+}
+
+/**
  * The reasons a SANDBOX is allowed to name. `runtime_gone` is deliberately not
  * one of them: the box is the subject of the judgement, and that value is only
  * ever written by the control plane's own stop writers. Anything else the
@@ -403,10 +559,25 @@ export interface SandboxTurnReading {
    * caller decides what to record, and must not invent a completion.
    */
   endReason: SessionTurnEndReason | null;
+  /**
+   * Did the daemon ANSWER this probe at all — separately from what it said?
+   *
+   * `unknown` has two very different causes and only one of them is evidence
+   * the runtime is alive: an agent build that omits the turn fields answers 200
+   * without them (routes/health.ts adds them only for `?turn=1` on a build that
+   * has them), while an unreachable box, a wedged daemon, or a timeout answers
+   * nothing. The reaper's drip needs the first and must refuse the second, so
+   * the two cannot be collapsed into one `unknown`.
+   */
+  daemonAnswered: boolean;
 }
 
 /** A fresh value per call: an exported function must not hand out a shared object. */
-const unreadableTurn = (): SandboxTurnReading => ({ observation: 'unknown', endReason: null });
+const unreadableTurn = (daemonAnswered: boolean): SandboxTurnReading => ({
+  observation: 'unknown',
+  endReason: null,
+  daemonAnswered,
+});
 
 /**
  * Observe only a control-plane-minted `delivering` record through the common
@@ -432,14 +603,25 @@ export async function observeSandboxTurn(
       headers: endpoint.headers,
       signal: AbortSignal.timeout(10_000),
     });
-    if (!response.ok) return unreadableTurn();
+    // A non-2xx is the proxy or the box refusing, not the daemon answering:
+    // fail toward "nothing came back", which is the reading that buys a box
+    // nothing. Only a parsed 200 counts as an answer.
+    if (!response.ok) return unreadableTurn(false);
     const body = (await response.json()) as { turn_in_flight?: unknown; turn_end?: unknown };
-    if (body.turn_in_flight === true) return { observation: 'active', endReason: null };
-    if (body.turn_in_flight === false) {
-      return { observation: 'terminal', endReason: daemonReportedEndReason(body.turn_end) };
+    if (body.turn_in_flight === true) {
+      return { observation: 'active', endReason: null, daemonAnswered: true };
     }
-    return unreadableTurn();
+    if (body.turn_in_flight === false) {
+      return {
+        observation: 'terminal',
+        endReason: daemonReportedEndReason(body.turn_end),
+        daemonAnswered: true,
+      };
+    }
+    // The shape of the 2026-08-17 box: the daemon is up and answering, its
+    // build just says nothing about turns.
+    return unreadableTurn(true);
   } catch {
-    return unreadableTurn();
+    return unreadableTurn(false);
   }
 }

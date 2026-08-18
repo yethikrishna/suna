@@ -734,10 +734,44 @@ addresses, so a CIDR pin means trusting 1,524,736 addresses and an agent would
 exfiltrate through a Cloudflare Worker — while breaking git, npm and pip. It
 becomes worth building only behind a dedicated non-Cloudflare ingress.
 
+#### Does the pin survive a stop/resume? Measured — yes, on both shim providers
+
+The pin is first-write-wins and is never refreshed, and the measurement behind it
+was taken on two RUNNING boxes. Nobody had measured a stop/resume, which is the
+case that matters: if the address moves there is no reset path, so every broker
+call 403s for the rest of the session and the feature dies silently on any box
+that ever idles out.
+
+Measured black-box — record the guest's real egress address (an unruled host, so
+it tunnels blind rather than reporting the broker's), stop the session, start it,
+and re-run the identical boundary request:
+
+| provider | egress IP before → after | boundary before → after |
+| --- | --- | --- |
+| daytona (2 runs) | `185.26.9.249` → same, `67.213.119.5` → same | WORKS → WORKS |
+| e2b (2 runs) | `35.247.62.198` → same, `136.66.235.121` → same | WORKS → WORKS |
+
+Same sandbox id each time, so this measures a resume and not a fresh box. E2B is
+the interesting half: it pauses by construction (`onTimeout: pause`,
+`keepMemory: false`, `autoResume: false`) and cold-resumes, and it is also where
+the sealed runtime env has to be re-opened — so these runs double as proof that
+sealing did not break resume.
+
+**The trap this nearly fell into.** A resumed box answers the API as `running`
+before its guest network is up, and a probe then returns EMPTY — which reads
+exactly like a refused pin. One run reported BROKEN for that reason alone. The
+harness now gates on a CONTROL fetch of an unruled host and reports
+INCONCLUSIVE rather than BROKEN when the guest itself cannot reach anything: an
+absent reading is a failed read, never evidence of a move. Without that gate the
+measurement produces a confident false positive and sends someone to fix a
+non-bug.
+
 #### Still open
 
-- **The e2b live run.** Same code, same flag, never executed against an e2b sandbox. Until it
-  is, §7.7 proves the property on one provider rather than on the class.
+- **E2B in a deployed environment.** The e2b live run is DONE (17/0, identical to daytona), but
+  it needed a locally-run API holding `E2B_API_KEY`, because e2b appears in no `infra/terraform`
+  environment — neither dev nor prod can reach an e2b sandbox. The property is proven on the
+  class; what is missing is somewhere deployed to exercise it.
 - **Allow-list survival across resume / CoW-restore** — the funnel must not open on restore.
   Not required for the security property (an agent that bypasses the shim gets an
   UNAUTHENTICATED request, never a credential), so this is egress restriction, a separate

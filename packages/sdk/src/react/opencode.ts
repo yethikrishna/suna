@@ -182,6 +182,7 @@ export {
   type UseSessionWorkingOptions,
 } from './use-session-working';
 export { useRuntimePhase, type RuntimePhase } from './use-runtime-phase';
+export { useRuntimeBootStalled, RUNTIME_BOOT_STALL_MS } from './use-runtime-boot-stalled';
 export {
   useQuestionSelfHeal,
   hasRunningQuestionTool,

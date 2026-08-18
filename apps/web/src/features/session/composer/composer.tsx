@@ -168,6 +168,16 @@ export interface SessionChatInputProps {
    * a spinner with no explanation, which was indistinguishable from broken.
    */
   notice?: string | null;
+  /**
+   * Renders a "Retry" action inline in the notice bar when set. Wired to
+   * `requestRuntimeReconnect()` for a confirmed-unreachable runtime, or a
+   * runtime that has been booting/connecting past a sane ceiling with no
+   * ready flip either — see `SessionComposerReadiness.retryable`. Omitted (no
+   * button) for the ordinary, still-within-budget booting/waking notice,
+   * where the background poller is expected to resolve things on its own
+   * shortly.
+   */
+  onNoticeRetry?: () => void;
   clearOnSend?: boolean;
   modelRequired?: boolean;
   modelsLoading?: boolean;
@@ -379,6 +389,7 @@ function ComposerImpl({
   projectId,
   disabled = false,
   notice = null,
+  onNoticeRetry,
   clearOnSend = true,
   modelRequired = false,
   modelsLoading = false,
@@ -1224,6 +1235,17 @@ function ComposerImpl({
               <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
                 {notice}
               </span>
+              {onNoticeRetry && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  className="text-muted-foreground hover:text-foreground h-auto shrink-0 px-1.5 py-0.5 text-xs"
+                  onClick={onNoticeRetry}
+                >
+                  {'Retry'}
+                </Button>
+              )}
             </div>
           )}
 

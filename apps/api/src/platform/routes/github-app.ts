@@ -44,6 +44,7 @@ import {
   githubAppClientId,
   githubAppClientSecret,
   githubAppSlug,
+  githubAppStateSecret,
   isGithubAppConfigured,
   isGithubAppOAuthConfigured,
   normalizeGitHubFrontendOrigin,
@@ -68,6 +69,13 @@ export interface GithubAppManifest {
   url: string;
   redirect_url: string;
   setup_url: string;
+  /** OAuth callback URL(s) for the App's own user-to-server ("Sign in with
+   *  this GitHub App") flow — a DIFFERENT field from `redirect_url`, which
+   *  only controls where GitHub returns after the App is CREATED from this
+   *  manifest. Without this, a manifest-created App has no registered
+   *  callback and GitHub rejects the `redirect_uri` that oauth/authorize
+   *  sends, so account linking never completes. */
+  callback_urls: string[];
   setup_on_update: boolean;
   public: boolean;
   /** GitHub's actual manifest field name for the App's permission set — the
@@ -98,6 +106,7 @@ export function buildGithubAppManifest(opts: {
     url: opts.homepageUrl,
     redirect_url: `${base}/v1/platform/github-app/manifest-callback`,
     setup_url: `${base}/v1/platform/github-app/install-callback`,
+    callback_urls: [`${base}/v1/platform/github-app/oauth/callback`],
     setup_on_update: true,
     public: false,
     default_permissions: {
@@ -299,10 +308,34 @@ export interface GitHubOAuthState {
   exp: number;
 }
 
+/** Thrown when the frontend origin itself is unusable — distinct from a
+ *  missing signing secret, which is a server misconfiguration. Conflating the
+ *  two sent anyone debugging a missing secret chasing an origin problem. */
+export class InvalidGitHubOAuthOriginError extends Error {}
+
+/** The OAuth state rides the GitHub App's OWN state secret, not the
+ *  manifest flow's `SUPABASE_JWT_SECRET`-only one: `githubAppStateSecret()`
+ *  resolves stateSecret → KORTIX_GITHUB_APP_STATE_SECRET → SUPABASE_JWT_SECRET
+ *  → the App private key, so this signs in exactly the deployments where the
+ *  rest of the GitHub App flow already works. (A hosted deployment configures
+ *  KORTIX_GITHUB_APP_STATE_SECRET and no SUPABASE_JWT_SECRET — binding to the
+ *  latter made every authorize call fail there.) */
+function oauthStateSecret(): string {
+  const secret = githubAppStateSecret();
+  if (!secret) {
+    throw new Error(
+      'No GitHub App state secret is configured — set KORTIX_GITHUB_APP_STATE_SECRET (or SUPABASE_JWT_SECRET) to sign the OAuth state',
+    );
+  }
+  return secret;
+}
+
 export function signGitHubOAuthState(frontendOrigin: string, nowMs = Date.now()): string {
   const normalized = normalizeGitHubFrontendOrigin(frontendOrigin);
   if (!normalized) {
-    throw new Error('A valid frontend origin is required to start GitHub OAuth');
+    throw new InvalidGitHubOAuthOriginError(
+      'A valid frontend origin is required to start GitHub OAuth',
+    );
   }
   const state: GitHubOAuthState = {
     frontendOrigin: normalized,
@@ -310,7 +343,7 @@ export function signGitHubOAuthState(frontendOrigin: string, nowMs = Date.now())
     exp: nowMs + OAUTH_STATE_TTL_MS,
   };
   const body = Buffer.from(JSON.stringify(state)).toString('base64url');
-  const mac = createHmac('sha256', manifestStateSecret()).update(body).digest('base64url');
+  const mac = createHmac('sha256', oauthStateSecret()).update(body).digest('base64url');
   return `${body}.${mac}`;
 }
 
@@ -324,7 +357,7 @@ export function verifyGitHubOAuthState(
   const [body, mac] = parts as [string, string];
   let expected: string;
   try {
-    expected = createHmac('sha256', manifestStateSecret()).update(body).digest('base64url');
+    expected = createHmac('sha256', oauthStateSecret()).update(body).digest('base64url');
   } catch {
     return null;
   }
@@ -665,11 +698,23 @@ githubAppSetupRouter.openapi(
   }),
   async (c: any) => {
     const query = c.req.query();
-    const frontendOrigin = query.frontend_origin || frontendUrl();
+
+    // Validate the caller-supplied origin BEFORE anything can redirect to it.
+    // `frontend_origin` is an untrusted query param, so every failure path
+    // below must land on our own FRONTEND_URL — an earlier revision returned
+    // `oauth_not_configured` to the raw param and turned this route into an
+    // open redirect (caught by ke2e GHA-3).
+    const requestedOrigin = query.frontend_origin
+      ? normalizeGitHubFrontendOrigin(query.frontend_origin)
+      : frontendUrl();
+    if (!requestedOrigin) {
+      return c.redirect(`${frontendUrl()}/auth/github-connect?error=invalid_origin`, 302);
+    }
+    const frontendOrigin = requestedOrigin;
 
     if (!isGithubAppOAuthConfigured()) {
       return c.redirect(
-        `${frontendOrigin || frontendUrl()}/auth/github-connect?error=oauth_not_configured`,
+        `${frontendOrigin}/auth/github-connect?error=oauth_not_configured`,
         302,
       );
     }
@@ -677,8 +722,21 @@ githubAppSetupRouter.openapi(
     let state: string;
     try {
       state = signGitHubOAuthState(frontendOrigin);
-    } catch {
-      return c.redirect(`${frontendUrl()}/auth/github-connect?error=invalid_origin`, 302);
+    } catch (err) {
+      // A rejected origin and an unconfigured signing secret are different
+      // problems with different fixes — reporting both as `invalid_origin`
+      // sent debugging down the wrong path.
+      if (err instanceof InvalidGitHubOAuthOriginError) {
+        return c.redirect(`${frontendUrl()}/auth/github-connect?error=invalid_origin`, 302);
+      }
+      console.error(
+        '[github-app] oauth/authorize could not sign state',
+        err instanceof Error ? err.message : err,
+      );
+      return c.redirect(
+        `${frontendOrigin}/auth/github-connect?error=state_secret_unavailable`,
+        302,
+      );
     }
 
     const authorizeUrl = new URL('https://github.com/login/oauth/authorize');

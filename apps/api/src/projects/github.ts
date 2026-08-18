@@ -181,7 +181,7 @@ export function isGithubAppOAuthConfigured() {
   return Boolean(githubAppClientId() && githubAppClientSecret());
 }
 
-function githubAppStateSecret() {
+export function githubAppStateSecret() {
   return (
     managedGithubAppConfig().stateSecret?.trim() ||
     process.env.KORTIX_GITHUB_APP_STATE_SECRET ||

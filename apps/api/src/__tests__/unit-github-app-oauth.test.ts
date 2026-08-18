@@ -39,18 +39,25 @@ mock.module('../platform/services/managed-github-app', () => ({
   },
 }));
 
-const { githubAppClientId, githubAppClientSecret, isGithubAppOAuthConfigured } = await import(
-  '../projects/github'
-);
-const { signGitHubOAuthState, verifyGitHubOAuthState, exchangeGitHubOAuthCode } = await import(
-  '../platform/routes/github-app'
-);
+const {
+  githubAppClientId,
+  githubAppClientSecret,
+  isGithubAppOAuthConfigured,
+  normalizeGitHubFrontendOrigin,
+} = await import('../projects/github');
+const {
+  signGitHubOAuthState,
+  verifyGitHubOAuthState,
+  exchangeGitHubOAuthCode,
+  InvalidGitHubOAuthOriginError,
+} = await import('../platform/routes/github-app');
 
 const ENV_KEYS = [
   'KORTIX_GITHUB_APP_CLIENT_ID',
   'GITHUB_APP_CLIENT_ID',
   'KORTIX_GITHUB_APP_CLIENT_SECRET',
   'GITHUB_APP_CLIENT_SECRET',
+  'KORTIX_GITHUB_APP_STATE_SECRET',
   'SUPABASE_JWT_SECRET',
 ] as const;
 const savedEnv: Record<string, string | undefined> = {};
@@ -59,7 +66,12 @@ for (const k of ENV_KEYS) savedEnv[k] = process.env[k];
 beforeEach(() => {
   dbConfig = {};
   for (const k of ENV_KEYS) delete process.env[k];
-  process.env.SUPABASE_JWT_SECRET = 'test-supabase-jwt-secret';
+  // Deliberately the App's OWN state secret, NOT SUPABASE_JWT_SECRET: a
+  // hosted deployment sets this one and no Supabase JWT secret at all.
+  // Binding the OAuth state to SUPABASE_JWT_SECRET made every authorize
+  // call fail there — caught by driving the real route over HTTP, not by
+  // these unit tests, hence the explicit coverage below.
+  process.env.KORTIX_GITHUB_APP_STATE_SECRET = 'test-github-state-secret';
 });
 
 describe('githubAppClientId / githubAppClientSecret (DB-first, env-fallback)', () => {
@@ -124,15 +136,51 @@ describe('signGitHubOAuthState / verifyGitHubOAuthState', () => {
     expect(verifyGitHubOAuthState(token)?.frontendOrigin).toBe('http://localhost:13108');
   });
 
-  test('throws when the frontend origin is not a valid/allowed URL', () => {
-    expect(() => signGitHubOAuthState('not-a-url')).toThrow();
+  test('throws InvalidGitHubOAuthOriginError when the frontend origin is not a valid URL', () => {
+    expect(() => signGitHubOAuthState('not-a-url')).toThrow(InvalidGitHubOAuthOriginError);
   });
 
   test('rejects a plain http origin that is not localhost (open-redirect guard)', () => {
     // normalizeGitHubFrontendOrigin only allows https, or http on
     // localhost/127.0.0.1 — signing with an attacker-controlled http origin
     // must fail closed rather than silently downgrade/accept it.
-    expect(() => signGitHubOAuthState('http://attacker.example')).toThrow();
+    expect(() => signGitHubOAuthState('http://attacker.example')).toThrow(
+      InvalidGitHubOAuthOriginError,
+    );
+  });
+
+  test('signs off the App state secret, NOT SUPABASE_JWT_SECRET', () => {
+    // Regression: the OAuth state originally reused the manifest flow's
+    // SUPABASE_JWT_SECRET-only secret. A hosted deployment sets
+    // KORTIX_GITHUB_APP_STATE_SECRET and no SUPABASE_JWT_SECRET, so every
+    // authorize call 302'd to an error instead of reaching GitHub.
+    delete process.env.SUPABASE_JWT_SECRET;
+    process.env.KORTIX_GITHUB_APP_STATE_SECRET = 'only-the-app-secret';
+    const token = signGitHubOAuthState('https://dev.kortix.com');
+    expect(verifyGitHubOAuthState(token)?.frontendOrigin).toBe('https://dev.kortix.com');
+  });
+
+  test('falls back to the App private key when no explicit state secret is set', () => {
+    // githubAppStateSecret()'s last fallback — proves the OAuth state can
+    // still sign on a deployment that configures neither state secret.
+    delete process.env.KORTIX_GITHUB_APP_STATE_SECRET;
+    delete process.env.SUPABASE_JWT_SECRET;
+    dbConfig = { privateKey: 'PEM-CONTENT-AS-SECRET' };
+    const token = signGitHubOAuthState('https://dev.kortix.com');
+    expect(verifyGitHubOAuthState(token)?.frontendOrigin).toBe('https://dev.kortix.com');
+  });
+
+  test('throws a NON-origin error when no signing secret is available at all', () => {
+    delete process.env.KORTIX_GITHUB_APP_STATE_SECRET;
+    delete process.env.SUPABASE_JWT_SECRET;
+    dbConfig = {};
+    // Must NOT be an origin error — the origin is perfectly valid here; the
+    // server is misconfigured. The route branches on this to report
+    // `state_secret_unavailable` rather than a misleading `invalid_origin`.
+    expect(() => signGitHubOAuthState('https://dev.kortix.com')).toThrow(/state secret/i);
+    expect(() => signGitHubOAuthState('https://dev.kortix.com')).not.toThrow(
+      InvalidGitHubOAuthOriginError,
+    );
   });
 
   test('returns null for undefined/null/empty', () => {
@@ -169,6 +217,38 @@ describe('signGitHubOAuthState / verifyGitHubOAuthState', () => {
     const a = signGitHubOAuthState('https://dev.kortix.com');
     const b = signGitHubOAuthState('https://dev.kortix.com');
     expect(verifyGitHubOAuthState(a)?.nonce).not.toBe(verifyGitHubOAuthState(b)?.nonce);
+  });
+});
+
+describe('normalizeGitHubFrontendOrigin — the authorize route\'s open-redirect guard', () => {
+  // GHA-3 caught the real bug this pins: oauth/authorize's early
+  // `oauth_not_configured` return redirected to the RAW `frontend_origin`
+  // query param, bypassing validation entirely and turning the route into an
+  // open redirect. The route now normalizes the param before any redirect can
+  // reference it; these cases pin what "valid" means.
+  test('accepts https origins', () => {
+    expect(normalizeGitHubFrontendOrigin('https://dev.kortix.com')).toBe('https://dev.kortix.com');
+  });
+
+  test('accepts http only on localhost/127.0.0.1', () => {
+    expect(normalizeGitHubFrontendOrigin('http://localhost:27800')).toBe('http://localhost:27800');
+    expect(normalizeGitHubFrontendOrigin('http://127.0.0.1:3000')).toBe('http://127.0.0.1:3000');
+  });
+
+  test('rejects a plain http origin on any other host', () => {
+    expect(normalizeGitHubFrontendOrigin('http://attacker.example')).toBeUndefined();
+  });
+
+  test('rejects non-URL, empty, and credential-bearing values', () => {
+    expect(normalizeGitHubFrontendOrigin('not-a-url')).toBeUndefined();
+    expect(normalizeGitHubFrontendOrigin('')).toBeUndefined();
+    expect(normalizeGitHubFrontendOrigin('https://user:pass@evil.example')).toBeUndefined();
+  });
+
+  test('strips any path/query, keeping only the origin', () => {
+    expect(normalizeGitHubFrontendOrigin('https://dev.kortix.com/a/b?c=d')).toBe(
+      'https://dev.kortix.com',
+    );
   });
 });
 

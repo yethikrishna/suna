@@ -337,3 +337,103 @@ flow(
     );
   },
 );
+
+flow(
+  'GHA-3',
+  {
+    domain: 'platform',
+    routes: [
+      'GET /v1/platform/github-app/oauth/authorize',
+      'GET /v1/platform/github-app/oauth/callback',
+    ],
+  },
+  async (ctx) => {
+    // The App's OWN OAuth identity-proof flow — what account linking uses to
+    // prove a caller's GitHub identity/org role. It replaced a detour through
+    // Supabase's separate "Sign in with GitHub" login provider, which coupled
+    // this feature to unrelated login config and broke it in production when
+    // that provider was switched off.
+    //
+    // Both routes are PUBLIC browser redirects (the popup opens authorize
+    // directly; GitHub redirects back to callback), so — exactly like GHA-2's
+    // pair — they must NEVER 500 and NEVER honor a forged state. They always
+    // 302 somewhere safe with a reason.
+
+    await ctx.step(
+      'authorize with an attacker-controlled http origin → 302, and NEVER to that origin',
+      async () => {
+        // The open-redirect guard: normalizeGitHubFrontendOrigin allows https,
+        // or http only on localhost/127.0.0.1. A rejected origin must land on
+        // the server's own trusted FRONTEND_URL, never on the attacker's.
+        const r = await ctx.client
+          .as(ctx.P.ANON)
+          .get('/v1/platform/github-app/oauth/authorize', {
+            query: { frontend_origin: 'http://attacker.example' },
+          });
+        r.status(302).headerExists('location');
+        const loc = r.header('location') ?? '';
+        if (loc.includes('attacker.example')) {
+          throw new Error(`open redirect: authorize sent the browser to the attacker origin: ${loc}`);
+        }
+        if (!loc.includes('invalid_origin')) {
+          throw new Error(`expected an invalid_origin reason, got: ${loc}`);
+        }
+      },
+    );
+
+    await ctx.step('authorize with a non-URL origin → 302 (invalid_origin), no 500', async () => {
+      const r = await ctx.client
+        .as(ctx.P.ANON)
+        .get('/v1/platform/github-app/oauth/authorize', {
+          query: { frontend_origin: 'not-a-url' },
+        });
+      r.status(302);
+      const loc = r.header('location') ?? '';
+      if (!loc.includes('invalid_origin')) {
+        throw new Error(`expected an invalid_origin reason, got: ${loc}`);
+      }
+    });
+
+    await ctx.step('callback with no query at all → 302 (invalid_state), never a 500', async () => {
+      // The bare-hit shape that 500'd on install-callback before GHA-2 pinned
+      // it — same class of bug, pinned here before it can happen.
+      const r = await ctx.client.as(ctx.P.ANON).get('/v1/platform/github-app/oauth/callback');
+      r.status(302).headerExists('location');
+      const loc = r.header('location') ?? '';
+      if (!loc.includes('invalid_state')) {
+        throw new Error(`expected an invalid_state reason, got: ${loc}`);
+      }
+    });
+
+    await ctx.step('callback with a forged state → 302 (invalid_state), token never minted', async () => {
+      // A forged state must be rejected BEFORE any GitHub token exchange —
+      // this is what stops an attacker minting a proof token for themselves.
+      const r = await ctx.client
+        .as(ctx.P.ANON)
+        .get('/v1/platform/github-app/oauth/callback', {
+          query: { code: 'attacker-supplied-code', state: 'ZmFrZQ.forgedsignature' },
+        });
+      r.status(302);
+      const loc = r.header('location') ?? '';
+      if (!loc.includes('invalid_state')) {
+        throw new Error(`expected an invalid_state reason, got: ${loc}`);
+      }
+      if (loc.includes('access_token')) {
+        throw new Error(`callback leaked a token for a forged state: ${loc}`);
+      }
+    });
+
+    await ctx.step('callback surfaces a GitHub-reported authorization error', async () => {
+      const r = await ctx.client
+        .as(ctx.P.ANON)
+        .get('/v1/platform/github-app/oauth/callback', {
+          query: { error: 'access_denied', error_description: 'The user denied access' },
+        });
+      r.status(302);
+      const loc = r.header('location') ?? '';
+      if (!loc.includes('error=')) {
+        throw new Error(`expected the GitHub error to be surfaced, got: ${loc}`);
+      }
+    });
+  },
+);

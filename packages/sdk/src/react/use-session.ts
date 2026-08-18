@@ -1396,6 +1396,12 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     if (sync.messages.length > 0) return;
     if (stash.model) picks.setModel(stash.model);
     if (stash.agent) picks.setAgent(stash.agent);
+    // A picks-only stash (`prompt: ''`) seeds the selections above and sends
+    // NOTHING: apps/web's producers now deliver the first prompt as a durable
+    // inbox row (server-side at create, or `startSessionWithPrompt`), and the
+    // stash carries only the model/agent hand-off. A full stash — the
+    // whitelabel-demo producer — still replays here exactly as before.
+    if (!stash.prompt.trim()) return;
     send(stash.prompt, {
       model: stash.model,
       agent: stash.agent,

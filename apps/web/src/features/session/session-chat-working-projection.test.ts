@@ -66,19 +66,19 @@ describe('the composer reads ONE working answer', () => {
     expect(stop).toContain('clearSendReceipt()');
   });
 
-  test('the FIRST prompt of a session accepts its receipt too', () => {
-    // The dashboard stashes the prompt and this component replays it. That path
-    // took a receipt and nothing ever accepted it — and an unaccepted receipt
-    // sets the server floor to infinity, so `GET .../turn` was barred from
-    // answering idle for the receipt's whole 60s life. A dropped end-of-turn
-    // frame therefore pinned the composer on Stop, and `rewind()` threw
-    // "Cannot rewind a busy session" on the Edit the user clicked.
-    const replay = between(chat, 'const handle = replayStartStash<', 'return () => handle.cancel();');
-    expect(replay).toContain('noteSendReceipt(messageID)');
-    expect(replay).toContain('acceptSendReceipt(');
-    // The failure path names the send it is dropping, so it cannot drop a
-    // LATER one that is still on the wire.
-    expect(replay).toContain('clearSendReceipt(sentMessageId)');
+  test('the FIRST prompt of a session is a durable row, never a client replay', () => {
+    // The stash-replay effect (a 30s readiness poll, an optimistic bubble its
+    // own timeout path never cleared, per-send receipt bookkeeping) is GONE:
+    // the first prompt is a durable inbox row before this component mounts —
+    // created server-side from `create.pending_prompt`, or POSTed by the SDK's
+    // `startSessionWithPrompt`, which files the same receipts `handleSend`
+    // does. Only the PICKS still travel through the stash, and a legacy
+    // full-prompt stash is POSTed to the inbox rather than dropped.
+    expect(chat).not.toContain('replayStartStash');
+    expect(chat).not.toContain('optimisticPrompt');
+    const seeding = between(chat, 'const stash = readStartStash(sessionId);', '}, [sessionId, projectId, projectSessionId]);');
+    expect(seeding).toContain('clearStartStash(sessionId)');
+    expect(seeding).toContain('startSessionWithPrompt(projectId, projectSessionId');
   });
 
   test('a slash command accepts its receipt when the command settles', () => {

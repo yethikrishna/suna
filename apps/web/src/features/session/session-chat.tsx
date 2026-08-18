@@ -79,7 +79,6 @@ import { Disclosure, DisclosureContent, DisclosureTrigger } from '@/components/u
 import Loading from '@/components/ui/loading';
 import { dismissToast, errorToast, infoToast } from '@/components/ui/toast';
 import { uploadFile } from '@/features/files/api/runtime-files';
-import { OptimisticTurn } from '@/features/session/optimistic-turn';
 import { useUserPreferencesStore } from '@/stores/user-preferences-store';
 // billingApi / invalidateAccountState / useQueryClient removed — billing is handled server-side by the router
 import { ChatMinimap } from '@/features/session/chat-minimap';
@@ -113,11 +112,6 @@ import { useKortixComputerStore } from '@/stores/kortix-computer-store';
 import { useMessageJumpStore } from '@/stores/message-jump-store';
 import { useOnboardingModeStore } from '@/stores/onboarding-mode-store';
 import { useSessionBrowserStore } from '@/stores/session-browser-store';
-import {
-  useCarriedDraft,
-  useCarriedDraftStore,
-  usePendingFilesStore,
-} from '@/stores/session-composer-handoff-store';
 import {
   useAttachRequest,
   useSessionComposerPrefillStore,
@@ -177,7 +171,7 @@ import {
   readStartStash,
   recoverFromSendFailure,
   rejectQuestion,
-  replayStartStash,
+  startSessionWithPrompt,
   replyToPermission,
   replyToQuestion,
   requestRuntimeReconnect,
@@ -1867,15 +1861,6 @@ export function SessionChat({
   // also every ordinary boot. Only the composer notice reads it, to tell a probe
   // that has not answered yet from one that keeps failing.
   const runtimeUnreachable = useRuntimeConnectionStore((s) => s.status === 'unreachable');
-  // Mirror it into a ref for `checkReadiness` below. That callback is invoked by
-  // `replayStartStash`'s own poll loop, so reading `runtimeReady` from the
-  // closure would pin the value captured when the effect first ran and never
-  // observe the runtime binding. Written in an effect, never during render —
-  // a render-phase ref write is what deadlocked the session shell before.
-  const runtimeReadyRef = useRef(runtimeReady);
-  useEffect(() => {
-    runtimeReadyRef.current = runtimeReady;
-  }, [runtimeReady]);
   const { data: session, isFetched: sessionFetched } = useRuntimeSession(sessionId);
   // useSessionSync is the SINGLE source of truth for messages (matches OpenCode SolidJS).
   // It fetches on first access, then SSE events keep it up to date.
@@ -2047,18 +2032,6 @@ export function SessionChat({
   const lastSubmittedRef = useRef<{ parts: unknown[]; options: Record<string, unknown> } | null>(
     null,
   );
-  const [failedStartDraft, setFailedStartDraft] = useState<{
-    text: string;
-    files: AttachedFile[];
-    id: number;
-  } | null>(null);
-  // A message typed in the instant boot shell after the first send. The shell
-  // refuses it (a row POSTed then would be admitted before the first message,
-  // which is still in the start stash) and hands it here rather than leaving it
-  // in an editor the crossfade is about to unmount. See `useCarriedDraftStore`.
-  //
-  // Cleared by `handlePrefillApplied` below — never on mount. See there.
-  const carriedDraft = useCarriedDraft(projectSessionId ?? '');
   const [rewindTarget, setRewindTarget] = useState<{
     messageId: string;
     text: string;
@@ -2093,26 +2066,6 @@ export function SessionChat({
         mode: 'replace' as const,
       };
     }
-    if (failedStartDraft) {
-      return {
-        source: 'failed-start' as const,
-        text: failedStartDraft.text,
-        files: failedStartDraft.files,
-        id: failedStartDraft.id,
-        mode: 'merge' as const,
-      };
-    }
-    // The follow-up typed in the boot shell, which refused to send it and
-    // handed it over rather than let the crossfade unmount it with its editor.
-    if (carriedDraft) {
-      return {
-        source: 'carried' as const,
-        text: carriedDraft.text,
-        files: carriedDraft.files,
-        id: carriedDraft.id,
-        mode: 'merge' as const,
-      };
-    }
     if (sessionPrefill) {
       return {
         source: 'session' as const,
@@ -2122,28 +2075,7 @@ export function SessionChat({
       };
     }
     return null;
-  }, [rewindDraft, failedStartDraft, carriedDraft, sessionPrefill]);
-  // CONSUME ON APPLY, not clear on mount.
-  //
-  // The carried draft is written BEFORE this component exists — the boot shell
-  // hands it over as it is being replaced — so it is already present on the
-  // FIRST commit, when the lazily-mounted composer editor is still null and
-  // `shouldApplyPrefill` refuses (composer-logic.ts). Clearing it from this
-  // component's own mount effect therefore deleted it one commit before the
-  // composer could take it: the message the shell's toast promised to keep
-  // vanished at the crossfade, which is the whole bug the carry exists to fix.
-  // So the composer reports the id it actually applied and we clear on that.
-  //
-  // `sessionPrefill` above keeps its mount effect on purpose: it is only ever
-  // written from inside this page (`session-panel-provider.tsx`), by which time
-  // this composer is mounted and its editor is ready.
-  const handlePrefillApplied = useCallback(
-    (appliedId: number) => {
-      if (composerPrefill?.source !== 'carried' || composerPrefill.id !== appliedId) return;
-      useCarriedDraftStore.getState().clearCarriedDraft(projectSessionId ?? '');
-    },
-    [composerPrefill, projectSessionId],
-  );
+  }, [rewindDraft, sessionPrefill]);
   // "Add context" (Task 5) — the empty Context card's button asks the
   // composer to open its attach flow. Same held/id-keyed handoff as the
   // prefill above, cleared the same way once the composer's own id-keyed
@@ -2211,216 +2143,54 @@ export function SessionChat({
       useSessionWorkingStore.getState().clearSendReceipt(receiptSessionId, messageId),
     [receiptSessionId],
   );
-  // ---- Optimistic prompt (from dashboard/project page) ----
-  // Backed by the SDK's start-stash (`readStartStash`/`clearStartStash`), which
-  // understands both the modern `kortix:start:<id>` shape and every legacy
-  // producer's bare `opencode_pending_prompt:<id>` + `opencode_pending_options:<id>`
-  // pair — so pushState navigation still works with no `?new=true` dependency,
-  // and no web code needs to know the storage key names directly.
-  // Starts null on the server AND the hydration render (identical trees), then
-  // seeds from the stash in a layout effect — before first paint, so the
-  // optimistic prompt still shows in the same frame the session mounts.
-  const [optimisticPrompt, setOptimisticPrompt] = useState<string | null>(null);
-  useLayoutEffect(() => {
-    const stashed = readStartStash(sessionId)?.prompt;
-    if (stashed) setOptimisticPrompt(stashed);
-  }, [sessionId]);
 
-  // Hydrate options from the SDK's start-stash and send the pending prompt for
-  // new sessions. The dashboard/project page (or the instant session shell)
-  // stashes the prompt and navigates here. We send the message from here (not
-  // the producer) so that SSE listeners and polling are already active when the
-  // response starts streaming back.
+  // ---- Start-stash PICKS seeding (model/agent/variant) ----
   //
-  // The write-race retry (stash read), readiness poll (agent/model), and
-  // failure-recovery (stash restore + classify + idle + rehydrate-or-remove)
-  // mechanics are all owned by the SDK's `replayStartStash` — this effect only
-  // supplies the web-specific pieces: resolving agent/model/variant readiness
-  // against this session's own local model/agent stores, building the
-  // optimistic text + outgoing parts (file uploads), and restoring pending
-  // files on failure.
+  // The stash no longer carries the first prompt for this host: the prompt is
+  // a durable inbox row before this component ever mounts (created server-side
+  // from `create.pending_prompt`, or POSTed by `startSessionWithPrompt`), and
+  // it renders in the queue strip like every other pending prompt. What still
+  // travels here are the producer's PICKS, seeded once into this session's
+  // local stores. The old replay effect — a 30s readiness poll, an optimistic
+  // bubble that its own timeout path never cleared, and per-send receipt
+  // bookkeeping — is gone with the hand-off it served.
+  //
+  // A NON-empty prompt in the stash is a legacy hand-off (a pre-deploy tab, or
+  // an unconverted producer): POST it to the inbox rather than dropping it.
   useEffect(() => {
     if (pendingPromptHandled.current) return;
-
-    // Set by `prepare` below (once, before any failure can occur) so
-    // `onFailure` can restore the same files it consumed.
-    let filesToRestoreOnFailure: AttachedFile[] = [];
-    // The id `prepare` took the receipt under, so `onSuccess` can ACCEPT that
-    // receipt and `onFailure` can drop that one and no other. Without the
-    // acceptance the server floor stayed infinite for the receipt's whole 60s
-    // life, and `GET .../turn` — the control plane's own authority — was
-    // barred from ever answering idle for this session's first prompt.
-    let sentMessageId = '';
-
-    const handle = replayStartStash<{ options: Record<string, unknown> }>({
-      sessionId,
-      classify: classifySessionError,
-      checkReadiness: (stash) => {
-        // Restore agent/model/variant selections from the producer.
-        const options: Record<string, unknown> = {};
-        let selectedModelForSend: ModelKey | undefined;
-        const isSelectableModel = (model: ModelKey): boolean =>
-          localModelList.some(
-            (m) => m.providerID === model.providerID && m.modelID === model.modelID,
-          ) && localModelVisible(model);
-        if (stash.agent) {
-          options.agent = stash.agent;
-          localAgentSet(stash.agent);
-        }
-        if (stash.model && isSelectableModel(stash.model as ModelKey)) {
-          options.model = stash.model;
-          selectedModelForSend = stash.model as ModelKey;
-          localModelSet(stash.model as ModelKey);
-        }
-        if (stash.variant) {
-          options.variant = stash.variant;
-          localVariantSet(stash.variant);
-        }
-        if (!selectedModelForSend && localModelSendKey) {
-          options.model = localModelSendKey;
-          selectedModelForSend = localModelSendKey;
-        }
-        if (!selectedModelForSend) return null;
-
-        // A first send that carries LOCAL files must also wait for this
-        // session's runtime to bind. `buildParts` below uploads them, and the
-        // upload resolves its base from the current-runtime store, which is
-        // empty until `useSession` binds it (startReady + sandbox.external_id).
-        // Model readiness can resolve from cached account defaults well before
-        // that, so without this an ordinary "type a prompt, attach a file, hit
-        // send on a brand-new session" raced the binding and the upload went
-        // out against an unresolved base. The SDK now refuses that outright
-        // (RuntimeNotReadyError) instead of issuing a relative-URL fetch to the
-        // WEB origin, so the failure is safe — but failing is still the wrong
-        // answer when waiting is available. Returning null keeps
-        // `replayStartStash` polling, exactly like an unresolved model.
-        //
-        // `useRuntimeReady` is the right gate rather than a bare url check: it
-        // already requires BOTH a healthy connection and a resolved url, and it
-        // falls back to `getActiveOpenCodeUrl()` so the self-hosted
-        // default-sandbox case (where the store url stays null) is not stalled
-        // forever.
-        //
-        // Only gated on LOCAL files: a text-only prompt, or one carrying
-        // already-remote parts, needs no upload and must not be delayed.
-        const hasLocalUpload = usePendingFilesStore
-          .getState()
-          .files.some((file) => file.kind === 'local');
-        if (hasLocalUpload && !runtimeReadyRef.current) return null;
-
-        return { options };
-      },
-      onReadinessTimeout: () => {
-        // Report the blocker that actually held the send. Readiness now has two
-        // conditions — a selectable model, and a bound runtime when there are
-        // local files to upload — so always saying "no model available" would
-        // send someone to the model picker for a sandbox that never started.
-        const stalledOnRuntime =
-          !runtimeReadyRef.current &&
-          usePendingFilesStore.getState().files.some((file) => file.kind === 'local');
-        setCommandError({
-          kind: 'runtime-error',
-          message: stalledOnRuntime
-            ? 'The sandbox did not finish starting, so the attached files could not be uploaded. Try sending again.'
-            : NO_MODEL_AVAILABLE_MESSAGE,
-          cause: null,
-        });
-      },
-      prepare: (stash, ready) => {
-        pendingPromptHandled.current = true;
-        setPollingActive(true);
-        clearStartStash(sessionId);
-
-        const sendOpts = ready.options as {
-          agent?: string;
-          model?: ModelKey;
-          variant?: string;
-        };
-        const messageID = ascendingId('msg');
-        const textPartId = ascendingId('prt');
-        // Consume pending files before rendering the optimistic message so
-        // uploaded file cards are visible while the sandbox is still starting.
-        const pendingFiles = usePendingFilesStore.getState().consumePendingFiles();
-        filesToRestoreOnFailure = pendingFiles;
-        const optimisticPendingPrompt = buildOptimisticPromptTextWithUploads(
-          stash.prompt,
-          pendingFiles,
-        );
-        setOptimisticPrompt(optimisticPendingPrompt);
-        sentMessageId = messageID;
-        noteSendReceipt(messageID);
-
-        return {
-          messageId: messageID,
-          optimisticText: optimisticPendingPrompt,
-          partIds: [textPartId],
-          sendOptions: {
-            ...(session?.directory ? { directory: session.directory } : {}),
-            ...(sendOpts?.agent && { agent: sendOpts.agent }),
-            ...(sendOpts?.model && { model: formatPromptModel(sendOpts.model) }),
-            ...(sendOpts?.variant && { variant: sendOpts.variant }),
-          },
-          // Upload local files and build the parts array (text + file refs).
-          buildParts: async () => {
-            const built = await buildPromptPartsWithUploads(stash.prompt, pendingFiles, uploadFile);
-            return [{ type: 'text' as const, text: built.text }, ...built.remoteParts];
-          },
-        };
-      },
-      onFailure: (stash, _err, classified) => {
-        clearSendReceipt(sentMessageId);
-        setOptimisticPrompt(null);
-        setPollingActive(false);
-        setCommandError(classified);
-        usePendingFilesStore.getState().setPendingFiles(filesToRestoreOnFailure);
-        // replayStartStash restores durable sessionStorage itself. Rehydrate the
-        // visible composer too, so the user can retry immediately without a
-        // reload and without losing either the prompt or local File objects.
-        setFailedStartDraft({
-          text: stash.prompt,
-          files: filesToRestoreOnFailure,
-          id: Date.now(),
-        });
-      },
-      onSuccess: () => {
-        // The runtime acknowledged the prompt, so from here — and not before —
-        // a `/turn` read can see it and is allowed to answer for it. This path
-        // sends straight at OpenCode rather than through the inbox, so the
-        // acknowledgement IS the acceptance.
-        acceptSendReceipt(sentMessageId);
-        if (!projectId || !projectSessionId) return;
-        void updateProjectSession(projectId, projectSessionId, {
-          metadata: { pending_prompt: null },
-        }).catch((error) => {
-          console.warn('[session-chat] failed to clear the acknowledged pending prompt', error);
-        });
-      },
-    });
-
-    return () => handle.cancel();
-  }, [
-    sessionId,
-    localAgentSet,
-    localModelCurrentKey,
-    localModelSendKey,
-    localModelList,
-    localModelSet,
-    localModelVisible,
-    localVariantSet,
-    projectId,
-    projectSessionId,
-    session?.directory,
-    noteSendReceipt,
-    acceptSendReceipt,
-    clearSendReceipt,
-  ]);
-
-  // Clear optimistic prompt once real messages arrive
-  useEffect(() => {
-    if (optimisticPrompt && messages && messages.length > 0) {
-      setOptimisticPrompt(null);
+    const stash = readStartStash(sessionId);
+    if (!stash) return;
+    pendingPromptHandled.current = true;
+    clearStartStash(sessionId);
+    if (stash.agent) localAgentSet(stash.agent);
+    if (
+      stash.model &&
+      localModelList.some(
+        (m) => m.providerID === stash.model!.providerID && m.modelID === stash.model!.modelID,
+      ) &&
+      localModelVisible(stash.model as ModelKey)
+    ) {
+      localModelSet(stash.model as ModelKey, { autoSeed: true });
     }
-  }, [optimisticPrompt, messages]);
+    if (stash.variant) localVariantSet(stash.variant);
+    const legacyPrompt = stash.prompt.trim();
+    if (legacyPrompt && projectId && projectSessionId) {
+      void startSessionWithPrompt(projectId, projectSessionId, {
+        parts: [{ type: 'text', text: legacyPrompt }],
+        overrides: {
+          ...(stash.agent ? { agent: stash.agent } : {}),
+          ...(stash.model ? { model: stash.model } : {}),
+          ...(stash.variant ? { variant: stash.variant } : {}),
+        },
+      }).catch((error) => {
+        console.error('[session-chat] failed to queue the stashed legacy prompt', error);
+        setCommandError(classifySessionError(error));
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, projectId, projectSessionId]);
+
 
   const agentNames = useMemo(() => local.agent.list.map((a) => a.name), [local.agent.list]);
 
@@ -3055,7 +2825,9 @@ export function SessionChat({
     [],
   );
   const hasAnyMessages = turns.length > 0;
-  const hasChatContent = hasAnyMessages || (!!optimisticPrompt && !hasAnyMessages);
+  // A pending inbox row counts as content: the session HAS the user's message
+  // (durably), so the welcome overlay must not paint over the queue strip.
+  const hasChatContent = hasAnyMessages || promptInbox.prompts.length > 0;
   // Full-bleed wallpaper layer mounted by SessionLayout (null on mobile /
   // standalone). When present, the welcome wallpaper is portaled into it so it
   // spans the entire session width instead of shrinking with the chat panel.
@@ -4145,30 +3917,6 @@ export function SessionChat({
   // prop below must keep referential identity across renders that don't
   // actually change it — otherwise the memo is defeated on every streaming
   // token). Bodies are verbatim copies of what used to be inlined in the JSX. ----
-  const handleSendWithDraftClear = useCallback(
-    async (text: string, files?: AttachedFile[], mentions?: TrackedMention[]) => {
-      await handleSend(text, files, mentions);
-      if (failedStartDraft) {
-        clearStartStash(sessionId);
-        usePendingFilesStore.getState().consumePendingFiles();
-        setFailedStartDraft(null);
-      }
-    },
-    [handleSend, failedStartDraft, sessionId],
-  );
-
-  const chatPrefill = useMemo(
-    () =>
-      failedStartDraft
-        ? {
-            text: failedStartDraft.text,
-            files: failedStartDraft.files,
-            id: failedStartDraft.id,
-            mode: 'merge' as const,
-          }
-        : null,
-    [failedStartDraft],
-  );
 
   const handleAgentChange = useCallback(
     (name: string | null | undefined) => local.agent.set(name ?? undefined),
@@ -4337,12 +4085,11 @@ export function SessionChat({
     sessionFetched,
     hasRuntimeSession: Boolean(session),
     hasMessages,
-    hasOptimisticPrompt: Boolean(optimisticPrompt),
+    hasOptimisticPrompt: promptInbox.prompts.length > 0,
   });
   // Everything that isn't "we have content" and isn't the terminal not-found
   // state is loading — including the boot window where the query is still
   // disabled (isLoading=false) waiting on the runtime.
-  const showOptimistic = !!optimisticPrompt && !hasMessages;
   const isTransitioningFromWelcome = !prevHasChatContentRef.current && hasChatContent;
   // The welcome wallpaper is the EMPTY-STATE backdrop for a *resolved* session.
   // The loading/connecting phase never reaches here (it early-returns the loader
@@ -4476,18 +4223,6 @@ export function SessionChat({
                   className="mx-auto w-full max-w-3xl min-w-0 px-4 py-6 pb-32 md:pr-1"
                 >
                   <div className="flex min-w-0 flex-col">
-                    {/* Optimistic turn — the user's message plus the waiting row,
-                        shared verbatim with InstantSessionShell so the shell → chat
-                        crossfade has nothing to drift on (see OptimisticTurn). */}
-                    {showOptimistic && (
-                      <OptimisticTurn
-                        text={optimisticPrompt || ''}
-                        agentNames={agentNames}
-                        onFileClick={openFileInComputer}
-                        sessionId={sessionId}
-                      />
-                    )}
-
                     {isOptimisticCompacting && !hasCompactionTurn && (
                       <div className="mt-12 space-y-3">
                         <div className="my-3 flex items-center gap-3 py-4">
@@ -4656,7 +4391,7 @@ export function SessionChat({
                     {/* Busy with no turn to attach it to yet — the same waiting row
                         the optimistic turn and every live turn use, so it never
                         changes shape as the first turn materialises. */}
-                    {!showOptimistic && isBusy && turns.length === 0 && (
+                    {isBusy && turns.length === 0 && (
                       <SessionBusyIndicator sessionId={sessionId} />
                     )}
                   </div>
@@ -4729,14 +4464,8 @@ export function SessionChat({
               <SessionChatInput
                 onSend={async (text, files, mentions) => {
                   await handleSend(text, files, mentions);
-                  if (failedStartDraft) {
-                    clearStartStash(sessionId);
-                    usePendingFilesStore.getState().consumePendingFiles();
-                    setFailedStartDraft(null);
-                  }
                 }}
                 prefill={composerPrefill}
-                onPrefillApplied={handlePrefillApplied}
                 attachRequestId={attachRequestId}
                 isBusy={isBusy}
                 // The ONE projection, not the 300 ms busy fade: it is what

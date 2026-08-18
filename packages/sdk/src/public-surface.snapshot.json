@@ -975,6 +975,7 @@
     "setRuntimeProviderApiKey",
     "shouldCountProbeFailure",
     "shouldIgnoreProbeFailure",
+    "startSessionWithPrompt",
     "startStashKey",
     "stopWithReceipt",
     "ticketKeys",

@@ -89,10 +89,21 @@ export interface PendingSessionPrompt {
   model?: { providerID: string; modelID: string } | null;
   variant?: string | null;
   attachment_names?: string[];
+  /**
+   * Full prompt parts, in OpenCode's wire shape. Lets the first prompt carry
+   * attachments as `data:` URLs — the session's sandbox does not exist yet,
+   * so there is nowhere to upload into. When present, these are what the
+   * server enqueues; `text` remains the flat copy for previews and titling.
+   */
+  parts?: SessionPromptPart[];
 }
 
 /**
  * Public body for POST /projects/:projectId/sessions.
+
+ * The server converts `pending_prompt` into a durable prompt-inbox row inside
+ * the create transaction and stores only its picks in session metadata — see
+ * apps/api's `convertPendingPromptToInboxRow`.
  *
  * Session create immediately begins runtime provisioning; it is not a deferred
  * metadata-only create. Callers that rotate project secrets or connector

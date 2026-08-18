@@ -184,6 +184,7 @@ import {
   useRuntimeAgents,
   useRuntimeCommands,
   useRuntimeConfig,
+  useRuntimeConnectionStore,
   useRuntimePendingStore,
   useRuntimeProviders,
   useSessionPrompts,
@@ -197,7 +198,7 @@ import {
   useSessionWorkingStore,
 } from '@kortix/sdk/react';
 import { CodeBlockEndpoints, SandboxUrlDetector } from './sandbox-url-detector';
-import { sessionComposerReadiness } from './session-composer-readiness';
+import { serverHoldsOpenTurn, sessionComposerReadiness } from './session-composer-readiness';
 import { captureTurnScrollAnchor, restoreTurnScrollAnchor } from './session-history-scroll';
 import { resolveSessionContentState } from './session-load-state';
 import { shouldLoadOlderHistory } from './session-older-autoload';
@@ -1835,6 +1836,10 @@ export function SessionChat({
   // runtime is connected + healthy). We need it here too so the render logic
   // can tell "still booting" apart from "genuinely gone".
   const runtimeReady = useRuntimeReady();
+  // "The health poller GAVE UP", which `!runtimeReady` does not say — that is
+  // also every ordinary boot. Only the composer notice reads it, to tell a probe
+  // that has not answered yet from one that keeps failing.
+  const runtimeUnreachable = useRuntimeConnectionStore((s) => s.status === 'unreachable');
   // Mirror it into a ref for `checkReadiness` below. That callback is invoked by
   // `replayStartStash`'s own poll loop, so reading `runtimeReady` from the
   // closure would pin the value captured when the effect first ran and never
@@ -2454,14 +2459,18 @@ export function SessionChat({
   // Paired with the server's own authority so it can never wedge: an assistant
   // message left open by a sandbox that died mid-turn (no error, no
   // completion) is not a retry, AND a dead box's turn is husk-finalized, so
-  // `serverOpenTurnId` goes null and the gate opens. That pair is what the old
-  // 10s husk clock and its confirmation round-trip existed to approximate.
+  // `serverOpenTurnToken` goes null and the gate opens. That pair is what the
+  // old 10s husk clock and its confirmation round-trip existed to approximate.
+  //
+  // The TOKEN, not the message id: a `/` command's own turn carries no wire
+  // `messageID`, so keying this on the id left the gate open for exactly the
+  // producer it guards.
   //
   // It gates COMMANDS only now (`sessionWorking` on the composer). A prompt is
   // an inbox row and the server's admission gate holds it.
   const hasRetryingAssistant = useMemo(
-    () => hasRetryingAssistantTurn(messages) && working.serverOpenTurnId !== null,
-    [messages, working.serverOpenTurnId],
+    () => hasRetryingAssistantTurn(messages) && working.serverOpenTurnToken !== null,
+    [messages, working.serverOpenTurnToken],
   );
 
   const hasPendingUserReply = useMemo(() => {
@@ -4145,7 +4154,18 @@ export function SessionChat({
   // therefore reports isLoading=false) or the lookup is in flight, we know
   // nothing yet — so we must show the loading state, not the error. This is what
   // stops the "This session is not accessible right now." flash on boot.
-  const composerReadiness = sessionComposerReadiness({ runtimeReady });
+  const composerReadiness = sessionComposerReadiness({
+    runtimeReady,
+    // Only an OPEN TURN the control plane is holding counts here. This tab's
+    // optimistic receipt and a stream frame both survive a box that died
+    // mid-turn, and a durable inbox row (which the projection also sources to
+    // `server`) exists precisely while nothing is running yet — see
+    // `serverHoldsOpenTurn`.
+    serverTurnLive: serverHoldsOpenTurn(working),
+    // The poller's own verdict, so suppressing the waking line cannot leave a
+    // session that stopped answering mid-turn with nothing on screen.
+    runtimeUnreachable,
+  });
   const { isNotFound, isDataLoading } = resolveSessionContentState({
     runtimeReady,
     sessionFetched,

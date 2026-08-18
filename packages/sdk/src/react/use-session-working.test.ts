@@ -16,7 +16,7 @@ const T0 = Date.parse('2026-08-18T10:00:00.000Z');
 describe('workingPollMs', () => {
   test('a working session is polled fast — the end of the turn is the news', () => {
     expect(
-      workingPollMs({ state: 'working', source: 'server', turnId: 'msg_1', since: T0, serverOpenTurnId: 'msg_1' }),
+      workingPollMs({ state: 'working', source: 'server', turnId: 'msg_1', since: T0, serverOpenTurnToken: 'tt-1' }),
     ).toBe(WORKING_POLL_ACTIVE_MS);
   });
 
@@ -24,7 +24,7 @@ describe('workingPollMs', () => {
     // A trigger, a second device, or the inbox delivering a queued prompt all
     // start turns nobody here asked for. `false` would mean only a reload
     // ever shows them.
-    expect(workingPollMs({ state: 'idle', source: 'server', turnId: null, since: T0, serverOpenTurnId: null })).toBe(
+    expect(workingPollMs({ state: 'idle', source: 'server', turnId: null, since: T0, serverOpenTurnToken: null })).toBe(
       WORKING_POLL_IDLE_MS,
     );
     expect(WORKING_POLL_IDLE_MS).toBeGreaterThan(WORKING_POLL_ACTIVE_MS);
@@ -34,7 +34,7 @@ describe('workingPollMs', () => {
     // It is the one state that MUST resolve quickly: the projection is
     // running on this tab's own word until a server source answers.
     expect(
-      workingPollMs({ state: 'working', source: 'optimistic', turnId: 'msg_1', since: T0, serverOpenTurnId: null }),
+      workingPollMs({ state: 'working', source: 'optimistic', turnId: 'msg_1', since: T0, serverOpenTurnToken: null }),
     ).toBe(WORKING_POLL_ACTIVE_MS);
   });
 });

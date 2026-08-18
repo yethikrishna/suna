@@ -45,8 +45,32 @@ describe('projectWorking', () => {
       source: 'server',
       turnId: 'msg_01',
       since: T0,
-      serverOpenTurnId: 'msg_01',
+      serverOpenTurnToken: 'tt-1',
     });
+  });
+
+  test('a turn delivered with no wire messageID is still an open turn', () => {
+    // `message_id` is the WIRE id of the prompt that opened the turn, and most
+    // producers send none: `postPrompt` omits `messageID` for triggers, Slack /
+    // Teams / Telegram, approval-resume and email, and `buildSessionCommandInput`
+    // omits it for EVERY `/` command including `/compact`. `GET .../turn` then
+    // answers `message_id: null` (`r8.ts` — the field is `z.string().nullable()`)
+    // for a turn that is very much running. Reporting the open turn off that
+    // field answered "the control plane holds nothing" for that whole class.
+    // `turn_token` is minted for every turn and is never null.
+    const projection = projectWorking({
+      optimistic: null,
+      server: { turns: [turn({ message_id: null })], atMs: T0 },
+      stream: null,
+      nowMs: T0 + 1_000,
+    });
+
+    expect(projection.state).toBe('working');
+    expect(projection.source).toBe('server');
+    // The wire id is honestly absent…
+    expect(projection.turnId).toBeNull();
+    // …and the authority is just as honestly present.
+    expect(projection.serverOpenTurnToken).toBe('tt-1');
   });
 
   test('a NEWER stream idle ends a turn the last poll still saw open', () => {
@@ -66,8 +90,8 @@ describe('projectWorking', () => {
     expect(projection.source).toBe('stream');
     // The read the stream just overruled is still REPORTED, because a caller
     // can need the raw fact ("the control plane is holding a turn open") even
-    // when a fresher frame decides the state — see `serverOpenTurnId`.
-    expect(projection.serverOpenTurnId).toBe('msg_01');
+    // when a fresher frame decides the state — see `serverOpenTurnToken`.
+    expect(projection.serverOpenTurnToken).toBe('tt-1');
   });
 
   test('a server open turn nothing has refreshed for a minute stops deciding', () => {
@@ -85,7 +109,7 @@ describe('projectWorking', () => {
     expect(projection.state).toBe('idle');
     expect(projection.turnId).toBeNull();
     // A read too old to decide is too old to REPORT an open turn from either.
-    expect(projection.serverOpenTurnId).toBeNull();
+    expect(projection.serverOpenTurnToken).toBeNull();
   });
 
   test('a stale server read cannot declare idle either — it decides nothing', () => {
@@ -133,7 +157,7 @@ describe('projectWorking', () => {
       source: 'server',
       turnId: 'msg_01',
       since: T0 + 1_000,
-      serverOpenTurnId: 'msg_01',
+      serverOpenTurnToken: 'tt-1',
     });
   });
 
@@ -158,7 +182,7 @@ describe('projectWorking', () => {
       source: 'server',
       turnId: null,
       since: T0 - 2_000,
-      serverOpenTurnId: null,
+      serverOpenTurnToken: null,
     });
   });
 
@@ -191,7 +215,7 @@ describe('projectWorking', () => {
       source: 'stream',
       turnId: null,
       since: T0 + 500,
-      serverOpenTurnId: null,
+      serverOpenTurnToken: null,
     });
   });
 
@@ -220,7 +244,7 @@ describe('projectWorking', () => {
       source: 'stream',
       turnId: null,
       since: T0,
-      serverOpenTurnId: null,
+      serverOpenTurnToken: null,
     });
   });
 
@@ -237,7 +261,7 @@ describe('projectWorking', () => {
       source: 'optimistic',
       turnId: 'msg_42',
       since: T0,
-      serverOpenTurnId: null,
+      serverOpenTurnToken: null,
     });
   });
 
@@ -302,7 +326,7 @@ describe('projectWorking', () => {
       source: 'server',
       turnId: null,
       since: T0 + 1_000,
-      serverOpenTurnId: null,
+      serverOpenTurnToken: null,
     });
   });
 
@@ -443,7 +467,7 @@ describe('projectWorking', () => {
       source: 'server',
       turnId: null,
       since: T0,
-      serverOpenTurnId: null,
+      serverOpenTurnToken: null,
     });
   });
 

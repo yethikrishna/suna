@@ -110,6 +110,33 @@ describe('the composer reads ONE working answer', () => {
     expect(cancel).toContain('settleAbortReceipt(');
   });
 
+  test('the waking notice is suppressed by an OPEN TURN, never by a queued inbox row', () => {
+    // `working.source === 'server'` is also true for a durable inbox row with
+    // nothing running, which is precisely the state the notice exists for.
+    // `serverHoldsOpenTurn` reads `serverOpenTurnToken`, the field the projection
+    // documents as the control plane's live authority.
+    const readiness = between(chat, 'const composerReadiness = sessionComposerReadiness(', '});');
+    expect(readiness).toContain('serverTurnLive: serverHoldsOpenTurn(working)');
+    expect(readiness).not.toContain("working.source === 'server'");
+  });
+
+  test('suppressing the notice never leaves an UNREACHABLE runtime with nothing on screen', () => {
+    // The connection store's own verdict, not an inference. An open turn plus a
+    // runtime that stopped answering is a real state that lasts up to the 240m
+    // turn grant, and it needs its own line.
+    const readiness = between(chat, 'const composerReadiness = sessionComposerReadiness(', '});');
+    expect(readiness).toContain('runtimeUnreachable');
+    expect(chat).toContain("useRuntimeConnectionStore((s) => s.status === 'unreachable')");
+  });
+
+  test('the command gate reads the turn TOKEN, so a `/` command sees its own turn', () => {
+    // `message_id` is null for every `/` command's turn (`buildSessionCommandInput`
+    // sends no `messageID`), so keying this gate on it left it permanently open
+    // for the exact producer it guards.
+    expect(chat).toContain('working.serverOpenTurnToken !== null');
+    expect(chat).not.toContain('working.serverOpenTurnId');
+  });
+
   test('a `/` command still refuses to go out into a turn that is mid-retry', () => {
     // REWRITTEN with the queue drain's deletion. This gate used to hold the
     // browser drain shut; the drain is gone, but the hazard is not — a command

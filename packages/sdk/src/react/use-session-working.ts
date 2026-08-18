@@ -222,7 +222,7 @@ export function useSessionWorking(
 
   // Stable identity while the ANSWER is unchanged, so consumers that memoize on
   // it are not re-run once per render just because `now` moved.
-  const identity = `${projection.state}|${projection.source}|${projection.turnId}|${projection.since}|${projection.serverOpenTurnId}`;
+  const identity = `${projection.state}|${projection.source}|${projection.turnId}|${projection.since}|${projection.serverOpenTurnToken}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => projection, [identity]);
 }

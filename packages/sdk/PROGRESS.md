@@ -12,6 +12,87 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-18 — session `server-truth-m1` — step 10: the proxy names the hop that failed — DONE
+
+**Files:** `core/session/health.ts` (+`core/session/session.test.ts`),
+`react/use-runtime-reconnect.ts` (+`.test.ts`),
+`browser/stores/sandbox-connection-store.ts`,
+`react/use-opencode-events/index.ts`, both surface snapshots. The API half (a
+new `apps/api/src/sandbox-proxy/proxy-hop.ts`, the three
+`portUnreachableResponse` call sites, and `middleware/cors.ts`) and the
+`apps/web` half (the composer's waking notice) are outside this package.
+
+**What.** A failed health probe used to arrive as a bare 502/503 with no way to
+tell four very different failures apart. The sandbox proxy now stamps
+`X-Kortix-Proxy-Hop` (`control_plane` | `provider_ingress` | `daemon` |
+`upstream_port`) and `X-Kortix-Upstream-Status` on every unreachable response,
+CORS-exposed so a cross-origin browser probe can actually read them.
+
+`SessionHealthResult` gains `hop: ProxyHop | null` and `upstreamStatus: number |
+null`, read from the headers with the JSON body as fallback (a deployment whose
+CORS config predates this would otherwise yield a silent `null`). The type is
+published on root `.`; the two fields are ADDITIVE on a value this package
+returns and never asks a caller to construct. `ProbeResultLike` is published on
+`./react` and appears only in INPUT position, so its two new fields are
+OPTIONAL — requiring them would break every external `classifyProbeResult`
+caller at compile time.
+
+`shouldCountProbeFailure({ hop, lastRuntimeEvidenceAt, nowMs })` is the one gate
+on the failure counter. `control_plane` and `upstream_port` never move it — the
+first is our own answer, the second is the user's dev server. `provider_ingress`,
+`daemon`, and an UNATTRIBUTED failure (`null`: network error, `CHECK_TIMEOUT`
+abort, a response from something that is not our proxy) all count. Refusing to
+count `null` would leave a browser that lost its network reading "connected"
+forever, which is a deliberate departure from the spec's literal "only
+`provider_ingress` | `daemon`".
+
+**The SSE-evidence veto STAYS.** Spec §10.1 asks for its deletion; that is
+refused, and the refusal is the second deliberate deviation. The health probe
+addresses the daemon port (`${backend}/p/<external_id>/8000/kortix/health`), so
+EVERY failure it can observe is `daemon`, `provider_ingress`, or hop-less — the
+hop can never clear the case the veto exists for. That case is the 2026-08-17
+incident: a box saturated by a heavy turn streams frames fine and misses the 20s
+probe deadline, two misses flip `sandboxStatus` to `unreachable`,
+`useOpenCodeEventStream` (gated on `=== 'connected'`) tears the live stream down,
+and the transcript freezes mid-turn on a runtime that is provably up. So
+`RUNTIME_EVIDENCE_FRESH_MS`, `shouldIgnoreProbeFailure`, `noteRuntimeEvidence`
+and `lastRuntimeEvidenceAt` all remain, now composed INTO
+`shouldCountProbeFailure` so the interaction of the two facts is asserted in one
+pure function instead of assumed across two.
+
+**Review fix — `WorkingProjection.serverOpenTurnId` → `serverOpenTurnToken`.**
+The field was `turns[0].message_id`, and `message_id` is the WIRE id of the
+prompt that opened the turn. `postPrompt` sends none for triggers,
+Slack/Teams/Telegram, approval-resume or email, and `buildSessionCommandInput`
+sends none for any `/` command — so `GET .../turn` answers `message_id: null`
+(`r8.ts`, `z.string().nullable()`) for that whole class of LIVE turns. Every
+"does the control plane hold authority" reader therefore answered NO for them:
+`apps/web`'s new `serverHoldsOpenTurn` (the waking notice painted over a running
+`/compact`) and the pre-existing `commandBlockedByRetry` gate, which was
+permanently open for exactly the producer it guards. Now `turns[0].turn_token`,
+which the control plane mints for every turn and never leaves null. `turnId`
+still carries `message_id` and is still honestly nullable. Unpublished field,
+renamed rather than duplicated so the wrong one cannot be picked again; the
+snapshots record names only, so they are unchanged. Web callers updated in the
+same commit.
+
+**Review fix — suppressing the waking notice may not go silent.** The comment
+claiming `serverOpenTurn*` "cannot latch — a dead box's turn is husk-finalized"
+is false for a wedged daemon on a box the provider still reports RUNNING:
+`finalizeHuskTurn` returns unreadable, and `box-reaper`'s `observation ===
+'unknown'` branch clears the record only once `row.deadlineAt <= now` — an
+accepted turn's deadline being `turnGrantMs()`, 240 minutes by default. So
+`GET .../turn` reports the turn for up to ~4h while every probe fails.
+`sessionComposerReadiness` gains `runtimeUnreachable` (the connection store's
+`status === 'unreachable'`, which `!runtimeReady` does not say) and renders a
+distinct line for that state instead of nothing.
+
+**Gates.** `bun test --isolate src` 2210 pass / 0 fail; `tsc --noEmit` +
+examples clean. Snapshot diff is 3 additions (`ProxyHop`, `parseProxyHop`,
+`shouldCountProbeFailure`) and nothing else — no deletions.
+
+---
+
 ### 2026-08-18 — session `server-truth-m1` — step 9: `@kortix/sdk/message-queue` frozen at its published surface, `send-queue` deleted — DONE
 
 **Files:** `core/session/message-queue.ts` (+`.test.ts`), DELETED

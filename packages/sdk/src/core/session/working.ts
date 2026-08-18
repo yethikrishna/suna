@@ -29,19 +29,27 @@ export interface WorkingProjection {
   /** ms epoch at which THIS state began, from the deciding observation. */
   since: number;
   /**
-   * The turn the control plane is holding open in the freshest read we have,
-   * EVEN WHEN something newer outranked it above.
+   * The `turn_token` of the turn the control plane is holding open in the
+   * freshest read we have, EVEN WHEN something newer outranked it above.
    *
    * `state` is the answer; this is the raw fact behind one of its inputs, and
    * the two are deliberately separable. A caller that must not act while the
-   * server still holds authority — the queue drain, which sends a `/` command
-   * straight at OpenCode with no admission gate in front of it — needs to see
-   * that authority even in the window where a fresher status frame is
-   * (correctly) deciding `idle`. `null` when no fresh read reports one, so it
-   * cannot latch: a dead box's turn is husk-finalized and the next read clears
-   * it.
+   * server still holds authority — a `/` command, which goes straight at
+   * OpenCode with no admission gate in front of it — needs to see that
+   * authority even in the window where a fresher status frame is (correctly)
+   * deciding `idle`. `null` when no fresh read reports one, so a read too old
+   * to decide cannot latch it.
+   *
+   * The TOKEN, never `message_id`. `message_id` is the WIRE id of the prompt
+   * that opened the turn, and most producers send none: `postPrompt` omits
+   * `messageID` for triggers, Slack/Teams/Telegram, approval-resume and email,
+   * and `buildSessionCommandInput` omits it for every `/` command. `GET
+   * .../turn` answers `message_id: null` for all of them (the field is
+   * `z.string().nullable()`), so an authority check keyed on it read "the
+   * server holds nothing" over turns that were streaming. `turn_token` is
+   * minted by the control plane for every turn and is never null.
    */
-  serverOpenTurnId: string | null;
+  serverOpenTurnToken: string | null;
 }
 
 /**
@@ -281,7 +289,7 @@ export function projectWorking(inputs: WorkingInputs): WorkingProjection {
   const streamFresh = !!stream && nowMs - stream.atMs <= STREAM_OBSERVATION_MAX_MS;
   const inboxFresh = !!inbox && nowMs - inbox.atMs <= INBOX_OBSERVATION_MAX_MS;
   const openTurn = serverFresh ? server!.turns[0] : undefined;
-  const serverOpenTurnId = openTurn?.message_id ?? null;
+  const serverOpenTurnToken = openTurn?.turn_token ?? null;
 
   // A turn the authority is holding open, unless the stream has since said the
   // session went idle. The stream frame is newer BY OBSERVATION, and the daemon
@@ -293,7 +301,7 @@ export function projectWorking(inputs: WorkingInputs): WorkingProjection {
       source: 'server',
       turnId: openTurn.message_id,
       since: instant(openTurn.started_at) ?? server!.atMs,
-      serverOpenTurnId,
+      serverOpenTurnToken,
     };
   }
 
@@ -305,7 +313,7 @@ export function projectWorking(inputs: WorkingInputs): WorkingProjection {
       source: 'server',
       turnId: null,
       since: inbox!.atMs,
-      serverOpenTurnId,
+      serverOpenTurnToken,
     };
   }
 
@@ -318,7 +326,7 @@ export function projectWorking(inputs: WorkingInputs): WorkingProjection {
       source: 'server',
       turnId: null,
       since: instant(server!.lastEnded?.ended_at) ?? server!.atMs,
-      serverOpenTurnId,
+      serverOpenTurnToken,
     };
   }
 
@@ -328,7 +336,7 @@ export function projectWorking(inputs: WorkingInputs): WorkingProjection {
       source: 'stream',
       turnId: null,
       since: stream!.atMs,
-      serverOpenTurnId,
+      serverOpenTurnToken,
     };
   }
 
@@ -338,7 +346,7 @@ export function projectWorking(inputs: WorkingInputs): WorkingProjection {
       source: 'optimistic',
       turnId: optimistic!.messageId,
       since: optimistic!.atMs,
-      serverOpenTurnId,
+      serverOpenTurnToken,
     };
   }
 
@@ -359,7 +367,7 @@ export function projectWorking(inputs: WorkingInputs): WorkingProjection {
     source: newest.source,
     turnId: null,
     since: newest.atMs,
-    serverOpenTurnId,
+    serverOpenTurnToken,
   };
 }
 

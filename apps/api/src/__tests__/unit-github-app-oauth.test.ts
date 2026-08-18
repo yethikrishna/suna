@@ -45,12 +45,9 @@ const {
   isGithubAppOAuthConfigured,
   normalizeGitHubFrontendOrigin,
 } = await import('../projects/github');
-const {
-  signGitHubOAuthState,
-  verifyGitHubOAuthState,
-  exchangeGitHubOAuthCode,
-  InvalidGitHubOAuthOriginError,
-} = await import('../platform/routes/github-app');
+const { signGitHubOAuthState, verifyGitHubOAuthState, exchangeGitHubOAuthCode } = await import(
+  '../platform/routes/github-app'
+);
 
 const ENV_KEYS = [
   'KORTIX_GITHUB_APP_CLIENT_ID',
@@ -124,63 +121,24 @@ describe('isGithubAppOAuthConfigured — independent of isGithubAppConfigured', 
 });
 
 describe('signGitHubOAuthState / verifyGitHubOAuthState', () => {
-  test('round-trips a valid https frontend origin', () => {
-    const token = signGitHubOAuthState('https://dev.kortix.com');
+  test('round-trips a nonce and expiry', () => {
+    const token = signGitHubOAuthState();
     const verified = verifyGitHubOAuthState(token);
-    expect(verified?.frontendOrigin).toBe('https://dev.kortix.com');
     expect(verified?.nonce).toBeTruthy();
+    expect(typeof verified?.exp).toBe('number');
   });
 
-  test('round-trips a localhost origin (local dev)', () => {
-    const token = signGitHubOAuthState('http://localhost:13108');
-    expect(verifyGitHubOAuthState(token)?.frontendOrigin).toBe('http://localhost:13108');
-  });
-
-  test('throws InvalidGitHubOAuthOriginError when the frontend origin is not a valid URL', () => {
-    expect(() => signGitHubOAuthState('not-a-url')).toThrow(InvalidGitHubOAuthOriginError);
-  });
-
-  test('rejects a plain http origin that is not localhost (open-redirect guard)', () => {
-    // normalizeGitHubFrontendOrigin only allows https, or http on
-    // localhost/127.0.0.1 — signing with an attacker-controlled http origin
-    // must fail closed rather than silently downgrade/accept it.
-    expect(() => signGitHubOAuthState('http://attacker.example')).toThrow(
-      InvalidGitHubOAuthOriginError,
-    );
-  });
-
-  test('signs off the App state secret, NOT SUPABASE_JWT_SECRET', () => {
-    // Regression: the OAuth state originally reused the manifest flow's
-    // SUPABASE_JWT_SECRET-only secret. A hosted deployment sets
-    // KORTIX_GITHUB_APP_STATE_SECRET and no SUPABASE_JWT_SECRET, so every
-    // authorize call 302'd to an error instead of reaching GitHub.
-    delete process.env.SUPABASE_JWT_SECRET;
-    process.env.KORTIX_GITHUB_APP_STATE_SECRET = 'only-the-app-secret';
-    const token = signGitHubOAuthState('https://dev.kortix.com');
-    expect(verifyGitHubOAuthState(token)?.frontendOrigin).toBe('https://dev.kortix.com');
-  });
-
-  test('falls back to the App private key when no explicit state secret is set', () => {
-    // githubAppStateSecret()'s last fallback — proves the OAuth state can
-    // still sign on a deployment that configures neither state secret.
-    delete process.env.KORTIX_GITHUB_APP_STATE_SECRET;
-    delete process.env.SUPABASE_JWT_SECRET;
-    dbConfig = { privateKey: 'PEM-CONTENT-AS-SECRET' };
-    const token = signGitHubOAuthState('https://dev.kortix.com');
-    expect(verifyGitHubOAuthState(token)?.frontendOrigin).toBe('https://dev.kortix.com');
-  });
-
-  test('throws a NON-origin error when no signing secret is available at all', () => {
-    delete process.env.KORTIX_GITHUB_APP_STATE_SECRET;
-    delete process.env.SUPABASE_JWT_SECRET;
-    dbConfig = {};
-    // Must NOT be an origin error — the origin is perfectly valid here; the
-    // server is misconfigured. The route branches on this to report
-    // `state_secret_unavailable` rather than a misleading `invalid_origin`.
-    expect(() => signGitHubOAuthState('https://dev.kortix.com')).toThrow(/state secret/i);
-    expect(() => signGitHubOAuthState('https://dev.kortix.com')).not.toThrow(
-      InvalidGitHubOAuthOriginError,
-    );
+  test('carries NO redirect target (the CWE-601 fix)', () => {
+    // The state deliberately holds no origin. An earlier revision signed a
+    // caller-supplied `frontend_origin` into it and the callback redirected
+    // the exchanged GitHub token there, so any attacker HTTPS origin could
+    // receive a victim's user-to-server token. If a redirect target ever
+    // reappears in this payload, that hole is back.
+    const token = signGitHubOAuthState();
+    const payload = JSON.parse(Buffer.from(token.split('.')[0]!, 'base64url').toString('utf8'));
+    expect(Object.keys(payload).sort()).toEqual(['exp', 'nonce']);
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toMatch(/https?:\/\//);
   });
 
   test('returns null for undefined/null/empty', () => {
@@ -195,28 +153,61 @@ describe('signGitHubOAuthState / verifyGitHubOAuthState', () => {
   });
 
   test('returns null when the signature is tampered', () => {
-    const token = signGitHubOAuthState('https://dev.kortix.com');
+    const token = signGitHubOAuthState();
     const [body, mac] = token.split('.');
     const tamperedMac = mac!.endsWith('A') ? mac!.slice(0, -1) + 'B' : mac!.slice(0, -1) + 'A';
     expect(verifyGitHubOAuthState(`${body}.${tamperedMac}`)).toBeNull();
   });
 
+  test('returns null when the payload is tampered (re-signing is required)', () => {
+    const token = signGitHubOAuthState();
+    const [body, mac] = token.split('.');
+    const payload = JSON.parse(Buffer.from(body!, 'base64url').toString('utf8'));
+    payload.exp = Date.now() + 10 * 60 * 60 * 1000; // try to extend the TTL
+    const forged = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    expect(verifyGitHubOAuthState(`${forged}.${mac}`)).toBeNull();
+  });
+
   test('returns null past the 10-minute TTL', () => {
     const elevenMinAgo = Date.now() - 11 * 60 * 1000;
-    const token = signGitHubOAuthState('https://dev.kortix.com', elevenMinAgo);
+    const token = signGitHubOAuthState(elevenMinAgo);
     expect(verifyGitHubOAuthState(token, Date.now())).toBeNull();
   });
 
   test('accepts a token just inside the 10-minute TTL', () => {
     const nineMinAgo = Date.now() - 9 * 60 * 1000;
-    const token = signGitHubOAuthState('https://dev.kortix.com', nineMinAgo);
-    expect(verifyGitHubOAuthState(token, Date.now())?.frontendOrigin).toBe('https://dev.kortix.com');
+    const token = signGitHubOAuthState(nineMinAgo);
+    expect(verifyGitHubOAuthState(token, Date.now())?.nonce).toBeTruthy();
   });
 
-  test('two states for the same origin carry different nonces', () => {
-    const a = signGitHubOAuthState('https://dev.kortix.com');
-    const b = signGitHubOAuthState('https://dev.kortix.com');
-    expect(verifyGitHubOAuthState(a)?.nonce).not.toBe(verifyGitHubOAuthState(b)?.nonce);
+  test('two states carry different nonces', () => {
+    expect(verifyGitHubOAuthState(signGitHubOAuthState())?.nonce).not.toBe(
+      verifyGitHubOAuthState(signGitHubOAuthState())?.nonce,
+    );
+  });
+
+  test('signs off the App state secret, NOT SUPABASE_JWT_SECRET', () => {
+    // Regression: the OAuth state originally reused the manifest flow's
+    // SUPABASE_JWT_SECRET-only secret. A hosted deployment sets
+    // KORTIX_GITHUB_APP_STATE_SECRET and no SUPABASE_JWT_SECRET, so every
+    // authorize call 302'd to an error instead of reaching GitHub.
+    delete process.env.SUPABASE_JWT_SECRET;
+    process.env.KORTIX_GITHUB_APP_STATE_SECRET = 'only-the-app-secret';
+    expect(verifyGitHubOAuthState(signGitHubOAuthState())?.nonce).toBeTruthy();
+  });
+
+  test('falls back to the App private key when no explicit state secret is set', () => {
+    delete process.env.KORTIX_GITHUB_APP_STATE_SECRET;
+    delete process.env.SUPABASE_JWT_SECRET;
+    dbConfig = { privateKey: 'PEM-CONTENT-AS-SECRET' };
+    expect(verifyGitHubOAuthState(signGitHubOAuthState())?.nonce).toBeTruthy();
+  });
+
+  test('throws when no signing secret is available at all', () => {
+    delete process.env.KORTIX_GITHUB_APP_STATE_SECRET;
+    delete process.env.SUPABASE_JWT_SECRET;
+    dbConfig = {};
+    expect(() => signGitHubOAuthState()).toThrow(/state secret/i);
   });
 });
 

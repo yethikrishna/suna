@@ -357,44 +357,55 @@ flow(
     // Both routes are PUBLIC browser redirects (the popup opens authorize
     // directly; GitHub redirects back to callback), so — exactly like GHA-2's
     // pair — they must NEVER 500 and NEVER honor a forged state. They always
-    // 302 somewhere safe with a reason.
+    // 302 somewhere safe.
+    //
+    // The load-bearing property here is that NEITHER route will send the
+    // exchanged GitHub token anywhere the caller picked. An earlier revision
+    // accepted a `frontend_origin` query param, signed it into the state, and
+    // had the callback redirect the token to it — validating only the scheme,
+    // so any attacker HTTPS origin received a victim's user-to-server token
+    // and could replay it against the installation-linking endpoints
+    // (CWE-601, HIGH). The param is gone; both routes always land on the
+    // environment's configured frontend.
+
+    const ATTACKER = 'https://attacker.example';
 
     await ctx.step(
-      'authorize with an attacker-controlled http origin → 302, and NEVER to that origin',
+      'authorize IGNORES a caller-supplied frontend_origin and never redirects to it',
       async () => {
-        // The open-redirect guard: normalizeGitHubFrontendOrigin allows https,
-        // or http only on localhost/127.0.0.1. A rejected origin must land on
-        // the server's own trusted FRONTEND_URL, never on the attacker's.
         const r = await ctx.client
           .as(ctx.P.ANON)
           .get('/v1/platform/github-app/oauth/authorize', {
-            query: { frontend_origin: 'http://attacker.example' },
+            query: { frontend_origin: ATTACKER },
           });
         r.status(302).headerExists('location');
         const loc = r.header('location') ?? '';
         if (loc.includes('attacker.example')) {
-          throw new Error(`open redirect: authorize sent the browser to the attacker origin: ${loc}`);
-        }
-        if (!loc.includes('invalid_origin')) {
-          throw new Error(`expected an invalid_origin reason, got: ${loc}`);
+          throw new Error(`token-exfiltration redirect: authorize honored the caller origin: ${loc}`);
         }
       },
     );
 
-    await ctx.step('authorize with a non-URL origin → 302 (invalid_origin), no 500', async () => {
-      const r = await ctx.client
-        .as(ctx.P.ANON)
-        .get('/v1/platform/github-app/oauth/authorize', {
-          query: { frontend_origin: 'not-a-url' },
-        });
-      r.status(302);
-      const loc = r.header('location') ?? '';
-      if (!loc.includes('invalid_origin')) {
-        throw new Error(`expected an invalid_origin reason, got: ${loc}`);
-      }
-    });
+    await ctx.step(
+      'authorize ignores frontend_origin even in its unconfigured-OAuth early return',
+      async () => {
+        // The early `oauth_not_configured` return is a separate branch and was
+        // itself once an open redirect — assert it independently, since which
+        // branch fires depends on whether OAuth creds are configured here.
+        const r = await ctx.client
+          .as(ctx.P.ANON)
+          .get('/v1/platform/github-app/oauth/authorize', {
+            query: { frontend_origin: `${ATTACKER}/evil` },
+          });
+        r.status(302);
+        const loc = r.header('location') ?? '';
+        if (loc.includes('attacker.example')) {
+          throw new Error(`open redirect on the unconfigured branch: ${loc}`);
+        }
+      },
+    );
 
-    await ctx.step('callback with no query at all → 302 (invalid_state), never a 500', async () => {
+    await ctx.step('callback with no query at all → 302, never a 500', async () => {
       // The bare-hit shape that 500'd on install-callback before GHA-2 pinned
       // it — same class of bug, pinned here before it can happen.
       const r = await ctx.client.as(ctx.P.ANON).get('/v1/platform/github-app/oauth/callback');
@@ -420,6 +431,19 @@ flow(
       }
       if (loc.includes('access_token')) {
         throw new Error(`callback leaked a token for a forged state: ${loc}`);
+      }
+    });
+
+    await ctx.step('callback never redirects to an origin named in its own query', async () => {
+      const r = await ctx.client
+        .as(ctx.P.ANON)
+        .get('/v1/platform/github-app/oauth/callback', {
+          query: { code: 'x', state: 'y', frontend_origin: ATTACKER, redirect_uri: ATTACKER },
+        });
+      r.status(302);
+      const loc = r.header('location') ?? '';
+      if (loc.includes('attacker.example')) {
+        throw new Error(`callback honored a caller-supplied origin: ${loc}`);
       }
     });
 

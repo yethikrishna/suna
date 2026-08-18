@@ -53,14 +53,13 @@ export default function GitHubConnectPopup() {
 
         // Fresh open — hand off to the GitHub App's own OAuth identity-proof
         // flow. This IS a full navigation (not a fetch): GitHub's redirect
-        // chain has to land back on this same popup window, and the API's
-        // `redirect_uri` registration only ever points at one fixed API
-        // origin per environment, so it hands the browser back here via a
-        // second, dynamic redirect keyed off `frontend_origin` below.
+        // chain has to land back on this same popup window.
+        //
+        // No origin is sent. The API always returns the token to its own
+        // configured FRONTEND_URL — passing a caller-chosen origin let any
+        // attacker HTTPS origin receive the exchanged GitHub token (CWE-601).
         const apiBase = setupLinkApiBase();
-        const authorizeUrl = new URL(`${apiBase}/platform/github-app/oauth/authorize`);
-        authorizeUrl.searchParams.set('frontend_origin', window.location.origin);
-        window.location.replace(authorizeUrl.toString());
+        window.location.replace(`${apiBase}/platform/github-app/oauth/authorize`);
       } catch (err) {
         if (disposed) return;
         const message = (err as Error).message || 'Failed to connect GitHub';

@@ -295,23 +295,29 @@ export async function exchangeGitHubOAuthCode(
 
 // ─── OAuth identity-proof state (round-tripped through GitHub's
 //    /login/oauth/authorize → oauth/callback redirect) ────────────────────────
-// Same shape/TTL/HMAC scheme as manifestStartState above, carrying only what
-// this flow needs: a CSRF nonce and the frontend origin to hand the resulting
-// token back to (validated — normalizeGitHubFrontendOrigin rejects anything
-// that isn't https, or http on localhost/127.0.0.1).
+// Same shape/TTL/HMAC scheme as manifestStartState above, carrying ONLY a CSRF
+// nonce and an expiry.
+//
+// It deliberately does NOT carry a redirect target. An earlier revision let
+// the caller pass `frontend_origin`, signed it into the state, and had the
+// callback redirect the exchanged GitHub token to it — validating only that
+// it was https (or http on localhost). Any attacker HTTPS origin passed, so
+// `?frontend_origin=https://attacker.example` exfiltrated the victim's
+// user-to-server token, replayable against the installation-linking endpoints
+// (CWE-601, HIGH). Shape validation is not authorization.
+//
+// The redirect target is now always `frontendUrl()` — the environment's own
+// configured frontend. That is the only origin this API should ever hand a
+// token to: each environment's API already knows its frontend, and the popup
+// only accepts the postMessage when the opener is same-origin anyway, so a
+// caller-chosen origin bought nothing and cost a token-exfiltration path.
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 export interface GitHubOAuthState {
-  frontendOrigin: string;
   nonce: string;
   exp: number;
 }
-
-/** Thrown when the frontend origin itself is unusable — distinct from a
- *  missing signing secret, which is a server misconfiguration. Conflating the
- *  two sent anyone debugging a missing secret chasing an origin problem. */
-export class InvalidGitHubOAuthOriginError extends Error {}
 
 /**
  * The OAuth state rides the GitHub App's OWN state secret, not the manifest
@@ -328,7 +334,7 @@ export class InvalidGitHubOAuthOriginError extends Error {}
  * apps/cli/src/api/token-identity.ts. CWE-916 is about low-entropy human
  * passwords, where a slow KDF (bcrypt/scrypt/Argon2) raises the cost of
  * offline guessing. Here nothing is a password: the message is a base64url
- * state payload (`{frontendOrigin, nonce, exp}`) and the key is a
+ * state payload (`{nonce, exp}`) and the key is a
  * high-entropy server-side secret the attacker never sees. HMAC-SHA256 with
  * a secret key is the correct, standard construction for exactly this — it is
  * what JWT HS256 does — and a slow KDF would be wrong twice over: it would
@@ -348,15 +354,8 @@ function oauthStateSecret(): string {
   return secret;
 }
 
-export function signGitHubOAuthState(frontendOrigin: string, nowMs = Date.now()): string {
-  const normalized = normalizeGitHubFrontendOrigin(frontendOrigin);
-  if (!normalized) {
-    throw new InvalidGitHubOAuthOriginError(
-      'A valid frontend origin is required to start GitHub OAuth',
-    );
-  }
+export function signGitHubOAuthState(nowMs = Date.now()): string {
   const state: GitHubOAuthState = {
-    frontendOrigin: normalized,
     nonce: randomBytes(8).toString('hex'),
     exp: nowMs + OAUTH_STATE_TTL_MS,
   };
@@ -385,9 +384,8 @@ export function verifyGitHubOAuthState(
   try {
     const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as GitHubOAuthState;
     if (typeof parsed.exp !== 'number' || parsed.exp < nowMs) return null;
-    const frontendOrigin = normalizeGitHubFrontendOrigin(parsed.frontendOrigin);
-    if (!frontendOrigin || typeof parsed.nonce !== 'string' || !parsed.nonce) return null;
-    return { ...parsed, frontendOrigin };
+    if (typeof parsed.nonce !== 'string' || !parsed.nonce) return null;
+    return { nonce: parsed.nonce, exp: parsed.exp };
   } catch {
     return null;
   }
@@ -694,12 +692,11 @@ githubAppSetupRouter.openapi(
 // and is itself Kortix-auth-gated, so an unauthenticated caller minting a
 // token here gains nothing they couldn't already get by signing into GitHub.
 //
-// The signed `state` carries only a CSRF nonce + the requesting frontend
-// origin (validated via normalizeGitHubFrontendOrigin — https, or http on
-// localhost/127.0.0.1) so the SAME registered callback URL can hand the
-// resulting token back to whichever Kortix origin (prod/staging/dev/a local
-// dev port) actually opened the popup, exactly as GitHub's own redirect_uri
-// registration only ever needs to point at one fixed, deployed API origin.
+// The signed `state` carries ONLY a CSRF nonce and an expiry. The redirect
+// target is never caller-supplied: both routes always land on `frontendUrl()`,
+// this environment's own configured frontend. See the state block above for
+// why (an earlier revision accepted a `frontend_origin` param and leaked the
+// exchanged token to any attacker HTTPS origin, CWE-601).
 
 githubAppSetupRouter.openapi(
   createRoute({
@@ -707,28 +704,13 @@ githubAppSetupRouter.openapi(
     path: '/oauth/authorize',
     tags: ['platform'],
     summary: "Start the GitHub App's own OAuth identity-proof flow",
-    request: {
-      query: z.object({ frontend_origin: z.string().optional() }),
-    },
     responses: {
       302: { description: "Redirect to GitHub's OAuth authorize page (or the popup's error state)" },
     },
   }),
   async (c: any) => {
-    const query = c.req.query();
-
-    // Validate the caller-supplied origin BEFORE anything can redirect to it.
-    // `frontend_origin` is an untrusted query param, so every failure path
-    // below must land on our own FRONTEND_URL — an earlier revision returned
-    // `oauth_not_configured` to the raw param and turned this route into an
-    // open redirect (caught by ke2e GHA-3).
-    const requestedOrigin = query.frontend_origin
-      ? normalizeGitHubFrontendOrigin(query.frontend_origin)
-      : frontendUrl();
-    if (!requestedOrigin) {
-      return c.redirect(`${frontendUrl()}/auth/github-connect?error=invalid_origin`, 302);
-    }
-    const frontendOrigin = requestedOrigin;
+    // No caller-controlled redirect target, by design — see above.
+    const frontendOrigin = frontendUrl();
 
     if (!isGithubAppOAuthConfigured()) {
       return c.redirect(
@@ -739,14 +721,8 @@ githubAppSetupRouter.openapi(
 
     let state: string;
     try {
-      state = signGitHubOAuthState(frontendOrigin);
+      state = signGitHubOAuthState();
     } catch (err) {
-      // A rejected origin and an unconfigured signing secret are different
-      // problems with different fixes — reporting both as `invalid_origin`
-      // sent debugging down the wrong path.
-      if (err instanceof InvalidGitHubOAuthOriginError) {
-        return c.redirect(`${frontendUrl()}/auth/github-connect?error=invalid_origin`, 302);
-      }
       console.error(
         '[github-app] oauth/authorize could not sign state',
         err instanceof Error ? err.message : err,
@@ -789,7 +765,10 @@ githubAppSetupRouter.openapi(
   async (c: any) => {
     const query = c.req.query();
     const state = verifyGitHubOAuthState(query.state);
-    const landingOrigin = state?.frontendOrigin || frontendUrl();
+    // Always this environment's own frontend — never anything derived from the
+    // request. This is the redirect that carries the exchanged GitHub token,
+    // so it is the one that must never point anywhere a caller can choose.
+    const landingOrigin = frontendUrl();
 
     if (query.error) {
       return c.redirect(

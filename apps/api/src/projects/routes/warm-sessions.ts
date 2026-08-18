@@ -12,6 +12,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { projectSessions } from '@kortix/db';
 import { and, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { loadProjectForUser } from '../lib/access';
+import { resolveAndAuthorizeAgent } from '../lib/agent-access';
 import { ClaimWarmProjectSessionInputSchema, SessionSchema, WarmProjectSessionResultSchema, projectsApp } from '../lib/app';
 import { UUID_V4_REGEX, normalizeString, readBody, requestAuditContext, serializeSession } from '../lib/serializers';
 import { createProjectSession } from '../lib/sessions';
@@ -197,6 +198,11 @@ projectsApp.openapi(
     const loaded = await loadProjectForUser(c, projectId, 'session');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_START);
+    // Same reason the feature flag is checked here rather than in the UI: a warm
+    // session is billed compute. A member with no agent grant can never prompt
+    // one (`/start` and `/prompts` both refuse), so provisioning it spends money
+    // on a sandbox that is dead on arrival.
+    await resolveAndAuthorizeAgent(c, loaded, projectId);
     // After membership authz, so a non-member learns nothing. A warm session is
     // billed compute, so the switch has to stop the SPEND, not just the UI.
     const gate = requireFeatureFlag(c, loaded.row.metadata, 'warm_sessions');
@@ -306,6 +312,9 @@ projectsApp.openapi(
     const loaded = await loadProjectForUser(c, projectId, 'session');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_START);
+    // Claiming turns a warm box into this user's session — the same agent gate
+    // an ordinary create passes (see the /warm route above).
+    await resolveAndAuthorizeAgent(c, loaded, projectId);
     const gate = requireFeatureFlag(c, loaded.row.metadata, 'warm_sessions');
     if (gate) return gate;
 

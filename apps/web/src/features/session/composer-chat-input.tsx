@@ -20,6 +20,7 @@ import {
 } from '@kortix/sdk/react';
 import { useProjectConfig } from '@kortix/sdk/react';
 import { isMetaAgentName } from '@kortix/shared';
+import { resolveComposerAgent } from './composer/composer-agent-access';
 
 export interface ComposerOptions {
   agent?: string;
@@ -140,7 +141,27 @@ export function ComposerChatInput({
   // The meta agent is the only thing that pins the picker: a meta session must
   // keep running its own agent. Every other session is freely switchable.
   const lockedAgentName = isMetaAgentName(boundAgentName) ? boundAgentName?.trim() || null : null;
-  const selectedAgentName = lockedAgentName ?? local.agent.current?.name ?? null;
+  /**
+   * What will ACTUALLY run — see `composer-agent-access.ts`.
+   *
+   * `local.agent.current` resolves over the SDK's visible roster (subagents
+   * included) and returns `undefined` on an empty one, which is how the picker
+   * ended up rendering nothing while the send still went out under the
+   * server's manifest default. This narrows it to the agents the picker can
+   * actually offer, and the same name is what `options()` sends.
+   *
+   * `agents === undefined` is the roster still loading; the resolver refuses
+   * nothing until it lands.
+   */
+  const agentResolution = resolveComposerAgent({
+    agents,
+    defaultAgent: projectConfig?.open_code_default_agent,
+    selectedAgent: local.agent.current?.name ?? null,
+  });
+  const selectedAgentName = lockedAgentName ?? agentResolution.selected;
+  // A locked meta session runs its own bound agent, so an empty project roster
+  // does not refuse it.
+  const noAccessibleAgents = !lockedAgentName && agentResolution.disabled;
 
   useEffect(() => {
     onAgentSelectionChange?.(selectedAgentName);
@@ -188,8 +209,10 @@ export function ComposerChatInput({
   // Read at send-time so the latest selections are captured.
   const options = (): ComposerOptions => {
     const o: ComposerOptions = {};
-    if (lockedAgentName) o.agent = lockedAgentName;
-    else if (local.agent.current) o.agent = local.agent.current.name;
+    // The resolved name, never `local.agent.current`: the composer must send
+    // the agent it is SHOWING, and an inaccessible default resolves to the
+    // first agent this user actually holds a grant on.
+    if (selectedAgentName) o.agent = selectedAgentName;
     if (local.model.currentKey) o.model = local.model.currentKey;
     if (local.model.variant.current) o.variant = local.model.variant.current;
     if (!sessionId && newSessionScope && newSessionScope.agentName === selectedAgentName) {
@@ -233,6 +256,7 @@ export function ComposerChatInput({
       providers={providers}
       agents={local.agent.list}
       selectedAgent={selectedAgentName}
+      noAccessibleAgents={noAccessibleAgents}
       onAgentChange={
         // The selectedAgentName effect above notifies the parent; no inline call.
         lockedAgentName ? undefined : (name) => local.agent.set(name ?? undefined)

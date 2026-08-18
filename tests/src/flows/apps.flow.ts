@@ -458,7 +458,7 @@ flow(
     const projectParams = { projectId: project.id };
 
     const editor = await team.addMember("member");
-    await team.grantProjectRole(project.id, editor.userId!, "editor");
+    await team.grantProjectRole(project.id, editor.userId!, "manager");
     const teammate = ctx.client.as(editor);
 
     await ctx.step("enable the apps flag", async () => {

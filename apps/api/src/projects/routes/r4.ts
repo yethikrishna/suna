@@ -1979,7 +1979,7 @@ projectsApp.openapi(
     const projectId = c.req.param('projectId');
     // Floor 'read' (membership); the connector.write leaf below is the real gate,
     // so a custom role that unchecks connector.write is denied even if it holds
-    // project.write. Built-in editor/manager hold the leaf.
+    // project.write. The built-in manager role holds the leaf.
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     await assertProjectCapability(
@@ -2831,7 +2831,7 @@ projectsApp.openapi(
   async (c: any) => {
     const projectId = c.req.param('projectId');
     // Floor 'read'; project.customize.write is the real gate (setting the bot
-    // name is project customization). Built-in editor/manager hold the leaf.
+    // name is project customization). The built-in manager role holds the leaf.
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     await assertProjectCapability(
@@ -3657,7 +3657,7 @@ projectsApp.openapi(
     // Floor 'read' (membership); project.trigger.fire is the real gate. The floor
     // was 'manage' (= project.write) — which the floor `member` role LACKS even
     // though it HOLDS trigger.fire, so a plain member could never fire a trigger
-    // (its designed fire grant was dead behind the floor). Now member/editor/
+    // (its designed fire grant was dead behind the floor). Now member/
     // manager all fire (all hold the leaf); a custom role without it is denied.
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);

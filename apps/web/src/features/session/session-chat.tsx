@@ -46,6 +46,7 @@ import { ThrottledMarkdown } from './turn/throttled-markdown';
 import { TurnViewport } from './turn/turn-viewport';
 import { UserMessage } from './turn/user-message';
 
+import { resolveComposerAgent } from '@/features/session/composer/composer-agent-access';
 import { Composer as SessionChatInput } from '@/features/session/composer/composer';
 import { ConnectorRequiredNotice } from '@/features/session/connector-required-notice';
 import { SessionSiteHeader } from '@/features/session/header/session-site-header';
@@ -1977,6 +1978,22 @@ export function SessionChat({
   // boundAgentName) but stays switchable: sends use the current pick. Switching
   // mid-session is allowed everywhere — the grant re-mint re-resolves the
   // connector tokens for the newly picked agent on every turn.
+  /**
+   * The agent this composer will ACTUALLY run — see `composer-agent-access.ts`.
+   *
+   * Project agents are deny-by-default for a member: `agents` can come back
+   * empty, and the project's `default_agent` may not be in it. `local.agent`
+   * resolves over the SDK's visible roster (subagents included) and yields
+   * `undefined` on an empty one, which rendered no agent in the picker while
+   * the send still went out under the server's manifest default.
+   */
+  const composerAgent = resolveComposerAgent({
+    agents,
+    defaultAgent: boundAgentName ?? projectConfig?.open_code_default_agent,
+    selectedAgent: local.agent.current?.name ?? null,
+  });
+  const composerAgentName = composerAgent.selected;
+  const noAccessibleAgents = composerAgent.disabled;
   const localAgentSet = local.agent.set;
   const localModelCurrentKey = local.model.currentKey;
   // Wire model to SEND: `auto` when on the default (gateway resolves it), else
@@ -3390,8 +3407,11 @@ export function SessionChat({
       const overrideVariant = overrides?.variant;
       if (overrideAgent !== undefined) {
         if (overrideAgent) options.agent = overrideAgent;
-      } else if (local.agent.current) {
-        options.agent = local.agent.current.name;
+      } else if (composerAgentName) {
+        // The name the picker is SHOWING, not `local.agent.current`: an
+        // inaccessible project default resolves to the first agent this user
+        // holds a grant on, and the send must carry that same one.
+        options.agent = composerAgentName;
       }
       if (overrideModel !== undefined) {
         if (overrideModel) options.model = overrideModel;
@@ -3608,7 +3628,7 @@ export function SessionChat({
       noteSendReceipt,
       acceptSendReceipt,
       clearSendReceipt,
-      local.agent.current,
+      composerAgentName,
       local.model.currentKey,
       local.model.sendKey,
       local.model.variant.current,
@@ -3946,7 +3966,7 @@ export function SessionChat({
       // SSE delivers it. Commands use the blocking /command endpoint
       // which can take minutes; using TQ would cause retry on timeout.
       commandInFlightRef.current = true;
-      const agent = local.agent.current?.name;
+      const agent = composerAgentName ?? undefined;
       const variant = local.model.variant.current;
       void (
         sessionState?.runCommand(cmd.name, args || '', {
@@ -3990,7 +4010,7 @@ export function SessionChat({
       scrollToBottom,
       sessionState,
       executeCommand,
-      local.agent.current,
+      composerAgentName,
       local.model.currentKey,
       local.model.sendKey,
       local.model.variant.current,
@@ -4095,7 +4115,7 @@ export function SessionChat({
   }, []);
 
   const chatCommands = useMemo(() => commands || [], [commands]);
-  const sessionScopeAgentName = local.agent.current?.name;
+  const sessionScopeAgentName = composerAgentName ?? undefined;
 
   const chatToolbarSlot = useMemo(
     () =>
@@ -4649,8 +4669,9 @@ export function SessionChat({
                 onStop={handleStop}
                 escCount={escCount}
                 agents={local.agent.list}
-                selectedAgent={local.agent.current?.name ?? null}
+                selectedAgent={composerAgentName}
                 onAgentChange={handleAgentChange}
+                noAccessibleAgents={noAccessibleAgents}
                 commands={chatCommands}
                 onCommand={handleCommand}
                 models={local.model.list}

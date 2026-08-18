@@ -28,6 +28,7 @@ import {
 import { extractClipboardFiles } from '../clipboard-files';
 import { mergeFailedSubmissionFiles } from '../composer-draft-recovery';
 import { resolveComposerResetOnSend } from '../composer-reset';
+import { NO_AGENT_ACCESS_HINT, NO_AGENT_ACCESS_LABEL } from './composer-agent-access';
 import { commandBlocker, sendBlocker, sendBlockerMessage } from './send-blockers';
 import {
   isModelRequiredButUnavailable,
@@ -144,6 +145,18 @@ export interface SessionChatInputProps {
   selectedAgent?: string | null;
   onAgentChange?: (agentName: string | null | undefined) => void;
   agentSelectorLocked?: boolean;
+  /**
+   * The agent roster loaded and it is EMPTY for this user — project agents are
+   * deny-by-default for a member without an explicit grant.
+   *
+   * Set it and the composer refuses the submission instead of POSTing a prompt
+   * the server answers with a 403 (or, worse, silently runs under the manifest
+   * `default_agent` nobody picked). The picker beside the send button renders
+   * the same refusal in words. Hosts that have no agent concept at all leave it
+   * `false` — an absent roster is not a denied one. See
+   * `composer-agent-access.ts`.
+   */
+  noAccessibleAgents?: boolean;
   commands?: Command[];
   /**
    * `split` is where the chip sat in `args` — display only. Without it every
@@ -375,6 +388,7 @@ function ComposerImpl({
   selectedAgent = null,
   onAgentChange,
   agentSelectorLocked = false,
+  noAccessibleAgents = false,
   commands = EMPTY_COMMANDS,
   onCommand,
   models = EMPTY_MODELS,
@@ -747,7 +761,13 @@ function ComposerImpl({
     !entitlementsPending &&
     (!availableSelectedModel || !hasSelectableModels);
   const canSubmit = !isEmpty || attachedFiles.length > 0;
-  const submitDisabled = disabled || modelUnavailable || lockForApproval;
+  /**
+   * No agent may run this prompt. Refused here rather than at the server:
+   * `lockForQuestion` is exempt because answering an open question is not a new
+   * prompt and runs under the agent that asked it.
+   */
+  const agentUnavailable = noAccessibleAgents && !lockForQuestion;
+  const submitDisabled = disabled || modelUnavailable || agentUnavailable || lockForApproval;
   /**
    * A `/` command cannot carry the attached files, so this state refuses the
    * submit and says why — before anything is sent and before anything is
@@ -905,6 +925,12 @@ function ComposerImpl({
   );
 
   const dispatchSubmission = useCallback(async () => {
+    // Ahead of the model check: with no agent to run it, the model this prompt
+    // would have used is not the user's problem.
+    if (agentUnavailable) {
+      toast.error(NO_AGENT_ACCESS_LABEL, { description: NO_AGENT_ACCESS_HINT });
+      return;
+    }
     if (modelUnavailable) {
       toast.error(NO_MODEL_AVAILABLE_MESSAGE, {
         description: NO_MODEL_AVAILABLE_ACTION_MESSAGE,
@@ -1064,6 +1090,7 @@ function ComposerImpl({
   }, [
     submitDisabled,
     modelUnavailable,
+    agentUnavailable,
     clearOnSend,
     onSend,
     isBusy,
@@ -1415,6 +1442,7 @@ function ComposerImpl({
                     selectedAgent={selectedAgent}
                     onAgentChange={onAgentChange}
                     agentSelectorLocked={agentSelectorLocked}
+                    noAccessibleAgents={noAccessibleAgents}
                     messages={messages}
                     models={models}
                     selectedModel={availableSelectedModel}
@@ -1458,6 +1486,7 @@ function ComposerImpl({
               submitDisabled={submitDisabled || commandAttachmentPlan.kind === 'refuse'}
               disabled={disabled}
               modelUnavailable={modelUnavailable}
+              agentUnavailable={agentUnavailable}
               onSubmit={handleSubmit}
             />
           </div>
@@ -1477,6 +1506,7 @@ function ComposerImpl({
           selectedAgent={selectedAgent}
           onAgentChange={onAgentChange}
           agentSelectorLocked={agentSelectorLocked}
+          noAccessibleAgents={noAccessibleAgents}
           messages={messages}
           models={models}
           selectedModel={availableSelectedModel}

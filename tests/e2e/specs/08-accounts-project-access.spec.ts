@@ -544,12 +544,16 @@ test.describe("08 — Accounts, invites, and project access", () => {
         response.request().method() === "POST",
     );
     await page.getByRole("button", { name: "Invite", exact: true }).click();
+    // Title renamed "Invite members" -> "Invite to account" (page.tsx's
+    // InviteMemberModal) — the account page's own invite composer, kept
+    // distinct from InviteMemberDialog's "Invite a member" above, which is
+    // the project-scoped one.
     await expect(
-      page.getByRole("dialog", { name: "Invite members" }),
+      page.getByRole("dialog", { name: "Invite to account" }),
     ).toBeVisible();
     await page.getByLabel("Emails").fill(uiInvitedEmail);
     await page
-      .getByRole("dialog", { name: "Invite members" })
+      .getByRole("dialog", { name: "Invite to account" })
       .getByRole("button", { name: "Invite", exact: true })
       .click();
     expect((await uiInviteResponse).status()).toBe(201);
@@ -635,7 +639,7 @@ test.describe("08 — Accounts, invites, and project access", () => {
       .filter({ hasText: memberEmail })
       .first();
     await expect(memberAccessRow).toBeVisible({ timeout: 15_000 });
-    // Third column = "Workspace access" (`members-tab.tsx:930-934`). Pinned by
+    // Third column = "Project role" (`members-tab.tsx:930-934`). Pinned by
     // column because that select carries no accessible name of its own, and
     // the row's other combobox is the account-role one beside it.
     await expect(

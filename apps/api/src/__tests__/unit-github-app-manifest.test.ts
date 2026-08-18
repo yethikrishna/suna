@@ -46,6 +46,10 @@ describe('buildGithubAppManifest', () => {
       contents: 'write',
       pull_requests: 'write',
       metadata: 'read',
+      // Backs the App-native OAuth identity proof (oauth/authorize +
+      // oauth/callback) — GET /orgs/{org}/memberships/{user} and
+      // GET /user/memberships/orgs need it on a GitHub App user token.
+      members: 'read',
     });
   });
 

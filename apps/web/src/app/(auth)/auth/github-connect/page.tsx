@@ -7,10 +7,10 @@ import { useEffect, useState } from 'react';
 import { KortixLogo } from '@/components/ui/kortix-logo';
 import Loading from '@/components/ui/loading';
 import { ErrorStrip } from '@/features/auth/auth-primitives';
-import { createEphemeralOAuthClient } from '@/lib/supabase/client';
+import { setupLinkApiBase } from '@/components/setup-links/util';
 
 type ConnectMessage =
-  | { type: 'github-connect-success'; provider_token: string; github_login?: string }
+  | { type: 'github-connect-success'; provider_token: string }
   | { type: 'github-connect-error'; message: string };
 
 export default function GitHubConnectPopup() {
@@ -21,7 +21,6 @@ export default function GitHubConnectPopup() {
   useEffect(() => {
     let disposed = false;
     let closeTimer: ReturnType<typeof setTimeout> | null = null;
-    const supabase = createEphemeralOAuthClient();
     const post = (message: ConnectMessage) => {
       try {
         if (window.opener && !window.opener.closed) {
@@ -34,68 +33,34 @@ export default function GitHubConnectPopup() {
 
     const handle = async () => {
       try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const isCallback = urlParams.has('code') || urlParams.has('access_token');
-        const hasError = urlParams.has('error');
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        const queryParams = new URLSearchParams(window.location.search);
+        const accessToken = hashParams.get('access_token');
+        const error = queryParams.get('error') || hashParams.get('error');
 
-        if (hasError) {
-          const error = urlParams.get('error');
-          const desc = urlParams.get('error_description');
-          throw new Error(desc || error || 'GitHub authorization failed');
+        if (error) {
+          throw new Error(error);
         }
 
-        if (isCallback) {
+        if (accessToken) {
           setStatus('processing');
-          // Allow Supabase a moment to consume the redirect into a session.
-          await new Promise((r) => setTimeout(r, 600));
           if (disposed) return;
-          const {
-            data: { session },
-            error,
-          } = await supabase.auth.getSession();
-          if (error) throw error;
-          if (disposed) return;
-          if (!session?.provider_token) {
-            throw new Error('GitHub did not return an access token. Try again.');
-          }
-
-          let githubLogin: string | undefined;
-          try {
-            const r = await fetch('https://api.github.com/user', {
-              headers: {
-                Authorization: `Bearer ${session.provider_token}`,
-                Accept: 'application/vnd.github+json',
-              },
-            });
-            if (r.ok) {
-              const u = (await r.json()) as { login?: string };
-              githubLogin = u.login;
-            }
-          } catch {
-            // best-effort; opener fetches /user too
-          }
-
-          if (disposed) return;
-          post({
-            type: 'github-connect-success',
-            provider_token: session.provider_token,
-            github_login: githubLogin,
-          });
-          await supabase.auth.signOut({ scope: 'local' });
+          post({ type: 'github-connect-success', provider_token: accessToken });
+          history.replaceState(null, '', window.location.pathname);
           closeTimer = setTimeout(() => window.close(), 200);
           return;
         }
 
-        const redirectTo = `${window.location.origin}/auth/github-connect`;
-        const { error: signInError } = await supabase.auth.signInWithOAuth({
-          provider: 'github',
-          options: {
-            scopes: 'read:user read:org',
-            redirectTo,
-            queryParams: { prompt: 'select_account' },
-          },
-        });
-        if (signInError) throw signInError;
+        // Fresh open — hand off to the GitHub App's own OAuth identity-proof
+        // flow. This IS a full navigation (not a fetch): GitHub's redirect
+        // chain has to land back on this same popup window, and the API's
+        // `redirect_uri` registration only ever points at one fixed API
+        // origin per environment, so it hands the browser back here via a
+        // second, dynamic redirect keyed off `frontend_origin` below.
+        const apiBase = setupLinkApiBase();
+        const authorizeUrl = new URL(`${apiBase}/platform/github-app/oauth/authorize`);
+        authorizeUrl.searchParams.set('frontend_origin', window.location.origin);
+        window.location.replace(authorizeUrl.toString());
       } catch (err) {
         if (disposed) return;
         const message = (err as Error).message || 'Failed to connect GitHub';

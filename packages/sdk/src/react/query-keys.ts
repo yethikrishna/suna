@@ -191,6 +191,9 @@ export const qk = {
     /** `listSessionPrompts` — the session's server-side prompt inbox. */
     sessionPrompts: (id: string, sessionId: string) =>
       [...qk.project.session(id, sessionId), 'prompts'] as const,
+    /** `getSessionTurn` — server truth about the turns running right now. */
+    sessionTurn: (id: string, sessionId: string) =>
+      [...qk.project.session(id, sessionId), 'turn'] as const,
 
     connectors: (id: string) => [...qk.project.scope(id), 'connectors'] as const,
     /** One connector's config — `getConnectorConfig(id, slug)`. */

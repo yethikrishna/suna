@@ -13,6 +13,8 @@ import {
   listSessionPrompts,
   retrySessionPrompt,
 } from '../core/rest/projects-client/sessions';
+import { useSessionWorkingStore } from '../browser/stores/session-working-store';
+import { countLiveInboxPrompts } from '../core/session/working';
 import { qk } from './query-keys';
 
 /**
@@ -45,6 +47,24 @@ export function sessionPromptsPollMs(count: number, pollMs?: number): number {
   return count > 0 ? (pollMs ?? SESSION_PROMPTS_POLL_MS) : SESSION_PROMPTS_IDLE_POLL_MS;
 }
 
+/**
+ * Feed one reading of the list into the working projection.
+ *
+ * The inbox is not only something to render. A prompt is DURABLE long before it
+ * is a turn: the lifecycle row has to be drained, and the box may have to resume
+ * first (18.9s Daytona / 24.5s Platinum, measured). `GET .../turn` truthfully
+ * answers "no turns" for that whole window, and the composer used to believe it
+ * — swapping Stop back to Send while the user's prompt was still queued. The
+ * stamp is the instant the read was ISSUED, for the same reason `/turn`'s is.
+ */
+export function noteInboxObservation(
+  sessionId: string,
+  prompts: readonly SessionPrompt[],
+  atMs: number,
+): void {
+  useSessionWorkingStore.getState().noteInboxPending(sessionId, countLiveInboxPrompts(prompts), atMs);
+}
+
 export interface UseSessionPromptsResult {
   prompts: SessionPrompt[];
   isLoading: boolean;
@@ -74,7 +94,14 @@ export function useSessionPrompts(
   const query = useQuery({
     queryKey: key,
     enabled,
-    queryFn: async () => (await listSessionPrompts(projectId!, sessionId!)).prompts,
+    queryFn: async () => {
+      // Stamped BEFORE the request, like `/turn`'s: an answer is only as fresh
+      // as the moment it was asked.
+      const atMs = Date.now();
+      const { prompts } = await listSessionPrompts(projectId!, sessionId!);
+      noteInboxObservation(sessionId!, prompts, atMs);
+      return prompts;
+    },
     // Two cadences, never `false` — see the note above.
     refetchInterval: (q) => sessionPromptsPollMs(q.state.data?.length ?? 0, options?.pollMs),
     // Per-query, because the host disables focus refetching globally. Coming
@@ -90,8 +117,17 @@ export function useSessionPrompts(
   );
 
   const enqueueMutation = useMutation({
-    mutationFn: (input: CreateSessionPromptInput) =>
-      createSessionPrompt(projectId!, sessionId!, input),
+    mutationFn: async (input: CreateSessionPromptInput) => {
+      const result = await createSessionPrompt(projectId!, sessionId!, input);
+      // The server has the row. Say so immediately: `invalidate` below still
+      // has a round trip to run, and a `/turn` poll landing in that gap answers
+      // "no turns" honestly — which used to swap Stop back to Send with the
+      // user's prompt already queued.
+      if (result.state !== 'failed') {
+        useSessionWorkingStore.getState().notePromptAccepted(sessionId!, Date.now());
+      }
+      return result;
+    },
     onSettled: invalidate,
   });
   const removeMutation = useMutation({

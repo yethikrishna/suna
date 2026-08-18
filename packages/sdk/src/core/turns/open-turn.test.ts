@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
-import { hasOpenAssistantTurn, isRetryableTurnError } from './open-turn';
+import {
+  hasOpenAssistantTurn,
+  hasRetryingAssistantTurn,
+  isRetryableTurnError,
+} from './open-turn';
 
 function assistant(fields: Record<string, unknown> = {}) {
   return { info: { role: 'assistant', ...fields } };
@@ -125,5 +129,57 @@ describe('hasOpenAssistantTurn', () => {
     for (const [label, fields, expected] of quadrants) {
       expect(`${label}=${hasOpenAssistantTurn([assistant(fields)])}`).toBe(`${label}=${expected}`);
     }
+  });
+});
+
+/**
+ * The narrow half of the predicate, and the one that carries evidence.
+ *
+ * `hasOpenAssistantTurn` is true for TWO very different things: a turn that is
+ * mid-retry (OpenCode stamped a retryable error and is still writing the same
+ * message), and a "husk" — a message left open forever by a sandbox that died
+ * mid-turn, with no error and no completion. Gating a send on the first is a
+ * correctness rule; gating on the second wedges the composer for the lifetime
+ * of the session, which is why the old code needed a 10s clock and a
+ * confirmation round-trip to escape it. Only the retry case has proof.
+ */
+describe('hasRetryingAssistantTurn', () => {
+  test('true only while the open turn carries a RETRYABLE error', () => {
+    expect(
+      hasRetryingAssistantTurn([
+        assistant({ error: { name: 'APIError', data: { isRetryable: true } } }),
+      ]),
+    ).toBe(true);
+  });
+
+  test('false for a husk — an open message with no error at all', () => {
+    // The dead-sandbox case. `hasOpenAssistantTurn` is true here forever.
+    expect(hasOpenAssistantTurn([assistant({})])).toBe(true);
+    expect(hasRetryingAssistantTurn([assistant({})])).toBe(false);
+  });
+
+  test('false once the message completes, retryable error or not', () => {
+    expect(
+      hasRetryingAssistantTurn([
+        assistant({ time: { completed: 7 }, error: { data: { isRetryable: true } } }),
+      ]),
+    ).toBe(false);
+  });
+
+  test('false for a terminal error, and for no assistant message at all', () => {
+    expect(hasRetryingAssistantTurn([assistant({ error: { name: 'AbortError' } })])).toBe(false);
+    expect(hasRetryingAssistantTurn([user()])).toBe(false);
+    expect(hasRetryingAssistantTurn([])).toBe(false);
+    expect(hasRetryingAssistantTurn(undefined)).toBe(false);
+  });
+
+  test('reads the LAST assistant message, not an older one', () => {
+    expect(
+      hasRetryingAssistantTurn([
+        assistant({ error: { data: { isRetryable: true } } }),
+        user(),
+        assistant({ time: { completed: 9 } }),
+      ]),
+    ).toBe(false);
   });
 });

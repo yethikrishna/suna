@@ -9,5 +9,9 @@
  * that was still running. One predicate now, in @kortix/sdk — per the repo rule
  * that logic lives in the SDK and hosts are thin.
  */
-export { hasOpenAssistantTurn, isRetryableTurnError } from '@kortix/sdk';
+export {
+  hasOpenAssistantTurn,
+  hasRetryingAssistantTurn,
+  isRetryableTurnError,
+} from '@kortix/sdk';
 export type { OpenTurnMessageLike, OpenTurnMessageLike as AssistantTurnMessage } from '@kortix/sdk';

@@ -171,6 +171,16 @@ export {
   SESSION_PROMPTS_IDLE_POLL_MS,
   type UseSessionPromptsResult,
 } from './use-session-prompts';
+export { useSessionWorkingStore } from '../browser/stores/session-working-store';
+export {
+  useSessionWorking,
+  workingPollMs,
+  buildWorkingInputs,
+  WORKING_POLL_ACTIVE_MS,
+  WORKING_POLL_IDLE_MS,
+  type SessionTurnObservation,
+  type UseSessionWorkingOptions,
+} from './use-session-working';
 export { useRuntimePhase, type RuntimePhase } from './use-runtime-phase';
 export {
   useQuestionSelfHeal,

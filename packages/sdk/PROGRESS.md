@@ -12,6 +12,181 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-18 — session `server-truth-m1` — step 8: one working projection, and the demolition of the guessing machines — DONE
+
+**Files:** NEW `packages/sdk/src/core/session/working.ts` (+`.test.ts`), NEW
+`packages/sdk/src/react/use-session-working.ts` (+`.test.ts`),
+`core/session/index.ts`, `react/opencode.ts`, `react/query-keys.ts`,
+`core/session-sync/session-sync-controller.ts` (+`.test.ts`),
+`browser/session-sync/session-sync-registry.ts` (+`.test.ts`),
+`react/use-session-sync.ts`, `react/use-session.ts` (+`.test.ts`),
+`react/use-opencode-events/{index,use-event-stream-refs}.ts` (+`.test.ts`), NEW
+`browser/stores/session-working-store.ts` (+`.test.ts`), NEW
+`react/use-session-sync.test.ts`, `react/use-session-prompts.ts` (+`.test.ts`),
+both surface snapshots. `apps/web` work in the same commit is outside this
+package.
+
+**What.** "Is this session working?" had FOUR answers and they disagreed: a
+prompt-observation phase machine in the sync controller (stall timer, retry
+budget, epoch counter, settlement window), a busy override in `useSessionSync`
+that rewrote an idle runtime status to busy, a `pendingSendInFlight` boolean in
+`apps/web` with a 30s safety timer, and a 5s polling grace beside it. Every one
+of them inferred work from silence, and every one could latch — which is the
+"stuck working forever" report. There is one answer now:
+
+```ts
+projectWorking({ optimistic, inbox, server, stream, nowMs })
+  -> { state, source, turnId, since }
+```
+
+Pure, no timers, no latch, and provenance-tagged: `source` says WHICH
+observation decided. Precedence is stated once — a turn the server is holding
+open outranks every OLDER observation; the session's durable prompt inbox
+outranks a "no turns" read; a server read with no turns outranks a stream frame
+it is newer than; the stream decides otherwise; this tab's send receipt covers
+only the gap before a server source that CAN know about it answers, bounded by
+`OPTIMISTIC_RECEIPT_MAX_MS` (60s).
+
+**Four rules the program did not have, added because the code needs them:**
+
+1. **No observation outranks a FRESHER one, including an open turn.** Rule 1
+   originally had no freshness comparison, so a cached open-turn read beat the
+   SSE idle frame that ended it: the composer held Stop for up to one poll
+   interval after the last token, and `rewind()` threw "Cannot rewind a busy
+   session" on the Edit a user clicked the moment the reply landed. Nothing
+   invalidated the `/turn` query either, so `useSessionWorking` now refetches it
+   on every observed status frame.
+2. **`SERVER_OBSERVATION_MAX_MS` (45s).** react-query hands back the last
+   SUCCESSFUL read while every read after it fails, so the failure shape the
+   hook actually produces is a RETAINED open turn, not `undefined`. Unbounded,
+   one success plus a run of 503s latched `working` for the lifetime of the tab
+   — the reported bug itself. A server observation older than three idle
+   cadences now decides nothing, in either direction.
+3. **`SendReceipt.acceptedAtMs`, and two floors instead of one.** "Issued after
+   the receipt" is not the same as "could see the send": `POST .../prompts`
+   returns 202 long before the row is delivered, so a `/turn` read issued while
+   the POST is on the wire truthfully answers "no turns". The server floor is
+   therefore the ACCEPTANCE instant (infinite until then); the stream floor
+   stays the send instant, because the store stamps a status frame when this tab
+   observed it — a frame stamped after the send is a new transition, and
+   blocking it would leave a slash command's receipt (nothing ever accepts a
+   command) claiming `working` for a minute after its turn ended.
+4. **The inbox is a working signal, not just a list.** Between "durable" and "a
+   turn exists" the box may still be resuming (18.9s Daytona / 24.5s Platinum,
+   measured), and `/turn` answers "no turns" for all of it. Every read of
+   `useSessionPrompts` feeds `countLiveInboxPrompts` into the projection, and
+   `POST .../prompts` returning raises the floor immediately so the gap before
+   the list refetches is covered too. `held` rows are excluded: that is the Stop
+   button's own state.
+
+**The receipt and the inbox reading live in a per-session STORE**
+(`browser/stores/session-working-store.ts`), not in each caller's `useState`.
+`useSession`, the composer, and the session panel all mount `useSessionWorking`
+for the same session and share one `/turn` cache entry; with a receipt each, the
+observer that had none polled on its own timer and wrote an uninformed "no
+turns" read into that shared entry, defeating the receipt the other one held.
+`UseSessionWorkingOptions.optimistic` is removed for the same reason — one set
+of inputs per session is what makes "one answer" true for every mount point.
+
+**Deleted with their features** (none of them published — verified by the
+snapshot diff being purely additive, 0 deletions): `PROMPT_OBSERVATION_STALL_MS`,
+`PROMPT_STALL_MAX_ATTEMPTS`, `PROMPT_IDLE_SETTLEMENT_MS`, `PromptObservationPhase`,
+`SessionSyncSnapshot.isPromptObservedBusy`, `beginPromptObservation`,
+`observePromptStatus`, `observePromptActivity`, `endPromptObservation`,
+`markPromptRunning`, `schedulePromptSettlement`, `armPromptStallTimer`,
+`resolvePromptStall`, `raceStatusDeadline`, `clearPromptObservation`,
+`containsNewPromptReply`, `beginSessionPromptObservation`,
+`endSessionPromptObservation`, `BUSY_STATUS`, `beginRestPromptObservation`,
+`endRestPromptObservation`, `sendRestPromptWithObservation`.
+
+**`setBusy` SURVIVES, deliberately** (the program said delete it). With the
+prompt machine gone it is not an opinion about busy any more — it is the
+liveness-poll switch, and its callers are the host's working signal and the
+registry's last-consumer release. Deleting it left two bad options: poll every
+mounted session's transcript unconditionally (20 controllers × one read per 10s
+for nothing), or rename it and break `apps/mobile`'s only call site. Its doc
+comment now says what it is.
+
+**`use-event-stream-refs.ts` SURVIVES** (the program said delete the file). Only
+`markSessionAbortedLocally` was ever going to move, and its three tests are the
+whole of `use-event-stream-refs.test.ts` — deleting the file would have deleted
+live behaviour's only coverage to save a pure move.
+
+**`reconcileMissingBusySessions` + `markSessionIdleLocally` SURVIVE too**, and
+this is a correction to the first pass, which deleted them as fabricators.
+`client.session.status()` is a REST read of the runtime's COMPLETE set of
+non-idle sessions, so a session's ABSENCE from it is a positive statement, not
+an inference from silence — and it is the only repair the raw `sessionStatus`
+slot has for a terminal frame this tab never saw. Two live surfaces still read
+that slot: the session panel (now repointed at the projection where a Kortix
+session exists) and `SubAgentStatusBanner`'s retry countdown for CHILD sessions,
+which have no Kortix session row at all, so `GET .../turn` can never answer
+about them and the projection cannot cover them. Three tests were added for it.
+
+**`setBusy` is now actually called with the working state**, which the first
+pass claimed and no call site implemented: `useSessionSync` takes a `working`
+option, `livenessBusy()` states the precedence (projection first, stream slot
+only when the caller has no projection — apps/mobile), and `useSession` computes
+the projection BEFORE `useSessionSync` so it can pass it. Without this, a
+dropped busy frame left the transcript liveness poll off through a turn the
+server's own authority said was running.
+
+**Adversarial review pass r2 — 8 majors, all fixed in the same commit, RED
+first.** Every one was a way the ONE projection could still latch or still lie.
+
+1. **Every observation now has a maximum age, not just the server read.**
+   `STREAM_OBSERVATION_MAX_MS` (45s) and `INBOX_OBSERVATION_MAX_MS` (10s). The
+   outage `SERVER_OBSERVATION_MAX_MS` was written for does NOT produce
+   `stream: null` — the SSE stream reaches the tab through the API that serves
+   `/turn`, so when that API drains both stop refreshing and the last `busy`
+   frame stays in the store. Bounding one source moved the latch to the other:
+   `{open turn, busy frame, +10 min}` projected `working / stream` forever. The
+   inbox bound is three cadences of the PROMPT list's own 3s poll, not of
+   `/turn`'s: a reading that a delivered row is pending decays fast, and held
+   for 45s it kept the composer on Stop with the reply already on screen.
+2. **`workingExpiryAtMs`, and a hook timer armed from it.** The bounds were
+   only ever evaluated during a render, and in that exact outage there are no
+   more renders: react-query retains the last successful `data` across every
+   failure and does not notify an observer that reads only `data`. The hook now
+   arms one timer at the earliest input deadline (the old one covered the
+   optimistic receipt alone), so the bound applies whether or not anything else
+   re-renders.
+3. **`AbortReceipt` — the stop's own receipt, the mirror of the send's.**
+   `handleStop`'s optimistic idle FRAME invalidates the `/turn` query, and the
+   read that comes back still shows the turn, because the cancel needs ~1.6s to
+   reach the daemon. Measured: `idle / stream` at T+0, `working / server` at
+   T+120ms — the composer flipped Send back to Stop for the whole abort.
+   `settledAtMs` is the floor, built exactly like `acceptedAtMs`, bounded by
+   `OPTIMISTIC_ABORT_MAX_MS` (15s) so an unanswered cancel cannot pin `idle`
+   over a turn that is really running. `noteSendReceipt` releases it: sending is
+   the user saying they are not stopping.
+4. **`clearSendReceipt(sessionId, messageId?)` is guarded like
+   `acceptSendReceipt`.** It took no id at all, so an older send's failure path
+   deleted a NEWER send's unaccepted receipt — a `/compact` rejected at T+600ms
+   dropped the receipt of a prompt submitted at T+500ms whose POST was still on
+   the wire, and an uninformed read then flipped the composer mid-send. Every
+   caller that has an id now passes it; Stop and unmount deliberately do not.
+5. **`hasRetryingAssistantTurn`** in `core/turns/open-turn.ts` — the narrow half
+   of `hasOpenAssistantTurn`, and the only half that carries proof. `apps/web`'s
+   drain gate on the wide predicate was removed by the first pass, which
+   reverted the fix in `f5abaeac9a`: during a provider 429 OpenCode keeps
+   writing the SAME assistant message while the status frame can read non-busy,
+   and the projection cannot substitute because a frame stamped after the last
+   `/turn` read outranks that read by design. The wide predicate could not be
+   restored — a husk (dead sandbox, no error, no completion) is true forever and
+   wedged the queue, which is what the deleted 10s husk clock existed to escape.
+6. **`WorkingProjection.serverOpenTurnId`** — the raw fact behind rule 1,
+   reported even when something fresher decides the state. It is what lets the
+   host pair (5) with the control plane's own authority, so the gate cannot
+   wedge: a dead box's turn is husk-finalized and the field goes null.
+
+Gates: `bun test --isolate src` 2222 pass / 0 fail / 154 files; `tsc --noEmit`
+(+ examples) clean; `smoke:install` passed. Snapshots re-recorded twice, both
+purely additive: 16 insertions on the first pass, then 10 value / 12 type names
+for the r2 fixes (`AbortReceipt`, `INBOX_OBSERVATION_MAX_MS`,
+`OPTIMISTIC_ABORT_MAX_MS`, `STREAM_OBSERVATION_MAX_MS`, `workingExpiryAtMs`,
+`hasRetryingAssistantTurn`), 0 deletions.
+
 ### 2026-08-18 — session `server-truth-m1` — step 7: the server-side prompt inbox (client half) — DONE
 
 **Files:** `packages/sdk/src/core/rest/projects-client/sessions.ts` (+`.test.ts`),

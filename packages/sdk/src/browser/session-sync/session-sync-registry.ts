@@ -115,7 +115,6 @@ function createController(sessionId: string, key: string): SessionSyncController
       if (!(sessionId in state.messages)) state.hydrate(sessionId, []);
     },
     setStatus: (status) => {
-      controllers.get(key)?.controller.observePromptStatus(status);
       useSyncStore.getState().setStatus(sessionId, status);
     },
     onTelemetry: (event) => reportTelemetry(sessionId, event),
@@ -231,23 +230,6 @@ export function reconcileSessionTail(
   return getSessionSyncController(sessionId, undefined, runtimeScope).reconcile(reason);
 }
 
-export function beginSessionPromptObservation(sessionId: string, runtimeScope?: string): void {
-  const existing = findExistingSessionEntry(sessionId, runtimeScope);
-  if (existing) {
-    existing.controller.beginPromptObservation();
-    return;
-  }
-  const hasAmbiguousOwner = [...controllers.values()].some(
-    (entry) => entry.sessionId === sessionId,
-  );
-  if (runtimeScopeKey(runtimeScope) === 'none' && hasAmbiguousOwner) return;
-  getSessionSyncController(sessionId, undefined, runtimeScope).beginPromptObservation();
-}
-
-export function endSessionPromptObservation(sessionId: string, runtimeScope?: string): void {
-  findExistingSessionEntry(sessionId, runtimeScope)?.controller.endPromptObservation();
-}
-
 /**
  * One authoritative read of a session's runtime status. `null` when the
  * runtime exposes no status endpoint — the caller decides what silence means.
@@ -298,26 +280,12 @@ export function noteSessionSyncEvent(event: {
     info?.sessionID ||
     part?.sessionID;
   if (!sessionId) return;
-  const controller = findExistingSessionEntry(sessionId)?.controller;
-  if (!controller) return;
-  controller.noteActivity();
-
-  if (event.type === 'session.status') {
-    const status = properties.status as SessionStatus | undefined;
-    if (status) controller.observePromptStatus(status);
-    return;
-  }
-  if (event.type === 'session.idle') {
-    controller.observePromptStatus({ type: 'idle' });
-    return;
-  }
-  if (event.type === 'session.error') {
-    controller.endPromptObservation();
-    return;
-  }
-  if (event.type === 'message.updated' && info?.role === 'assistant') {
-    controller.observePromptActivity();
-  }
+  // Every frame for this session is proof its transcript moved, and that is
+  // all this hook does now: it renews freshness. The frames themselves are
+  // applied by the event handler, and "is this session working?" is answered
+  // by `projectWorking` over the server's turn authority — not by inferring a
+  // phase from which frame arrived when.
+  findExistingSessionEntry(sessionId)?.controller.noteActivity();
 }
 
 export function resetSessionSyncControllers(): void {

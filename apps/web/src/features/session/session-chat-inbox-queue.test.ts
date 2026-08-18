@@ -92,7 +92,7 @@ describe('"send now" addresses the thing that actually holds the row', () => {
     const retry = between(
       chat,
       'const handleRetryQueuedMessage = useCallback(',
-      '// Stop polling when session goes idle',
+      '// Stop the transcript polling fallback',
     );
     expect(retry).toContain('queueRows.localIds.has(id)');
   });

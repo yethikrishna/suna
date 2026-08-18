@@ -40,36 +40,47 @@
 export const QUEUE_SETTLE_MS = 700;
 
 /**
- * How long an open assistant turn may block the drain while every OTHER gate —
- * server status included — says the session is idle.
- *
- * `hasIncompleteAssistant` exists to survive missed status events: a stale
- * idle status must not drain the queue into a turn that is really running. But
- * a sandbox that dies mid-turn and boots fresh leaves the last assistant
- * message permanently open — `time.completed` never set, no error ever patched
- * (no `session.error`, no `server.instance.disposed`: the process that owned
- * the turn is simply gone). That husk lives in the server's own transcript, so
- * it survives a hard refresh, and the queue wedged forever behind it.
- *
- * A live turn produces evidence: the status poll reports busy within one
- * liveness interval (10s), which resets this clock via the `isServerBusy`
- * gate. So an open message that goes this long with the server continuously
- * idle is a husk of a dead turn, not a running one — release the queue.
- */
-export const OPEN_TURN_HUSK_MS = 10_000;
-
-/**
  * Everything that means "do not send yet". All of these already exist in
  * `session-chat.tsx` — the drain simply reads the honest ones.
  */
 export interface QueueDrainGates {
-  /** The server says this session is running or retrying. The real signal. */
+  /**
+   * This session is working, per the ONE projection — `useSessionWorking` over
+   * the server's own turn authority, the live stream, and this tab's send
+   * receipt, in that order of authority.
+   *
+   * Three gates collapsed into this one and none of them are missed.
+   * `pendingSendInFlight` was a boolean the composer set on send and cleared
+   * from a 30s timer; the receipt is the same fact with a provenance tag and a
+   * bound. `hasIncompleteAssistant` was a transcript inference kept because
+   * status events get dropped — but a turn the server is holding open reports
+   * as a turn, and an assistant message left open by a sandbox that died
+   * mid-turn (the "husk") does not. That husk is exactly what needed a 10s
+   * clock and a confirmation round-trip to work around; server truth has no
+   * husk to work around.
+   */
   isServerBusy: boolean;
-  /** Our own send has not been acknowledged yet. */
-  pendingSendInFlight: boolean;
+  /**
+   * The last assistant message is open BECAUSE the provider is being retried.
+   *
+   * The one transcript-derived gate that survives, and only in this narrow
+   * form. During a 429 OpenCode stamps `info.error` with
+   * `data.isRetryable === true` and keeps writing the SAME message; the status
+   * frame this tab holds can read non-busy through all of it, and the drain
+   * then sent the next queued `/` command into a turn that was still running —
+   * the "Interrupted" symptom. `isServerBusy` cannot stand in for it, because a
+   * status frame stamped after the last `/turn` read outranks that read by
+   * design (see `projectWorking` rule 1).
+   *
+   * NOT `hasIncompleteAssistant`: an assistant message left open by a sandbox
+   * that died mid-turn never completes and never errors, so gating on THAT
+   * wedged the queue for the lifetime of the session. Callers pair this with
+   * `WorkingProjection.serverOpenTurnId` so it can only close the gate while
+   * the control plane also still holds turn authority — which a dead box's
+   * husk-finalized turn does not.
+   */
+  hasRetryingAssistant: boolean;
   isOptimisticCompacting: boolean;
-  /** The last assistant message is still open, whatever the status says. */
-  hasIncompleteAssistant: boolean;
   /** A structured question is on screen. Draining would answer it with
    *  unrelated text. */
   hasActiveQuestion: boolean;
@@ -119,11 +130,10 @@ export interface QueueDrainGates {
    *
    * Without this, the OTHER gates read WRONG during a staged revert, and
    * wrong in the dangerous direction: the local hide window
-   * (`messagesBeforeRewind`) removes the very messages
-   * `hasIncompleteAssistant` and `isServerBusy` would otherwise be reading —
-   * an in-progress or just-finished turn on the abandoned trajectory
-   * disappears from view, so those gates can read CLEAR while a staged
-   * revert sits open. That would let the drain open SOONER during a staged
+   * (`messagesBeforeRewind`) removes the very messages the transcript-derived
+   * gates were reading — an in-progress or just-finished turn on the abandoned
+   * trajectory disappears from view, so those gates can read CLEAR while a
+   * staged revert sits open. That would let the drain open SOONER during a staged
    * revert than during an ordinary idle session — backwards. Draining into a
    * staged window sends the queued prompt into a trajectory the user has
    * already asked to discard, and it lands ahead of the replacement they are
@@ -142,9 +152,8 @@ export interface QueueDrainGates {
 export function canDrainQueue(gates: QueueDrainGates): boolean {
   return (
     !gates.isServerBusy &&
-    !gates.pendingSendInFlight &&
+    !gates.hasRetryingAssistant &&
     !gates.isOptimisticCompacting &&
-    !gates.hasIncompleteAssistant &&
     !gates.hasActiveQuestion &&
     !gates.hasPendingApproval &&
     gates.pendingPermissionCount === 0 &&
@@ -154,24 +163,6 @@ export function canDrainQueue(gates: QueueDrainGates): boolean {
     gates.runtimeReady &&
     !gates.revertStaged
   );
-}
-
-/**
- * Whether a husk-released dispatch must be ABANDONED because the world changed
- * during its runtime confirmation round-trip.
- *
- * The husk path is the one dispatch that is not synchronous with its gate
- * evaluation: `stepDrainMachine` flags it (`viaHusk`), the drain hook then
- * awaits one authoritative status read before claiming, and that await is a
- * full HTTP round-trip during which the user can press Stop, stage a revert,
- * or the server can report busy. Every gate is rechecked here EXCEPT
- * `hasIncompleteAssistant` — that is the husk itself, the one gate this
- * dispatch exists to override; rechecking it would make every husk dispatch
- * abort itself.
- */
-export function shouldAbortHuskDispatch(gates: QueueDrainGates, isPaused: boolean): boolean {
-  if (isPaused) return true;
-  return !canDrainQueue({ ...gates, hasIncompleteAssistant: false });
 }
 
 /**
@@ -251,16 +242,10 @@ export function shouldClearPause(previousQueueSize: number, nextQueueSize: numbe
 export interface DrainMachine {
   /** When the gates last became clear, or null while any gate is closed. */
   clearSince: number | null;
-  /**
-   * When `hasIncompleteAssistant` became the ONLY closed gate, or null. After
-   * `OPEN_TURN_HUSK_MS` of that state the open message is treated as a dead
-   * turn's husk and stops blocking — see the constant's doc comment.
-   */
-  openTurnOnlySince: number | null;
 }
 
 export function createDrainMachine(): DrainMachine {
-  return { clearSince: null, openTurnOnlySince: null };
+  return { clearSince: null };
 }
 
 /**
@@ -274,30 +259,11 @@ export function stepDrainMachine(
   gates: QueueDrainGates,
   now: number,
   settleMs: number = QUEUE_SETTLE_MS,
-  huskMs: number = OPEN_TURN_HUSK_MS,
-): { machine: DrainMachine; dispatch: boolean; viaHusk?: boolean } {
+): { machine: DrainMachine; dispatch: boolean } {
   // `isServerBusy` is one of the gates, so a running turn lands here too and
   // resets the clock. There is no separate busy branch to keep in sync.
-  let viaHusk = false;
   if (!canDrainQueue(gates)) {
-    // The husk clock runs only while the open assistant message is the SOLE
-    // reason the drain is blocked. Any other closed gate — the server saying
-    // busy above all — is evidence of a real turn and resets it.
-    const openTurnOnly =
-      gates.hasIncompleteAssistant && canDrainQueue({ ...gates, hasIncompleteAssistant: false });
-    if (!openTurnOnly) {
-      return { machine: { clearSince: null, openTurnOnlySince: null }, dispatch: false };
-    }
-    const openTurnOnlySince = machine.openTurnOnlySince ?? now;
-    if (now - openTurnOnlySince < huskMs) {
-      return { machine: { clearSince: null, openTurnOnlySince }, dispatch: false };
-    }
-    // Husk expired — fall through with the gate overridden; the normal settle
-    // window still applies from this point. The dispatch is flagged so the
-    // caller confirms idleness with the runtime before sending: the husk
-    // reasoning is an inference from silence, and silence can also mean lost
-    // status events over a live turn.
-    viaHusk = true;
+    return { machine: { clearSince: null }, dispatch: false };
   }
 
   const clearSince = machine.clearSince ?? now;
@@ -310,11 +276,7 @@ export function stepDrainMachine(
   // gate synchronously — but when a send fails without ever reaching the server
   // the gates stay clear, and this is what keeps the next message a full settle
   // window behind rather than following it in the same instant.
-  return {
-    machine: { clearSince: null, openTurnOnlySince: null },
-    dispatch: true,
-    ...(viaHusk ? { viaHusk: true } : {}),
-  };
+  return { machine: { clearSince: null }, dispatch: true };
 }
 
 /**
@@ -324,12 +286,7 @@ export function stepDrainMachine(
  */
 export type DrainAction =
   | { kind: 'idle' }
-  | {
-      kind: 'dispatch';
-      /** The husk override released this dispatch — confirm idleness with the
-       *  runtime before actually sending. See `stepDrainMachine`. */
-      viaHusk?: boolean;
-    }
+  | { kind: 'dispatch' }
   | { kind: 'wait'; ms: number };
 
 /**
@@ -360,24 +317,12 @@ export function planDrainTick(input: {
     return { machine: input.machine, action: { kind: 'idle' } };
   }
 
-  const { machine, dispatch, viaHusk } = stepDrainMachine(
-    input.machine,
-    input.gates,
-    input.now,
-    settleMs,
-  );
+  const { machine, dispatch } = stepDrainMachine(input.machine, input.gates, input.now, settleMs);
   if (dispatch) {
-    return { machine, action: { kind: 'dispatch', ...(viaHusk ? { viaHusk: true } : {}) } };
+    return { machine, action: { kind: 'dispatch' } };
   }
 
   if (machine.clearSince === null) {
-    // Waiting out a dead-turn husk. Nothing re-renders while it merely ages,
-    // so hand back a timer — otherwise the override only fires when some
-    // unrelated render happens to tick the drain.
-    if (machine.openTurnOnlySince !== null) {
-      const elapsed = input.now - machine.openTurnOnlySince;
-      return { machine, action: { kind: 'wait', ms: Math.max(0, OPEN_TURN_HUSK_MS - elapsed) } };
-    }
     // A closed gate will re-render when it opens; there is nothing to poll for.
     return { machine, action: { kind: 'idle' } };
   }

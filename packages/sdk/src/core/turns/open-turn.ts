@@ -79,3 +79,33 @@ export function hasOpenAssistantTurn(
   }
   return false;
 }
+
+/**
+ * Is the last assistant turn open BECAUSE the provider is being retried?
+ *
+ * The narrow half of `hasOpenAssistantTurn`, and the only half that carries
+ * proof. That predicate is true for two very different things:
+ *
+ *  * a turn mid-retry — OpenCode stamped `data.isRetryable === true` and is
+ *    still writing the same message. Evidence of a LIVE turn, whatever the
+ *    session's status frame says, and refusing to send into it is the rule the
+ *    shared predicate was extracted for;
+ *  * a HUSK — a message left open by a sandbox that died mid-turn, with no
+ *    error and no `time.completed`, which no later event ever closes. It lives
+ *    in the server's transcript, so it survives a reload, and gating a send on
+ *    it wedges the composer for the lifetime of the session. That is exactly
+ *    what needed a 10s clock and a confirmation round-trip to work around.
+ *
+ * A husk has no error at all, so this is false for it by construction.
+ */
+export function hasRetryingAssistantTurn(
+  messages: readonly OpenTurnMessageLike[] | undefined,
+): boolean {
+  if (!messages?.length) return false;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const info = messages[i].info;
+    if (info.role !== 'assistant') continue;
+    return !info.time?.completed && isRetryableTurnError(info.error);
+  }
+  return false;
+}

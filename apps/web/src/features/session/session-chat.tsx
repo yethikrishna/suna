@@ -2504,8 +2504,16 @@ export function SessionChat({
     return true;
   }, [messages]);
 
-  // The projection, plus the one local overlay it deliberately knows nothing
-  // about: compaction is not a turn, so it is not in `working`.
+  // The working projection, plus compaction — which `projectWorking`
+  // deliberately knows nothing about, because a compaction is not a turn and
+  // `GET .../turn` reports none for it.
+  //
+  // It is no longer a client-only latch either. `sessionState.isCompacting` is
+  // its own projection (`core/session/compaction.ts`) over the runtime's
+  // `Session.time.compacting` row plus this tab's own bounded `/compact` stamp,
+  // so a lost `session.compacted` frame stops pinning the composer at
+  // `OPTIMISTIC_COMPACTION_MAX_MS` instead of for the lifetime of the tab, and
+  // a compaction started by a second device is visible here at all.
   const effectiveBusy = isServerBusy || isOptimisticCompacting;
 
   // Short visual fade (300ms) — matches the reference's 260ms delay-hide.

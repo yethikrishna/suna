@@ -325,14 +325,20 @@ describe('sendAndRecover', () => {
 });
 
 describe('applyOptimisticAbort', () => {
-  test('sets the session idle and patches an AbortError onto the last error-free assistant message', () => {
+  test('patches an AbortError onto the last error-free assistant message and writes NO status frame', () => {
     useSyncStore.getState().setStatus('sess-1', { type: 'busy' });
     useSyncStore.getState().upsertMessage('sess-1', { id: 'm1', sessionID: 'sess-1', role: 'user' } as any);
     useSyncStore.getState().upsertMessage('sess-1', { id: 'm2', sessionID: 'sess-1', role: 'assistant' } as any);
 
     applyOptimisticAbort('sess-1');
 
-    expect(useSyncStore.getState().sessionStatus['sess-1']).toEqual({ type: 'idle' });
+    // The optimistic idle FRAME is gone: `noteAbortReceipt` carries the same
+    // intent with provenance and a bound (`OPTIMISTIC_ABORT_MAX_MS`), and a
+    // fabricated frame outranked the control plane's own `/turn` answer in
+    // `projectWorking` — the exact laundering this migration removes. The
+    // transcript-side AbortError patch stays: it is a designed optimistic echo
+    // about a MESSAGE, not a status.
+    expect(useSyncStore.getState().sessionStatus['sess-1']).toEqual({ type: 'busy' });
     const msg2 = useSyncStore.getState().messages['sess-1']?.find((m) => m.id === 'm2') as any;
     expect(msg2.error).toEqual({
       name: 'AbortError',
@@ -367,9 +373,9 @@ describe('applyOptimisticAbort', () => {
     expect(msg1.error.name).toBe('SomeOtherError');
   });
 
-  test('no-ops when the session has no messages yet', () => {
+  test('no-ops when the session has no messages yet — and still writes no status', () => {
     expect(() => applyOptimisticAbort('sess-empty')).not.toThrow();
-    expect(useSyncStore.getState().sessionStatus['sess-empty']).toEqual({ type: 'idle' });
+    expect(useSyncStore.getState().sessionStatus['sess-empty']).toBeUndefined();
   });
 });
 

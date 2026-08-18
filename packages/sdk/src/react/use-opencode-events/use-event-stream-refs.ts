@@ -203,11 +203,14 @@ export function useEventStreamRefs(deps: {
    * read of the runtime's COMPLETE set of non-idle sessions, so a session's
    * absence from it is a positive statement about that session. It is the only
    * repair the raw `sessionStatus` slot has for a MISSED terminal frame — a
-   * laptop sleeping mid-turn, a stream reconnect — and two live surfaces still
-   * read that slot directly rather than the working projection: the session
-   * panel's `isSessionBusy`, and `SubAgentStatusBanner`'s retry countdown for
-   * CHILD sessions, which have no Kortix session row at all and therefore can
-   * never be covered by `GET .../turn`.
+   * laptop sleeping mid-turn, a stream reconnect. Every remaining direct
+   * reader of that slot is a CHILD-session surface — sub-sessions have no
+   * Kortix session row, so `GET .../turn` can never answer for them: the
+   * session panel's and turn card's child fallbacks (`session-layout.tsx`,
+   * `resolveLastTurnWorking`), and `SubAgentStatusBanner`'s retry countdown.
+   * Kortix-session surfaces read the working projection, whose `stream` input
+   * this slot feeds — the repair still reaches them, one hop later, with
+   * provenance.
    */
   const reconcileMissingBusySessions = useRef((nextStatuses: Record<string, SessionStatus>) => {
     const previousStatuses = useSyncStore.getState().sessionStatus;

@@ -295,13 +295,20 @@ export async function sendAndRecover(args: SendAndRecoverArgs): Promise<SendAndR
 // ============================================================================
 
 /**
- * Optimistically mark the session idle and patch an "aborted" error onto the
- * last assistant message that doesn't already have one, so an "Interrupted"
- * label can render instantly instead of waiting for the SSE `session.error`
- * round-trip. Call this immediately before issuing the actual abort request.
+ * Patch an "aborted" error onto the last assistant message that doesn't
+ * already have one, so an "Interrupted" label can render instantly instead of
+ * waiting for the SSE `session.error` round-trip. Call this immediately
+ * before issuing the actual abort request.
+ *
+ * This deliberately writes NO status frame. It used to fabricate an idle
+ * frame here, and `projectWorking` cannot tell a fabricated frame from a real
+ * one — the fabrication outranked the control plane's own `/turn` answer for
+ * the whole abort round-trip. The same intent now travels as an
+ * `AbortReceipt` (`noteAbortReceipt`), which carries provenance and a bound
+ * (`OPTIMISTIC_ABORT_MAX_MS`). The transcript-side patch below stays: it is a
+ * designed optimistic echo about a MESSAGE, not a status.
  */
 export function applyOptimisticAbort(sessionId: string): void {
-  useSyncStore.getState().setStatus(sessionId, { type: 'idle' });
   const store = useSyncStore.getState();
   const msgs = store.messages[sessionId];
   if (!msgs) return;

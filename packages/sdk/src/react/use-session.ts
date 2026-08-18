@@ -1349,10 +1349,10 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
       // Without this the composer flipped Send back to Stop ~120ms after the
       // click and stayed there for the whole abort. See `AbortReceipt`.
       noteAbortReceipt(sessionId, Date.now());
-      // Optimistic idle paint, the mirror of the send's optimistic busy one.
-      // Neither is a source of truth: any newer server or stream observation
-      // outranks both — see `projectWorking`.
-      useSyncStore.getState().setStatus(ocSessionId, { type: 'idle' });
+      // No fabricated idle frame here: the receipt above IS the optimistic
+      // idle, with provenance and a bound. A fabricated frame outranked the
+      // control plane's `/turn` answer in `projectWorking` for the whole
+      // abort round-trip — the laundering this migration removes.
       abortInFlightDeliveries(ocSessionId);
     }
     questions.forEach((q) => removeQuestion(q.id));

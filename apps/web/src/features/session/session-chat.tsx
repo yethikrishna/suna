@@ -206,7 +206,11 @@ import {
   useSessionWorkingStore,
 } from '@kortix/sdk/react';
 import { CodeBlockEndpoints, SandboxUrlDetector } from './sandbox-url-detector';
-import { serverHoldsOpenTurn, sessionComposerReadiness } from './session-composer-readiness';
+import {
+  resolveLastTurnWorking,
+  serverHoldsOpenTurn,
+  sessionComposerReadiness,
+} from './session-composer-readiness';
 import { captureTurnScrollAnchor, restoreTurnScrollAnchor } from './session-history-scroll';
 import { resolveSessionContentState } from './session-load-state';
 import { shouldLoadOlderHistory } from './session-older-autoload';
@@ -656,8 +660,13 @@ interface SessionTurnProps {
   agentNames?: string[];
   /** Whether this is the first turn in the session */
   isFirstTurn: boolean;
-  /** Whether the session is busy */
-  isBusy: boolean;
+  /**
+   * The session's working state, resolved ONCE by the parent
+   * (`resolveLastTurnWorking`): the projection for a Kortix session, the raw
+   * SSE slot only for a child session that has no `/turn` row. Only the last
+   * turn ever renders it — a non-last turn is settled by definition.
+   */
+  lastTurnWorking: boolean;
   /** Whether this turn contains a compaction */
   isCompaction?: boolean;
   /** Providers data for the Connect Provider dialog */
@@ -748,7 +757,7 @@ function SessionTurnImpl({
   questions,
   agentNames,
   isFirstTurn,
-  isBusy,
+  lastTurnWorking,
   isCompaction,
   providers,
   commandMessages,
@@ -789,15 +798,14 @@ function SessionTurnImpl({
     () => allParts.some(({ part }) => isReasoningPart(part) && !!part.text?.trim()),
     [allParts],
   );
-  // A turn is "working" when:
-  // 1. The session status says busy/retry (via getWorkingState), OR
-  // 2. This is the last turn AND the parent component says isBusy (e.g. we
-  //    just sent a message but sessionStatus hasn't updated to busy yet).
-  //    This covers the race between sending and the server acknowledging.
-  const working = useMemo(
-    () => getWorkingState(sessionStatus, isLast) || (isLast && isBusy),
-    [sessionStatus, isLast, isBusy],
-  );
+  // The LAST turn's working state is the session's, and the parent resolved
+  // that answer once (`resolveLastTurnWorking`): the projection
+  // (`useSessionWorking` → `GET .../turn`) for a Kortix session, the raw SSE
+  // slot only for a child session with no `/turn` row. A non-last turn is
+  // NEVER working — that is a fact about the transcript, not an observation,
+  // and it is what removes the "last turn shimmers for ever" symptom the raw
+  // slot's dropped end-of-turn frames caused here.
+  const working = isLast && lastTurnWorking;
   const activeAssistantMessage = useMemo(() => {
     if (turn.assistantMessages.length === 0) return undefined;
     for (let i = turn.assistantMessages.length - 1; i >= 0; i--) {
@@ -845,7 +853,11 @@ function SessionTurnImpl({
     : !hasSteps && completedTextParts.length > 0
       ? completedTextParts.join('\n\n')
       : responseRaw.trim() || abortedTextFallback;
-  // Retry info (only on last turn)
+  // Retry info (only on last turn). These KEEP reading the raw `sessionStatus`
+  // frame on purpose: they render the retry *reason* carried on the frame
+  // (attempt count, provider message, next-retry time), which the working
+  // projection does not carry. Do not "finish the job" by moving them to the
+  // projection — the shimmer decision above is the only thing that moved.
   const retryInfo = useMemo(
     () => (isLast ? getRetryInfo(sessionStatus) : undefined),
     [sessionStatus, isLast],
@@ -2457,8 +2469,13 @@ export function SessionChat({
    * turn authority first (`GET .../turn`), the stream second, and this tab's
    * own send receipt only until either of them answers.
    */
+  // A child-session mount (`sub-session-modal.tsx` passes no project ids) has
+  // no Kortix session row for `/turn` to answer about, so the projection below
+  // is disabled and every working read falls back to the raw stream slot —
+  // the same split `session-layout.tsx` makes for its busy indicator.
+  const isChildSession = !projectId || !projectSessionId;
   const working = useSessionWorking(projectId ?? '', projectSessionId ?? '', {
-    enabled: !!projectId && !!projectSessionId,
+    enabled: !isChildSession,
     runtimeSessionId: sessionId,
   });
   const isServerBusy = working.state === 'working';
@@ -2530,6 +2547,17 @@ export function SessionChat({
     }
     return () => clearTimeout(busyTimerRef.current);
   }, [effectiveBusy]);
+
+  // The one working answer the LAST turn card renders (its shimmer). Resolved
+  // here, once, so the card never reads the raw slot for a Kortix session —
+  // see `resolveLastTurnWorking` for the split and the defect it removes.
+  const lastTurnWorking = resolveLastTurnWorking({
+    isChildSession,
+    // The delay-hidden projection, so the card and the composer settle on the
+    // same frame instead of the card flickering 300ms earlier.
+    projectionBusy: isBusy,
+    rawSlotBusy: getWorkingState(sessionStatus, true),
+  });
 
   // Read by `handleSend` for its RENDERING decision only (see
   // `willWaitInInbox`). Refs, not the values: `handleSend` is a stable callback
@@ -3586,7 +3614,7 @@ export function SessionChat({
           if (!projectId || !projectSessionId) {
             throw new Error('This session has no project — cannot queue a prompt');
           }
-          await promptInbox.enqueue({
+          const created = await promptInbox.enqueue({
             clientMessageId,
             messageId: mintSessionWireMessageId(sessionId, clientMessageId),
             parts: mappedParts,
@@ -3600,12 +3628,42 @@ export function SessionChat({
               ...(selectedVariant ? { variant: selectedVariant } : {}),
             },
           });
+          // The server's admission verdict, not a guess. A `failed` row is a
+          // real refusal wearing a 200: a re-POST of a `clientMessageId` whose
+          // row already dead-lettered dedupes into that row, and discarding
+          // the result used to accept the receipt, clear the draft, and tell
+          // the user nothing. Thrown here so the ordinary failure path below
+          // clears the named receipt and surfaces the error.
+          if (created.state === 'failed') {
+            throw new Error(
+              'This prompt was refused — its earlier delivery already failed. Edit it and send again.',
+            );
+          }
           // The server has the prompt. From here — and NOT before — a
           // `GET .../turn` read is able to see it, so one is allowed to answer
           // for it. `useSessionPrompts` raises the inbox floor at the same
           // moment, which is what covers the window before the row is
           // delivered and becomes a turn.
           acceptSendReceipt(clientMessageId);
+          // Correct the rendering guess with the server's answer: the guess
+          // said "will wait" (so no optimistic bubble was painted), but the
+          // server admitted it to run now. Paint the bubble after the fact so
+          // the user's message is not stranded in the queue strip while the
+          // turn it started streams above an empty transcript slot. Under the
+          // in-turn forwarding gate this fires often: an awake session answers
+          // `queued`/`delivering` for a prompt the old gate made `waiting`.
+          // Only when nothing else is in line: a row behind other queued rows
+          // genuinely waits its turn even when admissible, and painting it now
+          // would fake an order the queue has not produced yet.
+          const correctedWillWait =
+            willWaitInInbox &&
+            queuedMessagesRef.current === 0 &&
+            (created.state === 'queued' || created.state === 'delivering');
+          if (correctedWillWait) {
+            beginOptimisticSend(sessionId, messageID, optimisticText, [textPartId]);
+            markOptimisticSendDispatched(sessionId, messageID);
+            anchorTurn(messageID);
+          }
           return { ok: true } as const;
         } catch (cause) {
           // Unchanged recovery: clear busy, then either rehydrate the real
@@ -3753,10 +3811,12 @@ export function SessionChat({
   const handleQueueSendNow = useCallback(
     async (id: string) => {
       await stopThenSendNow({
-        isRunning: () => {
-          const status = useSessionStateStore.getState().sessionStatus[sessionId];
-          return status?.type === 'busy' || status?.type === 'retry';
-        },
+        // The control plane's turn authority (`serverOpenTurnToken`), not the
+        // raw SSE slot. Both stale directions of the slot were real failures
+        // here: stale-idle dispatched into a live turn (OpenCode answers that
+        // by aborting it — the "Interrupted" symptom), and stale-busy issued a
+        // spurious Stop that held the whole inbox.
+        isRunning: () => serverHoldsOpenTurn(working),
         pendingSettlement: () => pendingAbortSettlementRef.current.get(sessionId),
         stop: async () => {
           // AWAITED: `handleStop` holds the inbox before it issues the cancel,
@@ -3779,7 +3839,7 @@ export function SessionChat({
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, handleStop, promptInbox.retry],
+    [sessionId, handleStop, promptInbox.retry, working],
   );
 
   // ---- Triple-ESC to stop ----
@@ -4528,7 +4588,7 @@ export function SessionChat({
                               questions={pendingQuestions}
                               agentNames={agentNames}
                               isFirstTurn={turnIndex === 0}
-                              isBusy={isBusy}
+                              lastTurnWorking={lastTurnWorking}
                               isCompaction={hasCompaction}
                               providers={providers}
                               commandMessages={commandMessagesRef.current}

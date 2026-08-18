@@ -148,3 +148,52 @@ describe('the composer reads ONE working answer', () => {
     expect(chat).toContain('sessionWorking={effectiveBusy || hasRetryingAssistant}');
   });
 });
+
+/**
+ * The turn card reads the SAME answer the composer does. It used to compute its
+ * own from the raw SSE slot (`getWorkingState(sessionStatus, isLast)`), so a
+ * dropped end-of-turn frame shimmered the last turn over a finished answer for
+ * ever while the composer beside it — projection-backed — correctly read idle.
+ */
+describe('the turn card reads the same working answer', () => {
+  test('the LAST turn shimmers from the projection; a non-last turn NEVER works', () => {
+    const turn = between(chat, 'function SessionTurnImpl(', 'const activeAssistantMessage');
+    expect(turn).toContain('isLast && lastTurnWorking');
+    // The raw slot no longer decides any turn's shimmer inside the card.
+    expect(turn).not.toContain('getWorkingState(');
+  });
+
+  test('the parent computes lastTurnWorking ONCE, with the child-session split', () => {
+    // `resolveLastTurnWorking` (session-composer-readiness.ts) carries the
+    // behavior tests; this pins that the component actually calls it and feeds
+    // the projection-backed delay-hidden `isBusy` as the Kortix answer.
+    expect(chat).toContain('resolveLastTurnWorking({');
+    expect(chat).toContain('isChildSession');
+    expect(chat).toContain('lastTurnWorking={lastTurnWorking}');
+  });
+
+  test('retry copy keeps the raw frame — the projection does not carry the reason', () => {
+    const turn = between(chat, 'function SessionTurnImpl(', '// Cost info');
+    expect(turn).toContain('getRetryInfo(sessionStatus)');
+    expect(turn).toContain('getRetryMessage(sessionStatus)');
+  });
+
+  test('"Send now" decides from the projection, not the raw slot', () => {
+    // Both failure directions were real: a stale-idle slot dispatched into a
+    // live turn (OpenCode answers that by aborting it — the "Interrupted"
+    // symptom), and a stale-busy slot issued a spurious Stop that held the
+    // whole inbox.
+    const sendNow = between(chat, 'const handleQueueSendNow = useCallback(', 'stop: async ()');
+    expect(sendNow).toContain('isRunning: () => serverHoldsOpenTurn(working)');
+    expect(sendNow).not.toContain('useSessionStateStore.getState()');
+  });
+
+  test('the composer honors the server admission verdict — a failed row cannot pose as a sent prompt', () => {
+    // A deduped re-POST of a clientMessageId whose row already dead-lettered
+    // answers 200 with state 'failed'. Discarding the result accepted the
+    // receipt, cleared the draft, and told the user nothing.
+    const send = between(chat, 'const created = await promptInbox.enqueue({', 'return { ok: true }');
+    expect(send).toContain("created.state === 'failed'");
+    expect(chat).toContain('correctedWillWait');
+  });
+});

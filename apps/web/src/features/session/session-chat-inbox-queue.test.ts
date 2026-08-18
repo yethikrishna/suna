@@ -112,7 +112,7 @@ describe('"send now" addresses the thing that actually holds the row', () => {
     const retry = between(
       chat,
       'const handleRetryQueuedMessage = useCallback(',
-      '// Stop the transcript polling fallback',
+      '// Associate stashed command info',
     );
     expect(retry).not.toContain('localIds');
     expect(retry).toContain('promptInbox.retry(id)');

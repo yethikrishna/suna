@@ -1176,19 +1176,17 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
   const [sendState, setSendState] = useState<SendState>(IDLE_SEND_STATE);
   const pending = sendState.pending;
   const pendingBaseCount = useRef(0);
+  // Cleared when the send's echo lands — a real observation. The 30s timeout
+  // that used to sit beside this is deleted: no in-repo consumer reads
+  // `pending`, and where it could fire it fired wrongly — 30s is shorter than
+  // a legitimate inbox path (18.9s Daytona / 24.5s Platinum boot plus the
+  // drain). The sync store's optimistic message and the `SendReceipt` carry
+  // the state it approximated, each with an honest bound.
   useEffect(() => {
     if (pending && userMsgCount > pendingBaseCount.current) {
       setSendState((s) => (s.pending ? { ...s, pending: null } : s));
     }
   }, [userMsgCount, pending]);
-  useEffect(() => {
-    if (!pending) return;
-    const t = setTimeout(
-      () => setSendState((s) => (s.pending ? { ...s, pending: null } : s)),
-      30_000,
-    );
-    return () => clearTimeout(t);
-  }, [pending]);
 
   const sendParts = async (
     parts: PromptPart[],

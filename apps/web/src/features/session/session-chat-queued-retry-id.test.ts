@@ -37,7 +37,7 @@ describe('a queue retry re-sends ONE delivery, not two', () => {
     // wire id server-side, so the key cannot be re-derived wrongly by a client.
     const retry = between(
       'const handleRetryQueuedMessage = useCallback(',
-      '// Stop the transcript polling fallback',
+      '// Associate stashed command info',
     );
 
     expect(retry).toContain('promptInbox.retry(id)');

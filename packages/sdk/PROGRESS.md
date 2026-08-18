@@ -12,6 +12,47 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-18 — session `server-truth-m15` — steps C + D — DONE
+
+**Step C (SDK half).** `applyOptimisticAbort` (`react/use-session-send.ts`) and
+`useSession.cancel()` no longer write a fabricated `{type:'idle'}` frame — the
+`AbortReceipt` carries the intent with provenance and a bound; the transcript-
+side `AbortError` patch stays. NEW `startSessionWithPrompt`
+(`react/use-session-prompts.ts`, exported from `react/opencode.ts`; both
+surface snapshots re-recorded, additive): the first prompt of a new session
+as ONE durable `POST .../prompts`, receipts filed around the round-trip,
+`remintOnDelivery` (no transcript exists to place an id against), a `failed`
+verdict thrown as the refusal it is. `useSession`'s stash replay skips an
+empty prompt — apps/web producers now write picks-only stashes
+(`session-start-stash.ts` docs + round-trip test); apps/whitelabel-demo's full
+stash replays exactly as before and is the golden thin-host reference.
+`PendingSessionPrompt.parts` (data-URL first-prompt attachments; the API
+converts `create.pending_prompt` into an inbox row inside the create txn).
+`use-event-stream-refs.ts` raw-slot reader doc corrected (child-session
+surfaces only).
+
+**Step D (SDK half) — dead-code sweep.** D1: `hasOpenAssistantTurn` deleted
+(`core/turns/open-turn.ts` + test block; `hasRetryingAssistantTurn` /
+`isRetryableTurnError` stay); `browser/stores/tab-store.ts` deleted (zero
+importers, no subpath — tier-refactor residue, not M1's); `clearAbortReceipt`
+deleted from `session-working-store.ts` and `clearSession(sessionId)` added,
+called by `useSessionWorking` when its LAST observer unmounts (refcounted —
+several places mount it per session); `clear`/`clearCompaction` deleted from
+`opencode-compaction-store.ts`; the 30s `pending` timeout in `useSession`
+deleted (`pending` still returned; the echo-clear effect stays).
+D2 (**published `@internal` surface, `sandbox-connection-store`**): removed
+`markRecoveryRequested`, `markHostRestartRequested`, `markProvisioningVerified`,
+`setSandboxVersion`, type `SandboxRecoveryPhase`, fields `recoveryPhase`,
+`restartRequestedAt`, `lastConnectedAt`, `sandboxVersion`,
+`PROVISION_VERIFIED_KEY` and the `fromProvisioning` branch of
+`resetForServerSwitch`. `openCodeVersion` STAYS (real reader in apps/web).
+Both snapshots re-recorded; the diff is exactly those names.
+
+**Gates.** `bun run test` 2260 pass / 0 fail; typecheck clean; apps/web tsc
+clean (baseline only), whitelabel tsc clean. Shippable: **YES**.
+
+---
+
 ### 2026-08-18 — session `server-truth-m15` — step B: SDK truth honesty — DONE
 
 **Files (SDK).** `react/use-session-send.ts` (+`.test.ts`), `react/use-session.ts`

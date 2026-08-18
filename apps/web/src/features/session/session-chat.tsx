@@ -23,7 +23,7 @@ import { useTranslations } from 'next-intl';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { hasRetryingAssistantTurn } from './assistant-turn-open';
+import { hasRetryingAssistantTurn } from '@kortix/sdk';
 import {
   COMPOSER_EDITOR_SELECTOR,
   SUGGESTION_MENU_SELECTOR,
@@ -424,57 +424,12 @@ function AnsweredQuestionCard({ part }: { part: ToolPart }) {
 // Message parsing exported to message-parsing.tsx
 // ============================================================================
 
-/** How long "Stop & send" will wait for the server to confirm the abort before
- *  sending anyway. Long enough for a normal round-trip, short enough that a
- *  wedged status never strands the user's click. */
-const ABORT_SETTLE_TIMEOUT_MS = 5000;
-
 /** How long Stop will wait for the inbox hold before it issues the cancel
  *  anyway. The hold going first is a preference — it saves a stopped prompt
  *  from coming back a reaper pass later — while the abort is the thing the user
  *  pressed the button for, and a stalled request must never hold it hostage
  *  with the agent still running. One round-trip's worth, no more. */
 const STOP_HOLD_DEADLINE_MS = 1500;
-
-/**
- * Resolve once the server stops reporting this session as running.
- *
- * "Stop & send" issues an abort and then a prompt. Sending on a fixed delay
- * races the abort — the prompt can arrive while the old turn is still winding
- * down. Subscribing to the status the server actually reports is the only
- * version of this that is not a guess.
- *
- * T10: no longer the primary gate for "Stop & send" — see
- * `stopThenSendNow` below. `applyOptimisticAbort` (run by `handleStop`) flips
- * the very store this function polls to idle SYNCHRONOUSLY, before the abort
- * request round-trips to the server, so gating a send on it lets the send
- * race the still-in-flight abort. `stopThenSendNow` now awaits the abort's
- * own `AbortSettlement` instead. This function survives as its defensive
- * fallback for the (should-not-happen) case where a stop produced no
- * trackable settlement to await.
- */
-function waitForSessionIdle(sessionId: string): Promise<void> {
-  const isIdle = () => {
-    const status = useSessionStateStore.getState().sessionStatus[sessionId];
-    return !status || (status.type !== 'busy' && status.type !== 'retry');
-  };
-  if (isIdle()) return Promise.resolve();
-
-  return new Promise<void>((resolve) => {
-    let unsubscribe: (() => void) | undefined;
-    const finish = () => {
-      clearTimeout(timer);
-      unsubscribe?.();
-      resolve();
-    };
-    const timer = setTimeout(finish, ABORT_SETTLE_TIMEOUT_MS);
-    unsubscribe = useSessionStateStore.subscribe(() => {
-      if (isIdle()) finish();
-    });
-    // The status may have settled between the check above and the subscribe.
-    if (isIdle()) finish();
-  });
-}
 
 /** Dependencies `stopThenSendNow` needs, injected so the ordering logic is
  *  directly testable without React or a DOM. */
@@ -483,21 +438,20 @@ export interface StopThenSendNowDeps {
   isRunning: () => boolean;
   /** The still-pending `AbortSettlement` for a stop already issued by someone
    *  else (e.g. a direct click on the Stop button), if one exists. Checked
-   *  BEFORE `isRunning()`: `applyOptimisticAbort` flips the store `isRunning`
-   *  reads to idle SYNCHRONOUSLY, before that earlier stop's settlement
-   *  arrives, so `isRunning()` alone cannot see an in-flight stop issued
-   *  outside this call. Returns `undefined` when no stop is currently
-   *  pending for this session. */
+   *  BEFORE `isRunning()`: the abort receipt makes the projection `isRunning`
+   *  reads answer idle before that earlier stop's settlement arrives, so
+   *  `isRunning()` alone cannot see an in-flight stop issued outside this
+   *  call. Returns `undefined` when no stop is currently pending for this
+   *  session. */
   pendingSettlement: () => Promise<AbortSettlement> | undefined;
   /** Issue the stop and resolve with its `AbortSettlement`, or `null` if this
-   *  stop produced no trackable settlement (defensive fallback only — see
-   *  `waitIdle`). Called only when `pendingSettlement()` is `undefined` and
-   *  `isRunning()` is true. Never expected to reject —
-   *  `AbortSettlement`-producing paths (`sessionState.cancel()`,
-   *  `awaitAbortSettlement`) never do. */
+   *  stop produced no trackable settlement. Called only when
+   *  `pendingSettlement()` is `undefined` and `isRunning()` is true. Never
+   *  expected to reject — `AbortSettlement`-producing paths
+   *  (`sessionState.cancel()`, `awaitAbortSettlement`) never do. A `null`
+   *  settlement means there is nothing to wait for, so the dispatch follows
+   *  at once. */
   stop: () => Promise<AbortSettlement | null>;
-  /** Fallback wait, used only when `stop()` resolves `null`. */
-  waitIdle: () => Promise<void>;
   /** The actual send-now dispatch: `POST .../prompts/:id/retry`, which
    *  promotes the row the user pointed at and releases the session's inbox
    *  hold ITSELF, in that order. Nothing here may release the hold first —
@@ -510,19 +464,21 @@ export interface StopThenSendNowDeps {
  * for that to actually settle, then dispatch.
  *
  * T10: waits for the SERVER-confirmed `AbortSettlement` `stop()`
- * returns — never the optimistic sync-store idle flip `waitForSessionIdle`
- * polls, because `applyOptimisticAbort` sets that store to idle synchronously,
- * before the abort request round-trips, so gating the send on it races the
- * abort still in flight. `stop()`'s settlement is already bounded (~5s, see
- * `awaitAbortSettlement`/`ABORT_SETTLE_TIMEOUT_MS`), never rejects, and a
+ * returns — never a raw status slot. (There used to be a `waitForSessionIdle`
+ * fallback that polled the sync-store slot; the abort's own optimistic idle
+ * frame flipped that slot synchronously, so the poll resolved on its first
+ * check at every reachable call site and its 5s timer was unreachable. C4
+ * deleted the frame, which made the predicate constant the other way. Gone.)
+ * `stop()`'s settlement is already bounded (~5s, see
+ * `awaitAbortSettlement`), never rejects, and a
  * `{status:'failed'}` or `{status:'timed-out'}` result still lets `dispatch()`
  * proceed once that bound elapses: whichever cancel path produced the
  * settlement already cancelled any local in-flight delivery
  * (`abortInFlightDeliveries`) before returning it, so there is nothing left on
  * the client to race even without a server acknowledgement.
  *
- * When nothing is running and no stop is pending, `stop()`/`waitIdle()` are
- * never called and the send is not delayed at all.
+ * When nothing is running and no stop is pending, `stop()` is never called
+ * and the send is not delayed at all.
  *
  * IT DOES NOT LIFT THE INBOX HOLD. Stop holds every queued row
  * (`available_at = now + 24h`); "send now" is `POST .../prompts/:id/retry`,
@@ -533,11 +489,11 @@ export interface StopThenSendNowDeps {
  * whole ordering.
  *
  * T10 (settlement race): a stop can already be in flight when this runs —
- * e.g. the user clicked Stop directly, which ran `applyOptimisticAbort` and
- * flipped the store `isRunning()` reads to idle SYNCHRONOUSLY, well before
- * that stop's `AbortSettlement` arrives from the server. Gating on
- * `isRunning()` alone would then see "idle" and dispatch immediately,
- * racing the still-in-flight abort. `pendingSettlement()` is consulted
+ * e.g. the user clicked Stop directly, whose `noteAbortReceipt` makes the
+ * projection `isRunning()` reads answer idle well before that stop's
+ * `AbortSettlement` arrives from the server. Gating on `isRunning()` alone
+ * would then see "idle" and dispatch immediately, racing the still-in-flight
+ * abort. `pendingSettlement()` is consulted
  * FIRST for exactly this reason: if a settlement is already pending for this
  * session, it is awaited (and `stop()` is NOT called again — a stop was
  * already issued) before resuming/dispatching, regardless of what
@@ -548,8 +504,7 @@ export async function stopThenSendNow(deps: StopThenSendNowDeps): Promise<void> 
   if (pending) {
     await pending;
   } else if (deps.isRunning()) {
-    const settlement = await deps.stop();
-    if (settlement === null) await deps.waitIdle();
+    await deps.stop();
   }
   await deps.dispatch();
 }
@@ -2018,14 +1973,6 @@ export function SessionChat({
 
   const pendingPromptHandled = useRef(false);
 
-  // ---- Polling fallback & optimistic send ----
-  const [pollingActive, setPollingActive] = useState(false);
-  const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
-  const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(null);
-  const [pendingCommand, setPendingCommand] = useState<{
-    name: string;
-    description?: string;
-  } | null>(null);
   const [commandError, setCommandError] = useState<KortixSendError | null>(null);
   // The last prompt handed to the runtime, verbatim. Only read by the
   // connector-refusal card, to re-send exactly what was refused.
@@ -2546,46 +2493,10 @@ export function SessionChat({
     [promptInbox.retry],
   );
 
-  // Stop the transcript polling fallback once the session stops working.
-  //
-  // This used to hold a 5s grace window keyed off the last send, because an
-  // idle status arriving right after a send might be a STALE frame from before
-  // it. That is precisely what the receipt's freshness rule answers now: an
-  // observation issued before the send cannot end it, so by the time `working`
-  // reads idle, something that saw the send said so.
-  useEffect(() => {
-    if (pollingActive && !isServerBusy) setPollingActive(false);
-  }, [pollingActive, isServerBusy]);
-
-  // SSE + heartbeat timeout is the source of truth for streaming state.
-  // No watchdogs, no polling, no reconcilers — matching the reference.
-
-  // Clear pending user message when we can confirm the message is in cache
-  // (by ID), or when new messages arrive (fallback for command sends).
-  // When a command was pending, associate the newest user message with the
-  // command info so UserMessage can render a nice pill instead of raw template text.
+  // Associate stashed command info with the newest user message when messages
+  // arrive, so `UserMessage` renders the command pill instead of raw template
+  // text. `prevMsgLenRef` exists for this one observation.
   const prevMsgLenRef = useRef(messages?.length || 0);
-  useEffect(() => {
-    if (!pendingUserMessage) return;
-    const hasPendingMessage = pendingUserMessageId
-      ? !!messages?.some((m) => m.info.id === pendingUserMessageId)
-      : false;
-    if (hasPendingMessage) {
-      setPendingUserMessage(null);
-      setPendingUserMessageId(null);
-      setPendingCommand(null);
-      return;
-    }
-    const len = messages?.length || 0;
-    if (len > prevMsgLenRef.current) {
-      setPendingUserMessage(null);
-      setPendingUserMessageId(null);
-      setPendingCommand(null);
-    }
-  }, [messages, messages?.length, pendingUserMessage, pendingUserMessageId]);
-
-  // Associate stashed command info with the newest user message when messages arrive.
-  // Runs separately so it captures the mapping even if busy fires before messages update.
   useEffect(() => {
     const stash = pendingCommandStashRef.current;
     if (!stash || !messages) return;
@@ -2997,10 +2908,6 @@ export function SessionChat({
 
   // Reset on session change
   useEffect(() => {
-    setPollingActive(false);
-    setPendingUserMessage(null);
-    setPendingUserMessageId(null);
-    setPendingCommand(null);
     clearSendReceipt();
     setRewindTarget(null);
     setRewindDraft(null);
@@ -3593,13 +3500,11 @@ export function SessionChat({
         stop: async () => {
           // AWAITED: `handleStop` holds the inbox before it issues the cancel,
           // so the settlement this reads only exists once that has happened.
-          // Reading the ref synchronously would find nothing and fall back to
-          // the `waitIdle` poll, which watches the OPTIMISTIC idle flip rather
-          // than the server's abort.
+          // Reading the ref synchronously would find nothing, and a null
+          // settlement dispatches at once — racing the abort still in flight.
           await handleStop();
           return pendingAbortSettlementRef.current.get(sessionId) ?? null;
         },
-        waitIdle: () => waitForSessionIdle(sessionId),
         // `retry` is the inbox's own "run this one next", and it is the WHOLE
         // dispatch: it promotes the row past the ordering gate and only THEN
         // releases the session's hold, so the prompt the user pointed at is
@@ -3784,30 +3689,20 @@ export function SessionChat({
         // retry that aborts the live turn and stamps it "Interrupted".
         // See `delivered-but-disconnected.ts`.
         if (isDeliveredButDisconnected(errorMessageOf(err))) {
-          setPendingCommand(null);
-          setPendingUserMessage(null);
-          setPendingUserMessageId(null);
           pendingCommandStashRef.current = null;
-          // `pollingActive` and the session status stay put on purpose: the
-          // turn is live and SSE owns it from here.
+          // The session status stays put on purpose: the turn is live and SSE
+          // owns it from here.
           return;
         }
-        setPendingCommand(null);
-        setPendingUserMessage(null);
-        setPendingUserMessageId(null);
-        setPollingActive(false);
-        // Release the drain gate taken at dispatch — otherwise the whole
-        // queue stays frozen behind a command that already failed.
+        // Release the receipt taken at dispatch — it is what held the composer
+        // on "working" for a command that has now failed. No fabricated idle
+        // frame beside it: dropping the receipt IS the honest signal, and a
+        // written frame outranked the control plane's `/turn` answer.
         clearSendReceipt(label);
         pendingCommandStashRef.current = null;
-        useSessionStateStore.getState().setStatus(sessionId, { type: 'idle' });
         setCommandError(classifySessionError(err));
       };
 
-      setPendingCommand({
-        name: cmd.name,
-        description: args || cmd.description,
-      });
       pendingCommandStashRef.current = {
         name: cmd.name,
         args: args || cmd.description,
@@ -3815,9 +3710,6 @@ export function SessionChat({
         // draws the chip where it was typed. Display only.
         split,
       };
-      setPendingUserMessage(label);
-      setPendingUserMessageId(null);
-      setPollingActive(true);
       // Closes the queue drain's working gate SYNCHRONOUSLY. Without it a
       // command dispatched from the queue left every gate clear: the drain's
       // 700ms settle window would elapse before the server reported busy, the

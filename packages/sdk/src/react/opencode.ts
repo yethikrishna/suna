@@ -112,7 +112,6 @@ export { useOpenCodePendingStore as useRuntimePendingStore } from '../browser/st
 export {
   useSandboxConnectionStore,
   type SandboxConnectionStatus,
-  type SandboxRecoveryPhase,
 } from '../browser/stores/sandbox-connection-store';
 export {
   requestRuntimeReconnect,

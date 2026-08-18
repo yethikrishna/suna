@@ -2463,7 +2463,6 @@
     "groupMessagesIntoTurns",
     "hasDiffs",
     "hasLocalhostUrls",
-    "hasOpenAssistantTurn",
     "hasPreviewTarget",
     "hasRetryingAssistantTurn",
     "heartbeatGapEvent",
@@ -3034,7 +3033,6 @@
     "SESSION_PROMPTS_POLL_MS",
     "STOP_HOLD_DEADLINE_MS",
     "SandboxConnectionStatus",
-    "SandboxRecoveryPhase",
     "SandboxService",
     "SandboxServiceAdapter",
     "SandboxServiceScope",
@@ -3567,12 +3565,8 @@
   ],
   "./internal/sandbox-connection-store": [
     "SandboxConnectionStatus",
-    "SandboxRecoveryPhase",
     "incrementSandboxFail",
-    "markHostRestartRequested",
     "markInitialCheckDone",
-    "markProvisioningVerified",
-    "markRecoveryRequested",
     "markRuntimeReadyVerified",
     "noteRuntimeEvidence",
     "requestRuntimeReconnect",
@@ -3580,7 +3574,6 @@
     "resetSandboxFail",
     "setOpenCodeHealth",
     "setSandboxStatus",
-    "setSandboxVersion",
     "useSandboxConnectionStore"
   ],
   "./internal/opencode-pending-store": [
@@ -6467,7 +6460,6 @@
     "getWorkingState",
     "groupMessagesIntoTurns",
     "hasDiffs",
-    "hasOpenAssistantTurn",
     "hasRetryingAssistantTurn",
     "humanizeToolName",
     "isAgentPart",
@@ -6517,12 +6509,8 @@
   ],
   "./sandbox-connection-store": [
     "SandboxConnectionStatus",
-    "SandboxRecoveryPhase",
     "incrementSandboxFail",
-    "markHostRestartRequested",
     "markInitialCheckDone",
-    "markProvisioningVerified",
-    "markRecoveryRequested",
     "markRuntimeReadyVerified",
     "noteRuntimeEvidence",
     "requestRuntimeReconnect",
@@ -6530,7 +6518,6 @@
     "resetSandboxFail",
     "setOpenCodeHealth",
     "setSandboxStatus",
-    "setSandboxVersion",
     "useSandboxConnectionStore"
   ],
   "./opencode-pending-store": [

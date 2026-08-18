@@ -4,6 +4,7 @@ import {
   projectSessionGrants,
   projectSessionRuntimeContexts,
   projectSessions,
+  sessionLifecycleCommands,
 } from '@kortix/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Context } from 'hono';
@@ -49,6 +50,7 @@ import {
   workspaceFromLoadedAgents,
 } from '../agents';
 import { createRemoteSessionBranch, resolveCommitSha } from '../git';
+import { convertPendingPromptToInboxRow } from '../session-lifecycle/pending-prompt';
 import { resolveSessionSecretGrant } from './secret-grant';
 import {
   AmbiguousSecretGrantError,
@@ -1267,6 +1269,26 @@ export async function createProjectSession(input: {
     typeof (body.pending_prompt as Record<string, unknown>).text === 'string'
       ? (body.pending_prompt as Record<string, unknown>)
       : null;
+  // The first prompt becomes a durable inbox row in the SAME transaction as
+  // the session row — see `convertPendingPromptToInboxRow` for the contract
+  // (and why stored metadata keeps only the picks).
+  const pendingPromptConversion = pendingPrompt
+    ? convertPendingPromptToInboxRow({
+        pendingPrompt,
+        projectId,
+        accountId,
+        sessionId,
+        actorUserId: userId,
+      })
+    : null;
+  if (pendingPromptConversion?.error) {
+    return {
+      error: {
+        status: 400,
+        body: { error: `pending_prompt: ${pendingPromptConversion.error}` },
+      },
+    };
+  }
   const sessionName = normalizeString(body.name);
   // An explicit `title_source` means the baked prompt is a rendered envelope
   // (Slack/Teams/Telegram turn instructions + workspace/channel ids) and these
@@ -1301,7 +1323,10 @@ export async function createProjectSession(input: {
     ...requestMetadata,
     ...(sessionName ? { name: sessionName } : {}),
     ...(initialPrompt ? { initial_prompt: initialPrompt } : {}),
-    ...(pendingPrompt ? { pending_prompt: pendingPrompt } : {}),
+    // Picks only — the prompt itself is a durable inbox row (see below), and a
+    // pre-deploy web bundle replays `pending_prompt.text` client-side, so
+    // storing the text would double-send it.
+    ...(pendingPromptConversion ? { pending_prompt: pendingPromptConversion.metadataPicks } : {}),
     ...(explicitTitleSource
       ? { title_source: explicitTitleSource.slice(0, TITLE_SOURCE_MAX_CHARS) }
       : {}),
@@ -1372,6 +1397,16 @@ export async function createProjectSession(input: {
           })
           .returning({ sessionId: projectSessionRuntimeContexts.sessionId });
     }
+      if (pendingPromptConversion?.rowValues) {
+        // Same transaction as the session row: either the session exists WITH
+        // its first prompt durable, or neither does. No conflict handling —
+        // `sessionId` is fresh here, so the idempotency key cannot collide
+        // without the projectSessions PK colliding first.
+        await tx
+          .insert(sessionLifecycleCommands)
+          .values(pendingPromptConversion.rowValues)
+          .returning({ commandId: sessionLifecycleCommands.commandId });
+      }
       if (validatedConnectorBindings.bindings.length > 0) {
         await tx
           .insert(projectSessionConnectorBindings)

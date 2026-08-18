@@ -24,26 +24,22 @@ export interface SessionSyncPage {
   nextCursor?: string;
 }
 
+/**
+ * Transcript state, and nothing else.
+ *
+ * This snapshot used to carry `isPromptObservedBusy` — a busy OPINION inferred
+ * from silence by a phase machine with a stall timer, a retry budget and an
+ * epoch counter. It was one of four disagreeing answers to "is this session
+ * working?", and the one that latched: every signal that could release it
+ * (`session.idle`, a status frame, the poll) can be lost, and losing them left
+ * the composer pinned on "stop" until the user reloaded. The answer now comes
+ * from `projectWorking` over the server's own turn authority
+ * (`core/session/working.ts`), so this controller holds no opinion about it.
+ */
 export interface SessionSyncSnapshot {
   freshness: SessionSyncFreshness;
   hasOlder: boolean;
   isLoadingOlder: boolean;
-  /** True while an accepted REST prompt has not reached stable runtime idle. */
-  isPromptObservedBusy?: boolean;
-  /**
-   * True once an accepted REST prompt's stall deadline fired with NO
-   * proof-of-life ever observed (no busy status, no SSE frame, no new
-   * assistant reply in a tail reconcile — `promptObservationPhase` never left
-   * `'awaiting-work'`) AND an authoritative `/session/status` read confirms
-   * the runtime is genuinely idle. That combination means the turn most
-   * likely never ran at all — a message accepted (204) but silently never
-   * answered, observed live 2026-08-18 (session `749045da`, 3 of 5 sent
-   * messages). `resolvePromptStall` already had to ask this exact question to
-   * decide whether to drop the busy override; this only keeps the answer
-   * instead of discarding it. Cleared by the next `beginPromptObservation()`
-   * (a fresh send attempt) — never sticks past the message it describes.
-   */
-  promptLikelyDropped?: boolean;
 }
 
 export interface SessionSyncScheduler {
@@ -187,46 +183,6 @@ const defaultScheduler: SessionSyncScheduler = {
   clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
 };
 
-const PROMPT_IDLE_SETTLEMENT_MS = 500;
-
-/**
- * How long the prompt-observation override may claim a session is working
- * without any fresh proof that it is.
- *
- * The override exists to absorb a *stale* idle snapshot — OpenCode can publish
- * an idle status from before the prompt and publish the real busy status after
- * it. That staleness lasts as long as one in-flight message, not minutes. Every
- * signal that would normally end the override (`session.idle`, a `session.status`
- * frame, the status poll) can be lost: a dropped SSE frame at the end of a turn,
- * a reconnect that rehydrates status outside this controller, a prompt the
- * runtime accepted but never turned into a turn, a parked proxy read. Without a
- * bound, any one of those pinned the composer on "stop" and the last turn on
- * "Gathering thoughts…" until the user reloaded the page.
- *
- * Letting the override expire is not the same as declaring the session idle: it
- * only stops *overriding* the runtime's own status. A session that really is
- * working still reports `busy` and still renders as working. So the cost of
- * expiring early is bounded by the accuracy of the runtime status, while the
- * cost of never expiring is a session that lies until reload.
- *
- * When the deadline fires, the controller does not clear blindly: it polls
- * `/session/status` once and only releases the override on an authoritative
- * idle answer (or an unreachable runtime) — see `resolvePromptStall`. A busy
- * answer keeps the override and re-arms the deadline.
- */
-export const PROMPT_OBSERVATION_STALL_MS = 10_000;
-
-/**
- * How many consecutive stall windows may end in a FAILED status read (thrown
- * or deadline-timed-out) before the override releases anyway. One transient
- * 502 at the 10s mark must not unmask a possibly-live turn — but a runtime
- * that answers nothing for this many windows in a row is not going to answer,
- * and painting busy forever is the original bug wearing a new hat.
- */
-export const PROMPT_STALL_MAX_ATTEMPTS = 3;
-
-type PromptObservationPhase = 'idle' | 'awaiting-work' | 'running' | 'settling';
-
 /**
  * Owns bounded session history synchronization without depending on React,
  * Zustand, IndexedDB, or a specific HTTP client.
@@ -239,8 +195,6 @@ export class SessionSyncController {
     freshness: 'idle',
     hasOlder: false,
     isLoadingOlder: false,
-    isPromptObservedBusy: false,
-    promptLikelyDropped: false,
   };
   private nextCursor: string | undefined;
   private knownUserMessageIds = new Set<string>();
@@ -248,18 +202,6 @@ export class SessionSyncController {
   private tailRequest: Promise<void> | undefined;
   private olderRequest: Promise<void> | undefined;
   private livenessTimer: unknown;
-  private promptSettlementTimer: unknown;
-  private promptStallTimer: unknown;
-  private promptObservationPhase: PromptObservationPhase = 'idle';
-  /** Bumped on every observation lifecycle edge; a stall resolve captured
-   *  under an older epoch discards its answer instead of applying it to a
-   *  NEWER observation (a parked read can outlive the turn it asked about). */
-  private promptObservationEpoch = 0;
-  private promptStallFailures = 0;
-  /** Bumped by markPromptRunning; lets an in-flight stall read detect that
-   *  proof-of-life OVERTOOK it inside the same observation. */
-  private promptRunningGeneration = 0;
-  private promptStallDeadlineTimer: unknown;
   private lastActivityAt: number;
   private listeners = new Set<() => void>();
   private destroyed = false;
@@ -317,56 +259,19 @@ export class SessionSyncController {
 
   noteActivity(): void {
     this.lastActivityAt = this.scheduler.now();
-    // Any frame for this session is proof the turn is still alive, so it also
-    // renews the prompt-observation override — see PROMPT_OBSERVATION_STALL_MS.
-    if (this.promptObservationPhase !== 'idle') this.armPromptStallTimer();
     if (this.snapshot.freshness !== 'fresh') {
       this.update({ freshness: 'fresh' });
     }
   }
 
   /**
-   * Start monotonic completion observation for an accepted REST prompt.
+   * Switch the liveness poll on or off.
    *
-   * OpenCode can publish an idle snapshot from before the prompt and publish
-   * the real busy event later. Keep the public projection busy until real work
-   * starts and the following idle state remains quiet.
+   * NOT an opinion about whether the session is working — that answer belongs
+   * to `projectWorking` alone. This only says whether anyone still needs the
+   * transcript refreshed behind the SSE stream: a caller passes the working
+   * state it already has, and the last consumer leaving passes `false`.
    */
-  beginPromptObservation(): void {
-    this.clearPromptSettlementTimer();
-    this.promptObservationEpoch += 1;
-    this.promptStallFailures = 0;
-    this.promptObservationPhase = 'awaiting-work';
-    this.armPromptStallTimer();
-    // A fresh send attempt — any prior "likely dropped" verdict described the
-    // message THAT resolved, not this new one.
-    this.update({ isPromptObservedBusy: true, promptLikelyDropped: false });
-    this.setBusy(true);
-  }
-
-  /** Observe an authoritative runtime status from SSE or status reconciliation. */
-  observePromptStatus(status: SessionStatus): void {
-    if (this.promptObservationPhase === 'idle') return;
-    if (status.type !== 'idle') {
-      this.markPromptRunning();
-      return;
-    }
-    if (this.promptObservationPhase === 'awaiting-work') return;
-    this.schedulePromptSettlement();
-  }
-
-  /** Mark assistant output as proof that the accepted prompt started. */
-  observePromptActivity(): void {
-    if (this.promptObservationPhase === 'idle') return;
-    this.markPromptRunning();
-  }
-
-  /** End observation after rejection, cancellation, or a terminal runtime error. */
-  endPromptObservation(): void {
-    this.clearPromptObservation();
-    this.setBusy(false);
-  }
-
   setBusy(isBusy: boolean): void {
     if (!isBusy) {
       this.stopLivenessTimer();
@@ -383,10 +288,6 @@ export class SessionSyncController {
   destroy(): void {
     this.destroyed = true;
     this.stopLivenessTimer();
-    this.clearPromptSettlementTimer();
-    this.clearPromptStallTimer();
-    this.cancelTimer(this.promptStallDeadlineTimer);
-    this.promptStallDeadlineTimer = undefined;
     this.listeners.clear();
   }
 
@@ -395,9 +296,6 @@ export class SessionSyncController {
       const firstPage = await this.loadPage('tail', reason);
       const page = await this.loadCompleteTurn(firstPage, 'tail', reason);
       if (this.destroyed) return;
-      if (this.containsNewPromptReply(page.messages)) {
-        this.observePromptActivity();
-      }
       this.rememberUserMessages(page.messages);
       this.options.hydrate(page.messages);
       if (!this.olderHistoryStarted) {
@@ -506,8 +404,9 @@ export class SessionSyncController {
       return;
     }
     // Load the transcript before status. A completed async prompt can transition
-    // back to idle before the first poll. The tail proves that work occurred;
-    // the following idle status can then settle prompt observation correctly.
+    // back to idle before the first poll, so the tail is what proves work
+    // occurred; the status read that follows is then read against a current
+    // transcript rather than ahead of it.
     //
     // The wait is bounded: a read proxied to the sandbox can park indefinitely
     // (a wedged opencode never answers and never errors), and status recovery —
@@ -535,25 +434,6 @@ export class SessionSyncController {
     });
   }
 
-  private containsNewPromptReply(messages: SessionSyncMessage[]): boolean {
-    if (this.promptObservationPhase === 'idle') return false;
-    const newUserMessageIds = new Set(
-      messages
-        .filter(
-          (message) =>
-            message.info.role === 'user' && !this.knownUserMessageIds.has(message.info.id),
-        )
-        .map((message) => message.info.id),
-    );
-    if (newUserMessageIds.size === 0) return false;
-    return messages.some(
-      (message) =>
-        message.info.role === 'assistant' &&
-        Boolean(message.info.parentID) &&
-        newUserMessageIds.has(message.info.parentID!),
-    );
-  }
-
   private async reconcileStatus(): Promise<void> {
     if (!this.options.loadStatus || !this.options.setStatus) return;
     try {
@@ -572,186 +452,6 @@ export class SessionSyncController {
     if (this.livenessTimer === undefined) return;
     this.scheduler.clearInterval(this.livenessTimer);
     this.livenessTimer = undefined;
-  }
-
-  private markPromptRunning(): void {
-    this.clearPromptSettlementTimer();
-    this.promptObservationPhase = 'running';
-    this.promptStallFailures = 0;
-    this.promptRunningGeneration += 1;
-    this.armPromptStallTimer();
-  }
-
-  private schedulePromptSettlement(): void {
-    if (this.promptObservationPhase === 'settling') return;
-    this.clearPromptSettlementTimer();
-    this.promptObservationPhase = 'settling';
-    const settle = () => {
-      this.promptSettlementTimer = undefined;
-      if (this.destroyed || this.promptObservationPhase !== 'settling') return;
-      this.clearPromptObservation();
-      this.stopLivenessTimer();
-    };
-    this.promptSettlementTimer = this.startTimer(settle, PROMPT_IDLE_SETTLEMENT_MS);
-  }
-
-  /**
-   * (Re)start the deadline after which the busy override stops claiming this
-   * session is working. Renewed by every piece of evidence that the turn is
-   * still alive; fired only when all of them stop arriving.
-   */
-  private armPromptStallTimer(): void {
-    this.clearPromptStallTimer();
-    this.promptStallTimer = this.startTimer(() => {
-      this.promptStallTimer = undefined;
-      if (this.destroyed || this.promptObservationPhase === 'idle') return;
-      void this.resolvePromptStall();
-    }, PROMPT_OBSERVATION_STALL_MS);
-  }
-
-  /**
-   * The stall deadline fired: no proof-of-life arrived for a whole window.
-   * ASK the runtime before dropping the override — a blind clear here was a
-   * proven defect: a live turn that emits no SSE frame for 10s (a reasoning
-   * model before its first token, one long tool call) would be unmasked as
-   * idle, and — because dropping the override flips `isBusy` false, which
-   * stops the liveness polling via `setBusy(false)` — the authoritative poll
-   * that could have corrected it never ran. Polling here closes that hole:
-   * a busy answer keeps the override (and re-arms this deadline); an idle
-   * answer, or an unreachable runtime, releases it.
-   */
-  private async resolvePromptStall(): Promise<void> {
-    const epoch = this.promptObservationEpoch;
-    // Stamp the read at ISSUE time. An answer is only as fresh as the moment
-    // it was asked: a turn that starts (or streams any frame) while the read
-    // is in flight has overtaken it, and an honest-at-issue-time idle answer
-    // must then be discarded — not applied over newer proof-of-life.
-    const issueRunningGeneration = this.promptRunningGeneration;
-    const issueActivityAt = this.lastActivityAt;
-    if (this.options.loadStatus) {
-      let failed = false;
-      let status: SessionStatus | undefined;
-      try {
-        // Deadlined: a read proxied to the sandbox can park indefinitely (the
-        // same wedge checkLiveness defends against), and a parked read here
-        // used to leave the override latched with nothing armed to retry.
-        status = await this.raceStatusDeadline(
-          this.options.loadStatus(),
-          this.livenessIntervalMs,
-        );
-        if (status === undefined) failed = true;
-      } catch {
-        failed = true;
-      }
-      // A parked read can outlive its observation: the turn it asked about
-      // ends, a new prompt begins a new observation, and only then does the
-      // stale answer land. Discard anything from an older epoch outright.
-      if (this.destroyed || this.promptObservationEpoch !== epoch) return;
-      // Same discard WITHIN the observation: proof-of-life that arrived after
-      // the read was issued outranks the read's answer. Fresh evidence also
-      // re-armed the stall deadline via noteActivity/markPromptRunning, so
-      // returning here leaves a live retry armed — nothing is dropped.
-      if (
-        this.promptRunningGeneration !== issueRunningGeneration ||
-        this.lastActivityAt !== issueActivityAt
-      ) {
-        return;
-      }
-      if (!failed && status !== undefined) {
-        // Push the authoritative answer into the host store, and let the
-        // normal observation path act on it: busy re-arms the stall via
-        // markPromptRunning; idle settles through the settlement window.
-        this.options.setStatus?.(status);
-        if (this.promptObservationEpoch !== epoch) return;
-        if (status.type !== 'idle') {
-          this.markPromptRunning();
-          return;
-        }
-        // The registry's setStatus wrapper re-enters observePromptStatus
-        // synchronously, which for an idle answer in 'running' has already
-        // moved the phase to 'settling'. Settlement owns the release then —
-        // clearing here instead would skip the 500ms window entirely.
-        if (this.promptObservationPhase === 'settling') return;
-        if (this.promptObservationPhase === 'running') {
-          this.schedulePromptSettlement();
-          return;
-        }
-        // Only 'awaiting-work' reaches here (the branches above return for
-        // 'settling'/'running'): nothing EVER proved this turn started — no
-        // busy status, no SSE frame, no new reply — and the runtime just
-        // confirmed, authoritatively, that it is idle right now. The prompt
-        // most likely never ran. See `promptLikelyDropped`'s doc.
-        this.clearPromptObservation({ likelyDropped: true });
-        return;
-      }
-      // Failed read: one transient failure must not unmask a possibly-live
-      // turn — retry on the next stall window, up to the bounded budget.
-      this.promptStallFailures += 1;
-      if (this.promptStallFailures < PROMPT_STALL_MAX_ATTEMPTS) {
-        this.armPromptStallTimer();
-        return;
-      }
-    }
-    if (this.destroyed || this.promptObservationEpoch !== epoch) return;
-    this.clearPromptObservation();
-  }
-
-  /** Resolve with `work`'s value, or `undefined` once `timeoutMs` elapses. */
-  private raceStatusDeadline(
-    work: Promise<SessionStatus>,
-    timeoutMs: number,
-  ): Promise<SessionStatus | undefined> {
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const handle = this.startTimer(() => {
-        if (settled) return;
-        settled = true;
-        this.promptStallDeadlineTimer = undefined;
-        resolve(undefined);
-      }, timeoutMs);
-      // Tracked so destroy() can cancel it — otherwise every destroyed
-      // controller kept a live deadline timeout for up to timeoutMs.
-      this.promptStallDeadlineTimer = handle;
-      work.then(
-        (value) => {
-          if (settled) return;
-          settled = true;
-          this.cancelTimer(handle);
-          this.promptStallDeadlineTimer = undefined;
-          resolve(value);
-        },
-        (error) => {
-          if (settled) return;
-          settled = true;
-          this.cancelTimer(handle);
-          this.promptStallDeadlineTimer = undefined;
-          reject(error);
-        },
-      );
-    });
-  }
-
-  /** Drop the busy override and its timers, leaving the liveness timer alone. */
-  private clearPromptObservation(options: { likelyDropped?: boolean } = {}): void {
-    this.clearPromptSettlementTimer();
-    this.clearPromptStallTimer();
-    this.promptObservationEpoch += 1;
-    this.promptStallFailures = 0;
-    this.promptObservationPhase = 'idle';
-    this.update({
-      isPromptObservedBusy: false,
-      ...(options.likelyDropped ? { promptLikelyDropped: true } : {}),
-    });
-  }
-
-  private clearPromptSettlementTimer(): void {
-    this.cancelTimer(this.promptSettlementTimer);
-    this.promptSettlementTimer = undefined;
-  }
-
-  private clearPromptStallTimer(): void {
-    this.cancelTimer(this.promptStallTimer);
-    this.promptStallTimer = undefined;
   }
 
   private startTimer(handler: () => void, delayMs: number): unknown {
@@ -774,9 +474,7 @@ export class SessionSyncController {
     if (
       snapshot.freshness === this.snapshot.freshness &&
       snapshot.hasOlder === this.snapshot.hasOlder &&
-      snapshot.isLoadingOlder === this.snapshot.isLoadingOlder &&
-      snapshot.isPromptObservedBusy === this.snapshot.isPromptObservedBusy &&
-      snapshot.promptLikelyDropped === this.snapshot.promptLikelyDropped
+      snapshot.isLoadingOlder === this.snapshot.isLoadingOlder
     ) {
       return;
     }

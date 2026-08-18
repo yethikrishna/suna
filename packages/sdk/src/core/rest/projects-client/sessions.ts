@@ -611,9 +611,11 @@ export interface SessionPrompt {
   /** The OpenCode wire id this prompt will be delivered under. */
   message_id: string;
   state: SessionPromptState;
-  /** Why the prompt is `waiting`: `turn_active` (a turn is running),
-   *  `older_prompt_pending` (its own queue is ahead of it), or `held` (the user
-   *  pressed Stop — only an explicit send or send-now releases it). */
+  /** Why the prompt is `waiting`: `older_prompt_pending` (its own queue is
+   *  ahead of it) or `held` (the user pressed Stop — only an explicit send or
+   *  send-now releases it). A running turn is NOT one of them: the control
+   *  plane forwards a prompt into a live turn, and OpenCode runs it in arrival
+   *  order. */
   reason: string | null;
   /** Flattened text preview, capped server-side. */
   text: string;

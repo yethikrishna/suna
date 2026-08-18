@@ -431,6 +431,13 @@ function AnsweredQuestionCard({ part }: { part: ToolPart }) {
  *  wedged status never strands the user's click. */
 const ABORT_SETTLE_TIMEOUT_MS = 5000;
 
+/** How long Stop will wait for the inbox hold before it issues the cancel
+ *  anyway. The hold going first is a preference — it saves a stopped prompt
+ *  from coming back a reaper pass later — while the abort is the thing the user
+ *  pressed the button for, and a stalled request must never hold it hostage
+ *  with the agent still running. One round-trip's worth, no more. */
+const STOP_HOLD_DEADLINE_MS = 1500;
+
 /**
  * Resolve once the server stops reporting this session as running.
  *
@@ -2630,15 +2637,34 @@ export function SessionChat({
   // ordered and admitted by the control plane. There is no browser lane beside
   // it any more, so there is no second list to keep in sync, no per-row origin
   // to route actions by, and nothing left that a closed tab can lose.
+  //
+  // The transcript is passed in because a row whose message is ALREADY on
+  // screen is not a queue row: the optimistic bubble of an idle send is painted
+  // before the POST returns, and a mid-turn prompt's real user message arrives
+  // over SSE seconds later. Without this cross-check the same text renders
+  // twice — once as the answer being streamed, once as a pending row.
+  const transcriptUserMessageIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const message of messages ?? []) {
+      if (message.info.role === 'user') ids.add(message.info.id);
+    }
+    return ids;
+  }, [messages]);
   const queueRows = useMemo(
-    () => projectQueueRows({ prompts: promptInbox.prompts }),
-    [promptInbox.prompts],
+    () =>
+      projectQueueRows({
+        prompts: promptInbox.prompts,
+        transcriptMessageIds: transcriptUserMessageIds,
+      }),
+    [promptInbox.prompts, transcriptUserMessageIds],
   );
   const queuedMessages = queueRows.queued;
   const failedQueuedMessages = queueRows.failed;
   useEffect(() => {
-    queuedMessagesRef.current = queueRows.queued.length + queueRows.inFlightIds.length;
-  }, [queueRows.queued.length, queueRows.inFlightIds.length]);
+    // `queued` already carries the rows on the wire — see `projectQueueRows` —
+    // so adding `inFlightIds` here would count each of them twice.
+    queuedMessagesRef.current = queueRows.queued.length;
+  }, [queueRows.queued.length]);
   // A row the server has CLAIMED is on the wire; locking it against
   // edit/remove/reorder is the same rule as before.
   const queueInFlightIds = queueRows.inFlightIds;
@@ -3649,7 +3675,7 @@ export function SessionChat({
   // (server-side continueSession delivery in r7.ts), so it works with zero
   // browsers open. A web-side nudge would just double-send.
 
-  const handleStop = useCallback(() => {
+  const handleStop = useCallback(async () => {
     // Guard against rapid clicks — ignore if an abort is already in flight
     if (abortSession.isPending) {
       console.log(`[handleStop] Ignoring - abort already in flight for session ${sessionId}`);
@@ -3671,18 +3697,33 @@ export function SessionChat({
     // user was trying to get ahead of.
     //
     // ONE hold, on the server, because the queue is not in this tab any more.
-    // Pausing a browser drain never reached the admission gate, which would
-    // deliver the queued prompt about one scheduler tick after the abort
-    // cleared turn authority — the precise outcome the stop exists to prevent
-    // — and it left every OTHER tab's view of the queue running. The hold is
-    // released by an action, never a timer: any new send, or "send now" on a
-    // row (see `holdSessionPrompts`).
-    void promptInbox.hold(true).catch((error) => {
-      // Swallowing this hid a real outcome: the rows stay `waiting` and due, so
-      // the admission gate can still deliver one a moment after the abort
-      // clears turn authority — the exact thing the hold prevents.
-      console.warn('[session-chat] failed to hold the prompt inbox on stop', error);
-    });
+    // Pausing a browser drain left every OTHER tab's view of the queue running
+    // and never reached the server at all.
+    //
+    // AWAITED, and BEFORE the abort. A prompt is now forwarded to OpenCode the
+    // moment it is admitted, so at stop time the session's queue can hold rows
+    // that OpenCode already has. The abort drops OpenCode's in-memory queue,
+    // and the reaper then sees those messages unanswered and hands them back —
+    // due now — unless the hold has already marked them stop-paused. Ordering
+    // the two calls makes "the hold precedes the abort" a fact instead of an
+    // argument about reaper cadence. The user sees no delay: the optimistic
+    // paint above already ran, so only the network abort moves one hop later.
+    //
+    // BOUNDED, because the abort is now sequenced behind a network call and
+    // `holdSessionPrompts` carries no client timeout of its own. A stalled
+    // socket can hang for minutes, and every one of those is the agent still
+    // running, still calling tools and still spending tokens under a UI that
+    // says it stopped. Past the bound the abort goes out anyway and the hold
+    // finishes on its own — the ordering is a preference, the abort is not.
+    await Promise.race([
+      promptInbox.hold(true).catch((error) => {
+        // Caught, never rethrown: a failed hold must not also cost the user
+        // their abort. The cost of that path is the one this ordering removes —
+        // a stopped prompt can still come back a reaper pass later.
+        console.warn('[session-chat] failed to hold the prompt inbox on stop', error);
+      }),
+      new Promise((resolve) => setTimeout(resolve, STOP_HOLD_DEADLINE_MS)),
+    ]);
 
     // Routed through `issueSessionCancel` (T10) so this stop's
     // `AbortSettlement` is tracked for `handleQueueSendNow`'s
@@ -3709,9 +3750,14 @@ export function SessionChat({
           return status?.type === 'busy' || status?.type === 'retry';
         },
         pendingSettlement: () => pendingAbortSettlementRef.current.get(sessionId),
-        stop: () => {
-          handleStop();
-          return pendingAbortSettlementRef.current.get(sessionId) ?? Promise.resolve(null);
+        stop: async () => {
+          // AWAITED: `handleStop` holds the inbox before it issues the cancel,
+          // so the settlement this reads only exists once that has happened.
+          // Reading the ref synchronously would find nothing and fall back to
+          // the `waitIdle` poll, which watches the OPTIMISTIC idle flip rather
+          // than the server's abort.
+          await handleStop();
+          return pendingAbortSettlementRef.current.get(sessionId) ?? null;
         },
         waitIdle: () => waitForSessionIdle(sessionId),
         // `retry` is the inbox's own "run this one next", and it is the WHOLE
@@ -3815,9 +3861,10 @@ export function SessionChat({
       if (withinWindow) {
         const currentCount = escDeadlineRef.current ? Math.max(1, escCount) : 0;
         if (currentCount >= 2) {
-          // Third ESC → stop
+          // Third ESC → stop. Not awaited: the keyboard path has nothing to
+          // sequence after it, and `handleStop` never rejects.
           clearEscHint();
-          handleStop();
+          void handleStop();
         } else {
           // Second ESC → advance count, refresh cooloff
           setEscCount(2);

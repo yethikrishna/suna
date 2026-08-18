@@ -491,9 +491,9 @@ projectsApp.openapi(
 // transcript first).
 //
 // Admission — "may this prompt be delivered NOW?" — is not decided here. It is
-// decided at drain time by `admitInboxPrompt`, against the same turn authority
-// `GET .../turn` serves from, because the answer changes between the POST and
-// the delivery.
+// decided at drain time by `admitInboxPrompt`, on the ORDER of this session's
+// own rows, because that answer changes between the POST and the delivery. A
+// live turn does not hold a prompt back: OpenCode queues it by arrival.
 
 const PROMPT_WIRE_MESSAGE_ID = /^msg_[0-9a-f]{12}[A-Za-z0-9]{14}$/;
 const PROMPT_MAX_PARTS = 64;
@@ -527,22 +527,41 @@ const RemovedSessionPromptSchema = z.object({
 
 type PromptRow = typeof sessionLifecycleCommands.$inferSelect;
 
-/** Map a durable command row onto the inbox's four user-visible states.
- *  `succeeded` never appears: a delivered prompt IS the transcript now. */
+/**
+ * Map a durable command row onto the inbox's four user-visible states.
+ *
+ * `succeeded` no longer means "never appears". A FORWARDED row is `succeeded`
+ * so the drain can never re-claim it, and still unanswered: OpenCode has
+ * persisted the message and queued it behind the turn in flight. It reads
+ * `delivering` until the `session_turns` ledger confirms a turn consumed it —
+ * which is what keeps the composer working across that interval instead of
+ * showing the user nothing. Only a `delivered` row disappears; it IS the
+ * transcript by then.
+ */
 function promptState(row: Pick<PromptRow, 'status' | 'result'>): {
   state: 'queued' | 'delivering' | 'waiting' | 'failed';
   reason: string | null;
 } {
-  if (row.status === 'running') return { state: 'delivering', reason: null };
+  const result = (row.result ?? {}) as Record<string, unknown>;
+  // TERMINAL FIRST, above every marker on the row. A row can be given up on
+  // while it still carries `forwarded` — `deadLetter` (redelivery.ts) is
+  // exactly that — and reading the marker first made it `delivering` for ever:
+  // the strip filters in-flight rows out, `countLiveInboxPrompts` counts them
+  // as live work, and the sweep scans `succeeded` only. Nothing could close it.
+  // `failed` is the state that carries the retry, which is the way out.
   if (row.status === 'failed' || row.status === 'dead_lettered') {
     return { state: 'failed', reason: null };
   }
-  const result = (row.result ?? {}) as Record<string, unknown>;
-  // A HELD row is waiting on the USER, not on the session — the stop button put
-  // it there, and only an explicit send or "send now" takes it out. It is read
-  // before `admission_reason` because it outranks it: a held row is not in line
-  // at all.
+  // Then HELD: a held row is waiting on the USER, not on the session — the stop
+  // button put it there, and only an explicit send or "send now" takes it out.
+  // It outranks the markers below: a held row is not in line at all, and that
+  // is true of a forwarded row Stop paused just as much as of a queued one.
   if (result.held === true) return { state: 'waiting', reason: 'held' };
+  // Then FORWARDED, above `running`: this is a `succeeded` row, so every branch
+  // below would otherwise fall through to `queued` and show a prompt that is
+  // already at OpenCode as if it had never been sent.
+  if (result.status === 'forwarded') return { state: 'delivering', reason: 'forwarded' };
+  if (row.status === 'running') return { state: 'delivering', reason: null };
   const admission = result.admission_reason;
   if (typeof admission === 'string') return { state: 'waiting', reason: admission };
   return { state: 'queued', reason: null };

@@ -548,3 +548,49 @@ agent did not own, and both only surfaced in CI. Reproducing CI's own command
 locally (`pnpm --filter ./packages/** --filter ./apps/** … test`) found them in
 one pass instead of one CI round-trip each.
 *Incident:* PR #6511, caught in review before merge; two CI round-trips spent.
+
+### One OAuth provider must serve one concern, and a redirect param is untrusted until normalized (2026-08-18)
+
+**When:** wiring any OAuth/identity flow, reusing an existing provider for a
+second purpose, or writing any route that redirects to a caller-supplied URL.
+
+"Link a GitHub account" died on dev with Supabase's
+`{"code":400,"error_code":"validation_failed","msg":"Unsupported provider: provider is not enabled"}`.
+Nothing had changed in the code. Linking a GitHub **App installation** to a
+Kortix account was minting its identity proof through Supabase's
+general-purpose "Sign in with GitHub" **login** provider — so an account/org
+feature's uptime hung on a per-Supabase-project dashboard toggle that exists
+for unrelated product login and that no IaC in this repo manages. Supabase
+never authenticated anyone's org; it was an incidental token-minting detour.
+Meanwhile the GitHub App's OWN OAuth client — whose `client_id`/`client_secret`
+the manifest flow already captured and stored — sat unread in the codebase.
+
+The rule: **one integration per concern.** Before reusing an auth provider for
+a second purpose, ask what a failure of the first purpose does to the second.
+If the answer is "takes it down," they must not share. Prefer the credential
+the feature already owns over the one that happens to be nearby.
+
+Two corollaries, both paid for in this same change:
+
+- **Config that lives only in a vendor dashboard will drift and nobody will
+  know.** Grep proved no Terraform anywhere manages Supabase Auth providers;
+  each environment is hand-toggled. A feature depending on such config has no
+  gate that can catch its absence — the first signal is a user hitting a 400.
+- **Validate a caller-supplied redirect target BEFORE any branch can redirect
+  to it.** The replacement route validated `frontend_origin` inside its
+  state-signing call, but an *earlier* `oauth_not_configured` return redirected
+  to the raw param — an open redirect to any attacker origin. Unit tests, tsc
+  and lint were all green on it: the vulnerable branch only fires when OAuth is
+  unconfigured, which no unit test and no manual curl (run against a configured
+  API) ever exercised. A ke2e flow asserting "the response never points at the
+  attacker origin" caught it on first run. Assert the *negative* — where the
+  redirect must NOT go — not just the happy-path reason code.
+
+Also: an App's OAuth callback is `callback_urls` in the manifest, a different
+field from `redirect_url` (post-creation only); and binding new state to
+`SUPABASE_JWT_SECRET` broke instantly because hosted deployments set
+`KORTIX_GITHUB_APP_STATE_SECRET` and no Supabase JWT secret. Reuse the
+resolver the neighbouring feature already uses rather than a same-shaped one.
+*Incident:* dev "Link a GitHub account" down; fixed in PR #6526. The open
+redirect was introduced and caught within the same change, by e2e, after every
+static gate passed.

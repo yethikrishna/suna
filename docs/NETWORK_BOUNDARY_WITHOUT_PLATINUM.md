@@ -1,9 +1,10 @@
-# Network-boundary secrets on Daytona
+# Network-boundary secrets without Platinum
 
-**Status:** mechanism built and proven end to end (§7.3, §7.4.1); not yet wired into
-provisioning (§7.5)
+**Status:** mechanism built, wired into provisioning behind the `network_boundary_shim`
+project flag, and proven end to end on a live Daytona sandbox (§7.5, §7.7)
 **Author:** drafted 2026-08-11, substantially revised 2026-08-12 after measurement
-**Problem owner:** production runs on Daytona; the feature exists only on Platinum
+**Problem owner:** the feature exists only where the provider has a credential edge, and
+Platinum is the only one that does — production runs on Daytona
 
 > **Read §7 before §3.** Several claims in the early sections were written from vendor docs
 > and general knowledge, then disproved by measurement. Where they conflict, the measured
@@ -18,9 +19,17 @@ A *network-boundary* secret (`strategy:'egress'`, `consumer:'network'`) is deliv
 **Platinum** sandbox provider: Kortix registers the credential with Platinum at session
 provision, and Platinum's egress proxy terminates TLS and injects a header on outbound
 requests to allow-listed hosts. The sandbox never receives the value — no env var, no alias,
-no placeholder. **Production runs on Daytona**, where
-`syncProviderNetworkBoundary` throws `Sandbox provider daytona does not support
-network-boundary secret delivery`. So no paying customer can use the feature.
+no placeholder. Platinum is the only provider that owns a credential edge. On every other
+provider — daytona and e2b — `syncProviderNetworkBoundary` throws `Sandbox provider <name>
+does not support network-boundary secret delivery`. **Production runs on Daytona**, so no
+paying customer can use the feature.
+
+The distinction this document turns on is the PROPERTY, not the provider name: does the
+provider have a credential edge of its own? Daytona is the instance everything below was
+measured against, because it is what production runs. The whole chain carries exactly one
+provider-name comparison — `networkBoundaryMode` choosing which of the two mechanisms serves
+a session — and below it there is no provider-specific code at all. e2b therefore takes the
+identical path, which is an argument and not yet a measurement (§7.7).
 
 ## 2. What we are actually protecting against
 
@@ -33,7 +42,7 @@ Two different goals get conflated. Separating them decides the architecture.
 
 Platinum's boundary delivers both. **Most of the value is confidentiality.** Transparency is
 ergonomics. This matters because we already ship a confidentiality-equivalent mechanism that
-works on Daytona today (§5).
+needs no provider edge and works today (§5).
 
 ## 3. Measured facts
 
@@ -139,7 +148,7 @@ Compared with the network boundary:
 | | boundary (`egress`/`network`) | broker (`broker`/`http_broker`) |
 | --- | --- | --- |
 | credential in sandbox | never | never |
-| works on Daytona | **no** | **yes, today** |
+| works with no provider credential edge | **no** — until §7.5 | **yes, today** |
 | host matching | exact only | wildcards, paths, methods |
 | injection slots | one header | header, query, JSON body |
 | per-request audit | no | **yes** |
@@ -250,7 +259,8 @@ in the product should separate them.
 
 ### Track A — make the broker the production answer (start now, low risk)
 
-The fastest path to a real capability for Daytona customers.
+The fastest path to a real capability for customers whose provider has no credential edge —
+today that is every production project.
 
 1. **Add an MCP tool** for the broker so the model discovers it the way it discovers everything
    else. **Done** — `secret_call` in `apps/cli/src/connector-gateway/mcp.ts`.
@@ -276,7 +286,7 @@ The fastest path to a real capability for Daytona customers.
    (`/tmp/kortix/secret-capabilities.md`), which already names `kortix secrets call`.
 2. **Stop offering `egress` on projects that cannot run it.** Already partly done — the UI now
    gates on the project's active provider — but the *strategy picker* should present the broker
-   as the Daytona-native option rather than showing a disabled control.
+   as the option that needs no provider edge rather than showing a disabled control.
 3. ~~**Fix the dead limb**: `broker`/`git_proxy` advertises `delivery_status:'available'`
    while no execution path implements it.~~ **Withdrawn — the claim was false.** `git_proxy`
    is consumed at `apps/api/src/projects/lib/git.ts:569`, which resolves the git credential
@@ -308,8 +318,8 @@ Non-negotiables:
   long-lived Kortix root in a customer image.
 - **We become a credential-handling MITM.** That is a real compliance and blast-radius change
   and must be an explicit decision, not a side effect. Document the threat model before code.
-- **Honest labelling.** If the §7 experiment fails, the UI must say *cooperative on Daytona,
-  enforced on Platinum* — in the product, not only in docs.
+- **Honest labelling.** If the §7 experiment fails, the UI must say *cooperative where the
+  provider has no credential edge, enforced on Platinum* — in the product, not only in docs.
 
 ## 7. The blocking experiment — RUN. Result: `outboundProxyUrl` is ignored
 
@@ -515,7 +525,7 @@ Caveats, stated rather than implied:
   provider-agnostic by construction — it is in-guest code plus HTTPS to the Kortix API, and
   touches no provider surface — but "provider-agnostic by construction" is an argument, and
   the Daytona re-run is pending only because dev Daytona provisioning is currently failing
-  (`/start` succeeds, the sandbox never reaches running).
+  (`/start` succeeds, the sandbox never reaches running). It landed later — §7.7.
 - No allow-list was applied in this run. Enforcement was measured separately (§7.2); this run
   measured injection.
 
@@ -633,7 +643,7 @@ caveat found the hard way — a required POSITIONAL parameter is not enough. The
 slot compiled while feeding the grants config in as the project metadata. The signature is
 named options for that reason.
 
-### 7.7 PARITY, PROVEN ON DAYTONA
+### 7.7 PARITY WITHOUT A PROVIDER CREDENTIAL EDGE — the live proof was on Daytona
 
 The whole point of this document, measured end to end on a real Daytona sandbox on dev
 (`ed82f4f969`), with every link real and nothing stubbed:
@@ -662,6 +672,14 @@ value nor the key. An unruled host (`example.com`) still answers 200 through a b
 so pinned-certificate and mTLS clients are untouched. **14 assertions, 0 failures.**
 
 This is the Platinum property on a provider with no credential edge of its own.
+
+**Daytona is the instance, not the requirement.** e2b takes the identical path with no code
+difference: the shim is in-guest code plus HTTPS to the Kortix API, and the one provider-name
+comparison anywhere in the chain is `networkBoundaryMode`
+(`apps/api/src/secrets/network-boundary-availability.ts`), which names `platinum` and nothing
+else. But the e2b run has NOT been done. That is an argument, not a measurement, and this doc
+does not accept arguments where a measurement is available (§5.1) — read e2b as expected to
+work and unproven until someone repeats this run on it.
 
 #### What running it for real caught that nothing local did
 
@@ -718,6 +736,8 @@ becomes worth building only behind a dedicated non-Cloudflare ingress.
 
 #### Still open
 
+- **The e2b live run.** Same code, same flag, never executed against an e2b sandbox. Until it
+  is, §7.7 proves the property on one provider rather than on the class.
 - **Allow-list survival across resume / CoW-restore** — the funnel must not open on restore.
   Not required for the security property (an agent that bypasses the shim gets an
   UNAUTHENTICATED request, never a credential), so this is egress restriction, a separate

@@ -7,24 +7,24 @@ import type { SessionLifecycleCommandRow } from './store';
 /**
  * The inbox's admission gate.
  *
- * A prompt sits in `session_lifecycle_commands` until it is this session's
- * TURN TO RUN: no other turn is live, no other prompt of the session is on the
- * wire, and no older prompt is still waiting. Then it goes out as ITS OWN
- * turn.
+ * A prompt sits in `session_lifecycle_commands` only until it is this session's
+ * TURN TO BE SENT — not until the session is idle. A live turn does NOT hold a
+ * prompt back: it is forwarded at once, OpenCode persists it (the bubble lands
+ * in the transcript within seconds) and answers everything queued behind the
+ * turn in flight as soon as that turn ends. That is what "the queue sends in
+ * between" means to the user: whatever was typed while the agent worked is
+ * already WITH the agent, and it picks all of it up together.
  *
- * ONE PROMPT = ONE TURN. This gate used to forward a prompt INTO a live turn
- * (OpenCode persists it and queues it by arrival). That was fast to deliver
- * but wrong to look at: OpenCode answers every user message still pending at
- * turn-end in ONE turn, so three quick messages produced one reply that
- * addressed all three — "I don't see any reference to QM-1, QM-2 or QM-3"
- * (2026-08-19 e2e). The user asked for a queue that "sends between every
- * turn"; that is what holding buys, and it is what the strip already shows.
+ * What is left is ORDER, and only order: one prompt of a session on the wire at
+ * a time, oldest first, so the user's own messages reach OpenCode in the order
+ * they were typed.
  *
  * WAITING IS NOT POLLING. A refused row does not sit out a backoff clock: the
- * instant the blocking turn ends (`completeSandboxTurn` on the daemon's idle
- * relay) or the blocking delivery lands, `promoteNextInboxRow` makes the
- * session's next row due and drains it. The backoff below only covers the gap
- * a lost kick would leave, so it stays cheap and capped.
+ * instant the blocking delivery lands (engine) or a turn ends (turn-stream),
+ * `promoteNextInboxRow` makes the session's next row due and drains it. The
+ * backoff below only covers the gap a lost kick would leave, so it stays cheap
+ * and capped — 30s here compounded to 27s / 45s / 75s of dead air behind ~1s
+ * deliveries (dev, 2026-08-18).
  *
  * A refusal is NOT a failure: see `requeueForAdmission`, which gives the claim's
  * attempt increment back so waiting cannot burn the 5-attempt dead-letter budget.
@@ -58,7 +58,7 @@ function admissionRefusals(result: unknown): number {
 /** The one thing that still holds a prompt back. Kept as a union because it is
  *  written into `result.admission_reason` and served as `GET .../prompts`'
  *  `reason`, where a second value may well appear again. */
-export type InboxAdmissionReason = 'turn_active' | 'older_prompt_pending';
+export type InboxAdmissionReason = 'older_prompt_pending';
 
 export type InboxAdmission =
   | { admit: true }
@@ -187,15 +187,6 @@ export async function admitInboxPrompt(
     INBOX_ORDER_MAX_BACKOFF_MS,
     refusals,
   );
-
-  // A LIVE TURN holds the prompt: it becomes its own turn when this one ends
-  // — chained by the turn-end kick, not by this backoff. `promoted` ("send
-  // now") does not skip this: it interrupts the turn first (`stopThenSendNow`)
-  // and only then dispatches, so by the time it is claimed no turn is live.
-  const box = await deps.readSandbox(row.sessionId);
-  if (sessionHoldsTurnAuthority(box)) {
-    return { admit: false, reason: 'turn_active', retryAfterMs: orderBackoffMs };
-  }
 
   // ONE PROMPT OF A SESSION ON THE WIRE AT A TIME, and this check binds even a
   // promoted row. A claimed row spends up to READY_DEADLINE_MS (5 min) inside

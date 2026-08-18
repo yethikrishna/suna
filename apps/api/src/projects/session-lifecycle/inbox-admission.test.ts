@@ -58,12 +58,11 @@ const row = (overrides: Partial<SessionLifecycleCommandRow> = {}): SessionLifecy
   }) as SessionLifecycleCommandRow;
 
 describe('admitInboxPrompt', () => {
-  test('a session in the middle of a turn HOLDS the prompt — it becomes its own turn when this one ends', async () => {
-    // ONE PROMPT = ONE TURN. Forwarding into the live turn made OpenCode answer
-    // every pending message in one turn ("I don't see any reference to QM-1,
-    // QM-2 or QM-3", 2026-08-19 e2e). The row waits — and is KICKED the
-    // instant the turn ends (`completeSandboxTurn` → `promoteNextInboxRow`),
-    // never left to this backoff.
+  test('a session in the middle of a turn is ADMITTED — the prompt goes to OpenCode now', async () => {
+    // A live turn never holds a prompt back. OpenCode persists it at once and
+    // answers everything queued behind the turn in flight as soon as it ends —
+    // "the queue sends in between". (Holding was tried and reverted: the user
+    // wants what they typed to be WITH the agent immediately.)
     const box = { status: 'active', metadata: { activeTurns: { ...activeTurn('t1'), ...activeTurn('t2') } } };
     expect(sessionHoldsTurnAuthority(box)).toBe(true);
 
@@ -72,11 +71,7 @@ describe('admitInboxPrompt', () => {
       hasInFlightPrompt: async () => false,
       hasOlderPendingPrompt: async () => false,
     });
-    expect(admission).toEqual({
-      admit: false,
-      reason: 'turn_active',
-      retryAfterMs: INBOX_ORDER_BACKOFF_MS,
-    });
+    expect(admission).toEqual({ admit: true });
   });
 
   test('a STOPPED box is admitted — wake-then-deliver, unchanged', async () => {

@@ -263,7 +263,7 @@ export async function enqueueContinueSessionCommand(
  */
 export async function requeueForAdmission(
   commandId: string,
-  reason: 'turn_active' | 'older_prompt_pending',
+  reason: 'older_prompt_pending',
   availableAt: Date,
 ): Promise<void> {
   await db

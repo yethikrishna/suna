@@ -406,12 +406,13 @@ describe('executeQueuedContinue — what actually goes on the wire', () => {
     expect(capturedBodies[0].messageID).toBe(SUBMITTED_WIRE_ID);
   });
 
-  test('a prompt claimed while a turn is LIVE is held — refused with turn_active, nothing sent', async () => {
-    // ONE PROMPT = ONE TURN. It used to be forwarded into the live turn, and
-    // OpenCode then answered every message pending at turn-end in ONE turn.
-    // Now it waits for the turn-end kick (`completeSandboxTurn` →
-    // `promoteNextInboxRow`) and goes out as its own turn.
-    requeues = [];
+  test('a prompt delivered INTO A LIVE TURN is re-minted on its FIRST claim', async () => {
+    // The mid-turn path does not wait, so it is not re-minted by having waited
+    // — and the id it carries is the browser clock at Enter, with no lift. The
+    // turn in flight has been writing higher ids ever since it started, so a
+    // browser even slightly behind the sandbox delivers an id that sorts BELOW
+    // them, and OpenCode reads that as already answered. A live turn is exactly
+    // the condition to re-mint on.
     boxRow = {
       status: 'active',
       metadata: {
@@ -426,12 +427,17 @@ describe('executeQueuedContinue — what actually goes on the wire', () => {
         },
       },
     };
+    transcript = [
+      { info: { id: NEWER_TRANSCRIPT_ID, role: 'assistant', parentID: 'msg_other' } },
+    ];
 
     const outcome = await executeQueuedContinue(baseRow());
 
-    expect(outcome).toBe('queued');
-    expect(capturedBodies).toHaveLength(0);
-    expect(requeues.map((r) => r.reason)).toEqual(['turn_active']);
+    expect(outcome).toBe('succeeded');
+    const sent = capturedBodies[0].messageID as string;
+    expect(sent).not.toBe(SUBMITTED_WIRE_ID);
+    expect(wireIdTime(sent)!).toBeGreaterThan(wireIdTime(NEWER_TRANSCRIPT_ID)!);
+    expect(persistedWireIds()).toEqual([sent]);
   });
 
   test('a second prompt sent inside the persistence lag clears the FIRST one’s id', async () => {

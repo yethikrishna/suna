@@ -636,6 +636,22 @@ export interface CreateSessionPromptInput {
   messageId: string;
   parts: SessionPromptPart[];
   overrides?: SessionPromptOverrides;
+  /**
+   * Ask the server to re-mint `messageId` against the live transcript before
+   * it delivers.
+   *
+   * OpenCode resolves "has this prompt been answered?" by id ORDER, so an id
+   * that sorts below what is on record is accepted and then silently never
+   * runs. A caller that minted its id where the live transcript was NOT
+   * readable — the one-time localStorage migration, which mints at page load
+   * for a message typed before the last reload — says so here, and the control
+   * plane places the id correctly at delivery time.
+   *
+   * Leave it unset for an ordinary send: that id is minted against a
+   * transcript the tab can see, and re-minting it would put a sandbox read on
+   * the delivery path of every message.
+   */
+  remintOnDelivery?: boolean;
 }
 
 /** Put one prompt in the session's server-side inbox (`POST .../prompts`).
@@ -653,6 +669,7 @@ export async function createSessionPrompt(
         message_id: input.messageId,
         parts: input.parts,
         ...(input.overrides ? { overrides: input.overrides } : {}),
+        ...(input.remintOnDelivery ? { remint_on_delivery: true } : {}),
       },
     ),
   );

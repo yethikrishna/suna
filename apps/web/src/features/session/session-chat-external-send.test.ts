@@ -28,7 +28,10 @@ describe('SessionChat external agent tasks', () => {
     );
     expect(registration).toContain('await handleSend(text)');
     expect(registration).toContain("return 'sent'");
-    expect(registration).not.toContain('shouldQueueInsteadOfSend');
-    expect(registration).not.toContain('handleQueueMessage(text)');
+    expect(registration).not.toContain('handleQueueMessage');
+    // And there is no local queue anywhere in the component for a future
+    // caller to reach for.
+    expect(source).not.toContain('shouldQueueInsteadOfSend');
+    expect(source).not.toContain('useMessageQueueStore');
   });
 });

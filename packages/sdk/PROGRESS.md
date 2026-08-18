@@ -12,6 +12,67 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-18 — session `server-truth-m1` — step 9: `@kortix/sdk/message-queue` frozen at its published surface, `send-queue` deleted — DONE
+
+**Files:** `core/session/message-queue.ts` (+`.test.ts`), DELETED
+`core/session/send-queue.ts` (+`.test.ts`), both surface snapshots. The
+`apps/web` half of this commit (the localStorage queue store, its drain hook,
+the eleven-field boundary gate set, and the one-time localStorage→inbox
+migration) is outside this package.
+
+**What.** The browser message queue is gone: prompts are durable server rows
+(`POST .../prompts`, step 7) and one projection answers "is this session
+working?" (step 8), so the two SDK modules that existed to serve a client-side
+queue have no host left.
+
+`core/session/send-queue.ts` is DELETED. It was emitted into the 0.12.8 dist but
+is reachable from no entry point — no `exports` subpath names it, and
+`core/session/index.d.ts` does not re-export it — so nothing on npm could ever
+import it.
+
+`core/session/message-queue.ts` CANNOT be deleted: `./message-queue` IS a
+published `exports` subpath on 0.12.8, so an external consumer's import must
+keep resolving. It becomes a `@deprecated` shim frozen at exactly the eleven
+names 0.12.8 published, with a banner naming the replacement. Two exports are
+removed rather than deprecated because they were added AFTER 0.12.8 and are
+absent from the published `.d.ts` — verified by `npm pack @kortix/sdk@0.12.8`:
+
+  - `claimBatch` — the batch drain's claim. No host batches any more; the server
+    delivers one row at a time in `created_at` order.
+  - `inFlightIdsOf` — the batch lock's reader, now the module-private `inFlight`.
+    Every transition still writes `inFlightIds`, and every read still tolerates a
+    state persisted before that field existed, so a rehydrated legacy queue with
+    several ids in flight is still refused edit/remove/reorder.
+
+Both snapshots re-recorded: the diff is 2 deletions under `./message-queue` and
+nothing else. `package.json` `exports`, `publishConfig.exports`, and
+`SUBPATH_TIERS` are untouched — the subpath must keep resolving, which is the
+whole point.
+
+`message-queue.test.ts` is TRIMMED, not deleted: a deprecated published export
+still has a contract. Its `claimBatch` cases are rewritten against `claimNext`,
+and two new cases pin the shim itself — the export set is exactly the 0.12.8
+list (so nothing can be added back), and the file header actually carries the
+`@deprecated` banner and names `/prompts`.
+
+**Gates.** `bun test --isolate src` 2193 pass / 0 fail; `tsc --noEmit` + examples
+clean; `smoke:install` packs and imports the tarballs OK.
+
+**Amendment (same commit).** `CreateSessionPromptInput` gains one optional
+field, `remintOnDelivery`, sent as `remint_on_delivery`. A caller that minted
+its wire message id where the live transcript was NOT readable says so, and the
+control plane re-mints against the live root before delivering. Only one caller
+sets it: the localStorage→inbox migration, which mints at page load, for a
+message the user typed before their last reload. Without it that id can sort
+below the transcript, and OpenCode reads such a prompt as already answered —
+the row is marked succeeded, drops out of `GET /prompts`, and never runs. The
+field is ADDITIVE and optional, so both surface snapshots are unchanged (they
+record exported names, not their members) and no published signature moves.
+Re-gated: `bun test --isolate src` 2194 pass / 0 fail; `tsc --noEmit` +
+examples clean.
+
+---
+
 ### 2026-08-18 — session `server-truth-m1` — step 8: one working projection, and the demolition of the guessing machines — DONE
 
 **Files:** NEW `packages/sdk/src/core/session/working.ts` (+`.test.ts`), NEW

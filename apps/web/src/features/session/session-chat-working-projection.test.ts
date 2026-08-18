@@ -110,12 +110,14 @@ describe('the composer reads ONE working answer', () => {
     expect(cancel).toContain('settleAbortReceipt(');
   });
 
-  test('the drain still refuses to send into a turn that is mid-retry', () => {
-    // The one transcript-derived gate that survives, and only in its narrow
-    // form: a retryable provider error means the SAME assistant message is
-    // still being written. See `hasRetryingAssistantTurn`.
-    const gates = between(chat, 'const queueGates = useMemo<QueueDrainGates>', 'revertStaged:');
-    expect(gates).toContain('hasRetryingAssistant');
+  test('a `/` command still refuses to go out into a turn that is mid-retry', () => {
+    // REWRITTEN with the queue drain's deletion. This gate used to hold the
+    // browser drain shut; the drain is gone, but the hazard is not — a command
+    // is dispatched by `runCommand` with no server admission gate, and a
+    // retryable provider error keeps the SAME assistant message being written
+    // with no busy frame to show for it. It now feeds the composer's
+    // `sessionWorking`, which is what refuses the command.
     expect(chat).toContain('hasRetryingAssistantTurn(messages)');
+    expect(chat).toContain('sessionWorking={effectiveBusy || hasRetryingAssistant}');
   });
 });

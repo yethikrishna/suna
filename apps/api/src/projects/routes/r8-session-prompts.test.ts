@@ -327,6 +327,22 @@ describe('POST .../prompts', () => {
     expect(enqueued[0].text).toBe('say hi');
   });
 
+  // A producer that KNOWS its client-minted id is stale asks for the re-mint.
+  // The localStorage migration is the case that needs it: the id it mints is
+  // minted at page load, against a transcript this tab may not have read yet,
+  // for a message the user typed before the last reload. The server re-mints
+  // against the live root before delivering, which is the only place that can
+  // be right — see `remintWireMessageId`.
+  test('remint_on_delivery is carried into the payload', async () => {
+    await post({ ...validBody, remint_on_delivery: true });
+    expect(enqueued[0].remintOnDelivery).toBe(true);
+  });
+
+  test('remint_on_delivery is absent by default, so an ordinary send keeps its id', async () => {
+    await post(validBody);
+    expect(enqueued[0].remintOnDelivery).toBeUndefined();
+  });
+
   test('the idempotency key is the submission name, so a repeat POST is one row', async () => {
     await post(validBody);
     expect(enqueued[0].idempotencyKey).toBe(`prompt:${SESSION_ID}:q_1`);

@@ -19,14 +19,16 @@
  * tolerable when you can see what you are waiting for.
  *
  * The prompt-dropping problem is now solved where it actually lives — in the
- * QUEUE, not in the input. `shouldQueueInsteadOfSend` routes a submission to
- * the queue whenever `runtimeReady` is false, and `canDrainQueue`'s matching
- * gate holds it there until the sandbox answers, at which point it goes out by
- * itself. So the message is safe, the composer stays usable, and this module's
- * job shrinks to one thing: saying what is going on.
+ * SERVER's prompt inbox, not in the input. A submit against a sleeping box is
+ * POSTed to `.../prompts` and becomes a durable row; the admission gate holds
+ * it until the sandbox answers, at which point it goes out by itself. So the
+ * message is safe — safe across a closed tab, which a browser queue never was
+ * — the composer stays usable, and this module's job shrinks to one thing:
+ * saying what is going on.
  */
 export interface SessionComposerReadiness {
-  /** The runtime is up. False means a submit will be queued, not sent. */
+  /** The runtime is up. False means a submit becomes a queued inbox row rather
+   *  than a delivery. */
   ready: boolean;
   /**
    * What to show above the composer while `ready` is false, or `null`.

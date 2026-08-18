@@ -29,9 +29,8 @@ import {
   parseSystemNotifications,
   stripSystemPtyText,
 } from './message-parsing';
-import { type QueueDrainGates, shouldQueueInsteadOfSend } from './message-queue-boundary';
 import { projectQueueRows } from './queue-projection';
-import { mergeQueuedBatch } from './queued-batch';
+import { runLegacyQueueMigration } from './queue-migration-runner';
 import { createQueueUndoAction } from './queued-message-restore';
 import { ActivityBurst } from './turn/activity-burst';
 import { ExpandableOutput } from './turn/expandable-output';
@@ -41,7 +40,6 @@ import { stabilizeTurns } from './turn/stable-turns';
 import { ThrottledMarkdown } from './turn/throttled-markdown';
 import { TurnViewport } from './turn/turn-viewport';
 import { UserMessage } from './turn/user-message';
-import { useMessageQueueDrain } from './use-message-queue-drain';
 
 import { Composer as SessionChatInput } from '@/features/session/composer/composer';
 import { ConnectorRequiredNotice } from '@/features/session/connector-required-notice';
@@ -108,15 +106,13 @@ import {
 import { useChatSendStore } from '@/stores/chat-send-store';
 import { useKortixComputerStore } from '@/stores/kortix-computer-store';
 import { useMessageJumpStore } from '@/stores/message-jump-store';
-import {
-  type WebQueuedMessage,
-  type WebSessionQueue,
-  inFlightIdsOf,
-  useMessageQueueStore,
-} from '@/stores/message-queue-store';
 import { useOnboardingModeStore } from '@/stores/onboarding-mode-store';
 import { useSessionBrowserStore } from '@/stores/session-browser-store';
-import { usePendingFilesStore } from '@/stores/session-composer-handoff-store';
+import {
+  useCarriedDraft,
+  useCarriedDraftStore,
+  usePendingFilesStore,
+} from '@/stores/session-composer-handoff-store';
 import {
   useAttachRequest,
   useSessionComposerPrefillStore,
@@ -421,15 +417,6 @@ function AnsweredQuestionCard({ part }: { part: ToolPart }) {
 // Message parsing exported to message-parsing.tsx
 // ============================================================================
 
-/** Stable empty queue, so a session with nothing queued does not hand the
- *  selector a fresh array on every render. */
-const EMPTY_SESSION_QUEUE: WebSessionQueue = Object.freeze({
-  pending: [],
-  failed: [],
-  inFlightId: null,
-  inFlightIds: [],
-});
-
 /** How long "Stop & send" will wait for the server to confirm the abort before
  *  sending anyway. Long enough for a normal round-trip, short enough that a
  *  wedged status never strands the user's click. */
@@ -497,9 +484,10 @@ export interface StopThenSendNowDeps {
   stop: () => Promise<AbortSettlement | null>;
   /** Fallback wait, used only when `stop()` resolves `null`. */
   waitIdle: () => Promise<void>;
-  /** Unpause the queue so the drain can dispatch again. */
-  resumeQueue: () => void;
-  /** The actual send-now dispatch. */
+  /** The actual send-now dispatch: `POST .../prompts/:id/retry`, which
+   *  promotes the row the user pointed at and releases the session's inbox
+   *  hold ITSELF, in that order. Nothing here may release the hold first —
+   *  see `stopThenSendNow`'s doc. */
   dispatch: () => Promise<void>;
 }
 
@@ -522,6 +510,14 @@ export interface StopThenSendNowDeps {
  * When nothing is running and no stop is pending, `stop()`/`waitIdle()` are
  * never called and the send is not delayed at all.
  *
+ * IT DOES NOT LIFT THE INBOX HOLD. Stop holds every queued row
+ * (`available_at = now + 24h`); "send now" is `POST .../prompts/:id/retry`,
+ * and `retryInboxPrompt` promotes THAT row and only then releases the hold.
+ * Lifting it here first made all held rows due at one instant and kicked a
+ * drain that claims by `available_at, created_at` — so the oldest prompt ran
+ * and the one the user clicked queued behind its turn. `dispatch()` owns the
+ * whole ordering.
+ *
  * T10 (settlement race): a stop can already be in flight when this runs —
  * e.g. the user clicked Stop directly, which ran `applyOptimisticAbort` and
  * flipped the store `isRunning()` reads to idle SYNCHRONOUSLY, well before
@@ -541,7 +537,6 @@ export async function stopThenSendNow(deps: StopThenSendNowDeps): Promise<void> 
     const settlement = await deps.stop();
     if (settlement === null) await deps.waitIdle();
   }
-  deps.resumeQueue();
   await deps.dispatch();
 }
 
@@ -1890,6 +1885,33 @@ export function SessionChat({
   // it runs now or waits for the turn in flight.
   const promptInbox = useSessionPrompts(projectId, projectSessionId);
 
+  // The one-time hand-off of whatever the deleted browser queue was still
+  // holding — see `queue-migration.ts`.
+  //
+  // Here rather than in a list route because THIS is the only component that
+  // knows both ids a legacy blob can be keyed by: the OpenCode chat id
+  // (`sessionId`, what `SessionChat` drained under) and the Kortix session id
+  // (`projectSessionId`, the only one the inbox takes). A list route knows
+  // neither mapping.
+  //
+  // Sessions are pre-mounted per tab, so several of these run at once; the pass
+  // is serialized by `runLegacyQueueMigration` and a skip-only pass gives its
+  // attempt back, so a session that can only see another session's rows does
+  // not spend the retry budget.
+  useEffect(() => {
+    if (!projectId || !projectSessionId) return;
+    void runLegacyQueueMigration({
+      legacyIds: [sessionId, projectSessionId],
+      projectId,
+      // The route takes the KORTIX id; the wire message id is minted against
+      // the OPENCODE transcript. Two ids, two parameters — see the runner.
+      sessionId: projectSessionId,
+      wireSessionId: sessionId,
+      enqueue: promptInbox.enqueue,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, projectSessionId, sessionId]);
+
   // T10: the most recently issued stop/cancel's `AbortSettlement`
   // promise for this session, so `stopThenSendNow` (used by
   // `handleQueueSendNow`) can await the SERVER-confirmed settlement instead
@@ -1998,6 +2020,13 @@ export function SessionChat({
     files: AttachedFile[];
     id: number;
   } | null>(null);
+  // A message typed in the instant boot shell after the first send. The shell
+  // refuses it (a row POSTed then would be admitted before the first message,
+  // which is still in the start stash) and hands it here rather than leaving it
+  // in an editor the crossfade is about to unmount. See `useCarriedDraftStore`.
+  //
+  // Cleared by `handlePrefillApplied` below — never on mount. See there.
+  const carriedDraft = useCarriedDraft(projectSessionId ?? '');
   const [rewindTarget, setRewindTarget] = useState<{
     messageId: string;
     text: string;
@@ -2019,6 +2048,70 @@ export function SessionChat({
   useEffect(() => {
     if (sessionPrefill) useSessionComposerPrefillStore.getState().clearPrefill(sessionId);
   }, [sessionPrefill, sessionId]);
+  // WHICH held draft the composer is handed right now, in priority order, in
+  // ONE place. The four sources mint their ids from four independent counters,
+  // so `prefill.id` alone cannot say which one the composer just applied — and
+  // the carried draft's handshake below has to know exactly that.
+  const composerPrefill = useMemo(() => {
+    if (rewindDraft) {
+      return {
+        source: 'rewind' as const,
+        text: rewindDraft.text,
+        id: rewindDraft.id,
+        mode: 'replace' as const,
+      };
+    }
+    if (failedStartDraft) {
+      return {
+        source: 'failed-start' as const,
+        text: failedStartDraft.text,
+        files: failedStartDraft.files,
+        id: failedStartDraft.id,
+        mode: 'merge' as const,
+      };
+    }
+    // The follow-up typed in the boot shell, which refused to send it and
+    // handed it over rather than let the crossfade unmount it with its editor.
+    if (carriedDraft) {
+      return {
+        source: 'carried' as const,
+        text: carriedDraft.text,
+        files: carriedDraft.files,
+        id: carriedDraft.id,
+        mode: 'merge' as const,
+      };
+    }
+    if (sessionPrefill) {
+      return {
+        source: 'session' as const,
+        text: sessionPrefill.text,
+        id: sessionPrefill.id,
+        mode: 'merge' as const,
+      };
+    }
+    return null;
+  }, [rewindDraft, failedStartDraft, carriedDraft, sessionPrefill]);
+  // CONSUME ON APPLY, not clear on mount.
+  //
+  // The carried draft is written BEFORE this component exists — the boot shell
+  // hands it over as it is being replaced — so it is already present on the
+  // FIRST commit, when the lazily-mounted composer editor is still null and
+  // `shouldApplyPrefill` refuses (composer-logic.ts). Clearing it from this
+  // component's own mount effect therefore deleted it one commit before the
+  // composer could take it: the message the shell's toast promised to keep
+  // vanished at the crossfade, which is the whole bug the carry exists to fix.
+  // So the composer reports the id it actually applied and we clear on that.
+  //
+  // `sessionPrefill` above keeps its mount effect on purpose: it is only ever
+  // written from inside this page (`session-panel-provider.tsx`), by which time
+  // this composer is mounted and its editor is ready.
+  const handlePrefillApplied = useCallback(
+    (appliedId: number) => {
+      if (composerPrefill?.source !== 'carried' || composerPrefill.id !== appliedId) return;
+      useCarriedDraftStore.getState().clearCarriedDraft(projectSessionId ?? '');
+    },
+    [composerPrefill, projectSessionId],
+  );
   // "Add context" (Task 5) — the empty Context card's button asks the
   // composer to open its attach flow. Same held/id-keyed handoff as the
   // prefill above, cleared the same way once the composer's own id-keyed
@@ -2350,19 +2443,22 @@ export function SessionChat({
   });
   const isServerBusy = working.state === 'working';
 
-  // The local drain's one transcript-derived gate, and the only one that
+  // The one transcript-derived gate that survives, and the only one that
   // carries proof: during a provider 429 OpenCode stamps `info.error` with
   // `data.isRetryable === true` and keeps writing the SAME assistant message,
   // while the status frame this tab holds can read non-busy for all of it. The
   // projection cannot substitute — a frame stamped after the last `/turn` read
-  // outranks that read by design — so without this the drain sent the next
-  // queued `/` command into a turn that was still running.
+  // outranks that read by design — so without this a `/` command submitted
+  // now would go out into a turn that is still running.
   //
   // Paired with the server's own authority so it can never wedge: an assistant
   // message left open by a sandbox that died mid-turn (no error, no
   // completion) is not a retry, AND a dead box's turn is husk-finalized, so
   // `serverOpenTurnId` goes null and the gate opens. That pair is what the old
   // 10s husk clock and its confirmation round-trip existed to approximate.
+  //
+  // It gates COMMANDS only now (`sessionWorking` on the composer). A prompt is
+  // an inbox row and the server's admission gate holds it.
   const hasRetryingAssistant = useMemo(
     () => hasRetryingAssistantTurn(messages) && working.serverOpenTurnId !== null,
     [messages, working.serverOpenTurnId],
@@ -2511,93 +2607,25 @@ export function SessionChat({
     } as any);
   }, [messages, sessionId, shouldRecoveryPoll, streamCacheKey, hasPendingUserReply]);
 
-  // Client-side message queue — mirrors Claude Code / Codex: a message typed
-  // while the agent is mid-turn is held instead of being sent straight through
-  // (the OpenCode server would accept it immediately, but interleaving it into
-  // a live turn is exactly the reported bug).
+  // WHAT THE COMPOSER RENDERS IS THE SERVER INBOX — see `projectQueueRows`.
   //
-  // The state lives in `useMessageQueueStore` — per session and persisted —
-  // not here. As component state it died silently on every session-tab switch,
-  // and the ref that mirrored it lagged by a commit, which is how the same
-  // message could be sent twice. Release timing is `useMessageQueueDrain`,
-  // mounted after `handleSend` below.
-  const sessionQueue = useMessageQueueStore((s) => s.queues[sessionId]) ?? EMPTY_SESSION_QUEUE;
-
-  // WHAT THE COMPOSER RENDERS IS BOTH QUEUES — see `projectQueueRows`.
-  //
-  // The prompt queue is the SERVER inbox (`GET .../prompts`): durable, shared
-  // across tabs and devices, ordered and admitted by the control plane. The
-  // browser store still holds the two things that cannot be inbox rows yet — a
-  // `/` command, and anything typed in the instant boot shell while the first
-  // message is still travelling through the start stash — and rendering only
-  // one of the two sources is how a queued message becomes invisible.
+  // `GET .../prompts` is the queue: durable, shared across tabs and devices,
+  // ordered and admitted by the control plane. There is no browser lane beside
+  // it any more, so there is no second list to keep in sync, no per-row origin
+  // to route actions by, and nothing left that a closed tab can lose.
   const queueRows = useMemo(
-    () =>
-      projectQueueRows({
-        prompts: promptInbox.prompts,
-        local: { pending: sessionQueue.pending, failed: sessionQueue.failed },
-        localInFlightIds: inFlightIdsOf(sessionQueue),
-      }),
-    [promptInbox.prompts, sessionQueue],
+    () => projectQueueRows({ prompts: promptInbox.prompts }),
+    [promptInbox.prompts],
   );
   const queuedMessages = queueRows.queued;
   const failedQueuedMessages = queueRows.failed;
   useEffect(() => {
     queuedMessagesRef.current = queueRows.queued.length + queueRows.inFlightIds.length;
   }, [queueRows.queued.length, queueRows.inFlightIds.length]);
-  // A row the server has CLAIMED — or the local drain is dispatching — is on the
-  // wire; locking it against edit/remove/reorder is the same rule as before.
+  // A row the server has CLAIMED is on the wire; locking it against
+  // edit/remove/reorder is the same rule as before.
   const queueInFlightIds = queueRows.inFlightIds;
 
-  /** `handleSend` is declared ~700 lines below, so naming it here would read a
-   *  `const` in its temporal dead zone. Written in an effect beside
-   *  `handleCommandRef`, and only ever read at submit time. */
-  const handleSendRef = useRef<
-    | ((text: string, files?: AttachedFile[], mentions?: TrackedMention[]) => Promise<unknown>)
-    | null
-  >(null);
-
-  /**
-   * The local queue, for COMMANDS only.
-   *
-   * A prompt handed here goes to the server inbox like any other send: the
-   * composer no longer decides queue-vs-send for prompts, and this callback
-   * must not re-introduce that decision. A command has nowhere else to go —
-   * `handleCommand` dispatches it straight into the runtime, where a new prompt
-   * aborts the turn in progress — so it waits in the browser store until the
-   * drain reaches a safe boundary.
-   */
-  const handleQueueMessage = useCallback(
-    (
-      text: string,
-      files?: AttachedFile[],
-      mentions?: TrackedMention[],
-      command?: { name: string; split?: { before: string; after: string } },
-    ) => {
-      if (!command) {
-        void handleSendRef.current?.(text, files, mentions);
-        return;
-      }
-      // Capture the agent, model and variant AS THEY ARE NOW: a command queued
-      // under one model must not run under whatever is selected minutes later.
-      // `undefined` where nothing is resolved yet, never `null` — `null` would
-      // lock in "send no model at all".
-      useMessageQueueStore.getState().enqueue(sessionId, {
-        text,
-        files,
-        mentions,
-        agent: local.agent.current?.name ?? undefined,
-        model: local.model.sendKey ?? undefined,
-        variant: local.model.variant.current ?? undefined,
-        command,
-      });
-    },
-    [sessionId, local.agent, local.model],
-  );
-
-  // Row actions address the row's OWN holder — the server row by `prompt_id`,
-  // a local entry by its store id.
-  //
   // Removing used to be a local-store delete with an undo toast that restored
   // the entry into that store. The row is durable now, so a removal is a real
   // DELETE and the undo has to re-create it — which the inbox makes exact,
@@ -2605,34 +2633,6 @@ export function SessionChat({
   // index rather than by a client-side latch.
   const handleRemoveQueuedMessage = useCallback(
     async (id: string) => {
-      // A local entry (a queued `/` command, a boot-shell message) is removed
-      // from the store that holds it, with the same undo it always had.
-      if (queueRows.localIds.has(id)) {
-        const store = useMessageQueueStore.getState();
-        const queue = store.getSessionQueue(sessionId);
-        const index = queue.pending.findIndex((m) => m.id === id);
-        const entry = queue.pending[index] ?? queue.failed.find((m) => m.id === id);
-        store.remove(sessionId, id);
-        if (!entry) return;
-        const localUndoToastId = `queue-undo-${sessionId}-${entry.id}`;
-        const undo = createQueueUndoAction({
-          sessionId,
-          removed: entry,
-          index,
-          dismiss: () => dismissToast(localUndoToastId),
-        });
-        infoToast('Removed from queue', {
-          id: localUndoToastId,
-          duration: 5000,
-          button: (
-            <Button size="sm" variant="outline" onClick={undo}>
-              Undo
-            </Button>
-          ),
-        });
-        return;
-      }
-
       // The DELETE hands back what it destroyed, and that is the only lossless
       // undo: the row is hard-deleted, and the list view carries a 2000-char
       // text preview with no parts at all. Restoring from the list dropped
@@ -2664,21 +2664,19 @@ export function SessionChat({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => {
-              dismissToast(undoToastId);
-              // The SAME `clientMessageId` and the SAME wire id: an undo
-              // re-creates ONE row, and a double-click cannot create two. The
-              // parts and overrides are the ORIGINALS, straight from the
-              // delete's own response.
-              void promptInbox
-                .enqueue({
-                  clientMessageId: removed.client_message_id,
-                  messageId: removed.message_id,
-                  parts: removed.parts,
-                  ...(removed.overrides ? { overrides: removed.overrides } : {}),
-                })
-                .catch(() => errorToast('Could not restore that prompt'));
-            }}
+            // The SAME `clientMessageId`, so an undo re-creates ONE row and a
+            // double-click cannot create two. A FRESH wire id, because
+            // OpenCode orders by id and the original one was minted before the
+            // turn that has been writing higher ids since. The parts and
+            // overrides are the ORIGINALS, straight from the delete's own
+            // response — see `createQueueUndoAction`.
+            onClick={createQueueUndoAction({
+              removed,
+              mintMessageId: () => mintSessionWireMessageId(sessionId),
+              enqueue: promptInbox.enqueue,
+              dismiss: () => dismissToast(undoToastId),
+              onError: () => errorToast('Could not restore that prompt'),
+            })}
           >
             Undo
           </Button>
@@ -2686,21 +2684,17 @@ export function SessionChat({
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, queueRows.localIds, promptInbox.prompts, promptInbox.remove, promptInbox.enqueue],
+    [sessionId, promptInbox.remove, promptInbox.enqueue],
   );
 
   const handleRetryQueuedMessage = useCallback(
     (id: string) => {
-      if (queueRows.localIds.has(id)) {
-        useMessageQueueStore.getState().retry(sessionId, id);
-        return;
-      }
       // Re-queued UNDER ITS ORIGINAL WIRE ID, so a delivery that actually
       // landed is still absorbed by the proxy instead of running twice.
       void promptInbox.retry(id).catch(() => errorToast('Could not retry that prompt'));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, queueRows.localIds, promptInbox.retry],
+    [promptInbox.retry],
   );
 
   // Stop the transcript polling fallback once the session stops working.
@@ -3173,16 +3167,38 @@ export function SessionChat({
     try {
       const { messageId, text } = rewindTarget;
       await sessionState.rewind(messageId);
-      // The queued messages belong to the abandoned trajectory, not merely to
-      // a turn that has not started yet — an edit-and-resend means "start
-      // over from here", and anything still waiting was written against the
-      // conversation the user just asked to discard. Clearing outright (not
-      // pausing) is deliberate: a pause needs an explicit resume, and nothing
-      // here should auto-resend text the user may not even want anymore once
-      // they see the rewound transcript. `revertStaged` (the queue-gate memo
-      // above) additionally blocks anything ELSE from queuing into this same
-      // staged window in the meantime.
-      useMessageQueueStore.getState().clearSession(sessionId);
+      // THE QUEUED ROWS GO, and this is not a preference.
+      //
+      // A rewind stages `session.revert`; the NEXT prompt delivered is what
+      // commits the truncation. The inbox admits by `created_at`, so a row
+      // queued before the rewind is admitted BEFORE the replacement prompt
+      // this flow prefills — it would commit the user's rewind and then run
+      // against the trajectory that rewind just deleted.
+      //
+      // Holding them instead does not hold: `POST .../prompts` releases the
+      // session's hold, and the send that releases it is precisely the one the
+      // rewind prefills. So the rows are removed, exactly as the browser
+      // queue's `clearSession` removed them — but visibly, and once, for every
+      // tab, rather than per tab.
+      const doomed = promptInbox.prompts.filter((prompt) => prompt.state !== 'delivering');
+      let removed = 0;
+      for (const prompt of doomed) {
+        // Sequential: a row that turns out to be on the wire answers 409, and
+        // that is not a reason to stop removing the rest.
+        const gone = await promptInbox.remove(prompt.prompt_id).catch((error) => {
+          console.warn('[session-chat] failed to remove a queued prompt on rewind', error);
+          return null;
+        });
+        if (gone) removed += 1;
+      }
+      if (removed > 0) {
+        infoToast(
+          removed === 1 ? 'Queued message removed' : `${removed} queued messages removed`,
+          {
+            description: 'They were written for the messages this rewind discards.',
+          },
+        );
+      }
       setRewindDraft({ text, id: ++rewindPrefillId.current });
       setRewindTarget(null);
     } catch (error) {
@@ -3190,7 +3206,8 @@ export function SessionChat({
         description: formatCommandError(error),
       });
     }
-  }, [rewindTarget, sessionState, sessionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rewindTarget, sessionState, promptInbox.prompts, promptInbox.remove]);
 
   const handleRestoreRewind = useCallback(async () => {
     if (!sessionState?.rewindMessageId) return;
@@ -3610,131 +3627,6 @@ export function SessionChat({
     // them, because the server decides admission.
   }, [sessionId, projectSessionId, handleSend, registerSender, unregisterSender]);
 
-  // Release the whole queue on one prompt, only when the turn actually ended.
-  //
-  // What used to be here drained the WHOLE queue whenever any tool part flipped
-  // to 'completed' or 'error', or whenever the debounced `isBusy` fell. Both
-  // fire mid-turn: a tool finishing means the agent is still working, and
-  // `isBusy` is a 300ms fade timer for the busy indicator. It also watched
-  // `messages`, so scrolling up to load older history counted as boundaries
-  // too. The drain now reads the server's own session status plus the gates
-  // that mean a human is being waited on, and nothing else.
-  const queueGates = useMemo<QueueDrainGates>(
-    () => ({
-      isServerBusy,
-      hasRetryingAssistant,
-      isOptimisticCompacting,
-      hasActiveQuestion,
-      hasPendingApproval,
-      pendingPermissionCount: pendingPermissions.length,
-      isPaused: false,
-      // The local lane carries `/` commands only, and it must not fire at the
-      // same turn boundary the SERVER's admission gate fires at — see
-      // `QueueDrainGates.serverPromptPending`. A `delivering` row counts too:
-      // it is a prompt already on the wire.
-      serverPromptPending: promptInbox.prompts.length > 0,
-      readOnly: !!readOnly,
-      // Holds a queued message while the sandbox is stopped or waking, and
-      // releases it by itself when the box answers. This is what makes leaving
-      // the composer ENABLED safe — see `sessionComposerReadiness`.
-      runtimeReady,
-      // T22 — the web must never prompt across a staged session rewind. See
-      // `QueueDrainGates.revertStaged`'s doc comment for why the OTHER gates
-      // read wrong (open, not closed) during a staged revert and cannot
-      // stand in for this one. `rewindMessageId` is already exactly "staged,
-      // not yet committed" — null once committed or cleared.
-      revertStaged: !!sessionState?.rewindMessageId,
-    }),
-    [
-      runtimeReady,
-      isServerBusy,
-      hasRetryingAssistant,
-      isOptimisticCompacting,
-      hasActiveQuestion,
-      hasPendingApproval,
-      pendingPermissions.length,
-      promptInbox.prompts.length,
-      readOnly,
-      sessionState?.rewindMessageId,
-    ],
-  );
-
-  /** See `sendQueuedBatch`'s command branch for why this is a ref. */
-  const handleCommandRef = useRef<
-    ((command: Command, args?: string, split?: { before: string; after: string }) => boolean) | null
-  >(null);
-
-  const sendQueuedBatch = useCallback(
-    async (batch: WebQueuedMessage[]) => {
-      const head = batch[0];
-      if (!head) return;
-
-      // A queued `/` command runs through the command path, not the prompt
-      // path. `runCommand` expands a server-side template; sending the same
-      // entry as text would deliver the literal arguments with no command at
-      // all. `claimBatch` guarantees a command arrives alone — it can never
-      // share a prompt with text entries. The command list is re-read HERE
-      // rather than captured at enqueue, so an entry can never dispatch a
-      // command that has since been removed.
-      if (head.command) {
-        const resolved = commands?.find((c) => c.name === head.command!.name);
-        if (!resolved) {
-          throw new Error(`Command /${head.command.name} is no longer available`);
-        }
-        // Through a ref, not the binding. `handleCommand` is declared ~180
-        // lines BELOW this callback, so naming it in the dependency array
-        // would read a `const` in its temporal dead zone — a ReferenceError
-        // thrown during render, every render. The ref is written in an effect
-        // after both exist, and only ever read here at dispatch time.
-        const dispatched = handleCommandRef.current?.(
-          resolved,
-          head.text || undefined,
-          head.command.split,
-        );
-        // A swallowed dispatch must REJECT. The drain marks a resolved send
-        // complete and deletes the entry, so reporting success here would drop
-        // the command silently — the one outcome a queue must never have.
-        // Throwing puts it in `failed` with a reason and a retry button.
-        if (!dispatched) {
-          throw new Error('Another command is still being sent — this one was not dispatched');
-        }
-        return;
-      }
-
-      // ONE `handleSend` for the whole batch, never a loop over it. `handleSend`
-      // resolves when the server ACKs the prompt (204), not when the turn ends,
-      // so a second call would land its message inside the first one's live
-      // turn — RC4 in the design doc, and the reason this queue exists.
-      // `mergeQueuedBatch` decides what the single prompt contains, including
-      // the head's `clientMessageId` so a RETRY of an entry re-sends the same
-      // wire `messageID` — without it the retry mints a new one, the request
-      // body differs, and the proxy's 60s body-hash dedupe delivers a prompt
-      // that already reached opencode a second time.
-      const merged = mergeQueuedBatch(batch);
-      if (!merged) return;
-      await handleSend(merged.text, merged.files, merged.mentions, merged.overrides);
-    },
-    [handleSend, commands],
-  );
-
-  const queueDrain = useMessageQueueDrain({
-    sessionId,
-    gates: queueGates,
-    send: sendQueuedBatch,
-  });
-
-  // A NEW prompt lifts the stop's pause — the same rule the local drain already
-  // applies to its own lane (`shouldClearPause`): anything that grows the queue
-  // is the user saying "I want this sent". The SERVER released its hold in the
-  // POST; without this the strip would stay dimmed, and the local lane paused,
-  // over a stop the user has already moved on from.
-  const serverQueueLengthRef = useRef(0);
-  useEffect(() => {
-    const length = queueRows.queued.length;
-    if (length > serverQueueLengthRef.current) queueDrain.resume();
-    serverQueueLengthRef.current = length;
-  }, [queueRows.queued.length, queueDrain]);
-
   // NOTE: no client-side "auto-continue after approval" here — resuming the
   // agent when nobody was holding the gated call is the RESOLVE ENDPOINT's job
   // (server-side continueSession delivery in r7.ts), so it works with zero
@@ -3761,13 +3653,13 @@ export function SessionChat({
     // this the interrupt is followed a beat later by exactly the message the
     // user was trying to get ahead of.
     //
-    // BOTH queues, because the prompts are not in this tab any more. Pausing
-    // only the local drain leaves the server's admission gate free to deliver
-    // the queued prompt about one scheduler tick after the abort clears turn
-    // authority — the precise outcome this pause exists to prevent. The hold is
+    // ONE hold, on the server, because the queue is not in this tab any more.
+    // Pausing a browser drain never reached the admission gate, which would
+    // deliver the queued prompt about one scheduler tick after the abort
+    // cleared turn authority — the precise outcome the stop exists to prevent
+    // — and it left every OTHER tab's view of the queue running. The hold is
     // released by an action, never a timer: any new send, or "send now" on a
     // row (see `holdSessionPrompts`).
-    queueDrain.pause();
     void promptInbox.hold(true).catch((error) => {
       // Swallowing this hid a real outcome: the rows stay `waiting` and due, so
       // the admission gate can still deliver one a moment after the abort
@@ -3780,7 +3672,7 @@ export function SessionChat({
     // `stopThenSendNow` to await — see that function's doc for why.
     issueSessionCancel();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, abortSession, queueDrain, issueSessionCancel, promptInbox.hold]);
+  }, [sessionId, abortSession, issueSessionCancel, promptInbox.hold]);
 
   /**
    * The per-row action: end the current turn if one is running, then send that
@@ -3805,25 +3697,18 @@ export function SessionChat({
           return pendingAbortSettlementRef.current.get(sessionId) ?? Promise.resolve(null);
         },
         waitIdle: () => waitForSessionIdle(sessionId),
-        resumeQueue: () => queueDrain.resume(),
-        // The row's OWN holder dispatches it. `queueDrain.dispatchNow` looks the
-        // id up in the browser store, so handing it a server `prompt_id` finds
-        // nothing and returns silently — after the stop has already killed the
-        // running turn, and with the server then admitting the OLDEST prompt
-        // instead of the one the user pointed at. `retry` is the inbox's own
-        // "run this one next": it promotes the row past the ordering gate and
-        // releases the hold the stop just set.
+        // `retry` is the inbox's own "run this one next", and it is the WHOLE
+        // dispatch: it promotes the row past the ordering gate and only THEN
+        // releases the session's hold, so the prompt the user pointed at is
+        // the one that runs and the rest of the queue follows it. Releasing
+        // the hold separately first is what made the oldest row run instead.
         dispatch: async () => {
-          if (queueRows.localIds.has(id)) {
-            await queueDrain.dispatchNow(id);
-            return;
-          }
           await promptInbox.retry(id).catch(() => errorToast('Could not send that prompt'));
         },
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, handleStop, queueDrain, queueRows.localIds, promptInbox.retry],
+    [sessionId, handleStop, promptInbox.retry],
   );
 
   // ---- Triple-ESC to stop ----
@@ -3935,21 +3820,12 @@ export function SessionChat({
   // the old executeCommand.isPending check from the TQ mutation).
   const commandInFlightRef = useRef(false);
 
-  // Publish `handleCommand` for `sendQueuedBatch`, which is declared above it
-  // and therefore cannot name it directly (temporal dead zone). Written on
-  // every commit so the queue always dispatches through the CURRENT closure,
-  // not one captured when the callback was first created.
-  useEffect(() => {
-    handleCommandRef.current = handleCommand;
-    handleSendRef.current = handleSend;
-  });
-
   const handleCommand = useCallback(
     (cmd: Command, args?: string, split?: { before: string; after: string }): boolean => {
       // Returns whether the command was DISPATCHED, not whether it succeeded.
-      // The queue needs that distinction: a swallowed dispatch that reports
-      // success has its entry marked complete and deleted, so the command is
-      // lost with nothing on screen to say so. See `sendQueuedBatch`.
+      // The composer needs that distinction: a swallowed dispatch that reports
+      // success clears the draft, so the command is lost with nothing on screen
+      // to say so.
       if (commandInFlightRef.current) return false;
       setCommandError(null);
 
@@ -4673,34 +4549,30 @@ export function SessionChat({
                     setFailedStartDraft(null);
                   }
                 }}
-                prefill={
-                  rewindDraft
-                    ? {
-                        text: rewindDraft.text,
-                        id: rewindDraft.id,
-                        mode: 'replace',
-                      }
-                    : failedStartDraft
-                      ? {
-                          text: failedStartDraft.text,
-                          files: failedStartDraft.files,
-                          id: failedStartDraft.id,
-                          mode: 'merge',
-                        }
-                      : sessionPrefill
-                        ? { text: sessionPrefill.text, id: sessionPrefill.id, mode: 'merge' }
-                        : null
-                }
+                prefill={composerPrefill}
+                onPrefillApplied={handlePrefillApplied}
                 attachRequestId={attachRequestId}
                 isBusy={isBusy}
+                // The ONE projection, not the 300 ms busy fade: it is what
+                // decides whether a `/` command may be dispatched, and a fade
+                // timer that has already lapsed would let one abort a live turn.
+                // `effectiveBusy` folds in optimistic compaction (not a turn, so
+                // not in `working`), and `hasRetryingAssistant` covers the
+                // window where a retryable provider error keeps the turn alive
+                // with no busy frame to show for it.
+                sessionWorking={effectiveBusy || hasRetryingAssistant}
+                // Gates `/` COMMANDS only. A prompt typed at a sleeping box is
+                // an inbox row and goes out when the box answers; a command has
+                // no row, and `runCommand` swallows it silently until the
+                // runtime is switched.
+                runtimeReady={runtimeReady}
                 rewind={composerRewind}
                 queuedMessages={queuedMessages}
                 failedQueuedMessages={failedQueuedMessages}
                 queueInFlightIds={queueInFlightIds}
-                queuePaused={queueDrain.paused || queueRows.held}
+                queuePaused={queueRows.held}
                 queueIsRunning={isBusy}
                 onSendQueuedMessageNow={handleQueueSendNow}
-                onQueueMessage={handleQueueMessage}
                 onRemoveQueuedMessage={handleRemoveQueuedMessage}
                 onRetryQueuedMessage={handleRetryQueuedMessage}
                 onStop={handleStop}
@@ -4747,7 +4619,6 @@ export function SessionChat({
                 // The shell can now render on a cached transcript alone, i.e. before
                 // the sandbox answers — so sending has to be gated separately from
                 // reading. See sessionComposerReadiness.
-                runtimeReady={composerReadiness.ready}
                 notice={composerReadiness.notice}
               />
               <ConfirmDialog

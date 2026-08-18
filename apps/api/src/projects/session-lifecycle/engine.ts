@@ -981,7 +981,65 @@ export async function executeQueuedContinue(
     }
   }
 
-  if (await queuedContinueHasStagedRevert(row)) {
+  // DID THIS ROW WAIT?
+  //
+  // `payload.remintOnDelivery` is the DURABLE half of "this row waited".
+  // `result.admission_reason` is the display half, and it is cleared wholesale
+  // by `retryInboxPrompt` — which runs on "send now", i.e. exactly on the row
+  // that waited longest. Reading only the display half sent that row under the
+  // id minted when the user pressed Enter, and OpenCode read it as answered.
+  //
+  // Read here, above the staged-revert guard, because both questions turn on
+  // it: which wire id this attempt delivers with, and whether this row is
+  // allowed to commit a revert.
+  const waited =
+    payload.remintOnDelivery === true ||
+    typeof (row.result as { admission_reason?: unknown } | null)?.admission_reason === 'string';
+  // `result.promoted` is written by `retryInboxPrompt` alone — the user pointed
+  // at ONE row and pressed "send now". `requeueForAdmission` merges into
+  // `result`, so it survives the row waiting again behind a live turn.
+  const promoted = (row.result as { promoted?: unknown } | null)?.promoted === true;
+
+  // WHICH ROW MAY COMMIT A STAGED REVERT.
+  //
+  // The guard exists (JAY-600/T22) for the approval-resume / trigger backstop:
+  // a continue queued BEFORE the user staged a revert is void for the rewound
+  // trajectory, and delivering it commits the truncation under a prompt the
+  // user wrote against the trajectory that is being discarded.
+  //
+  // The REPLACEMENT prompt is the exact opposite. "Edit from this message"
+  // stages the revert and prefills the composer with that message; the prompt
+  // the user then sends IS what commits it. OpenCode truncates on the next
+  // delivery, from any producer — that is the whole mechanism. Running the
+  // guard on it marked the row `succeeded/skipped:staged_revert`, and
+  // `listInboxPrompts` omits succeeded rows, so the replacement prompt
+  // disappeared with no error, no turn and no reply — and so did every prompt
+  // after it, because nothing else clears `info.revert`.
+  //
+  // `payload.clientMessageId` does NOT separate those two: a composer prompt
+  // queued while the session was busy carries one too. Whether the row WAITED
+  // does. A revert can only be staged on an IDLE session (`session.rewind()`
+  // refuses a working one), so a row that was refused admission or held by Stop
+  // predates the idle window this revert was staged in; the replacement prompt
+  // is sent INTO that window and goes out on its first claim. `promoted` beats
+  // both — "send now" names one row explicitly, and without that escape a
+  // refused row could never be retried, because retrying re-stamps the very
+  // marker the refusal reads.
+  const mayCommitStagedRevert = !!payload.clientMessageId && (promoted || !waited);
+  if (!mayCommitStagedRevert && (await queuedContinueHasStagedRevert(row))) {
+    // A COMPOSER prompt is failed, never dropped. `listInboxPrompts` keeps
+    // `failed`/`dead_lettered` rows, so the user's text stays on screen with
+    // its reason and a retry button that promotes it past this guard. Silently
+    // marking it succeeded is how the message was lost. `markCommandFailed`
+    // does not park a session for an inbox row, so nothing else is taken away.
+    if (payload.clientMessageId) {
+      await markCommandFailed(
+        row.commandId,
+        'queued before the session was rewound — send it again to run it',
+        { retryable: false, attempts: row.attempts, sessionId: row.sessionId },
+      );
+      return 'failed';
+    }
     console.warn('[session-lifecycle] dropping queued continue — session has a staged revert', {
       sessionId: row.sessionId,
       commandId: row.commandId,
@@ -1011,14 +1069,6 @@ export async function executeQueuedContinue(
   // Both re-mint against the root's current newest id, from ONE read that also
   // answers "did this prompt already run?".
   const redeliveries = Number(payload.redeliveries ?? 0);
-  // `payload.remintOnDelivery` is the DURABLE half of "this row waited".
-  // `result.admission_reason` is the display half, and it is cleared wholesale
-  // by `retryInboxPrompt` — which runs on "send now", i.e. exactly on the row
-  // that waited longest. Reading only the display half sent that row under the
-  // id minted when the user pressed Enter, and OpenCode read it as answered.
-  const waited =
-    payload.remintOnDelivery === true ||
-    typeof (row.result as { admission_reason?: unknown } | null)?.admission_reason === 'string';
   let wireMessageId = payload.wireMessageId;
   if (payload.wireMessageId && (redeliveries > 0 || waited)) {
     const deliveredIds = [payload.wireMessageId, payload.redeliveredMessageId].filter(

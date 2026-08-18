@@ -849,6 +849,41 @@ test('createSessionPrompt POSTs the submission name, the wire id, the parts and 
   });
 });
 
+test('createSessionPrompt asks for a server re-mint only when the caller says its id is stale', async () => {
+  // A caller that minted its id somewhere the live transcript was unreadable
+  // (the one-time localStorage migration) says so, and the server re-mints
+  // against the live root before delivering. Absent by default: an ordinary
+  // send mints against a transcript it can see, and re-minting it would be a
+  // sandbox read on the delivery path of every message.
+  nextResponse = {
+    status: 202,
+    body: { prompt_id: 'cmd-1', state: 'queued', message_id: 'msg_a', deduped: false },
+  };
+  await createSessionPrompt('P1', 'S1', {
+    clientMessageId: 'q_1',
+    messageId: 'msg_a',
+    parts: [{ type: 'text', text: 'say hi' }],
+    remintOnDelivery: true,
+  });
+  expect(last().body).toEqual({
+    client_message_id: 'q_1',
+    message_id: 'msg_a',
+    parts: [{ type: 'text', text: 'say hi' }],
+    remint_on_delivery: true,
+  });
+
+  await createSessionPrompt('P1', 'S1', {
+    clientMessageId: 'q_2',
+    messageId: 'msg_b',
+    parts: [{ type: 'text', text: 'say hi' }],
+  });
+  expect(last().body).toEqual({
+    client_message_id: 'q_2',
+    message_id: 'msg_b',
+    parts: [{ type: 'text', text: 'say hi' }],
+  });
+});
+
 test('createSessionPrompt reports a dedupe rather than hiding it', async () => {
   // Same `clientMessageId` = the SAME durable row, enforced by a unique index.
   // The caller needs to know it re-named an existing prompt instead of adding

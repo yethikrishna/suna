@@ -99,6 +99,11 @@ export interface QueuedContinueSessionPayload {
    * a hold, a "send now"/retry — and NEVER cleared, because "was overtaken
    * once" stays true. It lives in the payload rather than in `result` because
    * `result` is replaced wholesale by the retry that most needs this fact.
+   *
+   * A PRODUCER may also set it at enqueue time (`remint_on_delivery` on
+   * `POST .../prompts`) when it knows its id was minted somewhere the live
+   * transcript could not be read — the one-time localStorage migration, which
+   * mints at page load for a message typed before the last reload.
    */
   remintOnDelivery?: boolean;
   parts?: PromptPartWire[];
@@ -126,6 +131,9 @@ export interface EnqueueContinueSessionCommandInput {
   // ── Prompt-inbox fields; see QueuedContinueSessionPayload. ──
   clientMessageId?: string;
   wireMessageId?: string;
+  /** The producer already knows its wire id is stale — see
+   *  `QueuedContinueSessionPayload.remintOnDelivery`. */
+  remintOnDelivery?: boolean;
   parts?: PromptPartWire[];
   overrides?: PromptOverridesWire;
 }
@@ -142,6 +150,7 @@ export function buildContinueSessionCommandValues(input: EnqueueContinueSessionC
     // "came from the inbox with no id", which is a different thing.
     ...(input.clientMessageId ? { clientMessageId: input.clientMessageId } : {}),
     ...(input.wireMessageId ? { wireMessageId: input.wireMessageId } : {}),
+    ...(input.remintOnDelivery ? { remintOnDelivery: true } : {}),
     ...(input.parts ? { parts: input.parts } : {}),
     ...(input.overrides ? { overrides: input.overrides } : {}),
   };

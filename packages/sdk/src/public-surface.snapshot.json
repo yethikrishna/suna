@@ -2045,14 +2045,12 @@
     "toInternalUrl"
   ],
   "./message-queue": [
-    "claimBatch",
     "claimNext",
     "completeInFlight",
     "createSessionQueue",
     "editQueued",
     "enqueue",
     "failInFlight",
-    "inFlightIdsOf",
     "removeQueued",
     "reorderQueued",
     "retryFailed"

@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import type { SessionPrompt } from '@kortix/sdk';
-import type { WebQueuedMessage } from '@/stores/message-queue-store';
 import { projectQueueRows } from './queue-projection';
 
 function prompt(overrides: Partial<SessionPrompt> = {}): SessionPrompt {
@@ -19,43 +18,28 @@ function prompt(overrides: Partial<SessionPrompt> = {}): SessionPrompt {
   };
 }
 
-function local(overrides: Partial<WebQueuedMessage> = {}): WebQueuedMessage {
-  return {
-    id: 'local-1',
-    clientMessageId: 'q_local_1',
-    text: 'typed while booting',
-    attempts: 0,
-    ...overrides,
-  } as WebQueuedMessage;
-}
-
-const noLocal = { pending: [], failed: [] };
-
 describe('projectQueueRows', () => {
-  test('server rows land in the queue, and a delivered-in-flight one is locked', () => {
+  test('server rows land in the queue, and a delivering one is locked', () => {
     const projection = projectQueueRows({
       prompts: [
         prompt({ prompt_id: 'a' }),
         prompt({ prompt_id: 'b', state: 'delivering' }),
         prompt({ prompt_id: 'c', state: 'failed', last_error: 'delivery outcome: failed' }),
       ],
-      local: noLocal,
-      localInFlightIds: [],
     });
 
     expect(projection.queued.map((r) => r.id)).toEqual(['a']);
     expect(projection.inFlightIds).toEqual(['b']);
     expect(projection.failed).toEqual([
-      { id: 'c', text: 'say hi', lastError: 'delivery outcome: failed', source: 'server' },
+      { id: 'c', text: 'say hi', lastError: 'delivery outcome: failed' },
     ]);
   });
 
   test('a `waiting` row is still a queued row — waiting is WHY, not a lane', () => {
     const projection = projectQueueRows({
       prompts: [prompt({ state: 'waiting', reason: 'turn_active' })],
-      local: noLocal,
-      localInFlightIds: [],
     });
+
     expect(projection.queued).toHaveLength(1);
     expect(projection.held).toBe(false);
   });
@@ -63,54 +47,39 @@ describe('projectQueueRows', () => {
   test('a HELD row reports the hold, so the strip can say the queue is stopped', () => {
     const projection = projectQueueRows({
       prompts: [prompt({ state: 'waiting', reason: 'held' })],
-      local: noLocal,
-      localInFlightIds: [],
     });
+
     expect(projection.held).toBe(true);
   });
 
-  test('local entries are rendered TOO — dropping them is how a queued message vanishes', () => {
-    // The instant boot shell writes here (its first message is still in the
-    // start stash, not the inbox), and so does a `/` command queued mid-turn.
+  test('the order the server listed them in is the order rendered', () => {
+    // The inbox delivers oldest row first, so the strip must not re-sort: a
+    // list that disagrees with delivery order is a list that lies about what
+    // runs next.
     const projection = projectQueueRows({
-      prompts: [prompt({ prompt_id: 'server-1' })],
-      local: { pending: [local()], failed: [] },
-      localInFlightIds: [],
+      prompts: [prompt({ prompt_id: 'first' }), prompt({ prompt_id: 'second' })],
     });
 
-    expect(projection.queued.map((r) => r.id)).toEqual(['local-1', 'server-1']);
-    expect(projection.localIds.has('local-1')).toBe(true);
-    expect(projection.localIds.has('server-1')).toBe(false);
+    expect(projection.queued.map((r) => r.id)).toEqual(['first', 'second']);
   });
 
-  test('a queued `/` command renders as the command, not as its bare arguments', () => {
-    const projection = projectQueueRows({
-      prompts: [],
-      local: { pending: [local({ text: '', command: { name: 'compact' } })], failed: [] },
-      localInFlightIds: [],
-    });
-    expect(projection.queued[0].text).toBe('/compact');
-  });
-
-  test('a failed local entry keeps its error, and its own retry lane', () => {
-    const projection = projectQueueRows({
-      prompts: [],
-      local: { pending: [], failed: [local({ lastError: 'Command /x is no longer available' })] },
-      localInFlightIds: [],
-    });
-    expect(projection.failed[0]).toMatchObject({
-      id: 'local-1',
-      lastError: 'Command /x is no longer available',
-      source: 'local',
+  test('an empty inbox projects an empty strip, not a held one', () => {
+    expect(projectQueueRows({ prompts: [] })).toEqual({
+      queued: [],
+      failed: [],
+      inFlightIds: [],
+      held: false,
     });
   });
 
-  test('both in-flight sets are locked, not just the server one', () => {
-    const projection = projectQueueRows({
-      prompts: [prompt({ prompt_id: 'server-1', state: 'delivering' })],
-      local: { pending: [local()], failed: [] },
-      localInFlightIds: ['local-1'],
-    });
-    expect(projection.inFlightIds.sort()).toEqual(['local-1', 'server-1']);
+  test('there is no local lane left to render', () => {
+    // REWRITTEN with the browser queue's deletion. `projectQueueRows` used to
+    // merge a second, tab-local list and tag every row with its origin, so a
+    // remove/retry/send-now could address the store that held it. One list
+    // means one holder: every row id is a server `prompt_id`.
+    const projection = projectQueueRows({ prompts: [prompt({ prompt_id: 'server-1' })] });
+
+    expect(Object.keys(projection).sort()).toEqual(['failed', 'held', 'inFlightIds', 'queued']);
+    expect(projection.queued[0]).toEqual({ id: 'server-1', text: 'say hi' });
   });
 });

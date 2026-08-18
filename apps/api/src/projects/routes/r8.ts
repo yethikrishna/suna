@@ -718,6 +718,12 @@ projectsApp.openapi(
       idempotencyKey,
       clientMessageId,
       wireMessageId: messageId,
+      // OPT-IN, and only one producer sets it: the localStorage migration,
+      // whose id is minted at page load — against a transcript this tab has
+      // not read yet — for a message the user typed before their last reload.
+      // The drain re-mints against the live root before delivering, which is
+      // the only place that can place the id correctly.
+      ...(body.remint_on_delivery === true ? { remintOnDelivery: true } : {}),
       parts,
       overrides,
     });

@@ -28,14 +28,20 @@ describe('a queue retry re-sends ONE delivery, not two', () => {
   // reported failure would be delivered twice, and the second delivery aborts
   // the turn the first one started. `clientMessageId` is what makes a retry the
   // same submission.
-  test('the queue dispatch carries the entry stable key into handleSend', () => {
-    // The key itself is packed by `mergeQueuedBatch` (overrides.clientMessageId
-    // = the head entry's — asserted behaviorally in queued-batch.test.ts); this
-    // proves the dispatch hands those overrides to `handleSend` unmodified.
-    const dispatch = between('const sendQueuedBatch = useCallback(', 'const queueDrain =');
+  test('a retry re-runs the SERVER row, so the key is never re-derived here', () => {
+    // REWRITTEN with the browser drain's deletion. There used to be a local
+    // dispatch that merged a claimed batch and handed `overrides.clientMessageId`
+    // to `handleSend`, and the risk it carried was that the merge dropped the
+    // key and the retry minted a new one. There is no local dispatch: a retry is
+    // `POST .../prompts/:id/retry`, which re-queues the row UNDER ITS ORIGINAL
+    // wire id server-side, so the key cannot be re-derived wrongly by a client.
+    const retry = between(
+      'const handleRetryQueuedMessage = useCallback(',
+      '// Stop the transcript polling fallback',
+    );
 
-    expect(dispatch).toContain('mergeQueuedBatch(batch)');
-    expect(dispatch).toContain('handleSend(merged.text, merged.files, merged.mentions, merged.overrides)');
+    expect(retry).toContain('promptInbox.retry(id)');
+    expect(retry).not.toContain('clientMessageId');
   });
 
   test('handleSend accepts it as an override rather than minting its own', () => {

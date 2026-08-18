@@ -12,6 +12,21 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-18 — session `server-truth-m15` — sub-session addendum (G1–G3) — DONE
+
+Essentia incident 2026-08-18 (child session looping; steer rendered at top).
+**G3 (SDK).** `groupMessagesIntoTurns` orders by `time.created` (box clock,
+stamped at persistence) with wire id as the tiebreak; untimed messages keep
+input order (a weak order, stable sort) so unstamped hosts see the old
+sequential behaviour. NEW export `compareMessagesForDisplay`
+(`core/turns/grouping.ts`); `MessageInfoLike.time?` widened (additive). Both
+snapshots re-recorded (+1 name each). Server halves: G1 proxy-side wire-id
+placement (`apps/api/src/sandbox-proxy/prompt-wire-id-repair.ts`) and G2
+per-session runaway guard (`apps/kortix-sandbox-agent-server`).
+Gates: sdk 2264/0 + typecheck. Shippable: **YES**.
+
+---
+
 ### 2026-08-18 — session `server-truth-m15` — steps C + D — DONE
 
 **Step C (SDK half).** `applyOptimisticAbort` (`react/use-session-send.ts`) and

@@ -21,6 +21,26 @@ linked, not inlined.
 
 ## Register
 
+### A request/response log must never cap what it captures (2026-08-18)
+
+**When:** persisting or rendering a captured request/response body (gateway
+traces, debug logs, any "what was actually sent/received" viewer). Do not add
+a byte/char cap that silently swaps in `{truncated, bytes, preview}` or a
+"...(truncated)" marker — a capped log lies about what happened and there is
+no way for the reader to know how much is missing. If two layers each cap
+independently (backend storage, then frontend syntax highlighting), the
+combination is even harder to notice.
+*Incident:* the gateway's `capture()` (256 KiB) and `relayStream`'s response
+preview (256 KiB) both truncated request/response bodies before storage, and
+the web Logs viewer then ran the residue through Shiki's highlighter, which
+separately clamps at 50,000 chars. A 1.66 MB request showed as a
+`{bytes, preview}` stub cut a second time. Fixed in #6523: full capture,
+uncapped; `HighlightedCode` takes an `unbounded` flag for viewers whose whole
+purpose is showing complete content, keeping the clamp elsewhere as a perf
+guard for live-streamed re-highlighting.
+*Enforcer:* `packages/llm-gateway` handler/streaming tests assert full-length
+capture; `shiki-highlighter.test.ts` pins `unbounded` bypassing the clamp.
+
 ### A shared connector catalog needs one canonical credential scope (2026-08-18)
 
 **When:** rematerializing a credential-dependent connector catalog. Only the
@@ -517,3 +537,74 @@ the resolver returns one constant, so no size can reproduce 90,000 again.
 metric that counted it. `kortix.probe_timeout` was left pinned to false on
 every span — a dashboard built on it looks healthy by construction.
 *Incident:* PR #6473, merged `7e8a56badaef80374a189e0e427a08eb06b44697`.
+
+### A user-visible string is a shared resource; file ownership cuts through it (2026-08-18)
+
+**When:** any change that renames a label, error message, remedy or flag name —
+especially work split across parallel agents by file ownership.
+
+Renaming the network-boundary flag from "Network boundary without Platinum" to
+"Network boundary in-guest shim" touched EIGHT files: the feature-flag registry
+(which is what the Feature-flags screen actually renders), two route error
+bodies, a provisioning-error remedy, its test, two docs pages and the web
+constant. An agent that owned only the web file renamed it there and nowhere
+else. Nothing failed — no typecheck, no test, no lint — and the result would
+have shipped a UI telling users to turn on a flag by a name the screen never
+displays. The one guard that existed was a source-text assertion in a file the
+agent did not own, which is what eventually caught a sibling change.
+
+The rule: before renaming any user-visible string, grep the OLD string across
+the whole repo (`--include='*.ts' --include='*.tsx' --include='*.md'
+--include='*.mdx' --include='*.json'`) and change every hit in ONE commit. Then
+grep it again and expect zero. A partial rename is worse than no rename: the old
+name at least matched the UI.
+
+Corollary for parallel agents: **file ownership is the wrong boundary for a
+shared string.** Assign the whole rename to one agent, or do it yourself after
+the fan-out lands. Two other same-shaped catches in the same batch — a test
+pinning the exact `networkBoundaryEchoNotice(...)` call site, and one pinning
+the exact `sudo -u kortix --` invocation — both lived in files the changing
+agent did not own, and both only surfaced in CI. Reproducing CI's own command
+locally (`pnpm --filter ./packages/** --filter ./apps/** … test`) found them in
+one pass instead of one CI round-trip each.
+*Incident:* PR #6511, caught in review before merge; two CI round-trips spent.
+
+### `tests-release`'s own load can knock staging over, then the edge worker hides it as "maintenance" (2026-08-18)
+
+**When:** running `pnpm test -- --target-full` (the `full suite + quality
+gates` release gate) shortly after a fresh `main` → `staging` promotion.
+
+Two consecutive attempts of the v0.13.0 release gate failed the same way, not
+with flaky test assertions but with real `MAINTENANCE_MODE` 503s: 36
+occurrences across a 40-minute window (15:11–15:51) in attempt 1, cascading
+into unrelated failures across accounts, billing, admin-console and
+sandbox-template journeys. `target-browser-full` finished in 2394.0s and
+failed; `target-api-full` (439 flows, 1681 cases) never finished at all before
+the 90-minute cap killed the job. `staging-api`'s own `/health` showed
+`started_at` 21 minutes after the instability began — i.e. the backend task
+itself went unhealthy and ECS replaced it mid-run.
+
+The `MAINTENANCE_MODE` response is not a real maintenance flag — it is
+`infra/cloudflare/workers/api-router/worker.mjs`'s `AUTOMATIC_MAINTENANCE`
+fallback (`worker.mjs:251-273`): on ANY single fetch failure or 502/503/504
+from the real origin, the edge worker rewrites that one response into a
+generic "Kortix is temporarily unavailable... maintenance" 503, per request.
+It is a reasonable UX choice for real end-user traffic, but it means a genuine
+backend capacity problem during a test run is invisible in the log as "backend
+overloaded" — it reads as "scheduled maintenance," which sent this
+investigation looking for a deploy or a flag before the real cause (a single
+staging ECS task under-provisioned for the full release suite's own real
+concurrent traffic) was found.
+
+**The rule: don't diagnose `MAINTENANCE_MODE` at face value.** Check whether
+`X-Maintenance-Mode: blocking` correlates with the backend's own health/restart
+timestamps before assuming an intentional maintenance window — it is far more
+likely the edge worker masking a real origin failure. And: running the full
+release suite immediately after redeploying the target it tests is a
+self-inflicted-outage risk on a single-task environment — the fresh task has no
+warm connection pools and no capacity headroom, and the suite's own real load
+is enough to tip it over. Give staging-api real headroom (task count/size) for
+release runs, or the gate keeps eating its own tail.
+*Incident:* v0.13.0 release (PR #6520), two `tests-release` attempts lost to
+this before a third succeeded; capacity fix not yet made — staging still runs
+this gate at capacity risk.

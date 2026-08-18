@@ -12,7 +12,6 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
-<<<<<<< HEAD
 ### 2026-08-18 — session `token-information-architecture` — `listAccountTokens` takes `{ mine: true }` — DONE
 
 **Files:** `core/rest/projects-client/tokens.ts` (+ new `tokens.test.ts`),
@@ -105,7 +104,9 @@ change touches run 115 pass / 0 fail.
 re-snapshots. The narrowing is intentional and documented above.
 
 ||||||| df62a2beae
-=======
+
+---
+
 ### 2026-08-18 — session `server-truth-m15` — sub-session addendum (G1–G3) — DONE
 
 Essentia incident 2026-08-18 (child session looping; steer rendered at top).
@@ -283,7 +284,6 @@ fail.
 
 ---
 
->>>>>>> origin/main
 ### 2026-08-18 — session `server-truth-m1` — step 10: the proxy names the hop that failed — DONE
 
 **Files:** `core/session/health.ts` (+`core/session/session.test.ts`),

@@ -128,6 +128,7 @@ describe('inspectOpencodeRoot — could-not-tell is its own answer', () => {
       hasMessages: true,
       lastTurnIncomplete: true,
       turnInFlight: true,
+      orphanedPrompt: false,
       known: true,
     });
   });
@@ -146,6 +147,37 @@ describe('inspectOpencodeRoot — could-not-tell is its own answer', () => {
     const result = await inspectOpencodeRoot(BASE, WORKSPACE, SESSION);
     expect(result.known).toBe(false);
     expect(result.lastTurnIncomplete).toBe(false);
+    expect(result.orphanedPrompt).toBe(false);
+  });
+
+  test('a TRAILING USER MESSAGE is an ORPHANED PROMPT, not a turn in flight', async () => {
+    // THE PHANTOM-BUSY THIS FIELD ENDS. A respawned opencode keeps the
+    // persisted user message and loses the in-memory queue, so the root's last
+    // message is a prompt nothing will ever answer. Reporting that as
+    // `turnInFlight` renewed the control plane's turn grant on every reaper
+    // pass — for ever — and the session rendered "working" with nothing
+    // working. It is "a prompt was dropped", which the inbox can repair by
+    // redelivering it.
+    stubFetch([{ info: { role: 'user', time: { completed: 1 } } }]);
+    const result = await inspectOpencodeRoot(BASE, WORKSPACE, SESSION);
+    expect(result).toEqual({
+      hasMessages: true,
+      lastTurnIncomplete: false,
+      turnInFlight: false,
+      orphanedPrompt: true,
+      known: true,
+    });
+  });
+
+  test('an EMPTY root has no orphaned prompt', async () => {
+    stubFetch([]);
+    expect(await inspectOpencodeRoot(BASE, WORKSPACE, SESSION)).toEqual({
+      hasMessages: false,
+      lastTurnIncomplete: false,
+      turnInFlight: false,
+      orphanedPrompt: false,
+      known: true,
+    });
   });
 });
 
@@ -159,9 +191,16 @@ describe('opencodeTurnInFlight — the reload gate reads this', () => {
     expect(await opencodeTurnInFlight(BASE, WORKSPACE, SESSION)).toBe(true);
   });
 
-  test('a queued command whose newest message is the user remains active', async () => {
+  test('a trailing user message is NO LONGER in flight — it is an orphaned prompt', async () => {
+    // REWRITTEN, not deleted. This used to assert `true`, on the theory that a
+    // queued user message still owns the runtime. It does not: opencode's
+    // in-memory queue does not survive a respawn, so the persisted user message
+    // outlives every process that could answer it, and reporting it busy is
+    // what made a session render "working" for ever. The reload gate now
+    // ALLOWS a restart here, which is exactly what unsticks it, and the inbox
+    // redelivers the prompt (see `orphanedPrompt`).
     stubFetch([{ info: { role: 'user', time: { completed: 1 } } }]);
-    expect(await opencodeTurnInFlight(BASE, WORKSPACE, SESSION)).toBe(true);
+    expect(await opencodeTurnInFlight(BASE, WORKSPACE, SESSION)).toBe(false);
   });
 
   test('an unreadable box is NULL, so the gate refuses instead of restarting', async () => {
@@ -343,18 +382,23 @@ describe('observeOpencodeDelivery — WHY the turn is not in flight', () => {
     expect(await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toEqual({
       inFlight: false,
       end: 'failed',
+      // An assistant message exists, so the prompt WAS answered — badly, but
+      // answered. Redelivering it would run the user's message twice.
+      orphanedPrompt: false,
     });
   });
 
   test('a delivered prompt that produced nothing on an idle root names no outcome', async () => {
     // The message landed, so it was not abandoned, and no assistant message
-    // says how it ended. An honest null beats an invented reason.
+    // says how it ended. An honest null beats an invented reason — but the
+    // prompt IS orphaned, which is a separate, provable fact.
     stubFetch([{ info: { id: 'msg_turn_1', role: 'user' } }], {
       sessionStatus: { [SESSION]: { type: 'idle' } },
     });
     expect(await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toEqual({
       inFlight: false,
       end: null,
+      orphanedPrompt: true,
     });
   });
 
@@ -413,7 +457,25 @@ describe('observeRequestedTurn — what /kortix/health?turn=1 answers with', () 
     stubFetch(assistantTurn(1_700_000_000));
     expect(
       await observeRequestedTurn(BASE, WORKSPACE, { sessionId: SESSION, messageId: null }),
-    ).toEqual({ inFlight: false, end: null });
+    ).toEqual({ inFlight: false, end: null, orphanedPrompt: false });
+  });
+
+  test('a root-scoped request DOES name `abandoned` for an orphaned prompt', async () => {
+    // The one ending a root-scoped read can prove: the root's last message is
+    // a user prompt nothing answered. That is not another turn's outcome, it is
+    // this root's own state, and it routes straight into the inbox's redelivery
+    // (`DAEMON_REPORTABLE_END_REASONS` already accepts `abandoned`).
+    stubFetch([{ info: { role: 'user', time: { completed: 1 } } }]);
+    expect(
+      await observeRequestedTurn(BASE, WORKSPACE, { sessionId: SESSION, messageId: null }),
+    ).toEqual({ inFlight: false, end: 'abandoned', orphanedPrompt: true });
+  });
+
+  test('an unreadable root-scoped request stays unknown', async () => {
+    stubFetch(null, { messagesOk: false });
+    expect(
+      await observeRequestedTurn(BASE, WORKSPACE, { sessionId: SESSION, messageId: null }),
+    ).toEqual({ inFlight: null, end: null });
   });
 
   test('/kortix/health?turn=1 puts the outcome on the wire as turn_end', async () => {
@@ -449,6 +511,32 @@ describe('observeRequestedTurn — what /kortix/health?turn=1 answers with', () 
 
     expect(body.turn_in_flight).toBe(false);
     expect(body.turn_end).toBe('failed');
+    expect(body.turn_orphaned_prompt).toBe(false);
+  });
+
+  test('/kortix/health?turn=1 reports a root-scoped orphaned prompt on the wire', async () => {
+    stubFetch([{ info: { role: 'user', time: { completed: 1 } } }]);
+    const router = createHealthRouter(
+      { projectTarget: '/workspace', autoClone: false, sandboxToken: '' } as never,
+      {
+        getState: () => 'ok',
+        getInternalUrl: () => BASE,
+        getPid: () => 1,
+        getActivePort: () => 4096,
+      } as never,
+      Date.now(),
+      { repoMaterializationError: null, timeline: [] },
+    );
+
+    const body = (await (
+      await router.request(`/?turn=1&turn_session_id=${SESSION}`)
+    ).json()) as Record<string, unknown>;
+
+    // `turn_in_flight: false` + `turn_end: 'abandoned'` is what the reaper reads
+    // as terminal-and-abandoned, which is the input its redelivery needs.
+    expect(body.turn_in_flight).toBe(false);
+    expect(body.turn_end).toBe('abandoned');
+    expect(body.turn_orphaned_prompt).toBe(true);
   });
 
   test('/kortix/health without ?turn=1 still answers nothing about turns', async () => {

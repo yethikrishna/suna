@@ -12,6 +12,127 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-18 — session `server-truth-m1` — step 7: the server-side prompt inbox (client half) — DONE
+
+**Files:** `packages/sdk/src/core/rest/projects-client/sessions.ts` (+`.test.ts`),
+`packages/sdk/src/core/client/kortix.ts` (`session().prompts` only),
+`packages/sdk/src/react/use-session-prompts.ts` (new),
+`packages/sdk/src/react/opencode.ts`, `packages/sdk/src/react/query-keys.ts`,
+`packages/sdk/src/react/use-opencode-sessions/messages.ts` (+`.test.ts`),
+both public-surface snapshots. API/daemon/web work in the same commit is outside
+this package.
+
+**What.** A user prompt is now a DURABLE SERVER ROW from the instant the composer
+accepts it, not a browser object. Before this the queue lived in `apps/web`'s
+localStorage, so a closed tab, a second device, or a crash lost queued messages
+silently, and two tabs on one session each believed their own list. Four readers
+(`createSessionPrompt` / `listSessionPrompts` / `deleteSessionPrompt` /
+`retrySessionPrompt`), the `kortix.session(p, s).prompts` facade, and one React
+hook (`useSessionPrompts`).
+
+**The client still mints the wire `messageID`, and that is deliberate.** OpenCode
+resolves "has this prompt already been answered?" by ID ORDER, so an id has to be
+placed above everything already in THAT session's transcript — and only a process
+holding the transcript can do it. The control plane mints one exactly once, on
+redelivery, after re-reading the transcript itself
+(`apps/api/src/projects/wire-message-id.ts`). Hosts that do not send through
+`promptOpenCodeMessage` need the same minter, so `submissionWireId` is now
+exported as **`mintSessionWireMessageId`**. `ascendingId('msg')` must never be
+substituted: it encodes the HIGH bits of the id clock, mis-sorts against every
+server id, and the turn silently never runs.
+
+**Two implementations of one ordering contract, held by a shared fixture.**
+`apps/api` has no `@kortix/sdk` dependency and this minter reads the browser sync
+store, so the API has its own. `tests/spec/wire-message-id.vectors.json` is
+asserted by BOTH suites — a divergence fails two, not zero. Verified as a
+positive control: corrupting one vector failed
+`packages/sdk/.../messages.test.ts` and `apps/api/src/projects/wire-message-id.test.ts`
+in the same edit.
+
+**Polling is conditional on purpose.** An empty inbox is the overwhelmingly common
+state; polling it would cost every idle session a request every 3s for nothing.
+`refetchInterval` is a function of the data, so it polls only while prompts
+exist. The delivery receipt arrives out of band — the transcript message IS the
+proof the prompt ran.
+
+Snapshots regenerated with `UPDATE_SURFACE_SNAPSHOT=1` /
+`UPDATE_TYPE_SURFACE_SNAPSHOT=1`; the diff is **purely additive** (0 deletions, 0
+renames): the four readers under `.`/`./react`, the six prompt types,
+`mintSessionWireMessageId`, `useSessionPrompts`, `SESSION_PROMPTS_POLL_MS`,
+`UseSessionPromptsResult`. No published name changed shape.
+
+Gates: `bun test --isolate src` 2156 pass / 0 fail; `tsc --noEmit` (+ examples)
+clean.
+
+**Amended 2026-08-18 — `holdSessionPrompts`, the queue's Stop.** Review found
+that Stop no longer held anything: `handleStop` paused the browser drain, which
+by then held no prompts, while the server's admission gate delivered the queued
+prompt about one scheduler tick after the abort cleared turn authority — the
+exact message the user pressed Stop to get ahead of. A queue that lives on the
+server needs its hold on the server, so the reader set gained
+`holdSessionPrompts(projectId, sessionId, held)` (facade `prompts.hold`, hook
+`hold`), and `retrySessionPrompt`'s doc now says what it actually is: the ONE
+primitive behind both "retry" and "send now", which promotes the row past the
+ordering gate and releases the hold. Snapshot diff again purely additive (one
+name, both entries). Gates: `bun test --isolate src` 2157 pass / 0 fail;
+`tsc --noEmit` clean.
+
+**Amended 2026-08-18 (second review round) — two client-half defects.**
+
+1. *A prompt could not come BACK into an open tab.* `useSessionPrompts` returned
+   `refetchInterval: false` at zero rows, and nothing invalidated the key from
+   SSE. But a prompt can ENTER this list with the tab doing nothing at all: the
+   reaper redelivers one whose turn never ran, and parking a box requeues its
+   in-flight prompt as `held` — a row that is durable, visible, and deliberately
+   not due, which the user releases by SEEING it. Both were invisible until a
+   full page load, as was a prompt queued from a second tab. An empty list now
+   polls at `SESSION_PROMPTS_IDLE_POLL_MS` (15s) and the query opts into focus
+   refetching, which the host disables globally. The cadence is a pure function,
+   `sessionPromptsPollMs`, tested rather than inlined in the hook.
+2. *An undo silently truncated the prompt it restored.* `deleteSessionPrompt`
+   returned `void`, so the host's undo re-POSTed `SessionPrompt.text` — a
+   2000-char server-side PREVIEW carrying no parts at all — dropping every
+   attachment and the agent/model/variant picks under a button that says "Undo".
+   The row is hard-deleted, so the DELETE response is the only place the full
+   body still exists: it now resolves with `RemovedSessionPrompt`
+   (`client_message_id`, `message_id`, `parts`, `overrides`), which is exactly
+   what `createSessionPrompt` takes back.
+
+Snapshot diff again purely additive (`RemovedSessionPrompt`,
+`SESSION_PROMPTS_IDLE_POLL_MS`, `sessionPromptsPollMs`; 0 deletions, 0 renames).
+Gates: `bun test --isolate src` 2160 pass / 0 fail; `tsc --noEmit` (+ examples)
+clean.
+
+**Amended 2026-08-18 (live-browser proof) — the lift never engaged in the real
+app, and every prompt sent inside 2 minutes of a reply was silently lost.**
+
+Found by driving the real UI on the worktree stack, not by a test: prompt B was
+accepted (`POST …/prompts` → `202`), reached OpenCode as a user message, and NO
+assistant message was ever created. Its wire id `msg_01410f1e6000…` sorted ~50s
+BELOW the assistant reply it had to follow (`msg_01411b7b8001…`), so OpenCode
+read the prompt as already answered. Reproduced deterministically a second time
+(prompt D, id `msg_0141715fe000…` vs reply `msg_01417f3c9001…`).
+
+Cause: `newestKnownMessageTime` took a plain max over `useSyncStore` messages,
+and every send inserts an OPTIMISTIC user message whose id comes from
+`ascendingId` — the HIGH hex digits of the id clock (`msg_1a01…`), ~2.8e13 above
+any real id, and still 12-hex-shaped. That optimistic id was always "newest",
+the `MAX_WIRE_ID_CLOCK_CORRECTION` bound then refused it, and the lift was
+therefore dead in every real session. Only the 2-minute backdate remained, so a
+prompt landed below any reply newer than 2 minutes.
+
+Fix: the bound moved INTO the scan — `newestKnownMessageTime(sessionId, ceiling)`
+skips an id it cannot place instead of letting it veto the correction for the
+whole session. A wrapped/garbage id is handled by the same rule, which is what
+the bound was for. No signature on the wire changed and the golden vectors are
+untouched (they carry one id each, so a ceiling filter cannot alter them).
+
+TDD: two tests written RED first — the optimistic-id case failed
+`Expected: > 1384425984000n, Received: 1381476864000n`, and the wall-clock
+restatement (reply 70s ago) failed by the same ~50s — then GREEN. Gates:
+`bun test --isolate src/react/use-opencode-sessions/messages.test.ts` 63 pass /
+0 fail; full SDK suite and typecheck below.
+
 ### 2026-08-17 — session `server-truth-m1` — step 2: `getSessionTurn`, the server-truth turn reader — DONE
 
 **Files:** `packages/sdk/src/core/rest/projects-client/sessions.ts` (+`.test.ts`),

@@ -46,7 +46,18 @@ export interface RootInspection {
   hasMessages: boolean
   /** Its last message is an assistant turn with no completion time. */
   lastTurnIncomplete: boolean
-  /** A queued user message or an incomplete assistant turn still owns runtime. */
+  /**
+   * The root's LAST message is a user prompt opencode never answered.
+   *
+   * A respawned opencode keeps the PERSISTED user message and loses the
+   * in-memory queue, so this state means "a prompt was dropped", not "a turn is
+   * running". It used to be reported as `turnInFlight`, which renewed the
+   * control plane's turn grant on every reaper pass — for ever. That is the
+   * phantom-busy this field ends: the control plane can now read it as an
+   * ending (`abandoned`) and redeliver the prompt from the inbox.
+   */
+  orphanedPrompt: boolean
+  /** An incomplete assistant turn still owns runtime. */
   turnInFlight: boolean
   /**
    * False when the read failed — opencode unreachable, non-2xx, unparseable.
@@ -67,6 +78,7 @@ export async function inspectOpencodeRoot(
   const unknown = {
     hasMessages: false,
     lastTurnIncomplete: false,
+    orphanedPrompt: false,
     turnInFlight: false,
     known: false,
   }
@@ -84,7 +96,13 @@ export async function inspectOpencodeRoot(
       }
     }>
     if (!Array.isArray(msgs) || msgs.length === 0)
-      return { hasMessages: false, lastTurnIncomplete: false, turnInFlight: false, known: true }
+      return {
+        hasMessages: false,
+        lastTurnIncomplete: false,
+        orphanedPrompt: false,
+        turnInFlight: false,
+        known: true,
+      }
     const last = msgs[msgs.length - 1]
     const lastTurnIncomplete = Boolean(
       last?.info?.role === 'assistant' &&
@@ -94,7 +112,10 @@ export async function inspectOpencodeRoot(
     return {
       hasMessages: true,
       lastTurnIncomplete,
-      turnInFlight: last?.info?.role === 'user' || lastTurnIncomplete,
+      orphanedPrompt: last?.info?.role === 'user',
+      // A trailing user message is deliberately NOT counted here any more —
+      // see `orphanedPrompt`.
+      turnInFlight: lastTurnIncomplete,
       known: true,
     }
   } catch {
@@ -170,6 +191,10 @@ export interface OpencodeDeliveryObservation {
   inFlight: boolean | null
   /** Set only when `inFlight === false`. */
   end: OpencodeTurnEnd | null
+  /** The prompt is on record with nothing answering it — see
+   *  {@link RootInspection.orphanedPrompt}. Diagnostic: the control plane acts
+   *  on `end`, and reads this to tell a dropped prompt from a quiet one. */
+  orphanedPrompt?: boolean
 }
 
 /**
@@ -244,8 +269,13 @@ export async function observeOpencodeDelivery(
     if (busy) return { inFlight: true, end: null }
     // The root is idle with this turn's assistant message still open: the husk a
     // killed model call leaves behind. With no assistant message at all, the
-    // prompt landed and produced nothing, and nothing here says why.
-    return { inFlight: false, end: assistants.length > 0 ? 'failed' : null }
+    // prompt landed and produced nothing, and nothing here says why — but that
+    // IS an orphaned prompt, and the inbox can act on it.
+    return {
+      inFlight: false,
+      end: assistants.length > 0 ? 'failed' : null,
+      orphanedPrompt: assistants.length === 0,
+    }
   } catch {
     return unreadable
   }

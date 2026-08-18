@@ -16,6 +16,7 @@ import { invalidateProviderCache } from '../../sandbox-proxy';
 import { db } from '../../shared/db';
 import { preserveEstablishedRuntime } from '../runtime-identity';
 import { settleOpenSandboxTurns, storedSandboxTurns } from '../sandbox-turn-lifecycle';
+import { requeueAbandonedPrompt } from '../session-lifecycle/redelivery';
 import { runtimeWakeInProgress } from '../session-lifecycle/runtime-wake-fence';
 import type { StopReason } from '../stop-reason';
 
@@ -194,6 +195,18 @@ export interface StoppedStateWrite {
  */
 export async function applyStoppedState(write: StoppedStateWrite): Promise<void> {
   const now = write.now ?? new Date();
+  // Read the turn authority BEFORE the statement below erases it: a delivery
+  // that was still in flight when the box parked never became a turn, and its
+  // inbox prompt has to be given back. After the erasure there is nothing left
+  // to identify those deliveries by.
+  const [before] = await db
+    .select({ metadata: sessionSandboxes.metadata })
+    .from(sessionSandboxes)
+    .where(eq(sessionSandboxes.sandboxId, write.sandboxId))
+    .limit(1);
+  const abandonedDeliveries = storedSandboxTurns(before?.metadata).filter(
+    (turn) => turn.state === 'delivering' && turn.messageId,
+  );
   await pauseComputeSession(write.sandboxId).catch((err) =>
     console.warn(
       `[reaper] pauseComputeSession failed for ${write.sandboxId}:`,
@@ -255,6 +268,30 @@ export async function applyStoppedState(write: StoppedStateWrite): Promise<void>
     // whose provider box is already off (see settleOpenSandboxTurns).
     await settleOpenSandboxTurns(tx, write.sandboxId, 'runtime_gone');
   });
+  // AFTER the commit: the requeued prompt must not race the authority it is
+  // replacing. Best-effort — a stop that is already durable must never be
+  // failed by a repair, and the reaper's own pass reaches the same rows.
+  //
+  // HELD, not due. This box was just parked — by the idle reaper, by a
+  // provider-confirmed stop, or by the user pressing stop. A due-now row would
+  // be claimed by the very next scheduler tick, and `continueSession` would
+  // wake the runtime the stop just shut down and bill the account for it, up to
+  // three times. The prompt is durable and visible in the composer's queue; the
+  // user's next send, or "send now" on the row, releases it.
+  for (const turn of abandonedDeliveries) {
+    await requeueAbandonedPrompt({
+      sessionId: write.sessionId,
+      wireMessageId: turn.messageId,
+      turnToken: turn.token,
+      endReason: 'runtime_gone',
+      hold: true,
+    }).catch((err) =>
+      console.warn(
+        `[reaper] prompt redelivery failed after stopping ${write.sandboxId}:`,
+        err instanceof Error ? err.message : err,
+      ),
+    );
+  }
   if (write.externalId) invalidateProviderCache(write.externalId);
 }
 

@@ -78,6 +78,21 @@ export interface QueueDrainGates {
   pendingPermissionCount: number;
   /** The user pressed stop. "Stop doing things" includes the queue. */
   isPaused: boolean;
+  /**
+   * The SERVER inbox still owes this session a prompt.
+   *
+   * There are two dispatchers now — this browser drain, which carries the `/`
+   * commands the inbox has no row shape for, and the control plane's own
+   * admission gate — and they are released by the SAME event: the turn ending.
+   * Without this gate both fire at that boundary, each unaware of the other,
+   * and whichever lands second aborts the turn the first just started.
+   *
+   * The server lane goes first, always. It holds the durable, cross-tab,
+   * ordered rows, and it is the one that survives this tab closing. The cost is
+   * that a `/` command typed BEFORE a prompt runs after it; the fix for that is
+   * commands becoming inbox rows too, not a second ordering guess here.
+   */
+  serverPromptPending: boolean;
   readOnly: boolean;
   /**
    * The sandbox is up and answering.
@@ -134,6 +149,7 @@ export function canDrainQueue(gates: QueueDrainGates): boolean {
     !gates.hasPendingApproval &&
     gates.pendingPermissionCount === 0 &&
     !gates.isPaused &&
+    !gates.serverPromptPending &&
     !gates.readOnly &&
     gates.runtimeReady &&
     !gates.revertStaged

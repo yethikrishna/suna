@@ -430,6 +430,17 @@ function parseStoredSandboxTurn(value: unknown, expectedToken?: string): StoredS
 }
 
 /**
+ * The sandbox states in which stored turn metadata still means anything.
+ *
+ * Metadata outlives the runtime: a stopped box can keep an `activeTurns` entry
+ * for a turn that died with it. Every reader of turn AUTHORITY — the
+ * `GET .../turn` endpoint and the inbox admission gate — must apply the same
+ * status filter, or the endpoint and the gate disagree about whether a session
+ * is busy. Shared here so they cannot drift.
+ */
+export const RUNNING_SANDBOX_STATUSES: ReadonlySet<string> = new Set(['active', 'provisioning']);
+
+/**
  * Read every control-plane-minted turn the reaper may repair or renew.
  *
  * `activeTurn` remains readable during rolling deployments. New writers use

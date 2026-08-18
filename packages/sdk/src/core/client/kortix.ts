@@ -982,6 +982,18 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
        *  Server truth from the control plane's lifecycle authority, independent
        *  of the live stream. */
       turn: () => P.getSessionTurn(projectId, sessionId),
+      /** This session's SERVER-SIDE prompt inbox: the prompts it still owes the
+       *  user. Durable, so it survives a closed tab and is the same list on
+       *  every device. */
+      prompts: {
+        create: (input: P.CreateSessionPromptInput) =>
+          P.createSessionPrompt(projectId, sessionId, input),
+        list: () => P.listSessionPrompts(projectId, sessionId),
+        remove: (promptId: string) => P.deleteSessionPrompt(projectId, sessionId, promptId),
+        retry: (promptId: string) => P.retrySessionPrompt(projectId, sessionId, promptId),
+        /** Hold (or release) the whole queue — what the Stop button writes. */
+        hold: (held: boolean) => P.holdSessionPrompts(projectId, sessionId, held),
+      },
       /** This session's live voice-call transcript (spoken turns + ask_kortix/run_command calls). */
       voiceTranscript: (options?: Parameters<typeof P.getVoiceTranscript>[2]) =>
         P.getVoiceTranscript(projectId, sessionId, options),

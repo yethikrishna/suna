@@ -126,7 +126,22 @@ export function InstantSessionShell({
 
   const handleSend = useCallback(
     (text: string, files: AttachedFile[] | undefined, options: ComposerOptions) => {
-      if ((!text.trim() && !files?.length) || submitted) return;
+      if (!text.trim() && !files?.length) return;
+      // A SECOND message, typed while the first one is still booting.
+      //
+      // This used to `return` outright — after the composer had already cleared
+      // the input, so the draft was simply gone with nothing on screen to say
+      // so. It is queued instead, under this session's id, and the real
+      // SessionChat renders and drains the same store.
+      //
+      // Queued LOCALLY rather than into the server inbox on purpose: the FIRST
+      // message is still travelling through the start stash and is not a row
+      // yet, so an inbox row created now would be admitted — and answered —
+      // before it.
+      if (submitted) {
+        useMessageQueueStore.getState().enqueue(sessionId, { text, files });
+        return;
+      }
       playSound('send');
 
       // Hand the message to the real chat: it auto-sends from this stash once
@@ -155,12 +170,11 @@ export function InstantSessionShell({
   );
 
   // Messages typed AFTER the first send, while the computer is still booting.
-  // The composer's isBusy queue path routes them here instead of onSend — the
-  // old onSend fallback silently swallowed them (handleSend ignores everything
-  // while `submitted` is set) AFTER the input had already cleared, losing the
-  // draft. They render as the standard queued chips above the input and hand
-  // off to the real SessionChat, which seeds its own queue from this store and
-  // drains it at the first safe boundary.
+  // `handleSend` above queues them (it used to swallow them AFTER the input had
+  // already cleared, losing the draft), and a `/` command submitted during boot
+  // arrives here through the composer's own queue branch. They render as the
+  // standard queued chips above the input and hand off to the real SessionChat,
+  // which renders the same store and drains it at the first safe boundary.
   // Written straight into THIS session's queue. The old handoff store was a
   // single global bucket with no session id, so `consumePendingQueue()` handed
   // its contents to whichever SessionChat mounted first — a message typed for

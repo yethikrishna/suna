@@ -895,13 +895,15 @@ function ComposerImpl({
 
       // A command takes its turn like everything else.
       //
-      // This branch used to `return` before the queue decision below, which
-      // made a `/` command STRUCTURALLY unqueueable: submitting one while the
-      // agent was mid-turn put it straight on the wire, ahead of every message
-      // already waiting — and, because a new prompt aborts the running turn,
-      // killed the answer in progress. Ordering is the queue's whole purpose;
-      // a command is a turn, and the only thing that differs is which call
-      // dispatches it, which the drain decides at dispatch time.
+      // A PROMPT is no longer queued here: it goes to the server-side inbox,
+      // which admits it only when the session can take it, so ordering is
+      // decided by server truth instead of by this component's read of
+      // `isBusy`. A COMMAND cannot: it is dispatched by `runCommand`, never by
+      // `POST .../prompts`, so no server gate ever sees it. Submitting one
+      // mid-turn puts it straight on the wire, ahead of every message already
+      // waiting — and, because a new prompt aborts the running turn, kills the
+      // answer in progress. Ordering is the queue's whole purpose, so until a
+      // command is an inbox row too, the host's local queue holds it.
       if (
         onQueueMessage &&
         shouldQueueInsteadOfSend({
@@ -959,19 +961,6 @@ function ComposerImpl({
     if (reset.clear) {
       editorRef.current?.clear();
       setAttachedFiles([]);
-    }
-
-    if (
-      onQueueMessage &&
-      shouldQueueInsteadOfSend({
-        isBusy,
-        pendingCount: queuedMessages?.length ?? 0,
-        hasInFlight: queueInFlightIds.length > 0,
-        runtimeReady,
-      })
-    ) {
-      onQueueMessage(trimmed, filesToSend, mentionsToSend);
-      return;
     }
 
     try {

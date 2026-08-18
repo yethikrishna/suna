@@ -44,16 +44,23 @@ describe('a queue retry re-sends ONE delivery, not two', () => {
     expect(signature).toContain('clientMessageId?: string');
   });
 
-  test('BOTH wire paths forward it — the sessionState one and the fallback', () => {
-    // Two send paths exist (`sessionState.sendParts` when the session runtime
-    // hook is mounted, `sendAndRecover` otherwise). Threading only one leaves
-    // the other duplicating on retry, which is the harder half to notice.
-    const send = between('const result = sessionState', 'if (!result.ok) {');
-    const forwards = send.match(/clientMessageId: overrides\.clientMessageId/g) ?? [];
+  test('there is now exactly ONE wire path, and it is the server prompt inbox', () => {
+    // REWRITTEN. There used to be two send paths — `sessionState.sendParts`
+    // when the session runtime hook was mounted, `sendAndRecover` otherwise —
+    // and each had to thread the submission key separately. Both are gone: the
+    // composer POSTs a durable row to `POST .../prompts`, and the SERVER
+    // decides when it is delivered. One path cannot disagree with itself.
+    const send = between('const result = await (async () => {', 'if (!result.ok) {');
 
-    expect(send).toContain('sessionState.sendParts(');
-    expect(send).toContain('sendAndRecover({');
-    expect(forwards).toHaveLength(2);
+    expect(send).toContain('promptInbox.enqueue({');
+    expect(send).not.toContain('sessionState.sendParts(');
+    expect(send).not.toContain('sendAndRecover({');
+    // The wire id is minted HERE, by the SDK, and carried with the submission —
+    // the control plane cannot place one, and `messageID` above is the
+    // optimistic-render id, which encodes the wrong bits for the wire.
+    expect(send).toContain('mintSessionWireMessageId(sessionId, clientMessageId)');
+    // Recovery on a failed enqueue is unchanged.
+    expect(send).toContain('recoverFromSendFailure(sessionId, messageID, cause');
   });
 
   test('a direct composer send stays unnamed, so identical text sent twice is two turns', () => {

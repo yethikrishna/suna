@@ -6,8 +6,8 @@ import { readRepoInfo } from '../git'
 import type { Opencode } from '../opencode'
 import {
   type OpencodeDeliveryObservation,
+  inspectOpencodeRoot,
   observeOpencodeDelivery,
-  opencodeTurnInFlight,
   readPinnedSessionId,
 } from '../opencode-turn-state'
 
@@ -77,9 +77,16 @@ export async function observeRequestedTurn(
   if (identity.sessionId && identity.messageId) {
     return observeOpencodeDelivery(opencodeUrl, workspace, identity.sessionId, identity.messageId)
   }
+  const inspection = await inspectOpencodeRoot(opencodeUrl, workspace, identity.sessionId ?? '')
+  if (!inspection.known) return { inFlight: null, end: null }
   return {
-    inFlight: await opencodeTurnInFlight(opencodeUrl, workspace, identity.sessionId || undefined),
-    end: null,
+    inFlight: inspection.turnInFlight,
+    // The ONE ending a root-scoped read can prove without lending another
+    // turn's outcome to this one: the root's last message is a prompt nothing
+    // answered. `abandoned` is already in the control plane's
+    // DAEMON_REPORTABLE_END_REASONS, and it is what triggers redelivery.
+    end: inspection.orphanedPrompt ? 'abandoned' : null,
+    orphanedPrompt: inspection.orphanedPrompt,
   }
 }
 
@@ -217,6 +224,10 @@ export function createHealthRouter(
             // plane writes this straight into session_turns.end_reason — it
             // cannot derive it, because only this process holds the messages.
             turn_end: turn.end,
+            // "A prompt is on record with nothing answering it." Reported
+            // separately from `turn_end` because it is evidence about the
+            // PROMPT, not about the turn: the control plane redelivers on it.
+            turn_orphaned_prompt: turn.orphanedPrompt ?? false,
           }
         : {}),
       boot_error: bootState.repoMaterializationError ?? initialSessionError ?? auditRelayError,

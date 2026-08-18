@@ -40,6 +40,10 @@ import { REAP_CONCURRENCY } from '../reaper-constants';
 import { preserveEstablishedRuntime } from '../runtime-identity';
 import { extendUnconfirmedTurnDeadline } from '../sandbox-deadline';
 import { turnDeliveryGraceMs, turnGrantMs } from '../sandbox-deadline-policy';
+import {
+  PROMPT_NEVER_RAN_END_REASONS,
+  requeueAbandonedPrompt,
+} from '../session-lifecycle/redelivery';
 import { runtimeWakeInProgress } from '../session-lifecycle/runtime-wake-fence';
 import {
   type SandboxTurnDeliveryReconciliation,
@@ -103,6 +107,7 @@ export interface SandboxReaperDependencies {
   clearSandboxTurn: typeof clearSandboxTurn;
   finalizeHuskTurn: typeof finalizeHuskTurn;
   extendUnconfirmedTurnDeadline: typeof extendUnconfirmedTurnDeadline;
+  requeueAbandonedPrompt: typeof requeueAbandonedPrompt;
 }
 
 const DEFAULT_REAPER_DEPENDENCIES: SandboxReaperDependencies = {
@@ -112,7 +117,66 @@ const DEFAULT_REAPER_DEPENDENCIES: SandboxReaperDependencies = {
   clearSandboxTurn,
   finalizeHuskTurn,
   extendUnconfirmedTurnDeadline,
+  requeueAbandonedPrompt,
 };
+
+/**
+ * How old an accepted turn record must be before "no assistant message, root
+ * idle" counts as an ORPHANED PROMPT rather than a turn that is merely starting.
+ *
+ * The daemon's `turn_orphaned_prompt` is a statement about the messages on
+ * record, and for a few moments after OpenCode ACKs a prompt those messages look
+ * identical to a dropped one: the user message exists, nothing has answered it,
+ * and `/session/status` has not flipped busy yet. Redelivering into that window
+ * runs the prompt twice. 30s is far past that window — a root that is genuinely
+ * working reports busy, which is `inFlight: true` and never reaches here — and
+ * still well inside one reaper pass, so it costs a dropped prompt nothing.
+ */
+const ORPHANED_PROMPT_MIN_AGE_MS = 30_000;
+
+/**
+ * Give an inbox prompt back when its delivery is PROVEN never to have run.
+ *
+ * Never fails the pass: a redelivery is a repair, and a repair that throws must
+ * not stop the reaper from clearing authority and closing compute windows.
+ */
+async function redeliverAbandonedPrompt(
+  dependencies: SandboxReaperDependencies,
+  row: { sessionId: string | null; sandboxId: string },
+  turn: { token: string; messageId: string | null },
+  endReason: SessionTurnEndReason,
+): Promise<void> {
+  if (!row.sessionId || !turn.messageId) return;
+  // The end reason is a GATE, not a label. `completed`/`failed` are the daemon
+  // saying the turn RAN — a `delivering` record survives both, because the
+  // acceptance write is a separate statement that can lose while OpenCode
+  // answers the prompt to the end. `requeueAbandonedPrompt` refuses those too;
+  // refusing here as well keeps the reaper's own log honest about what it did.
+  if (!PROMPT_NEVER_RAN_END_REASONS.has(endReason)) return;
+  try {
+    const outcome = await dependencies.requeueAbandonedPrompt({
+      sessionId: row.sessionId,
+      wireMessageId: turn.messageId,
+      turnToken: turn.token,
+      endReason,
+    });
+    if (outcome === 'requeued') {
+      console.warn('[reaper] redelivering a prompt whose turn never ran', {
+        sandboxId: row.sandboxId,
+        sessionId: row.sessionId,
+        turnToken: turn.token,
+        endReason,
+      });
+    }
+  } catch (error) {
+    console.warn('[reaper] prompt redelivery failed', {
+      sandboxId: row.sandboxId,
+      sessionId: row.sessionId,
+      turnToken: turn.token,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 export interface SandboxReaperScope {
   /** Optional operational/test scope. Production maintenance omits it. */
@@ -222,7 +286,7 @@ export async function reapAndReconcileSandboxes(
               // what keeps the box alive.
               const withinDeliveryGrace =
                 turn.state === 'delivering' && row.deadlineAt.getTime() > now.getTime();
-              const { observation, endReason, daemonAnswered } =
+              const { observation, endReason, daemonAnswered, orphanedPrompt } =
                 await dependencies.observeSandboxTurn(
                   provider,
                   row.externalId,
@@ -276,6 +340,27 @@ export async function reapAndReconcileSandboxes(
                 );
                 if (reconciliation === 'active') {
                   observedActiveTokens.push(turn.token);
+                } else if (reconciliation === 'inactive' && observation === 'terminal') {
+                  // A DELIVERING record the daemon says is over: the prompt was
+                  // handed to a runtime that never turned it into a turn. That
+                  // is exactly the evidence the inbox needs to give the prompt
+                  // back. AFTER the clear (`reconcileSandboxTurnDelivery` did
+                  // it above), so a requeued prompt can never race the
+                  // authority it replaces.
+                  //
+                  // `observation === 'terminal'` is load-bearing. The other way
+                  // to reach `inactive` is an `active` observation whose CAS
+                  // lost — OpenCode says the turn IS running and somebody else
+                  // already took the record. Redelivering there would run the
+                  // prompt twice.
+                  //
+                  // So is the REASON: `terminal` covers a turn that ran to the
+                  // end as well as one that never started, and the daemon
+                  // distinguishes them. `redeliverAbandonedPrompt` drops
+                  // `completed`/`failed`; only silence (no `turn_end` at all)
+                  // falls back to `abandoned`, which is what "the delivery was
+                  // never confirmed by anyone" means.
+                  await redeliverAbandonedPrompt(dependencies, row, turn, endReason ?? 'abandoned');
                 } else if (
                   reconciliation === 'deferred' &&
                   row.deadlineAt.getTime() <= now.getTime()
@@ -287,6 +372,13 @@ export async function reapAndReconcileSandboxes(
                   // confirmed this turn, so the ledger keeps the default
                   // `runtime_gone` — nothing here proves it finished.
                   await dependencies.clearSandboxTurn(row.sandboxId, turn.token);
+                  // Same argument as above: a delivery whose grace expired with
+                  // an unreadable daemon never became a turn either. "Unreadable"
+                  // is weaker evidence than a daemon report, which is why the
+                  // drain re-checks the transcript before it re-POSTs and drops
+                  // the redelivery if the prompt turns out to be answered (see
+                  // `executeQueuedContinue`'s already-answered guard).
+                  await redeliverAbandonedPrompt(dependencies, row, turn, 'runtime_gone');
                 }
               } else if (observation === 'active') {
                 observedActiveTokens.push(turn.token);
@@ -313,6 +405,37 @@ export async function reapAndReconcileSandboxes(
                   undefined,
                   endReason ?? (huskFinalized ? 'failed' : 'unknown'),
                 );
+                // AND THE PROMPT COMES BACK, when the daemon says one is
+                // stranded. This is the incident: the record is `active`
+                // because the delivery was ACCEPTED — one upstream round trip
+                // after it was written — not because the turn ran. OpenCode
+                // killed before its first token and respawned leaves the user
+                // message on record with no assistant message and nothing that
+                // will ever answer it, and `turn_orphaned_prompt` is the daemon
+                // reporting exactly that.
+                //
+                // `huskFinalized` excludes itself: a husk is an assistant
+                // message this pass had to close, and an orphaned prompt has no
+                // assistant message at all. The drain re-reads the transcript
+                // before it re-POSTs and drops the redelivery if the prompt
+                // turns out to be answered, so this cannot double-run a turn.
+                //
+                // AND IT HAS TO BE OLD ENOUGH. "Accepted, no assistant message
+                // yet, root idle" is also what the moments between OpenCode
+                // ACKing a prompt and starting it look like — see
+                // ORPHANED_PROMPT_MIN_AGE_MS. A record with no `startedAtMs` (a
+                // legacy `activeTurn`) can prove no age at all, so it never
+                // qualifies.
+                const turnAgeMs =
+                  turn.startedAtMs === null ? null : now.getTime() - turn.startedAtMs;
+                if (
+                  orphanedPrompt &&
+                  !huskFinalized &&
+                  turnAgeMs !== null &&
+                  turnAgeMs >= ORPHANED_PROMPT_MIN_AGE_MS
+                ) {
+                  await redeliverAbandonedPrompt(dependencies, row, turn, endReason ?? 'abandoned');
+                }
               } else if (row.deadlineAt.getTime() <= now.getTime()) {
                 // Unreadable daemon plus an expired deadline: the runtime is
                 // the thing that went away, so the default reason stands.
@@ -570,6 +693,18 @@ export interface SandboxTurnReading {
    * the two cannot be collapsed into one `unknown`.
    */
   daemonAnswered: boolean;
+  /**
+   * The daemon says a PROMPT is on record with nothing answering it.
+   *
+   * Evidence about the prompt, not about the turn, and that distinction is the
+   * whole point: a record is `delivering` for one upstream round trip only —
+   * OpenCode 200s the `prompt_async` and the acceptance write promotes it to
+   * `active` milliseconds later. An OpenCode killed after that and respawned
+   * keeps the persisted user message and loses its in-memory queue, so the
+   * record says `active` while nothing is running and nothing ever will. The
+   * record's state cannot see that; this can.
+   */
+  orphanedPrompt: boolean;
 }
 
 /** A fresh value per call: an exported function must not hand out a shared object. */
@@ -577,6 +712,7 @@ const unreadableTurn = (daemonAnswered: boolean): SandboxTurnReading => ({
   observation: 'unknown',
   endReason: null,
   daemonAnswered,
+  orphanedPrompt: false,
 });
 
 /**
@@ -607,15 +743,27 @@ export async function observeSandboxTurn(
     // fail toward "nothing came back", which is the reading that buys a box
     // nothing. Only a parsed 200 counts as an answer.
     if (!response.ok) return unreadableTurn(false);
-    const body = (await response.json()) as { turn_in_flight?: unknown; turn_end?: unknown };
+    const body = (await response.json()) as {
+      turn_in_flight?: unknown;
+      turn_end?: unknown;
+      turn_orphaned_prompt?: unknown;
+    };
     if (body.turn_in_flight === true) {
-      return { observation: 'active', endReason: null, daemonAnswered: true };
+      return {
+        observation: 'active',
+        endReason: null,
+        daemonAnswered: true,
+        orphanedPrompt: false,
+      };
     }
     if (body.turn_in_flight === false) {
       return {
         observation: 'terminal',
         endReason: daemonReportedEndReason(body.turn_end),
         daemonAnswered: true,
+        // Absent on every agent build that predates the field, which reads as
+        // "no orphan evidence" — the conservative answer.
+        orphanedPrompt: body.turn_orphaned_prompt === true,
       };
     }
     // The shape of the 2026-08-17 box: the daemon is up and answering, its

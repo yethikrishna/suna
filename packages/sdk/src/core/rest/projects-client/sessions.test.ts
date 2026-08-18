@@ -4,14 +4,18 @@ import { clearSessionFresh, isSessionFresh } from '../../http/fresh-sessions';
 import type {
   CreateProjectSessionInput,
   ProjectSession,
+  RemovedSessionPrompt,
+  SessionPrompt,
   SessionTurn,
   SessionTurnStatus,
 } from './sessions';
 import {
   createProjectSession,
+  createSessionPrompt,
   createSessionPublicShare,
   claimWarmProjectSession,
   deleteProjectSession,
+  deleteSessionPrompt,
   ensureWarmProjectSession,
   getProjectSession,
   getProjectSessionConfigState,
@@ -22,10 +26,13 @@ import {
   getSessionTurn,
   getVoiceTranscript,
   listProjectSessions,
+  listSessionPrompts,
   listSessionPublicShares,
   reloadProjectSessionConfig,
   reloadProjectSessionConfigStream,
   restartProjectSession,
+  holdSessionPrompts,
+  retrySessionPrompt,
   revokeSessionPublicShare,
   setProjectSessionScope,
   setProjectSessionSharing,
@@ -806,4 +813,147 @@ test('session contracts omit usage attribution keys', () => {
   const listOptions: IsNever<SessionAttributionKey<ListOptions>> = true;
 
   expect([createInput, response, listOptions]).toEqual([true, true, true]);
+});
+
+// ── The prompt inbox ────────────────────────────────────────────────────────
+//
+// A prompt is durable from the instant the composer accepts it. Before this the
+// queue lived in the browser's localStorage, so a closed tab, a second device
+// or a crash lost it silently. These four readers are the whole client surface.
+
+test('createSessionPrompt POSTs the submission name, the wire id, the parts and the picks', async () => {
+  nextResponse = {
+    status: 202,
+    body: { prompt_id: 'cmd-1', state: 'queued', message_id: 'msg_a', deduped: false },
+  };
+  const result = await createSessionPrompt('P1', 'S1', {
+    clientMessageId: 'q_1',
+    messageId: 'msg_a',
+    parts: [{ type: 'text', text: 'say hi' }],
+    overrides: { agent: 'build', model: { providerID: 'p', modelID: 'm' } },
+  });
+  expect(last().url).toBe('http://test.local/projects/P1/sessions/S1/prompts');
+  expect(last().method).toBe('POST');
+  // snake_case on the wire, like every other payload on this surface.
+  expect(last().body).toEqual({
+    client_message_id: 'q_1',
+    message_id: 'msg_a',
+    parts: [{ type: 'text', text: 'say hi' }],
+    overrides: { agent: 'build', model: { providerID: 'p', modelID: 'm' } },
+  });
+  expect(result).toEqual({
+    prompt_id: 'cmd-1',
+    state: 'queued',
+    message_id: 'msg_a',
+    deduped: false,
+  });
+});
+
+test('createSessionPrompt reports a dedupe rather than hiding it', async () => {
+  // Same `clientMessageId` = the SAME durable row, enforced by a unique index.
+  // The caller needs to know it re-named an existing prompt instead of adding
+  // a second one.
+  nextResponse = {
+    status: 200,
+    body: { prompt_id: 'cmd-1', state: 'delivering', message_id: 'msg_a', deduped: true },
+  };
+  const result = await createSessionPrompt('P1', 'S1', {
+    clientMessageId: 'q_1',
+    messageId: 'msg_a',
+    parts: [{ type: 'text', text: 'say hi' }],
+  });
+  expect(result.deduped).toBe(true);
+  expect(last().body).toEqual({
+    client_message_id: 'q_1',
+    message_id: 'msg_a',
+    parts: [{ type: 'text', text: 'say hi' }],
+  });
+});
+
+test('listSessionPrompts hits GET .../prompts and hands the rows through verbatim', async () => {
+  const prompt: SessionPrompt = {
+    prompt_id: 'cmd-1',
+    client_message_id: 'q_1',
+    message_id: 'msg_a',
+    state: 'waiting',
+    reason: 'turn_active',
+    text: 'say hi',
+    attempts: 0,
+    last_error: null,
+    created_at: '2026-08-18T00:00:00.000Z',
+    available_at: '2026-08-18T00:00:02.000Z',
+  };
+  nextResponse = { status: 200, body: { prompts: [prompt] } };
+  const result = await listSessionPrompts('P1', 'S1');
+  expect(last().url).toBe('http://test.local/projects/P1/sessions/S1/prompts');
+  expect(last().method).toBe('GET');
+  expect(result).toEqual({ prompts: [prompt] });
+});
+
+test('deleteSessionPrompt DELETEs one prompt and returns what it removed', async () => {
+  // The removal is offered with an Undo, and the row is hard-deleted, so this
+  // response is the only place the full body still exists. Restoring from the
+  // list view instead drops attachments and overrides and truncates the text.
+  const removed: RemovedSessionPrompt = {
+    prompt_id: 'cmd-1',
+    client_message_id: 'q_1',
+    message_id: 'msg_a',
+    parts: [
+      { type: 'text', text: 'say hi' },
+      { type: 'file', mime: 'image/png', url: 'https://files.test/a.png' },
+    ],
+    overrides: { model: { providerID: 'anthropic', modelID: 'claude-x' } },
+  };
+  nextResponse = { status: 200, body: { removed } };
+  expect(await deleteSessionPrompt('P1', 'S1', 'cmd-1')).toEqual(removed);
+  expect(last().url).toBe('http://test.local/projects/P1/sessions/S1/prompts/cmd-1');
+  expect(last().method).toBe('DELETE');
+});
+
+test('retrySessionPrompt POSTs .../retry and returns the requeued row', async () => {
+  nextResponse = {
+    status: 200,
+    body: {
+      prompt_id: 'cmd-1',
+      client_message_id: 'q_1',
+      message_id: 'msg_a',
+      state: 'queued',
+      reason: null,
+      text: 'say hi',
+      attempts: 0,
+      last_error: null,
+      created_at: '2026-08-18T00:00:00.000Z',
+      available_at: '2026-08-18T00:00:00.000Z',
+    },
+  };
+  const result = await retrySessionPrompt('P1', 'S1', 'cmd-1');
+  expect(last().url).toBe('http://test.local/projects/P1/sessions/S1/prompts/cmd-1/retry');
+  expect(last().method).toBe('POST');
+  // The wire id is UNCHANGED by a retry: the proxy's delivery claim is keyed on
+  // it, so a retry of a delivery that actually landed is still absorbed.
+  expect(result.message_id).toBe('msg_a');
+  expect(result.state).toBe('queued');
+});
+
+test('holdSessionPrompts POSTs .../prompts/hold with the flag and returns the queue', async () => {
+  // Stop has to reach the QUEUE, and the queue is on the server now: pausing a
+  // browser-local drain leaves the admission gate free to deliver the very
+  // message the user pressed Stop to get ahead of.
+  nextResponse = { status: 200, body: { prompts: [] } };
+  const result = await holdSessionPrompts('P1', 'S1', true);
+  expect(last().url).toBe('http://test.local/projects/P1/sessions/S1/prompts/hold');
+  expect(last().method).toBe('POST');
+  expect(last().body).toEqual({ held: true });
+  expect(result).toEqual({ prompts: [] });
+});
+
+test('a prompt call throws on a non-2xx instead of returning a half-answer', async () => {
+  nextResponse = { status: 402, body: { error: 'out of credits' } };
+  await expect(
+    createSessionPrompt('P1', 'S1', {
+      clientMessageId: 'q_1',
+      messageId: 'msg_a',
+      parts: [{ type: 'text', text: 'hi' }],
+    }),
+  ).rejects.toBeTruthy();
 });

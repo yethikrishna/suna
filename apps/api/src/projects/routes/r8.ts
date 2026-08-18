@@ -17,8 +17,14 @@ import {
   resolveBranchAheadState,
 } from '../git';
 import { createRoute, z } from '@hono/zod-openapi';
-import { changeRequests, projectSessions, sessionSandboxes, sessionTurns } from '@kortix/db';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import {
+  changeRequests,
+  projectSessions,
+  type sessionLifecycleCommands,
+  sessionSandboxes,
+  sessionTurns,
+} from '@kortix/db';
+import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
 import {
   assertAgentSessionWorkspaceAllowsRepository,
   assertProjectCapability,
@@ -32,8 +38,20 @@ import { sandboxTokenMayActOnSession } from '../lib/sandbox-token-session';
 import { AnyObject, ChangeRequestSchema, SessionStartResultSchema, projectsApp } from '../lib/app';
 import { withProjectGitAuth } from '../lib/git';
 import { UUID_V4_REGEX, normalizeString, readBody } from '../lib/serializers';
-import { storedSandboxTurns } from '../sandbox-turn-lifecycle';
-import { continueSession, restartSession, startSession, stopSession } from '../session-lifecycle';
+import { RUNNING_SANDBOX_STATUSES, storedSandboxTurns } from '../sandbox-turn-lifecycle';
+import {
+  continueSession,
+  deleteInboxPrompt,
+  drainSessionLifecycleQueue,
+  enqueueContinueSessionCommand,
+  holdInboxPrompts,
+  listInboxPrompts,
+  releaseInboxHold,
+  restartSession,
+  retryInboxPrompt,
+  startSession,
+  stopSession,
+} from '../session-lifecycle';
 import { isWarmProjectSession } from '../lib/warm-sessions';
 import { dropWarmSessionMarkerOnAdopt } from './warm-sessions';
 import { refreshCrTips } from './shared';
@@ -268,8 +286,6 @@ const SessionTurnResponseSchema = z.object({
   last_ended: SessionTurnLastEndedSchema.optional(),
 });
 
-const RUNNING_SANDBOX_STATUSES: ReadonlySet<string> = new Set(['active', 'provisioning']);
-
 // GET /v1/projects/:projectId/sessions/:sessionId/turn
 // Server truth about which turns are running right now, and how the last one
 // ended. It reads BOTH stores, because neither can answer alone:
@@ -456,6 +472,487 @@ projectsApp.openapi(
           }
         : {}),
     });
+  },
+);
+
+// ─── Prompt inbox ───────────────────────────────────────────────────────────
+//
+// THE server-side queue for user prompts. A prompt is a durable row in
+// `kortix.session_lifecycle_commands` from the instant the composer accepts it,
+// which is the whole point: before this, a prompt typed while the agent was
+// busy lived in the browser's localStorage, so closing the tab, switching
+// device, or a crash lost it silently, and two tabs on one session each held
+// their own idea of the queue.
+//
+// The client still mints the wire `messageID` and sends it here verbatim.
+// OpenCode decides "has this prompt already been answered?" by id ORDER, and
+// only the process holding the transcript can place an id correctly — see
+// `wire-message-id.ts` for the one exception (redelivery, which re-reads the
+// transcript first).
+//
+// Admission — "may this prompt be delivered NOW?" — is not decided here. It is
+// decided at drain time by `admitInboxPrompt`, against the same turn authority
+// `GET .../turn` serves from, because the answer changes between the POST and
+// the delivery.
+
+const PROMPT_WIRE_MESSAGE_ID = /^msg_[0-9a-f]{12}[A-Za-z0-9]{14}$/;
+const PROMPT_MAX_PARTS = 64;
+const PROMPT_TEXT_PREVIEW_CHARS = 2000;
+const PROMPT_LIST_LIMIT = 200;
+
+const SessionPromptSchema = z.object({
+  prompt_id: z.string(),
+  client_message_id: z.string(),
+  message_id: z.string(),
+  state: z.enum(['queued', 'delivering', 'waiting', 'failed']),
+  reason: z.string().nullable(),
+  text: z.string(),
+  attempts: z.number(),
+  last_error: z.string().nullable(),
+  created_at: z.string(),
+  available_at: z.string(),
+});
+
+/** Everything `POST .../prompts` needs to re-create ONE removed prompt byte for
+ *  byte. Not a subset of `SessionPromptSchema`: that one carries a truncated
+ *  text PREVIEW and no parts at all, which is a display shape, not a restore
+ *  shape. */
+const RemovedSessionPromptSchema = z.object({
+  prompt_id: z.string(),
+  client_message_id: z.string(),
+  message_id: z.string(),
+  parts: z.array(z.any()),
+  overrides: z.any().nullable(),
+});
+
+type PromptRow = typeof sessionLifecycleCommands.$inferSelect;
+
+/** Map a durable command row onto the inbox's four user-visible states.
+ *  `succeeded` never appears: a delivered prompt IS the transcript now. */
+function promptState(row: Pick<PromptRow, 'status' | 'result'>): {
+  state: 'queued' | 'delivering' | 'waiting' | 'failed';
+  reason: string | null;
+} {
+  if (row.status === 'running') return { state: 'delivering', reason: null };
+  if (row.status === 'failed' || row.status === 'dead_lettered') {
+    return { state: 'failed', reason: null };
+  }
+  const result = (row.result ?? {}) as Record<string, unknown>;
+  // A HELD row is waiting on the USER, not on the session — the stop button put
+  // it there, and only an explicit send or "send now" takes it out. It is read
+  // before `admission_reason` because it outranks it: a held row is not in line
+  // at all.
+  if (result.held === true) return { state: 'waiting', reason: 'held' };
+  const admission = result.admission_reason;
+  if (typeof admission === 'string') return { state: 'waiting', reason: admission };
+  return { state: 'queued', reason: null };
+}
+
+function serializePrompt(row: PromptRow) {
+  const payload = (row.payload ?? {}) as Record<string, unknown>;
+  const { state, reason } = promptState(row);
+  return {
+    prompt_id: row.commandId,
+    client_message_id: typeof payload.clientMessageId === 'string' ? payload.clientMessageId : '',
+    message_id:
+      typeof payload.redeliveredMessageId === 'string'
+        ? payload.redeliveredMessageId
+        : typeof payload.wireMessageId === 'string'
+          ? payload.wireMessageId
+          : '',
+    state,
+    reason,
+    text: (typeof payload.text === 'string' ? payload.text : '').slice(
+      0,
+      PROMPT_TEXT_PREVIEW_CHARS,
+    ),
+    attempts: row.attempts,
+    last_error: row.lastError ?? null,
+    created_at: row.createdAt.toISOString(),
+    available_at: row.availableAt.toISOString(),
+  };
+}
+
+function serializeRemovedPrompt(row: PromptRow) {
+  const payload = (row.payload ?? {}) as Record<string, unknown>;
+  const parts = Array.isArray(payload.parts) ? payload.parts : [];
+  return {
+    prompt_id: row.commandId,
+    client_message_id: typeof payload.clientMessageId === 'string' ? payload.clientMessageId : '',
+    // The ORIGINAL wire id, never the re-minted one: an undo re-creates the
+    // submission, and `POST .../prompts` places it again from there.
+    message_id: typeof payload.wireMessageId === 'string' ? payload.wireMessageId : '',
+    // The full body, untruncated, with every file/agent part — see the DELETE
+    // handler for why the display shape cannot stand in for this.
+    parts: parts.length > 0 ? parts : [{ type: 'text', text: payload.text ?? '' }],
+    overrides:
+      payload.overrides && typeof payload.overrides === 'object' ? payload.overrides : null,
+  };
+}
+
+/** Flatten a prompt body to the plain text every pre-inbox reader still wants
+ *  (the title generator, the dead-letter alert, `GET /prompts`'s preview). */
+function flattenPromptText(parts: Array<{ type: string; text?: string }>): string {
+  return parts
+    .filter((part) => part.type === 'text' && typeof part.text === 'string')
+    .map((part) => part.text as string)
+    .join('\n')
+    .trim();
+}
+
+projectsApp.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{projectId}/sessions/{sessionId}/prompts',
+    tags: ['sessions'],
+    summary: 'POST /:projectId/sessions/:sessionId/prompts',
+    ...auth,
+    request: {
+      params: z.object({ projectId: z.string(), sessionId: z.string() }),
+      body: { content: { 'application/json': { schema: AnyObject } }, required: true },
+    },
+    responses: {
+      200: json(z.any(), 'Already queued (same client_message_id)'),
+      202: json(z.any(), 'Prompt queued'),
+      ...errors(400, 402, 404, 409),
+    },
+  }),
+  async (c: any) => {
+    const projectId = c.req.param('projectId');
+    const sessionId = c.req.param('sessionId');
+    if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+    const loaded = await loadProjectForUser(c, projectId, 'write');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    // Same per-agent gate as `/start`: a prompt is what spends the compute a
+    // session start provisions.
+    assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_START);
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_SESSION_START,
+    );
+
+    const visible = await loadVisibleSession(loaded, sessionId, callerKortixSessionId(c));
+    if (!visible) return c.json({ error: 'Not found' }, 404);
+    // `deleteSession()` stamps metadata.deletedAt and leaves the row 'stopped'.
+    // Accepting a prompt for it would revive a session the user removed.
+    const metadata = (visible.row.metadata ?? {}) as Record<string, unknown>;
+    if (typeof metadata.deletedAt === 'string') {
+      return c.json({ error: 'Session is deleted' }, 409);
+    }
+
+    const body = await readBody(c);
+    const clientMessageId = normalizeString(body.client_message_id);
+    const messageId = normalizeString(body.message_id);
+    const rawParts = Array.isArray(body.parts) ? body.parts : [];
+    if (!clientMessageId || clientMessageId.length > 128) {
+      return c.json({ error: 'client_message_id is required (1..128 chars)' }, 400);
+    }
+    if (!messageId || !PROMPT_WIRE_MESSAGE_ID.test(messageId)) {
+      // Rejected rather than repaired: an id this endpoint cannot verify the
+      // ordering of is one OpenCode may read as already answered, and a
+      // dropped turn is worse than a refused request.
+      return c.json({ error: 'message_id must be an OpenCode wire message id' }, 400);
+    }
+    if (rawParts.length < 1 || rawParts.length > PROMPT_MAX_PARTS) {
+      return c.json({ error: `parts must hold 1..${PROMPT_MAX_PARTS} entries` }, 400);
+    }
+    const parts = rawParts.map((part: any) => ({
+      type: part?.type === 'file' || part?.type === 'agent' ? part.type : 'text',
+      ...(typeof part?.text === 'string' ? { text: part.text } : {}),
+      ...(typeof part?.mime === 'string' ? { mime: part.mime } : {}),
+      ...(typeof part?.url === 'string' ? { url: part.url } : {}),
+      ...(typeof part?.filename === 'string' ? { filename: part.filename } : {}),
+      ...(typeof part?.name === 'string' ? { name: part.name } : {}),
+      ...(part?.source === undefined ? {} : { source: part.source }),
+    }));
+    const text = flattenPromptText(parts);
+    if (!text && !parts.some((part: any) => part.type !== 'text')) {
+      return c.json({ error: 'parts must carry text' }, 400);
+    }
+
+    const overridesInput = (body.overrides ?? {}) as Record<string, unknown>;
+    const model = overridesInput.model as { providerID?: unknown; modelID?: unknown } | null;
+    const overrides = {
+      agent: typeof overridesInput.agent === 'string' ? overridesInput.agent : null,
+      model:
+        model && typeof model.providerID === 'string' && typeof model.modelID === 'string'
+          ? { providerID: model.providerID, modelID: model.modelID }
+          : null,
+      variant: typeof overridesInput.variant === 'string' ? overridesInput.variant : null,
+      directory: typeof overridesInput.directory === 'string' ? overridesInput.directory : null,
+    };
+
+    // Same gate as start/wake: a prompt spends compute.
+    const billing = await checkBillingActive(loaded.row.accountId);
+    if (!billing.ok) {
+      return c.json(
+        {
+          error: billing.message,
+          message: billing.message,
+          code: billing.reason,
+          balance: billing.balance,
+          billing_model: billing.billingModel,
+          has_subscription: billing.hasSubscription,
+          billing_state: billing.billingState,
+          account_id: loaded.row.accountId,
+        },
+        402,
+      );
+    }
+
+    // The unique index on `idempotency_key` IS the "retry = same
+    // clientMessageId = same row" contract — enforced by the database, not by a
+    // cache that a second pod would not share.
+    const idempotencyKey = `prompt:${sessionId}:${clientMessageId}`;
+    const enqueued = await enqueueContinueSessionCommand({
+      source: 'ui',
+      projectId,
+      accountId: loaded.row.accountId,
+      sessionId,
+      actorUserId: loaded.userId,
+      text,
+      idempotencyKey,
+      clientMessageId,
+      wireMessageId: messageId,
+      parts,
+      overrides,
+    });
+
+    const stored = (enqueued.row.payload ?? {}) as Record<string, unknown>;
+    const response = {
+      prompt_id: enqueued.row.commandId,
+      state: promptState(enqueued.row).state,
+      message_id:
+        typeof stored.redeliveredMessageId === 'string'
+          ? stored.redeliveredMessageId
+          : typeof stored.wireMessageId === 'string'
+            ? stored.wireMessageId
+            : messageId,
+      deduped: enqueued.deduped,
+    };
+    if (enqueued.deduped) return c.json(response, 200);
+
+    // Sending anything NEW lifts a hold the stop button left on this session's
+    // queue — the same rule the browser-local queue always had, and the reason
+    // stop cannot wedge a session: everything typed afterwards would otherwise
+    // land behind rows that are, by construction, never due.
+    await releaseInboxHold(sessionId).catch(() => undefined);
+
+    // Fire the targeted drain WITHOUT waiting on it: the response is "your
+    // prompt is durable", not "your prompt has been delivered". The drain
+    // claims by idempotency key so this row does not wait behind older work.
+    void drainSessionLifecycleQueue({ idempotencyKey }).catch(() => undefined);
+    return c.json(response, 202);
+  },
+);
+
+projectsApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{projectId}/sessions/{sessionId}/prompts',
+    tags: ['sessions'],
+    summary: 'GET /:projectId/sessions/:sessionId/prompts',
+    ...auth,
+    request: {
+      params: z.object({ projectId: z.string(), sessionId: z.string() }),
+    },
+    responses: {
+      200: json(z.object({ prompts: z.array(SessionPromptSchema) }), 'Pending prompts'),
+      ...errors(400, 404),
+    },
+  }),
+  async (c: any) => {
+    const projectId = c.req.param('projectId');
+    const sessionId = c.req.param('sessionId');
+    if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+    const loaded = await loadProjectForUser(c, projectId, 'read');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_SESSION_READ,
+    );
+    const visible = await loadVisibleSession(loaded, sessionId, callerKortixSessionId(c));
+    if (!visible) return c.json({ error: 'Not found' }, 404);
+
+    // Scoped to INBOX rows — see `listInboxPrompts`. `continue_session` is also
+    // how triggers, Slack and approval-resume deliver, and listing those put an
+    // automation's internal prompt in the user's own queue.
+    const rows = await listInboxPrompts(sessionId, PROMPT_LIST_LIMIT);
+
+    return c.json({ prompts: rows.map(serializePrompt) });
+  },
+);
+
+projectsApp.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/{projectId}/sessions/{sessionId}/prompts/{promptId}',
+    tags: ['sessions'],
+    summary: 'DELETE /:projectId/sessions/:sessionId/prompts/:promptId',
+    ...auth,
+    request: {
+      params: z.object({
+        projectId: z.string(),
+        sessionId: z.string(),
+        promptId: z.string(),
+      }),
+    },
+    responses: {
+      200: json(z.object({ removed: RemovedSessionPromptSchema }), 'Deleted'),
+      ...errors(400, 404, 409),
+    },
+  }),
+  async (c: any) => {
+    const projectId = c.req.param('projectId');
+    const sessionId = c.req.param('sessionId');
+    const promptId = c.req.param('promptId');
+    if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+    if (!UUID_V4_REGEX.test(promptId)) return c.json({ error: 'Invalid prompt id' }, 400);
+
+    const loaded = await loadProjectForUser(c, projectId, 'write');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_START);
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_SESSION_START,
+    );
+    const visible = await loadVisibleSession(loaded, sessionId, callerKortixSessionId(c));
+    if (!visible) return c.json({ error: 'Not found' }, 404);
+
+    // The session AND inbox scopes are in the DELETE's own predicate, so
+    // neither a prompt id from another session nor an automation's
+    // `continue_session` row can be removed by naming it here.
+    const outcome = await deleteInboxPrompt(sessionId, promptId);
+    // The response CARRIES THE PROMPT IT REMOVED. A removal is offered with an
+    // undo, and the row is hard-deleted, so this response is the only place the
+    // full body still exists. Undoing from `GET /prompts`'s view instead
+    // restores a 2000-char preview with no attachments and no model override —
+    // a silent, unannounced loss on a button labelled "Undo".
+    if (outcome.outcome === 'deleted') {
+      return c.json({ removed: serializeRemovedPrompt(outcome.row) }, 200);
+    }
+    if (outcome.outcome === 'delivering') {
+      return c.json({ error: 'Prompt is already being delivered' }, 409);
+    }
+    return c.json({ error: 'Not found' }, 404);
+  },
+);
+
+projectsApp.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{projectId}/sessions/{sessionId}/prompts/{promptId}/retry',
+    tags: ['sessions'],
+    summary: 'POST /:projectId/sessions/:sessionId/prompts/:promptId/retry',
+    ...auth,
+    request: {
+      params: z.object({
+        projectId: z.string(),
+        sessionId: z.string(),
+        promptId: z.string(),
+      }),
+    },
+    responses: {
+      200: json(SessionPromptSchema, 'Prompt re-queued'),
+      ...errors(400, 404),
+    },
+  }),
+  async (c: any) => {
+    const projectId = c.req.param('projectId');
+    const sessionId = c.req.param('sessionId');
+    const promptId = c.req.param('promptId');
+    if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+    if (!UUID_V4_REGEX.test(promptId)) return c.json({ error: 'Invalid prompt id' }, 400);
+
+    const loaded = await loadProjectForUser(c, projectId, 'write');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_START);
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_SESSION_START,
+    );
+    const visible = await loadVisibleSession(loaded, sessionId, callerKortixSessionId(c));
+    if (!visible) return c.json({ error: 'Not found' }, 404);
+
+    // ONE primitive for "retry" and for "send now": both are the user pointing
+    // at a row and asking for THAT message. `retryInboxPrompt` promotes it past
+    // the ordering gate, releases the session's hold, and keeps the wire
+    // `message_id` unchanged so the proxy still absorbs a retry of a delivery
+    // that actually landed.
+    const requeued = await retryInboxPrompt(sessionId, promptId);
+    if (!requeued) return c.json({ error: 'Not found' }, 404);
+
+    void drainSessionLifecycleQueue({ limit: 1 }).catch(() => undefined);
+    return c.json(serializePrompt(requeued), 200);
+  },
+);
+
+projectsApp.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{projectId}/sessions/{sessionId}/prompts/hold',
+    tags: ['sessions'],
+    summary: 'POST /:projectId/sessions/:sessionId/prompts/hold',
+    ...auth,
+    request: {
+      params: z.object({ projectId: z.string(), sessionId: z.string() }),
+      body: { content: { 'application/json': { schema: AnyObject } }, required: true },
+    },
+    responses: {
+      200: json(z.object({ prompts: z.array(SessionPromptSchema) }), 'Hold applied'),
+      ...errors(400, 404),
+    },
+  }),
+  // STOP HAS TO REACH THE QUEUE.
+  //
+  // "Stopping means stop doing things, and that includes the queue" was a
+  // browser-local pause while the queue was browser-local. The queue is in
+  // Postgres now, so the pause has to be too: pausing a client drain leaves the
+  // admission gate free to deliver, roughly one scheduler tick after the abort
+  // clears turn authority — exactly the message the user pressed Stop to get
+  // ahead of. A hold is released by an action (any new send, or "send now" on a
+  // row), never by a timer.
+  async (c: any) => {
+    const projectId = c.req.param('projectId');
+    const sessionId = c.req.param('sessionId');
+    if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+    const loaded = await loadProjectForUser(c, projectId, 'write');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_START);
+    await assertProjectCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      projectId,
+      PROJECT_ACTIONS.PROJECT_SESSION_START,
+    );
+    const visible = await loadVisibleSession(loaded, sessionId, callerKortixSessionId(c));
+    if (!visible) return c.json({ error: 'Not found' }, 404);
+
+    const body = await readBody(c);
+    if (typeof body.held !== 'boolean') {
+      return c.json({ error: 'held must be a boolean' }, 400);
+    }
+
+    await holdInboxPrompts(sessionId, body.held);
+    const rows = await listInboxPrompts(sessionId, PROMPT_LIST_LIMIT);
+    if (!body.held) void drainSessionLifecycleQueue({ limit: 1 }).catch(() => undefined);
+    return c.json({ prompts: rows.map(serializePrompt) });
   },
 );
 

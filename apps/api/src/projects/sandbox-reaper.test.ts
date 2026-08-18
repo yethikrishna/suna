@@ -45,6 +45,9 @@ let turnObservationCalls: Array<{ sandboxId: string; token: string }> = [];
 let daemonAnsweredByToken: Record<string, boolean> = {};
 /** The daemon's own word for HOW the turn ended, when it reported one. */
 let daemonTurnEndBySandbox: Record<string, 'completed' | 'failed' | 'abandoned'> = {};
+/** The daemon's `turn_orphaned_prompt`: a user message on record with nothing
+ *  answering it. Evidence about the PROMPT, not about the turn. */
+let orphanedPromptByToken: Record<string, boolean> = {};
 let deliveringTurnRecoveryCalls: Array<{
   sandboxId: string;
   token: string;
@@ -52,6 +55,13 @@ let deliveringTurnRecoveryCalls: Array<{
   reason?: string;
 }> = [];
 let clearedTurnCalls: Array<{ sandboxId: string; token: string }> = [];
+/** Prompts this pass gave back to the inbox, and the ending it blamed. */
+let promptRedeliveries: Array<{
+  sessionId: string;
+  wireMessageId: string | null;
+  turnToken: string;
+  endReason: string;
+}> = [];
 /** Sandboxes handed the bounded `turn_unconfirmed` deadline drip this pass. */
 let unconfirmedTurnDrips: string[] = [];
 // Recorded separately from `clearedTurnCalls` so the ledger reason is asserted
@@ -391,6 +401,7 @@ const reapAndReconcileSandboxes = (
         // an agent build that omits the turn fields; a daemon that answers
         // nothing is the explicit case each test opts into.
         daemonAnswered: daemonAnsweredByToken[turn?.token ?? ''] ?? true,
+        orphanedPrompt: orphanedPromptByToken[turn?.token ?? ''] ?? false,
       };
     },
     reconcileSandboxTurnDelivery: async (
@@ -434,6 +445,15 @@ const reapAndReconcileSandboxes = (
       unconfirmedTurnDrips.push(sandboxId);
       return true;
     },
+    requeueAbandonedPrompt: async (input: {
+      sessionId: string;
+      wireMessageId: string | null;
+      turnToken: string;
+      endReason: string;
+    }) => {
+      promptRedeliveries.push(input);
+      return 'requeued';
+    },
   }, scope);
 
 const HOUR = 3_600_000;
@@ -466,8 +486,10 @@ beforeEach(() => {
   turnObservationCalls = [];
   daemonAnsweredByToken = {};
   daemonTurnEndBySandbox = {};
+  orphanedPromptByToken = {};
   deliveringTurnRecoveryCalls = [];
   clearedTurnCalls = [];
+  promptRedeliveries = [];
   clearedTurnReasons = [];
   unconfirmedTurnDrips = [];
   ledgerSettleStatements = [];
@@ -529,7 +551,12 @@ describe('provider-neutral turn observation', () => {
         { opencodeSessionId: 'ses_root', messageId: 'msg_turn_1' },
       );
 
-      expect(observation).toEqual({ observation: 'active', endReason: null, daemonAnswered: true });
+      expect(observation).toEqual({
+        observation: 'active',
+        endReason: null,
+        daemonAnswered: true,
+        orphanedPrompt: false,
+      });
       expect((requested as URL | null)?.pathname).toBe('/kortix/health');
       expect((requested as URL | null)?.searchParams.get('turn')).toBe('1');
       expect((requested as URL | null)?.searchParams.get('turn_session_id')).toBe('ses_root');
@@ -550,7 +577,12 @@ describe('provider-neutral turn observation', () => {
         },
         'ext-1',
       ),
-    ).toEqual({ observation: 'unknown', endReason: null, daemonAnswered: false });
+    ).toEqual({
+      observation: 'unknown',
+      endReason: null,
+      daemonAnswered: false,
+      orphanedPrompt: false,
+    });
   });
 
   // ═══ THE TWO KINDS OF `unknown` ═══
@@ -568,7 +600,12 @@ describe('provider-neutral turn observation', () => {
           { resolveEndpoint: async () => ({ url: `http://127.0.0.1:${server.port}`, headers: {} }) },
           'ext-1',
         ),
-      ).toEqual({ observation: 'unknown', endReason: null, daemonAnswered: true });
+      ).toEqual({
+        observation: 'unknown',
+        endReason: null,
+        daemonAnswered: true,
+        orphanedPrompt: false,
+      });
     } finally {
       server.stop(true);
     }
@@ -582,7 +619,12 @@ describe('provider-neutral turn observation', () => {
           { resolveEndpoint: async () => ({ url: `http://127.0.0.1:${server.port}`, headers: {} }) },
           'ext-1',
         ),
-      ).toEqual({ observation: 'unknown', endReason: null, daemonAnswered: false });
+      ).toEqual({
+        observation: 'unknown',
+        endReason: null,
+        daemonAnswered: false,
+        orphanedPrompt: false,
+      });
     } finally {
       server.stop(true);
     }
@@ -604,7 +646,12 @@ describe('provider-neutral turn observation', () => {
           'sb-1',
           { opencodeSessionId: 'ses_root', messageId: 'msg_turn_1' },
         ),
-      ).toEqual({ observation: 'terminal', endReason: 'failed', daemonAnswered: true });
+      ).toEqual({
+        observation: 'terminal',
+        endReason: 'failed',
+        daemonAnswered: true,
+        orphanedPrompt: false,
+      });
     } finally {
       server.stop(true);
     }
@@ -620,7 +667,12 @@ describe('provider-neutral turn observation', () => {
           { resolveEndpoint: async () => ({ url: `http://127.0.0.1:${server.port}`, headers: {} }) },
           'ext-1',
         ),
-      ).toEqual({ observation: 'terminal', endReason: null, daemonAnswered: true });
+      ).toEqual({
+        observation: 'terminal',
+        endReason: null,
+        daemonAnswered: true,
+        orphanedPrompt: false,
+      });
     } finally {
       server.stop(true);
     }
@@ -639,7 +691,12 @@ describe('provider-neutral turn observation', () => {
           { resolveEndpoint: async () => ({ url: `http://127.0.0.1:${server.port}`, headers: {} }) },
           'ext-1',
         ),
-      ).toEqual({ observation: 'terminal', endReason: null, daemonAnswered: true });
+      ).toEqual({
+        observation: 'terminal',
+        endReason: null,
+        daemonAnswered: true,
+        orphanedPrompt: false,
+      });
     } finally {
       server.stop(true);
     }
@@ -920,6 +977,214 @@ describe('reapAndReconcileSandboxes — the one rule: deadline_at <= now', () =>
     ]);
     expect(r.stopped).toBe(1);
     expect(timeoutRenewals).toEqual([]);
+    // A prompt handed to a runtime that never turned it into a turn goes BACK
+    // to the inbox — the whole point of the durable inbox.
+    expect(promptRedeliveries).toEqual([
+      {
+        sessionId: 'sess-1',
+        wireMessageId: 'msg_turn_1',
+        turnToken: 'delivery-token',
+        endReason: 'abandoned',
+      },
+    ]);
+  });
+
+  test('a delivering record the daemon says was ABANDONED redelivers under that reason', async () => {
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurn: {
+            token: 'delivery-token',
+            state: 'delivering',
+            opencodeSessionId: 'ses_root',
+            messageId: 'msg_turn_1',
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    daemonTurnEndBySandbox['sb-1'] = 'abandoned';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(promptRedeliveries.map((r) => r.endReason)).toEqual(['abandoned']);
+  });
+
+  test('a DELIVERING record the daemon says COMPLETED is never redelivered', async () => {
+    // The record is still `delivering` only because the acceptance write lost
+    // its race (`[turn-lifecycle] acceptance persistence failed … reaper will
+    // reconcile delivery`) — the turn itself ran to the end. `completed` is
+    // proof of that, so the prompt must NOT go back to the inbox: it would run
+    // the user's message a second time.
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurn: {
+            token: 'delivery-token',
+            state: 'delivering',
+            opencodeSessionId: 'ses_root',
+            messageId: 'msg_turn_1',
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    daemonTurnEndBySandbox['sb-1'] = 'completed';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(promptRedeliveries).toEqual([]);
+  });
+
+  test('a DELIVERING record the daemon says FAILED is never redelivered', async () => {
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurn: {
+            token: 'delivery-token',
+            state: 'delivering',
+            opencodeSessionId: 'ses_root',
+            messageId: 'msg_turn_1',
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    daemonTurnEndBySandbox['sb-1'] = 'failed';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(promptRedeliveries).toEqual([]);
+  });
+
+  test('an ACTIVE record the daemon reports ORPHANED gives its prompt back', async () => {
+    // THE INCIDENT THIS WHOLE STEP EXISTS FOR. A record is `delivering` for one
+    // upstream round trip only: OpenCode 200s the `prompt_async` and
+    // `acceptTurnLifecycle` promotes it to `active` within milliseconds. If
+    // OpenCode is then killed before the first assistant token and respawns —
+    // keeping the persisted user message, losing the in-memory queue — the
+    // record is `active`, so the `delivering` branches never see it.
+    //
+    // `turn_orphaned_prompt` is the daemon saying exactly that: this prompt is
+    // on record and nothing answered it. It is evidence about the PROMPT, so it
+    // is what the redelivery reads — not the record's state, which only ever
+    // described how far the acceptance write got.
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() + HOUR),
+        metadata: {
+          activeTurn: {
+            token: 'active-token',
+            state: 'active',
+            opencodeSessionId: 'ses_root',
+            messageId: 'msg_turn_1',
+            // Past ORPHANED_PROMPT_MIN_AGE_MS — see the sibling test below for
+            // why a record this young is not orphaned yet.
+            startedAtMs: NOW.getTime() - 120_000,
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    orphanedPromptByToken['active-token'] = true;
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(clearedTurnCalls).toEqual([{ sandboxId: 'sb-1', token: 'active-token' }]);
+    expect(promptRedeliveries).toEqual([
+      {
+        sessionId: 'sess-1',
+        wireMessageId: 'msg_turn_1',
+        turnToken: 'active-token',
+        endReason: 'abandoned',
+      },
+    ]);
+  });
+
+  test('a JUST-ACCEPTED record is not orphaned yet, whatever the daemon says', async () => {
+    // "User message on record, no assistant message, root idle" is also what
+    // the moments between OpenCode ACKing a prompt and starting it look like.
+    // Redelivering into that window runs the user's prompt twice.
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() + HOUR),
+        metadata: {
+          activeTurn: {
+            token: 'active-token',
+            state: 'active',
+            opencodeSessionId: 'ses_root',
+            messageId: 'msg_turn_1',
+            startedAtMs: NOW.getTime() - 2_000,
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+    orphanedPromptByToken['active-token'] = true;
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(clearedTurnCalls).toEqual([{ sandboxId: 'sb-1', token: 'active-token' }]);
+    expect(promptRedeliveries).toEqual([]);
+  });
+
+  test('a turn that RAN is never redelivered, whatever the reaper had to clean up', async () => {
+    // An `active` record observed terminal with NO orphan evidence is a turn
+    // nothing can prove never ran, so it is left alone. Only the daemon's
+    // `turn_orphaned_prompt` (the test above) turns this branch into a
+    // redelivery.
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() + HOUR),
+        metadata: {
+          activeTurn: {
+            token: 'active-token',
+            state: 'active',
+            opencodeSessionId: 'ses_root',
+            messageId: 'msg_turn_1',
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(clearedTurnCalls).toEqual([{ sandboxId: 'sb-1', token: 'active-token' }]);
+    expect(promptRedeliveries).toEqual([]);
+  });
+
+  test('a delivering record with NO wire message id has no prompt to give back', async () => {
+    // Trigger/Slack deliveries carry no client-minted id, so there is nothing
+    // to match a durable row by — they keep today's behavior exactly.
+    candidates = [
+      candidate({
+        deadlineAt: new Date(NOW.getTime() - 1),
+        metadata: {
+          activeTurn: {
+            token: 'delivery-token',
+            state: 'delivering',
+            opencodeSessionId: 'ses_root',
+            messageId: null,
+          },
+        },
+      }),
+    ];
+    statusByExternal['ext-1'] = 'running';
+    deliveringTurnObservationBySandbox['sb-1'] = 'terminal';
+
+    await reapAndReconcileSandboxes(NOW);
+
+    expect(promptRedeliveries).toEqual([]);
   });
 
   test('an indeterminate delivery stops after its persisted delivery grace expires', async () => {

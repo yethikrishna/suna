@@ -23,6 +23,7 @@ const CLEAR: QueueDrainGates = {
   hasPendingApproval: false,
   pendingPermissionCount: 0,
   isPaused: false,
+  serverPromptPending: false,
   readOnly: false,
   runtimeReady: true,
   revertStaged: false,
@@ -48,6 +49,15 @@ describe('canDrainQueue', () => {
       expect(canDrainQueue({ ...CLEAR, ...override })).toBe(false);
     });
   }
+
+  test('false while the SERVER inbox still owes this session a prompt', () => {
+    // Two dispatchers, one release event. The browser lane holds the `/`
+    // commands the inbox has no row shape for; the control plane's admission
+    // gate holds the prompts. Both are released by the turn ending, so without
+    // this gate they fire together and whichever lands second aborts the turn
+    // the first just started. The server lane goes first, always.
+    expect(canDrainQueue({ ...CLEAR, serverPromptPending: true })).toBe(false);
+  });
 
   test('false while a question is on screen — the queue must not answer it', () => {
     expect(canDrainQueue({ ...CLEAR, hasActiveQuestion: true })).toBe(false);

@@ -313,13 +313,31 @@ export interface GitHubOAuthState {
  *  two sent anyone debugging a missing secret chasing an origin problem. */
 export class InvalidGitHubOAuthOriginError extends Error {}
 
-/** The OAuth state rides the GitHub App's OWN state secret, not the
- *  manifest flow's `SUPABASE_JWT_SECRET`-only one: `githubAppStateSecret()`
- *  resolves stateSecret → KORTIX_GITHUB_APP_STATE_SECRET → SUPABASE_JWT_SECRET
- *  → the App private key, so this signs in exactly the deployments where the
- *  rest of the GitHub App flow already works. (A hosted deployment configures
- *  KORTIX_GITHUB_APP_STATE_SECRET and no SUPABASE_JWT_SECRET — binding to the
- *  latter made every authorize call fail there.) */
+/**
+ * The OAuth state rides the GitHub App's OWN state secret, not the manifest
+ * flow's `SUPABASE_JWT_SECRET`-only one: `githubAppStateSecret()` resolves
+ * stateSecret → KORTIX_GITHUB_APP_STATE_SECRET → SUPABASE_JWT_SECRET → the App
+ * private key, so this signs in exactly the deployments where the rest of the
+ * GitHub App flow already works. (A hosted deployment configures
+ * KORTIX_GITHUB_APP_STATE_SECRET and no SUPABASE_JWT_SECRET — binding to the
+ * latter made every authorize call fail there.)
+ *
+ * On `createHmac('sha256', …)` and CodeQL's js/insufficient-password-hash:
+ * this is a SIGNATURE, not a stored password hash, and the alert is a false
+ * positive of the same class already dismissed for `tokenKey` in
+ * apps/cli/src/api/token-identity.ts. CWE-916 is about low-entropy human
+ * passwords, where a slow KDF (bcrypt/scrypt/Argon2) raises the cost of
+ * offline guessing. Here nothing is a password: the message is a base64url
+ * state payload (`{frontendOrigin, nonce, exp}`) and the key is a
+ * high-entropy server-side secret the attacker never sees. HMAC-SHA256 with
+ * a secret key is the correct, standard construction for exactly this — it is
+ * what JWT HS256 does — and a slow KDF would be wrong twice over: it would
+ * make every verify expensive and it cannot be compared against a
+ * recomputed MAC. Verification recomputes the MAC and compares it with
+ * `timingSafeEqual`, so the comparison is not a timing oracle either.
+ * CodeQL's taint path (sign → returned token → verify's `.update(body)`) is
+ * inherent to verifying ANY HMAC and would flag any correct implementation.
+ */
 function oauthStateSecret(): string {
   const secret = githubAppStateSecret();
   if (!secret) {

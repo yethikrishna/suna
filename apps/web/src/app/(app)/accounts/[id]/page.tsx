@@ -35,7 +35,11 @@ import { IdentityIntro } from '@/components/iam/identity-intro';
 import { KeyRulesCard } from '@/components/iam/key-rules-card';
 import { MfaRequiredCard } from '@/components/iam/mfa-required-card';
 import { PermissionsHelpPopover } from '@/components/iam/permissions-help-popover';
-import { ACCOUNT_ROLE_DESCRIPTORS } from '@/components/iam/project-role-descriptors';
+import {
+  ACCOUNT_ROLE_DESCRIPTORS,
+  PROJECT_ROLES_ASCENDING,
+  PROJECT_ROLE_DESCRIPTORS,
+} from '@/components/iam/project-role-descriptors';
 import { RolesTab } from '@/components/iam/roles-tab';
 import { ScimCard } from '@/components/iam/scim-card';
 import { AccountSessionsPanel, SessionControlsCard } from '@/components/iam/session-controls-card';
@@ -104,6 +108,7 @@ import {
   type AccountInvitation,
   type AccountMember,
   type AccountRole,
+  type ProjectRole,
   cancelAccountInvite,
   deleteGitHubInstallation,
   getAccount,
@@ -112,6 +117,7 @@ import {
   listAccountInvites,
   listAccountMembers,
   listGitHubInstallations,
+  listProjectsForAccount,
   removeAccountMember,
   resendAccountInvite,
   updateAccountMemberRole,
@@ -167,20 +173,34 @@ const VALID_TABS = [
 ] as const;
 type AccountSection = (typeof VALID_TABS)[number];
 
-// Three labeled groups: day-to-day account plumbing, money, and the
-// enterprise IAM surface (Groups / Roles / Identity / Audit all share the
-// same entitlement story, so they live together under one "Enterprise"
-// heading instead of being scattered across the rail and the Settings tab).
+// Four labeled groups. The unlabeled plumbing group (Settings/Git/Tokens —
+// name, security, repo, machine tokens) leads: "who am I and how is this
+// account configured" comes before "who else is in it" (Marko's call,
+// 2026-08-18 — was Access-first; moved Settings ahead of it). Members /
+// Groups / Roles are still one "Access" cluster right after — three facets
+// of the same access-control concern (who's in the account, what pools
+// they're in, what those pools can do) — instead of Members sitting alone,
+// disconnected from Groups/Roles. Identity (SSO/SCIM) and Audit log stay
+// under "Enterprise": unlike Members/Groups/Roles, they have ZERO free-tier
+// content (no list to show a non-entitled account), so grouping them under
+// a plan-gated heading is accurate, not mislabeling. Billing is unchanged.
 const NAV_GROUPS: Array<{
   label?: string;
   items: Array<{ id: AccountSection; label: string; icon: LucideIcon | IconMynauiType | IconType }>;
 }> = [
   {
     items: [
-      { id: 'members', label: 'Members', icon: Users },
+      { id: 'settings', label: 'Settings', icon: CogOne },
       { id: 'git', label: 'Git', icon: GitBranch },
       { id: 'tokens', label: 'Tokens', icon: KeyRound },
-      { id: 'settings', label: 'Settings', icon: CogOne },
+    ],
+  },
+  {
+    label: 'Access',
+    items: [
+      { id: 'members', label: 'Members', icon: Users },
+      { id: 'groups', label: 'Groups', icon: Network },
+      { id: 'roles', label: 'Roles', icon: Shield },
     ],
   },
   {
@@ -193,8 +213,6 @@ const NAV_GROUPS: Array<{
   {
     label: 'Enterprise',
     items: [
-      { id: 'groups', label: 'Groups', icon: Network },
-      { id: 'roles', label: 'Roles', icon: Shield },
       { id: 'identity', label: 'Identity', icon: Fingerprint },
       { id: 'audit', label: 'Audit log', icon: ScrollText },
     ],
@@ -368,7 +386,13 @@ export default function AccountSettingsPage() {
   const sectionVisible: Record<AccountSection, boolean> = {
     members: true,
     groups: true,
-    roles: canManageRoles === true,
+    // Discoverable for everyone, same as Groups — the six built-in roles are
+    // free content (GET .../roles carries no entitlement check), and RolesTab
+    // itself already gates "New role" on rbacEnabled + canManage internally.
+    // This used to hide the rail item for non-admins, contradicting the
+    // comment above NAV_GROUPS (and this same file's own doc comment further
+    // up) that both should stay visible for discoverability.
+    roles: true,
     identity: canWriteAccount === true,
     billing: canWriteAccount === true && billingActive,
     transactions: canWriteAccount === true,
@@ -556,7 +580,7 @@ export default function AccountSettingsPage() {
               )
             ) : null}
 
-            {activeSection === 'roles' && canManageRoles ? (
+            {activeSection === 'roles' ? (
               entitlementsLoading ? (
                 <Skeleton className="h-64 w-full rounded-md" />
               ) : (
@@ -1566,7 +1590,7 @@ function MembersCard({
                                       className="gap-2"
                                     >
                                       <TrashIcon className="size-3.5" />
-                                      Remove from team
+                                      Remove from account
                                     </DropdownMenuItem>
                                   </>
                                 ) : null}
@@ -1579,7 +1603,7 @@ function MembersCard({
                                       className="gap-2"
                                     >
                                       <TrashIcon className="size-3.5" />
-                                      Leave team
+                                      Leave account
                                     </DropdownMenuItem>
                                   </>
                                 ) : null}
@@ -1674,7 +1698,7 @@ function MembersCard({
       <ConfirmDialog
         open={leaveConfirmOpen}
         onOpenChange={setLeaveConfirmOpen}
-        title="Leave team"
+        title="Leave account"
         description={
           <span>
             You&apos;ll lose access to{' '}
@@ -1756,18 +1780,54 @@ function InviteMemberModal({
   const [inputValue, setInputValue] = useState('');
   const [role, setRole] = useState<AccountRole>('member');
   const [inlineError, setInlineError] = useState<string | null>(null);
+  // Project access to grant alongside the invite — rides on the same
+  // account_invitations.bootstrap_grants column POST /projects/:id/access/
+  // invite already writes (see members.ts's project_grants field), applied
+  // to every invited email uniformly. Only meaningful for `role === 'member'`
+  // — an admin already holds implicit Manager on every project, so the
+  // backend silently drops grants on a non-member invite; the UI hides the
+  // section for the same reason rather than offering a control that does
+  // nothing.
+  const [projectGrants, setProjectGrants] = useState<Array<{ project_id: string; role: ProjectRole }>>(
+    [],
+  );
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const projectsQuery = useQuery({
+    queryKey: ['account-projects-for-invite', accountId],
+    queryFn: () => listProjectsForAccount(accountId),
+    enabled: open,
+    staleTime: 30_000,
+  });
+  const availableProjects = (projectsQuery.data ?? []).filter((p) => p.status === 'active');
+
+  function addProjectGrantRow() {
+    setProjectGrants((prev) => [...prev, { project_id: '', role: 'member' }]);
+  }
+  function updateProjectGrant(index: number, patch: Partial<{ project_id: string; role: ProjectRole }>) {
+    setProjectGrants((prev) => prev.map((g, i) => (i === index ? { ...g, ...patch } : g)));
+  }
+  function removeProjectGrantRow(index: number) {
+    setProjectGrants((prev) => prev.filter((_, i) => i !== index));
+  }
 
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   const mutation = useMutation({
-    mutationFn: async (list: string[]) =>
-      Promise.all(
+    mutationFn: async (list: string[]) => {
+      const grants =
+        role === 'member'
+          ? projectGrants
+              .filter((g) => g.project_id)
+              .map((g) => ({ project_id: g.project_id, role: g.role }))
+          : [];
+      return Promise.all(
         list.map(async (addr) => {
           try {
             const res = await inviteAccountMember(accountId, {
               email: addr,
               role,
+              ...(grants.length > 0 ? { project_grants: grants } : {}),
             });
             return { email: addr, ok: true as const, res };
           } catch (err) {
@@ -1779,7 +1839,8 @@ function InviteMemberModal({
             };
           }
         }),
-      ),
+      );
+    },
     onSuccess: (results) => {
       type Ok = Extract<(typeof results)[number], { ok: true }>;
       type Failed = Extract<(typeof results)[number], { ok: false }>;
@@ -1853,6 +1914,7 @@ function InviteMemberModal({
     setInputValue('');
     setRole('member');
     setInlineError(null);
+    setProjectGrants([]);
   }
 
   /**
@@ -2042,6 +2104,84 @@ function InviteMemberModal({
                 </SelectContent>
               </Select>
             </div>
+
+            {role === 'member' ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Project access</Label>
+                  <span className="text-muted-foreground text-xs">Optional</span>
+                </div>
+                {projectGrants.map((grant, i) => {
+                  const usedElsewhere = new Set(
+                    projectGrants.filter((_, j) => j !== i).map((g) => g.project_id),
+                  );
+                  return (
+                    <div key={i} className="flex items-center gap-2">
+                      <Select
+                        value={grant.project_id}
+                        onValueChange={(v) => updateProjectGrant(i, { project_id: v })}
+                        disabled={mutation.isPending}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Choose a project" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableProjects
+                            .filter(
+                              (p) => p.project_id === grant.project_id || !usedElsewhere.has(p.project_id),
+                            )
+                            .map((p) => (
+                              <SelectItem key={p.project_id} value={p.project_id}>
+                                {p.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={grant.role}
+                        onValueChange={(v) => updateProjectGrant(i, { role: v as ProjectRole })}
+                        disabled={mutation.isPending}
+                      >
+                        <SelectTrigger className="w-32 shrink-0">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PROJECT_ROLES_ASCENDING.map((r) => (
+                            <SelectItem key={r} value={r} description={PROJECT_ROLE_DESCRIPTORS[r].blurb}>
+                              {PROJECT_ROLE_DESCRIPTORS[r].label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <button
+                        type="button"
+                        onClick={() => removeProjectGrantRow(i)}
+                        disabled={mutation.isPending}
+                        aria-label="Remove project"
+                        className="text-muted-foreground hover:text-foreground shrink-0 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Close className="size-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+                {availableProjects.length > projectGrants.length ? (
+                  <button
+                    type="button"
+                    onClick={addProjectGrantRow}
+                    disabled={mutation.isPending}
+                    className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Plus className="size-3.5" />
+                    {projectGrants.length === 0 ? 'Add project access' : 'Add another project'}
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <InfoBanner tone="neutral">
+                Admins already have access to every project in this account — nothing to grant here.
+              </InfoBanner>
+            )}
 
             {inlineError ? <InfoBanner tone="destructive">{inlineError}</InfoBanner> : null}
           </ModalBody>

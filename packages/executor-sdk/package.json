@@ -1,6 +1,6 @@
 {
   "name": "@kortix/executor-sdk",
-  "version": "0.0.0-local-test",
+  "version": "0.12.5",
   "description": "Deprecated compatibility adapter for @kortix/sdk Connector APIs.",
   "type": "module",
   "license": "Elastic-2.0",
@@ -10,26 +10,14 @@
     "url": "git+https://github.com/kortix-ai/suna.git",
     "directory": "packages/executor-sdk"
   },
-  "keywords": [
-    "kortix",
-    "deprecated",
-    "executor",
-    "connector",
-    "sdk"
-  ],
+  "keywords": ["kortix", "deprecated", "executor", "connector", "sdk"],
   "sideEffects": false,
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+    ".": "./src/index.ts"
   },
-  "files": [
-    "dist",
-    "README.md"
-  ],
+  "files": ["dist", "README.md"],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test src/index.test.ts",
@@ -37,10 +25,19 @@
     "prepublishOnly": "tsc -p tsconfig.build.json"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    },
+    "files": ["dist", "README.md"]
   },
   "dependencies": {
-    "@kortix/sdk": "0.0.0-local-test"
+    "@kortix/sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",

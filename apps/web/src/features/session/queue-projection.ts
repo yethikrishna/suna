@@ -1,3 +1,4 @@
+import { isOptimisticSessionPrompt } from '@kortix/sdk/react';
 import type { SessionPrompt } from '@kortix/sdk';
 
 /**
@@ -90,6 +91,10 @@ export function projectQueueRows(input: {
     // every action the strip offers is refused by the server for a row it has
     // already handed to OpenCode.
     if (prompt.state === 'delivering') inFlightIds.push(prompt.prompt_id);
+    // This tab's own echo, painted on Enter before `POST .../prompts` returned:
+    // there is no server id to remove or promote yet, so it renders inert for
+    // the round-trip and becomes an ordinary row on the response.
+    if (isOptimisticSessionPrompt(prompt)) inFlightIds.push(prompt.prompt_id);
     // `waiting` is WHY a row has not gone out, not a lane of its own — it
     // renders beside `queued`, with the hold reported separately.
     queued.push(row);

@@ -3324,25 +3324,6 @@ export function SessionChat({
           // moment, which is what covers the window before the row is
           // delivered and becomes a turn.
           acceptSendReceipt(clientMessageId);
-          // Correct the rendering guess with the server's answer: the guess
-          // said "will wait" (so no optimistic bubble was painted), but the
-          // server admitted it to run now. Paint the bubble after the fact so
-          // the user's message is not stranded in the queue strip while the
-          // turn it started streams above an empty transcript slot. Under the
-          // in-turn forwarding gate this fires often: an awake session answers
-          // `queued`/`delivering` for a prompt the old gate made `waiting`.
-          // Only when nothing else is in line: a row behind other queued rows
-          // genuinely waits its turn even when admissible, and painting it now
-          // would fake an order the queue has not produced yet.
-          const correctedWillWait =
-            willWaitInInbox &&
-            queuedMessagesRef.current === 0 &&
-            (created.state === 'queued' || created.state === 'delivering');
-          if (correctedWillWait) {
-            beginOptimisticSend(sessionId, messageID, optimisticText, [textPartId]);
-            markOptimisticSendDispatched(sessionId, messageID);
-            anchorTurn(messageID);
-          }
           return { ok: true } as const;
         } catch (cause) {
           // Unchanged recovery: clear busy, then either rehydrate the real

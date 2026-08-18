@@ -48,6 +48,7 @@ const NEWER_TRANSCRIPT_ID = mintWireMessageId({ nowMs: NOW_MS - 60_000, random: 
  */
 const OPENCODE_MINTED_ID = `msg_${(((BigInt(NOW_MS - 40_000) * BigInt(0x1000)) & BigInt(0xffffffffffff)).toString(16).padStart(12, '0'))}AbCdEfGhIjKlMn`;
 
+let requeues: Array<{ commandId: string; reason: string; availableAt: Date }> = [];
 let sessionRow: Record<string, unknown> | null = null;
 /** The session's one box, as the turn-authority read sees it. Null = no box. */
 let boxRow: { status: string; metadata: Record<string, unknown> | null } | null = null;
@@ -149,8 +150,9 @@ mock.module('../backpressure', () => ({
   sessionBackpressureState: async () => ({ shouldQueue: false, reason: null }),
 }));
 mock.module('../store', () => ({
-  requeueForAdmission: async () => {
-    throw new Error('not expected: this test never refuses admission');
+  promoteNextInboxRow: async () => null,
+  requeueForAdmission: async (commandId: string, reason: string, availableAt: Date) => {
+    requeues.push({ commandId, reason, availableAt });
   },
   claimCreateSessionCommand: async () => {
     throw new Error('not expected');
@@ -404,17 +406,12 @@ describe('executeQueuedContinue — what actually goes on the wire', () => {
     expect(capturedBodies[0].messageID).toBe(SUBMITTED_WIRE_ID);
   });
 
-  test('a prompt delivered INTO A LIVE TURN is re-minted on its FIRST claim', async () => {
-    // The mid-turn path no longer waits, so it no longer gets re-minted by
-    // having waited — and the id it carries is the user's browser clock at the
-    // moment they pressed Enter, with no lift against anything. The turn in
-    // flight has been writing higher ids ever since it started, so a browser
-    // running even slightly behind the sandbox delivers an id that sorts BELOW
-    // them, and OpenCode reads that as already answered: accepted, never run,
-    // no assistant message, nothing to redeliver from.
-    //
-    // A live turn is exactly the condition that used to refuse admission, so
-    // re-minting on it restores what the refusal guaranteed without the wait.
+  test('a prompt claimed while a turn is LIVE is held — refused with turn_active, nothing sent', async () => {
+    // ONE PROMPT = ONE TURN. It used to be forwarded into the live turn, and
+    // OpenCode then answered every message pending at turn-end in ONE turn.
+    // Now it waits for the turn-end kick (`completeSandboxTurn` →
+    // `promoteNextInboxRow`) and goes out as its own turn.
+    requeues = [];
     boxRow = {
       status: 'active',
       metadata: {
@@ -429,17 +426,12 @@ describe('executeQueuedContinue — what actually goes on the wire', () => {
         },
       },
     };
-    transcript = [
-      { info: { id: NEWER_TRANSCRIPT_ID, role: 'assistant', parentID: 'msg_other' } },
-    ];
 
     const outcome = await executeQueuedContinue(baseRow());
 
-    expect(outcome).toBe('succeeded');
-    const sent = capturedBodies[0].messageID as string;
-    expect(sent).not.toBe(SUBMITTED_WIRE_ID);
-    expect(wireIdTime(sent)!).toBeGreaterThan(wireIdTime(NEWER_TRANSCRIPT_ID)!);
-    expect(persistedWireIds()).toEqual([sent]);
+    expect(outcome).toBe('queued');
+    expect(capturedBodies).toHaveLength(0);
+    expect(requeues.map((r) => r.reason)).toEqual(['turn_active']);
   });
 
   test('a second prompt sent inside the persistence lag clears the FIRST one’s id', async () => {

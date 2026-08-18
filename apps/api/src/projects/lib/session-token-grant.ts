@@ -194,14 +194,28 @@ async function applyResolvedGrant(
  * rather than papered over; the single-prompt path (every ordinary session) is
  * correct.
  */
-export async function remintGrantForAgentSwitch(input: {
-  projectId: string;
-  sessionId: string;
-  /** `project_sessions.agent_name` — the agent the session was CREATED with. */
-  sessionAgent: string;
-  /** The agent this prompt asked to run, verbatim from the body. */
-  requestedAgent: string | null;
-}): Promise<RemintDecision> {
+export async function remintGrantForAgentSwitch(
+  input: {
+    projectId: string;
+    sessionId: string;
+    /** `project_sessions.agent_name` — the agent the session was CREATED with. */
+    sessionAgent: string;
+    /** The agent this prompt asked to run, verbatim from the body. */
+    requestedAgent: string | null;
+  },
+  opts: {
+    /**
+     * What to do when the prompt runs the agent the token ALREADY holds.
+     * `'await'` (default) refreshes the manifest and applies any grant change
+     * before returning. `'background'` returns `skip` at once and applies the
+     * same refresh off the caller's path — the per-prompt call site uses this,
+     * because the refresh is a git fetch of the project mirror (~0.8s) that
+     * used to run synchronously before EVERY prompt. A real switch is always
+     * synchronous: it can REFUSE, and that must land before the prompt.
+     */
+    sameAgent?: 'await' | 'background';
+  } = {},
+): Promise<RemintDecision> {
   const requested = input.requestedAgent?.trim();
   // The agent that will ACTUALLY run. `project_sessions.agent_name` is the
   // create-time agent and nothing ever updates it, so it is the fallback, not
@@ -210,12 +224,27 @@ export async function remintGrantForAgentSwitch(input: {
     requested && requested !== DEFAULT_AGENT_SENTINEL ? requested : input.sessionAgent;
 
   const stored = await loadStoredSessionGrant(input.sessionId);
-  const running = await resolveCurrentGrant({
-    ...input,
-    runningAgent,
-    forceRefresh: true,
-  });
-  return applyResolvedGrant(input.sessionId, stored, running);
+  const heldAgent = stored?.agent?.trim() || input.sessionAgent;
+  const isSwitch = heldAgent !== runningAgent;
+  const refresh = async (): Promise<RemintDecision> => {
+    const running = await resolveCurrentGrant({
+      ...input,
+      runningAgent,
+      forceRefresh: true,
+    });
+    return applyResolvedGrant(input.sessionId, stored, running);
+  };
+  if (!isSwitch && opts.sameAgent === 'background') {
+    void refresh().catch((err) => {
+      console.warn('[session-token-grant] background same-agent reconcile failed', {
+        sessionId: input.sessionId,
+        agent: runningAgent,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+    return { action: 'skip' };
+  }
+  return refresh();
 }
 
 /**

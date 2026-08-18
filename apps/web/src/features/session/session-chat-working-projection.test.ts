@@ -194,6 +194,9 @@ describe('the turn card reads the same working answer', () => {
     // receipt, cleared the draft, and told the user nothing.
     const send = between(chat, 'const created = await promptInbox.enqueue({', 'return { ok: true }');
     expect(send).toContain("created.state === 'failed'");
-    expect(chat).toContain('correctedWillWait');
+    // No after-the-fact bubble for a prompt sent while a turn is live: the
+    // server HOLDS it (one prompt = one turn), so it belongs in the strip
+    // until its own turn starts.
+    expect(chat).not.toContain('correctedWillWait');
   });
 });

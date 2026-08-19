@@ -543,6 +543,7 @@ describe('Preview proxy: websocket upstream resolution', () => {
       remainingPath: '/pty/pty_test/connect',
       queryString: '',
       callerSessionId: null,
+      boundCredentialSessionId: null,
     });
 
     expect(upstream.ok).toBe(true);
@@ -562,6 +563,7 @@ describe('Preview proxy: websocket upstream resolution', () => {
       // The sandbox's own session id — the legitimate case, which must keep
       // working or the narrowing has broken the product.
       callerSessionId: mockDbSandbox?.sessionId ?? null,
+      boundCredentialSessionId: mockDbSandbox?.sessionId ?? null,
     });
     expect(upstream.ok).toBe(true);
   });
@@ -579,6 +581,7 @@ describe('Preview proxy: websocket upstream resolution', () => {
       remainingPath: '/pty/pty_test/connect',
       queryString: '',
       callerSessionId: '99999999-9999-4999-8999-999999999999',
+      boundCredentialSessionId: '99999999-9999-4999-8999-999999999999',
     });
     expect(upstream.ok).toBe(false);
     if (!upstream.ok) expect(upstream.status).toBe(403);
@@ -596,6 +599,7 @@ describe('Preview proxy: websocket upstream resolution', () => {
       remainingPath: '/pty/pty_test/connect',
       queryString: '',
       callerSessionId: null,
+      boundCredentialSessionId: null,
     });
 
     expect(upstream.ok).toBe(true);
@@ -624,6 +628,7 @@ describe('Preview proxy: websocket upstream resolution', () => {
       remainingPath: '/kortix/pty/kpty_test/connect',
       queryString: '',
       callerSessionId: null,
+      boundCredentialSessionId: null,
     });
 
     expect(upstream.ok).toBe(true);

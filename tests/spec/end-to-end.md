@@ -870,6 +870,7 @@ These contracts use product IDs. They replace the old route-coverage bucket IDs.
 `GW-9` Project gateway analytics, logs, budgets, keys, playground, and provider verification enforce project permissions and payload validation.
 `GW-10` Every internal gateway control route rejects a request without internal credentials.
 `GW-12` Internal gateway authorization rejects a request without internal credentials.
+`GW-13` `GET /v1/usage` exhausts the `group_by` enum and its per-value response shape: `provider` rows carry `provider` only, `day` rows carry `day` only, `model` rows carry both `provider` and `model` — never a field from another grouping. A malformed `start` or `end` timestamp is a 400 boundary distinct from an inverted window, and a window containing no `usage_events` returns 200 with zeroed totals and an empty `breakdown`, never 404 or 500.
 `INV-6` A pending account invite admits the invited user and applies the project bootstrap grant.
 `INV-7` Invite accept and decline are email-bound, idempotent where documented, and cannot be used by another user.
 `MEM-6` Changing an account role reconciles project grants so account-wide permissions do not retain stale project rows.

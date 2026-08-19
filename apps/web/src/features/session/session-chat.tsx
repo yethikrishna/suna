@@ -3283,19 +3283,12 @@ export function SessionChat({
       markOptimisticSendInboxBacked(sessionId, messageID);
       const sendingIntoRunningTurn = isBusyRef.current;
 
-      // Anchor the new user message at the top of the viewport.
-      //
-      // This used to be `scrollToBottom()` plus a second one on a 100ms timer,
-      // "after the turn likely rendered". Both fired at send time and both
-      // targeted the LAST `[data-turn-id]`, so until the new turn committed
-      // they anchored the previous one — and on a slow render the real turn
-      // landed afterwards and moved the viewport unprompted. `anchorTurn`
-      // waits for THIS turn's element instead of guessing, gives up rather
-      // than firing late, and abandons on any wheel/touch so it never yanks a
-      // reader who has scrolled away. See `turn-anchor.ts`.
-      // Not while a turn runs: anchoring would move the viewport off the
-      // streaming answer the reader is on. The follow-scroll shows the new
-      // bubble if they are at the bottom.
+      // A send follows from here: the new bubble lands at the top of the
+      // screen the frame it commits (use-auto-scroll.ts, FACT 2 + THE RULE).
+      // Not while a turn runs: a reader who scrolled up to read the streaming
+      // answer must not be pulled to the queued bubble; one who is at the end
+      // sees it appear anyway (the room is measured from the working turn, so
+      // the queued bubble does not shift the answer out of view either).
       if (!sendingIntoRunningTurn) anchorTurn(messageID);
 
       const options: Record<string, unknown> = {};

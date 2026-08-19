@@ -3396,6 +3396,13 @@ export function SessionChat({
       // happened. The result was every message rendering twice for the whole
       // turn, until the session went idle and the optimistic sweep ran.
       markOptimisticSendDispatched(sessionId, messageID);
+      // And it is INBOX-BACKED from the same instant: the row it becomes is
+      // durable, and this send's own failure path (`recoverFromSendFailure`,
+      // below) is the ONLY thing allowed to take the bubble away. Not after
+      // the POST resolves — `enqueue` settles after its cache invalidation, so
+      // the row is on the server (and a Stop's abort frame can sweep an
+      // unprotected bubble) hundreds of ms before that promise returns.
+      markOptimisticSendInboxBacked(sessionId, messageID);
 
       const selectedAgent = typeof sendOpts?.agent === 'string' ? sendOpts.agent : null;
       const selectedVariant = typeof sendOpts?.variant === 'string' ? sendOpts.variant : null;
@@ -3457,10 +3464,6 @@ export function SessionChat({
           // moment, which is what covers the window before the row is
           // delivered and becomes a turn.
           acceptSendReceipt(clientMessageId);
-          // The control plane holds the prompt durably from here. The bubble
-          // is no longer "unconfirmed": a local idle before the box answers
-          // must not sweep it — the row WILL be delivered and echoed.
-          markOptimisticSendInboxBacked(sessionId, messageID);
           return { ok: true } as const;
         } catch (cause) {
           // Unchanged recovery: clear busy, then either rehydrate the real

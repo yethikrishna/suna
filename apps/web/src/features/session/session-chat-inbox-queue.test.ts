@@ -137,11 +137,15 @@ describe('ONE prompt = ONE id = ONE bubble, from Enter', () => {
     expect(chat).not.toContain('willWaitInInbox');
   });
 
-  test('the row carries the SAME id, and a landed row is inbox-backed (never swept)', () => {
+  test('the row carries the SAME id, and the bubble is inbox-backed from dispatch (never swept)', () => {
     const send = between(chat, 'const result = await (async () => {', 'if (!result.ok) {');
     expect(send).toContain('messageId: messageID,');
-    expect(send).toContain('markOptimisticSendInboxBacked(sessionId, messageID);');
     expect(send).toContain('recoverFromSendFailure(sessionId, messageID, cause');
+    // Marked BEFORE the POST, next to dispatch: the enqueue promise settles
+    // after its cache invalidation, so the row is on the server — and an
+    // abort frame can sweep an unprotected bubble — before it returns.
+    const dispatch = between(chat, 'markOptimisticSendDispatched(sessionId, messageID);', 'noteSendReceipt(clientMessageId);');
+    expect(dispatch).toContain('markOptimisticSendInboxBacked(sessionId, messageID);');
   });
 
   test('a row already on screen — by id or by re-mint alias — is never a queued bubble', () => {

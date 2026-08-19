@@ -125,13 +125,15 @@ export function markOptimisticSendDispatched(sessionId: string, messageId: strin
 }
 
 /**
- * The prompt's inbox row LANDED (`POST .../prompts` returned): the control
- * plane holds it durably and will deliver it. Call this right after the POST
- * resolves, for a host that painted the bubble with the WIRE id it handed the
- * inbox. From here the local idle sweep leaves the message alone — a session
- * that goes idle before the box answers (asleep, held by a stop) is not
- * evidence the prompt was lost — and the runtime's echo confirms it in place
- * (same id) or supersedes it (re-minted id, aliased by the store).
+ * The prompt is going to the durable inbox (`POST .../prompts`): from here the
+ * host's own send path owns the bubble's life — the POST's failure path
+ * removes it explicitly, the runtime's echo confirms it in place (same id) or
+ * supersedes it (re-minted id, aliased by the store) — and the local idle
+ * sweep must leave it alone. Call it next to `markOptimisticSendDispatched`,
+ * BEFORE the POST: the enqueue promise settles after its cache work, and a
+ * session that goes idle or aborts in that window (a Stop, an asleep box) is
+ * not evidence the prompt was lost. Only for a host that painted the bubble
+ * with the WIRE id it hands the inbox.
  */
 export function markOptimisticSendInboxBacked(sessionId: string, messageId: string): void {
   useSyncStore.getState().markOptimisticInboxBacked(sessionId, messageId);

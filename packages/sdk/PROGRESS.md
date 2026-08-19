@@ -12,6 +12,50 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-19 — session `member-model-picker` — the model picker is inert without an agent — DONE
+
+**Files:** `react/use-opencode-local.ts` (+ `use-opencode-local.test.ts`),
+`src/public-surface.snapshot.json` + `src/public-type-surface.snapshot.json`
+(+1 name each). The API half is a contract test only — no API change was needed.
+
+**The bug.** A project `member` opened the composer's model picker, saw every
+enabled model listed and selectable, clicked one — and nothing happened. The
+trigger snapped straight back to the server default. Reproduced end to end in
+Chromium against the local stack: `trigger BEFORE: DeepSeek V4 Flash` →
+`option count: 7` → `clicked: "Grok 4.6"` → `trigger AFTER: DeepSeek V4 Flash`.
+
+**Root cause.** `setModel` persisted the pick ONLY under
+`` `${providerMode}:${currentAgent.name}` ``, guarded by `if (currentAgent && next)`.
+Agents are deny-by-default for a member (`iam/resource-grants.ts`), so a member
+with no agent grant has an empty roster and `currentAgent === undefined`; the
+project-home composer carries no `sessionId`, so the per-session slot was absent
+too. BOTH writes were skipped and the pick was never stored. The READ side had
+already been made agent-independent — `currentModelKey`'s own comment says
+"Model selection must NOT depend on a loaded agent" — so this was a read/write
+asymmetry, not a policy.
+
+**Fix.** New exported `agentScopedModelSelectionKey(mode, agentName)` returns a
+stable agent-less slot (`` `${mode}:` ``) instead of nothing, and BOTH the read
+(`explicitModelKey`) and the write (`setModel`) now go through it. With an agent
+loaded the key is byte-identical to before, so nothing changes for anyone who
+already had one.
+
+**Not breaking.** One added export, additive. Snapshots regenerated with
+`UPDATE_SURFACE_SNAPSHOT=1` / `UPDATE_TYPE_SURFACE_SNAPSHOT=1`; that regeneration
+also absorbed the four `AccountResourceGrant*` / `ListAccountTokensOptions` names
+the two parallel sessions above had left un-snapshotted.
+
+TDD: test written and run RED first (`SyntaxError: Export named
+'agentScopedModelSelectionKey' not found`), then GREEN 16/16.
+
+**Gates.** SDK `tsc --noEmit` exit 0. SDK suite `bun test --isolate src`:
+2267 pass / 0 fail across 156 files. `smoke:install` passed. Browser re-run after
+the fix: `clicked: "Grok 4.6"` → `trigger AFTER: Grok 4.6`.
+
+**Shippable to production: YES.**
+
+---
+
 ### 2026-08-18 — session `token-information-architecture` — `listAccountTokens` takes `{ mine: true }` — DONE
 
 **Files:** `core/rest/projects-client/tokens.ts` (+ new `tokens.test.ts`),

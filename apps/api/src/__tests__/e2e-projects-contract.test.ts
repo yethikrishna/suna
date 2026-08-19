@@ -788,7 +788,8 @@ describe('projects API contract', () => {
       (r: any) => r.projectId === PROJECT_ID && r.userId === MEMBER_ID,
     );
     expect(stored).toBeDefined();
-    stored!.projectRole = 'editor';
+    // Cast: the type no longer admits `editor`; the DB enum still can.
+    (stored as { projectRole: string }).projectRole = 'editor';
 
     access = await app.request(`/v1/projects/${PROJECT_ID}/access`);
     body = await access.json();

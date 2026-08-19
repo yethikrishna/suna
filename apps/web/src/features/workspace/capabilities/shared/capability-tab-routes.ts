@@ -22,11 +22,12 @@
  * something outside it", and splitting that question across two top-level tabs
  * made the answer depend on knowing which direction the bytes travel.
  *
- * `icon`: a Phosphor icon component, always drawn by `CapabilityTabs` — see
- * that file. (Reversed from the earlier "labels only" decision, Marko's call,
- * 2026-08-18: the bar needed icons for scannability once a non-tab launcher —
- * Members, which redirects out to the account hub instead of rendering a page
- * here — sits in the same row and needs to visually read as a tab too.)
+ * `icon`: a Phosphor icon component for the surfaces that have room for one —
+ * the sidebar Customize row and the Customize index cards. The tab bar itself
+ * is text-only (Marko, 2026-08-19: eight mixed 16px glyphs in one row read as
+ * clutter; the Vercel/Linear text-tab pattern is the elegant one). The Members
+ * launcher, which leaves the page for the account hub, carries a small
+ * trailing ↗ instead of an icon.
  */
 import {
   ClockCounterClockwiseIcon as TriggersIcon,

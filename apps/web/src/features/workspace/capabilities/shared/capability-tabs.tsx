@@ -1,6 +1,6 @@
 'use client';
 
-import { SidebarSimpleIcon as PanelLeft, UsersIcon as MembersIcon } from '@phosphor-icons/react';
+import { ArrowUpRightIcon, SidebarSimpleIcon as PanelLeft } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -106,10 +106,10 @@ function MembersLaunchLink({ projectId }: { projectId: string }) {
     <Link
       href={`/accounts/${accountId}?tab=access-projects&project=${projectId}`}
       prefetch={false}
-      className="text-muted-foreground hover:text-foreground ml-auto flex w-fit flex-none items-center gap-1.5 px-1 py-3 text-sm font-medium whitespace-nowrap transition-colors"
+      className="text-muted-foreground hover:text-foreground ml-auto flex w-fit flex-none items-center gap-1 px-1 py-3 text-sm font-medium whitespace-nowrap transition-colors"
     >
-      <MembersIcon className="size-4" />
       Members
+      <ArrowUpRightIcon className="size-3 opacity-60" aria-hidden />
     </Link>
   );
 }
@@ -205,29 +205,21 @@ export function CapabilityTabs({ projectId }: { projectId: string }) {
           size="lg"
           className="h-auto w-full justify-start gap-5 border-b-0 px-2"
         >
-          {tabs.filter((tab) => !TRAILING_TABS.includes(tab.key)).map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <TabsTrigger key={tab.key} value={tab.key} asChild className="w-fit flex-none gap-1.5 px-1 py-3">
-                <Link href={capabilityTabHref(projectId, tab.key)} prefetch={true}>
-                  <Icon className="size-4" />
-                  {tab.label}
-                </Link>
-              </TabsTrigger>
-            );
-          })}
+          {tabs.filter((tab) => !TRAILING_TABS.includes(tab.key)).map((tab) => (
+            <TabsTrigger key={tab.key} value={tab.key} asChild className="w-fit flex-none px-1 py-3">
+              <Link href={capabilityTabHref(projectId, tab.key)} prefetch={true}>
+                {tab.label}
+              </Link>
+            </TabsTrigger>
+          ))}
           <MembersLaunchLink projectId={projectId} />
-          {tabs.filter((tab) => TRAILING_TABS.includes(tab.key)).map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <TabsTrigger key={tab.key} value={tab.key} asChild className="w-fit flex-none gap-1.5 px-1 py-3">
-                <Link href={capabilityTabHref(projectId, tab.key)} prefetch={true}>
-                  <Icon className="size-4" />
-                  {tab.label}
-                </Link>
-              </TabsTrigger>
-            );
-          })}
+          {tabs.filter((tab) => TRAILING_TABS.includes(tab.key)).map((tab) => (
+            <TabsTrigger key={tab.key} value={tab.key} asChild className="w-fit flex-none px-1 py-3">
+              <Link href={capabilityTabHref(projectId, tab.key)} prefetch={true}>
+                {tab.label}
+              </Link>
+            </TabsTrigger>
+          ))}
         </TabsList>
       </Tabs>
     </div>

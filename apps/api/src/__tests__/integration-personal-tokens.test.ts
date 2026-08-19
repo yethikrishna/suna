@@ -32,13 +32,14 @@ const MY_SESSION_TOKEN = crypto.randomUUID();
 const SERVICE_ACCOUNT_BEARER = crypto.randomUUID();
 
 /** The columns every row needs, so each case below shows only its own point. */
-const row = (tokenId: string, extra: Record<string, unknown>) => ({
-  tokenId,
-  accountId: ACCOUNT,
-  publicKey: `pk_${tokenId.slice(0, 8)}`,
-  secretKeyHash: `h_${tokenId.slice(0, 8)}`,
-  ...extra,
-});
+const row = (tokenId: string, extra: Partial<typeof accountTokens.$inferInsert>) =>
+  ({
+    tokenId,
+    accountId: ACCOUNT,
+    publicKey: `pk_${tokenId.slice(0, 8)}`,
+    secretKeyHash: `h_${tokenId.slice(0, 8)}`,
+    ...extra,
+  }) as typeof accountTokens.$inferInsert;
 
 beforeAll(async () => {
   await db.insert(accounts).values({ accountId: ACCOUNT, name: 'personal-tokens-test' });
@@ -78,7 +79,7 @@ beforeAll(async () => {
       userId: ME,
       name: 'Connector Session abcdef12',
       sessionId: crypto.randomUUID(),
-      agentGrant: { agent: 'main' },
+      agentGrant: { agent: 'main', connectors: [], kortixCli: 'all' },
     }),
     // A service account's bearer: minted under a human's user_id, but it is
     // the automation's identity, not the human's key.

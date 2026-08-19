@@ -17,6 +17,8 @@
 // `role-select-item.tsx` folds into this file.
 
 import Link from 'next/link';
+import { menuRow } from '@/components/ui/menu-recipe';
+import { ArrowRightIcon } from '@phosphor-icons/react';
 import { useMemo } from 'react';
 
 import {
@@ -311,7 +313,7 @@ export function RoleSelect({
           );
         })}
 
-        {rbacEnabled ? (
+        {rbacEnabled && (customRoles.length > 0 || selectedMissingCustom) ? (
           <>
             <SelectSeparator />
             <SelectGroup>
@@ -328,21 +330,24 @@ export function RoleSelect({
                   <span className="font-medium">{role.name}</span>
                 </SelectItem>
               ))}
-              {customRoles.length === 0 && !selectedMissingCustom ? (
-                canManageRoles ? (
-                  <Link
-                    href={`/accounts/${accountId}?tab=roles`}
-                    className="text-muted-foreground hover:text-foreground block px-2 py-1.5 text-xs transition-colors"
-                  >
-                    Create a custom role →
-                  </Link>
-                ) : (
-                  <p className="text-muted-foreground px-2 py-1.5 text-xs">
-                    No custom roles for this scope yet.
-                  </p>
-                )
-              ) : null}
             </SelectGroup>
+          </>
+        ) : null}
+        {/* No custom roles yet: one footer row that reads as a row (same
+            recipe as the items above it — same inset, same height), not a
+            "Custom" heading over an empty group with a bare link under it. */}
+        {rbacEnabled && customRoles.length === 0 && !selectedMissingCustom && canManageRoles ? (
+          <>
+            <SelectSeparator />
+            <Link
+              href={`/accounts/${accountId}?tab=roles`}
+              className={menuRow('md', 'default', 'text-muted-foreground hover:text-foreground')}
+            >
+              <span className="flex w-full items-center justify-between gap-2">
+                <span>Create a custom role</span>
+                <ArrowRightIcon className="size-3.5 shrink-0" aria-hidden />
+              </span>
+            </Link>
           </>
         ) : null}
       </SelectContent>

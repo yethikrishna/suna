@@ -41,8 +41,6 @@
 
 import { createHash } from 'node:crypto';
 import { SANDBOX_VERSION, config } from '../../config';
-import type { NetworkBoundarySecretBinding } from '../../secrets/network-boundary';
-import { syncPlatinumNetworkBoundary } from '../../secrets/platinum-network-boundary';
 import { isOpencodePort } from '../../shared/opencode-ports';
 import { platinumJson } from '../../shared/platinum';
 import { sandboxFrontendBaseUrl } from '../sandbox-frontend-url';
@@ -205,16 +203,6 @@ export class PlatinumProvider implements SandboxProvider {
 
   async getProvisioningStatus(): Promise<ProvisioningStatus | null> {
     return null;
-  }
-
-  syncNetworkBoundary(
-    externalId: string,
-    bindings: NetworkBoundarySecretBinding[],
-  ): Promise<{ state: 'armed'; attached: number }> {
-    return syncPlatinumNetworkBoundary(externalId, bindings, {
-      environment: config.INTERNAL_KORTIX_ENV,
-      rootSecret: config.API_KEY_SECRET,
-    });
   }
 
   async create(opts: CreateSandboxOpts): Promise<ProvisionResult> {
@@ -577,15 +565,10 @@ export class PlatinumProvider implements SandboxProvider {
   }
 
   async remove(externalId: string): Promise<void> {
-    await syncPlatinumNetworkBoundary(externalId, [], {
-      environment: config.INTERNAL_KORTIX_ENV,
-      rootSecret: config.API_KEY_SECRET,
-    }).catch((error) => {
-      console.warn(
-        `[platinum] failed to erase network-boundary replicas for ${externalId}:`,
-        error instanceof Error ? error.message : String(error),
-      );
-    });
+    // No credential replicas to erase first: Kortix stopped registering secrets
+    // at the Platinum edge when one mechanism took over every provider
+    // (docs/specs/2026-08-19-secrets-exposure-usage-model.md §4). The value is
+    // substituted server-side per request and never leaves the API.
     await platinumJson(`/v1/sandboxes/${externalId}`, { method: 'DELETE' });
   }
 

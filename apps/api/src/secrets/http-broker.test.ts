@@ -8,6 +8,7 @@ import {
   redactSecretFromResponse,
   SecretBrokerError,
   type BrokerTransport,
+  type SecretSubstitution,
 } from './http-broker';
 
 const SECRET = 'local-secret-value';
@@ -119,7 +120,7 @@ describe('executeSecretBrokerRequest', () => {
       ),
     });
 
-    const response = await executeSecretBrokerRequest(policy(), SECRET, request(), transport);
+    const response = await executeSecretBrokerRequest(policy(), SECRET, request(), { transport });
     expect(response.headers).toEqual({
       'content-type': 'application/json',
       'x-request-id': 'req-1',
@@ -143,7 +144,7 @@ describe('executeSecretBrokerRequest', () => {
     };
 
     await expect(
-      executeSecretBrokerRequest(policy(), SECRET, request(), transport),
+      executeSecretBrokerRequest(policy(), SECRET, request(), { transport }),
     ).rejects.toMatchObject({ code: 'policy_denied' });
     expect(destinations).toEqual(['https://api.example.com/v1/messages']);
   });
@@ -159,7 +160,7 @@ describe('executeSecretBrokerRequest', () => {
       };
     };
     await expect(
-      executeSecretBrokerRequest(policy(), SECRET, request(), transport),
+      executeSecretBrokerRequest(policy(), SECRET, request(), { transport }),
     ).rejects.toMatchObject({ code: 'upstream_failed' });
     expect(calls).toBe(4);
   });
@@ -193,4 +194,270 @@ test('pinned transport connects to the verified IP without a runtime DNS lookup'
     },
   });
   expect('lookup' in options).toBe(false);
+});
+
+// ── Substitution ────────────────────────────────────────────────────────────
+//
+// The egress-enforced path: the sandbox holds a HANDLE, sends it with an
+// ordinary HTTP client, and the relay swaps it for the real value on the way
+// out. See docs/specs/2026-08-19-secrets-exposure-usage-model.md §5.
+
+const HANDLE = 'kortix_brokered__use_kortix_fetch__KXS1abcdefghijklmnopqrstuvwxyz234567ab';
+const OTHER_HANDLE = 'kortix_brokered__use_kortix_fetch__KXS1zyxwvutsrqponmlkjihg765432abcdef';
+
+function substitution(
+  overrides: Partial<SecretSubstitution> = {},
+): SecretSubstitution {
+  return {
+    identifier: 'PRIMARY',
+    handle: HANDLE,
+    value: SECRET,
+    policy: policy(),
+    ...overrides,
+  };
+}
+
+/** A substitution-only row: hosts, and no `inject` at all (spec §6). */
+function hostsOnlyPolicy(host = 'api.example.com'): SecretEgressPolicy {
+  return { rules: [{ host }] } as unknown as SecretEgressPolicy;
+}
+
+describe('prepareSecretBrokerRequest substitution', () => {
+  test('replaces a handle in a header, the query string, and the body', () => {
+    const prepared = prepareSecretBrokerRequest(
+      hostsOnlyPolicy(),
+      SECRET,
+      request({
+        url: `https://api.example.com/v1/messages?key=${HANDLE}`,
+        headers: { 'x-api-key': `Bearer ${HANDLE}` },
+        body_base64: Buffer.from(JSON.stringify({ token: HANDLE })).toString('base64'),
+      }),
+      [substitution({ policy: hostsOnlyPolicy() })],
+    );
+
+    expect(prepared.headers['x-api-key']).toBe(`Bearer ${SECRET}`);
+    expect(prepared.url.searchParams.get('key')).toBe(SECRET);
+    expect(JSON.parse(prepared.body!.toString('utf8'))).toEqual({ token: SECRET });
+    // The relay is fully buffered, so the framing it states must be the framing
+    // it sends — the substituted body is longer than the one that arrived.
+    expect(prepared.headers['content-length']).toBe(String(prepared.body!.byteLength));
+    expect(prepared.substituted).toEqual(['PRIMARY']);
+  });
+
+  test('finds the handle in all four representations', () => {
+    const jsonEscaped = JSON.stringify(HANDLE).slice(1, -1);
+    const body = [
+      `raw=${HANDLE}`,
+      `url=${encodeURIComponent(HANDLE)}`,
+      `base64=${Buffer.from(HANDLE).toString('base64')}`,
+      `json=${jsonEscaped}`,
+    ].join('&');
+
+    const prepared = prepareSecretBrokerRequest(
+      hostsOnlyPolicy(),
+      SECRET,
+      request({ body_base64: Buffer.from(body).toString('base64') }),
+      [substitution({ policy: hostsOnlyPolicy() })],
+    );
+
+    const sent = prepared.body!.toString('utf8');
+    expect(sent).not.toContain(HANDLE);
+    expect(sent).toContain(`raw=${SECRET}`);
+    expect(sent).toContain(`base64=${Buffer.from(SECRET).toString('base64')}`);
+    // The base64 representation is replaced by the base64 of the VALUE, not by
+    // the raw value — a representation-preserving swap, or the receiver decodes
+    // garbage.
+    expect(sent).not.toContain(Buffer.from(HANDLE).toString('base64'));
+  });
+
+  test('two secrets on one host are both substituted in one request', () => {
+    const prepared = prepareSecretBrokerRequest(
+      hostsOnlyPolicy(),
+      SECRET,
+      request({
+        headers: { 'x-first': HANDLE, 'x-second': OTHER_HANDLE },
+        body_base64: Buffer.from(`${HANDLE}|${OTHER_HANDLE}`).toString('base64'),
+      }),
+      [
+        substitution({ policy: hostsOnlyPolicy() }),
+        substitution({
+          identifier: 'SECONDARY',
+          handle: OTHER_HANDLE,
+          value: 'second-secret-value',
+          policy: hostsOnlyPolicy(),
+        }),
+      ],
+    );
+
+    expect(prepared.headers['x-first']).toBe(SECRET);
+    expect(prepared.headers['x-second']).toBe('second-secret-value');
+    expect(prepared.body!.toString('utf8')).toBe(`${SECRET}|second-secret-value`);
+    expect(prepared.substituted.sort()).toEqual(['PRIMARY', 'SECONDARY']);
+  });
+
+  test('a handle whose own policy denies this host is left untouched', () => {
+    // Substitution must never widen who may spend: the destination is admitted
+    // for the ROUTE's secret, not for this one.
+    const prepared = prepareSecretBrokerRequest(
+      hostsOnlyPolicy(),
+      SECRET,
+      request({ headers: { 'x-other': OTHER_HANDLE } }),
+      [
+        substitution({
+          identifier: 'ELSEWHERE',
+          handle: OTHER_HANDLE,
+          value: 'must-not-be-sent',
+          policy: hostsOnlyPolicy('api.other.example'),
+        }),
+      ],
+    );
+
+    expect(prepared.headers['x-other']).toBe(OTHER_HANDLE);
+    expect(prepared.substituted).toEqual([]);
+    expect(JSON.stringify(prepared.headers)).not.toContain('must-not-be-sent');
+  });
+
+  test('a legacy inject policy still injects, and substitutes alongside it', () => {
+    const prepared = prepareSecretBrokerRequest(
+      policy(),
+      SECRET,
+      request({ headers: { 'x-api-key': HANDLE } }),
+      [substitution()],
+    );
+
+    // Byte-identical to the pre-substitution behaviour for the injected header.
+    expect(prepared.headers.authorization).toBe(`Bearer ${SECRET}`);
+    expect(prepared.headers['x-api-key']).toBe(SECRET);
+  });
+
+  test('refuses a compressed request body instead of relaying the handle', () => {
+    // A gzipped body does not contain the handle's bytes, so the scan finds
+    // nothing and the guest's credential reference leaves the building intact.
+    expect(() =>
+      prepareSecretBrokerRequest(
+        hostsOnlyPolicy(),
+        SECRET,
+        request({ headers: { 'content-encoding': 'gzip' } }),
+        [substitution({ policy: hostsOnlyPolicy() })],
+      ),
+    ).toThrow(SecretBrokerError);
+  });
+
+  test('refuses a substituted header value that would split the request', () => {
+    expect(() =>
+      prepareSecretBrokerRequest(
+        hostsOnlyPolicy(),
+        SECRET,
+        request({ headers: { 'x-api-key': HANDLE } }),
+        [substitution({ value: 'evil\r\nx-injected: 1', policy: hostsOnlyPolicy() })],
+      ),
+    ).toThrow(SecretBrokerError);
+  });
+
+  test('keeps a JSON body valid when the value itself needs escaping', () => {
+    // The body's own content type decides which representation wins when the
+    // handle's encodings collapse: inside JSON, a value carrying a quote has to
+    // arrive escaped or the upstream parses garbage.
+    const prepared = prepareSecretBrokerRequest(
+      hostsOnlyPolicy(),
+      SECRET,
+      request({
+        headers: { 'content-type': 'application/json' },
+        body_base64: Buffer.from(JSON.stringify({ token: HANDLE })).toString('base64'),
+      }),
+      [substitution({ value: 'quote"and\\slash', policy: hostsOnlyPolicy() })],
+    );
+
+    expect(JSON.parse(prepared.body!.toString('utf8'))).toEqual({ token: 'quote"and\\slash' });
+  });
+
+  test('percent-encodes a substituted value in the query string', () => {
+    const prepared = prepareSecretBrokerRequest(
+      hostsOnlyPolicy(),
+      SECRET,
+      request({ url: `https://api.example.com/v1/messages?key=${HANDLE}` }),
+      [substitution({ value: 'a&b=c', policy: hostsOnlyPolicy() })],
+    );
+
+    expect(prepared.url.search).toBe('?key=a%26b%3Dc');
+    expect(prepared.url.searchParams.get('key')).toBe('a&b=c');
+  });
+
+  test('leaves a request with no admitted substitutions byte-identical', () => {
+    const withNone = prepareSecretBrokerRequest(policy(), SECRET, request());
+    const withEmpty = prepareSecretBrokerRequest(policy(), SECRET, request(), []);
+    expect(withEmpty).toEqual(withNone);
+    expect(withNone.substituted).toEqual([]);
+  });
+});
+
+describe('executeSecretBrokerRequest substitution', () => {
+  test('reports what it substituted and redacts those values from the echo', async () => {
+    const applied = new Set<string>();
+    const transport: BrokerTransport = async (prepared) => ({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      body: Buffer.from(JSON.stringify({ echoed: prepared.headers['x-api-key'] })),
+    });
+
+    const response = await executeSecretBrokerRequest(
+      hostsOnlyPolicy(),
+      'route-secret-value',
+      request({ headers: { 'x-api-key': OTHER_HANDLE } }),
+      {
+        transport,
+        applied,
+        substitutions: [
+          substitution({
+            identifier: 'SECONDARY',
+            handle: OTHER_HANDLE,
+            value: 'second-secret-value',
+            policy: hostsOnlyPolicy(),
+          }),
+        ],
+      },
+    );
+
+    expect([...applied]).toEqual(['SECONDARY']);
+    const body = Buffer.from(response.body_base64, 'base64').toString('utf8');
+    expect(body).toBe('{"echoed":"[REDACTED]"}');
+  });
+
+  test('re-checks each substitution against the redirect target', async () => {
+    // The first hop is admitted for both; the redirect target is admitted only
+    // for the route's own policy. The carried secret must not follow.
+    const seen: Array<string | undefined> = [];
+    const transport: BrokerTransport = async (prepared) => {
+      seen.push(prepared.headers['x-api-key']);
+      return seen.length === 1
+        ? {
+            status: 307,
+            headers: { location: 'https://api.example.com/v1/second' },
+            body: Buffer.alloc(0),
+          }
+        : { status: 200, headers: {}, body: Buffer.alloc(0) };
+    };
+
+    await executeSecretBrokerRequest(
+      hostsOnlyPolicy(),
+      'route-secret-value',
+      request({ url: 'https://api.example.com/v1/first', headers: { 'x-api-key': OTHER_HANDLE } }),
+      {
+        transport,
+        substitutions: [
+          substitution({
+            identifier: 'FIRST_HOP_ONLY',
+            handle: OTHER_HANDLE,
+            value: 'first-hop-secret',
+            // A path-scoped policy: admits /v1/first, denies /v1/second.
+            policy: {
+              rules: [{ host: 'api.example.com', path: '/v1/first' }],
+            } as unknown as SecretEgressPolicy,
+          }),
+        ],
+      },
+    );
+
+    expect(seen).toEqual(['first-hop-secret', OTHER_HANDLE]);
+  });
 });

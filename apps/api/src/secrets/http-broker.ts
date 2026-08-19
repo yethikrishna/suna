@@ -73,6 +73,9 @@ export interface PreparedBrokerRequest {
   method: SecretBrokerRequest['method'];
   headers: Record<string, string>;
   body: Buffer | null;
+  /** Identifiers whose handle was found and replaced on THIS hop. Audit reads
+   *  it, and the response redactor uses it to decide whose value to scrub. */
+  substituted: string[];
 }
 
 export interface BrokerTransportResponse {
@@ -179,10 +182,143 @@ function injectJsonBody(body: Buffer | null, path: string, secret: string): Buff
   return result;
 }
 
+// ── Representations ─────────────────────────────────────────────────────────
+
+/**
+ * The four ways one string can appear in an HTTP request or response.
+ *
+ * ONE list, used in both directions: `redactSecretFromResponse` scans for these
+ * representations of a SECRET and writes `[REDACTED]`; `substituteBuffer` scans
+ * for these representations of a HANDLE and writes the same representation of
+ * the secret. Substitution is the exact dual of redaction, so a representation
+ * either path can miss is a representation the other misses too — which is the
+ * only way the two can stay honest about each other.
+ */
+export type SecretEncoding = 'raw' | 'url' | 'base64' | 'json';
+
+const SECRET_ENCODERS: Record<SecretEncoding, (value: string) => string> = {
+  raw: (value) => value,
+  url: (value) => encodeURIComponent(value),
+  base64: (value) => Buffer.from(value).toString('base64'),
+  // `JSON.stringify` quotes; the slice drops the quotes and keeps the escapes.
+  json: (value) => JSON.stringify(value).slice(1, -1),
+};
+
+const SECRET_ENCODINGS: readonly SecretEncoding[] = ['raw', 'url', 'base64', 'json'];
+
+export function encodeSecretRepresentation(value: string, encoding: SecretEncoding): string {
+  return SECRET_ENCODERS[encoding](value);
+}
+
+/**
+ * Every DISTINCT representation of `value`, most-preferred encoding first.
+ *
+ * Handles are `[A-Za-z0-9_-]`-safe by construction (`mintHandle`), so `raw`,
+ * `url` and `json` usually collapse to the same bytes. That collapse is exactly
+ * where the request stops carrying information: an occurrence tells us nothing
+ * about which encoding the caller MEANT, and the answer decides what we write
+ * back — a raw value in a URL query, or a percent-encoded one. `primary`
+ * resolves it per surface (the caller knows whether it is holding a header, a
+ * query string or a JSON body); ties go to the first listed.
+ */
+export function secretRepresentations(
+  value: string,
+  primary: SecretEncoding = 'raw',
+): Array<{ encoding: SecretEncoding; text: string }> {
+  const order = [primary, ...SECRET_ENCODINGS.filter((encoding) => encoding !== primary)];
+  const seen = new Set<string>();
+  const out: Array<{ encoding: SecretEncoding; text: string }> = [];
+  for (const encoding of order) {
+    const text = SECRET_ENCODERS[encoding](value);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push({ encoding, text });
+  }
+  return out;
+}
+
+/** One secret this session may spend on this request, and the handle that
+ *  stands in for it inside the sandbox. `policy` is the FROZEN snapshot the
+ *  handle was minted against — re-matched per redirect hop, never trusted from
+ *  the hop that started the relay. */
+export interface SecretSubstitution {
+  identifier: string;
+  handle: string;
+  value: string;
+  policy: SecretEgressPolicy;
+}
+
+/**
+ * Replace every representation of every handle with the SAME representation of
+ * its secret. `applied` collects the identifiers that actually matched, for the
+ * audit record and for response redaction.
+ */
+function substituteBuffer(
+  source: Buffer,
+  substitutions: readonly SecretSubstitution[],
+  primary: SecretEncoding,
+  applied: Set<string>,
+): Buffer {
+  let result = source;
+  for (const substitution of substitutions) {
+    for (const { encoding, text } of secretRepresentations(substitution.handle, primary)) {
+      const next = replaceBuffer(
+        result,
+        Buffer.from(text),
+        Buffer.from(encodeSecretRepresentation(substitution.value, encoding)),
+      );
+      if (next !== result) applied.add(substitution.identifier);
+      result = next;
+    }
+  }
+  return result;
+}
+
+function substituteString(
+  value: string,
+  substitutions: readonly SecretSubstitution[],
+  primary: SecretEncoding,
+  applied: Set<string>,
+): string {
+  return substituteBuffer(Buffer.from(value), substitutions, primary, applied).toString('utf8');
+}
+
+/** Which encoding a body's own content type says its bytes are written in. */
+function bodyEncoding(contentType: string | undefined): SecretEncoding {
+  const type = contentType?.split(';')[0]?.trim().toLowerCase() ?? '';
+  if (type === 'application/json' || type.endsWith('+json')) return 'json';
+  if (type === 'application/x-www-form-urlencoded') return 'url';
+  return 'raw';
+}
+
+/**
+ * A compressed request body does not contain the handle's bytes, so the scan
+ * would find nothing and the guest's request would leave carrying the literal
+ * handle. The shim already forces `accept-encoding: identity` on the response
+ * side for the mirror-image reason (an echoed secret cannot be redacted out of
+ * gzip); this asserts the request side rather than failing silently.
+ */
+function assertIdentityRequestBody(headers: Record<string, string>): void {
+  const encoding = headers['content-encoding']?.trim().toLowerCase();
+  if (encoding && encoding !== 'identity') {
+    throw new SecretBrokerError(
+      'invalid_request',
+      'request bodies must use identity content-encoding',
+      400,
+    );
+  }
+}
+
+// Control characters and spaces cannot appear in a request target. A secret
+// whose bytes would break the request line is refused rather than sent
+// half-encoded into a header or path the upstream reads as two requests.
+const UNSAFE_TARGET = /[\s\u0000-\u001f\u007f]/;
+
 export function prepareSecretBrokerRequest(
   policy: SecretEgressPolicy,
   secret: string,
   input: SecretBrokerRequest,
+  substitutions: readonly SecretSubstitution[] = [],
 ): PreparedBrokerRequest {
   let url: URL;
   try {
@@ -208,22 +344,88 @@ export function prepareSecretBrokerRequest(
     throw new SecretBrokerError('invalid_request', `${method} requests cannot contain a body`, 400);
   }
   const headers = sanitizeHeaders(input.headers);
-  const slot = rule.inject ?? policy.inject;
-  if (slot.kind === 'header') {
-    const name = slot.name.trim().toLowerCase();
-    if (!HEADER_NAME.test(name) || name === 'host' || name === 'content-length') {
-      throw new SecretBrokerError('invalid_request', 'invalid managed header name', 400);
+
+  // ── Substitution ──────────────────────────────────────────────────────────
+  //
+  // Admission is re-evaluated HERE, per hop, against this hop's destination:
+  // `executeSecretBrokerRequest` re-enters this function for every redirect,
+  // and a secret whose policy admits the original host must not ride along to
+  // wherever that host points next.
+  const admitted = substitutions.filter(
+    (substitution) =>
+      matchRule(substitution.policy, { host: url.hostname, method, path: url.pathname }) !== null,
+  );
+  const applied = new Set<string>();
+  if (admitted.length > 0) {
+    assertIdentityRequestBody(headers);
+    for (const [name, value] of Object.entries(headers)) {
+      const substituted = substituteString(value, admitted, 'raw', applied);
+      if (substituted === value) continue;
+      if (substituted.includes('\r') || substituted.includes('\n')) {
+        throw new SecretBrokerError(
+          'invalid_request',
+          `substituted header value is invalid: ${name}`,
+          400,
+        );
+      }
+      headers[name] = substituted;
     }
-    headers[name] = injectedValue(slot, secret);
-  } else if (slot.kind === 'query') {
-    url.searchParams.set(slot.name, secret);
-  } else {
-    body = injectJsonBody(body, slot.path, secret);
-    headers['content-type'] = 'application/json';
+
+    const pathname = substituteString(url.pathname, admitted, 'url', applied);
+    const search = substituteString(url.search, admitted, 'url', applied);
+    if (pathname !== url.pathname) url.pathname = pathname;
+    if (search !== url.search) url.search = search;
+    if (UNSAFE_TARGET.test(`${url.pathname}${url.search}`)) {
+      throw new SecretBrokerError('invalid_request', 'substituted request target is invalid', 400);
+    }
+
+    if (body && body.byteLength > 0) {
+      body = substituteBuffer(body, admitted, bodyEncoding(headers['content-type']), applied);
+      if (body.byteLength > MAX_REQUEST_BYTES) {
+        throw new SecretBrokerError(
+          'invalid_request',
+          'request body exceeds 1 MiB after substitution',
+          413,
+        );
+      }
+    }
+
+    // Substitution can only rewrite bytes where a handle sat, but a handle in
+    // the path means those bytes are part of the request target. Re-match so
+    // the path actually sent is the path the policy admitted.
+    if (!matchRule(policy, { host: url.hostname, method, path: url.pathname })) {
+      throw new SecretBrokerError(
+        'policy_denied',
+        'outbound request does not match the secret policy',
+        403,
+      );
+    }
+  }
+
+  // ── Legacy injection ──────────────────────────────────────────────────────
+  //
+  // A stored policy that carries an `inject` slot still injects exactly as it
+  // did before substitution existed. A substitution-only row (the new default,
+  // §6 of the exposure model) carries no slot and is served purely by the block
+  // above — there is nothing to inject and nothing to name.
+  const slot = rule.inject ?? policy.inject;
+  if (slot) {
+    if (slot.kind === 'header') {
+      const name = slot.name.trim().toLowerCase();
+      if (!HEADER_NAME.test(name) || name === 'host' || name === 'content-length') {
+        throw new SecretBrokerError('invalid_request', 'invalid managed header name', 400);
+      }
+      headers[name] = injectedValue(slot, secret);
+    } else if (slot.kind === 'query') {
+      url.searchParams.set(slot.name, secret);
+    } else {
+      body = injectJsonBody(body, slot.path, secret);
+      headers['content-type'] = 'application/json';
+    }
   }
   if (body) headers['content-length'] = String(body.byteLength);
 
-  return { url, method, headers, body };
+  return { url, method, headers, body, substituted: [...applied] };
 }
 
 async function resolvePinnedAddress(url: URL): Promise<{ address: string; family: 4 | 6 }> {
@@ -332,14 +534,17 @@ export async function pinnedHttpsTransport(
   });
 }
 
-function replaceBuffer(source: Buffer, needle: Buffer): Buffer {
+/** Every occurrence of `needle` replaced by `replacement`. Returns the SAME
+ *  buffer object when nothing matched, which is how callers detect a hit
+ *  without a second scan. */
+function replaceBuffer(source: Buffer, needle: Buffer, replacement: Buffer): Buffer {
   if (needle.byteLength === 0) return source;
   const chunks: Buffer[] = [];
   let cursor = 0;
   for (;;) {
     const index = source.indexOf(needle, cursor);
     if (index === -1) break;
-    chunks.push(source.subarray(cursor, index), REDACTED);
+    chunks.push(source.subarray(cursor, index), replacement);
     cursor = index + needle.byteLength;
   }
   if (cursor === 0) return source;
@@ -348,16 +553,9 @@ function replaceBuffer(source: Buffer, needle: Buffer): Buffer {
 }
 
 export function redactSecretFromResponse(body: Buffer, secret: string): Buffer {
-  const jsonEscaped = JSON.stringify(secret).slice(1, -1);
-  const representations = [
-    secret,
-    encodeURIComponent(secret),
-    Buffer.from(secret).toString('base64'),
-    jsonEscaped,
-  ];
   let result = body;
-  for (const representation of new Set(representations)) {
-    result = replaceBuffer(result, Buffer.from(representation));
+  for (const { text } of secretRepresentations(secret)) {
+    result = replaceBuffer(result, Buffer.from(text), REDACTED);
   }
   return result;
 }
@@ -386,15 +584,30 @@ function redirectedInput(
   return { ...input, url: nextUrl };
 }
 
+export interface SecretBrokerExecuteOptions {
+  transport?: BrokerTransport;
+  /** Other secrets this session may spend on this destination, keyed to the
+   *  handle that stands in for each of them inside the sandbox. */
+  substitutions?: readonly SecretSubstitution[];
+  /** Filled with the identifiers actually substituted, for the audit record.
+   *  An out-param rather than a return field because the return type is the
+   *  wire contract (`SecretBrokerResponse`) and audit is not part of it. */
+  applied?: Set<string>;
+}
+
 export async function executeSecretBrokerRequest(
   policy: SecretEgressPolicy,
   secret: string,
   input: SecretBrokerRequest,
-  transport: BrokerTransport = pinnedHttpsTransport,
+  options: SecretBrokerExecuteOptions = {},
 ): Promise<SecretBrokerResponse> {
+  const transport = options.transport ?? pinnedHttpsTransport;
+  const substitutions = options.substitutions ?? [];
+  const applied = options.applied ?? new Set<string>();
   let current = input;
   for (let redirects = 0; ; redirects += 1) {
-    const prepared = prepareSecretBrokerRequest(policy, secret, current);
+    const prepared = prepareSecretBrokerRequest(policy, secret, current, substitutions);
+    for (const identifier of prepared.substituted) applied.add(identifier);
     const upstream = await transport(prepared);
     if ([301, 302, 303, 307, 308].includes(upstream.status)) {
       const rawLocation = upstream.headers.location;
@@ -408,7 +621,15 @@ export async function executeSecretBrokerRequest(
       current = redirectedInput(current, location, upstream.status);
       continue;
     }
-    const body = redactSecretFromResponse(upstream.body, secret);
+    // Redact the injected secret AND every secret substituted into the
+    // request. A handle the guest sent is a secret the upstream can echo, so
+    // an echo guard that only knew about the route's own identifier would hand
+    // the other values straight back.
+    let body = redactSecretFromResponse(upstream.body, secret);
+    for (const substitution of substitutions) {
+      if (!applied.has(substitution.identifier)) continue;
+      body = redactSecretFromResponse(body, substitution.value);
+    }
     return {
       status: upstream.status,
       headers: responseHeaders(upstream.headers),

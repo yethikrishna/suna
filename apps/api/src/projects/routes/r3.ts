@@ -30,7 +30,6 @@ import {
   networkBoundaryPolicyError,
   type BoundaryDestinationConflict,
 } from '../../secrets/network-boundary';
-import { networkBoundaryDeliveryAvailable } from '../../secrets/network-boundary-availability';
 import {
   connectors,
   projectSecrets,
@@ -104,10 +103,12 @@ function summarizeDeliverySync(result: ProjectSecretPropagationResult): SecretDe
  * The other network-boundary secret in this project that already claims one of
  * the candidate's (host, header) destinations, or null.
  *
- * The provider edge maps one destination to one credential. A second claim is
- * refused at session provision, so the stored pair takes down every NEW session
- * in the project with an error the author cannot connect to their edit. Both
- * write routes call this BEFORE the row lands.
+ * Only LEGACY injection rows claim a destination, and one (host, header) pair
+ * maps to one credential. A second claim is refused at session provision, so
+ * the stored pair takes down every NEW session in the project with an error the
+ * author cannot connect to their edit. Both write routes call this BEFORE the
+ * row lands. Substitution-only rows name no header, claim nothing, and are
+ * exempt — two of them on one host are legal.
  */
 async function boundaryDestinationConflict(
   projectId: string,
@@ -621,7 +622,6 @@ projectsApp.openapi(
     projectId,
     userId: loaded.userId,
     canManageShared,
-    projectMetadata: loaded.row.metadata,
     agentGrants,
   }))
     .filter((item) => !item.system)
@@ -773,16 +773,6 @@ projectsApp.openapi(
           400,
         );
       }
-      if (!networkBoundaryDeliveryAvailable(loaded.row.metadata)) {
-        return c.json(
-          {
-            error:
-              'Network-boundary delivery needs Platinum, or the "Network boundary in-guest shim" project feature flag',
-            code: 'secret_delivery_unavailable',
-          },
-          409,
-        );
-      }
       const conflict = await boundaryDestinationConflict(projectId, identifier, policy.policy);
       if (conflict) return c.json(boundaryConflictBody(identifier, conflict), 409);
     }
@@ -932,7 +922,6 @@ projectsApp.openapi(
     projectId,
     userId: loaded.userId,
     canManageShared: true,
-    projectMetadata: loaded.row.metadata,
   });
   const view = views.find((v) => v.identifier === identifier);
   if (!view) {
@@ -1052,18 +1041,6 @@ projectsApp.openapi(
       }
     } else if (parsed.data.egress_policy) {
       return c.json({ error: 'This consumer does not accept an outbound policy' }, 400);
-    }
-    if (parsed.data.strategy === 'egress') {
-      if (!networkBoundaryDeliveryAvailable(loaded.row.metadata)) {
-        return c.json(
-          {
-            error:
-              'Network-boundary delivery needs Platinum, or the "Network boundary in-guest shim" project feature flag',
-            code: 'secret_delivery_unavailable',
-          },
-          409,
-        );
-      }
     }
     if (
       parsed.data.strategy === 'broker' &&
@@ -1216,7 +1193,6 @@ projectsApp.openapi(
     projectId,
     userId: loaded.userId,
     canManageShared: true,
-    projectMetadata: loaded.row.metadata,
   });
     const view = views.find((item) => item.identifier === identifier);
     if (!view) return c.json({ error: 'Not found' }, 404);
@@ -1266,11 +1242,8 @@ async function writeCodexAuthSecret(input: {
   userId: string;
   value: string;
   sharing?: ReturnType<typeof parseSharingIntent>;
-  /** The loaded project's `metadata` column. This helper has no project row of
-   *  its own, so its caller supplies it — see `buildSecretView`. */
-  projectMetadata: unknown;
 }) {
-  const { projectId, accountId, userId, value, sharing, projectMetadata } = input;
+  const { projectId, accountId, userId, value, sharing } = input;
   const now = new Date();
   let secretId: string;
 
@@ -1365,7 +1338,6 @@ async function writeCodexAuthSecret(input: {
     projectId,
     userId,
     canManageShared: true,
-    projectMetadata,
   });
   return views.find((v) => v.identifier === CODEX_AUTH_JSON_SECRET_NAME)
     ?? { identifier: CODEX_AUTH_JSON_SECRET_NAME, name: CODEX_AUTH_JSON_SECRET_NAME };
@@ -1532,7 +1504,6 @@ projectsApp.openapi(
     userId: loaded.userId,
     value: result.authJson,
     sharing,
-    projectMetadata: loaded.row.metadata,
   });
 
   return c.json({
@@ -1856,7 +1827,6 @@ projectsApp.openapi(
     projectId,
     userId: loaded.userId,
     canManageShared: roleAllows(loaded.effectiveRole, 'manage'),
-    projectMetadata: loaded.row.metadata,
   });
   return c.json(views.find((v) => v.name === name) ?? { name }, 200);
 },

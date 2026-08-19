@@ -23,7 +23,7 @@ import { useTranslations } from 'next-intl';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { hasRetryingAssistantTurn } from '@kortix/sdk';
+import { hasRetryingAssistantTurn, type SessionPrompt } from '@kortix/sdk';
 import {
   COMPOSER_EDITOR_SELECTOR,
   SUGGESTION_MENU_SELECTOR,
@@ -45,7 +45,12 @@ import { stabilizeTurns } from './turn/stable-turns';
 import { ThrottledMarkdown } from './turn/throttled-markdown';
 import { TurnViewport } from './turn/turn-viewport';
 import { UserMessage } from './turn/user-message';
-import { QueuedPromptBubbles, QUEUED_BUBBLE_OPACITY_CLASS } from './turn/queued-prompt-bubbles';
+import {
+  QueuedPromptBubbles,
+  QueuedPromptControls,
+  QUEUED_BUBBLE_OPACITY_CLASS,
+  type QueuedPromptState,
+} from './turn/queued-prompt-bubbles';
 import { resolveWorkingTurn } from './turn/working-turn';
 
 import { Composer as SessionChatInput } from '@/features/session/composer/composer';
@@ -168,6 +173,7 @@ import {
   formatModelString,
   formatPromptModel,
   markOptimisticSendDispatched,
+  markOptimisticSendInboxBacked,
   mintSessionWireMessageId,
   parseModelKey,
   readStartStash,
@@ -636,6 +642,16 @@ interface SessionTurnProps {
    * it fades up to full opacity the moment the agent takes it.
    */
   pending: boolean;
+  /**
+   * The inbox row behind this turn's user message, while the row is still
+   * live (queued, held, delivering, failed). Puts remove / send-now / retry
+   * in the bubble's own meta row — the bubble IS the queue entry.
+   */
+  queueRow?: SessionPrompt | null;
+  queueHeld?: boolean;
+  onQueueRemove?: (promptId: string) => void;
+  onQueueSendNow?: (promptId: string) => void;
+  onQueueRetry?: (promptId: string) => void;
   /** Whether this turn contains a compaction */
   isCompaction?: boolean;
   /** Providers data for the Connect Provider dialog */
@@ -729,6 +745,11 @@ function SessionTurnImpl({
   sessionWorking,
   isWorkingTurn,
   pending,
+  queueRow,
+  queueHeld,
+  onQueueRemove,
+  onQueueSendNow,
+  onQueueRetry,
   isCompaction,
   providers,
   commandMessages,
@@ -777,6 +798,22 @@ function SessionTurnImpl({
   // and it is what removes the "last turn shimmers for ever" symptom the raw
   // slot's dropped end-of-turn frames caused here.
   const working = isWorkingTurn && sessionWorking;
+  // The bubble is the queue entry: while its inbox row is live, the row's
+  // state decides the controls in the bubble's meta row.
+  const rowState: QueuedPromptState | null = !queueRow
+    ? null
+    : queueRow.state === 'failed'
+      ? 'failed'
+      : queueRow.state === 'delivering'
+        ? 'in-flight'
+        : queueRow.reason === 'held' || queueHeld
+          ? 'held'
+          : 'queued';
+  // Only while the bubble is still WAITING (dimmed) — or has something to
+  // say regardless (held, failed). A row that reads `delivering` for the rest
+  // of the turn in front of it must not label a bubble the agent has reached.
+  const queueState =
+    rowState && (pending || rowState === 'held' || rowState === 'failed') ? rowState : null;
   const activeAssistantMessage = useMemo(() => {
     if (turn.assistantMessages.length === 0) return undefined;
     for (let i = turn.assistantMessages.length - 1; i >= 0; i--) {
@@ -1413,6 +1450,7 @@ function SessionTurnImpl({
       {hasVisibleUserContent && (
         <div
           data-turn-pending={pending || undefined}
+          data-turn-queue-state={queueState ?? undefined}
           className={cn('transition-opacity duration-500', pending && QUEUED_BUBBLE_OPACITY_CLASS)}
         >
           <UserMessage
@@ -1424,6 +1462,19 @@ function SessionTurnImpl({
             ownsPlan={ownsPlan}
             onRewind={onRewind}
             rewindDisabled={rewindDisabled}
+            leadingActions={
+              queueRow && queueState ? (
+                <QueuedPromptControls
+                  id={queueRow.prompt_id}
+                  state={queueState}
+                  lastError={queueRow.last_error ?? undefined}
+                  onRemove={onQueueRemove}
+                  onSendNow={onQueueSendNow}
+                  onRetry={onQueueRetry}
+                />
+              ) : undefined
+            }
+            actionsAlwaysVisible={queueState === 'failed'}
           />
         </div>
       )}
@@ -2329,13 +2380,12 @@ export function SessionChat({
     rawSlotBusy: getWorkingState(sessionStatus, true),
   });
 
-  // Read by `handleSend` for its RENDERING decision only (see
-  // `willWaitInInbox`). Refs, not the values: `handleSend` is a stable callback
+  // Read by `handleSend` for its ANCHORING decision only (a send into a running
+  // turn must not yank the viewport). Refs, not the values: `handleSend` is a stable callback
   // that a dozen surfaces hold, and adding busy state to its deps would rebuild
   // it on every turn transition. Written in an EFFECT, never during render — a
   // render-phase ref write is what deadlocked the session shell once already.
   const isBusyRef = useRef(false);
-  const queuedMessagesRef = useRef(0);
   useEffect(() => {
     isBusyRef.current = effectiveBusy;
   }, [effectiveBusy]);
@@ -2446,17 +2496,38 @@ export function SessionChat({
   // to route actions by, and nothing left that a closed tab can lose.
   //
   // The transcript is passed in because a row whose message is ALREADY on
-  // screen is not a queue row: the optimistic bubble of an idle send is painted
-  // before the POST returns, and a mid-turn prompt's real user message arrives
-  // over SSE seconds later. Without this cross-check the same text renders
-  // twice — once as the answer being streamed, once as a pending row.
+  // screen is not a queue row. Every prompt this tab sends is painted into the
+  // transcript on Enter under its WIRE id — the same id its row carries — so
+  // its row is never drawn. When the runtime echoes it under a RE-MINTED id,
+  // the store remembers the alias (`optimisticOriginOf`), and the row — which
+  // reports the original id until its next poll — stays hidden through the
+  // swap. Without both, the same text is on screen twice for a frame or a
+  // second: once as the bubble, once as a queued row.
   const transcriptUserMessageIds = useMemo(() => {
     const ids = new Set<string>();
+    const store = useSessionStateStore.getState();
     for (const message of messages ?? []) {
-      if (message.info.role === 'user') ids.add(message.info.id);
+      if (message.info.role !== 'user') continue;
+      ids.add(message.info.id);
+      const origin = store.optimisticOriginOf(sessionId, message.info.id);
+      if (origin) ids.add(origin);
     }
     return ids;
-  }, [messages]);
+  }, [messages, sessionId]);
+  // Inbox rows keyed by the transcript id they will confirm under — the
+  // original wire id AND, after a re-mint, the echo — so a pending bubble can
+  // find its own row for remove / send-now / retry.
+  const inboxRowsByMessageId = useMemo(() => {
+    const store = useSessionStateStore.getState();
+    const byId = new Map<string, SessionPrompt>();
+    for (const prompt of promptInbox.prompts) {
+      if (!prompt.message_id) continue;
+      byId.set(prompt.message_id, prompt);
+      const echo = store.optimisticEchoOf(sessionId, prompt.message_id);
+      if (echo) byId.set(echo, prompt);
+    }
+    return byId;
+  }, [promptInbox.prompts, sessionId]);
   const queueRows = useMemo(
     () =>
       projectQueueRows({
@@ -2467,11 +2538,6 @@ export function SessionChat({
   );
   const queuedMessages = queueRows.queued;
   const failedQueuedMessages = queueRows.failed;
-  useEffect(() => {
-    // `queued` already carries the rows on the wire — see `projectQueueRows` —
-    // so adding `inFlightIds` here would count each of them twice.
-    queuedMessagesRef.current = queueRows.queued.length;
-  }, [queueRows.queued.length]);
   // A row the server has CLAIMED is on the wire; locking it against
   // edit/remove/reorder is the same rule as before.
   const queueInFlightIds = queueRows.inFlightIds;
@@ -2502,6 +2568,10 @@ export function SessionChat({
         return;
       }
       if (!removed) return;
+      // The bubble IS the queue entry: the row is gone, so its optimistic
+      // bubble goes with it. A no-op for a message the runtime already
+      // confirmed — that one is the transcript's now, not the queue's.
+      useSessionStateStore.getState().optimisticRemove(sessionId, removed.message_id);
 
       // Undo rather than a confirm dialog. A queue is something you curate —
       // gating every removal behind a modal would make it unusable, and the
@@ -2784,6 +2854,9 @@ export function SessionChat({
     }
     return null;
   }, [messages]);
+  // The store's alias for a re-minted echo — stable function reference, read
+  // per turn for the React key (see the `TurnViewport` key below).
+  const optimisticOriginOf = useSessionStateStore((state) => state.optimisticOriginOf);
   // WHICH turn carries the shimmer, and which user bubbles are still queued at
   // the agent. Not "the last one" any more — see `resolveWorkingTurn`.
   const workingTurn = useMemo(
@@ -3095,7 +3168,18 @@ export function SessionChat({
 
       // Play send sound
       playSound('send');
-      const messageID = ascendingId('msg');
+      // ONE id for the prompt's whole life. This is the WIRE id the inbox row
+      // carries and the runtime persists — minted by the SDK against this
+      // session's transcript (idempotent per `clientMessageId`, so an undo or
+      // retry re-uses it). The optimistic bubble is painted with it, so the
+      // server's echo confirms it IN PLACE, and the inbox row is never a
+      // second thing on screen (`transcriptUserMessageIds`). It used to be an
+      // `ascendingId` that only the optimistic bubble knew — three ids per
+      // prompt (optimistic, wire, delivered) and two surfaces, and every
+      // hand-off between them was a frame where the message doubled, blinked
+      // or jumped.
+      const clientMessageId = overrides?.clientMessageId ?? ascendingId('msg');
+      const messageID = mintSessionWireMessageId(sessionId, clientMessageId);
 
       // Generate part IDs upfront so the optimistic message and the server
       // request use the SAME IDs. When the server echoes parts via
@@ -3151,26 +3235,15 @@ export function SessionChat({
         if (block) optimisticText = `${optimisticText}\n\n${block}`;
       }
 
-      // WILL THIS PROMPT RUN NOW, OR WAIT?
-      //
-      // The SERVER decides admission — that is the whole point of the inbox —
-      // but the rendering decision is local and has to be made here, before the
-      // POST. A prompt that will wait belongs in the queue strip and nowhere
-      // else: painting it into the transcript too puts the same message on
-      // screen twice, in an order that never happened (below a still-streaming
-      // answer), and the optimistic sweep at the end of the running turn then
-      // deletes the bubble and the drain re-adds it seconds later.
-      //
-      // Reading `isBusy` here is not a re-run of the old queue-vs-send
-      // decision: nothing about ORDERING depends on it. A wrong guess costs one
-      // frame of optimism, not a misordered or dropped message.
-      const willWaitInInbox = isBusyRef.current || queuedMessagesRef.current > 0;
-
-      // Optimistic: show message immediately in sync store + set busy
-      // Matches OpenCode: sync.set("session_status", session.id, { type: "busy" })
-      if (!willWaitInInbox) {
-        beginOptimisticSend(sessionId, messageID, optimisticText, [textPartId]);
-      }
+      // Optimistic: the bubble is in the transcript from THIS frame, whether
+      // the prompt runs now or waits behind the running turn. There is no
+      // "will it wait?" branch any more — the server decides admission, and
+      // the transcript is the one place a prompt is drawn either way. A
+      // waiting prompt's turn renders dimmed (`pending`, see
+      // `resolveWorkingTurn`) and comes up to full opacity when the agent
+      // reaches it; nothing else changes about it, ever.
+      beginOptimisticSend(sessionId, messageID, optimisticText, [textPartId]);
+      const sendingIntoRunningTurn = isBusyRef.current;
 
       // Anchor the new user message at the top of the viewport.
       //
@@ -3182,9 +3255,10 @@ export function SessionChat({
       // waits for THIS turn's element instead of guessing, gives up rather
       // than firing late, and abandons on any wheel/touch so it never yanks a
       // reader who has scrolled away. See `turn-anchor.ts`.
-      // Nothing to anchor when the prompt is going to wait: no bubble was
-      // painted, and anchoring would move the viewport off the running turn.
-      if (!willWaitInInbox) anchorTurn(messageID);
+      // Not while a turn runs: anchoring would move the viewport off the
+      // streaming answer the reader is on. The follow-scroll shows the new
+      // bubble if they are at the bottom.
+      if (!sendingIntoRunningTurn) anchorTurn(messageID);
 
       const options: Record<string, unknown> = {};
       const overrideAgent = overrides?.agent;
@@ -3217,9 +3291,8 @@ export function SessionChat({
         built = await buildPromptPartsWithUploads(textPrompt.text, attachedFiles, uploadFile);
       } catch (err) {
         // Never reached the network — nothing to rehydrate from the server,
-        // so just clear busy and drop the optimistic message outright. (A
-        // waiting prompt painted nothing, so there is nothing to drop.)
-        if (!willWaitInInbox) abandonOptimisticSend(sessionId, messageID);
+        // so just clear busy and drop the optimistic message outright.
+        abandonOptimisticSend(sessionId, messageID);
         const classified = classifySessionError(err);
         setCommandError(classified);
         throw err instanceof Error ? err : new Error(classified.message);
@@ -3322,7 +3395,7 @@ export function SessionChat({
       // early), so there is nothing for it to correlate on and the mark never
       // happened. The result was every message rendering twice for the whole
       // turn, until the session went idle and the optimistic sweep ran.
-      if (!willWaitInInbox) markOptimisticSendDispatched(sessionId, messageID);
+      markOptimisticSendDispatched(sessionId, messageID);
 
       const selectedAgent = typeof sendOpts?.agent === 'string' ? sendOpts.agent : null;
       const selectedVariant = typeof sendOpts?.variant === 'string' ? sendOpts.variant : null;
@@ -3344,7 +3417,6 @@ export function SessionChat({
       // and only this process holds the transcript to place one against. It is
       // NOT `messageID` above — that is `ascendingId`, which encodes the wrong
       // bits and is optimistic-render-only (see the SDK's warning on it).
-      const clientMessageId = overrides?.clientMessageId ?? messageID;
       // The prompt is out of this tab's hands the moment the row lands, so the
       // receipt is taken BEFORE the POST: it is what holds the composer on
       // "working" until `GET .../turn` reports the turn the inbox admitted.
@@ -3356,7 +3428,7 @@ export function SessionChat({
           }
           const created = await promptInbox.enqueue({
             clientMessageId,
-            messageId: mintSessionWireMessageId(sessionId, clientMessageId),
+            messageId: messageID,
             parts: mappedParts,
             overrides: {
               // Pass the session's directory so opencode resolves project-scoped
@@ -3385,18 +3457,17 @@ export function SessionChat({
           // moment, which is what covers the window before the row is
           // delivered and becomes a turn.
           acceptSendReceipt(clientMessageId);
+          // The control plane holds the prompt durably from here. The bubble
+          // is no longer "unconfirmed": a local idle before the box answers
+          // must not sweep it — the row WILL be delivered and echoed.
+          markOptimisticSendInboxBacked(sessionId, messageID);
           return { ok: true } as const;
         } catch (cause) {
           // Unchanged recovery: clear busy, then either rehydrate the real
           // messages or drop the optimistic one if the server has no record.
-          // A prompt that was going to WAIT painted no optimistic message and
-          // did not flip the session busy, so there is nothing to unwind —
-          // classifying the error is all that is left to do.
-          const error = willWaitInInbox
-            ? classifySessionError(cause)
-            : recoverFromSendFailure(sessionId, messageID, cause, {
-                classify: classifySessionError,
-              });
+          const error = recoverFromSendFailure(sessionId, messageID, cause, {
+            classify: classifySessionError,
+          });
           return { ok: false, error, cause } as const;
         }
       })();
@@ -4230,7 +4301,15 @@ export function SessionChat({
 
                         return (
                           <TurnViewport
-                            key={turn.userMessage.info.id}
+                            // ONE element per prompt: keyed by the id the
+                            // bubble was FIRST painted under, so the swap to a
+                            // re-minted echo id re-renders this node instead
+                            // of mounting a new one (opacity keeps animating,
+                            // hover state survives, nothing jumps).
+                            key={
+                              optimisticOriginOf(sessionId, turn.userMessage.info.id) ??
+                              turn.userMessage.info.id
+                            }
                             turnId={turn.userMessage.info.id}
                             className={turnIndex === 0 ? '' : 'mt-12'}
                           >
@@ -4262,6 +4341,11 @@ export function SessionChat({
                               pending={
                                 lastTurnWorking && pendingTurnIds.has(turn.userMessage.info.id)
                               }
+                              queueRow={inboxRowsByMessageId.get(turn.userMessage.info.id) ?? null}
+                              queueHeld={queueRows.held}
+                              onQueueRemove={handleRemoveQueuedMessage}
+                              onQueueSendNow={handleQueueSendNow}
+                              onQueueRetry={handleRetryQueuedMessage}
                               isCompaction={hasCompaction}
                               providers={providers}
                               commandMessages={commandMessagesRef.current}

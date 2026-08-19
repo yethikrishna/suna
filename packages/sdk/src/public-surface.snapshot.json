@@ -914,6 +914,7 @@
     "loadSessionTranscriptMessages",
     "logRuntimeEvent",
     "markOptimisticSendDispatched",
+    "markOptimisticSendInboxBacked",
     "mergeProjectSecretConnectedProviders",
     "mergeProviderLists",
     "migrateLegacyStash",

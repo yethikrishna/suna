@@ -125,6 +125,19 @@ export function markOptimisticSendDispatched(sessionId: string, messageId: strin
 }
 
 /**
+ * The prompt's inbox row LANDED (`POST .../prompts` returned): the control
+ * plane holds it durably and will deliver it. Call this right after the POST
+ * resolves, for a host that painted the bubble with the WIRE id it handed the
+ * inbox. From here the local idle sweep leaves the message alone — a session
+ * that goes idle before the box answers (asleep, held by a stop) is not
+ * evidence the prompt was lost — and the runtime's echo confirms it in place
+ * (same id) or supersedes it (re-minted id, aliased by the store).
+ */
+export function markOptimisticSendInboxBacked(sessionId: string, messageId: string): void {
+  useSyncStore.getState().markOptimisticInboxBacked(sessionId, messageId);
+}
+
+/**
  * A send that never reached the network at all (e.g. building the outgoing
  * parts — file uploads — threw before `promptOpenCodeMessage` was even
  * called). There is nothing to rehydrate from the server since it never saw

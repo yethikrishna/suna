@@ -1,25 +1,22 @@
 'use client';
 
 /**
- * Prompts that are queued but not yet in the transcript, drawn IN the
- * transcript — as the user bubbles they are about to become.
+ * Prompts that are queued at the server but not yet in the transcript, drawn
+ * IN the transcript — as the user bubbles they are about to become.
  *
- * The queue used to be a strip above the composer: a separate list, a
- * separate visual language, and one more place the same message could show
- * up. A message you send while the agent works is still a message; it belongs
- * in the conversation, at the bottom, in order, and it should read as
- * "scheduled" until the agent takes it. So each row here is the same bubble
- * `UserMessage` draws (`BUBBLE_SURFACE`, right rail, 80% cap) at half opacity,
- * and when the server hands it to OpenCode the row leaves this list and its
- * real transcript bubble takes the same spot — still dimmed while the agent
- * has not reached it (`SessionTurn`'s `pending`), full opacity once it has.
- * The transition is one continuous fade, never a jump between two surfaces.
+ * Every prompt THIS tab sends is painted into the transcript on Enter, under
+ * the same wire id its inbox row carries (`session-chat.tsx` `handleSend`), so
+ * its row is never drawn here — the transcript bubble is the one element the
+ * prompt has for its whole life, and only its opacity changes. What this list
+ * renders is the rest: rows this tab did not paint (sent from another device
+ * or tab, or present after a reload) — until the runtime echoes them, at which
+ * point the transcript takes over under the row's `message_id`.
  *
- * Controls live under the bubble on hover, like the sent bubble's own meta
- * row: remove; send now while the queue is HELD by a stop (the only way out
- * of a hold, otherwise a stopped queue is indistinguishable from a broken
- * one); retry on a failed row. A row already on the wire has no controls —
- * the server refuses every action for it — and says so.
+ * `QueuedPromptControls` is the shared status + actions row: remove; send now
+ * while the queue is HELD by a stop (the only way out of a hold — otherwise a
+ * stopped queue is indistinguishable from a broken one); retry on a failed
+ * row. The transcript's own pending bubble renders the same controls in its
+ * hover meta row (`SessionTurn` → `UserMessage` `leadingActions`).
  */
 
 import { Button } from '@/components/ui/button';
@@ -41,23 +38,27 @@ export interface QueuedPromptRow {
   lastError?: string;
 }
 
-export interface QueuedPromptBubblesProps {
-  queued: QueuedPromptRow[];
-  failed?: QueuedPromptRow[];
-  /** Rows the server already handed to OpenCode, or this tab's not-yet-acked
-   *  echo: rendered, inert. */
-  inFlightIds?: ReadonlySet<string> | string[];
-  /** The queue is held by a stop — reveals "send now". */
-  held?: boolean;
-  onRemove?: (id: string) => void;
-  onSendNow?: (id: string) => void;
-  onRetry?: (id: string) => void;
-  className?: string;
-}
-
 /** The dim a scheduled bubble sits at. One number, so the transcript's
  *  pending turn (`SessionTurn`) and this list agree. */
 export const QUEUED_BUBBLE_OPACITY_CLASS = 'opacity-50';
+
+export type QueuedPromptState = 'queued' | 'in-flight' | 'held' | 'failed';
+
+export function queuedPromptStatusLabel(state: QueuedPromptState, lastError?: string): string {
+  switch (state) {
+    case 'in-flight':
+      // Handed to the runtime, waiting for the next step: from the user's
+      // side that is still "queued" — the difference is which of our servers
+      // holds it, and that is not theirs to track.
+      return 'Queued';
+    case 'held':
+      return 'Held — stopped';
+    case 'failed':
+      return lastError ? `Not sent — ${lastError}` : 'Not sent';
+    default:
+      return 'Queued';
+  }
+}
 
 function Action({
   label,
@@ -86,30 +87,95 @@ function Action({
   );
 }
 
+/**
+ * Status text + the controls a queued prompt has, laid out for a bubble's
+ * meta row. A row on the wire has no controls — the server refuses every
+ * action for it — and says so.
+ */
+export function QueuedPromptControls({
+  id,
+  state,
+  lastError,
+  onRemove,
+  onSendNow,
+  onRetry,
+}: {
+  id: string;
+  state: QueuedPromptState;
+  lastError?: string;
+  onRemove?: (id: string) => void;
+  onSendNow?: (id: string) => void;
+  onRetry?: (id: string) => void;
+}) {
+  const failed = state === 'failed';
+  const inFlight = state === 'in-flight';
+  const showActions =
+    !inFlight && (Boolean(onRemove) || (failed && !!onRetry) || (state === 'held' && !!onSendNow));
+  return (
+    <>
+      <InlineMeta>
+        <span
+          data-queued-status={state}
+          className={cn('flex items-center gap-1', failed && 'text-destructive')}
+        >
+          {failed && <WarningIcon className="size-3.5" />}
+          {queuedPromptStatusLabel(state, lastError)}
+        </span>
+      </InlineMeta>
+      {showActions && (
+        <div className="flex shrink-0 items-center gap-0.5">
+          {failed && onRetry && (
+            <Action label="Retry" onClick={() => onRetry(id)}>
+              <ArrowClockwiseIcon className="size-4" />
+            </Action>
+          )}
+          {state === 'held' && onSendNow && (
+            <Action label="Send now" onClick={() => onSendNow(id)}>
+              <PaperPlaneRightIcon className="size-4" />
+            </Action>
+          )}
+          {onRemove && (
+            <Action label="Remove" onClick={() => onRemove(id)} destructive>
+              <TrashIcon className="size-4" />
+            </Action>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+export interface QueuedPromptBubblesProps {
+  queued: QueuedPromptRow[];
+  failed?: QueuedPromptRow[];
+  /** Rows the server already handed to OpenCode: rendered, inert. */
+  inFlightIds?: ReadonlySet<string> | string[];
+  /** The queue is held by a stop — reveals "send now". */
+  held?: boolean;
+  onRemove?: (id: string) => void;
+  onSendNow?: (id: string) => void;
+  onRetry?: (id: string) => void;
+  className?: string;
+}
+
 function QueuedBubble({
   row,
-  status,
-  inFlight,
-  failed,
-  held,
+  state,
   onRemove,
   onSendNow,
   onRetry,
 }: {
   row: QueuedPromptRow;
-  status: string;
-  inFlight: boolean;
-  failed: boolean;
-  held: boolean;
+  state: QueuedPromptState;
   onRemove?: (id: string) => void;
   onSendNow?: (id: string) => void;
   onRetry?: (id: string) => void;
 }) {
-  const showActions = !inFlight && (Boolean(onRemove) || (failed && onRetry) || (held && onSendNow));
+  const failed = state === 'failed';
   return (
     <div
       data-queued-prompt-id={row.id}
-      data-queued-state={failed ? 'failed' : inFlight ? 'in-flight' : held ? 'held' : 'queued'}
+      data-queued-state={state}
       className="group/queued ml-auto flex w-full max-w-[80%] flex-col items-end gap-2 self-end"
     >
       <div
@@ -123,7 +189,7 @@ function QueuedBubble({
           {row.text}
         </div>
       </div>
-      {/* Same anatomy as the sent bubble's meta row: status text + controls,
+      {/* Same anatomy as the sent bubble's meta row: status + controls,
           revealed on hover, height held so nothing reflows. A failed row keeps
           its row visible — a failure the user has to hunt for is a message
           silently lost. */}
@@ -135,31 +201,14 @@ function QueuedBubble({
             : 'opacity-0 group-hover/queued:opacity-100 focus-within:opacity-100',
         )}
       >
-        <InlineMeta>
-          <span className={cn('flex items-center gap-1', failed && 'text-destructive')}>
-            {failed && <WarningIcon className="size-3.5" />}
-            {status}
-          </span>
-        </InlineMeta>
-        {showActions && (
-          <div className="flex shrink-0 items-center gap-0.5">
-            {failed && onRetry && (
-              <Action label="Retry" onClick={() => onRetry(row.id)}>
-                <ArrowClockwiseIcon className="size-4" />
-              </Action>
-            )}
-            {!failed && held && onSendNow && (
-              <Action label="Send now" onClick={() => onSendNow(row.id)}>
-                <PaperPlaneRightIcon className="size-4" />
-              </Action>
-            )}
-            {onRemove && (
-              <Action label="Remove" onClick={() => onRemove(row.id)} destructive>
-                <TrashIcon className="size-4" />
-              </Action>
-            )}
-          </div>
-        )}
+        <QueuedPromptControls
+          id={row.id}
+          state={state}
+          lastError={row.lastError}
+          onRemove={onRemove}
+          onSendNow={onSendNow}
+          onRetry={onRetry}
+        />
       </div>
     </div>
   );
@@ -183,32 +232,17 @@ export function QueuedPromptBubbles({
       aria-label={held ? 'Queued prompts, held' : 'Queued prompts'}
       className={cn('flex flex-col gap-4', className)}
     >
-      {queued.map((row) => {
-        const onWire = inFlight.has(row.id);
-        return (
-          <QueuedBubble
-            key={row.id}
-            row={row}
-            inFlight={onWire}
-            failed={false}
-            held={held}
-            status={onWire ? 'Sending' : held ? 'Held — stopped' : 'Queued'}
-            onRemove={onRemove}
-            onSendNow={onSendNow}
-          />
-        );
-      })}
-      {failed.map((row) => (
+      {queued.map((row) => (
         <QueuedBubble
           key={row.id}
           row={row}
-          inFlight={false}
-          failed
-          held={false}
-          status={row.lastError ? `Not sent — ${row.lastError}` : 'Not sent'}
+          state={inFlight.has(row.id) ? 'in-flight' : held ? 'held' : 'queued'}
           onRemove={onRemove}
-          onRetry={onRetry}
+          onSendNow={onSendNow}
         />
+      ))}
+      {failed.map((row) => (
+        <QueuedBubble key={row.id} row={row} state="failed" onRemove={onRemove} onRetry={onRetry} />
       ))}
     </div>
   );

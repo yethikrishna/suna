@@ -4,7 +4,7 @@ set -euo pipefail
 runtime_versions=/opt/kortix/runtime-versions.json
 tool_name="$(basename "$0")"
 
-managed_python() {
+managed_python_base() {
   local python_version python_bin
   python_version="$(node -e "console.log(require('${runtime_versions}').python)")"
   python_bin="$(uv python find --managed-python "${python_version}" 2>/dev/null || true)"
@@ -13,6 +13,15 @@ managed_python() {
     python_bin="$(uv python find --managed-python "${python_version}")"
   fi
   printf '%s' "${python_bin}"
+}
+
+managed_python() {
+  local document_python=/home/kortix/.local/share/kortix/python/bin/python
+  if [ -x "${document_python}" ]; then
+    printf '%s' "${document_python}"
+    return
+  fi
+  managed_python_base
 }
 
 install_apt_packages() {
@@ -46,14 +55,18 @@ install_documents() {
     libreoffice pandoc poppler-utils qpdf tesseract-ocr texlive-bibtex-extra \
     texlive-fonts-recommended texlive-latex-base texlive-latex-extra \
     texlive-latex-recommended
-  local python_bin
+  local python_bin python_env
   local anydoc_version
-  python_bin="$(managed_python)"
+  python_bin="$(managed_python_base)"
+  python_env=/home/kortix/.local/share/kortix/python
   anydoc_version="$(node -e "console.log(require('${runtime_versions}').anydoc)")"
   mapfile -t python_specs < <(
     node -e "const p=require('${runtime_versions}').pythonPackages; for (const k of Object.keys(p).sort()) console.log(k+'=='+p[k])"
   )
-  uv pip install --python "${python_bin}" "${python_specs[@]}"
+  if [ ! -x "${python_env}/bin/python" ]; then
+    uv venv --python "${python_bin}" "${python_env}"
+  fi
+  uv pip install --python "${python_env}/bin/python" "${python_specs[@]}"
   pnpm add -g "@firecrawl/anydoc@${anydoc_version}" >&2
   mkdir -p "$(dirname "${marker}")"
   touch "${marker}"
@@ -103,7 +116,7 @@ case "${tool_name}" in
     ;;
   agent-browser)
     install_browser
-    exec /home/kortix/.local/share/pnpm/agent-browser "$@"
+    exec /home/kortix/.local/share/pnpm/bin/agent-browser "$@"
     ;;
   chromium)
     install_browser

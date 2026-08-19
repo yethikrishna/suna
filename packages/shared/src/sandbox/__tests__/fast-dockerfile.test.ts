@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { buildFastSandboxDockerfile } from '../fast-dockerfile';
 
@@ -48,5 +49,18 @@ describe('buildFastSandboxDockerfile', () => {
     expect(dockerfile).not.toContain('texlive-latex-extra');
     expect(dockerfile).not.toContain('playwright install --with-deps chromium');
     expect(dockerfile).not.toContain('uv pip install --python');
+  });
+
+  test('uses valid lazy-tool runtime paths', () => {
+    const installer = readFileSync(
+      new URL('../../../../../apps/sandbox/lazy-tools/install', import.meta.url),
+      'utf8',
+    );
+
+    expect(installer).toContain('exec /home/kortix/.local/share/pnpm/bin/agent-browser "$@"');
+    expect(installer).toContain('uv venv --python "${python_bin}" "${python_env}"');
+    expect(installer).toContain(
+      'uv pip install --python "${python_env}/bin/python" "${python_specs[@]}"',
+    );
   });
 });

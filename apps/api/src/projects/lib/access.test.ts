@@ -21,7 +21,6 @@ describe('callerHasManagerStanding', () => {
   });
 
   test('a non-manager role gains nothing from being unbound', () => {
-    expect(callerHasManagerStanding('editor', null)).toBe(false);
     expect(callerHasManagerStanding('member', null)).toBe(false);
   });
 

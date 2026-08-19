@@ -272,6 +272,18 @@ interface SyncState {
 	 *  message — lets the SSE reconciler avoid idling+clearing a brand-new session
 	 *  whose first prompt the server hasn't registered yet. */
 	hasOptimisticMessages: (sessionID: string) => boolean;
+	/** Is this message still this tab's optimistic stub (not yet confirmed
+	 *  by the runtime)? Hosts use it to keep stubs out of anything that must
+	 *  only hold what the runtime holds — the disk transcript cache. */
+	isOptimisticMessage: (sessionID: string, messageID: string) => boolean;
+	/**
+	 * A `message.removed` for a user message the control plane still owns
+	 * (an inbox-backed send the runtime confirmed) is a RE-PLACEMENT in
+	 * progress — the server took the copy out to insert it again under a new
+	 * id. Keeps the bubble as an optimistic stub for the next echo to
+	 * supersede. Returns true when the removal was absorbed this way.
+	 */
+	reclaimRemovedMessage: (sessionID: string, messageID: string) => boolean;
 	clearSession: (sessionID: string) => void;
 	/**
 	 * Take a hold on `sessionID`'s transcript for one mounted consumer, and get
@@ -333,6 +345,13 @@ interface SyncState {
 	hydrate: (
 		sessionID: string,
 		msgs: Array<{ info: Message; parts: Part[] }>,
+		/**
+		 * Where this snapshot came from. `cache` (the disk transcript cache)
+		 * paints messages PROVISIONALLY: the next runtime hydrate whose tail
+		 * covers their position drops any it does not contain. Default:
+		 * the runtime.
+		 */
+		opts?: { source?: "cache" | "runtime" },
 	) => void;
 	reset: () => void;
 
@@ -371,15 +390,36 @@ const inboxBackedOptimisticIds = new Map<string, Set<string>>();
 // per session; released with the session.
 const optimisticEchoes = new Map<string, Map<string, string>>();
 const optimisticOrigins = new Map<string, Map<string, string>>();
+// Message ids the CONTROL PLANE still owns after the runtime confirmed them:
+// the echo (same id or re-minted) of an inbox-backed optimistic send. The
+// server can take such a message back out of the runtime and place it again
+// under a new id — a stranded mid-turn prompt being re-placed, a Stop taking
+// an unread prompt back into the queue. A `message.removed` for one of these
+// is not "the message is gone", it is "the message is between two ids": the
+// bubble is re-marked optimistic (dispatched, inbox-backed) and the next echo
+// supersedes it, instead of the bubble blinking out and a new one appearing.
+// Released with the session.
+const controlPlaneOwnedIds = new Map<string, Set<string>>();
+// Message ids that came from the DISK CACHE and have not yet been seen in a
+// runtime read. The cache is a first-paint accelerator; a message it holds
+// that the runtime's own tail — covering that message's position — does not,
+// never existed there (an optimistic stub mirrored to disk before its echo)
+// and must not outlive the first authoritative read.
+const cacheSourcedIds = new Map<string, Set<string>>();
 
 function recordOptimisticEcho(sessionID: string, optimisticID: string, echoID: string): void {
 	if (optimisticID === echoID) return;
+	// Chain through an earlier swap: a message that itself superseded an
+	// optimistic id keeps pointing the host at that ORIGINAL id, so a second
+	// re-placement does not change the identity the host keyed its bubble on.
+	const origin = optimisticOrigins.get(sessionID)?.get(optimisticID) ?? optimisticID;
 	let fwd = optimisticEchoes.get(sessionID);
 	if (!fwd) optimisticEchoes.set(sessionID, (fwd = new Map()));
-	fwd.set(optimisticID, echoID);
+	fwd.set(origin, echoID);
+	if (origin !== optimisticID) fwd.set(optimisticID, echoID);
 	let rev = optimisticOrigins.get(sessionID);
 	if (!rev) optimisticOrigins.set(sessionID, (rev = new Map()));
-	rev.set(echoID, optimisticID);
+	rev.set(echoID, origin);
 }
 
 /** Forget every optimistic mark for one id — confirmed, superseded, or removed. */
@@ -387,6 +427,15 @@ function releaseOptimisticId(sessionID: string, id: string): void {
 	untrackId(optimisticIds, sessionID, id);
 	untrackId(dispatchedOptimisticIds, sessionID, id);
 	untrackId(inboxBackedOptimisticIds, sessionID, id);
+}
+
+/** The runtime confirmed an inbox-backed optimistic send under `echoID`
+ *  (same id, or re-minted): the control plane still owns that message. */
+function releaseConfirmedOptimisticId(sessionID: string, optimisticID: string, echoID: string): void {
+	if (hasTrackedId(inboxBackedOptimisticIds, sessionID, optimisticID)) {
+		trackId(controlPlaneOwnedIds, sessionID, echoID);
+	}
+	releaseOptimisticId(sessionID, optimisticID);
 }
 
 function trackId(store: Map<string, Set<string>>, sessionID: string, id: string): void {
@@ -418,6 +467,8 @@ function forgetSessionIds(sessionID: string): void {
 	inboxBackedOptimisticIds.delete(sessionID);
 	optimisticEchoes.delete(sessionID);
 	optimisticOrigins.delete(sessionID);
+	controlPlaneOwnedIds.delete(sessionID);
+	cacheSourcedIds.delete(sessionID);
 	// The joined rows hold the very message and part arrays this session's
 	// data is being dropped from. Left behind, they keep the transcript
 	// reachable and the drop achieves nothing.
@@ -1120,6 +1171,25 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 
 	optimisticOriginOf: (sessionID, echoID) => optimisticOrigins.get(sessionID)?.get(echoID),
 
+	isOptimisticMessage: (sessionID, messageID) => isOptimistic(sessionID, messageID),
+
+	reclaimRemovedMessage: (sessionID, messageID) => {
+		// See `controlPlaneOwnedIds`: a removal of a message the control plane
+		// still owns is a re-placement in progress, not a deletion. Keep the
+		// message and its parts; put the optimistic marks back (dispatched, so
+		// the ordinal echo match may claim it; inbox-backed, so the idle sweep
+		// leaves it) and let the next echo supersede it.
+		if (!hasTrackedId(controlPlaneOwnedIds, sessionID, messageID)) return false;
+		const list = get().messages[sessionID];
+		const message = list?.find((m) => m.id === messageID);
+		if (!message || message.role !== "user") return false;
+		untrackId(controlPlaneOwnedIds, sessionID, messageID);
+		trackId(optimisticIds, sessionID, messageID);
+		trackId(dispatchedOptimisticIds, sessionID, messageID);
+		trackId(inboxBackedOptimisticIds, sessionID, messageID);
+		return true;
+	},
+
 	optimisticRemove: (sessionID, messageID) => {
 		// Only an OPTIMISTIC message can be removed this way. One the runtime has
 		// confirmed (same-id echo, or the store never tracked it) is the
@@ -1270,7 +1340,7 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 		return result;
 	},
 
-	hydrate: (sessionID, msgs) =>
+	hydrate: (sessionID, msgs, opts) =>
 		set((s) => {
 			// An authoritative load — the disk repaint itself, or a reconcile —
 			// re-establishes the session, so its entry is no longer a fragment.
@@ -1281,6 +1351,31 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 				.filter((m) => !!m?.info?.id)
 				.map((m) => m.info)
 				.sort((a, b) => cmp(a.id, b.id));
+			const fromCache = opts?.source === "cache";
+			if (fromCache) {
+				for (const m of incoming) trackId(cacheSourcedIds, sessionID, m.id);
+			}
+			// A RUNTIME read settles the cache's provisional messages: the ones
+			// it contains are real; the ones it lacks but whose position it
+			// COVERS (at or above the oldest message it returned) never existed
+			// there and are dropped. Older ones are history the bounded tail did
+			// not reach — kept, still provisional.
+			let droppedPhantoms: Set<string> | null = null;
+			const provisional = fromCache ? undefined : cacheSourcedIds.get(sessionID);
+			if (provisional && provisional.size > 0 && incoming.length > 0) {
+				const oldestIncoming = incoming[0].id;
+				const incomingIds = new Set(incoming.map((m) => m.id));
+				for (const id of [...provisional]) {
+					if (incomingIds.has(id)) {
+						untrackId(cacheSourcedIds, sessionID, id);
+						continue;
+					}
+					if (cmp(id, oldestIncoming) >= 0 && !isOptimistic(sessionID, id)) {
+						untrackId(cacheSourcedIds, sessionID, id);
+						(droppedPhantoms ??= new Set()).add(id);
+					}
+				}
+			}
 
 			// T16 — reconcile a `session.error` stub assistant message
 			// (see `stubAssistantIds` and the `session.error` handler above). The
@@ -1302,7 +1397,10 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 			// Merge incoming messages with existing ones — never delete messages
 			// that exist in the sync store but are missing from the fetch (they may
 			// be from a newer turn that the server hasn't persisted yet).
-			const existing = s.messages[sessionID] ?? [];
+			const existingAll = s.messages[sessionID] ?? [];
+			const existing = droppedPhantoms
+				? existingAll.filter((m) => !droppedPhantoms!.has(m.id))
+				: existingAll;
 			const merged: typeof existing = [];
 			const seen = new Set<string>();
 
@@ -1328,7 +1426,7 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 			// bridge its optimistic parts until real ones land.
 			for (const m of incoming) {
 				if (m.role !== "user" || !isOptimistic(sessionID, m.id)) continue;
-				releaseOptimisticId(sessionID, m.id);
+				releaseConfirmedOptimisticId(sessionID, m.id, m.id);
 				const optimisticParts = s.parts[m.id];
 				const entry = msgs.find((x) => x.info.id === m.id);
 				if ((entry?.parts?.length ?? 0) === 0 && optimisticParts?.length) {
@@ -1429,9 +1527,13 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 			// Clean up superseded optimistic IDs, remembering which runtime id
 			// each one became.
 			for (const id of supersededOptimistic) {
-				releaseOptimisticId(sessionID, id);
 				const echoId = supersededBy.get(id);
-				if (echoId) recordOptimisticEcho(sessionID, id, echoId);
+				if (echoId) {
+					releaseConfirmedOptimisticId(sessionID, id, echoId);
+					recordOptimisticEcho(sessionID, id, echoId);
+				} else {
+					releaseOptimisticId(sessionID, id);
+				}
 			}
 			// Append surviving optimistic messages at the end
 			for (const m of deferredOptimistic) {
@@ -1444,6 +1546,7 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 			// Otherwise, incoming parts win (server is authoritative), but keep
 			// any extra parts from SSE that aren't in the fetch response.
 			const newParts = { ...s.parts };
+			if (droppedPhantoms) for (const id of droppedPhantoms) delete newParts[id];
 			// When superseding an optimistic user message, bridge its parts to
 			// the real user message ID if the server hasn't sent parts yet.
 			// Mirrors the message.updated SSE handler (see above) — without
@@ -1681,7 +1784,7 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 							// Clean up optimistic tracking, remembering the runtime id
 							// each superseded message became.
 							for (const id of optIds) {
-								releaseOptimisticId(info.sessionID, id);
+								releaseConfirmedOptimisticId(info.sessionID, id, info.id);
 								recordOptimisticEcho(info.sessionID, id, info.id);
 							}
 							// Atomic: remove optimistic + insert real in one set()
@@ -1730,6 +1833,7 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 					messageID: string;
 				};
 				if (!props.sessionID || !props.messageID) return;
+				if (store.reclaimRemovedMessage(props.sessionID, props.messageID)) return;
 				store.removeMessage(props.sessionID, props.messageID);
 				return;
 			}

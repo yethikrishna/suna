@@ -476,6 +476,8 @@ describe('GET .../prompts', () => {
         prompt_id: PROMPT_ID,
         client_message_id: 'q_1',
         message_id: WIRE_ID,
+        // The id the client painted under — the same while nothing re-minted.
+        wire_message_id: WIRE_ID,
         state: 'queued',
         reason: null,
         text: 'say hi',

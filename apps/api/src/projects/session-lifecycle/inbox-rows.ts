@@ -17,7 +17,7 @@ import { type SessionLifecycleCommandRow, withNextDeliveryAttempt } from './stor
  */
 
 /** A `continue_session` row the USER created through the composer. */
-function inboxScope(sessionId: string) {
+export function inboxScope(sessionId: string) {
   return and(
     eq(sessionLifecycleCommands.sessionId, sessionId),
     eq(sessionLifecycleCommands.commandType, 'continue_session'),

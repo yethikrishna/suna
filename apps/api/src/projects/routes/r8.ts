@@ -53,6 +53,7 @@ import {
   startSession,
   stopSession,
 } from '../session-lifecycle';
+import { settleInboxHoldAfterStopInBackground } from '../session-lifecycle/inbox-hold-settle';
 import {
   PROMPT_TEXT_PREVIEW_CHARS,
   flattenPromptText,
@@ -514,6 +515,7 @@ const SessionPromptSchema = z.object({
   prompt_id: z.string(),
   client_message_id: z.string(),
   message_id: z.string(),
+  wire_message_id: z.string(),
   state: z.enum(['queued', 'delivering', 'waiting', 'failed']),
   reason: z.string().nullable(),
   text: z.string(),
@@ -596,6 +598,12 @@ function serializePrompt(row: PromptRow) {
           : typeof payload.wireMessageId === 'string'
             ? payload.wireMessageId
             : '',
+    // The id the CLIENT painted its bubble under. `message_id` above moves to
+    // the re-minted id the moment the drain places the prompt — before the
+    // runtime echoes it — and a client that only knew `message_id` drew the
+    // row beside its own bubble for that window (a second dimmed copy for
+    // ~0.4 s on every mid-turn send). Both ids name one prompt.
+    wire_message_id: typeof payload.wireMessageId === 'string' ? payload.wireMessageId : '',
     state,
     reason,
     text: (typeof payload.text === 'string' ? payload.text : '').slice(
@@ -1000,7 +1008,14 @@ projectsApp.openapi(
 
     await holdInboxPrompts(sessionId, body.held);
     const rows = await listInboxPrompts(sessionId, PROMPT_LIST_LIMIT);
-    if (!body.held) void drainSessionLifecycleQueue({ limit: 1 }).catch(() => undefined);
+    if (body.held) {
+      // The instant marking above is what the client waits for; what a Stop
+      // means for prompts already on the wire needs the box and happens behind
+      // this response — see inbox-hold-settle.ts.
+      settleInboxHoldAfterStopInBackground(sessionId);
+    } else {
+      void drainSessionLifecycleQueue({ limit: 1 }).catch(() => undefined);
+    }
     return c.json({ prompts: rows.map(serializePrompt) });
   },
 );

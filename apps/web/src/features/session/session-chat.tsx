@@ -46,8 +46,9 @@ import { ThrottledMarkdown } from './turn/throttled-markdown';
 import { TurnViewport } from './turn/turn-viewport';
 import { UserMessage } from './turn/user-message';
 import {
+  QueuedPromptActions,
   QueuedPromptBubbles,
-  QueuedPromptControls,
+  QueuedPromptStatus,
   QUEUED_BUBBLE_OPACITY_CLASS,
   type QueuedPromptState,
 } from './turn/queued-prompt-bubbles';
@@ -827,6 +828,10 @@ function SessionTurnImpl({
       : interruptedBeforeRun
         ? 'interrupted'
         : null;
+  // The word under the bubble. A PENDING bubble says "Queued" even when its
+  // inbox row is already closed (the runtime holds the message, the agent has
+  // not reached it): the dim alone reads as "something is wrong".
+  const statusState: QueuedPromptState | null = queueState ?? (pending ? 'queued' : null);
 
   const activeAssistantMessage = useMemo(() => {
     if (turn.assistantMessages.length === 0) return undefined;
@@ -1479,14 +1484,19 @@ function SessionTurnImpl({
             ownsPlan={ownsPlan}
             onRewind={onRewind}
             rewindDisabled={rewindDisabled}
+            leadingStatus={
+              statusState ? (
+                <QueuedPromptStatus
+                  state={statusState}
+                  lastError={queueRow?.last_error ?? undefined}
+                />
+              ) : undefined
+            }
             leadingActions={
-              queueState === 'interrupted' ? (
-                <QueuedPromptControls id={turn.userMessage.info.id} state="interrupted" />
-              ) : queueRow && queueState ? (
-                <QueuedPromptControls
+              queueRow && queueState && queueState !== 'interrupted' ? (
+                <QueuedPromptActions
                   id={queueRow.prompt_id}
                   state={queueState}
-                  lastError={queueRow.last_error ?? undefined}
                   onRemove={onQueueRemove}
                   onSendNow={onQueueSendNow}
                   onRetry={onQueueRetry}
@@ -2560,6 +2570,12 @@ export function SessionChat({
       byId.set(prompt.message_id, prompt);
       const echo = store.optimisticEchoOf(sessionId, prompt.message_id);
       if (echo) byId.set(echo, prompt);
+      // The id this tab painted under, when the drain already re-minted.
+      if (prompt.wire_message_id && prompt.wire_message_id !== prompt.message_id) {
+        byId.set(prompt.wire_message_id, prompt);
+        const wireEcho = store.optimisticEchoOf(sessionId, prompt.wire_message_id);
+        if (wireEcho) byId.set(wireEcho, prompt);
+      }
     }
     return byId;
   }, [promptInbox.prompts, sessionId]);
@@ -3302,11 +3318,14 @@ export function SessionChat({
 
       // A send follows from here: the new bubble lands at the top of the
       // screen the frame it commits (use-auto-scroll.ts, FACT 2 + THE RULE).
-      // Not while a turn runs: a reader who scrolled up to read the streaming
-      // answer must not be pulled to the queued bubble; one who is at the end
-      // sees it appear anyway (the room is measured from the working turn, so
-      // the queued bubble does not shift the answer out of view either).
+      // While a turn runs the queued bubble is not anchored at the top (that
+      // would shift the streaming answer out of view); one who is at the end
+      // sees it appear anyway. One who had scrolled UP is brought to it,
+      // smoothly: pressing Enter is intent to see the message land, and a
+      // queued bubble that appears off-screen with no feedback reads as
+      // "nothing happened" (queue-lab `scroll_up_queue`, 2026-08-19).
       if (!sendingIntoRunningTurn) anchorTurn(messageID);
+      else if (scrollRef.current?.dataset.follow === 'false') smoothScrollToAbsoluteBottom();
 
       const options: Record<string, unknown> = {};
       const overrideAgent = overrides?.agent;
@@ -3544,6 +3563,8 @@ export function SessionChat({
       local.model.sendKey,
       local.model.variant.current,
       anchorTurn,
+      smoothScrollToAbsoluteBottom,
+      scrollRef,
       replyTo,
       messages,
       sessionState,
@@ -4381,7 +4402,19 @@ export function SessionChat({
                               turn.userMessage.info.id
                             }
                             turnId={turn.userMessage.info.id}
-                            className={turnIndex === 0 ? '' : 'mt-12'}
+                            // Queued bubbles STACK: a pending turn right after
+                            // another pending turn sits close to it, like a
+                            // list of what is waiting — not a turn's width
+                            // apart as if each had been answered in between.
+                            className={
+                              turnIndex === 0
+                                ? ''
+                                : lastTurnWorking &&
+                                    pendingTurnIds.has(turn.userMessage.info.id) &&
+                                    pendingTurnIds.has(turns[turnIndex - 1].userMessage.info.id)
+                                  ? 'mt-3'
+                                  : 'mt-12'
+                            }
                           >
                             {/* Compaction divider — shown before the first turn after compaction */}
                             {hasCompaction && (
@@ -4489,7 +4522,14 @@ export function SessionChat({
                         so the bubble the boot shell drew never blinks out in the
                         crossfade. */}
                     <QueuedPromptBubbles
-                      className={turns.length > 0 ? 'mt-12' : undefined}
+                      className={
+                        turns.length === 0
+                          ? undefined
+                          : lastTurnWorking &&
+                              pendingTurnIds.has(turns[turns.length - 1].userMessage.info.id)
+                            ? 'mt-3'
+                            : 'mt-12'
+                      }
                       queued={queuedMessages}
                       inFlightIds={queueInFlightIds}
                       failed={failedQueuedMessages}

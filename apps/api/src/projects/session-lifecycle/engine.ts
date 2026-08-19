@@ -48,6 +48,7 @@ import {
   markCommandSucceeded,
   requeueForAdmission,
   resultFromExistingCommand,
+  withNextDeliveryAttempt,
 } from './store';
 import type {
   PromptOverridesWire,
@@ -55,6 +56,14 @@ import type {
   QueuedContinueSessionPayload,
 } from './store';
 import { admitInboxPrompt, sessionHoldsLiveTurn } from './inbox-admission';
+import {
+  type PlacementTipMessage,
+  boxClockSkewMs,
+  mintLivePlacement,
+  noteBoxClockSample,
+  parsePlacementTip,
+  strandedPlacement,
+} from './forwarded-placement';
 import {
   MAX_WIRE_ID_CLOCK_CORRECTION,
   WIRE_ID_TIME_MASK,
@@ -767,16 +776,33 @@ async function queuedContinueOpencodeEndpoint(row: SessionLifecycleCommandRow): 
   endpoint: { url: string; headers: Record<string, string> };
   opencodeSessionId: string;
 } | null> {
-  if (!row.sessionId) return null;
+  return resolveSessionOpencodeEndpoint(row.sessionId, row.actorUserId);
+}
+
+/**
+ * The signed proxy endpoint + OpenCode root id for one session — the same
+ * resolution every drain-side transcript read uses. Exported for the turn-end
+ * reconciliation (`forwarded-strand-reconcile.ts`), which has a session, not a
+ * row.
+ */
+export async function resolveSessionOpencodeEndpoint(
+  sessionId: string | null | undefined,
+  actorUserId?: string | null,
+): Promise<{
+  endpoint: { url: string; headers: Record<string, string> };
+  opencodeSessionId: string;
+} | null> {
+  if (!sessionId) return null;
   const [session] = await db
     .select({
       opencodeSessionId: projectSessions.opencodeSessionId,
       sandboxUrl: projectSessions.sandboxUrl,
       accountId: projectSessions.accountId,
       projectId: projectSessions.projectId,
+      createdBy: projectSessions.createdBy,
     })
     .from(projectSessions)
-    .where(eq(projectSessions.sessionId, row.sessionId))
+    .where(eq(projectSessions.sessionId, sessionId))
     .limit(1);
   if (!session?.opencodeSessionId) return null;
 
@@ -787,7 +813,7 @@ async function queuedContinueOpencodeEndpoint(row: SessionLifecycleCommandRow): 
       .from(sessionSandboxes)
       .where(
         and(
-          eq(sessionSandboxes.sessionId, row.sessionId),
+          eq(sessionSandboxes.sessionId, sessionId),
           eq(sessionSandboxes.projectId, session.projectId),
           eq(sessionSandboxes.accountId, session.accountId),
         ),
@@ -798,7 +824,14 @@ async function queuedContinueOpencodeEndpoint(row: SessionLifecycleCommandRow): 
   }
   if (!externalId) return null;
 
-  const endpoint = await sandboxOpencodeEndpoint(externalId, row.actorUserId ?? undefined);
+  // The signed user context is what the daemon admits a runtime read on
+  // (`verifyKortixUserContext`); with no actor the call is refused as
+  // `malformed`. A caller with no row of its own (turn-end reconciliation,
+  // the stop settle) reads as the session's creator.
+  const endpoint = await sandboxOpencodeEndpoint(
+    externalId,
+    actorUserId ?? session.createdBy ?? undefined,
+  );
   if (!endpoint) return null;
   return { endpoint, opencodeSessionId: session.opencodeSessionId };
 }
@@ -812,6 +845,8 @@ interface InboxTranscriptState {
   answered: boolean;
   /** The transcript was actually read. A failed read answers nothing. */
   read: boolean;
+  /** The messages the read returned (newest tail), for placement proofs. */
+  tip: PlacementTipMessage[] | null;
 }
 
 /**
@@ -830,7 +865,7 @@ async function readInboxTranscriptState(
   deliveredIds: string[],
   opts: { full?: boolean } = {},
 ): Promise<InboxTranscriptState> {
-  const empty: InboxTranscriptState = { newest: null, answered: false, read: false };
+  const empty: InboxTranscriptState = { newest: null, answered: false, read: false, tip: null };
   try {
     const resolved = await queuedContinueOpencodeEndpoint(row);
     if (!resolved) return empty;
@@ -847,23 +882,19 @@ async function readInboxTranscriptState(
       signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) return empty;
-    const messages = (await res.json().catch(() => null)) as Array<{
-      info?: { id?: unknown; role?: unknown; parentID?: unknown };
-    }> | null;
-    if (!Array.isArray(messages)) return empty;
+    const tip = parsePlacementTip(await res.json().catch(() => null));
+    if (!tip) return empty;
 
-    const newest = newestWireIdTime(
-      messages.map((message) => (typeof message?.info?.id === 'string' ? message.info.id : null)),
-    );
+    const newest = newestWireIdTime(tip.map((message) => message.id));
     // Same rule the daemon's `observeOpencodeDelivery` uses: an assistant
     // message parented on the prompt is the turn having run.
-    const answered = messages.some(
+    const answered = tip.some(
       (message) =>
-        message?.info?.role === 'assistant' &&
-        typeof message.info.parentID === 'string' &&
-        deliveredIds.includes(message.info.parentID),
+        message.role === 'assistant' &&
+        typeof message.parentID === 'string' &&
+        deliveredIds.includes(message.parentID),
     );
-    return { newest, answered, read: true };
+    return { newest, answered, read: true, tip };
   } catch (err) {
     console.warn('[session-lifecycle] inbox transcript read failed — proceeding without it', {
       sessionId: row.sessionId,
@@ -991,7 +1022,14 @@ async function remintWireMessageId(
   const known = delivered !== null && (floor === null || delivered > floor) ? delivered : floor;
   const newest = known !== null && (submitted === null || known > submitted) ? known : submitted;
 
-  const minted = mintWireMessageId({ nowMs: Date.now(), newestKnownTime: newest });
+  // Placed at the BOX's clock "now" when it is known (see forwarded-placement
+  // .ts): newest+1 is only safe while nothing else is minting, and a live turn
+  // mints an assistant id at every step boundary.
+  const minted = mintLivePlacement({
+    nowMs: Date.now(),
+    newestKnownTime: newest,
+    boxSkewMs: row.sessionId ? boxClockSkewMs(row.sessionId) : null,
+  });
   if (newest !== null && minted.time <= newest) {
     // The lift refused: `MAX_WIRE_ID_CLOCK_CORRECTION` (1h) caps how far a
     // transcript may drag an id, and past that cap the id we are about to send
@@ -1019,6 +1057,110 @@ async function remintWireMessageId(
     // Throwing here would abandon a CLAIMED row in `running`, where nothing
     // reclaims it until its lock expires.
     console.warn('[session-lifecycle] could not persist the re-minted wire id', {
+      sessionId: row.sessionId,
+      commandId: row.commandId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return minted.id;
+}
+
+/** How many times one delivery re-places itself before leaving the rest to
+ *  turn-end reconciliation. Each round is one tip read + one DELETE + one POST
+ *  — a second strand in a row means step boundaries are landing inside every
+ *  window, and the turn-end net is the cheaper place to catch it. */
+const MAX_LIVE_PLACEMENT_REPAIRS = 2;
+
+/**
+ * Read the tip once after a live-turn delivery and say whether the prompt
+ * landed where the loop will run it — see `strandedPlacement`. Also takes the
+ * box-clock sample the next placement for this session mints from.
+ *
+ * Fails OPEN as "not stranded": an unreadable tip proves nothing, and the
+ * turn-end reconciliation re-asks the question with the same predicate.
+ */
+async function verifyLivePlacement(
+  row: SessionLifecycleCommandRow,
+  wireMessageId: string,
+  postedAtMs: number,
+): Promise<{ stranded: boolean; strandedBy: string | null; newest: bigint | null }> {
+  const ackAtMs = Date.now();
+  const transcript = await readInboxTranscriptState(row, [wireMessageId]);
+  if (!transcript.read || !transcript.tip) return { stranded: false, strandedBy: null, newest: null };
+  const verdict = strandedPlacement(transcript.tip, wireMessageId);
+  if (row.sessionId && verdict.createdMs !== null && verdict.createdMs >= postedAtMs - 60_000) {
+    // The box stamped `created` somewhere between our POST and its ack; the
+    // ack is the conservative pairing (see `noteBoxClockSample`).
+    noteBoxClockSample(row.sessionId, verdict.createdMs, ackAtMs);
+  }
+  return { stranded: verdict.stranded, strandedBy: verdict.strandedBy, newest: verdict.newest };
+}
+
+/**
+ * Delete a stranded user message from the root transcript, so the re-placed
+ * copy is the only one OpenCode — and the model — holds. `true` only on a
+ * confirmed 2xx (or a 404: already gone).
+ */
+async function removeStrandedOpencodeMessage(
+  row: SessionLifecycleCommandRow,
+  wireMessageId: string,
+): Promise<boolean> {
+  try {
+    const resolved = await queuedContinueOpencodeEndpoint(row);
+    if (!resolved) return false;
+    const url = `${resolved.endpoint.url}/session/${encodeURIComponent(resolved.opencodeSessionId)}/message/${encodeURIComponent(wireMessageId)}?directory=${encodeURIComponent(WORKSPACE)}`;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: sandboxRuntimeRequestHeaders(resolved.endpoint.headers),
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (res.ok || res.status === 404) return true;
+    // 409 = the loop is running (`assertNotBusy`); expected mid-turn.
+    if (res.status !== 409) {
+      console.warn('[session-lifecycle] stranded message delete refused', {
+        sessionId: row.sessionId,
+        commandId: row.commandId,
+        status: res.status,
+        body: (await res.text().catch(() => '')).slice(0, 200),
+      });
+    }
+    return false;
+  } catch (err) {
+    console.warn('[session-lifecycle] stranded message delete threw', {
+      sessionId: row.sessionId,
+      commandId: row.commandId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
+ * Mint the id a REPAIR goes out under — above the assistant that proved the
+ * strand — and persist it with the next delivery attempt BEFORE the POST, for
+ * the same crash-safety reason `remintWireMessageId` persists first.
+ */
+async function remintForRepair(
+  row: SessionLifecycleCommandRow,
+  newestKnownTime: bigint | null,
+): Promise<string> {
+  const minted = mintLivePlacement({
+    nowMs: Date.now(),
+    newestKnownTime,
+    boxSkewMs: row.sessionId ? boxClockSkewMs(row.sessionId) : null,
+  });
+  try {
+    await db
+      .update(sessionLifecycleCommands)
+      .set({
+        payload: withNextDeliveryAttempt(
+          sql`${sessionLifecycleCommands.payload} || ${JSON.stringify({ redeliveredMessageId: minted.id })}::jsonb`,
+        ),
+        updatedAt: new Date(),
+      })
+      .where(eq(sessionLifecycleCommands.commandId, row.commandId));
+  } catch (err) {
+    console.warn('[session-lifecycle] could not persist the re-placed wire id', {
       sessionId: row.sessionId,
       commandId: row.commandId,
       error: err instanceof Error ? err.message : String(err),
@@ -1315,37 +1457,44 @@ export async function executeQueuedContinue(
     }
   }
 
+  // Did this delivery go into a turn that was LIVE when it left? Then the
+  // placement has to be PROVEN, not assumed — see forwarded-placement.ts.
+  const placedIntoLiveTurn = !!wireMessageId && (turnLive || remintKnown);
   try {
-    const delivery = await continueSession(
-      {
-        source: row.source as SessionInvocationSource,
-        sessionId: row.sessionId,
-        text,
-        userId: row.actorUserId,
-        ...(payload.parts?.length ? { parts: payload.parts } : {}),
-        ...(payload.overrides ? { overrides: payload.overrides } : {}),
-        ...(wireMessageId ? { wireMessageId } : {}),
-      },
-      // F2: stable across every drain-and-retry of THIS row — see
-      // `postPrompt`'s F2 note. Two DIFFERENT queued commands (distinct
-      // `commandId`s) with identical text now deliver independently instead
-      // of the second silently deduping against the first.
-      //
-      // A ROW THAT ALREADY WENT OUT suffixes it: the previous attempt's
-      // 10-minute dedupe claim is still live in the proxy, and reusing the key
-      // would let that claim swallow the delivery meant to replace it — a
-      // `200 {"deduplicated": true}` that `postPrompt` reads as delivered.
-      // Still stable across `deliverWithRetry`'s inner retries, which is what
-      // the claim is for.
-      //
-      // `deliveryAttempt`, not `redeliveries`: a released Stop and a "send now"
-      // on a stop-paused row are re-POSTs too, and neither is a reaper
-      // redelivery. See `withNextDeliveryAttempt`.
-      deliveryAttempt > 0 ? `${row.commandId}:r${deliveryAttempt}` : row.commandId,
-      tl,
-    );
-    tl.mark('delivered');
-    if (delivery === 'delivered') {
+    let attempt = deliveryAttempt;
+    let delivery: SessionDeliveryOutcome = 'pending';
+    for (let round = 0; ; round += 1) {
+      const postedAt = Date.now();
+      delivery = await continueSession(
+        {
+          source: row.source as SessionInvocationSource,
+          sessionId: row.sessionId,
+          text,
+          userId: row.actorUserId,
+          ...(payload.parts?.length ? { parts: payload.parts } : {}),
+          ...(payload.overrides ? { overrides: payload.overrides } : {}),
+          ...(wireMessageId ? { wireMessageId } : {}),
+        },
+        // F2: stable across every drain-and-retry of THIS row — see
+        // `postPrompt`'s F2 note. Two DIFFERENT queued commands (distinct
+        // `commandId`s) with identical text now deliver independently instead
+        // of the second silently deduping against the first.
+        //
+        // A ROW THAT ALREADY WENT OUT suffixes it: the previous attempt's
+        // 10-minute dedupe claim is still live in the proxy, and reusing the key
+        // would let that claim swallow the delivery meant to replace it — a
+        // `200 {"deduplicated": true}` that `postPrompt` reads as delivered.
+        // Still stable across `deliverWithRetry`'s inner retries, which is what
+        // the claim is for.
+        //
+        // `deliveryAttempt`, not `redeliveries`: a released Stop and a "send now"
+        // on a stop-paused row are re-POSTs too, and neither is a reaper
+        // redelivery. See `withNextDeliveryAttempt`.
+        attempt > 0 ? `${row.commandId}:r${attempt}` : row.commandId,
+        tl,
+      );
+      tl.mark('delivered');
+      if (delivery !== 'delivered') break;
       // DELIVERED IS NOT CONSUMED. OpenCode persists the prompt and queues it
       // behind the turn in flight, so the row stays OPEN — see
       // `markCommandForwarded` — until `session_turns` names this wire id.
@@ -1361,6 +1510,65 @@ export async function executeQueuedContinue(
         await markCommandSucceeded(row.commandId, { status: 'delivered' }, row.sessionId);
       }
       tl.mark('marked');
+      if (!placedIntoLiveTurn || !wireMessageId) break;
+      // PROOF. One tip read after the insert answers exactly whether the box
+      // created a newer assistant BEFORE this prompt landed (the strand
+      // signature). It also hands back the box's own `time.created` for the
+      // message, which calibrates the next placement for this session.
+      const proof = await verifyLivePlacement(row, wireMessageId, postedAt);
+      tl.mark('placement-proof');
+      if (!proof.stranded) break;
+      if (round >= MAX_LIVE_PLACEMENT_REPAIRS) {
+        logger.error(
+          '[session-lifecycle] forwarded prompt still stranded after repairs — leaving it to turn-end reconciliation',
+          {
+            session_id: row.sessionId,
+            command_id: row.commandId,
+            wire_message_id: wireMessageId,
+            stranded_by: proof.strandedBy,
+          },
+        );
+        break;
+      }
+      // REPAIR: take the stranded copy out of the transcript, place again
+      // above the assistant that proves the strand, and go round once more.
+      // The stale message must go first: OpenCode would otherwise hold the
+      // prompt twice, and the model would read it twice.
+      //
+      // OpenCode refuses a message delete WHILE THE LOOP RUNS
+      // (`deleteMessage` → `assertNotBusy`), and a strand is, almost by
+      // definition, detected while it runs. So this repair fires only when
+      // the step already ended between the insert and the proof; the
+      // ordinary case is handed to turn-end reconciliation
+      // (forwarded-strand-reconcile.ts), which runs the same repair the
+      // moment the daemon relays the turn's end — before the box is idle
+      // long enough for anyone to notice.
+      const removed = await removeStrandedOpencodeMessage(row, wireMessageId);
+      if (!removed) {
+        logger.info(
+          '[session-lifecycle] stranded prompt detected mid-turn — turn-end reconciliation will re-place it',
+          {
+            session_id: row.sessionId,
+            command_id: row.commandId,
+            wire_message_id: wireMessageId,
+            stranded_by: proof.strandedBy,
+          },
+        );
+        break;
+      }
+      const replaced = await remintForRepair(row, proof.newest);
+      attempt += 1;
+      logger.warn('[session-lifecycle] forwarded prompt landed below a newer assistant — re-placed', {
+        session_id: row.sessionId,
+        command_id: row.commandId,
+        stranded_wire_id: wireMessageId,
+        stranded_by: proof.strandedBy,
+        replaced_wire_id: replaced,
+        round: round + 1,
+      });
+      wireMessageId = replaced;
+    }
+    if (delivery === 'delivered') {
       // CHAIN. This row is on the wire, so the session's next queued row is
       // admissible NOW — do not leave it to the scheduler tick or to whatever
       // `requeueForAdmission` backoff it accrued while waiting on this one.

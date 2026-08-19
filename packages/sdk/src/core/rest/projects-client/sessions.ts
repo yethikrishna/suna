@@ -619,8 +619,15 @@ export interface SessionPrompt {
   /** The host's own stable submission name — the same value re-POSTing is a
    *  no-op on, and the key an optimistic row is matched by. */
   client_message_id: string;
-  /** The OpenCode wire id this prompt will be delivered under. */
+  /** The OpenCode wire id this prompt will be delivered under. Moves to the
+   *  server's re-minted id the moment the drain places the prompt — BEFORE
+   *  the runtime echoes it. */
   message_id: string;
+  /** The wire id the HOST painted its bubble under (the one it minted and
+   *  POSTed). Together with `message_id` these are every id this prompt has
+   *  ever had; a host hides the row when the transcript shows EITHER. Absent
+   *  from servers older than this field. */
+  wire_message_id?: string;
   state: SessionPromptState;
   /** Why the prompt is `waiting`: `older_prompt_pending` (its own queue is
    *  ahead of it) or `held` (the user pressed Stop — only an explicit send or

@@ -26,6 +26,7 @@ The standard image remains available through the same flag.
 
 The fast image contains the complete session-critical path:
 
+- Ubuntu 24.04, matching the standard runtime's faster OpenCode startup path
 - Git and the baked scaffold repository
 - Node.js, npm, pnpm, Bun, uv, OpenCode, the Kortix daemon, and the Kortix CLI
 - OpenCode configuration dependencies, tool bundle cache, database migration, and instance warm-up

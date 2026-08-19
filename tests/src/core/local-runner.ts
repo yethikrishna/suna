@@ -356,7 +356,9 @@ async function runLane(root: string, lane: LocalTestLane): Promise<LaneResult> {
   try {
     // Every lane can sign a Supabase auth-hook request: the local stack starts
     // the API with this same fixed secret (see local-stack.ts).
-    let env = {
+    // Widened explicitly: lanes append their own E2E_*/KE2E_* keys below, and
+    // the inferred literal type would reject any key not present here (TS2353).
+    let env: Record<string, string | undefined> = {
       ...process.env,
       KE2E_AUTH_EMAIL_HOOK_SECRET: LOCAL_AUTH_EMAIL_HOOK_SECRET,
       ...(lane.env ?? {}),

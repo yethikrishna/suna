@@ -1,11 +1,12 @@
 name: Deploy Dev
 
-# DEV pipeline. `main` is the dev branch. Deploys are EXPLICIT (the Deploy Dev
-# button / `workflow_dispatch`), NOT per-push — see the `on:` block for why. A
-# dispatch builds the things that changed since dev's live sha (or all/frontend
-# on demand) as a DEV build versioned `<next>-dev.<sha8>`, where <next> is one
-# patch above the latest published release tag (see the dev-version job). So a
-# dev deploy tracks prod's version line and `main` carries no release-version bump.
+# DEV pipeline. `main` is the dev branch: every push auto-deploys the surfaces
+# that changed vs what dev currently runs, on the LATEST commit, cancelling any
+# superseded in-flight deploy (see the `on:` and `concurrency:` blocks). A manual
+# `workflow_dispatch` can force all/frontend on demand. Builds are versioned
+# `<next>-dev.<sha8>`, where <next> is one patch above the latest published release
+# tag (see the dev-version job). So dev tracks prod's version line automatically
+# and `main` carries no release-version bump.
 #
 #   - API image   → kortix/kortix-api:dev-<sha8> + :dev-latest, deployed to dev
 #                   via ECS Fargate. dev-api.kortix.com
@@ -26,11 +27,15 @@ name: Deploy Dev
 # the single unified vX.Y.Z release bundling API + frontend + CLI + desktop.
 
 on:
-  # DEV DEPLOYS ARE EXPLICIT — NOT on every push to main. main is a high-traffic
-  # trunk; auto-deploying each push meant deploys queued/cancelled all day and
-  # nobody could tell which sha was live. Now you deploy on demand (the button
-  # below), which collapses a burst of pushes into ONE intentional deploy of
-  # main HEAD. A once-daily safety-net run keeps dev from silently going stale.
+  # DEV auto-deploys the LATEST main commit on every push, building only the
+  # surfaces that actually changed vs what dev is currently running (detect-
+  # changes below diffs against dev-api's live SHA). A newer push CANCELS the
+  # in-progress deploy — dev should always converge to newest, never spend
+  # minutes finishing a superseded build.
+  push:
+    branches: [main]
+  # Manual override: force a full or frontend-only redeploy, or re-deploy on
+  # demand. `changed` (default) matches the push path — only stale surfaces.
   workflow_dispatch:
     inputs:
       surface:
@@ -42,31 +47,29 @@ on:
           - changed   # only surfaces stale vs what dev currently runs (fast — the default)
           - all       # force-rebuild + redeploy every surface
           - frontend  # frontend only
-  schedule:
-    # Safety net only: once a day, deploy whatever changed since the last dev
-    # deploy. Keeps dev current if nobody dispatched — never a substitute for
-    # the explicit button. 06:00 UTC = a quiet hour.
-    - cron: '0 6 * * *'
 
-# One group for every surface, and it must NOT cancel what is already running.
+# Cancel a superseded deploy so dev always converges to the newest commit.
 #
-# `cancel-in-progress: true` starved the slowest surface out of existence. The
-# multi-arch API image takes ~23 min to build; main lands every ~10-20 min during
-# the day; and the group is workflow-wide, so a frontend-only push cancelled an
-# in-flight API build. Measured 2026-08-10: 19 of 30 runs cancelled, the API image
-# had not deployed in 3.5 h, and 5 API commits were stranded — the run that finally
-# landed only survived because the trunk went quiet in the evening.
-#
-# Queueing instead guarantees forward progress. GitHub keeps at most one pending
-# run per group and cancels the previous pending one, so a burst of pushes still
-# collapses into a single follow-up deploy — the newest commit wins, it just waits
-# its turn. This matches deploy-prod, rollback-prod and promote, which have always
-# used `false` for the same reason.
-#
-# It also stops `migrate-db` being killed mid-migration by an unrelated push.
+# HISTORY: this was flipped to `false` on 2026-08-10 after `true` caused a 3.5h
+# outage — the multi-arch API image took ~23 min, main landed every ~10-20 min,
+# so a frontend-only push kept cancelling the in-flight API build and 5 API
+# commits stranded (it never outran the trunk). TWO things fixed the root cause,
+# so `true` is safe again and is what we want:
+#   1. The API image is single-arch amd64 now (~4-7 min, not ~23) — it comfortably
+#      outruns the push cadence, so a cancel is a fresh fast rebuild, not a starve.
+#   2. detect-changes diffs against dev's LIVE SHA, so a surface whose deploy was
+#      cancelled is still stale-vs-dev and the next run rebuilds it. A cancel can
+#      no longer strand a surface — the property the 2026-08-10 stranding relied on
+#      is gone.
+# Residual risk, dev-only and recoverable: a cancel can kill `migrate-db` mid-run.
+# node-pg-migrate wraps each step in a transaction so a killed ordinary migration
+# rolls back cleanly and the next deploy re-applies it; a `.concurrent` migration
+# can leave an INVALID index that the next `IF NOT EXISTS` skips — drop+rebuild it
+# by hand (learnings: "CREATE INDEX CONCURRENTLY under lock_timeout"). staging/prod
+# are unaffected — they are promote-gated, never per-push.
 concurrency:
   group: deploy-dev
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   # ── Detect what changed (so unrelated surfaces are skipped) ─────────────────
@@ -89,18 +92,18 @@ jobs:
           fetch-depth: 0
       - name: Resolve deploy base (what dev is actually running)
         id: base
-        # Runs for the change-diffing paths: the daily safety-net schedule, and an
-        # explicit dispatch with surface=changed. surface=all / surface=frontend
-        # force their own set below and skip this.
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.surface == 'changed')
+        # Runs for the change-diffing paths: an ordinary push, and an explicit
+        # dispatch with surface=changed. surface=all / surface=frontend force
+        # their own set below and skip this.
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.surface == 'changed')
         run: |
           # THE FLAKY-SKIP FIX. The old filter diffed `github.event.before..sha`
-          # — the commits in THIS push only. But `cancel-in-progress: false`
-          # collapses a burst of pushes into one deploy for the NEWEST sha, whose
-          # own diff misses a surface changed by an earlier, superseded commit —
-          # so that surface's job silently skips and the change strands on dev.
-          # Diff against the sha dev is running instead: every surface stale
-          # relative to the live deployment rebuilds, regardless of push grouping.
+          # — the commits in THIS push only. But a superseded/cancelled deploy
+          # meant a surface changed by an earlier commit was never built, and its
+          # push's diff was gone — so it stranded on dev. Diff against the sha dev
+          # is actually running instead: every surface stale relative to the live
+          # deployment rebuilds, and a cancelled deploy is simply re-picked-up by
+          # the next run (which is what makes cancel-in-progress safe here).
           set +e
           deployed=$(curl -sf --max-time 8 https://dev-api.kortix.com/v1/health \
             | python3 -c "import sys,json;print(json.load(sys.stdin).get('commit',''))" 2>/dev/null)

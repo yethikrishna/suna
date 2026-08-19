@@ -1,29 +1,34 @@
-# Deploy to dev — the explicit Deploy Dev action
+# Deploy to dev — auto on push, cancel-stale, with a manual override
 
-**Dev deploys are EXPLICIT.** Merging to `main` does NOT deploy to dev. You
-trigger the deploy yourself, on demand. This is a GitHub Actions
-`workflow_dispatch` on `.github/workflows/deploy-dev.yml` — the "Deploy Dev"
-workflow.
+**Dev auto-deploys on every push to `main`.** Each push builds only the surfaces
+that changed vs what dev currently runs, on the LATEST commit, and a newer push
+CANCELS the in-progress deploy so dev always converges to newest. There is also a
+manual **Deploy Dev** button (`workflow_dispatch`) to force a full/frontend
+redeploy on demand.
 
-## Why it is explicit, not per-push
+## The model
 
-`main` is a high-traffic trunk. Auto-deploying every push meant deploys queued
-and cancelled all day (the concurrency group serialises, and the slow surface
-loses), dev lagged 30–60 min behind, and nobody could tell which SHA was live.
-An explicit deploy collapses a burst of merges into ONE intentional deploy of
-`main` HEAD, when you decide dev should move.
+- **Trigger:** `on: push` to `main` + `workflow_dispatch`.
+- **Cancel-stale:** `concurrency.cancel-in-progress: true` — a newer push kills a
+  superseded deploy. Safe here because (1) the single-arch amd64 API build is
+  ~4–7 min and outruns the push cadence, and (2) detect-changes diffs against
+  dev's LIVE SHA, so a surface whose deploy was cancelled is still stale-vs-dev
+  and the next push rebuilds it — a cancel can't strand a surface.
+- **Changed-only:** detect-changes reads dev's live SHA from
+  `dev-api.kortix.com/v1/health` and builds only surfaces stale vs it; if that
+  SHA can't be resolved it FAILS SAFE and builds everything.
 
-`staging` and `prod` are unaffected — they were always promote-gated, never
-per-push (see the `kortix-release` skill).
+`staging` and `prod` are unaffected — promote-gated, never per-push (see the
+`kortix-release` skill).
 
-## How to deploy
+## Manual deploy (override)
 
-Three equivalent ways. All deploy `main` HEAD.
+You rarely need this — push already deploys. Use it to force a full or
+frontend-only redeploy:
 
 1. **GitHub UI** — Actions tab → **Deploy Dev** → **Run workflow** → pick a
    `surface` → **Run workflow**.
-2. **CLI** — `gh workflow run deploy-dev.yml -f surface=changed`
-3. **From an agent session** — the same `gh workflow run` call.
+2. **CLI** — `gh workflow run deploy-dev.yml -f surface=all` (or `frontend` / `changed`).
 
 ### The `surface` input
 
@@ -38,12 +43,6 @@ against it, so a surface changed by any commit since the last dev deploy
 rebuilds — regardless of how the pushes were grouped. If that SHA cannot be
 resolved (health down, force-push, first deploy), it FAILS SAFE and builds every
 surface.
-
-## Safety net
-
-A `schedule` fires once a day at 06:00 UTC and runs the `changed` path, so dev
-cannot silently rot if nobody dispatched. It is a floor, not a substitute for
-the explicit deploy.
 
 ## Verify a deploy landed
 
@@ -62,10 +61,16 @@ SHA you deployed:
   app; an open tab keeps running the JS bundle it loaded before the deploy. If
   the UI looks old but `/api/health` reports the new commit, hard-reload
   (Cmd/Ctrl+Shift+R). The deploy is fine.
-- **Concurrency queues, never cancels.** `cancel-in-progress: false` is
-  deliberate (flipping it to `true` caused a 3.5h dev outage on 2026-08-10 — see
-  the `learnings` skill). A dispatch while another deploy runs QUEUES behind it;
-  the newest pending wins. Do not spam dispatches — one is enough.
+- **Cancel-stale is intentional.** `cancel-in-progress: true` — a newer push
+  cancels an in-flight deploy so dev converges to newest. A cancelled run is
+  normal, not a failure. (This was `false` from 2026-08-10 to 2026-08-20 after
+  `true` caused a 3.5h outage on a ~23-min multi-arch build; the single-arch
+  speedup + diff-vs-deployed detect-changes removed that hazard — see the
+  `learnings` skill.)
+- **Cancelled `migrate-db` is recoverable.** node-pg-migrate wraps each step in a
+  transaction (a killed ordinary migration rolls back, the next deploy re-applies
+  it); a `.concurrent` migration can leave an INVALID index — drop+rebuild it by
+  hand (learnings: "CREATE INDEX CONCURRENTLY under lock_timeout").
 
 ## Build speed
 

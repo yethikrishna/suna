@@ -27,7 +27,14 @@ pnpm test -- --packages-only   # Every app/package test and publish contract
 pnpm test -- --full            # Core, browser, and every app/package test
 pnpm test -- --target-smoke    # Deployed staging API SHA and browser smoke
 pnpm test -- --target-full     # Every deployed staging API flow and browser journey
+pnpm test -- --target-api-full --api-shard=1/4     # One deployed API shard
+pnpm test -- --target-browser-full --browser-shard=1/3 # One deployed browser shard
 ```
+
+`--target-full` runs both deployed lanes in one process. The two per-lane modes
+run one lane each, so the release gate can run them as parallel GitHub jobs.
+Both accept a shard, and both assert the deployed SHA exactly as `--target-full`
+does.
 
 Browser and full modes start local Supabase, apply migrations, and start the
 deterministic API, gateway, and web processes. The runner stops only processes
@@ -112,13 +119,53 @@ the sandbox. A new commit also removes the stale `preview` label. A scheduled
 reconciler deletes sandboxes whose pull request is closed, unlabeled, or at a
 different SHA.
 
-`tests-release.yml` runs `pnpm test -- --target-full` against deployed staging
-for pull requests into `prod`. It does not repeat the local-profile suite.
-This mode rejects development and production hosts. It requires the API and gateway
-health commits to equal `RELEASE_SOURCE_SHA`. It runs every selected REST and
-CLI flow with `--require-all`, then runs all configured Playwright journeys
-against `staging.kortix.com` with the Vercel bypass header. A missing external
+`tests-release.yml` runs the deployed staging suite for pull requests into
+`prod`. It does not repeat the local-profile suite. It rejects development and
+production hosts. It requires the API and gateway health commits to equal
+`RELEASE_SOURCE_SHA`. It runs every selected REST and CLI flow with
+`--require-all`, then runs all configured Playwright journeys against
+`staging.kortix.com` with the Vercel bypass header. A missing external
 capability fails the release gate instead of counting as a pass.
+
+#### Release gate shards
+
+The gate runs as parallel matrix jobs instead of one 90-minute job: four API
+shards (`--target-api-full --api-shard=N/4`) and three browser shards
+(`--target-browser-full --browser-shard=N/3`), with `fail-fast: false` so one
+red shard still reports the others. Wall clock becomes the slowest shard rather
+than a contended sum on one 2-vCPU runner.
+
+`src/core/shard.ts` computes the API partition from the live flow registry, so a
+newly added flow always lands in exactly one shard and can never fall out of the
+gate. Shard 1 owns every `serial` and every `global` flow — two jobs running the
+platform-mutating `global` flows at once would corrupt each other. The remaining
+flows are bin-packed longest-first using the declared `timeoutMs` as a static
+cost proxy. `unit/shard.test.ts` proves the partition is total and that the
+pinned flows never leave shard 1.
+
+A final job named `full suite + quality gates` aggregates the shards. That exact
+name is the required status check on `prod` branch protection; renaming it
+without updating the protection rule silently disables the gate.
+
+#### Test-account cleanup
+
+A cancelled GitHub job is killed before the runner's `finally` teardown, so every
+cancel used to leak its whole world. Three mechanisms reclaim it:
+
+- `sweep-before` runs `ke2e gc --older-than 2h` before the shards. The age window
+  cannot match an account the current run just created, so a concurrent release
+  gate is safe. It is `continue-on-error` — cleanup never blocks a release.
+- Each API shard runs `ke2e gc --run-id "$KE2E_RUN_ID"` with `if: always()`.
+  `KE2E_RUN_ID` is pinned per shard so the sweep reclaims only its own
+  principals. `sweep-after` repeats it for the whole run as a backstop.
+- `ke2e run` handles SIGINT/SIGTERM by reclaiming its own run id inside GitHub's
+  pre-SIGKILL window, bounded by `KE2E_CANCEL_RECLAIM_MS` (default 20s).
+
+`ke2e gc` sweeps the ke2e email domain plus the domains the Playwright specs mint
+under (`@example.test`, `@kortix.test`); override with `KE2E_GC_EMAIL_DOMAINS`.
+Only reserved TLDs are accepted. Browser-lane accounts carry no run-scoped
+prefix, so `--run-id` cannot reach them — the age sweep on the next run is what
+reclaims those.
 
 The strict browser lane also runs the Stripe-backed billing journey. It proves
 that the web app starts Team checkout, reads the activated subscription, starts

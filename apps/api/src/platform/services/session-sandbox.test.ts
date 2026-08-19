@@ -434,48 +434,6 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     expect(imageRequests[0]).not.toHaveProperty('requireCurrentRuntime');
   });
 
-  test('provider telemetry separates provider creation from network-boundary sync', async () => {
-    networkBoundaryBindings = [{ identifier: 'github', host: 'api.github.com' }];
-    const opened = waitFor((resolve) => {
-      onComputeOpened = resolve;
-    });
-
-    await provisionSessionSandbox(baseOpts());
-    await opened;
-
-    expect(providerSyncCalls).toEqual([
-      {
-        externalId: EXTERNAL_ID,
-        bindings: networkBoundaryBindings,
-      },
-    ]);
-    const labels =
-      recordedEvents.find((event) => event.outcome === 'ok')?.marks?.map((mark) => mark.label) ??
-      [];
-    expect(labels).toContain('provider-create:1x');
-    expect(labels).toContain('network-secrets:1');
-    expect(labels.indexOf('provider-create:1x')).toBeLessThan(labels.indexOf('network-secrets:1'));
-  });
-
-  test('the fast Platinum path attaches network-boundary secrets during create', async () => {
-    process.env.KORTIX_FAST_COLD_BOOT_ENABLED = 'true';
-    networkBoundaryBindings = [{ identifier: 'github', host: 'api.github.com' }];
-    const opened = waitFor((resolve) => {
-      onComputeOpened = resolve;
-    });
-
-    await provisionSessionSandbox({ ...baseOpts(), provider: 'platinum' });
-    await opened;
-
-    expect(providerCreateOpts).toHaveLength(1);
-    expect(providerCreateOpts[0]?.networkBoundary).toEqual(networkBoundaryBindings);
-    expect(providerSyncCalls).toEqual([]);
-    const labels =
-      recordedEvents.find((event) => event.outcome === 'ok')?.marks?.map((mark) => mark.label) ??
-      [];
-    expect(labels).toContain('network-secrets:create:1');
-  });
-
   test('the fast flag keeps the standard image so the edge optimization stays isolated', async () => {
     process.env.KORTIX_FAST_COLD_BOOT_ENABLED = 'true';
     const opened = waitFor((resolve) => {

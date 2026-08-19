@@ -2,8 +2,8 @@ import { isOptimisticSessionPrompt } from '@kortix/sdk/react';
 import type { SessionPrompt } from '@kortix/sdk';
 
 /**
- * What the composer's queue strip renders, from the ONE thing that holds a
- * pending message.
+ * What the transcript's queued bubbles (`turn/queued-prompt-bubbles.tsx`)
+ * render, from the ONE thing that holds a pending message.
  *
  * The server inbox (`GET .../prompts`) is the queue: durable, shared across
  * tabs and devices, ordered and admitted by the control plane. Every prompt

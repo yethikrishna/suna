@@ -45,6 +45,8 @@ import { stabilizeTurns } from './turn/stable-turns';
 import { ThrottledMarkdown } from './turn/throttled-markdown';
 import { TurnViewport } from './turn/turn-viewport';
 import { UserMessage } from './turn/user-message';
+import { QueuedPromptBubbles, QUEUED_BUBBLE_OPACITY_CLASS } from './turn/queued-prompt-bubbles';
+import { resolveWorkingTurn } from './turn/working-turn';
 
 import { Composer as SessionChatInput } from '@/features/session/composer/composer';
 import { ConnectorRequiredNotice } from '@/features/session/connector-required-notice';
@@ -431,6 +433,9 @@ function AnsweredQuestionCard({ part }: { part: ToolPart }) {
  *  with the agent still running. One round-trip's worth, no more. */
 const STOP_HOLD_DEADLINE_MS = 1500;
 
+/** After this long on one status the working label shows elapsed time. */
+const STATUS_STALL_AFTER_MS = 20_000;
+
 /** Dependencies `stopThenSendNow` needs, injected so the ordering logic is
  *  directly testable without React or a DOM. */
 export interface StopThenSendNowDeps {
@@ -612,10 +617,25 @@ interface SessionTurnProps {
   /**
    * The session's working state, resolved ONCE by the parent
    * (`resolveLastTurnWorking`): the projection for a Kortix session, the raw
-   * SSE slot only for a child session that has no `/turn` row. Only the last
-   * turn ever renders it — a non-last turn is settled by definition.
+   * SSE slot only for a child session that has no `/turn` row. Only the
+   * WORKING turn renders it (`isWorkingTurn`).
    */
-  lastTurnWorking: boolean;
+  sessionWorking: boolean;
+  /**
+   * This turn is the one the agent is on — see `resolveWorkingTurn`. It used
+   * to be `isLast` by definition; a prompt queued mid-turn broke that: OpenCode
+   * persists it as the last user message while the agent is still streaming
+   * the turn before, so the shimmer sat under a bubble nobody had started and
+   * the live turn looked settled.
+   */
+  isWorkingTurn: boolean;
+  /**
+   * A user message the agent has not reached yet — after the working turn,
+   * with no assistant content. Drawn dimmed, like a queued prompt (it IS one:
+   * the server forwarded it and OpenCode holds it until the next step), and
+   * it fades up to full opacity the moment the agent takes it.
+   */
+  pending: boolean;
   /** Whether this turn contains a compaction */
   isCompaction?: boolean;
   /** Providers data for the Connect Provider dialog */
@@ -706,7 +726,9 @@ function SessionTurnImpl({
   questions,
   agentNames,
   isFirstTurn,
-  lastTurnWorking,
+  sessionWorking,
+  isWorkingTurn,
+  pending,
   isCompaction,
   providers,
   commandMessages,
@@ -747,14 +769,14 @@ function SessionTurnImpl({
     () => allParts.some(({ part }) => isReasoningPart(part) && !!part.text?.trim()),
     [allParts],
   );
-  // The LAST turn's working state is the session's, and the parent resolved
+  // The WORKING turn's working state is the session's, and the parent resolved
   // that answer once (`resolveLastTurnWorking`): the projection
   // (`useSessionWorking` → `GET .../turn`) for a Kortix session, the raw SSE
-  // slot only for a child session with no `/turn` row. A non-last turn is
+  // slot only for a child session with no `/turn` row. Any other turn is
   // NEVER working — that is a fact about the transcript, not an observation,
   // and it is what removes the "last turn shimmers for ever" symptom the raw
   // slot's dropped end-of-turn frames caused here.
-  const working = isLast && lastTurnWorking;
+  const working = isWorkingTurn && sessionWorking;
   const activeAssistantMessage = useMemo(() => {
     if (turn.assistantMessages.length === 0) return undefined;
     for (let i = turn.assistantMessages.length - 1; i >= 0; i--) {
@@ -808,12 +830,12 @@ function SessionTurnImpl({
   // projection does not carry. Do not "finish the job" by moving them to the
   // projection — the shimmer decision above is the only thing that moved.
   const retryInfo = useMemo(
-    () => (isLast ? getRetryInfo(sessionStatus) : undefined),
-    [sessionStatus, isLast],
+    () => (isWorkingTurn ? getRetryInfo(sessionStatus) : undefined),
+    [sessionStatus, isWorkingTurn],
   );
   const retryMessage = useMemo(
-    () => (isLast ? getRetryMessage(sessionStatus) : undefined),
-    [sessionStatus, isLast],
+    () => (isWorkingTurn ? getRetryMessage(sessionStatus) : undefined),
+    [sessionStatus, isWorkingTurn],
   );
 
   // Cost info (only when not working)
@@ -1140,6 +1162,24 @@ function SessionTurnImpl({
     [allParts, childMessages],
   );
   const [throttledStatus, setThrottledStatus] = useState('');
+  // How long the status has read the same thing. Past STATUS_STALL_AFTER_MS
+  // the label carries the elapsed time, so a slow model step or a long tool
+  // call reads as "still working, this long" instead of a frozen screen.
+  const [statusSinceMs, setStatusSinceMs] = useState(() => Date.now());
+  const [statusElapsedMs, setStatusElapsedMs] = useState(0);
+  useEffect(() => {
+    setStatusSinceMs(Date.now());
+    setStatusElapsedMs(0);
+  }, [throttledStatus]);
+  useEffect(() => {
+    if (!working) return;
+    const timer = setInterval(() => setStatusElapsedMs(Date.now() - statusSinceMs), 1000);
+    return () => clearInterval(timer);
+  }, [working, statusSinceMs]);
+  const statusWithElapsed =
+    throttledStatus && working && statusElapsedMs >= STATUS_STALL_AFTER_MS
+      ? `${throttledStatus.replace(/(\.\.\.|…)$/, '')} · ${formatDuration(statusElapsedMs)}`
+      : throttledStatus;
 
   useEffect(() => {
     const newStatus = rawStatus;
@@ -1371,7 +1411,10 @@ function SessionTurnImpl({
       {/* Hide the user bubble when the user message has no visible content
 			    (e.g. background task notification with only synthetic parts). */}
       {hasVisibleUserContent && (
-        <div>
+        <div
+          data-turn-pending={pending || undefined}
+          className={cn('transition-opacity duration-500', pending && QUEUED_BUBBLE_OPACITY_CLASS)}
+        >
           <UserMessage
             message={turn.userMessage}
             agentNames={agentNames}
@@ -1560,7 +1603,7 @@ function SessionTurnImpl({
           )}
           <SessionBusyIndicator
             sessionId={sessionId}
-            statusText={throttledStatus || undefined}
+            statusText={statusWithElapsed || undefined}
             retryLabel={
               retryInfo
                 ? String(
@@ -2394,7 +2437,8 @@ export function SessionChat({
     } as any);
   }, [messages, sessionId, shouldRecoveryPoll, streamCacheKey, hasPendingUserReply]);
 
-  // WHAT THE COMPOSER RENDERS IS THE SERVER INBOX — see `projectQueueRows`.
+  // WHAT THE TRANSCRIPT RENDERS AS QUEUED IS THE SERVER INBOX — see
+  // `projectQueueRows` and `QueuedPromptBubbles`.
   //
   // `GET .../prompts` is the queue: durable, shared across tabs and devices,
   // ordered and admitted by the control plane. There is no browser lane beside
@@ -2740,6 +2784,13 @@ export function SessionChat({
     }
     return null;
   }, [messages]);
+  // WHICH turn carries the shimmer, and which user bubbles are still queued at
+  // the agent. Not "the last one" any more — see `resolveWorkingTurn`.
+  const workingTurn = useMemo(
+    () => resolveWorkingTurn({ turns, hintMessageId: working.turnId }),
+    [turns, working.turnId],
+  );
+  const pendingTurnIds = useMemo(() => new Set(workingTurn.pendingTurnIds), [workingTurn]);
   /** Hoisted out of the JSX: an inline arrow prop defeats `React.memo` by itself. */
   const handleRewind = useCallback(
     (messageId: string, text: string) => setRewindTarget({ messageId, text }),
@@ -4206,7 +4257,11 @@ export function SessionChat({
                               questions={pendingQuestions}
                               agentNames={agentNames}
                               isFirstTurn={turnIndex === 0}
-                              lastTurnWorking={lastTurnWorking}
+                              sessionWorking={lastTurnWorking}
+                              isWorkingTurn={turn.userMessage.info.id === workingTurn.workingTurnId}
+                              pending={
+                                lastTurnWorking && pendingTurnIds.has(turn.userMessage.info.id)
+                              }
                               isCompaction={hasCompaction}
                               providers={providers}
                               commandMessages={commandMessagesRef.current}
@@ -4270,6 +4325,19 @@ export function SessionChat({
                           : undefined
                       }
                       className="mt-2"
+                    />
+                    {/* Prompts queued at the SERVER, not yet in the transcript:
+                        drawn as the dimmed user bubbles they are about to become.
+                        The composer carries no queue strip any more. */}
+                    <QueuedPromptBubbles
+                      className={turns.length > 0 ? 'mt-12' : undefined}
+                      queued={queuedMessages}
+                      failed={failedQueuedMessages}
+                      inFlightIds={queueInFlightIds}
+                      held={queueRows.held}
+                      onRemove={handleRemoveQueuedMessage}
+                      onSendNow={handleQueueSendNow}
+                      onRetry={handleRetryQueuedMessage}
                     />
                     {/* Busy with no turn to attach it to yet — the same waiting row
                         the optimistic turn and every live turn use, so it never
@@ -4365,14 +4433,6 @@ export function SessionChat({
                 // runtime is switched.
                 runtimeReady={runtimeReady}
                 rewind={composerRewind}
-                queuedMessages={queuedMessages}
-                failedQueuedMessages={failedQueuedMessages}
-                queueInFlightIds={queueInFlightIds}
-                queuePaused={queueRows.held}
-                queueIsRunning={isBusy}
-                onSendQueuedMessageNow={handleQueueSendNow}
-                onRemoveQueuedMessage={handleRemoveQueuedMessage}
-                onRetryQueuedMessage={handleRetryQueuedMessage}
                 onStop={handleStop}
                 escCount={escCount}
                 agents={local.agent.list}

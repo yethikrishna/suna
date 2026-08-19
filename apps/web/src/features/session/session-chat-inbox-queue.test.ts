@@ -37,8 +37,12 @@ describe('stop reaches the queue that actually holds the messages', () => {
     expect(stop).not.toContain('queueDrain');
   });
 
-  test('the strip is dimmed by the SERVER hold, which every tab can see', () => {
-    expect(chat).toContain('queuePaused={queueRows.held}');
+  test('the queued bubbles read the SERVER hold, which every tab can see', () => {
+    // The queue is drawn IN the transcript, not in a composer strip.
+    expect(chat).toContain('held={queueRows.held}');
+    expect(chat).toContain('<QueuedPromptBubbles');
+    expect(chat).not.toContain('queuePaused=');
+    expect(chat).not.toContain('queuedMessages={queuedMessages}');
   });
 
   test('a rewind removes the queued rows instead of holding them', () => {

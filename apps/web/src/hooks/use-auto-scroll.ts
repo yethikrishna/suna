@@ -33,6 +33,11 @@ import { createTurnAnchor } from '@/features/session/turn-anchor';
  *  ChatGPT-style spacer from filling the viewport with whitespace
  *  when the last turn is short and the session is no longer streaming. */
 const IDLE_SPACER_CAP = 120;
+/** Ceiling for the anchor space while a turn streams, as a fraction of the
+ *  scroll viewport. */
+const STREAMING_SPACER_MAX_VH = 0.22;
+/** How long the idle collapse of the spacer takes — a glide, not a jump. */
+const IDLE_SPACER_COLLAPSE_MS = 420;
 
 interface UseAutoScrollOptions {
   working: boolean;
@@ -148,10 +153,10 @@ export function useAutoScroll({
   // grace period, so a mid-handoff flap never disturbs the scroll position.
   const [working, setWorking] = useState(workingRaw);
   const idleGraceTimerRef = useRef<ReturnType<typeof setTimeout>>(0 as any);
-  // True once anything has streamed while this view is mounted. After that,
-  // idle keeps the FULL spacer (last turn stays anchored at top, whitespace
-  // below — ChatGPT style); the idle cap only applies to fresh loads of an
-  // existing conversation, where trailing whitespace would just look broken.
+  // True once anything has streamed while this view is mounted. Decides
+  // whether the idle collapse of the spacer is animated (a turn just finished
+  // in front of the user) or instant (a fresh load of an existing
+  // conversation, where there is nothing to glide from).
   const hadStreamedRef = useRef(false);
   useEffect(() => {
     if (workingRaw) {
@@ -200,14 +205,29 @@ export function useAutoScroll({
     const turns = content.querySelectorAll<HTMLElement>('[data-turn-id]');
     const last = turns[turns.length - 1];
     let h = last ? Math.max(0, vh - last.offsetHeight - TURN_TOP_OFFSET) : vh;
+    // Even while streaming the anchor space is CAPPED: the full
+    // `vh - turnHeight` pinned the newest bubble to the very top and left the
+    // rest of the screen empty until the answer grew into it — a whole
+    // viewport of nothing whenever the newest turn was small (a queued
+    // follow-up, a status row). A third of the viewport keeps room for the
+    // answer to grow under the bubble without the void.
+    h = Math.min(h, Math.round(vh * STREAMING_SPACER_MAX_VH));
 
-    // Cap the spacer ONLY on fresh loads of an existing conversation (no
-    // streaming yet this mount) — there the whitespace would look broken.
-    // Once a turn has streamed, the full spacer persists through idle so the
-    // completed turn stays anchored at the top instead of the whole
-    // conversation dropping to the bottom of the screen.
-    if (!workingRef.current && !hadStreamedRef.current) {
+    // While a turn streams the spacer holds the anchor: the user's bubble
+    // stays at the top and the answer fills the space below it. Once the turn
+    // is IDLE the spacer collapses to a small cap — a short answer used to
+    // leave the whole viewport empty below it (the full spacer persisted
+    // through idle, ChatGPT-style), which read as "too much space at the
+    // bottom" every single time. The collapse is EASED, not cut: `working`
+    // already carries WORKING_IDLE_GRACE_MS, and the height transition below
+    // turns the drop into a glide instead of the yank a hard re-anchor made.
+    if (!workingRef.current) {
       h = Math.min(h, IDLE_SPACER_CAP);
+      spacer.style.transition = hadStreamedRef.current ? `height ${IDLE_SPACER_COLLAPSE_MS}ms ease-out` : '';
+    } else {
+      // Streaming physics rely on the spacer shrinking in the same frame the
+      // turn grows (scrollHeight stays constant) — no transition here.
+      spacer.style.transition = '';
     }
 
     spacerValRef.current = h;
@@ -378,12 +398,10 @@ export function useAutoScroll({
     }, 500);
   }, [recalcSpacer]);
 
-  // On working → idle: deliberately NO re-anchor. The spacer keeps its full
-  // height (see recalcSpacer), so the completed turn stays exactly where it
-  // was — user bubble + response anchored at the top, whitespace below. For
-  // long responses the RAF loop already followed growth to the end while
-  // streaming. Re-anchoring to the absolute bottom here is what used to yank
-  // the whole conversation to the bottom of the screen on completion.
+  // On working → idle: NO re-anchor by scrolling. The spacer eases down to
+  // IDLE_SPACER_CAP (see recalcSpacer), so a short completed turn settles
+  // above the composer with a glide instead of leaving a screen of whitespace
+  // — and a long one, whose spacer was already 0, does not move at all.
 
   // ── RAF auto-scroll during streaming ──────────────────────────────
   // Phase 1 (spacer > 0): scrollHeight is constant, no scrolling needed.

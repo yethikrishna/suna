@@ -822,6 +822,17 @@ policy to `project` puts the App in that teammate's list and makes it readable;
 them back out. `password` is a PUBLIC-traffic control and stays team-visible.
 A `NONMEMBER` remains 403 on the whole surface.
 
+`APP-5` Edge TLS gate — `GET /v1/apps/edge/tls-check?domain=<host>` is the
+unauthenticated `ask` a self-host reverse proxy calls before it issues an
+on-demand certificate for an App hostname. It answers **200** only for a real
+App public host (the hostname the create route just handed out), **403** for a
+hostname that is not an App host and for a call with no `domain` at all, and
+**404** for an App-shaped hostname whose immutable route key belongs to no App.
+A local `*.apps.localhost` deployment never issues certificates and answers 200
+without the database round-trip; the 404 branch is pinned source-level in
+`apps/api/src/apps/edge.test.ts`. The route discloses only whether a hostname is
+servable — the same fact the hostname's own DNS record already states.
+
 ---
 
 ## 29. Additional executable product contracts

@@ -134,7 +134,7 @@ import { accountsRouter } from './accounts';
 import { authRouter } from './auth';
 import { scimRouter } from './scim';
 import { accountInvitesRouter } from './accounts/invites';
-import { auditApiRequest } from './shared/audit';
+import { auditApiRequest, shutdownAuditEvents } from './shared/audit';
 import { startAuditWebhookWorker, stopAuditWebhookWorker } from './shared/audit-webhooks';
 import {
   startAuditReconciliationWorker,
@@ -1466,8 +1466,10 @@ async function shutdown(signal: string) {
   stopTunnelService();
   stopAccessControlCache();
   stopTmpReaper();
-  // Flush observability data before exit
-  await Promise.allSettled([appLogger.flush(), flushSentry()]);
+  // Flush observability data before exit. The audit queue is drained here
+  // because audit rows are buffered off the request path — without this, the
+  // last ~250 ms of events would be lost on every SIGTERM (i.e. every rollout).
+  await Promise.allSettled([shutdownAuditEvents(), appLogger.flush(), flushSentry()]);
   process.exit(0);
 }
 

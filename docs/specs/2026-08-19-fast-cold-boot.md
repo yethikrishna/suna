@@ -28,7 +28,7 @@ The fast image contains the complete session-critical path:
 
 - Git and the baked scaffold repository
 - Node.js, npm, pnpm, Bun, uv, OpenCode, the Kortix daemon, and the Kortix CLI
-- OpenCode configuration dependencies, database migration, and instance warm-up
+- OpenCode configuration dependencies, tool bundle cache, database migration, and instance warm-up
 - The model catalog, managed skills, and Slack or Teams CLI shims
 
 Large tools install once per sandbox on first use:

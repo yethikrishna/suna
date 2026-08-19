@@ -35,7 +35,7 @@ const createdAccountIds = new Set<string>();
 const disposableInboxes = new Set<DisposableInbox>();
 
 type AccountRole = "owner" | "admin" | "member";
-type ProjectRole = "manager" | "editor" | "member";
+type ProjectRole = "manager" | "member";
 
 interface AccountSummary {
   account_id: string;

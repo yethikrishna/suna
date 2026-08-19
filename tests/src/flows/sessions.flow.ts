@@ -410,7 +410,7 @@ flow(
     const team = await ctx.fixtures.team();
     const p = await team.project({ seed: true });
     const editor = await team.addMember('member');
-    await team.grantProjectRole(p.id, editor.userId!, 'editor');
+    await team.grantProjectRole(p.id, editor.userId!, 'manager');
     const manager = await team.addMember('member');
     await team.grantProjectRole(p.id, manager.userId!, 'manager');
 

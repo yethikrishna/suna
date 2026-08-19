@@ -27,6 +27,7 @@ import {
   requestAuditContext,
   serializeSession,
 } from '../lib/serializers';
+import { resolveAndAuthorizeAgent } from '../lib/agent-access';
 import { sendSessionCreateError } from '../lib/sessions';
 import { sessionHasMemberConnectorBinding } from '../lib/session-connector-bindings';
 import { createSession, deleteSession } from '../session-lifecycle';
@@ -104,6 +105,15 @@ projectsApp.openapi(
   // scoped to. No-op when the agent isn't scoped (unscoped = project-wide) and
   // for owner/admins. Mirrors the agent the session core resolves (sessions.ts).
   const launchAgent = normalizeString(body.agent_name ?? body.agentName);
+  // Covers BOTH the named agent and — the case that was missing — the unnamed
+  // one. No `agent_name` does not mean "no agent": the session core falls back
+  // to the manifest's `default_agent`, and that agent must clear the same gate.
+  // Skipping it is how a member with no grants still got the fully-privileged
+  // default to answer their prompts while the composer showed nothing selected.
+  //
+  // Runs BEFORE the leaf assert below so its message wins. Both refuse the same
+  // requests; only this one can say WHICH agents the caller could pick instead.
+  const agentAccess = await resolveAndAuthorizeAgent(c, loaded, projectId, launchAgent);
   if (launchAgent) {
     await assertProjectCapability(
       c,
@@ -113,6 +123,14 @@ projectsApp.openapi(
       PROJECT_ACTIONS.PROJECT_AGENT_READ,
       { type: 'agent', id: launchAgent },
     );
+  }
+  // When the caller named no agent and this gate could not read one off the
+  // request/session/mirror, it picked the first agent the caller may use. For a
+  // member that pick has to BIND, because `createSession` resolves the agent
+  // again from the manifest and would otherwise start an agent this gate never
+  // approved. Managers and owners keep the manifest default untouched.
+  if (!launchAgent && agentAccess.memberTier && agentAccess.agentName) {
+    body.agent_name = agentAccess.agentName;
   }
   // Bound the client-supplied idempotency key at intake. It's stored in a unique
   // btree (index entry limit ~2704 bytes), so an oversized header would surface

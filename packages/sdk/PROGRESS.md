@@ -12,6 +12,145 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-19 — session `member-model-picker` — the model picker is inert without an agent — DONE
+
+**Files:** `react/use-opencode-local.ts` (+ `use-opencode-local.test.ts`),
+`src/public-surface.snapshot.json` + `src/public-type-surface.snapshot.json`
+(+1 name each). The API half is a contract test only — no API change was needed.
+
+**The bug.** A project `member` opened the composer's model picker, saw every
+enabled model listed and selectable, clicked one — and nothing happened. The
+trigger snapped straight back to the server default. Reproduced end to end in
+Chromium against the local stack: `trigger BEFORE: DeepSeek V4 Flash` →
+`option count: 7` → `clicked: "Grok 4.6"` → `trigger AFTER: DeepSeek V4 Flash`.
+
+**Root cause.** `setModel` persisted the pick ONLY under
+`` `${providerMode}:${currentAgent.name}` ``, guarded by `if (currentAgent && next)`.
+Agents are deny-by-default for a member (`iam/resource-grants.ts`), so a member
+with no agent grant has an empty roster and `currentAgent === undefined`; the
+project-home composer carries no `sessionId`, so the per-session slot was absent
+too. BOTH writes were skipped and the pick was never stored. The READ side had
+already been made agent-independent — `currentModelKey`'s own comment says
+"Model selection must NOT depend on a loaded agent" — so this was a read/write
+asymmetry, not a policy.
+
+**Fix.** New exported `agentScopedModelSelectionKey(mode, agentName)` returns a
+stable agent-less slot (`` `${mode}:` ``) instead of nothing, and BOTH the read
+(`explicitModelKey`) and the write (`setModel`) now go through it. With an agent
+loaded the key is byte-identical to before, so nothing changes for anyone who
+already had one.
+
+**Not breaking.** One added export, additive. Snapshots regenerated with
+`UPDATE_SURFACE_SNAPSHOT=1` / `UPDATE_TYPE_SURFACE_SNAPSHOT=1`; that regeneration
+also absorbed the four `AccountResourceGrant*` / `ListAccountTokensOptions` names
+the two parallel sessions above had left un-snapshotted.
+
+TDD: test written and run RED first (`SyntaxError: Export named
+'agentScopedModelSelectionKey' not found`), then GREEN 16/16.
+
+**Gates.** SDK `tsc --noEmit` exit 0. SDK suite `bun test --isolate src`:
+2267 pass / 0 fail across 156 files. `smoke:install` passed. Browser re-run after
+the fix: `clicked: "Grok 4.6"` → `trigger AFTER: Grok 4.6`.
+
+**Shippable to production: YES.**
+
+---
+
+### 2026-08-18 — session `token-information-architecture` — `listAccountTokens` takes `{ mine: true }` — DONE
+
+**Files:** `core/rest/projects-client/tokens.ts` (+ new `tokens.test.ts`),
+`src/public-type-surface.snapshot.json` (+1 name, twice). The API half
+(`accounts/core/tokens.ts`, `repositories/account-tokens.ts`) and the web half
+(`/settings/tokens`) are outside this package.
+
+**What.** `listAccountTokens(accountId?)` gains an optional second argument,
+`{ mine?: boolean }`. With `mine`, the request carries `?mine=true` and the API
+answers with only the CALLER'S own hand-minted keys — not other members' keys,
+not the connector token the runtime mints per sandbox, not service-account
+bearers. Bare, it is the account-wide administrative list it has always been.
+
+**Why the SDK and not the caller.** The narrowing needs `user_id`, `session_id`
+and `service_account_id`; the list payload carries none of them, so it can only
+happen server-side. The browser previously guessed at the session tokens with
+`name.startsWith('Connector Session ')` and could not separate one member's
+keys from another's at all. The new personal API-keys page
+(`apps/web/.../settings/tabs/tokens-tab.tsx`) is the first caller.
+
+**Not breaking.** An added optional parameter and an added type name.
+`ListAccountTokensOptions` is new public API — recorded in the TYPE surface
+snapshot by hand (2 lines) rather than by regenerating, so the parallel
+`AccountResourceGrant*` session still owns re-snapshotting its own three names.
+
+TDD: test written and run RED first — 3 pass / 2 fail, both failures the exact
+URL assertion (`…?account_id=acc-1` where `…&mine=true` was expected) — then
+GREEN 5/5.
+
+**Gates.** `apps/web` `tsc --noEmit`: 15 lines, all the known `@types/bun`
+`test.each` noise in the 3 documented files. SDK suite: 2222 pass / 1 fail
+across 154 files — the one failure is `public-type-surface.test.ts` drifting on
+`AccountResourceGrant` / `ListAccountResourceGrantsFilter` /
+`listAccountResourceGrants`, exports added by a PARALLEL uncommitted session in
+`iam.ts` and documented as theirs in the entry below. `tokens.test.ts` 5 pass /
+0 fail.
+
+**Shippable to production: YES.**
+
+---
+
+### 2026-08-18 — session `project-role-editor-removed` — BREAKING: `ProjectRole` is now `'manager' | 'member'` — DONE
+
+**Files:** `core/rest/projects-client/shared.ts` (+ new `shared.test.ts`),
+`core/rest/projects-client/iam.ts` (`GroupProjectGrant.role`,
+`MemberProjectAccess.role`), `core/rest/projects-client/access.test.ts`,
+`core/client/kortix.test.ts`, comment-only in `files.ts` / `secrets.ts` and
+their tests (`editor-tier` → `manager-tier`). The API, DB, CLI, docs, mobile,
+whitelabel-demo and `@kortix/api-contract` halves are outside this package.
+
+**What.** Owner decision, 2026-08-18: the built-in project role `editor` is
+removed. Two project roles remain — `member` (read + run) and `manager`
+(everything). `editor` held exactly what `manager` holds minus
+`project.members.manage` and `project.delete`, so every stored assignment was
+folded UP to `manager` (`20260818120000000_project_role_editor_to_manager`
+rewrote 972 `project_members`, 4 `project_group_grants` and 204
+`account_invitations.bootstrap_grants` rows on the local data plane).
+
+**This is a BREAKING change to a published type.** `ProjectRole` narrows from
+`'manager' | 'editor' | 'member'` to `'manager' | 'member'`. Concretely:
+
+- An external consumer who writes `const r: ProjectRole = 'editor'` stops
+  compiling. That is the point — the API answers `400` for that value now, so
+  the old code was already broken at runtime; the narrowing moves the failure
+  from production to their build.
+- Consumers who only READ a `ProjectRole` off a response are unaffected: the
+  server never emits `editor` (it folds to `manager` on read), and a narrowed
+  union is assignable everywhere the wide one was in output position.
+- `role` in INPUT position (`updateProjectAccess`, `attachGroupGrant`,
+  `updateGroupGrant`, `approveProjectAccessRequest`, invite bodies) is where
+  the compile error lands, which is exactly the call the server would reject.
+
+No deprecation shim is offered. A `type ProjectRole = 'manager' | 'member' |
+('editor' & never)` style alias would keep the build green while the request
+still 400s — worse than a compile error, because it hides the only signal.
+
+**Both public-surface snapshots are unchanged by this**, and that is correct:
+they record exported NAMES, not shapes, and no name was added or removed here.
+
+**Gates.** `typecheck` clean. `smoke:install` passed. `test`: 2214 pass /
+2 skip / 2 fail across 153 files — both failures are
+`public-surface.test.ts` + `public-type-surface.test.ts` drifting on
+`listAccountResourceGrants` / `AccountResourceGrant` /
+`ListAccountResourceGrantsFilter`, exports added by a PARALLEL uncommitted
+session in `iam.ts`, not by this change (a union narrowing cannot move a name
+list). Whoever lands those exports owns re-snapshotting. The three files this
+change touches run 115 pass / 0 fail.
+
+**Shippable: YES** for this package's change, once the snapshot owner
+re-snapshots. The narrowing is intentional and documented above.
+
+||||||| df62a2beae
+
+---
+
 ### 2026-08-18 — session `server-truth-m15` — sub-session addendum (G1–G3) — DONE
 
 Essentia incident 2026-08-18 (child session looping; steer rendered at top).

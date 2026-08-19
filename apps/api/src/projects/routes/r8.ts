@@ -31,6 +31,7 @@ import {
   loadProjectForUser,
   loadVisibleSession,
 } from '../lib/access';
+import { resolveAndAuthorizeAgent } from '../lib/agent-access';
 import { assertAgentScope } from '../../iam/agent-scope';
 import { PROJECT_ACTIONS } from '../../iam';
 import { callerKortixSessionId } from '../lib/caller-session';
@@ -97,6 +98,12 @@ projectsApp.openapi(
     assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_START);
     const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
     if (!visible) return c.json({ error: 'Not found' }, 404);
+    // The agent this session will actually run has to still be one the caller
+    // may run — grants change after a session is created, and `/start` is what
+    // resumes a hibernated box days later. The session's stored `agent_name`
+    // may also be the `default` sentinel, which resolves here to the manifest
+    // default rather than being waved through unchecked.
+    await resolveAndAuthorizeAgent(c, loaded, projectId, null, visible.row.agentName);
 
     // Adoption (JAY-599/T21): a still-warm row (pre-created, never prompted)
     // stops being speculative the instant a user's tab calls /start on it —
@@ -235,7 +242,7 @@ projectsApp.openapi(
     assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_START);
     // Human gate: stopping has its own leaf (project.session.stop), distinct from
     // start, so a custom role can allow one and withhold the other. Every
-    // built-in role holds it, so member/editor/manager are unaffected.
+    // built-in role holds it, so member/manager are unaffected.
     await assertProjectCapability(
       c,
       loaded.userId,
@@ -635,7 +642,22 @@ projectsApp.openapi(
     const sessionId = c.req.param('sessionId');
     if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
 
-    const loaded = await loadProjectForUser(c, projectId, 'write');
+    // FLOOR 'session', NOT 'write'. Sending a prompt is running the session,
+    // not editing the project — it must pass exactly the check `/start` and
+    // `POST /sessions` pass, because those are how the SAME message gets in.
+    //
+    // It didn't. A built-in project `member` (project.read + project.session.*,
+    // no project.write) could open a session and have its first prompt answered
+    // — that one rides `POST /sessions`'s `pending_prompt` stash, gated
+    // 'session' — and then got 403 "Your role on this project doesn't let you
+    // change this project" on EVERY follow-up, which lands here. Two gates for
+    // one action: allowed to start the conversation, refused to continue it.
+    //
+    // The real authorization is the pair below (project.session.start, per-agent
+    // + per-capability). This coarse floor only ever added a second, stricter,
+    // contradictory tier on top. Same reasoning for delete/retry/hold below:
+    // they manage the queue of a session the caller is already allowed to run.
+    const loaded = await loadProjectForUser(c, projectId, 'session');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     // Same per-agent gate as `/start`: a prompt is what spends the compute a
     // session start provisions.
@@ -686,6 +708,13 @@ projectsApp.openapi(
       variant: typeof overridesInput.variant === 'string' ? overridesInput.variant : null,
       directory: typeof overridesInput.directory === 'string' ? overridesInput.directory : null,
     };
+
+    // Every prompt re-asks, because a prompt is what spends the money and a
+    // prompt can SWITCH agent mid-session via `overrides.agent`. Checking only
+    // at create would let a member send the first message as their granted
+    // agent and every one after it as any other agent in the manifest. Falls
+    // back to the session's own agent when the prompt names none.
+    await resolveAndAuthorizeAgent(c, loaded, projectId, overrides.agent, visible.row.agentName);
 
     // Same gate as start/wake: a prompt spends compute.
     const billing = await checkBillingActive(loaded.row.accountId);
@@ -824,7 +853,9 @@ projectsApp.openapi(
     if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
     if (!UUID_V4_REGEX.test(promptId)) return c.json({ error: 'Invalid prompt id' }, 400);
 
-    const loaded = await loadProjectForUser(c, projectId, 'write');
+    // Floor 'session' — see the POST /prompts gate comment. Un-queuing your own
+    // pending message is running the session, not editing the project.
+    const loaded = await loadProjectForUser(c, projectId, 'session');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_START);
     await assertProjectCapability(
@@ -882,7 +913,9 @@ projectsApp.openapi(
     if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
     if (!UUID_V4_REGEX.test(promptId)) return c.json({ error: 'Invalid prompt id' }, 400);
 
-    const loaded = await loadProjectForUser(c, projectId, 'write');
+    // Floor 'session' — see the POST /prompts gate comment. "Retry"/"send now"
+    // on your own queued message is running the session, not editing the project.
+    const loaded = await loadProjectForUser(c, projectId, 'session');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_START);
     await assertProjectCapability(
@@ -938,7 +971,9 @@ projectsApp.openapi(
     const sessionId = c.req.param('sessionId');
     if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
 
-    const loaded = await loadProjectForUser(c, projectId, 'write');
+    // Floor 'session' — see the POST /prompts gate comment. Stop/hold is the
+    // counterpart of send; a member who can send must be able to hold.
+    const loaded = await loadProjectForUser(c, projectId, 'session');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     assertAgentScope(c, PROJECT_ACTIONS.PROJECT_SESSION_START);
     await assertProjectCapability(
@@ -1045,7 +1080,7 @@ projectsApp.openapi(
     const body = await readBody(c);
     const loaded = await loadProjectForUser(c, projectId, 'write');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
-    // Human-side capability gate (Git Ops). Editors hold it; a custom
+    // Human-side capability gate (Git Ops). Managers hold it; a custom
     // role omits project.gitops.push to take Git-Ops away from a department.
     await assertProjectCapability(
       c,
@@ -1418,7 +1453,7 @@ projectsApp.openapi(
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     // request-changes is a human review decision on a CR, not a code push —
     // gate it on project.review.act (the same leaf as /review/items/{id}/act),
-    // not gitops.push. Editor/manager hold both; a custom reviewer role with
+    // not gitops.push. Manager holds both; a custom reviewer role with
     // review.act but no gitops.push can now request changes.
     await assertProjectCapability(
       c,

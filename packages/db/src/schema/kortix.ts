@@ -115,11 +115,17 @@ export const providerTransitionStatusEnum = kortixSchema.enum('provider_transiti
   'cancelled',
 ]);
 
-// `member` is the floor project role (renamed from `user`, see the
-// project_role_member_rename migration). `user` and the older `viewer` are
-// DEPRECATED — both fold into `member` via parseProjectRole/normalizeProjectRole
-// and are no longer assignable. `viewer` lingers because Postgres can't drop an
-// enum member; `user` was renamed in place. Nothing reads or writes either.
+// TWO assignable project roles: `member` (read + run) and `manager`
+// (everything). Every other value in this enum is a retired tier Postgres
+// cannot drop:
+//   - `viewer` / `user` → fold into `member` (`user` was renamed in place by
+//     the project_role_member_rename migration).
+//   - `editor` → REMOVED 2026-08-18; every row was rewritten to `manager` by
+//     `20260818120000000_project_role_editor_to_manager.concurrent.ts`. It
+//     still folds to `manager` on read (see normalizeProjectRole) so a row
+//     written by a pre-removal replica mid-rollout keeps working, and it is
+//     rejected on write (parseAssignableProjectRole → 400).
+// Nothing writes any retired value.
 export const projectRoleEnum = kortixSchema.enum('project_role', [
   'manager',
   'editor',
@@ -225,16 +231,16 @@ export const accountInvitations = kortixSchema.table(
     initialRole: accountRoleEnum('initial_role').default('member').notNull(),
     /** Optional list of project grants to apply when the invite is
      *  accepted. Lets a project admin invite a non-Kortix user "into
-     *  project X as Editor" in one step — the system creates an
+     *  project X as Manager" in one step — the system creates an
      *  account invite + records the project grant here; on accept,
      *  the user joins the org as a member AND gets the project role
      *  in the same transaction. Shape:
-     *    [{ project_id: uuid, role: 'manager'|'editor'|'member',
+     *    [{ project_id: uuid, role: 'manager'|'member',
      *       expires_at?: iso }]
      *  Multiple grants are allowed — the same email could be invited
      *  to several projects at once via repeated calls (they upsert).
-     *  Legacy rows may carry the retired 'user'/'viewer' role; readers
-     *  fold both into 'member' via parseProjectRole.
+     *  Legacy rows may carry a retired role: 'user'/'viewer' fold into
+     *  'member' and 'editor' folds into 'manager' via normalizeProjectRole.
      *  Also carries `{ group_id }` entries: a SCIM Group membership pushed for a
      *  user who hasn't logged in yet (a pending invite, no user row) is parked
      *  here and materialized into account_group_members on acceptance — same
@@ -244,7 +250,7 @@ export const accountInvitations = kortixSchema.table(
         Array<
           | {
               project_id: string;
-              role: 'manager' | 'editor' | 'member';
+              role: 'manager' | 'member';
               expires_at?: string | null;
             }
           | { group_id: string }
@@ -4208,7 +4214,7 @@ export const accountGroupMembersRelations = relations(accountGroupMembers, ({ on
 }));
 
 // ─── IAM v1 — DB-driven custom roles + policies ────────────────────────────
-// The built-in roles (owner/admin/member, manager/editor/user) stay as
+// The built-in roles (owner/admin/member, manager/member) stay as
 // frozen Sets in apps/api/src/iam/role-perms.ts and keep their in-memory fast
 // path. These tables add ACCOUNT-scoped CUSTOM roles and the policies that bind
 // a principal (member/group/token) to a custom role at a scope. The engine

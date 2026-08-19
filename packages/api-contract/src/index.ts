@@ -114,8 +114,10 @@ export const ExperimentalFeatureViewSchema = FeatureFlagViewSchema;
 /** @deprecated Use {@link FeatureFlagView}. */
 export type ExperimentalFeatureView = FeatureFlagView;
 
-/** Assignable project roles (`user`/`viewer` are deprecated and no longer emitted). */
-export const PROJECT_ROLES = ['manager', 'editor', 'member'] as const;
+/** The two assignable project roles. `user`/`viewer` are deprecated aliases of
+ *  `member`; `editor` was REMOVED on 2026-08-18 (folded into `manager`). None
+ *  of the three is emitted, and only `manager`/`member` are accepted on write. */
+export const PROJECT_ROLES = ['manager', 'member'] as const;
 export const ProjectRoleSchema = z.enum(PROJECT_ROLES);
 export type ProjectRole = z.infer<typeof ProjectRoleSchema>;
 

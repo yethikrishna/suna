@@ -82,9 +82,7 @@ variable "container_port" {
 variable "api_environment" {
   description = "Non-secret env vars for the API container (KORTIX_URL, DATABASE host, etc.)."
   type        = map(string)
-  default = {
-    KORTIX_FAST_COLD_BOOT_ENABLED = "true"
-  }
+  default     = {}
 }
 
 variable "api_secrets" {

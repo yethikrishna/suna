@@ -188,6 +188,32 @@ Every surface that describes secrets MUST describe THIS model, and only this mod
 The bar: a new reader must never encounter "network boundary" and "HTTPS broker" as two
 choices anywhere — docs, UI copy, CLI help, in-sandbox capability text, or skills.
 
+## 8.5. Threat model and limits
+
+The security guarantee of egress-enforced delivery is **host-scoping**: the real
+value only ever leaves Kortix toward a host on the secret's approved list, over
+HTTPS/443. It is NOT a guarantee that an approved host cannot be tricked into
+returning the value.
+
+- **Echo redaction is best-effort, not a boundary.** The relay scrubs the real
+  value from a response in four representations (raw, URL-encoded, base64,
+  JSON-escaped). This defends against *accidental reflection* — a host that
+  mirrors a request field back verbatim. It does NOT defend against an approved
+  host chosen to *launder* the value: base64 at a shifted offset, split across
+  JSON fields, XORed, re-encoded, or stored and returned later are all channels
+  redaction cannot see. We deliberately do not add more encodings — the scan is
+  unbounded and any fixed set is defeatable.
+- **An approved host that stores agent-chosen bytes and returns them transformed
+  is environment-equivalent** for that secret. Egress enforcement against such a
+  host buys nothing over putting the value in the sandbox environment, because
+  the agent can round-trip the value out through the host it was allowed to call.
+- **Consequence for the operator:** approve a host ONLY if you trust it with the
+  credential. Host-scoping limits *where* the value can go; it does not make a
+  malicious or attacker-controlled approved host safe. When exposing capabilities
+  to untrusted third parties, do not hand them secret policies at all (see §8,
+  third-party guidance): run your own authorization + proxy service that holds
+  the credential and applies your own authz.
+
 ## 9. Deliberately out of scope
 
 - **Server-side signing** (SigV4, HMAC, JWT assertions). Computed secrets stay `environment`.

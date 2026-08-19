@@ -153,13 +153,22 @@ describe('classifyNewSecret', () => {
     expect(classification.hosts).toEqual(['api.deepseek.com']);
   });
 
-  test('a recognized provider with no API url in the catalog prefills nothing', () => {
-    // models.dev declares no `api` for Anthropic — the SDK hardcodes it. A
-    // guessed host would send the credential nowhere, or somewhere else.
+  test('a recognized provider whose SDK hardcodes the host prefills the curated fallback', () => {
+    // models.dev declares no `api` for Anthropic — the SDK hardcodes it, so the
+    // catalog `apiHost` is null. Without the curated `WELL_KNOWN_API_HOSTS`
+    // fallback the hosts field stays empty and Save is disabled until the user
+    // types the host by hand (spec §7). The fallback is a stable documented
+    // constant, not a value guessed from a catalog URL.
     const classification = classifyNewSecret({ key: 'ANTHROPIC_API_KEY', value: 'sk-ant-abc' });
     expect(classification.modelProvider?.id).toBe('anthropic');
-    expect(classification.hosts).toEqual([]);
+    expect(classification.hosts).toEqual(['api.anthropic.com']);
     expect(classification.exposure).toBe('enforced');
+  });
+
+  test('OpenAI, whose SDK also hardcodes its host, prefills the curated fallback', () => {
+    const classification = classifyNewSecret({ key: 'OPENAI_API_KEY', value: 'sk-abc' });
+    expect(classification.modelProvider?.id).toBe('openai');
+    expect(classification.hosts).toEqual(['api.openai.com']);
   });
 
   test('an alias auth key is recognized too, not just the primary one', () => {
@@ -312,7 +321,9 @@ describe('secretDeliveryPresentation', () => {
     expect(secretDeliveryPresentation('denied')).toEqual({
       label: 'Disabled',
       description: 'Stored securely, but delivered to no session and no Kortix service.',
-      tone: 'outline',
+      // `info` is the design system's neutral filled pill, not the near-invisible
+      // `outline` (bg-accent sits one hairline off the page surface).
+      tone: 'info',
     });
   });
 
@@ -373,15 +384,26 @@ describe('secretDeliveryBlockedReason', () => {
 });
 
 describe('shouldWarnMissingAgentGrant', () => {
-  test('warns for the delivery modes that need a named agent grant', () => {
-    expect(shouldWarnMissingAgentGrant('no_agent_grant', 'egress')).toBe(true);
-    expect(shouldWarnMissingAgentGrant('no_agent_grant', 'broker')).toBe(true);
+  test('warns only for enforced rows, which hold a sandbox handle a grant delivers', () => {
+    // `egress`/`network` and the legacy `broker`/`http_broker` both read as
+    // `enforced` — the two delivery modes that reach a session only via a grant.
+    expect(shouldWarnMissingAgentGrant('no_agent_grant', 'egress', 'network')).toBe(true);
+    expect(shouldWarnMissingAgentGrant('no_agent_grant', 'broker', 'http_broker')).toBe(true);
+  });
+
+  test('stays silent for a none-exposure broker row (llm_gateway / connector / git)', () => {
+    // The defect: an `llm_gateway` row is `strategy: broker` too, but its
+    // exposure is `none` — no sandbox presence, so agent-grant guidance never
+    // applies. The consumer disambiguates it from a legacy http_broker row.
+    expect(shouldWarnMissingAgentGrant('no_agent_grant', 'broker', 'llm_gateway')).toBe(false);
+    expect(shouldWarnMissingAgentGrant('no_agent_grant', 'broker', 'connector')).toBe(false);
+    expect(shouldWarnMissingAgentGrant('no_agent_grant', 'broker', 'git_proxy')).toBe(false);
   });
 
   test('stays silent for runtime, disabled, and an unblocked secret', () => {
-    expect(shouldWarnMissingAgentGrant('no_agent_grant', 'runtime')).toBe(false);
-    expect(shouldWarnMissingAgentGrant('no_agent_grant', 'denied')).toBe(false);
-    expect(shouldWarnMissingAgentGrant(null, 'egress')).toBe(false);
+    expect(shouldWarnMissingAgentGrant('no_agent_grant', 'runtime', 'sandbox')).toBe(false);
+    expect(shouldWarnMissingAgentGrant('no_agent_grant', 'denied', null)).toBe(false);
+    expect(shouldWarnMissingAgentGrant(null, 'egress', 'network')).toBe(false);
   });
 });
 

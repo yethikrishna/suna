@@ -16,6 +16,7 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const REDACTED = Buffer.from('[REDACTED]');
 
 const BLOCKED_REQUEST_HEADERS = new Set([
+  'accept-encoding',
   'authorization',
   'connection',
   'content-length',
@@ -76,6 +77,13 @@ export interface PreparedBrokerRequest {
   /** Identifiers whose handle was found and replaced on THIS hop. Audit reads
    *  it, and the response redactor uses it to decide whose value to scrub. */
   substituted: string[];
+  /** True when this prepared request puts a REAL secret value on the wire —
+   *  either a handle substitution fired, or the route's own inject slot placed
+   *  the decrypted secret in the request. A redirect returned after this must
+   *  NOT be followed: the credential is already delivered, and the upstream can
+   *  reflect it (or bytes derived from it) into a `Location` pointing at an
+   *  off-policy host that the substituted secret's own policy never gated. */
+  carriesSecret: boolean;
 }
 
 export interface BrokerTransportResponse {
@@ -332,6 +340,13 @@ export function prepareSecretBrokerRequest(
   if (url.username || url.password) {
     throw new SecretBrokerError('unsafe_destination', 'url must not contain credentials', 400);
   }
+  // `matchRule` sees only {host, method, path} — never the port — so a policy
+  // that approves `api.example.com` would otherwise let the value reach
+  // `https://api.example.com:8443/`. Pin egress to the standard HTTPS port.
+  // `new URL` normalizes an explicit :443 to an empty port, so empty === 443.
+  if (url.port && url.port !== '443') {
+    throw new SecretBrokerError('unsafe_destination', 'egress is https/443 only', 400);
+  }
 
   const method = input.method ?? 'GET';
   const rule = matchRule(policy, { host: url.hostname, method, path: url.pathname });
@@ -409,6 +424,7 @@ export function prepareSecretBrokerRequest(
   // §6 of the exposure model) carries no slot and is served purely by the block
   // above — there is nothing to inject and nothing to name.
   const slot = rule.inject ?? policy.inject;
+  const injectedRouteSecret = slot != null;
   if (slot) {
     if (slot.kind === 'header') {
       const name = slot.name.trim().toLowerCase();
@@ -425,7 +441,14 @@ export function prepareSecretBrokerRequest(
   }
   if (body) headers['content-length'] = String(body.byteLength);
 
-  return { url, method, headers, body, substituted: [...applied] };
+  return {
+    url,
+    method,
+    headers,
+    body,
+    substituted: [...applied],
+    carriesSecret: applied.size > 0 || injectedRouteSecret,
+  };
 }
 
 async function resolvePinnedAddress(url: URL): Promise<{ address: string; family: 4 | 6 }> {
@@ -610,6 +633,19 @@ export async function executeSecretBrokerRequest(
     for (const identifier of prepared.substituted) applied.add(identifier);
     const upstream = await transport(prepared);
     if ([301, 302, 303, 307, 308].includes(upstream.status)) {
+      // A redirect only matters BEFORE any real credential is on the wire. Once
+      // this hop has carried a secret (a substitution fired, or the route's own
+      // secret was injected) the value is already delivered, and following the
+      // `Location` would carry the substituted bytes — or a value the upstream
+      // reflected into `Location` — to a host re-gated only by the ROUTE
+      // secret's policy, never by the substituted secret's own. Fail closed.
+      if (prepared.carriesSecret) {
+        throw new SecretBrokerError(
+          'upstream_failed',
+          'redirect after secret substitution is not followed',
+          502,
+        );
+      }
       const rawLocation = upstream.headers.location;
       const location = Array.isArray(rawLocation) ? rawLocation[0] : rawLocation;
       if (!location) {
@@ -625,14 +661,36 @@ export async function executeSecretBrokerRequest(
     // request. A handle the guest sent is a secret the upstream can echo, so
     // an echo guard that only knew about the route's own identifier would hand
     // the other values straight back.
-    let body = redactSecretFromResponse(upstream.body, secret);
-    for (const substitution of substitutions) {
-      if (!applied.has(substitution.identifier)) continue;
-      body = redactSecretFromResponse(body, substitution.value);
+    // Every secret that could appear in this response: the route's own injected
+    // secret, plus every substituted value that actually rode out on the wire.
+    const secretsToRedact = [
+      secret,
+      ...substitutions
+        .filter((substitution) => applied.has(substitution.identifier))
+        .map((substitution) => substitution.value),
+    ];
+
+    let body = upstream.body;
+    for (const value of secretsToRedact) {
+      body = redactSecretFromResponse(body, value);
     }
+
+    // The whitelisted response headers travel back verbatim, so an upstream can
+    // reflect a substituted value into `content-type`, `etag`, `x-request-id`,
+    // etc. Run each header value through the SAME redaction as the body — the
+    // body alone is not the only exit.
+    const headers = responseHeaders(upstream.headers);
+    for (const [name, headerValue] of Object.entries(headers)) {
+      let redacted: Buffer = Buffer.from(headerValue);
+      for (const value of secretsToRedact) {
+        redacted = redactSecretFromResponse(redacted, value);
+      }
+      headers[name] = redacted.toString('utf8');
+    }
+
     return {
       status: upstream.status,
-      headers: responseHeaders(upstream.headers),
+      headers,
       body_base64: body.toString('base64'),
     };
   }

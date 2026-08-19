@@ -195,7 +195,7 @@ export function connectorBindingChanges(
 export type SecretDeliveryPresentation = {
   label: string;
   description: string;
-  tone: 'warning' | 'secondary' | 'outline';
+  tone: 'warning' | 'secondary' | 'info';
 };
 
 /**
@@ -226,8 +226,12 @@ const EXPOSURE_PRESENTATIONS: Record<SecretExposure, SecretDeliveryPresentation>
   },
   disabled: {
     label: 'Disabled',
+    // A neutral filled pill, not the near-invisible `outline` treatment whose
+    // `bg-accent` (surface-1) sits one hairline off the page surface and reads
+    // as bare text. `info` is the design system's neutral badge — a muted fill
+    // plus a border in both themes — de-emphasized but unmistakably a pill.
     description: 'Stored securely, but delivered to no session and no Kortix service.',
-    tone: 'outline',
+    tone: 'info',
   },
 };
 
@@ -380,6 +384,26 @@ function providerByEnvVar(): Map<string, LlmProviderEntry> {
 }
 
 /**
+ * Curated API hosts for providers whose SDK hardcodes the base URL, so
+ * models.dev declares no `api` and `LlmProviderEntry.apiHost` is null (24 of
+ * 167 today — Anthropic and OpenAI among them). These are stable, documented
+ * constants, NOT values derived from a catalog URL; a recognized model key with
+ * no catalog host would otherwise leave the hosts field empty and Save disabled
+ * until the user typed the host by hand (spec §7). Keyed by catalog provider id.
+ */
+const WELL_KNOWN_API_HOSTS: Readonly<Record<string, string>> = {
+  anthropic: 'api.anthropic.com',
+  openai: 'api.openai.com',
+  google: 'generativelanguage.googleapis.com',
+};
+
+/** The catalog host, or the curated fallback for an SDK-hardcoded provider. */
+function providerApiHost(provider: LlmProviderEntry | null): string | null {
+  if (!provider) return null;
+  return provider.apiHost ?? WELL_KNOWN_API_HOSTS[provider.id] ?? null;
+}
+
+/**
  * The system's opening answer for a new secret (spec §7).
  *
  * The user supplies a name and a value; everything else is derived and every
@@ -389,9 +413,11 @@ function providerByEnvVar(): Map<string, LlmProviderEntry> {
  *     that explains why. This outranks the key name because it is a property
  *     of the credential itself: `AWS_ACCESS_KEY_ID` pasted as an `AKIA…` value
  *     cannot be enforced at any boundary, whatever the catalog says.
- *  2. **A known model key.** `enforced`, with the vendor's API host prefilled
- *     from the same catalog the LLM providers screen reads. The host is only
- *     prefilled when the catalog carries an `api` URL for that provider.
+ *  2. **A known model key.** `enforced`, with the vendor's API host prefilled.
+ *     The host comes from the same catalog the LLM providers screen reads, or
+ *     from `WELL_KNOWN_API_HOSTS` when that provider's SDK hardcodes the URL and
+ *     the catalog carries no `api` (Anthropic, OpenAI, …). Empty only when no
+ *     host is known for the provider at all.
  *  3. **Everything else.** `enforced` with an empty host list.
  */
 export function classifyNewSecret(input: { key: string; value: string }): SecretClassification {
@@ -406,9 +432,10 @@ export function classifyNewSecret(input: { key: string; value: string }): Secret
       signingNote: SIGNING_CREDENTIAL_NOTE,
     };
   }
+  const apiHost = providerApiHost(provider);
   return {
     exposure: 'enforced',
-    hosts: provider?.apiHost ? [provider.apiHost] : [],
+    hosts: apiHost ? [apiHost] : [],
     modelProvider,
     signingNote: null,
   };
@@ -466,15 +493,21 @@ export function secretDeliveryBlockedReason(secret: {
 }
 
 /**
- * A runtime secret reaches the sandbox without a grant, and a disabled one goes
- * nowhere by design. Only broker and egress delivery need a named agent grant.
+ * Only an `enforced` row can meaningfully lack an agent grant. It holds a handle
+ * in the sandbox, which reaches a session only when a named agent lists the
+ * identifier. `environment` reaches every agent with no grant. A `none`-exposure
+ * row (LLM gateway, Connector, Git, Disabled) has no sandbox presence at all, so
+ * agent-grant guidance never applies to it (spec §3) — even though its stored
+ * `strategy` is `broker`, the same value a legacy HTTPS-broker `enforced` row
+ * carries. The consumer disambiguates the two.
  */
 export function shouldWarnMissingAgentGrant(
   blockedReason: SecretDeliveryBlockedReason | null,
   strategy: SecretDeliveryStrategy,
+  consumer?: SecretConsumer | null,
 ): boolean {
   if (blockedReason !== 'no_agent_grant') return false;
-  return strategy === 'broker' || strategy === 'egress';
+  return secretExposure(strategy, consumer) === 'enforced';
 }
 
 export type MissingAgentGrantNotice = {

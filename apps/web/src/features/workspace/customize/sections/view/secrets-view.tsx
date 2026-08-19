@@ -473,7 +473,7 @@ function SecretsAccessExplainer() {
         <dl className="border-border bg-sidebar mt-2 flex flex-col gap-2.5 rounded-md border p-3">
           {secretDeliveryLegend().map((mode) => (
             <div key={mode.key} className="flex flex-col gap-1 sm:flex-row sm:gap-3">
-              <dt className="shrink-0 sm:w-36">
+              <dt className="shrink-0 sm:w-44">
                 <Badge variant={mode.tone} size="sm">
                   {mode.label}
                 </Badge>
@@ -702,7 +702,7 @@ function SecretTableRow({
           {row.requiresRotation && (
             <span className="text-kortix-orange text-[11px] font-medium">Rotation required</span>
           )}
-          {shouldWarnMissingAgentGrant(row.deliveryBlockedReason, row.strategy) && (
+          {shouldWarnMissingAgentGrant(row.deliveryBlockedReason, row.strategy, row.consumer) && (
             <span className="text-kortix-orange text-[11px] font-medium">No agent grant</span>
           )}
         </div>
@@ -1049,7 +1049,9 @@ function SecretDialog({
   // The dialog keeps the row it opened with, so a completed grant clears its own
   // warning — the refetch only reaches the table behind it.
   const grantNotice =
-    row && shouldWarnMissingAgentGrant(row.deliveryBlockedReason, strategy) && !grant.isSuccess
+    row &&
+    shouldWarnMissingAgentGrant(row.deliveryBlockedReason, strategy, nextConsumer) &&
+    !grant.isSuccess
       ? missingAgentGrantNotice(row.identifier)
       : null;
   const grantManifest = agentGrantSnippet(
@@ -1172,7 +1174,7 @@ function SecretDialog({
               {!isEdit && classification.modelProvider && exposure === 'enforced' && (
                 <InfoBanner
                   tone="neutral"
-                  title={`Recognized as a ${classification.modelProvider.label} key`}
+                  title={`Recognized: ${classification.modelProvider.label} key`}
                 >
                   {classification.hosts.length > 0
                     ? `The approved host is prefilled with ${classification.hosts[0]}, so agent code can call ${classification.modelProvider.label} directly without ever holding the key.`
@@ -1243,6 +1245,7 @@ function SecretDialog({
                   tone="warning"
                   icon={<DangerTriangleSolid weight="fill" />}
                   title={grantNotice.title}
+                  className="[&_[data-slot=alert-content]]:min-w-0"
                 >
                   <span className="block text-pretty">{grantNotice.body}</span>
                   {grantPlan.candidates.length > 0 && (
@@ -1314,7 +1317,15 @@ function SecretDialog({
                     </p>
                   </div>
 
-                  <InfoBanner tone="neutral" title={echoNotice.title}>
+                  {/* `min-w-0` on the alert's content wrapper lets the flex
+                      child shrink below the <pre>'s intrinsic (white-space: pre)
+                      width, so the probe scrolls inside its own overflow-x-auto
+                      box instead of forcing the whole dialog to scroll. */}
+                  <InfoBanner
+                    tone="neutral"
+                    title={echoNotice.title}
+                    className="[&_[data-slot=alert-content]]:min-w-0"
+                  >
                     <span className="block text-pretty">{echoNotice.body}</span>
                     <pre className="border-border bg-muted mt-2 overflow-x-auto rounded-sm border p-2 font-mono text-xs leading-relaxed">
                       {echoNotice.probe}

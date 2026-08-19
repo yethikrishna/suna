@@ -102,6 +102,50 @@ describe('prepareSecretBrokerRequest', () => {
   });
 });
 
+describe('prepareSecretBrokerRequest blocked headers and port pinning', () => {
+  // BREAK 2: a guest that can set `accept-encoding: gzip` gets a compressed
+  // echo, and `redactSecretFromResponse` scans raw bytes — a gzipped secret
+  // slips past it. Kortix owns the encoding, so a caller-supplied one is a 400.
+  test('rejects a caller-supplied accept-encoding so echoes cannot be compressed', () => {
+    expect(() =>
+      prepareSecretBrokerRequest(
+        policy(),
+        SECRET,
+        request({ headers: { 'accept-encoding': 'gzip' } }),
+      ),
+    ).toThrow(SecretBrokerError);
+  });
+
+  test('a request with no accept-encoding still succeeds', () => {
+    const prepared = prepareSecretBrokerRequest(policy(), SECRET, request());
+    expect(prepared.headers.authorization).toBe(`Bearer ${SECRET}`);
+    expect('accept-encoding' in prepared.headers).toBe(false);
+  });
+
+  // FINDING 5: `matchRule` never sees the port, so an approved host would
+  // otherwise accept the value on `:8443`. Egress is pinned to https/443.
+  test('rejects an explicit non-443 port', () => {
+    expect(() =>
+      prepareSecretBrokerRequest(
+        policy(),
+        SECRET,
+        request({ url: 'https://api.example.com:8443/v1/messages' }),
+      ),
+    ).toThrow(SecretBrokerError);
+  });
+
+  test('accepts an explicit :443 and an omitted port', () => {
+    for (const url of [
+      'https://api.example.com:443/v1/messages',
+      'https://api.example.com/v1/messages',
+    ]) {
+      const prepared = prepareSecretBrokerRequest(policy(), SECRET, request({ url }));
+      expect(prepared.url.hostname).toBe('api.example.com');
+      expect(prepared.url.port).toBe('');
+    }
+  });
+});
+
 describe('executeSecretBrokerRequest', () => {
   test('returns only safe headers and redacts common secret representations', async () => {
     const transport: BrokerTransport = async () => ({
@@ -130,7 +174,11 @@ describe('executeSecretBrokerRequest', () => {
     expect(body).not.toContain(Buffer.from(SECRET).toString('base64'));
   });
 
-  test('revalidates every redirect against the secret policy', async () => {
+  // A redirect is only followed when NO secret is on the wire yet (hostsOnly
+  // policy, no inject, no substitution): the second hop is re-gated against the
+  // policy and an off-policy target is denied there. (A redirect AFTER a secret
+  // is refused outright — see the substitution suite below.)
+  test('revalidates a redirect against the secret policy when no secret is on the wire', async () => {
     const destinations: string[] = [];
     const transport: BrokerTransport = async (prepared) => {
       destinations.push(prepared.url.href);
@@ -144,12 +192,12 @@ describe('executeSecretBrokerRequest', () => {
     };
 
     await expect(
-      executeSecretBrokerRequest(policy(), SECRET, request(), { transport }),
+      executeSecretBrokerRequest(hostsOnlyPolicy(), SECRET, request(), { transport }),
     ).rejects.toMatchObject({ code: 'policy_denied' });
     expect(destinations).toEqual(['https://api.example.com/v1/messages']);
   });
 
-  test('caps redirects at three hops', async () => {
+  test('caps redirects at three hops when no secret is on the wire', async () => {
     let calls = 0;
     const transport: BrokerTransport = async () => {
       calls += 1;
@@ -160,7 +208,7 @@ describe('executeSecretBrokerRequest', () => {
       };
     };
     await expect(
-      executeSecretBrokerRequest(policy(), SECRET, request(), { transport }),
+      executeSecretBrokerRequest(hostsOnlyPolicy(), SECRET, request(), { transport }),
     ).rejects.toMatchObject({ code: 'upstream_failed' });
     expect(calls).toBe(4);
   });
@@ -172,10 +220,13 @@ test('redactSecretFromResponse handles repeated literal values', () => {
 });
 
 test('pinned transport connects to the verified IP without a runtime DNS lookup', () => {
+  // Port pinning (FINDING 5) now refuses any explicit non-443 port at
+  // `prepareSecretBrokerRequest`, so the pinned-transport path is exercised on
+  // the standard HTTPS port. The default 443 falls through to `|| 443`.
   const prepared = prepareSecretBrokerRequest(
     policy({ rules: [{ host: 'api.example.com', methods: ['POST'], path: '/v1/*' }] }),
     SECRET,
-    request({ url: 'https://api.example.com:8443/v1/messages' }),
+    request({ url: 'https://api.example.com/v1/messages' }),
   );
   const options = createPinnedRequestOptions(prepared, {
     address: '203.0.113.10',
@@ -184,13 +235,13 @@ test('pinned transport connects to the verified IP without a runtime DNS lookup'
 
   expect(options).toMatchObject({
     hostname: '203.0.113.10',
-    port: '8443',
+    port: 443,
     path: '/v1/messages',
     method: 'POST',
     servername: 'api.example.com',
     headers: {
       authorization: `Bearer ${SECRET}`,
-      host: 'api.example.com:8443',
+      host: 'api.example.com',
     },
   });
   expect('lookup' in options).toBe(false);
@@ -423,41 +474,112 @@ describe('executeSecretBrokerRequest substitution', () => {
     expect(body).toBe('{"echoed":"[REDACTED]"}');
   });
 
-  test('re-checks each substitution against the redirect target', async () => {
-    // The first hop is admitted for both; the redirect target is admitted only
-    // for the route's own policy. The carried secret must not follow.
-    const seen: Array<string | undefined> = [];
+  // BREAK 1 (fail-closed redirect): once a substitution has put the real value
+  // on hop 1, a redirect is NOT followed — even when the upstream reflects that
+  // value into `Location`. Per-hop admission does not protect this, because the
+  // reflected bytes are no longer a handle. This REPLACES the old
+  // "re-checks each substitution against the redirect target" test, which
+  // asserted the redirect WAS followed after substitution — the insecure
+  // behavior this finding closes.
+  test('never follows a redirect after a value was substituted onto the wire', async () => {
+    const seen: string[] = [];
     const transport: BrokerTransport = async (prepared) => {
-      seen.push(prepared.headers['x-api-key']);
+      seen.push(prepared.url.href);
+      // hop 1 carried the substituted value in the query; the upstream reflects
+      // it into a Location pointing at an off-policy host — the exfil this fix
+      // closes. The second request must NEVER be made.
+      return {
+        status: 302,
+        headers: { location: `https://attacker.example/collect?leak=${SECRET}` },
+        body: Buffer.alloc(0),
+      };
+    };
+
+    await expect(
+      executeSecretBrokerRequest(
+        hostsOnlyPolicy(),
+        SECRET,
+        request({ url: `https://api.example.com/v1/messages?key=${HANDLE}` }),
+        { transport, substitutions: [substitution({ policy: hostsOnlyPolicy() })] },
+      ),
+    ).rejects.toMatchObject({ code: 'upstream_failed' });
+
+    // Exactly one hop was dialed: the substituted value (not the handle) reached
+    // only the approved host, and the reflected redirect was never followed.
+    expect(seen).toEqual([`https://api.example.com/v1/messages?key=${SECRET}`]);
+  });
+
+  test('still follows a redirect when NO secret was substituted onto the wire', async () => {
+    const seen: string[] = [];
+    const transport: BrokerTransport = async (prepared) => {
+      seen.push(prepared.url.href);
       return seen.length === 1
         ? {
-            status: 307,
+            status: 302,
             headers: { location: 'https://api.example.com/v1/second' },
             body: Buffer.alloc(0),
           }
-        : { status: 200, headers: {}, body: Buffer.alloc(0) };
+        : { status: 200, headers: {}, body: Buffer.from('{}') };
     };
 
-    await executeSecretBrokerRequest(
+    // hostsOnly policy, no inject, no admitted substitution → carriesSecret is
+    // false, so the redirect follows and hop 2 completes.
+    const response = await executeSecretBrokerRequest(
+      hostsOnlyPolicy(),
+      SECRET,
+      request(),
+      { transport },
+    );
+    expect(response.status).toBe(200);
+    expect(seen).toEqual([
+      'https://api.example.com/v1/messages',
+      'https://api.example.com/v1/second',
+    ]);
+  });
+
+  // BREAK 3: response headers are whitelisted and returned verbatim, so a
+  // reflected secret must be scrubbed there too — not only in the body.
+  test('redacts the route secret reflected into content-type and etag headers', async () => {
+    const transport: BrokerTransport = async () => ({
+      status: 200,
+      headers: {
+        'content-type': `application/json; charset=${SECRET}`,
+        etag: `"${SECRET}"`,
+        'x-request-id': 'req-1',
+      },
+      body: Buffer.from('{}'),
+    });
+
+    const response = await executeSecretBrokerRequest(policy(), SECRET, request(), { transport });
+    expect(response.headers['content-type']).toBe('application/json; charset=[REDACTED]');
+    expect(response.headers.etag).toBe('"[REDACTED]"');
+    expect(response.headers['x-request-id']).toBe('req-1');
+  });
+
+  test('redacts an applied substitution value reflected into a response header', async () => {
+    const transport: BrokerTransport = async (prepared) => ({
+      status: 200,
+      headers: { etag: `"${prepared.headers['x-api-key']}"` },
+      body: Buffer.alloc(0),
+    });
+
+    const response = await executeSecretBrokerRequest(
       hostsOnlyPolicy(),
       'route-secret-value',
-      request({ url: 'https://api.example.com/v1/first', headers: { 'x-api-key': OTHER_HANDLE } }),
+      request({ headers: { 'x-api-key': OTHER_HANDLE } }),
       {
         transport,
         substitutions: [
           substitution({
-            identifier: 'FIRST_HOP_ONLY',
+            identifier: 'SECONDARY',
             handle: OTHER_HANDLE,
-            value: 'first-hop-secret',
-            // A path-scoped policy: admits /v1/first, denies /v1/second.
-            policy: {
-              rules: [{ host: 'api.example.com', path: '/v1/first' }],
-            } as unknown as SecretEgressPolicy,
+            value: 'second-secret-value',
+            policy: hostsOnlyPolicy(),
           }),
         ],
       },
     );
 
-    expect(seen).toEqual(['first-hop-secret', OTHER_HANDLE]);
+    expect(response.headers.etag).toBe('"[REDACTED]"');
   });
 });

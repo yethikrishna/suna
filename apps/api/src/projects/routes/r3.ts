@@ -734,6 +734,21 @@ projectsApp.openapi(
   if (requestedStrategy === undefined && requestedConsumer !== undefined) {
     return c.json({ error: 'consumer requires a strategy' }, 400);
   }
+  // Agent sessions must not choose a delivery policy. This mirrors the
+  // PUT /:identifier/strategy guard below: an agent-session PAT that can create
+  // a secret must not also set egress/broker/denied delivery or an outbound
+  // host list, because a later session mints a spendable handle against that
+  // policy — widening a host list is exactly the exfil vector. A plain
+  // runtime/default secret (no policy field, or an explicit sandbox default)
+  // stays allowed, matching existing product behavior.
+  if (
+    getAgentGrant(c) &&
+    ((requestedStrategy !== undefined && requestedStrategy !== 'runtime') ||
+      (requestedConsumerData !== undefined && requestedConsumerData !== 'sandbox') ||
+      body.egress_policy !== undefined)
+  ) {
+    return c.json({ error: 'Agent sessions cannot change secret delivery policy' }, 403);
+  }
   const defaultToGateway =
     requestedStrategy === undefined &&
     requestedConsumer === undefined &&
@@ -1669,6 +1684,14 @@ projectsApp.openapi(
     .limit(1);
 
   if (existing) {
+    // Deleting a secret that carries a delivery policy (egress/broker) removes
+    // that policy — a policy-affecting operation. Mirror the PUT /strategy and
+    // POST guards: an agent session cannot touch the delivery control, only a
+    // plain runtime secret. Otherwise an agent could delete a tightly-scoped
+    // egress row and re-create it (defeated separately by the POST guard).
+    if (getAgentGrant(c) && existing.strategy && existing.strategy !== 'runtime') {
+      return c.json({ error: 'Agent sessions cannot change secret delivery policy' }, 403);
+    }
     const connectors = await connectorSecretBindings(projectId, identifier);
     if (connectors.length > 0) {
       return c.json(
@@ -1923,6 +1946,12 @@ projectsApp.openapi(
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     await assertProjectCapability(c, loaded.userId, loaded.row.accountId, projectId, PROJECT_ACTIONS.PROJECT_SECRET_WRITE);
+    // Sync force-re-pushes (re-mints) every secret handle into active sandboxes.
+    // That is the re-mint half of the policy-widening exfil chain, so an agent
+    // session must not trigger it. Mirror the PUT /strategy guard.
+    if (getAgentGrant(c)) {
+      return c.json({ error: 'Agent sessions cannot change secret delivery policy' }, 403);
+    }
     const result = await propagateProjectSecretsToActiveSandboxes(projectId);
     return c.json(result);
   },

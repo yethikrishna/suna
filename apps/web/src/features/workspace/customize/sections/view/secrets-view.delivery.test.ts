@@ -124,7 +124,7 @@ describe('SecretsView lets the system classify a new secret', () => {
 
   test('both recognitions are stated on screen, not silently applied', () => {
     expect(code).toContain('{classification.signingNote}');
-    expect(code).toContain('{`Recognized as a ${classification.modelProvider.label} key`}');
+    expect(code).toContain('{`Recognized: ${classification.modelProvider.label} key`}');
   });
 });
 
@@ -138,14 +138,14 @@ describe('SecretsView warns when no agent can receive the secret', () => {
 
   test('the table row shows the warning only for the modes that need a grant', () => {
     expect(code).toContain(
-      'shouldWarnMissingAgentGrant(row.deliveryBlockedReason, row.strategy) && (',
+      'shouldWarnMissingAgentGrant(row.deliveryBlockedReason, row.strategy, row.consumer) && (',
     );
     expect(code).toContain('>No agent grant</span>');
   });
 
   test('the dialog renders the notice and the kortix.yaml fix', () => {
     expect(code).toMatch(
-      /const grantNotice =\s*row && shouldWarnMissingAgentGrant\(row\.deliveryBlockedReason, strategy\) && !grant\.isSuccess\s*\?\s*missingAgentGrantNotice\(row\.identifier\)\s*:\s*null;/,
+      /const grantNotice =\s*row &&\s*shouldWarnMissingAgentGrant\(row\.deliveryBlockedReason, strategy, nextConsumer\) &&\s*!grant\.isSuccess\s*\?\s*missingAgentGrantNotice\(row\.identifier\)\s*:\s*null;/,
     );
     expect(code).toContain('{grantNotice.body}');
     expect(code).toContain('{grantManifest}');
@@ -154,7 +154,7 @@ describe('SecretsView warns when no agent can receive the secret', () => {
   test('a completed grant retires the warning the open dialog is still showing', () => {
     // `row` is the parent's snapshot from when the dialog opened. Refetching
     // the list cannot change it, so the notice has to stand down on its own.
-    expect(code).toContain('&& !grant.isSuccess');
+    expect(code).toContain('!grant.isSuccess');
   });
 });
 

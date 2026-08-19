@@ -21,8 +21,11 @@ function brokerBlockedHeaders(): Set<string> {
     'utf8',
   )
   const block = src.match(/BLOCKED_REQUEST_HEADERS = new Set\(\[([\s\S]*?)\]\)/)
-  if (!block) throw new Error('could not find BLOCKED_REQUEST_HEADERS in http-broker.ts')
-  return new Set([...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]))
+  const body = block?.[1]
+  if (!body) throw new Error('could not find BLOCKED_REQUEST_HEADERS in http-broker.ts')
+  const names: string[] = []
+  for (const m of body.matchAll(/'([^']+)'/g)) if (m[1]) names.push(m[1])
+  return new Set(names)
 }
 
 describe('shim/broker blocked-header agreement', () => {

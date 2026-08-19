@@ -26,8 +26,8 @@ import { cn } from '@/lib/utils';
 import {
   ArrowClockwiseIcon,
   PaperPlaneRightIcon,
-  TrashIcon,
   WarningIcon,
+  XIcon,
 } from '@phosphor-icons/react';
 import { BUBBLE_SURFACE, BUBBLE_TEXT } from './user-message';
 
@@ -159,8 +159,8 @@ export function QueuedPromptActions({
         </Action>
       )}
       {onRemove && (
-        <Action label="Remove" onClick={() => onRemove(id)} destructive>
-          <TrashIcon className="size-4" />
+        <Action label="Remove from queue" onClick={() => onRemove(id)} destructive>
+          <XIcon className="size-4" />
         </Action>
       )}
     </div>
@@ -240,29 +240,26 @@ function QueuedBubble({
     <div
       data-queued-prompt-id={row.id}
       data-queued-state={state}
-      className="group/queued ml-auto flex w-full max-w-[80%] flex-col items-end gap-2 self-end"
+      className="group/queued ml-auto flex w-full max-w-[80%] flex-col items-end gap-1 self-end"
     >
-      <div
-        className={cn(
-          BUBBLE_SURFACE,
-          'w-fit transition-opacity duration-500',
-          failed ? 'opacity-90' : live ? 'opacity-100' : QUEUED_BUBBLE_OPACITY_CLASS,
-        )}
-      >
-        <div className={cn('max-w-full min-w-0 max-h-[200px] overflow-hidden', BUBBLE_TEXT)}>
-          {row.text}
-        </div>
-      </div>
-      {/* Same anatomy as the sent bubble's meta row: the status is always
-          readable (it is what explains the dim), the controls reveal on hover;
-          height held so nothing reflows. A failed row keeps everything
-          visible — a failure the user has to hunt for is a message silently
-          lost. */}
-      <div className="flex w-full items-center justify-end gap-2">
-        <QueuedPromptStatus state={state} lastError={row.lastError} />
+      {/* Bubble + its controls in ONE row: the actions sit beside the bubble,
+          to its right, revealed on hover — never floating in space. The
+          column is width-reserved (`w-6`) so nothing shifts on hover. */}
+      <div className="flex w-full items-center justify-end gap-1">
         <div
           className={cn(
-            'flex items-center transition-opacity duration-150',
+            BUBBLE_SURFACE,
+            'w-fit transition-opacity duration-500',
+            failed ? 'opacity-90' : live ? 'opacity-100' : QUEUED_BUBBLE_OPACITY_CLASS,
+          )}
+        >
+          <div className={cn('max-w-full min-w-0 max-h-[200px] overflow-hidden', BUBBLE_TEXT)}>
+            {row.text}
+          </div>
+        </div>
+        <div
+          className={cn(
+            'flex w-6 shrink-0 flex-col items-center justify-center transition-opacity duration-150',
             failed
               ? 'opacity-100'
               : 'opacity-0 group-hover/queued:opacity-100 focus-within:opacity-100',
@@ -276,6 +273,13 @@ function QueuedBubble({
             onRetry={onRetry}
           />
         </div>
+      </div>
+      {/* The status word sits SNUG under the bubble, aligned to its edge —
+          it is what explains the dim, so it is always readable, and it must
+          read as the bubble's caption, not a free-floating label. `pr-7`
+          keeps it flush with the bubble (the reserved actions column). */}
+      <div className="flex w-full items-center justify-end pr-7">
+        <QueuedPromptStatus state={state} lastError={row.lastError} />
       </div>
     </div>
   );

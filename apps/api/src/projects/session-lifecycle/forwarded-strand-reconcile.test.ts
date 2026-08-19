@@ -40,7 +40,7 @@ describe('reconcileForwardedTurnsAtEnd', () => {
   test('no-op without an ended message id when the tip has no finished assistant either', async () => {
     const { deps, calls } = fakeDeps({ open: [turn(u1)], tip: [] });
     const out = await reconcileForwardedTurnsAtEnd({ sessionId: 's' }, deps);
-    expect(out).toEqual({ closedOlder: 0, candidates: 0, stranded: 0, requeued: 0 });
+    expect(out).toEqual({ closedOlder: 0, candidates: 0, stranded: 0, requeued: 0, reordered: 0 });
     expect(calls.closeOlder).toHaveLength(0);
   });
 
@@ -54,7 +54,7 @@ describe('reconcileForwardedTurnsAtEnd', () => {
     ];
     const { deps, calls } = fakeDeps({ open: [turn(u1), turn(u4, 'delivering')], tip });
     const out = await reconcileForwardedTurnsAtEnd({ sessionId: 's' }, deps);
-    expect(out).toEqual({ closedOlder: 1, candidates: 1, stranded: 1, requeued: 1 });
+    expect(out).toEqual({ closedOlder: 1, candidates: 1, stranded: 1, requeued: 1, reordered: 0 });
     expect(calls.closeOlder.map((c) => c[2])).toEqual([u1]);
     expect(calls.remove).toEqual([['s', u4]]);
   });
@@ -75,7 +75,7 @@ describe('reconcileForwardedTurnsAtEnd', () => {
     ];
     const { deps, calls } = fakeDeps({ open: [turn(u4, 'delivering')], tip });
     const out = await reconcileForwardedTurnsAtEnd({ sessionId: 's', opencodeSessionId: 'ses_root', endedMessageId: M }, deps);
-    expect(out).toEqual({ closedOlder: 0, candidates: 1, stranded: 1, requeued: 1 });
+    expect(out).toEqual({ closedOlder: 0, candidates: 1, stranded: 1, requeued: 1, reordered: 0 });
     expect(calls.remove).toEqual([['s', u4]]);
     expect(calls.requeue).toEqual([['s', u4]]);
     expect(calls.closeStranded).toEqual([['s', u4]]);
@@ -92,7 +92,7 @@ describe('reconcileForwardedTurnsAtEnd', () => {
     ];
     const { deps, calls } = fakeDeps({ open: [turn(u5)], tip });
     const out = await reconcileForwardedTurnsAtEnd({ sessionId: 's', opencodeSessionId: 'ses_root', endedMessageId: M }, deps);
-    expect(out).toEqual({ closedOlder: 0, candidates: 1, stranded: 0, requeued: 0 });
+    expect(out).toEqual({ closedOlder: 0, candidates: 1, stranded: 0, requeued: 0, reordered: 0 });
     expect(calls.remove).toHaveLength(0);
     expect(calls.closeStranded).toHaveLength(0);
   });
@@ -121,6 +121,69 @@ describe('reconcileForwardedTurnsAtEnd', () => {
     expect(out.requeued).toBe(0);
     expect(calls.requeue).toHaveLength(0);
     expect(calls.closeStranded).toHaveLength(0);
+  });
+
+  test('a stranded row with a later OPEN sibling above it is left in place — that sibling\'s step answers both', async () => {
+    // u4 stranded below aM; u5 landed fine above it and is still unanswered.
+    // OpenCode's next step parents on u5 and hands the model the whole
+    // transcript — u4 included — so pulling u4 back out would only reorder
+    // the user's messages. Nothing is removed or re-queued.
+    const tip = [
+      { id: M, role: 'user' },
+      { id: u4, role: 'user' },
+      { id: aM, role: 'assistant', parentID: M, completed: T + 3_500 },
+      { id: u5, role: 'user' },
+    ];
+    const { deps, calls } = fakeDeps({ open: [turn(u4, 'delivering'), turn(u5, 'delivering')], tip });
+    const out = await reconcileForwardedTurnsAtEnd(
+      { sessionId: 's', opencodeSessionId: 'ses_root', endedMessageId: M },
+      deps,
+    );
+    expect(out).toEqual({ closedOlder: 0, candidates: 2, stranded: 1, requeued: 0, reordered: 0 });
+    expect(calls.remove).toHaveLength(0);
+    expect(calls.requeue).toHaveLength(0);
+  });
+
+  test('a fully stranded TAIL re-queues as a whole, so the batch re-mints it in order', async () => {
+    // Both u4 and u5 are stranded below aM — the loop exited without either.
+    // Both come back; the drain's batch re-mints them by send order.
+    const u5b = id(T + 2_600, 'USER5BUSER5BUS');
+    const tip = [
+      { id: M, role: 'user' },
+      { id: u4, role: 'user' },
+      { id: u5b, role: 'user' },
+      { id: aM, role: 'assistant', parentID: M, completed: T + 3_500 },
+    ];
+    const { deps, calls } = fakeDeps({ open: [turn(u4, 'delivering'), turn(u5b, 'delivering')], tip });
+    const out = await reconcileForwardedTurnsAtEnd(
+      { sessionId: 's', opencodeSessionId: 'ses_root', endedMessageId: M },
+      deps,
+    );
+    expect(out.stranded).toBe(2);
+    expect(out.requeued).toBe(2);
+    expect(calls.remove).toEqual([
+      ['s', u4],
+      ['s', u5b],
+    ]);
+  });
+
+  test('a later sibling a step already REACHED stays put (cannot be pulled back)', async () => {
+    const a5 = id(T + 4_100, 'ASST5ASST5ASST');
+    const tip = [
+      { id: M, role: 'user' },
+      { id: u4, role: 'user' },
+      { id: aM, role: 'assistant', parentID: M, completed: T + 3_500 },
+      { id: u5, role: 'user' },
+      { id: a5, role: 'assistant', parentID: u5 },
+    ];
+    const { deps, calls } = fakeDeps({ open: [turn(u4, 'delivering'), turn(u5, 'delivering')], tip });
+    const out = await reconcileForwardedTurnsAtEnd(
+      { sessionId: 's', opencodeSessionId: 'ses_root', endedMessageId: M },
+      deps,
+    );
+    expect(out.requeued).toBe(1);
+    expect(out.reordered).toBe(0);
+    expect(calls.remove).toEqual([['s', u4]]);
   });
 
   test('turns of another opencode root are ignored', async () => {

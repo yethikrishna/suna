@@ -327,6 +327,7 @@ export async function startSessionWithPrompt(
       clientMessageId,
       messageId: mintSessionWireMessageId(sessionId, clientMessageId),
       parts: input.parts,
+      clientSentAtMs: now(),
       ...(input.overrides ? { overrides: input.overrides } : {}),
       remintOnDelivery: true,
     });

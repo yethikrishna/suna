@@ -144,6 +144,31 @@ export function reachedPlacement(
   return false;
 }
 
+/**
+ * Is there an OPEN user message ABOVE this id — placed (not stranded),
+ * unanswered? Then a message that sits BELOW it is not lost: OpenCode's next
+ * step parents on the newest user message and hands the model the whole
+ * transcript, so everything under it is answered in that step. This is what
+ * lets a late delivery keep its ORIGINAL (send-ordered) id instead of
+ * re-minting to the top, and what lets the reconciler leave a stranded row
+ * alone.
+ */
+export function openUserAbove(
+  tip: ReadonlyArray<PlacementTipMessage>,
+  wireMessageId: string,
+): boolean {
+  const mine = wireIdTime(wireMessageId);
+  if (mine === null) return false;
+  for (const m of tip) {
+    if (m.role !== 'user' || m.id === wireMessageId) continue;
+    const at = wireIdTime(m.id);
+    if (at === null || at <= mine) continue;
+    const v = strandedPlacement(tip, m.id);
+    if (!v.answered && !v.stranded) return true;
+  }
+  return false;
+}
+
 /** Is the box mid-step — its newest assistant message still open? */
 export function tipIsBusy(tip: ReadonlyArray<PlacementTipMessage>): boolean {
   let newest: PlacementTipMessage | null = null;

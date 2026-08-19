@@ -40,7 +40,7 @@ import {
 import { sandboxRuntimeRequestHeaders } from '../sandbox-fetch';
 import { wireIdTime } from '../wire-message-id';
 import { drainSessionLifecycleQueue, resolveSessionOpencodeEndpoint } from './engine';
-import { type PlacementTipMessage, parsePlacementTip, strandedPlacement } from './forwarded-placement';
+import { type PlacementTipMessage, openUserAbove, parsePlacementTip, strandedPlacement } from './forwarded-placement';
 import { promoteNextInboxRow, withNextDeliveryAttempt } from './store';
 
 const WORKSPACE = '/workspace';
@@ -53,6 +53,9 @@ export interface ForwardedTurnReconciliation {
   candidates: number;
   stranded: number;
   requeued: number;
+  /** Later, un-stranded siblings pulled back with a stranded row so the
+   *  redelivery batch restores send order. */
+  reordered: number;
 }
 
 export interface StrandReconcileDeps {
@@ -83,13 +86,15 @@ const liveDeps: StrandReconcileDeps = {
       })
       .from(sessionTurns)
       .where(and(eq(sessionTurns.sessionId, sessionId), ne(sessionTurns.state, 'ended')));
-    return rows.map((row) => ({
-      token: row.token,
-      messageId: row.messageId,
-      opencodeSessionId: row.opencodeSessionId,
-      state: (row.state === 'active' ? 'active' : 'delivering') as 'active' | 'delivering',
-      startedAtMs: row.startedAt ? new Date(row.startedAt).getTime() : null,
-    }));
+    return rows.map(
+      (row): StoredSandboxTurn => ({
+        token: row.token,
+        messageId: row.messageId ?? null,
+        opencodeSessionId: row.opencodeSessionId ?? '',
+        state: row.state === 'active' ? 'active' : 'delivering',
+        startedAtMs: row.startedAt ? new Date(row.startedAt).getTime() : null,
+      }),
+    );
   },
   async closeOlderTurn(sessionId, _opencodeSessionId, messageId) {
     // The step that just ended answered it (OpenCode answers every queued
@@ -187,7 +192,7 @@ export async function reconcileForwardedTurnsAtEnd(
   input: { sessionId: string; opencodeSessionId?: string | null; endedMessageId?: string | null },
   deps: StrandReconcileDeps = liveDeps,
 ): Promise<ForwardedTurnReconciliation> {
-  const out: ForwardedTurnReconciliation = { closedOlder: 0, candidates: 0, stranded: 0, requeued: 0 };
+  const out: ForwardedTurnReconciliation = { closedOlder: 0, candidates: 0, stranded: 0, requeued: 0, reordered: 0 };
   let open: StoredSandboxTurn[];
   try {
     open = await deps.readOpenTurns(input.sessionId);
@@ -265,10 +270,29 @@ export async function reconcileForwardedTurnsAtEnd(
   if (newer.length === 0) return out;
   if (!tip) return out;
   let kicked = false;
-  for (const turn of newer) {
-    const verdict = strandedPlacement(tip, turn.messageId!);
+  // Classify the newer candidates by the tip. A STRANDED row (persisted below
+  // an assistant that predates it) is not lost while a LATER, correctly
+  // placed, still-unanswered sibling exists above it: that sibling's step
+  // hands the model the whole transcript, the stranded text included, and the
+  // model answers both — leave it. Only the stranded TAIL — stranded rows
+  // with nothing open above them — is truly dropped (the loop has exited),
+  // and it re-queues AS A WHOLE so the redelivery batch re-mints it in send
+  // order. Re-queueing one row of a burst individually is what scrambled the
+  // order (measured: FIRST, B3, B1, B4, B2).
+  const verdicts = newer.map((turn) => ({ turn, verdict: strandedPlacement(tip!, turn.messageId!) }));
+  for (const { turn, verdict } of verdicts) {
     if (!verdict.stranded) continue;
     out.stranded += 1;
+    // The tip, not just the ledger candidates: ANY placed, unanswered user
+    // message above covers this one — a direct send included.
+    if (openUserAbove(tip, turn.messageId!)) {
+      logger.info('[forwarded-turns] stranded prompt is covered by a later open sibling — left in place', {
+        session_id: input.sessionId,
+        message_id: turn.messageId,
+        stranded_by: verdict.strandedBy,
+      });
+      continue;
+    }
     let removed = false;
     try {
       removed = await deps.removeMessage(input.sessionId, turn.messageId!);

@@ -637,6 +637,8 @@ export interface SessionPrompt {
   reason: string | null;
   /** Flattened text preview, capped server-side. */
   text: string;
+  /** The sender tab's clock at Enter, when the producer supplied it. */
+  client_sent_at_ms?: number | null;
   attempts: number;
   last_error: string | null;
   created_at: string;
@@ -672,6 +674,13 @@ export interface CreateSessionPromptInput {
    * the delivery path of every message.
    */
   remintOnDelivery?: boolean;
+  /**
+   * The tab's own clock at the moment the user pressed Enter. The server
+   * preserves SEND order with it when several prompts race in over different
+   * surfaces (the boot shell and the chat both send during the crossfade, and
+   * their POSTs finish in either order). Milliseconds since epoch.
+   */
+  clientSentAtMs?: number;
 }
 
 /** Put one prompt in the session's server-side inbox (`POST .../prompts`).
@@ -690,6 +699,9 @@ export async function createSessionPrompt(
         parts: input.parts,
         ...(input.overrides ? { overrides: input.overrides } : {}),
         ...(input.remintOnDelivery ? { remint_on_delivery: true } : {}),
+        ...(typeof input.clientSentAtMs === 'number'
+          ? { client_sent_at_ms: Math.trunc(input.clientSentAtMs) }
+          : {}),
       },
     ),
   );

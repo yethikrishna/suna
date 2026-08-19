@@ -45,6 +45,7 @@ import { stabilizeTurns } from './turn/stable-turns';
 import { ThrottledMarkdown } from './turn/throttled-markdown';
 import { TurnViewport } from './turn/turn-viewport';
 import { UserMessage } from './turn/user-message';
+import { isOptimisticSessionPrompt } from '@kortix/sdk/react';
 import {
   QueuedPromptActions,
   QueuedPromptBubbles,
@@ -2841,7 +2842,70 @@ export function SessionChat({
       }
     };
   }, []);
-  const rawTurns = useMemo(() => (messages ? groupMessagesIntoTurns(messages) : []), [messages]);
+  /**
+   * Queue rows the transcript does not hold yet, as SYNTHETIC user messages —
+   * fed into the SAME turn list as everything else, sorted by their creation
+   * time, so a queued prompt never renders in a second container below newer
+   * turns. The strip used to draw them after the turns; a send painted as an
+   * optimistic TURN while an older row was still a strip ROW then displayed
+   * newest-first (measured on the shell→chat handoff: Boot 4 above Boot 1–3).
+   * The echo arrives under the same `message_id`, so the synthetic turn
+   * becomes the real one in place — same element, same key.
+   */
+  const queuedSyntheticMessages = useMemo(() => {
+    const out: NonNullable<typeof messages> = [];
+    // A queued row is by definition newer than everything the transcript
+    // already holds — but its clock is the SENDER TAB's, and the box stamps
+    // real messages from its own. A box running ~1 s ahead sorted a fresh
+    // queued row ABOVE the previous turn (measured). Floor every synthetic
+    // time just past the newest real stamp, keeping the rows' own relative
+    // order.
+    let floor = 0;
+    for (const message of messages ?? []) {
+      const created = (message.info as { time?: { created?: number } }).time?.created;
+      if (typeof created === 'number' && created > floor) floor = created;
+    }
+    let previous = floor;
+    for (const prompt of promptInbox.prompts) {
+      if (prompt.state === 'failed') continue;
+      if (!prompt.text.trim()) continue;
+      if (prompt.message_id && transcriptUserMessageIds.has(prompt.message_id)) continue;
+      if (prompt.wire_message_id && transcriptUserMessageIds.has(prompt.wire_message_id)) continue;
+      if (isOptimisticSessionPrompt(prompt)) continue; // painted by this tab already
+      const id = prompt.message_id || `queued-${prompt.prompt_id}`;
+      const sentAt =
+        typeof prompt.client_sent_at_ms === 'number'
+          ? prompt.client_sent_at_ms
+          : Date.parse(prompt.created_at);
+      const createdMs = Math.max(sentAt, previous + 1);
+      previous = createdMs;
+      out.push({
+        info: {
+          id,
+          sessionID: sessionId,
+          role: 'user',
+          time: Number.isFinite(createdMs) ? { created: createdMs } : {},
+        },
+        parts: [
+          {
+            id: `syn-${prompt.prompt_id}`,
+            messageID: id,
+            sessionID: sessionId,
+            type: 'text',
+            text: prompt.text,
+          },
+        ],
+      } as unknown as NonNullable<typeof messages>[number]);
+    }
+    return out;
+  }, [promptInbox.prompts, transcriptUserMessageIds, sessionId]);
+  const rawTurns = useMemo(
+    () =>
+      messages || queuedSyntheticMessages.length > 0
+        ? groupMessagesIntoTurns([...(messages ?? []), ...queuedSyntheticMessages])
+        : [],
+    [messages, queuedSyntheticMessages],
+  );
   /**
    * `groupMessagesIntoTurns` allocates a fresh object per turn on every call, and
    * `messages` is rebuilt on every SSE frame — so a fifty-turn session handed
@@ -2908,6 +2972,28 @@ export function SessionChat({
     [turns, working.turnId],
   );
   const pendingTurnIds = useMemo(() => new Set(workingTurn.pendingTurnIds), [workingTurn]);
+  /**
+   * ONE render key per turn. A turn keeps the id its bubble was FIRST painted
+   * under (the optimistic origin), so a re-minted echo re-renders the same
+   * element instead of mounting a new one. But an origin can transiently be
+   * claimed by TWO turns — an old echo still on screen while its re-placed
+   * copy arrives — and duplicate React keys corrupt the whole list (measured:
+   * 1.5k "two children with the same key" errors in one churn). The origin
+   * key goes to the FIRST claimant; any other turn falls back to its own id.
+   */
+  const turnRenderKeys = useMemo(() => {
+    const keys = new Map<string, string>();
+    const used = new Set<string>();
+    for (const turn of turns) {
+      const id = turn.userMessage.info.id;
+      const origin = optimisticOriginOf(sessionId, id);
+      const preferred = origin && !used.has(origin) ? origin : id;
+      const key = used.has(preferred) ? id : preferred;
+      keys.set(id, key);
+      used.add(key);
+    }
+    return keys;
+  }, [turns, sessionId, optimisticOriginOf]);
   // User messages a Stop stranded: the session is idle, the newest turn with
   // content ended by abort, and these came after it with nothing under them.
   // The runtime holds them; nothing runs them until the next send.
@@ -3241,6 +3327,7 @@ export function SessionChat({
       // hand-off between them was a frame where the message doubled, blinked
       // or jumped.
       const clientMessageId = overrides?.clientMessageId ?? ascendingId('msg');
+      const sentAtMs = Date.now();
       const messageID = mintSessionWireMessageId(sessionId, clientMessageId);
 
       // Generate part IDs upfront so the optimistic message and the server
@@ -3500,6 +3587,9 @@ export function SessionChat({
             clientMessageId,
             messageId: messageID,
             parts: mappedParts,
+            // Enter time, not POST time: uploads and a busy API sit between
+            // the two, and the server orders racing sends by THIS.
+            clientSentAtMs: sentAtMs,
             overrides: {
               // Pass the session's directory so opencode resolves project-scoped
               // agents (.opencode/agent/*.md under the project) and applies them
@@ -4397,10 +4487,7 @@ export function SessionChat({
                             // re-minted echo id re-renders this node instead
                             // of mounting a new one (opacity keeps animating,
                             // hover state survives, nothing jumps).
-                            key={
-                              optimisticOriginOf(sessionId, turn.userMessage.info.id) ??
-                              turn.userMessage.info.id
-                            }
+                            key={turnRenderKeys.get(turn.userMessage.info.id)}
                             turnId={turn.userMessage.info.id}
                             // Queued bubbles STACK: a pending turn right after
                             // another pending turn sits close to it, like a
@@ -4521,6 +4608,10 @@ export function SessionChat({
                         stands in until either the row or the transcript has it,
                         so the bubble the boot shell drew never blinks out in the
                         crossfade. */}
+                    {/* Unpainted queue rows render as synthetic turns in the
+                        list above (`queuedSyntheticMessages`); only FAILED
+                        rows remain here — a failure is not a turn-to-be and
+                        must not dim like one. */}
                     <QueuedPromptBubbles
                       className={
                         turns.length === 0
@@ -4530,7 +4621,7 @@ export function SessionChat({
                             ? 'mt-3'
                             : 'mt-12'
                       }
-                      queued={queuedMessages}
+                      queued={[]}
                       inFlightIds={queueInFlightIds}
                       failed={failedQueuedMessages}
                       held={queueRows.held}

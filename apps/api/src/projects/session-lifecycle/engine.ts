@@ -6,7 +6,7 @@ import {
   sessionLifecycleCommands,
   sessionSandboxes,
 } from '@kortix/db';
-import { type SQL, and, desc, eq, gte, sql } from 'drizzle-orm';
+import { type SQL, and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { ProvisionTimeline } from '../../platform/services/provision-timeline';
 import { WIRE_ID_PLACED_HEADER } from '../../sandbox-proxy/prompt-wire-id-repair';
@@ -56,11 +56,13 @@ import type {
   QueuedContinueSessionPayload,
 } from './store';
 import { admitInboxPrompt, sessionHoldsLiveTurn } from './inbox-admission';
+import { claimDueSessionInboxSiblings } from './inbox-rows';
 import {
   type PlacementTipMessage,
   boxClockSkewMs,
   mintLivePlacement,
   noteBoxClockSample,
+  openUserAbove,
   parsePlacementTip,
   strandedPlacement,
 } from './forwarded-placement';
@@ -591,6 +593,18 @@ export async function drainSessionLifecycleQueue(
     idempotencyKey: input.idempotencyKey,
     availableBefore: input.availableBefore,
   });
+  // A targeted claim (one POST's kick) takes exactly its own row — but the
+  // rows already queued for the SAME session are this delivery's batch, and
+  // leaving them to their own kicks is what delivered a burst of sends one
+  // ~1.5 s round-trip at a time (and let a step boundary split the answers).
+  // Sweep them in so the lane batches them below.
+  if (input.idempotencyKey && rows.length > 0) {
+    const sessions = [...new Set(rows.map((r) => r.sessionId).filter((v): v is string => !!v))];
+    for (const sessionId of sessions) {
+      const siblings = await claimDueSessionInboxSiblings({ workerId, sessionId });
+      rows.push(...siblings.filter((sib) => !rows.some((r) => r.commandId === sib.commandId)));
+    }
+  }
   const out = { claimed: rows.length, succeeded: 0, failed: 0, queued: 0 };
 
   // ONE LANE PER SESSION, and the lanes run concurrently.
@@ -610,13 +624,16 @@ export async function drainSessionLifecycleQueue(
     else lanes.set(lane, [row]);
   }
 
-  const runRow = async (row: SessionLifecycleCommandRow): Promise<void> => {
+  const runRow = async (
+    row: SessionLifecycleCommandRow,
+    opts: ExecuteQueuedContinueOptions = {},
+  ): Promise<void> => {
     if (row.commandType === 'continue_session') {
       // Contained per row. Every row in this batch is CLAIMED (`running`), and
       // one throw escaping the loop would leave the rest of them there — a
       // state nothing reclaims until the lock expires, and one that blocks
       // every later prompt of the same session behind it.
-      const outcome = await executeQueuedContinue(row).catch(async (err) => {
+      const outcome = await executeQueuedContinue(row, opts).catch(async (err) => {
         await markCommandFailed(
           row.commandId,
           `drain failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -678,10 +695,63 @@ export async function drainSessionLifecycleQueue(
 
   await Promise.all(
     [...lanes.values()].map(async (lane) => {
-      for (const row of lane) await runRow(row);
+      // Same-session INBOX rows go as ONE batch: the head lands first (it may
+      // open the turn), then the rest mint in queue order and POST together
+      // — so everything queued reaches OpenCode within one proxy round-trip
+      // of the head instead of ~1.5 s apiece, and the step after the current
+      // one answers all of them at once. Measured before: 4 prompts queued
+      // during boot ran as 3 + 1 across two steps.
+      let i = 0;
+      while (i < lane.length) {
+        const row = lane[i];
+        if (!isInboxRow(row)) {
+          await runRow(row);
+          i += 1;
+          continue;
+        }
+        let j = i + 1;
+        while (j < lane.length && isInboxRow(lane[j])) j += 1;
+        const sendOrder = (row: SessionLifecycleCommandRow): number => {
+          const at = (row.payload as { clientSentAtMs?: unknown } | null)?.clientSentAtMs;
+          // The sender tab's Enter instant when it was supplied: the POSTs of
+          // two surfaces race across the boot-shell crossfade, and row
+          // creation order is the race's outcome, not the user's.
+          return typeof at === 'number' ? at : row.createdAt.getTime();
+        };
+        const batch = lane.slice(i, j).sort((a, b) => sendOrder(a) - sendOrder(b));
+        i = j;
+        await runRow(batch[0]);
+        if (batch.length === 1) continue;
+        const rest = batch.slice(1);
+        // One gate per member: each waits for the previous member's id to be
+        // final before minting its own, then all POST concurrently.
+        const gates: BatchPlacementGate[] = [];
+        let previous: Promise<void> = Promise.resolve();
+        for (let k = 0; k < rest.length; k += 1) {
+          let release!: () => void;
+          const mine = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          gates.push({ waitTurn: previous, release });
+          previous = mine;
+        }
+        await Promise.all(
+          rest.map((member, k) =>
+            runRow(member, { batch: gates[k] }).finally(() => gates[k].release()),
+          ),
+        );
+      }
     }),
   );
   return out;
+}
+
+/** An inbox prompt row: a `continue_session` with the client's own
+ *  submission id — what the queue strip lists and what batches. */
+function isInboxRow(row: SessionLifecycleCommandRow): boolean {
+  if (row.commandType !== 'continue_session') return false;
+  const payload = row.payload as { clientMessageId?: unknown } | null;
+  return typeof payload?.clientMessageId === 'string' && payload.clientMessageId.length > 0;
 }
 
 /**
@@ -1096,6 +1166,33 @@ async function verifyLivePlacement(
   return { stranded: verdict.stranded, strandedBy: verdict.strandedBy, newest: verdict.newest };
 }
 
+/** Is a forwarded/queued inbox row of this session NEWER than `row` already
+ *  on the wire (or in line)? Then `row`'s send order is pinned by it. */
+async function hasLaterForwardedSibling(row: SessionLifecycleCommandRow): Promise<boolean> {
+  if (!row.sessionId) return false;
+  try {
+    const [later] = await db
+      .select({ commandId: sessionLifecycleCommands.commandId })
+      .from(sessionLifecycleCommands)
+      .where(
+        and(
+          eq(sessionLifecycleCommands.sessionId, row.sessionId),
+          eq(sessionLifecycleCommands.commandType, 'continue_session'),
+          sql`${sessionLifecycleCommands.payload}->>'clientMessageId' IS NOT NULL`,
+          sql`${sessionLifecycleCommands.createdAt} > ${row.createdAt.toISOString()}::timestamptz`,
+          or(
+            inArray(sessionLifecycleCommands.status, ['queued', 'running']),
+            sql`${sessionLifecycleCommands.result}->>'status' = 'forwarded'`,
+          ),
+        ),
+      )
+      .limit(1);
+    return !!later;
+  } catch {
+    return false; // fail open: a solo repair is better than none
+  }
+}
+
 /**
  * Delete a stranded user message from the root transcript, so the re-placed
  * copy is the only one OpenCode — and the model — holds. `true` only on a
@@ -1202,8 +1299,27 @@ function externalIdFromSandboxUrlField(url: string | null): string | null {
   return match?.[1] ?? null;
 }
 
+/**
+ * How one row of a same-session BATCH (see the drain's lane runner)
+ * coordinates with the rows before it: it waits its turn to MINT (so ids come
+ * out in queue order), releases the next row the moment its id is final, and
+ * then POSTs concurrently with everyone else.
+ */
+export interface BatchPlacementGate {
+  waitTurn: Promise<void>;
+  release: () => void;
+}
+
+export interface ExecuteQueuedContinueOptions {
+  /** A member of a same-session batch after the head: admission is the
+   *  batch's own ordering, and the id is placed as into a LIVE turn (the head
+   *  opened one) and proven afterwards. */
+  batch?: BatchPlacementGate;
+}
+
 export async function executeQueuedContinue(
   row: SessionLifecycleCommandRow,
+  opts: ExecuteQueuedContinueOptions = {},
 ): Promise<'succeeded' | 'queued' | 'failed'> {
   const payload = row.payload as unknown as QueuedContinueSessionPayload;
   const text = typeof payload.text === 'string' ? payload.text : '';
@@ -1236,7 +1352,11 @@ export async function executeQueuedContinue(
   const tl = new ProvisionTimeline(row.commandId, 'deliver');
   let admission: Awaited<ReturnType<typeof admitInboxPrompt>>;
   try {
-    admission = await admitInboxPrompt(row);
+    // A batch member's ordering IS the batch: the lane minted the rows before
+    // it first (see the gate below), so the admission read — "is an older
+    // prompt of this session in flight?" — would only ever refuse it for the
+    // siblings it is being delivered with.
+    admission = opts.batch ? { admit: true } : await admitInboxPrompt(row);
     tl.mark('admission');
   } catch (err) {
     await markCommandFailed(
@@ -1395,7 +1515,14 @@ export async function executeQueuedContinue(
   // none, and every id-less producer would pay for this read for nothing.
   const remintKnown = deliveryAttempt > 0 || redeliveries > 0 || waited;
   let turnLive = false;
-  if (payload.wireMessageId && !remintKnown) {
+  // The head of the batch landed and opened a turn (or joined the live one);
+  // every row after it is placed as into a live turn, by definition.
+  if (opts.batch) {
+    await opts.batch.waitTurn;
+    tl.mark('batch-turn');
+    turnLive = true;
+  }
+  if (payload.wireMessageId && !remintKnown && !opts.batch) {
     try {
       turnLive = await sessionHoldsLiveTurn(row.sessionId);
     } catch (err) {
@@ -1408,6 +1535,9 @@ export async function executeQueuedContinue(
     }
   }
   let wireMessageId = payload.wireMessageId;
+  /** Deliberately placed BELOW an open sibling — the sibling's step answers
+   *  it, and the post-insert strand proof must not "repair" it to the top. */
+  let underPlaced = false;
   if (payload.wireMessageId && (remintKnown || turnLive)) {
     const deliveredIds = [payload.wireMessageId, payload.redeliveredMessageId].filter(
       (id): id is string => typeof id === 'string' && id.length > 0,
@@ -1419,7 +1549,10 @@ export async function executeQueuedContinue(
     const stagedRevertEarly = await stagedRevertPromise;
     if (stagedRevertEarly) {
       const settled = await settleStagedRevert();
-      if (settled) return settled;
+      if (settled) {
+        opts.batch?.release();
+        return settled;
+      }
     }
     const transcript = await transcriptPromise;
     tl.mark('transcript-read');
@@ -1442,11 +1575,35 @@ export async function executeQueuedContinue(
         { status: 'skipped', reason: 'already_answered' },
         row.sessionId,
       );
+      opts.batch?.release();
       return 'succeeded';
     }
-    wireMessageId = await remintWireMessageId(row, payload, transcript);
-    tl.mark('remint');
+    // A LATE delivery does not always go to the top. When the transcript
+    // still holds an OPEN sibling above this prompt's original id — placed,
+    // unanswered — the original id slots the prompt into its SEND position,
+    // and that sibling's step answers both (OpenCode hands the model the
+    // whole transcript). Re-minting was what put a delayed message below its
+    // answer— and a re-mint here put it visually LAST when it was sent
+    // first. Only a first delivery may do this: a re-POST's original id may
+    // already be persisted.
+    if (
+      deliveryAttempt === 0 &&
+      redeliveries === 0 &&
+      payload.wireMessageId &&
+      transcript.read &&
+      transcript.tip &&
+      openUserAbove(transcript.tip, payload.wireMessageId)
+    ) {
+      wireMessageId = payload.wireMessageId;
+      underPlaced = true;
+      tl.mark('under-placed');
+    } else {
+      wireMessageId = await remintWireMessageId(row, payload, transcript);
+      tl.mark('remint');
+    }
   }
+  // The id is final: the next batch member may mint above it.
+  opts.batch?.release();
 
   {
     const stagedRevertLate = await stagedRevertPromise;
@@ -1517,7 +1674,19 @@ export async function executeQueuedContinue(
       // message, which calibrates the next placement for this session.
       const proof = await verifyLivePlacement(row, wireMessageId, postedAt);
       tl.mark('placement-proof');
+      if (underPlaced) break; // below an open sibling by design — its step answers this
       if (!proof.stranded) break;
+      // A later sibling already on the wire pins this row's ORDER: repairing
+      // solo would re-mint it above the sibling and OpenCode would answer them
+      // inverted. The turn-end reconciliation re-places the whole tail in
+      // send order instead.
+      if (await hasLaterForwardedSibling(row)) {
+        logger.info(
+          '[session-lifecycle] stranded prompt has later siblings — turn-end reconciliation will re-place the tail in order',
+          { session_id: row.sessionId, command_id: row.commandId, wire_message_id: wireMessageId },
+        );
+        break;
+      }
       if (round >= MAX_LIVE_PLACEMENT_REPAIRS) {
         logger.error(
           '[session-lifecycle] forwarded prompt still stranded after repairs — leaving it to turn-end reconciliation',

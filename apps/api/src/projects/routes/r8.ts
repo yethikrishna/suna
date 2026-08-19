@@ -516,6 +516,7 @@ const SessionPromptSchema = z.object({
   client_message_id: z.string(),
   message_id: z.string(),
   wire_message_id: z.string(),
+  client_sent_at_ms: z.number().nullable(),
   state: z.enum(['queued', 'delivering', 'waiting', 'failed']),
   reason: z.string().nullable(),
   text: z.string(),
@@ -604,6 +605,8 @@ function serializePrompt(row: PromptRow) {
     // row beside its own bubble for that window (a second dimmed copy for
     // ~0.4 s on every mid-turn send). Both ids name one prompt.
     wire_message_id: typeof payload.wireMessageId === 'string' ? payload.wireMessageId : '',
+    client_sent_at_ms:
+      typeof payload.clientSentAtMs === 'number' ? payload.clientSentAtMs : null,
     state,
     reason,
     text: (typeof payload.text === 'string' ? payload.text : '').slice(
@@ -769,6 +772,13 @@ projectsApp.openapi(
       // The drain re-mints against the live root before delivering, which is
       // the only place that can place the id correctly.
       ...(body.remint_on_delivery === true ? { remintOnDelivery: true } : {}),
+      // SEND order across surfaces whose POSTs race — see the batch sort in
+      // the drain. Bounded to the near past/future so a wrong client clock
+      // cannot pin its prompts to the head or tail of every future batch.
+      ...(typeof body.client_sent_at_ms === 'number' &&
+      Math.abs(Date.now() - body.client_sent_at_ms) < 10 * 60_000
+        ? { clientSentAtMs: Math.trunc(body.client_sent_at_ms) }
+        : {}),
       parts,
       overrides,
     });

@@ -33,7 +33,7 @@
 // file-scoped — batching many files into one `bun test a b c...` invocation
 // can leak mocks/cached module instances across files. See the same caveat
 // documented in ../../projects/sandbox-reaper.test.ts.
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { projectSessions, sessionSandboxes } from '@kortix/db';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { PROVISIONING_SESSION_STATUSES } from '../../projects/lib/session-status';
@@ -78,6 +78,7 @@ let providerFallbackEnabled = false;
 let providerNamesRequested: string[] = [];
 let providerCreateErrors: Record<string, string | undefined> = {};
 let imageRequests: Array<Record<string, unknown>> = [];
+let fastImageRequests: Array<Record<string, unknown>> = [];
 let accountTokenCreateCalls: Array<Record<string, unknown>> = [];
 let serviceAccountCreateCalls: Array<Record<string, unknown>> = [];
 
@@ -243,6 +244,17 @@ mock.module('../../snapshots/builder', () => ({
       built: false,
     };
   },
+  ensureFastSandboxImage: async (opts: Record<string, unknown>) => {
+    fastImageRequests.push(opts);
+    return {
+      snapshotName: 'kortix-fast-dev-test',
+      slug: 'default',
+      contentHash: 'fast-hash-1',
+      isDefault: true,
+      built: false,
+      runtimeProfile: 'fast',
+    };
+  },
   deleteSandboxImage: async () => {},
   resolveTemplate: async (_project: unknown, _slug: unknown) => ({}),
 }));
@@ -338,8 +350,13 @@ beforeEach(() => {
   providerNamesRequested = [];
   providerCreateErrors = {};
   imageRequests = [];
+  fastImageRequests = [];
   accountTokenCreateCalls = [];
   serviceAccountCreateCalls = [];
+});
+
+afterEach(() => {
+  delete process.env.KORTIX_FAST_COLD_BOOT_ENABLED;
 });
 
 function baseOpts() {
@@ -391,6 +408,28 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
 
     expect(imageRequests[0]).toMatchObject({ source: 'session-start' });
     expect(imageRequests[0]).not.toHaveProperty('requireCurrentRuntime');
+  });
+
+  test('the fast flag selects the shared fast image without changing the project template', async () => {
+    process.env.KORTIX_FAST_COLD_BOOT_ENABLED = 'true';
+    const opened = waitFor((resolve) => {
+      onComputeOpened = resolve;
+    });
+
+    await provisionSessionSandbox(baseOpts());
+    await opened;
+
+    expect(fastImageRequests).toEqual([{ source: 'session-start', provider: 'daytona' }]);
+    expect(imageRequests).toEqual([]);
+    const finishCall = updateCalls.find(
+      (call) => call.table === sessionSandboxes && 'externalId' in call.updates && 'config' in call.updates,
+    );
+    expect(finishCall?.updates.metadata).toMatchObject({
+      runtimeArtifact: {
+        providerArtifactRef: 'kortix-fast-dev-test',
+        runtimeProfile: 'fast',
+      },
+    });
   });
 
   test('E2B success records only provider-neutral lifecycle metadata and E2B billing attribution', async () => {

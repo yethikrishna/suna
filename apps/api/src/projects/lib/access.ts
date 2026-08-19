@@ -4,6 +4,7 @@ import {
   isProjectSessionVisibleTo,
   isTriggerCreatedSessionMetadata,
   loadSessionGrants,
+  mayManageSessionSharing,
   resolveShareSubject,
   type SecretGrant,
   type ShareSubject,
@@ -101,6 +102,66 @@ async function loadProjectSessionRow(
   return row ?? null;
 }
 
+// Memoized like the membership/role loaders above, and for the same reason:
+// every session read now asks this question, and the answer for one principal
+// is identical across a burst of parallel requests. Positive AND negative
+// results are cached — a service account never becomes a human, and a human
+// never becomes a service account, so neither direction can go stale.
+const loadPrincipalIsServiceAccount = ttlMemo({
+  ttlMs: 60_000,
+  keyFn: (accountId: string, principalId: string) => `${principalId}|${accountId}`,
+  loader: async (accountId: string, principalId: string): Promise<boolean> => {
+    const [row] = await db
+      .select({ id: serviceAccounts.serviceAccountId })
+      .from(serviceAccounts)
+      .where(
+        and(
+          eq(serviceAccounts.accountId, accountId),
+          eq(serviceAccounts.serviceAccountId, principalId),
+        ),
+      )
+      .limit(1);
+    return Boolean(row);
+  },
+});
+
+/**
+ * Is the machine-owner lookup capable of changing the verdict?
+ *
+ * `mayManageSessionSharing` is `isOwner || (canManageProject && ownerIsMachine)`.
+ * The owner short-circuits it, and a caller with no manage role can never reach
+ * the second term — so in both cases the answer is already decided and the
+ * query is pure cost. `loadVisibleSession` runs on most session routes, and the
+ * overwhelmingly common caller is a user reading their OWN session, so skipping
+ * it there keeps this change off the hot path entirely.
+ *
+ * The `false` reported in the skipped cases is never read as a fact about the
+ * session: its one consumer is the predicate above, which discards it.
+ */
+function ownerIsMachineCanMatter(isOwner: boolean, canManageProject: boolean): boolean {
+  return !isOwner && canManageProject;
+}
+
+/**
+ * Does this session have a MACHINE owner rather than a human one?
+ *
+ * True when `created_by` is empty, or names a service account of this account —
+ * the identity every trigger/agent run is stamped with. It is the one case
+ * where a project manager governs sharing, because no human is there to.
+ *
+ * Deliberately a POSITIVE test for "is a service account" and not a negative
+ * test for "is an account member": a lookup failure, a removed user, or a stale
+ * principal all answer `false` and keep the session owner-only. Denying a
+ * manager is recoverable; widening a private session is not.
+ */
+export async function sessionOwnerIsMachine(
+  accountId: string,
+  createdBy: string | null,
+): Promise<boolean> {
+  if (!createdBy) return true;
+  return loadPrincipalIsServiceAccount(accountId, createdBy);
+}
+
 /**
  * Does this caller carry its user's project-management standing?
  *
@@ -111,8 +172,8 @@ async function loadProjectSessionRow(
  * Keyed on the AGENT binding, never on `callerSessionId`. That field holds the
  * SUPABASE LOGIN session id for every signed-in human (middleware/auth.ts:285,
  * :341), so keying on it would strip managers of `canManageProject` — and with
- * it `canManageSharing` — producing a 403 on stop, restart, delete,
- * change-sharing and change-model for every manager who is not the owner.
+ * it `canManageLifecycle` — producing a 403 on stop, restart, delete and
+ * change-model for every manager who is not the owner.
  *
  * Pure and exported for unit tests, like shouldApplyAdminBypass above.
  */
@@ -159,7 +220,12 @@ export async function loadVisibleSession(
   grants: SecretGrant[];
   isOwner: boolean;
   canManageProject: boolean;
+  /** Stop / restart / delete / model — manager-tier, unchanged. */
+  canManageLifecycle: boolean;
+  /** Who may open the session — owner-governed. See mayManageSessionSharing. */
   canManageSharing: boolean;
+  /** True when `created_by` names a service account (or nobody). */
+  ownerIsMachine: boolean;
 } | null> {
   const row = await loadProjectSessionRow(loaded, sessionId);
   if (!row) return null;
@@ -212,26 +278,41 @@ export async function loadVisibleSession(
     });
   }
   const isOwner = row.createdBy === loaded.userId;
-  return { row, subject, grants, isOwner, canManageProject, canManageSharing: isOwner || canManageProject };
+  const ownerIsMachine = ownerIsMachineCanMatter(isOwner, canManageProject)
+    ? await sessionOwnerIsMachine(loaded.row.accountId, row.createdBy)
+    : false;
+  return {
+    row,
+    subject,
+    grants,
+    isOwner,
+    canManageProject,
+    canManageLifecycle: isOwner || canManageProject,
+    canManageSharing: mayManageSessionSharing({ isOwner, canManageProject, ownerIsMachine }),
+    ownerIsMachine,
+  };
 }
 
 /**
- * Load a session for SHARING-MANAGEMENT purposes (the public-shares CRUD
- * routes) — a narrower, distinct question from `loadVisibleSession`'s "can
- * this user read the session's content/transcript".
+ * Load a session for PUBLIC-SHARE management — a distinct question from
+ * `loadVisibleSession`'s "can this user read the session's content".
  *
- * Managing a session's public share links is a project-management action:
- * the session's creator always can, and a project manager/owner/admin can
- * too, REGARDLESS of the session's private-content `visibility`. Reusing
- * `loadVisibleSession` here was a bug — a private session (the default)
- * is invisible to everyone but its creator under `isSessionVisibleTo`, so
- * the `canManageProject` half of `canManageSharing` could never be reached:
- * the route always 404'd on the visibility gate first, even for a real
- * project manager. A project member with no manage rights (e.g. a plain member
- * who didn't create the session) still gets a truthful 403 (permission
- * denied) here, not a 404 (resource hidden) — they're a legitimate member of
- * the project the session lives in, not a stranger, so there's nothing to
- * hide about the session's mere existence.
+ * Deliberately skips the content-visibility gate. Reusing `loadVisibleSession`
+ * here was a bug: a private session (the default) is invisible to everyone but
+ * its creator, so the route 404'd before any permission check ran, even for a
+ * real project manager. A project member with no manage rights still gets a
+ * truthful 403 (permission denied) here, not a 404 (resource hidden) — they
+ * are a legitimate member of the project the session lives in, not a stranger.
+ *
+ * Two verdicts come back, and the routes must not confuse them:
+ *
+ *  - `canManageLifecycle` (owner OR manager) lists and REVOKES share links.
+ *    Revoking only ever removes access, so a manager killing a leak on a
+ *    session they cannot read is exactly the operation you want available.
+ *  - `canManageSharing` (see mayManageSessionSharing) MINTS them. A public
+ *    share link is unauthenticated, so a manager minting one against a private
+ *    session they cannot read would hand themselves the content the visibility
+ *    gate denied them — the same escalation the member-sharing rule closes.
  */
 export async function loadSessionForSharing(
   loaded: { row: ProjectRow; userId: string; effectiveRole: ProjectRole },
@@ -248,7 +329,11 @@ export async function loadSessionForSharing(
   row: ProjectSessionRow;
   isOwner: boolean;
   canManageProject: boolean;
+  /** List + revoke a public share — manager-tier: revoking only ever removes access. */
+  canManageLifecycle: boolean;
+  /** MINT a public share — owner-governed, same rule as member sharing. */
   canManageSharing: boolean;
+  ownerIsMachine: boolean;
 } | null> {
   const row = await loadProjectSessionRow(loaded, sessionId);
   if (!row) return null;
@@ -264,7 +349,17 @@ export async function loadSessionForSharing(
   }
   const isOwner = row.createdBy === loaded.userId;
   const canManageProject = roleAllows(loaded.effectiveRole, 'manage');
-  return { row, isOwner, canManageProject, canManageSharing: isOwner || canManageProject };
+  const ownerIsMachine = ownerIsMachineCanMatter(isOwner, canManageProject)
+    ? await sessionOwnerIsMachine(loaded.row.accountId, row.createdBy)
+    : false;
+  return {
+    row,
+    isOwner,
+    canManageProject,
+    canManageLifecycle: isOwner || canManageProject,
+    canManageSharing: mayManageSessionSharing({ isOwner, canManageProject, ownerIsMachine }),
+    ownerIsMachine,
+  };
 }
 
 

@@ -193,7 +193,7 @@ projectsApp.openapi(
     // Restart is reserved for the session owner or an account owner/admin.
     const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null, callerKortixSessionId(c));
     if (!visible) return c.json({ error: 'Not found' }, 404);
-    if (!visible.canManageSharing) {
+    if (!visible.canManageLifecycle) {
       return c.json(
         {
           error: 'Only the session owner or an account owner/admin can restart this session',
@@ -255,7 +255,7 @@ projectsApp.openapi(
     // as restart.
     const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null, callerKortixSessionId(c));
     if (!visible) return c.json({ error: 'Not found' }, 404);
-    if (!visible.canManageSharing) {
+    if (!visible.canManageLifecycle) {
       return c.json(
         { error: 'Only the session owner or an account owner/admin can stop this session' },
         403,
@@ -343,7 +343,7 @@ projectsApp.openapi(
 
     // A read, not a mutation: the 'read' tier plus the session-content leaf,
     // exactly like GET /sessions/:sessionId. No agent-scope assert and no
-    // canManageSharing check — an agent may ask whether its own turn is live,
+    // canManageLifecycle check — an agent may ask whether its own turn is live,
     // and a shared viewer may see that the session is busy.
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);

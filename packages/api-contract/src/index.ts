@@ -940,7 +940,10 @@ export const ProjectSessionSchema = z.object({
   secrets_allowlist: SessionSecretsAllowlistSchema.nullable(),
   sharing: SharingIntentSchema,
   is_owner: z.boolean(),
+  /** May change WHO CAN OPEN this session — the owner's call, not a manager's. */
   can_manage_sharing: z.boolean(),
+  /** May stop / restart / delete it and change its model — owner or project manager. */
+  can_manage_lifecycle: z.boolean().optional(),
   can_access: z.boolean().optional(),
   runtime_status: z
     .enum(['provisioning', 'active', 'stopped', 'error', 'archived'])

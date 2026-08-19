@@ -942,11 +942,17 @@ export async function refreshGatewayCatalogFile(opts: {
   const base = liveModels ?? currentModels
   // Nothing live and nothing on disk: leave the caller on the boot catalog.
   if (!base) return null
-  const composed = withManagedOverlay(base, liveManaged)
+  // Remote JSON becomes OpenCode's provider config on the next start — rebuild
+  // it to a known shape before it reaches the disk (see sanitizeCatalogForDisk).
+  const composed = sanitizeCatalogForDisk(withManagedOverlay(base, liveManaged))
+  if (!composed) return null
   // `changed` is computed on the COMPOSED result, so a managed model that only
   // the overlay carries still trips the controlled OpenCode restart in the
   // warm-fork adoption path (OpenCode reads provider models at process start).
-  const changed = !isDeepStrictEqual(currentModels, composed)
+  // Both sides go through the same normalizer: a raw baked file vs a sanitized
+  // rewrite must not read as a change, or every adoption would force a restart.
+  const current = currentModels ? sanitizeCatalogForDisk(currentModels) : null
+  const changed = !isDeepStrictEqual(current, composed)
   mkdirSync(dirname(opts.targetCatalogFile), { recursive: true })
   writeFileSync(opts.targetCatalogFile, JSON.stringify({ models: composed }), { mode: 0o600 })
   logger.info('[opencode] refreshed authenticated gateway catalog', {

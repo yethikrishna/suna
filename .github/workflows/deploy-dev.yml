@@ -1,10 +1,11 @@
 name: Deploy Dev
 
-# DEV pipeline. `main` is the dev branch: every push auto-deploys the things that
-# change on most commits — API, frontend, CLI — as a DEV build versioned
-# `<next>-dev.<sha8>`, where <next> is one patch above the latest published
-# release tag (see the dev-version job). So dev tracks prod automatically and
-# `main` carries no release-version bump.
+# DEV pipeline. `main` is the dev branch. Deploys are EXPLICIT (the Deploy Dev
+# button / `workflow_dispatch`), NOT per-push — see the `on:` block for why. A
+# dispatch builds the things that changed since dev's live sha (or all/frontend
+# on demand) as a DEV build versioned `<next>-dev.<sha8>`, where <next> is one
+# patch above the latest published release tag (see the dev-version job). So a
+# dev deploy tracks prod's version line and `main` carries no release-version bump.
 #
 #   - API image   → kortix/kortix-api:dev-<sha8> + :dev-latest, deployed to dev
 #                   via ECS Fargate. dev-api.kortix.com
@@ -25,18 +26,27 @@ name: Deploy Dev
 # the single unified vX.Y.Z release bundling API + frontend + CLI + desktop.
 
 on:
-  push:
-    branches: [main]
+  # DEV DEPLOYS ARE EXPLICIT — NOT on every push to main. main is a high-traffic
+  # trunk; auto-deploying each push meant deploys queued/cancelled all day and
+  # nobody could tell which sha was live. Now you deploy on demand (the button
+  # below), which collapses a burst of pushes into ONE intentional deploy of
+  # main HEAD. A once-daily safety-net run keeps dev from silently going stale.
   workflow_dispatch:
     inputs:
       surface:
-        description: Surface to deploy from a manual branch run
+        description: What to deploy (main HEAD)
         type: choice
         required: true
-        default: all
+        default: changed
         options:
-          - all
-          - frontend
+          - changed   # only surfaces stale vs what dev currently runs (fast — the default)
+          - all       # force-rebuild + redeploy every surface
+          - frontend  # frontend only
+  schedule:
+    # Safety net only: once a day, deploy whatever changed since the last dev
+    # deploy. Keeps dev current if nobody dispatched — never a substitute for
+    # the explicit button. 06:00 UTC = a quiet hour.
+    - cron: '0 6 * * *'
 
 # One group for every surface, and it must NOT cancel what is already running.
 #
@@ -79,7 +89,10 @@ jobs:
           fetch-depth: 0
       - name: Resolve deploy base (what dev is actually running)
         id: base
-        if: github.event_name == 'push'
+        # Runs for the change-diffing paths: the daily safety-net schedule, and an
+        # explicit dispatch with surface=changed. surface=all / surface=frontend
+        # force their own set below and skip this.
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.surface == 'changed')
         run: |
           # THE FLAKY-SKIP FIX. The old filter diffed `github.event.before..sha`
           # — the commits in THIS push only. But `cancel-in-progress: false`
@@ -185,20 +198,19 @@ jobs:
             api=true; apps_router=true; gateway=true; frontend=true; cli=true; terraform=true
           fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ "${{ inputs.surface }}" = "frontend" ]; then
-              api=false
-              apps_router=false
-              gateway=false
-              frontend=true
-              cli=false
-              terraform=false
-            else
-              api=true
-              apps_router=true
-              gateway=true
-              frontend=true
-              terraform=true
-            fi
+            case "${{ inputs.surface }}" in
+              frontend)
+                api=false; apps_router=false; gateway=false
+                frontend=true; cli=false; terraform=false ;;
+              all)
+                api=true; apps_router=true; gateway=true
+                frontend=true; cli=true; terraform=true ;;
+              changed)
+                # Keep the path-filter outputs — they were diffed against the sha
+                # dev actually runs (the base step above), so only stale surfaces
+                # build. force_all already covered the "deployed sha unknown" case.
+                : ;;
+            esac
           fi
           {
             echo "api=$api"

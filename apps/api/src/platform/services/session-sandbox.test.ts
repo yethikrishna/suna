@@ -476,7 +476,7 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     expect(labels).toContain('network-secrets:create:1');
   });
 
-  test('the fast flag selects the shared fast image without changing the project template', async () => {
+  test('the fast flag keeps the standard image so the edge optimization stays isolated', async () => {
     process.env.KORTIX_FAST_COLD_BOOT_ENABLED = 'true';
     const opened = waitFor((resolve) => {
       onComputeOpened = resolve;
@@ -485,16 +485,15 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     await provisionSessionSandbox(baseOpts());
     await opened;
 
-    expect(fastImageRequests).toEqual([{ source: 'session-start', provider: 'daytona' }]);
-    expect(imageRequests).toEqual([]);
+    expect(fastImageRequests).toEqual([]);
+    expect(imageRequests).toHaveLength(1);
     const finishCall = updateCalls.find(
       (call) =>
         call.table === sessionSandboxes && 'externalId' in call.updates && 'config' in call.updates,
     );
     expect(finishCall?.updates.metadata).toMatchObject({
       runtimeArtifact: {
-        providerArtifactRef: 'kortix-fast-dev-test',
-        runtimeProfile: 'fast',
+        providerArtifactRef: 'snap-test-1',
       },
     });
   });

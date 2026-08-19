@@ -116,6 +116,7 @@ import {
 } from '@/lib/utils/kortix-system-tags';
 import { useChatSendStore } from '@/stores/chat-send-store';
 import { useKortixComputerStore } from '@/stores/kortix-computer-store';
+import { useFirstPromptPreviewStore } from '@/stores/session-composer-handoff-store';
 import { useMessageJumpStore } from '@/stores/message-jump-store';
 import { useOnboardingModeStore } from '@/stores/onboarding-mode-store';
 import { useSessionBrowserStore } from '@/stores/session-browser-store';
@@ -2538,6 +2539,7 @@ export function SessionChat({
   );
   const queuedMessages = queueRows.queued;
   const failedQueuedMessages = queueRows.failed;
+
   // A row the server has CLAIMED is on the wire; locking it against
   // edit/remove/reorder is the same rule as before.
   const queueInFlightIds = queueRows.inFlightIds;
@@ -2838,6 +2840,30 @@ export function SessionChat({
   useEffect(() => {
     stableTurnsRef.current = turns;
   }, [turns]);
+  // The first prompt as its producer left it for the boot shell — drawn here
+  // too, inert, until the transcript or the inbox has the real thing, then
+  // released. See `useFirstPromptPreviewStore`.
+  const firstPromptPreview = useFirstPromptPreviewStore((state) =>
+    projectSessionId ? (state.previewBySession[projectSessionId] ?? null) : null,
+  );
+  const clearFirstPromptPreview = useFirstPromptPreviewStore((state) => state.clearFirstPromptPreview);
+  // "The transcript has it" means a user message WITH text on screen — the
+  // info frame and the text part arrive separately, and a bubble with no text
+  // renders nothing. Until then the preview stands in.
+  const transcriptShowsFirstPrompt = useMemo(
+    () =>
+      turns.some((turn) =>
+        turn.userMessage.parts.some(
+          (part) => isTextPart(part) && !!part.text?.trim() && !(part as { synthetic?: boolean }).synthetic,
+        ),
+      ),
+    [turns],
+  );
+  const showFirstPromptPreview = !!firstPromptPreview && !transcriptShowsFirstPrompt;
+  useEffect(() => {
+    if (!projectSessionId || !firstPromptPreview) return;
+    if (transcriptShowsFirstPrompt) clearFirstPromptPreview(projectSessionId);
+  }, [projectSessionId, firstPromptPreview, transcriptShowsFirstPrompt, clearFirstPromptPreview]);
 
   /**
    * One scan of the transcript, not one per turn.
@@ -2872,7 +2898,8 @@ export function SessionChat({
   const hasAnyMessages = turns.length > 0;
   // A pending inbox row counts as content: the session HAS the user's message
   // (durably), so the welcome overlay must not paint over the queue strip.
-  const hasChatContent = hasAnyMessages || promptInbox.prompts.length > 0;
+  const hasChatContent =
+    hasAnyMessages || promptInbox.prompts.length > 0 || firstPromptPreview !== null;
   // Full-bleed wallpaper layer mounted by SessionLayout (null on mobile /
   // standalone). When present, the welcome wallpaper is portaled into it so it
   // spans the entire session width instead of shrinking with the chat panel.
@@ -4287,6 +4314,18 @@ export function SessionChat({
                       </div>
                     )}
                     <ToolActivateContext.Provider value={toolActivate}>
+                      {/* The first prompt's producer copy (`useFirstPromptPreviewStore`) —
+                          at full opacity, ABOVE the turns: the transcript's own user message
+                          can arrive as an info frame with no text yet, and its turn (with
+                          the working indicator) must read as sitting under this bubble, not
+                          over it. Gone the frame the transcript shows the text. */}
+                      {showFirstPromptPreview && firstPromptPreview && queuedMessages.length === 0 && (
+                        <QueuedPromptBubbles
+                          emphasis="live"
+                          queued={[{ id: `preview:${projectSessionId ?? sessionId}`, text: firstPromptPreview.text }]}
+                          inFlightIds={[`preview:${projectSessionId ?? sessionId}`]}
+                        />
+                      )}
                       {turns.map((turn, turnIndex) => {
                         // Check if this turn is a compaction summary
                         const hasCompaction =
@@ -4415,12 +4454,16 @@ export function SessionChat({
                     />
                     {/* Prompts queued at the SERVER, not yet in the transcript:
                         drawn as the dimmed user bubbles they are about to become.
-                        The composer carries no queue strip any more. */}
+                        The composer carries no queue strip any more. The first
+                        prompt's producer copy (`useFirstPromptPreviewStore`)
+                        stands in until either the row or the transcript has it,
+                        so the bubble the boot shell drew never blinks out in the
+                        crossfade. */}
                     <QueuedPromptBubbles
                       className={turns.length > 0 ? 'mt-12' : undefined}
                       queued={queuedMessages}
-                      failed={failedQueuedMessages}
                       inFlightIds={queueInFlightIds}
+                      failed={failedQueuedMessages}
                       held={queueRows.held}
                       onRemove={handleRemoveQueuedMessage}
                       onSendNow={handleQueueSendNow}

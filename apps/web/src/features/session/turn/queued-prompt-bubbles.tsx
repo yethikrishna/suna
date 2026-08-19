@@ -147,6 +147,12 @@ export function QueuedPromptControls({
 
 export interface QueuedPromptBubblesProps {
   queued: QueuedPromptRow[];
+  /**
+   * `queued` (default) draws the rows dimmed — prompts the agent has not
+   * reached. `live` draws them at full opacity: the first prompt's preview,
+   * which the agent IS on while the transcript catches up.
+   */
+  emphasis?: 'queued' | 'live';
   failed?: QueuedPromptRow[];
   /** Rows the server already handed to OpenCode: rendered, inert. */
   inFlightIds?: ReadonlySet<string> | string[];
@@ -161,12 +167,14 @@ export interface QueuedPromptBubblesProps {
 function QueuedBubble({
   row,
   state,
+  live = false,
   onRemove,
   onSendNow,
   onRetry,
 }: {
   row: QueuedPromptRow;
   state: QueuedPromptState;
+  live?: boolean;
   onRemove?: (id: string) => void;
   onSendNow?: (id: string) => void;
   onRetry?: (id: string) => void;
@@ -182,7 +190,7 @@ function QueuedBubble({
         className={cn(
           BUBBLE_SURFACE,
           'w-fit transition-opacity duration-500',
-          failed ? 'opacity-90' : QUEUED_BUBBLE_OPACITY_CLASS,
+          failed ? 'opacity-90' : live ? 'opacity-100' : QUEUED_BUBBLE_OPACITY_CLASS,
         )}
       >
         <div className={cn('max-w-full min-w-0 max-h-[200px] overflow-hidden', BUBBLE_TEXT)}>
@@ -216,6 +224,7 @@ function QueuedBubble({
 
 export function QueuedPromptBubbles({
   queued,
+  emphasis = 'queued',
   failed = [],
   inFlightIds,
   held = false,
@@ -237,6 +246,7 @@ export function QueuedPromptBubbles({
           key={row.id}
           row={row}
           state={inFlight.has(row.id) ? 'in-flight' : held ? 'held' : 'queued'}
+          live={emphasis === 'live'}
           onRemove={onRemove}
           onSendNow={onSendNow}
         />

@@ -120,14 +120,9 @@ export async function loadVisibleSession(
   const subject = await resolveShareSubject(loaded.userId);
   const grants = (await loadSessionGrants([sessionId])).get(sessionId) ?? [];
   const ownership = { origin: row.origin ?? null, sessionId, callerSessionId };
-  // Project-management standing is a property of the HUMAN caller, not of a
-  // credential bound to one session. A session-bound token stays limited to its
-  // own session; granting it `manage` here would hand it the trigger-session
-  // override in isProjectSessionVisibleTo and let it read sibling sessions.
-  let canManageProject = callerSessionId === null && roleAllows(loaded.effectiveRole, 'manage');
+  let canManageProject = roleAllows(loaded.effectiveRole, 'manage');
   if (
     !canManageProject &&
-    callerSessionId === null &&
     isSessionTargetVisibleToCaller(ownership) &&
     isTriggerCreatedSessionMetadata(row.metadata)
   ) {

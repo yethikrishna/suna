@@ -259,7 +259,7 @@ export interface SessionChatInputProps {
  * the only thing keeping the card off the edge.
  *
  * 16px is not arbitrary — it is the transcript's own gutter (`session-chat.tsx`:
- * `mx-auto w-full max-w-3xl min-w-0 px-4 py-6 pb-32`). Whenever the column is
+ * `mx-auto w-full max-w-3xl min-w-0 px-4 pt-6`). Whenever the column is
  * narrower than either max-width — every panel-open case — the card's edges
  * land on exactly the same rails as the messages above it.
  *

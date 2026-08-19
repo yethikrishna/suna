@@ -141,11 +141,10 @@ describe('ONE prompt = ONE id = ONE bubble, from Enter', () => {
     const send = between(chat, 'const result = await (async () => {', 'if (!result.ok) {');
     expect(send).toContain('messageId: messageID,');
     expect(send).toContain('recoverFromSendFailure(sessionId, messageID, cause');
-    // Marked BEFORE the POST, next to dispatch: the enqueue promise settles
-    // after its cache invalidation, so the row is on the server — and an
-    // abort frame can sweep an unprotected bubble — before it returns.
-    const dispatch = between(chat, 'markOptimisticSendDispatched(sessionId, messageID);', 'noteSendReceipt(clientMessageId);');
-    expect(dispatch).toContain('markOptimisticSendInboxBacked(sessionId, messageID);');
+    // Marked in the SAME tick as the paint, before the first await: an idle
+    // frame from a short previous turn used to sweep the bubble mid-send.
+    const paint = between(chat, 'beginOptimisticSend(sessionId, messageID, optimisticText, [textPartId]);', 'const sendingIntoRunningTurn');
+    expect(paint).toContain('markOptimisticSendInboxBacked(sessionId, messageID);');
   });
 
   test('a row already on screen — by id or by re-mint alias — is never a queued bubble', () => {

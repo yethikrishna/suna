@@ -653,6 +653,12 @@ interface SessionTurnProps {
   onQueueRemove?: (promptId: string) => void;
   onQueueSendNow?: (promptId: string) => void;
   onQueueRetry?: (promptId: string) => void;
+  /**
+   * A Stop ended the turn before a step opened under this user message: the
+   * runtime holds it and runs it with the next send. Drawn dimmed like any
+   * queued prompt, with the meta row saying so.
+   */
+  interruptedBeforeRun?: boolean;
   /** Whether this turn contains a compaction */
   isCompaction?: boolean;
   /** Providers data for the Connect Provider dialog */
@@ -751,6 +757,7 @@ function SessionTurnImpl({
   onQueueRemove,
   onQueueSendNow,
   onQueueRetry,
+  interruptedBeforeRun,
   isCompaction,
   providers,
   commandMessages,
@@ -813,8 +820,13 @@ function SessionTurnImpl({
   // Only while the bubble is still WAITING (dimmed) — or has something to
   // say regardless (held, failed). A row that reads `delivering` for the rest
   // of the turn in front of it must not label a bubble the agent has reached.
-  const queueState =
-    rowState && (pending || rowState === 'held' || rowState === 'failed') ? rowState : null;
+  const queueState: QueuedPromptState | null =
+    rowState && (pending || rowState === 'held' || rowState === 'failed')
+      ? rowState
+      : interruptedBeforeRun
+        ? 'interrupted'
+        : null;
+
   const activeAssistantMessage = useMemo(() => {
     if (turn.assistantMessages.length === 0) return undefined;
     for (let i = turn.assistantMessages.length - 1; i >= 0; i--) {
@@ -1450,9 +1462,12 @@ function SessionTurnImpl({
 			    (e.g. background task notification with only synthetic parts). */}
       {hasVisibleUserContent && (
         <div
-          data-turn-pending={pending || undefined}
+          data-turn-pending={pending || interruptedBeforeRun || undefined}
           data-turn-queue-state={queueState ?? undefined}
-          className={cn('transition-opacity duration-500', pending && QUEUED_BUBBLE_OPACITY_CLASS)}
+          className={cn(
+            'transition-opacity duration-500',
+            (pending || interruptedBeforeRun) && QUEUED_BUBBLE_OPACITY_CLASS,
+          )}
         >
           <UserMessage
             message={turn.userMessage}
@@ -1464,7 +1479,9 @@ function SessionTurnImpl({
             onRewind={onRewind}
             rewindDisabled={rewindDisabled}
             leadingActions={
-              queueRow && queueState ? (
+              queueState === 'interrupted' ? (
+                <QueuedPromptControls id={turn.userMessage.info.id} state="interrupted" />
+              ) : queueRow && queueState ? (
                 <QueuedPromptControls
                   id={queueRow.prompt_id}
                   state={queueState}
@@ -2642,10 +2659,7 @@ export function SessionChat({
     prevMsgLenRef.current = messages?.length || 0;
   }, [messages?.length]);
 
-  // ---- Auto-scroll (replaces inline scroll logic) ----
-  const hasActiveQuestion = useRuntimePendingStore((s) =>
-    Object.values(s.questions).some((q) => q.sessionID === sessionId),
-  );
+  // ---- Auto-scroll: see use-auto-scroll.ts (room + end + follow) ----
   const messageCount = messages?.length ?? 0;
   const {
     scrollRef,
@@ -2653,13 +2667,10 @@ export function SessionChat({
     spacerElRef,
     showScrollButton,
     scrollToBottom,
-    scrollToLastTurn,
-    scrollToEnd,
-    scrollToAbsoluteBottom,
     smoothScrollToAbsoluteBottom,
     anchorTurn,
+    startAtTop,
   } = useAutoScroll({
-    working: isBusy && !hasActiveQuestion,
     hasContent: messageCount > 0,
   });
   // Older history loads by scrolling, not by clicking: a sentinel above the
@@ -2714,8 +2725,9 @@ export function SessionChat({
 
   // Scroll to the bottom on initial load / session change.
   // Uses a callback ref on the scroll container to guarantee it's mounted.
-  // Strategy: start scrolled to ~90% instantly (no flash at top), then
-  // smooth-scroll the last bit once content has rendered for a nice effect.
+  // A session opens at its end: `useAutoScroll` follows from the first layout
+  // (no near-bottom-then-smooth choreography, which fought the follow). The
+  // one exception is a sub-session viewed from its start.
   const initialScrollDoneRef = useRef<string | null>(null);
   const scrollContainerCallbackRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -2724,37 +2736,10 @@ export function SessionChat({
       if (!node) return;
       if (initialScrollDoneRef.current === sessionId) return;
       initialScrollDoneRef.current = sessionId;
-
-      // When viewing a sub-session from the top, don't scroll to bottom
-      if (initialScrollTop) {
-        node.scrollTop = 0;
-        return;
-      }
-
-      // Instant scroll to near-bottom so user doesn't see top-of-page flash.
-      // Position slightly above the bottom so the smooth scroll has room to animate.
-      const scrollNearBottom = () => {
-        const max = node.scrollHeight - node.clientHeight;
-        node.scrollTop = Math.max(0, max - 300);
-      };
-      scrollNearBottom();
-
-      // After content settles, smooth scroll the final stretch to the bottom.
-      setTimeout(() => {
-        node.scrollTo({
-          top: node.scrollHeight - node.clientHeight,
-          behavior: 'smooth',
-        });
-      }, 150);
-      // Follow-up in case async content changed scrollHeight
-      setTimeout(() => {
-        node.scrollTo({
-          top: node.scrollHeight - node.clientHeight,
-          behavior: 'smooth',
-        });
-      }, 600);
+      if (initialScrollTop) startAtTop();
+      else scrollToBottom();
     },
-    [sessionId, scrollRef, initialScrollTop],
+    [sessionId, scrollRef, initialScrollTop, startAtTop, scrollToBottom],
   );
 
   // Tab switch: the DOM stays mounted (hidden class), so the browser
@@ -2890,6 +2875,23 @@ export function SessionChat({
     [turns, working.turnId],
   );
   const pendingTurnIds = useMemo(() => new Set(workingTurn.pendingTurnIds), [workingTurn]);
+  // User messages a Stop stranded: the session is idle, the newest turn with
+  // content ended by abort, and these came after it with nothing under them.
+  // The runtime holds them; nothing runs them until the next send.
+  const interruptedTurnIds = useMemo(() => {
+    if (lastTurnWorking) return new Set<string>();
+    let newestWithContent = -1;
+    for (let i = turns.length - 1; i >= 0; i--) {
+      if (turns[i].assistantMessages.length > 0) {
+        newestWithContent = i;
+        break;
+      }
+    }
+    if (newestWithContent < 0 || newestWithContent === turns.length - 1) return new Set<string>();
+    const last = turns[newestWithContent].assistantMessages.at(-1);
+    if (!last || !isAbortError((last.info as { error?: unknown }).error)) return new Set<string>();
+    return new Set(turns.slice(newestWithContent + 1).map((t) => t.userMessage.info.id));
+  }, [turns, lastTurnWorking]);
   /** Hoisted out of the JSX: an inline arrow prop defeats `React.memo` by itself. */
   const handleRewind = useCallback(
     (messageId: string, text: string) => setRewindTarget({ messageId, text }),
@@ -3270,6 +3272,15 @@ export function SessionChat({
       // `resolveWorkingTurn`) and comes up to full opacity when the agent
       // reaches it; nothing else changes about it, ever.
       beginOptimisticSend(sessionId, messageID, optimisticText, [textPartId]);
+      // Inbox-backed from THIS tick, before the first `await` below: the row it
+      // becomes is durable, and this send's own failure paths
+      // (`abandonOptimisticSend`, `recoverFromSendFailure`) are the ONLY things
+      // allowed to take the bubble away. Between short turns the runtime emits
+      // `session.idle` frames every few seconds; one landing during the
+      // attachment build below used to sweep the bubble as "unconfirmed" — it
+      // vanished, and came back seconds later under the echo, beside a queued
+      // row that no longer had a transcript twin to hide behind.
+      markOptimisticSendInboxBacked(sessionId, messageID);
       const sendingIntoRunningTurn = isBusyRef.current;
 
       // Anchor the new user message at the top of the viewport.
@@ -3423,13 +3434,6 @@ export function SessionChat({
       // happened. The result was every message rendering twice for the whole
       // turn, until the session went idle and the optimistic sweep ran.
       markOptimisticSendDispatched(sessionId, messageID);
-      // And it is INBOX-BACKED from the same instant: the row it becomes is
-      // durable, and this send's own failure path (`recoverFromSendFailure`,
-      // below) is the ONLY thing allowed to take the bubble away. Not after
-      // the POST resolves — `enqueue` settles after its cache invalidation, so
-      // the row is on the server (and a Stop's abort frame can sweep an
-      // unprotected bubble) hundreds of ms before that promise returns.
-      markOptimisticSendInboxBacked(sessionId, messageID);
 
       const selectedAgent = typeof sendOpts?.agent === 'string' ? sendOpts.agent : null;
       const selectedVariant = typeof sendOpts?.variant === 'string' ? sendOpts.variant : null;
@@ -4255,7 +4259,18 @@ export function SessionChat({
                 <div
                   ref={contentRef}
                   role="log"
-                  className="mx-auto w-full max-w-3xl min-w-0 px-4 py-6 pb-32 md:pr-1"
+                  // `pt-6`, and NO bottom padding: the space under the last
+                  // message is the spacer's job alone (use-auto-scroll.ts).
+                  // The composer is a FLOW sibling of this scroll area (see the
+                  // column below the header), not an overlay, so the `pb-32`
+                  // that used to sit here was 128px of dead space stacked under
+                  // every transcript on top of the spacer — the "extra inset at
+                  // the bottom of the session".
+                  // 12px more inset than the composer on both sides
+                  // (`COMPOSER_SHELL_CLASS` is `px-4 md:pr-1`): the input card
+                  // reads slightly WIDER than the conversation column, so a
+                  // right-aligned bubble never sits flush with the card's edge.
+                  className="mx-auto w-full max-w-3xl min-w-0 px-7 pt-6 md:pr-4"
                 >
                   <div className="flex min-w-0 flex-col">
                     {isOptimisticCompacting && !hasCompactionTurn && (
@@ -4388,6 +4403,7 @@ export function SessionChat({
                               onQueueRemove={handleRemoveQueuedMessage}
                               onQueueSendNow={handleQueueSendNow}
                               onQueueRetry={handleRetryQueuedMessage}
+                              interruptedBeforeRun={interruptedTurnIds.has(turn.userMessage.info.id)}
                               isCompaction={hasCompaction}
                               providers={providers}
                               commandMessages={commandMessagesRef.current}
@@ -4476,11 +4492,12 @@ export function SessionChat({
                       <SessionBusyIndicator sessionId={sessionId} />
                     )}
                   </div>
-                  {/* Spacer — ensures the last message can scroll to the top of
-						    the viewport (ChatGPT-style). Without this, scrollToBottom
-						    only brings the last message to the bottom of the screen.
-						    Height is dynamically measured from the scroll container so
-						    the newest message appears flush at the top. */}
+                  {/* Spacer — the transcript's anchor space. It is sized from
+                      the scroll container so the newest turn
+                      can sit at the TOP of the viewport with the answer
+                      streaming in beneath it, and it keeps that height when the
+                      turn ends — nothing shifts on idle. Height is written
+                      directly by use-auto-scroll.ts. */}
                   <div ref={spacerElRef} />
                 </div>
               </div>

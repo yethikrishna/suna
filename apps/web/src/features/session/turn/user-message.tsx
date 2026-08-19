@@ -64,7 +64,6 @@ import {
 
 import { messageCreatedAt } from './message-time';
 import { MessageTimeLabel } from './message-time-label';
-import { useHasPlan } from './plan-card';
 
 // ============================================================================
 // Fixed channel brand colors + DCP (dynamic context pruning) notifications —
@@ -1004,12 +1003,11 @@ export function UserMessage({
     [attachments, uploadedFiles],
   );
 
-  // Full width is the PLAN's claim on the message, so it has to follow a plan
-  // that actually renders. `ownsPlan` alone doesn't: the anchor falls back to
-  // the last turn when nothing ever wrote todos, which stretched the bubble in
-  // sessions that have no plan at all.
-  const hasPlan = useHasPlan(sessionId);
-  const showPlan = ownsPlan && hasPlan;
+  // The bubble ALWAYS hugs its text. It used to take the full column when the
+  // turn "owned the plan" (`ownsPlan && useHasPlan`) — a claim from when the
+  // todo checklist rendered inside the bubble. The plan card lives under the
+  // turn now, and the anchor's fallback made a one-word message stretch across
+  // the whole column whenever any earlier turn had written todos.
 
   // Resolve effective command info: use runtime-tracked info or fall back to template matching
   const effectiveCommandInfo = useMemo(
@@ -1378,7 +1376,6 @@ export function UserMessage({
           canExpand={canExpand}
           expanded={expanded}
           onToggle={() => setExpanded(!expanded)}
-          fullWidth={showPlan}
           textId={`${message.info.id}-text`}
           textRef={textRef}
           replyContext={replyContext}

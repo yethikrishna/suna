@@ -42,7 +42,9 @@ export interface QueuedPromptRow {
  *  pending turn (`SessionTurn`) and this list agree. */
 export const QUEUED_BUBBLE_OPACITY_CLASS = 'opacity-50';
 
-export type QueuedPromptState = 'queued' | 'in-flight' | 'held' | 'failed';
+/** `interrupted`: the runtime holds the message but a Stop ended the turn
+ *  before a step opened under it — it runs with the next send. */
+export type QueuedPromptState = 'queued' | 'in-flight' | 'held' | 'failed' | 'interrupted';
 
 export function queuedPromptStatusLabel(state: QueuedPromptState, lastError?: string): string {
   switch (state) {
@@ -55,6 +57,8 @@ export function queuedPromptStatusLabel(state: QueuedPromptState, lastError?: st
       return 'Held — stopped';
     case 'failed':
       return lastError ? `Not sent — ${lastError}` : 'Not sent';
+    case 'interrupted':
+      return 'Queued — runs with your next message';
     default:
       return 'Queued';
   }
@@ -109,8 +113,13 @@ export function QueuedPromptControls({
 }) {
   const failed = state === 'failed';
   const inFlight = state === 'in-flight';
+  const interrupted = state === 'interrupted';
+  // An interrupted message has no controls: the runtime already holds it and
+  // the next send runs it — a button here only invited a duplicate.
   const showActions =
-    !inFlight && (Boolean(onRemove) || (failed && !!onRetry) || (state === 'held' && !!onSendNow));
+    !inFlight &&
+    !interrupted &&
+    (Boolean(onRemove) || (failed && !!onRetry) || (state === 'held' && !!onSendNow));
   return (
     <>
       <InlineMeta>

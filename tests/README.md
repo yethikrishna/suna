@@ -226,6 +226,77 @@ Each flow run writes `results.json` and `report.html` under
 `tests/test-results/<runId>/`. Use `results.json` to prove fixture and request
 counts. Do not infer those counts from source files.
 
+## Runner scheduling, retries, and load knobs
+
+The runner splits selected flows into three lanes.
+
+- **Parallel lanes** — `meta.serial` and `meta.global` unset. Split again into an
+  API lane and a live-sandbox lane by `requires: ['daytona']`.
+- **Serial lane** — `meta.serial`. Never runs beside another serial flow. It
+  runs at concurrency 1 *inside the same `Promise.all` as the parallel lanes*,
+  so it overlaps them instead of appending a sequential tail.
+- **Global lane** — `meta.global`. Runs last, one at a time, with nothing else
+  in flight. The three global flows each mutate state no flow owns: `BILL-13`
+  and `ADM-19` write every account on the deployment, `CONN-5` mutates
+  `kortix.yaml` on the shared managed repository.
+
+Mark a flow `serial` when it must not run beside its peers. Mark it `global`
+only when it must be the only thing running on the deployment.
+
+### Retry budgets
+
+Retries are budgeted per error class. Assertion failures never retry.
+
+| Class | Default attempts | Env knob |
+| --- | --- | --- |
+| Flow-level timeout (`flow X exceeded Nms`) | 1 | `KE2E_TIMEOUT_ATTEMPTS` |
+| Session-runtime readiness timeout | 2 | `KE2E_SESSION_RUNTIME_ATTEMPTS` |
+| Marked infra error (network, laundered 503) | 3 | `KE2E_FLOW_ATTEMPTS` |
+| Assertion failure or unmarked error | 1 | — |
+
+A flow-level timeout is a hang, not a blip: retrying it spends the full declared
+timeout again on the most expensive flows in the suite. `meta.retry.attempts`
+still overrides every class for one flow. `KE2E_DEFAULT_FLOW_ATTEMPTS` is the
+legacy name and stays a ceiling over every class — the local profile and the
+preview stack pin it to `1`.
+
+### Load knobs
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `KE2E_API_WORKERS` | 4 | API-lane concurrency. |
+| `KE2E_SANDBOX_WORKERS` | 4 | Live-sandbox-lane concurrency. |
+| `KE2E_PROVISION_CONCURRENCY` | 4 | Global cap on concurrent project provisions. Each provision creates a real managed GitHub repository, so this — not the worker counts — is the binding constraint on suite parallelism. |
+| `KE2E_PROVISION_RATE_LIMIT_BASE_DELAY_MS` | 15000 | First delay after a GitHub rate-limit response. Doubles per attempt with equal jitter. |
+| `KE2E_PROVISION_RATE_LIMIT_DELAY_MS` | 120000 | Ceiling for that backoff. |
+| `KE2E_TEARDOWN_WORKERS` | 8 | Concurrency for deleting synthesized users at teardown. |
+| `KE2E_GATEWAY_RETRIES` | 3 | In-request retries of a gateway-generated transient 502/503/504. |
+| `KE2E_RETRY_BASE_DELAY_MS` | 500 | Base for that retry's exponential backoff with full jitter. |
+| `KE2E_RETRY_MAX_DELAY_MS` | 8000 | Cap for that backoff. |
+| `KE2E_BREAKER_THRESHOLD` | 20 | Transient edge failures in the window that open the client circuit breaker. `0` disables it. |
+| `KE2E_BREAKER_WINDOW_MS` | 60000 | Rolling window for the breaker. |
+| `KE2E_FUNDING_OPTIONAL` | unset | `1` downgrades a fatal OWNER funding failure to a warning. |
+
+### Circuit breaker
+
+The HTTP client shares one process-wide breaker over laundered-503 and network
+failures. Once the deployment is observably overloaded, more retries are the
+problem: when the breaker is open the client stops retrying and stops marking
+the failure retryable, so the flow-level budget cannot re-amplify it either. The
+window is rolling, so the breaker closes on its own.
+
+Every transient response is logged with `describeEdgeResponse` — the
+`x-maintenance-mode` and `x-request-id` header pair that separates a Cloudflare
+worker laundering an origin failure (`edge-laundered`) from a genuine
+application 5xx (`origin`). Do not guess at which one a 503 was.
+
+### Failing fast on OWNER funding
+
+52 flows declare `requires: ['funded']`. When the target declares the `stripe`
+capability, a failed OWNER Stripe subscribe now throws during provisioning
+instead of degrading 52 flows to `skip` and reporting the red at the end of the
+run. Set `KE2E_FUNDING_OPTIONAL=1` to restore the warning-only behavior.
+
 ## Browser journeys
 
 Playwright exists only for behavior that requires a browser. Browser tests live

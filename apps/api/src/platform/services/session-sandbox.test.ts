@@ -36,10 +36,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { projectSessions, sessionSandboxes } from '@kortix/db';
 import { PgDialect } from 'drizzle-orm/pg-core';
-import { PROVISIONING_SESSION_STATUSES } from '../../projects/lib/session-status';
-import * as realAgents from '../../projects/agents';
-import * as realProviders from '../providers';
 import * as realComputeMetering from '../../billing/services/compute-metering';
+import * as realAgents from '../../projects/agents';
+import { PROVISIONING_SESSION_STATUSES } from '../../projects/lib/session-status';
+import * as realProviders from '../providers';
 
 const dialect = new PgDialect();
 
@@ -70,10 +70,11 @@ let stoppedIds: string[] = [];
 let onRemoved: (() => void) | null = null;
 let computeSessionsOpened: Array<{ sandboxId: string; accountId: string }> = [];
 let onComputeOpened: (() => void) | null = null;
-let recordedEvents: Array<{ outcome: string }> = [];
+let recordedEvents: Array<{ outcome: string; marks?: Array<{ label: string }> }> = [];
 let identityConflict = false;
 let recoveryPlaceholder = false;
 let providerCreateCalls = 0;
+let providerCreateOpts: Array<Record<string, unknown>> = [];
 let providerFallbackEnabled = false;
 let providerNamesRequested: string[] = [];
 let providerCreateErrors: Record<string, string | undefined> = {};
@@ -81,6 +82,8 @@ let imageRequests: Array<Record<string, unknown>> = [];
 let fastImageRequests: Array<Record<string, unknown>> = [];
 let accountTokenCreateCalls: Array<Record<string, unknown>> = [];
 let serviceAccountCreateCalls: Array<Record<string, unknown>> = [];
+let networkBoundaryBindings: Array<Record<string, unknown>> = [];
+let providerSyncCalls: Array<{ externalId: string; bindings: Array<Record<string, unknown>> }> = [];
 
 function compile(condition: unknown): { sql: string; params: unknown[] } {
   try {
@@ -127,10 +130,12 @@ mock.module('../../shared/db', () => ({
         where: (_cond: unknown) => ({
           limit: async (_n: number) => {
             if (table === projectSessions) {
-              return [{
-                status: scenario.projectSessionStatusAtCheck,
-                metadata: scenario.projectSessionMetadataAtCheck,
-              }];
+              return [
+                {
+                  status: scenario.projectSessionStatusAtCheck,
+                  metadata: scenario.projectSessionMetadataAtCheck,
+                },
+              ];
             }
             return [];
           },
@@ -157,18 +162,20 @@ mock.module('../../shared/db', () => ({
             recoveryPlaceholder = false;
             return updateResult(
               claimed
-                ? [{
-                    sandboxId: SANDBOX_ID,
-                    sessionId: SANDBOX_ID,
-                    accountId: ACCOUNT_ID,
-                    projectId: PROJECT_ID,
-                    provider: 'daytona',
-                    externalId: null,
-                    status: 'provisioning',
-                    baseUrl: null,
-                    config: {},
-                    metadata: { identityRecoveryAuthorizedAt: new Date().toISOString() },
-                  }]
+                ? [
+                    {
+                      sandboxId: SANDBOX_ID,
+                      sessionId: SANDBOX_ID,
+                      accountId: ACCOUNT_ID,
+                      projectId: PROJECT_ID,
+                      provider: 'daytona',
+                      externalId: null,
+                      status: 'provisioning',
+                      baseUrl: null,
+                      config: {},
+                      metadata: { identityRecoveryAuthorizedAt: new Date().toISOString() },
+                    },
+                  ]
                 : [],
             );
           }
@@ -187,29 +194,35 @@ mock.module('../providers', () => ({
   getProvider: (name: string) => {
     providerNamesRequested.push(name);
     return {
-    name,
-    provisioning: { async: true, stages: [{ id: 'boot', progress: 50, message: 'Booting…' }] },
-    create: async (_opts: unknown) => {
-      providerCreateCalls += 1;
-      if (providerCreateErrors[name]) throw new Error(providerCreateErrors[name]);
-      return {
-        externalId: name === 'daytona' ? EXTERNAL_ID : `ext-${name}-1`,
-        baseUrl: 'https://sandbox.test',
-        metadata: {},
-      };
-    },
-    remove: async (externalId: string) => {
-      removedIds.push(externalId);
-      onRemoved?.();
-    },
-    start: async () => {},
-    stop: async (externalId: string) => {
-      stoppedIds.push(externalId);
-    },
-    getStatus: async () => 'running',
-    resolveEndpoint: async () => ({ url: '', headers: {} }),
-    resolveProxyEndpoint: async () => ({ url: '', headers: {} }),
-  }},
+      name,
+      networkBoundaryAtCreate: name === 'platinum',
+      provisioning: { async: true, stages: [{ id: 'boot', progress: 50, message: 'Booting…' }] },
+      create: async (opts: Record<string, unknown>) => {
+        providerCreateCalls += 1;
+        providerCreateOpts.push(opts);
+        if (providerCreateErrors[name]) throw new Error(providerCreateErrors[name]);
+        return {
+          externalId: name === 'daytona' ? EXTERNAL_ID : `ext-${name}-1`,
+          baseUrl: 'https://sandbox.test',
+          metadata: {},
+        };
+      },
+      syncNetworkBoundary: async (externalId: string, bindings: Array<Record<string, unknown>>) => {
+        providerSyncCalls.push({ externalId, bindings });
+      },
+      remove: async (externalId: string) => {
+        removedIds.push(externalId);
+        onRemoved?.();
+      },
+      start: async () => {},
+      stop: async (externalId: string) => {
+        stoppedIds.push(externalId);
+      },
+      getStatus: async () => 'running',
+      resolveEndpoint: async () => ({ url: '', headers: {} }),
+      resolveProxyEndpoint: async () => ({ url: '', headers: {} }),
+    };
+  },
   WarmRuntimeUnavailableError: class WarmRuntimeUnavailableError extends Error {},
   SandboxTemplateNotFoundError: class SandboxTemplateNotFoundError extends Error {},
 }));
@@ -272,7 +285,11 @@ mock.module('./provider-events', () => ({
 // whatever unrelated file imports the missing name next, attributed to no test.
 mock.module('../../billing/services/compute-metering', () => ({
   ...realComputeMetering,
-  startComputeSession: async (input: { sandboxId: string; accountId: string; provider: string }) => {
+  startComputeSession: async (input: {
+    sandboxId: string;
+    accountId: string;
+    provider: string;
+  }) => {
     computeSessionsOpened.push(input);
     onComputeOpened?.();
   },
@@ -302,6 +319,10 @@ mock.module('../../shared/account-limits', () => ({
 
 mock.module('../../projects/triggers', () => ({
   readManifest: async () => null,
+}));
+
+mock.module('../../projects/lib/network-secret-boundary', () => ({
+  resolveSessionNetworkBoundary: async () => networkBoundaryBindings,
 }));
 
 mock.module('../../projects/agents', () => ({
@@ -346,6 +367,7 @@ beforeEach(() => {
   identityConflict = false;
   recoveryPlaceholder = false;
   providerCreateCalls = 0;
+  providerCreateOpts = [];
   providerFallbackEnabled = false;
   providerNamesRequested = [];
   providerCreateErrors = {};
@@ -353,6 +375,8 @@ beforeEach(() => {
   fastImageRequests = [];
   accountTokenCreateCalls = [];
   serviceAccountCreateCalls = [];
+  networkBoundaryBindings = [];
+  providerSyncCalls = [];
 });
 
 afterEach(() => {
@@ -410,7 +434,49 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     expect(imageRequests[0]).not.toHaveProperty('requireCurrentRuntime');
   });
 
-  test('the fast flag selects the shared fast image without changing the project template', async () => {
+  test('provider telemetry separates provider creation from network-boundary sync', async () => {
+    networkBoundaryBindings = [{ identifier: 'github', host: 'api.github.com' }];
+    const opened = waitFor((resolve) => {
+      onComputeOpened = resolve;
+    });
+
+    await provisionSessionSandbox(baseOpts());
+    await opened;
+
+    expect(providerSyncCalls).toEqual([
+      {
+        externalId: EXTERNAL_ID,
+        bindings: networkBoundaryBindings,
+      },
+    ]);
+    const labels =
+      recordedEvents.find((event) => event.outcome === 'ok')?.marks?.map((mark) => mark.label) ??
+      [];
+    expect(labels).toContain('provider-create:1x');
+    expect(labels).toContain('network-secrets:1');
+    expect(labels.indexOf('provider-create:1x')).toBeLessThan(labels.indexOf('network-secrets:1'));
+  });
+
+  test('the fast Platinum path attaches network-boundary secrets during create', async () => {
+    process.env.KORTIX_FAST_COLD_BOOT_ENABLED = 'true';
+    networkBoundaryBindings = [{ identifier: 'github', host: 'api.github.com' }];
+    const opened = waitFor((resolve) => {
+      onComputeOpened = resolve;
+    });
+
+    await provisionSessionSandbox({ ...baseOpts(), provider: 'platinum' });
+    await opened;
+
+    expect(providerCreateOpts).toHaveLength(1);
+    expect(providerCreateOpts[0]?.networkBoundary).toEqual(networkBoundaryBindings);
+    expect(providerSyncCalls).toEqual([]);
+    const labels =
+      recordedEvents.find((event) => event.outcome === 'ok')?.marks?.map((mark) => mark.label) ??
+      [];
+    expect(labels).toContain('network-secrets:create:1');
+  });
+
+  test('the fast flag keeps the standard image so the edge optimization stays isolated', async () => {
     process.env.KORTIX_FAST_COLD_BOOT_ENABLED = 'true';
     const opened = waitFor((resolve) => {
       onComputeOpened = resolve;
@@ -419,15 +485,15 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     await provisionSessionSandbox(baseOpts());
     await opened;
 
-    expect(fastImageRequests).toEqual([{ source: 'session-start', provider: 'daytona' }]);
-    expect(imageRequests).toEqual([]);
+    expect(fastImageRequests).toEqual([]);
+    expect(imageRequests).toHaveLength(1);
     const finishCall = updateCalls.find(
-      (call) => call.table === sessionSandboxes && 'externalId' in call.updates && 'config' in call.updates,
+      (call) =>
+        call.table === sessionSandboxes && 'externalId' in call.updates && 'config' in call.updates,
     );
     expect(finishCall?.updates.metadata).toMatchObject({
       runtimeArtifact: {
-        providerArtifactRef: 'kortix-fast-dev-test',
-        runtimeProfile: 'fast',
+        providerArtifactRef: 'snap-test-1',
       },
     });
   });
@@ -441,7 +507,8 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     await opened;
 
     const finishCall = updateCalls.find(
-      (call) => call.table === sessionSandboxes && 'externalId' in call.updates && 'config' in call.updates,
+      (call) =>
+        call.table === sessionSandboxes && 'externalId' in call.updates && 'config' in call.updates,
     );
     expect(finishCall?.updates.metadata).toMatchObject({
       providerExternalId: 'ext-e2b-1',
@@ -530,7 +597,9 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
   test('provider-loss placeholder is reclaimed without inserting a second logical row', async () => {
     identityConflict = true;
     recoveryPlaceholder = true;
-    const opened = waitFor((resolve) => { onComputeOpened = resolve; });
+    const opened = waitFor((resolve) => {
+      onComputeOpened = resolve;
+    });
 
     await provisionSessionSandbox(baseOpts());
     await opened;
@@ -543,7 +612,9 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
   test('legacy recovery placeholder authorization is single-use under concurrent allocation', async () => {
     identityConflict = true;
     recoveryPlaceholder = true;
-    const opened = waitFor((resolve) => { onComputeOpened = resolve; });
+    const opened = waitFor((resolve) => {
+      onComputeOpened = resolve;
+    });
 
     const results = await Promise.allSettled([
       provisionSessionSandbox(baseOpts()),
@@ -622,7 +693,9 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
 
   test('manual stop racing provider create stops and preserves the sandbox instead of removing it', async () => {
     scenario.projectSessionStatusAtCheck = 'stopped';
-    const eventRecorded = waitFor((resolve) => { onProviderEvent = resolve; });
+    const eventRecorded = waitFor((resolve) => {
+      onProviderEvent = resolve;
+    });
     await provisionSessionSandbox(baseOpts());
     await eventRecorded;
 

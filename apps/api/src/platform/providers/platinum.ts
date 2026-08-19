@@ -251,6 +251,7 @@ export class PlatinumProvider implements SandboxProvider {
     template: string,
     opts: CreateSandboxOpts,
   ): Promise<ProvisionResult> {
+    const _t0 = Date.now();
     const workloadType = sandboxWorkloadType(opts);
     const sandboxApiBase = config.KORTIX_URL
       .replace(/\/+$/, '')
@@ -333,7 +334,7 @@ export class PlatinumProvider implements SandboxProvider {
         ...(dedup ? { headers: { 'Idempotency-Key': dedup.idempotencyKey } } : {}),
       });
 
-    const _t0 = Date.now();
+    const _tCreate0 = Date.now();
     let sandbox: PlatinumSandbox;
     try {
       sandbox = await postCreate();
@@ -354,7 +355,7 @@ export class PlatinumProvider implements SandboxProvider {
         throw err;
       }
     }
-    const _vmMs = Date.now() - _t0;
+    const _vmMs = Date.now() - _tCreate0;
 
     const externalId = sandbox.id;
 
@@ -429,7 +430,8 @@ export class PlatinumProvider implements SandboxProvider {
     // clone stall in the background while the FE waits, so the session still
     // becomes usable without any create-path hang.
     console.log(
-      `[platinum-timing] ${externalId} vm-running=${_vmMs}ms expose=${_exposeMs}ms ` +
+      `[platinum-timing] ${externalId} ` +
+        `vm-running=${_vmMs}ms expose=${_exposeMs}ms ` +
         `edge=${exposedUrl ? 'ready' : 'lazy'} total=${Date.now() - _t0}ms (runtime-ready deferred to FE poll, like daytona)` +
         (sandbox.replayed ? ' [S1: Idempotency-Key replay — adopted an already-committed box]' : ''),
     );

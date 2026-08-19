@@ -38,7 +38,6 @@ import {
 } from './sandbox-init-state';
 import {
   ensureSandboxImage,
-  ensureFastSandboxImage,
   ensureMetaSandboxImage,
   deleteSandboxImage,
   resolveTemplate,
@@ -211,11 +210,6 @@ export function fastColdBootEnabled(): boolean {
   return raw === '1' || raw === 'on' || raw === 'true' || raw === 'yes';
 }
 
-/** Custom and meta templates keep their declared runtime under the global flag. */
-export function useFastColdBootImage(enabled: boolean, slug: string): boolean {
-  return enabled && slug === DEFAULT_SANDBOX_SLUG;
-}
-
 /**
  * FIX-A: decide whether this boot should use the pinned EXACT template id. Pure
  * (no I/O) so the gate is unit-testable. Returns the id ONLY when every guard
@@ -348,8 +342,6 @@ export async function provisionSessionSandbox(opts: {
   ): Promise<EnsureSandboxImageResult> =>
     slug === META_SANDBOX_SLUG
       ? ensureMetaSandboxImage({ source: 'session-start', provider: targetProvider })
-      : useFastColdBootImage(fastColdBootEnabled(), slug)
-        ? ensureFastSandboxImage({ source: 'session-start', provider: targetProvider })
       : ensureSandboxImage(gitProject, {
           slug,
           accountId,
@@ -665,6 +657,9 @@ export async function provisionSessionSandbox(opts: {
       const createFn = bootDecision.bootByTemplateId
         ? (o: CreateSandboxOpts) => provider.createFromExternalId!(bootDecision.bootByTemplateId!, o)
         : undefined;
+      // No provider edge is armed at create: one mechanism serves daytona, e2b
+      // and platinum alike (docs/specs/2026-08-19-secrets-exposure-usage-model.md
+      // §4). The guest holds a handle; the broker route substitutes server-side.
       let result: ProvisionResult;
       let attempts: number;
       try {

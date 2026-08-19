@@ -43,6 +43,46 @@ No exported NAME changed. `version` untouched.
 **Gates.** `bun run typecheck` clean. `bun run test` 2309 pass / 0 fail / 2 skip
 (158 files). `bun run smoke:install` passed. **Shippable: YES.**
 
+### 2026-08-19 — session `rbac-cutover-client-leftovers` — BREAKING (field): `AccountDetail.iam_v2_enabled` removed — DONE
+
+**Files:** `core/rest/projects-client/accounts.ts` (−1 field, −3 comment lines),
+`core/rest/projects-client/accounts.test.ts` (+1 test).
+
+**What.** `accounts.iam_v2_enabled` was the per-account rollout flag that routed
+a caller between the V1 and V2 IAM engines. The canonical-RBAC cutover made
+`kortix.role_assignments` the only authorization store and
+`apps/api/src/iam/authorize.ts` the only engine, so the API no longer emits the
+field: `grep -rn iam_v2 apps/api/src packages/db` returns nothing. Removed from
+`AccountDetail`.
+
+**Breaking?** Technically yes — a consumer reading `detail.iam_v2_enabled` stops
+compiling. Deliberately **no `@deprecated` alias**, on the same reasoning as the
+sandbox-member deletion below: an alias preserves a read that can only ever
+yield `undefined`. An optional field the server never sends is worse than no
+field — it reads as a live switch and invites a host to branch on it. A build
+error is the better failure. Nothing in this repo read it (only two
+declarations existed, this one and `apps/mobile/lib/accounts/accounts-client.ts`,
+both now gone).
+
+**Surface snapshots did NOT move.** Both snapshot the export *names*
+(`public-surface.snapshot.json` runtime, `public-type-surface.snapshot.json`
+type-level); neither records a type's *members*. `AccountDetail` is still
+exported, so the removal is invisible to them — worth knowing, because it means
+a field deletion has no snapshot tripwire. The new `accounts.test.ts` case is
+that tripwire for this one field: it reads `accounts.ts` and asserts no line
+declares `iam_v2_enabled`. Seen RED first (`+ ["  iam_v2_enabled?: boolean;"]`).
+
+**Gates.**
+
+```
+pnpm --filter @kortix/sdk typecheck       → clean
+pnpm --filter @kortix/sdk test            → 2308 pass, 2 skip, 0 fail, 158 files
+                                            (baseline before this change: 2307 / 2 / 0, 158 files)
+pnpm --filter @kortix/sdk smoke:install   → ✔ install smoke test passed
+```
+
+---
+
 ### 2026-08-19 — session `rbac-canonical` (P5) — BREAKING: the canonical assignment surface lands, the sandbox-member surface is deleted — DONE
 
 **Files:** `core/rest/projects-client/assignments.ts` + `assignments.test.ts`
@@ -434,6 +474,54 @@ fail.
 
 **Process deviation.** One commit for claim + work + log, per the step's explicit
 "One commit" instruction — not the usual separate claim commit.
+
+---
+
+### 2026-08-19 — session `session-error-turn` — a `session.error` belongs to the turn that failed — DONE
+
+**Files:** `browser/stores/sync-store.ts` (+`.test.ts`). The `apps/web` half (a
+turn that reports an error stops rendering the working indicator) is outside
+this package.
+
+**What.** A turn that fails BEFORE any assistant message exists (prod
+2026-08-19: `ModelNotFound: kortix/grok-4.6`, `session.error` ~2ms after the
+prompt) put its error in the wrong turn, three different ways. The handler
+patched `.error` onto "the last assistant message ANYWHERE" — an EARLIER turn's
+answer — and the `reconcileTail` hydrate that follows every `session.error`
+then overwrote that message with the server's error-free copy, so the first
+failure rendered NOTHING AT ALL. With no assistant message anywhere it appended
+a stub at the END of the list, which the next prompt's turn then adopted: the
+error moved out from under the prompt it belonged to and rode the bottom of the
+thread.
+
+`session.error` now resolves the failing turn (the last user message) and
+either patches an assistant message that already belongs to THAT turn, or
+inserts a stub directly after that user message, carrying `parentID` so
+`groupMessagesIntoTurns` keeps it there no matter what arrives later. The stub
+id is `${userMessageId}_error`: idempotent for a repeated error, and (all ids
+being equal length) it sorts immediately after its user message, so position
+and `parentID` agree.
+
+`stubAssistantIds` becomes `Map<sessionID, Map<stubId, parentUserId | null>>`
+and `hydrate` reconciles PER TURN instead of per session — an earlier turn's
+reply is not an answer to this one. When the server DOES hold a reply for the
+failing turn the stub's error moves onto it unless the server's copy carries
+one of its own; the stub is dropped only after that. An optimistic parent
+superseded by the server's echo re-keys the stub (both in `hydrate`'s
+correlation and in the `message.updated` echo path, via `rekeyStubParent`), and
+a stub restored from the IndexedDB transcript cache is re-adopted so it stays
+reconcilable across a reload.
+
+**Gates.** `bun test src` 2230 pass / 2 skip / 0 fail (baseline before this
+change: 2220 / 2 / 0); `tsc --noEmit` + examples clean; `smoke:install` passed.
+Public surface unchanged — every symbol touched is module-private.
+
+**Browser proof** (local stack, real Platinum sandbox, `POST .../prompts` with
+`model: kortix/does-not-exist-model`): before the change the second failure took
+the first turn's error with it (turn 1 left with no error at all) and, with an
+earlier turn present, the first failure rendered nothing; after, each error
+renders under its own prompt and survives a page reload. Screenshots in
+`output/session-error/`.
 
 ---
 

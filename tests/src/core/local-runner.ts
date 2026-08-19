@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { localWebUrl } from './local-profile';
+import { LOCAL_AUTH_EMAIL_HOOK_SECRET, localWebUrl } from './local-profile';
 import {
   type LocalStackHandle,
   type LocalSupabaseHandle,
@@ -44,6 +44,28 @@ const DEPLOYED_TARGET_MODES = new Set<LocalTestPlan['mode']>([
   'target-api-full',
   'target-browser-full',
 ]);
+
+/**
+ * Per-flow wall-clock floor for every lane that runs against a DEPLOYED target.
+ *
+ * The runner's own default is 120 s (`flow.ts:DEFAULT_FLOW_TIMEOUT_MS`), sized
+ * for the local stack. A deployed target is a different machine: every request
+ * crosses Cloudflare and a live ALB, and sandbox-backed flows provision real
+ * cloud VMs. Run 32231251280 lost roughly half its flows to
+ * `flow X exceeded 120000ms` on staging for that reason alone.
+ *
+ * 180 s is a FLOOR, not an override — `flow.ts:resolveFlowTimeoutMs` keeps any
+ * larger declared `meta.timeoutMs` (session and CLI flows declare 300 s–20 min).
+ * It lives here, not in `tests-release.yml`, so every caller of
+ * `--target-smoke` / `--target-api-full` / `--target-full` inherits it and no
+ * workflow has to know the number.
+ */
+export const DEPLOYED_FLOW_TIMEOUT_MS = '180000';
+
+function deployedFlowTimeoutMs(): string {
+  const override = process.env.KE2E_FLOW_TIMEOUT_MS;
+  return override === undefined || override === '' ? DEPLOYED_FLOW_TIMEOUT_MS : override;
+}
 
 const flowFilterFlags = new Set(['--domain', '--id', '--tag', '--smoke']);
 
@@ -167,6 +189,7 @@ export function buildLocalTestPlan(args: string[]): LocalTestPlan {
   const targetApi: LocalTestLane = {
     name: 'target-api-smoke',
     command: ['bun', 'tests/bin/ke2e.ts', 'run', '--smoke'],
+    env: { KE2E_FLOW_TIMEOUT_MS: deployedFlowTimeoutMs() },
   };
   const targetBrowser: LocalTestLane = {
     name: 'target-browser-smoke',
@@ -193,6 +216,7 @@ export function buildLocalTestPlan(args: string[]): LocalTestPlan {
     env: {
       KE2E_API_WORKERS: process.env.KE2E_API_WORKERS ?? '6',
       KE2E_SANDBOX_WORKERS: process.env.KE2E_SANDBOX_WORKERS ?? '3',
+      KE2E_FLOW_TIMEOUT_MS: deployedFlowTimeoutMs(),
     },
   };
   const targetBrowserFull: LocalTestLane = {
@@ -330,7 +354,13 @@ async function runLane(root: string, lane: LocalTestLane): Promise<LaneResult> {
   const startedAt = performance.now();
   console.log(`\n[test] START ${lane.name}: ${lane.command.join(' ')}`);
   try {
-    let env = { ...process.env, ...(lane.env ?? {}) };
+    // Every lane can sign a Supabase auth-hook request: the local stack starts
+    // the API with this same fixed secret (see local-stack.ts).
+    let env = {
+      ...process.env,
+      KE2E_AUTH_EMAIL_HOOK_SECRET: LOCAL_AUTH_EMAIL_HOOK_SECRET,
+      ...(lane.env ?? {}),
+    };
     if (lane.name === 'browser') {
       const topology = resolveLocalTopology(root);
       const supabase = await readLocalSupabaseEnvironment(topology);

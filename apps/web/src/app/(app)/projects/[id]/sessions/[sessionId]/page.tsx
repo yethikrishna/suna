@@ -221,11 +221,18 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
   // booting, then "correcting" itself once ready. `'default'` is the server's
   // spelling of "no agent bound" (see shared.ts serializers), not a roster
   // agent — it must not shadow the project default.
+  // The start-stash covers the window BEFORE either server source answers: on
+  // the optimistic home→session redirect the producer stashed the picked agent
+  // under this route id (`writeStartStash`), and the picker must not fall back
+  // to the project default for the second it takes /start to respond. Lazy
+  // state, read once per mount: the stash is consumed later in this session's
+  // life, and re-reading it on every render would flip this back to null.
+  const [stashAgentName] = useState(() => readStartStash(sessionId)?.agent?.trim() || null);
   const listAgentName = currentProjectSession?.agent_name?.trim();
   const boundAgentName =
     (listAgentName && listAgentName !== 'default' ? listAgentName : null) ??
     session.agentName ??
-    null;
+    stashAgentName;
   const switchingToSessionId = useSessionSwitchStore((state) => state.targetSessionId);
   const completeSessionSwitch = useSessionSwitchStore((state) => state.completeSwitch);
 

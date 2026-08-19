@@ -116,6 +116,11 @@ RUN sudo -u kortix env HOME=/home/kortix PATH="${'$'}{PATH}" \
 
 COPY --chown=kortix:kortix ${options.opencodeConfigPath}/ /ephemeral/kortix-master/opencode/
 COPY --chown=kortix:kortix ${options.opencodeConfigPath}/ /opt/kortix/warm-config/.kortix/opencode/
+RUN cd /opt/kortix/warm-config/.kortix/opencode \
+ && rm -rf node_modules \
+ && ln -s /opt/kortix/opencode-config-deps/node_modules node_modules \
+ && /home/kortix/.bun/bin/bun build tools/*.ts --target=bun --outdir=/tmp/opencode-tools-bundle-check \
+ && rm -rf /tmp/opencode-tools-bundle-check
 RUN sudo -u kortix env HOME=/home/kortix PATH="${'$'}{PATH}" \
       bash /tmp/kortix-opencode-warmup instance wipe \
  && rm -f /tmp/kortix-opencode-warmup

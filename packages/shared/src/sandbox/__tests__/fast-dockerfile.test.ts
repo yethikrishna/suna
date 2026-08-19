@@ -37,7 +37,16 @@ describe('buildFastSandboxDockerfile', () => {
     expect(dockerfile).toContain('COPY --chown=kortix:kortix artifacts/opencode-warmup');
     expect(dockerfile).toContain('bash /tmp/kortix-opencode-warmup migration');
     expect(dockerfile).toContain('/opt/kortix/warm-config/.kortix/opencode/');
+    expect(dockerfile).toContain(
+      '/home/kortix/.bun/bin/bun build tools/*.ts --target=bun --outdir=/tmp/opencode-tools-bundle-check',
+    );
     expect(dockerfile).toContain('bash /tmp/kortix-opencode-warmup instance wipe');
+    expect(dockerfile.indexOf('bun build tools/*.ts')).toBeGreaterThan(
+      dockerfile.indexOf('/opt/kortix/warm-config/.kortix/opencode/'),
+    );
+    expect(dockerfile.indexOf('instance wipe')).toBeGreaterThan(
+      dockerfile.indexOf('bun build tools/*.ts'),
+    );
     expect(dockerfile.indexOf('instance wipe')).toBeGreaterThan(
       dockerfile.indexOf('/opt/kortix/warm-config/.kortix/opencode/'),
     );

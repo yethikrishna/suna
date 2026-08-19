@@ -188,9 +188,9 @@ docker compose version >/dev/null 2>&1 || { echo "FATAL: docker compose plugin u
 # ── 2b. Daily Docker prune. The box pulls the rolling dev-latest/stable image
 #    tags on every self-update; each `docker compose pull` leaves the PREVIOUS
 #    image digest dangling. Unpruned they fill the data volume and crash-loop
-#    Postgres with "No space left on device" (root-caused live 2026-08-19 on
-#    essentia: 24GB dangling images + 40GB build cache). Prune only removes what
-#    NO container references, so it is safe unattended even mid-rollout. A
+#    Postgres with "No space left on device" (root-caused live 2026-08-19 on a
+#    self-host box: ~24GB dangling images + ~40GB build cache). Prune only removes
+#    what NO container references, so it is safe unattended even mid-rollout. A
 #    systemd timer (not a cron) so `Persistent=true` catches a missed run and
 #    it survives reboots.
 cat > /usr/local/bin/kortix-docker-prune.sh <<'PRUNE'

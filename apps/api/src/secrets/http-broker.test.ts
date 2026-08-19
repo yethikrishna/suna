@@ -103,23 +103,25 @@ describe('prepareSecretBrokerRequest', () => {
 });
 
 describe('prepareSecretBrokerRequest blocked headers and port pinning', () => {
-  // BREAK 2: a guest that can set `accept-encoding: gzip` gets a compressed
+  // BREAK 2: a guest that sets `accept-encoding: gzip` would get a compressed
   // echo, and `redactSecretFromResponse` scans raw bytes — a gzipped secret
-  // slips past it. Kortix owns the encoding, so a caller-supplied one is a 400.
-  test('rejects a caller-supplied accept-encoding so echoes cannot be compressed', () => {
-    expect(() =>
-      prepareSecretBrokerRequest(
-        policy(),
-        SECRET,
-        request({ headers: { 'accept-encoding': 'gzip' } }),
-      ),
-    ).toThrow(SecretBrokerError);
+  // slips past it. The broker DROPS any caller value and forces `identity` on
+  // its own upstream leg, so the response is always uncompressed. It must NOT
+  // 400 on the header: the shim always sends `accept-encoding: identity`, and
+  // 400ing it would break every relay and every already-deployed daemon.
+  test('drops a caller accept-encoding and forces identity upstream', () => {
+    const prepared = prepareSecretBrokerRequest(
+      policy(),
+      SECRET,
+      request({ headers: { 'accept-encoding': 'gzip' } }),
+    );
+    expect(prepared.headers['accept-encoding']).toBe('identity');
   });
 
-  test('a request with no accept-encoding still succeeds', () => {
+  test('forces identity even when the caller sends no accept-encoding', () => {
     const prepared = prepareSecretBrokerRequest(policy(), SECRET, request());
     expect(prepared.headers.authorization).toBe(`Bearer ${SECRET}`);
-    expect('accept-encoding' in prepared.headers).toBe(false);
+    expect(prepared.headers['accept-encoding']).toBe('identity');
   });
 
   // FINDING 5: `matchRule` never sees the port, so an approved host would

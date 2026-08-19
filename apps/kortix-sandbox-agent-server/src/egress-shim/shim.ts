@@ -78,7 +78,7 @@ const BROKER_TIMEOUT_MS = 30_000
  * apps/api's http-broker (and its DB and config dependencies) into the sandbox.
  * The `blocked-headers` test asserts the two lists still agree.
  */
-const BLOCKED_REQUEST_HEADERS = new Set([
+export const BLOCKED_REQUEST_HEADERS = new Set([
   'authorization',
   'connection',
   'content-length',
@@ -196,10 +196,11 @@ async function relayToBroker(
   // This is a security control, not a compatibility tweak. The broker redacts
   // an echoed credential by scanning the response bytes; a gzipped body does
   // not contain those bytes, so the scan finds nothing and the credential is
-  // returned to the guest intact. The out-of-guest proxy forced identity for
-  // exactly this reason and the broker does NOT do it for us — `accept-encoding`
-  // is absent from its blocked list, so a plain `curl` (which offers gzip by
-  // default) would defeat echo protection.
+  // returned to the guest intact. The broker itself now forces `identity` on
+  // its upstream leg for exactly this reason (it DROPS any caller value rather
+  // than 400ing it, so this line and every already-deployed daemon that sends
+  // it keep working); the shim sets it too so a plain `curl` (which offers gzip
+  // by default) still gets an uncompressed body end to end.
   //
   // It is also the only correct answer for the guest: `content-encoding` is not
   // in the broker's response-header whitelist, so compressed bytes would arrive

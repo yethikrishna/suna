@@ -16,7 +16,6 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const REDACTED = Buffer.from('[REDACTED]');
 
 const BLOCKED_REQUEST_HEADERS = new Set([
-  'accept-encoding',
   'authorization',
   'connection',
   'content-length',
@@ -118,6 +117,13 @@ function sanitizeHeaders(input: Record<string, string> | undefined): Record<stri
     if (BLOCKED_REQUEST_HEADERS.has(name)) {
       throw new SecretBrokerError('invalid_request', `request header is managed by Kortix: ${name}`, 400);
     }
+    // Drop any caller-supplied accept-encoding. The broker forces `identity` on
+    // its own upstream leg (below), so the response body reaches
+    // `redactSecretFromResponse` as raw bytes and a compressed echo cannot slip
+    // the secret past the scrub. Blocking it with a 400 would break the shim,
+    // which always sends `accept-encoding: identity`, and every already-deployed
+    // daemon with it.
+    if (name === 'accept-encoding') continue;
     if (value.includes('\r') || value.includes('\n')) {
       throw new SecretBrokerError('invalid_request', `invalid request header value: ${name}`, 400);
     }
@@ -359,6 +365,8 @@ export function prepareSecretBrokerRequest(
     throw new SecretBrokerError('invalid_request', `${method} requests cannot contain a body`, 400);
   }
   const headers = sanitizeHeaders(input.headers);
+  // Force an uncompressed upstream response so echo redaction scans real bytes.
+  headers['accept-encoding'] = 'identity';
 
   // ── Substitution ──────────────────────────────────────────────────────────
   //

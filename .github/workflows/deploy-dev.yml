@@ -73,10 +73,44 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Full history so the change-diff can be taken against the SHA that dev
+          # is ACTUALLY running (below), which may be many commits back.
+          fetch-depth: 0
+      - name: Resolve deploy base (what dev is actually running)
+        id: base
+        if: github.event_name == 'push'
+        run: |
+          # THE FLAKY-SKIP FIX. The old filter diffed `github.event.before..sha`
+          # — the commits in THIS push only. But `cancel-in-progress: false`
+          # collapses a burst of pushes into one deploy for the NEWEST sha, whose
+          # own diff misses a surface changed by an earlier, superseded commit —
+          # so that surface's job silently skips and the change strands on dev.
+          # Diff against the sha dev is running instead: every surface stale
+          # relative to the live deployment rebuilds, regardless of push grouping.
+          set +e
+          deployed=$(curl -sf --max-time 8 https://dev-api.kortix.com/v1/health \
+            | python3 -c "import sys,json;print(json.load(sys.stdin).get('commit',''))" 2>/dev/null)
+          set -e
+          if [ -n "$deployed" ] && [ "$deployed" != "unknown" ] && git cat-file -e "${deployed}^{commit}" 2>/dev/null; then
+            echo "base=$deployed" >> "$GITHUB_OUTPUT"
+            echo "force_all=false" >> "$GITHUB_OUTPUT"
+            echo "Comparing changed surfaces against deployed dev SHA ${deployed}"
+          else
+            # Health down, or the deployed sha is not in history (force-push,
+            # shallow, first deploy). Fail SAFE: build every surface rather than
+            # risk skipping a stale one. A redundant build is cheap; a stranded
+            # surface is the bug this fix exists to kill.
+            echo "base=" >> "$GITHUB_OUTPUT"
+            echo "force_all=true" >> "$GITHUB_OUTPUT"
+            echo "Deployed SHA unavailable ('${deployed}') — building ALL surfaces (fail-safe)"
+          fi
       - name: Path filter
         uses: dorny/paths-filter@v4
         id: filter
         with:
+          # For a push, compare against what dev runs (empty = action's default).
+          base: ${{ steps.base.outputs.base }}
           filters: |
             api:
               - 'apps/api/**'
@@ -145,6 +179,11 @@ jobs:
           frontend="${{ steps.filter.outputs.frontend }}"
           cli="${{ steps.filter.outputs.cli }}"
           terraform="${{ steps.filter.outputs.terraform }}"
+          if [ "${{ steps.base.outputs.force_all }}" = "true" ]; then
+            # Fail-safe from the base resolver: dev's running SHA was unknown, so
+            # build everything rather than skip a possibly-stale surface.
+            api=true; apps_router=true; gateway=true; frontend=true; cli=true; terraform=true
+          fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ "${{ inputs.surface }}" = "frontend" ]; then
               api=false
@@ -297,7 +336,14 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and push (amd64 + arm64)
+      - name: Build and push (amd64)
+        # DEV IS SINGLE-ARCH (amd64). dev ECS Fargate runs x86_64, so the arm64
+        # half was pure emulation cost — a QEMU-emulated arm64 build took the API
+        # image ~22 min, ~2/3 of the whole run, for an image dev never boots. This
+        # restores the deliberate `1ca937570d` state ("dev single-arch, multi-arch
+        # on prod only") that the `cb9d12a1b3` pipeline rewrite silently undid.
+        # deploy-prod.yml keeps amd64+arm64. Registry layer cache makes warm builds
+        # reuse layers instead of every build being cold.
         # Bake the dev version (e.g. 0.9.7-dev.<sha8>) into the image so
         # /v1/health reports it. The immutable :dev-<sha8> tag (tag-api job below)
         # is the artifact's real identity.
@@ -305,8 +351,10 @@ jobs:
         with:
           context: .
           file: apps/api/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
+          cache-from: type=registry,ref=kortix/kortix-api:dev-buildcache
+          cache-to: type=registry,ref=kortix/kortix-api:dev-buildcache,mode=max
           build-args: |
             SERVICE=apps/api
             KORTIX_VERSION=${{ needs.dev-version.outputs.version }}
@@ -541,13 +589,16 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and push (amd64 + arm64)
+      - name: Build and push (amd64)
+        # Single-arch amd64 for dev (see the API build for the full rationale).
         uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/llm-gateway/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
+          cache-from: type=registry,ref=kortix/kortix-gateway:dev-buildcache
+          cache-to: type=registry,ref=kortix/kortix-gateway:dev-buildcache,mode=max
           build-args: |
             KORTIX_VERSION=${{ needs.dev-version.outputs.version }}
             KORTIX_COMMIT=${{ github.sha }}
@@ -699,13 +750,16 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and push (amd64 + arm64)
+      - name: Build and push (amd64)
+        # Single-arch amd64 for dev (see the API build for the full rationale).
         uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/web/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
+          cache-from: type=registry,ref=kortix/kortix-frontend:dev-buildcache
+          cache-to: type=registry,ref=kortix/kortix-frontend:dev-buildcache,mode=max
           tags: |
             kortix/kortix-frontend:dev-latest
       - name: Retag :dev-latest → :dev-<sha8>

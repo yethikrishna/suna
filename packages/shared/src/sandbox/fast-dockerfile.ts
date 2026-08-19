@@ -112,10 +112,13 @@ RUN cd /opt/kortix/opencode-config-deps \
 
 COPY --chown=kortix:kortix ${options.opencodeWarmupScriptPath} /tmp/kortix-opencode-warmup
 RUN sudo -u kortix env HOME=/home/kortix PATH="${'$'}{PATH}" \
-      bash /tmp/kortix-opencode-warmup migration \
- && rm -f /tmp/kortix-opencode-warmup
+      bash /tmp/kortix-opencode-warmup migration
 
 COPY --chown=kortix:kortix ${options.opencodeConfigPath}/ /ephemeral/kortix-master/opencode/
+COPY --chown=kortix:kortix ${options.opencodeConfigPath}/ /opt/kortix/warm-config/.kortix/opencode/
+RUN sudo -u kortix env HOME=/home/kortix PATH="${'$'}{PATH}" \
+      bash /tmp/kortix-opencode-warmup instance wipe \
+ && rm -f /tmp/kortix-opencode-warmup
 COPY --chown=kortix:kortix ${options.catalogPath} /opt/kortix/llm-catalog.json
 COPY --chown=kortix:kortix ${options.managedSkillsPath}/ /opt/kortix/managed-skills/
 COPY --chown=kortix:kortix ${options.runtimeVersionsPath} /opt/kortix/runtime-versions.json

@@ -36,6 +36,11 @@ describe('buildFastSandboxDockerfile', () => {
     expect(dockerfile).toContain('/home/kortix/.bun/bin/bun install --frozen-lockfile');
     expect(dockerfile).toContain('COPY --chown=kortix:kortix artifacts/opencode-warmup');
     expect(dockerfile).toContain('bash /tmp/kortix-opencode-warmup migration');
+    expect(dockerfile).toContain('/opt/kortix/warm-config/.kortix/opencode/');
+    expect(dockerfile).toContain('bash /tmp/kortix-opencode-warmup instance wipe');
+    expect(dockerfile.indexOf('instance wipe')).toBeGreaterThan(
+      dockerfile.indexOf('/opt/kortix/warm-config/.kortix/opencode/'),
+    );
     expect(dockerfile).toContain('/opt/kortix/runtime-versions.json');
     expect(dockerfile).toContain('/ephemeral/kortix-master/opencode');
     expect(dockerfile).toContain('/opt/kortix/lazy-tools/install');

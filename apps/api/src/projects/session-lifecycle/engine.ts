@@ -587,6 +587,15 @@ export async function drainSessionLifecycleQueue(
   } = {},
 ): Promise<{ claimed: number; succeeded: number; failed: number; queued: number }> {
   const workerId = input.workerId ?? `session-lifecycle:${process.pid}:${Date.now()}`;
+  // COALESCE a burst before claiming. A targeted kick fires per POST, and the
+  // composer sends a burst's POSTs concurrently — their arrival order is the
+  // network's. Claiming instantly let the first arrival's batch close before
+  // the rest of the burst was even durable (measured: one of four boot sends
+  // delivered a step behind, out of order). A quarter second collects the
+  // stragglers and is invisible next to the ~1.3 s delivery itself.
+  if (input.idempotencyKey) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
   const rows = await claimDueLifecycleCommands({
     workerId,
     limit: input.limit ?? 10,
@@ -720,13 +729,21 @@ export async function drainSessionLifecycleQueue(
         };
         const batch = lane.slice(i, j).sort((a, b) => sendOrder(a) - sendOrder(b));
         i = j;
-        await runRow(batch[0]);
-        if (batch.length === 1) continue;
+        const headDone = runRow(batch[0]);
+        if (batch.length === 1) {
+          await headDone;
+          continue;
+        }
         const rest = batch.slice(1);
-        // One gate per member: each waits for the previous member's id to be
-        // final before minting its own, then all POST concurrently.
+        // One gate per member: the FIRST waits for the HEAD (its id is not
+        // final until its delivery placed it — minting before that inverted
+        // head and member on the wire), each next waits for the previous
+        // member's mint; the POSTs then run concurrently.
         const gates: BatchPlacementGate[] = [];
-        let previous: Promise<void> = Promise.resolve();
+        let previous: Promise<void> = headDone.then(
+          () => undefined,
+          () => undefined,
+        );
         for (let k = 0; k < rest.length; k += 1) {
           let release!: () => void;
           const mine = new Promise<void>((resolve) => {
@@ -735,11 +752,12 @@ export async function drainSessionLifecycleQueue(
           gates.push({ waitTurn: previous, release });
           previous = mine;
         }
-        await Promise.all(
-          rest.map((member, k) =>
+        await Promise.all([
+          headDone,
+          ...rest.map((member, k) =>
             runRow(member, { batch: gates[k] }).finally(() => gates[k].release()),
           ),
-        );
+        ]);
       }
     }),
   );

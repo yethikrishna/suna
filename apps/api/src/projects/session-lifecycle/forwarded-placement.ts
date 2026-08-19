@@ -57,6 +57,9 @@ export interface PlacementTipMessage {
   created?: number | null;
   /** `time.completed` — null/absent while an assistant message is still open. */
   completed?: number | null;
+  /** Ids of the message's parts. A USER message with zero parts is a husk a
+   *  cancel left behind (the model never sees it) — see the reconcile sweep. */
+  partIds?: string[];
 }
 
 export interface PlacementVerdict {
@@ -134,12 +137,28 @@ export function reachedPlacement(
 ): boolean {
   const mine = wireIdTime(wireMessageId);
   if (mine === null) return false;
+  const own = tip.find((m) => m.id === wireMessageId);
   for (const m of tip) {
     if (m.role !== 'assistant') continue;
     if (m.parentID === wireMessageId) return true;
     const at = wireIdTime(m.id);
     const parentAt = typeof m.parentID === 'string' ? wireIdTime(m.parentID) : null;
-    if (at !== null && parentAt !== null && at > mine && parentAt >= mine) return true;
+    if (at === null || parentAt === null || at <= mine || parentAt < mine) continue;
+    // ID order says this step covers the message — but ids are minted from
+    // the SENDER's clock, not from causality: a message deliberately placed
+    // BELOW the running step's parent (under-placement) has a lower id than
+    // an assistant whose step began before it even arrived. `time.created`
+    // is stamped at PERSISTENCE by the box, on one clock — when both stamps
+    // exist, a step only read this message if it STARTED after the message
+    // was persisted.
+    if (
+      typeof own?.created === 'number' &&
+      typeof m.created === 'number' &&
+      m.created <= own.created
+    ) {
+      continue;
+    }
+    return true;
   }
   return false;
 }
@@ -193,6 +212,9 @@ export function parsePlacementTip(body: unknown): PlacementTipMessage[] | null {
       parentID: typeof info.parentID === 'string' ? info.parentID : null,
       created: typeof time?.created === 'number' ? time.created : null,
       completed: typeof time?.completed === 'number' ? time.completed : null,
+      partIds: (
+        (entry as { parts?: Array<{ id?: unknown }> }).parts ?? []
+      ).flatMap((part) => (typeof part?.id === 'string' ? [part.id] : [])),
     });
   }
   return out;

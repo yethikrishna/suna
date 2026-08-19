@@ -50,6 +50,7 @@ import {
   QueuedPromptActions,
   QueuedPromptBubbles,
   QueuedPromptStatus,
+  RemoveFromQueueButton,
   QUEUED_BUBBLE_OPACITY_CLASS,
   type QueuedPromptState,
 } from './turn/queued-prompt-bubbles';
@@ -833,6 +834,13 @@ function SessionTurnImpl({
   // inbox row is already closed (the runtime holds the message, the agent has
   // not reached it): the dim alone reads as "something is wrong".
   const statusState: QueuedPromptState | null = queueState ?? (pending ? 'queued' : null);
+  // What the X removes: the row while it is listed, the message's own wire id
+  // after the row left the list (the DELETE route resolves `msg_…` handles) —
+  // for any bubble the agent has not reached.
+  const queueRemovalId =
+    onQueueRemove && statusState && statusState !== 'interrupted' && statusState !== 'failed'
+      ? (queueRow?.prompt_id ?? turn.userMessage.info.id)
+      : null;
 
   const activeAssistantMessage = useMemo(() => {
     if (turn.assistantMessages.length === 0) return undefined;
@@ -1474,8 +1482,18 @@ function SessionTurnImpl({
           className={cn(
             'transition-opacity duration-500',
             (pending || interruptedBeforeRun) && QUEUED_BUBBLE_OPACITY_CLASS,
+            // A removable queued bubble reserves a slim column at its right
+            // for the X, so the control has ONE fixed home — the meta row
+            // reflows as timestamps and copy appear, and an X living there
+            // jumped out from under the pointer.
+            queueRemovalId && 'relative pr-7',
           )}
         >
+          {queueRemovalId && (
+            <div className="absolute top-2 right-0 opacity-0 transition-opacity duration-150 group-hover/turn:opacity-100 focus-within:opacity-100">
+              <RemoveFromQueueButton id={queueRemovalId} onRemove={onQueueRemove!} />
+            </div>
+          )}
           <UserMessage
             message={turn.userMessage}
             agentNames={agentNames}
@@ -1495,10 +1513,11 @@ function SessionTurnImpl({
             }
             leadingActions={
               queueRow && queueState && queueState !== 'interrupted' ? (
+                // Send-now / Retry stay in the meta row; the X lives beside
+                // the bubble (see `queueRemovalId`).
                 <QueuedPromptActions
                   id={queueRow.prompt_id}
                   state={queueState}
-                  onRemove={onQueueRemove}
                   onSendNow={onQueueSendNow}
                   onRetry={onQueueRetry}
                 />
@@ -2568,6 +2587,12 @@ export function SessionChat({
     const byId = new Map<string, SessionPrompt>();
     for (const prompt of promptInbox.prompts) {
       if (!prompt.message_id) continue;
+      // The row names the re-minted id BEFORE the runtime echoes it: register
+      // the alias so the echo supersedes ITS OWN optimistic bubble instead of
+      // the ordinal fallback consuming the oldest one in flight.
+      if (prompt.wire_message_id && prompt.wire_message_id !== prompt.message_id) {
+        store.registerOptimisticEcho(sessionId, prompt.wire_message_id, prompt.message_id);
+      }
       byId.set(prompt.message_id, prompt);
       const echo = store.optimisticEchoOf(sessionId, prompt.message_id);
       if (echo) byId.set(echo, prompt);
@@ -2615,16 +2640,21 @@ export function SessionChat({
         // answers 409 rather than lying about it.
         errorToast(
           error instanceof Error && /409/.test(error.message)
-            ? 'That prompt is already being delivered'
+            ? 'The agent is already answering that prompt'
             : 'Could not remove that prompt',
         );
         return;
       }
       if (!removed) return;
-      // The bubble IS the queue entry: the row is gone, so its optimistic
-      // bubble goes with it. A no-op for a message the runtime already
-      // confirmed — that one is the transcript's now, not the queue's.
-      useSessionStateStore.getState().optimisticRemove(sessionId, removed.message_id);
+      // The bubble IS the queue entry: the row is gone, so every copy of the
+      // message goes with it — the optimistic bubble, a confirmed echo, and
+      // the ownership marks that would otherwise resurrect it when the
+      // runtime relays the deletion.
+      const store = useSessionStateStore.getState();
+      store.optimisticRemove(sessionId, removed.message_id);
+      for (const id of removed.removed_message_ids ?? [removed.message_id]) {
+        store.forgetControlPlaneMessage(sessionId, id);
+      }
 
       // Undo rather than a confirm dialog. A queue is something you curate —
       // gating every removal behind a modal would make it unusable, and the
@@ -2987,8 +3017,10 @@ export function SessionChat({
     for (const turn of turns) {
       const id = turn.userMessage.info.id;
       const origin = optimisticOriginOf(sessionId, id);
-      const preferred = origin && !used.has(origin) ? origin : id;
-      const key = used.has(preferred) ? id : preferred;
+      let key = origin && !used.has(origin) ? origin : id;
+      // Belt and braces: whatever aliasing produced a collision, NEVER hand
+      // React two children with one key — that corrupts the whole list.
+      while (used.has(key)) key = `${key}~`;
       keys.set(id, key);
       used.add(key);
     }
@@ -4545,7 +4577,15 @@ export function SessionChat({
                               onPermissionReply={handlePermissionReply}
                               onRewind={handleRewind}
                               rewindDisabled={
-                                !!readOnly || !sessionState || isBusy || sessionState.rewindPending
+                                !!readOnly ||
+                                !sessionState ||
+                                isBusy ||
+                                sessionState.rewindPending ||
+                                // The runtime is not idle while queued prompts
+                                // are still on their way to it — a rewind mid-
+                                // delivery fails downstream with "Session is
+                                // busy" (measured); refuse it up front instead.
+                                promptInbox.prompts.length > 0
                               }
                             />
                           </TurnViewport>

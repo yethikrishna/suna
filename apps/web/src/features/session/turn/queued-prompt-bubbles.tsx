@@ -106,6 +106,11 @@ export function QueuedPromptStatus({
   lastError?: string;
 }) {
   const failed = state === 'failed';
+  // A plain queued/in-flight bubble says nothing: the dim IS the state, and a
+  // caption under every queued message read as clutter (review feedback).
+  // Held, failed and interrupted still speak — those need words to be
+  // actionable.
+  if (state === 'queued' || state === 'in-flight') return null;
   return (
     <InlineMeta>
       <span
@@ -139,10 +144,12 @@ export function QueuedPromptActions({
   onRetry?: (id: string) => void;
 }) {
   const failed = state === 'failed';
-  const inFlight = state === 'in-flight';
   const interrupted = state === 'interrupted';
+  // In-flight is NOT beyond removal any more: the server cancels a forwarded
+  // prompt the agent has not read (and answers 409 with the reason when a
+  // step already owns it). Only an interrupted message keeps zero controls —
+  // the runtime holds it and the next send runs it.
   const showActions =
-    !inFlight &&
     !interrupted &&
     (Boolean(onRemove) || (failed && !!onRetry) || (state === 'held' && !!onSendNow));
   if (!showActions) return null;
@@ -158,12 +165,27 @@ export function QueuedPromptActions({
           <PaperPlaneRightIcon className="size-4" />
         </Action>
       )}
-      {onRemove && (
-        <Action label="Remove from queue" onClick={() => onRemove(id)} destructive>
-          <XIcon className="size-4" />
-        </Action>
-      )}
+      {onRemove && <RemoveFromQueueButton id={id} onRemove={onRemove} />}
     </div>
+  );
+}
+
+/**
+ * The one way OUT of the queue, in a FIXED spot: beside the bubble, never in
+ * the meta row — the timestamp and copy control appear and resize there, and
+ * an X that jumps around is an X nobody can aim at (review feedback).
+ */
+export function RemoveFromQueueButton({
+  id,
+  onRemove,
+}: {
+  id: string;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <Action label="Remove from queue" onClick={() => onRemove(id)} destructive>
+      <XIcon className="size-4" />
+    </Action>
   );
 }
 

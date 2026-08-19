@@ -65,9 +65,23 @@ export function createSubmitLatch<Draft>(
     try {
       await dispatch(draft);
     } finally {
+      // Everything stashed while this dispatch was in flight goes out NOW,
+      // TOGETHER. The dispatches are invoked in stash order — their
+      // synchronous prefixes (wire-id mint, optimistic paint) run in that
+      // order, which is what display and the server's `client_sent_at_ms`
+      // key on — but their awaits (uploads, the POST) run concurrently: one
+      // slow ack must not hold the rest of a burst back one round-trip each,
+      // or the server's batch closes before the burst is even durable.
+      const burst = stashed.splice(0);
+      if (burst.length > 0) {
+        void Promise.allSettled(burst.map((next) => dispatch(next))).finally(() => {
+          inFlight = false;
+          const late = stashed.splice(0);
+          if (late.length > 0) void Promise.allSettled(late.map((next) => dispatch(next)));
+        });
+        return;
+      }
       inFlight = false;
-      const next = stashed.shift();
-      if (next !== undefined) void run(next);
     }
   };
 

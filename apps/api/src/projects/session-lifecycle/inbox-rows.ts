@@ -131,7 +131,14 @@ export async function deleteInboxPrompt(
     .limit(1);
   if (!existing) return { outcome: 'missing' };
   if (existing.status === 'running') return { outcome: 'delivering' };
-  return isForwardedInboxRow(existing.result) ? { outcome: 'delivering' } : { outcome: 'missing' };
+  // Forwarded, or confirmed `delivered` on persistence (the daemon's
+  // acceptance relay — which fires long before a model step reads the
+  // message): both are "on the wire", and the DELETE route's cancel arm
+  // decides from the transcript whether the prompt can still come back.
+  const status = (existing.result as { status?: unknown } | null)?.status;
+  return isForwardedInboxRow(existing.result) || status === 'delivered'
+    ? { outcome: 'delivering' }
+    : { outcome: 'missing' };
 }
 
 /**

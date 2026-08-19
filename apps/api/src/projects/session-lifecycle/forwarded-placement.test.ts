@@ -112,6 +112,26 @@ describe('reachedPlacement + tipIsBusy', () => {
   test('a stranded message is NOT reached (higher assistant, older parent)', () => {
     expect(reachedPlacement([{ id: u1, role: 'user' }, { id: u2, role: 'user' }, { id: id(T + 25, 1, 'ASSTXASSTXASST'), role: 'assistant', parentID: u1 }], u2)).toBe(false);
   });
+  test('an assistant whose step STARTED before the message was persisted has not read it', () => {
+    // Under-placement gives the message a LOW id on purpose; the running
+    // step's assistant has a higher id and a parent >= it — but the box's
+    // arrival stamps prove the step began first. Not reached → cancellable.
+    const asst = id(T + 41, 1, 'ASSTRASSTRASST');
+    const tip = [
+      { id: u3, role: 'user', created: 500 },
+      { id: u2, role: 'user', created: 900 }, // under-placed, arrived later
+      { id: asst, role: 'assistant', parentID: u3, created: 600 },
+    ];
+    expect(reachedPlacement(tip, u2)).toBe(false);
+    // Same shape, but the step began AFTER the message landed: reached.
+    const tip2 = [
+      { id: u3, role: 'user', created: 500 },
+      { id: u2, role: 'user', created: 550 },
+      { id: asst, role: 'assistant', parentID: u3, created: 600 },
+    ];
+    expect(reachedPlacement(tip2, u2)).toBe(true);
+  });
+
   test('tipIsBusy reads the newest assistant', () => {
     expect(tipIsBusy([{ id: a1, role: 'assistant', parentID: u1, completed: null }])).toBe(true);
     expect(tipIsBusy([{ id: a1, role: 'assistant', parentID: u1, completed: 5 }])).toBe(false);
@@ -129,8 +149,8 @@ describe('parsePlacementTip', () => {
         null,
       ]),
     ).toEqual([
-      { id: 'msg_a', role: 'user', parentID: null, created: 5, completed: null },
-      { id: 'msg_b', role: 'assistant', parentID: 'msg_a', created: null, completed: null },
+      { id: 'msg_a', role: 'user', parentID: null, created: 5, completed: null, partIds: [] },
+      { id: 'msg_b', role: 'assistant', parentID: 'msg_a', created: null, completed: null, partIds: [] },
     ]);
     expect(parsePlacementTip({})).toBeNull();
   });

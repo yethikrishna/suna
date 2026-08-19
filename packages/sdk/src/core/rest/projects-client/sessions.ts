@@ -732,13 +732,18 @@ export interface RemovedSessionPrompt {
   prompt_id: string;
   client_message_id: string;
   message_id: string;
+  /** Every wire id this prompt ever travelled under — for clearing the
+   *  transcript husk a cancel leaves at the runtime. */
+  removed_message_ids?: string[];
   parts: SessionPromptPart[];
   overrides: SessionPromptOverrides | null;
 }
 
 /**
- * Drop a prompt that has not gone out yet. A prompt already on the wire cannot
- * be cancelled and the server answers 409.
+ * Drop a prompt — queued, or already on the wire but not yet read by a model
+ * step (the server takes the runtime's copy back out; only "already being
+ * answered" refuses with 409). `promptId` may be the row id or, once the row
+ * has left the list, the message's own `msg_…` wire id.
  *
  * Returns the removed prompt, because the row is HARD-deleted: re-POSTing this
  * result with its original `client_message_id` is the only lossless undo.

@@ -80,10 +80,13 @@ describe('createSubmitLatch', () => {
     expect(d.calls()).toBe(1); // dropped, exactly like the old latch
   });
 
-  test('each distinct re-entrant submit is its OWN submission, dispatched in order', async () => {
+  test('each distinct re-entrant submit is its OWN submission, fired as one burst in order', async () => {
     // Three messages typed during one slow ACK used to collapse into ONE
-    // deferred re-run that re-read the live editor — i.e. one message with the
-    // three texts run together. Every Enter is one message, in Enter order.
+    // deferred re-run that re-read the live editor — i.e. one message with
+    // the three texts run together. Every Enter is one message; when the
+    // in-flight dispatch settles the whole stash goes out TOGETHER (invoked
+    // in Enter order — the sync prefix mints ids in order — awaited
+    // concurrently, so one slow ack cannot hold the burst back).
     const d = controlledDispatch();
     let n = 0;
     const submit = createSubmitLatch(d.dispatch, () => `draft-${++n}`);
@@ -95,14 +98,10 @@ describe('createSubmitLatch', () => {
     d.settle(0);
     await first;
     await tick();
-    expect(d.calls()).toBe(2);
-    expect(d.args()).toEqual([undefined, 'draft-1']);
-    d.settle(1);
-    await tick();
-    d.settle(2);
-    await tick();
     expect(d.calls()).toBe(4);
     expect(d.args()).toEqual([undefined, 'draft-1', 'draft-2', 'draft-3']);
+    d.settle(1);
+    d.settle(2);
     d.settle(3);
   });
 
@@ -146,16 +145,17 @@ describe('createSubmitLatch', () => {
     d.settle(1);
   });
 
-  test('the deferred re-run is itself latched (a submit during it defers again)', async () => {
+  test('a submit during the burst stashes and fires when the burst settles', async () => {
     const d = controlledDispatch();
-    const submit = createSubmitLatch(d.dispatch, () => true);
+    let n = 0;
+    const submit = createSubmitLatch(d.dispatch, () => `draft-${++n}`);
     const first = submit();
     void submit();
     d.settle(0);
     await first;
     await tick();
-    expect(d.calls()).toBe(2); // deferred run in flight
-    void submit(); // typed during the deferred run
+    expect(d.calls()).toBe(2); // burst in flight
+    void submit(); // typed during the burst
     expect(d.calls()).toBe(2); // not re-entrant
     d.settle(1);
     await tick();

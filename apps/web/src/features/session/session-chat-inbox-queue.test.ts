@@ -158,7 +158,7 @@ describe('ONE prompt = ONE id = ONE bubble, from Enter', () => {
     // copy transiently share an origin (duplicate keys corrupt the list).
     expect(chat).toContain('key={turnRenderKeys.get(turn.userMessage.info.id)}');
     expect(chat).toContain('const origin = optimisticOriginOf(sessionId, id);');
-    expect(chat).toContain("const key = used.has(preferred) ? id : preferred;");
+    expect(chat).toContain('while (used.has(key)) key = `${key}~`;');
   });
 });
 

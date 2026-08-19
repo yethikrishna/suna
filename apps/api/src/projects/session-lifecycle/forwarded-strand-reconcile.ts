@@ -338,5 +338,25 @@ export async function reconcileForwardedTurnsAtEnd(
     }
   }
   if (kicked) deps.kickDrain(input.sessionId);
+  // Husk sweep: a cancelled prompt whose whole-message delete was refused
+  // mid-turn left a PART-LESS user message at the runtime — invisible to the
+  // model, but every client render shows it as an empty bubble. The turn just
+  // ended, so the whole-message delete goes through now.
+  for (const message of tip) {
+    if (message.role !== 'user') continue;
+    if (!message.partIds || message.partIds.length > 0) continue;
+    if (tip.some((m) => m.role === 'assistant' && m.parentID === message.id)) continue;
+    try {
+      const removed = await deps.removeMessage(input.sessionId, message.id);
+      if (removed) {
+        logger.info('[forwarded-turns] part-less husk removed', {
+          session_id: input.sessionId,
+          message_id: message.id,
+        });
+      }
+    } catch {
+      /* next turn end retries */
+    }
+  }
   return out;
 }

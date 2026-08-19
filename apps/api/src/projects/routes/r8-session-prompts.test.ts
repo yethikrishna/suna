@@ -598,6 +598,7 @@ describe('DELETE .../prompts/:promptId', () => {
     expect(await response.json()).toEqual({
       removed: {
         prompt_id: PROMPT_ID,
+        removed_message_ids: [WIRE_ID],
         client_message_id: 'q_1',
         message_id: WIRE_ID,
         parts: [

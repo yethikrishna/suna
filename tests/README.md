@@ -403,6 +403,67 @@ The regular browser lane excludes provider-mutating journeys. Set
 journey. That journey creates and deletes its own product snapshot. The
 Platinum CI worker remains a separate infrastructure sandbox.
 
+### Tag filters
+
+`playwright.config.ts` reads four environment variables and turns them into
+Playwright's `grep` and `grepInvert`:
+
+| Variable | Direction | Value |
+| --- | --- | --- |
+| `E2E_EXCLUDE_TAGS` | exclude | comma-separated tags, each escaped |
+| `E2E_INCLUDE_TAGS` | include | comma-separated tags, each escaped |
+| `E2E_GREP_INVERT` | exclude | raw regex |
+| `E2E_GREP` | include | raw regex |
+
+Entries in the same direction are unioned. Playwright applies both at
+collection, before `--shard`, so an excluded journey is never loaded, never
+counted, and never lands in a shard.
+
+### Quarantined journeys
+
+A browser journey that cannot be made deterministic against a deployed target
+carries the `@quarantine` tag on its `test.describe`. Today that is
+`17-oauth-provider-initiation` alone: it clicks through to `accounts.google.com`
+and `github.com` and asserts what those pages do, so a third-party interstitial
+turns the production release gate red with no Kortix defect behind it.
+
+- The blocking release gate excludes the tag.
+- `.github/workflows/tests-browser-nightly.yml` runs exactly the tag, nightly
+  and on dispatch, against the same staging origin with the same secrets. It
+  gates nothing. A red run there is a ticket, not a block.
+
+An excluded journey does not count as a skip. `strict-skip-reporter.ts` fails
+the strict lane on a `skipped` RESULT, and a grep-excluded journey produces no
+result at all. Prove the set with `playwright test --list`.
+
+To return a journey to the blocking gate, remove its tag — no workflow edit is
+needed. Remove it only once the non-determinism is gone at the source, not
+because the nightly happened to be green.
+
+### Deployed-target resilience
+
+A deployed target shares one origin with the concurrent REST lane and with real
+traffic, so the browser helpers separate an environment fault from a product
+defect:
+
+- `helpers/http.ts` retries `429/502/503/504` for up to 60s on a deployed target
+  (`E2E_TRANSIENT_RETRY_MS`, 0 locally). It retries any request the maintenance
+  gate rejected, and otherwise only idempotent methods — a non-idempotent
+  request that reached the origin is never repeated.
+- `isProductServerError` treats `500` as a defect and `502/503/504` as
+  environment. Journeys asserting "this page issued no failing request" use it
+  instead of a blanket `status >= 500`.
+- `pollApiStatus` polls an assertion that follows a REVOKE for up to 20s.
+  `apps/api/src/iam/cache-invalidation.ts` busts its authz memo
+  process-locally, so on multi-replica staging a revoke can take up to one ~15s
+  TTL window to become visible on a sibling replica.
+- `helpers/database.ts:pollDatabaseRows` polls a read-back that follows a UI
+  action, instead of assuming the write landed before the response rendered.
+
+Prefer waiting on the visible outcome over `page.waitForResponse(url === …)`.
+The latter pins a client cache and hydration detail, not a product contract, and
+its default budget is 30s.
+
 ## SDK tests
 
 SDK tests stay in `packages/sdk`. They protect the published package contract

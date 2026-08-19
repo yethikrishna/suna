@@ -239,6 +239,12 @@ jobs:
       # 3 shards x 2 = 6 concurrent browsers, against 2 before sharding.
       # One browser per shard (3 total) — see the fleet arithmetic on the api job.
       E2E_BROWSER_WORKERS: '1'
+      # Specs tagged @quarantine (today: 17-oauth-provider-initiation, which
+      # asserts on accounts.google.com / github.com) run in the non-blocking
+      # nightly lane (tests-browser-nightly.yml), never in the release gate.
+      # Playwright applies this at collection, so an excluded spec is absent,
+      # not "skipped" — the strict-skip reporter stays strict. See #6584.
+      E2E_EXCLUDE_TAGS: '@quarantine'
     steps:
       - uses: actions/checkout@v7
       # One SHA, two sources. A release PR carries RELEASE_SOURCE_SHA in the

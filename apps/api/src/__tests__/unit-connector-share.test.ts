@@ -336,6 +336,67 @@ describe('trigger-created session visibility', () => {
       { metadata, canManageProject: true },
     )).toBe(false);
   });
+
+  /*
+   * The manager override is for UNBOUND human callers only.
+   *
+   * `isSessionTargetVisibleToCaller` narrows a session-bound credential only
+   * for `origin: 'backend'` sessions. An INTERACTIVE trigger-created session
+   * therefore passed that gate, and the override then returned true on manager
+   * standing alone — so a session-bound project token, minted for session A,
+   * could read every other trigger-created private session in the project.
+   * Binding is now part of the override's own condition.
+   */
+  test('a session-bound caller does NOT get the manager override', () => {
+    expect(isProjectSessionVisibleTo(
+      'private', serviceAccount, [], { userId: ALICE, groupIds: [] },
+      { origin: 'interactive', sessionId: 'trigger-session-b', callerSessionId: 'agent-session-a' },
+      { metadata, canManageProject: true },
+    )).toBe(false);
+  });
+
+  test('a session-bound caller is not even allowed into its OWN trigger session by the override', () => {
+    // It falls through to stored visibility instead. `private` + a different
+    // owner means no — the override is not what lets an agent read itself.
+    expect(isProjectSessionVisibleTo(
+      'private', serviceAccount, [], { userId: ALICE, groupIds: [] },
+      { origin: 'interactive', sessionId: 'trigger-session-a', callerSessionId: 'trigger-session-a' },
+      { metadata, canManageProject: true },
+    )).toBe(false);
+  });
+
+  test('a session-bound caller keeps everything stored visibility already allowed', () => {
+    const BOUND = {
+      origin: 'interactive',
+      sessionId: 'trigger-session-b',
+      callerSessionId: 'agent-session-a',
+    };
+    // project-wide visibility
+    expect(isProjectSessionVisibleTo(
+      'project', serviceAccount, [], { userId: ALICE, groupIds: [] }, BOUND,
+      { metadata, canManageProject: true },
+    )).toBe(true);
+    // an explicit grant to this member
+    expect(isProjectSessionVisibleTo(
+      'restricted', serviceAccount,
+      [{ principalType: 'member', principalId: ALICE }],
+      { userId: ALICE, groupIds: [] }, BOUND,
+      { metadata, canManageProject: true },
+    )).toBe(true);
+    // ownership
+    expect(isProjectSessionVisibleTo(
+      'private', ALICE, [], { userId: ALICE, groupIds: [] }, BOUND,
+      { metadata, canManageProject: true },
+    )).toBe(true);
+  });
+
+  test('the unbound manager still gets the override — the fix does not close the legitimate path', () => {
+    expect(isProjectSessionVisibleTo(
+      'private', serviceAccount, [], { userId: ALICE, groupIds: [] },
+      { origin: 'interactive', sessionId: 'trigger-session-b', callerSessionId: null },
+      { metadata, canManageProject: true },
+    )).toBe(true);
+  });
 });
 
 /**

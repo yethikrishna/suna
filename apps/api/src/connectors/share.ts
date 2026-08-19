@@ -222,7 +222,18 @@ export function isProjectSessionVisibleTo(
   context: { metadata: unknown; canManageProject: boolean },
 ): boolean {
   if (!isSessionTargetVisibleToCaller(ownership)) return false;
-  if (context.canManageProject && isTriggerCreatedSessionMetadata(context.metadata)) return true;
+  // The manager override is for UNBOUND human callers only. A session-bound
+  // credential (a sandbox/agent token) whose user happens to hold `manage`
+  // would otherwise read every OTHER trigger-created private session in the
+  // project — the exact sibling-session reach the ownership gate exists to
+  // deny. Bound callers fall through to stored visibility/grants.
+  if (
+    ownership.callerSessionId === null &&
+    context.canManageProject &&
+    isTriggerCreatedSessionMetadata(context.metadata)
+  ) {
+    return true;
+  }
   return isSessionVisibleTo(visibility, ownerId, grants, subject, ownership);
 }
 

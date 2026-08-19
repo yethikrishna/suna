@@ -740,14 +740,14 @@ export async function drainSessionLifecycleQueue(
         // head and member on the wire), each next waits for the previous
         // member's mint; the POSTs then run concurrently.
         const gates: BatchPlacementGate[] = [];
-        let previous: Promise<void> = headDone.then(
-          () => undefined,
-          () => undefined,
+        let previous: Promise<bigint | null> = headDone.then(
+          () => null,
+          () => null,
         );
         for (let k = 0; k < rest.length; k += 1) {
-          let release!: () => void;
-          const mine = new Promise<void>((resolve) => {
-            release = resolve;
+          let release!: (mintedTime?: bigint | null) => void;
+          const mine = new Promise<bigint | null>((resolve) => {
+            release = (mintedTime) => resolve(mintedTime ?? null);
           });
           gates.push({ waitTurn: previous, release });
           previous = mine;
@@ -1091,6 +1091,10 @@ async function remintWireMessageId(
   row: SessionLifecycleCommandRow,
   payload: QueuedContinueSessionPayload,
   transcript: InboxTranscriptState,
+  /** A batch member's hard floor: the PREVIOUS member's minted clock, so the
+   *  batch's ids are strictly ascending in send order — a skew sample landing
+   *  mid-batch made two members mint on different rules and swap. */
+  batchFloor: bigint | null = null,
 ): Promise<string> {
   const submitted = wireIdTime(payload.wireMessageId ?? '');
   const floor = transcript.read
@@ -1107,7 +1111,8 @@ async function remintWireMessageId(
   // and OpenCode reads it as already answered and never runs it. The inbox
   // already knows every id it put on the wire; that is the missing floor.
   const delivered = await readDeliveredWireIdFloor(row);
-  const known = delivered !== null && (floor === null || delivered > floor) ? delivered : floor;
+  let known = delivered !== null && (floor === null || delivered > floor) ? delivered : floor;
+  if (batchFloor !== null && (known === null || batchFloor > known)) known = batchFloor;
   const newest = known !== null && (submitted === null || known > submitted) ? known : submitted;
 
   // Placed at the BOX's clock "now" when it is known (see forwarded-placement
@@ -1324,8 +1329,11 @@ function externalIdFromSandboxUrlField(url: string | null): string | null {
  * then POSTs concurrently with everyone else.
  */
 export interface BatchPlacementGate {
-  waitTurn: Promise<void>;
-  release: () => void;
+  /** Resolves with the previous member's minted id clock (null for the first
+   *  member after the head) — this member's mint floor, so batch ids are
+   *  strictly ascending in send order whatever the skew cache says. */
+  waitTurn: Promise<bigint | null>;
+  release: (mintedTime?: bigint | null) => void;
 }
 
 export interface ExecuteQueuedContinueOptions {
@@ -1535,8 +1543,9 @@ export async function executeQueuedContinue(
   let turnLive = false;
   // The head of the batch landed and opened a turn (or joined the live one);
   // every row after it is placed as into a live turn, by definition.
+  let batchFloor: bigint | null = null;
   if (opts.batch) {
-    await opts.batch.waitTurn;
+    batchFloor = await opts.batch.waitTurn;
     tl.mark('batch-turn');
     turnLive = true;
   }
@@ -1605,6 +1614,7 @@ export async function executeQueuedContinue(
     // first. Only a first delivery may do this: a re-POST's original id may
     // already be persisted.
     if (
+      !opts.batch &&
       deliveryAttempt === 0 &&
       redeliveries === 0 &&
       payload.wireMessageId &&
@@ -1616,12 +1626,12 @@ export async function executeQueuedContinue(
       underPlaced = true;
       tl.mark('under-placed');
     } else {
-      wireMessageId = await remintWireMessageId(row, payload, transcript);
+      wireMessageId = await remintWireMessageId(row, payload, transcript, batchFloor);
       tl.mark('remint');
     }
   }
   // The id is final: the next batch member may mint above it.
-  opts.batch?.release();
+  opts.batch?.release(wireMessageId ? wireIdTime(wireMessageId) : null);
 
   {
     const stagedRevertLate = await stagedRevertPromise;

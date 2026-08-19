@@ -678,6 +678,11 @@ export async function provisionSessionSandbox(opts: {
       const createFn = bootDecision.bootByTemplateId
         ? (o: CreateSandboxOpts) => provider.createFromExternalId!(bootDecision.bootByTemplateId!, o)
         : undefined;
+      const attachNetworkBoundaryDuringCreate =
+        fastColdBootEnabled() && provider.networkBoundaryAtCreate === true;
+      providerCreateInput.networkBoundary = attachNetworkBoundaryDuringCreate
+        ? networkBoundary
+        : undefined;
       let result: ProvisionResult;
       let attempts: number;
       try {
@@ -756,15 +761,24 @@ export async function provisionSessionSandbox(opts: {
       // the method existed; now that a shim-backed provider gets past that
       // check, calling it unguarded would be a TypeError at provision time
       // rather than the clean skip this is.
-      if (networkBoundary.length > 0 && provider.syncNetworkBoundary) {
+      if (
+        networkBoundary.length > 0 &&
+        provider.syncNetworkBoundary &&
+        !attachNetworkBoundaryDuringCreate
+      ) {
         try {
-          await provider.syncNetworkBoundary(result.externalId, networkBoundary);
+          await provider.syncNetworkBoundary(result.externalId, networkBoundary, {
+            replicaOwnerId: sandbox.sandboxId,
+          });
           tl.mark(`network-secrets:${networkBoundary.length}`);
         } catch (error) {
           await provider.remove(result.externalId).catch(() => {});
           bgExternalId = null;
           throw error;
         }
+      }
+      if (networkBoundary.length > 0 && attachNetworkBoundaryDuringCreate) {
+        tl.mark(`network-secrets:create:${networkBoundary.length}`);
       }
       const timeline = tl.summary();
 

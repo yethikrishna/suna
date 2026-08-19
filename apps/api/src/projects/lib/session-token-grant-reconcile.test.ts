@@ -105,44 +105,17 @@ test('reconciles manifest grant changes on the next prompt without an agent swit
   expect(decision).toEqual({ action: 'write', grant: currentGrant });
 });
 
-test('same-agent reconcile can run OFF the prompt path: skip now, the manifest refresh lands in the background', async () => {
-  // The per-prompt call site asks for this. `forceRefresh` is a git fetch of
-  // the project mirror (~0.8s), and it ran synchronously before EVERY prompt —
-  // most of the visible dead air on a queued message. A same-agent manifest
-  // change still reaches the token (asserted below), just not before the
-  // prompt is forwarded; the connector/CLI gates reconcile at call time too.
-  const decision = await remintGrantForAgentSwitch(
-    {
-      projectId: 'project-1',
-      sessionId: 'session-1',
-      sessionAgent: 'kortix',
-      requestedAgent: null,
-    },
-    { sameAgent: 'background' },
-  );
-  expect(decision).toEqual({ action: 'skip' });
-  // Not yet applied at return…
-  await new Promise((r) => setTimeout(r, 0));
-  await new Promise((r) => setTimeout(r, 0));
-  // …but applied shortly after.
+test('same-agent reconcile is SYNCHRONOUS on the prompt path — a narrowed manifest is enforced from the first call of the next turn', async () => {
+  // It ran in the background for one release; the security review refused it:
+  // generic CLI/API authorization reads the token row without reconciling.
+  const decision = await remintGrantForAgentSwitch({
+    projectId: 'project-1',
+    sessionId: 'session-1',
+    sessionAgent: 'kortix',
+    requestedAgent: null,
+  });
   expect(resolvedAgent).toBe('kortix');
   expect(forceRefresh).toBe(true);
   expect(writtenGrant).toEqual(currentGrant);
-});
-
-test('a REAL agent switch stays synchronous even in background mode — fail-closed on the prompt path', async () => {
-  const decision = await remintGrantForAgentSwitch(
-    {
-      projectId: 'project-1',
-      sessionId: 'session-1',
-      sessionAgent: 'kortix',
-      requestedAgent: 'researcher',
-    },
-    { sameAgent: 'background' },
-  );
-  // Resolved synchronously (the assertion right after the await sees it),
-  // for the SWITCHED-TO agent.
-  expect(resolvedRequestedAgent).toBe('researcher');
-  expect(forceRefresh).toBe(true);
   expect(decision).toEqual({ action: 'write', grant: currentGrant });
 });

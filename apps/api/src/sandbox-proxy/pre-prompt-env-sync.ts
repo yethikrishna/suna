@@ -325,19 +325,16 @@ export async function runPrePromptEnvSync(
     // The env sync above applied the running agent's secret grant, or refused it
     // when the optional strict lock is enabled. Re-point the token's
     // connector/CLI grant at the agent that will actually run — it was frozen at
-    // mint from the BOOT agent, and those gates read it at call time. A REAL
-    // switch is synchronous (it can refuse). The same-agent case — every
-    // ordinary turn — refreshes in the background: its manifest read is a git
-    // fetch that used to cost ~0.8s on the path of every prompt.
-    await deps.remintGrant(
-      {
-        projectId: record.projectId,
-        sessionId: record.sessionId,
-        sessionAgent,
-        requestedAgent,
-      },
-      { sameAgent: 'background' },
-    );
+    // mint from the BOOT agent, and the CLI/API gates read it straight from
+    // the token row at call time. Synchronous, same-agent case included: a
+    // manifest that narrowed the grant in the previous turn must be enforced
+    // from the first call of this one (see `remintGrantForAgentSwitch`).
+    await deps.remintGrant({
+      projectId: record.projectId,
+      sessionId: record.sessionId,
+      sessionAgent,
+      requestedAgent,
+    });
   } catch (err) {
     // Fail closed on anything to do with the secret grant: refuse the prompt
     // rather than forwarding it against an env we can't vouch for.

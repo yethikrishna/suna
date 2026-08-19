@@ -203,18 +203,6 @@ export async function remintGrantForAgentSwitch(
     /** The agent this prompt asked to run, verbatim from the body. */
     requestedAgent: string | null;
   },
-  opts: {
-    /**
-     * What to do when the prompt runs the agent the token ALREADY holds.
-     * `'await'` (default) refreshes the manifest and applies any grant change
-     * before returning. `'background'` returns `skip` at once and applies the
-     * same refresh off the caller's path — the per-prompt call site uses this,
-     * because the refresh is a git fetch of the project mirror (~0.8s) that
-     * used to run synchronously before EVERY prompt. A real switch is always
-     * synchronous: it can REFUSE, and that must land before the prompt.
-     */
-    sameAgent?: 'await' | 'background';
-  } = {},
 ): Promise<RemintDecision> {
   const requested = input.requestedAgent?.trim();
   // The agent that will ACTUALLY run. `project_sessions.agent_name` is the
@@ -226,25 +214,23 @@ export async function remintGrantForAgentSwitch(
   const stored = await loadStoredSessionGrant(input.sessionId);
   const heldAgent = stored?.agent?.trim() || input.sessionAgent;
   const isSwitch = heldAgent !== runningAgent;
-  const refresh = async (): Promise<RemintDecision> => {
-    const running = await resolveCurrentGrant({
-      ...input,
-      runningAgent,
-      forceRefresh: true,
-    });
-    return applyResolvedGrant(input.sessionId, stored, running);
-  };
-  if (!isSwitch && opts.sameAgent === 'background') {
-    void refresh().catch((err) => {
-      console.warn('[session-token-grant] background same-agent reconcile failed', {
-        sessionId: input.sessionId,
-        agent: runningAgent,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
-    return { action: 'skip' };
-  }
-  return refresh();
+  // Synchronous for the same-agent case too — every ordinary turn. This ran in
+  // the background for one release (the manifest read is a git fetch of the
+  // project mirror, ~0.8s on the path of every prompt) and the security review
+  // was right to refuse it: generic Kortix CLI/API authorization reads
+  // `account_tokens.agent_grant` straight from the token row (`middleware/
+  // auth.ts` → `requireScope`), so a `kortix.yaml` that NARROWED the running
+  // agent's `kortixCli` in the previous turn was still enforced with the old,
+  // broader grant for the first calls of the next turn. Only the connector
+  // gateway reconciles at call time (`reconcileStoredSessionAgentGrant`).
+  // The prompt must not be forwarded before the row is rewritten.
+  void isSwitch;
+  const running = await resolveCurrentGrant({
+    ...input,
+    runningAgent,
+    forceRefresh: true,
+  });
+  return applyResolvedGrant(input.sessionId, stored, running);
 }
 
 /**

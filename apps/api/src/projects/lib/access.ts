@@ -126,6 +126,23 @@ const loadPrincipalIsServiceAccount = ttlMemo({
 });
 
 /**
+ * Is the machine-owner lookup capable of changing the verdict?
+ *
+ * `mayManageSessionSharing` is `isOwner || (canManageProject && ownerIsMachine)`.
+ * The owner short-circuits it, and a caller with no manage role can never reach
+ * the second term — so in both cases the answer is already decided and the
+ * query is pure cost. `loadVisibleSession` runs on most session routes, and the
+ * overwhelmingly common caller is a user reading their OWN session, so skipping
+ * it there keeps this change off the hot path entirely.
+ *
+ * The `false` reported in the skipped cases is never read as a fact about the
+ * session: its one consumer is the predicate above, which discards it.
+ */
+function ownerIsMachineCanMatter(isOwner: boolean, canManageProject: boolean): boolean {
+  return !isOwner && canManageProject;
+}
+
+/**
  * Does this session have a MACHINE owner rather than a human one?
  *
  * True when `created_by` is empty, or names a service account of this account —
@@ -261,7 +278,9 @@ export async function loadVisibleSession(
     });
   }
   const isOwner = row.createdBy === loaded.userId;
-  const ownerIsMachine = await sessionOwnerIsMachine(loaded.row.accountId, row.createdBy);
+  const ownerIsMachine = ownerIsMachineCanMatter(isOwner, canManageProject)
+    ? await sessionOwnerIsMachine(loaded.row.accountId, row.createdBy)
+    : false;
   return {
     row,
     subject,
@@ -330,7 +349,9 @@ export async function loadSessionForSharing(
   }
   const isOwner = row.createdBy === loaded.userId;
   const canManageProject = roleAllows(loaded.effectiveRole, 'manage');
-  const ownerIsMachine = await sessionOwnerIsMachine(loaded.row.accountId, row.createdBy);
+  const ownerIsMachine = ownerIsMachineCanMatter(isOwner, canManageProject)
+    ? await sessionOwnerIsMachine(loaded.row.accountId, row.createdBy)
+    : false;
   return {
     row,
     isOwner,

@@ -134,8 +134,8 @@ RUN cd /opt/kortix/warm-config/.kortix/opencode \
  && rm -rf /tmp/opencode-tools-bundle-check
 RUN sudo -u kortix env HOME=/home/kortix PATH="${'$'}{PATH}" \
       bash /tmp/kortix-opencode-warmup instance keep \
- && test -z "$(git -C /workspace status --porcelain --untracked-files=no)" \
- && test "$(git -C /workspace rev-parse HEAD)" = "$(git --git-dir=/opt/kortix/scaffold.git rev-parse HEAD)" \
+ && test -z "$(sudo -u kortix env HOME=/home/kortix git -C /workspace status --porcelain --untracked-files=no)" \
+ && test "$(sudo -u kortix env HOME=/home/kortix git -C /workspace rev-parse HEAD)" = "$(sudo -u kortix env HOME=/home/kortix git --git-dir=/opt/kortix/scaffold.git rev-parse HEAD)" \
  && rm -f /tmp/kortix-opencode-warmup
 COPY --chown=kortix:kortix ${options.catalogPath} /opt/kortix/llm-catalog.json
 COPY --chown=kortix:kortix ${options.managedSkillsPath}/ /opt/kortix/managed-skills/

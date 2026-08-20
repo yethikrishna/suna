@@ -107,24 +107,46 @@ describe('the request leg streams, with real backpressure', () => {
   test('chunks written incrementally ARRIVE incrementally at the upstream', async () => {
     received = [];
     const seen: number[] = [];
+    const body: Buffer[] = [];
+    let signalFirstByte!: () => void;
+    const firstByteSeen = new Promise<void>((resolve) => {
+      signalFirstByte = resolve;
+    });
     handler = (req, res) => {
-      req.on('data', (chunk: Buffer) => seen.push(chunk.byteLength));
+      req.on('data', (chunk: Buffer) => {
+        seen.push(chunk.byteLength);
+        body.push(Buffer.from(chunk));
+        signalFirstByte();
+      });
       req.on('end', () => {
         res.writeHead(200, { 'content-type': 'text/plain' });
         res.end('done');
       });
     };
-    // A source that emits three chunks with a gap, so coalescing is visible.
+    // CAUSAL, not timed. An earlier version pushed three chunks 25ms apart and
+    // asserted three `data` events arrived — which TCP coalescing merges into
+    // one on a loaded runner, so it failed in CI while passing locally. The
+    // property is not "three reads", it is "the upstream saw bytes BEFORE the
+    // request body ended". So the upstream signals its first read, and the test
+    // WAITS for that signal before ending the source: if `openUpstream` buffered
+    // the body to completion the signal could never arrive and this times out.
     const source = new Readable({ read() {} });
     const upstreamPromise = openUpstream(head(), source, { seam: seam() });
-    for (const text of ['first-', 'second-', 'third']) {
-      source.push(Buffer.from(text));
-      await new Promise((r) => setTimeout(r, 25));
-    }
+    source.push(Buffer.from('first-'));
+    await Promise.race([
+      firstByteSeen,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('upstream saw no bytes before the body ended — not streaming')), 5000),
+      ),
+    ]);
+    source.push(Buffer.from('second-'));
     source.push(null);
     const upstream = await upstreamPromise;
     expect(await drain(upstream.body)).toEqual(Buffer.from('done'));
-    expect(seen.length).toBeGreaterThanOrEqual(3);
+    // This handler consumes the request itself, so the bytes land in `body`
+    // rather than in the harness's `received`.
+    expect(Buffer.concat(body).toString()).toBe('first-second-');
+    expect(seen.length).toBeGreaterThanOrEqual(1);
   });
 
   test('a streamed body is framed CHUNKED, with no content-length', async () => {
@@ -158,27 +180,37 @@ describe('the request leg streams, with real backpressure', () => {
 
 describe('the response leg streams', () => {
   test('response chunks reach the reader INCREMENTALLY, not at end-of-body', async () => {
+    // CAUSAL, not timed. The upstream writes ONE event, then waits for the test
+    // to actually read it before writing the last one and ending. If the
+    // response were buffered to completion the reader would never see event 1,
+    // the gate would never open, and this times out — which is exactly the
+    // regression worth catching. Counting arrivals within a time budget is not:
+    // TCP coalescing merges SSE frames on a loaded runner, which is how the
+    // timed version failed in CI while passing locally.
+    let openGate!: () => void;
+    const firstEventRead = new Promise<void>((resolve) => {
+      openGate = resolve;
+    });
     handler = (_req, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
-      let i = 0;
-      const timer = setInterval(() => {
-        res.write(`data: {"i":${i}}\n\n`);
-        if (++i === 3) {
-          clearInterval(timer);
-          res.end();
-        }
-      }, 30);
+      res.write('data: {"i":0}\n\n');
+      void firstEventRead.then(() => {
+        res.write('data: {"i":1}\n\n');
+        res.end();
+      });
     };
     const upstream = await openUpstream(head('/sse', 'GET'), null, { seam: seam() });
-    const arrivals: number[] = [];
-    const started = Date.now();
+    const seenEvents: string[] = [];
+    const deadline = setTimeout(() => {
+      throw new Error('no event reached the reader before end-of-body — not streaming');
+    }, 5000);
     for await (const chunk of upstream.body) {
-      void chunk;
-      arrivals.push(Date.now() - started);
+      seenEvents.push(Buffer.from(chunk).toString());
+      openGate();
     }
-    // Three separate arrivals means the body was never buffered to completion.
-    expect(arrivals.length).toBeGreaterThanOrEqual(3);
-    expect(arrivals[arrivals.length - 1]! - arrivals[0]!).toBeGreaterThan(20);
+    clearTimeout(deadline);
+    expect(seenEvents.join('')).toContain('{"i":0}');
+    expect(seenEvents.join('')).toContain('{"i":1}');
   });
 
   test('the UPSTREAM status and its ordered headers come back', async () => {

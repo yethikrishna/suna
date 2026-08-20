@@ -169,10 +169,14 @@ describe('relayTurnEndToApi — exactly-once per completed turn', () => {
     }
   })
 
-  test('an OPEN newest assistant (a racing new turn) keeps the relay unnamed', async () => {
-    // Naming the racing turn would let completeSandboxTurn close the row of a
-    // turn that is still running. Unnamed is the honest answer; the tip
-    // fallback in the forwarded-turn reconciler resolves it server-side.
+  // EXPECTATION FLIPPED. This shape used to relay UNNAMED, on the theory that an
+  // open newest assistant means "a turn is running, name nothing". It conflated
+  // two turns: `msg_turn_2` is the one still running, and `msg_turn_1` provably
+  // COMPLETED. Selecting by PARENT LINKAGE instead of array position names the
+  // turn that actually ended — the racing turn's row is untouched — and it
+  // restores the `completedAt` dedup signature, without which this relay could
+  // double-finalize.
+  test('an OPEN racing turn does not unname the OLDER turn that completed', async () => {
     const m = startMocks(
       () => 1000,
       () => true,
@@ -181,6 +185,58 @@ describe('relayTurnEndToApi — exactly-once per completed turn', () => {
         { info: { role: 'assistant', parentID: 'msg_turn_1', time: { completed: 1000 } } },
         { info: { id: 'msg_turn_2', role: 'user' } },
         { info: { role: 'assistant', parentID: 'msg_turn_2', time: {} } },
+      ],
+    )
+    sessionEnv(m.baseUrl)
+    const opencode = { getInternalUrl: () => m.baseUrl }
+    const cfg = { workspace: WORKSPACE } as unknown as Config
+    try {
+      await relayTurnEndToApi(ROOT, 'idle', opencode, cfg)
+      await relayTurnEndToApi(ROOT, 'idle', opencode, cfg)
+      expect(m.bodies()[0]?.turn_message_id).toBe('msg_turn_1')
+      // Named ⇒ it carries a dedup signature ⇒ the second observation is a no-op.
+      expect(m.calls()).toBe(1)
+    } finally {
+      m.stop()
+    }
+  })
+
+  test('a completed STEP of the turn still streaming keeps the relay unnamed', async () => {
+    // One turn, two steps: the first step completed while its tools run and the
+    // second step is open. Both are parented to `msg_turn_1`, so this is NOT a
+    // finished turn — naming it would let completeSandboxTurn close the row of a
+    // turn that is still running. Unnamed is the honest answer; the tip fallback
+    // in the forwarded-turn reconciler resolves it server-side.
+    const m = startMocks(
+      () => 1000,
+      () => true,
+      () => [
+        { info: { id: 'msg_turn_1', role: 'user' } },
+        { info: { role: 'assistant', parentID: 'msg_turn_1', time: { completed: 1000 } } },
+        { info: { role: 'assistant', parentID: 'msg_turn_1', time: {} } },
+      ],
+    )
+    sessionEnv(m.baseUrl)
+    const opencode = { getInternalUrl: () => m.baseUrl }
+    const cfg = { workspace: WORKSPACE } as unknown as Config
+    try {
+      await relayTurnEndToApi(ROOT, 'idle', opencode, cfg)
+      expect(m.bodies()[0]?.turn_message_id).toBeUndefined()
+    } finally {
+      m.stop()
+    }
+  })
+
+  test('an open assistant with NO parentID proves nothing, so the relay stays unnamed', async () => {
+    // Without the open row's `parentID` there is no way to prove the completed
+    // row belongs to a different turn. Keep the conservative answer.
+    const m = startMocks(
+      () => 1000,
+      () => true,
+      () => [
+        { info: { id: 'msg_turn_1', role: 'user' } },
+        { info: { role: 'assistant', parentID: 'msg_turn_1', time: { completed: 1000 } } },
+        { info: { role: 'assistant', time: {} } },
       ],
     )
     sessionEnv(m.baseUrl)

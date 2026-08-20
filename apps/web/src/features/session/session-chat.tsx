@@ -35,7 +35,6 @@ import {
   stripSystemPtyText,
 } from './message-parsing';
 import { projectQueueRows } from './queue-projection';
-import { runLegacyQueueMigration } from './queue-migration-runner';
 import { createQueueUndoAction } from './queued-message-restore';
 import { ActivityBurst } from './turn/activity-burst';
 import { ExpandableOutput } from './turn/expandable-output';
@@ -2036,33 +2035,6 @@ export function SessionChat({
   // crash cannot lose it, and the server — not this component — decides whether
   // it runs now or waits for the turn in flight.
   const promptInbox = useSessionPrompts(projectId, projectSessionId);
-
-  // The one-time hand-off of whatever the deleted browser queue was still
-  // holding — see `queue-migration.ts`.
-  //
-  // Here rather than in a list route because THIS is the only component that
-  // knows both ids a legacy blob can be keyed by: the OpenCode chat id
-  // (`sessionId`, what `SessionChat` drained under) and the Kortix session id
-  // (`projectSessionId`, the only one the inbox takes). A list route knows
-  // neither mapping.
-  //
-  // Sessions are pre-mounted per tab, so several of these run at once; the pass
-  // is serialized by `runLegacyQueueMigration` and a skip-only pass gives its
-  // attempt back, so a session that can only see another session's rows does
-  // not spend the retry budget.
-  useEffect(() => {
-    if (!projectId || !projectSessionId) return;
-    void runLegacyQueueMigration({
-      legacyIds: [sessionId, projectSessionId],
-      projectId,
-      // The route takes the KORTIX id; the wire message id is minted against
-      // the OPENCODE transcript. Two ids, two parameters — see the runner.
-      sessionId: projectSessionId,
-      wireSessionId: sessionId,
-      enqueue: promptInbox.enqueue,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, projectSessionId, sessionId]);
 
   // T10: the most recently issued stop/cancel's `AbortSettlement`
   // promise for this session, so `stopThenSendNow` (used by

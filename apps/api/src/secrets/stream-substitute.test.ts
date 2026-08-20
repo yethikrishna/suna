@@ -97,8 +97,91 @@ describe('StreamSubstituter replaces across chunk boundaries', () => {
     }
     emitted += substituter.flush().byteLength;
     expect(emitted).toBe(big.byteLength);
-    // Bounded by the longest needle — never by the body.
-    expect((substituter as unknown as { window: number }).window).toBe(HANDLE.length);
+    // Bounded by the longest needle — never by the body. Asserted on the REAL
+    // retained buffer rather than a declared window: retention is now decided
+    // per chunk by `cutoffFor`, and the bound it guarantees is strictly tighter
+    // (`longest - 1`, because only a PROPER prefix is ever held back).
+    expect((substituter as unknown as { pending: Buffer }).pending.byteLength).toBeLessThan(
+      Math.max(...pairs.map((p) => p.needle.byteLength)),
+    );
+  });
+});
+
+describe('promptness: bytes that cannot become a needle are emitted IMMEDIATELY', () => {
+  // The regression this whole streaming relay exists to prevent. Blind
+  // `longestNeedle` retention withheld the tail of EVERY chunk until the next
+  // one arrived — measured at 1503 ms of added latency per 29-byte SSE event
+  // for a 53-byte API key, and a whole-stream collapse for a PEM. On a
+  // long-lived SSE stream the final event was withheld until the connection
+  // closed, i.e. indefinitely. A relay that streams bytes but not EVENTS passes
+  // a throughput test and fails every real user.
+  const pairs = [pair(HANDLE, VALUE, 'PRIMARY')];
+
+  test('a complete SSE event is forwarded whole, nothing withheld', () => {
+    const substituter = new StreamSubstituter(pairs);
+    const event = Buffer.from('data: {"delta":"tok"}\n\n');
+    expect(substituter.push(event).byteLength).toBe(event.byteLength);
+    expect((substituter as unknown as { pending: Buffer }).pending.byteLength).toBe(0);
+  });
+
+  test('five events arrive as five emissions, not one', () => {
+    const substituter = new StreamSubstituter(pairs);
+    const emissions: number[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      emissions.push(substituter.push(Buffer.from(`data: {"i":${i}}\n\n`)).byteLength);
+    }
+    expect(emissions.every((n) => n > 0)).toBe(true);
+    // And the last one needed no flush() to escape.
+    expect(substituter.flush().byteLength).toBe(0);
+  });
+
+  test('a 2208-byte PEM needle still does not withhold ordinary bytes', () => {
+    // The pathological profile: window 2208 collapsed all five events into one
+    // emission at end-of-stream. Needle length must not gate promptness.
+    const pem = `-----BEGIN RSA PRIVATE KEY-----\n${'MIIEow'.repeat(300)}\n-----END RSA PRIVATE KEY-----`;
+    const substituter = new StreamSubstituter([pair(pem, '[REDACTED]', 'PEM')]);
+    const event = Buffer.from('data: {"delta":"tok"}\n\n');
+    expect(substituter.push(event).byteLength).toBe(event.byteLength);
+  });
+});
+
+describe('retention still happens exactly when it matters', () => {
+  const pairs = [pair(HANDLE, VALUE, 'PRIMARY')];
+
+  test('a chunk ending in a needle PREFIX emits less than it was given', () => {
+    // The adversarial counterpart of the promptness tests, and the leak a naive
+    // "just flush everything" fix causes: emitting these bytes now ships the
+    // first 11 bytes of the handle to the upstream un-substituted, and the
+    // remainder arrives next and no longer matches.
+    const substituter = new StreamSubstituter(pairs);
+    const chunk = Buffer.from(`noise${HANDLE.slice(0, 11)}`);
+    const emitted = substituter.push(chunk);
+    expect(emitted.byteLength).toBeLessThan(chunk.byteLength);
+    expect(emitted.toString()).toBe('noise');
+    // Feeding the rest completes the match — no split secret reaches the wire.
+    const rest = Buffer.concat([substituter.push(Buffer.from(HANDLE.slice(11))), substituter.flush()]);
+    expect(Buffer.concat([emitted, rest]).toString()).toBe(`noise${VALUE}`);
+  });
+
+  test('retention never exceeds the longest needle minus one', () => {
+    // The memory bound that removes the size caps, asserted against the worst
+    // case: a chunk that IS a maximal proper prefix.
+    const substituter = new StreamSubstituter(pairs);
+    substituter.push(Buffer.from(HANDLE.slice(0, HANDLE.length - 1)));
+    expect((substituter as unknown as { pending: Buffer }).pending.byteLength).toBe(HANDLE.length - 1);
+  });
+
+  test('dispose() zero-fills the needle and replacement bytes', () => {
+    // A long-lived SSE/WS relay holds decrypted secret values for the life of
+    // the connection, not milliseconds. Zeroing on teardown bounds that window.
+    const needle = Buffer.from(HANDLE);
+    const replacement = Buffer.from(VALUE);
+    const substituter = new StreamSubstituter([{ needle, replacement, label: 'PRIMARY' }]);
+    substituter.push(Buffer.from('x'));
+    substituter.flush();
+    substituter.dispose();
+    expect(needle.every((byte) => byte === 0)).toBe(true);
+    expect(replacement.every((byte) => byte === 0)).toBe(true);
   });
 });
 

@@ -145,6 +145,16 @@ import {
 import { opsApp } from './ops';
 import { adminApp } from './admin';
 
+/**
+ * The streaming secret relay routes, matched on the raw pathname in
+ * `Bun.serve`'s fetch — before Hono sees the request.
+ *
+ * Covers both `…/relay` and `…/relay/ws-ticket` (and the ws upgrade path when
+ * it lands). These carry SSE and long-lived upstream bodies, so they need the
+ * same `server.timeout(req, 0)` treatment as /v1/p/ and /v1/llm-gateway.
+ */
+const SECRET_RELAY_PATH = /^\/v1\/projects\/[^/]+\/secrets\/[^/]+\/relay(?:\/|$)/;
+
 // ─── Process-level crash guards ───────────────────────────────────────────────
 // A stray rejected promise or throw escaping any fire-and-forget path — the
 // dozens of `void (async …)()` provisioning/sweep ticks and the module-load
@@ -1571,6 +1581,15 @@ export default {
     // the proxy's own upstream timeout decide instead of Bun closing the client
     // socket early with an empty reply.
     if (url.pathname.includes('/v1/p/')) {
+      server.timeout(req, 0);
+    }
+
+    // The secret streaming relay carries SSE and long-lived upstream bodies.
+    // Without this Bun cuts the socket with an empty reply that the LB turns
+    // into a 502 with no CORS headers — the same shape as the gateway
+    // idleTimeout incident. The global `idleTimeout: 0` above is necessary but
+    // not sufficient: `server.timeout(req, …)` is the PER-REQUEST budget.
+    if (SECRET_RELAY_PATH.test(url.pathname)) {
       server.timeout(req, 0);
     }
 

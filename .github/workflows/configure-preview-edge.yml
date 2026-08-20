@@ -21,6 +21,7 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write # OIDC -> AWS, to read each environment's API_KEY_SECRET
 
 jobs:
   configure:
@@ -53,8 +54,7 @@ jobs:
             fi
           done
 
-      - name: Verify Worker route and secret bindings
-        working-directory: infra/cloudflare/workers/preview-router
+      - name: Verify Worker route
         run: |
           set -euo pipefail
           routes="$({
@@ -67,11 +67,46 @@ jobs:
             any(.result[]; .pattern == "*.p.kortix.com/*" and .script == "kortix-preview-router")
           ' <<<"$routes"
 
-          # Every environment that serves previews needs its own edge secret.
-          # A missing one is not fatal here — the Worker answers 503 for that
-          # environment only — but it must be visible.
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::935064898258:role/kortix-gha-ecs-deploy
+          aws-region: us-west-2
+
+      - name: Sync each environment's edge secret from its own env blob
+        working-directory: infra/cloudflare/workers/preview-router
+        run: |
+          set -euo pipefail
+          # The API verifies the edge signature with KORTIX_PREVIEW_EDGE_SECRET,
+          # falling back to API_KEY_SECRET (see shared/edge-signature.ts). Rather
+          # than introduce a new secret that has to be copied into two systems by
+          # hand — and drift — read each environment's own API_KEY_SECRET from
+          # the Secrets Manager blob that already feeds its ECS tasks, and push
+          # that as the Worker secret. Nothing is printed, and no value is ever
+          # written to a file.
+          for pair in "dev:kortix-dev-env:DEV_EDGE_SECRET" \
+                      "staging:kortix-staging-env:STAGING_EDGE_SECRET" \
+                      "prod:kortix-prod-env:PROD_EDGE_SECRET"; do
+            env_name="${pair%%:*}"; rest="${pair#*:}"
+            blob="${rest%%:*}"; secret_name="${rest#*:}"
+            if ! value="$(aws secretsmanager get-secret-value \
+                  --secret-id "$blob" --query SecretString --output text 2>/dev/null)"; then
+              echo "::warning::$blob is not readable — $env_name previews will answer 503 until $secret_name is set."
+              continue
+            fi
+            key="$(jq -r '.API_KEY_SECRET // empty' <<<"$value")"
+            if [ -z "$key" ]; then
+              echo "::warning::$blob has no API_KEY_SECRET — skipping $secret_name."
+              continue
+            fi
+            printf '%s' "$key" | npx --yes wrangler@4.34.0 secret put "$secret_name" >/dev/null
+            echo "synced $secret_name from $blob"
+          done
+
           secrets="$(npx --yes wrangler@4.34.0 secret list --format json)"
-          jq -e 'any(.[]; .name == "DEV_EDGE_SECRET")' <<<"$secrets"
+          jq -e '
+            map(.name) | (index("DEV_EDGE_SECRET") != null)
+          ' <<<"$secrets"
           for name in STAGING_EDGE_SECRET PROD_EDGE_SECRET; do
             if ! jq -e --arg n "$name" 'any(.[]; .name == $n)' <<<"$secrets" >/dev/null; then
               echo "::warning::$name is not set — that environment's previews will answer 503."

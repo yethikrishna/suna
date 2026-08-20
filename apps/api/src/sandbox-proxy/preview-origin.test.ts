@@ -123,6 +123,47 @@ describe('preview origin auth gate', () => {
     expect(principalCalls).toEqual([]);
   });
 
+  test('self-host direct-edge mode serves the real Host with no signature', async () => {
+    // No Cloudflare Worker fronts a self-host: the operator's own reverse proxy
+    // (the bundled Caddy) is the trust boundary and passes the real Host
+    // through untouched.
+    configState.KORTIX_PREVIEW_BASE_DOMAIN = 'p.acme.com';
+    process.env.KORTIX_PREVIEW_ALLOW_DIRECT_EDGE = 'true';
+    try {
+      const [req, url] = request(
+        '/learn?token=good',
+        {},
+        `dev-p8081-${'sbx-known'}.p.acme.com`,
+      );
+      const res = await handlePreviewOriginRequest(req, url);
+      expect(res?.status).toBe(200);
+      expect(forwarded).toBe(1);
+    } finally {
+      delete process.env.KORTIX_PREVIEW_ALLOW_DIRECT_EDGE;
+      configState.KORTIX_PREVIEW_BASE_DOMAIN = undefined;
+    }
+  });
+
+  test('direct-edge mode ignores a claimed host header — only the real Host counts', async () => {
+    // Otherwise anyone reaching a self-host API directly could name any preview
+    // by setting a header, which is the whole reason the header is signed on
+    // Kortix Cloud.
+    configState.KORTIX_PREVIEW_BASE_DOMAIN = 'p.acme.com';
+    process.env.KORTIX_PREVIEW_ALLOW_DIRECT_EDGE = 'true';
+    try {
+      const [req, url] = request(
+        '/learn?token=good',
+        { headers: { 'x-kortix-preview-host': 'dev-p8081-sbx-known.p.acme.com' } },
+        'api.acme.com',
+      );
+      expect(await handlePreviewOriginRequest(req, url)).toBeNull();
+      expect(forwarded).toBe(0);
+    } finally {
+      delete process.env.KORTIX_PREVIEW_ALLOW_DIRECT_EDGE;
+      configState.KORTIX_PREVIEW_BASE_DOMAIN = undefined;
+    }
+  });
+
   test('a claimed preview host without an edge signature is refused', async () => {
     configState.KORTIX_PREVIEW_BASE_DOMAIN = 'p.kortix.com';
     const [req, url] = request(

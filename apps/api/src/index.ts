@@ -119,7 +119,7 @@ import { startActiveTurnRenewal, stopActiveTurnRenewal } from './projects/active
 import { kickStartupPreBuild } from './snapshots/builder';
 import { registerSunaMigrationRoutes } from './projects/suna-migration/suna-migration-routes';
 import { handleAppPublicRequest, resolveAppRequest } from './apps/public-proxy';
-import { appEdgeApp } from './apps/edge';
+import { edgeApp } from './edge/tls-check';
 import { appWsHandlers, prepareAppWsUpgrade } from './apps/ws-proxy';
 import {
   startSunaMigrationWorker,
@@ -925,7 +925,16 @@ app.route('/v1/access', accessControlApp); // /v1/access/signup-status, /v1/acce
 // (Caddy cannot present a bearer token); it discloses only whether a hostname
 // maps to an App. Not an App public host itself (Host = kortix-api), so it is
 // served by Hono, never intercepted by handleAppPublicRequest.
-app.route('/v1/apps/edge', appEdgeApp); // GET /v1/apps/edge/tls-check?domain=<host>
+// One on-demand-TLS gate for every wildcard family this instance serves (Apps
+// and sandbox previews). Caddy allows a single global `ask`, so both families
+// share one handler — mounted at BOTH paths. `/v1/apps/edge/tls-check` is where
+// every already-installed Caddyfile points, and it keeps working: an instance
+// that updates its assets before its API image still gets a correct answer for
+// App hosts, and preview hosts simply have no certificate until the API is new.
+// `/v1/edge/tls-check` is the name that describes what it now does.
+// See edge/tls-check.ts.
+app.route('/v1/apps/edge', edgeApp); // GET /v1/apps/edge/tls-check?domain=<host>
+app.route('/v1/edge', edgeApp); // GET /v1/edge/tls-check?domain=<host>
 
 // Setup links — PUBLIC, token-gated. An agent-minted (encrypted, short-lived,
 // value-only) token is the bearer capability, so a human can fill in a secret

@@ -43,7 +43,9 @@ with each other. An origin per preview puts each app in its own principal.
 | WebSocket upgrade | `apps/api/src/sandbox-proxy/ws-proxy.ts` |
 | edge signature | `apps/api/src/shared/edge-signature.ts` |
 | edge Worker | `infra/cloudflare/workers/preview-router/` |
-| provisioning | `.github/workflows/configure-preview-edge.yml` |
+| provisioning (cloud) | `.github/workflows/configure-preview-edge.yml` |
+| on-demand-TLS gate (self-host) | `apps/api/src/edge/tls-check.ts` |
+| self-host Caddy + compose | `apps/cli/src/self-host/compose-assets.ts` |
 | client URL building | `packages/sdk/src/core/session/url.ts` |
 
 ## Auth
@@ -97,17 +99,52 @@ to `/v1/p/{sandbox}/{port}/`.
 
 ## Provisioning a new environment
 
-1. Set the Worker secret for it:
-   `echo -n "<API_KEY_SECRET of that env>" | wrangler secret put PROD_EDGE_SECRET`
-   from `infra/cloudflare/workers/preview-router/`.
-2. Run **Configure Sandbox Preview Edge** (`workflow_dispatch`). It is
-   idempotent: it verifies the Worker route, creates the proxied wildcard DNS
-   record, orders the advanced certificate pack if missing, waits for it to go
-   active, and probes a synthetic preview host end to end.
+Run **Configure Sandbox Preview Edge** (`workflow_dispatch`). It is idempotent
+and does the whole thing:
+
+1. verifies the Worker route,
+2. reads each environment's own `API_KEY_SECRET` from its Secrets Manager blob
+   (`kortix-<env>-env`, the same blob that feeds its ECS tasks) and pushes it as
+   that environment's Worker secret — so no secret is ever copied by hand or
+   duplicated into a second system,
+3. keeps zone header-transform rules off preview hosts,
+4. creates the proxied wildcard DNS record,
+5. orders the advanced certificate pack if missing and waits for it to go active,
+6. probes a synthetic preview host end to end.
+
+Then set `KORTIX_PREVIEW_BASE_DOMAIN` for that environment (see the ordering
+section above).
 
 Universal SSL covers `kortix.com` and `*.kortix.com` — one label deep. A preview
 host is two, so the advanced certificate pack is not optional: without it the TLS
 handshake fails before the Worker is ever reached.
+
+## Self-hosting
+
+A self-host has no Cloudflare Worker and no wildcard certificate, so it uses the
+same mechanics Kortix Apps already uses on a self-host:
+
+- `kortix self-host init` asks for a **preview base domain**. It sets
+  `KORTIX_PREVIEW_BASE_DOMAIN` and `KORTIX_PREVIEW_ALLOW_DIRECT_EDGE=true`.
+- The bundled Caddy gains a `*.{$KORTIX_PREVIEW_BASE_DOMAIN}` site block that
+  reverse-proxies to `kortix-api:8008` and issues a certificate **per hostname**
+  on first request (`tls { on_demand }`). The operator needs a `*.<domain>` DNS
+  record pointing at the instance — **not** a wildcard certificate.
+- Issuance is bounded by the global `on_demand_tls { ask … }`, which points at
+  `/v1/apps/edge/tls-check`. That one endpoint answers for both wildcard families
+  (Caddy allows exactly one global `ask`): 200 only for a real App host or a real
+  preview host, so a random hostname aimed at the box cannot mint certificates.
+- With no Worker to sign the claimed host, `KORTIX_PREVIEW_ALLOW_DIRECT_EDGE`
+  tells the API that its own reverse proxy is the trust boundary. In that mode
+  the API reads the **real** `Host` header and ignores `x-kortix-preview-host`
+  entirely, so nobody reaching the API directly can name a preview by setting a
+  header.
+- Skipping the prompt is a supported answer: previews stay on the path proxy.
+- A laptop instance (no domain, no Caddy) needs nothing — the SDK sees a
+  localhost API and uses `p{port}-{sandbox}.localhost:{apiPort}`.
+
+The rendered Caddyfile is checked against real Caddy in
+`apps/cli/src/self-host/__tests__/compose-assets.test.ts`.
 
 ## Deployments without a preview domain
 

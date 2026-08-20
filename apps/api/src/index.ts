@@ -103,7 +103,7 @@ import {
 import { sandboxWebhooksApp } from './platform/webhooks/routes';
 import { marketplaceApp } from './marketplace';
 import { skillsApp } from './skills';
-import { runtimeAssetsApp } from './runtime-assets';
+import { runtimeAssetsApp, runtimeAssetsManifest } from './runtime-assets';
 import { oauthApp } from './oauth';
 import { nativeOAuth2CallbackApp } from './connectors/oauth2-callback';
 import {
@@ -1454,6 +1454,22 @@ async function bootServices() {
   // paged API (`indexReady: false`), so a cold pod serves correct results the
   // whole time — just without category facets.
   warmPipedreamCatalog();
+  // Hash the sandbox runtime binaries off the request path.
+  //
+  // `/v1/runtime-assets/manifest` sha256s the CLI (~104 MB) and the agent
+  // (~95.6 MB) on its first call and memoizes. Every sandbox polls this route
+  // at boot, and a deploy sends the whole fleet at cold replicas at once — so
+  // the first caller per replica was paying ~200 MB of hashing inside the 25s
+  // request deadline. Measured on dev: the very first post-deploy call returned
+  // `503 request_deadline`, and a daemon that gets a 503 skips convergence for
+  // that boot entirely (it never throws, by design).
+  //
+  // Deliberately NOT awaited: readiness must not wait on it, and a request that
+  // arrives first simply shares the same in-flight promise.
+  void runtimeAssetsManifest().catch(() => {
+    // Absent binaries are a legitimate state (a checkout that never built one);
+    // the route reports that per component. Nothing to do here.
+  });
 }
 
 // Graceful shutdown

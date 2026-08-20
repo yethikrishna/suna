@@ -54,6 +54,12 @@ import {
   runtimeCliBinaryPath,
 } from './manifest';
 
+// Re-exported so server startup can warm the digest memo off the request path
+// (see the call in src/index.ts). Hashing ~200 MB of binaries inside the 25s
+// request deadline made the first post-deploy caller 503, and that caller is a
+// booting sandbox.
+export { runtimeAssetsManifest } from './manifest';
+
 export const runtimeAssetsApp = makeOpenApiApp<AppEnv>();
 
 const BinaryComponentSchema = z.object({

@@ -39,7 +39,7 @@ mock.module('../shared/session-public-shares', () => ({
   touchPublicShare: async () => {},
 }));
 
-const { handleSubdomainRequest } = await import('./subdomain');
+const { handlePreviewOriginRequest } = await import('./preview-origin');
 
 const HOST = 'p8081-sbx-known.localhost:8008';
 
@@ -59,7 +59,7 @@ beforeEach(() => {
 
 describe('preview origin auth gate', () => {
   test('a request with no credential is refused before any database work', async () => {
-    const res = await handleSubdomainRequest(...request('/learn'));
+    const res = await handlePreviewOriginRequest(...request('/learn'));
     expect(res?.status).toBe(401);
     // The label→id lookup cannot use an index, so an anonymous caller must not
     // be able to spend one per made-up hostname.
@@ -68,19 +68,19 @@ describe('preview origin auth gate', () => {
   });
 
   test('a hostname that is not a preview falls through to normal API routing', async () => {
-    expect(await handleSubdomainRequest(...request('/v1/health', {}, 'dev-api.kortix.com'))).toBeNull();
+    expect(await handlePreviewOriginRequest(...request('/v1/health', {}, 'dev-api.kortix.com'))).toBeNull();
   });
 
   test('an unknown preview with a credential answers 404, not 401', async () => {
     const [req, url] = request('/learn?token=good', {}, 'p8081-sbx-missing.localhost:8008');
-    const res = await handleSubdomainRequest(req, url);
+    const res = await handlePreviewOriginRequest(req, url);
     expect(res?.status).toBe(404);
     expect(labelLookups).toEqual(['sbx-missing']);
   });
 
   test('a valid token mints a cookie and forwards', async () => {
     const [req, url] = request('/learn', { headers: { Authorization: 'Bearer good' } });
-    const res = await handleSubdomainRequest(req, url);
+    const res = await handlePreviewOriginRequest(req, url);
     expect(res?.status).toBe(200);
     expect(forwarded).toBe(1);
     const cookies = res!.headers.getSetCookie();
@@ -93,7 +93,7 @@ describe('preview origin auth gate', () => {
     const [req, url] = request('/learn?token=good&keep=1', {
       headers: { 'sec-fetch-dest': 'document' },
     });
-    const res = await handleSubdomainRequest(req, url);
+    const res = await handlePreviewOriginRequest(req, url);
     expect(res?.status).toBe(302);
     // The credential is gone; everything else the app was asked for survives.
     expect(res?.headers.get('location')).toBe('/learn?keep=1');
@@ -103,21 +103,21 @@ describe('preview origin auth gate', () => {
 
   test('a sub-resource with a token is served directly, not redirected', async () => {
     const [req, url] = request('/app.js?token=good', { headers: { 'sec-fetch-dest': 'script' } });
-    const res = await handleSubdomainRequest(req, url);
+    const res = await handlePreviewOriginRequest(req, url);
     expect(res?.status).toBe(200);
     expect(forwarded).toBe(1);
   });
 
   test('an invalid token is refused', async () => {
     const [req, url] = request('/learn?token=nope');
-    const res = await handleSubdomainRequest(req, url);
+    const res = await handlePreviewOriginRequest(req, url);
     expect(res?.status).toBe(401);
     expect(principalCalls).toEqual(['nope']);
   });
 
   test('a CORS preflight is answered before auth', async () => {
     const [req, url] = request('/api', { method: 'OPTIONS', headers: { Origin: 'https://x.test' } });
-    const res = await handleSubdomainRequest(req, url);
+    const res = await handlePreviewOriginRequest(req, url);
     expect(res?.status).toBe(204);
     expect(res?.headers.get('Access-Control-Allow-Origin')).toBe('https://x.test');
     expect(principalCalls).toEqual([]);
@@ -130,7 +130,7 @@ describe('preview origin auth gate', () => {
       { headers: { 'x-kortix-preview-host': 'dev-p8081-sbx-known.p.kortix.com' } },
       'dev-api.kortix.com',
     );
-    const res = await handleSubdomainRequest(req, url);
+    const res = await handlePreviewOriginRequest(req, url);
     expect(res?.status).toBe(403);
     expect(labelLookups).toEqual([]);
     configState.KORTIX_PREVIEW_BASE_DOMAIN = undefined;

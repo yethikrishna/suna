@@ -1536,8 +1536,8 @@ if (import.meta.main) {
 
 // Subdomain preview routing — `p{port}-{sandboxId}.localhost:{apiPort}/...`
 // Handled at the Bun.serve level so the proxied app sees itself at root `/`
-// (Hono can't match on the Host header). See `sandbox-proxy/subdomain.ts`.
-import { handleSubdomainRequest, isPreviewHost } from './sandbox-proxy/subdomain';
+// (Hono can't match on the Host header). See `sandbox-proxy/preview-origin.ts`.
+import { handlePreviewOriginRequest, isPreviewHost } from './sandbox-proxy/preview-origin';
 import {
   matchPreviewWsPath,
   preparePreviewHostWsUpgrade,
@@ -1635,7 +1635,7 @@ export default {
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      const res = await handleSubdomainRequest(req, url);
+      const res = await handlePreviewOriginRequest(req, url);
       if (res) return res;
     }
 

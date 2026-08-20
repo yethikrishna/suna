@@ -10,8 +10,9 @@
  * been — the transport for programmatic clients. See preview-hosts.ts.
  *
  * Shape of a request:
- *   1. `resolvePreviewHost` reads the (label, port) target out of the Host
- *      header. Bun.serve dispatches here before Hono, which cannot route on it.
+ *   1. `resolvePreviewRequest` reads the (label, port) target out of the
+ *      hostname the browser used. Bun.serve dispatches here before Hono, which
+ *      cannot route on a Host header.
  *   2. Auth comes from the signed cookie (preview-session.ts) when present, and
  *      otherwise from a one-shot `?token=` / `?public_share=` that mints one.
  *      A browser can attach neither a header nor a query parameter to
@@ -245,7 +246,7 @@ function isDocumentNavigation(req: Request): boolean {
  * Handle a preview-origin request end-to-end. Returns null when the Host header
  * is not a preview, so the caller falls through to normal API routing.
  */
-export async function handleSubdomainRequest(
+export async function handlePreviewOriginRequest(
   req: Request,
   url: URL,
 ): Promise<Response | null> {

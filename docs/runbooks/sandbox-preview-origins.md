@@ -39,7 +39,7 @@ with each other. An origin per preview puts each app in its own principal.
 | --- | --- |
 | hostname shape (build + match) | `apps/api/src/sandbox-proxy/preview-hosts.ts` |
 | signed session cookie | `apps/api/src/sandbox-proxy/preview-session.ts` |
-| request handling | `apps/api/src/sandbox-proxy/subdomain.ts` |
+| request handling | `apps/api/src/sandbox-proxy/preview-origin.ts` |
 | WebSocket upgrade | `apps/api/src/sandbox-proxy/ws-proxy.ts` |
 | edge signature | `apps/api/src/shared/edge-signature.ts` |
 | edge Worker | `infra/cloudflare/workers/preview-router/` |

@@ -661,8 +661,8 @@ const REAL_PRE_PROMPT_DEPS: PrePromptEnvSyncDeps = {
 //
 // Forwards one request to a sandbox port with the full upstream auth header set,
 // auto-wake retries, redirect rewriting, and CORS injection. Exported so both
-// proxy edges use it: the path-based Hono route below and the subdomain handler
-// (src/sandbox-proxy/subdomain.ts).
+// proxy edges use it: the path-based Hono route below and the preview-origin handler
+// (src/sandbox-proxy/preview-origin.ts).
 
 export type PreviewProxyAccess =
   | {

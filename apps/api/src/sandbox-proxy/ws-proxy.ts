@@ -27,7 +27,7 @@ import { resolvePreviewWsUpstream } from './routes/preview';
 import { classifyPtyWebSocketPath } from '../platform/providers/pty-ingress';
 import { OPENCODE_PRIMARY_PORT, isOpencodePort } from '../shared/opencode-ports';
 import { resolveSandboxIngress } from './backend';
-import { establishPreviewSession, resolvePreviewRequest, sessionFromCookies } from './subdomain';
+import { establishPreviewSession, resolvePreviewRequest, sessionFromCookies } from './preview-origin';
 
 // opencode's PTY WebSocket endpoint lives on opencode's own port, reachable via
 // a dedicated Daytona preview link (the daemon on 8000 can't proxy WS).

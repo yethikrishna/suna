@@ -692,10 +692,11 @@ export async function materializeRepo(cfg: Config): Promise<void> {
     // the baked content IS this session's base — i.e. a fresh scaffold-rooted
     // project (baked HEAD == the server-resolved KORTIX_BASE_SHA). When it isn't
     // (an imported repo / diverged project), the baked scaffold is the WRONG
-    // content: discard it and re-materialize the real repo below. Restart/resume
-    // (no baseSha) keep the old "reuse whatever's baked" behaviour unchanged.
+    // content: discard it and re-materialize the real repo below. A fresh
+    // session with no baseSha is also unverified and must fall back. Only a
+    // restart/resume can safely reuse its existing checkout without baseSha.
     const bakedHead = (await execGit(['-C', target, 'rev-parse', 'HEAD'])).stdout.trim()
-    const mismatched = cfg.sessionFresh && !!cfg.baseSha && bakedHead !== cfg.baseSha
+    const mismatched = cfg.sessionFresh && (!cfg.baseSha || bakedHead !== cfg.baseSha)
     if (!mismatched) {
       logger.info('[git] using baked repo checkout (warm)', { target, head: bakedHead })
       const setUrl = await execGit(['-C', target, 'remote', 'set-url', 'origin', cfg.repoUrl])

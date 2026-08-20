@@ -441,6 +441,64 @@ describe('daemon proxy auth gate', () => {
     }
   })
 
+  it('discards a baked scaffold for a fresh session when the base SHA is unavailable', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'kortix-fresh-without-base-sha-'))
+    const originalFetch = globalThis.fetch
+    const requests: string[] = []
+    try {
+      const scaffoldSource = join(root, 'scaffold-source')
+      const scaffold = join(root, 'scaffold.git')
+      const importedSource = join(root, 'imported-source')
+      const importedRemote = join(root, 'imported.git')
+      const target = join(root, 'workspace')
+
+      mkdirSync(scaffoldSource)
+      git(['init', '-b', 'main'], scaffoldSource)
+      writeFileSync(join(scaffoldSource, 'README.md'), 'generic scaffold\n')
+      git(['add', 'README.md'], scaffoldSource)
+      git(['-c', 'user.email=noreply@kortix.ai', '-c', 'user.name=Kortix', 'commit', '-m', 'scaffold'], scaffoldSource)
+      git(['clone', '--bare', scaffoldSource, scaffold])
+      git(['clone', scaffold, target])
+
+      mkdirSync(importedSource)
+      git(['init', '-b', 'main'], importedSource)
+      writeFileSync(join(importedSource, 'README.md'), 'imported repository\n')
+      git(['add', 'README.md'], importedSource)
+      git(['-c', 'user.email=owner@example.com', '-c', 'user.name=Owner', 'commit', '-m', 'imported'], importedSource)
+      const importedSha = gitOutput(['-C', importedSource, 'rev-parse', 'HEAD'])
+      git(['clone', '--bare', importedSource, importedRemote])
+
+      __setScaffoldRepoPathForTests(scaffold)
+      globalThis.fetch = (async (url: string | URL | Request) => {
+        const href = typeof url === 'string' || url instanceof URL ? String(url) : url.url
+        requests.push(href)
+        return new Response(JSON.stringify({ auth: { token: 'clone-token' } }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }) as unknown as typeof fetch
+
+      await materializeRepo(baseConfig({
+        autoClone: true,
+        projectId: 'project-123',
+        apiUrl: 'http://api.local/v1',
+        projectTarget: target,
+        repoUrl: importedRemote,
+        defaultBranch: 'main',
+        branchName: 'session-fresh',
+        sessionFresh: true,
+        baseSha: undefined,
+      }))
+
+      expect(requests.filter((url) => url.includes('/git/clone-credential'))).toHaveLength(1)
+      expect(readFileSync(join(target, 'README.md'), 'utf8')).toBe('imported repository\n')
+      expect(gitOutput(['-C', target, 'rev-parse', 'HEAD'])).toBe(importedSha)
+    } finally {
+      globalThis.fetch = originalFetch
+      __setScaffoldRepoPathForTests()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('materializes an exact fresh-project delta bundle without fetching clone credentials', async () => {
     const root = mkdtempSync(join(tmpdir(), 'kortix-delta-bundle-scaffold-'))
     const originalFetch = globalThis.fetch

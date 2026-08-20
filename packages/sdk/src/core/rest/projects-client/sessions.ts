@@ -255,6 +255,14 @@ export interface SessionPublicShare {
   public_token?: string;
   public_path?: string;
   proxy_path?: string;
+  /**
+   * Absolute URL the share opens at — the sandbox's own preview ORIGIN when the
+   * deployment serves one. Prefer this over `proxy_path`: under the path form a
+   * shared app's root-absolute links resolve against the API origin, and shared
+   * file content renders with the API's principal. Null when the deployment has
+   * no preview domain, in which case `proxy_path` is still correct.
+   */
+  public_url?: string | null;
 }
 
 export interface CreateSessionPublicShareInput {

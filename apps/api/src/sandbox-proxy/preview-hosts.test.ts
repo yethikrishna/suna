@@ -8,7 +8,7 @@ const configState: Record<string, unknown> = {
 };
 mock.module('../config', () => ({ config: configState }));
 
-const { previewBaseDomain, previewUrlTemplate, resolvePreviewHost, sandboxHostLabel } =
+const { previewBaseDomain, previewOriginFor, previewUrlTemplate, resolvePreviewHost, sandboxHostLabel } =
   await import('./preview-hosts');
 
 const SBX = 'sbx_01M0G4HXCM32BX5R1GPYZDYC1H';
@@ -131,5 +131,32 @@ describe('resolvePreviewHost', () => {
     expect(resolvePreviewHost('dev-p-abc.p.kortix.com')).toBeNull();
     expect(resolvePreviewHost('dev-8081-abc.p.kortix.com')).toBeNull();
     expect(resolvePreviewHost(`dev-p99999999-${LABEL}.p.kortix.com`)).toBeNull();
+  });
+});
+
+describe('previewOriginFor', () => {
+  test('builds the full origin a shared preview is served on', () => {
+    configState.KORTIX_PREVIEW_BASE_DOMAIN = 'p.kortix.com';
+    expect(previewOriginFor(SBX, 8081)).toBe(`https://dev-p8081-${LABEL}.p.kortix.com`);
+  });
+
+  test('is null without a declared domain, so a share keeps the path proxy', () => {
+    expect(previewOriginFor(SBX, 8081)).toBeNull();
+  });
+
+  test('rejects a port outside the valid range', () => {
+    configState.KORTIX_PREVIEW_BASE_DOMAIN = 'p.kortix.com';
+    expect(previewOriginFor(SBX, 0)).toBeNull();
+    expect(previewOriginFor(SBX, 70000)).toBeNull();
+  });
+
+  test('round-trips through the inbound matcher', () => {
+    configState.KORTIX_PREVIEW_BASE_DOMAIN = 'p.kortix.com';
+    const origin = previewOriginFor(SBX, 3000)!;
+    expect(resolvePreviewHost(new URL(origin).hostname)).toEqual({
+      port: 3000,
+      sandboxLabel: LABEL,
+      local: false,
+    });
   });
 });

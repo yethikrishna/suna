@@ -106,6 +106,20 @@ export function previewUrlTemplate(): string | null {
 }
 
 /**
+ * The full origin a sandbox port is served on, or null when this deployment has
+ * no preview domain. `previewUrlTemplate` is the client-facing form of the same
+ * fact; this is for the places the SERVER hands out a complete URL — today the
+ * public-share viewer, which must point at the preview origin for a shared app
+ * to behave like a real site rather than a path-prefixed one.
+ */
+export function previewOriginFor(externalId: string, port: number): string | null {
+  const domain = previewBaseDomain();
+  const label = sandboxHostLabel(externalId);
+  if (!domain || !label || !Number.isInteger(port) || port < 1 || port > 65535) return null;
+  return `https://${config.INTERNAL_KORTIX_ENV}-p${port}-${label}.${domain}`;
+}
+
+/**
  * Match an inbound Host header. Returns null for every hostname that is not a
  * preview for THIS environment — including a well-formed preview label for a
  * different env, which must never be served by the wrong deployment.

@@ -20,8 +20,8 @@ describe('buildFastSandboxDockerfile', () => {
       scaffoldPath: 'artifacts/scaffold.git',
     });
 
-    expect(dockerfile).toContain('FROM debian:bookworm-slim');
-    expect(dockerfile).toContain('opencode-ai@1.17.11');
+expect(dockerfile).toContain('FROM ubuntu:24.04');
+    expect(dockerfile).toContain('opencode-ai@1.18.19');
     expect(dockerfile).toContain('pnpm-linux-${pnpm_arch}.tar.gz');
     expect(dockerfile).toContain('bun-v1.3.14');
     expect(dockerfile).toContain('aarch64|arm64) bun_arch=aarch64');

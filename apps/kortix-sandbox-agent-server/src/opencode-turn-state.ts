@@ -259,14 +259,29 @@ export async function observeOpencodeDelivery(
         ? 'completed'
         : null
 
-    // A newer user message owns the root now, so this turn is over whatever the
-    // root reports. Its status would describe the NEWER turn, so never ask.
-    if (after.some((message) => message.info?.role === 'user')) return { inFlight: false, end }
-    if (end !== null) return { inFlight: false, end }
+    // A hard failure cannot un-fail, and a completed answer stays answered: a
+    // busy root next to either is a NEWER turn already running, never this one.
+    if (errored) return { inFlight: false, end }
+    const newerUser = after.some((message) => message.info?.role === 'user')
+    if (newerUser && end === 'completed') return { inFlight: false, end }
 
+    // Every remaining verdict is a claim that the turn DIED, made from
+    // transcript shape alone — and transcript shape cannot see a running loop.
+    // A prompt forwarded INTO a live turn (and OpenCode's own synthetic
+    // `<pty_exited>` wake-ups) put a newer user message on the root while the
+    // SAME loop still streams the older turn's steps; and between two steps of
+    // one turn the latest assistant message reads completed while tools run
+    // and the next step's message does not exist yet. Both shapes read
+    // "terminal" here and were: live incident 2026-08-20 (Essentia session
+    // d1b74954) — the reaper destroyed a streaming turn's authority at
+    // 12:48:51Z on the newer-user rule; its step completed at 12:48:54Z. So no
+    // terminal verdict leaves this function while the root itself reports
+    // busy, and an unreadable status is unknown, never terminal.
     const busy = await opencodeSessionInFlight(baseUrl, workspace, rootSessionId)
     if (busy === null) return unreadable
     if (busy) return { inFlight: true, end: null }
+    if (newerUser) return { inFlight: false, end }
+    if (end !== null) return { inFlight: false, end }
     // The root is idle with this turn's assistant message still open: the husk a
     // killed model call leaves behind. With no assistant message at all, the
     // prompt landed and produced nothing, and nothing here says why — but that

@@ -11,6 +11,11 @@ import { reconcileProjectEnv, type ProjectEnvStore } from '../project-env'
 const OPENCODE_RUNTIME_ENV_NAMES = new Set([
   'KORTIX_LLM_API_KEY',
   'KORTIX_LLM_BASE_URL',
+  // Selects opencode's provider transport (buildKortixProvider): on -> @ai-sdk/gateway
+  // (native /language-model, lossless passthrough), off -> @ai-sdk/openai-compatible.
+  // opencode reads it when it builds its config at spawn, so a live toggle takes
+  // effect on the next opencode restart.
+  'KORTIX_LLM_AI_SDK_NATIVE',
   // Gateway-only: the provider-key names opencode must never see. Flipped with the
   // mode so a live toggle to DIRECT clears it (native BYOK keys reach opencode) and
   // a toggle to GATEWAY restores the strip on the next opencode restart.
@@ -217,7 +222,8 @@ export function createEnvRouter(
         if (body.refreshModels === true && (result.changed || opencodeEnvChanged)) {
           // reloadConfig, not restart: opencode re-reads its config file in
           // place via /global/dispose in ~51ms, against ~8s for a respawn
-          // (measured on the pinned 1.17.11). It falls back to a restart on its
+          // (measured on 1.17.11, dispose re-verified on the pinned 1.18.19).
+          // It falls back to a restart on its
           // own if dispose is unavailable, so this is never less correct — only
           // faster, and it does not sever an in-flight turn when dispose wins.
           // Some values are consumed by `spawnChild` OUTSIDE the config file —

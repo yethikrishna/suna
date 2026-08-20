@@ -12,7 +12,7 @@
  * created; under-limit → 201.
  */
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import { mockIamEngineAllowAll, mockIamMembershipSyncNoop, mockIamReadModels } from './helpers/iam-mocks';
+import { mockIamAssignments, mockIamEngineAllowAll, mockIamReadModels } from './helpers/iam-mocks';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { accountMembers, projectMembers, projects } from '@kortix/db';
@@ -112,7 +112,9 @@ mockIamEngineAllowAll();
 // The hermetic db shim models the legacy tables; the read models project
 // from those rows rather than from `role_assignments`. See mockIamReadModels.
 mockIamReadModels();
-mockIamMembershipSyncNoop();
+// Every grant goes through `assignRole` now, and it IS the grant — a suite whose
+// db shim does not model `role_assignments` must bypass it.
+mockIamAssignments();
 
 const actualGit = await import('../projects/git');
 mock.module('../projects/git', () => ({
@@ -133,6 +135,7 @@ mock.module('../projects/git', () => ({
   getCommitDiff: async () => null,
   getFileHistory: async () => ({ entries: [], nextCursor: null }),
   resolveCommitSha: async () => 'a'.repeat(40),
+  resolveFastBootGitHint: async () => ({ baseSha: 'a'.repeat(40) }),
   resolveTreeOid: async () => 'b'.repeat(40),
   materializeRepoContext: async () => '/tmp/fake-snapshot-context',
   resolveBranchTip: async () => 'a'.repeat(40),

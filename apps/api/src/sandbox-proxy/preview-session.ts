@@ -64,6 +64,12 @@ export type PreviewSession =
       kind: 'public_share';
       shareId: string;
       mode: string;
+      /**
+       * Set for a FILE share: the one file this link grants, on the static-web
+       * port. Carried on the session so the constraint survives the cookie —
+       * without it, the second request could ask that port for anything.
+       */
+      filePath?: string | null;
     });
 
 function base64urlEncode(buf: Buffer): string {

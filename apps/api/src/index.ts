@@ -55,6 +55,7 @@ import {
 } from './shared/daytona-transient';
 import { GitOperationError, isGitOperationError } from './projects/git/mirror';
 import { resolvePrefixEscape } from './sandbox-proxy/prefix-escape';
+import { previewBaseDomain } from './sandbox-proxy/preview-hosts';
 // Statically imported (NOT await import() in the handlers): on a long-running
 // `bun --hot` dev process, dynamic import() can wedge permanently after enough
 // hot reloads — the promise never settles, the handler hangs, and Bun's
@@ -1287,7 +1288,19 @@ app.notFound((c) => {
   // answering a JSON 404 the user can do nothing with. See prefix-escape.ts —
   // the durable fix is the per-preview origin, this only recovers navigations.
   const escaped = resolvePrefixEscape(c.req.raw);
-  if (escaped) return c.redirect(escaped.location, escaped.status);
+  if (escaped) {
+    // On a deployment that serves preview origins this should never fire: it
+    // means a BROWSER was handed a path preview somewhere. Say so loudly rather
+    // than silently repairing it — the repair is correct, the fact that it was
+    // needed is not.
+    if (previewBaseDomain()) {
+      appLogger.warn('[preview] browser escaped a PATH preview on a deployment with origins', {
+        path: c.req.path,
+        location: escaped.location,
+      });
+    }
+    return c.redirect(escaped.location, escaped.status);
+  }
 
   return c.json(
     {

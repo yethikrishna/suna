@@ -97,7 +97,7 @@ const SUBDOMAIN_URL_REGEX =
  * without the options that built it.
  */
 const PREVIEW_ORIGIN_URL_REGEX =
-  /^https?:\/\/(?:dev|staging|prod|preview)-p(\d+)-[a-z0-9-]+\.[^/]+(\/.*)?$/i;
+  /^https?:\/\/(?:dev|staging|prod|preview)-p(\d+)-([a-z0-9-]+)\.[^/]+?(?::(\d+))?(\/.*)?$/i;
 
 /**
  * Ports that should NOT be rewritten — they're already exposed/handled natively
@@ -647,6 +647,32 @@ export function parseSubdomainUrl(url: string): {
     };
   }
 
+  // Deployed preview origin: {env}-p{port}-{sandbox}.{domain}/{path}. Without
+  // this branch every reverse-mapping surface returns null the moment a
+  // deployment has a preview domain — the URL is a preview, it just is not one
+  // of the two shapes this function used to know.
+  const originMatch = url.match(PREVIEW_ORIGIN_URL_REGEX);
+  if (originMatch) {
+    let backendPort = 443;
+    try {
+      const parsed = new URL(url);
+      backendPort = parsed.port
+        ? parseInt(parsed.port, 10)
+        : parsed.protocol === 'https:'
+          ? 443
+          : 80;
+    } catch {
+      // Matched the shape but is not a parseable URL — fall through to null.
+      return null;
+    }
+    return {
+      port: parseInt(originMatch[1], 10),
+      sandboxId: originMatch[2],
+      backendPort,
+      path: originMatch[4] || '/',
+    };
+  }
+
   // Try path-based format: /v1/p/{sandboxId}/{port}/{path}
   const pathMatch = url.match(PATH_PROXY_URL_REGEX);
   if (pathMatch) {
@@ -669,8 +695,10 @@ export function parseSubdomainUrl(url: string): {
 /**
  * Try to reverse-map a proxy URL back to its internal localhost equivalent.
  *
- * Handles `http://p{port}-{sandboxId}.localhost:{backendPort}/{path}` →
- * `http://localhost:{port}{path}`.
+ * Handles all three forms — the deployed origin
+ * (`{env}-p{port}-{sandbox}.{domain}`), the localhost origin
+ * (`p{port}-{sandbox}.localhost:{backendPort}`), and the path proxy
+ * (`/v1/p/{sandbox}/{port}`) — → `http://localhost:{port}{path}`.
  *
  * Returns null if the URL can't be reverse-mapped.
  */

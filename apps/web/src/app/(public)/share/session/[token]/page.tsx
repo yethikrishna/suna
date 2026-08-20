@@ -84,6 +84,11 @@ export default function PublicSessionSharePage() {
   }, [meta, origin]);
   const fileSrc = useMemo(() => {
     if (!meta?.share || meta.share.resource_type !== 'file') return '';
+    // Prefer the shared file's own origin. A shared file is author-controlled
+    // content, and HTML or SVG carries script — rendering it on the API origin
+    // gives it the same principal as /v1/p/…. `public_url` is that origin when
+    // the deployment serves one, and the path form otherwise.
+    if (meta.share.public_url) return meta.share.public_url;
     if (!meta.share.proxy_path || !origin) return '';
     return `${origin}${meta.share.proxy_path}`;
   }, [meta, origin]);

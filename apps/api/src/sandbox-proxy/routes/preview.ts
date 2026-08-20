@@ -1841,7 +1841,11 @@ preview.all('/:sandboxId/:port', async (c) => {
   const sandboxId = c.req.param('sandboxId');
   const port = c.req.param('port');
   const url = new URL(c.req.url);
-  return c.redirect(`/${sandboxId}/${port}/${url.search}`, 301);
+  // The app is mounted at /v1/p (see apps/api/src/index.ts), so a Location
+  // built from the route-relative path drops the mount and sends the browser to
+  // `https://<api>/<sandbox>/<port>/` — a 404. Mirrors the sibling normalizer in
+  // routes/public-share.ts.
+  return c.redirect(`/v1/p/${sandboxId}/${port}/${url.search}`, 301);
 });
 
 export { preview };

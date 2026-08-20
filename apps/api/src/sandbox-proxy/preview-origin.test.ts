@@ -13,6 +13,9 @@ mock.module('../config', () => ({ config: configState }));
 let labelLookups: string[] = [];
 let principalCalls: Array<string | null | undefined> = [];
 let forwarded = 0;
+let forwardedPath = '';
+let forwardedQuery = '';
+let shares: Record<string, unknown> = {};
 
 mock.module('./backend', () => ({
   resolveExternalIdFromHostLabel: async (label: string) => {
@@ -29,14 +32,24 @@ mock.module('./preview-auth', () => ({
   },
 }));
 mock.module('./routes/preview', () => ({
-  forwardToSandbox: async () => {
+  forwardToSandbox: async (
+    _sandboxId: string,
+    _port: number,
+    _access: unknown,
+    _method: string,
+    remainingPath: string,
+    queryString: string,
+  ) => {
     forwarded += 1;
+    forwardedPath = remainingPath;
+    forwardedQuery = queryString;
     return new Response('upstream', { status: 200 });
   },
 }));
 mock.module('../shared/session-public-shares', () => ({
   PUBLIC_SHARE_BLOCKED_PORTS: new Set<number>(),
-  resolvePublicShare: async () => ({ ok: false }),
+  STATIC_FILE_SHARE_PORT: 3211,
+  resolvePublicShare: async (token: string) => shares[token] ?? { ok: false },
   touchPublicShare: async () => {},
 }));
 
@@ -56,6 +69,9 @@ beforeEach(() => {
   labelLookups = [];
   principalCalls = [];
   forwarded = 0;
+  forwardedPath = '';
+  forwardedQuery = '';
+  shares = {};
 });
 
 describe('preview origin auth gate', () => {
@@ -240,5 +256,69 @@ describe('what a browser is shown instead of JSON', () => {
     } finally {
       configState.KORTIX_PREVIEW_BASE_DOMAIN = undefined;
     }
+  });
+});
+
+describe('a public share names one thing', () => {
+  test('a file share is pinned to its own file, whatever the visitor asks for', async () => {
+    shares = {
+      'file-token': {
+        ok: true,
+        row: {
+          shareId: 's-file',
+          mode: 'view',
+          resourceType: 'file',
+          externalId: 'sbx_KNOWN',
+          port: null,
+          filePath: '/workspace/report.html',
+        },
+      },
+    };
+    const [req, url] = request(
+      '/etc/passwd?public_share=file-token',
+      {},
+      'p3211-sbx-known.localhost:8008',
+    );
+    const res = await handlePreviewOriginRequest(req, url);
+    expect(res?.status).toBe(200);
+    // Not /etc/passwd: the share's own file, through the static-web entry.
+    expect(forwardedPath).toBe('/open');
+    expect(forwardedQuery).toBe(`?path=${encodeURIComponent('/workspace/report.html')}`);
+  });
+
+  test('a file share is not a key to the static-web port on another port', async () => {
+    shares = {
+      'file-token': {
+        ok: true,
+        row: {
+          shareId: 's-file',
+          mode: 'view',
+          resourceType: 'file',
+          externalId: 'sbx_KNOWN',
+          port: null,
+          filePath: '/workspace/report.html',
+        },
+      },
+    };
+    const [req, url] = request('/?public_share=file-token', {}, 'p8081-sbx-known.localhost:8008');
+    expect((await handlePreviewOriginRequest(req, url))?.status).toBe(401);
+  });
+
+  test('a preview share is refused on a port it does not name', async () => {
+    shares = {
+      'prev-token': {
+        ok: true,
+        row: {
+          shareId: 's-prev',
+          mode: 'view',
+          resourceType: 'preview',
+          externalId: 'sbx_KNOWN',
+          port: 8081,
+          filePath: null,
+        },
+      },
+    };
+    const [req, url] = request('/?public_share=prev-token', {}, 'p9999-sbx-known.localhost:8008');
+    expect((await handlePreviewOriginRequest(req, url))?.status).toBe(401);
   });
 });

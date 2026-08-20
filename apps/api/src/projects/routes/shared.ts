@@ -394,6 +394,18 @@ export type {
  * the client never has to know the proxy URL scheme. This is the one place the
  * per-session runtime URL is shaped; the SDK consumes it opaquely.
  */
+/**
+ * The CONTROL transport address for a session's runtime: the OpenCode/daemon
+ * REST channel, always the path proxy.
+ *
+ * This is deliberately NOT a preview origin and must never be used to build
+ * one. It is called per turn by programmatic clients holding a bearer token;
+ * resolving it through an origin would make every such request re-establish a
+ * host-scoped session (a non-indexed sandbox-label lookup) and would put turn
+ * delivery behind wildcard DNS, the certificate pack and the edge Worker.
+ * Browser-facing URLs come from `previewOriginFor` / `previewUrlTemplate`
+ * instead — see sandbox-proxy/preview-hosts.ts.
+ */
 export function sessionRuntimeUrlPath(externalId: string): string {
   return `/p/${externalId}/8000`;
 }

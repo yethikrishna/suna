@@ -84,12 +84,20 @@ publicShareApp.get('/:token', async (c) => {
   // first request, and the proxy exchanges it for a cookie (see
   // preview-origin.ts). Without a preview domain — a self-host that never
   // configured one — this stays the token-gated path the routes below handle.
-  const previewOrigin =
-    row.resourceType === 'preview' && row.externalId && row.port
+  const previewOrigin = row.externalId
+    ? row.resourceType === 'preview' && row.port
       ? previewOriginFor(row.externalId, row.port)
-      : null;
+      : row.resourceType === 'file'
+        ? previewOriginFor(row.externalId, STATIC_FILE_SHARE_PORT)
+        : null
+    : null;
   const publicUrl = previewOrigin
-    ? `${previewOrigin}${normalizeProxyPath(row.path)}?public_share=${encodeURIComponent(token)}`
+    ? row.resourceType === 'file'
+      // A shared file is author-controlled content — HTML and SVG carry script.
+      // On the path form it renders on the API origin, i.e. with the same
+      // principal as /v1/p/…; its own origin is where it belongs.
+      ? `${previewOrigin}/open?public_share=${encodeURIComponent(token)}`
+      : `${previewOrigin}${normalizeProxyPath(row.path)}?public_share=${encodeURIComponent(token)}`
     : row.resourceType === 'preview'
       ? `${publicOrigin(c)}${proxyPath}`
       : null;

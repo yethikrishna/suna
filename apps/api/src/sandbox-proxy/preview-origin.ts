@@ -44,6 +44,7 @@ import {
 } from './preview-session';
 import {
   PUBLIC_SHARE_BLOCKED_PORTS,
+  STATIC_FILE_SHARE_PORT,
   resolvePublicShare,
   touchPublicShare,
 } from '../shared/session-public-shares';
@@ -168,23 +169,32 @@ async function authenticatePublicShare(
   token: string | null,
   sandboxId: string,
   port: number,
-): Promise<{ shareId: string; mode: string } | null> {
+): Promise<{ shareId: string; mode: string; filePath: string | null } | null> {
   if (!token) return null;
   const resolved = await resolvePublicShare(token);
   if (!resolved.ok) return null;
 
   const share = resolved.row;
-  if (
-    share.resourceType !== 'preview'
-    || share.externalId !== sandboxId
-    || share.port !== port
-    || PUBLIC_SHARE_BLOCKED_PORTS.has(port)
-  ) {
+  if (share.externalId !== sandboxId || PUBLIC_SHARE_BLOCKED_PORTS.has(port)) return null;
+
+  // A share names ONE thing. A preview share names a port; a file share names a
+  // single file served by the static-web port. Accepting a file share for any
+  // other port — or for any path other than its own file — would turn a link to
+  // one document into a key to the whole box.
+  if (share.resourceType === 'preview') {
+    if (share.port !== port) return null;
+  } else if (share.resourceType === 'file') {
+    if (port !== STATIC_FILE_SHARE_PORT || !share.filePath) return null;
+  } else {
     return null;
   }
 
   void touchPublicShare(share.shareId).catch(() => {});
-  return { shareId: share.shareId, mode: share.mode };
+  return {
+    shareId: share.shareId,
+    mode: share.mode,
+    filePath: share.resourceType === 'file' ? (share.filePath as string) : null,
+  };
 }
 
 /**
@@ -247,6 +257,7 @@ export async function establishPreviewSession(
         port: target.port,
         shareId: share.shareId,
         mode: share.mode,
+        filePath: share.filePath,
         exp: 0,
       },
     };
@@ -374,7 +385,16 @@ export async function handlePreviewOriginRequest(
   const forwardSearchParams = new URLSearchParams(url.search);
   for (const p of CREDENTIAL_PARAMS) forwardSearchParams.delete(p);
   const forwardSearch = forwardSearchParams.toString();
-  const queryString = forwardSearch ? `?${forwardSearch}` : '';
+  let queryString = forwardSearch ? `?${forwardSearch}` : '';
+
+  // A FILE share is a link to one document, not to the static-web port. Pin the
+  // request to that file whatever the visitor asks for, exactly as the path
+  // form's forwardFileShare does.
+  let forwardPath = url.pathname;
+  if (session.kind === 'public_share' && session.filePath) {
+    forwardPath = '/open';
+    queryString = `?path=${encodeURIComponent(session.filePath)}`;
+  }
 
   // Public origin the browser used — the hostname it typed, not the API host
   // the edge forwarded to. Prefer X-Forwarded-Proto (set by the TLS-terminating
@@ -400,7 +420,7 @@ export async function handlePreviewOriginRequest(
           }
         : { kind: 'public_share' },
       req.method,
-      url.pathname,
+      forwardPath,
       queryString,
       req.headers,
       body,

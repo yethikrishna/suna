@@ -19,7 +19,7 @@
  * bearer token.
  */
 
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 
 import { AuthFrame } from '@/features/auth/auth-card-shell';
@@ -86,6 +86,7 @@ export default function PreviewAuthorizePage() {
 
 function PreviewAuthorize() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { user, isLoading } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const to = searchParams.get('to') || '';
@@ -94,9 +95,11 @@ function PreviewAuthorize() {
     if (isLoading) return;
 
     if (!user) {
-      // Come back here once signed in, carrying `to` untouched.
+      // Come back here once signed in, carrying `to` untouched. `replace`, not
+      // `push`: this page is a hand-off, and leaving it in history means Back
+      // lands on a page that immediately redirects again.
       const returnUrl = `/preview/authorize?to=${encodeURIComponent(to)}`;
-      window.location.href = `/auth?returnUrl=${encodeURIComponent(returnUrl)}`;
+      router.replace(`/auth?returnUrl=${encodeURIComponent(returnUrl)}`);
       return;
     }
 
@@ -131,7 +134,7 @@ function PreviewAuthorize() {
     return () => {
       cancelled = true;
     };
-  }, [user, isLoading, to]);
+  }, [user, isLoading, to, router]);
 
   if (error) {
     return (

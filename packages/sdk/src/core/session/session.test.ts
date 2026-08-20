@@ -15,6 +15,8 @@ import {
   rewriteLocalhostUrl,
   proxyLocalhostUrl,
   parseLocalhostUrl,
+  parseSubdomainUrl,
+  proxyUrlToInternal,
   hasPreviewTarget,
   isInternalLocalhostUrl,
   isPreviewUrl,
@@ -209,6 +211,27 @@ describe('session/url', () => {
       expect(
         rewriteLocalhostUrl(3000, '/x', { ...withTemplate, sandboxId: '' }),
       ).toBe('http://localhost:3000/x');
+    });
+
+    it('maps back to the in-box address, like the other two forms do', () => {
+      // Every surface that turns a preview URL back into `http://localhost:PORT`
+      // goes through this. Without a deployed-origin branch it returned null,
+      // so those surfaces silently stopped working the moment a deployment got
+      // a preview domain.
+      expect(
+        proxyUrlToInternal('https://dev-p3000-sbx-a.p.kortix.com/viewer.html?x=1'),
+      ).toBe('http://localhost:3000/viewer.html?x=1');
+      expect(proxyUrlToInternal('https://prod-p8081-sbx-a.p.kortix.com/')).toBe(
+        'http://localhost:8081/',
+      );
+    });
+
+    it('parses the deployed origin into its parts', () => {
+      expect(parseSubdomainUrl('https://staging-p3000-sbx-a.p.kortix.com/a/b')).toMatchObject({
+        port: 3000,
+        sandboxId: 'sbx-a',
+        path: '/a/b',
+      });
     });
 
     it('is recognized as a preview URL, not as a raw localhost dead end', () => {

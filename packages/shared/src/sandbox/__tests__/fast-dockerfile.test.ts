@@ -42,14 +42,28 @@ expect(dockerfile).toContain('FROM ubuntu:24.04');
     expect(dockerfile).toContain(
       '/home/kortix/.bun/bin/bun build tools/*.ts --target=bun --outdir=/tmp/opencode-tools-bundle-check',
     );
-    expect(dockerfile).toContain('bash /tmp/kortix-opencode-warmup instance wipe');
+    expect(dockerfile).toContain('git clone -q /opt/kortix/scaffold.git /workspace');
+    expect(dockerfile).toContain('kortixOpenCodeInstallSentinel');
+    expect(dockerfile).toContain('bash /tmp/kortix-opencode-warmup instance keep');
+    expect(dockerfile.indexOf('/opt/kortix/scaffold.git')).toBeLessThan(
+      dockerfile.indexOf('instance keep'),
+    );
+    expect(dockerfile.indexOf('git clone -q /opt/kortix/scaffold.git /workspace')).toBeLessThan(
+      dockerfile.indexOf('instance keep'),
+    );
+    expect(dockerfile.indexOf('kortixOpenCodeInstallSentinel')).toBeLessThan(
+      dockerfile.indexOf('instance keep'),
+    );
+    expect(dockerfile).toContain(
+      'sudo -u kortix env HOME=/home/kortix git -C /workspace status',
+    );
     expect(dockerfile.indexOf('bun build tools/*.ts')).toBeGreaterThan(
       dockerfile.indexOf('/opt/kortix/warm-config/.kortix/opencode/'),
     );
-    expect(dockerfile.indexOf('instance wipe')).toBeGreaterThan(
+    expect(dockerfile.indexOf('instance keep')).toBeGreaterThan(
       dockerfile.indexOf('bun build tools/*.ts'),
     );
-    expect(dockerfile.indexOf('instance wipe')).toBeGreaterThan(
+    expect(dockerfile.indexOf('instance keep')).toBeGreaterThan(
       dockerfile.indexOf('/opt/kortix/warm-config/.kortix/opencode/'),
     );
     expect(dockerfile).toContain('/opt/kortix/runtime-versions.json');

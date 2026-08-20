@@ -52,6 +52,8 @@ function baseConfig(over: Partial<Config> = {}): Config {
     sessionFresh: false,
     baseSha: undefined,
     gitDeltaBundleBase64: undefined,
+    gitDeltaParentSha: undefined,
+    gitDeltaParentCommitBase64: undefined,
     sandboxToken: TEST_TOKEN,
     gitUserName: 'Kortix Agent',
     gitUserEmail: 'agent@kortix.ai',
@@ -516,11 +518,26 @@ describe('daemon proxy auth gate', () => {
       const scaffoldSha = gitOutput(['-C', source, 'rev-parse', 'HEAD'])
       git(['clone', '--bare', source, scaffold])
 
+      gitOutput(['commit', '--amend', '--no-edit'], {
+        cwd: source,
+        env: {
+          GIT_AUTHOR_DATE: '2026-01-02T00:00:00Z',
+          GIT_COMMITTER_DATE: '2026-01-02T00:00:00Z',
+        },
+      })
+      const providerParentSha = gitOutput(['-C', source, 'rev-parse', 'HEAD'])
+      expect(providerParentSha).not.toBe(scaffoldSha)
+      const providerParentCommitBase64 = Buffer.from(execFileSync(
+        'git',
+        ['cat-file', 'commit', providerParentSha],
+        { cwd: source },
+      )).toString('base64')
+
       writeFileSync(join(source, 'README.md'), 'customer project\n')
       git(['add', 'README.md'], source)
       git(['-c', 'user.email=noreply@kortix.ai', '-c', 'user.name=Kortix', 'commit', '-m', 'project setup'], source)
       const baseSha = gitOutput(['-C', source, 'rev-parse', 'HEAD'])
-      git(['bundle', 'create', bundlePath, 'refs/heads/main', `^${scaffoldSha}`], source)
+      git(['bundle', 'create', bundlePath, 'refs/heads/main', `^${providerParentSha}`], source)
 
       __setScaffoldRepoPathForTests(scaffold)
       globalThis.fetch = (async (url: string | URL | Request) => {
@@ -542,6 +559,8 @@ describe('daemon proxy auth gate', () => {
         sessionFresh: true,
         baseSha,
         gitDeltaBundleBase64: readFileSync(bundlePath).toString('base64'),
+        gitDeltaParentSha: providerParentSha,
+        gitDeltaParentCommitBase64: providerParentCommitBase64,
       }))
 
       expect(requests.filter((url) => url.includes('/git/clone-credential'))).toHaveLength(0)

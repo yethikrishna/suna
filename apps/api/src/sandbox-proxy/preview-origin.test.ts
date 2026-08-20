@@ -47,7 +47,10 @@ mock.module('./routes/preview', () => ({
   },
 }));
 mock.module('../shared/session-public-shares', () => ({
-  PUBLIC_SHARE_BLOCKED_PORTS: new Set<number>(),
+  // The REAL blocked set, including the static-file port. An empty mock here
+  // once made a file-share test pass against a path the production constant
+  // refuses — the test asserted an unreachable branch.
+  PUBLIC_SHARE_BLOCKED_PORTS: new Set<number>([22, 4096, 8000, 3211]),
   STATIC_FILE_SHARE_PORT: 3211,
   resolvePublicShare: async (token: string) => shares[token] ?? { ok: false },
   touchPublicShare: async () => {},
@@ -320,5 +323,37 @@ describe('a public share names one thing', () => {
     };
     const [req, url] = request('/?public_share=prev-token', {}, 'p9999-sbx-known.localhost:8008');
     expect((await handlePreviewOriginRequest(req, url))?.status).toBe(401);
+  });
+});
+
+describe('the blocked-port set applies to the share kind it was written for', () => {
+  test('a file share works on the static-file port, which is exactly what serves it', async () => {
+    shares = {
+      't': {
+        ok: true,
+        row: {
+          shareId: 's', mode: 'view', resourceType: 'file', externalId: 'sbx_KNOWN',
+          port: null, filePath: '/workspace/a.html',
+        },
+      },
+    };
+    const [req, url] = request('/?public_share=t', {}, 'p3211-sbx-known.localhost:8008');
+    expect((await handlePreviewOriginRequest(req, url))?.status).toBe(200);
+  });
+
+  test('a preview share still cannot name an infrastructure port', async () => {
+    for (const port of [22, 4096, 8000, 3211]) {
+      shares = {
+        't': {
+          ok: true,
+          row: {
+            shareId: 's', mode: 'view', resourceType: 'preview', externalId: 'sbx_KNOWN',
+            port, filePath: null,
+          },
+        },
+      };
+      const [req, url] = request('/?public_share=t', {}, `p${port}-sbx-known.localhost:8008`);
+      expect((await handlePreviewOriginRequest(req, url))?.status).toBe(401);
+    }
   });
 });

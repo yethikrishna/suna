@@ -179,15 +179,21 @@ async function authenticatePublicShare(
   if (!resolved.ok) return null;
 
   const share = resolved.row;
-  if (share.externalId !== sandboxId || PUBLIC_SHARE_BLOCKED_PORTS.has(port)) return null;
+  if (share.externalId !== sandboxId) return null;
 
   // A share names ONE thing. A preview share names a port; a file share names a
   // single file served by the static-web port. Accepting a file share for any
   // other port — or for any path other than its own file — would turn a link to
   // one document into a key to the whole box.
   if (share.resourceType === 'preview') {
-    if (share.port !== port) return null;
+    // The blocked set exists to stop a PREVIEW share naming an infrastructure
+    // port (ssh, the daemon, opencode, static-web).
+    if (share.port !== port || PUBLIC_SHARE_BLOCKED_PORTS.has(port)) return null;
   } else if (share.resourceType === 'file') {
+    // A file share targets the static-web port BY DESIGN — that is the port
+    // that serves it — so the blocked set does not apply here. What keeps it
+    // safe is the pinning below: the request is rewritten to this share's own
+    // file, so reaching 3211 grants that one document and nothing else.
     if (port !== STATIC_FILE_SHARE_PORT || !share.filePath) return null;
   } else {
     return null;

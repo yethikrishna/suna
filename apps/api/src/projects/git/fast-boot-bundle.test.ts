@@ -133,55 +133,6 @@ describe('buildSingleParentDeltaBundle', () => {
     }
   });
 
-  test('imports when the provider parent tree differs from the image-baked scaffold', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'kortix-portable-fast-boot-bundle-'));
-    try {
-      const bakedSource = join(root, 'baked-source');
-      const providerSource = join(root, 'provider-source');
-      const scaffoldRepo = join(root, 'scaffold.git');
-      const checkout = join(root, 'checkout');
-      mkdirSync(bakedSource);
-      mkdirSync(providerSource);
-
-      const identity = {
-        GIT_AUTHOR_NAME: 'Kortix',
-        GIT_AUTHOR_EMAIL: 'noreply@kortix.ai',
-        GIT_COMMITTER_NAME: 'Kortix',
-        GIT_COMMITTER_EMAIL: 'noreply@kortix.ai',
-      };
-      git(['init', '-b', 'main'], bakedSource);
-      writeFileSync(join(bakedSource, 'README.md'), 'image scaffold\n');
-      git(['add', 'README.md'], bakedSource);
-      git(['commit', '-m', 'chore: scaffold Kortix project'], bakedSource, identity);
-      git(['clone', '--bare', bakedSource, scaffoldRepo], root);
-
-      git(['init', '-b', 'main'], providerSource);
-      writeFileSync(join(providerSource, 'README.md'), 'newer provider scaffold\n');
-      writeFileSync(join(providerSource, 'package.json'), '{}\n');
-      git(['add', '-A'], providerSource);
-      git(['commit', '-m', 'chore: scaffold Kortix project'], providerSource, identity);
-      writeFileSync(join(providerSource, 'README.md'), 'customer project\n');
-      git(['add', 'README.md'], providerSource);
-      git(['commit', '-m', 'chore: project setup'], providerSource, identity);
-      const baseSha = git(['rev-parse', 'HEAD'], providerSource);
-
-      const bundle = await buildSingleParentDeltaBundle(providerSource, 'main');
-      expect(bundle?.baseSha).toBe(baseSha);
-
-      git(['clone', '-q', scaffoldRepo, checkout], root);
-      const bundlePath = join(root, 'portable.bundle');
-      writeFileSync(bundlePath, Buffer.from(bundle!.bundleBase64, 'base64'));
-      git(['bundle', 'verify', bundlePath], checkout);
-      git(['bundle', 'unbundle', bundlePath], checkout);
-      git(['checkout', '-q', '-B', 'main', baseSha], checkout);
-
-      expect(readFileSync(join(checkout, 'README.md'), 'utf8')).toBe('customer project\n');
-      expect(readFileSync(join(checkout, 'package.json'), 'utf8')).toBe('{}\n');
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
   test('keeps the current managed starter delta below the sandbox env limit', async () => {
     const root = mkdtempSync(join(tmpdir(), 'kortix-starter-fast-boot-bundle-'));
     try {

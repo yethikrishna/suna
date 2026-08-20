@@ -3,22 +3,24 @@ import { readFileSync } from 'node:fs';
 
 import { buildFastSandboxDockerfile } from '../fast-dockerfile';
 
+const DEFAULT_OPTIONS = {
+  agentBinaryPath: 'artifacts/kortix-agent.gz',
+  cliBinaryPath: 'artifacts/kortix.gz',
+  entrypointScriptPath: 'artifacts/kortix-entrypoint',
+  opencodeWarmupScriptPath: 'artifacts/opencode-warmup',
+  machineDocPath: 'artifacts/MACHINE.fast.md',
+  slackCliPath: 'artifacts/slack-cli',
+  lazyToolsPath: 'artifacts/lazy-tools',
+  catalogPath: 'artifacts/llm-catalog.json',
+  managedSkillsPath: 'artifacts/managed-skills',
+  runtimeVersionsPath: 'artifacts/runtime-versions.json',
+  opencodeConfigPath: 'artifacts/opencode',
+  scaffoldPath: 'artifacts/scaffold.git',
+};
+
 describe('buildFastSandboxDockerfile', () => {
   test('keeps the session-critical runtime and defers heavyweight tool packs', () => {
-    const dockerfile = buildFastSandboxDockerfile({
-      agentBinaryPath: 'artifacts/kortix-agent.gz',
-      cliBinaryPath: 'artifacts/kortix.gz',
-      entrypointScriptPath: 'artifacts/kortix-entrypoint',
-      opencodeWarmupScriptPath: 'artifacts/opencode-warmup',
-      machineDocPath: 'artifacts/MACHINE.fast.md',
-      slackCliPath: 'artifacts/slack-cli',
-      lazyToolsPath: 'artifacts/lazy-tools',
-      catalogPath: 'artifacts/llm-catalog.json',
-      managedSkillsPath: 'artifacts/managed-skills',
-      runtimeVersionsPath: 'artifacts/runtime-versions.json',
-      opencodeConfigPath: 'artifacts/opencode',
-      scaffoldPath: 'artifacts/scaffold.git',
-    });
+    const dockerfile = buildFastSandboxDockerfile(DEFAULT_OPTIONS);
 
 expect(dockerfile).toContain('FROM ubuntu:24.04');
     expect(dockerfile).toContain('opencode-ai@1.18.19');
@@ -76,5 +78,17 @@ expect(dockerfile).toContain('FROM ubuntu:24.04');
     expect(installer).toContain(
       'uv pip install --python "${python_env}/bin/python" "${python_specs[@]}"',
     );
+  });
+
+  test('installs only the lean OpenCode config runtime', () => {
+    const dockerfile = buildFastSandboxDockerfile(DEFAULT_OPTIONS);
+
+    expect(dockerfile).toContain('test -d node_modules/zod');
+    expect(dockerfile).toContain('test ! -e node_modules/@opencode-ai/plugin');
+    expect(dockerfile).toContain('test ! -e node_modules/effect');
+    expect(dockerfile).toContain('test ! -e node_modules/@mendable/firecrawl-js');
+    expect(dockerfile).toContain('test ! -e node_modules/@tavily/core');
+    expect(dockerfile).toContain('test ! -e node_modules/replicate');
+    expect(dockerfile).not.toContain('bun build node_modules/axios');
   });
 });

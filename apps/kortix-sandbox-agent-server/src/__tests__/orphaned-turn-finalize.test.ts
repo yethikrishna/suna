@@ -250,7 +250,15 @@ describe('opencodeDeliveryInFlight — lifecycle acceptance recovery', () => {
     expect(await opencodeDeliveryInFlight(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toBeNull();
   });
 
-  test('a later user message makes the exact older turn terminal even while the session is busy', async () => {
+  // EXPECTATION FLIPPED 2026-08-20 (live incident, Essentia session d1b74954):
+  // prompts forwarded INTO a live turn — and OpenCode's own synthetic
+  // `<pty_exited>` wake-ups — put a NEWER user message on the root while the
+  // SAME loop is still streaming the older turn's steps. The old rule ("a
+  // newer user message owns the root, never ask the status") made the reaper
+  // read that turn as terminal and destroy live turn authority mid-stream
+  // (cleared 12:48:51Z; the step completed 12:48:54Z). Transcript shape alone
+  // may never end a turn while the root itself reports busy.
+  test('a later user message does NOT end an unanswered older turn while the session is busy', async () => {
     stubFetch(
       [
         { info: { id: 'msg_turn_1', role: 'user' } },
@@ -258,8 +266,91 @@ describe('opencodeDeliveryInFlight — lifecycle acceptance recovery', () => {
       ],
       { sessionStatus: { [SESSION]: { type: 'busy' } } },
     );
+    expect(await opencodeDeliveryInFlight(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toBe(true);
+    expect(calls.some((url) => url.includes('/session/status'))).toBe(true);
+  });
+
+  test('a later user message ends an unanswered older turn once the session is idle', async () => {
+    stubFetch(
+      [
+        { info: { id: 'msg_turn_1', role: 'user' } },
+        { info: { id: 'msg_turn_2', role: 'user' } },
+      ],
+      { sessionStatus: { [SESSION]: { type: 'idle' } } },
+    );
     expect(await opencodeDeliveryInFlight(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toBe(false);
+  });
+
+  test('a later user message with an unreadable status is unknown, never terminal', async () => {
+    stubFetch(
+      [
+        { info: { id: 'msg_turn_1', role: 'user' } },
+        { info: { id: 'msg_turn_2', role: 'user' } },
+      ],
+      { sessionStatusOk: false },
+    );
+    expect(await opencodeDeliveryInFlight(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toBeNull();
+  });
+
+  test('a later user message after a COMPLETED answer is terminal without asking the status', async () => {
+    stubFetch(
+      [
+        { info: { id: 'msg_turn_1', role: 'user' } },
+        { info: { role: 'assistant', parentID: 'msg_turn_1', time: { completed: 1234 } } },
+        { info: { id: 'msg_turn_2', role: 'user' } },
+      ],
+      { sessionStatus: { [SESSION]: { type: 'busy' } } },
+    );
+    const observed = await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1');
+    expect(observed).toEqual({ inFlight: false, end: 'completed' });
     expect(calls.some((url) => url.includes('/session/status'))).toBe(false);
+  });
+
+  // The step-boundary window: each step of ONE turn is its own assistant
+  // message, completed at the step's end, and the next step's message does not
+  // exist yet while tools run. A completed latest step + a busy root is the
+  // SAME turn between steps, not a finished turn.
+  test('a completed latest step with a busy root stays active (step boundary)', async () => {
+    stubFetch(
+      [
+        { info: { id: 'msg_turn_1', role: 'user' } },
+        { info: { role: 'assistant', parentID: 'msg_turn_1', time: { completed: 1234 } } },
+      ],
+      { sessionStatus: { [SESSION]: { type: 'busy' } } },
+    );
+    expect(await opencodeDeliveryInFlight(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toBe(true);
+  });
+
+  test('a completed latest step with an unreadable status is unknown', async () => {
+    stubFetch(
+      [
+        { info: { id: 'msg_turn_1', role: 'user' } },
+        { info: { role: 'assistant', parentID: 'msg_turn_1', time: { completed: 1234 } } },
+      ],
+      { sessionStatusOk: false },
+    );
+    expect(await opencodeDeliveryInFlight(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toBeNull();
+  });
+
+  test('a non-retryable error is terminal even while the root reports busy', async () => {
+    // A terminally-errored answer cannot un-fail; a busy root there is a NEWER
+    // turn already running. Holding this record open would pin authority on a
+    // turn that is provably over.
+    stubFetch(
+      [
+        { info: { id: 'msg_turn_1', role: 'user' } },
+        {
+          info: {
+            role: 'assistant',
+            parentID: 'msg_turn_1',
+            time: {},
+            error: { name: 'APIError', data: { isRetryable: false } },
+          },
+        },
+      ],
+      { sessionStatus: { [SESSION]: { type: 'busy' } } },
+    );
+    expect(await opencodeDeliveryInFlight(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toBe(false);
   });
 
   test('an incomplete assistant for the exact user message remains active', async () => {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { mkdtempSync, writeFileSync } from 'node:fs'
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -365,7 +365,15 @@ describe('agent convergence — stage only', () => {
     const result = await run(ws, stub)
 
     expect(result.agent).toBe('staged')
-    expect(stub.calls.some((url) => url.startsWith('https://evil.test'))).toBe(false)
+    // Assert the POSITIVE — every fetch stayed on this API's origin. The
+    // negative form (`no url starts with https://evil.test`) still passes for
+    // `https://evil.test.attacker.com`, which is precisely the incomplete
+    // substring sanitization this test exists to rule out. Comparing parsed
+    // origins cannot be fooled that way.
+    const apiOrigin = new URL(API_URL).origin
+    for (const url of stub.calls) {
+      expect(new URL(url).origin).toBe(apiOrigin)
+    }
     expect(stub.calls).toContain(`${API_URL}/v1/runtime-assets/agent`)
   })
 })

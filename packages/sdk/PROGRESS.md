@@ -12,6 +12,33 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-20 — session `legacy-billing-truth` — the admin console reads billing truth, not the stored tier — DONE
+
+**Files:** `react/use-admin-accounts.ts` (+`AdminAccountSubscription`,
+`adminAccountSubscriptionPath`, `useAdminAccountSubscription`,
+`AdminAccount.displayName`) + `use-admin-accounts.test.ts` (+6 tests), both
+surface snapshots.
+
+**What.** Additive only — no rename, no breaking change. Two facts the admin
+console could not read:
+
+1. **`useAdminAccountSubscription`** over
+   `GET /admin/api/accounts/:id/subscription` — the account's LIVE Stripe
+   subscription (product, unit amount, quantity, interval, status, period end).
+   The console rendered only the resolved plan badge, which describes the
+   STORED tier: a legacy `pro` row reads "Team · $20/mo · grandfathered" while
+   the customer's real subscription is a $40/mo "Kortix Computer" machine sub.
+   `subscription` is null when none is on file.
+2. **`AdminAccount.displayName`** — the name the PRODUCT shows. `name` is the
+   raw column, a migration placeholder ('Personal' / 'User') for old rows that
+   every customer-facing surface maps to "<owner email>'s Account". Optional,
+   so a console on an older API still type-checks and falls back to `name`.
+
+**Gates:** `typecheck` clean · `bun test --isolate src` 2313 pass / 0 fail ·
+`smoke:install` passed.
+
+---
+
 ### 2026-08-19 — session `rbac-canonical` (P5) — BREAKING: the canonical assignment surface lands, the sandbox-member surface is deleted — DONE
 
 **Files:** `core/rest/projects-client/assignments.ts` + `assignments.test.ts`

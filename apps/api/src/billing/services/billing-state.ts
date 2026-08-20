@@ -16,8 +16,9 @@
  * testable. The states are deliberately about the ACCOUNT, not about any one
  * caller's error taxonomy:
  *
- * - `active`          — may run. Either an active per-seat subscription (which
- *                       is not wallet-gated at all) or a funded wallet.
+ * - `active`          — may run. Either a PAYING subscription (which is not
+ *                       wallet-gated at all, on any billing model) or a funded
+ *                       wallet.
  * - `out_of_credits`  — HAS a plan, wallet at/below the run floor. → "Top up".
  * - `no_subscription` — genuinely not on a plan. → "Subscribe".
  * - `payment_failed`  — has a plan whose payment is failing AND the wallet can't
@@ -30,7 +31,7 @@
  * is cancelled.
  */
 
-import { MINIMUM_CREDIT_FOR_RUN, isPaidTier, isPerSeatAccount } from './tier-facts';
+import { MINIMUM_CREDIT_FOR_RUN, isPaidTier } from './tier-facts';
 
 export type BillingState =
   | 'active'
@@ -166,9 +167,18 @@ export function hasPayingSubscription(snapshot: BillingSnapshot): boolean {
  * exempt from the floor, which is the whole reason this module exists. The gate
  * previously asked `isPerSeatAccount && hasLiveSubscription` on its own; that
  * second, subtly different answer is what let non-paying subscriptions spend.
+ *
+ * Resolved by the SUBSCRIPTION, not the billing model. The answer used to add
+ * `isPerSeatAccount(billingModel)`, which 402'd every PAYING legacy customer:
+ * legacy tiers grant no monthly credits, so a $40/mo machine-subscription
+ * account sat at a $0 wallet and every run blocked on the one-cent admission
+ * hold — paying every month for an account that could not run anything. A
+ * subscription Stripe is actively collecting on (allow-list: active/trialing,
+ * fails closed) is a paying customer on ANY billing model; usage still debits
+ * the wallet at settle.
  */
 export function subscriptionBypassesWalletFloor(snapshot: BillingSnapshot): boolean {
-  return isPerSeatAccount(snapshot.billingModel) && hasPayingSubscription(snapshot);
+  return hasPayingSubscription(snapshot);
 }
 
 /**
@@ -196,13 +206,13 @@ export function walletCoversRun(snapshot: BillingSnapshot): boolean {
 }
 
 /**
- * The account's billing state. Ordering matters: a PAYING per-seat
- * subscription short-circuits BEFORE the wallet floor, because a seat
- * subscription is not wallet-gated — that is exactly the case
- * (`per_seat` + `active` + $0.0099) that used to render "Subscribe to
+ * The account's billing state. Ordering matters: a PAYING subscription
+ * short-circuits BEFORE the wallet floor, because a subscription Stripe is
+ * collecting on is not wallet-gated — that is exactly the case
+ * (`active` sub + $0.0099 wallet) that used to render "Subscribe to
  * start sessions" while the account was paying $40/mo.
  *
- * A per-seat subscription that is NOT paying falls through to the same wallet
+ * A subscription that is NOT paying falls through to the same wallet
  * floor as everyone else, and then to `payment_failed` — it keeps running on
  * whatever credit it has, and asks for a card update once that runs out.
  */

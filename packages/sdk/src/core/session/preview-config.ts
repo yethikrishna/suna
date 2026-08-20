@@ -41,6 +41,20 @@ export function cachedPreviewUrlTemplate(backendUrl: string): string | null {
 }
 
 /**
+ * Whether this backend has ANSWERED yet — as opposed to "answered null", which
+ * is a real answer meaning "this deployment serves no preview domain".
+ *
+ * The two look identical through `cachedPreviewUrlTemplate`, and conflating them
+ * is how a session gets stuck: during a rolling deploy the first `ensureReady()`
+ * can hit a task that predates `/v1/p/config`, and without this the handle would
+ * keep building path-proxy URLs for the rest of its life even though every later
+ * request would have been answered by a new task.
+ */
+export function hasPreviewConfig(backendUrl: string): boolean {
+  return templates.has(key(backendUrl));
+}
+
+/**
  * Fetch and cache the template. Concurrent callers share one request; a failed
  * fetch caches nothing, so a deployment that was briefly unreachable is asked
  * again rather than being remembered as having no preview domain.

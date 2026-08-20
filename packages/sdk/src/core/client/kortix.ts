@@ -23,7 +23,11 @@ import { type KortixPlatformConfig, configureKortix, platformConfig } from '../h
 import * as P from '../rest/projects-client';
 import { getSessionHealth } from '../session/health';
 import { type SubdomainUrlOptions, proxyLocalhostUrl, rewriteLocalhostUrl } from '../session/url';
-import { cachedPreviewUrlTemplate, loadPreviewUrlTemplate } from '../session/preview-config';
+import {
+  cachedPreviewUrlTemplate,
+  hasPreviewConfig,
+  loadPreviewUrlTemplate,
+} from '../session/preview-config';
 import { setCurrentRuntime } from '../session/current-runtime';
 import {
   clearSessionRuntime,
@@ -127,6 +131,12 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     // is on), and preview/proxy URLs must follow the reconfigured base like
     // every other call path already does.
     const apiBaseUrl = platformConfig().backendUrl ?? config.backendUrl;
+    // Self-heal: if this backend has never answered `/v1/p/config` — the API was
+    // mid-rollout, or the network blipped — ask again in the background so the
+    // NEXT preview URL is an origin. Without this a single unlucky first call
+    // pins the whole handle to the path proxy. A deployment that answered
+    // "no preview domain" has answered, so this does not re-ask it.
+    if (!hasPreviewConfig(apiBaseUrl)) void loadPreviewUrlTemplate(apiBaseUrl).catch(() => {});
     let backendPort = 80;
     const u = parseBackendUrlForPort(apiBaseUrl);
     if (u) {

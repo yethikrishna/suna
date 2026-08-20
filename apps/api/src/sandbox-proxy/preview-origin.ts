@@ -25,6 +25,8 @@
 import { authenticatePreviewPrincipalDetailed, extractPreviewToken } from './preview-auth';
 import { forwardToSandbox } from './routes/preview';
 import { resolveExternalIdFromHostLabel } from './backend';
+import { config } from '../config';
+import { previewGatePage, type PreviewGateReason } from './preview-gate-page';
 import { resolvePreviewHost, type ResolvedPreviewHost } from './preview-hosts';
 import {
   PREVIEW_EDGE_HEADERS,
@@ -92,7 +94,11 @@ export function resolvePreviewRequest(req: Request, url: URL): ResolvedPreviewRe
       publicHost,
     });
 
-  return { target, publicHost: publicHost.replace(/:\d+$/, ''), verified };
+  // Keep the port. `resolvePreviewHost` strips it for MATCHING, but this value
+  // is the address the browser is actually on: it becomes X-Forwarded-Prefix
+  // (the base every relative asset resolves against) and the return URL on the
+  // sign-in page. Dropping `:8008` sends both to the wrong port in local dev.
+  return { target, publicHost, verified };
 }
 
 /**
@@ -118,6 +124,39 @@ function jsonError(status: number, message: string, origin: string): Response {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
   });
+}
+
+/**
+ * The refusal a caller should get. A person navigating to a preview origin gets
+ * a page they can act on (see preview-gate-page.ts); a script gets the JSON it
+ * can parse. Deciding by `Sec-Fetch-Dest` rather than by status keeps
+ * `fetch('/api')` inside the app from ever receiving HTML.
+ */
+function gateResponse(
+  req: Request,
+  url: URL,
+  input: { status: 401 | 403 | 404; reason: PreviewGateReason; message: string; origin: string; publicHost: string },
+): Response {
+  if (!isDocumentNavigation(req)) {
+    return jsonError(input.status, input.message, input.origin);
+  }
+  const proto = req.headers.get('x-forwarded-proto') || url.protocol.replace(':', '');
+  const returnTo = `${proto}://${input.publicHost}${url.pathname}${url.search}`;
+  return new Response(
+    previewGatePage({
+      reason: input.reason,
+      frontendUrl: config.FRONTEND_URL || '',
+      returnTo,
+    }),
+    {
+      status: input.status,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+        ...corsHeaders(input.origin),
+      },
+    },
+  );
 }
 
 /**
@@ -160,18 +199,26 @@ export function sessionFromCookies(req: Request, target: ResolvedPreviewHost): P
   return null;
 }
 
+/** Why a preview could not be served, before it is rendered for anyone. */
+export interface PreviewRefusal {
+  status: 401 | 404;
+  reason: PreviewGateReason;
+  message: string;
+}
+
 /**
  * Authenticate a request that has no cookie yet, using the one-shot credential
- * in the URL (or an Authorization header, for non-browser callers). Returns the
- * minted session, or a Response to send instead.
+ * in the URL (or an Authorization header, for non-browser callers).
+ *
+ * Returns the minted session, or a REFUSAL rather than a Response: the same
+ * refusal has to become a page for a browser and a status for a WebSocket
+ * handshake, and only the caller knows which it is.
  */
 export async function establishPreviewSession(
   req: Request,
   url: URL,
   target: ResolvedPreviewHost,
-): Promise<{ session: PreviewSession } | { response: Response }> {
-  const origin = req.headers.get('Origin') || '';
-
+): Promise<{ session: PreviewSession } | { refusal: PreviewRefusal }> {
   const shareToken = url.searchParams.get('public_share');
   const previewToken = extractPreviewToken(req, url);
   if (!shareToken && !previewToken) {
@@ -179,7 +226,7 @@ export async function establishPreviewSession(
     // the external_id index (see resolveExternalIdFromHostLabel), so letting an
     // anonymous caller reach it would let anyone spend a table scan per made-up
     // hostname. Nothing here is authorized without a credential anyway.
-    return { response: jsonError(401, 'Unauthorized', origin) };
+    return { refusal: { status: 401, reason: 'unauthorized', message: 'Unauthorized' } };
   }
 
   const sandboxId = await resolveExternalIdFromHostLabel(target.sandboxLabel);
@@ -187,7 +234,7 @@ export async function establishPreviewSession(
     // No sandbox has ever carried this label. Say "not found", not
     // "unauthorized": there is nothing here to be authorized for, and a 401
     // would send the web app into a pointless re-auth loop.
-    return { response: jsonError(404, 'Unknown preview', origin) };
+    return { refusal: { status: 404, reason: 'unknown', message: 'Unknown preview' } };
   }
 
   const share = await authenticatePublicShare(shareToken, sandboxId, target.port);
@@ -207,7 +254,7 @@ export async function establishPreviewSession(
 
   const principal = await authenticatePreviewPrincipalDetailed(previewToken, sandboxId);
   if (!principal?.userId) {
-    return { response: jsonError(401, 'Unauthorized', origin) };
+    return { refusal: { status: 401, reason: 'unauthorized', message: 'Unauthorized' } };
   }
 
   return {
@@ -259,7 +306,13 @@ export async function handlePreviewOriginRequest(
     // A preview hostname was claimed without the edge signature that binds it.
     // Refuse rather than fall through: falling through would serve API routing
     // under a hostname the caller chose.
-    return jsonError(403, 'Unsigned preview host', origin);
+    return gateResponse(req, url, {
+      status: 403,
+      reason: 'forbidden',
+      message: 'Unsigned preview host',
+      origin,
+      publicHost,
+    });
   }
 
   // CORS preflight must succeed BEFORE auth — browsers send OPTIONS without
@@ -289,7 +342,9 @@ export async function handlePreviewOriginRequest(
 
   if (!session) {
     const established = await establishPreviewSession(req, url, target);
-    if ('response' in established) return established.response;
+    if ('refusal' in established) {
+      return gateResponse(req, url, { ...established.refusal, origin, publicHost });
+    }
     session = established.session;
     setCookies = cookiesForSession(session, secure);
 

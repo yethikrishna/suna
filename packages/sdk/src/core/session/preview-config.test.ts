@@ -14,9 +14,12 @@ mock.module('../http/api-client', () => ({
   },
 }));
 
-const { cachedPreviewUrlTemplate, loadPreviewUrlTemplate, resetPreviewConfigCache } = await import(
-  './preview-config'
-);
+const {
+  cachedPreviewUrlTemplate,
+  hasPreviewConfig,
+  loadPreviewUrlTemplate,
+  resetPreviewConfigCache,
+} = await import('./preview-config');
 
 const BACKEND = 'https://dev-api.kortix.com/v1';
 
@@ -101,5 +104,24 @@ describe('cache key normalization', () => {
     );
     expect(Date.now() - started).toBeLessThan(1_000);
     expect(calls).toEqual(['/p/config']);
+  });
+});
+
+describe('answered vs unanswered', () => {
+  it('a deployment that has not answered is distinguishable from one that answered null', async () => {
+    expect(hasPreviewConfig(BACKEND)).toBe(false);
+    responses = [{ success: true, data: { preview_url_template: null } }];
+    await loadPreviewUrlTemplate(BACKEND);
+    // "No preview domain" is a real answer — asking again would be pointless.
+    expect(hasPreviewConfig(BACKEND)).toBe(true);
+    expect(cachedPreviewUrlTemplate(BACKEND)).toBeNull();
+  });
+
+  it('a failed fetch leaves the deployment unanswered so a caller can retry', async () => {
+    await loadPreviewUrlTemplate(BACKEND); // no queued response -> throws internally
+    expect(hasPreviewConfig(BACKEND)).toBe(false);
+    responses = [{ success: true, data: { preview_url_template: 'https://dev-p{port}-{sandbox}.p.kortix.com' } }];
+    await loadPreviewUrlTemplate(BACKEND);
+    expect(hasPreviewConfig(BACKEND)).toBe(true);
   });
 });

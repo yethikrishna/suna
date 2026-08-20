@@ -169,8 +169,8 @@ export async function preparePreviewHostWsUpgrade(
     // No cookie yet — accept the same one-shot credential the HTTP handshake
     // takes, so a client that opens a socket before any page load still works.
     const established = await establishPreviewSession(req, url, target);
-    if ('response' in established) {
-      return { ok: false, status: established.response.status, message: 'unauthorized' };
+    if ('refusal' in established) {
+      return { ok: false, status: established.refusal.status, message: established.refusal.message };
     }
     session = established.session;
   }

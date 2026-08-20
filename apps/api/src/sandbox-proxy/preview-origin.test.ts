@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
 const configState: Record<string, unknown> = {
+  FRONTEND_URL: 'https://dev.kortix.com',
   KORTIX_URL: 'https://dev-api.kortix.com',
   INTERNAL_KORTIX_ENV: 'dev',
   PORT: 8008,
@@ -175,5 +176,69 @@ describe('preview origin auth gate', () => {
     expect(res?.status).toBe(403);
     expect(labelLookups).toEqual([]);
     configState.KORTIX_PREVIEW_BASE_DOMAIN = undefined;
+  });
+});
+
+describe('what a browser is shown instead of JSON', () => {
+  test('the address it sends people back to keeps the port', async () => {
+    // publicHost feeds both this and X-Forwarded-Prefix, so a stripped port
+    // would send local development to the wrong listener in both places.
+    const [req, url] = request('/learn', { headers: { 'sec-fetch-dest': 'document' } });
+    const html = await (await handlePreviewOriginRequest(req, url))!.text();
+    expect(html).toContain('http://p8081-sbx-known.localhost:8008/learn');
+  });
+
+  test('a person navigating with no credential gets a page they can act on', async () => {
+    const [req, url] = request('/learn', { headers: { 'sec-fetch-dest': 'document' } });
+    const res = await handlePreviewOriginRequest(req, url);
+    expect(res?.status).toBe(401);
+    expect(res?.headers.get('content-type')).toContain('text/html');
+    const html = await res!.text();
+    expect(html).toContain('Sign in to open this preview');
+    // The action carries them to the web app, which brings them back here.
+    expect(html).toContain('https://dev.kortix.com/preview/authorize?to=');
+    expect(html).toContain(encodeURIComponent('http://p8081-sbx-known.localhost:8008/learn'));
+    // A sign-in flow must never try to render inside the preview frame.
+    expect(html).toContain('target="_top"');
+  });
+
+  test('an iframe load is a navigation too', async () => {
+    const [req, url] = request('/', { headers: { 'sec-fetch-dest': 'iframe' } });
+    const res = await handlePreviewOriginRequest(req, url);
+    expect(res?.headers.get('content-type')).toContain('text/html');
+  });
+
+  test('a sub-resource still gets JSON — an app must never be handed HTML', async () => {
+    for (const dest of ['empty', 'script', 'style', 'image']) {
+      const [req, url] = request('/api/items', { headers: { 'sec-fetch-dest': dest } });
+      const res = await handlePreviewOriginRequest(req, url);
+      expect(res?.status).toBe(401);
+      expect(res?.headers.get('content-type')).toContain('application/json');
+    }
+  });
+
+  test('a preview that no longer exists says so, and offers no sign-in', async () => {
+    const [req, url] = request('/?token=good', { headers: { 'sec-fetch-dest': 'document' } }, 'p8081-sbx-missing.localhost:8008');
+    const res = await handlePreviewOriginRequest(req, url);
+    expect(res?.status).toBe(404);
+    const html = await res!.text();
+    expect(html).toContain('no longer available');
+    expect(html).not.toContain('/preview/authorize');
+  });
+
+  test('an unsigned claimed host explains itself rather than dumping JSON', async () => {
+    configState.KORTIX_PREVIEW_BASE_DOMAIN = 'p.kortix.com';
+    try {
+      const [req, url] = request(
+        '/learn',
+        { headers: { 'x-kortix-preview-host': 'dev-p8081-sbx-known.p.kortix.com', 'sec-fetch-dest': 'document' } },
+        'dev-api.kortix.com',
+      );
+      const res = await handlePreviewOriginRequest(req, url);
+      expect(res?.status).toBe(403);
+      expect(res?.headers.get('content-type')).toContain('text/html');
+    } finally {
+      configState.KORTIX_PREVIEW_BASE_DOMAIN = undefined;
+    }
   });
 });

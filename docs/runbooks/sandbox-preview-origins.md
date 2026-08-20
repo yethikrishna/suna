@@ -174,6 +174,40 @@ The rendered Caddyfile is checked against real Caddy in
 `{"preview_url_template": null}` and clients keep using the path proxy. Set
 `KORTIX_PREVIEW_BASE_DOMAIN` to opt a self-host in.
 
+## What stays on the path form, and why that is the right answer
+
+Preview origins replace the path proxy for **browser** traffic. Three things
+deliberately keep using `/v1/p/…`, and none of them is a migration leftover:
+
+| surface | why |
+| --- | --- |
+| the runtime control channel (`runtime_url`, port 8000 / Platinum 4096) | Not a browser surface, so an origin buys it nothing. Programmatic callers (CLI, SDK, mobile) hold no cookie jar and send `Authorization: Bearer` per request; on an origin every one of those would re-establish a host session through `resolveExternalIdFromHostLabel`, whose predicate cannot use the `external_id` index. It would also put turn delivery behind wildcard DNS, the certificate pack and the edge Worker — a cert fault would stop agents, not just previews. |
+| `POST /v1/p/auth`, `/v1/p/share`, `GET /v1/p/config`, `GET /v1/p/public-share/:token` | Control endpoints with no `(sandbox, port)` pair to name. `/v1/p/config` is the endpoint that *tells* a client an origin exists, so it can never live on one. |
+| `session_sandboxes.base_url`, `project_sessions.sandbox_url` | Durable rows written once from `KORTIX_URL` — a cloudflared tunnel in local dev. Writing an origin into them would re-create the derived-domain bug and would break the "unset the variable" rollback for every row already written. |
+
+Only two functions decide which form anything gets: `previewOriginFor` /
+`previewUrlTemplate` on the server, and `SubdomainUrlOptions.previewUrlTemplate`
+on the client. Nothing else may test for a preview domain, branch on
+`INTERNAL_KORTIX_ENV`, or concatenate `/p/{id}/{port}`.
+
+If a **browser** ever does end up on a path preview where an origin exists,
+`prefix-escape.ts` still repairs the navigation — and now logs a WARN saying so.
+On a deployment with origins that log line means the cutover has a hole.
+
+## What a person sees when they cannot be served
+
+A preview origin is a real address: people paste and bookmark it. A document
+navigation that cannot be served gets a page, never JSON — what the address is,
+plus a **Sign in to Kortix** action that goes to `/preview/authorize` on the web
+app and returns with a one-shot token (`preview-gate-page.ts`). The action uses
+`target="_top"` so a sign-in started inside the session panel's iframe does not
+try to render the whole web app in a preview pane. Sub-resources and XHR keep
+getting JSON — an app's own `fetch('/api')` must never be handed HTML.
+
+`/preview/authorize` validates its `to` parameter against the hostname shape the
+deployment serves before redirecting. Without that it would be an open redirect
+that also hands over a bearer token.
+
 ## What is still not identical to reaching the box directly
 
 - `X-Frame-Options` and CSP `frame-ancestors` are stripped from responses, so the

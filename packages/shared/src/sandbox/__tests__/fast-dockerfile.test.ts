@@ -54,6 +54,9 @@ expect(dockerfile).toContain('FROM ubuntu:24.04');
     expect(dockerfile.indexOf('kortixOpenCodeInstallSentinel')).toBeLessThan(
       dockerfile.indexOf('instance keep'),
     );
+    expect(dockerfile).toContain(
+      'sudo -u kortix env HOME=/home/kortix git -C /workspace status',
+    );
     expect(dockerfile.indexOf('bun build tools/*.ts')).toBeGreaterThan(
       dockerfile.indexOf('/opt/kortix/warm-config/.kortix/opencode/'),
     );

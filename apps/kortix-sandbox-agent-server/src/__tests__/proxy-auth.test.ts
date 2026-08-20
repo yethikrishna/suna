@@ -574,7 +574,7 @@ describe('daemon proxy auth gate', () => {
     }
   })
 
-  it('falls back to the authenticated fetch when a delta bundle is invalid', async () => {
+  it('falls back to the authenticated fetch when the parent commit payload is forged', async () => {
     const root = mkdtempSync(join(tmpdir(), 'kortix-invalid-delta-bundle-'))
     const originalFetch = globalThis.fetch
     const requests: string[] = []
@@ -582,16 +582,19 @@ describe('daemon proxy auth gate', () => {
       const source = join(root, 'source')
       const scaffold = join(root, 'scaffold.git')
       const target = join(root, 'workspace')
+      const bundlePath = join(root, 'delta.bundle')
       mkdirSync(source)
       git(['init', '-b', 'main'], source)
       writeFileSync(join(source, 'README.md'), 'generic scaffold\n')
       git(['add', 'README.md'], source)
       git(['-c', 'user.email=noreply@kortix.ai', '-c', 'user.name=Kortix', 'commit', '-m', 'scaffold'], source)
+      const scaffoldSha = gitOutput(['-C', source, 'rev-parse', 'HEAD'])
       git(['clone', '--bare', source, scaffold])
       writeFileSync(join(source, 'README.md'), 'remote truth\n')
       git(['add', 'README.md'], source)
       git(['-c', 'user.email=noreply@kortix.ai', '-c', 'user.name=Kortix', 'commit', '-m', 'project setup'], source)
       const baseSha = gitOutput(['-C', source, 'rev-parse', 'HEAD'])
+      git(['bundle', 'create', bundlePath, 'refs/heads/main', `^${scaffoldSha}`], source)
 
       __setScaffoldRepoPathForTests(scaffold)
       globalThis.fetch = (async (url: string | URL | Request) => {
@@ -612,7 +615,9 @@ describe('daemon proxy auth gate', () => {
         branchName: 'session-fresh',
         sessionFresh: true,
         baseSha,
-        gitDeltaBundleBase64: Buffer.from('not a git bundle').toString('base64'),
+        gitDeltaBundleBase64: readFileSync(bundlePath).toString('base64'),
+        gitDeltaParentSha: scaffoldSha,
+        gitDeltaParentCommitBase64: Buffer.from('forged parent commit').toString('base64'),
       }))
 
       expect(requests.filter((url) => url.includes('/git/clone-credential'))).toHaveLength(1)

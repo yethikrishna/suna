@@ -21,6 +21,7 @@ Locally the same shape without the environment prefix:
 | self-host (no domain) | — | — | — | previews use the path proxy |
 | local dev | `p{port}-{sandbox}.localhost:{apiPort}` | none | none (`*.localhost` is a trustworthy origin) | localhost |
 | prod US-East-2 shadow | — | — | — | path proxy: its sandboxes are not in the prod database the wildcard routes to |
+| PR preview environments | — | — | — | path proxy, for the same reason |
 
 One wildcard certificate and one Worker cover all three managed environments
 because the environment is the first label segment. A deployment that declares

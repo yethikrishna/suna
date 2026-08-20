@@ -107,10 +107,12 @@ RUN mkdir -p /opt/kortix/opencode-config-deps
 COPY --chown=kortix:kortix ${options.opencodeConfigPath}/package.json ${options.opencodeConfigPath}/bun.lock /opt/kortix/opencode-config-deps/
 RUN cd /opt/kortix/opencode-config-deps \
  && /home/kortix/.bun/bin/bun install --frozen-lockfile \
+ && test -d node_modules/zod \
  && test ! -e node_modules/@opencode-ai/plugin \
  && test ! -e node_modules/effect \
- && /home/kortix/.bun/bin/bun build node_modules/axios/lib/utils.js node_modules/form-data/lib/form_data.js --target=bun --outdir=/tmp/opencode-deps-check \
- && rm -rf /tmp/opencode-deps-check
+ && test ! -e node_modules/@mendable/firecrawl-js \
+ && test ! -e node_modules/@tavily/core \
+ && test ! -e node_modules/replicate
 
 COPY --chown=kortix:kortix ${options.opencodeWarmupScriptPath} /tmp/kortix-opencode-warmup
 RUN sudo -u kortix env HOME=/home/kortix PATH="${'$'}{PATH}" \

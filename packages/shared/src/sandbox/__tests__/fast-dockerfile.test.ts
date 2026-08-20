@@ -80,10 +80,15 @@ expect(dockerfile).toContain('FROM ubuntu:24.04');
     );
   });
 
-  test('rejects the duplicate OpenCode plugin runtime from the fast image', () => {
+  test('installs only the lean OpenCode config runtime', () => {
     const dockerfile = buildFastSandboxDockerfile(DEFAULT_OPTIONS);
 
+    expect(dockerfile).toContain('test -d node_modules/zod');
     expect(dockerfile).toContain('test ! -e node_modules/@opencode-ai/plugin');
     expect(dockerfile).toContain('test ! -e node_modules/effect');
+    expect(dockerfile).toContain('test ! -e node_modules/@mendable/firecrawl-js');
+    expect(dockerfile).toContain('test ! -e node_modules/@tavily/core');
+    expect(dockerfile).toContain('test ! -e node_modules/replicate');
+    expect(dockerfile).not.toContain('bun build node_modules/axios');
   });
 });

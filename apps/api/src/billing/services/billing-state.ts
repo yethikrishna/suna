@@ -31,7 +31,12 @@
  * is cancelled.
  */
 
-import { MINIMUM_CREDIT_FOR_RUN, isPaidTier } from './tier-facts';
+import {
+  MINIMUM_CREDIT_FOR_RUN,
+  isCreditPlanAccount,
+  isPaidTier,
+  isPerSeatAccount,
+} from './tier-facts';
 
 export type BillingState =
   | 'active'
@@ -168,17 +173,31 @@ export function hasPayingSubscription(snapshot: BillingSnapshot): boolean {
  * previously asked `isPerSeatAccount && hasLiveSubscription` on its own; that
  * second, subtly different answer is what let non-paying subscriptions spend.
  *
- * Resolved by the SUBSCRIPTION, not the billing model. The answer used to add
- * `isPerSeatAccount(billingModel)`, which 402'd every PAYING legacy customer:
- * legacy tiers grant no monthly credits, so a $40/mo machine-subscription
- * account sat at a $0 wallet and every run blocked on the one-cent admission
- * hold — paying every month for an account that could not run anything. A
- * subscription Stripe is actively collecting on (allow-list: active/trialing,
- * fails closed) is a paying customer on ANY billing model; usage still debits
- * the wallet at settle.
+ * Two conditions, and BOTH are load-bearing.
+ *
+ * 1. A subscription Stripe is actively collecting on (allow-list:
+ *    active/trialing, fails closed).
+ * 2. A plan that is actually paid for: an explicit per-seat/credit billing
+ *    model, or a paid tier.
+ *
+ * Condition 2 used to be `isPerSeatAccount(billingModel)` ALONE, and that
+ * 402'd every paying LEGACY customer: legacy tiers grant no monthly credits,
+ * so a $40/mo machine-subscription account sat at a $0 wallet and every run
+ * blocked on the one-cent admission hold — paying monthly for an account that
+ * could not run anything. Widening it to any paid tier fixes them.
+ *
+ * Condition 2 cannot be dropped entirely, which is the trap here: the FREE
+ * tier carries a real $0 Stripe subscription whose status is `active`
+ * (226,931 such rows on production as of 2026-08-20). Bypassing on condition 1
+ * alone would therefore hand every free account an unmetered wallet. Keep both.
  */
 export function subscriptionBypassesWalletFloor(snapshot: BillingSnapshot): boolean {
-  return hasPayingSubscription(snapshot);
+  if (!hasPayingSubscription(snapshot)) return false;
+  return (
+    isPerSeatAccount(snapshot.billingModel) ||
+    isCreditPlanAccount(snapshot.billingModel) ||
+    isPaidTier(snapshot.tier ?? 'none')
+  );
 }
 
 /**

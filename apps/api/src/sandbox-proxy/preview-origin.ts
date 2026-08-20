@@ -27,7 +27,12 @@ import { forwardToSandbox } from './routes/preview';
 import { resolveExternalIdFromHostLabel } from './backend';
 import { config } from '../config';
 import { PREVIEW_STATE_HEADER, previewStatePage, type PreviewState } from './preview-state-page';
-import { resolvePreviewHost, type ResolvedPreviewHost } from './preview-hosts';
+import {
+  isAllowedPreviewOrigin,
+  previewCorsHeaders as corsHeaders,
+  resolvePreviewHost,
+  type ResolvedPreviewHost,
+} from './preview-hosts';
 import {
   PREVIEW_EDGE_HEADERS,
   edgeSecret,
@@ -115,41 +120,6 @@ export function isPreviewHost(req: Request, url: URL): boolean {
 
 /** Query parameters that carry a one-shot credential, never forwarded upstream. */
 const CREDENTIAL_PARAMS = ['token', 'public_share'] as const;
-
-/**
- * Cross-origin access to a preview, granted to the Kortix web app and nobody
- * else.
- *
- * The preview cookie is `SameSite=None` (it has to be — the session panel
- * embeds previews in an iframe), which means the browser ATTACHES it to
- * cross-site requests. Echoing an arbitrary `Origin` back with
- * `Allow-Credentials: true` therefore hands any website on the internet a
- * credentialed read of a signed-in user's preview: `fetch(previewUrl, {
- * credentials: 'include' })` from evil.com would return the body and the
- * browser would hand it over. An allowlist is the only safe form.
- *
- * Same-origin requests need none of this and are given none: callers pass '' for
- * a request whose Origin is the preview itself.
- */
-function corsHeaders(origin: string): Record<string, string> {
-  if (!origin || !isAllowedPreviewOrigin(origin)) return {};
-  return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Credentials': 'true',
-    Vary: 'Origin',
-  };
-}
-
-/** The web app is the only cross-origin caller a preview answers. */
-export function isAllowedPreviewOrigin(origin: string): boolean {
-  const frontend = (config.FRONTEND_URL || '').trim();
-  if (!frontend) return false;
-  try {
-    return new URL(origin).origin === new URL(frontend).origin;
-  } catch {
-    return false;
-  }
-}
 
 function jsonError(status: number, message: string, origin: string): Response {
   return new Response(JSON.stringify({ error: message }), {

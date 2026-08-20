@@ -1635,7 +1635,6 @@ export default {
     // ── Subdomain preview routing ──────────────────────────────────────
     // Matches `p{port}-{sandboxId}.localhost:{apiPort}` regardless of path.
     // Same per-request long-poll/SSE timeout posture as /v1/p/.
-    const host = req.headers.get('host') || '';
     if (resolveAppRequest(req, url)) {
       server.timeout(req, 0);
       if (isWsUpgrade) {

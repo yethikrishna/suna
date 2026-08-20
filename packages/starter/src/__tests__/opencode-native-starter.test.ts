@@ -121,10 +121,12 @@ describe('the starter is OpenCode-native', () => {
 
   test('keeps the fast starter tool ABI independent of the full plugin SDK', () => {
     const packageJson = JSON.parse(readFileSync(join(OPENCODE_ROOT, 'package.json'), 'utf8')) as {
+      kortixToolAbi?: number;
       dependencies?: Record<string, string>;
     };
     const lock = readFileSync(join(OPENCODE_ROOT, 'bun.lock'), 'utf8');
 
+    expect(packageJson.kortixToolAbi).toBe(1);
     expect(packageJson.dependencies?.zod).toBe('4.1.8');
     expect(packageJson.dependencies?.['@opencode-ai/plugin']).toBeUndefined();
     expect(lock).not.toContain('"@opencode-ai/plugin"');

@@ -395,6 +395,17 @@ function sandboxHostLabel(sandboxId: string): string {
 }
 
 /**
+ * Linear trailing-slash strip. The regex form (`/\/+$/`) backtracks
+ * quadratically on adversarial input (CodeQL js/polynomial-redos) — the same
+ * reason `rewriteLocalhostUrl` strips `apiBaseUrl` this way below.
+ */
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47 /* '/' */) end--;
+  return value.slice(0, end);
+}
+
+/**
  * Fill the deployment's preview-origin template, or null when there is none —
  * or when it does not carry both slots, in which case every preview would
  * collapse onto one hostname and serve the wrong sandbox.
@@ -411,7 +422,7 @@ function previewOriginUrl(
     .join(String(port))
     .split('{sandbox}')
     .join(sandboxHostLabel(opts.sandboxId));
-  return `${origin.replace(/\/+$/, '')}${safePath}`;
+  return `${stripTrailingSlashes(origin)}${safePath}`;
 }
 
 /**

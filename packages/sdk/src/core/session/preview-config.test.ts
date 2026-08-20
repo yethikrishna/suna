@@ -87,3 +87,19 @@ describe('preview config', () => {
     expect(cachedPreviewUrlTemplate('https://api.kortix.com/v1')).toContain('prod-');
   });
 });
+
+describe('cache key normalization', () => {
+  it('treats many trailing slashes as one deployment without pathological cost', async () => {
+    responses = [{ success: true, data: { preview_url_template: 'https://dev-p{port}-{sandbox}.p.kortix.com' } }];
+    await loadPreviewUrlTemplate(BACKEND);
+    // A long run of '/' is the shape that makes a `/\/+$/` regex backtrack
+    // quadratically (CodeQL js/polynomial-redos). The strip is linear, so this
+    // resolves from cache immediately rather than hanging.
+    const started = Date.now();
+    expect(cachedPreviewUrlTemplate(`${BACKEND}${'/'.repeat(50_000)}`)).toBe(
+      'https://dev-p{port}-{sandbox}.p.kortix.com',
+    );
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(calls).toEqual(['/p/config']);
+  });
+});

@@ -214,6 +214,19 @@ describe('session/url', () => {
     it('is recognized as a preview URL, not as a raw localhost dead end', () => {
       expect(isPreviewUrl(rewriteLocalhostUrl(3000, '/x', withTemplate))).toBe(true);
     });
+
+    it('strips trailing slashes off the template linearly, not quadratically', () => {
+      // A long run of '/' is the shape that makes a `/\/+$/` regex backtrack
+      // (CodeQL js/polynomial-redos), and the template is deployment-supplied.
+      const started = Date.now();
+      expect(
+        rewriteLocalhostUrl(3000, '/x', {
+          ...withTemplate,
+          previewUrlTemplate: `https://dev-p{port}-{sandbox}.p.kortix.com${'/'.repeat(50_000)}`,
+        }),
+      ).toBe('https://dev-p3000-sbx1.p.kortix.com/x');
+      expect(Date.now() - started).toBeLessThan(1_000);
+    });
   });
 
   it('parses + proxies a localhost url', () => {

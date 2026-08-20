@@ -1832,7 +1832,7 @@ async function configureConnections(env: SelfHostEnv, flags: GlobalFlags): Promi
   // a browser can open on its OWN hostname,
   // <env>-p<port>-<sandbox>.<preview base domain>. Without it previews use the
   // path proxy (/v1/p/<sandbox>/<port>/), which works for tools but not for a
-  // browser: an app that emits <a href="/learn">, fetch('/api'), pushState, a
+  // browser: an app that emits <a href="/learn">, an XHR to /api, pushState, a
   // service worker or a WebSocket resolves those against the API origin and
   // escapes the prefix. Same mechanics as Apps above — a *.<domain> DNS record
   // plus per-hostname on-demand certificates, no wildcard certificate needed.

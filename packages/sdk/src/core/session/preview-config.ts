@@ -20,8 +20,15 @@ interface PreviewConfigResponse {
 const templates = new Map<string, string | null>();
 const inFlight = new Map<string, Promise<string | null>>();
 
+/**
+ * Cache key: the backend URL without trailing slashes, stripped LINEARLY. The
+ * regex form (`/\/+$/`) backtracks quadratically on adversarial input (CodeQL
+ * js/polynomial-redos), and this runs on a host-supplied string.
+ */
 function key(backendUrl: string): string {
-  return backendUrl.replace(/\/+$/, '');
+  let end = backendUrl.length;
+  while (end > 0 && backendUrl.charCodeAt(end - 1) === 47 /* '/' */) end--;
+  return backendUrl.slice(0, end);
 }
 
 /**

@@ -161,7 +161,7 @@ const APPS_SITE_BLOCK = `# *.<apps base domain>: every deployed Kortix App, serv
 /**
  * The wildcard preview-serving site block. Every sandbox port a browser can
  * open publishes on <env>-p<port>-<sandbox-label>.{$KORTIX_PREVIEW_BASE_DOMAIN},
- * so the app is alone on its own origin and root-absolute links, `fetch('/api')`,
+ * so the app is alone on its own origin and root-absolute links, XHR to `/api`,
  * `history.pushState`, service workers and WebSockets all resolve to the origin
  * the browser is already on — none of which survive a path prefix.
  *

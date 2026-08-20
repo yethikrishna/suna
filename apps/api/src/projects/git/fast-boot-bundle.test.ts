@@ -113,10 +113,16 @@ describe('buildSingleParentDeltaBundle', () => {
       const bundle = await buildSingleParentDeltaBundle(providerSource, 'main');
       expect(bundle?.baseSha).toBe(baseSha);
       expect(bundle?.parentSha).toBe(providerParentSha);
+      expect(bundle?.parentCommitBase64).toBeTruthy();
 
       git(['clone', '-q', scaffoldRepo, checkout], root);
       const bundlePath = join(root, 'provider.bundle');
+      const parentCommitPath = join(root, 'provider-parent.commit');
       writeFileSync(bundlePath, Buffer.from(bundle!.bundleBase64, 'base64'));
+      writeFileSync(parentCommitPath, Buffer.from(bundle!.parentCommitBase64, 'base64'));
+      expect(git(['hash-object', '-t', 'commit', '-w', parentCommitPath], checkout)).toBe(
+        providerParentSha,
+      );
       git(['bundle', 'unbundle', bundlePath], checkout);
       git(['checkout', '-q', '-B', 'main', baseSha], checkout);
 
@@ -167,7 +173,9 @@ describe('buildSingleParentDeltaBundle', () => {
 
       const bundle = await buildSingleParentDeltaBundle(source, 'main');
       expect(bundle).not.toBeNull();
-      expect(bundle!.bundleBase64.length).toBeLessThanOrEqual(24 * 1024);
+      expect(
+        Buffer.byteLength(bundle!.bundleBase64 + bundle!.parentCommitBase64, 'utf8'),
+      ).toBeLessThanOrEqual(24 * 1024);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

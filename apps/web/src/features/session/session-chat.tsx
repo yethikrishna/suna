@@ -49,7 +49,6 @@ import {
   QueuedPromptActions,
   QueuedPromptBubbles,
   QueuedPromptStatus,
-  RemoveFromQueueButton,
   QUEUED_BUBBLE_OPACITY_CLASS,
   type QueuedPromptState,
 } from './turn/queued-prompt-bubbles';
@@ -843,6 +842,14 @@ function SessionTurnImpl({
     onQueueRemove && statusState && statusState !== 'interrupted' && statusState !== 'failed'
       ? (queueRow?.prompt_id ?? turn.userMessage.info.id)
       : null;
+  // Send-now / retry / remove all live in `UserMessageActions` (`leading`).
+  // A pending bubble can outlive its inbox row; the X still has to work, so
+  // the action id falls back to the user message's own wire id.
+  const queueActionId = queueRemovalId ?? queueRow?.prompt_id ?? null;
+  const showQueueActions =
+    Boolean(queueActionId) &&
+    (Boolean(queueRemovalId) ||
+      Boolean(queueRow && queueState && queueState !== 'interrupted'));
 
   const activeAssistantMessage = useMemo(() => {
     if (turn.assistantMessages.length === 0) return undefined;
@@ -1491,18 +1498,8 @@ function SessionTurnImpl({
           className={cn(
             'transition-opacity duration-500',
             (pending || interruptedBeforeRun) && QUEUED_BUBBLE_OPACITY_CLASS,
-            // A removable queued bubble reserves a slim column at its right
-            // for the X, so the control has ONE fixed home — the meta row
-            // reflows as timestamps and copy appear, and an X living there
-            // jumped out from under the pointer.
-            queueRemovalId && 'relative pr-7',
           )}
         >
-          {queueRemovalId && (
-            <div className="absolute top-2 right-0 opacity-0 transition-opacity duration-150 group-hover/turn:opacity-100 focus-within:opacity-100">
-              <RemoveFromQueueButton id={queueRemovalId} onRemove={onQueueRemove!} />
-            </div>
-          )}
           <UserMessage
             message={turn.userMessage}
             agentNames={agentNames}
@@ -1521,12 +1518,11 @@ function SessionTurnImpl({
               ) : undefined
             }
             leadingActions={
-              queueRow && queueState && queueState !== 'interrupted' ? (
-                // Send-now / Retry stay in the meta row; the X lives beside
-                // the bubble (see `queueRemovalId`).
+              showQueueActions && queueActionId ? (
                 <QueuedPromptActions
-                  id={queueRow.prompt_id}
-                  state={queueState}
+                  id={queueActionId}
+                  state={queueState ?? statusState ?? 'queued'}
+                  onRemove={queueRemovalId && onQueueRemove ? onQueueRemove : undefined}
                   onSendNow={onQueueSendNow}
                   onRetry={onQueueRetry}
                 />

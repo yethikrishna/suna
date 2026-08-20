@@ -171,6 +171,16 @@ export async function establishPreviewSession(
 ): Promise<{ session: PreviewSession } | { response: Response }> {
   const origin = req.headers.get('Origin') || '';
 
+  const shareToken = url.searchParams.get('public_share');
+  const previewToken = extractPreviewToken(req, url);
+  if (!shareToken && !previewToken) {
+    // Answer before touching the database. Resolving a host LABEL cannot use
+    // the external_id index (see resolveExternalIdFromHostLabel), so letting an
+    // anonymous caller reach it would let anyone spend a table scan per made-up
+    // hostname. Nothing here is authorized without a credential anyway.
+    return { response: jsonError(401, 'Unauthorized', origin) };
+  }
+
   const sandboxId = await resolveExternalIdFromHostLabel(target.sandboxLabel);
   if (!sandboxId) {
     // No sandbox has ever carried this label. Say "not found", not
@@ -179,11 +189,7 @@ export async function establishPreviewSession(
     return { response: jsonError(404, 'Unknown preview', origin) };
   }
 
-  const share = await authenticatePublicShare(
-    url.searchParams.get('public_share'),
-    sandboxId,
-    target.port,
-  );
+  const share = await authenticatePublicShare(shareToken, sandboxId, target.port);
   if (share) {
     return {
       session: {
@@ -198,10 +204,7 @@ export async function establishPreviewSession(
     };
   }
 
-  const principal = await authenticatePreviewPrincipalDetailed(
-    extractPreviewToken(req, url),
-    sandboxId,
-  );
+  const principal = await authenticatePreviewPrincipalDetailed(previewToken, sandboxId);
   if (!principal?.userId) {
     return { response: jsonError(401, 'Unauthorized', origin) };
   }

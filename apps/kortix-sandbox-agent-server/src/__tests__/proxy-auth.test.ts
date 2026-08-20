@@ -518,7 +518,11 @@ describe('daemon proxy auth gate', () => {
       const scaffoldSha = gitOutput(['-C', source, 'rev-parse', 'HEAD'])
       git(['clone', '--bare', source, scaffold])
 
-      gitOutput(['commit', '--amend', '--no-edit'], {
+      gitOutput([
+        '-c', 'user.email=noreply@kortix.ai',
+        '-c', 'user.name=Kortix',
+        'commit', '--amend', '--no-edit',
+      ], {
         cwd: source,
         env: {
           GIT_AUTHOR_DATE: '2026-01-02T00:00:00Z',

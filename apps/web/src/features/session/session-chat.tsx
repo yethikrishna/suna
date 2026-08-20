@@ -38,7 +38,7 @@ import { projectQueueRows } from './queue-projection';
 import { createQueueUndoAction } from './queued-message-restore';
 import { ActivityBurst } from './turn/activity-burst';
 import { ExpandableOutput } from './turn/expandable-output';
-import { planAnchorMessageId } from './turn/plan-anchor';
+import { isPlanWriteTool, planAnchorMessageId } from './turn/plan-anchor';
 import { segmentTurn } from './turn/segment-turn';
 import { stabilizeTurns } from './turn/stable-turns';
 import { ThrottledMarkdown } from './turn/throttled-markdown';
@@ -791,7 +791,9 @@ function SessionTurnImpl({
       if (part.type === 'compaction' || part.type === 'snapshot' || part.type === 'patch')
         return true;
       if (isToolPart(part)) {
-        if (part.tool === 'todowrite' || part.tool === 'task' || part.tool === 'question')
+        // `isPlanWriteTool` — NOT a bare `=== 'todowrite'`. The runtime emits
+        // both spellings, and the plan card owns both (see plan-anchor.ts).
+        if (isPlanWriteTool(part.tool) || part.tool === 'task' || part.tool === 'question')
           return false;
         return shouldShowToolPart(part);
       }
@@ -1365,7 +1367,7 @@ function SessionTurnImpl({
   const segments = useMemo(() => {
     const parts: (typeof allParts)[number]['part'][] = [];
     for (const { part } of allParts) {
-      if (isToolPart(part) && part.tool === 'todowrite') continue;
+      if (isToolPart(part) && isPlanWriteTool(part.tool)) continue;
       if (isToolPart(part) && part.tool === 'question') {
         // Keep only answered questions, and only if not rendering inline.
         if (!answeredQuestionPartsById.has(part.id) || shouldUseInlineContent) continue;
@@ -1542,7 +1544,8 @@ function SessionTurnImpl({
 			  bursts). Replaces the old same-tool / reasoning grouping — see
 			  features/session/turn/segment-turn.ts.
 			  Two part kinds are filtered out before segmentation:
-			    - `todowrite` — the plan card beneath the user message is now
+			    - the plan write (`todowrite` / `todo_write`, matched by
+			      `isPlanWriteTool`) — `PlanCard` beneath the user message is
 			      the single canonical todo surface; showing the same checklist
 			      again inside a burst would just duplicate it.
 			    - `question`: only answered questions are kept — they fold into

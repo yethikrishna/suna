@@ -17,7 +17,13 @@
  *    its own after this one (the `end` relay is ~1 s behind the box, so a
  *    fresh send can already be running), or a STRANDED prompt — persisted
  *    below an assistant that predates it, which the loop's exit check read as
- *    answered. The transcript tells them apart exactly (`strandedPlacement`):
+ *    answered. STRANDING IS VERSION-DEPENDENT: only a box running opencode
+ *    <= 1.18.14 (every image baked before 2026-08-20, i.e. 1.17.11) exits on
+ *    `lastUser.id < lastAssistant.id`. From 1.18.15 the exit test is
+ *    `lastAssistant.parentID === lastUser.id`, so a low id alone no longer
+ *    strands anything and this branch simply finds nothing to repair. The
+ *    fleet runs both, so the repair stays.
+ *    The transcript tells them apart exactly (`strandedPlacement`):
  *    a stranded one has a higher assistant parented on an OLDER user message
  *    and nothing parented on itself. Those are taken out of the transcript and
  *    re-queued, so the drain delivers them again — placed above everything —
@@ -30,7 +36,7 @@
  */
 
 import { sessionLifecycleCommands, sessionTurns } from '@kortix/db';
-import { and, desc, eq, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import { logger } from '../../lib/logger';
 import { db } from '../../shared/db';
 import {
@@ -40,8 +46,9 @@ import {
 import { sandboxRuntimeRequestHeaders } from '../sandbox-fetch';
 import { wireIdTime } from '../wire-message-id';
 import { drainSessionLifecycleQueue, resolveSessionOpencodeEndpoint } from './engine';
-import { type PlacementTipMessage, openUserAbove, parsePlacementTip, strandedPlacement, tipIsBusy } from './forwarded-placement';
+import { type PlacementTipMessage, isLaterTipMessage, openUserAbove, parsePlacementTip, strandedPlacement, tipIsBusy } from './forwarded-placement';
 import { promoteNextInboxRow, withNextDeliveryAttempt } from './store';
+import { wireMessageIdMatches } from './wire-id-match';
 
 const WORKSPACE = '/workspace';
 /** The stranded prompt and the assistant that proves it both sit at the tip. */
@@ -145,10 +152,11 @@ const liveDeps: StrandReconcileDeps = {
         and(
           eq(sessionLifecycleCommands.sessionId, sessionId),
           eq(sessionLifecycleCommands.commandType, 'continue_session'),
-          or(
-            sql`${sessionLifecycleCommands.payload}->>'wireMessageId' = ${messageId}`,
-            sql`${sessionLifecycleCommands.payload}->>'redeliveredMessageId' = ${messageId}`,
-          ),
+          // Shared with every other reader — see `wire-id-match.ts`. Before
+          // 2026-08-20 this matched the payload only, so a stranded prompt
+          // delivered under an id only `result.forwarded_message_id` recorded
+          // returned 'no_row' and was never redelivered.
+          wireMessageIdMatches(messageId),
         ),
       )
       .orderBy(desc(sessionLifecycleCommands.createdAt))
@@ -232,7 +240,11 @@ export async function reconcileForwardedTurnsAtEnd(
     for (const m of tip) {
       if (m.role !== 'assistant' || m.completed === null || m.completed === undefined) continue;
       if (typeof m.parentID !== 'string') continue;
-      if (!newest || m.id > newest.id) newest = m;
+      // `time.created`-first, never a raw string compare on the ids — see
+      // `isLaterTipMessage`. Assistant messages are minted by the box, so the
+      // two agree in the common case, but a transcript that mixes box-minted
+      // and placement-minted ids has no such guarantee.
+      if (isLaterTipMessage(m, newest)) newest = m;
     }
     endedMessageId = newest?.parentID ?? null;
   }

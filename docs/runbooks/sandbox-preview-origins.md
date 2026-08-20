@@ -80,6 +80,21 @@ to `API_KEY_SECRET`, and must equal the Worker secret for that environment
 behind its own reverse proxy sets `KORTIX_PREVIEW_ALLOW_DIRECT_EDGE=true`, which
 takes the real `Host` header and requires no signature.
 
+## Order of operations — the domain goes last
+
+Advertising the domain is what makes clients stop using the path proxy. Do it
+before the certificate is active and every preview fails the TLS handshake
+instead of degrading. So:
+
+1. Worker route + secret for the environment.
+2. Wildcard DNS record.
+3. Certificate pack ACTIVE (verify: `curl -sI https://<env>-p8081-sbx-x.p.kortix.com/`
+   returns an HTTP status rather than a handshake failure).
+4. Only then set `KORTIX_PREVIEW_BASE_DOMAIN` for that environment.
+
+Removing the variable again is a complete rollback: clients fall straight back
+to `/v1/p/{sandbox}/{port}/`.
+
 ## Provisioning a new environment
 
 1. Set the Worker secret for it:

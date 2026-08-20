@@ -510,11 +510,14 @@ jobs:
     env:
       AWS_REGION: us-west-2
       ROLE: arn:aws:iam::935064898258:role/kortix-gha-ecs-deploy
-      # Non-secret task environment. KORTIX_PREVIEW_BASE_DOMAIN is the wildcard
-      # every sandbox preview origin sits under; it is declared, never derived
-      # (see apps/api/src/sandbox-proxy/preview-hosts.ts). Unset means previews
-      # fall back to the path proxy.
-      KORTIX_ECS_ENV_OVERRIDES: '{"KORTIX_FAST_COLD_BOOT_ENABLED":"true","KORTIX_PREVIEW_BASE_DOMAIN":"p.kortix.com"}'
+      # Non-secret task environment. KORTIX_PREVIEW_BASE_DOMAIN belongs here —
+      # it is the wildcard every sandbox preview origin sits under — but it must
+      # not be set until the `*.p.kortix.com` certificate pack is ACTIVE. The
+      # moment the API advertises the domain, clients stop using the path proxy,
+      # and without the certificate every preview would fail the TLS handshake
+      # instead of degrading. Run "Configure Sandbox Preview Edge" first, then
+      # add "KORTIX_PREVIEW_BASE_DOMAIN":"p.kortix.com" here.
+      KORTIX_ECS_ENV_OVERRIDES: '{"KORTIX_FAST_COLD_BOOT_ENABLED":"true"}'
     steps:
       - uses: actions/checkout@v7
       - name: Configure AWS credentials (OIDC)

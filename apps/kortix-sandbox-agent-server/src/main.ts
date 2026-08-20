@@ -30,6 +30,7 @@ import {
   type Opencode,
 } from './opencode'
 import { relayBootTimelineToApi } from './boot-timeline-relay'
+import { selectWorkloadId } from './node/workload'
 import { repairOpencodeConfigDir } from './apple-double'
 import { ensureOpencodeConfigDeps } from './opencode-config-deps'
 import { ensureInjectedManagedSkills } from './injected-skills'
@@ -109,7 +110,21 @@ async function main() {
   // Warm snapshot seed capture. This boots a session-less runtime, warms
   // opencode, writes the capture pin, and later adopts the forked session env
   // written by Platinum restore.
-  if ((process.env.KORTIX_WARM_SEED ?? '').trim() === '1') {
+  // ── Workload selection ──────────────────────────────────────────────────
+  // One decision, in one place (src/node/workload.ts). Extracted from the two
+  // inline branches that used to live here; `selectWorkloadId` reproduces them
+  // exactly, including precedence, and a test compares it against a transcript
+  // of the originals across the whole input space.
+  //
+  // `warm-seed` wins over `monitor`: a seed builder boots a session-less
+  // runtime for snapshot capture and must never be mistaken for another
+  // workload. Anything unrecognized is a session — an older control plane that
+  // knows no workload names must keep booting sessions, so this can never fail
+  // closed. See docs/specs/2026-08-21-kortixd.md §6.
+  const workloadId = selectWorkloadId(cfg)
+  logger.info('[boot] workload selected', { workload: workloadId })
+
+  if (workloadId === 'warm-seed') {
     await runWarmSeedMode(cfg, bootTime, bootState, bootMark, staticWeb)
     return
   }
@@ -117,7 +132,7 @@ async function main() {
   // Monitor box (docs/specs/2026-08-12-monitors.md D4). Same daemon, same
   // image, same repo checkout — but it supervises the project's monitor
   // processes instead of opencode, and never starts an LLM at all.
-  if (cfg.workload === 'monitor') {
+  if (workloadId === 'monitor') {
     await runMonitorMode(cfg, bootTime, bootState, bootMark, staticWeb)
     return
   }

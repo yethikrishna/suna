@@ -5,11 +5,7 @@ import {
   getCurrentRuntimeUrl,
 } from '../current-runtime';
 import { getBackendUrl, getDefaultSandboxUrl } from './url-helpers';
-import {
-  cachedPreviewUrlTemplate,
-  hasPreviewConfig,
-  loadPreviewUrlTemplate,
-} from '../preview-config';
+import { resolvePreviewOptions, type ResolvedPreviewOptions } from '../preview-options';
 
 /**
  * Active-runtime resolution, framework-free. These are the read helpers the
@@ -69,34 +65,20 @@ export function getBackendPort(): number {
 }
 
 /**
- * Preview URL options for the active runtime (pure-ish function).
+ * Preview URL options for the ACTIVE runtime — the ambient path, used where no
+ * session handle is in scope: `useSandboxProxy`, `proxySandboxUrl`,
+ * `buildStaticFilePreviewUrl`, the session panel's app-preview iframe.
  *
- * This is the AMBIENT path — what a host app builds preview URLs from when it
- * has no session handle in scope: `useSandboxProxy`, `proxySandboxUrl`,
- * `buildStaticFilePreviewUrl`, the session panel's app-preview iframe. It must
- * therefore carry everything `rewriteLocalhostUrl` needs to choose a form, or
- * every one of those callers silently falls back to the path proxy no matter
- * what the deployment advertises — which is precisely what happened when
- * `previewUrlTemplate` was threaded through the session handle alone.
- *
- * Always returns a valid options object — never undefined. The sandbox id comes
- * from the active runtime (no legacy 'kortix-sandbox' default — it masked the
- * real cloud sandbox and 403'd the preview proxy).
+ * A thin binding of the active sandbox id to `resolvePreviewOptions`, which is
+ * the single producer of a complete options bag. It deliberately assembles
+ * nothing itself: this function once did, and quietly omitted
+ * `previewUrlTemplate`, which made every ambient preview fall back to the path
+ * proxy. See preview-options.ts.
  */
-export function deriveSubdomainOpts(): {
-  sandboxId: string;
-  backendPort: number;
-  apiBaseUrl: string;
-  previewUrlTemplate: string | null;
-} {
-  const apiBaseUrl = getBackendUrl();
-  // Self-heal, same rule as the session handle: ask again only when this
-  // backend has never answered. "Answered: no preview domain" is an answer.
-  if (!hasPreviewConfig(apiBaseUrl)) void loadPreviewUrlTemplate(apiBaseUrl).catch(() => {});
-  return {
+export function deriveSubdomainOpts(): ResolvedPreviewOptions {
+  return resolvePreviewOptions({
     sandboxId: getActiveSandboxId() || '',
     backendPort: getBackendPort(),
-    apiBaseUrl,
-    previewUrlTemplate: cachedPreviewUrlTemplate(apiBaseUrl),
-  };
+    apiBaseUrl: getBackendUrl(),
+  });
 }

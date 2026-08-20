@@ -26,7 +26,7 @@ import { authenticatePreviewPrincipalDetailed, extractPreviewToken } from './pre
 import { forwardToSandbox } from './routes/preview';
 import { resolveExternalIdFromHostLabel } from './backend';
 import { config } from '../config';
-import { previewGatePage, type PreviewGateReason } from './preview-gate-page';
+import { PREVIEW_STATE_HEADER, previewStatePage, type PreviewState } from './preview-state-page';
 import { resolvePreviewHost, type ResolvedPreviewHost } from './preview-hosts';
 import {
   PREVIEW_EDGE_HEADERS,
@@ -136,7 +136,7 @@ function jsonError(status: number, message: string, origin: string): Response {
 function gateResponse(
   req: Request,
   url: URL,
-  input: { status: 401 | 403 | 404; reason: PreviewGateReason; message: string; origin: string; publicHost: string },
+  input: { status: 401 | 403 | 404; state: PreviewState; message: string; origin: string; publicHost: string },
 ): Response {
   if (!isDocumentNavigation(req)) {
     return jsonError(input.status, input.message, input.origin);
@@ -144,16 +144,20 @@ function gateResponse(
   const proto = req.headers.get('x-forwarded-proto') || url.protocol.replace(':', '');
   const returnTo = `${proto}://${input.publicHost}${url.pathname}${url.search}`;
   return new Response(
-    previewGatePage({
-      reason: input.reason,
-      frontendUrl: config.FRONTEND_URL || '',
+    previewStatePage({
+      state: input.state,
       returnTo,
+      frontendUrl: config.FRONTEND_URL || '',
     }),
     {
+      // 401/403/404 keep their real status: every intermediary passes those
+      // through, and a monitor should see them. Only the TRANSIENT states
+      // (see preview-state-page.ts) answer 200, because a 5xx gets replaced.
       status: input.status,
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
+        [PREVIEW_STATE_HEADER]: input.state,
         ...corsHeaders(input.origin),
       },
     },
@@ -212,7 +216,7 @@ export function sessionFromCookies(req: Request, target: ResolvedPreviewHost): P
 /** Why a preview could not be served, before it is rendered for anyone. */
 export interface PreviewRefusal {
   status: 401 | 404;
-  reason: PreviewGateReason;
+  state: PreviewState;
   message: string;
 }
 
@@ -236,7 +240,7 @@ export async function establishPreviewSession(
     // the external_id index (see resolveExternalIdFromHostLabel), so letting an
     // anonymous caller reach it would let anyone spend a table scan per made-up
     // hostname. Nothing here is authorized without a credential anyway.
-    return { refusal: { status: 401, reason: 'unauthorized', message: 'Unauthorized' } };
+    return { refusal: { status: 401, state: 'signed-out', message: 'Unauthorized' } };
   }
 
   const sandboxId = await resolveExternalIdFromHostLabel(target.sandboxLabel);
@@ -244,7 +248,7 @@ export async function establishPreviewSession(
     // No sandbox has ever carried this label. Say "not found", not
     // "unauthorized": there is nothing here to be authorized for, and a 401
     // would send the web app into a pointless re-auth loop.
-    return { refusal: { status: 404, reason: 'unknown', message: 'Unknown preview' } };
+    return { refusal: { status: 404, state: 'unknown', message: 'Unknown preview' } };
   }
 
   const share = await authenticatePublicShare(shareToken, sandboxId, target.port);
@@ -265,7 +269,7 @@ export async function establishPreviewSession(
 
   const principal = await authenticatePreviewPrincipalDetailed(previewToken, sandboxId);
   if (!principal?.userId) {
-    return { refusal: { status: 401, reason: 'unauthorized', message: 'Unauthorized' } };
+    return { refusal: { status: 401, state: 'signed-out', message: 'Unauthorized' } };
   }
 
   return {
@@ -319,7 +323,7 @@ export async function handlePreviewOriginRequest(
     // under a hostname the caller chose.
     return gateResponse(req, url, {
       status: 403,
-      reason: 'forbidden',
+      state: 'forbidden',
       message: 'Unsigned preview host',
       origin,
       publicHost,

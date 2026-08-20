@@ -28,7 +28,13 @@ import {
   KORTIX_SERVICE_CALL_HEADER,
   KORTIX_USER_CONTEXT_HEADER,
 } from '../../shared/kortix-user-context';
+import { config } from '../../config';
 import { appCookieHeader } from '../preview-session';
+import {
+  PREVIEW_STATE_HEADER,
+  previewStatePage,
+  type PreviewState,
+} from '../preview-state-page';
 import { canAccessPreviewSandbox, canAccessSandboxSession } from '../../shared/preview-ownership';
 import {
   buildSandboxUpstreamHeaders,
@@ -297,6 +303,19 @@ function portUnreachableHtml(port: number): string {
 </html>`;
 }
 
+/**
+ * The address the browser is on, reconstructed from the request it sent. Shown
+ * on the state page and carried into the sign-in hand-off. Falls back to '' when
+ * the headers do not say, which simply omits it from the page.
+ */
+function previewReturnTo(incomingHeaders: Headers): string {
+  const forwarded = incomingHeaders.get('x-kortix-preview-host') || incomingHeaders.get('x-forwarded-host');
+  const host = forwarded || incomingHeaders.get('host') || '';
+  if (!host) return '';
+  const proto = incomingHeaders.get('x-forwarded-proto') || 'https';
+  return `${proto}://${host}`;
+}
+
 // Response for an unreachable / not-yet-ready sandbox port: a friendly HTML page
 // for browser navigations, machine-readable JSON otherwise. Marked no-store so a
 // retry always re-hits the upstream instead of a cached error.
@@ -343,7 +362,30 @@ export function portUnreachableResponse(opts: {
   }
   if (isBrowserNavigation(incomingHeaders)) {
     headers.set('Content-Type', 'text/html; charset=utf-8');
-    return new Response(portUnreachableHtml(port), { status, headers });
+    // A browser gets 200 and a page it can read, NOT the 5xx.
+    //
+    // "The dev server has not bound the port yet" and "the box is still waking"
+    // are the ordinary first seconds of a preview, not gateway failures — and
+    // reporting them as 5xx meant this page never arrived: Cloudflare replaces
+    // an origin 5xx with its own branded error interstitial (proved by the
+    // absence of x-kortix-proxy-hop on what reached the client). The real state
+    // stays fully legible — the status is still on every non-navigation
+    // response, and both hop headers are set here too, so a fetch probe reads
+    // exactly what it always did.
+    const state: PreviewState =
+      code === 'sandbox_not_ready' || retry === true ? 'starting'
+      : upstreamStatus === null ? 'not-listening'
+      : 'unreachable';
+    headers.set(PREVIEW_STATE_HEADER, state);
+    return new Response(
+      previewStatePage({
+        state,
+        port,
+        returnTo: previewReturnTo(incomingHeaders),
+        frontendUrl: config.FRONTEND_URL || '',
+      }),
+      { status: 200, headers },
+    );
   }
   headers.set('Content-Type', 'application/json');
   return new Response(

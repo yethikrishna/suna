@@ -139,6 +139,7 @@ const AUDIT_HTTP_ROUTE_KEYS = [
   "PUT|v1|admin|api|accounts|:id|overrides",
   "GET|v1|admin|api|accounts|:id|projects",
   "POST|v1|admin|api|accounts|:id|session-limit",
+  "GET|v1|admin|api|accounts|:id|subscription",
   "POST|v1|admin|api|accounts|:id|tier",
   "DELETE|v1|admin|api|accounts|:id|trial",
   "POST|v1|admin|api|accounts|:id|trial",

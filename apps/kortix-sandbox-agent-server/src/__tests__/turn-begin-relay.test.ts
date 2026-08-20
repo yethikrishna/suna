@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { relayTurnBeginToApi, __resetRelayedTurnBegins } from '../main'
+import { dispatch } from '../opencode-events'
 import type { Config } from '../config'
 
 // A BOX-INITIATED turn (OpenCode's synthetic `<pty_exited>` wake-up) must be
@@ -16,12 +17,14 @@ const WORKSPACE = '/workspace'
 function startMocks(getMessages: () => unknown[]) {
   let turnStreamCalls = 0
   const turnStreamBodies: Array<Record<string, unknown>> = []
+  const turnStreamAuth: Array<string | null> = []
   const server = Bun.serve({
     port: 0,
     async fetch(req) {
       const url = new URL(req.url)
       if (url.pathname.endsWith('/turn-stream')) {
         turnStreamCalls++
+        turnStreamAuth.push(req.headers.get('authorization'))
         turnStreamBodies.push((await req.json()) as Record<string, unknown>)
         return Response.json({ ok: true, outcome: 'adopted' })
       }
@@ -41,6 +44,7 @@ function startMocks(getMessages: () => unknown[]) {
     baseUrl: `http://127.0.0.1:${server.port}`,
     calls: () => turnStreamCalls,
     bodies: () => turnStreamBodies,
+    auth: () => turnStreamAuth,
     stop: () => server.stop(true),
   }
 }
@@ -52,8 +56,12 @@ beforeEach(() => {
     KORTIX_PROJECT_ID: process.env.KORTIX_PROJECT_ID,
     KORTIX_SESSION_ID: process.env.KORTIX_SESSION_ID,
     KORTIX_SANDBOX_TOKEN: process.env.KORTIX_SANDBOX_TOKEN,
+    KORTIX_CLI_TOKEN: process.env.KORTIX_CLI_TOKEN,
+    KORTIX_TOKEN: process.env.KORTIX_TOKEN,
     KORTIX_API_URL: process.env.KORTIX_API_URL,
   }
+  delete process.env.KORTIX_CLI_TOKEN
+  delete process.env.KORTIX_TOKEN
 })
 afterEach(() => {
   for (const [k, v] of Object.entries(saved)) {
@@ -152,6 +160,58 @@ describe('relayTurnBeginToApi — box-initiated turn adoption', () => {
     }
   })
 
+  // THE DEV-CAUGHT REGRESSION (2026-08-20). `sandboxRelayContext()` prefers
+  // KORTIX_CLI_TOKEN — a user/agent PAT. The route refuses a PAT for
+  // `turn_begin` (adoption is a sandbox-identity operation), so the default
+  // token chain 403'd every relay silently: events fired, the binary was
+  // correct, and not one ledger row was ever written on dev. Adoption must
+  // authenticate with the SANDBOX credential, whatever else is in the env.
+  test('authenticates with the SANDBOX credential even when a CLI token is present', async () => {
+    const m = startMocks(syntheticTurn)
+    sessionEnv(m.baseUrl)
+    process.env.KORTIX_CLI_TOKEN = 'pat-should-never-be-used'
+    const opencode = { getInternalUrl: () => m.baseUrl }
+    const cfg = { workspace: WORKSPACE } as unknown as Config
+    try {
+      await relayTurnBeginToApi(ROOT, opencode, cfg)
+      expect(m.calls()).toBe(1)
+      expect(m.auth()[0]).toBe('Bearer tok')
+    } finally {
+      m.stop()
+    }
+  })
+
+  test('falls back to the legacy KORTIX_TOKEN sandbox credential', async () => {
+    const m = startMocks(syntheticTurn)
+    sessionEnv(m.baseUrl)
+    delete process.env.KORTIX_SANDBOX_TOKEN
+    process.env.KORTIX_TOKEN = 'legacy-sandbox-tok'
+    const opencode = { getInternalUrl: () => m.baseUrl }
+    const cfg = { workspace: WORKSPACE } as unknown as Config
+    try {
+      await relayTurnBeginToApi(ROOT, opencode, cfg)
+      expect(m.auth()[0]).toBe('Bearer legacy-sandbox-tok')
+    } finally {
+      m.stop()
+    }
+  })
+
+  test('never relays a PAT when no sandbox credential exists', async () => {
+    // Relaying the PAT would only reproduce the 403 loop this test pins.
+    const m = startMocks(syntheticTurn)
+    sessionEnv(m.baseUrl)
+    delete process.env.KORTIX_SANDBOX_TOKEN
+    process.env.KORTIX_CLI_TOKEN = 'pat-only'
+    const opencode = { getInternalUrl: () => m.baseUrl }
+    const cfg = { workspace: WORKSPACE } as unknown as Config
+    try {
+      await relayTurnBeginToApi(ROOT, opencode, cfg)
+      expect(m.calls()).toBe(0)
+    } finally {
+      m.stop()
+    }
+  })
+
   test('does not relay without sandbox callback identity', async () => {
     const m = startMocks(syntheticTurn)
     const opencode = { getInternalUrl: () => m.baseUrl }
@@ -162,5 +222,29 @@ describe('relayTurnBeginToApi — box-initiated turn adoption', () => {
     } finally {
       m.stop()
     }
+  })
+})
+
+// The wiring itself, pinned separately from the relay's behavior: the live
+// event loop routes every frame through `dispatch`, so a `session.status`
+// frame must reach `onSessionStatus`. Verified against a REAL frame captured
+// from opencode 1.18.19 on dev (`{"sessionID":"ses_…","status":{"type":"busy"}}`).
+describe('dispatch → onSessionStatus', () => {
+  test('a real busy frame reaches the handler', () => {
+    const seen: Array<[string, string]> = []
+    dispatch(
+      { type: 'session.status', properties: { sessionID: 'ses_root', status: { type: 'busy' } } },
+      { onSessionStatus: (s, t) => seen.push([s, t]) },
+    )
+    expect(seen).toEqual([['ses_root', 'busy']])
+  })
+
+  test('session.idle is not swallowed by the status branch', () => {
+    let idle = ''
+    dispatch(
+      { type: 'session.idle', properties: { sessionID: 'ses_root' } },
+      { onSessionStatus: () => {}, onSessionIdle: (s) => { idle = s } },
+    )
+    expect(idle).toBe('ses_root')
   })
 })

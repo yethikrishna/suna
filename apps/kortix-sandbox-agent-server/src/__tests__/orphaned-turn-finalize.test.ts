@@ -769,3 +769,43 @@ describe('observeRequestedTurn — what /kortix/health?turn=1 answers with', () 
     expect('turn_end' in body).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REPLAY of the incident this gate exists for: Essentia session d1b74954 at
+// 2026-08-20T12:48:51Z, reconstructed from the box's own transcript.
+//
+// Turn `msg_01f3518bd002` was STREAMING — its step completed at 12:48:54Z —
+// when OpenCode's synthetic `<pty_exited>` user message (`msg_01f377133001`)
+// landed above it. The reaper asked the daemon, the old newer-user rule
+// answered "terminal" without ever looking at the root's status, and turn
+// authority was destroyed mid-stream (`end_reason='unknown'`). The composer
+// then read "not running" over a visibly working session.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Essentia d1b74954 replay — a streaming turn under a pty wake-up', () => {
+  const ROOT_2 = 'ses_fea1ccba5ffeW98pYkIvdImthU';
+  const LIVE_TURN = 'msg_01f3518bd002UMWkvirVrVsjxE';
+  const incidentTranscript = [
+    { info: { id: LIVE_TURN, role: 'user' } },
+    // the step that was mid-flight at 12:48:51 — no completion yet
+    { info: { id: 'msg_01f376fde001uV4uqd', role: 'assistant', parentID: LIVE_TURN, time: {} } },
+    // the synthetic <pty_exited> wake-up that landed above it
+    { info: { id: 'msg_01f377133001S9mt83', role: 'user' } },
+  ];
+
+  test('is NOT terminal while the root reports busy', async () => {
+    stubFetch(incidentTranscript, { sessionStatus: { [ROOT_2]: { type: 'busy' } } });
+    const observed = await observeOpencodeDelivery(BASE, WORKSPACE, ROOT_2, LIVE_TURN);
+    expect(observed.inFlight).toBe(true);
+    expect(observed.end).toBeNull();
+  });
+
+  test('ends normally once the root is genuinely idle', async () => {
+    stubFetch(incidentTranscript, { sessionStatus: { [ROOT_2]: { type: 'idle' } } });
+    expect(await opencodeDeliveryInFlight(BASE, WORKSPACE, ROOT_2, LIVE_TURN)).toBe(false);
+  });
+
+  test('an unreadable status is unknown — never a licence to end it', async () => {
+    stubFetch(incidentTranscript, { sessionStatusOk: false });
+    expect(await opencodeDeliveryInFlight(BASE, WORKSPACE, ROOT_2, LIVE_TURN)).toBeNull();
+  });
+});

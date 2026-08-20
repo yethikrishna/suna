@@ -2301,7 +2301,22 @@ export async function relayTurnBeginToApi(
   opencode: Pick<Opencode, 'getInternalUrl'>,
   cfg: Config,
 ): Promise<void> {
-  const ctx = sandboxRelayContext()
+  // THE SANDBOX CREDENTIAL, EXPLICITLY — never the default token chain.
+  // `sandboxRelayContext()` prefers `KORTIX_CLI_TOKEN` (a user/agent PAT), and
+  // adoption is a sandbox-identity operation: the route refuses a PAT, so the
+  // default chain made this relay 403 on every status frame — silently, since
+  // a 403 is a non-ok that just retries and gives up (measured on dev
+  // 2026-08-20: events fired, binary correct, zero ledger rows). Same failure
+  // class as the turn-end 403s on Essentia that r4.ts's kind-gate comment
+  // records. No sandbox credential means adoption is simply not available here;
+  // relaying a PAT would only reproduce the 403 loop.
+  const sandboxToken = (
+    process.env.KORTIX_SANDBOX_TOKEN ||
+    process.env.KORTIX_TOKEN ||
+    ''
+  ).trim()
+  if (!sandboxToken) return
+  const ctx = sandboxRelayContext(sandboxToken)
   if (!ctx) return
   if (turnBeginRelaysInFlight.has(opencodeSessionId)) return
   turnBeginRelaysInFlight.add(opencodeSessionId)

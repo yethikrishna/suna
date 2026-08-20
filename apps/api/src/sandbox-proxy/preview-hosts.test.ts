@@ -8,14 +8,8 @@ const configState: Record<string, unknown> = {
 };
 mock.module('../config', () => ({ config: configState }));
 
-const {
-  previewBaseDomain,
-  previewHostname,
-  previewOrigin,
-  previewUrlTemplate,
-  resolvePreviewHost,
-  sandboxHostLabel,
-} = await import('./preview-hosts');
+const { previewBaseDomain, previewUrlTemplate, resolvePreviewHost, sandboxHostLabel } =
+  await import('./preview-hosts');
 
 const SBX = 'sbx_01M0G4HXCM32BX5R1GPYZDYC1H';
 const LABEL = 'sbx-01m0g4hxcm32bx5r1gpyzdyc1h';
@@ -46,69 +40,67 @@ describe('sandboxHostLabel', () => {
 });
 
 describe('previewBaseDomain', () => {
-  test('derives p.<registrable> from the API origin', () => {
-    expect(previewBaseDomain()).toBe('p.kortix.com');
+  test('is null unless the deployment declares one', () => {
+    expect(previewBaseDomain()).toBeNull();
   });
-  test('derives the same domain for staging and prod API origins', () => {
-    configState.KORTIX_URL = 'https://api.kortix.com';
-    expect(previewBaseDomain()).toBe('p.kortix.com');
-    configState.KORTIX_URL = 'https://staging-api.kortix.com';
-    expect(previewBaseDomain()).toBe('p.kortix.com');
+
+  test('never derives a domain from the API origin', () => {
+    // A worktree's KORTIX_URL is a cloudflared tunnel. Deriving
+    // `p.trycloudflare.com` from it published a hostname nobody serves and
+    // every preview URL it produced was dead.
+    configState.KORTIX_URL = 'https://random-words-here.trycloudflare.com';
+    expect(previewBaseDomain()).toBeNull();
+    expect(previewUrlTemplate()).toBeNull();
   });
-  test('an operator override wins and is normalized', () => {
+
+  test('takes the declared domain and normalizes it', () => {
     configState.KORTIX_PREVIEW_BASE_DOMAIN = 'https://Preview.ACME.io/';
     expect(previewBaseDomain()).toBe('preview.acme.io');
   });
-  test('is null when the API origin has no registrable domain', () => {
-    configState.KORTIX_URL = 'http://localhost:8008';
-    expect(previewBaseDomain()).toBeNull();
-  });
-});
 
-describe('previewHostname / previewOrigin', () => {
-  test('builds the env-prefixed deployed hostname', () => {
-    expect(previewHostname(SBX, 8081)).toBe(`dev-p8081-${LABEL}.p.kortix.com`);
-    expect(previewOrigin(SBX, 8081)).toBe(`https://dev-p8081-${LABEL}.p.kortix.com`);
-  });
-  test('each environment gets its own label under one wildcard', () => {
-    configState.INTERNAL_KORTIX_ENV = 'prod';
-    configState.KORTIX_URL = 'https://api.kortix.com';
-    expect(previewHostname(SBX, 3000)).toBe(`prod-p3000-${LABEL}.p.kortix.com`);
-  });
-  test('local mode serves previews on *.localhost with the API port', () => {
-    configState.KORTIX_URL = 'http://localhost:8008';
-    expect(previewOrigin(SBX, 3000)).toBe(`http://p3000-${LABEL}.localhost:8008`);
-  });
-  test('rejects an out-of-range port', () => {
-    expect(previewHostname(SBX, 0)).toBeNull();
-    expect(previewHostname(SBX, 70000)).toBeNull();
-  });
-  test('is null when the API origin is a single-label internal host', () => {
-    // In-cluster service DNS (`http://kortix-api:8008`) yields no registrable
-    // domain, so there is nothing to hang a wildcard off — previews stay on the
-    // path proxy rather than publishing a hostname we do not serve.
-    configState.KORTIX_URL = 'http://kortix-api:8008';
+  test('treats a blank declaration as none', () => {
+    configState.KORTIX_PREVIEW_BASE_DOMAIN = '   ';
     expect(previewBaseDomain()).toBeNull();
-    expect(previewHostname(SBX, 3000)).toBeNull();
-    expect(previewOrigin(SBX, 3000)).toBeNull();
-    expect(previewUrlTemplate()).toBeNull();
   });
 });
 
 describe('previewUrlTemplate', () => {
   test('carries the shape to the client with only two slots', () => {
+    configState.KORTIX_PREVIEW_BASE_DOMAIN = 'p.kortix.com';
     expect(previewUrlTemplate()).toBe('https://dev-p{port}-{sandbox}.p.kortix.com');
   });
-  test('local template points at the API port', () => {
-    configState.KORTIX_URL = 'http://localhost:8008';
-    expect(previewUrlTemplate()).toBe('http://p{port}-{sandbox}.localhost:8008');
+
+  test('each environment gets its own label under one wildcard', () => {
+    configState.KORTIX_PREVIEW_BASE_DOMAIN = 'p.kortix.com';
+    configState.INTERNAL_KORTIX_ENV = 'prod';
+    expect(previewUrlTemplate()).toBe('https://prod-p{port}-{sandbox}.p.kortix.com');
+  });
+
+  test('is null without a declared domain, which means the path proxy', () => {
+    expect(previewUrlTemplate()).toBeNull();
   });
 });
 
 describe('resolvePreviewHost', () => {
-  test('round-trips the hostname it builds', () => {
-    const host = previewHostname(SBX, 8081)!;
-    expect(resolvePreviewHost(host)).toEqual({ port: 8081, sandboxLabel: LABEL, local: false });
+  beforeEach(() => {
+    configState.KORTIX_PREVIEW_BASE_DOMAIN = 'p.kortix.com';
+  });
+
+  test('round-trips the hostname the template describes', () => {
+    expect(resolvePreviewHost(`dev-p8081-${LABEL}.p.kortix.com`)).toEqual({
+      port: 8081,
+      sandboxLabel: LABEL,
+      local: false,
+    });
+  });
+
+  test('matches the local form even with no domain declared', () => {
+    configState.KORTIX_PREVIEW_BASE_DOMAIN = undefined;
+    expect(resolvePreviewHost(`p3000-${LABEL}.localhost:8008`)).toEqual({
+      port: 3000,
+      sandboxLabel: LABEL,
+      local: true,
+    });
   });
   test('accepts a Host header carrying a port and a trailing dot', () => {
     expect(resolvePreviewHost(`dev-p8081-${LABEL}.p.kortix.com.:443`)).toEqual({

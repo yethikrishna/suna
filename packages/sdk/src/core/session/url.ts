@@ -495,7 +495,10 @@ export function rewriteLocalhostUrl(
   // assumes root-mounting all work natively. The API has a top-level Bun
   // fetch handler (apps/api/src/sandbox-proxy/subdomain.ts) that matches
   // this hostname pattern, validates first-request auth, and forwards.
-  return `http://p${port}-${subdomainOpts.sandboxId}.localhost:${subdomainOpts.backendPort}${safePath}`;
+  // Label-encoded exactly like the deployed form: a hostname cannot carry an
+  // uppercase ULID or the `_` in `sbx_…`, and the API resolves either form of
+  // preview host through the same label lookup.
+  return `http://p${port}-${sandboxHostLabel(subdomainOpts.sandboxId)}.localhost:${subdomainOpts.backendPort}${safePath}`;
 }
 
 export function buildStaticFilePreviewUrl(

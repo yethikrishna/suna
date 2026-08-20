@@ -144,6 +144,16 @@ describe('session/url', () => {
     ).toBe('http://p3000-sbx1.localhost:8008/x');
   });
 
+  it('label-encodes the sandbox id in the local form too — a hostname cannot carry `_`', () => {
+    expect(
+      rewriteLocalhostUrl(3000, '/x', {
+        ...opts,
+        sandboxId: 'sbx_01M0G4HXCM32BX5R1GPYZDYC1H',
+        apiBaseUrl: 'http://localhost:8008/v1',
+      }),
+    ).toBe('http://p3000-sbx-01m0g4hxcm32bx5r1gpyzdyc1h.localhost:8008/x');
+  });
+
   describe('preview origin (the deployment advertises a template)', () => {
     // A path prefix cannot carry an app that emits `<a href="/learn">`: the
     // browser resolves it against the API origin and the prefix is gone. When

@@ -1,10 +1,11 @@
 /**
  * Where a sandbox port is reachable in a browser.
  *
- * ONE resolver, used by BOTH the URL Kortix hands out (`previewOrigin`) and the
- * host matcher that accepts inbound preview traffic (`resolvePreviewHost`) —
- * the same split-brain that once published Apps on a domain an operator did not
- * own is exactly as available here, so the two directions share one shape.
+ * ONE resolver, used by BOTH the shape Kortix hands to clients
+ * (`previewUrlTemplate`) and the matcher that accepts inbound preview traffic
+ * (`resolvePreviewHost`) — the same split-brain that once published Apps on a
+ * domain an operator did not own is exactly as available here, so the two
+ * directions share one definition.
  *
  * ## Why a per-preview ORIGIN and not a path prefix
  *
@@ -31,8 +32,13 @@
  * The env prefix is what lets dev, staging and prod share one wildcard
  * certificate and one edge Worker, exactly as Kortix Apps does. The sandbox
  * label is the external id lowercased with `_` → `-`, because DNS labels are
- * case-insensitive and cannot carry an underscore; `loadSandbox` resolves a
- * label back to the canonical row (see backend.ts).
+ * case-insensitive and cannot carry an underscore;
+ * `resolveExternalIdFromHostLabel` resolves a label back to the canonical id
+ * (see backend.ts).
+ *
+ * The local form has no env prefix and no configured domain: it is built by the
+ * CLIENT (packages/sdk/src/core/session/url.ts) when it sees a localhost API,
+ * and only matched here.
  */
 import { config } from '../config';
 
@@ -66,60 +72,20 @@ function normalizeDomain(value: string): string {
 }
 
 /**
- * The registrable domain of this deployment's public API origin: drop the
- * leftmost label once there are three or more, so `api.kortix.com` and
- * `dev-api.kortix.com` both give `kortix.com`. Mirrors apps/hostnames.ts.
- */
-function registrableDomain(origin: string): string | null {
-  let hostname: string;
-  try {
-    hostname = new URL(origin).hostname.toLowerCase().replace(/\.$/, '');
-  } catch {
-    return null;
-  }
-  if (!hostname || hostname === 'localhost') return null;
-  const labels = hostname.split('.');
-  if (labels.length < 2) return null;
-  return (labels.length >= 3 ? labels.slice(1) : labels).join('.');
-}
-
-/** True when previews are served as `p{port}-{label}.localhost:{apiPort}`. */
-export function previewLocalMode(): boolean {
-  if (process.env.KORTIX_PREVIEW_LOCAL === 'true') return true;
-  if (config.KORTIX_PREVIEW_BASE_DOMAIN) return false;
-  return config.KORTIX_URL.includes('localhost') || config.KORTIX_URL.includes('127.0.0.1');
-}
-
-/**
  * The wildcard domain every preview hostname sits under, or null when this
- * deployment has none — a self-host that never configured one, where previews
- * keep using the path proxy. Never falls back to a domain we do not serve.
+ * deployment has none.
+ *
+ * DECLARED, never derived. An earlier draft derived `p.<registrable domain of
+ * KORTIX_URL>`, which reads well until KORTIX_URL is a cloudflared tunnel — a
+ * worktree then advertised `p.trycloudflare.com`, a domain nobody serves, and
+ * every preview URL it handed out was dead. A preview domain needs a wildcard
+ * DNS record, a wildcard certificate and an edge Worker; none of those can be
+ * inferred from an API hostname, so an operator states it or gets the path
+ * proxy, which always works.
  */
 export function previewBaseDomain(): string | null {
   const configured = config.KORTIX_PREVIEW_BASE_DOMAIN;
-  if (configured && normalizeDomain(configured)) return normalizeDomain(configured);
-  const derived = registrableDomain(config.KORTIX_URL);
-  return derived ? `p.${derived}` : null;
-}
-
-/** Hostname (no scheme, no port) for a sandbox port, or null with no domain. */
-export function previewHostname(externalId: string, port: number): string | null {
-  const label = sandboxHostLabel(externalId);
-  if (!label || !Number.isInteger(port) || port < 1 || port > 65535) return null;
-  if (previewLocalMode()) return `p${port}-${label}.localhost`;
-  const domain = previewBaseDomain();
-  if (!domain) return null;
-  return `${config.INTERNAL_KORTIX_ENV}-p${port}-${label}.${domain}`;
-}
-
-/** Full origin for a sandbox port, or null when this deployment has no domain. */
-export function previewOrigin(externalId: string, port: number): string | null {
-  const host = previewHostname(externalId, port);
-  if (!host) return null;
-  if (previewLocalMode()) {
-    return `http://${host}:${process.env.KORTIX_PREVIEW_LOCAL_PORT || String(config.PORT)}`;
-  }
-  return `https://${host}`;
+  return configured && normalizeDomain(configured) ? normalizeDomain(configured) : null;
 }
 
 /**
@@ -127,12 +93,13 @@ export function previewOrigin(externalId: string, port: number): string | null {
  * the hostname shape client-side. `{port}` and `{sandbox}` are the only slots;
  * `{sandbox}` receives the RAW external id, which the client label-encodes the
  * same way `sandboxHostLabel` does.
+ *
+ * Null covers local development too, and deliberately: with no template the SDK
+ * falls back to its own `p{port}-{sandbox}.localhost:{apiPort}` form, which is
+ * correct precisely when the browser and the API share a machine — something
+ * the API cannot determine about a client, and the client already knows.
  */
 export function previewUrlTemplate(): string | null {
-  if (previewLocalMode()) {
-    const port = process.env.KORTIX_PREVIEW_LOCAL_PORT || String(config.PORT);
-    return `http://p{port}-{sandbox}.localhost:${port}`;
-  }
   const domain = previewBaseDomain();
   if (!domain) return null;
   return `https://${config.INTERNAL_KORTIX_ENV}-p{port}-{sandbox}.${domain}`;

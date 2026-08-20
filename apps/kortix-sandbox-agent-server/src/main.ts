@@ -593,6 +593,12 @@ async function startSessionRuntime(
       logger.warn('[opencode-events] turn-end relay failed', { err: (err as Error).message }),
     )
   }
+  const onSessionStatus = (opencodeSessionId: string, statusType: string) => {
+    if (statusType !== 'busy' && statusType !== 'retry') return
+    void relayTurnBeginToApi(opencodeSessionId, opencode, cfg).catch((err) =>
+      logger.warn('[opencode-events] turn-begin relay failed', { err: (err as Error).message }),
+    )
+  }
   let initialTurnAcceptanceSettled = false
   let initialTurnAcceptanceInFlight = false
   const reconcileInitialTurnAcceptance = async () => {
@@ -640,6 +646,7 @@ async function startSessionRuntime(
     onQuestionAsked,
     onSessionIdle,
     onSessionError,
+    onSessionStatus,
     onConnected,
     onReconcile: onConnected,
   }
@@ -2242,6 +2249,111 @@ export function __resetRelayedTurnSignatures(): void {
   relayedTurnSignatures.clear()
 }
 
+// Turn-begin relay dedup: root id -> the newest user message id already
+// relayed (or refused as already-known by apps/api). A turn's identity is its
+// user message, so one turn relays once no matter how many `busy`/`retry`
+// status frames it emits. Per-process, like `relayedTurnSignatures`.
+const relayedTurnBegins = new Map<string, string>()
+const turnBeginRelaysInFlight = new Set<string>()
+
+/** Test-only: clear the per-turn begin dedup between cases. */
+export function __resetRelayedTurnBegins(): void {
+  relayedTurnBegins.clear()
+  turnBeginRelaysInFlight.clear()
+}
+
+/**
+ * Announce a BOX-INITIATED turn to apps/api (`turn-stream` kind `turn_begin`).
+ *
+ * Every control-plane prompt gets its `session_turns` row BEFORE delivery, but
+ * OpenCode also starts turns nobody delivered — the synthetic `<pty_exited>`
+ * user message it injects when a background pty finishes. Those turns had no
+ * authority at all: `GET .../turn` read idle over minutes of live streaming
+ * and the box ran on its 15-minute idle tail (live incident 2026-08-20,
+ * Essentia session d1b74954). This relay fires on the root's `busy`/`retry`
+ * status frames and names the newest user message; apps/api adopts it only
+ * when no open turn exists and the message was never seen — so relaying for
+ * an ordinary delivered prompt is a cheap no-op.
+ */
+export async function relayTurnBeginToApi(
+  opencodeSessionId: string,
+  opencode: Pick<Opencode, 'getInternalUrl'>,
+  cfg: Config,
+): Promise<void> {
+  const ctx = sandboxRelayContext()
+  if (!ctx) return
+  if (turnBeginRelaysInFlight.has(opencodeSessionId)) return
+  turnBeginRelaysInFlight.add(opencodeSessionId)
+  try {
+    if (!(await isRootOpencodeSession(opencodeSessionId, opencode, cfg))) return
+    // The newest USER message names the turn that is running.
+    let newestUserId: string | null = null
+    try {
+      const res = await fetch(
+        `${opencode.getInternalUrl()}/session/${encodeURIComponent(opencodeSessionId)}/message?directory=${encodeURIComponent(cfg.workspace)}`,
+        { signal: AbortSignal.timeout(5_000) },
+      )
+      if (!res.ok) return
+      const rows = (await res.json()) as Array<{ info?: { id?: string; role?: string } }>
+      if (!Array.isArray(rows)) return
+      for (let i = rows.length - 1; i >= 0; i--) {
+        const info = rows[i]?.info
+        if (info?.role === 'user' && typeof info.id === 'string') {
+          newestUserId = info.id
+          break
+        }
+      }
+    } catch {
+      return
+    }
+    if (!newestUserId) return
+    if (relayedTurnBegins.get(opencodeSessionId) === newestUserId) return
+
+    const { projectId, sessionId, token, apiRoot } = ctx
+    const url = `${apiRoot}/projects/${encodeURIComponent(projectId)}/turn-stream`
+    const payload = JSON.stringify({
+      session_id: sessionId,
+      kind: 'turn_begin',
+      opencode_session_id: opencodeSessionId,
+      turn_message_id: newestUserId,
+    })
+    // Two attempts only: `busy`/`retry` frames recur for a live turn, so a
+    // transient failure retries itself on the next frame.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: payload,
+          signal: AbortSignal.timeout(15_000),
+        })
+        if (res.ok) {
+          // ANY definitive answer dedups: adopted, already-open, or
+          // already-known all mean this exact message needs no further relay.
+          relayedTurnBegins.set(opencodeSessionId, newestUserId)
+          const data = (await res.json().catch(() => null)) as { outcome?: string } | null
+          if (data?.outcome === 'adopted') {
+            logger.info('[opencode-events] box-initiated turn adopted', {
+              opencodeSessionId,
+              messageId: newestUserId,
+            })
+          }
+          return
+        }
+        logger.warn('[opencode-events] turn-begin relay non-ok', { status: res.status, attempt })
+      } catch (err) {
+        logger.warn('[opencode-events] turn-begin relay fetch failed', {
+          err: (err as Error).message,
+          attempt,
+        })
+      }
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 1_000))
+    }
+  } finally {
+    turnBeginRelaysInFlight.delete(opencodeSessionId)
+  }
+}
+
 export async function relayTurnEndToApi(
   opencodeSessionId: string,
   status: 'idle' | 'error',
@@ -2416,15 +2528,26 @@ async function readRootTurnState(
       }
     }>
     if (!Array.isArray(rows)) return { completedAt: null, parentMessageId: null }
-    // The most recent assistant message decides the turn's outcome. Crucially,
-    // stop at the turn boundary: if a USER message is the newest row (a pending or
-    // follow-up turn that hasn't produced an assistant reply yet), treat the run
-    // as clean/incomplete — never walk back into a PRIOR turn's already-superseded
-    // error and relay it as this turn's failure.
+    // The most recent assistant message decides the turn's outcome. Trailing
+    // USER rows are SKIPPED, not a boundary: a prompt forwarded into a live
+    // turn — and OpenCode's own synthetic `<pty_exited>` wake-ups — leave a
+    // user message as the newest row at almost every turn end, and bailing
+    // there unnamed EVERY relay for such sessions (live 2026-08-20, Essentia
+    // session d1b74954: `relay_named:false` on each end, double finalizes
+    // because the unnamed relay has no dedup signature, and the forwarded-turn
+    // reconciler lost its primary key). Attribution is message-scoped — the
+    // assistant's own `parentID` names the turn it answered — so a pending
+    // follow-up prompt can never be blamed for a prior turn's error.
+    //
+    // One case stays unnamed on purpose: a newest assistant that is still OPEN
+    // (no completion, no terminal error) is a RACING NEW turn — naming it would
+    // let completeSandboxTurn close the row of a turn that is still running.
     for (let i = rows.length - 1; i >= 0; i--) {
       const info = rows[i]?.info
-      if (info?.role === 'user') return { completedAt: null, parentMessageId: null }
       if (info?.role !== 'assistant') continue
+      const open =
+        info.time?.completed == null && (!info.error || info.error.data?.isRetryable === true)
+      if (open) return { completedAt: null, parentMessageId: null }
       return {
         error: info.error ? flattenOpencodeError(info.error) : undefined,
         completedAt: info.time?.completed ?? null,

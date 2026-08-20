@@ -40,7 +40,7 @@ import {
 import { sandboxRuntimeRequestHeaders } from '../sandbox-fetch';
 import { wireIdTime } from '../wire-message-id';
 import { drainSessionLifecycleQueue, resolveSessionOpencodeEndpoint } from './engine';
-import { type PlacementTipMessage, openUserAbove, parsePlacementTip, strandedPlacement } from './forwarded-placement';
+import { type PlacementTipMessage, openUserAbove, parsePlacementTip, strandedPlacement, tipIsBusy } from './forwarded-placement';
 import { promoteNextInboxRow, withNextDeliveryAttempt } from './store';
 
 const WORKSPACE = '/workspace';
@@ -52,6 +52,12 @@ export interface ForwardedTurnReconciliation {
   closedOlder: number;
   candidates: number;
   stranded: number;
+  /** Newer candidates the loop exited PAST: placed at the tip, never read,
+   *  nothing running. Live incident 2026-08-20 (Essentia session d1b74954):
+   *  a prompt forwarded at 12:59:05Z sat at the tip; the loop completed at
+   *  12:59:17Z without reading it and its queued continuation was rejected —
+   *  "not stranded" left it in place forever. */
+  orphaned: number;
   requeued: number;
   /** Later, un-stranded siblings pulled back with a stranded row so the
    *  redelivery batch restores send order. */
@@ -192,7 +198,7 @@ export async function reconcileForwardedTurnsAtEnd(
   input: { sessionId: string; opencodeSessionId?: string | null; endedMessageId?: string | null },
   deps: StrandReconcileDeps = liveDeps,
 ): Promise<ForwardedTurnReconciliation> {
-  const out: ForwardedTurnReconciliation = { closedOlder: 0, candidates: 0, stranded: 0, requeued: 0, reordered: 0 };
+  const out: ForwardedTurnReconciliation = { closedOlder: 0, candidates: 0, stranded: 0, orphaned: 0, requeued: 0, reordered: 0 };
   let open: StoredSandboxTurn[];
   try {
     open = await deps.readOpenTurns(input.sessionId);
@@ -280,9 +286,28 @@ export async function reconcileForwardedTurnsAtEnd(
   // order. Re-queueing one row of a burst individually is what scrambled the
   // order (measured: FIRST, B3, B1, B4, B2).
   const verdicts = newer.map((turn) => ({ turn, verdict: strandedPlacement(tip!, turn.messageId!) }));
+  // The strand verdict has a blind spot the loop's exit exposes: a candidate
+  // placed correctly AT THE TIP (no assistant above it, so not "stranded")
+  // that the ended loop simply never read. With the tip's newest assistant
+  // CLOSED, nothing will ever answer it — OpenCode's queued continuation for
+  // it can be rejected at turn end (observed live 2026-08-20, Essentia
+  // session d1b74954: "Bro no fucking idea whats happening here lol",
+  // delivered 12:59:05Z, loop completed 12:59:17Z past it, queue request
+  // rejected, prompt swallowed). Requeue it exactly like a stranded row.
+  // Guards, in order: the row must be ACCEPTED (`active` — a `delivering`
+  // row is a send still on the wire), the message must actually be on the
+  // tip, and the tip must not be mid-step (an open newest assistant is a
+  // fresh turn that will read it).
   for (const { turn, verdict } of verdicts) {
-    if (!verdict.stranded) continue;
-    out.stranded += 1;
+    const orphanedAtTip =
+      !verdict.stranded &&
+      !verdict.answered &&
+      turn.state === 'active' &&
+      tip.some((m) => m.role === 'user' && m.id === turn.messageId) &&
+      !tipIsBusy(tip);
+    if (!verdict.stranded && !orphanedAtTip) continue;
+    if (verdict.stranded) out.stranded += 1;
+    else out.orphaned += 1;
     // The tip, not just the ledger candidates: ANY placed, unanswered user
     // message above covers this one — a direct send included.
     if (openUserAbove(tip, turn.messageId!)) {

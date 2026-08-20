@@ -40,7 +40,7 @@ describe('reconcileForwardedTurnsAtEnd', () => {
   test('no-op without an ended message id when the tip has no finished assistant either', async () => {
     const { deps, calls } = fakeDeps({ open: [turn(u1)], tip: [] });
     const out = await reconcileForwardedTurnsAtEnd({ sessionId: 's' }, deps);
-    expect(out).toEqual({ closedOlder: 0, candidates: 0, stranded: 0, requeued: 0, reordered: 0 });
+    expect(out).toEqual({ closedOlder: 0, candidates: 0, stranded: 0, orphaned: 0, requeued: 0, reordered: 0 });
     expect(calls.closeOlder).toHaveLength(0);
   });
 
@@ -54,7 +54,7 @@ describe('reconcileForwardedTurnsAtEnd', () => {
     ];
     const { deps, calls } = fakeDeps({ open: [turn(u1), turn(u4, 'delivering')], tip });
     const out = await reconcileForwardedTurnsAtEnd({ sessionId: 's' }, deps);
-    expect(out).toEqual({ closedOlder: 1, candidates: 1, stranded: 1, requeued: 1, reordered: 0 });
+    expect(out).toEqual({ closedOlder: 1, candidates: 1, stranded: 1, orphaned: 0, requeued: 1, reordered: 0 });
     expect(calls.closeOlder.map((c) => c[2])).toEqual([u1]);
     expect(calls.remove).toEqual([['s', u4]]);
   });
@@ -75,7 +75,7 @@ describe('reconcileForwardedTurnsAtEnd', () => {
     ];
     const { deps, calls } = fakeDeps({ open: [turn(u4, 'delivering')], tip });
     const out = await reconcileForwardedTurnsAtEnd({ sessionId: 's', opencodeSessionId: 'ses_root', endedMessageId: M }, deps);
-    expect(out).toEqual({ closedOlder: 0, candidates: 1, stranded: 1, requeued: 1, reordered: 0 });
+    expect(out).toEqual({ closedOlder: 0, candidates: 1, stranded: 1, orphaned: 0, requeued: 1, reordered: 0 });
     expect(calls.remove).toEqual([['s', u4]]);
     expect(calls.requeue).toEqual([['s', u4]]);
     expect(calls.closeStranded).toEqual([['s', u4]]);
@@ -92,16 +92,55 @@ describe('reconcileForwardedTurnsAtEnd', () => {
     ];
     const { deps, calls } = fakeDeps({ open: [turn(u5)], tip });
     const out = await reconcileForwardedTurnsAtEnd({ sessionId: 's', opencodeSessionId: 'ses_root', endedMessageId: M }, deps);
-    expect(out).toEqual({ closedOlder: 0, candidates: 1, stranded: 0, requeued: 0, reordered: 0 });
+    expect(out).toEqual({ closedOlder: 0, candidates: 1, stranded: 0, orphaned: 0, requeued: 0, reordered: 0 });
     expect(calls.remove).toHaveLength(0);
     expect(calls.closeStranded).toHaveLength(0);
   });
 
-  test('a newer prompt not yet reached (no assistant above it) is left alone', async () => {
+  // EXPECTATION FLIPPED 2026-08-20 (live incident, Essentia session
+  // d1b74954): an unreached prompt at the TIP with the loop exited (the tip's
+  // newest assistant is COMPLETED) is not "in line" — nothing will ever read
+  // it. Left alone, the reaper cleared its turn `unknown` and the prompt was
+  // swallowed. It now requeues exactly like a stranded row.
+  test('an ACCEPTED tip prompt the exited loop never read is removed and re-queued', async () => {
     const tip = [{ id: M, role: 'user' }, { id: aM, role: 'assistant', parentID: M, completed: T + 3_500 }, { id: u5, role: 'user' }];
     const { deps, calls } = fakeDeps({ open: [turn(u5)], tip });
     const out = await reconcileForwardedTurnsAtEnd({ sessionId: 's', endedMessageId: M }, deps);
     expect(out.stranded).toBe(0);
+    expect(out.orphaned).toBe(1);
+    expect(out.requeued).toBe(1);
+    expect(calls.remove).toEqual([['s', u5]]);
+    expect(calls.requeue).toEqual([['s', u5]]);
+    expect(calls.closeStranded).toEqual([['s', u5]]);
+  });
+
+  test('a tip prompt is left alone while the tip is MID-STEP — the open step will read it', async () => {
+    const aOpen = id(T + 4_100, 'ASSTOASSTOASST');
+    const tip = [
+      { id: M, role: 'user' },
+      { id: aM, role: 'assistant', parentID: M, completed: T + 3_500 },
+      { id: u5, role: 'user' },
+      { id: aOpen, role: 'assistant', parentID: u5 },
+    ];
+    const { deps, calls } = fakeDeps({ open: [turn(u5)], tip });
+    const out = await reconcileForwardedTurnsAtEnd({ sessionId: 's', endedMessageId: M }, deps);
+    expect(out.orphaned).toBe(0);
+    expect(calls.remove).toHaveLength(0);
+  });
+
+  test('a DELIVERING tip prompt is left alone — the send is still on the wire', async () => {
+    const tip = [{ id: M, role: 'user' }, { id: aM, role: 'assistant', parentID: M, completed: T + 3_500 }, { id: u5, role: 'user' }];
+    const { deps, calls } = fakeDeps({ open: [turn(u5, 'delivering')], tip });
+    const out = await reconcileForwardedTurnsAtEnd({ sessionId: 's', endedMessageId: M }, deps);
+    expect(out.orphaned).toBe(0);
+    expect(calls.remove).toHaveLength(0);
+  });
+
+  test('a candidate absent from the tip window is left to the reaper', async () => {
+    const tip = [{ id: M, role: 'user' }, { id: aM, role: 'assistant', parentID: M, completed: T + 3_500 }];
+    const { deps, calls } = fakeDeps({ open: [turn(u5)], tip });
+    const out = await reconcileForwardedTurnsAtEnd({ sessionId: 's', endedMessageId: M }, deps);
+    expect(out.orphaned).toBe(0);
     expect(calls.remove).toHaveLength(0);
   });
 
@@ -139,7 +178,7 @@ describe('reconcileForwardedTurnsAtEnd', () => {
       { sessionId: 's', opencodeSessionId: 'ses_root', endedMessageId: M },
       deps,
     );
-    expect(out).toEqual({ closedOlder: 0, candidates: 2, stranded: 1, requeued: 0, reordered: 0 });
+    expect(out).toEqual({ closedOlder: 0, candidates: 2, stranded: 1, orphaned: 0, requeued: 0, reordered: 0 });
     expect(calls.remove).toHaveLength(0);
     expect(calls.requeue).toHaveLength(0);
   });

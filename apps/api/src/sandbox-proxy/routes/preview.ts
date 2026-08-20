@@ -200,6 +200,28 @@ function clientResponseHeaders(upstreamHeaders: Headers, origin: string): Header
     headers.set('Access-Control-Allow-Origin', origin);
     headers.set('Access-Control-Allow-Credentials', 'true');
   }
+
+  // The app inside the sandbox writes its own cookies, and they are forwarded —
+  // that is what makes a cookie-session app work. What it may NOT do is widen
+  // their scope: `p.kortix.com` is not on the Public Suffix List, so a
+  // `Domain=kortix.com` cookie from a preview would be accepted for the web app
+  // and the API too. Strip `Domain` (leaving a host-only cookie, which is what
+  // the app actually needs) and drop any attempt to overwrite ours.
+  const setCookies = headers.getSetCookie?.() ?? [];
+  if (setCookies.length) {
+    headers.delete('set-cookie');
+    for (const cookie of setCookies) {
+      const name = cookie.split('=', 1)[0]?.trim();
+      if (name === '__kortix_preview' || name === '__kortix_preview_chips') continue;
+      headers.append(
+        'set-cookie',
+        cookie
+          .split(';')
+          .filter((attr) => !/^\s*domain\s*=/i.test(attr))
+          .join(';'),
+      );
+    }
+  }
   return headers;
 }
 

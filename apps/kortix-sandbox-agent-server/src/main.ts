@@ -1580,15 +1580,36 @@ async function waitForRootList(
   return null
 }
 
-/** List opencode ROOT sessions (no parentID). Returns null when opencode is not
- *  reachable yet — distinct from `[]` (reachable, no sessions). */
+/** List opencode ROOT sessions (no parentID), newest-updated first. Returns null
+ *  when opencode is not reachable yet — distinct from `[]` (reachable, no
+ *  sessions).
+ *
+ *  `roots=true` makes the SERVER drop child sessions instead of us paging every
+ *  session in the workspace and filtering. Probed on the real binaries
+ *  2026-08-20: `roots`, `limit`, `start`, `search` and `scope` are all declared
+ *  on `GET /session` in 1.17.11 AND 1.18.19, and both answered
+ *  `?roots=true&limit=1` with exactly the most-recently-updated ROOT out of
+ *  three roots plus one newer child. Boxes provisioned before today still run
+ *  1.17.11, so that parity is the reason this is safe to ship as one call.
+ *
+ *  `limit=1` is deliberately NOT used, and the client-side `!parentID` filter
+ *  deliberately stays:
+ *   - `resolveExistingRoot` prefers the PINNED root over the newest one, which
+ *     needs the pin to be findable in this list — `limit=1` would hide it and
+ *     silently re-canonicalize a live conversation onto a different root.
+ *   - An OpenCode that does not know a query parameter ignores it silently. If
+ *     `roots` were ever dropped, the filter is what still stops a Task-tool
+ *     CHILD from being adopted as the canonical root. One line, absolute. */
 async function listOpencodeRoots(baseUrl: string, workspace: string): Promise<RootLite[] | null> {
   try {
-    const res = await fetch(`${baseUrl}/session?directory=${encodeURIComponent(workspace)}`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(5_000),
-    })
+    const res = await fetch(
+      `${baseUrl}/session?directory=${encodeURIComponent(workspace)}&roots=true`,
+      {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5_000),
+      },
+    )
     if (!res.ok) return null
     const data = (await res.json()) as Array<{ id?: string; parentID?: string | null; time?: { created?: number; updated?: number } }>
     if (!Array.isArray(data)) return []
@@ -2539,15 +2560,37 @@ async function readRootTurnState(
     // assistant's own `parentID` names the turn it answered — so a pending
     // follow-up prompt can never be blamed for a prior turn's error.
     //
-    // One case stays unnamed on purpose: a newest assistant that is still OPEN
-    // (no completion, no terminal error) is a RACING NEW turn — naming it would
-    // let completeSandboxTurn close the row of a turn that is still running.
+    // A newest assistant that is still OPEN (no completion, no terminal error)
+    // is not automatically a dead end either. WHICH TURN it belongs to decides,
+    // and `parentID` says so — the same linkage the API-side husk finalizer
+    // matches on. Two different shapes hide behind one open row:
+    //
+    //   `[uA, aA1(done), aA2(open)]`   one turn, mid-step  → STAY UNNAMED.
+    //       Naming aA1 would let completeSandboxTurn close a row whose turn is
+    //       still streaming.
+    //   `[uA, aA(done), uB, aB(open)]` turn A ended, B races → NAME A.
+    //       The idle being handled cannot be B's (B is open), so A is the turn
+    //       that ended. The old code stopped at the open row and relayed A with
+    //       no `turn_message_id` and no dedup signature — the ledger row then
+    //       never closed by message and waited for a reaper sweep, which is a
+    //       direct "stuck working forever" contributor.
+    //
+    // An open row whose `parentID` is missing proves nothing about which turn
+    // is running, so it keeps the old conservative unnamed answer.
+    let openTurnParentId: string | null | undefined
     for (let i = rows.length - 1; i >= 0; i--) {
       const info = rows[i]?.info
       if (info?.role !== 'assistant') continue
       const open =
         info.time?.completed == null && (!info.error || info.error.data?.isRetryable === true)
-      if (open) return { completedAt: null, parentMessageId: null }
+      if (open) {
+        if (openTurnParentId === undefined) openTurnParentId = info.parentID ?? null
+        continue
+      }
+      const sameTurnAsTheOpenOne =
+        openTurnParentId !== undefined &&
+        (openTurnParentId === null || info.parentID == null || info.parentID === openTurnParentId)
+      if (sameTurnAsTheOpenOne) return { completedAt: null, parentMessageId: null }
       return {
         error: info.error ? flattenOpencodeError(info.error) : undefined,
         completedAt: info.time?.completed ?? null,

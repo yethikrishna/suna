@@ -169,6 +169,51 @@ describe('inspectOpencodeRoot — could-not-tell is its own answer', () => {
     });
   });
 
+  // THE FORWARDED-PROMPT SHAPE. The control plane forwards a prompt INTO a live
+  // turn by design, and OpenCode itself appends synthetic `<pty_exited>`
+  // wake-ups, so `[user A, assistant A (streaming), user B]` is routine. Read
+  // positionally (`msgs[msgs.length - 1]`) it said "no turn running, and a
+  // prompt was dropped" — the reload gate would then restart OpenCode straight
+  // through a streaming turn. The two facts live on two different rows.
+  test('an OPEN assistant still owns runtime when a newer prompt sits after it', async () => {
+    stubFetch([
+      { info: { id: 'msg_turn_1', role: 'user' } },
+      { info: { role: 'assistant', parentID: 'msg_turn_1', time: {} } },
+      { info: { id: 'msg_turn_2', role: 'user' } },
+    ]);
+    expect(await inspectOpencodeRoot(BASE, WORKSPACE, SESSION)).toEqual({
+      hasMessages: true,
+      lastTurnIncomplete: true,
+      turnInFlight: true,
+      // Both are true at once: turn 1 is streaming AND turn 2 has no answer.
+      orphanedPrompt: true,
+      known: true,
+    });
+  });
+
+  // Attribution is by PARENT LINKAGE, not by "an assistant row exists after
+  // this prompt". An assistant parented to the EARLIER prompt does not answer
+  // the newer one just because OpenCode created it later.
+  test('an assistant parented to an OLDER prompt does not answer the newest one', async () => {
+    stubFetch([
+      { info: { id: 'msg_turn_1', role: 'user' } },
+      { info: { id: 'msg_turn_2', role: 'user' } },
+      { info: { role: 'assistant', parentID: 'msg_turn_1', time: { completed: 1234 } } },
+    ]);
+    const result = await inspectOpencodeRoot(BASE, WORKSPACE, SESSION);
+    expect(result.orphanedPrompt).toBe(true);
+    expect(result.turnInFlight).toBe(false);
+  });
+
+  test('an assistant parented to the newest prompt clears the orphan flag', async () => {
+    stubFetch([
+      { info: { id: 'msg_turn_1', role: 'user' } },
+      { info: { id: 'msg_turn_2', role: 'user' } },
+      { info: { role: 'assistant', parentID: 'msg_turn_2', time: { completed: 1234 } } },
+    ]);
+    expect((await inspectOpencodeRoot(BASE, WORKSPACE, SESSION)).orphanedPrompt).toBe(false);
+  });
+
   test('an EMPTY root has no orphaned prompt', async () => {
     stubFetch([]);
     expect(await inspectOpencodeRoot(BASE, WORKSPACE, SESSION)).toEqual({
@@ -208,6 +253,29 @@ describe('opencodeTurnInFlight — the reload gate reads this', () => {
     // while a turn was running and opencode was merely slow to answer.
     stubFetch(null, { messagesOk: false });
     expect(await opencodeTurnInFlight(BASE, WORKSPACE, SESSION)).toBeNull();
+  });
+
+  // ASK, DON'T INFER. The step boundary inside ONE turn — latest step completed,
+  // tools running, next step's message not created yet — is invisible in the
+  // transcript and plain to `/session/status`. The gate must not restart here.
+  test('a busy root is in flight even when the transcript reads finished', async () => {
+    stubFetch(assistantTurn(1_700_000_000), { sessionStatus: { [SESSION]: { type: 'busy' } } });
+    expect(await opencodeTurnInFlight(BASE, WORKSPACE, SESSION)).toBe(true);
+    expect(calls.some((url) => url.includes('/session/status'))).toBe(true);
+  });
+
+  test('a retrying root is in flight', async () => {
+    stubFetch(assistantTurn(1_700_000_000), { sessionStatus: { [SESSION]: { type: 'retry' } } });
+    expect(await opencodeTurnInFlight(BASE, WORKSPACE, SESSION)).toBe(true);
+  });
+
+  // The oracle CANNOT clear a husk: an assistant message left open by a writer
+  // that died reads idle to `/session/status` (its process is gone) and in
+  // flight in the transcript. The post-respawn cleanup exists for that husk, so
+  // the transcript keeps its one-directional vote.
+  test('an idle root does NOT clear an open assistant message left by a dead writer', async () => {
+    stubFetch(assistantTurn(undefined), { sessionStatus: { [SESSION]: { type: 'idle' } } });
+    expect(await opencodeTurnInFlight(BASE, WORKSPACE, SESSION)).toBe(true);
   });
 });
 
@@ -292,7 +360,15 @@ describe('opencodeDeliveryInFlight — lifecycle acceptance recovery', () => {
     expect(await opencodeDeliveryInFlight(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toBeNull();
   });
 
-  test('a later user message after a COMPLETED answer is terminal without asking the status', async () => {
+  // EXPECTATION FLIPPED (second half of the 2026-08-20 rule). The previous
+  // version of this test asserted terminal-without-asking for exactly this
+  // shape. It is the two live-turn shapes STACKED: a `<pty_exited>` user row
+  // landing in the step-boundary window, where the latest step of the SAME turn
+  // reads completed while its tools run. Array position alone may not end a
+  // turn while the root itself reports busy — that rule now has no exception
+  // for `completed`, only for a terminally-errored answer (which ends the turn
+  // that owns it, asserted below).
+  test('a later user message after a COMPLETED answer stays active while the root is busy', async () => {
     stubFetch(
       [
         { info: { id: 'msg_turn_1', role: 'user' } },
@@ -302,8 +378,23 @@ describe('opencodeDeliveryInFlight — lifecycle acceptance recovery', () => {
       { sessionStatus: { [SESSION]: { type: 'busy' } } },
     );
     const observed = await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1');
-    expect(observed).toEqual({ inFlight: false, end: 'completed' });
-    expect(calls.some((url) => url.includes('/session/status'))).toBe(false);
+    expect(observed).toEqual({ inFlight: true, end: null });
+    expect(calls.some((url) => url.includes('/session/status'))).toBe(true);
+  });
+
+  test('a later user message after a COMPLETED answer is terminal once the root is idle', async () => {
+    stubFetch(
+      [
+        { info: { id: 'msg_turn_1', role: 'user' } },
+        { info: { role: 'assistant', parentID: 'msg_turn_1', time: { completed: 1234 } } },
+        { info: { id: 'msg_turn_2', role: 'user' } },
+      ],
+      { sessionStatus: { [SESSION]: { type: 'idle' } } },
+    );
+    expect(await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toEqual({
+      inFlight: false,
+      end: 'completed',
+    });
   });
 
   // The step-boundary window: each step of ONE turn is its own assistant
@@ -500,14 +591,18 @@ describe('observeOpencodeDelivery — WHY the turn is not in flight', () => {
         { info: { role: 'assistant', parentID: 'msg_turn_1', time: { completed: 7 } } },
         { info: { id: 'msg_turn_2', role: 'user' } },
       ],
-      { sessionStatus: { [SESSION]: { type: 'busy' } } },
+      { sessionStatus: { [SESSION]: { type: 'idle' } } },
     );
     expect(await observeOpencodeDelivery(BASE, WORKSPACE, SESSION, 'msg_turn_1')).toEqual({
       inFlight: false,
       end: 'completed',
     });
-    // The root's status describes the NEWER turn, so it is never consulted.
-    expect(calls.some((url) => url.includes('/session/status'))).toBe(false);
+    // AMENDED: the status IS consulted first. "A busy root next to a newer user
+    // row must be the newer turn" is not provable from the transcript — the
+    // step-boundary window makes a LIVE turn look exactly like this — so the
+    // idle status is what licenses the terminal verdict here, and the reason
+    // still comes from turn 1's own messages.
+    expect(calls.some((url) => url.includes('/session/status'))).toBe(true);
   });
 
   test('a running turn and an unreadable box name no outcome', async () => {
@@ -560,6 +655,28 @@ describe('observeRequestedTurn — what /kortix/health?turn=1 answers with', () 
     expect(
       await observeRequestedTurn(BASE, WORKSPACE, { sessionId: SESSION, messageId: null }),
     ).toEqual({ inFlight: false, end: 'abandoned', orphanedPrompt: true });
+  });
+
+  // `abandoned` routes straight into the inbox's redelivery, so it may never be
+  // said about a prompt that is executing. Between "the prompt is persisted"
+  // and "its assistant message exists" a LIVE delivery looks exactly like an
+  // orphan; only `/session/status` can tell them apart.
+  test('a root-scoped request does NOT call a live delivery abandoned', async () => {
+    stubFetch([{ info: { id: 'msg_turn_1', role: 'user', time: { completed: 1 } } }], {
+      sessionStatus: { [SESSION]: { type: 'busy' } },
+    });
+    expect(
+      await observeRequestedTurn(BASE, WORKSPACE, { sessionId: SESSION, messageId: null }),
+    ).toEqual({ inFlight: true, end: null, orphanedPrompt: true });
+  });
+
+  test('a root-scoped request with an unreadable status stays unknown, never abandoned', async () => {
+    stubFetch([{ info: { id: 'msg_turn_1', role: 'user', time: { completed: 1 } } }], {
+      sessionStatusOk: false,
+    });
+    expect(
+      await observeRequestedTurn(BASE, WORKSPACE, { sessionId: SESSION, messageId: null }),
+    ).toEqual({ inFlight: null, end: null });
   });
 
   test('an unreadable root-scoped request stays unknown', async () => {

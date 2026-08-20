@@ -32,8 +32,6 @@ jobs:
       # Account: Workers Scripts Write. kortix.com zone: DNS Write,
       # Workers Routes Write, SSL and Certificates Write, and Zone Read.
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_APPS_EDGE_API_TOKEN }}
-      CLOUDFLARE_GLOBAL_API_KEY: ${{ secrets.CLOUDFLARE_GLOBAL_API_KEY }}
-      CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
       CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
       # 192.0.2.1 is TEST-NET-1 and never routable: the Worker answers every
       # request on this hostname, so the record exists only to make the name
@@ -47,7 +45,7 @@ jobs:
       - name: Validate Cloudflare configuration
         run: |
           set -euo pipefail
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_GLOBAL_API_KEY CLOUDFLARE_EMAIL CLOUDFLARE_ZONE_ID; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ZONE_ID; do
             if [ -z "${!name:-}" ]; then
               echo "::error::${name} is not configured."
               exit 1
@@ -123,8 +121,17 @@ jobs:
           # choose blocks them. Exclude preview hosts from any such rule.
           api="https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/rulesets"
           phase="$api/phases/http_response_headers_transform/entrypoint"
-          auth=(--header "X-Auth-Email: $CLOUDFLARE_EMAIL" --header "X-Auth-Key: $CLOUDFLARE_GLOBAL_API_KEY")
-          current="$(curl --fail-with-body --silent --show-error "${auth[@]}" "$phase")"
+          auth=(--header "Authorization: Bearer $CLOUDFLARE_API_TOKEN")
+
+          # Advisory, not fatal. This only matters if a zone rule actually sets
+          # Content-Security-Policy or X-Frame-Options; if the credentials
+          # cannot read Transform Rules we say so and let the run continue,
+          # because the final probe below reads the real response headers and
+          # would show an unwanted frame-ancestors directly.
+          if ! current="$(curl --fail-with-body --silent --show-error "${auth[@]}" "$phase")"; then
+            echo "::warning::Cannot read zone Transform Rules with this token — skipping the preview-host exclusion. Verify a preview response carries no zone-injected CSP/X-Frame-Options."
+            exit 0
+          fi
           jq -e '.success == true and (.result.id | type == "string")' <<<"$current"
 
           body="$(jq -c '
@@ -149,11 +156,14 @@ jobs:
           ' <<<"$current")"
 
           ruleset_id="$(jq -er '.result.id' <<<"$current")"
-          updated="$(curl --fail-with-body --silent --show-error \
+          if ! updated="$(curl --fail-with-body --silent --show-error \
             --request PUT "${auth[@]}" \
             --header 'Content-Type: application/json' \
             --data "$body" \
-            "$api/$ruleset_id")"
+            "$api/$ruleset_id")"; then
+            echo "::warning::Cannot write zone Transform Rules with this token — preview hosts are not excluded from CSP/X-Frame-Options rules."
+            exit 0
+          fi
           jq -e '
             .success == true and
             all(

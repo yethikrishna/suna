@@ -23,7 +23,7 @@ function RivalEyebrow() {
     /* `justify-center` centres the wrapped rows as a unit; each rival stays its
        own inline `flex items-center` span, so the logo and its label never
        separate when the row wraps on a phone. */
-    <div className="text-muted-foreground flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 text-center text-sm">
+    <div className="kx-hero-text text-muted-foreground flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 text-center text-sm">
       <span>{heroEyebrow.lead}</span>
       {heroEyebrow.rivals.map((r, i) => {
         const Glyph = RIVAL_ICONS[r.icon] as ((p: { className?: string }) => ReactNode) | undefined;
@@ -69,13 +69,24 @@ const Hero = () => {
       className="relative flex min-h-svh flex-col justify-center overflow-hidden pt-32 pb-12 sm:pt-36 sm:pb-16 lg:pt-32 lg:pb-14"
     >
       <div
-        className="inset-0 z-0 hidden mask-t-from-70% lg:absolute"
+        className="kx-hero-veil inset-0 z-0 hidden mask-t-from-70% lg:absolute"
         aria-hidden
         data-a11y-decorative
       >
         <WallpaperBackground wallpaperId="brandmark" />
       </div>
 
+      {/* Six bands enter in reading order — eyebrow → headline → sub → actions →
+          product → trust — each with its own delay and its own distance. The
+          whole fold settles at ~1.11s: the frame starts before the trust line
+          but runs 820ms to its 620ms, so the two land together rather than the
+          frame landing after.
+
+          Delays are Tailwind arbitrary properties, not inline styles. Both the
+          keyframes and the reduced-motion fallback live in globals.css, and an
+          inline `animation-delay` would outrank the stylesheet and keep the
+          staged reveal alive after prefers-reduced-motion removed the travel.
+          Setting only `--kx-enter` leaves the stylesheet free to zero it. */}
       <div className="relative z-20">
         <div className="mx-auto w-full max-w-7xl px-6">
           <RivalEyebrow />
@@ -83,7 +94,7 @@ const Hero = () => {
           {/* `mx-auto` on the measure is what actually centres the block: without
               it `max-w-3xl` stays flush left inside max-w-7xl and only the glyphs
               inside it centre, which leaves the headline off-axis on desktop. */}
-          <h1 className="text-foreground mx-auto mt-5 max-w-3xl text-center text-4xl font-medium tracking-tight text-balance sm:text-5xl">
+          <h1 className="kx-hero-text text-foreground mx-auto mt-5 max-w-3xl text-center text-4xl font-medium tracking-tight text-balance [--kx-enter:70ms] sm:text-5xl">
             {hero.title}
           </h1>
 
@@ -91,7 +102,7 @@ const Hero = () => {
               actions row while the hero owned CTAs; with those gone the row had
               nothing to justify against. */}
           <div className="mt-6 flex flex-col items-center gap-5">
-            <p className="text-muted-foreground mx-auto max-w-xl text-center text-base leading-relaxed text-pretty sm:text-lg">
+            <p className="kx-hero-text text-muted-foreground mx-auto max-w-xl text-center text-base leading-relaxed text-pretty [--kx-enter:150ms] sm:text-lg">
               {hero.sub}
             </p>
 
@@ -115,8 +126,11 @@ const Hero = () => {
                   import { Button } from '@/components/ui/marketing/button';
                   import { ArrowRightIcon } from '@phosphor-icons/react';
                 `openDemo` and `handleLaunch` above are kept for the same
-                restore, and are otherwise unused. */}
-            {/* <div className="flex w-full shrink-0 flex-wrap gap-3 sm:w-auto">
+                restore, and are otherwise unused. The wrapper keeps its
+                `kx-hero-text [--kx-enter:210ms]` band so restoring it puts the
+                pair back in the staged reveal at its old slot, between the sub
+                (150ms) and the frame (290ms). */}
+            {/* <div className="kx-hero-text flex w-full shrink-0 flex-wrap gap-3 [--kx-enter:210ms] sm:w-auto">
               <Button
                 size="lg"
                 variant="secondary"
@@ -135,12 +149,14 @@ const Hero = () => {
 
         <div
           id="demo"
-          className="relative z-10 mx-auto mt-10 max-w-7xl scroll-mt-24 px-6 sm:mt-12 lg:mt-8"
+          className="kx-hero-frame relative z-10 mx-auto mt-10 max-w-7xl scroll-mt-24 px-6 [--kx-enter:290ms] sm:mt-12 lg:mt-8"
         >
           <HeroSurfaces />
         </div>
 
-        <p className="text-muted-foreground/60 mx-auto mt-6 max-w-7xl px-6 text-center font-mono text-[11px] tracking-wide">
+        {/* 490ms + the 620ms text ramp lands this at 1110ms — the exact moment
+            the frame (290ms + 820ms) finishes, so the fold closes on one beat. */}
+        <p className="kx-hero-text text-muted-foreground/60 mx-auto mt-6 max-w-7xl px-6 text-center font-mono text-[11px] tracking-wide [--kx-enter:490ms]">
           {hero.trust}
         </p>
       </div>

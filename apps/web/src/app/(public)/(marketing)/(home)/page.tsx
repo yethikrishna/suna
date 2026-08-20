@@ -3,9 +3,7 @@
 import { FaqSection } from '@/features/marketing/faq';
 import Hero from '@/features/marketing/hero';
 import { HowItWorks } from '@/features/marketing/how-it-work/how-it-works';
-import { CtaSection } from '@/features/marketing/landing/cta-section';
 import { LogoStrip } from '@/features/marketing/landing/logo-strip';
-// import { ScrollCtaPill } from '@/features/marketing/landing/scroll-cta-pill';
 import { TrustSection } from '@/features/marketing/landing/trust-section';
 import { UseCaseWheel } from '@/features/marketing/landing/use-case-wheel';
 import { OpenSourceSection } from '@/features/marketing/open-source/open-source-section';
@@ -56,13 +54,7 @@ export default function Home() {
       <FaqSection />
 
       {/* Close, standing on its own */}
-      <CtaSection />
-
-      {/* Floating install pill — hidden on request: it hovers over the copy as
-          you scroll and reads as too much on top of the sticky navbar, which
-          already carries Get started. The component and the `cta-pill-anchor`
-          div above are intact, so restoring it is uncommenting these two lines. */}
-      {/* <ScrollCtaPill /> */}
+      {/* <CtaSection /> */}
     </div>
   );
 }

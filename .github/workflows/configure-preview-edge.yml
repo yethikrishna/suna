@@ -317,10 +317,16 @@ jobs:
       - name: Verify public DNS and TLS routing
         run: |
           set -euo pipefail
-          # A syntactically valid preview host for a sandbox that does not
-          # exist: it must reach the API through the signed Worker route and
-          # come back "Unknown preview", which proves DNS, TLS, the Worker, the
-          # edge signature and the API host matcher all agree.
+          # A syntactically valid preview host, probed with NO credential. It
+          # must reach the API through the signed Worker route and come back
+          # 401 "Unauthorized" as JSON — which proves DNS, TLS, the Worker, the
+          # edge signature and the API host matcher all agree, and that a
+          # machine still gets JSON rather than the browser sign-in page.
+          #
+          # 401 and not 404: an anonymous request is refused BEFORE the sandbox
+          # lookup, because resolving a host label cannot use an index (see
+          # sandbox-proxy/preview-origin.ts). Reaching the refusal is the proof;
+          # whether the sandbox exists is deliberately not asked.
           host="dev-p8081-sbx-0000000000000000000000000.p.kortix.com"
           for attempt in $(seq 1 30); do
             answer="$({
@@ -352,6 +358,7 @@ jobs:
           echo "HTTP status: $status"
           grep -Ei '^x-kortix-preview-environment:' "$headers" || true
           jq -c . "$body" || true
-          test "$status" = 404
+          test "$status" = 401
           tr -d '\r' < "$headers" | grep -Eiq '^x-kortix-preview-environment: dev$'
-          jq -e '.error == "Unknown preview"' "$body"
+          tr -d '\r' < "$headers" | grep -Eiq '^content-type: application/json'
+          jq -e '.error == "Unauthorized"' "$body"

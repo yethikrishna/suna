@@ -10,6 +10,26 @@ dev-p8081-sbx-01m0g4hxcm32bx5r1gpyzdyc1h.p.kortix.com
 Locally the same shape without the environment prefix:
 `p8081-sbx-01m0….localhost:8008`.
 
+## Every environment
+
+| environment | preview hostname | edge | TLS | trust boundary |
+| --- | --- | --- | --- | --- |
+| dev | `dev-p{port}-{sandbox}.p.kortix.com` | `kortix-preview-router` Worker | one advanced cert pack for `*.p.kortix.com` | signed `x-kortix-preview-host` |
+| staging | `staging-p{port}-{sandbox}.p.kortix.com` | same Worker | same cert | same |
+| prod | `prod-p{port}-{sandbox}.p.kortix.com` | same Worker | same cert | same |
+| self-host (domain) | `{env}-p{port}-{sandbox}.{KORTIX_PREVIEW_BASE_DOMAIN}` | bundled Caddy | per-hostname ACME HTTP-01, gated by `/v1/apps/edge/tls-check` | the operator's own proxy (`KORTIX_PREVIEW_ALLOW_DIRECT_EDGE=true`, real `Host` only) |
+| self-host (no domain) | — | — | — | previews use the path proxy |
+| local dev | `p{port}-{sandbox}.localhost:{apiPort}` | none | none (`*.localhost` is a trustworthy origin) | localhost |
+| prod US-East-2 shadow | — | — | — | path proxy: its sandboxes are not in the prod database the wildcard routes to |
+
+One wildcard certificate and one Worker cover all three managed environments
+because the environment is the first label segment. A deployment that declares
+no `KORTIX_PREVIEW_BASE_DOMAIN` keeps the path proxy, which always works.
+
+Both entry points are covered in every row: the session panel's authenticated
+preview, and a public share link (which carries `?public_share=<token>` and is
+exchanged for the same cookie).
+
 ## Why not a path prefix
 
 The path form `/v1/p/{sandbox}/{port}/…` still exists and still works — for

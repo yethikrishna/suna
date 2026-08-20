@@ -274,7 +274,11 @@ export async function handleSubdomainRequest(
   }
 
   const proto = req.headers.get('x-forwarded-proto') || url.protocol.replace(':', '');
-  const secure = proto === 'https';
+  // `SameSite=None` requires `Secure`, and without it the cookie is not sent to
+  // an embedded preview at all. Plain-http `*.localhost` still qualifies:
+  // browsers treat localhost as a trustworthy origin and accept Secure cookies
+  // there, which is what keeps the local iframe preview working.
+  const secure = proto === 'https' || target.local;
 
   let session = sessionFromCookies(req, target);
   let setCookies: string[] = [];

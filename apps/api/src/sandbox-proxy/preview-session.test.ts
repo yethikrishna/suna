@@ -105,7 +105,10 @@ describe('cookies', () => {
     expect(cookies[1]).toStartWith(`${PREVIEW_COOKIE_PARTITIONED}=value;`);
   });
 
-  test('plain-http local dev falls back to one Lax cookie', () => {
+  test('an origin that cannot carry Secure falls back to one Lax cookie', () => {
+    // Only reachable for a non-https, non-localhost preview host — a self-host
+    // behind a plain-http reverse proxy. `SameSite=None` without `Secure` is
+    // rejected outright, so Lax is the most that can be stored there.
     const cookies = previewSessionCookies('value', { secure: false, maxAgeSeconds: 100 });
     expect(cookies).toHaveLength(1);
     expect(cookies[0]).not.toContain('SameSite=None');

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { validateManifest } from '@kortix/manifest-schema';
 
@@ -11,6 +11,15 @@ import {
 } from '../index';
 
 const REPO_ROOT = join(import.meta.dir, '..', '..', '..', '..');
+const OPENCODE_ROOT = join(
+  REPO_ROOT,
+  'packages',
+  'starter',
+  'templates',
+  'base',
+  '.kortix',
+  'opencode',
+);
 
 const NATIVE_HARNESS_CONFIG_PATHS = [
   '.claude/CLAUDE.md',
@@ -108,6 +117,33 @@ describe('the starter is OpenCode-native', () => {
 
     expect(paths).toContain('.kortix/opencode/skills/pdf/SKILL.md');
     expect(paths).toContain('.kortix/opencode/agents/kortix.md');
+  });
+
+  test('keeps the fast starter tool ABI independent of the full plugin SDK', () => {
+    const packageJson = JSON.parse(
+      readFileSync(join(OPENCODE_ROOT, 'package.json'), 'utf8'),
+    ) as { dependencies?: Record<string, string> };
+    const lock = readFileSync(join(OPENCODE_ROOT, 'bun.lock'), 'utf8');
+
+    expect(packageJson.dependencies?.zod).toBe('4.1.8');
+    expect(packageJson.dependencies?.['@opencode-ai/plugin']).toBeUndefined();
+    expect(lock).not.toContain('"@opencode-ai/plugin"');
+    expect(lock).not.toContain('"effect"');
+
+    for (const file of [
+      'image_search.ts',
+      'memory.ts',
+      'scrape_webpage.ts',
+      'show.ts',
+      'web_search.ts',
+    ]) {
+      expect(readFileSync(join(OPENCODE_ROOT, 'tools', file), 'utf8')).toContain(
+        'from "./lib/tool"',
+      );
+    }
+    expect(readFileSync(join(OPENCODE_ROOT, 'plugins', 'pty.ts'), 'utf8')).toContain(
+      "from '../tools/lib/tool'",
+    );
   });
 });
 

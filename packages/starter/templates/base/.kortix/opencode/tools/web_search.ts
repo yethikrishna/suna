@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "./lib/tool";
 import { getEnv, getKortixRouterBase } from "./lib/get-env";
 // NOTE: @tavily/core is imported lazily inside execute() — a top-level import
 // makes opencode load this heavy SDK at sandbox boot (every tool module is

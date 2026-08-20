@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "./lib/tool";
 import { getEnv, getKortixRouterBase } from "./lib/get-env";
 // NOTE: `replicate` is imported lazily inside enrichImages() — a top-level
 // import makes opencode load this heavy SDK at sandbox boot (tool modules are

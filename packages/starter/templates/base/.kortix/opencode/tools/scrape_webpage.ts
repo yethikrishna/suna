@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "./lib/tool";
 // Type-only import (erased at runtime). The actual SDK is imported lazily inside
 // execute() — a top-level value import makes opencode load this heavy SDK at
 // sandbox boot (tool modules are evaluated eagerly), adding ~seconds to cold

@@ -54,6 +54,7 @@ import {
   primeDaytonaTransientClassifier,
 } from './shared/daytona-transient';
 import { GitOperationError, isGitOperationError } from './projects/git/mirror';
+import { resolvePrefixEscape } from './sandbox-proxy/prefix-escape';
 // Statically imported (NOT await import() in the handlers): on a long-running
 // `bun --hot` dev process, dynamic import() can wedge permanently after enough
 // hot reloads — the promise never settles, the handler hangs, and Bun's
@@ -1271,6 +1272,14 @@ app.onError((err, c) => {
 // === 404 Handler ===
 
 app.notFound((c) => {
+  // A root-absolute link on a path-based preview (`<a href="/learn">` inside
+  // /v1/p/{sandbox}/{port}/) resolves against THIS origin and lands here with
+  // the prefix stripped. Put the navigation back where it belongs instead of
+  // answering a JSON 404 the user can do nothing with. See prefix-escape.ts —
+  // the durable fix is the per-preview origin, this only recovers navigations.
+  const escaped = resolvePrefixEscape(c.req.raw);
+  if (escaped) return c.redirect(escaped.location, escaped.status);
+
   return c.json(
     {
       error: true,
@@ -1528,9 +1537,10 @@ if (import.meta.main) {
 // Subdomain preview routing — `p{port}-{sandboxId}.localhost:{apiPort}/...`
 // Handled at the Bun.serve level so the proxied app sees itself at root `/`
 // (Hono can't match on the Host header). See `sandbox-proxy/subdomain.ts`.
-import { handleSubdomainRequest, parsePreviewSubdomain } from './sandbox-proxy/subdomain';
+import { handleSubdomainRequest, isPreviewHost } from './sandbox-proxy/subdomain';
 import {
   matchPreviewWsPath,
+  preparePreviewHostWsUpgrade,
   preparePreviewWsUpgrade,
   previewWsHandlers,
 } from './sandbox-proxy/ws-proxy';
@@ -1605,18 +1615,25 @@ export default {
       const appResponse = await handleAppPublicRequest(req);
       if (appResponse) return appResponse;
     }
-    if (parsePreviewSubdomain(host)) {
+    if (isPreviewHost(req, url)) {
       server.timeout(req, 0);
-      // WS-on-subdomain isn't wired yet (agent server's port-proxy is
-      // HTTP-only). Reject the upgrade cleanly so the client falls back
-      // gracefully instead of timing out.
+      // An app on its own origin opens `new WebSocket('/hmr')` — dev-server
+      // hot reload, live preview, anything socket-driven. The handshake is an
+      // ordinary HTTP request, so it carries the preview cookie and needs no
+      // token in the URL.
       if (isWsUpgrade) {
-        return new Response(
-          JSON.stringify({
-            error: 'WebSocket upgrade on preview subdomain not implemented',
-          }),
-          { status: 501, headers: { 'Content-Type': 'application/json' } },
-        );
+        const prepared = await preparePreviewHostWsUpgrade(req, url);
+        if (!prepared.ok) {
+          return new Response(JSON.stringify({ error: prepared.message }), {
+            status: prepared.status,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (server.upgrade(req, { data: prepared.data })) return undefined;
+        return new Response(JSON.stringify({ error: 'Preview WebSocket upgrade failed' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
       }
       const res = await handleSubdomainRequest(req, url);
       if (res) return res;

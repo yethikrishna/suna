@@ -1,141 +1,134 @@
 /**
- * Subdomain preview proxy — `p{port}-{sandboxId}.{apiHost}/...`
+ * Preview ORIGIN proxy — `{env}-p{port}-{label}.{previewDomain}` in a deployed
+ * environment, `p{port}-{label}.localhost:{apiPort}` locally.
  *
- * Carried over from main, trimmed to what this branch actually needs:
- *   - Parse the `Host` header at the Bun.serve level (before Hono routing
- *     kicks in) to recognize preview subdomains.
- *   - First-request auth: validate a Bearer JWT / Kortix token / `?token=`
- *     query param, then mark the subdomain "authenticated" in-memory for
- *     a TTL. All subsequent requests on the subdomain are trusted — this
- *     side-steps third-party cookie restrictions inside iframes and lets
- *     sub-resources, redirects, WS upgrades flow through unchanged.
- *   - HTTP forwarding goes through `forwardToSandbox` so we reuse the same
- *     path resolution (Daytona's getPreviewLink(port)) that the path-based
- *     `/v1/p/:sandboxId/:port` route uses.
+ * Serving a sandbox port on its own origin is what makes an arbitrary app work
+ * unmodified: it sees itself at `/`, so root-absolute links, `fetch('/api')`,
+ * `history.pushState`, CSS `url(/x.png)`, service workers and WebSockets all
+ * resolve to the same origin the browser is already on. The path form
+ * (`/v1/p/{sandbox}/{port}/…`) cannot offer that and stays what it has always
+ * been — the transport for programmatic clients. See preview-hosts.ts.
  *
- * What this DOESN'T cover (yet): WebSocket upgrade on the subdomain. The
- * agent server's `/proxy/{port}/*` handler is HTTP-only, and the API's WS
- * fan-out was removed earlier in this refactor. WS plumbing is a follow-up.
+ * Shape of a request:
+ *   1. `resolvePreviewHost` reads the (label, port) target out of the Host
+ *      header. Bun.serve dispatches here before Hono, which cannot route on it.
+ *   2. Auth comes from the signed cookie (preview-session.ts) when present, and
+ *      otherwise from a one-shot `?token=` / `?public_share=` that mints one.
+ *      A browser can attach neither a header nor a query parameter to
+ *      `fetch('/api')` from inside the app, so a cookie is the only credential
+ *      that survives to the second request — including the WebSocket handshake.
+ *   3. `forwardToSandbox` does the rest: ownership, service-key auth, signed
+ *      X-Kortix-User-Context, auto-wake retries.
  */
 
 import { authenticatePreviewPrincipalDetailed, extractPreviewToken } from './preview-auth';
 import { forwardToSandbox } from './routes/preview';
+import { resolveExternalIdFromHostLabel } from './backend';
+import { resolvePreviewHost, type ResolvedPreviewHost } from './preview-hosts';
+import {
+  PREVIEW_EDGE_HEADERS,
+  edgeSecret,
+  verifyEdgeSignedRequest,
+} from '../shared/edge-signature';
+import {
+  PREVIEW_SESSION_TTL_SECONDS,
+  PREVIEW_SHARE_TTL_SECONDS,
+  mintPreviewSession,
+  previewSessionCookies,
+  readPreviewCookies,
+  verifyPreviewSession,
+  type PreviewSession,
+} from './preview-session';
 import {
   PUBLIC_SHARE_BLOCKED_PORTS,
   resolvePublicShare,
   touchPublicShare,
 } from '../shared/session-public-shares';
 
-// ── Subdomain parsing ───────────────────────────────────────────────────────
+export { resolvePreviewHost };
 
-const SUBDOMAIN_REGEX = /^p(\d+)-([^.]+)\./;
-
-export function parsePreviewSubdomain(host: string): { port: number; sandboxId: string } | null {
-  const match = host.match(SUBDOMAIN_REGEX);
-  if (!match) return null;
-  const port = parseInt(match[1], 10);
-  if (!Number.isFinite(port) || port < 1 || port > 65535) return null;
-  return { port, sandboxId: match[2] };
+export interface ResolvedPreviewRequest {
+  target: ResolvedPreviewHost;
+  /** The hostname the BROWSER used — what the app must believe it is served on. */
+  publicHost: string;
+  /** False when a preview host is claimed without a valid edge signature. */
+  verified: boolean;
 }
 
-// ── First-request auth state ────────────────────────────────────────────────
-//
-// Once a subdomain is authenticated, all subsequent requests on it pass
-// through without further auth. We remember the validated userId so that
-// downstream `forwardToSandbox` can sign X-Kortix-User-Context with the right
-// identity (the agent-server's auth gate verifies that header).
-
-type AuthState =
-  | {
-      kind: 'principal';
-      userId: string;
-      callerSessionId: string | null;
-      sandboxAuthored: boolean;
-      expiresAt: number;
-    }
-  | { kind: 'public_share'; shareId: string; mode: string; expiresAt: number };
-
-// In-memory subdomain auth gate (see authenticatePreviewPrincipal / markAuthedSubdomain).
-const authedSubdomains = new Map<string, AuthState>();
-const AUTH_SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
-const PUBLIC_SHARE_SESSION_TTL_MS = 15 * 60 * 1000;
-
-function clientKey(req: Request): string {
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    req.headers.get('x-real-ip')?.trim() ||
-    req.headers.get('cf-connecting-ip')?.trim() ||
-    'unknown';
-  const ua = req.headers.get('user-agent') || 'unknown';
-  return `${ip}|${ua}`;
+/**
+ * Direct-edge mode: no Cloudflare preview Worker fronts this deployment, so the
+ * operator's own reverse proxy is the trust boundary and requests arrive
+ * unsigned with the real Host intact.
+ */
+function previewDirectEdgeMode(): boolean {
+  return process.env.KORTIX_PREVIEW_ALLOW_DIRECT_EDGE === 'true';
 }
 
-export function previewSubdomainAuthCacheKeyForTest(sandboxId: string, port: number, req: Request): string {
-  return `p${port}-${sandboxId}|${clientKey(req)}`;
+/**
+ * Which preview (if any) a request targets.
+ *
+ * The edge Worker forwards to the API's own origin, so the upstream `Host` is
+ * `dev-api.kortix.com` and the browser's hostname survives only in the SIGNED
+ * `x-kortix-preview-host` header. Trusting that header unsigned would let any
+ * caller reaching the API origin name any preview — and would put sandbox
+ * content back on the API origin, which is the whole thing this design removes.
+ * So a claimed host counts only when the signature over it verifies.
+ */
+export function resolvePreviewRequest(req: Request, url: URL): ResolvedPreviewRequest | null {
+  const claimedHost = previewDirectEdgeMode() ? null : req.headers.get(PREVIEW_EDGE_HEADERS.host);
+  const publicHost = (claimedHost || req.headers.get('host') || url.hostname || '').toLowerCase();
+  const target = resolvePreviewHost(publicHost);
+  if (!target) return null;
+
+  // A local `*.localhost` preview never passes through an edge, and a
+  // direct-edge deployment signs nothing by design.
+  const verified =
+    target.local
+    || previewDirectEdgeMode()
+    || verifyEdgeSignedRequest(req, url, {
+      headers: PREVIEW_EDGE_HEADERS,
+      secret: edgeSecret(process.env.KORTIX_PREVIEW_EDGE_SECRET),
+      publicHost,
+    });
+
+  return { target, publicHost: publicHost.replace(/:\d+$/, ''), verified };
 }
 
-function key(sandboxId: string, port: number, req: Request): string {
-  return previewSubdomainAuthCacheKeyForTest(sandboxId, port, req);
+/**
+ * True when this request addresses a preview origin. The Bun.serve dispatcher
+ * asks before it does anything else, because Hono cannot route on a hostname.
+ */
+export function isPreviewHost(req: Request, url: URL): boolean {
+  return resolvePreviewRequest(req, url) !== null;
 }
 
-function getAuthedSubdomain(sandboxId: string, port: number, req: Request): AuthState | null {
-  const cacheKey = key(sandboxId, port, req);
-  const entry = authedSubdomains.get(cacheKey);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    authedSubdomains.delete(cacheKey);
-    return null;
-  }
-  return entry;
+/** Query parameters that carry a one-shot credential, never forwarded upstream. */
+const CREDENTIAL_PARAMS = ['token', 'public_share'] as const;
+
+function corsHeaders(origin: string): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': origin || '*',
+    'Access-Control-Allow-Credentials': 'true',
+  };
 }
 
-function markAuthedSubdomain(
-  sandboxId: string,
-  port: number,
-  req: Request,
-  userId: string,
-  // Cached alongside the user because the cache is what later forwards get their
-  // principal from — dropping it here would re-open the bypass on every cache hit.
-  callerSessionId: string | null,
-  // Cached for the same reason as callerSessionId: every later forward reads
-  // its principal from here, so dropping it would let a sandbox-authored
-  // request extend its own deadline on each cache hit.
-  sandboxAuthored: boolean,
-): void {
-  authedSubdomains.set(key(sandboxId, port, req), {
-    kind: 'principal',
-    userId,
-    callerSessionId,
-    sandboxAuthored,
-    expiresAt: Date.now() + AUTH_SESSION_TTL_MS,
+function jsonError(status: number, message: string, origin: string): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
   });
 }
 
-function markPublicShareSubdomain(sandboxId: string, port: number, share: {
-  shareId: string;
-  mode: string;
-  expiresAt: Date | null;
-}, req: Request): AuthState {
-  const expiresAt = Math.min(
-    Date.now() + PUBLIC_SHARE_SESSION_TTL_MS,
-    share.expiresAt?.getTime() ?? Number.POSITIVE_INFINITY,
-  );
-  const state: AuthState = {
-    kind: 'public_share',
-    shareId: share.shareId,
-    mode: share.mode,
-    expiresAt,
-  };
-  authedSubdomains.set(key(sandboxId, port, req), state);
-  return state;
-}
-
-async function authenticatePublicShareSubdomain(
+/**
+ * Resolve a public-share token into a grant for THIS preview, or null. The
+ * share must name this exact sandbox and port — a share for one port is not a
+ * key to the box.
+ */
+async function authenticatePublicShare(
   token: string | null,
   sandboxId: string,
   port: number,
-  req: Request,
-): Promise<AuthState | null> {
+): Promise<{ shareId: string; mode: string } | null> {
   if (!token) return null;
   const resolved = await resolvePublicShare(token);
   if (!resolved.ok) return null;
@@ -151,143 +144,196 @@ async function authenticatePublicShareSubdomain(
   }
 
   void touchPublicShare(share.shareId).catch(() => {});
-  return markPublicShareSubdomain(sandboxId, port, share, req);
+  return { shareId: share.shareId, mode: share.mode };
 }
 
-// Periodic cleanup of expired entries — keeps the map from growing
-// unboundedly under churn.
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of authedSubdomains) {
-    if (now > v.expiresAt) authedSubdomains.delete(k);
+/**
+ * The session a request already carries, verified against the host it arrived
+ * on. Both cookie copies are tried (see preview-session.ts on why there are two).
+ */
+export function sessionFromCookies(req: Request, target: ResolvedPreviewHost): PreviewSession | null {
+  for (const value of readPreviewCookies(req.headers.get('Cookie'))) {
+    const session = verifyPreviewSession(value, target);
+    if (session) return session;
   }
-}, 30 * 60 * 1000);
-
-// Token validation + extraction live in ./preview-auth, shared with the
-// WebSocket edge so every entry point accepts the same credentials.
-
-// ── Request handler ─────────────────────────────────────────────────────────
+  return null;
+}
 
 /**
- * Handle a subdomain preview request end-to-end. Returns:
- *   - `Response` to send back to the client
- *   - `null` to indicate "not a subdomain request — let the caller fall through"
+ * Authenticate a request that has no cookie yet, using the one-shot credential
+ * in the URL (or an Authorization header, for non-browser callers). Returns the
+ * minted session, or a Response to send instead.
+ */
+export async function establishPreviewSession(
+  req: Request,
+  url: URL,
+  target: ResolvedPreviewHost,
+): Promise<{ session: PreviewSession } | { response: Response }> {
+  const origin = req.headers.get('Origin') || '';
+
+  const sandboxId = await resolveExternalIdFromHostLabel(target.sandboxLabel);
+  if (!sandboxId) {
+    // No sandbox has ever carried this label. Say "not found", not
+    // "unauthorized": there is nothing here to be authorized for, and a 401
+    // would send the web app into a pointless re-auth loop.
+    return { response: jsonError(404, 'Unknown preview', origin) };
+  }
+
+  const share = await authenticatePublicShare(
+    url.searchParams.get('public_share'),
+    sandboxId,
+    target.port,
+  );
+  if (share) {
+    return {
+      session: {
+        kind: 'public_share',
+        sandboxLabel: target.sandboxLabel,
+        sandboxId,
+        port: target.port,
+        shareId: share.shareId,
+        mode: share.mode,
+        exp: 0,
+      },
+    };
+  }
+
+  const principal = await authenticatePreviewPrincipalDetailed(
+    extractPreviewToken(req, url),
+    sandboxId,
+  );
+  if (!principal?.userId) {
+    return { response: jsonError(401, 'Unauthorized', origin) };
+  }
+
+  return {
+    session: {
+      kind: 'principal',
+      sandboxLabel: target.sandboxLabel,
+      sandboxId,
+      port: target.port,
+      userId: principal.userId,
+      // A non-null sessionId here means the credential is BOUND to a session —
+      // i.e. it is the sandbox's own token (see PreviewPrincipal). Every other
+      // branch returns null, and dropping it would let a sandbox-authored
+      // request extend its own deadline.
+      callerSessionId: principal.sessionId,
+      sandboxAuthored: principal.sessionId !== null,
+      exp: 0,
+    },
+  };
+}
+
+/** Set-Cookie values that persist a freshly established session. */
+export function cookiesForSession(session: PreviewSession, secure: boolean): string[] {
+  const ttl = session.kind === 'public_share' ? PREVIEW_SHARE_TTL_SECONDS : PREVIEW_SESSION_TTL_SECONDS;
+  const { exp: _exp, ...payload } = session;
+  return previewSessionCookies(mintPreviewSession(payload, ttl), { secure, maxAgeSeconds: ttl });
+}
+
+/** True when the request is a top-level navigation (not a subresource/XHR). */
+function isDocumentNavigation(req: Request): boolean {
+  const dest = req.headers.get('sec-fetch-dest');
+  if (dest) return dest === 'document' || dest === 'iframe';
+  return (req.headers.get('accept') || '').includes('text/html');
+}
+
+/**
+ * Handle a preview-origin request end-to-end. Returns null when the Host header
+ * is not a preview, so the caller falls through to normal API routing.
  */
 export async function handleSubdomainRequest(
   req: Request,
   url: URL,
 ): Promise<Response | null> {
-  const host = req.headers.get('host') || '';
-  const subdomain = parsePreviewSubdomain(host);
-  if (!subdomain) return null;
+  const resolved = resolvePreviewRequest(req, url);
+  if (!resolved) return null;
+  const { target, publicHost } = resolved;
 
-  const { port, sandboxId } = subdomain;
   const origin = req.headers.get('Origin') || '';
+  if (!resolved.verified) {
+    // A preview hostname was claimed without the edge signature that binds it.
+    // Refuse rather than fall through: falling through would serve API routing
+    // under a hostname the caller chose.
+    return jsonError(403, 'Unsigned preview host', origin);
+  }
 
   // CORS preflight must succeed BEFORE auth — browsers send OPTIONS without
-  // Authorization headers, and rejecting the preflight blocks the real
-  // request from ever carrying the Bearer token that would authenticate us.
+  // credentials, and rejecting the preflight blocks the real request from ever
+  // carrying the ones that would authenticate it.
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
       headers: {
-        'Access-Control-Allow-Origin': origin || '*',
+        ...corsHeaders(origin),
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS',
         'Access-Control-Allow-Headers': req.headers.get('Access-Control-Request-Headers') || '*',
-        'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Max-Age': '86400',
       },
     });
   }
 
-  let authed = getAuthedSubdomain(sandboxId, port, req);
+  const proto = req.headers.get('x-forwarded-proto') || url.protocol.replace(':', '');
+  const secure = proto === 'https';
 
-  // Not authed yet — first honor a public share token, then fall back to normal
-  // logged-in preview auth. Public shares deliberately use the same transparent
-  // subdomain proxy as the internal Browser so root-mounted apps (Next/Vite)
-  // do not break under path-prefix rewrites.
-  if (!authed) {
-    authed = await authenticatePublicShareSubdomain(
-      url.searchParams.get('public_share'),
-      sandboxId,
-      port,
-      req,
-    );
-  }
-  if (!authed) {
-    const token = extractPreviewToken(req, url);
-    const principal = await authenticatePreviewPrincipalDetailed(token, sandboxId);
-    const validatedUserId = principal?.userId ?? null;
-    if (!principal || !validatedUserId) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        {
-          status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': origin || '*',
-            'Access-Control-Allow-Credentials': 'true',
-          },
-        },
-      );
+  let session = sessionFromCookies(req, target);
+  let setCookies: string[] = [];
+
+  if (!session) {
+    const established = await establishPreviewSession(req, url, target);
+    if ('response' in established) return established.response;
+    session = established.session;
+    setCookies = cookiesForSession(session, secure);
+
+    // The credential arrived in the URL. On a top-level navigation, get it out
+    // of the address bar (and out of every Referer the app then sends) by
+    // bouncing once to the clean URL now that the cookie exists.
+    const carriedInUrl = CREDENTIAL_PARAMS.some((p) => url.searchParams.has(p));
+    if (carriedInUrl && isDocumentNavigation(req) && (req.method === 'GET' || req.method === 'HEAD')) {
+      const clean = new URL(url);
+      for (const p of CREDENTIAL_PARAMS) clean.searchParams.delete(p);
+      const headers = new Headers({
+        Location: `${clean.pathname}${clean.search}${clean.hash}`,
+        ...corsHeaders(origin),
+      });
+      for (const cookie of setCookies) headers.append('Set-Cookie', cookie);
+      return new Response(null, { status: 302, headers });
     }
-    // On this path a non-null sessionId means the credential is BOUND to a
-    // session — i.e. it is the sandbox's own token (see PreviewPrincipal);
-    // every other branch returns sessionId: null.
-    const sandboxAuthored = principal.sessionId !== null;
-    markAuthedSubdomain(sandboxId, port, req, validatedUserId, principal.sessionId, sandboxAuthored);
-    authed = {
-      kind: 'principal',
-      userId: validatedUserId,
-      callerSessionId: principal.sessionId,
-      sandboxAuthored,
-      expiresAt: Date.now() + AUTH_SESSION_TTL_MS,
-    };
   }
 
-  // Body (read once, before retries inside forwardToSandbox).
+  // Body (read once, before the retries inside forwardToSandbox).
   let body: ArrayBuffer | undefined;
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     body = await req.arrayBuffer();
   }
 
-  // Strip the one-shot `?token` (used only to authenticate the first request)
-  // so the sandbox app never sees it. Everything else passes through.
+  // Strip the one-shot credentials so the sandbox app never sees them.
   const forwardSearchParams = new URLSearchParams(url.search);
-  forwardSearchParams.delete('token');
-  forwardSearchParams.delete('public_share');
+  for (const p of CREDENTIAL_PARAMS) forwardSearchParams.delete(p);
   const forwardSearch = forwardSearchParams.toString();
   const queryString = forwardSearch ? `?${forwardSearch}` : '';
 
-  // Public origin the browser used to reach this subdomain. Prefer the proxy's
-  // X-Forwarded-Proto (set by a TLS-terminating LB in prod) and fall back to the
-  // scheme Bun actually saw (http in local dev) — never hardcode https, or the
-  // injected static-web <base> tag points at https against an http listener and
-  // every relative asset fails with ERR_SSL_PROTOCOL_ERROR.
-  const proto = req.headers.get('x-forwarded-proto') || url.protocol.replace(':', '');
-  const publicOrigin = `${proto}://${host}`;
+  // Public origin the browser used — the hostname it typed, not the API host
+  // the edge forwarded to. Prefer X-Forwarded-Proto (set by the TLS-terminating
+  // edge) and fall back to the scheme Bun actually saw; never hardcode https,
+  // or the injected static-web <base> tag points at https against an http
+  // listener and every relative asset fails.
+  const publicOrigin = `${proto}://${publicHost}`;
 
-  // Hand off to the shared forwarder. It handles ownership, service-key auth,
-  // X-Kortix-User-Context signing, auto-wake retries, etc.
-  //
-  // remainingPath is the FULL pathname here — the subdomain itself encodes
-  // the (sandboxId, port) target, so the rest of the URL is what the
-  // proxied app expects to see.
   try {
-    return await forwardToSandbox(
-      sandboxId,
-      port,
-      authed.kind === 'principal'
+    const response = await forwardToSandbox(
+      session.sandboxId,
+      target.port,
+      session.kind === 'principal'
         ? {
             kind: 'principal',
-            userId: authed.userId,
-            callerSessionId: authed.callerSessionId,
-            // On this path `callerSessionId` is only ever the SANDBOX's own
-            // token binding — a Supabase login never reaches it (see
-            // authenticatePreviewPrincipal above) — so it is also the correct
-            // agent binding for the manager-override gate.
-            boundCredentialSessionId: authed.callerSessionId,
-            sandboxAuthored: authed.sandboxAuthored,
+            userId: session.userId,
+            callerSessionId: session.callerSessionId,
+            // `callerSessionId` here is only ever the SANDBOX's own token
+            // binding — a Supabase login never reaches it — so it is also the
+            // correct agent binding for the manager-override gate.
+            boundCredentialSessionId: session.callerSessionId,
+            sandboxAuthored: session.sandboxAuthored,
           }
         : { kind: 'public_share' },
       req.method,
@@ -295,29 +341,28 @@ export async function handleSubdomainRequest(
       queryString,
       req.headers,
       body,
-      origin,
-      // Subdomain previews serve at the host root, so redirects stay
-      // root-relative (no /v1/p/<sandbox>/<port> prefix).
+      // Same-origin requests need no CORS headers at all, and injecting them
+      // would overwrite whatever the app itself sends. Only a genuinely
+      // cross-origin caller gets the allow-origin echo.
+      origin && origin.toLowerCase() === publicOrigin.toLowerCase() ? '' : origin,
+      // A preview origin serves at the host root, so redirects stay
+      // root-relative (no /v1/p/<sandbox>/<port> prefix to re-apply).
       '',
       // …and X-Forwarded-Prefix is just the origin — relative assets resolve to
-      // p{port}-{sandbox}.host/abs/... which routes straight back here.
+      // this same host, which routes straight back here.
       publicOrigin,
+      { originMode: true },
     );
+
+    if (setCookies.length === 0) return response;
+    const headers = new Headers(response.headers);
+    for (const cookie of setCookies) headers.append('Set-Cookie', cookie);
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   } catch (err) {
     console.error(
-      `[subdomain-proxy] ${sandboxId}:${port}${url.pathname}:`,
+      `[preview-origin] ${target.sandboxLabel}:${target.port}${url.pathname}:`,
       err instanceof Error ? err.message : err,
     );
-    return new Response(
-      JSON.stringify({ error: 'Failed to proxy to sandbox' }),
-      {
-        status: 502,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': origin || '*',
-          'Access-Control-Allow-Credentials': 'true',
-        },
-      },
-    );
+    return jsonError(502, 'Failed to proxy to sandbox', origin);
   }
 }

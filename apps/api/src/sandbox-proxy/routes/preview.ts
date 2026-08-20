@@ -28,6 +28,7 @@ import {
   KORTIX_SERVICE_CALL_HEADER,
   KORTIX_USER_CONTEXT_HEADER,
 } from '../../shared/kortix-user-context';
+import { appCookieHeader } from '../preview-session';
 import { canAccessPreviewSandbox, canAccessSandboxSession } from '../../shared/preview-ownership';
 import {
   buildSandboxUpstreamHeaders,
@@ -789,6 +790,11 @@ export async function forwardToSandbox(
   // the scheme is correct in every environment (http in local dev, https behind
   // a TLS-terminating LB). Falls back to reconstructing from the Host header.
   publicOrigin?: string,
+  // Origin mode: this sandbox port is served on its OWN hostname, so the app is
+  // alone on that origin. Two things become both safe and necessary there —
+  // forwarding the app's cookies (see appCookieHeader) and leaving same-origin
+  // responses free of injected CORS headers.
+  opts: { originMode?: boolean } = {},
 ): Promise<Response> {
   let requestBody = body;
 
@@ -1233,7 +1239,16 @@ export async function forwardToSandbox(
 
       const headers = new Headers();
       for (const [key, value] of incomingHeaders.entries()) {
-        if (STRIP_FORWARD_HEADERS.has(key.toLowerCase())) continue;
+        const name = key.toLowerCase();
+        // On a preview origin the jar holds the app's own cookies plus ours.
+        // Give the app back everything that is its own — a cookie-session app
+        // is otherwise permanently logged out through the proxy.
+        if (name === 'cookie' && opts.originMode) {
+          const appCookies = appCookieHeader(value);
+          if (appCookies) headers.set('cookie', appCookies);
+          continue;
+        }
+        if (STRIP_FORWARD_HEADERS.has(name)) continue;
         headers.set(key, value);
       }
       headers.set('Accept-Encoding', 'identity');

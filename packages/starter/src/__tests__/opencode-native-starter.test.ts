@@ -131,6 +131,9 @@ describe('the starter is OpenCode-native', () => {
     expect(packageJson.dependencies?.['@opencode-ai/plugin']).toBeUndefined();
     expect(lock).not.toContain('"@opencode-ai/plugin"');
     expect(lock).not.toContain('"effect"');
+    expect(readFileSync(join(OPENCODE_ROOT, '..', '..', '.gitignore'), 'utf8')).toContain(
+      '.kortix/opencode/package-lock.json',
+    );
 
     for (const file of [
       'image_search.ts',

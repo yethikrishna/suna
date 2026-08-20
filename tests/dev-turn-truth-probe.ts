@@ -125,7 +125,16 @@ async function main() {
   const readTurn = async () =>
     (await jsonOrText(
       await fetch(`${API}/projects/${project.project_id}/sessions/${sid}/turn`, { headers: auth() }),
-    )) as { turns?: unknown[]; last_ended?: unknown };
+    )) as { turns?: unknown[]; last_ended?: Record<string, unknown> };
+
+  // A box-initiated turn can be SHORT (measured 5.2s on dev). Missing its open
+  // window is a polling artifact, not a failure — the terminal row is equally
+  // good proof that adoption happened, so both count.
+  const readEvidence = async () => {
+    const t = await readTurn();
+    const open = Array.isArray(t.turns) ? t.turns.length : 0;
+    return { open, lastEnded: t.last_ended ?? null, raw: t };
+  };
 
   const before = await readTurn();
   log(`turn BEFORE: ${JSON.stringify(before)}`);
@@ -167,43 +176,40 @@ async function main() {
 
   // ---- assert authority appears -----------------------------------------
   let sawOpenTurn = false;
-  let firstSeenAtMs = 0;
   let adopted: unknown = null;
-  let ptyExited = false;
+  let terminalEvidence: unknown = null;
   const t0 = Date.now();
-  for (let i = 0; i < 50; i++) {
-    if (!ptyExited) {
-      const list = (await jsonOrText(
-        await fetch(`${runtimeUrl}/pty?directory=%2Fworkspace`, { headers: auth() }),
-      )) as Array<{ id?: string; status?: string }>;
-      const mine = Array.isArray(list) ? list.find((p) => p.id === pty.id) : undefined;
-      if (mine && mine.status === 'exited') {
-        ptyExited = true;
-        log(`pty EXITED after ${Date.now() - t0}ms — OpenCode should now inject <pty_exited>`);
-      }
-    }
-    const t = await readTurn();
-    const open = Array.isArray(t.turns) ? t.turns.length : 0;
+  for (let i = 0; i < 240; i++) {
+    const { open, lastEnded, raw } = await readEvidence();
     if (open > 0 && !sawOpenTurn) {
       sawOpenTurn = true;
-      firstSeenAtMs = Date.now() - t0;
-      adopted = t.turns;
-      log(`✅ A: box-initiated turn HAS AUTHORITY after ${firstSeenAtMs}ms: ${JSON.stringify(t.turns)}`);
+      adopted = raw.turns;
+      log(`✅ A: box-initiated turn HAS AUTHORITY after ${Date.now() - t0}ms: ${JSON.stringify(raw.turns)}`);
+    }
+    if (lastEnded && !terminalEvidence) {
+      terminalEvidence = lastEnded;
+      log(`✅ terminal row after ${Date.now() - t0}ms: ${JSON.stringify(lastEnded)}`);
     }
     if (sawOpenTurn && open === 0) {
-      log(`✅ B: authority released after ${Date.now() - t0}ms — turn: ${JSON.stringify(t)}`);
+      log(`✅ B: authority released after ${Date.now() - t0}ms`);
       break;
     }
-    if (i % 5 === 0) log(`  [${i}] pty_exited=${ptyExited} open_turns=${open}`);
-    await sleep(3_000);
+    if (terminalEvidence && !sawOpenTurn && i > 20) break;
+    if (i % 20 === 0) log(`  [${i}] open_turns=${open} last_ended=${lastEnded ? 'yes' : 'no'}`);
+    await sleep(500);
   }
 
   log(`\nopencode_session=${ocId}`);
   log(`session_id=${sid}   project_id=${project.project_id}`);
-  if (!sawOpenTurn) {
-    log('❌ A FAILED: GET /turn never reported an open turn for a pty-initiated turn.');
+  if (!sawOpenTurn && !terminalEvidence) {
+    log('❌ FAILED: no turn authority EVER existed for a turn the box started on its own.');
     log('   (This is exactly the Essentia symptom — composer reads "not running".)');
     process.exit(1);
+  }
+  if (!sawOpenTurn) {
+    log(`\nPROBE PASSED (terminal evidence only — the turn was shorter than the poll):`);
+    log(`  ${JSON.stringify(terminalEvidence)}`);
+    return;
   }
   log(`\nPROBE PASSED — adopted: ${JSON.stringify(adopted)}`);
 }

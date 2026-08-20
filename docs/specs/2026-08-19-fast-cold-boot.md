@@ -30,6 +30,9 @@ branch workspace:
   within its existing two-second deadline
 - `KORTIX_GIT_DELTA_BUNDLE_BASE64=<bounded exact commit bundle>` when the base
   tip is one commit above its parent and the encoded bundle is at most 24 KiB
+- `KORTIX_GIT_DELTA_PARENT_SHA=<bundle prerequisite commit>` and
+  `KORTIX_GIT_DELTA_PARENT_COMMIT_BASE64=<raw prerequisite commit>` when the
+  storage provider rewrites the scaffold commit metadata
 
 After a managed project seed completes, the API stores the verified bundle in
 `projects.metadata.git.fast_boot`. A later session validates the cached SHA
@@ -39,6 +42,11 @@ network fallback.
 
 The cache is available to every API instance. The project serializer removes
 the internal `fast_boot` field from provision, list, and detail responses.
+
+The provider-specific parent payload makes the thin bundle portable across
+identical scaffold trees with different commit metadata. The bundle and parent
+payload share the existing 24 KiB limit. Cache version 2 invalidates earlier
+entries that do not contain the parent payload.
 
 The daemon uses the hints as follows:
 
@@ -52,7 +60,9 @@ The daemon uses the hints as follows:
 - Restarted sessions keep the existing remote-branch fetch behavior.
 
 The bundle is transported with the sandbox creation environment. The daemon
-validates its encoding, size, prerequisite commit, and resulting SHA. Any
+recomputes the parent commit SHA before it writes the object. It also verifies
+that the parent tree already exists in the baked scaffold. The daemon then
+validates the bundle, imports it, and verifies the resulting base SHA. Any
 validation failure uses the authenticated fetch path.
 
 This design creates no sandbox pool. It requires no schema migration. It changes
@@ -61,7 +71,7 @@ no Git history or push behavior.
 ## Rollback
 
 Set `KORTIX_FAST_COLD_BOOT_ENABLED=false` and redeploy the API. The API then
-omits all three hints, and the daemon uses the previous network path.
+omits all fast-boot Git hints, and the daemon uses the previous network path.
 
 ## Verification
 

@@ -1560,8 +1560,8 @@ importers:
         specifier: workspace:*
         version: link:../llm-catalog
       '@opencode-ai/sdk':
-        specifier: 1.17.11
-        version: 1.17.11
+        specifier: 1.18.19
+        version: 1.18.19
       zustand:
         specifier: ^5.0.3
         version: 5.0.14(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.6.0)
@@ -6479,8 +6479,8 @@ packages:
       rimraf: 3.0.2
     dev: true
 
-  /@opencode-ai/sdk@1.17.11:
-    resolution: {integrity: sha512-UdSwnNM4/cD5rHnI8O7VaHuiwYnsEOglpRPVeeYE2S5Nm1K34ijCyZGDvBecb0ShdBQgn49XvyQWJH6cREsIPw==}
+  /@opencode-ai/sdk@1.18.19:
+    resolution: {integrity: sha512-AnszRg7cJ3PA6/06mkqdTJDKn9NJuV26AJMWbKEgRsznbJvrhf3PT8UhQQOhyKQYCygx9ZOxyKMIPVOQdMSS1A==}
     dependencies:
       cross-spawn: 7.0.6
     dev: false

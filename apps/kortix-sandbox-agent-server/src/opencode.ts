@@ -1473,7 +1473,7 @@ export async function prefetchExecutablePages(
 ): Promise<number> {
   if (signal?.aborted) throw signal.reason
   const buffer = allocateBuffer(EXECUTABLE_PREFETCH_BUFFER_BYTES)
-  const handle = await open(path, 'r')
+  const handle = await open(path, 'r', 0o600)
   let bytes = 0
   try {
     while (true) {

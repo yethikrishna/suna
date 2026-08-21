@@ -5,6 +5,7 @@ import {
   excludePinnedTargets,
   isExactPpwarmImageName,
   legacyPerProjectWarmImageName,
+  parseExactPpwarmImageName,
   perProjectWarmImageName,
   ppwarmReapTargets,
   proj8,
@@ -374,5 +375,34 @@ describe('isExactPpwarmImageName', () => {
     '../kortix-ppwarm-9ee8bc9c-aaaaaaaaaaaa',
   ])('rejects %s', (name) => {
     expect(isExactPpwarmImageName(name)).toBe(false);
+  });
+});
+
+describe('parseExactPpwarmImageName', () => {
+  test('returns one authoritative ownership tuple for every supported format', () => {
+    const scoped = scopedPerProjectWarmImageName(
+      DB_SCOPE_A,
+      PROJ_A,
+      'tip',
+      BASE,
+      'default',
+    );
+    const unscoped = perProjectWarmImageName(PROJ_A, 'tip', BASE, 'default');
+    const legacy = legacyPerProjectWarmImageName(PROJ_A, 'tip', BASE);
+
+    expect(parseExactPpwarmImageName(scoped)).toMatchObject({
+      format: 'scoped',
+      dataPlaneScope: DB_SCOPE_A,
+    });
+    expect(parseExactPpwarmImageName(unscoped)).toMatchObject({
+      format: 'unscoped',
+      dataPlaneScope: null,
+    });
+    expect(parseExactPpwarmImageName(legacy)).toMatchObject({
+      format: 'legacy',
+      dataPlaneScope: null,
+      templateKey: null,
+    });
+    expect(parseExactPpwarmImageName(`${scoped}-extra`)).toBeNull();
   });
 });

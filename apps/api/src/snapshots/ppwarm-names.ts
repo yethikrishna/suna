@@ -280,7 +280,7 @@ export function legacyPerProjectWarmImageName(
  * warmBakeRecentlyStartedCluster) and watched, not shipped blind. It is a
  * one-time cost: steady state is unchanged.
  */
-type ParsedPpwarmName =
+export type ParsedPpwarmName =
   | {
       format: 'legacy';
       dataPlaneScope: null;
@@ -302,7 +302,7 @@ type ParsedPpwarmName =
 
 /** Parse a `kortix-ppwarm-…` name into its scope key(s). Returns null for
  *  anything outside the ppwarm namespace. See the FORMAT MIGRATION note above. */
-function parsePpwarmName(name: string): ParsedPpwarmName | null {
+export function parseExactPpwarmImageName(name: string): ParsedPpwarmName | null {
   if (!isExactPpwarmImageName(name)) return null;
   const segments = name.slice(PPWARM_PREFIX.length).split('-');
   if (
@@ -353,7 +353,7 @@ function parsePpwarmName(name: string): ParsedPpwarmName | null {
  */
 export function ppwarmReapTargets(projectId: string, currentName: string, allNames: string[]): string[] {
   const proj = proj8(projectId);
-  const current = parsePpwarmName(currentName);
+  const current = parseExactPpwarmImageName(currentName);
 
   // Reaping is destructive. An unrecognised current name provides no safe
   // ownership boundary, so it must never fall back to prefix matching.
@@ -363,7 +363,7 @@ export function ppwarmReapTargets(projectId: string, currentName: string, allNam
     if (current.projectKey !== scopedProjectKey(projectId)) return [];
     return allNames.filter((name) => {
       if (name === currentName || name.includes('__deleted')) return false;
-      const parsed = parsePpwarmName(name);
+      const parsed = parseExactPpwarmImageName(name);
       return (
         parsed?.format === 'scoped' &&
         parsed.dataPlaneScope === current.dataPlaneScope &&
@@ -378,7 +378,7 @@ export function ppwarmReapTargets(projectId: string, currentName: string, allNam
   if (current?.format === 'unscoped') {
     return allNames.filter((n) => {
       if (n === currentName || n.includes('__deleted')) return false;
-      const parsed = parsePpwarmName(n);
+      const parsed = parseExactPpwarmImageName(n);
       return (
         parsed?.format === 'unscoped' &&
         parsed.projectKey === proj &&
@@ -391,7 +391,7 @@ export function ppwarmReapTargets(projectId: string, currentName: string, allNam
   const prefix = `${PPWARM_PREFIX}${proj}-`;
   return allNames.filter((name) => {
     if (!name.startsWith(prefix) || name === currentName || name.includes('__deleted')) return false;
-    const parsed = parsePpwarmName(name);
+    const parsed = parseExactPpwarmImageName(name);
     return parsed?.format === 'legacy' || parsed?.format === 'unscoped';
   });
 }

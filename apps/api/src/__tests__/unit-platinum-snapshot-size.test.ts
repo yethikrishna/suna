@@ -50,12 +50,20 @@ const OVERSIZE_TEMPLATE_NAME = 'kortix-oversize-template';
 let fromBuildPayloads: FromBuildPayload[] = [];
 let registeredTemplateName = '';
 let registeredTemplateId = '';
+let materializeRequests: Array<{ path: string; init: RequestInit }> = [];
 /** Counts from-build POSTs the oversize stub rejected — proves a size-cap
  *  failure never burns more than one BUILD_ATTEMPTS slot. */
 let oversizeAttempts = 0;
 
 mock.module('../shared/platinum', () => ({
   isPlatinumConfigured: () => true,
+  platinumJsonResponse: async (path: string, init: RequestInit = {}) => {
+    materializeRequests.push({ path, init });
+    return {
+      status: 200,
+      body: { status: 'ready', template_id: registeredTemplateId },
+    };
+  },
   platinumJson: async (path: string, init: RequestInit = {}) => {
     if (path === '/v1/templates/from-build/presign') {
       return { upload_url: 'https://upload.test/context.tar.gz', context_s3_key: 'ctx-key' };
@@ -104,11 +112,13 @@ const {
   PLATINUM_SIZE_CAP_LOG_TOKEN,
   platinumBuildSizeMb,
 } = await import('../snapshots/providers/platinum');
+const { config } = await import('../config');
 
 beforeEach(() => {
   fromBuildPayloads = [];
   registeredTemplateName = '';
   registeredTemplateId = '';
+  materializeRequests = [];
   oversizeAttempts = 0;
   globalThis.fetch = stubFetch;
   // Per-test (not module load): build-context reads these lazily, so setting here
@@ -122,11 +132,13 @@ beforeEach(() => {
   // The build-size knob is read LAZILY per call (platinumBuildSizeMb) — reset
   // it before every test so no test's override leaks into the next.
   delete process.env.PLATINUM_BUILD_SIZE_MB;
+  config.KORTIX_FAST_COLD_BOOT_ENABLED = false;
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   delete process.env.PLATINUM_BUILD_SIZE_MB;
+  config.KORTIX_FAST_COLD_BOOT_ENABLED = false;
 });
 
 afterAll(() => {
@@ -176,6 +188,24 @@ describe('platinumBuildSizeMb (lazy PLATINUM_BUILD_SIZE_MB env knob)', () => {
 });
 
 describe('Platinum snapshot build sizing', () => {
+  test('the experimental flag materializes the exact returned template before buildSnapshot resolves', async () => {
+    config.KORTIX_FAST_COLD_BOOT_ENABLED = true;
+
+    const result = await platinumProvider.buildSnapshot({
+      snapshotName: 'kortix-materialized-template',
+      image: 'ubuntu:24.04',
+      spec: { diskGb: 10 },
+      slug: 'materialized',
+    });
+
+    expect(result.externalTemplateId).toBe(registeredTemplateId);
+    expect(materializeRequests).toHaveLength(1);
+    expect(materializeRequests[0].path).toBe(
+      `/v1/templates/${encodeURIComponent(result.externalTemplateId!)}/materialize`,
+    );
+    expect(materializeRequests[0].init.method).toBe('POST');
+  });
+
   test('a disk under the cap is sent verbatim as the build ceiling', async () => {
     await platinumProvider.buildSnapshot({
       snapshotName: 'kortix-small-template',

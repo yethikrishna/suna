@@ -161,4 +161,28 @@ describe('Platinum template materialization', () => {
     expect(probe.sleeps).toEqual([100]);
     expect(result.elapsedMs).toBe(18_000);
   });
+
+  test('build and agent-swap materialize the exact id after readiness and before return', async () => {
+    const source = await Bun.file(new URL('./platinum.ts', import.meta.url)).text();
+    const buildStart = source.indexOf('private async buildOnce(');
+    const swapStart = source.indexOf('async swapAgent(', buildStart);
+    const stateStart = source.indexOf('async getSnapshotState(', swapStart);
+    const build = source.slice(buildStart, swapStart);
+    const swap = source.slice(swapStart, stateStart);
+
+    for (const [flow, body, waitCall] of [
+      ['build', build, 'await waitForActive(input.snapshotName, tap, externalId);'],
+      ['agent swap', swap, 'await waitForActive(newSnapshotName, undefined, externalId);'],
+    ] as const) {
+      const waitIndex = body.indexOf(waitCall);
+      const materializeIndex = body.indexOf('await materializeReadyTemplate(externalId).catch(');
+      const returnIndex = body.indexOf('return { externalTemplateId: externalId };');
+
+      expect(waitIndex, `${flow} readiness call`).toBeGreaterThan(-1);
+      expect(materializeIndex, `${flow} materialization call`).toBeGreaterThan(waitIndex);
+      expect(returnIndex, `${flow} exact-id return`).toBeGreaterThan(materializeIndex);
+    }
+
+    expect(source).toContain('enabled: config.KORTIX_FAST_COLD_BOOT_ENABLED');
+  });
 });

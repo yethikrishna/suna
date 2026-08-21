@@ -110,7 +110,7 @@ RUN pnpm add -g --allow-build=opencode-ai "opencode-ai@1.18.19" \\
     && opencode --version
 
 COPY --chown=kortix:kortix kortix-opencode-warmup /tmp/kortix-opencode-warmup
-RUN bash /tmp/kortix-opencode-warmup migration; rm -f /tmp/kortix-opencode-warmup
+RUN bash /tmp/kortix-opencode-warmup migration && rm -f /tmp/kortix-opencode-warmup
 
 RUN case "$(uname -m)" in \\
       x86_64) bun_arch=x64; bun_sha=951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f ;; \\
@@ -150,7 +150,7 @@ RUN cd /opt/kortix/warm-config/.kortix/opencode \\
     && echo "opencode-config-deps: starter tool files bundle cleanly"
 
 COPY --chown=kortix:kortix kortix-opencode-warmup /tmp/kortix-opencode-warmup
-RUN bash /tmp/kortix-opencode-warmup instance wipe; rm -f /tmp/kortix-opencode-warmup
+RUN bash /tmp/kortix-opencode-warmup instance wipe && rm -f /tmp/kortix-opencode-warmup
 
 USER root
 COPY kortix-agent.gz /tmp/kortix-agent.gz
@@ -287,7 +287,7 @@ RUN pnpm add -g --allow-build=opencode-ai "opencode-ai@1.18.19" \\
     && opencode --version
 
 COPY --chown=kortix:kortix kortix-opencode-warmup /tmp/kortix-opencode-warmup
-RUN bash /tmp/kortix-opencode-warmup migration; rm -f /tmp/kortix-opencode-warmup
+RUN bash /tmp/kortix-opencode-warmup migration && rm -f /tmp/kortix-opencode-warmup
 
 RUN case "$(uname -m)" in \\
       x86_64) bun_arch=x64; bun_sha=951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f ;; \\
@@ -327,7 +327,7 @@ RUN cd /opt/kortix/warm-config/.kortix/opencode \\
     && echo "opencode-config-deps: starter tool files bundle cleanly"
 
 COPY --chown=kortix:kortix kortix-opencode-warmup /tmp/kortix-opencode-warmup
-RUN bash /tmp/kortix-opencode-warmup instance targeted; rm -f /tmp/kortix-opencode-warmup
+RUN bash /tmp/kortix-opencode-warmup instance targeted && rm -f /tmp/kortix-opencode-warmup
 
 USER root
 COPY kortix-agent.gz /tmp/kortix-agent.gz
@@ -465,7 +465,7 @@ RUN pnpm add -g --allow-build=opencode-ai "opencode-ai@1.18.19" \\
     && opencode --version
 
 COPY --chown=kortix:kortix kortix-opencode-warmup /tmp/kortix-opencode-warmup
-RUN bash /tmp/kortix-opencode-warmup migration; rm -f /tmp/kortix-opencode-warmup
+RUN bash /tmp/kortix-opencode-warmup migration && rm -f /tmp/kortix-opencode-warmup
 
 RUN case "$(uname -m)" in \\
       x86_64) bun_arch=x64; bun_sha=951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f ;; \\
@@ -518,7 +518,7 @@ RUN cd /opt/kortix/warm-config/.kortix/opencode \\
     && echo "opencode-config-deps: starter tool files bundle cleanly"
 
 COPY --chown=kortix:kortix kortix-opencode-warmup /tmp/kortix-opencode-warmup
-RUN bash /tmp/kortix-opencode-warmup instance keep; rm -f /tmp/kortix-opencode-warmup
+RUN bash /tmp/kortix-opencode-warmup instance keep && rm -f /tmp/kortix-opencode-warmup
 
 USER root
 COPY kortix-agent.gz /tmp/kortix-agent.gz
@@ -581,7 +581,7 @@ RUN cd /opt/kortix/warm-config/.kortix/opencode \\
     && echo "opencode-config-deps: starter tool files bundle cleanly"
 
 COPY --chown=kortix:kortix kortix-opencode-warmup /tmp/kortix-opencode-warmup
-RUN bash /tmp/kortix-opencode-warmup instance keep; rm -f /tmp/kortix-opencode-warmup
+RUN bash /tmp/kortix-opencode-warmup instance keep && rm -f /tmp/kortix-opencode-warmup
 
 "
 `;

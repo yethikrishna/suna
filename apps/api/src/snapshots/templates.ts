@@ -221,7 +221,7 @@ const FINGERPRINT_EXCLUDES = ['node_modules', '.bin', 'dist', '.turbo', '.cache'
 // does not survive provider startup.
 // v41: store durable daemon state under /home/kortix/.local/state/kortix. This
 // path remains writable when a provider replaces /run or discards image USER.
-const RUNTIME_LAYER_VERSION = 'verified-runtime-artifacts-v41';
+const RUNTIME_LAYER_VERSION = 'verified-runtime-artifacts-v42';
 const DEFAULT_CPU = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_CPU', 2);
 const DEFAULT_MEMORY_GB = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_MEMORY_GB', 4);
 const DEFAULT_DISK_GB = readPositiveIntEnv('KORTIX_DEFAULT_SANDBOX_DISK_GB', 20);

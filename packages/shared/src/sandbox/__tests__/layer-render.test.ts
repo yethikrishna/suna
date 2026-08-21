@@ -124,6 +124,21 @@ describe('runtime artifact integrity', () => {
     expect(rendered).not.toMatch(/curl[^|\n]*\|\s*(?:sh|bash)/);
   });
 
+  test('fails the image build when OpenCode warm-up fails', () => {
+    expect(rendered).toContain(
+      'RUN bash /tmp/kortix-opencode-warmup migration && rm -f /tmp/kortix-opencode-warmup',
+    );
+    expect(rendered).not.toContain('kortix-opencode-warmup migration; rm -f');
+
+    for (const { opts } of CASES) {
+      const image = buildLayeredDockerfile(opts);
+      expect(image).toMatch(
+        /RUN bash \/tmp\/kortix-opencode-warmup instance (?:keep|wipe|targeted) && rm -f \/tmp\/kortix-opencode-warmup/,
+      );
+      expect(image).not.toMatch(/kortix-opencode-warmup instance \w+; rm -f/);
+    }
+  });
+
 });
 
 describe('the Python runtime is managed by uv', () => {
@@ -422,7 +437,7 @@ describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
     // … and MAIN's opencode instance re-warm via the cache-only warm-up script,
     // which for a per-project warm keeps the baked /workspace checkout.
     expect(rendered).toContain(
-      'RUN bash /tmp/kortix-opencode-warmup instance keep; rm -f /tmp/kortix-opencode-warmup',
+      'RUN bash /tmp/kortix-opencode-warmup instance keep && rm -f /tmp/kortix-opencode-warmup',
     );
   });
 

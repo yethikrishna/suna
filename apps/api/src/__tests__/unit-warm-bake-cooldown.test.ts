@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 function setTestEnv(name: string, value: string): void {
   if (!process.env[name] || process.env[name]?.startsWith('encrypted:')) {
@@ -51,6 +52,24 @@ describe('perProjectColdImageEnabled', () => {
       ).toBe(expected);
     },
   );
+
+  test('gates both the session lookup and managed-push prebake', () => {
+    const source = readFileSync(new URL('../snapshots/builder.ts', import.meta.url), 'utf8');
+    const sessionLookup = source.slice(
+      source.indexOf('export async function ensureSandboxImage'),
+      source.indexOf('// Trust-the-row fast path'),
+    );
+    const pushPrebake = source.slice(
+      source.indexOf('export async function kickProjectWarmPrebake'),
+      source.indexOf('async function prebakeForProvider'),
+    );
+
+    expect(sessionLookup).toContain('perProjectColdImageEnabled()');
+    expect(sessionLookup.match(/isProjectImage: true/g)).toHaveLength(2);
+    expect(pushPrebake).toContain('if (!perProjectColdImageEnabled()) return;');
+    expect(sessionLookup).not.toContain('config.KORTIX_WARM_SNAPSHOT_ENABLED');
+    expect(pushPrebake).not.toContain('config.KORTIX_WARM_SNAPSHOT_ENABLED');
+  });
 });
 
 const FAKE_PROJECT: GitBackedProject = {

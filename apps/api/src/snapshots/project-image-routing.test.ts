@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  projectImageNameMatchesIdentity,
   projectImageReadCandidates,
   projectImageWriteName,
   type ProjectImageRollout,
@@ -79,5 +80,47 @@ describe('project image routing', () => {
         dataPlaneScope: 'not-used',
       }),
     ).toBe(perProjectWarmImageName(PROJECT, TIP, BASE, SLUG));
+  });
+
+  test('validates durable names from each compatible rollout format', () => {
+    const scoped = scopedPerProjectWarmImageName(SCOPE, PROJECT, TIP, BASE, SLUG);
+    const priorPlaneScoped = scopedPerProjectWarmImageName(
+      '2'.repeat(12),
+      PROJECT,
+      TIP,
+      BASE,
+      SLUG,
+    );
+    const unscoped = perProjectWarmImageName(PROJECT, TIP, BASE, SLUG);
+    const old = legacyPerProjectWarmImageName(PROJECT, TIP, BASE);
+
+    expect(projectImageNameMatchesIdentity(scoped, PROJECT, TIP, BASE, SLUG, true)).toBe(
+      true,
+    );
+    expect(
+      projectImageNameMatchesIdentity(priorPlaneScoped, PROJECT, TIP, BASE, SLUG, true),
+    ).toBe(true);
+    expect(projectImageNameMatchesIdentity(unscoped, PROJECT, TIP, BASE, SLUG, true)).toBe(
+      true,
+    );
+    expect(projectImageNameMatchesIdentity(old, PROJECT, TIP, BASE, SLUG, true)).toBe(true);
+    expect(projectImageNameMatchesIdentity(old, PROJECT, TIP, BASE, 'custom', false)).toBe(
+      false,
+    );
+    expect(
+      projectImageNameMatchesIdentity(scoped, PROJECT, `${TIP}x`, BASE, SLUG, true),
+    ).toBe(false);
+    expect(
+      projectImageNameMatchesIdentity(scoped, `${PROJECT}x`, TIP, BASE, SLUG, true),
+    ).toBe(false);
+    expect(
+      projectImageNameMatchesIdentity(scoped, PROJECT, TIP, `${BASE}-next`, SLUG, true),
+    ).toBe(false);
+    expect(
+      projectImageNameMatchesIdentity(scoped, PROJECT, TIP, BASE, 'custom', true),
+    ).toBe(false);
+    expect(projectImageNameMatchesIdentity('kpp2-not-valid', PROJECT, TIP, BASE, SLUG, true)).toBe(
+      false,
+    );
   });
 });

@@ -26,6 +26,7 @@ import { config, type SandboxProviderName } from '../config';
 import { warmPrebakeProviders } from '../projects/lib/provider-precedence';
 import { PPWARM_REAP_PROTECT_MS, excludePinnedTargets, ppwarmReapTargets, warmBuildSlug } from './ppwarm-names';
 import {
+  projectImageNameMatchesIdentity,
   projectImageReadCandidates,
   projectImageWriteName,
   type ProjectImageReadCandidate,
@@ -2000,6 +2001,12 @@ export async function ensurePerProjectWarmImage(
     /** Lease-renewal hook, forwarded into the provider's build-wait poll loop so
      *  a long build never lets the caller's lease TTL lapse. */
     heartbeat?: () => void | Promise<void>;
+    /**
+     * Durable provider-transition identity. A transition keeps the exact name
+     * it persisted before a feature-flag or data-plane-scope rollout. The name
+     * is accepted only when it recomputes to this project/template/tip/runtime.
+     */
+    snapshotName?: string;
   } = {},
 ): Promise<PerProjectWarmResult> {
   if (!project.repoUrl) throw new SnapshotBuildError('project has no repo url — cannot bake per-project warm image');
@@ -2025,19 +2032,42 @@ export async function ensurePerProjectWarmImage(
   const tip = await resolveCommitSha(project, project.defaultBranch);
   if (!tip) throw new SnapshotBuildError(`could not resolve ${project.defaultBranch} tip for per-project warm`);
 
-  const snapshotName = routedPerProjectWarmImageName(
+  const routedSnapshotName = routedPerProjectWarmImageName(
     project.projectId,
     tip,
     baseIdentity.snapshotName,
     template.slug,
   );
+  if (
+    opts.snapshotName &&
+    !projectImageNameMatchesIdentity(
+      opts.snapshotName,
+      project.projectId,
+      tip,
+      baseIdentity.snapshotName,
+      template.slug,
+      !!template.isShared,
+    )
+  ) {
+    throw new SnapshotBuildError(
+      `persisted project image ${opts.snapshotName} does not match the current project identity`,
+    );
+  }
+  const snapshotName = opts.snapshotName ?? routedSnapshotName;
+  // A pre-FAST durable transition can resume under FAST with an unscoped name.
+  // Do not run FAST's predecessor cleanup for that compatibility build because
+  // an unscoped name cannot prove data-plane ownership.
+  const canReapProjectImagePredecessors =
+    opts.snapshotName === undefined || snapshotName === routedSnapshotName;
 
   // Idempotency: active image under this (project, tip, runtime) → reuse it.
   // Still reap here — this path also runs when a prior bake's reap failed or a
   // moved-then-restored tip races to active, so it cleans lingering old tips.
   const existingState = await provider.getSnapshotState(snapshotName);
   if (existingState === 'active') {
-    await reapOldPerProjectWarm(project.projectId, snapshotName, buildProvider);
+    if (canReapProjectImagePredecessors) {
+      await reapOldPerProjectWarm(project.projectId, snapshotName, buildProvider);
+    }
     return prepareSnapshotForReuse(
       provider,
       snapshotName,
@@ -2130,7 +2160,9 @@ export async function ensurePerProjectWarmImage(
       buildResult = await provider.buildSnapshot(fullRebuildInput, buildTap);
     }
     if (buildId) await closeBuildLogReady(buildId);
-    await reapOldPerProjectWarm(project.projectId, snapshotName, buildProvider);
+    if (canReapProjectImagePredecessors) {
+      await reapOldPerProjectWarm(project.projectId, snapshotName, buildProvider);
+    }
     // FIX-B: carry the build-proven external template id up to the transition runner.
     return { snapshotName, tip, built: true, provider: buildProvider, externalTemplateId: buildResult?.externalTemplateId };
   } catch (err) {

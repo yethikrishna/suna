@@ -596,15 +596,25 @@ export async function activateWithCas(
      *  requires the row's lease_epoch to still match (zombie fencing). */
     leaseEpoch?: number;
   },
-): Promise<{ activated: boolean; reason: 'won' | 'lost_cas' | 'lost_lease' | 'project_missing' }> {
+): Promise<{
+  activated: boolean;
+  reason: 'won' | 'lost_cas' | 'lost_lease' | 'project_missing' | 'project_archived';
+}> {
   return db.transaction(async (tx) => {
     const [project] = await tx
-      .select({ metadata: projects.metadata, generation: projects.sandboxProviderGeneration })
+      .select({
+        metadata: projects.metadata,
+        generation: projects.sandboxProviderGeneration,
+        status: projects.status,
+      })
       .from(projects)
       .where(eq(projects.projectId, args.projectId))
       .for('update')
       .limit(1);
     if (!project) return { activated: false, reason: 'project_missing' as const };
+    if (project.status === 'archived') {
+      return { activated: false, reason: 'project_archived' as const };
+    }
 
     // Lease fence: a fenced-out zombie must not win activation even at a matching
     // generation. Read the row's epoch under the project lock; a mismatch means a

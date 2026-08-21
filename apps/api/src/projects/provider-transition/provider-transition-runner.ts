@@ -658,6 +658,28 @@ export async function driveProviderTransition(
     // Fenced out at activation (a newer owner re-acquired at the SAME generation) —
     // the pin was NOT touched. Cease silently; the current owner activates.
     if (result.reason === 'lost_lease') return 'not_leased';
+    if (result.reason === 'project_archived') {
+      await provider.deleteSnapshot(snapshotName).catch((error) =>
+        console.warn(
+          `[provider-transition] could not delete ${snapshotName} after project ` +
+            `${leased.projectId} was archived during activation:`,
+          error instanceof Error ? error.message : String(error),
+        ),
+      );
+      await mustOwn(
+        failTransition(
+          deps.db,
+          transitionId,
+          {
+            attempts: leased.attempts ?? 0,
+            lastError: 'project archived during activation',
+            errorClass: 'gone',
+          },
+          myEpoch,
+        ),
+      );
+      return 'gone';
+    }
     await mustOwn(failTransition(deps.db, transitionId, {
       attempts: (leased.attempts ?? 0) + 1,
       lastError: 'project missing at activation',

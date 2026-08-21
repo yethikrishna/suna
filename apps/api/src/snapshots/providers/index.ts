@@ -111,6 +111,12 @@ export interface SandboxProviderAdapter {
   readonly id: string;
 
   /**
+   * Optional authoritative provider capacity for snapshot/template builds.
+   * Providers without a quota endpoint omit this method.
+   */
+  getSnapshotBuildCapacity?(): Promise<{ used: number; cap: number }>;
+
+  /**
    * Build the snapshot. The caller has already composed the layered Dockerfile
    * (user Dockerfile + Kortix runtime). Returns when the snapshot is `active`,
    * throws on terminal failure. May return the exact external template id the

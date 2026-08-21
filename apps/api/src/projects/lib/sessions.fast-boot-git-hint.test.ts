@@ -43,6 +43,8 @@ describe('session fast boot Git hint cache', () => {
     );
     expect(actions).toContain('allowProjectImage: projectImageAllowedForSession(');
     expect(shared).toContain('allowProjectImage: projectImageAllowedForSession(');
+    expect(actions).toContain('restoreSessionBranch: true');
+    expect(shared).toContain('restoreSessionBranch: true');
     expect(allocator).toContain('allowProjectImage: input.allowProjectImage');
     expect(sandbox).toContain('allowProjectImage: opts.allowProjectImage');
   });

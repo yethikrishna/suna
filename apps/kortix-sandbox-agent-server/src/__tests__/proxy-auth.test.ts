@@ -171,6 +171,11 @@ describe('daemon proxy auth gate', () => {
     expect(cfg.sandboxToken).toBe(TEST_TOKEN)
   })
 
+  it('parses the one-time replacement branch restore signal', () => {
+    expect(loadConfig({ KORTIX_SESSION_BRANCH_RESTORE: '1' }).sessionBranchRestore).toBe(true)
+    expect(loadConfig({}).sessionBranchRestore).toBe(false)
+  })
+
   it('scopes git auth headers to the project repo host', () => {
     const encoded = Buffer.from('x-access-token:secret-token').toString('base64')
 
@@ -518,6 +523,78 @@ describe('daemon proxy auth gate', () => {
       expect(gitOutput(['-C', target, 'config', '--local', '--get', 'kortix.adopted-session'])).toBe(
         'session-fresh',
       )
+    } finally {
+      globalThis.fetch = originalFetch
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('restores the remote session branch once on a replacement project image', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'kortix-project-image-restore-'))
+    const originalFetch = globalThis.fetch
+    const requests: string[] = []
+    try {
+      const remote = join(root, 'remote.git')
+      const seed = join(root, 'seed')
+      const target = join(root, 'workspace')
+      git(['init', '--bare', remote])
+      mkdirSync(seed)
+      git(['init', '-b', 'main'], seed)
+      writeFileSync(join(seed, 'README.md'), 'base\n')
+      git(['add', 'README.md'], seed)
+      git(['-c', 'user.email=test@kortix.dev', '-c', 'user.name=Kortix Test', 'commit', '-m', 'base'], seed)
+      git(['remote', 'add', 'origin', remote], seed)
+      git(['push', '-u', 'origin', 'main'], seed)
+      git(['symbolic-ref', 'HEAD', 'refs/heads/main'], remote)
+      git(['checkout', '-b', 'session-existing'], seed)
+      writeFileSync(join(seed, 'session-only.txt'), 'remote session state\n')
+      git(['add', 'session-only.txt'], seed)
+      git(['-c', 'user.email=test@kortix.dev', '-c', 'user.name=Kortix Test', 'commit', '-m', 'session work'], seed)
+      const sessionTip = gitOutput(['-C', seed, 'rev-parse', 'HEAD'])
+      git(['push', '-u', 'origin', 'session-existing'], seed)
+      git(['clone', '--branch', 'main', remote, target])
+
+      globalThis.fetch = (async (url: string | URL | Request) => {
+        const href = typeof url === 'string' || url instanceof URL ? String(url) : url.url
+        requests.push(href)
+        return new Response(JSON.stringify({ auth: { token: 'clone-token' } }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }) as unknown as typeof fetch
+
+      const cfg = baseConfig({
+        autoClone: true,
+        projectId: 'project-123',
+        apiUrl: 'http://api.local/v1',
+        projectTarget: target,
+        repoUrl: remote,
+        defaultBranch: 'main',
+        branchName: 'session-existing',
+        sessionFresh: false,
+        sessionBranchRestore: true,
+      })
+
+      await materializeRepo(cfg)
+
+      expect(gitOutput(['-C', target, 'rev-parse', 'HEAD'])).toBe(sessionTip)
+      expect(gitOutput(['-C', target, 'rev-parse', '--abbrev-ref', 'HEAD'])).toBe(
+        'session-existing',
+      )
+      expect(readFileSync(join(target, 'session-only.txt'), 'utf8')).toBe('remote session state\n')
+      expect(gitOutput(['-C', target, 'config', '--local', '--get', 'kortix.adopted-session'])).toBe(
+        'session-existing',
+      )
+      const credentialRequests = requests.filter((url) => url.includes('/git/clone-credential'))
+      expect(credentialRequests).toHaveLength(1)
+
+      writeFileSync(join(target, 'dirty-after-restore.txt'), 'keep after daemon restart\n')
+      await materializeRepo(cfg)
+
+      expect(gitOutput(['-C', target, 'rev-parse', 'HEAD'])).toBe(sessionTip)
+      expect(readFileSync(join(target, 'dirty-after-restore.txt'), 'utf8')).toBe(
+        'keep after daemon restart\n',
+      )
+      expect(requests.filter((url) => url.includes('/git/clone-credential'))).toHaveLength(1)
     } finally {
       globalThis.fetch = originalFetch
       rmSync(root, { recursive: true, force: true })

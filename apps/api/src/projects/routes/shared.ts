@@ -369,6 +369,7 @@ export async function allocateRuntimeOnOpen(
         manifestPath: loaded.row.manifestPath,
         llmGatewayEnabled: projectLlmGatewayEnabled(loaded.row.metadata),
         workspaceMode: workspaceModeFromSessionMetadata(session.metadata),
+        restoreSessionBranch: true,
       }),
     resolveGitProject: async () => withProjectGitAuth(loaded.row),
     beforeActive: rehydrate

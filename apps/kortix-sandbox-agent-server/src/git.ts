@@ -738,10 +738,13 @@ export async function materializeRepo(cfg: Config): Promise<void> {
     // this session's existing workspace on later daemon restarts. Provider env
     // persists, so KORTIX_SESSION_FRESH alone cannot make that distinction.
     const bakedHead = (await execGit(['-C', target, 'rev-parse', 'HEAD'])).stdout.trim()
-    const adoption = cfg.sessionFresh
+    const adoption = cfg.sessionFresh || cfg.sessionBranchRestore
       ? await sessionCheckoutAdoptionState(target, cfg.branchName)
       : { adopted: false, markerMatches: false }
-    const mismatched = cfg.sessionFresh && !adoption.adopted && (!cfg.baseSha || bakedHead !== cfg.baseSha)
+    const restoreNeeded = !!cfg.sessionBranchRestore && !adoption.markerMatches
+    const mismatched =
+      restoreNeeded ||
+      (cfg.sessionFresh && !adoption.adopted && (!cfg.baseSha || bakedHead !== cfg.baseSha))
     if (!mismatched) {
       logger.info('[git] using baked repo checkout (warm)', { target, head: bakedHead })
       const setUrl = await execGit(['-C', target, 'remote', 'set-url', 'origin', cfg.repoUrl])
@@ -751,7 +754,11 @@ export async function materializeRepo(cfg: Config): Promise<void> {
       if (!adoption.markerMatches) await markSessionCheckoutAdopted(target, cfg.branchName)
       return
     }
-    logger.info('[git] baked checkout != session base; re-materializing real repo', { bakedHead, baseSha: cfg.baseSha })
+    logger.info('[git] baked checkout requires authoritative materialization', {
+      bakedHead,
+      baseSha: cfg.baseSha,
+      reason: restoreNeeded ? 'restore-session-branch' : 'base-mismatch',
+    })
     await clearDirContents(target)
   }
   {

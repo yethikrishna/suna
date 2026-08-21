@@ -251,6 +251,7 @@ export async function restartSession(input: {
           // workspace and wipes /workspace/AGENTS.md.
           platformMetaAgent: isMetaAgentName(session.agentName ?? ''),
           workspaceMode: workspaceModeFromSessionMetadata(session.metadata),
+          restoreSessionBranch: true,
         }),
       resolveGitProject: async () => withProjectGitAuth(loaded.row as any),
       beforeActive: rehydrate

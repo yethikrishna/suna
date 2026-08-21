@@ -4,6 +4,10 @@ async function sessionsSource(): Promise<string> {
   return Bun.file(new URL('./sessions.ts', import.meta.url)).text();
 }
 
+async function monitorBoxProvisionSource(): Promise<string> {
+  return Bun.file(new URL('./monitor-box-provision.ts', import.meta.url)).text();
+}
+
 describe('session fast boot Git hint cache', () => {
   test('resolves a validated cache entry through the authenticated project', async () => {
     const source = await sessionsSource();
@@ -47,5 +51,15 @@ describe('session fast boot Git hint cache', () => {
     expect(shared).toContain('restoreSessionBranch: true');
     expect(allocator).toContain('allowProjectImage: input.allowProjectImage');
     expect(sandbox).toContain('allowProjectImage: opts.allowProjectImage');
+  });
+
+  test('keeps persistent monitor boxes on the shared image', async () => {
+    const source = await monitorBoxProvisionSource();
+    const ensureCall = source.slice(
+      source.indexOf('ensureSandboxImage(gitProject'),
+      source.indexOf('});', source.indexOf('ensureSandboxImage(gitProject')),
+    );
+
+    expect(ensureCall).toContain('allowProjectImage: false');
   });
 });

@@ -519,9 +519,13 @@ const envSchema = z.object({
   // bakes. Provider transitions still prepare their target image explicitly.
   // Default OFF keeps the session path on one shared image per provider.
   KORTIX_WARM_SNAPSHOT_ENABLED: optBoolFalse,
-  // Experimental shared slim image. It keeps only the session-critical
-  // runtime in the cold image and installs browser/document tool packs on first
-  // use. Default OFF is the rollback path; no database state changes.
+  // One kill switch for additive cold-boot accelerators. It keeps the standard
+  // runtime image and every tool. It enables local Git hints, native OpenCode
+  // binary prefetch, Platinum rootfs materialization, and stopped per-project
+  // images with the exact repository tip baked into /workspace. It never keeps
+  // a sandbox or OpenCode process running. With this flag and the legacy
+  // KORTIX_WARM_SNAPSHOT_ENABLED flag both OFF, sessions use the shared standard
+  // image plus authenticated boot-time clone path.
   KORTIX_FAST_COLD_BOOT_ENABLED: optBoolFalse,
   // Per-provider allowlist for per-project warm images of CUSTOM (non-default-
   // slug) templates — see `perProjectWarmEligible` in builder.ts. Defaults to

@@ -34,6 +34,14 @@ branch workspace:
   `KORTIX_GIT_DELTA_PARENT_COMMIT_BASE64=<raw prerequisite commit>` when the
   storage provider rewrites the scaffold commit metadata
 
+The same flag also enables stopped, content-addressed per-project images. Each
+image inherits the selected standard or custom runtime and adds the exact
+default-branch tip at `/workspace`. A session that finds the active image skips
+repository cloning. A missing, stale, building, failed, or unavailable image
+uses the current shared-image and authenticated-clone path. The miss starts one
+deduplicated background bake for a later session. Managed-git pushes start the
+same bake without blocking the push.
+
 After a managed project seed completes, the API stores the verified bundle in
 `projects.metadata.git.fast_boot`. A later session validates the cached SHA
 against the authoritative remote branch tip before it reuses the bundle. A
@@ -71,13 +79,18 @@ that the parent tree already exists in the baked scaffold. The daemon then
 validates the bundle, imports it, and verifies the resulting base SHA. Any
 validation failure uses the authenticated fetch path.
 
-This design creates no sandbox pool. It requires no schema migration. It changes
-no Git history or push behavior.
+This design creates no sandbox pool. The per-project image uses `capture: none`.
+It contains no running VM, memory state, or live OpenCode process. It requires no
+schema migration. It changes no Git history or push behavior.
 
 ## Rollback
 
-Set `KORTIX_FAST_COLD_BOOT_ENABLED=false` and redeploy the API. The API then
-omits all fast-boot Git hints, and the daemon uses the previous network path.
+Set `KORTIX_FAST_COLD_BOOT_ENABLED=false` to disable the new experiment. Set
+`KORTIX_WARM_SNAPSHOT_ENABLED=false` too for a complete per-project-image
+rollback. With both flags false, the API omits all fast-boot Git hints and stops
+selecting or baking per-project images. The daemon uses the previous shared-image
+and network-clone path. Existing content-addressed images remain inert until the
+existing quota reaper removes them.
 
 ## Verification
 

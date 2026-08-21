@@ -94,11 +94,11 @@ if [ -n "\${FAKE_OPENCODE_HELPER_PID_FILE:-}" ]; then
     while :; do /bin/sleep 0.05; done
   ) &
 fi
-if [ -n "\${FAKE_OPENCODE_READY_FILE:-}" ]; then
-  : >"$FAKE_OPENCODE_READY_FILE"
-fi
 if [ -n "\${FAKE_OPENCODE_CONFIG_CAPTURE_FILE:-}" ]; then
   printf '%s' "\${OPENCODE_CONFIG_DIR:-}" >"$FAKE_OPENCODE_CONFIG_CAPTURE_FILE"
+fi
+if [ -n "\${FAKE_OPENCODE_PROJECT_CONFIG_DISABLE_CAPTURE_FILE:-}" ]; then
+  printf '%s' "\${OPENCODE_DISABLE_PROJECT_CONFIG:-}" >"$FAKE_OPENCODE_PROJECT_CONFIG_DISABLE_CAPTURE_FILE"
 fi
 if [ -n "\${FAKE_OPENCODE_REPO_CONFIG_PATH:-}" ] && [ -e "$FAKE_OPENCODE_REPO_CONFIG_PATH" ]; then
   : >"$FAKE_OPENCODE_REPO_CONFIG_LOADED_FILE"
@@ -106,12 +106,26 @@ fi
 if [ -n "\${OPENCODE_CONFIG_DIR:-}" ] && [ -e "$OPENCODE_CONFIG_DIR/malicious-plugin.ts" ]; then
   : >"$FAKE_OPENCODE_REPO_CONFIG_LOADED_FILE"
 fi
+if [ "\${OPENCODE_DISABLE_PROJECT_CONFIG:-}" != "1" ]; then
+  if [ -n "\${FAKE_OPENCODE_ROOT_JSON_PATH:-}" ] && [ -e "$FAKE_OPENCODE_ROOT_JSON_PATH" ]; then
+    : >"$FAKE_OPENCODE_ROOT_JSON_LOADED_FILE"
+  fi
+  if [ -n "\${FAKE_OPENCODE_ROOT_JSONC_PATH:-}" ] && [ -e "$FAKE_OPENCODE_ROOT_JSONC_PATH" ]; then
+    : >"$FAKE_OPENCODE_ROOT_JSONC_LOADED_FILE"
+  fi
+  if [ -n "\${FAKE_OPENCODE_PROJECT_PLUGIN_PATH:-}" ] && [ -e "$FAKE_OPENCODE_PROJECT_PLUGIN_PATH" ]; then
+    : >"$FAKE_OPENCODE_PROJECT_PLUGIN_LOADED_FILE"
+  fi
+fi
 if [ -n "\${FAKE_OPENCODE_MUTATE_WORKSPACE:-}" ]; then
   printf 'mutated tracked\n' >"$FAKE_OPENCODE_MUTATE_WORKSPACE/tracked.txt"
   chmod 0600 "$FAKE_OPENCODE_MUTATE_WORKSPACE/tracked.txt"
   printf 'generated\n' >"$FAKE_OPENCODE_MUTATE_WORKSPACE/generated.txt"
   mkdir -p "$FAKE_OPENCODE_MUTATE_WORKSPACE/ignored-dir"
   printf 'ignored\n' >"$FAKE_OPENCODE_MUTATE_WORKSPACE/ignored-dir/cache.txt"
+fi
+if [ -n "\${FAKE_OPENCODE_READY_FILE:-}" ]; then
+  : >"$FAKE_OPENCODE_READY_FILE"
 fi
 while :; do /bin/sleep 0.05; done
 `,
@@ -148,8 +162,16 @@ exit 1
   });
 
   test('returns success only after OpenCode responds', async () => {
-    const result = await runWarmup('migration', { FAKE_CURL_READY: '1' });
+    const disableCaptureFile = join(fixtureRoot, 'project-config-disabled');
+    const readyFile = join(fixtureRoot, 'opencode.ready');
+    const result = await runWarmup('migration', {
+      FAKE_CURL_READY: '1',
+      FAKE_OPENCODE_READY_FILE: readyFile,
+      FAKE_OPENCODE_PROJECT_CONFIG_DISABLE_CAPTURE_FILE: disableCaptureFile,
+      OPENCODE_DISABLE_PROJECT_CONFIG: '',
+    });
     expect(result.code).toBe(0);
+    expect(readFileSync(disableCaptureFile, 'utf8')).toBe('');
   });
 
   test('fails when OpenCode exits before readiness', async () => {
@@ -283,10 +305,17 @@ exit 1
     const warmConfig = join(fixtureRoot, 'warm-config');
     const configDeps = join(fixtureRoot, 'config-deps', 'node_modules');
     const captureFile = join(fixtureRoot, 'config-path');
+    const disableCaptureFile = join(fixtureRoot, 'project-config-disabled');
     const loadedFile = join(fixtureRoot, 'malicious-loaded');
+    const rootJsonLoadedFile = join(fixtureRoot, 'root-json-loaded');
+    const rootJsoncLoadedFile = join(fixtureRoot, 'root-jsonc-loaded');
+    const projectPluginLoadedFile = join(fixtureRoot, 'project-plugin-loaded');
     const readyFile = join(fixtureRoot, 'opencode.ready');
     const repoConfig = join(workspace, '.kortix', 'opencode');
     const canonicalConfig = join(warmConfig, '.kortix', 'opencode');
+    const rootJson = join(workspace, 'opencode.json');
+    const rootJsonc = join(workspace, 'opencode.jsonc');
+    const projectPlugin = join(workspace, '.opencode', 'plugin', 'malicious.ts');
     mkdirSync(repoConfig, { recursive: true });
     mkdirSync(canonicalConfig, { recursive: true });
     mkdirSync(configDeps, { recursive: true });
@@ -297,6 +326,10 @@ exit 1
     writeFileSync(join(repoConfig, 'malicious-plugin.ts'), 'throw new Error("loaded")\n');
     mkdirSync(join(repoConfig, 'tools'), { recursive: true });
     writeFileSync(join(repoConfig, 'tools', 'malicious.ts'), 'throw new Error("loaded")\n');
+    writeFileSync(rootJson, '{"plugin":["./root-json-plugin.ts"]}\n');
+    writeFileSync(rootJsonc, '{"plugin":["./root-jsonc-plugin.ts"]}\n');
+    mkdirSync(join(workspace, '.opencode', 'plugin'), { recursive: true });
+    writeFileSync(projectPlugin, 'throw new Error("loaded")\n');
     writeFileSync(join(canonicalConfig, 'opencode.json'), '{}\n');
     git(workspace, 'init', '-b', 'main');
     git(workspace, 'add', '-A');
@@ -319,8 +352,15 @@ exit 1
         FAKE_CURL_READY: '1',
         FAKE_OPENCODE_READY_FILE: readyFile,
         FAKE_OPENCODE_CONFIG_CAPTURE_FILE: captureFile,
+        FAKE_OPENCODE_PROJECT_CONFIG_DISABLE_CAPTURE_FILE: disableCaptureFile,
         FAKE_OPENCODE_REPO_CONFIG_PATH: repoConfig,
         FAKE_OPENCODE_REPO_CONFIG_LOADED_FILE: loadedFile,
+        FAKE_OPENCODE_ROOT_JSON_PATH: rootJson,
+        FAKE_OPENCODE_ROOT_JSON_LOADED_FILE: rootJsonLoadedFile,
+        FAKE_OPENCODE_ROOT_JSONC_PATH: rootJsonc,
+        FAKE_OPENCODE_ROOT_JSONC_LOADED_FILE: rootJsoncLoadedFile,
+        FAKE_OPENCODE_PROJECT_PLUGIN_PATH: projectPlugin,
+        FAKE_OPENCODE_PROJECT_PLUGIN_LOADED_FILE: projectPluginLoadedFile,
         KORTIX_WARMUP_WORKSPACE: workspace,
         KORTIX_WARMUP_CONFIG_ROOT: warmConfig,
         KORTIX_WARMUP_CONFIG_DEPS: configDeps,
@@ -330,7 +370,11 @@ exit 1
 
     expect(result.code).toBe(0);
     expect(readFileSync(captureFile, 'utf8')).toBe(canonicalConfig);
+    expect(readFileSync(disableCaptureFile, 'utf8')).toBe('1');
     expect(existsSync(loadedFile)).toBe(false);
+    expect(existsSync(rootJsonLoadedFile)).toBe(false);
+    expect(existsSync(rootJsoncLoadedFile)).toBe(false);
+    expect(existsSync(projectPluginLoadedFile)).toBe(false);
     expect(readFileSync(join(repoConfig, 'opencode.json'), 'utf8')).toContain('malicious-plugin.ts');
     expect(readFileSync(join(repoConfig, 'malicious-plugin.ts'), 'utf8')).toContain('loaded');
     expect(readFileSync(join(repoConfig, 'tools', 'malicious.ts'), 'utf8')).toContain('loaded');

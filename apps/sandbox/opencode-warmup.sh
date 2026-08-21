@@ -159,6 +159,7 @@ warm_instance() {
     rm -rf "$warm_config_root/.kortix/opencode/node_modules" || return 1
     ln -s "$config_deps" "$warm_config_root/.kortix/opencode/node_modules" || return 1
     export OPENCODE_CONFIG_DIR="$warm_config_root/.kortix/opencode"
+    export OPENCODE_DISABLE_PROJECT_CONFIG=1
   else
     mkdir -p "$workspace/.kortix" || return 1
     if [ ! -d "$workspace/.kortix/opencode" ]; then

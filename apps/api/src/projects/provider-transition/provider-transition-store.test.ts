@@ -4,6 +4,7 @@ import {
   ACTIVE_EXTERNAL_ID_META_KEY,
   ACTIVE_SNAPSHOT_NAME_META_KEY,
   PIN_META_KEY,
+  TRANSITION_META_KEY,
   readActiveRouting,
 } from './provider-transition-store';
 
@@ -64,5 +65,61 @@ describe('readActiveRouting', () => {
       activeSnapshotName: null,
       generation: 0,
     });
+  });
+
+  test('recovers an exact activated image name from a legacy transition marker', async () => {
+    const routing = await readActiveRouting(
+      databaseReturning({
+        metadata: {
+          [PIN_META_KEY]: 'platinum',
+          [ACTIVE_EXTERNAL_ID_META_KEY]: 'tpl_legacy',
+          [TRANSITION_META_KEY]: {
+            status: 'activated',
+            target_provider: 'platinum',
+            external_template_id: 'tpl_legacy',
+            snapshot_name: 'kortix-ppwarm-project-legacy',
+            generation: 4,
+          },
+        },
+        generation: 4,
+      }),
+      'project-1',
+    );
+
+    expect(routing).toEqual({
+      activeProvider: 'platinum',
+      activeExternalTemplateId: 'tpl_legacy',
+      activeSnapshotName: 'kortix-ppwarm-project-legacy',
+      generation: 4,
+    });
+  });
+
+  test.each([
+    { label: 'status', patch: { status: 'building' } },
+    { label: 'provider', patch: { target_provider: 'daytona' } },
+    { label: 'external id', patch: { external_template_id: 'tpl_other' } },
+    { label: 'generation', patch: { generation: 3 } },
+    { label: 'snapshot name', patch: { snapshot_name: '' } },
+  ])('rejects legacy image metadata with a mismatched $label', async ({ patch }) => {
+    const routing = await readActiveRouting(
+      databaseReturning({
+        metadata: {
+          [PIN_META_KEY]: 'platinum',
+          [ACTIVE_EXTERNAL_ID_META_KEY]: 'tpl_legacy',
+          [TRANSITION_META_KEY]: {
+            status: 'activated',
+            target_provider: 'platinum',
+            external_template_id: 'tpl_legacy',
+            snapshot_name: 'kortix-ppwarm-project-legacy',
+            generation: 4,
+            ...patch,
+          },
+        },
+        generation: 4,
+      }),
+      'project-1',
+    );
+
+    expect(routing?.activeSnapshotName).toBeNull();
   });
 });

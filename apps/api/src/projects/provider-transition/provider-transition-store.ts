@@ -65,6 +65,35 @@ export interface ActiveRouting {
 }
 
 /**
+ * Recover the image name written by provider-transition activations that
+ * predate ACTIVE_SNAPSHOT_NAME_META_KEY. The legacy marker is usable only when
+ * every routing identity still matches the current project row. A later
+ * transition marker can overwrite this nested object, so any mismatch must
+ * fail closed to name boot.
+ */
+function recoverLegacyActiveSnapshotName(
+  meta: Record<string, unknown>,
+  activeProvider: string | null,
+  activeExternalTemplateId: string | null,
+  generation: number,
+): string | null {
+  if (!activeProvider || !activeExternalTemplateId) return null;
+  const marker = asMeta(meta[TRANSITION_META_KEY]);
+  const snapshotName = marker.snapshot_name;
+  if (
+    marker.status !== 'activated' ||
+    marker.target_provider !== activeProvider ||
+    marker.external_template_id !== activeExternalTemplateId ||
+    marker.generation !== generation ||
+    typeof snapshotName !== 'string' ||
+    snapshotName.length === 0
+  ) {
+    return null;
+  }
+  return snapshotName;
+}
+
+/**
  * Read the active routing identity from a SINGLE project row — pin + activated
  * external template id and image name are written together in the activation
  * transaction, so a single row read gets them atomically. No path may derive the
@@ -80,12 +109,19 @@ export async function readActiveRouting(db: Database, projectId: string): Promis
   const meta = asMeta(row.metadata);
   const pin = meta[PIN_META_KEY];
   const extId = meta[ACTIVE_EXTERNAL_ID_META_KEY];
-  const snapshotName = meta[ACTIVE_SNAPSHOT_NAME_META_KEY];
+  const activeProvider = typeof pin === 'string' ? pin : null;
+  const activeExternalTemplateId = typeof extId === 'string' ? extId : null;
+  const generation = row.generation ?? 0;
+  const currentSnapshotName = meta[ACTIVE_SNAPSHOT_NAME_META_KEY];
+  const activeSnapshotName =
+    typeof currentSnapshotName === 'string'
+      ? currentSnapshotName
+      : recoverLegacyActiveSnapshotName(meta, activeProvider, activeExternalTemplateId, generation);
   return {
-    activeProvider: typeof pin === 'string' ? pin : null,
-    activeExternalTemplateId: typeof extId === 'string' ? extId : null,
-    activeSnapshotName: typeof snapshotName === 'string' ? snapshotName : null,
-    generation: row.generation ?? 0,
+    activeProvider,
+    activeExternalTemplateId,
+    activeSnapshotName,
+    generation,
   };
 }
 

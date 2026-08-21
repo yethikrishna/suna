@@ -221,7 +221,8 @@ export function fastColdBootEnabled(): boolean {
  *   - the kill-switch is ON,
  *   - the provider actually supports id-boot (Platinum; others are name-only),
  *   - a non-empty pinned id exists, AND
- *   - a named activation exactly matches the resolved image name, AND
+ *   - the activation records an image name that exactly matches the resolved
+ *     image name, AND
  *   - MANDATORY provider-match: the pin belongs to the provider it was activated
  *     for — `routing.activeProvider === providerName`. This is what makes a
  *     rollback safe: a project reverted to Daytona with a leftover Platinum id
@@ -248,7 +249,6 @@ export function decideSessionBoot(input: {
     providerName,
     providerSupportsIdBoot,
     imageIsDefault = true,
-    imageIsProjectImage = false,
     imageSnapshotName,
     disabledForSession,
   } = input;
@@ -264,12 +264,10 @@ export function decideSessionBoot(input: {
   if (!pinnedId) return { bootByTemplateId: null };
   if (routing?.activeProvider !== providerName) return { bootByTemplateId: null }; // provider-match
   if (
-    routing.activeSnapshotName !== null &&
-    (!imageSnapshotName || routing.activeSnapshotName !== imageSnapshotName)
+    !routing.activeSnapshotName ||
+    !imageSnapshotName ||
+    routing.activeSnapshotName !== imageSnapshotName
   ) {
-    return { bootByTemplateId: null };
-  }
-  if (imageIsProjectImage && !routing.activeSnapshotName) {
     return { bootByTemplateId: null };
   }
   return { bootByTemplateId: pinnedId };
@@ -679,7 +677,11 @@ export async function provisionSessionSandbox(opts: {
         imageIsDefault: image.isDefault && image.runtimeProfile !== 'fast',
         imageIsProjectImage: image.isProjectImage,
         imageSnapshotName: image.snapshotName,
-        disabledForSession: idBootDisabled || opts.allowProjectImage === false,
+        disabledForSession:
+          idBootDisabled ||
+          opts.allowProjectImage === false ||
+          (config.KORTIX_FAST_COLD_BOOT_CONFIGURED &&
+            !config.KORTIX_FAST_COLD_BOOT_ENABLED),
       });
       if (bootDecision.bootByTemplateId) {
         console.log(

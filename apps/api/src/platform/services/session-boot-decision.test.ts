@@ -125,7 +125,7 @@ describe('FIX-A decideSessionBoot — pinned-id boot gating', () => {
     ).toEqual({ bootByTemplateId: null });
   });
 
-  test('a legacy standard activation without image metadata keeps id boot', () => {
+  test('a legacy activation without recoverable image metadata fails closed to name boot', () => {
     expect(
       decideSessionBoot({
         killSwitchOn: true,
@@ -135,7 +135,7 @@ describe('FIX-A decideSessionBoot — pinned-id boot gating', () => {
         imageIsDefault: true,
         imageSnapshotName: 'snap-standard-base',
       }),
-    ).toEqual({ bootByTemplateId: 'tpl_pinned' });
+    ).toEqual({ bootByTemplateId: null });
   });
 
   test('rollback: a leftover Platinum id pin does NOT id-boot a Daytona session (name-boot)', () => {
@@ -189,13 +189,16 @@ describe('FIX-A decideSessionBoot — pinned-id boot gating', () => {
     ).toEqual({ bootByTemplateId: null });
   });
 
-  test("disabledForSession (after a GC'd-pin 404 fallback) → name boot", () => {
+  test('disabledForSession prevents an exact project-image id boot during FAST rollback', () => {
     expect(
       decideSessionBoot({
         killSwitchOn: true,
         routing: pinned,
         providerName: 'platinum',
         providerSupportsIdBoot: true,
+        imageIsDefault: true,
+        imageIsProjectImage: true,
+        imageSnapshotName: 'snap-project-current',
         disabledForSession: true,
       }),
     ).toEqual({ bootByTemplateId: null });

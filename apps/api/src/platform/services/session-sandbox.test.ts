@@ -103,6 +103,15 @@ let activeRouting: {
   activeSnapshotName: string | null;
 } | null = null;
 let projectImageResolved = false;
+const testConfig = {
+  ALLOWED_SANDBOX_PROVIDERS: ['daytona', 'e2b'],
+  KORTIX_URL: 'http://localhost:8008',
+  LLM_GATEWAY_PROXY_PORT: undefined,
+  LLM_GATEWAY_PROXY_TARGET: undefined,
+  LLM_GATEWAY_BASE_URL: undefined,
+  KORTIX_FAST_COLD_BOOT_CONFIGURED: false,
+  KORTIX_FAST_COLD_BOOT_ENABLED: false,
+};
 function compile(condition: unknown): { sql: string; params: unknown[] } {
   try {
     return dialect.sqlToQuery(condition as Parameters<typeof dialect.sqlToQuery>[0]);
@@ -123,13 +132,7 @@ function updateResult(rows: unknown[]) {
 }
 
 mock.module('../../config', () => ({
-  config: {
-    ALLOWED_SANDBOX_PROVIDERS: ['daytona', 'e2b'],
-    KORTIX_URL: 'http://localhost:8008',
-    LLM_GATEWAY_PROXY_PORT: undefined,
-    LLM_GATEWAY_PROXY_TARGET: undefined,
-    LLM_GATEWAY_BASE_URL: undefined,
-  },
+  config: testConfig,
 }));
 
 mock.module('../../shared/db', () => ({
@@ -433,6 +436,8 @@ beforeEach(() => {
   providerSyncCalls = [];
   activeRouting = null;
   projectImageResolved = false;
+  testConfig.KORTIX_FAST_COLD_BOOT_CONFIGURED = false;
+  testConfig.KORTIX_FAST_COLD_BOOT_ENABLED = false;
 });
 
 afterEach(() => {
@@ -703,7 +708,7 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     expect(providerCreateOpts[0]?.snapshot).toBe('snap-test-1');
   });
 
-  test('the activated template id remains authoritative for the standard image', async () => {
+  test('a legacy activation without a recoverable image name fails closed to name boot', async () => {
     activeRouting = {
       activeProvider: 'platinum',
       activeExternalTemplateId: 'tpl_activated_standard',
@@ -716,8 +721,29 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     await provisionSessionSandbox({ ...baseOpts(), provider: 'platinum' });
     await opened;
 
-    expect(providerIdCreateCalls).toEqual(['tpl_activated_standard']);
+    expect(providerIdCreateCalls).toEqual([]);
     expect(providerCreateCalls).toBe(1);
+  });
+
+  test('explicit FAST false never boots a project image by external id', async () => {
+    testConfig.KORTIX_FAST_COLD_BOOT_CONFIGURED = true;
+    testConfig.KORTIX_FAST_COLD_BOOT_ENABLED = false;
+    activeRouting = {
+      activeProvider: 'platinum',
+      activeExternalTemplateId: 'tpl_activated_project_image',
+      activeSnapshotName: 'snap-test-1',
+    };
+    projectImageResolved = true;
+    const opened = waitFor((resolve) => {
+      onComputeOpened = resolve;
+    });
+
+    await provisionSessionSandbox({ ...baseOpts(), provider: 'platinum' });
+    await opened;
+
+    expect(providerIdCreateCalls).toEqual([]);
+    expect(providerCreateCalls).toBe(1);
+    expect(providerCreateOpts[0]?.snapshot).toBe('snap-test-1');
   });
 
   test('E2B success records only provider-neutral lifecycle metadata and E2B billing attribution', async () => {

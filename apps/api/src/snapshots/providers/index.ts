@@ -121,6 +121,13 @@ export interface SandboxProviderAdapter {
   /** Query the live provider state. Returns 'missing' if not found. */
   getSnapshotState(snapshotName: string): Promise<ProviderState>;
 
+  /**
+   * Optional: prepare an already-active snapshot for the provider's fastest
+   * launch path. Providers without a separate preparation phase omit it.
+   * Implementations may throw; reuse callers must preserve the usable snapshot.
+   */
+  prepareSnapshot?(snapshotName: string): Promise<void>;
+
   /** Delete the snapshot (no-op if missing). */
   deleteSnapshot(snapshotName: string): Promise<void>;
   /** List provider snapshots/templates owned by the current account. */

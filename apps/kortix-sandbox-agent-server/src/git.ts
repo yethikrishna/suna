@@ -478,6 +478,46 @@ export async function isRepoMaterialized(target: string): Promise<boolean> {
   return pathExists(`${target}/.git`)
 }
 
+const SESSION_ADOPTION_CONFIG_KEY = 'kortix.adopted-session'
+
+/**
+ * A fresh-image hint describes only the first materialization attempt. Provider
+ * env persists across daemon restarts, so the hint cannot by itself identify a
+ * pristine image checkout. This local marker is written only after the checkout
+ * becomes this session's workspace. It lives in .git/config and never enters a
+ * commit or a newly built project image.
+ */
+async function sessionCheckoutAdoptionState(
+  target: string,
+  branchName: string | undefined,
+): Promise<{ adopted: boolean; markerMatches: boolean }> {
+  if (!branchName) return { adopted: false, markerMatches: false }
+  const marker = await execGit([
+    '-C', target, 'config', '--local', '--get', SESSION_ADOPTION_CONFIG_KEY,
+  ])
+  if (marker.code === 0 && marker.stdout.trim() === branchName) {
+    return { adopted: true, markerMatches: true }
+  }
+
+  // Rollout compatibility: sessions created before the marker shipped already
+  // have their local session branch. A pristine image cannot contain a branch
+  // named after a not-yet-created session, so this ref is also proof of adoption.
+  const sessionRef = await execGit([
+    '-C', target, 'rev-parse', '--verify', '--quiet', `refs/heads/${branchName}`,
+  ])
+  return { adopted: sessionRef.code === 0, markerMatches: false }
+}
+
+async function markSessionCheckoutAdopted(target: string, branchName: string | undefined): Promise<void> {
+  if (!branchName) return
+  const marked = await execGit([
+    '-C', target, 'config', '--local', SESSION_ADOPTION_CONFIG_KEY, branchName,
+  ])
+  if (marked.code !== 0) {
+    throw new Error(`git config ${SESSION_ADOPTION_CONFIG_KEY} failed: ${marked.stderr || marked.stdout}`)
+  }
+}
+
 /**
  * Remove a STALE git lock before a checkout. A `.git/index.lock` left behind by
  * a git process that crashed or was killed mid-op (e.g. the daemon was OOM-killed
@@ -693,16 +733,22 @@ export async function materializeRepo(cfg: Config): Promise<void> {
     // project (baked HEAD == the server-resolved KORTIX_BASE_SHA). When it isn't
     // (an imported repo / diverged project), the baked scaffold is the WRONG
     // content: discard it and re-materialize the real repo below. A fresh
-    // session with no baseSha is also unverified and must fall back. Only a
-    // restart/resume can safely reuse its existing checkout without baseSha.
+    // session with no baseSha is also unverified and must fall back. The
+    // one-time adoption marker distinguishes that pristine image checkout from
+    // this session's existing workspace on later daemon restarts. Provider env
+    // persists, so KORTIX_SESSION_FRESH alone cannot make that distinction.
     const bakedHead = (await execGit(['-C', target, 'rev-parse', 'HEAD'])).stdout.trim()
-    const mismatched = cfg.sessionFresh && (!cfg.baseSha || bakedHead !== cfg.baseSha)
+    const adoption = cfg.sessionFresh
+      ? await sessionCheckoutAdoptionState(target, cfg.branchName)
+      : { adopted: false, markerMatches: false }
+    const mismatched = cfg.sessionFresh && !adoption.adopted && (!cfg.baseSha || bakedHead !== cfg.baseSha)
     if (!mismatched) {
       logger.info('[git] using baked repo checkout (warm)', { target, head: bakedHead })
       const setUrl = await execGit(['-C', target, 'remote', 'set-url', 'origin', cfg.repoUrl])
       if (setUrl.code !== 0) throw new Error(`git remote set-url failed: ${setUrl.stderr}`)
       if (cfg.branchName) await checkoutLocalSessionBranch(target, cfg.branchName)
       await configureRepoGitIdentity(cfg, target)
+      if (!adoption.markerMatches) await markSessionCheckoutAdopted(target, cfg.branchName)
       return
     }
     logger.info('[git] baked checkout != session base; re-materializing real repo', { bakedHead, baseSha: cfg.baseSha })
@@ -733,6 +779,7 @@ export async function materializeRepo(cfg: Config): Promise<void> {
         }
       }
       await configureRepoGitIdentity(cfg, target)
+      await markSessionCheckoutAdopted(target, cfg.branchName)
       return
     }
     const cloneCredential = await resolveCloneCredential(cfg)
@@ -845,6 +892,7 @@ export async function materializeRepo(cfg: Config): Promise<void> {
   }
 
   await configureRepoGitIdentity(cfg, target)
+  await markSessionCheckoutAdopted(target, cfg.branchName)
 }
 
 /**

@@ -443,6 +443,87 @@ describe('daemon proxy auth gate', () => {
     }
   })
 
+  it('preserves committed and dirty session work when a fresh-image daemon restarts', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'kortix-fresh-image-restart-'))
+    const originalFetch = globalThis.fetch
+    const requests: string[] = []
+    try {
+      const remote = join(root, 'remote.git')
+      const seed = join(root, 'seed')
+      const target = join(root, 'workspace')
+      git(['init', '--bare', remote])
+      mkdirSync(seed)
+      git(['init', '-b', 'main'], seed)
+      writeFileSync(join(seed, 'README.md'), 'base\n')
+      git(['add', 'README.md'], seed)
+      git(['-c', 'user.email=test@kortix.dev', '-c', 'user.name=Kortix Test', 'commit', '-m', 'base'], seed)
+      git(['remote', 'add', 'origin', remote], seed)
+      git(['push', '-u', 'origin', 'main'], seed)
+      git(['symbolic-ref', 'HEAD', 'refs/heads/main'], remote)
+      git(['clone', '--branch', 'main', remote, target])
+      const baseSha = gitOutput(['-C', seed, 'rev-parse', 'HEAD'])
+      const cfg = baseConfig({
+        autoClone: true,
+        projectId: 'project-123',
+        apiUrl: 'http://api.local/v1',
+        projectTarget: target,
+        repoUrl: remote,
+        defaultBranch: 'main',
+        branchName: 'session-fresh',
+        sessionFresh: true,
+        baseSha,
+      })
+
+      globalThis.fetch = (async (url: string | URL | Request) => {
+        const href = typeof url === 'string' || url instanceof URL ? String(url) : url.url
+        requests.push(href)
+        return new Response(JSON.stringify({ auth: { token: 'clone-token' } }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }) as unknown as typeof fetch
+
+      await materializeRepo(cfg)
+      expect(gitOutput(['-C', target, 'config', '--local', '--get', 'kortix.adopted-session'])).toBe(
+        'session-fresh',
+      )
+      writeFileSync(join(target, 'committed.txt'), 'keep committed\n')
+      git(['-C', target, 'add', 'committed.txt'])
+      git(['-C', target, 'commit', '-m', 'agent work'])
+      const sessionTip = gitOutput(['-C', target, 'rev-parse', 'HEAD'])
+      git(['-C', target, 'checkout', '-b', 'scratch'])
+      git(['-C', target, 'branch', '-D', 'session-fresh'])
+      writeFileSync(join(target, 'dirty.txt'), 'keep dirty\n')
+
+      await materializeRepo(cfg)
+
+      expect(gitOutput(['-C', target, 'rev-parse', 'HEAD'])).toBe(sessionTip)
+      expect(readFileSync(join(target, 'committed.txt'), 'utf8')).toBe('keep committed\n')
+      expect(readFileSync(join(target, 'dirty.txt'), 'utf8')).toBe('keep dirty\n')
+      expect(gitOutput(['-C', target, 'status', '--short'])).toContain('?? dirty.txt')
+      expect(requests.filter((url) => url.includes('/git/clone-credential'))).toHaveLength(0)
+
+      // A session created before this fix has the local session ref but no
+      // marker. The rollout must preserve it and backfill the marker.
+      git(['-C', target, 'config', '--local', '--unset', 'kortix.adopted-session'])
+      writeFileSync(join(target, 'legacy-committed.txt'), 'keep legacy commit\n')
+      git(['-C', target, 'add', 'legacy-committed.txt'])
+      git(['-C', target, 'commit', '-m', 'legacy agent work'])
+      const legacySessionTip = gitOutput(['-C', target, 'rev-parse', 'HEAD'])
+
+      await materializeRepo(cfg)
+
+      expect(gitOutput(['-C', target, 'rev-parse', 'HEAD'])).toBe(legacySessionTip)
+      expect(readFileSync(join(target, 'legacy-committed.txt'), 'utf8')).toBe('keep legacy commit\n')
+      expect(readFileSync(join(target, 'dirty.txt'), 'utf8')).toBe('keep dirty\n')
+      expect(gitOutput(['-C', target, 'config', '--local', '--get', 'kortix.adopted-session'])).toBe(
+        'session-fresh',
+      )
+    } finally {
+      globalThis.fetch = originalFetch
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('discards a baked scaffold for a fresh session when the base SHA is unavailable', async () => {
     const root = mkdtempSync(join(tmpdir(), 'kortix-fresh-without-base-sha-'))
     const originalFetch = globalThis.fetch

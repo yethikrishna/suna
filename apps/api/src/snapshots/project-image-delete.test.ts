@@ -1,24 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { legacyPerProjectWarmImageName, perProjectWarmImageName } from './ppwarm-names';
 
-function setTestEnv(name: string, value: string): void {
-  if (!process.env[name] || process.env[name]?.startsWith('encrypted:')) {
-    process.env[name] = value;
-  }
-}
-
-setTestEnv('DATABASE_URL', 'postgres://postgres:postgres@127.0.0.1:54322/postgres');
-setTestEnv('SUPABASE_URL', 'http://127.0.0.1:54321');
-setTestEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-service-role');
-setTestEnv('API_KEY_SECRET', 'test-api-key-secret');
-setTestEnv('TUNNEL_SIGNING_SECRET', 'test-tunnel-signing-secret');
-setTestEnv('ALLOWED_SANDBOX_PROVIDERS', 'daytona');
-setTestEnv('DAYTONA_API_KEY', 'test-daytona-key');
-setTestEnv('DAYTONA_SERVER_URL', 'https://daytona.example.test');
-setTestEnv('DAYTONA_TARGET', 'test-target');
-setTestEnv('FRONTEND_URL', 'http://localhost:3000');
-setTestEnv('INTERNAL_KORTIX_ENV', 'dev');
-
 const deletedNames: string[] = [];
 const stateReads: string[] = [];
 const providerRequests: string[] = [];

@@ -1281,6 +1281,10 @@ export async function kickProjectWarmPrebake(
         projectPin: opts.projectPin ?? null,
         allowed: config.ALLOWED_SANDBOX_PROVIDERS,
         isEnabled: (p) => config.isProviderEnabled(p as SandboxProviderName),
+        // The experimental path must not create one private image on every
+        // provider before a session has selected one. Legacy WARM keeps its
+        // established fanout behavior for compatibility.
+        fanoutWhenUnpinned: !config.KORTIX_FAST_COLD_BOOT_CONFIGURED,
       });
   // Per-provider: content-addressed name, own getSnapshotState check, own dedup
   // in kickBackgroundWarmBuild. Independent + best-effort — one provider failing

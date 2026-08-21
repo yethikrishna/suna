@@ -515,8 +515,10 @@ jobs:
       # (see apps/api/src/sandbox-proxy/preview-hosts.ts). Setting it is what
       # makes clients stop using the path proxy, so it goes in only once the
       # certificate pack for that wildcard is active. Unset = path proxy, which
-      # is also the complete rollback.
-      KORTIX_ECS_ENV_OVERRIDES: '{"KORTIX_FAST_COLD_BOOT_ENABLED":"true","KORTIX_PREVIEW_BASE_DOMAIN":"p.kortix.com"}'
+      # is also the complete rollback. Keep the fast-boot flag false for the
+      # first kpp2 rollout. A follow-up deploy enables it after every API task
+      # reports the kpp2-capable SHA and one transition identity format.
+      KORTIX_ECS_ENV_OVERRIDES: '{"KORTIX_FAST_COLD_BOOT_ENABLED":"false","KORTIX_PREVIEW_BASE_DOMAIN":"p.kortix.com"}'
     steps:
       - uses: actions/checkout@v7
       - name: Configure AWS credentials (OIDC)

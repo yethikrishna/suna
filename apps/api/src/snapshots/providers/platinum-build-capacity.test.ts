@@ -50,7 +50,7 @@ describe('PlatinumAdapter.getSnapshotBuildCapacity', () => {
         method: init?.method ?? (input instanceof Request ? input.method : 'GET'),
       });
       return jsonResponse({
-        templates: { used: 4, cap: 12, ignored: 99 },
+        templates: { used: 4, cap: 12, atomicAdmission: true, ignored: 99 },
         sandboxes: { used: 80, cap: 100 },
       });
     }) as unknown as typeof fetch;
@@ -70,8 +70,18 @@ describe('PlatinumAdapter.getSnapshotBuildCapacity', () => {
       { used: 9, cap: 9 },
     ]) {
       globalThis.fetch = (async () =>
-        jsonResponse({ templates: capacity })) as unknown as typeof fetch;
+        jsonResponse({ templates: { ...capacity, atomicAdmission: true } })) as unknown as typeof fetch;
       await expect(new PlatinumAdapter().getSnapshotBuildCapacity()).resolves.toEqual(capacity);
+    }
+  });
+
+  test('fails closed when the provider does not advertise atomic admission', async () => {
+    for (const atomicAdmission of [undefined, false, 'true', 1]) {
+      globalThis.fetch = (async () =>
+        jsonResponse({ templates: { used: 4, cap: 12, atomicAdmission } })) as unknown as typeof fetch;
+      await expect(new PlatinumAdapter().getSnapshotBuildCapacity()).rejects.toThrow(
+        /atomic template admission capability/,
+      );
     }
   });
 

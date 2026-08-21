@@ -582,6 +582,8 @@ export class UploadUrlRejectedError extends Error {
 
 const MALFORMED_BUILD_CAPACITY =
   'Malformed Platinum template build capacity: expected integer values with 0 <= templates.used <= templates.cap and templates.cap >= 1';
+const MISSING_ATOMIC_ADMISSION =
+  'Platinum template builds require the atomic template admission capability';
 
 function parseSnapshotBuildCapacity(body: unknown): { used: number; cap: number } {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -591,7 +593,7 @@ function parseSnapshotBuildCapacity(body: unknown): { used: number; cap: number 
   if (!templates || typeof templates !== 'object' || Array.isArray(templates)) {
     throw new Error(MALFORMED_BUILD_CAPACITY);
   }
-  const { used, cap } = templates as Record<string, unknown>;
+  const { used, cap, atomicAdmission } = templates as Record<string, unknown>;
   if (
     typeof used !== 'number' ||
     typeof cap !== 'number' ||
@@ -602,6 +604,9 @@ function parseSnapshotBuildCapacity(body: unknown): { used: number; cap: number 
     used > cap
   ) {
     throw new Error(MALFORMED_BUILD_CAPACITY);
+  }
+  if (atomicAdmission !== true) {
+    throw new Error(MISSING_ATOMIC_ADMISSION);
   }
   return { used, cap };
 }

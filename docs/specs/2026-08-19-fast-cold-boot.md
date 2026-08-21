@@ -118,7 +118,16 @@ Platinum now admits a template build through one control-plane transaction.
 The transaction evaluates the current count and quota before it creates the
 template. Concurrent API replicas cannot oversubscribe the reserved capacity
 through separate list and create calls. The dev control plane serves this
-contract from commit `d3741b01995e1b8b670d7047e2cb46d2ef0a01b6`.
+contract from commit `d3741b01995e1b8b670d7047e2cb46d2ef0a01b6` and advertises
+it as `templates.atomicAdmission=true` in `GET /v1/auth/orgs/quota`. Kortix
+rejects FAST image builds when the configured Platinum endpoint omits this
+exact boolean. The ECS deploy script also rejects a flag-on rollout before it
+registers a task definition. Flag-off deployments and non-Platinum providers
+do not require this capability.
+
+On 2026-08-21, Kortix dev pointed at `https://api.platinum.dev`. That production
+endpoint did not contain commit `d3741b01995e1b8b670d7047e2cb46d2ef0a01b6`.
+Keep FAST disabled until the configured endpoint advertises the capability.
 
 Activation re-reads the project before it publishes an image pin. An archived
 project cannot acquire a new pin after an in-flight build completes. Archived
@@ -315,8 +324,11 @@ The first deployment uses the automatic `main` push. This path always injects
 5. Read `/v1/runtime-assets/manifest` with dev authentication. Record the
    immutable agent `version` and `sha256`. The manifest does not guarantee a
    daemon source SHA, so it is not merge-SHA evidence.
+6. Require the configured Platinum quota response to contain the exact boolean
+   `templates.atomicAdmission=true`. The deploy script performs this check again
+   before it registers a flag-on task definition.
 
-Activate the second rollout only after all five checks pass:
+Activate the second rollout only after all six checks pass:
 
 ```sh
 gh workflow run deploy-dev.yml --ref main \

@@ -796,14 +796,17 @@ export class PlatinumAdapter implements SandboxProviderAdapter {
     if (!isPlatinumConfigured()) return;
     observeTemplates.invalidate();
     try {
-      const tpl = await findTemplateByName(snapshotName);
-      if (!tpl) return;
-      await platinumJson(`/v1/templates/${tpl.id}`, { method: 'DELETE' });
-    } catch (err) {
-      // A lookup/delete race is equivalent to already gone. Provider outages
-      // must propagate so fan-out reports this provider as failed.
-      if (!/ -> 404(?:\s|$)/.test(err instanceof Error ? err.message : String(err))) {
-        throw err;
+      const matches = (await fetchAllTemplates()).filter((template) => template.name === snapshotName);
+      for (const template of matches) {
+        try {
+          await platinumJson(`/v1/templates/${template.id}`, { method: 'DELETE' });
+        } catch (err) {
+          // A lookup/delete race is equivalent to already gone. Provider
+          // outages must propagate so fan-out reports this provider as failed.
+          if (!/ -> 404(?:\s|$)/.test(err instanceof Error ? err.message : String(err))) {
+            throw err;
+          }
+        }
       }
     } finally {
       observeTemplates.invalidate();

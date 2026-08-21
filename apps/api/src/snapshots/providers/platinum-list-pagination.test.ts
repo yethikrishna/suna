@@ -39,6 +39,10 @@ function tpl(name: string): { id: string; name: string; state: string } {
   return { id: `id-${name}`, name, state: 'ready' };
 }
 
+function namedTpl(id: string, name: string): { id: string; name: string; state: string } {
+  return { id, name, state: 'ready' };
+}
+
 describe('FIX-C — findTemplateByName paginates the /v1/templates list', () => {
   test('finds a template on page 2 (never a false-absent past the first 50)', async () => {
     // Page 0 = 50 filler templates (created_at DESC), page 1 = the sought one.
@@ -141,5 +145,93 @@ describe('FIX-C — listSnapshots returns the FULL paginated set', () => {
     expect(names).toHaveLength(52);
     expect(names).toContain('kortix-ppwarm-old-a');
     expect(names).toContain('kortix-ppwarm-old-b');
+  });
+});
+
+describe('deleteSnapshot removes every exact-name Platinum template', () => {
+  test('deletes exact-name duplicates across every page', async () => {
+    const target = 'kortix-ppwarm-project';
+    const page0 = [
+      namedTpl('duplicate-new', target),
+      ...Array.from({ length: 49 }, (_, i) => tpl(`filler-${i}`)),
+    ];
+    const page1 = [namedTpl('duplicate-old', target), tpl('unrelated')];
+    const offsets: number[] = [];
+    const deleted: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+      if (init?.method === 'DELETE') {
+        deleted.push(new URL(url).pathname.split('/').at(-1) ?? '');
+        return jsonResponse({});
+      }
+      offsets.push(offsetOf(input));
+      return jsonResponse(offsetOf(input) === 0 ? page0 : page1);
+    }) as unknown as typeof fetch;
+
+    await platinumProvider.deleteSnapshot(target);
+
+    expect(offsets).toEqual([0, 50]);
+    expect(deleted).toEqual(['duplicate-new', 'duplicate-old']);
+  });
+
+  test('does not issue a delete when the exact name is absent', async () => {
+    let deletes = 0;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'DELETE') deletes += 1;
+      return jsonResponse([tpl('unrelated')]);
+    }) as unknown as typeof fetch;
+
+    await expect(platinumProvider.deleteSnapshot('kortix-ppwarm-absent')).resolves.toBeUndefined();
+    expect(deletes).toBe(0);
+  });
+
+  test('ignores per-template 404 races and continues deleting duplicates', async () => {
+    const target = 'kortix-ppwarm-racing';
+    const deleted: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+      const id = new URL(url).pathname.split('/').at(-1) ?? '';
+      if (init?.method === 'DELETE') {
+        deleted.push(id);
+        return id === 'already-gone' ? jsonResponse({ error: 'not found' }, 404) : jsonResponse({});
+      }
+      return jsonResponse([
+        namedTpl('already-gone', target),
+        namedTpl('still-live', target),
+      ]);
+    }) as unknown as typeof fetch;
+
+    await expect(platinumProvider.deleteSnapshot(target)).resolves.toBeUndefined();
+    expect(deleted).toEqual(['already-gone', 'still-live']);
+  });
+
+  test('propagates a later listing failure without deleting a partial match', async () => {
+    const target = 'kortix-ppwarm-partial';
+    const page0 = [
+      namedTpl('partial-match', target),
+      ...Array.from({ length: 49 }, (_, i) => tpl(`filler-${i}`)),
+    ];
+    let deletes = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        deletes += 1;
+        return jsonResponse({});
+      }
+      return offsetOf(input) === 0 ? jsonResponse(page0) : jsonResponse({ error: 'unavailable' }, 503);
+    }) as unknown as typeof fetch;
+
+    await expect(platinumProvider.deleteSnapshot(target)).rejects.toBeInstanceOf(PlatinumTemplateListingError);
+    expect(deletes).toBe(0);
+  });
+
+  test('propagates non-404 deletion failures', async () => {
+    const target = 'kortix-ppwarm-delete-failure';
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) =>
+      init?.method === 'DELETE'
+        ? jsonResponse({ error: 'unavailable' }, 503)
+        : jsonResponse([namedTpl('delete-failure', target)])) as unknown as typeof fetch;
+
+    await expect(platinumProvider.deleteSnapshot(target)).rejects.toThrow(/503/);
   });
 });

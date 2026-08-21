@@ -1,7 +1,9 @@
 import type { PlatinumJsonResponse } from '../../shared/platinum';
 
 const MATERIALIZE_BUDGET_MS = 18_000;
-const MATERIALIZE_RETRY_MS = [250, 750, 1_500] as const;
+const MATERIALIZE_MAX_ATTEMPTS = 4;
+const MATERIALIZE_UNAVAILABLE_RETRY_MS = [250, 750, 1_500] as const;
+const MATERIALIZE_FINAL_REQUEST_RESERVE_MS = 1_000;
 
 type MaterializeBody = {
   status?: unknown;
@@ -85,7 +87,7 @@ export async function materializePlatinumTemplate(
   let attempts = 0;
   let lastStatus: number | null = null;
 
-  while (attempts < 4 && now() < deadline) {
+  while (attempts < MATERIALIZE_MAX_ATTEMPTS && now() < deadline) {
     attempts += 1;
     const remainingMs = Math.max(1, deadline - now());
     try {
@@ -118,10 +120,36 @@ export async function materializePlatinumTemplate(
       }
     }
 
-    if (attempts >= 4) break;
+    if (attempts >= MATERIALIZE_MAX_ATTEMPTS) break;
     const remainingAfterRequestMs = deadline - now();
     if (remainingAfterRequestMs <= 0) break;
-    await sleep(Math.min(MATERIALIZE_RETRY_MS[attempts - 1], remainingAfterRequestMs));
+
+    if (lastStatus === 202) {
+      // A reused command returns 202 immediately. Spread the remaining probes
+      // across the absolute budget instead of spending all four in 2.5 seconds.
+      // Keep one second for the final HTTP request and its response parsing.
+      if (remainingAfterRequestMs <= MATERIALIZE_FINAL_REQUEST_RESERVE_MS) {
+        await sleep(remainingAfterRequestMs);
+        break;
+      }
+      const remainingRequestSlots = MATERIALIZE_MAX_ATTEMPTS - attempts;
+      const delayMs = Math.max(
+        1,
+        Math.floor(
+          (remainingAfterRequestMs - MATERIALIZE_FINAL_REQUEST_RESERVE_MS)
+          / remainingRequestSlots,
+        ),
+      );
+      await sleep(delayMs);
+      continue;
+    }
+
+    // 503 means no eligible host accepted work. Keep this path short so an
+    // unavailable optimization cannot add the whole budget to session boot.
+    await sleep(Math.min(
+      MATERIALIZE_UNAVAILABLE_RETRY_MS[attempts - 1],
+      remainingAfterRequestMs,
+    ));
   }
 
   return finish('failed', attempts, lastStatus, now() >= deadline ? 'budget_exhausted' : 'attempts_exhausted');

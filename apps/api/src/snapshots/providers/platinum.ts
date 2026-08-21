@@ -549,7 +549,11 @@ export class PlatinumAdapter implements SandboxProviderAdapter {
   readonly id = 'platinum' as const;
 
   constructor(
-    private readonly materializeTemplate: (externalId: string) => Promise<unknown> = materializeReadyTemplate,
+    private readonly materializeTemplate: (
+      externalId: string,
+    ) => Promise<unknown> = materializeReadyTemplate,
+    private readonly isPreparationEnabled: () => boolean = () =>
+      config.KORTIX_FAST_COLD_BOOT_ENABLED,
   ) {}
 
   isConfigured(): boolean {
@@ -737,6 +741,14 @@ export class PlatinumAdapter implements SandboxProviderAdapter {
       if (isPlatinumAuthFailure(err)) throw err;
       return 'unknown';
     }
+  }
+
+  async prepareSnapshot(snapshotName: string): Promise<void> {
+    if (!this.isPreparationEnabled() || !isPlatinumConfigured()) return;
+    const template = await findTemplateByName(snapshotName);
+    if (!template || normalizeExistingProviderState(template.state) !== 'active') return;
+    const externalId = requireExternalTemplateId(template.id, `template lookup for ${snapshotName}`);
+    await this.materializeTemplate(externalId);
   }
 
   /**

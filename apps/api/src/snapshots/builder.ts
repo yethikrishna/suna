@@ -92,6 +92,43 @@ export async function waitForProviderBuild(
   } while (true);
 }
 
+const snapshotReusePreparations = new WeakMap<object, Map<string, Promise<void>>>();
+
+export async function prepareSnapshotForReuse<T>(
+  provider: Pick<SandboxProviderAdapter, 'id' | 'prepareSnapshot'>,
+  snapshotName: string,
+  result: T,
+  opts: { blocking: boolean },
+): Promise<T> {
+  if (!provider.prepareSnapshot) return result;
+  let bySnapshot = snapshotReusePreparations.get(provider);
+  if (!bySnapshot) {
+    bySnapshot = new Map();
+    snapshotReusePreparations.set(provider, bySnapshot);
+  }
+  let preparation = bySnapshot.get(snapshotName);
+  if (!preparation) {
+    const preparations = bySnapshot;
+    preparation = (async () => {
+      try {
+        await provider.prepareSnapshot?.(snapshotName);
+      } catch (err) {
+        console.warn(
+          `[snapshots] ${provider.id} preparation failed for ${snapshotName}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    })().finally(() => {
+      preparations.delete(snapshotName);
+      if (preparations.size === 0) snapshotReusePreparations.delete(provider);
+    });
+    bySnapshot.set(snapshotName, preparation);
+  }
+  if (opts.blocking) await preparation;
+  else void preparation;
+  return result;
+}
+
 export interface EnsureSandboxImageResult {
   snapshotName: string;
   slug: string;
@@ -171,6 +208,7 @@ export async function ensureSandboxImage(
   }
 
   const identity = await computeTemplateIdentity(project, template);
+  const blockingPreparation = (opts.source ?? 'session-start') !== 'session-start';
 
   // Per-project warm preference. On a session boot, if a per-project warm image
   // — same runtime identity, current default-branch tip, repo baked into
@@ -192,13 +230,18 @@ export async function ensureSandboxImage(
             `[snapshots] per-project warm HIT: booting ${template.slug} from ${warmName} ` +
             `(project ${project.projectId.slice(0, 8)}, tip ${warmTip.slice(0, 8)}, provider ${buildProvider})`,
           );
-          return {
-            snapshotName: warmName,
-            slug: template.slug,
-            contentHash: identity.contentHash,
-            built: false,
-            isDefault: !!template.isShared,
-          };
+          return prepareSnapshotForReuse(
+            provider,
+            warmName,
+            {
+              snapshotName: warmName,
+              slug: template.slug,
+              contentHash: identity.contentHash,
+              built: false,
+              isDefault: !!template.isShared,
+            },
+            { blocking: blockingPreparation },
+          );
         }
         // LEGACY-FORMAT FALLBACK. The ppwarm name gained a `<tpl8>` segment when
         // warm images became (project, template)-scoped, so no image baked before
@@ -233,13 +276,18 @@ export async function ensureSandboxImage(
               `provider ${buildProvider}) — pre-dates template scoping; will re-bake under the ` +
               `new name when this branch next moves`,
             );
-            return {
-              snapshotName: legacyName,
-              slug: template.slug,
-              contentHash: identity.contentHash,
-              built: false,
-              isDefault: true,
-            };
+            return prepareSnapshotForReuse(
+              provider,
+              legacyName,
+              {
+                snapshotName: legacyName,
+                slug: template.slug,
+                contentHash: identity.contentHash,
+                built: false,
+                isDefault: true,
+              },
+              { blocking: blockingPreparation },
+            );
           }
         }
         // MISS — no warm image for this (project, tip) yet. Kick a fire-and-forget
@@ -270,13 +318,18 @@ export async function ensureSandboxImage(
     template.contentHash === identity.contentHash &&
     template.providerSnapshotName === identity.snapshotName
   ) {
-    return {
-      snapshotName: identity.snapshotName,
-      slug: template.slug,
-      contentHash: identity.contentHash,
-      built: false,
-      isDefault: !!template.isShared,
-    };
+    return prepareSnapshotForReuse(
+      provider,
+      identity.snapshotName,
+      {
+        snapshotName: identity.snapshotName,
+        slug: template.slug,
+        contentHash: identity.contentHash,
+        built: false,
+        isDefault: !!template.isShared,
+      },
+      { blocking: blockingPreparation },
+    );
   }
 
   // Cache hit? (checks the ACTIVE provider — so a row built elsewhere doesn't
@@ -290,13 +343,18 @@ export async function ensureSandboxImage(
       provider: buildProvider,
       swapKey: identity.swapKey,
     });
-    return {
-      snapshotName: identity.snapshotName,
-      slug: template.slug,
-      contentHash: identity.contentHash,
-      built: false,
-      isDefault: !!template.isShared,
-    };
+    return prepareSnapshotForReuse(
+      provider,
+      identity.snapshotName,
+      {
+        snapshotName: identity.snapshotName,
+        slug: template.slug,
+        contentHash: identity.contentHash,
+        built: false,
+        isDefault: !!template.isShared,
+      },
+      { blocking: blockingPreparation },
+    );
   }
 
   // ─── Graceful background rebuild (hot path only) ──────────────────────────
@@ -327,13 +385,18 @@ export async function ensureSandboxImage(
         `[snapshots] ${template.slug}: identity drifted to ${identity.snapshotName}; ` +
         `booting last-known-good ${template.providerSnapshotName} and rebuilding in background`,
       );
-      return {
-        snapshotName: template.providerSnapshotName,
-        slug: template.slug,
-        contentHash: template.contentHash ?? identity.contentHash,
-        built: false,
-        isDefault: !!template.isShared,
-      };
+      return prepareSnapshotForReuse(
+        provider,
+        template.providerSnapshotName,
+        {
+          snapshotName: template.providerSnapshotName,
+          slug: template.slug,
+          contentHash: template.contentHash ?? identity.contentHash,
+          built: false,
+          isDefault: !!template.isShared,
+        },
+        { blocking: blockingPreparation },
+      );
     }
   }
 
@@ -347,13 +410,18 @@ export async function ensureSandboxImage(
         provider: buildProvider,
         swapKey: identity.swapKey,
       });
-      return {
-        snapshotName: identity.snapshotName,
-        slug: template.slug,
-        contentHash: identity.contentHash,
-        built: false,
-        isDefault: !!template.isShared,
-      };
+      return prepareSnapshotForReuse(
+        provider,
+        identity.snapshotName,
+        {
+          snapshotName: identity.snapshotName,
+          slug: template.slug,
+          contentHash: identity.contentHash,
+          built: false,
+          isDefault: !!template.isShared,
+        },
+        { blocking: blockingPreparation },
+      );
     }
     if (state === 'building') {
       throw new SnapshotBuildError(
@@ -1205,7 +1273,10 @@ async function prebakeForProvider(
     if (!tip) return;
     const warmName = perProjectWarmImageName(project.projectId, tip, identity.snapshotName, template.slug);
     // Tip unchanged (or already warm for this commit) → nothing to do.
-    if ((await provider.getSnapshotState(warmName)) === 'active') return;
+    if ((await provider.getSnapshotState(warmName)) === 'active') {
+      await prepareSnapshotForReuse(provider, warmName, undefined, { blocking: false });
+      return;
+    }
     kickBackgroundWarmBuild(project, { accountId, provider: buildProvider, snapshotName: warmName });
     console.log(
       `[snapshots] warm prebake-on-push kicked: project ${project.projectId.slice(0, 8)} ` +
@@ -1510,43 +1581,53 @@ export async function ensureFastSandboxImage(opts: {
   const contentHash = createHash('sha256').update(`fast-runtime-v1\0${fingerprint}`).digest('hex');
   const snapshotName = fastSnapshotName(contentHash);
   const buildKey = `${opts.provider}:${snapshotName}`;
-  const existing = fastImageBuilds.get(buildKey);
-  if (existing) return existing;
-
-  const build = (async () => {
-    let state = await provider.getSnapshotState(snapshotName);
-    if (state === 'building') state = await waitForProviderBuild(provider, snapshotName);
-    if (state === 'active') {
+  let image = fastImageBuilds.get(buildKey);
+  let ownsImage = false;
+  if (!image) {
+    ownsImage = true;
+    image = (async () => {
+      let state = await provider.getSnapshotState(snapshotName);
+      if (state === 'building') state = await waitForProviderBuild(provider, snapshotName);
+      if (state === 'active') {
+        return {
+          snapshotName,
+          slug: DEFAULT_SANDBOX_SLUG,
+          contentHash,
+          built: false,
+          isDefault: true,
+          runtimeProfile: 'fast' as const,
+        };
+      }
+      if (state === 'build_failed') await provider.deleteSnapshot(snapshotName);
+      await provider.buildSnapshot({
+        snapshotName,
+        userDockerfile: '# platform fast cold-boot runtime',
+        spec: {},
+        slug: DEFAULT_SANDBOX_SLUG,
+        isShared: true,
+        runtimeProfile: 'fast',
+      });
+      await reapSupersededFastSnapshots(provider, snapshotName);
       return {
         snapshotName,
         slug: DEFAULT_SANDBOX_SLUG,
         contentHash,
-        built: false,
+        built: true,
         isDefault: true,
         runtimeProfile: 'fast' as const,
       };
-    }
-    if (state === 'build_failed') await provider.deleteSnapshot(snapshotName);
-    await provider.buildSnapshot({
-      snapshotName,
-      userDockerfile: '# platform fast cold-boot runtime',
-      spec: {},
-      slug: DEFAULT_SANDBOX_SLUG,
-      isShared: true,
-      runtimeProfile: 'fast',
+    })();
+    fastImageBuilds.set(buildKey, image);
+  }
+  try {
+    const result = await image;
+    if (result.built) return result;
+    return await prepareSnapshotForReuse(provider, snapshotName, result, {
+      blocking: (opts.source ?? 'session-start') !== 'session-start',
     });
-    await reapSupersededFastSnapshots(provider, snapshotName);
-    return {
-      snapshotName,
-      slug: DEFAULT_SANDBOX_SLUG,
-      contentHash,
-      built: true,
-      isDefault: true,
-      runtimeProfile: 'fast' as const,
-    };
-  })().finally(() => fastImageBuilds.delete(buildKey));
-  fastImageBuilds.set(buildKey, build);
-  return build;
+  } finally {
+    if (ownsImage) fastImageBuilds.delete(buildKey);
+  }
 }
 
 export async function ensureMetaSandboxImage(opts: {
@@ -1561,45 +1642,55 @@ export async function ensureMetaSandboxImage(opts: {
   const contentHash = createHash('sha256').update(`meta-runtime-v1\0${fingerprint}`).digest('hex');
   const snapshotName = metaSnapshotName(contentHash);
   const buildKey = `${opts.provider}:${snapshotName}`;
-  const existing = metaImageBuilds.get(buildKey);
-  if (existing) return existing;
-
-  const build = (async () => {
-    let state = await provider.getSnapshotState(snapshotName);
-    if (state === 'building') state = await waitForProviderBuild(provider, snapshotName);
-    if (state === 'active') {
+  let image = metaImageBuilds.get(buildKey);
+  let ownsImage = false;
+  if (!image) {
+    ownsImage = true;
+    image = (async () => {
+      let state = await provider.getSnapshotState(snapshotName);
+      if (state === 'building') state = await waitForProviderBuild(provider, snapshotName);
+      if (state === 'active') {
+        return {
+          snapshotName,
+          slug: 'meta',
+          contentHash,
+          built: false,
+          isDefault: false,
+          runtimeProfile: 'meta' as const,
+        };
+      }
+      if (state === 'build_failed') await provider.deleteSnapshot(snapshotName);
+      await provider.buildSnapshot({
+        snapshotName,
+        userDockerfile: '# platform meta runtime',
+        spec: { cpu: 1, memoryGb: 2, diskGb: 8 },
+        slug: 'meta',
+        isShared: true,
+        runtimeProfile: 'meta' as const,
+      });
+      // Tidy only after the replacement is actually active, so a failed build
+      // can never leave the environment with nothing to boot.
+      await reapSupersededMetaSnapshots(provider, snapshotName);
       return {
         snapshotName,
         slug: 'meta',
         contentHash,
-        built: false,
+        built: true,
         isDefault: false,
         runtimeProfile: 'meta' as const,
       };
-    }
-    if (state === 'build_failed') await provider.deleteSnapshot(snapshotName);
-    await provider.buildSnapshot({
-      snapshotName,
-      userDockerfile: '# platform meta runtime',
-      spec: { cpu: 1, memoryGb: 2, diskGb: 8 },
-      slug: 'meta',
-      isShared: true,
-      runtimeProfile: 'meta' as const,
+    })();
+    metaImageBuilds.set(buildKey, image);
+  }
+  try {
+    const result = await image;
+    if (result.built) return result;
+    return await prepareSnapshotForReuse(provider, snapshotName, result, {
+      blocking: (opts.source ?? 'session-start') !== 'session-start',
     });
-    // Tidy only after the replacement is actually active, so a failed build
-    // can never leave the environment with nothing to boot.
-    await reapSupersededMetaSnapshots(provider, snapshotName);
-    return {
-      snapshotName,
-      slug: 'meta',
-      contentHash,
-      built: true,
-      isDefault: false,
-      runtimeProfile: 'meta' as const,
-    };
-  })().finally(() => metaImageBuilds.delete(buildKey));
-  metaImageBuilds.set(buildKey, build);
-  return build;
+  } finally {
+    if (ownsImage) metaImageBuilds.delete(buildKey);
+  }
 }
 
 let startupPreBuildKicked = false;
@@ -1675,6 +1766,10 @@ async function reconcileProjectTemplates(
     for (const providerId of providers) {
       const provider = getSandboxProvider(providerId);
       const state = await provider.getSnapshotState(identity.snapshotName);
+      if (state === 'active') {
+        await prepareSnapshotForReuse(provider, identity.snapshotName, undefined, { blocking: true });
+        continue;
+      }
       if (!shouldReconcileProviderState(state)) continue;
       kickPreBuild(project, {
         slug: t.slug,
@@ -1783,7 +1878,12 @@ export async function ensurePerProjectWarmImage(
   const existingState = await provider.getSnapshotState(snapshotName);
   if (existingState === 'active') {
     await reapOldPerProjectWarm(project.projectId, snapshotName, buildProvider);
-    return { snapshotName, tip, built: false, provider: buildProvider };
+    return prepareSnapshotForReuse(
+      provider,
+      snapshotName,
+      { snapshotName, tip, built: false, provider: buildProvider },
+      { blocking: true },
+    );
   }
   if (existingState === 'building') {
     // Another API replica already owns this provider build. Do not issue a

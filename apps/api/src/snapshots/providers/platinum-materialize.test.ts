@@ -79,16 +79,56 @@ describe('Platinum template materialization', () => {
     ]);
 
     expect(result).toMatchObject({ status: 'ready', attempts: 2, httpStatus: 200 });
-    expect(probe.sleeps).toEqual([250]);
+    expect(probe.sleeps).toEqual([_label === '202 then ready' ? 5_666 : 250]);
   });
 
-  test.each([
-    ['202', { status: 202, body: { status: 'in_progress' } } satisfies Step],
-    ['503', { error: new Error('platinum POST /v1/templates/tpl_exact/materialize -> 503 unavailable') } satisfies Step],
-  ])('repeated %s stops after four requests', async (_label, step) => {
-    const { result, probe } = await run([step]);
+  test('pre-existing work gets the full budget and can become ready after 10 seconds', async () => {
+    const { result, probe } = await run([
+      { status: 202, body: { status: 'in_progress' } },
+      { status: 202, body: { status: 'in_progress' } },
+      { status: 200, body: { status: 'ready', template_id: 'tpl_exact' } },
+    ]);
 
-    expect(result).toMatchObject({ status: 'failed', attempts: 4 });
+    expect(result).toMatchObject({ status: 'ready', attempts: 3, httpStatus: 200 });
+    expect(result.elapsedMs).toBeGreaterThanOrEqual(10_000);
+    expect(result.elapsedMs).toBeLessThan(18_000);
+    expect(probe.sleeps).toEqual([5_666, 5_667]);
+  });
+
+  test('a request that consumes 15 seconds still gets a final readiness probe', async () => {
+    const { result, probe } = await run([
+      { status: 202, body: { status: 'in_progress' }, elapsedMs: 15_000 },
+      { status: 200, body: { status: 'ready', template_id: 'tpl_exact' } },
+    ]);
+
+    expect(result).toMatchObject({ status: 'ready', attempts: 2, httpStatus: 200 });
+    expect(result.elapsedMs).toBe(15_666);
+    expect(probe.sleeps).toEqual([666]);
+  });
+
+  test('four immediate 202 responses spread four probes across the 18 second budget', async () => {
+    const { result, probe } = await run([{
+      status: 202,
+      body: { status: 'in_progress' },
+    }]);
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      attempts: 4,
+      reason: 'attempts_exhausted',
+    });
+    expect(result.elapsedMs).toBe(17_000);
+    expect(probe.paths).toHaveLength(4);
+    expect(probe.sleeps).toEqual([5_666, 5_667, 5_667]);
+  });
+
+  test('503 keeps the short fail-open backoff instead of delaying session boot', async () => {
+    const { result, probe } = await run([{
+      error: new Error('platinum POST /v1/templates/tpl_exact/materialize -> 503 unavailable'),
+    }]);
+
+    expect(result).toMatchObject({ status: 'failed', attempts: 4, httpStatus: 503 });
+    expect(result.elapsedMs).toBe(2_500);
     expect(probe.paths).toHaveLength(4);
     expect(probe.sleeps).toEqual([250, 750, 1_500]);
   });

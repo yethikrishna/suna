@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -82,5 +82,19 @@ exit 1
     const result = await runWarmup('invalid');
     expect(result.code).toBe(2);
     expect(result.stderr).toContain('usage:');
+  });
+
+  test('the standalone image links the native executable for the supervisor', () => {
+    const dockerfile = readFileSync(resolve(import.meta.dir, 'Dockerfile'), 'utf8');
+
+    expect(dockerfile).toContain(
+      "opencode_package=\"$(pnpm list -g --parseable --depth 0 opencode-ai | sed -n '\\#/node_modules/opencode-ai$#p' | tail -n 1)\"",
+    );
+    expect(dockerfile).toContain('opencode_native="$opencode_package/bin/opencode.exe"');
+    expect(dockerfile).toContain('test "$(wc -c < "$opencode_native")" -gt 50000000');
+    expect(dockerfile).toContain('ln -sfn "$opencode_native" /opt/kortix/opencode.current');
+    expect(dockerfile).toContain(
+      'sudo ln -sfn /opt/kortix/opencode.current /usr/local/bin/opencode-kortix',
+    );
   });
 });

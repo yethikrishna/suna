@@ -139,6 +139,22 @@ describe('runtime artifact integrity', () => {
     }
   });
 
+  test('exposes the native OpenCode executable at the supervisor path', () => {
+    expect(rendered).toContain(
+      "opencode_package=\"$(pnpm list -g --parseable --depth 0 opencode-ai | sed -n '\\#/node_modules/opencode-ai$#p' | tail -n 1)\"",
+    );
+    expect(rendered).toContain('opencode_native="$opencode_package/bin/opencode.exe"');
+    expect(rendered).toContain('test "$(wc -c < "$opencode_native")" -gt 50000000');
+    expect(rendered).toContain('ln -sfn "$opencode_native" /opt/kortix/opencode.current');
+    expect(rendered).toContain(
+      'sudo ln -sfn /opt/kortix/opencode.current /usr/local/bin/opencode-kortix',
+    );
+    expect(rendered).not.toContain(
+      'ln -sfn "$opencode_native" /usr/local/bin/opencode-kortix',
+    );
+    expect(rendered).toContain('/usr/local/bin/opencode-kortix --version');
+  });
+
 });
 
 describe('the Python runtime is managed by uv', () => {

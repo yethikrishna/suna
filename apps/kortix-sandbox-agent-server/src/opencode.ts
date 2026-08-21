@@ -38,7 +38,7 @@ export type VerifiedReloadResult =
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
-import { access, constants, stat } from 'node:fs/promises'
+import { access, constants, open, stat } from 'node:fs/promises'
 import { isDeepStrictEqual } from 'node:util'
 
 import { AGENT_ENV_SH } from './agent-env-file'
@@ -49,6 +49,12 @@ import { egressShimEnv } from './egress-shim'
 import { logger } from './logger'
 import { applyManagedOpencodeEnv } from './managed-opencode-env'
 import { mergeProjectEnv, type ProjectEnvStore } from './project-env'
+import {
+  OPENCODE_CURRENT_LINK,
+  OPENCODE_SYSTEM_LINK,
+  publishOpencodeNativeLink,
+  resolveInstalledOpencodeNative,
+} from './opencode-binary'
 import {
   SECRET_CAPABILITIES_ENV_NAME,
   writeSecretCapabilitiesInstruction,
@@ -1409,10 +1415,45 @@ async function which(bin: string): Promise<string | null> {
 }
 
 async function detectOpencodeBinary(): Promise<string | null> {
-  if (await isExecutable('/usr/local/bin/opencode-kortix')) {
-    return '/usr/local/bin/opencode-kortix'
+  if (await isExecutable(OPENCODE_CURRENT_LINK)) return OPENCODE_CURRENT_LINK
+  if (await isExecutable(OPENCODE_SYSTEM_LINK)) return OPENCODE_SYSTEM_LINK
+
+  // Older images only have pnpm's small shell launcher. Discover the native
+  // executable once, then repair the user-owned stable link for this and every
+  // later daemon start. A discovery failure keeps the functional launcher.
+  try {
+    const nativePath = await resolveInstalledOpencodeNative()
+    await publishOpencodeNativeLink(nativePath)
+    return OPENCODE_CURRENT_LINK
+  } catch (err) {
+    logger.warn('[opencode] native binary discovery failed; using PATH launcher', {
+      err: err instanceof Error ? err.message : String(err),
+    })
   }
   return await which('opencode')
+}
+
+const EXECUTABLE_PREFETCH_BUFFER_BYTES = 4 * 1024 * 1024
+
+export async function prefetchExecutablePages(
+  path: string,
+  signal?: AbortSignal,
+): Promise<number> {
+  if (signal?.aborted) throw signal.reason
+  const handle = await open(path, 'r')
+  const buffer = Buffer.allocUnsafe(EXECUTABLE_PREFETCH_BUFFER_BYTES)
+  let bytes = 0
+  try {
+    while (true) {
+      if (signal?.aborted) throw signal.reason
+      const result = await handle.read(buffer, 0, buffer.byteLength, null)
+      if (result.bytesRead === 0) break
+      bytes += result.bytesRead
+    }
+  } finally {
+    await handle.close()
+  }
+  return bytes
 }
 
 async function resolveOpencodeCwd(cfg: Config): Promise<string> {
@@ -1426,6 +1467,8 @@ async function resolveOpencodeCwd(cfg: Config): Promise<string> {
 type OpencodeState = 'starting' | 'ok' | 'down'
 
 export type Opencode = {
+  prefetchBinary(): Promise<boolean>
+  cancelBinaryPrefetch(): void
   start(): Promise<void>
   stop(signal?: NodeJS.Signals): Promise<void>
   restart(): Promise<void>
@@ -1463,6 +1506,8 @@ export type Opencode = {
 export interface OpencodeSupervisorOptions {
   onStartupMark?: (label: string) => void
   binaryPathOverride?: string
+  binaryPathResolverOverride?: () => Promise<string | null>
+  prefetchExecutableOverride?: (path: string, signal: AbortSignal) => Promise<number>
   configPathOverride?: string
   /**
    * opencode died without anyone asking it to, and has just been respawned.
@@ -1507,6 +1552,66 @@ export function createOpencodeSupervisor(
   let readinessTimer: ReturnType<typeof setTimeout> | null = null
   let opencodeCwd = cfg.workspace
   const startupMark = options.onStartupMark ?? (() => {})
+  let binaryResolutionPromise: Promise<string | null> | null = null
+  let binaryPrefetchPromise: Promise<boolean> | null = null
+  let binaryPrefetchController: AbortController | null = null
+
+  async function resolveBinaryPath(): Promise<string | null> {
+    if (!binaryResolutionPromise) {
+      binaryResolutionPromise = options.binaryPathOverride
+        ? Promise.resolve(options.binaryPathOverride)
+        : (options.binaryPathResolverOverride?.() ?? detectOpencodeBinary())
+    }
+    let resolved: string | null
+    try {
+      resolved = await binaryResolutionPromise
+    } catch (err) {
+      binaryResolutionPromise = null
+      throw err
+    }
+    if (!resolved) binaryResolutionPromise = null
+    if (resolved && binaryPath !== resolved) {
+      binaryPath = resolved
+      startupMark('runtime-binary-resolved')
+    }
+    return resolved
+  }
+
+  async function prefetchBinaryOnce(signal: AbortSignal): Promise<boolean> {
+    const startedAt = Date.now()
+    let bin: string | null = null
+    try {
+      bin = await resolveBinaryPath()
+      if (!bin) throw new Error('OpenCode binary not found')
+      startupMark('runtime-binary-prefetch-started')
+      const prefetch = options.prefetchExecutableOverride ?? prefetchExecutablePages
+      const bytes = await prefetch(bin, signal)
+      if (signal.aborted) throw signal.reason
+      startupMark('runtime-binary-prefetched')
+      logger.info('[opencode] executable pages prefetched', {
+        binaryPath: bin,
+        bytes,
+        durationMs: Date.now() - startedAt,
+      })
+      return true
+    } catch (err) {
+      if (signal.aborted) {
+        startupMark('runtime-binary-prefetch-cancelled')
+        logger.info('[opencode] executable prefetch stopped before spawn', {
+          binaryPath: bin,
+          durationMs: Date.now() - startedAt,
+        })
+      } else {
+        startupMark('runtime-binary-prefetch-failed')
+        logger.warn('[opencode] executable prefetch failed; using normal demand paging', {
+          binaryPath: bin,
+          err: err instanceof Error ? err.message : String(err),
+          durationMs: Date.now() - startedAt,
+        })
+      }
+      return false
+    }
+  }
 
   function ensureCwdExists(): string {
     try {
@@ -1974,18 +2079,31 @@ export function createOpencodeSupervisor(
   }
 
   return {
+    prefetchBinary() {
+      if (!binaryPrefetchPromise) {
+        const controller = new AbortController()
+        binaryPrefetchController = controller
+        binaryPrefetchPromise = prefetchBinaryOnce(controller.signal).finally(() => {
+          if (binaryPrefetchController === controller) binaryPrefetchController = null
+        })
+      }
+      return binaryPrefetchPromise
+    },
+
+    cancelBinaryPrefetch() {
+      binaryPrefetchController?.abort()
+    },
+
     async start() {
       stopping = false
       state = 'starting'
-      const bin = options.binaryPathOverride ?? await detectOpencodeBinary()
+      const bin = await resolveBinaryPath()
       if (!bin) {
-        logger.warn('[opencode] binary not found on PATH (and /usr/local/bin/opencode-kortix missing); daemon will continue, opencode reports as starting')
+        logger.warn('[opencode] binary not found; daemon will continue, opencode reports as starting')
         state = 'starting'
         scheduleReadinessProbe()
         return
       }
-      binaryPath = bin
-      startupMark('runtime-binary-resolved')
       opencodeCwd = await resolveOpencodeCwd(currentCfg)
       startupMark('runtime-cwd-resolved')
       try {
@@ -2017,6 +2135,8 @@ export function createOpencodeSupervisor(
         clearTimeout(readinessTimer)
         readinessTimer = null
       }
+      binaryPrefetchController?.abort()
+      if (binaryPrefetchPromise) await binaryPrefetchPromise
       if (!child) return
       const c = child
       // Spawned with detached: true, so c.pid also identifies the process

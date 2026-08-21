@@ -77,6 +77,14 @@ RUN curl -fsSL https://get.pnpm.io/install.sh \\
       | env HOME=/home/kortix SHELL=/bin/bash PNPM_VERSION=${PNPM_VERSION} sh - \\
  && HOME=/home/kortix pnpm runtime set node ${NODE_VERSION} --global \\
  && HOME=/home/kortix pnpm add --global --allow-build=opencode-ai "opencode-ai@${OPENCODE_VERSION}" \\
+ && opencode_package="$(pnpm list -g --parseable --depth 0 opencode-ai | sed -n '\\#/node_modules/opencode-ai$#p' | tail -n 1)" \\
+ && opencode_native="$opencode_package/bin/opencode.exe" \\
+ && test -x "$opencode_native" \\
+ && test "$(wc -c < "$opencode_native")" -gt 50000000 \\
+ && test "$("$opencode_native" --version)" = "${OPENCODE_VERSION}" \\
+ && ln -sfn "$opencode_native" /opt/kortix/opencode.current \\
+ && ln -sfn /opt/kortix/opencode.current /usr/local/bin/opencode-kortix \\
+ && test "$(/usr/local/bin/opencode-kortix --version)" = "${OPENCODE_VERSION}" \\
  && ln -sf "\$(command -v node)" /usr/local/bin/node \\
  && chown -R kortix:kortix /home/kortix
 

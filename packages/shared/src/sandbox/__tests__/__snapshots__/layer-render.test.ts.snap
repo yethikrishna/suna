@@ -107,7 +107,15 @@ RUN pnpm add -g --allow-build=agent-browser "agent-browser@0.27.0" \\
 
 RUN pnpm add -g --allow-build=opencode-ai "opencode-ai@1.18.19" \\
     && command -v opencode \\
-    && opencode --version
+    && opencode --version \\
+    && opencode_package="$(pnpm list -g --parseable --depth 0 opencode-ai | sed -n '\\#/node_modules/opencode-ai$#p' | tail -n 1)" \\
+    && opencode_native="$opencode_package/bin/opencode.exe" \\
+    && test -x "$opencode_native" \\
+    && test "$(wc -c < "$opencode_native")" -gt 50000000 \\
+    && test "$("$opencode_native" --version)" = "1.18.19" \\
+    && ln -sfn "$opencode_native" /opt/kortix/opencode.current \\
+    && sudo ln -sfn /opt/kortix/opencode.current /usr/local/bin/opencode-kortix \\
+    && test "$(/usr/local/bin/opencode-kortix --version)" = "1.18.19"
 
 COPY --chown=kortix:kortix kortix-opencode-warmup /tmp/kortix-opencode-warmup
 RUN bash /tmp/kortix-opencode-warmup migration && rm -f /tmp/kortix-opencode-warmup
@@ -284,7 +292,15 @@ RUN pnpm add -g --allow-build=agent-browser "agent-browser@0.27.0" \\
 
 RUN pnpm add -g --allow-build=opencode-ai "opencode-ai@1.18.19" \\
     && command -v opencode \\
-    && opencode --version
+    && opencode --version \\
+    && opencode_package="$(pnpm list -g --parseable --depth 0 opencode-ai | sed -n '\\#/node_modules/opencode-ai$#p' | tail -n 1)" \\
+    && opencode_native="$opencode_package/bin/opencode.exe" \\
+    && test -x "$opencode_native" \\
+    && test "$(wc -c < "$opencode_native")" -gt 50000000 \\
+    && test "$("$opencode_native" --version)" = "1.18.19" \\
+    && ln -sfn "$opencode_native" /opt/kortix/opencode.current \\
+    && sudo ln -sfn /opt/kortix/opencode.current /usr/local/bin/opencode-kortix \\
+    && test "$(/usr/local/bin/opencode-kortix --version)" = "1.18.19"
 
 COPY --chown=kortix:kortix kortix-opencode-warmup /tmp/kortix-opencode-warmup
 RUN bash /tmp/kortix-opencode-warmup migration && rm -f /tmp/kortix-opencode-warmup
@@ -462,7 +478,15 @@ RUN pnpm add -g --allow-build=agent-browser "agent-browser@0.27.0" \\
 
 RUN pnpm add -g --allow-build=opencode-ai "opencode-ai@1.18.19" \\
     && command -v opencode \\
-    && opencode --version
+    && opencode --version \\
+    && opencode_package="$(pnpm list -g --parseable --depth 0 opencode-ai | sed -n '\\#/node_modules/opencode-ai$#p' | tail -n 1)" \\
+    && opencode_native="$opencode_package/bin/opencode.exe" \\
+    && test -x "$opencode_native" \\
+    && test "$(wc -c < "$opencode_native")" -gt 50000000 \\
+    && test "$("$opencode_native" --version)" = "1.18.19" \\
+    && ln -sfn "$opencode_native" /opt/kortix/opencode.current \\
+    && sudo ln -sfn /opt/kortix/opencode.current /usr/local/bin/opencode-kortix \\
+    && test "$(/usr/local/bin/opencode-kortix --version)" = "1.18.19"
 
 COPY --chown=kortix:kortix kortix-opencode-warmup /tmp/kortix-opencode-warmup
 RUN bash /tmp/kortix-opencode-warmup migration && rm -f /tmp/kortix-opencode-warmup

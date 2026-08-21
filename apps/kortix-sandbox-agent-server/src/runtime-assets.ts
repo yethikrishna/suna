@@ -15,6 +15,13 @@ import { promisify } from 'node:util'
 import { resolveOpencodeConfigDir, type Config } from './config'
 import { ensureInjectedManagedSkills } from './injected-skills'
 import { logger } from './logger'
+import {
+  captureProcessOutput,
+  OPENCODE_CURRENT_LINK,
+  publishOpencodeNativeLink,
+  resolveInstalledOpencodeNative,
+  type CaptureCommand,
+} from './opencode-binary'
 import { OPENCODE_CONFIG_DEPS_DIR } from './opencode-config-deps'
 import { opencodeTurnInFlight } from './opencode-turn-state'
 
@@ -158,7 +165,7 @@ export interface RuntimeAssetsOptions {
   runningAgentPath?: string
   /** Present only when the daemon has a live runtime to converge. */
   seam?: RuntimeConvergenceSeam
-  /** Test seams. Production uses the real npm install / health read / turn probe. */
+  /** Test seams. The production installer also publishes the stable native link. */
   installOpencode?: (version: string) => Promise<void>
   readOpencodeVersion?: (baseUrl: string) => Promise<string | null>
   turnProbe?: (baseUrl: string, workspace: string) => Promise<boolean | null>
@@ -611,11 +618,36 @@ async function readOpencodeVersion(baseUrl: string): Promise<string | null> {
  * installer here would produce a second, subtly different runtime that only
  * ever exists on updated boxes, which is the hardest kind of drift to debug.
  */
-async function installOpencodeVersion(version: string): Promise<void> {
-  await execFileAsync(
-    'pnpm',
-    ['add', '-g', '--allow-build=opencode-ai', `opencode-ai@${version}`],
-    { timeout: OPENCODE_INSTALL_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
+export interface InstallOpencodeVersionOptions {
+  installPackage?: (version: string) => Promise<void>
+  capture?: CaptureCommand
+  currentLinkPath?: string
+}
+
+export async function installOpencodeVersion(
+  version: string,
+  options: InstallOpencodeVersionOptions = {},
+): Promise<void> {
+  const installPackage = options.installPackage ?? (async (targetVersion: string) => {
+    await execFileAsync(
+      'pnpm',
+      ['add', '-g', '--allow-build=opencode-ai', `opencode-ai@${targetVersion}`],
+      { timeout: OPENCODE_INSTALL_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
+    )
+  })
+  const capture = options.capture ?? captureProcessOutput
+
+  await installPackage(version)
+  const nativePath = await resolveInstalledOpencodeNative(capture)
+  const reportedVersion = (await capture(nativePath, ['--version'])).trim()
+  if (reportedVersion !== version) {
+    throw new Error(
+      `installed OpenCode native version mismatch: expected ${version}, got ${reportedVersion || '<empty>'}`,
+    )
+  }
+  await publishOpencodeNativeLink(
+    nativePath,
+    options.currentLinkPath ?? OPENCODE_CURRENT_LINK,
   )
 }
 

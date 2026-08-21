@@ -237,6 +237,14 @@ async function main() {
   // long-pole, so the fetch costs no critical-path time.
   startManagedModelsPrefetch(process.env.KORTIX_LLM_BASE_URL, process.env.KORTIX_LLM_API_KEY)
 
+  // Platinum lazily faults image pages into a fresh VM. Read the OpenCode
+  // executable sequentially while repository and config work run. Stop at the
+  // spawn boundary, so a slow page fault cannot extend the critical path.
+  const opencodeBinaryPrefetchPromise =
+    process.env.KORTIX_OPENCODE_BINARY_PREFETCH === '1'
+      ? opencode.prefetchBinary()
+      : Promise.resolve(false)
+
   const repoMaterializePromise: Promise<void> = cfg.autoClone
     ? materializeRepo(cfg).catch((err) => {
         bootState.repoMaterializationError = err instanceof Error ? err.message : String(err)
@@ -277,6 +285,10 @@ async function main() {
         err: err instanceof Error ? err.message : String(err),
       })
     })
+    // Repository/config work defines the free overlap window. Stop any
+    // remaining sequential read here so prefetch can never extend boot.
+    opencode.cancelBinaryPrefetch()
+    void opencodeBinaryPrefetchPromise
     opencode.reconfigure(cfg, opencodeConfigDir, projectEnv)
     await opencode.start().catch((err) => {
       logger.warn('[boot] opencode.start() rejected', {

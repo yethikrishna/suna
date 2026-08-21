@@ -569,7 +569,12 @@ export async function isShallowRepo(target: string): Promise<boolean> {
   return res.code === 0 && res.stdout.trim() === 'true'
 }
 
-async function checkoutSessionBranch(
+function isMissingRemoteBranch(result: ExecResult): boolean {
+  const output = `${result.stderr}\n${result.stdout}`
+  return /couldn't find remote ref|remote ref .* not found|remote branch .* not found/i.test(output)
+}
+
+export async function checkoutSessionBranch(
   cfg: Config,
   target: string,
   branch: string,
@@ -583,8 +588,9 @@ async function checkoutSessionBranch(
   // re-truncate a complete repo.
   const depthArgs = (await isShallowRepo(target)) ? ['--depth', '1'] : []
   // Same stall-abort + hard timeout as the clone: a restored VM's RX can hang
-  // this fetch with no reset. On failure/timeout we fall through to a local
-  // branch from the base checkout (below), so the session still boots.
+  // this fetch with no reset. A replacement boot must fail closed on transport
+  // errors. Otherwise it can create a local branch from the base, mark the
+  // checkout adopted, and permanently hide existing remote session commits.
   const fetched = await gitWithAuth(credential, cfg.repoUrl, [
     '-c', 'http.lowSpeedLimit=1000', '-c', 'http.lowSpeedTime=12',
     '-C',
@@ -609,11 +615,21 @@ async function checkoutSessionBranch(
       logger.info('[git] checked out remote session branch', { branch })
       return
     }
+    if (cfg.sessionBranchRestore) {
+      throw new Error(
+        `failed to restore remote session branch ${branch}: ${checkout.stderr || checkout.stdout}`,
+      )
+    }
     logger.warn('[git] remote session branch checkout failed; creating local branch', {
       branch,
       stderr: checkout.stderr.slice(0, 300),
     })
   } else {
+    if (cfg.sessionBranchRestore && !isMissingRemoteBranch(fetched)) {
+      throw new Error(
+        `failed to restore remote session branch ${branch}: ${fetched.stderr || fetched.stdout}`,
+      )
+    }
     logger.info('[git] remote session branch not ready; creating local branch from base checkout', {
       branch,
       stderr: fetched.stderr.slice(0, 300),

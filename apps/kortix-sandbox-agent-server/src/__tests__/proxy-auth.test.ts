@@ -25,6 +25,7 @@ import {
   __clearRepoIdentityMemoForTests,
   __setScaffoldRepoPathForTests,
   buildGitAuthArgs,
+  checkoutSessionBranch,
   configureGlobalGitIdentity,
   materializeRepo,
 } from '../git'
@@ -707,6 +708,111 @@ describe('daemon proxy auth gate', () => {
       expect(requests.filter((url) => url.includes('/git/clone-credential'))).toHaveLength(1)
     } finally {
       globalThis.fetch = originalFetch
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('fails closed when replacement branch restore cannot reach the remote', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'kortix-project-image-restore-failure-'))
+    try {
+      const remote = join(root, 'remote.git')
+      const unavailableRemote = join(root, 'remote-unavailable.git')
+      const seed = join(root, 'seed')
+      const target = join(root, 'workspace')
+      git(['init', '--bare', remote])
+      mkdirSync(seed)
+      git(['init', '-b', 'main'], seed)
+      writeFileSync(join(seed, 'README.md'), 'base\n')
+      git(['add', 'README.md'], seed)
+      git(['-c', 'user.email=test@kortix.dev', '-c', 'user.name=Kortix Test', 'commit', '-m', 'base'], seed)
+      git(['remote', 'add', 'origin', remote], seed)
+      git(['push', '-u', 'origin', 'main'], seed)
+      git(['symbolic-ref', 'HEAD', 'refs/heads/main'], remote)
+      git(['clone', '--branch', 'main', remote, target])
+      git(['-C', target, 'remote', 'set-url', 'origin', unavailableRemote])
+
+      const cfg = baseConfig({
+        projectTarget: target,
+        repoUrl: unavailableRemote,
+        branchName: 'session-existing',
+        sessionBranchRestore: true,
+      })
+
+      await expect(checkoutSessionBranch(cfg, target, 'session-existing', undefined)).rejects.toThrow(
+        'failed to restore remote session branch session-existing',
+      )
+      expect(gitOutput(['-C', target, 'branch', '--list', 'session-existing'])).toBe('')
+      expect(gitOutput(['-C', target, 'rev-parse', '--abbrev-ref', 'HEAD'])).toBe('main')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('creates a replacement session branch locally when the remote ref does not exist', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'kortix-project-image-restore-missing-ref-'))
+    try {
+      const remote = join(root, 'remote.git')
+      const seed = join(root, 'seed')
+      const target = join(root, 'workspace')
+      git(['init', '--bare', remote])
+      mkdirSync(seed)
+      git(['init', '-b', 'main'], seed)
+      writeFileSync(join(seed, 'README.md'), 'base\n')
+      git(['add', 'README.md'], seed)
+      git(['-c', 'user.email=test@kortix.dev', '-c', 'user.name=Kortix Test', 'commit', '-m', 'base'], seed)
+      git(['remote', 'add', 'origin', remote], seed)
+      git(['push', '-u', 'origin', 'main'], seed)
+      git(['symbolic-ref', 'HEAD', 'refs/heads/main'], remote)
+      git(['clone', '--branch', 'main', remote, target])
+
+      const cfg = baseConfig({
+        projectTarget: target,
+        repoUrl: remote,
+        branchName: 'session-new',
+        sessionBranchRestore: true,
+      })
+
+      await checkoutSessionBranch(cfg, target, 'session-new', undefined)
+
+      expect(gitOutput(['-C', target, 'rev-parse', '--abbrev-ref', 'HEAD'])).toBe('session-new')
+      expect(gitOutput(['-C', target, 'rev-parse', 'session-new'])).toBe(
+        gitOutput(['-C', target, 'rev-parse', 'main']),
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps the legacy local fallback for ordinary resume fetch failures', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'kortix-session-resume-fetch-failure-'))
+    try {
+      const source = join(root, 'source')
+      const remote = join(root, 'remote.git')
+      const unavailableRemote = join(root, 'remote-unavailable.git')
+      const target = join(root, 'workspace')
+      mkdirSync(source)
+      git(['init', '-b', 'main'], source)
+      writeFileSync(join(source, 'README.md'), 'base\n')
+      git(['add', 'README.md'], source)
+      git(['-c', 'user.email=test@kortix.dev', '-c', 'user.name=Kortix Test', 'commit', '-m', 'base'], source)
+      git(['clone', '--bare', source, remote])
+      git(['clone', '--branch', 'main', remote, target])
+      git(['-C', target, 'remote', 'set-url', 'origin', unavailableRemote])
+
+      const cfg = baseConfig({
+        projectTarget: target,
+        repoUrl: unavailableRemote,
+        branchName: 'session-resume',
+        sessionBranchRestore: false,
+      })
+
+      await checkoutSessionBranch(cfg, target, 'session-resume', undefined)
+
+      expect(gitOutput(['-C', target, 'rev-parse', '--abbrev-ref', 'HEAD'])).toBe('session-resume')
+      expect(gitOutput(['-C', target, 'rev-parse', 'session-resume'])).toBe(
+        gitOutput(['-C', target, 'rev-parse', 'main']),
+      )
+    } finally {
       rmSync(root, { recursive: true, force: true })
     }
   })

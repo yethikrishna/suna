@@ -12,6 +12,7 @@ poll_seconds="${OPENCODE_WARMUP_POLL_SECONDS:-1}"
 settle_seconds="${OPENCODE_WARMUP_SETTLE_SECONDS:-3}"
 stop_attempts="${OPENCODE_WARMUP_STOP_ATTEMPTS:-50}"
 stop_poll_seconds="${OPENCODE_WARMUP_STOP_POLL_SECONDS:-0.1}"
+launch_attempts="${OPENCODE_WARMUP_LAUNCH_ATTEMPTS:-3}"
 workspace="${KORTIX_WARMUP_WORKSPACE:-/workspace}"
 warm_config_root="${KORTIX_WARMUP_CONFIG_ROOT:-/opt/kortix/warm-config}"
 config_deps="${KORTIX_WARMUP_CONFIG_DEPS:-/opt/kortix/opencode-config-deps/node_modules}"
@@ -68,17 +69,50 @@ print_log_tail() {
   tail -25 "$log_path" 2>/dev/null
 }
 
+allocate_opencode_port() {
+  # OpenCode treats --port 0 as its fixed default (4096), so ask the kernel for
+  # a currently free loopback port. Perl is already in the Ubuntu runtime and
+  # avoids triggering the lazy Python installer during an image build.
+  if command -v perl >/dev/null 2>&1; then
+    perl -MIO::Socket::INET -e \
+      '$s=IO::Socket::INET->new(LocalAddr=>"127.0.0.1",LocalPort=>0,Proto=>"tcp",Listen=>1) or die $!; print $s->sockport'
+    return
+  fi
+  python3 - <<'PY'
+import socket
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    sock.bind(("127.0.0.1", 0))
+    print(sock.getsockname()[1])
+PY
+}
+
 wait_for_opencode() {
-  local url="$1"
-  local attempts="$2"
+  local log_path="$1"
+  local request_path="$2"
+  local attempts="$3"
+  local expected_port="$4"
   local code
   local attempt
+  local listener_port=""
 
   for attempt in $(seq 1 "$attempts"); do
-    code=$(curl -s -o /dev/null -w '%{http_code}' -m 3 "$url" 2>/dev/null || true)
-    case "$code" in
-      200|204|301|302) return 0 ;;
-    esac
+    if [ -z "$listener_port" ]; then
+      listener_port="$(
+        sed -n 's#.*http://127\.0\.0\.1:\([0-9][0-9]*\).*#\1#p' "$log_path" 2>/dev/null |
+          tail -n 1
+      )"
+    fi
+    # Curl only after THIS process logs the exact port it was assigned. If a
+    # concurrent process wins a rare bind race, its healthy endpoint cannot be
+    # mistaken for this warm-up's readiness.
+    if [ "$listener_port" = "$expected_port" ]; then
+      code=$(curl -s -o /dev/null -w '%{http_code}' -m 3 \
+        "http://127.0.0.1:${expected_port}${request_path}" 2>/dev/null || true)
+      case "$code" in
+        200|204|301|302) return 0 ;;
+      esac
+    fi
     kill -0 "$oc_pid" 2>/dev/null || return 1
     sleep "$poll_seconds"
   done
@@ -86,15 +120,41 @@ wait_for_opencode() {
   return 1
 }
 
+start_ready_opencode() {
+  local log_path="$1"
+  local request_path="$2"
+  local attempts="$3"
+  local launch
+  local port
+
+  for launch in $(seq 1 "$launch_attempts"); do
+    port="$(allocate_opencode_port)" || return 1
+    rm -f "$log_path"
+    start_opencode "$log_path" serve --port "$port" --hostname 127.0.0.1
+    if wait_for_opencode "$log_path" "$request_path" "$attempts" "$port"; then
+      return 0
+    fi
+    stop_opencode
+    if [ "$launch" -lt "$launch_attempts" ]; then
+      echo "opencode warm-up launch ${launch}/${launch_attempts} failed; retrying on a new port" >&2
+    fi
+  done
+
+  return 1
+}
+
 warm_migration() {
-  local log_path=/tmp/oc-bake.log
-  local migration_dir=/tmp/kortix-opencode-migration
+  local log_path="/tmp/oc-bake-$$.log"
+  local migration_dir="/tmp/kortix-opencode-migration-$$"
 
   mkdir -p "$HOME/.local/share" "$HOME/.config" "$HOME/.cache" "$migration_dir" || return 1
   rm -f "$log_path"
-  start_opencode "$log_path" serve --port 4096 --hostname 127.0.0.1
-  if ! wait_for_opencode \
-    "http://127.0.0.1:4096/session?directory=$migration_dir" \
+  # Port 4096 is shared when a provider runs concurrent Podman builds in one
+  # network namespace. Use a kernel-assigned high port. A fixed port can make
+  # curl hit another build's healthy server while this process exits ServeError.
+  if ! start_ready_opencode \
+    "$log_path" \
+    "/session?directory=$migration_dir" \
     "$migration_attempts"; then
     echo "opencode migration warm-up did not become ready after ${migration_attempts} attempts" >&2
     stop_opencode
@@ -120,11 +180,11 @@ warm_migration() {
 }
 
 warm_instance() {
-  local log_path=/tmp/oc-warm.log
+  local log_path="/tmp/oc-warm-$$.log"
   local ready=0
   local staged_starter_config=0
   local repo_head=""
-  local repo_kortix_backup=/tmp/kortix-opencode-repo-config
+  local repo_kortix_backup="/tmp/kortix-opencode-repo-config-$$"
   local cleanup_ok=1
 
   case "$cleanup" in
@@ -176,9 +236,9 @@ warm_instance() {
   fi
   cd "$workspace" || return 1
   rm -f "$log_path"
-  start_opencode "$log_path" serve --port 4096 --hostname 127.0.0.1
-  if wait_for_opencode \
-    'http://127.0.0.1:4096/session?directory=/workspace' \
+  if start_ready_opencode \
+    "$log_path" \
+    '/session?directory=/workspace' \
     "$instance_attempts"; then
     ready=1
   fi

@@ -94,6 +94,21 @@ if [ -n "\${FAKE_OPENCODE_HELPER_PID_FILE:-}" ]; then
     while :; do /bin/sleep 0.05; done
   ) &
 fi
+requested_port=""
+previous=""
+for argument in "$@"; do
+  if [ "$previous" = "--port" ]; then
+    requested_port="$argument"
+  fi
+  previous="$argument"
+done
+if [ -n "\${FAKE_OPENCODE_REQUESTED_PORT_CAPTURE_FILE:-}" ]; then
+  printf '%s' "$requested_port" >"$FAKE_OPENCODE_REQUESTED_PORT_CAPTURE_FILE"
+fi
+if [ -n "$requested_port" ]; then
+  printf 'opencode server listening on http://127.0.0.1:%s\n' \
+    "\${FAKE_OPENCODE_LISTEN_PORT:-$requested_port}"
+fi
 if [ -n "\${FAKE_OPENCODE_CONFIG_CAPTURE_FILE:-}" ]; then
   printf '%s' "\${OPENCODE_CONFIG_DIR:-}" >"$FAKE_OPENCODE_CONFIG_CAPTURE_FILE"
 fi
@@ -142,6 +157,14 @@ os.execvp(sys.argv[1], sys.argv[1:])
     writeExecutable(
       'curl',
       `#!/usr/bin/env bash
+for argument in "$@"; do
+  case "$argument" in
+    http://*|https://*) request_url="$argument" ;;
+  esac
+done
+if [ -n "\${FAKE_CURL_URL_CAPTURE_FILE:-}" ]; then
+  printf '%s' "\${request_url:-}" >"$FAKE_CURL_URL_CAPTURE_FILE"
+fi
 if [ "\${FAKE_CURL_READY:-0}" = "1" ]; then
   if [ -n "\${FAKE_OPENCODE_READY_FILE:-}" ] && [ ! -f "$FAKE_OPENCODE_READY_FILE" ]; then
     printf '000'
@@ -172,6 +195,26 @@ exit 1
     });
     expect(result.code).toBe(0);
     expect(readFileSync(disableCaptureFile, 'utf8')).toBe('');
+  });
+
+  test('uses a provider-assigned port so concurrent image builds cannot collide', async () => {
+    const portCaptureFile = join(fixtureRoot, 'requested-port');
+    const urlCaptureFile = join(fixtureRoot, 'readiness-url');
+    const readyFile = join(fixtureRoot, 'opencode.ready');
+    const result = await runWarmup('migration', {
+      FAKE_CURL_READY: '1',
+      FAKE_CURL_URL_CAPTURE_FILE: urlCaptureFile,
+      FAKE_OPENCODE_READY_FILE: readyFile,
+      FAKE_OPENCODE_REQUESTED_PORT_CAPTURE_FILE: portCaptureFile,
+    });
+
+    expect(result.code).toBe(0);
+    const requestedPort = readFileSync(portCaptureFile, 'utf8');
+    expect(Number(requestedPort)).toBeGreaterThan(0);
+    expect(requestedPort).not.toBe('4096');
+    expect(readFileSync(urlCaptureFile, 'utf8')).toContain(
+      `http://127.0.0.1:${requestedPort}/session?`,
+    );
   });
 
   test('fails when OpenCode exits before readiness', async () => {

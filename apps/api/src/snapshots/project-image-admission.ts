@@ -100,5 +100,12 @@ export async function assessFastProjectImageBuildAdmission(
     }
   }
 
+  // E2B supported project-image writes before FAST admission existed. E2B has
+  // no shared snapshot-capacity endpoint to reserve against, so keep that
+  // behavior unchanged. Unknown providers remain fail-closed below.
+  if (provider.id === 'e2b') {
+    return { allowed: true, reason: 'allowed' };
+  }
+
   return { allowed: false, reason: 'capacity_unavailable' };
 }

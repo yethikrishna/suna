@@ -95,9 +95,15 @@ describe('assessFastProjectImageBuildAdmission', () => {
     ).resolves.toEqual({ allowed: false, reason: 'capacity_check_failed' });
   });
 
-  test('denies providers without an authoritative capacity contract', async () => {
+  test('preserves existing E2B project-image writes without a shared hard-cap contract', async () => {
     await expect(
       assessFastProjectImageBuildAdmission(provider('e2b')),
+    ).resolves.toEqual({ allowed: true, reason: 'allowed' });
+  });
+
+  test('fails closed for unknown providers', async () => {
+    await expect(
+      assessFastProjectImageBuildAdmission(provider('unknown')),
     ).resolves.toEqual({ allowed: false, reason: 'capacity_unavailable' });
   });
 });

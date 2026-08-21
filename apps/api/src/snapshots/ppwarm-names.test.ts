@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { PPWARM_PREFIX, excludePinnedTargets, legacyPerProjectWarmImageName, perProjectWarmImageName, ppwarmReapTargets, proj8, tpl8 } from './ppwarm-names';
+import { PPWARM_PREFIX, excludePinnedTargets, isExactPpwarmImageName, legacyPerProjectWarmImageName, perProjectWarmImageName, ppwarmReapTargets, proj8, tpl8 } from './ppwarm-names';
 import { ppwarmProj8, ppwarmTpl8 } from './quota-gc-select';
 
 const PROJ_A = '9ee8bc9c-5108-437f-a01f-6c5e26f2062c';
@@ -143,5 +143,34 @@ describe('legacyPerProjectWarmImageName — migration fallback', () => {
     const legacy = legacyPerProjectWarmImageName(PROJ, TIP, BASE);
     expect(ppwarmProj8(legacy)).toBe(proj8(PROJ));
     expect(ppwarmTpl8(legacy)).toBeNull();
+  });
+});
+
+describe('isExactPpwarmImageName', () => {
+  test('accepts the current and legacy generated names', () => {
+    expect(
+      isExactPpwarmImageName(
+        perProjectWarmImageName(PROJ_A, 'a'.repeat(40), BASE, 'default'),
+      ),
+    ).toBe(true);
+    expect(
+      isExactPpwarmImageName(
+        legacyPerProjectWarmImageName(PROJ_A, 'a'.repeat(40), BASE),
+      ),
+    ).toBe(true);
+  });
+
+  test.each([
+    'kortix-default-e881f000eae5',
+    'kortix-ppwarm-',
+    'kortix-ppwarm-9ee8bc9c-aaaaaaaaaaa',
+    'kortix-ppwarm-9ee8bc9c-aaaaaaaaaaaaa',
+    'kortix-ppwarm-9ee8bc9c-zzzzzzzzzzzz',
+    'kortix-ppwarm-9EE8BC9C-aaaaaaaaaaaa',
+    'kortix-ppwarm-9ee8bc9c-37a8eec1-aaaaaaaaaaaa-extra',
+    'kortix-ppwarm-9ee8bc9c-37a8eec1-aaaaaaaaaaaa__deleted_tpl_1',
+    '../kortix-ppwarm-9ee8bc9c-aaaaaaaaaaaa',
+  ])('rejects %s', (name) => {
+    expect(isExactPpwarmImageName(name)).toBe(false);
   });
 });

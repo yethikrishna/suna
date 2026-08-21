@@ -32,9 +32,16 @@ const pinned = {
 };
 
 describe('FIX-A decideSessionBoot — pinned-id boot gating', () => {
-  test('boots by the pinned id when the active provider matches and id-boot is supported', () => {
+  test('boots by the pinned id when provider and image names match', () => {
     expect(
-      decideSessionBoot({ killSwitchOn: true, routing: pinned, providerName: 'platinum', providerSupportsIdBoot: true, imageIsDefault: true }),
+      decideSessionBoot({
+        killSwitchOn: true,
+        routing: pinned,
+        providerName: 'platinum',
+        providerSupportsIdBoot: true,
+        imageIsDefault: true,
+        imageSnapshotName: 'snap-project-current',
+      }),
     ).toEqual({ bootByTemplateId: 'tpl_pinned' });
   });
 
@@ -90,6 +97,45 @@ describe('FIX-A decideSessionBoot — pinned-id boot gating', () => {
         imageSnapshotName: 'snap-project-current',
       }),
     ).toEqual({ bootByTemplateId: null });
+  });
+
+  test('a resolved base image never boots an activated project-image id with a different name', () => {
+    expect(
+      decideSessionBoot({
+        killSwitchOn: true,
+        routing: pinned,
+        providerName: 'platinum',
+        providerSupportsIdBoot: true,
+        imageIsDefault: true,
+        imageIsProjectImage: false,
+        imageSnapshotName: 'snap-standard-base',
+      }),
+    ).toEqual({ bootByTemplateId: null });
+  });
+
+  test('a named activation requires the resolved image name', () => {
+    expect(
+      decideSessionBoot({
+        killSwitchOn: true,
+        routing: pinned,
+        providerName: 'platinum',
+        providerSupportsIdBoot: true,
+        imageIsDefault: true,
+      }),
+    ).toEqual({ bootByTemplateId: null });
+  });
+
+  test('a legacy standard activation without image metadata keeps id boot', () => {
+    expect(
+      decideSessionBoot({
+        killSwitchOn: true,
+        routing: { ...pinned, activeSnapshotName: null },
+        providerName: 'platinum',
+        providerSupportsIdBoot: true,
+        imageIsDefault: true,
+        imageSnapshotName: 'snap-standard-base',
+      }),
+    ).toEqual({ bootByTemplateId: 'tpl_pinned' });
   });
 
   test('rollback: a leftover Platinum id pin does NOT id-boot a Daytona session (name-boot)', () => {

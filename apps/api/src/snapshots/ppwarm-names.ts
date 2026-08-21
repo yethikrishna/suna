@@ -16,6 +16,14 @@ import { createHash } from 'node:crypto';
 
 export const PPWARM_PREFIX = 'kortix-ppwarm-';
 
+const EXACT_PPWARM_IMAGE_NAME =
+  /^kortix-ppwarm-[0-9a-f]{8}-(?:[0-9a-f]{8}-)?[0-9a-f]{12}$/;
+
+/** Accept only complete live ppwarm names in the current or legacy format. */
+export function isExactPpwarmImageName(name: string): boolean {
+  return EXACT_PPWARM_IMAGE_NAME.test(name);
+}
+
 /**
  * A ppwarm image (re)built within this window is protected from supersession
  * reaping — by the on-bake reaper AND the quota GC's superseded-tip rule. Two

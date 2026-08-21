@@ -47,6 +47,7 @@ import {
   DEFAULT_SANDBOX_SLUG,
   type EnsureSandboxImageResult,
 } from '../../snapshots/builder';
+import { deleteProjectSandboxImage } from '../../snapshots/project-image-delete';
 import { config } from '../../config';
 import { providerFallbackSetting } from './runtime-settings';
 import { selectProvider } from './provider-balancer';
@@ -220,7 +221,7 @@ export function fastColdBootEnabled(): boolean {
  *   - the kill-switch is ON,
  *   - the provider actually supports id-boot (Platinum; others are name-only),
  *   - a non-empty pinned id exists, AND
- *   - a per-project image exactly matches the activated image name, AND
+ *   - a named activation exactly matches the resolved image name, AND
  *   - MANDATORY provider-match: the pin belongs to the provider it was activated
  *     for — `routing.activeProvider === providerName`. This is what makes a
  *     rollback safe: a project reverted to Daytona with a leftover Platinum id
@@ -263,11 +264,12 @@ export function decideSessionBoot(input: {
   if (!pinnedId) return { bootByTemplateId: null };
   if (routing?.activeProvider !== providerName) return { bootByTemplateId: null }; // provider-match
   if (
-    imageIsProjectImage &&
-    (!imageSnapshotName ||
-      !routing.activeSnapshotName ||
-      routing.activeSnapshotName !== imageSnapshotName)
+    routing.activeSnapshotName !== null &&
+    (!imageSnapshotName || routing.activeSnapshotName !== imageSnapshotName)
   ) {
+    return { bootByTemplateId: null };
+  }
+  if (imageIsProjectImage && !routing.activeSnapshotName) {
     return { bootByTemplateId: null };
   }
   return { bootByTemplateId: pinnedId };
@@ -677,7 +679,7 @@ export async function provisionSessionSandbox(opts: {
         imageIsDefault: image.isDefault && image.runtimeProfile !== 'fast',
         imageIsProjectImage: image.isProjectImage,
         imageSnapshotName: image.snapshotName,
-        disabledForSession: idBootDisabled,
+        disabledForSession: idBootDisabled || opts.allowProjectImage === false,
       });
       if (bootDecision.bootByTemplateId) {
         console.log(
@@ -1009,7 +1011,10 @@ export async function provisionSessionSandbox(opts: {
       // and retry once. Capped at one heal per session start.
       if (isSnapshotMissingOnProvider(bgErr) && imageInfo && !healedStaleSnapshot) {
         healedStaleSnapshot = true;
-        await deleteSandboxImage(opts.gitProject, { slug: imageInfo.slug, provider: providerName }).catch((err) =>
+        const imageDelete = imageInfo.isProjectImage
+          ? deleteProjectSandboxImage(imageInfo.snapshotName, providerName)
+          : deleteSandboxImage(opts.gitProject, { slug: imageInfo.slug, provider: providerName });
+        await imageDelete.catch((err) =>
           console.warn(
             `[session-sandbox] force-rebuild failed for ${imageInfo!.snapshotName}:`,
             err,

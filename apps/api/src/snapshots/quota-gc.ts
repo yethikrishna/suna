@@ -16,7 +16,8 @@
  * header for why each of those was wrong before, and for the cross-environment
  * safety argument (one Daytona org, many databases).
  *
- * Never acts on a partial view: if the org listing fails, the pass does nothing.
+ * Never acts on a partial view: if any provider, reference, or pin read fails,
+ * the pass does nothing.
  */
 
 import { sandboxTemplates } from '@kortix/db';
@@ -32,6 +33,7 @@ import {
   DAYTONA_ORG_SNAPSHOT_LIMIT,
   QUOTA_GC_MAX_PER_PASS,
   QUOTA_GC_ORG_TARGET,
+  isManaged,
   type SnapshotLike,
   selectSnapshotsToReap,
 } from './quota-gc-select';
@@ -40,7 +42,16 @@ import {
  * session within this window. */
 const QUOTA_GC_PROJECT_ACTIVE_MS = 14 * 24 * 60 * 60 * 1000;
 
+export type QuotaGcObservationStatus =
+  | 'provider_not_configured'
+  | 'complete'
+  | 'org_list_failed'
+  | 'referenced_names_failed'
+  | 'pin_lookup_failed';
+
 export interface QuotaGcResult {
+  /** Whether every observation needed for safe deletion and admission succeeded. */
+  observationStatus: QuotaGcObservationStatus;
   /** Org-wide snapshot count — the number the Daytona quota actually meters. */
   orgTotal: number;
   /** Snapshots in namespaces we own. */
@@ -52,6 +63,22 @@ export interface QuotaGcResult {
   /** GC cannot get the org back to target — capacity problem, needs a human. */
   budgetUnresolved: boolean;
   dryRun: boolean;
+}
+
+export type DaytonaProjectImageAdmissionReason =
+  | 'allowed'
+  | 'provider_not_configured'
+  | 'org_list_failed'
+  | 'referenced_names_failed'
+  | 'pin_lookup_failed'
+  | 'budget_unresolved'
+  | 'deferred_candidates'
+  | 'org_target_reached';
+
+export interface DaytonaProjectImageAdmission {
+  allowed: boolean;
+  reason: DaytonaProjectImageAdmissionReason;
+  quota: QuotaGcResult;
 }
 
 export interface SnapshotQuotaIo {
@@ -116,6 +143,7 @@ export async function reconcileSnapshotQuota(
 ): Promise<QuotaGcResult> {
   const dryRun = opts.dryRun ?? false;
   const result: QuotaGcResult = {
+    observationStatus: 'provider_not_configured',
     orgTotal: 0,
     managedCount: 0,
     eligible: 0,
@@ -126,6 +154,7 @@ export async function reconcileSnapshotQuota(
   };
   if (!io.isConfigured()) return result;
 
+  result.observationStatus = 'org_list_failed';
   let all: SnapshotLike[];
   try {
     all = await io.listSnapshots();
@@ -136,35 +165,47 @@ export async function reconcileSnapshotQuota(
     );
     return result;
   }
+  result.orgTotal = all.length;
+  result.managedCount = all.filter((snapshot) => isManaged(snapshot.name)).length;
 
   const now = opts.now ?? Date.now();
 
   // Names any local template row would boot from (trust-the-row / graceful
   // last-known-good path). Never delete these.
-  const referenced = await io.loadReferencedSnapshotNames(now);
+  result.observationStatus = 'referenced_names_failed';
+  let referenced: Set<string>;
+  try {
+    referenced = await io.loadReferencedSnapshotNames(now);
+  } catch (err) {
+    console.warn(
+      '[snapshot-gc] referenced-name lookup failed — pass skipped:',
+      err instanceof Error ? err.message : err,
+    );
+    return result;
+  }
 
   // FIX-K-lite: never reap an image that is the ACTIVE routing pin of ANY project.
   // proj8 (8 hex) scoping over the org-wide list could otherwise let one project's
   // superseded-tip selection delete another project's LIVE pinned cache on a
-  // collision. A lookup failure disables every ppwarm deletion for this pass.
-  // Independent non-ppwarm candidates retain their own reference/freshness guards.
-  let pinnedImages = new Set<string>();
-  let ppwarmPinProtectionAvailable = true;
+  // collision. A lookup failure disables every deletion for this pass because
+  // project-image admission and periodic GC share the same complete-view boundary.
+  result.observationStatus = 'pin_lookup_failed';
+  let pinnedImages: Set<string>;
   try {
     pinnedImages = await io.loadPinnedImageRefs();
   } catch (err) {
-    ppwarmPinProtectionAvailable = false;
     console.warn(
-      '[snapshot-gc] pinned-image lookup failed — ppwarm deletion disabled for this pass:',
+      '[snapshot-gc] pinned-image lookup failed — pass skipped:',
       err instanceof Error ? err.message : err,
     );
+    return result;
   }
+  result.observationStatus = 'complete';
 
   const plan = selectSnapshotsToReap({
     all,
     referenced,
     pinnedImages,
-    ppwarmPinProtectionAvailable,
     now,
   });
   result.orgTotal = plan.orgTotal;
@@ -207,4 +248,29 @@ export async function reconcileSnapshotQuota(
         : ''),
   );
   return result;
+}
+
+/**
+ * Observe Daytona capacity without deleting snapshots. Project-image admission
+ * fails closed unless the provider and every safety read produced a complete,
+ * immediately actionable view below the post-GC target.
+ */
+export async function assessDaytonaProjectImageAdmission(
+  opts: { now?: number } = {},
+  io: SnapshotQuotaIo = defaultSnapshotQuotaIo,
+): Promise<DaytonaProjectImageAdmission> {
+  const quota = await reconcileSnapshotQuota({ dryRun: true, now: opts.now }, io);
+  if (quota.observationStatus !== 'complete') {
+    return { allowed: false, reason: quota.observationStatus, quota };
+  }
+  if (quota.budgetUnresolved) {
+    return { allowed: false, reason: 'budget_unresolved', quota };
+  }
+  if (quota.deferred > 0) {
+    return { allowed: false, reason: 'deferred_candidates', quota };
+  }
+  if (quota.orgTotal >= QUOTA_GC_ORG_TARGET) {
+    return { allowed: false, reason: 'org_target_reached', quota };
+  }
+  return { allowed: true, reason: 'allowed', quota };
 }

@@ -61,8 +61,8 @@ export { PPWARM_PREFIX, SCOPED_PPWARM_PREFIX };
  *
  * ── Template scoping (ppwarm-names.ts FORMAT MIGRATION) ─────────────────────
  * `kortix-ppwarm-` supports legacy `(project8, hash12)` and unscoped
- * `(project8, template8, hash12)` names. `kortix-ppwarm2-` supports scoped
- * `(database12, project12, template8, hash12)` names. Rule 2 groups by the
+ * `(project8, template8, hash12)` names. `kpp2-` supports scoped
+ * `(database12, project12, template16, hash16)` names. Rule 2 groups by the
  * complete ownership tuple for that format. A scoped template can therefore
  * never supersede a different template or a different database's image. Legacy
  * and unscoped names keep their previous grouping, idle, and LRU behavior.
@@ -194,7 +194,7 @@ export function ppwarmProj8(name: string): string | null {
 
 /**
  * Template scope key: null for legacy names, 8 hex for unscoped names, and
- * 8 hex for data-plane-scoped names.
+ * 16 hex for data-plane-scoped names.
  */
 export function ppwarmTpl8(name: string): string | null {
   return parsePpwarmName(name)?.templateKey ?? null;
@@ -292,7 +292,7 @@ export function selectSnapshotsToReap(input: SelectInput): SelectResult {
   // 2. Superseded ppwarm tips: exactly one tip per ownership tuple is live.
   //    Legacy names group by project8. Unscoped names group by
   //    (project8, template8). Scoped names group by
-  //    (database12, project12, template8).
+  //    (database12, project12, template16).
   const byScope = new Map<string, SnapshotLike[]>();
   for (const s of pool) {
     if (s.name.includes('__deleted')) continue; // soft-delete tombstone; not quota-counting

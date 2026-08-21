@@ -55,29 +55,26 @@ describe('ppwarmTpl8', () => {
     expect(ppwarmTpl8('kortix-default-abc123')).toBeNull();
   });
 
-  test('parses scoped project12 and template8 keys', () => {
+  test('parses scoped project12 and template16 keys', () => {
     const name = scopedPerProjectWarmImageName(SCOPE_A, PROJ, 'tip1', BASE, 'custom-tpl');
-    const [scope12, project12, template8] = name
+    const [scope12, project12, template16] = name
       .slice(SCOPED_PPWARM_PREFIX.length)
       .split('-');
     expect(scope12).toBe(SCOPE_A);
     expect(ppwarmProj8(name)).toBe(project12);
-    expect(ppwarmTpl8(name)).toBe(template8);
+    expect(ppwarmTpl8(name)).toBe(template16);
   });
 
   test.each([
     'kortix-ppwarm-0945686d-nothex',
     'kortix-ppwarm-0945686d-12345678-nothex',
-    'kortix-ppwarm-11111111-123456789abc-12345678-123456789abc',
-    'kortix-ppwarm-111111111111-123456789abc-12345678-nothex',
-    'kortix-ppwarm-11111111111-123456789abc-12345678-123456789abc',
-    'kortix-ppwarm-111111111111-123456789abc-123456789abc-123456789abc',
-    'kortix-ppwarm-AAAAAAAAAAAA-123456789abc-12345678-123456789abc',
-    'kortix-ppwarm-111111111111-123456789abc-12345678-123456789abc-extra',
-    'kortix-ppwarm2-11111111-123456789abc-12345678-123456789abc',
-    'kortix-ppwarm2-111111111111-123456789abc-12345678-nothex',
-    'kortix-ppwarm2-AAAAAAAAAAAA-123456789abc-12345678-123456789abc',
-    'kortix-ppwarm2-111111111111-123456789abc-12345678-123456789abc-extra',
+    'kortix-ppwarm-111111111111-123456789abc-1234567890abcdef-fedcba0987654321',
+    'kpp2-11111111-123456789abc-1234567890abcdef-fedcba0987654321',
+    'kpp2-111111111111-123456789abc-1234567890abcdef-nothex',
+    'kpp2-11111111111-123456789abc-1234567890abcdef-fedcba0987654321',
+    'kpp2-111111111111-123456789abc-1234567890abcde-fedcba0987654321',
+    'kpp2-AAAAAAAAAAAA-123456789abc-1234567890abcdef-fedcba0987654321',
+    'kpp2-111111111111-123456789abc-1234567890abcdef-fedcba0987654321-extra',
   ])('rejects malformed ppwarm name %s', (name) => {
     expect(ppwarmProj8(name)).toBeNull();
     expect(ppwarmTpl8(name)).toBeNull();
@@ -147,7 +144,7 @@ describe('selectSnapshotsToReap — scoped ppwarm ownership', () => {
   });
 
   test('excludes malformed ppwarm names from broken and idle deletion', () => {
-    const malformedBroken = snap('kortix-ppwarm2-111111111111-nothex', {
+    const malformedBroken = snap('kpp2-111111111111-nothex', {
       state: 'error',
     });
     const malformedIdle = snap('kortix-ppwarm-11111111-22222222-nothex', {

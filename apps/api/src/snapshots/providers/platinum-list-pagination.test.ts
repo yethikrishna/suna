@@ -1,24 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-function setTestEnv(name: string, value: string): void {
-  if (!process.env[name] || process.env[name]?.startsWith('encrypted:')) {
-    process.env[name] = value;
-  }
-}
-
-setTestEnv('DATABASE_URL', 'postgres://postgres:postgres@127.0.0.1:54322/postgres');
-setTestEnv('SUPABASE_URL', 'http://127.0.0.1:54321');
-setTestEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-service-role');
-setTestEnv('API_KEY_SECRET', 'test-api-key-secret');
-setTestEnv('TUNNEL_SIGNING_SECRET', 'test-tunnel-signing-secret');
-setTestEnv('ALLOWED_SANDBOX_PROVIDERS', 'platinum');
-setTestEnv('KORTIX_URL', 'https://api.example.test');
-setTestEnv('FRONTEND_URL', 'http://localhost:3000');
-setTestEnv('INTERNAL_KORTIX_ENV', 'dev');
-setTestEnv('PLATINUM_API_URL', 'https://platinum.test');
-setTestEnv('PLATINUM_API_KEY', 'pt_live_testkey');
-
-const { findTemplateByName, PlatinumTemplateListingError, platinumProvider } = await import('./platinum');
+const {
+  findTemplateByName: findTemplateByNameWithDefaults,
+  PlatinumAdapter,
+  PlatinumTemplateListingError,
+} = await import('./platinum');
 
 const originalFetch = globalThis.fetch;
 afterEach(() => {
@@ -28,6 +14,24 @@ afterEach(() => {
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
+
+const testClient = {
+  isConfigured: () => true,
+  async json<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const response = await globalThis.fetch(`https://platinum.test${path}`, init);
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `platinum ${init.method ?? 'GET'} ${path} -> ${response.status} ${text.slice(0, 300)}`,
+      );
+    }
+    return (text ? JSON.parse(text) : {}) as T;
+  },
+};
+
+const platinumProvider = new PlatinumAdapter(undefined, undefined, testClient);
+const findTemplateByName = (name: string) =>
+  findTemplateByNameWithDefaults(name, testClient);
 
 /** Parse `?offset=` off a /v1/templates request URL (default 0). */
 function offsetOf(input: RequestInfo | URL): number {

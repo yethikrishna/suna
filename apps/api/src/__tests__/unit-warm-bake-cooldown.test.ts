@@ -37,17 +37,20 @@ const COOLDOWN = 10 * 60 * 1000;
 
 describe('perProjectColdImageEnabled', () => {
   test.each([
-    { legacyWarm: false, fastColdBoot: false, expected: false },
-    { legacyWarm: true, fastColdBoot: false, expected: true },
-    { legacyWarm: false, fastColdBoot: true, expected: true },
-    { legacyWarm: true, fastColdBoot: true, expected: true },
+    { legacyWarm: false, fastColdBoot: false, fastConfigured: false, expected: false },
+    { legacyWarm: true, fastColdBoot: false, fastConfigured: false, expected: true },
+    { legacyWarm: false, fastColdBoot: true, fastConfigured: true, expected: true },
+    { legacyWarm: true, fastColdBoot: true, fastConfigured: true, expected: true },
+    { legacyWarm: false, fastColdBoot: false, fastConfigured: true, expected: false },
+    { legacyWarm: true, fastColdBoot: false, fastConfigured: true, expected: false },
   ])(
-    'legacyWarm=$legacyWarm fastColdBoot=$fastColdBoot returns $expected',
-    ({ legacyWarm, fastColdBoot, expected }) => {
+    'legacyWarm=$legacyWarm fastColdBoot=$fastColdBoot fastConfigured=$fastConfigured returns $expected',
+    ({ legacyWarm, fastColdBoot, fastConfigured, expected }) => {
       expect(
         perProjectColdImageEnabled({
           KORTIX_WARM_SNAPSHOT_ENABLED: legacyWarm,
           KORTIX_FAST_COLD_BOOT_ENABLED: fastColdBoot,
+          KORTIX_FAST_COLD_BOOT_CONFIGURED: fastConfigured,
         }),
       ).toBe(expected);
     },
@@ -181,21 +184,50 @@ describe('warmBakeScopeId — per-(project, template) pacing scope', () => {
 
 describe('perProjectWarmEligible — read-side warm-image gate', () => {
   test('the shared default template is eligible on every provider', () => {
-    expect(perProjectWarmEligible({ isShared: true }, 'daytona')).toBe(true);
-    expect(perProjectWarmEligible({ isShared: true }, 'platinum')).toBe(true);
-    expect(perProjectWarmEligible({ isShared: true }, 'e2b')).toBe(true);
+    const fastOnly = { KORTIX_WARM_SNAPSHOT_ENABLED: false };
+    expect(perProjectWarmEligible({ isShared: true }, 'daytona', fastOnly)).toBe(true);
+    expect(perProjectWarmEligible({ isShared: true }, 'platinum', fastOnly)).toBe(true);
+    expect(perProjectWarmEligible({ isShared: true }, 'e2b', fastOnly)).toBe(true);
   });
 
-  test('a custom template is eligible on platinum (the default allowlist)', () => {
-    expect(perProjectWarmEligible({ isShared: false }, 'platinum')).toBe(true);
+  test('the FAST experiment cannot create a custom-template project image', () => {
+    expect(
+      perProjectWarmEligible(
+        { isShared: false },
+        'platinum',
+        { KORTIX_WARM_SNAPSHOT_ENABLED: false },
+      ),
+    ).toBe(false);
+  });
+
+  test('the legacy WARM flag keeps custom-template project images on an allowlisted provider', () => {
+    expect(
+      perProjectWarmEligible(
+        { isShared: false },
+        'platinum',
+        { KORTIX_WARM_SNAPSHOT_ENABLED: true },
+      ),
+    ).toBe(true);
   });
 
   test('a custom template is NOT eligible on daytona by default — the 66% Daytona hit-rate path is untouched', () => {
-    expect(perProjectWarmEligible({ isShared: false }, 'daytona')).toBe(false);
+    expect(
+      perProjectWarmEligible(
+        { isShared: false },
+        'daytona',
+        { KORTIX_WARM_SNAPSHOT_ENABLED: true },
+      ),
+    ).toBe(false);
   });
 
   test('a custom template is NOT eligible on an unlisted provider', () => {
-    expect(perProjectWarmEligible({ isShared: false }, 'e2b')).toBe(false);
+    expect(
+      perProjectWarmEligible(
+        { isShared: false },
+        'e2b',
+        { KORTIX_WARM_SNAPSHOT_ENABLED: true },
+      ),
+    ).toBe(false);
   });
 });
 

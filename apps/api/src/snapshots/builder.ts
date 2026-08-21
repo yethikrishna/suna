@@ -142,37 +142,39 @@ export interface EnsureSandboxImageResult {
 
 type PerProjectColdImageFlags = Pick<
   typeof config,
-  'KORTIX_WARM_SNAPSHOT_ENABLED' | 'KORTIX_FAST_COLD_BOOT_ENABLED'
+  | 'KORTIX_WARM_SNAPSHOT_ENABLED'
+  | 'KORTIX_FAST_COLD_BOOT_ENABLED'
+  | 'KORTIX_FAST_COLD_BOOT_CONFIGURED'
 >;
 
 /**
- * Enable the stopped, content-addressed per-project image through either flag.
+ * Resolve the stopped, content-addressed per-project image rollout.
  *
- * The legacy warm-snapshot flag remains valid. The cold-boot experiment now
- * reuses the same image path because it contains no running sandbox, memory
- * snapshot, or live OpenCode process. With both flags disabled, sessions keep
- * the existing shared-image plus boot-time repository materialization path.
+ * An explicitly configured FAST flag is authoritative. This makes `false` one
+ * complete rollback switch even when a deployment still carries the legacy
+ * WARM flag. When FAST is absent, the legacy WARM flag keeps its prior behavior.
  */
 export function perProjectColdImageEnabled(
   flags: PerProjectColdImageFlags = config,
 ): boolean {
-  return flags.KORTIX_WARM_SNAPSHOT_ENABLED || flags.KORTIX_FAST_COLD_BOOT_ENABLED;
+  if (flags.KORTIX_FAST_COLD_BOOT_CONFIGURED) {
+    return flags.KORTIX_FAST_COLD_BOOT_ENABLED;
+  }
+  return flags.KORTIX_WARM_SNAPSHOT_ENABLED;
 }
+
+type PerProjectWarmEligibilityFlags = Pick<typeof config, 'KORTIX_WARM_SNAPSHOT_ENABLED'>;
 
 /**
  * Whether `template` is allowed to get a per-project WARM image on
  * `buildProvider` (the read-side gate for `ensureSandboxImage`'s warm-HIT
  * lookup, and by extension the write-side bake it kicks on a miss).
  *
- * The shared default is always eligible — it's the pre-existing, already-safe
- * 66%-hit-rate path. A CUSTOM (non-default-slug) template is eligible only on
- * a provider allowlisted via `KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS`
- * (default: platinum only). Platinum's per-project templates warm-MISS 100% of
- * the time today precisely because this gate used to be `template.isShared`
- * unconditionally; Daytona's shared-default path is untouched by default and
- * stays that way until its quota-gc cache-floor math (quota-gc-select.ts) is
- * re-measured against real Daytona custom-template counts — a separate,
- * later ops decision, not part of this change.
+ * The shared default is eligible for the FAST and legacy WARM rollouts. A
+ * CUSTOM template requires the legacy WARM flag and a provider allowlisted via
+ * `KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS`. This keeps the new FAST
+ * rollout within one known runtime shape. It also preserves existing custom
+ * image behavior for deployments that use the legacy flag.
  *
  * TWO RESIDUAL RISKS accepted for custom-template warming (both narrow,
  * bounded, self-healing — not blockers):
@@ -195,8 +197,10 @@ export function perProjectColdImageEnabled(
 export function perProjectWarmEligible(
   template: Pick<ResolvedTemplate, 'isShared'>,
   buildProvider: string,
+  flags: PerProjectWarmEligibilityFlags = config,
 ): boolean {
   if (template.isShared) return true;
+  if (!flags.KORTIX_WARM_SNAPSHOT_ENABLED) return false;
   return config.isCustomTemplateWarmEligible(buildProvider as SandboxProviderName);
 }
 

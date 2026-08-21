@@ -159,7 +159,7 @@ export function SessionActionPanelColumn() {
         label={
           <span className="flex items-center gap-1.5">
             {label}
-            <KbdGroup className='bg-transparent'>
+            <KbdGroup>
               <Kbd className="font-mono">{modSymbol}</Kbd>
               <Kbd className="font-mono">I</Kbd>
             </KbdGroup>

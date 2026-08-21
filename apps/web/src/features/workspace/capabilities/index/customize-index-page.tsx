@@ -2,18 +2,19 @@
 
 import {
   AlarmIcon as AlarmClock,
+  SquaresFourIcon as Blocks,
   RobotIcon as Bot,
   CubeIcon as Boxes,
-  GearSixIcon as Settings,
   KeyIcon as KeyRound,
   LockKeyIcon as Lock,
   PlugIcon as Plug,
-  SquaresFourIcon as Blocks,
+  GearSixIcon as Settings,
   type Icon,
 } from '@phosphor-icons/react';
 import Link from 'next/link';
 
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/features/layout/section/empty-state';
 import {
   CAPABILITY_TABS,
   capabilityTabHref,
@@ -23,7 +24,6 @@ import {
   CAPABILITY_TAB_GATE_ACTIONS,
   visibleCapabilityTabs,
 } from '@/features/workspace/capabilities/shared/capability-tabs';
-import { EmptyState } from '@/features/layout/section/empty-state';
 import { useProjectCans } from '@/lib/use-project-can';
 
 /**
@@ -130,7 +130,7 @@ export function CustomizeIndexPage({ projectId }: { projectId: string }) {
                 className="group hover:border-foreground/20 hover:bg-accent/50 flex items-start gap-3 rounded-md border p-4 transition-colors"
               >
                 <span className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-sm">
-                  <CardIcon className="text-foreground size-4 shrink-0" weight="fill" />
+                  <CardIcon className="text-foreground size-5 shrink-0" />
                 </span>
                 <span className="min-w-0 space-y-0.5">
                   <span className="text-foreground block text-sm font-medium">{tab.label}</span>

@@ -1,6 +1,5 @@
 'use client';
 
-
 import {
   ArrowDownIcon as ArrowDown,
   ArrowDownRightIcon as ArrowDownRight,
@@ -11,8 +10,8 @@ import {
   CaretLeftIcon as ChevronLeft,
   CaretRightIcon as ChevronRight,
   CreditCardIcon as CreditCard,
-  EyeIcon as Eye,
   ArrowSquareOutIcon as ExternalLink,
+  EyeIcon as Eye,
   FunnelIcon as Filter,
   KanbanIcon as FolderKanban,
   ClockCounterClockwiseIcon as History,
@@ -33,6 +32,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { IconInbox } from '@/components/ui/kortix-icons';
+import Loading from '@/components/ui/loading';
 import { PageSearchBar } from '@/components/ui/page-search-bar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -60,38 +60,37 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import Loading from '@/components/ui/loading';
 import { errorToast, successToast } from '@/components/ui/toast';
-import { EmptyState } from '@/features/layout/section/empty-state';
 import { CreditTransactionsTable } from '@/features/billing/transactions-table';
+import { EmptyState } from '@/features/layout/section/empty-state';
 import {
+  useAdminAccount,
   useAdminAccountLedger,
   useAdminAccountProjects,
+  useAdminAccountSubscription,
   useAdminAccountUsers,
   useAdminAccounts,
-  useAdminImpersonate,
   useAdminDebitCredits,
   useAdminGrantCredits,
   useAdminGrantTrial,
+  useAdminImpersonate,
   useAdminRevokeTrial,
   useAdminSetEnterpriseDemo,
-  useAdminAccount,
-  useAdminAccountSubscription,
   useAdminSetEnterpriseEntitled,
+  useAdminSetManagedModels,
   useAdminSetMemberRole,
   useAdminSetOverrides,
-  type AdminAccountMemberRole,
-  useAdminSetManagedModels,
   type AdminAccount,
+  type AdminAccountMemberRole,
   type AdminAccountsFilters,
   type AdminAccountsSortBy,
   type AdminAccountsSortDir,
 } from '@/hooks/admin/use-admin-accounts';
 import { useDebounce } from '@/hooks/use-debounced-value';
 import { clearLastProjectId } from '@/lib/onboarding/last-project-cookie';
-import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
+import { SectionContainer, SectionHeader, StatPill, StatRow } from '../_components/section-header';
 import { adminLedgerRows } from './ledger-rows';
 import {
   MAX_COMPUTE_RATE_MULTIPLIER,
@@ -106,7 +105,6 @@ import {
   type OverrideTriState,
   type OverridesDraft,
 } from './overrides-form';
-import { SectionContainer, SectionHeader, StatPill, StatRow } from '../_components/section-header';
 
 const PAGE_SIZE = 50;
 const REIMBURSEMENT_PRESETS = [5, 10, 25, 50, 100];
@@ -521,9 +519,7 @@ export default function AdminAccountsPage() {
   // are fallbacks while the lookup loads.
   const selectedDetail = useAdminAccount(selected?.accountId ?? null);
   const selectedAccount = selected
-    ? (selectedDetail.data ??
-      accounts.find((a) => a.accountId === selected.accountId) ??
-      selected)
+    ? (selectedDetail.data ?? accounts.find((a) => a.accountId === selected.accountId) ?? selected)
     : null;
 
   const setSort = useCallback((sortBy: AdminAccountsSortBy) => {
@@ -545,7 +541,9 @@ export default function AdminAccountsPage() {
       <SectionHeader
         icon={Users}
         title="Accounts"
-        description={'Filter, sort, and inspect every account. Grant or debit credits, review ledger, and see billing state.'}
+        description={
+          'Filter, sort, and inspect every account. Grant or debit credits, review ledger, and see billing state.'
+        }
         actions={
           <Button
             variant="outline"
@@ -681,9 +679,7 @@ export default function AdminAccountsPage() {
                 >
                   <TableCell>
                     <div className="max-w-[320px] min-w-0">
-                      <div className="truncate text-sm font-medium">
-                        {accountLabelFor(account)}
-                      </div>
+                      <div className="truncate text-sm font-medium">{accountLabelFor(account)}</div>
                       <div className="text-muted-foreground truncate text-xs">
                         {account.ownerEmail || 'No owner email'}
                         <span className="mx-1.5 opacity-50">·</span>
@@ -799,9 +795,7 @@ function FilterBar({
             onCheckedChange={(v) => onFiltersChange({ ...filters, paidOnly: v })}
             aria-label={'Paid accounts only'}
           />
-          <span className="text-sm">
-            {'Paid only'}
-          </span>
+          <span className="text-sm">{'Paid only'}</span>
         </label>
 
         <Popover>
@@ -833,30 +827,14 @@ function FilterBar({
             <SelectValue placeholder="Sort" />
           </SelectTrigger>
           <SelectContent align="end">
-            <SelectItem value="created:desc">
-              {'Newest first'}
-            </SelectItem>
-            <SelectItem value="created:asc">
-              {'Oldest first'}
-            </SelectItem>
-            <SelectItem value="balance:desc">
-              {'Balance — high'}
-            </SelectItem>
-            <SelectItem value="balance:asc">
-              {'Balance — low'}
-            </SelectItem>
-            <SelectItem value="members:desc">
-              {'Most members'}
-            </SelectItem>
-            <SelectItem value="members:asc">
-              {'Fewest members'}
-            </SelectItem>
-            <SelectItem value="name:asc">
-              {'Name A–Z'}
-            </SelectItem>
-            <SelectItem value="name:desc">
-              {'Name Z–A'}
-            </SelectItem>
+            <SelectItem value="created:desc">{'Newest first'}</SelectItem>
+            <SelectItem value="created:asc">{'Oldest first'}</SelectItem>
+            <SelectItem value="balance:desc">{'Balance — high'}</SelectItem>
+            <SelectItem value="balance:asc">{'Balance — low'}</SelectItem>
+            <SelectItem value="members:desc">{'Most members'}</SelectItem>
+            <SelectItem value="members:asc">{'Fewest members'}</SelectItem>
+            <SelectItem value="name:asc">{'Name A–Z'}</SelectItem>
+            <SelectItem value="name:desc">{'Name Z–A'}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -925,9 +903,7 @@ function FiltersPanel({
           Subscription
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span>
-            {'Has active subscription'}
-          </span>
+          <span>{'Has active subscription'}</span>
           <Select
             value={
               filters.hasSubscription === true
@@ -1287,8 +1263,8 @@ function OpenAsAccountButton({ account }: { account: AdminAccount }) {
         description={
           <span className="space-y-3">
             <span className="block">
-              For up to one hour, everything you do lands on this account. Every change you
-              make is written to the customer's own audit log with your identity attached.
+              For up to one hour, everything you do lands on this account. Every change you make is
+              written to the customer's own audit log with your identity attached.
             </span>
             <Input
               value={reason}
@@ -1447,7 +1423,7 @@ function CreditsTab({ account }: { account: AdminAccount }) {
 
   async function handleGrant() {
     if (!isValid) {
-      toast.error('Enter a valid positive amount');
+      errorToast('Enter a valid positive amount');
       return;
     }
     try {
@@ -1457,12 +1433,12 @@ function CreditsTab({ account }: { account: AdminAccount }) {
         description: description.trim() || 'Admin credit adjustment',
         isExpiring,
       });
-      toast.success('Credits granted', {
+      successToast('Credits granted', {
         description: `${money(parsed)} added to ${accountLabelFor(account)}`,
       });
       setAmount('');
     } catch (error) {
-      toast.error('Failed to grant credits', {
+      errorToast('Failed to grant credits', {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
@@ -1476,12 +1452,12 @@ function CreditsTab({ account }: { account: AdminAccount }) {
         amount: parsed,
         description: description.trim() || 'Admin debit',
       });
-      toast.success('Credits debited', {
+      successToast('Credits debited', {
         description: `${money(parsed)} removed from ${accountLabelFor(account)}`,
       });
       setAmount('');
     } catch (error) {
-      toast.error('Failed to debit credits', {
+      errorToast('Failed to debit credits', {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
     } finally {
@@ -1492,11 +1468,11 @@ function CreditsTab({ account }: { account: AdminAccount }) {
   async function handleSetEnterprise(enabled: boolean) {
     try {
       await setEnterpriseEntitled.mutateAsync({ accountId: account.accountId, enabled });
-      toast.success(enabled ? 'Enterprise activated' : 'Enterprise entitlement revoked', {
+      successToast(enabled ? 'Enterprise activated' : 'Enterprise entitlement revoked', {
         description: `${accountLabelFor(account)} ${enabled ? 'now has' : 'no longer has'} SSO, SCIM, RBAC and audit entitlements.`,
       });
     } catch (error) {
-      toast.error('Failed to update Enterprise entitlement', {
+      errorToast('Failed to update Enterprise entitlement', {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
@@ -1545,7 +1521,9 @@ function CreditsTab({ account }: { account: AdminAccount }) {
           )}
         </div>
         <p className="text-muted-foreground text-xs">
-          {'Enterprise unlocks SAML SSO, SCIM directory sync, RBAC and audit access for this account. The billed plan and seat billing are unchanged.'}
+          {
+            'Enterprise unlocks SAML SSO, SCIM directory sync, RBAC and audit access for this account. The billed plan and seat billing are unchanged.'
+          }
         </p>
       </div>
 
@@ -1624,7 +1602,9 @@ function CreditsTab({ account }: { account: AdminAccount }) {
               from <span className="font-medium">{accountLabelFor(account)}</span>.
             </p>
             <p className="text-muted-foreground text-xs">
-              {'Will fail if the account has insufficient credits. Action is recorded in the ledger.'}
+              {
+                'Will fail if the account has insufficient credits. Action is recorded in the ledger.'
+              }
             </p>
           </div>
         }
@@ -1679,7 +1659,11 @@ const OVERRIDE_ENTITLEMENT_ROWS: {
 }[] = [
   { key: 'sso', title: 'SSO', description: 'SAML / OIDC single sign-on for the account.' },
   { key: 'scim', title: 'SCIM', description: 'Directory-driven user provisioning.' },
-  { key: 'rbac', title: 'Advanced RBAC', description: 'Custom roles and per-resource permissions.' },
+  {
+    key: 'rbac',
+    title: 'Advanced RBAC',
+    description: 'Custom roles and per-resource permissions.',
+  },
   {
     key: 'auditAccess',
     title: 'Audit log access',
@@ -1916,7 +1900,8 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
   const parsedSeats = Number(seats);
   const parsedDuration = Number(durationDays);
   const parsedCredit = Number(creditGrant);
-  const seatsValid = Number.isInteger(parsedSeats) && parsedSeats >= 1 && parsedSeats <= MAX_TRIAL_SEATS;
+  const seatsValid =
+    Number.isInteger(parsedSeats) && parsedSeats >= 1 && parsedSeats <= MAX_TRIAL_SEATS;
   const durationValid =
     Number.isInteger(parsedDuration) &&
     parsedDuration >= 1 &&
@@ -2308,9 +2293,9 @@ function UsersTab({
   async function handleRoleChange(userId: string, email: string, role: AdminAccountMemberRole) {
     try {
       await setMemberRole.mutateAsync({ accountId, userId, role });
-      toast.success('Role updated', { description: `${email} is now ${role}.` });
+      successToast('Role updated', { description: `${email} is now ${role}.` });
     } catch (error) {
-      toast.error('Failed to update role', {
+      errorToast('Failed to update role', {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
@@ -2384,17 +2369,13 @@ function UsersTab({
             </div>
             <div className="text-muted-foreground grid grid-cols-2 gap-2 text-xs">
               <div className="truncate">
-                <span className="text-muted-foreground/70">
-                  {'Last sign-in:'}
-                </span>
+                <span className="text-muted-foreground/70">{'Last sign-in:'}</span>
                 <span className="text-foreground/80">
                   {user.last_sign_in_at ? formatRelative(user.last_sign_in_at) : 'Never'}
                 </span>
               </div>
               <div className="truncate">
-                <span className="text-muted-foreground/70">
-                  {'Signed up:'}
-                </span>
+                <span className="text-muted-foreground/70">{'Signed up:'}</span>
                 <span className="text-foreground/80">
                   {user.signed_up_at ? formatRelative(user.signed_up_at) : '—'}
                 </span>

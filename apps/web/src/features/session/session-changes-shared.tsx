@@ -9,7 +9,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 
-import { STATUS_TEXT } from '@/components/ui/status';
+import type { StatusTone } from '@/components/ui/status';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { useChatSendStore } from '@/stores/chat-send-store';
 import {
@@ -20,11 +20,18 @@ import {
   type VcsFileDiff,
 } from '@kortix/sdk/react';
 
-/** diff status → single-letter badge, using the canonical status tones. */
-export const CHANGE_STATUS_BADGE: Record<string, { letter: string; cls: string; label: string }> = {
-  added: { letter: 'A', cls: STATUS_TEXT.success, label: 'Added' },
-  modified: { letter: 'M', cls: STATUS_TEXT.warning, label: 'Modified' },
-  deleted: { letter: 'D', cls: STATUS_TEXT.destructive, label: 'Deleted' },
+/**
+ * diff status → a status tone plus a word a non-technical reader recognises.
+ *
+ * The `A` / `M` / `D` letters this used to carry are `git status` shorthand,
+ * not language — outside a terminal they read as noise. A tone (drawn as a dot
+ * through `STATUS_DOT`) plus "Added" / "Edited" / "Removed" carries the same
+ * information without asking the reader to know git.
+ */
+export const CHANGE_STATUS_META: Record<string, { tone: StatusTone; label: string }> = {
+  added: { tone: 'success', label: 'Added' },
+  modified: { tone: 'warning', label: 'Edited' },
+  deleted: { tone: 'destructive', label: 'Removed' },
 };
 
 /**

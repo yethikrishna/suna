@@ -19,14 +19,11 @@ setTestEnv('DAYTONA_TARGET', 'test-target');
 setTestEnv('FRONTEND_URL', 'http://localhost:3000');
 setTestEnv('INTERNAL_KORTIX_ENV', 'dev');
 
-const realSnapshotProviders = await import('./providers');
-
 const deletedNames: string[] = [];
 const stateReads: string[] = [];
 const providerRequests: string[] = [];
 
 mock.module('./providers', () => ({
-  ...realSnapshotProviders,
   getSandboxProvider: (provider: string) => {
     providerRequests.push(provider);
     return {

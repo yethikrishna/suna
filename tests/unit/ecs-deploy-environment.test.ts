@@ -55,7 +55,7 @@ describe('ECS task environment overrides', () => {
     ).toThrow();
   });
 
-  it('enables create-time secret arming on the dev API deployment', () => {
+  it('stages the kpp2 dev rollout with fast cold boot disabled', () => {
     const workflow = readFileSync(resolve(root, '.github/workflows/deploy-dev.yml'), 'utf8');
     const deployScript = readFileSync(resolve(root, 'infra/scripts/ecs-deploy.sh'), 'utf8');
     const snapshotBuilder = readFileSync(
@@ -71,15 +71,17 @@ describe('ECS task environment overrides', () => {
       'utf8',
     );
 
-    // Assert the KEY is armed, not the exact serialization of the whole object.
+    // Assert the KEY is staged off, not the exact serialization of the whole object.
     // Pinning the full JSON made this test fail the moment the preview work
     // added KORTIX_PREVIEW_BASE_DOMAIN alongside it — a correct config change
     // read as a regression. What this test is here to protect is that dev's API
-    // task carries the fast-cold-boot flag; anything else sharing the override
-    // map is not its business.
+    // task carries the explicit rollback value during rollout one; anything
+    // else sharing the override map is not its business. Rollout two changes
+    // this assertion and the workflow value together after every task reports
+    // the kpp2-capable SHA.
     const overrides = apiDeploy.match(/KORTIX_ECS_ENV_OVERRIDES: '(\{.*\})'/)?.[1];
     expect(overrides).toBeDefined();
-    expect(JSON.parse(overrides!)).toMatchObject({ KORTIX_FAST_COLD_BOOT_ENABLED: 'true' });
+    expect(JSON.parse(overrides!)).toMatchObject({ KORTIX_FAST_COLD_BOOT_ENABLED: 'false' });
     const apiFilter = workflow.slice(
       workflow.indexOf('            api:'),
       workflow.indexOf('            gateway:'),

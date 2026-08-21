@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   PPWARM_PREFIX,
+  SCOPED_PPWARM_PREFIX,
   dataPlaneScopeFromSupabaseUrl,
   excludePinnedTargets,
   isExactPpwarmImageName,
@@ -73,12 +74,12 @@ describe('scopedPerProjectWarmImageName', () => {
       BASE,
       'my-template',
     );
-    const segments = name.slice(PPWARM_PREFIX.length).split('-');
+    const segments = name.slice(SCOPED_PPWARM_PREFIX.length).split('-');
     expect(segments).toHaveLength(4);
     expect(segments.map((segment) => segment.length)).toEqual([12, 12, 8, 12]);
-    expect(name.length).toBe(61);
+    expect(name.length).toBe(62);
     expect(name).toMatch(
-      /^kortix-ppwarm-[0-9a-f]{12}-[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{12}$/,
+      /^kortix-ppwarm2-[0-9a-f]{12}-[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{12}$/,
     );
   });
 
@@ -368,6 +369,7 @@ describe('isExactPpwarmImageName', () => {
     'kortix-ppwarm-9ee8bc9c-zzzzzzzzzzzz',
     'kortix-ppwarm-9EE8BC9C-aaaaaaaaaaaa',
     'kortix-ppwarm-9ee8bc9c-37a8eec1-aaaaaaaaaaaa-extra',
+    'kortix-ppwarm-123456789abc-123456789abc-12345678-123456789abc',
     'kortix-ppwarm-123456789abc-123456789abc-12345678-123456789ab',
     'kortix-ppwarm-123456789abc-123456789abc-12345678-123456789abcd',
     'kortix-ppwarm-123456789abc-123456789abc-1234567z-123456789abc',

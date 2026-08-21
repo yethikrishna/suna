@@ -1,5 +1,9 @@
 import { describe, expect, mock, test } from 'bun:test';
-import { legacyPerProjectWarmImageName, perProjectWarmImageName } from './ppwarm-names';
+import {
+  legacyPerProjectWarmImageName,
+  perProjectWarmImageName,
+  scopedPerProjectWarmImageName,
+} from './ppwarm-names';
 
 const deletedNames: string[] = [];
 const stateReads: string[] = [];
@@ -28,6 +32,13 @@ const { deleteProjectSandboxImage } = await import('./project-image-delete');
 
 describe('deleteProjectSandboxImage', () => {
   test.each([
+    scopedPerProjectWarmImageName(
+      '123456789abc',
+      '9ee8bc9c-5108-437f-a01f-6c5e26f2062c',
+      'a'.repeat(40),
+      'kortix-default-e881f000eae5',
+      'default',
+    ),
     perProjectWarmImageName(
       '9ee8bc9c-5108-437f-a01f-6c5e26f2062c',
       'a'.repeat(40),

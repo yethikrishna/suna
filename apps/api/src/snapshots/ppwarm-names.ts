@@ -9,7 +9,9 @@ import { createHash } from 'node:crypto';
  * Legacy names are scoped to (project, template):
  * `kortix-ppwarm-<proj8>-<tpl8>-<hash12>`. Fast cold boot writes use the
  * data-plane-owned shape
- * `kortix-ppwarm-<db12>-<project12>-<template8>-<hash12>`.
+ * `kortix-ppwarm2-<db12>-<project12>-<template8>-<hash12>`. The
+ * distinct prefix prevents an older quota-GC replica from treating the new
+ * four-segment layout as an old project/template scope during a rolling deploy.
  * See the FORMAT MIGRATION note below {@link perProjectWarmImageName} for why —
  * in short, a name scoped only to the project (the pre-existing shape) is safe
  * ONLY while a project can have at most one live warm image; the moment a second
@@ -18,9 +20,10 @@ import { createHash } from 'node:crypto';
  */
 
 export const PPWARM_PREFIX = 'kortix-ppwarm-';
+export const SCOPED_PPWARM_PREFIX = 'kortix-ppwarm2-';
 
 const EXACT_PPWARM_IMAGE_NAME =
-  /^kortix-ppwarm-(?:[0-9a-f]{8}-[0-9a-f]{12}|[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{12}|[0-9a-f]{12}-[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{12})$/;
+  /^(?:kortix-ppwarm-(?:[0-9a-f]{8}-[0-9a-f]{12}|[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{12})|kortix-ppwarm2-[0-9a-f]{12}-[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{12})$/;
 
 /** Accept only complete live ppwarm names in the scoped, current, or legacy format. */
 export function isExactPpwarmImageName(name: string): boolean {
@@ -159,7 +162,7 @@ function scopedTemplateKey(templateSlug: string): string {
 }
 
 /**
- * Data-plane-owned project image name. The 61-character format stays within
+ * Data-plane-owned project image name. The 62-character format stays within
  * Platinum's 64-character limit. It gives the data plane and project 48 bits,
  * while retaining the legacy template key's 32-bit collision budget. The
  * content hash uses every full identity input, not the short keys.
@@ -179,7 +182,7 @@ export function scopedPerProjectWarmImageName(
     12,
   );
   return (
-    `${PPWARM_PREFIX}${scope12}-${scopedProjectKey(projectId)}-` +
+    `${SCOPED_PPWARM_PREFIX}${scope12}-${scopedProjectKey(projectId)}-` +
     `${scopedTemplateKey(templateSlug)}-${hash}`
   );
 }
@@ -304,19 +307,14 @@ export type ParsedPpwarmName =
  *  anything outside the ppwarm namespace. See the FORMAT MIGRATION note above. */
 export function parseExactPpwarmImageName(name: string): ParsedPpwarmName | null {
   if (!isExactPpwarmImageName(name)) return null;
-  const segments = name.slice(PPWARM_PREFIX.length).split('-');
-  if (
-    segments.length === 4 &&
-    /^[0-9a-f]{12}$/.test(segments[0] ?? '') &&
-    /^[0-9a-f]{12}$/.test(segments[1] ?? '') &&
-    /^[0-9a-f]{8}$/.test(segments[2] ?? '') &&
-    /^[0-9a-f]{12}$/.test(segments[3] ?? '')
-  ) {
+  if (name.startsWith(SCOPED_PPWARM_PREFIX)) {
+    const segments = name.slice(SCOPED_PPWARM_PREFIX.length).split('-');
     const [dataPlaneScope, projectKey, templateKey] = segments;
     return dataPlaneScope && projectKey && templateKey
       ? { format: 'scoped', dataPlaneScope, projectKey, templateKey }
       : null;
   }
+  const segments = name.slice(PPWARM_PREFIX.length).split('-');
   if (segments.length === 2) {
     const [p] = segments;
     return p

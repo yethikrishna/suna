@@ -2266,10 +2266,19 @@ async function resolveWarmRepoContext(project: GitBackedProject, tip: string): P
  * bake. Listing/deletion are provider-adapter capabilities, so cleanup remains
  * identical for Daytona, Platinum, and E2B.
  */
-async function reapOldPerProjectWarm(projectId: string, currentName: string, buildProvider: string): Promise<void> {
+export async function reapOldPerProjectWarm(
+  projectId: string,
+  currentName: string,
+  buildProvider: string,
+  deps: {
+    provider?: Pick<SandboxProviderAdapter, 'listSnapshots' | 'deleteSnapshot'>;
+    collectPinnedImageRefs?: () => Promise<Set<string>>;
+    recentBuildLookup?: (names: string[], withinMs: number) => Promise<Set<string>>;
+  } = {},
+): Promise<void> {
   if (!perProjectWarmReapEnabled()) return;
   try {
-    const provider = getSandboxProvider(buildProvider);
+    const provider = deps.provider ?? getSandboxProvider(buildProvider);
     const names = (await provider.listSnapshots()).map((snapshot) => snapshot.name);
     const rawTargets = ppwarmReapTargets(projectId, currentName, names);
     if (rawTargets.length === 0) return;
@@ -2277,7 +2286,7 @@ async function reapOldPerProjectWarm(projectId: string, currentName: string, bui
     // scoped selection over an ORG-WIDE list could pick another project's LIVE
     // pinned image on a proj8 collision. Cross-check against the active pins of
     // EVERY project and never delete one — a collision then just skips a reap.
-    const pinned = await collectPinnedImageRefs();
+    const pinned = await (deps.collectPinnedImageRefs ?? collectPinnedImageRefs)();
     const targets = excludePinnedTargets(rawTargets, pinned);
     for (const name of rawTargets) {
       if (pinned.has(name)) {
@@ -2291,7 +2300,10 @@ async function reapOldPerProjectWarm(projectId: string, currentName: string, bui
     // it makes that runtime re-bake — and its reap symmetrically deletes OURS:
     // an infinite loop of full image builds. Freshly-built names are skipped;
     // once a name stops being rebuilt it ages out and is reaped normally.
-    const recent = await recentlyBuiltSnapshotNames(targets, PPWARM_REAP_PROTECT_MS);
+    const recent = await (deps.recentBuildLookup ?? recentlyBuiltStrict)(
+      targets,
+      PPWARM_REAP_PROTECT_MS,
+    );
     for (const name of targets) {
       if (recent.has(name)) {
         console.log(`[snapshots] per-project warm: keeping ${name} (built recently — likely a live runtime's current tip)`);

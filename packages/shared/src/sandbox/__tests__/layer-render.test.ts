@@ -133,7 +133,7 @@ describe('runtime artifact integrity', () => {
     for (const { opts } of CASES) {
       const image = buildLayeredDockerfile(opts);
       expect(image).toMatch(
-        /RUN bash \/tmp\/kortix-opencode-warmup instance (?:keep|wipe|targeted) && rm -f \/tmp\/kortix-opencode-warmup/,
+        /RUN bash \/tmp\/kortix-opencode-warmup instance (?:keep|repo|wipe|targeted) && rm -f \/tmp\/kortix-opencode-warmup/,
       );
       expect(image).not.toMatch(/kortix-opencode-warmup instance \w+; rm -f/);
     }
@@ -333,10 +333,10 @@ describe('the /workspace cleanup is scoped to the shared default image', () => {
     expect(custom).toContain('kortix-opencode-warmup instance targeted');
   });
 
-  test('a per-project warm keeps the baked checkout (unchanged)', () => {
+  test('a per-project warm restores the baked checkout after cache warming', () => {
     const warm = buildLayeredDockerfile(CASES[2]!.opts);
     expect(warm).not.toContain(WIPE);
-    expect(warm).toContain('kortix-opencode-warmup instance keep');
+    expect(warm).toContain('kortix-opencode-warmup instance repo');
   });
 
   test('warmRepo outranks isSharedDefault — a baked checkout is never wiped', () => {
@@ -451,9 +451,9 @@ describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
     );
     expect(rendered).not.toContain('rm -f /tmp/kortix-warm-repo-git.tar');
     // … and MAIN's opencode instance re-warm via the cache-only warm-up script,
-    // which for a per-project warm keeps the baked /workspace checkout.
+    // which restores the exact baked /workspace checkout after warming.
     expect(rendered).toContain(
-      'RUN bash /tmp/kortix-opencode-warmup instance keep && rm -f /tmp/kortix-opencode-warmup',
+      'RUN bash /tmp/kortix-opencode-warmup instance repo && rm -f /tmp/kortix-opencode-warmup',
     );
   });
 

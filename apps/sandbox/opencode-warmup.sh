@@ -12,6 +12,9 @@ poll_seconds="${OPENCODE_WARMUP_POLL_SECONDS:-1}"
 settle_seconds="${OPENCODE_WARMUP_SETTLE_SECONDS:-3}"
 stop_attempts="${OPENCODE_WARMUP_STOP_ATTEMPTS:-50}"
 stop_poll_seconds="${OPENCODE_WARMUP_STOP_POLL_SECONDS:-0.1}"
+workspace="${KORTIX_WARMUP_WORKSPACE:-/workspace}"
+warm_config_root="${KORTIX_WARMUP_CONFIG_ROOT:-/opt/kortix/warm-config}"
+config_deps="${KORTIX_WARMUP_CONFIG_DEPS:-/opt/kortix/opencode-config-deps/node_modules}"
 oc_pid=""
 oc_process_group=0
 
@@ -120,28 +123,42 @@ warm_instance() {
   local log_path=/tmp/oc-warm.log
   local ready=0
   local staged_starter_config=0
+  local repo_head=""
+  local cleanup_ok=1
 
   case "$cleanup" in
-    keep|wipe|targeted) ;;
+    keep|repo|wipe|targeted) ;;
     *)
       echo "unknown instance cleanup mode: $cleanup" >&2
       return 2
       ;;
   esac
 
-  mkdir -p /workspace/.kortix || return 1
-  if [ ! -d /workspace/.kortix/opencode ]; then
-    if [ ! -d /opt/kortix/warm-config/.kortix/opencode ]; then
+  if [ "$cleanup" = repo ]; then
+    repo_head="$(git -C "$workspace" rev-parse --verify HEAD 2>/dev/null)" || {
+      echo "repo cleanup requires a Git checkout at $workspace" >&2
+      return 1
+    }
+    if [ -n "$(git -C "$workspace" status --porcelain=v1 --untracked-files=all)" ] ||
+      [ -n "$(git -C "$workspace" clean -ndx)" ]; then
+      echo "repo cleanup requires a pristine baked checkout" >&2
+      return 1
+    fi
+  fi
+
+  mkdir -p "$workspace/.kortix" || return 1
+  if [ ! -d "$workspace/.kortix/opencode" ]; then
+    if [ ! -d "$warm_config_root/.kortix/opencode" ]; then
       echo "missing staged OpenCode warm-up config" >&2
       return 1
     fi
-    cp -a /opt/kortix/warm-config/.kortix/opencode /workspace/.kortix/opencode || return 1
+    cp -a "$warm_config_root/.kortix/opencode" "$workspace/.kortix/opencode" || return 1
     staged_starter_config=1
   fi
-  rm -rf /workspace/.kortix/opencode/node_modules || return 1
-  ln -s /opt/kortix/opencode-config-deps/node_modules /workspace/.kortix/opencode/node_modules || return 1
-  export OPENCODE_CONFIG_DIR=/workspace/.kortix/opencode
-  cd /workspace || return 1
+  rm -rf "$workspace/.kortix/opencode/node_modules" || return 1
+  ln -s "$config_deps" "$workspace/.kortix/opencode/node_modules" || return 1
+  export OPENCODE_CONFIG_DIR="$workspace/.kortix/opencode"
+  cd "$workspace" || return 1
   rm -f "$log_path"
   start_opencode "$log_path" serve --port 4096 --hostname 127.0.0.1
   if wait_for_opencode \
@@ -153,17 +170,31 @@ warm_instance() {
   stop_opencode
 
   case "$cleanup" in
-    keep) echo "warm-repo: keeping baked /workspace checkout" ;;
-    wipe) find /workspace -mindepth 1 -delete 2>/dev/null ;;
+    keep) echo "warm-repo: keeping baked $workspace checkout" ;;
+    repo)
+      git -C "$workspace" reset --hard "$repo_head" >/dev/null || cleanup_ok=0
+      git -C "$workspace" clean -ffdx >/dev/null || cleanup_ok=0
+      if [ "$(git -C "$workspace" rev-parse --verify HEAD 2>/dev/null)" != "$repo_head" ] ||
+        [ -n "$(git -C "$workspace" status --porcelain=v1 --untracked-files=all)" ] ||
+        [ -n "$(git -C "$workspace" clean -ndx)" ]; then
+        cleanup_ok=0
+      fi
+      ;;
+    wipe) find "$workspace" -mindepth 1 -delete 2>/dev/null ;;
     targeted)
-      [ "$staged_starter_config" = 1 ] && rm -rf /workspace/.kortix/opencode
-      rmdir /workspace/.kortix 2>/dev/null
+      [ "$staged_starter_config" = 1 ] && rm -rf "$workspace/.kortix/opencode"
+      rmdir "$workspace/.kortix" 2>/dev/null
       ;;
   esac
 
-  rm -rf /opt/kortix/warm-config
+  rm -rf "$warm_config_root"
   print_log_tail instance-warm "$log_path"
   rm -f "$log_path"
+
+  if [ "$cleanup_ok" != 1 ]; then
+    echo "repo cleanup did not restore the baked checkout exactly" >&2
+    return 1
+  fi
 
   if [ "$ready" != 1 ]; then
     echo "opencode instance warm-up did not become ready after ${instance_attempts} attempts" >&2
@@ -177,7 +208,7 @@ case "$mode" in
   migration) warm_migration || status=$? ;;
   instance) warm_instance || status=$? ;;
   *)
-    echo "usage: $0 {migration|instance [keep|wipe|targeted]}" >&2
+    echo "usage: $0 {migration|instance [keep|repo|wipe|targeted]}" >&2
     status=2
     ;;
 esac

@@ -150,9 +150,9 @@ export interface KortixToolchainLayerOpts {
    * `${target}/.git` whose HEAD matches the session base. Requires NO memory
    * snapshot: the checkout is plain rootfs bytes that BOTH Daytona and Platinum
    * boot cold. When set, the layer clones the repo into /workspace BEFORE the
-   * opencode instance warm-up (so opencode indexes the REAL project) and does
-   * NOT wipe /workspace afterward. Omit for the shared, project-independent
-   * default image (workspace stays empty; the daemon clones at boot).
+   * opencode instance warm-up (so opencode indexes the REAL project). The
+   * warm-up then restores the exact tracked checkout and removes every generated
+   * or ignored file. Omit for the shared, project-independent default image.
    */
   warmRepo?: WarmRepoConfig;
 }
@@ -317,8 +317,8 @@ function buildWarmRepoCopyLines(warmRepo: WarmRepoConfig | undefined): string[] 
  * runtime path (/workspace) so Bun's content-addressed transpile cache hits at
  * boot. For the SHARED default image we then wipe /workspace (the session
  * clones into it). For a PER-PROJECT COLD warm (warmRepo set) the repo is
- * already baked at /workspace and we KEEP it — the daemon boots off the baked
- * checkout with NO clone. For a CUSTOM template we remove only the config we
+ * already baked at /workspace. We restore its exact pre-warm state, then the
+ * daemon boots from it with NO clone. For a CUSTOM template we remove only the config we
  * staged: /workspace is the user's. Either way the warmed caches under
  * the `kortix` user's home persist in the image layer. Measured: cold first-instance
  * 6–60s → ~2–4s after this bake. Requires opencode + bun + the baked config
@@ -339,7 +339,7 @@ function buildOpencodeInstanceWarmupLines(opts: {
 }): string[] {
   const { opencodeConfigPath, opencodeWarmupScriptPath, warmRepo, isSharedDefault } = opts;
   if (!opencodeConfigPath || !opencodeWarmupScriptPath) return [];
-  const cleanup = warmRepo ? 'keep' : isSharedDefault ? 'wipe' : 'targeted';
+  const cleanup = warmRepo ? 'repo' : isSharedDefault ? 'wipe' : 'targeted';
   return [
     `COPY --chown=kortix:kortix ${opencodeConfigPath}/ /opt/kortix/warm-config/.kortix/opencode/`,
     // Same "does it actually bundle" check as the opencode-config-deps
@@ -370,8 +370,9 @@ function buildOpencodeInstanceWarmupLines(opts: {
     // The warm-up script records whether the starter config in /workspace is
     // ours and limits cleanup accordingly.
     // Three cases, and only one of them may delete indiscriminately:
-    //  • per-project COLD warm (warmRepo): KEEP the baked repo checkout so
-    //    the daemon boots off it with no clone.
+    //  • per-project COLD warm (warmRepo): restore the exact baked checkout
+    //    after OpenCode warms its caches. The daemon then boots from the clean
+    //    checkout with no clone.
     //  • SHARED default: /workspace contains only what this warm-up put
     //    there (the base is `PLATFORM_DEFAULT_USER_DOCKERFILE` — a FROM and a
     //    WORKDIR), so wiping it is exact, and it also clears anything opencode

@@ -542,7 +542,7 @@ RUN cd /opt/kortix/warm-config/.kortix/opencode \\
     && echo "opencode-config-deps: starter tool files bundle cleanly"
 
 COPY --chown=kortix:kortix kortix-opencode-warmup /tmp/kortix-opencode-warmup
-RUN bash /tmp/kortix-opencode-warmup instance keep && rm -f /tmp/kortix-opencode-warmup
+RUN bash /tmp/kortix-opencode-warmup instance repo && rm -f /tmp/kortix-opencode-warmup
 
 USER root
 COPY kortix-agent.gz /tmp/kortix-agent.gz
@@ -605,7 +605,7 @@ RUN cd /opt/kortix/warm-config/.kortix/opencode \\
     && echo "opencode-config-deps: starter tool files bundle cleanly"
 
 COPY --chown=kortix:kortix kortix-opencode-warmup /tmp/kortix-opencode-warmup
-RUN bash /tmp/kortix-opencode-warmup instance keep && rm -f /tmp/kortix-opencode-warmup
+RUN bash /tmp/kortix-opencode-warmup instance repo && rm -f /tmp/kortix-opencode-warmup
 
 "
 `;

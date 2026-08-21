@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -14,9 +23,9 @@ function writeExecutable(name: string, source: string): void {
   chmodSync(path, 0o755);
 }
 
-async function runWarmup(mode: string, env: Record<string, string> = {}) {
+async function runWarmup(mode: string, env: Record<string, string> = {}, cleanup?: string) {
   const proc = Bun.spawn({
-    cmd: ['bash', SCRIPT, mode],
+    cmd: ['bash', SCRIPT, mode, ...(cleanup ? [cleanup] : [])],
     env: {
       ...process.env,
       HOME: join(fixtureRoot, 'home'),
@@ -32,6 +41,20 @@ async function runWarmup(mode: string, env: Record<string, string> = {}) {
     new Response(proc.stderr).text(),
   ]);
   return { code, stdout, stderr };
+}
+
+function git(cwd: string, ...args: string[]): string {
+  const result = Bun.spawnSync({
+    cmd: ['git', ...args],
+    cwd,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr.toString());
+  }
+  return result.stdout.toString().trim();
 }
 
 function processIsExecuting(pid: number): boolean {
@@ -73,6 +96,13 @@ if [ -n "\${FAKE_OPENCODE_HELPER_PID_FILE:-}" ]; then
 fi
 if [ -n "\${FAKE_OPENCODE_READY_FILE:-}" ]; then
   : >"$FAKE_OPENCODE_READY_FILE"
+fi
+if [ -n "\${FAKE_OPENCODE_MUTATE_WORKSPACE:-}" ]; then
+  printf 'mutated tracked\n' >"$FAKE_OPENCODE_MUTATE_WORKSPACE/tracked.txt"
+  chmod 0600 "$FAKE_OPENCODE_MUTATE_WORKSPACE/tracked.txt"
+  printf 'generated\n' >"$FAKE_OPENCODE_MUTATE_WORKSPACE/generated.txt"
+  mkdir -p "$FAKE_OPENCODE_MUTATE_WORKSPACE/ignored-dir"
+  printf 'ignored\n' >"$FAKE_OPENCODE_MUTATE_WORKSPACE/ignored-dir/cache.txt"
 fi
 while :; do /bin/sleep 0.05; done
 `,
@@ -139,6 +169,104 @@ exit 1
     const helperPid = Number(readFileSync(helperPidFile, 'utf8'));
     expect(() => process.kill(pid, 0)).toThrow();
     expect(processIsExecuting(helperPid)).toBe(false);
+  });
+
+  test.each(['absent-default-config', 'empty-default-config', 'custom-config'])(
+    'repo cleanup restores exact Git state for %s',
+    async (layout) => {
+      const workspace = join(fixtureRoot, 'workspace');
+      const warmConfig = join(fixtureRoot, 'warm-config');
+      const configDeps = join(fixtureRoot, 'config-deps', 'node_modules');
+      mkdirSync(workspace, { recursive: true });
+      mkdirSync(join(warmConfig, '.kortix', 'opencode'), { recursive: true });
+      mkdirSync(configDeps, { recursive: true });
+      writeFileSync(join(warmConfig, '.kortix', 'opencode', 'opencode.json'), '{}\n');
+      git(workspace, 'init', '-b', 'main');
+      writeFileSync(join(workspace, 'tracked.txt'), 'original tracked\n');
+      chmodSync(join(workspace, 'tracked.txt'), 0o755);
+      writeFileSync(join(workspace, '.gitignore'), 'ignored-dir/\n');
+      if (layout === 'empty-default-config') {
+        mkdirSync(join(workspace, '.kortix', 'opencode'), { recursive: true });
+        writeFileSync(join(workspace, '.kortix', 'opencode', '.keep'), 'keep\n');
+      }
+      if (layout === 'custom-config') {
+        mkdirSync(join(workspace, '.kortix', 'custom'), { recursive: true });
+        writeFileSync(join(workspace, '.kortix', 'custom', 'opencode.json'), '{}\n');
+      }
+      git(workspace, 'add', '-A');
+      git(
+        workspace,
+        '-c',
+        'user.email=test@kortix.dev',
+        '-c',
+        'user.name=Kortix Test',
+        'commit',
+        '-m',
+        'base',
+      );
+      const head = git(workspace, 'rev-parse', 'HEAD');
+
+      const result = await runWarmup(
+        'instance',
+        {
+          FAKE_CURL_READY: '1',
+          FAKE_OPENCODE_MUTATE_WORKSPACE: workspace,
+          KORTIX_WARMUP_WORKSPACE: workspace,
+          KORTIX_WARMUP_CONFIG_ROOT: warmConfig,
+          KORTIX_WARMUP_CONFIG_DEPS: join(fixtureRoot, 'config-deps', 'node_modules'),
+        },
+        'repo',
+      );
+
+      expect(result.code).toBe(0);
+      expect(git(workspace, 'rev-parse', 'HEAD')).toBe(head);
+      expect(git(workspace, 'status', '--porcelain=v1', '--untracked-files=all')).toBe('');
+      expect(git(workspace, 'clean', '-ndx')).toBe('');
+      expect(readFileSync(join(workspace, 'tracked.txt'), 'utf8')).toBe('original tracked\n');
+      expect(statSync(join(workspace, 'tracked.txt')).mode & 0o777).toBe(0o755);
+      expect(existsSync(join(workspace, 'generated.txt'))).toBe(false);
+      expect(existsSync(join(workspace, 'ignored-dir'))).toBe(false);
+      expect(existsSync(join(workspace, '.kortix', 'opencode', 'node_modules'))).toBe(false);
+      expect(existsSync(join(workspace, '.kortix', 'custom', 'opencode.json'))).toBe(
+        layout === 'custom-config',
+      );
+    },
+  );
+
+  test('repo cleanup rejects a dirty baked checkout before warming it', async () => {
+    const workspace = join(fixtureRoot, 'workspace');
+    const warmConfig = join(fixtureRoot, 'warm-config');
+    mkdirSync(workspace, { recursive: true });
+    mkdirSync(join(warmConfig, '.kortix', 'opencode'), { recursive: true });
+    writeFileSync(join(warmConfig, '.kortix', 'opencode', 'opencode.json'), '{}\n');
+    git(workspace, 'init', '-b', 'main');
+    writeFileSync(join(workspace, 'tracked.txt'), 'original\n');
+    git(workspace, 'add', '-A');
+    git(
+      workspace,
+      '-c',
+      'user.email=test@kortix.dev',
+      '-c',
+      'user.name=Kortix Test',
+      'commit',
+      '-m',
+      'base',
+    );
+    writeFileSync(join(workspace, 'tracked.txt'), 'must survive\n');
+
+    const result = await runWarmup(
+      'instance',
+      {
+        FAKE_CURL_READY: '1',
+        KORTIX_WARMUP_WORKSPACE: workspace,
+        KORTIX_WARMUP_CONFIG_ROOT: warmConfig,
+      },
+      'repo',
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('requires a pristine baked checkout');
+    expect(readFileSync(join(workspace, 'tracked.txt'), 'utf8')).toBe('must survive\n');
   });
 
   test('rejects an unknown warm-up mode', async () => {

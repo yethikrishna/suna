@@ -29,6 +29,7 @@ import {
 } from '../shared/daytona';
 import { db } from '../shared/db';
 import { collectPinnedImageRefs } from './pinned-images';
+import { currentProjectImageDataPlaneScope } from './project-image-scope';
 import {
   DAYTONA_ORG_SNAPSHOT_LIMIT,
   QUOTA_GC_MAX_PER_PASS,
@@ -206,6 +207,7 @@ export async function reconcileSnapshotQuota(
     all,
     referenced,
     pinnedImages,
+    ownedPpwarmDataPlaneScope: currentProjectImageDataPlaneScope(),
     now,
   });
   result.orgTotal = plan.orgTotal;

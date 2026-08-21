@@ -3,12 +3,18 @@ import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { QUOTA_GC_ORG_TARGET } from './quota-gc-select';
+import {
+  dataPlaneScopeFromSupabaseUrl,
+  scopedPerProjectWarmImageName,
+} from './ppwarm-names';
 
 const REPO_ROOT = join(import.meta.dir, '..', '..', '..', '..');
 const MODULE_URL = pathToFileURL(join(import.meta.dir, 'quota-gc.ts')).href;
 const RESULT_MARKER = '__KORTIX_QUOTA_GC_RESULT__';
 const NOW = Date.parse('2026-08-21T00:00:00Z');
 const OLD = new Date(NOW - 30 * 86400000).toISOString();
+const OWNED_SCOPE = dataPlaneScopeFromSupabaseUrl('http://127.0.0.1:54321', 'dev');
+const FOREIGN_SCOPE = dataPlaneScopeFromSupabaseUrl('http://127.0.0.1:54321', 'staging');
 
 interface OperationInput {
   configured?: boolean;
@@ -215,6 +221,40 @@ describe('assessDaytonaProjectImageAdmission', () => {
 });
 
 describe('reconcileSnapshotQuota observation boundary', () => {
+  test('forwards the current data-plane scope and deletes no foreign scoped image', () => {
+    const projectId = '0945686d-1111-2222-3333-444455556666';
+    const owned = {
+      id: 'owned-scoped',
+      name: scopedPerProjectWarmImageName(
+        OWNED_SCOPE,
+        projectId,
+        'tip-owned',
+        'kortix-default-r1',
+        'default',
+      ),
+      state: 'error',
+      createdAt: OLD,
+      lastUsedAt: OLD,
+    };
+    const foreign = {
+      ...owned,
+      id: 'foreign-scoped',
+      name: scopedPerProjectWarmImageName(
+        FOREIGN_SCOPE,
+        projectId,
+        'tip-foreign',
+        'kortix-default-r1',
+        'default',
+      ),
+    };
+    const observed = runOperation('reconcile', {
+      snapshots: [owned, foreign, ...stockSnapshots(78)],
+    });
+
+    expect(observed.deleteCalls).toEqual(['owned-scoped']);
+    expect(observed.deleteCalls).not.toContain('foreign-scoped');
+  });
+
   test.each([
     ['list', 'org_list_failed'],
     ['referenced', 'referenced_names_failed'],

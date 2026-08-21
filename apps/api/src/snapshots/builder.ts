@@ -163,6 +163,17 @@ export function perProjectColdImageEnabled(
   return flags.KORTIX_WARM_SNAPSHOT_ENABLED;
 }
 
+/**
+ * The explicit FAST rollout uses provider organizations shared by independent
+ * data planes. One database cannot prove that an org-wide ppwarm predecessor
+ * is unused elsewhere, so FAST never performs the legacy on-bake deletion.
+ */
+export function perProjectWarmReapEnabled(
+  flags: Pick<typeof config, 'KORTIX_FAST_COLD_BOOT_CONFIGURED'> = config,
+): boolean {
+  return !flags.KORTIX_FAST_COLD_BOOT_CONFIGURED;
+}
+
 type PerProjectWarmEligibilityFlags = Pick<typeof config, 'KORTIX_WARM_SNAPSHOT_ENABLED'>;
 
 /**
@@ -2088,6 +2099,7 @@ async function resolveWarmRepoContext(project: GitBackedProject, tip: string): P
  * identical for Daytona, Platinum, and E2B.
  */
 async function reapOldPerProjectWarm(projectId: string, currentName: string, buildProvider: string): Promise<void> {
+  if (!perProjectWarmReapEnabled()) return;
   try {
     const provider = getSandboxProvider(buildProvider);
     const names = (await provider.listSnapshots()).map((snapshot) => snapshot.name);

@@ -23,6 +23,7 @@ const {
   warmBakeCooldownGate,
   warmBakeScopeId,
   perProjectColdImageEnabled,
+  perProjectWarmReapEnabled,
   perProjectWarmEligible,
   DEFAULT_SANDBOX_SLUG,
 } = await import('../snapshots/builder');
@@ -73,6 +74,25 @@ describe('perProjectColdImageEnabled', () => {
     expect(pushPrebake).toContain('if (!perProjectColdImageEnabled()) return;');
     expect(sessionLookup).not.toContain('config.KORTIX_WARM_SNAPSHOT_ENABLED');
     expect(pushPrebake).not.toContain('config.KORTIX_WARM_SNAPSHOT_ENABLED');
+  });
+});
+
+describe('perProjectWarmReapEnabled', () => {
+  test('preserves legacy cleanup and disables unsafe FAST on-bake deletion', () => {
+    expect(perProjectWarmReapEnabled({ KORTIX_FAST_COLD_BOOT_CONFIGURED: false })).toBe(true);
+    expect(perProjectWarmReapEnabled({ KORTIX_FAST_COLD_BOOT_CONFIGURED: true })).toBe(false);
+  });
+
+  test('guards the provider-wide listing before any ppwarm target is selected', () => {
+    const source = readFileSync(new URL('../snapshots/builder.ts', import.meta.url), 'utf8');
+    const reap = source.slice(
+      source.indexOf('async function reapOldPerProjectWarm'),
+      source.indexOf('\n}', source.indexOf('async function reapOldPerProjectWarm')) + 2,
+    );
+    expect(reap).toContain('if (!perProjectWarmReapEnabled()) return;');
+    expect(reap.indexOf('if (!perProjectWarmReapEnabled()) return;')).toBeLessThan(
+      reap.indexOf('provider.listSnapshots()'),
+    );
   });
 });
 

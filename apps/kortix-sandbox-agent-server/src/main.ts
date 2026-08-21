@@ -184,8 +184,8 @@ async function main() {
   const opencode = createOpencodeSupervisor(cfg, cfg.defaultOpencodeConfigDir, projectEnv, {
     onStartupMark: bootMark,
     onFirstReadyResponse: () => {
-      if (bootState.timeline.some((mark) => mark.label === 'opencode-listening')) return
-      bootMark('opencode-listening')
+      if (bootState.timeline.some((mark) => mark.label === 'opencode-session-api-ready')) return
+      bootMark('opencode-session-api-ready')
     },
     nativeBinaryFastPathEnabled: opencodeBinaryPrefetchEnabled,
   onUnplannedRespawn: () => {

@@ -96,15 +96,20 @@ Bun.serve({
     expect(reports).toBe(1)
   }, 15_000)
 
-  test('wires the first ready response to the de-duplicated listening mark', () => {
+  test('wires the first ready response to its own de-duplicated boot mark', () => {
     const supervisorAt = MAIN.indexOf('const opencode = createOpencodeSupervisor(')
     const sessionRuntimeAt = MAIN.indexOf('void startSessionRuntime(', supervisorAt)
     const bootPath = MAIN.slice(supervisorAt, sessionRuntimeAt)
+    const callbackAt = bootPath.indexOf('onFirstReadyResponse: () => {')
+    const fastPathAt = bootPath.indexOf('nativeBinaryFastPathEnabled:', callbackAt)
+    const callback = bootPath.slice(callbackAt, fastPathAt)
 
     expect(supervisorAt).toBeGreaterThan(-1)
     expect(sessionRuntimeAt).toBeGreaterThan(supervisorAt)
-    expect(bootPath).toContain('onFirstReadyResponse: () => {')
-    expect(bootPath).toContain("mark.label === 'opencode-listening'")
-    expect(bootPath).toContain("bootMark('opencode-listening')")
+    expect(callbackAt).toBeGreaterThan(-1)
+    expect(fastPathAt).toBeGreaterThan(callbackAt)
+    expect(callback).toContain("mark.label === 'opencode-session-api-ready'")
+    expect(callback).toContain("bootMark('opencode-session-api-ready')")
+    expect(callback).not.toContain('opencode-listening')
   })
 })

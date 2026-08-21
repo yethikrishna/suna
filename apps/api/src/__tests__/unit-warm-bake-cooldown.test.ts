@@ -65,6 +65,7 @@ describe('perProjectColdImageEnabled', () => {
     );
 
     expect(sessionLookup).toContain('perProjectColdImageEnabled()');
+    expect(sessionLookup).toContain('opts.allowProjectImage !== false');
     expect(sessionLookup.match(/isProjectImage: true/g)).toHaveLength(2);
     expect(pushPrebake).toContain('if (!perProjectColdImageEnabled()) return;');
     expect(sessionLookup).not.toContain('config.KORTIX_WARM_SNAPSHOT_ENABLED');

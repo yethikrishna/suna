@@ -60,7 +60,11 @@ export function CloseButton({ onClose }: { onClose: () => void }) {
       aria-label="Close"
       className="size-7 shrink-0 active:scale-[0.96]"
     >
-      <X className="size-4" />
+      {/* `size-3.5`, not `size-4`: an X is a full-bleed glyph — it fills its
+          own box corner to corner, where an arrow or a caret leaves margin. At
+          a matched nominal size it reads a step larger than every icon beside
+          it, which is exactly how it looked in this toolbar. */}
+      <X className="size-3.5" />
     </Button>
   );
 }

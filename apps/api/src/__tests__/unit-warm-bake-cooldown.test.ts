@@ -22,6 +22,8 @@ setTestEnv('INTERNAL_KORTIX_ENV', 'dev');
 const {
   warmBakeCooldownGate,
   warmBakeScopeId,
+  claimFastWarmBuildProviderSlot,
+  releaseFastWarmBuildProviderSlot,
   perProjectColdImageEnabled,
   perProjectWarmReapEnabled,
   perProjectWarmEligible,
@@ -70,7 +72,8 @@ describe('perProjectColdImageEnabled', () => {
 
     expect(sessionLookup).toContain('perProjectColdImageEnabled()');
     expect(sessionLookup).toContain('opts.allowProjectImage !== false');
-    expect(sessionLookup.match(/isProjectImage: true/g)).toHaveLength(2);
+    expect(sessionLookup).toContain('routedProjectImageReadCandidates(');
+    expect(sessionLookup).toContain('isProjectImage: true');
     expect(pushPrebake).toContain('if (!perProjectColdImageEnabled()) return;');
     expect(sessionLookup).not.toContain('config.KORTIX_WARM_SNAPSHOT_ENABLED');
     expect(pushPrebake).not.toContain('config.KORTIX_WARM_SNAPSHOT_ENABLED');
@@ -78,9 +81,25 @@ describe('perProjectColdImageEnabled', () => {
 });
 
 describe('perProjectWarmReapEnabled', () => {
-  test('preserves legacy cleanup and disables unsafe FAST on-bake deletion', () => {
-    expect(perProjectWarmReapEnabled({ KORTIX_FAST_COLD_BOOT_CONFIGURED: false })).toBe(true);
-    expect(perProjectWarmReapEnabled({ KORTIX_FAST_COLD_BOOT_CONFIGURED: true })).toBe(false);
+  test('preserves legacy cleanup, enables scoped FAST cleanup, and honors rollback', () => {
+    expect(
+      perProjectWarmReapEnabled({
+        KORTIX_FAST_COLD_BOOT_CONFIGURED: false,
+        KORTIX_FAST_COLD_BOOT_ENABLED: false,
+      }),
+    ).toBe(true);
+    expect(
+      perProjectWarmReapEnabled({
+        KORTIX_FAST_COLD_BOOT_CONFIGURED: true,
+        KORTIX_FAST_COLD_BOOT_ENABLED: true,
+      }),
+    ).toBe(true);
+    expect(
+      perProjectWarmReapEnabled({
+        KORTIX_FAST_COLD_BOOT_CONFIGURED: true,
+        KORTIX_FAST_COLD_BOOT_ENABLED: false,
+      }),
+    ).toBe(false);
   });
 
   test('guards the provider-wide listing before any ppwarm target is selected', () => {
@@ -202,6 +221,42 @@ describe('warmBakeScopeId — per-(project, template) pacing scope', () => {
   });
 });
 
+describe('FAST optional provider build slot', () => {
+  test('admits one optional build per provider and releases it for the next project', () => {
+    const registry = new Set<string>();
+    expect(claimFastWarmBuildProviderSlot('platinum', true, registry)).toBe(true);
+    expect(claimFastWarmBuildProviderSlot('platinum', true, registry)).toBe(false);
+    expect(claimFastWarmBuildProviderSlot('daytona', true, registry)).toBe(true);
+    releaseFastWarmBuildProviderSlot('platinum', true, registry);
+    expect(claimFastWarmBuildProviderSlot('platinum', true, registry)).toBe(true);
+  });
+
+  test('does not throttle the legacy rollout or required direct builds', () => {
+    const registry = new Set(['platinum']);
+    expect(claimFastWarmBuildProviderSlot('platinum', false, registry)).toBe(true);
+    releaseFastWarmBuildProviderSlot('platinum', false, registry);
+    expect(registry).toEqual(new Set(['platinum']));
+  });
+
+  test('gates only the optional background path before its direct build call', () => {
+    const source = readFileSync(new URL('../snapshots/builder.ts', import.meta.url), 'utf8');
+    const background = source.slice(
+      source.indexOf('function kickBackgroundWarmBuild'),
+      source.indexOf('export function kickProjectWarmPrebake'),
+    );
+    const direct = source.slice(
+      source.indexOf('export async function ensurePerProjectWarmImage'),
+      source.indexOf('export function shouldAttemptWarmFromBase'),
+    );
+    expect(background).toContain('assessFastProjectImageBuildAdmission(');
+    expect(background.indexOf('assessFastProjectImageBuildAdmission(')).toBeLessThan(
+      background.indexOf('await ensurePerProjectWarmImage('),
+    );
+    expect(direct).not.toContain('assessFastProjectImageBuildAdmission(');
+    expect(direct).not.toContain('claimFastWarmBuildProviderSlot(');
+  });
+});
+
 describe('perProjectWarmEligible — read-side warm-image gate', () => {
   test('the shared default template is eligible on every provider', () => {
     const fastOnly = { KORTIX_WARM_SNAPSHOT_ENABLED: false };
@@ -226,6 +281,7 @@ describe('perProjectWarmEligible — read-side warm-image gate', () => {
         { isShared: false },
         'platinum',
         { KORTIX_WARM_SNAPSHOT_ENABLED: true },
+        (provider) => provider === 'platinum',
       ),
     ).toBe(true);
   });
@@ -236,6 +292,7 @@ describe('perProjectWarmEligible — read-side warm-image gate', () => {
         { isShared: false },
         'daytona',
         { KORTIX_WARM_SNAPSHOT_ENABLED: true },
+        (provider) => provider === 'platinum',
       ),
     ).toBe(false);
   });
@@ -246,6 +303,7 @@ describe('perProjectWarmEligible — read-side warm-image gate', () => {
         { isShared: false },
         'e2b',
         { KORTIX_WARM_SNAPSHOT_ENABLED: true },
+        (provider) => provider === 'platinum',
       ),
     ).toBe(false);
   });

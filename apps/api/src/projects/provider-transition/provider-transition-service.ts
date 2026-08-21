@@ -11,9 +11,9 @@ import {
   DEFAULT_SANDBOX_SLUG,
   ensurePerProjectWarmImage,
   resolveCommitSha,
+  routedPerProjectWarmImageName,
 } from '../../snapshots/builder';
 import { resolveTemplateBySlug, computeTemplateIdentity } from '../../snapshots/templates';
-import { perProjectWarmImageName } from '../../snapshots/ppwarm-names';
 import { config } from '../../config';
 import type { GitBackedProject } from '../git/types';
 import {
@@ -102,7 +102,11 @@ export async function resolvePrepIdentity(
   const template = await resolveTemplateBySlug(project, DEFAULT_SANDBOX_SLUG);
   const baseIdentity = await computeTemplateIdentity(project, template);
   const commitSha = await resolveCommitSha(project, project.defaultBranch);
-  const snapshotName = perProjectWarmImageName(project.projectId, commitSha, baseIdentity.snapshotName);
+  const snapshotName = routedPerProjectWarmImageName(
+    project.projectId,
+    commitSha,
+    baseIdentity.snapshotName,
+  );
   return { commitSha, baseRuntimeIdentity: baseIdentity.snapshotName, snapshotName };
 }
 

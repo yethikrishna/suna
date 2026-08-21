@@ -124,7 +124,7 @@ export function CodeBlock({
         ref={scrollRef}
         className={cn(
           'bg-popover max-h-[520px] overflow-auto py-2.5',
-          'text-foreground font-mono text-xs leading-[1.65]',
+          'text-foreground rounded-t-sm font-mono text-xs leading-[1.65]',
           '[&_code]:border-none [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-xs',
           '[&_.shiki]:!bg-transparent [&_span]:border-none [&_span]:!bg-transparent [&_span]:outline-none',
         )}

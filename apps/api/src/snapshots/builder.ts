@@ -34,6 +34,7 @@ import {
 } from './project-image-routing';
 import { currentProjectImageDataPlaneScope } from './project-image-scope';
 import { assessFastProjectImageBuildAdmission } from './project-image-admission';
+import { cleanupOrphanedFastProjectImageBuild } from './project-image-orphan-cleanup';
 import { collectPinnedImageRefs } from './pinned-images';
 import {
   computeTemplateIdentity,
@@ -1198,6 +1199,18 @@ export function warmBakeCooldownGate(
 }
 
 /**
+ * Release a recorded warm-bake kick when no provider build started. Admission
+ * denials are retryable, so they must not consume the cooldown window.
+ */
+export function releaseWarmBakeCooldown(
+  projectId: string,
+  provider: string,
+  registry: Map<string, number> = warmBakeLastKickAt,
+): void {
+  registry.delete(`${projectId}:${provider}`);
+}
+
+/**
  * Warm bakes currently running, keyed by (project, provider) — a hot project
  * whose tip moves mid-bake must NOT start a second concurrent bake for the new
  * tip (the name-keyed inflight set can't see that: new tip = new name).
@@ -1331,15 +1344,23 @@ function kickBackgroundWarmBuild(
           `[snapshots] optional FAST warm bake skipped for ${project.projectId.slice(0, 8)} ` +
             `(${opts.provider}): ${admission.reason}`,
         );
+        releaseWarmBakeCooldown(scopedProjectId, opts.provider);
         return;
       }
     }
-    await ensurePerProjectWarmImage(project, {
+    const result = await ensurePerProjectWarmImage(project, {
       accountId: opts.accountId,
       provider: opts.provider,
       source: 'background',
       slug: opts.slug,
     });
+    if (fastEnabled && result.built) {
+      await cleanupOrphanedFastProjectImageBuild({
+        projectId: project.projectId,
+        snapshotName: result.snapshotName,
+        provider: opts.provider,
+      });
+    }
   })()
     .catch((err) =>
       console.warn(

@@ -21,6 +21,7 @@ setTestEnv('INTERNAL_KORTIX_ENV', 'dev');
 
 const {
   warmBakeCooldownGate,
+  releaseWarmBakeCooldown,
   warmBakeScopeId,
   claimFastWarmBuildProviderSlot,
   releaseFastWarmBuildProviderSlot,
@@ -171,6 +172,15 @@ describe('warmBakeCooldownGate — per-(project, provider) bake pacing', () => {
     expect(registry.get(`${PROJECT}:daytona`)).toBe(0);
   });
 
+  test('an admission denial releases the kick so the next attempt can retry immediately', () => {
+    const registry = new Map<string, number>();
+    expect(warmBakeCooldownGate(PROJECT, 'daytona', { now: 0, cooldownMs: COOLDOWN, registry })).toBe(true);
+
+    releaseWarmBakeCooldown(PROJECT, 'daytona', registry);
+
+    expect(warmBakeCooldownGate(PROJECT, 'daytona', { now: 1, cooldownMs: COOLDOWN, registry })).toBe(true);
+  });
+
   test('providers cool down independently — parity fan-out is paced per provider, not globally', () => {
     const registry = new Map<string, number>();
     expect(warmBakeCooldownGate(PROJECT, 'daytona', { now: 0, cooldownMs: COOLDOWN, registry })).toBe(true);
@@ -252,6 +262,14 @@ describe('FAST optional provider build slot', () => {
     expect(background.indexOf('assessFastProjectImageBuildAdmission(')).toBeLessThan(
       background.indexOf('await ensurePerProjectWarmImage('),
     );
+    const deniedAdmission = background.slice(
+      background.indexOf('if (!admission.allowed)'),
+      background.indexOf('const result = await ensurePerProjectWarmImage('),
+    );
+    expect(deniedAdmission).toContain('releaseWarmBakeCooldown(scopedProjectId, opts.provider)');
+    expect(background).toContain('inflightBackgroundBuilds.delete(key)');
+    expect(background).toContain('inflightWarmBakesByProject.delete(projectKey)');
+    expect(background).toContain('releaseFastWarmBuildProviderSlot(opts.provider, fastEnabled)');
     expect(direct).not.toContain('assessFastProjectImageBuildAdmission(');
     expect(direct).not.toContain('claimFastWarmBuildProviderSlot(');
   });

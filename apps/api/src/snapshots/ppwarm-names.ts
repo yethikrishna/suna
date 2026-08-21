@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
  * Legacy names are scoped to (project, template):
  * `kortix-ppwarm-<proj8>-<tpl8>-<hash12>`. Fast cold boot writes use the
  * data-plane-owned shape
- * `kortix-ppwarm2-<db12>-<project12>-<template8>-<hash12>`. The
+ * `kpp2-<db12>-<project12>-<template16>-<hash16>`. The
  * distinct prefix prevents an older quota-GC replica from treating the new
  * four-segment layout as an old project/template scope during a rolling deploy.
  * See the FORMAT MIGRATION note below {@link perProjectWarmImageName} for why —
@@ -20,10 +20,10 @@ import { createHash } from 'node:crypto';
  */
 
 export const PPWARM_PREFIX = 'kortix-ppwarm-';
-export const SCOPED_PPWARM_PREFIX = 'kortix-ppwarm2-';
+export const SCOPED_PPWARM_PREFIX = 'kpp2-';
 
 const EXACT_PPWARM_IMAGE_NAME =
-  /^(?:kortix-ppwarm-(?:[0-9a-f]{8}-[0-9a-f]{12}|[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{12})|kortix-ppwarm2-[0-9a-f]{12}-[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{12})$/;
+  /^(?:kortix-ppwarm-(?:[0-9a-f]{8}-[0-9a-f]{12}|[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{12})|kpp2-[0-9a-f]{12}-[0-9a-f]{12}-[0-9a-f]{16}-[0-9a-f]{16})$/;
 
 /** Accept only complete live ppwarm names in the scoped, current, or legacy format. */
 export function isExactPpwarmImageName(name: string): boolean {
@@ -129,28 +129,40 @@ function hashPrefix(parts: readonly string[], length: number): string {
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, length);
 }
 
-function decodedUrlComponent(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
+function canonicalUrlPath(pathname: string): string {
+  return pathname
+    .replace(/%([0-9a-f]{2})/gi, (triplet, hex: string) => {
+      const byte = Number.parseInt(hex, 16);
+      const unreserved =
+        (byte >= 0x41 && byte <= 0x5a) ||
+        (byte >= 0x61 && byte <= 0x7a) ||
+        (byte >= 0x30 && byte <= 0x39) ||
+        byte === 0x2d ||
+        byte === 0x2e ||
+        byte === 0x5f ||
+        byte === 0x7e;
+      return unreserved ? String.fromCharCode(byte) : `%${hex.toUpperCase()}`;
+    })
+    .replace(/\/+$/, '');
 }
 
 /**
  * Stable 12-hex ownership key for the Supabase data-plane endpoint that stores
  * project image pins. The API endpoint is more stable than DATABASE_URL: DB
  * passwords, roles, poolers, and TLS connection options cannot change it.
- * Scheme, credentials, query, hash, host casing, and one terminal DNS dot are
- * excluded. A non-default port and path remain part of local-worktree identity.
+ * Credentials, query, hash, host casing, and one terminal DNS dot are excluded.
+ * Protocol, effective port, and raw path remain part of the identity so two
+ * distinct routed endpoints cannot collapse. Changing SUPABASE_PUBLIC_URL is a
+ * cache-namespace migration: old images remain isolated and are not auto-reaped.
  */
 export function dataPlaneScopeFromSupabaseUrl(raw: string, environment = ''): string {
   const url = new URL(raw);
   const environmentKey = environment.trim().toLowerCase();
+  const protocol = url.protocol.toLowerCase();
   const host = url.hostname.toLowerCase().replace(/\.$/, '');
-  const port = url.port;
-  const path = decodedUrlComponent(url.pathname).replace(/\/+$/, '');
-  return hashPrefix([environmentKey, host, port, path], 12);
+  const port = url.port || (protocol === 'https:' ? '443' : protocol === 'http:' ? '80' : '');
+  const path = canonicalUrlPath(url.pathname);
+  return hashPrefix([environmentKey, protocol, host, port, path], 12);
 }
 
 function scopedProjectKey(projectId: string): string {
@@ -158,14 +170,14 @@ function scopedProjectKey(projectId: string): string {
 }
 
 function scopedTemplateKey(templateSlug: string): string {
-  return hashPrefix([templateSlug], 8);
+  return hashPrefix([templateSlug], 16);
 }
 
 /**
- * Data-plane-owned project image name. The 62-character format stays within
- * Platinum's 64-character limit. It gives the data plane and project 48 bits,
- * while retaining the legacy template key's 32-bit collision budget. The
- * content hash uses every full identity input, not the short keys.
+ * Data-plane-owned project image name. The 64-character format uses Platinum's
+ * full name budget. It gives the data plane and project 48 bits, and gives the
+ * user-controlled template and content keys 64 bits each. The content hash uses
+ * every full identity input, not the short keys.
  */
 export function scopedPerProjectWarmImageName(
   scope12: string,
@@ -179,7 +191,7 @@ export function scopedPerProjectWarmImageName(
   }
   const hash = hashPrefix(
     [scope12, projectId, templateSlug, tip, baseSnapshotName],
-    12,
+    16,
   );
   return (
     `${SCOPED_PPWARM_PREFIX}${scope12}-${scopedProjectKey(projectId)}-` +

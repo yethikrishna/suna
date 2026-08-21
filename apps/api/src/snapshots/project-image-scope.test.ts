@@ -41,4 +41,15 @@ describe('currentProjectImageDataPlaneScope', () => {
       currentProjectImageDataPlaneScope({ ...settings, INTERNAL_KORTIX_ENV: 'staging' }),
     );
   });
+
+  test('normalizes preview to dev because preview shares the dev data plane', () => {
+    const settings = {
+      SUPABASE_URL: 'https://dev-data.example.test',
+      SUPABASE_PUBLIC_URL: '',
+      INTERNAL_KORTIX_ENV: 'dev' as const,
+    };
+    expect(currentProjectImageDataPlaneScope(settings)).toBe(
+      currentProjectImageDataPlaneScope({ ...settings, INTERNAL_KORTIX_ENV: 'preview' }),
+    );
+  });
 });

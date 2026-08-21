@@ -32,26 +32,42 @@ describe('dataPlaneScopeFromSupabaseUrl', () => {
     expect(dataPlaneScopeFromSupabaseUrl(raw)).toMatch(/^[0-9a-f]{12}$/);
   });
 
-  test('ignores scheme, credentials, query, hash, host casing, and a terminal DNS dot', () => {
+  test('ignores credentials, query, hash, host casing, and a terminal DNS dot', () => {
     const first = dataPlaneScopeFromSupabaseUrl(
       'https://first:secret@API.SUPABASE.EXAMPLE./kortix/?one=1#one',
     );
     const second = dataPlaneScopeFromSupabaseUrl(
-      'http://second:rotated@api.supabase.example/kortix?two=2#two',
+      'https://second:rotated@api.supabase.example/kortix?two=2#two',
     );
     expect(first).toBe(second);
   });
 
-  test('distinguishes host, non-default port, and endpoint path', () => {
+  test('distinguishes protocol, host, non-default port, and endpoint path', () => {
     const baseline = dataPlaneScopeFromSupabaseUrl(
       'https://api.supabase.example/kortix',
     );
     const alternatives = [
+      'http://api.supabase.example/kortix',
       'https://other.supabase.example/kortix',
       'https://api.supabase.example:8443/kortix',
       'https://api.supabase.example/other',
     ].map((raw) => dataPlaneScopeFromSupabaseUrl(raw));
     expect(new Set([baseline, ...alternatives]).size).toBe(alternatives.length + 1);
+  });
+
+  test('does not collapse an encoded path separator into a routed path separator', () => {
+    expect(dataPlaneScopeFromSupabaseUrl('https://api.example/tenant%2Fa', 'dev')).not.toBe(
+      dataPlaneScopeFromSupabaseUrl('https://api.example/tenant/a', 'dev'),
+    );
+  });
+
+  test('canonicalizes percent-encoding without decoding reserved separators', () => {
+    expect(dataPlaneScopeFromSupabaseUrl('https://api.example/k%6frtix/%7euser', 'dev')).toBe(
+      dataPlaneScopeFromSupabaseUrl('https://api.example/kortix/~user', 'dev'),
+    );
+    expect(dataPlaneScopeFromSupabaseUrl('https://api.example/tenant%2fa', 'dev')).toBe(
+      dataPlaneScopeFromSupabaseUrl('https://api.example/tenant%2Fa', 'dev'),
+    );
   });
 
   test('distinguishes deployment environments even when an internal URL is shared', () => {
@@ -76,10 +92,10 @@ describe('scopedPerProjectWarmImageName', () => {
     );
     const segments = name.slice(SCOPED_PPWARM_PREFIX.length).split('-');
     expect(segments).toHaveLength(4);
-    expect(segments.map((segment) => segment.length)).toEqual([12, 12, 8, 12]);
-    expect(name.length).toBe(62);
+    expect(segments.map((segment) => segment.length)).toEqual([12, 12, 16, 16]);
+    expect(name.length).toBe(64);
     expect(name).toMatch(
-      /^kortix-ppwarm2-[0-9a-f]{12}-[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{12}$/,
+      /^kpp2-[0-9a-f]{12}-[0-9a-f]{12}-[0-9a-f]{16}-[0-9a-f]{16}$/,
     );
   });
 
@@ -103,7 +119,9 @@ describe('scopedPerProjectWarmImageName', () => {
     expect(proj8(PROJ_A)).toBe(proj8(PROJ_B_COLLIDING));
     const a = scopedPerProjectWarmImageName(DB_SCOPE_A, PROJ_A, 'tip1', BASE, 'default');
     const b = scopedPerProjectWarmImageName(DB_SCOPE_A, PROJ_B_COLLIDING, 'tip1', BASE, 'default');
-    expect(a.split('-')[3]).not.toBe(b.split('-')[3]);
+    expect(parseExactPpwarmImageName(a)?.projectKey).not.toBe(
+      parseExactPpwarmImageName(b)?.projectKey,
+    );
     expect(a).not.toBe(b);
   });
 
@@ -369,10 +387,10 @@ describe('isExactPpwarmImageName', () => {
     'kortix-ppwarm-9ee8bc9c-zzzzzzzzzzzz',
     'kortix-ppwarm-9EE8BC9C-aaaaaaaaaaaa',
     'kortix-ppwarm-9ee8bc9c-37a8eec1-aaaaaaaaaaaa-extra',
-    'kortix-ppwarm-123456789abc-123456789abc-12345678-123456789abc',
-    'kortix-ppwarm-123456789abc-123456789abc-12345678-123456789ab',
-    'kortix-ppwarm-123456789abc-123456789abc-12345678-123456789abcd',
-    'kortix-ppwarm-123456789abc-123456789abc-1234567z-123456789abc',
+    'kortix-ppwarm-123456789abc-123456789abc-1234567890abcdef-1234567890abcdef',
+    'kpp2-123456789abc-123456789abc-1234567890abcdef-1234567890abcde',
+    'kpp2-123456789abc-123456789abc-1234567890abcdef-1234567890abcdef0',
+    'kpp2-123456789abc-123456789abc-1234567890abcdez-1234567890abcdef',
     'kortix-ppwarm-9ee8bc9c-37a8eec1-aaaaaaaaaaaa__deleted_tpl_1',
     '../kortix-ppwarm-9ee8bc9c-aaaaaaaaaaaa',
   ])('rejects %s', (name) => {

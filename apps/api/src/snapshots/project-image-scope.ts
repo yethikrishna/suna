@@ -10,8 +10,10 @@ type ProjectImageScopeConfig = Pick<
 export function currentProjectImageDataPlaneScope(
   settings: ProjectImageScopeConfig = config,
 ): string {
+  const dataPlaneEnvironment =
+    settings.INTERNAL_KORTIX_ENV === 'preview' ? 'dev' : settings.INTERNAL_KORTIX_ENV;
   return dataPlaneScopeFromSupabaseUrl(
     settings.SUPABASE_PUBLIC_URL || settings.SUPABASE_URL,
-    settings.INTERNAL_KORTIX_ENV,
+    dataPlaneEnvironment,
   );
 }

@@ -1,5 +1,5 @@
-import { getSandboxProvider } from './providers';
 import { isExactPpwarmImageName } from './ppwarm-names';
+import { getSandboxProvider } from './providers';
 
 /** Delete one resolved ppwarm image without resolving or touching its base template. */
 export async function deleteProjectSandboxImage(

@@ -7,10 +7,12 @@ import {
   readActiveRouting,
 } from './provider-transition-store';
 
-function databaseReturning(row: {
-  metadata: Record<string, unknown> | null;
-  generation: number | null;
-} | null): Database {
+function databaseReturning(
+  row: {
+    metadata: Record<string, unknown> | null;
+    generation: number | null;
+  } | null,
+): Database {
   return {
     select: () => ({
       from: () => ({

@@ -122,6 +122,12 @@ async function observeCreatedContext(
   }
 }
 
+function currentTempBase(): string {
+  const tempBase = process.env.TMPDIR;
+  if (!tempBase) throw new Error('TMPDIR is missing from the staging fixture');
+  return tempBase;
+}
+
 beforeEach(async () => {
   await createStagingFixture();
 });
@@ -137,7 +143,7 @@ afterEach(async () => {
 
 describe('snapshot build-context failure cleanup', () => {
   test('stageBuildContext removes its exact context directory after staging fails', async () => {
-    const tempBase = process.env.TMPDIR!;
+    const tempBase = currentTempBase();
     const { contextDir, error } = await observeCreatedContext(tempBase, 'kortix-snap-', () =>
       stageBuildContext('cleanup-test', 'FROM ubuntu:24.04', invalidWarmRepo()),
     );
@@ -151,7 +157,7 @@ describe('snapshot build-context failure cleanup', () => {
   });
 
   test('stageWarmFromBaseContext removes its exact context directory after staging fails', async () => {
-    const tempBase = process.env.TMPDIR!;
+    const tempBase = currentTempBase();
     const { contextDir, error } = await observeCreatedContext(tempBase, 'kortix-snap-warm-', () =>
       stageWarmFromBaseContext(
         'cleanup-test',

@@ -105,6 +105,9 @@ mock.module('../../projects/disk-quota-guard', () => ({
 
 mock.module('../../shared/platinum', () => ({
   isPlatinumConfigured: () => true,
+  platinumJsonResponse: async () => {
+    throw new Error('unexpected Platinum materialization request');
+  },
   platinumJson: async (path: string, init: RequestInit = {}) => {
     if (path.startsWith('/v1/sandboxes?')) {
       const body = JSON.parse(String(init.body)) as { envVars: Record<string, string> };

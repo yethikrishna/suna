@@ -138,6 +138,25 @@ export interface EnsureSandboxImageResult {
   runtimeProfile?: 'standard' | 'fast' | 'meta';
 }
 
+type PerProjectColdImageFlags = Pick<
+  typeof config,
+  'KORTIX_WARM_SNAPSHOT_ENABLED' | 'KORTIX_FAST_COLD_BOOT_ENABLED'
+>;
+
+/**
+ * Enable the stopped, content-addressed per-project image through either flag.
+ *
+ * The legacy warm-snapshot flag remains valid. The cold-boot experiment now
+ * reuses the same image path because it contains no running sandbox, memory
+ * snapshot, or live OpenCode process. With both flags disabled, sessions keep
+ * the existing shared-image plus boot-time repository materialization path.
+ */
+export function perProjectColdImageEnabled(
+  flags: PerProjectColdImageFlags = config,
+): boolean {
+  return flags.KORTIX_WARM_SNAPSHOT_ENABLED || flags.KORTIX_FAST_COLD_BOOT_ENABLED;
+}
+
 /**
  * Whether `template` is allowed to get a per-project WARM image on
  * `buildProvider` (the read-side gate for `ensureSandboxImage`'s warm-HIT
@@ -217,7 +236,7 @@ export async function ensureSandboxImage(
   // session on this commit boots warm; this boot never blocks on the bake and
   // falls through to the normal cold path when no warm image exists yet.
   if (
-    config.KORTIX_WARM_SNAPSHOT_ENABLED &&
+    perProjectColdImageEnabled() &&
     (opts.source ?? 'session-start') === 'session-start' &&
     perProjectWarmEligible(template, buildProvider)
   ) {
@@ -1240,7 +1259,7 @@ export async function kickProjectWarmPrebake(
   project: GitBackedProject,
   opts: { accountId?: string; provider?: string; projectPin?: string | null } = {},
 ): Promise<void> {
-  if (!config.KORTIX_WARM_SNAPSHOT_ENABLED) return;
+  if (!perProjectColdImageEnabled()) return;
 
   const providers = opts.provider
     ? [opts.provider]

@@ -18,9 +18,13 @@ setTestEnv('DAYTONA_TARGET', 'test-target');
 setTestEnv('FRONTEND_URL', 'http://localhost:3000');
 setTestEnv('INTERNAL_KORTIX_ENV', 'dev');
 
-const { warmBakeCooldownGate, warmBakeScopeId, perProjectWarmEligible, DEFAULT_SANDBOX_SLUG } = await import(
-  '../snapshots/builder'
-);
+const {
+  warmBakeCooldownGate,
+  warmBakeScopeId,
+  perProjectColdImageEnabled,
+  perProjectWarmEligible,
+  DEFAULT_SANDBOX_SLUG,
+} = await import('../snapshots/builder');
 const { computeTemplateIdentity, resolveUserDockerfile } = await import('../snapshots/templates');
 const { warmBuildSlug, templateSlugFromBuildSlug } = await import('../snapshots/ppwarm-names');
 const templatesModule = await import('../snapshots/templates');
@@ -29,6 +33,25 @@ type GitBackedProject = Parameters<typeof computeTemplateIdentity>[0];
 
 const PROJECT = '2d34b9f0-0000-0000-0000-000000000000';
 const COOLDOWN = 10 * 60 * 1000;
+
+describe('perProjectColdImageEnabled', () => {
+  test.each([
+    { legacyWarm: false, fastColdBoot: false, expected: false },
+    { legacyWarm: true, fastColdBoot: false, expected: true },
+    { legacyWarm: false, fastColdBoot: true, expected: true },
+    { legacyWarm: true, fastColdBoot: true, expected: true },
+  ])(
+    'legacyWarm=$legacyWarm fastColdBoot=$fastColdBoot returns $expected',
+    ({ legacyWarm, fastColdBoot, expected }) => {
+      expect(
+        perProjectColdImageEnabled({
+          KORTIX_WARM_SNAPSHOT_ENABLED: legacyWarm,
+          KORTIX_FAST_COLD_BOOT_ENABLED: fastColdBoot,
+        }),
+      ).toBe(expected);
+    },
+  );
+});
 
 const FAKE_PROJECT: GitBackedProject = {
   projectId: PROJECT,

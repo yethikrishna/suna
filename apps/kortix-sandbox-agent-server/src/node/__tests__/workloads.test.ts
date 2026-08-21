@@ -131,6 +131,88 @@ describe('createWorkload contract', () => {
     }
   })
 
+  test("busy() returning null means CANNOT TELL, and blocks the swap", async () => {
+    // The safety rule from runtime-assets.ts, now expressible in the interface:
+    // the turn probe returns boolean | null and 'turn-state-unknown' is a
+    // distinct verdict from 'turn-in-flight'. A binary busy() forced callers to
+    // collapse that, which is the busy-blind class that has cost live turns.
+    const { requestAgentSwapIfIdle } = await import('../../runtime-assets')
+    const { createHash } = await import('node:crypto')
+    const fsp = await import('node:fs/promises')
+    const os = await import('node:os')
+    const nodePath = await import('node:path')
+
+    const stateDir = await fsp.mkdtemp(nodePath.join(os.tmpdir(), 'kortix-busy-null-'))
+    const bytes = Buffer.from('#!/bin/sh\nexit 0\n')
+    await fsp.writeFile(nodePath.join(stateDir, 'agent.next'), bytes)
+    await fsp.writeFile(
+      nodePath.join(stateDir, 'agent.next.sha256'),
+      createHash('sha256').update(bytes).digest('hex'),
+    )
+    const rec: { exited: number | null } = { exited: null }
+    const lastExit = (): number | null => rec.exited
+    const swapOpts = {
+      agentStateDir: stateDir,
+      uptimeMs: 10 * 60_000,
+      turnInFlight: async () => false,
+      exit: (code: number) => {
+        rec.exited = code
+      },
+    }
+    try {
+      resetAgentSwapBlockersForTests()
+      createWorkload({ kind: 'session', start: async () => {}, busy: () => null })
+      expect(await requestAgentSwapIfIdle(swapOpts)).toBe('attached')
+      expect(lastExit(), 'an unknown busy state must never authorise a swap').toBe(null)
+    } finally {
+      await fsp.rm(stateDir, { recursive: true, force: true })
+    }
+  })
+
+  test('stop() releases the swap blocker so a dead workload cannot veto forever', async () => {
+    // The concrete case: a warm seed registers busy = !captureReady(); capture
+    // never completes (2026-06-11); the box is later adopted. Without an
+    // unregister the seed's blocker answers "busy" for the life of the box and
+    // the node never converges again.
+    const { requestAgentSwapIfIdle } = await import('../../runtime-assets')
+    const { createHash } = await import('node:crypto')
+    const fsp = await import('node:fs/promises')
+    const os = await import('node:os')
+    const nodePath = await import('node:path')
+
+    const stateDir = await fsp.mkdtemp(nodePath.join(os.tmpdir(), 'kortix-unregister-'))
+    const bytes = Buffer.from('#!/bin/sh\nexit 0\n')
+    await fsp.writeFile(nodePath.join(stateDir, 'agent.next'), bytes)
+    await fsp.writeFile(
+      nodePath.join(stateDir, 'agent.next.sha256'),
+      createHash('sha256').update(bytes).digest('hex'),
+    )
+    const rec: { exited: number | null } = { exited: null }
+    const lastExit = (): number | null => rec.exited
+    const swapOpts = {
+      agentStateDir: stateDir,
+      uptimeMs: 10 * 60_000,
+      turnInFlight: async () => false,
+      exit: (code: number) => {
+        rec.exited = code
+      },
+    }
+    try {
+      resetAgentSwapBlockersForTests()
+      const seed = warmSeedWorkload({ start: async () => {}, captureReady: () => false })
+      expect(seed.busy()).toBe(true)
+      expect(await requestAgentSwapIfIdle(swapOpts)).toBe('attached')
+      expect(lastExit()).toBe(null)
+
+      await seed.stop('release')
+      rec.exited = null
+      await requestAgentSwapIfIdle(swapOpts)
+      expect(lastExit(), 'a stopped workload must stop blocking convergence').toBe(75)
+    } finally {
+      await fsp.rm(stateDir, { recursive: true, force: true })
+    }
+  })
+
   test('a throwing preflight fails closed, it does not read as a pass', async () => {
     const w = createWorkload({
       kind: 'session',

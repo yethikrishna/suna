@@ -1123,6 +1123,18 @@ export function registerAgentSwapBlocker(name: string, isBusy: () => boolean): v
   swapBlockers.set(name, isBusy)
 }
 
+/**
+ * Drop a blocker when the thing it spoke for is gone.
+ *
+ * Without this a stopped workload blocks convergence forever. The concrete case:
+ * a warm seed registers `busy = !captureReady()`, capture never completes (the
+ * 2026-06-11 failure), the box is later adopted by a session — and the seed's
+ * blocker still answers "busy", so the node never converges again.
+ */
+export function unregisterAgentSwapBlocker(name: string): void {
+  swapBlockers.delete(name)
+}
+
 /** Test seam: drop every registered blocker. */
 export function resetAgentSwapBlockersForTests(): void {
   swapBlockers.clear()

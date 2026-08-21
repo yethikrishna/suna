@@ -14,8 +14,13 @@ import { IMPLEMENTED_WORKLOADS, isClaimed, selectWorkloadId } from '../workload'
  *   if (cfg.workload === 'monitor')                          -> runMonitorMode
  *   otherwise                                                -> session
  *
- * Kept as an independent implementation rather than importing the new one, so
- * the test compares two things instead of comparing one thing to itself.
+ * HONEST ABOUT WHAT THIS PROVES. These are the same three lines written twice,
+ * so a transcription error would be copied into both — this is a REGRESSION
+ * guard, not independent evidence. It pins the decision against future edits to
+ * `selectWorkloadId` and enumerates the input space that matters (trimming,
+ * case, unset vs empty, precedence). The evidence that the extraction was
+ * faithful in the first place is the diff against
+ * `git show main:apps/kortix-sandbox-agent-server/src/main.ts`.
  */
 function originalDecision(
   cfg: { workload: string },

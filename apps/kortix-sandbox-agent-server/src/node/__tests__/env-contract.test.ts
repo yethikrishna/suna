@@ -31,20 +31,28 @@ const NOT_ENV_READS = new Map<string, string>([
   ['OPENCODE_SRC', 'test fixture path constant'],
   ['KORTIX_USER_CONTEXT_HEADER', 'exported HTTP header name, not an env var'],
   ['KORTIX_USER_CONTEXT_QUERY_PARAM', 'exported query-param name, not an env var'],
+  ['KORTIX_SERVICE_CALL_HEADER', 'exported HTTP header name (kortix-user-context.ts)'],
+  ['KORTIX_PTY_WS_PATH_RE', 'regex literal (proxy.ts)'],
   ['KORTIX_LLM_', 'prefix constant used for env-name matching, not a name'],
   ['OPENCODE_HOME', 'exported path constant computed in opencode.ts'],
-  ['OPENCODE_SRC_DIR', 'exported path constant'],
-  ['OPENCODE_VERSION', 'npm version string parsed from the harness, not an env read'],
-  ['OPENCODE_PLUGIN_PACKAGE', 'npm package name constant'],
+  ['OPENCODE_DATA_HOME', 'path constant (opencode.ts)'],
+  ['OPENCODE_AUTH_PATH', 'path constant (opencode.ts)'],
+  ['OPENCODE_AUTH_JSON_SECRET', "const whose VALUE is 'OPENCODE_AUTH_JSON', which IS declared"],
+  ['CODEX_AUTH_JSON_SECRET', "const whose VALUE is 'CODEX_AUTH_JSON', which IS declared"],
   ['OPENCODE_CONFIG_DEPS_DIR', 'exported path constant in opencode-config-deps.ts'],
   ['OPENCODE_SESSION_PIN_PATH', 'exported path constant in runtime-state.ts'],
   ['OPENCODE_SEED_BAKED_PIN_PATH', 'exported path constant in runtime-state.ts'],
   ['OPENCODE_INITIAL_PROMPT_DELIVERED_PIN_PATH', 'exported path constant'],
   ['OPENCODE_INSTALL_TIMEOUT_MS', 'timeout constant in runtime-assets.ts'],
   ['OPENCODE_HEALTH_TIMEOUT_MS', 'timeout constant in runtime-assets.ts'],
+  ['OPENCODE_VERSION', 'npm version string parsed from the harness, not an env read'],
+  ['OPENCODE_PLUGIN_PACKAGE', 'npm package name constant'],
+  ['OPENCODE_SESSION_ID', 'regex literal (opencode-turn-state.ts, runtime-state.ts)'],
+  ['OPENCODE_RUNTIME_ENV_NAMES', 'a Set of names (routes/env.ts)'],
+  ['OPENCODE_CONFIG_DIR', 'name SET for the spawned harness, never read from our env'],
   ['KORTIX_RUNTIME_STATE_DIRECTORY', 'doc-comment spelling of KORTIX_RUNTIME_STATE_DIR'],
+  ['KORTIX_CONTINUATION_DISABLED', 'name SET for the spawned harness (managed-opencode-env.ts)'],
 ])
-
 function sourceFiles(dir: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     if (entry === 'node_modules' || entry === 'dist') continue
@@ -76,7 +84,12 @@ function stripComments(body: string): string {
 /** Every `process.env.NAME`, `env.NAME`, and `env['NAME']` in production code. */
 function envReadsInSource(): Map<string, string[]> {
   const found = new Map<string, string[]>()
-  const pattern = /(?:process\.env|(?<![\w.])env)\s*(?:\.\s*([A-Z][A-Z0-9_]{2,})|\[\s*['"]([A-Z][A-Z0-9_]{2,})['"]\s*\])/g
+  // `env` is not the only name an environment object is bound to. project-env.ts
+  // reads `initialEnv.KORTIX_PROJECT_SECRET_NAMES`, agent-env-file.ts uses
+  // `bootEnv`, opencode.ts uses `baseEnv`/`nextEnv`. A scanner that only knew
+  // `env` reported those names as DEAD CONTRACT and nearly had them deleted.
+  const pattern =
+    /(?:process\.env|(?<![\w.])(?:env|initialEnv|bootEnv|baseEnv|nextEnv|runtimeEnv))\s*(?:\.\s*([A-Z][A-Z0-9_]{2,})|\[\s*['"]([A-Z][A-Z0-9_]{2,})['"]\s*\])/g
   for (const file of sourceFiles(SRC_ROOT)) {
     const body = stripComments(readFileSync(file, 'utf8'))
     for (const match of body.matchAll(pattern)) {
@@ -103,6 +116,43 @@ describe('env contract', () => {
     expect(
       undeclared,
       `Undeclared environment reads. Add them to src/node/env-contract.ts with an owner, a reload mode, and a doc line — or, if the name is a TypeScript constant rather than an env var, add it to NOT_ENV_READS with a reason.\n\n${undeclared.join('\n')}\n`,
+    ).toEqual([])
+  })
+
+  test('no declared name is dead contract', () => {
+    // THE OTHER DIRECTION, and the one that was missing. A name declared here
+    // that nothing reads is a lie in a document people are meant to trust.
+    //
+    // This test was added because the first version of ENV_CONTRACT was built
+    // from an IDENTIFIER grep rather than an env-read scan, so 14 of 85 entries
+    // described TypeScript constants: KORTIX_PTY_WS_PATH_RE (a regex),
+    // KORTIX_SERVICE_CALL_HEADER (a header name), OPENCODE_SESSION_ID (a
+    // regex), and others. Its doc line even claimed KORTIX_PTY_WS_PATH_RE
+    // "overrides which paths the proxy treats as a PTY websocket" — describing
+    // a feature that does not exist.
+    const read = envReadsInSource()
+    const allSource = sourceFiles(SRC_ROOT)
+      .map((f) => stripComments(readFileSync(f, 'utf8')))
+      .join('\n')
+
+    const dead: string[] = []
+    for (const binding of ENV_CONTRACT) {
+      if (read.has(binding.name)) continue
+      // ESCAPE HATCH for a name reached through a constant or an allowlist —
+      // `env[CODEX_AUTH_JSON_SECRET]`, or a name listed in SHELL_SESSION_CREDS.
+      // It must still be PROVABLY tied to a real string literal in production
+      // source, so `indirect: true` cannot become a way to smuggle a fiction in.
+      // Same discipline as src/__tests__/runtime-env-allowlist-completeness.ts.
+      if (binding.indirect && allSource.includes(`'${binding.name}'`)) continue
+      dead.push(
+        binding.indirect
+          ? `${binding.name}  (marked indirect, but no string literal '${binding.name}' exists in production source)`
+          : `${binding.name}  (declared, never read)`,
+      )
+    }
+    expect(
+      dead,
+      `Dead contract. These names are declared in src/node/env-contract.ts but nothing reads them from the environment. Remove them, or — if the read happens through a constant — mark the entry \`indirect: true\` AND make sure the literal name appears in production source.\n\n${dead.join('\n')}\n`,
     ).toEqual([])
   })
 

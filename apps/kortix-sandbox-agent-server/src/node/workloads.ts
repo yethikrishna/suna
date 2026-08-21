@@ -15,7 +15,7 @@
  */
 
 import { logger } from '../logger'
-import { registerAgentSwapBlocker } from '../runtime-assets'
+import { registerAgentSwapBlocker, unregisterAgentSwapBlocker } from '../runtime-assets'
 import type { PreflightResult, StopReason, Workload, WorkloadHealth, WorkloadId } from './workload'
 
 /**
@@ -34,7 +34,7 @@ export interface WorkloadSpec {
    * being killed mid-work by the convergence swap. Making it mandatory turns
    * that omission into a type error. See workload.ts.
    */
-  readonly busy: () => boolean
+  readonly busy: () => boolean | null
   readonly health?: () => WorkloadHealth
   readonly preflight?: () => Promise<PreflightResult>
   readonly stop?: (reason: StopReason) => Promise<void>
@@ -49,7 +49,10 @@ export interface WorkloadSpec {
  * workload that forgot simply had its live work killed by an update swap.
  */
 export function createWorkload(spec: WorkloadSpec): Workload {
-  registerAgentSwapBlocker(`workload:${spec.kind}`, spec.busy)
+  const blockerName = `workload:${spec.kind}`
+  // `null` (cannot tell) collapses to BUSY here, never to idle. The blocker API
+  // is boolean; the safety rule is that uncertainty must never authorise a swap.
+  registerAgentSwapBlocker(blockerName, () => spec.busy() !== false)
 
   return {
     kind: spec.kind,
@@ -75,6 +78,11 @@ export function createWorkload(spec: WorkloadSpec): Workload {
     },
     busy: spec.busy,
     async stop(reason: StopReason): Promise<void> {
+      // Drop the blocker FIRST, and unconditionally. A stopped workload must not
+      // keep vetoing convergence — a warm seed whose capture never completed
+      // would otherwise answer "busy" for the life of the box, so the node could
+      // never converge again after adoption.
+      unregisterAgentSwapBlocker(blockerName)
       if (!spec.stop) return
       try {
         await spec.stop(reason)
@@ -101,7 +109,7 @@ export function createWorkload(spec: WorkloadSpec): Workload {
  */
 export function sessionWorkload(deps: {
   start: () => Promise<void>
-  turnInFlight: () => boolean
+  turnInFlight: () => boolean | null
   opencodeState: () => 'ok' | 'starting' | 'down'
   stop?: (reason: StopReason) => Promise<void>
 }): Workload {

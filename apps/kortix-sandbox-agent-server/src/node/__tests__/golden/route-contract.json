@@ -168,6 +168,68 @@
       ]
     }
   },
+  "GET /kortix/env": {
+    "unauthenticated": {
+      "status": 404,
+      "keys": [
+        "detail",
+        "error"
+      ]
+    },
+    "authenticated": {
+      "status": 404,
+      "keys": [
+        "detail",
+        "error"
+      ]
+    }
+  },
+  "POST /kortix/env": {
+    "unauthenticated": {
+      "status": 401,
+      "keys": [
+        "error"
+      ]
+    },
+    "authenticated": {
+      "status": 401,
+      "keys": [
+        "error"
+      ]
+    }
+  },
+  "GET /kortix": {
+    "unauthenticated": {
+      "status": 404,
+      "keys": [
+        "detail",
+        "error"
+      ]
+    },
+    "authenticated": {
+      "status": 404,
+      "keys": [
+        "detail",
+        "error"
+      ]
+    }
+  },
+  "POST /kortix": {
+    "unauthenticated": {
+      "status": 404,
+      "keys": [
+        "detail",
+        "error"
+      ]
+    },
+    "authenticated": {
+      "status": 404,
+      "keys": [
+        "detail",
+        "error"
+      ]
+    }
+  },
   "GET /file?path=/": {
     "unauthenticated": {
       "status": 401,

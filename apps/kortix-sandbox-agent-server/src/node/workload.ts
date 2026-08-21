@@ -1,9 +1,11 @@
 /**
  * The workload seam.
  *
- * WHY. `main()` currently decides what this box is by falling through two
- * inline `if` statements and then defaulting. Three orchestrators live in one
- * 2,760-line function with nothing between them, which is why adding a fourth
+ * WHY. `main()` (324 lines, in a 2,760-line file) decides what this box is by
+ * falling through inline `if` statements. The orchestrators it dispatches to —
+ * `runWarmSeedMode`, `runMonitorMode`, `startSessionRuntime` — are already
+ * separate top-level functions, but nothing typed the relationship between
+ * them, which is why adding a fourth
  * workload (the App runtime) was harder than writing a separate 639-line Go
  * daemon, and why a second harness had to REPLACE the first instead of sitting
  * beside it — the 2026-07-30 rollback.
@@ -66,23 +68,51 @@ export interface Workload {
   health(): WorkloadHealth
 
   /**
-   * True while a restart would sever real work.
+   * Is a restart going to sever real work?
    *
-   * This is the existing agent-swap blocker promoted to a first-class member.
-   * It was previously registered by side effect (`registerAgentSwapBlocker`),
-   * which a new workload could simply forget to call — and forgetting means the
-   * convergence swap kills a live turn. Making it part of the interface makes
-   * that omission a type error.
+   *   true   yes — do not swap
+   *   false  definitely not — safe to swap
+   *   null   CANNOT TELL — treated as busy
+   *
+   * `null` is not decoration. `requestAgentSwapIfIdle` already distinguishes
+   * `'turn-in-flight'` from `'turn-state-unknown'` because its probe returns
+   * `Promise<boolean | null>` (runtime-assets.ts), and the whole safety rule is
+   * "cannot tell counts as busy". A binary `boolean` here would force every
+   * implementation to collapse that at the call site — re-creating the
+   * busy-blind verdict class that has already cost live turns.
+   *
+   * This is also the existing swap blocker promoted to a first-class member. It
+   * used to be registered by side effect, which a workload could forget; that
+   * omission is now a type error.
    */
-  busy(): boolean
+  busy(): boolean | null
 
   /** Graceful stop. Must leave the node reusable by the next claim. */
   stop(reason: StopReason): Promise<void>
 }
 
 /**
- * Which workload this process is. THE single decision, extracted verbatim from
- * `main()`'s inline branches — including their precedence.
+ * Which workload this process is, for the branches that were extracted.
+ *
+ * NOT the whole of `main()`'s boot decision. `main()` has FOUR paths, and this
+ * covers the first three:
+ *
+ *   1. KORTIX_WARM_SEED=1        -> 'warm-seed'   (extracted here)
+ *   2. KORTIX_WORKLOAD=monitor   -> 'monitor'     (extracted here)
+ *   3. otherwise                 -> 'session'     (extracted here)
+ *   4. …then, INSIDE the session path, main.ts branches again on
+ *      `KORTIX_SESSION_ID === '' && cfg.autoClone` and hands off to
+ *      `armSeedAdoption()`, returning before the normal session runtime starts.
+ *
+ * Path 4 is a session workload that is UNCLAIMED — a warm-seed builder waiting
+ * to be adopted. It is deliberately NOT a fourth workload id: it is the same
+ * workload in a different lifecycle state, and the node model already has a name
+ * for that state (see {@link isClaimed}). Modelling it as an id would mean two
+ * ids for one runtime contract, which is exactly the kind of special case the
+ * seam exists to prevent.
+ *
+ * It is called out because the seam's documentation being wrong about the code
+ * it is a seam for is the failure mode spec §12 exists to prevent.
  *
  * Order is load-bearing and preserved exactly:
  *   1. `KORTIX_WARM_SEED=1` wins outright. A seed builder boots a session-less

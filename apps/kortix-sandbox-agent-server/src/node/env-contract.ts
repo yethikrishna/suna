@@ -1,9 +1,10 @@
 /**
  * The environment contract for this node.
  *
- * WHY THIS FILE EXISTS. `config.ts` declares 29 keys. A source scan finds 62
- * `KORTIX_*` names read directly off the environment, plus a handful reached
- * through constant indirection (`env[SECRET_CAPABILITIES_ENV_NAME]`). Nothing
+ * WHY THIS FILE EXISTS. `config.ts` declares 29 keys. An ENV-READ scan of
+ * production source finds 67 names read directly off the environment, plus
+ * three reached through constant indirection (`env[CODEX_AUTH_JSON_SECRET]`,
+ * `env[OPENCODE_AUTH_JSON_SECRET]`, `env[SECRET_CAPABILITIES_ENV_NAME]`). Nothing
  * stated the whole contract, so an install could not be validated, a missing
  * variable produced a silent misbehaviour instead of an error, and nobody could
  * answer "what does a box need to be given?" without reading 44 modules.
@@ -51,6 +52,15 @@ export type EnvOwner =
  * after adoption, and a fork will run with the deriving session's credentials —
  * exactly the 2026-06-10 incident where forks answered health on `main` with
  * another session's tokens.
+ *
+ * NOT THE SAME AXIS as `BOOT_ONLY_KORTIX_ENV_NAMES` in
+ * `src/__tests__/runtime-env-allowlist-completeness.test.ts`. That set answers
+ * "may `POST /kortix/env` PUSH this value into a running process?" — and for
+ * several names the answer is no even though they are `reload: 'session'` here.
+ * This axis answers a different question: "must it be RE-READ when the node is
+ * claimed?". A name can be re-read on adoption and still be forbidden from a
+ * live push. P1 must not drive a claim off `sessionScopedNames()` as though it
+ * were a live-update allowlist.
  */
 export type EnvReload =
   /** Fixed for the life of the process. Safe to read once and cache. */
@@ -116,11 +126,9 @@ export const ENV_CONTRACT: readonly EnvBinding[] = [
   b('KORTIX_SESSION_ID', 'core', 'session', 'assignment', 'Session this node is currently claimed by. Absent on an unclaimed node.'),
   b('KORTIX_AGENT_NAME', 'core', 'session', 'assignment', 'Agent the session runs as. Used for authorization on relayed calls.'),
   b('KORTIX_FRONTEND_URL', 'core', 'session', 'assignment', 'Public dashboard base, so the agent can build user-facing links.', { indirect: true }),
-  b('KORTIX_SERVICE_CALL_HEADER', 'core', 'boot', 'flag', 'Header name carrying the service-call marker. Override is a test seam.', { indirect: true }),
 
   // ── host services ───────────────────────────────────────────────────────
   b('KORTIX_STATIC_PORT', 'host', 'boot', 'port', 'Static web server. 3211 is a hard contract with apps/web preview URLs.'),
-  b('KORTIX_PTY_WS_PATH_RE', 'host', 'boot', 'tuning', 'Overrides which paths the proxy treats as a PTY websocket.'),
 
   // ── git ─────────────────────────────────────────────────────────────────
   b('KORTIX_PROJECT_AUTO_CLONE', 'git', 'session', 'flag', 'Whether this session materializes a repo at boot.'),
@@ -138,13 +146,11 @@ export const ENV_CONTRACT: readonly EnvBinding[] = [
   b('KORTIX_BRANCH_FETCH_DELAY', 'git', 'boot', 'tuning', 'Seconds between branch-fetch attempts.'),
   b('KORTIX_GIT_USER_NAME', 'git', 'boot', 'tuning', 'Commit author name for agent commits.'),
   b('KORTIX_GIT_USER_EMAIL', 'git', 'boot', 'tuning', 'Commit author email for agent commits.'),
-  b('KORTIX_URL', 'git', 'session', 'assignment', 'Callback base a sandbox uses to reach this deployment.', { indirect: true }),
 
   // ── secrets + egress boundary ───────────────────────────────────────────
   b('KORTIX_PROJECT_SECRET_NAMES', 'secrets', 'session', 'assignment', 'Which project secrets this session carries. Names only.', { indirect: true }),
   b('KORTIX_PROJECT_SECRETS_REVISION', 'secrets', 'session', 'assignment', 'Revision of the delivered secret set, so a stale write is detectable.', { indirect: true }),
   b('KORTIX_SECRET_CAPABILITIES', 'secrets', 'session', 'assignment', 'Per-secret usage grants. Drives the egress shim rules.'),
-  b('KORTIX_ENV_NAMES', 'secrets', 'session', 'assignment', 'Names of env values the agent may see.', { indirect: true }),
   b('KORTIX_EGRESS_SHIM_PORT', 'secrets', 'boot', 'port', 'CONNECT-only TLS shim port. Blocked from the port proxy on purpose.'),
 
   // ── llm + connector proxies ─────────────────────────────────────────────
@@ -163,7 +169,6 @@ export const ENV_CONTRACT: readonly EnvBinding[] = [
   b('KORTIX_OPENCODE_INTERNAL_PORT', 'harness/opencode', 'boot', 'port', 'Live half of the opencode port pair.'),
   b('KORTIX_OPENCODE_STANDBY_PORT', 'harness/opencode', 'boot', 'port', 'Idle half. A verified reload proves the new process before swapping.'),
   b('KORTIX_DEFAULT_OPENCODE_CONFIG_DIR', 'harness/opencode', 'boot', 'path', 'Out-of-repo config dir used before a project config is resolved.'),
-  b('KORTIX_OPENCODE_CONFIG_PATH', 'harness/opencode', 'session', 'path', 'Explicit config file override.', { indirect: true }),
   b('KORTIX_OPENCODE_MODEL', 'harness/opencode', 'session', 'assignment', 'Model the session starts on.'),
   b('KORTIX_OPENCODE_DENY_ENV', 'harness/opencode', 'session', 'assignment', 'Env names withheld from the harness process.'),
   b('KORTIX_OPENCODE_DEBUG', 'harness/opencode', 'boot', 'flag', 'Verbose harness logging.'),
@@ -174,17 +179,11 @@ export const ENV_CONTRACT: readonly EnvBinding[] = [
   b('KORTIX_INITIAL_TURN_MESSAGE_ID', 'harness/opencode', 'session', 'assignment', 'Message id the initial turn is attributed to.'),
   b('KORTIX_BOOTSTRAP_OPENCODE_SESSION', 'harness/opencode', 'session', 'flag', 'Create a conversation at boot even with no prompt.'),
   b('KORTIX_TURN_AUTO_RESUME', 'harness/opencode', 'boot', 'flag', 'Whether an interrupted turn resumes itself.'),
-  b('KORTIX_CONTINUATION_DISABLED', 'harness/opencode', 'boot', 'flag', 'Disables the todo-continuation enforcer.'),
   b('OPENCODE_CONFIG', 'harness/opencode', 'session', 'path', 'Passed to the harness process.'),
   b('OPENCODE_CONFIG_CONTENT', 'harness/opencode', 'session', 'assignment', 'Inline harness config. Merges rather than replaces.'),
-  b('OPENCODE_CONFIG_DIR', 'harness/opencode', 'session', 'path', 'Harness config directory, fixed at spawn time.'),
-  b('OPENCODE_DATA_HOME', 'harness/opencode', 'boot', 'path', 'Harness data directory.'),
-  b('OPENCODE_AUTH_PATH', 'harness/opencode', 'session', 'path', 'Harness auth file location.'),
-  b('OPENCODE_AUTH_JSON', 'harness/opencode', 'session', 'identity', 'Inline harness auth payload.', { secret: true }),
-  b('OPENCODE_AUTH_JSON_SECRET', 'harness/opencode', 'session', 'identity', 'Secret-delivered harness auth. Deleted from the spawn env after use.', { secret: true }),
+  b('OPENCODE_AUTH_JSON', 'harness/opencode', 'session', 'identity', 'Inline harness auth payload. Read via env[OPENCODE_AUTH_JSON_SECRET] and deleted from the spawn env after use.', { secret: true, indirect: true }),
+  b('CODEX_AUTH_JSON', 'harness/opencode', 'session', 'identity', 'Codex subscription auth, materialized to auth.json mode 0600. Read via env[CODEX_AUTH_JSON_SECRET] and deleted from the spawn env after use.', { secret: true, indirect: true }),
   b('OPENCODE_LOG_LEVEL', 'harness/opencode', 'boot', 'flag', 'Harness log level.'),
-  b('OPENCODE_SESSION_ID', 'harness/opencode', 'session', 'assignment', 'Pinned harness conversation id.', { indirect: true }),
-  b('OPENCODE_RUNTIME_ENV_NAMES', 'harness/opencode', 'session', 'assignment', 'Env names the harness is told about at runtime.', { indirect: true }),
 
   // ── monitor workload ────────────────────────────────────────────────────
   b('KORTIX_MONITORS', 'monitor', 'session', 'assignment', 'Enabled monitors as JSON. The box never parses kortix.yaml itself.'),
@@ -195,10 +194,8 @@ export const ENV_CONTRACT: readonly EnvBinding[] = [
   b('KORTIX_WARM_SEED_PROJECT_CLONE', 'warm-seed', 'boot', 'flag', 'Whether the seed bakes a project clone into the snapshot.'),
 
   // ── external ────────────────────────────────────────────────────────────
-  b('HOME', 'external', 'boot', 'path', 'Set by the entrypoint after the privilege drop.'),
   b('SHELL', 'external', 'boot', 'path', 'Shell used for PTY and on_boot commands.'),
   b('TMPDIR', 'external', 'boot', 'path', 'Temp directory for staged writes.'),
-  b('GIT_CONFIG_GLOBAL', 'external', 'boot', 'path', 'Points git at the daemon-managed global config.'),
   b('SLACK_CHANNEL_ID', 'external', 'session', 'assignment', 'Present when the session was launched from a Slack channel.'),
   b('SLACK_THREAD_TS', 'external', 'session', 'assignment', 'Slack thread the session reports back into.'),
 ]

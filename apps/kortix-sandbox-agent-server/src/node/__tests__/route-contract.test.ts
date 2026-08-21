@@ -23,6 +23,18 @@
  * get deleted, which is worse than not having it. The key set is what clients
  * bind to.
  *
+ * WHAT THIS DOES NOT COVER, stated so nobody mistakes it for the whole net:
+ *   - `fakeOpencode()` points at a dead port, so every proxied route is recorded
+ *     as a 502 error shape. This golden pins the daemon's MOUNTING and AUTH
+ *     BOUNDARY; it says nothing about the behaviour of the reverse-proxied
+ *     OpenCode path — which is the exact code the July refactor rewrote.
+ *   - Values are excluded, so `/kortix/health` is pinned as 21 key names only.
+ *   - Spec §12 rule 2 asks for four artifacts: health, boot timeline, route
+ *     table, and a full turn transcript from a real dev session. This is the
+ *     route table. The turn transcript needs a live sandbox and does not exist
+ *     yet; until it does, no static suite can claim P1-P4 preserve turn
+ *     behaviour.
+ *
  * TO UPDATE after an INTENTIONAL contract change:
  *   KORTIX_UPDATE_GOLDEN=1 bun test src/node/__tests__/route-contract.test.ts
  * then review the diff in golden/route-contract.json as carefully as you would
@@ -41,6 +53,7 @@ import { fileURLToPath } from 'node:url'
 import type { Config } from '../../config'
 import type { Opencode } from '../../opencode'
 import { buildOpencodeApp } from '../../proxy'
+import { createProjectEnvStore } from '../../project-env'
 import { KORTIX_USER_CONTEXT_HEADER } from '../../kortix-user-context'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -141,6 +154,17 @@ const PROBES: readonly Probe[] = [
   { method: 'POST', path: '/kortix/abort', body: {} },
   { method: 'GET', path: '/kortix/pty' },
   { method: 'GET', path: '/kortix/git' },
+  // The highest-privilege route on the box: it writes environment into the live
+  // process and the agent env file, gated by a bearer token rather than by the
+  // HMAC middleware (routes/env.ts).
+  { method: 'GET', path: '/kortix/env' },
+  { method: 'POST', path: '/kortix/env', body: {} },
+  // BARE `/kortix`, no trailing slash. The auth gate skips only paths starting
+  // with `/kortix/` WITH the slash, while `app.route('/kortix', …)` maps the
+  // bare path INTO the router. It therefore sits on the boundary the test below
+  // asserts, and was not probed when that assertion was first written.
+  { method: 'GET', path: '/kortix' },
+  { method: 'POST', path: '/kortix', body: {} },
 
   // Daemon-owned, behind the HMAC gate
   { method: 'GET', path: '/file?path=/' },
@@ -210,7 +234,19 @@ describe('daemon route contract (golden)', () => {
 
   beforeAll(async () => {
     WORKSPACE = await fs.mkdtemp(path.join(os.tmpdir(), 'kortix-route-golden-'))
-    const app = buildOpencodeApp(baseConfig(), fakeOpencode(), Date.now())
+    // projectEnv is REQUIRED to reproduce production. proxy.ts mounts the env
+    // router only `if (envRouter)`, and envRouter is null without a store — so
+    // the first version of this golden was recorded from an app that did not
+    // contain POST /kortix/env at all, the highest-privilege route on the box
+    // (it writes arbitrary environment into the live process and the agent env
+    // file). All three production call sites pass one.
+    const app = buildOpencodeApp(
+      baseConfig(),
+      fakeOpencode(),
+      Date.now(),
+      { repoMaterializationError: null, timeline: [] },
+      createProjectEnvStore({}),
+    )
     server = Bun.serve({ port: 0, fetch: app.fetch })
     base = `http://127.0.0.1:${server.port}`
 
@@ -245,14 +281,27 @@ describe('daemon route contract (golden)', () => {
     expect(observed).toEqual(golden)
   })
 
-  test('the /kortix/* prefix is the only surface outside the HMAC gate', () => {
-    // The gate lives in one middleware. An extraction that remounts routes
-    // could silently move a route across this line in either direction:
-    // widening the daemon's attack surface, or breaking a control-plane probe.
+  test('no PROBED non-/kortix route answers an unsigned request', () => {
+    // NAMED for what it can prove. An earlier version was called "the /kortix/*
+    // prefix is the only surface outside the HMAC gate" — an invariant about
+    // ALL routes, asserted by a loop over a fixed probe list, in the same commit
+    // that moved the bare `/kortix` path across that very boundary. A probe list
+    // can only speak for what it probes; keep the name honest and keep PROBES
+    // exhaustive.
     const gatedButUnauthenticatedOk: string[] = []
     for (const [key, record] of Object.entries(observed)) {
       const routePath = key.slice(key.indexOf(' ') + 1)
-      if (routePath.startsWith('/kortix/')) continue
+      // The control namespace is `/kortix` AND `/kortix/*`. Both are handled by
+      // the kortix router, which is mounted BEFORE the gate middleware — Hono
+      // runs handlers in registration order, so the router answers first and the
+      // gate never sees the request.
+      //
+      // Bare `/kortix` used to fall through the router (it had no terminating
+      // handler) and reach the gate, which answered 401. It now answers 404 from
+      // the terminator. Capability unauthenticated: none before, none after; what
+      // changed is that an AUTHENTICATED `/kortix` no longer proxies into
+      // opencode. Recorded in the golden rather than hidden here.
+      if (routePath === '/kortix' || routePath.startsWith('/kortix/')) continue
       // 401 is the gate rejecting. Anything else means the request reached a
       // handler without a signed context.
       if (record.unauthenticated.status !== 401) gatedButUnauthenticatedOk.push(key)

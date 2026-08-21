@@ -124,6 +124,7 @@ warm_instance() {
   local ready=0
   local staged_starter_config=0
   local repo_head=""
+  local repo_kortix_backup=/tmp/kortix-opencode-repo-config
   local cleanup_ok=1
 
   case "$cleanup" in
@@ -144,20 +145,34 @@ warm_instance() {
       echo "repo cleanup requires a pristine baked checkout" >&2
       return 1
     fi
-  fi
-
-  mkdir -p "$workspace/.kortix" || return 1
-  if [ ! -d "$workspace/.kortix/opencode" ]; then
     if [ ! -d "$warm_config_root/.kortix/opencode" ]; then
       echo "missing staged OpenCode warm-up config" >&2
       return 1
     fi
-    cp -a "$warm_config_root/.kortix/opencode" "$workspace/.kortix/opencode" || return 1
-    staged_starter_config=1
+    rm -rf -- "$repo_kortix_backup" || return 1
+    if [ -e "$workspace/.kortix" ] || [ -L "$workspace/.kortix" ]; then
+      mv -- "$workspace/.kortix" "$repo_kortix_backup" || return 1
+    fi
   fi
-  rm -rf "$workspace/.kortix/opencode/node_modules" || return 1
-  ln -s "$config_deps" "$workspace/.kortix/opencode/node_modules" || return 1
-  export OPENCODE_CONFIG_DIR="$workspace/.kortix/opencode"
+
+  if [ "$cleanup" = repo ]; then
+    rm -rf "$warm_config_root/.kortix/opencode/node_modules" || return 1
+    ln -s "$config_deps" "$warm_config_root/.kortix/opencode/node_modules" || return 1
+    export OPENCODE_CONFIG_DIR="$warm_config_root/.kortix/opencode"
+  else
+    mkdir -p "$workspace/.kortix" || return 1
+    if [ ! -d "$workspace/.kortix/opencode" ]; then
+      if [ ! -d "$warm_config_root/.kortix/opencode" ]; then
+        echo "missing staged OpenCode warm-up config" >&2
+        return 1
+      fi
+      cp -a "$warm_config_root/.kortix/opencode" "$workspace/.kortix/opencode" || return 1
+      staged_starter_config=1
+    fi
+    rm -rf "$workspace/.kortix/opencode/node_modules" || return 1
+    ln -s "$config_deps" "$workspace/.kortix/opencode/node_modules" || return 1
+    export OPENCODE_CONFIG_DIR="$workspace/.kortix/opencode"
+  fi
   cd "$workspace" || return 1
   rm -f "$log_path"
   start_opencode "$log_path" serve --port 4096 --hostname 127.0.0.1
@@ -178,6 +193,9 @@ warm_instance() {
         [ -n "$(git -C "$workspace" status --porcelain=v1 --untracked-files=all)" ] ||
         [ -n "$(git -C "$workspace" clean -ndx)" ]; then
         cleanup_ok=0
+      fi
+      if [ "$cleanup_ok" = 1 ]; then
+        rm -rf -- "$repo_kortix_backup" || cleanup_ok=0
       fi
       ;;
     wipe) find "$workspace" -mindepth 1 -delete 2>/dev/null ;;

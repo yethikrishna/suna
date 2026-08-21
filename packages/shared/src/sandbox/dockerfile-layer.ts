@@ -180,7 +180,8 @@ export interface WarmRepoConfig {
   /**
    * Path (relative to the build context root) to the pre-staged,
    * credential-free repo checkout produced API-side. The image `COPY`s these
-   * bytes verbatim into /workspace — nothing here is secret.
+   * non-Git bytes verbatim into /workspace — nothing here is secret. The
+   * staged directory excludes `.git`; `stagedGitPath` restores it separately.
    */
   stagedPath: string;
   /**
@@ -261,7 +262,7 @@ export interface BuildLayeredDockerfileOpts
 const shq = (v: string) => `'${String(v).replace(/'/g, `'\\''`)}'`;
 
 /**
- * The per-project COLD warm bake step: `COPY` the credential-free repo checkout
+ * The per-project COLD warm bake step: copy the credential-free repo checkout
  * that Suna already cloned, origin-reset, and scrubbed API-side
  * (`stageWarmRepoCheckout`) into /workspace. NO auth material is present — this
  * is the PHASE 1 fix for the credential leak that the old in-Dockerfile clone
@@ -281,7 +282,7 @@ function buildWarmRepoCopyLines(warmRepo: WarmRepoConfig | undefined): string[] 
     '# ─── Per-project COLD warm: bake repo checkout into /workspace ──────',
     '# The repo was cloned with the git-host credential, origin-reset to the',
     '# Kortix proxy, and scrubbed of ALL auth material API-side in Suna before',
-    '# this Dockerfile was rendered. This image only COPYs the sanitized plain',
+    '# this Dockerfile was rendered. This image only imports sanitized plain',
     '# bytes — no git credential ever enters the Dockerfile, build args, image',
     '# history, or build logs. See PHASE 1 provider-migration hardening.',
     // Empty whatever an earlier layer left in /workspace, then COPY the baked
@@ -292,12 +293,14 @@ function buildWarmRepoCopyLines(warmRepo: WarmRepoConfig | undefined): string[] 
     // runtime user (COPY defaults to uid/gid 0). opencode + the daemon run as
     // `kortix` and must be able to write /workspace and its `.git` at runtime.
     `COPY --chown=kortix:kortix ${warmRepo.stagedPath}/ /workspace/`,
-    // Daytona uploads each COPY source as a separate context object. Transfer
-    // Git metadata as one visible file, then restore the canonical directory.
-    // Daytona exposes that copied context object as non-removable during RUN.
-    // Keep the credential-free archive instead of failing the image build.
-    `COPY ${warmRepo.stagedGitPath} /tmp/kortix-warm-repo-git.tar`,
-    'RUN rm -rf /workspace/.git && mkdir -p /workspace/.git && tar -xf /tmp/kortix-warm-repo-git.tar -C /workspace/.git --strip-components=1 && chown -R kortix:kortix /workspace/.git',
+    // Provider uploaders transfer Git metadata as one visible tar file. ADD
+    // extracts the local archive without retaining the archive in the final
+    // rootfs. The archive contains one top-level `.git` directory, so extracting
+    // at /workspace restores the canonical checkout shape and file modes.
+    'RUN rm -rf /workspace/.git',
+    `ADD ${warmRepo.stagedGitPath} /workspace/`,
+    // E2B can discard ADD/COPY --chown. Correct ownership explicitly as root.
+    'RUN sudo chown -R kortix:kortix /workspace/.git',
     // Verify the baked checkout is a real repo. The branch is shell-quoted via
     // `shq` (never interpolated raw), so a hostile branch name cannot inject a
     // build-time shell command — closing the latent sink in the old echo.
@@ -363,10 +366,9 @@ function buildOpencodeInstanceWarmupLines(opts: {
     '',
     `COPY --chown=kortix:kortix ${opencodeWarmupScriptPath} /tmp/kortix-opencode-warmup`,
     // Stage the canonical starter opencode config so the instance warm-up
-    // has the pty plugin + tools to load. For a per-project warm the baked
-    // repo may already ship its own .kortix/opencode — keep it (its config
-    // is what the session actually resolves at runtime) and only fall back
-    // to the staged starter when the repo has none.
+    // has the pty plugin + tools to load. In repo mode the script hides any
+    // repository-controlled `.kortix` tree and points OPENCODE_CONFIG_DIR at
+    // this canonical tree. Git cleanup restores the repository tree afterward.
     // The warm-up script records whether the starter config in /workspace is
     // ours and limits cleanup accordingly.
     // Three cases, and only one of them may delete indiscriminately:

@@ -285,8 +285,10 @@ describe('PHASE 1: no git credential is ever rendered into the Dockerfile', () =
     expect(warm).not.toContain('git clone');
     expect(warm).toContain('COPY --chown=kortix:kortix kortix-warm-repo/ /workspace/');
     expect(warm).toContain(
-      'COPY kortix-warm-repo-git.tar /tmp/kortix-warm-repo-git.tar',
+      'ADD kortix-warm-repo-git.tar /workspace/',
     );
+    expect(warm.match(/kortix-warm-repo-git\.tar/g)).toHaveLength(1);
+    expect(warm).not.toContain('/tmp/kortix-warm-repo-git.tar');
   });
 
   test('a sentinel-shaped branch name is shell-quoted, not interpolated raw', () => {
@@ -442,14 +444,11 @@ describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
     expect(rendered).toContain('Per-project COLD warm: bake repo checkout into /workspace');
     // MY credential-free COPY of the sanitized staged checkout …
     expect(rendered).toContain('COPY --chown=kortix:kortix kortix-warm-repo/ /workspace/');
-    // Provider uploaders transfer the visible archive as one context object.
-    expect(rendered).toContain(
-      'COPY kortix-warm-repo-git.tar /tmp/kortix-warm-repo-git.tar',
-    );
-    expect(rendered).toContain(
-      'tar -xf /tmp/kortix-warm-repo-git.tar -C /workspace/.git --strip-components=1',
-    );
-    expect(rendered).not.toContain('rm -f /tmp/kortix-warm-repo-git.tar');
+    expect(rendered).toContain('RUN rm -rf /workspace/.git\nADD kortix-warm-repo-git.tar /workspace/');
+    expect(rendered).toContain('RUN sudo chown -R kortix:kortix /workspace/.git');
+    expect(rendered.match(/kortix-warm-repo-git\.tar/g)).toHaveLength(1);
+    expect(rendered).not.toContain('/tmp/kortix-warm-repo-git.tar');
+    expect(rendered).not.toContain('tar -xf');
     // … and MAIN's opencode instance re-warm via the cache-only warm-up script,
     // which restores the exact baked /workspace checkout after warming.
     expect(rendered).toContain(

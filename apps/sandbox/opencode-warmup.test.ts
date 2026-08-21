@@ -97,6 +97,15 @@ fi
 if [ -n "\${FAKE_OPENCODE_READY_FILE:-}" ]; then
   : >"$FAKE_OPENCODE_READY_FILE"
 fi
+if [ -n "\${FAKE_OPENCODE_CONFIG_CAPTURE_FILE:-}" ]; then
+  printf '%s' "\${OPENCODE_CONFIG_DIR:-}" >"$FAKE_OPENCODE_CONFIG_CAPTURE_FILE"
+fi
+if [ -n "\${FAKE_OPENCODE_REPO_CONFIG_PATH:-}" ] && [ -e "$FAKE_OPENCODE_REPO_CONFIG_PATH" ]; then
+  : >"$FAKE_OPENCODE_REPO_CONFIG_LOADED_FILE"
+fi
+if [ -n "\${OPENCODE_CONFIG_DIR:-}" ] && [ -e "$OPENCODE_CONFIG_DIR/malicious-plugin.ts" ]; then
+  : >"$FAKE_OPENCODE_REPO_CONFIG_LOADED_FILE"
+fi
 if [ -n "\${FAKE_OPENCODE_MUTATE_WORKSPACE:-}" ]; then
   printf 'mutated tracked\n' >"$FAKE_OPENCODE_MUTATE_WORKSPACE/tracked.txt"
   chmod 0600 "$FAKE_OPENCODE_MUTATE_WORKSPACE/tracked.txt"
@@ -267,6 +276,68 @@ exit 1
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('requires a pristine baked checkout');
     expect(readFileSync(join(workspace, 'tracked.txt'), 'utf8')).toBe('must survive\n');
+  });
+
+  test('repo warm-up indexes the checkout with only the canonical OpenCode config', async () => {
+    const workspace = join(fixtureRoot, 'workspace');
+    const warmConfig = join(fixtureRoot, 'warm-config');
+    const configDeps = join(fixtureRoot, 'config-deps', 'node_modules');
+    const captureFile = join(fixtureRoot, 'config-path');
+    const loadedFile = join(fixtureRoot, 'malicious-loaded');
+    const readyFile = join(fixtureRoot, 'opencode.ready');
+    const repoConfig = join(workspace, '.kortix', 'opencode');
+    const canonicalConfig = join(warmConfig, '.kortix', 'opencode');
+    mkdirSync(repoConfig, { recursive: true });
+    mkdirSync(canonicalConfig, { recursive: true });
+    mkdirSync(configDeps, { recursive: true });
+    writeFileSync(
+      join(repoConfig, 'opencode.json'),
+      '{"plugin":["./malicious-plugin.ts"],"tools":{"malicious":true}}\n',
+    );
+    writeFileSync(join(repoConfig, 'malicious-plugin.ts'), 'throw new Error("loaded")\n');
+    mkdirSync(join(repoConfig, 'tools'), { recursive: true });
+    writeFileSync(join(repoConfig, 'tools', 'malicious.ts'), 'throw new Error("loaded")\n');
+    writeFileSync(join(canonicalConfig, 'opencode.json'), '{}\n');
+    git(workspace, 'init', '-b', 'main');
+    git(workspace, 'add', '-A');
+    git(
+      workspace,
+      '-c',
+      'user.email=test@kortix.dev',
+      '-c',
+      'user.name=Kortix Test',
+      'commit',
+      '-m',
+      'base',
+    );
+    const head = git(workspace, 'rev-parse', 'HEAD');
+    const refs = git(workspace, 'show-ref');
+
+    const result = await runWarmup(
+      'instance',
+      {
+        FAKE_CURL_READY: '1',
+        FAKE_OPENCODE_READY_FILE: readyFile,
+        FAKE_OPENCODE_CONFIG_CAPTURE_FILE: captureFile,
+        FAKE_OPENCODE_REPO_CONFIG_PATH: repoConfig,
+        FAKE_OPENCODE_REPO_CONFIG_LOADED_FILE: loadedFile,
+        KORTIX_WARMUP_WORKSPACE: workspace,
+        KORTIX_WARMUP_CONFIG_ROOT: warmConfig,
+        KORTIX_WARMUP_CONFIG_DEPS: configDeps,
+      },
+      'repo',
+    );
+
+    expect(result.code).toBe(0);
+    expect(readFileSync(captureFile, 'utf8')).toBe(canonicalConfig);
+    expect(existsSync(loadedFile)).toBe(false);
+    expect(readFileSync(join(repoConfig, 'opencode.json'), 'utf8')).toContain('malicious-plugin.ts');
+    expect(readFileSync(join(repoConfig, 'malicious-plugin.ts'), 'utf8')).toContain('loaded');
+    expect(readFileSync(join(repoConfig, 'tools', 'malicious.ts'), 'utf8')).toContain('loaded');
+    expect(git(workspace, 'rev-parse', 'HEAD')).toBe(head);
+    expect(git(workspace, 'show-ref')).toBe(refs);
+    expect(git(workspace, 'status', '--porcelain=v1', '--untracked-files=all')).toBe('');
+    expect(git(workspace, 'clean', '-ndx')).toBe('');
   });
 
   test('rejects an unknown warm-up mode', async () => {

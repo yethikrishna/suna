@@ -135,6 +135,8 @@ export interface EnsureSandboxImageResult {
   contentHash: string;
   built: boolean;
   isDefault: boolean;
+  /** The runtime is standard, but the image adds this project's exact repo tip. */
+  isProjectImage?: boolean;
   runtimeProfile?: 'standard' | 'fast' | 'meta';
 }
 
@@ -258,6 +260,7 @@ export async function ensureSandboxImage(
               contentHash: identity.contentHash,
               built: false,
               isDefault: !!template.isShared,
+              isProjectImage: true,
             },
             { blocking: blockingPreparation },
           );
@@ -304,6 +307,7 @@ export async function ensureSandboxImage(
                 contentHash: identity.contentHash,
                 built: false,
                 isDefault: true,
+                isProjectImage: true,
               },
               { blocking: blockingPreparation },
             );

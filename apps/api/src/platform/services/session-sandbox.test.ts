@@ -39,6 +39,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import * as realComputeMetering from '../../billing/services/compute-metering';
 import * as realAgents from '../../projects/agents';
 import { PROVISIONING_SESSION_STATUSES } from '../../projects/lib/session-status';
+import * as realProviderTransitionStore from '../../projects/provider-transition/provider-transition-store';
 import * as realProviders from '../providers';
 
 const dialect = new PgDialect();
@@ -75,6 +76,7 @@ let identityConflict = false;
 let recoveryPlaceholder = false;
 let providerCreateCalls = 0;
 let providerCreateOpts: Array<Record<string, unknown>> = [];
+let providerIdCreateCalls: string[] = [];
 let providerFallbackEnabled = false;
 let providerNamesRequested: string[] = [];
 let providerCreateErrors: Record<string, string | undefined> = {};
@@ -84,6 +86,11 @@ let accountTokenCreateCalls: Array<Record<string, unknown>> = [];
 let serviceAccountCreateCalls: Array<Record<string, unknown>> = [];
 let networkBoundaryBindings: Array<Record<string, unknown>> = [];
 let providerSyncCalls: Array<{ externalId: string; bindings: Array<Record<string, unknown>> }> = [];
+let activeRouting: {
+  activeProvider: string | null;
+  activeExternalTemplateId: string | null;
+} | null = null;
+let projectImageResolved = false;
 function compile(condition: unknown): { sql: string; params: unknown[] } {
   try {
     return dialect.sqlToQuery(condition as Parameters<typeof dialect.sqlToQuery>[0]);
@@ -192,20 +199,28 @@ mock.module('../providers', () => ({
   ...realProviders,
   getProvider: (name: string) => {
     providerNamesRequested.push(name);
+    const provision = async (opts: Record<string, unknown>) => {
+      providerCreateCalls += 1;
+      providerCreateOpts.push(opts);
+      if (providerCreateErrors[name]) throw new Error(providerCreateErrors[name]);
+      return {
+        externalId: name === 'daytona' ? EXTERNAL_ID : `ext-${name}-1`,
+        baseUrl: 'https://sandbox.test',
+        metadata: {},
+      };
+    };
     return {
       name,
       networkBoundaryAtCreate: name === 'platinum',
       provisioning: { async: true, stages: [{ id: 'boot', progress: 50, message: 'Booting…' }] },
-      create: async (opts: Record<string, unknown>) => {
-        providerCreateCalls += 1;
-        providerCreateOpts.push(opts);
-        if (providerCreateErrors[name]) throw new Error(providerCreateErrors[name]);
-        return {
-          externalId: name === 'daytona' ? EXTERNAL_ID : `ext-${name}-1`,
-          baseUrl: 'https://sandbox.test',
-          metadata: {},
-        };
-      },
+      create: provision,
+      createFromExternalId:
+        name === 'platinum'
+          ? async (templateId: string, opts: Record<string, unknown>) => {
+              providerIdCreateCalls.push(templateId);
+              return provision(opts);
+            }
+          : undefined,
       syncNetworkBoundary: async (externalId: string, bindings: Array<Record<string, unknown>>) => {
         providerSyncCalls.push({ externalId, bindings });
       },
@@ -226,6 +241,11 @@ mock.module('../providers', () => ({
   SandboxTemplateNotFoundError: class SandboxTemplateNotFoundError extends Error {},
 }));
 
+mock.module('../../projects/provider-transition/provider-transition-store', () => ({
+  ...realProviderTransitionStore,
+  readActiveRouting: async () => activeRouting,
+}));
+
 mock.module('./runtime-settings', () => ({
   providerFallbackSetting: () => ({ enabled: providerFallbackEnabled }),
 }));
@@ -243,6 +263,7 @@ mock.module('../../snapshots/builder', () => ({
       slug: 'default',
       contentHash: 'hash-1',
       isDefault: true,
+      isProjectImage: projectImageResolved,
       built: false,
     };
   },
@@ -367,6 +388,7 @@ beforeEach(() => {
   recoveryPlaceholder = false;
   providerCreateCalls = 0;
   providerCreateOpts = [];
+  providerIdCreateCalls = [];
   providerFallbackEnabled = false;
   providerNamesRequested = [];
   providerCreateErrors = {};
@@ -376,6 +398,8 @@ beforeEach(() => {
   serviceAccountCreateCalls = [];
   networkBoundaryBindings = [];
   providerSyncCalls = [];
+  activeRouting = null;
+  projectImageResolved = false;
 });
 
 afterEach(() => {
@@ -466,6 +490,40 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
         providerArtifactRef: 'snap-test-1',
       },
     });
+  });
+
+  test('a per-project image bypasses an older activated template id', async () => {
+    activeRouting = {
+      activeProvider: 'platinum',
+      activeExternalTemplateId: 'tpl_older_project_image',
+    };
+    projectImageResolved = true;
+    const opened = waitFor((resolve) => {
+      onComputeOpened = resolve;
+    });
+
+    await provisionSessionSandbox({ ...baseOpts(), provider: 'platinum' });
+    await opened;
+
+    expect(providerIdCreateCalls).toEqual([]);
+    expect(providerCreateCalls).toBe(1);
+    expect(providerCreateOpts[0]?.snapshot).toBe('snap-test-1');
+  });
+
+  test('the activated template id remains authoritative for the standard image', async () => {
+    activeRouting = {
+      activeProvider: 'platinum',
+      activeExternalTemplateId: 'tpl_activated_standard',
+    };
+    const opened = waitFor((resolve) => {
+      onComputeOpened = resolve;
+    });
+
+    await provisionSessionSandbox({ ...baseOpts(), provider: 'platinum' });
+    await opened;
+
+    expect(providerIdCreateCalls).toEqual(['tpl_activated_standard']);
+    expect(providerCreateCalls).toBe(1);
   });
 
   test('E2B success records only provider-neutral lifecycle metadata and E2B billing attribution', async () => {

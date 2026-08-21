@@ -217,6 +217,7 @@ export function fastColdBootEnabled(): boolean {
  *   - the kill-switch is ON,
  *   - the provider actually supports id-boot (Platinum; others are name-only),
  *   - a non-empty pinned id exists, AND
+ *   - the resolved image is not a newer per-project image, AND
  *   - MANDATORY provider-match: the pin belongs to the provider it was activated
  *     for — `routing.activeProvider === providerName`. This is what makes a
  *     rollback safe: a project reverted to Daytona with a leftover Platinum id
@@ -230,6 +231,7 @@ export function decideSessionBoot(input: {
   providerName: string;
   providerSupportsIdBoot: boolean;
   imageIsDefault?: boolean;
+  imageIsProjectImage?: boolean;
   disabledForSession?: boolean;
 }): { bootByTemplateId: string | null } {
   const {
@@ -238,9 +240,16 @@ export function decideSessionBoot(input: {
     providerName,
     providerSupportsIdBoot,
     imageIsDefault = true,
+    imageIsProjectImage = false,
     disabledForSession,
   } = input;
-  if (disabledForSession || !killSwitchOn || !providerSupportsIdBoot || !imageIsDefault) {
+  if (
+    disabledForSession ||
+    !killSwitchOn ||
+    !providerSupportsIdBoot ||
+    !imageIsDefault ||
+    imageIsProjectImage
+  ) {
     return { bootByTemplateId: null };
   }
   const pinnedId = routing?.activeExternalTemplateId ?? null;
@@ -565,6 +574,7 @@ export async function provisionSessionSandbox(opts: {
       contentHash: string;
       isDefault: boolean;
       runtimeProfile?: 'standard' | 'fast' | 'meta';
+      isProjectImage?: boolean;
     } | null = null;
     // FIX-A: the project's ACTIVATED routing pin (provider + exact template id),
     // read once, best-effort — a DB hiccup yields null → name-boot. Set
@@ -624,6 +634,7 @@ export async function provisionSessionSandbox(opts: {
         contentHash: image.contentHash,
         isDefault: image.isDefault,
         runtimeProfile: image.runtimeProfile,
+        isProjectImage: image.isProjectImage,
       };
       tl.mark(image.built ? 'image-built' : 'image-cached');
       providerCreateInput.snapshot = image.snapshotName;
@@ -646,6 +657,7 @@ export async function provisionSessionSandbox(opts: {
         // profile has its own content-addressed name and must never boot that
         // standard pin by mistake.
         imageIsDefault: image.isDefault && image.runtimeProfile !== 'fast',
+        imageIsProjectImage: image.isProjectImage,
         disabledForSession: idBootDisabled,
       });
       if (bootDecision.bootByTemplateId) {

@@ -46,6 +46,19 @@ describe('FIX-A decideSessionBoot — pinned-id boot gating', () => {
     ).toEqual({ bootByTemplateId: null });
   });
 
+  test('a per-project cold image never boots the older pinned project-default template id', () => {
+    expect(
+      decideSessionBoot({
+        killSwitchOn: true,
+        routing: pinned,
+        providerName: 'platinum',
+        providerSupportsIdBoot: true,
+        imageIsDefault: true,
+        imageIsProjectImage: true,
+      }),
+    ).toEqual({ bootByTemplateId: null });
+  });
+
   test('rollback: a leftover Platinum id pin does NOT id-boot a Daytona session (name-boot)', () => {
     // Rolled back to Daytona: the session runs on Daytona, which has no id-boot,
     // so a stale Platinum id in the pin can never brick boot.

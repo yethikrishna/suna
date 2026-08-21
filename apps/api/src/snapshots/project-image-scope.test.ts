@@ -14,7 +14,8 @@ setTestEnv('TUNNEL_SIGNING_SECRET', 'test-tunnel-signing-secret');
 setTestEnv('FRONTEND_URL', 'http://localhost:3000');
 setTestEnv('INTERNAL_KORTIX_ENV', 'dev');
 
-const { currentProjectImageDataPlaneScope } = await import('./project-image-scope');
+const { currentProjectImageDataPlaneScope, projectImageRolloutDiagnostic } =
+  await import('./project-image-scope');
 const { dataPlaneScopeFromSupabaseUrl } = await import('./ppwarm-names');
 
 describe('currentProjectImageDataPlaneScope', () => {
@@ -51,5 +52,23 @@ describe('currentProjectImageDataPlaneScope', () => {
     expect(currentProjectImageDataPlaneScope(settings)).toBe(
       currentProjectImageDataPlaneScope({ ...settings, INTERNAL_KORTIX_ENV: 'preview' }),
     );
+  });
+});
+
+describe('projectImageRolloutDiagnostic', () => {
+  test('exposes one non-secret scope and the exact format version', () => {
+    const settings = {
+      SUPABASE_URL: 'https://internal.example.test',
+      SUPABASE_PUBLIC_URL: 'https://public.example.test',
+      INTERNAL_KORTIX_ENV: 'dev' as const,
+      KORTIX_FAST_COLD_BOOT_CONFIGURED: true,
+      KORTIX_FAST_COLD_BOOT_ENABLED: false,
+    };
+    expect(projectImageRolloutDiagnostic(settings)).toEqual({
+      fastConfigured: true,
+      fastEnabled: false,
+      projectImageScope: currentProjectImageDataPlaneScope(settings),
+      formatVersion: 'kpp2',
+    });
   });
 });

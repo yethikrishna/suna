@@ -324,8 +324,8 @@ function buildWarmRepoCopyLines(warmRepo: WarmRepoConfig | undefined): string[] 
  * 6–60s → ~2–4s after this bake. Requires opencode + bun + the baked config
  * deps to already be present in the image (either from the toolchain layer
  * above, or inherited via FROM on the fast path), so it must come after them.
- * Best effort: a build without network (or a warm-up failure) just falls back
- * to the runtime cost — set +e + trailing `true` keep the image build green.
+ * Required: a warm-up failure stops the image build. Shipping an unwarmed image
+ * moves the same initialization onto every session's startup path.
  *
  * Shared between `kortixToolchainLayer` and `buildPerProjectWarmFromBaseDockerfile`
  * so both render byte-identical warm-up text. Returns `[]` when there's no
@@ -348,11 +348,9 @@ function buildOpencodeInstanceWarmupLines(opts: {
     // instead of just their axios/form-data override targets — this is
     // what actually walks the full transitive dependency tree
     // (firecrawl-js, tavily-core, replicate) that ToolRegistry resolves
-    // on a session's first prompt. Deliberately its own RUN step (not
-    // folded into the `set +e` warm-up below): a tool that can't bundle
-    // breaks every session's first prompt, not just startup latency, so
-    // it must fail the build — the warm-up readiness probe below stays
-    // best-effort as before.
+    // on a session's first prompt. Deliberately its own RUN step: a tool that
+    // cannot bundle breaks every session's first prompt, so the image build
+    // must fail before it reaches the warm-up readiness probe below.
     // E2B's Dockerfile parser does not preserve COPY --chown. Correct the
     // ownership explicitly before the standard kortix user changes this tree.
     'RUN sudo chown -R kortix:kortix /opt/kortix/warm-config',
@@ -382,7 +380,7 @@ function buildOpencodeInstanceWarmupLines(opts: {
     //    the starter config we staged (and the .kortix dir if that leaves it
     //    empty) — never their bytes. `rmdir` is the no-op-unless-empty form on
     //    purpose; a user's own /workspace/.kortix survives untouched.
-    `RUN bash /tmp/kortix-opencode-warmup instance ${cleanup}; rm -f /tmp/kortix-opencode-warmup`,
+    `RUN bash /tmp/kortix-opencode-warmup instance ${cleanup} && rm -f /tmp/kortix-opencode-warmup`,
     '',
   ];
 }
@@ -427,7 +425,7 @@ export function kortixToolchainLayer(opts: KortixToolchainLayerOpts): string {
     'ENV DEBIAN_FRONTEND=noninteractive',
     'RUN apt-get update \\',
     '    && apt-get install -y --no-install-recommends \\',
-    '        ca-certificates curl git gzip libatomic1 sudo unzip tmux iproute2 iputils-arping \\',
+    '        ca-certificates curl git gzip libatomic1 sudo unzip tmux iproute2 iputils-arping util-linux \\',
     '        build-essential ffmpeg fonts-dejavu fonts-liberation fonts-noto fonts-noto-cjk \\',
     '        latexmk libreoffice pandoc pkg-config poppler-utils qpdf tesseract-ocr \\',
     '        texlive-bibtex-extra texlive-fonts-recommended texlive-latex-base \\',
@@ -595,7 +593,15 @@ export function kortixToolchainLayer(opts: KortixToolchainLayerOpts): string {
     '',
     `RUN pnpm add -g --allow-build=opencode-ai "opencode-ai@${opencodeVersion}" \\`,
     '    && command -v opencode \\',
-    '    && opencode --version',
+    '    && opencode --version \\',
+    "    && opencode_package=\"$(pnpm list -g --parseable --depth 0 opencode-ai | sed -n '\\#/node_modules/opencode-ai$#p' | tail -n 1)\" \\",
+    '    && opencode_native="$opencode_package/bin/opencode.exe" \\',
+    '    && test -x "$opencode_native" \\',
+    '    && test "$(wc -c < "$opencode_native")" -gt 50000000 \\',
+    `    && test "$("$opencode_native" --version)" = "${opencodeVersion}" \\`,
+    '    && ln -sfn "$opencode_native" /opt/kortix/opencode.current \\',
+    '    && sudo ln -sfn /opt/kortix/opencode.current /usr/local/bin/opencode-kortix \\',
+    `    && test "$(/usr/local/bin/opencode-kortix --version)" = "${opencodeVersion}"`,
     '',
     // Bake OpenCode's "one time database migration" at BUILD time. The first time
     // opencode serves, it migrates its sqlite schema — logged as "Performing one
@@ -608,12 +614,12 @@ export function kortixToolchainLayer(opts: KortixToolchainLayerOpts): string {
     // run opencode here once to complete the migration and bake the migrated db
     // into the image layer. Every boot afterwards — cold or warm-snapshot restore —
     // then finds an already-migrated db and answers in ~2-3s. Env MUST match the
-    // daemon's spawn (apps/kortix-sandbox-agent-server/src/opencode.ts). Best
-    // effort: if opencode can't serve at build time it just falls back to the
-    // old boot-time migration — never fail the whole image build over a warm-up.
+    // daemon's spawn (apps/kortix-sandbox-agent-server/src/opencode.ts). The
+    // build fails if OpenCode cannot serve. A platform image without this state
+    // moves the database migration onto every session's startup path.
     ...(opencodeWarmupScriptPath ? [
       `COPY --chown=kortix:kortix ${opencodeWarmupScriptPath} /tmp/kortix-opencode-warmup`,
-      'RUN bash /tmp/kortix-opencode-warmup migration; rm -f /tmp/kortix-opencode-warmup',
+      'RUN bash /tmp/kortix-opencode-warmup migration && rm -f /tmp/kortix-opencode-warmup',
     ] : []),
     '',
     // Bun runtime for the agent CLIs (slack, …) + `kortix connectors mcp`.
@@ -685,8 +691,7 @@ export function kortixToolchainLayer(opts: KortixToolchainLayerOpts): string {
     // silently baked into every sandbox cloned from this image until a user
     // hit it on their very first prompt. Bundling the override targets here,
     // at build time, turns that failure mode into a build failure instead —
-    // intentionally NOT `set +e`: an unbundlable dependency tree must fail
-    // the image build, unlike the best-effort warm-up steps below.
+    // An unbundlable dependency tree must fail the image build before warm-up.
     'RUN cd /opt/kortix/opencode-config-deps \\',
     '    && bun build node_modules/axios/lib/utils.js node_modules/form-data/lib/form_data.js --target=bun --outdir=/tmp/opencode-deps-bundle-check \\',
     '    && rm -rf /tmp/opencode-deps-bundle-check \\',

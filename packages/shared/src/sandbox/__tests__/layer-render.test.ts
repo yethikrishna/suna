@@ -124,6 +124,37 @@ describe('runtime artifact integrity', () => {
     expect(rendered).not.toMatch(/curl[^|\n]*\|\s*(?:sh|bash)/);
   });
 
+  test('fails the image build when OpenCode warm-up fails', () => {
+    expect(rendered).toContain(
+      'RUN bash /tmp/kortix-opencode-warmup migration && rm -f /tmp/kortix-opencode-warmup',
+    );
+    expect(rendered).not.toContain('kortix-opencode-warmup migration; rm -f');
+
+    for (const { opts } of CASES) {
+      const image = buildLayeredDockerfile(opts);
+      expect(image).toMatch(
+        /RUN bash \/tmp\/kortix-opencode-warmup instance (?:keep|wipe|targeted) && rm -f \/tmp\/kortix-opencode-warmup/,
+      );
+      expect(image).not.toMatch(/kortix-opencode-warmup instance \w+; rm -f/);
+    }
+  });
+
+  test('exposes the native OpenCode executable at the supervisor path', () => {
+    expect(rendered).toContain(
+      "opencode_package=\"$(pnpm list -g --parseable --depth 0 opencode-ai | sed -n '\\#/node_modules/opencode-ai$#p' | tail -n 1)\"",
+    );
+    expect(rendered).toContain('opencode_native="$opencode_package/bin/opencode.exe"');
+    expect(rendered).toContain('test "$(wc -c < "$opencode_native")" -gt 50000000');
+    expect(rendered).toContain('ln -sfn "$opencode_native" /opt/kortix/opencode.current');
+    expect(rendered).toContain(
+      'sudo ln -sfn /opt/kortix/opencode.current /usr/local/bin/opencode-kortix',
+    );
+    expect(rendered).not.toContain(
+      'ln -sfn "$opencode_native" /usr/local/bin/opencode-kortix',
+    );
+    expect(rendered).toContain('/usr/local/bin/opencode-kortix --version');
+  });
+
 });
 
 describe('the Python runtime is managed by uv', () => {
@@ -422,7 +453,7 @@ describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
     // … and MAIN's opencode instance re-warm via the cache-only warm-up script,
     // which for a per-project warm keeps the baked /workspace checkout.
     expect(rendered).toContain(
-      'RUN bash /tmp/kortix-opencode-warmup instance keep; rm -f /tmp/kortix-opencode-warmup',
+      'RUN bash /tmp/kortix-opencode-warmup instance keep && rm -f /tmp/kortix-opencode-warmup',
     );
   });
 

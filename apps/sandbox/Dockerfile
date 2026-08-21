@@ -94,7 +94,7 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates curl git gzip libatomic1 sudo unzip tmux iproute2 iputils-arping \
+        ca-certificates curl git gzip libatomic1 sudo unzip tmux iproute2 iputils-arping util-linux \
         build-essential ffmpeg fonts-dejavu fonts-liberation fonts-noto fonts-noto-cjk \
         latexmk libreoffice pandoc pkg-config poppler-utils qpdf tesseract-ocr \
         texlive-bibtex-extra texlive-fonts-recommended texlive-latex-base \
@@ -195,7 +195,15 @@ RUN AGENT_BROWSER_VERSION="$(node -e "console.log(require('/tmp/kortix-runtime-v
 RUN OPENCODE_VERSION="$(node -e "console.log(require('/tmp/kortix-runtime-versions.json').opencode)")" \
     && pnpm add -g --allow-build=opencode-ai "opencode-ai@${OPENCODE_VERSION}" \
     && command -v opencode \
-    && opencode --version
+    && opencode --version \
+    && opencode_package="$(pnpm list -g --parseable --depth 0 opencode-ai | sed -n '\#/node_modules/opencode-ai$#p' | tail -n 1)" \
+    && opencode_native="$opencode_package/bin/opencode.exe" \
+    && test -x "$opencode_native" \
+    && test "$(wc -c < "$opencode_native")" -gt 50000000 \
+    && test "$("$opencode_native" --version)" = "$OPENCODE_VERSION" \
+    && ln -sfn "$opencode_native" /opt/kortix/opencode.current \
+    && sudo ln -sfn /opt/kortix/opencode.current /usr/local/bin/opencode-kortix \
+    && test "$(/usr/local/bin/opencode-kortix --version)" = "$OPENCODE_VERSION"
 
 RUN BUN_VERSION="$(node -e "console.log(require('/tmp/kortix-runtime-versions.json').bun)")" \
     && BUN_SHA256_AMD64="$(node -e "console.log(require('/tmp/kortix-runtime-versions.json').bunSha256Amd64)")" \

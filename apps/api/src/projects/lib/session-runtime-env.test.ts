@@ -186,3 +186,38 @@ describe('buildSessionRuntimeEnv — fast Git boot hints', () => {
     }
   });
 });
+
+describe('buildSessionRuntimeEnv — OpenCode executable prefetch', () => {
+  test('enables prefetch through the single fast cold boot flag', () => {
+    const env = buildSessionRuntimeEnv({
+      ...BASE_INPUT,
+      fastColdBootEnabled: true,
+      freshSession: false,
+    });
+
+    expect(env.KORTIX_OPENCODE_BINARY_PREFETCH).toBe('1');
+    expect(env).not.toHaveProperty('KORTIX_SESSION_FRESH');
+  });
+
+  test('omits prefetch when the fast cold boot flag is disabled', () => {
+    const env = buildSessionRuntimeEnv({
+      ...BASE_INPUT,
+      fastColdBootEnabled: false,
+      freshSession: true,
+    });
+
+    expect(env).not.toHaveProperty('KORTIX_OPENCODE_BINARY_PREFETCH');
+  });
+
+  test('keeps prefetch enabled for runtime-only sessions', () => {
+    const env = buildSessionRuntimeEnv({
+      ...BASE_INPUT,
+      workspaceMode: 'runtime',
+      fastColdBootEnabled: true,
+      freshSession: true,
+    });
+
+    expect(env.KORTIX_OPENCODE_BINARY_PREFETCH).toBe('1');
+    expect(env).not.toHaveProperty('KORTIX_REPO_URL');
+  });
+});

@@ -24,6 +24,15 @@ describe('buildFastSandboxDockerfile', () => {
 
 expect(dockerfile).toContain('FROM ubuntu:24.04');
     expect(dockerfile).toContain('opencode-ai@1.18.19');
+    expect(dockerfile).toContain(
+      "opencode_package=\"$(pnpm list -g --parseable --depth 0 opencode-ai | sed -n '\\#/node_modules/opencode-ai$#p' | tail -n 1)\"",
+    );
+    expect(dockerfile).toContain('opencode_native="$opencode_package/bin/opencode.exe"');
+    expect(dockerfile).toContain('test "$(wc -c < "$opencode_native")" -gt 50000000');
+    expect(dockerfile).toContain('ln -sfn "$opencode_native" /opt/kortix/opencode.current');
+    expect(dockerfile).toContain(
+      'ln -sfn /opt/kortix/opencode.current /usr/local/bin/opencode-kortix',
+    );
     expect(dockerfile).toContain('pnpm-linux-${pnpm_arch}.tar.gz');
     expect(dockerfile).toContain('bun-v1.3.14');
     expect(dockerfile).toContain('aarch64|arm64) bun_arch=aarch64');

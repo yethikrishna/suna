@@ -63,6 +63,7 @@ export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<st
   return {
     ...projectGitEnv,
     ...fastGitBootEnv,
+    ...(input.fastColdBootEnabled ? { KORTIX_OPENCODE_BINARY_PREFETCH: '1' } : {}),
     KORTIX_PROJECT_ID: input.projectId,
     KORTIX_SESSION_ID: input.sessionId,
     KORTIX_SERVICE_PORT: '8000',

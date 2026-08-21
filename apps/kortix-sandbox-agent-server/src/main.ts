@@ -180,8 +180,14 @@ async function main() {
   // reconfigured with the resolved dir below, before the process is ever
   // spawned. `reconfigure` only rewrites state read at spawn time, so this is
   // exactly equivalent to constructing it late.
+  const opencodeBinaryPrefetchEnabled = process.env.KORTIX_OPENCODE_BINARY_PREFETCH === '1'
   const opencode = createOpencodeSupervisor(cfg, cfg.defaultOpencodeConfigDir, projectEnv, {
     onStartupMark: bootMark,
+    onFirstReadyResponse: () => {
+      if (bootState.timeline.some((mark) => mark.label === 'opencode-session-api-ready')) return
+      bootMark('opencode-session-api-ready')
+    },
+    nativeBinaryFastPathEnabled: opencodeBinaryPrefetchEnabled,
   onUnplannedRespawn: () => {
       // opencode died on its own and is back. Close whatever turn it was
       // writing, or the client streams a part that will never complete.
@@ -237,6 +243,14 @@ async function main() {
   // long-pole, so the fetch costs no critical-path time.
   startManagedModelsPrefetch(process.env.KORTIX_LLM_BASE_URL, process.env.KORTIX_LLM_API_KEY)
 
+  // Platinum lazily faults image pages into a fresh VM. Read the OpenCode
+  // executable sequentially while repository and config work run. Stop at the
+  // spawn boundary, so a slow page fault cannot extend the critical path.
+  const opencodeBinaryPrefetchPromise =
+    opencodeBinaryPrefetchEnabled
+      ? opencode.prefetchBinary()
+      : Promise.resolve(false)
+
   const repoMaterializePromise: Promise<void> = cfg.autoClone
     ? materializeRepo(cfg).catch((err) => {
         bootState.repoMaterializationError = err instanceof Error ? err.message : String(err)
@@ -265,6 +279,11 @@ async function main() {
   await ensureOpencodeConfigDeps(opencodeConfigDir)
   await ensureInjectedManagedSkills(opencodeConfigDir)
   bootMark('config-deps')
+
+  // Repository/config work defines the free overlap window. Stop any
+  // remaining sequential read here so prefetch cannot outlive either outcome.
+  opencode.cancelBinaryPrefetch()
+  void opencodeBinaryPrefetchPromise
 
   if (bootState.repoMaterializationError) {
     logger.warn('[boot] skipping runtime readiness because repo materialization failed')
@@ -553,6 +572,10 @@ async function startSessionRuntime(
   bootState: SandboxBootState,
   bootMark: (label: string) => void,
 ): Promise<void> {
+  const markOpencodeListening = () => {
+    if (bootState.timeline.some((mark) => mark.label === 'opencode-listening')) return
+    bootMark('opencode-listening')
+  }
   // BEFORE the event loop, the root resolution and any prompt delivery: a
   // restart here strands nothing, and the first turn must run on a provider map
   // that has every managed model the picker offers.
@@ -679,7 +702,13 @@ async function startSessionRuntime(
     // backstop for any residual gap.
     const loop = startOpencodeEventLoop(opencode, cfg, eventHandlers)
     loopStarted = true
-    await maybeCreateInitialOpencodeSession(opencode, bootState, bootMark, loop.connected).catch(
+    await maybeCreateInitialOpencodeSession(
+      opencode,
+      bootState,
+      bootMark,
+      loop.connected,
+      markOpencodeListening,
+    ).catch(
       (err) => {
         bootState.initialOpenCodeSessionError = err instanceof Error ? err.message : String(err)
         logger.warn('[boot] initial opencode session setup failed', err)
@@ -700,7 +729,7 @@ async function startSessionRuntime(
       return
     }
   }
-  const ready = await waitForOpencodeReady(opencode, cfg.projectTarget, () => bootMark('opencode-listening'))
+  const ready = await waitForOpencodeReady(opencode, cfg.projectTarget, markOpencodeListening)
   if (ready) {
     bootMark('opencode-ready')
     logger.info('[boot] opencode ready', { opencodePid: opencode.getPid(), timeline: bootState.timeline })
@@ -1188,6 +1217,7 @@ async function maybeCreateInitialOpencodeSession(
   // the reused-root / no-prompt paths (which never fire a new turn) don't depend
   // on it; a missing promise just skips the wait.
   eventLoopConnected?: Promise<void>,
+  onListening?: () => void,
 ): Promise<void> {
   const prompt = (process.env.KORTIX_INITIAL_PROMPT ?? '').trim()
   const bootstrapSession = (process.env.KORTIX_BOOTSTRAP_OPENCODE_SESSION ?? '').trim() === '1'
@@ -1213,7 +1243,7 @@ async function maybeCreateInitialOpencodeSession(
   // marker (delivery, below, hasn't happened yet) — reflects only a PRIOR
   // boot's successful delivery, never this one's own pending write.
   const priorDeliveredMarker = readInitialPromptDeliveredMarker()
-  const resolved = await resolveExistingRoot(baseUrl, workspace, priorPin)
+  const resolved = await resolveExistingRoot(baseUrl, workspace, priorPin, 20_000, onListening)
   bootMark('opencode-answering')
   if (resolved.status === 'defer') {
     // opencode never answered the root list within the deadline, and a prior
@@ -1538,13 +1568,14 @@ async function resolveExistingRoot(
   workspace: string,
   priorPin: string | null = readPinnedOpencodeSessionId(),
   rootListDeadlineMs = 20_000,
+  onListening?: () => void,
 ): Promise<ExistingRootResult> {
   // Wait for a DEFINITIVE answer from opencode before deciding. Treating a slow
   // boot as "no roots" would create a duplicate on restart — the exact bug we're
   // killing — so only conclude "create a fresh root" once opencode has actually
   // answered with an empty list (or never answers within the deadline, and
   // there is no prior pin to protect — see `defer` above).
-  const roots = await waitForRootList(baseUrl, workspace, rootListDeadlineMs)
+  const roots = await waitForRootList(baseUrl, workspace, rootListDeadlineMs, onListening)
   if (!roots) {
     if (priorPin) {
       logger.warn(
@@ -1589,10 +1620,17 @@ async function waitForRootList(
   baseUrl: string,
   workspace: string,
   deadlineMs = 20_000,
+  onListening?: () => void,
 ): Promise<RootLite[] | null> {
   const deadline = Date.now() + deadlineMs
+  let listeningSeen = false
+  const markListening = () => {
+    if (listeningSeen) return
+    listeningSeen = true
+    onListening?.()
+  }
   while (Date.now() < deadline) {
-    const roots = await listOpencodeRoots(baseUrl, workspace)
+    const roots = await listOpencodeRoots(baseUrl, workspace, markListening)
     if (roots !== null) return roots
     await new Promise((r) => setTimeout(r, 100))
   }
@@ -1619,7 +1657,11 @@ async function waitForRootList(
  *   - An OpenCode that does not know a query parameter ignores it silently. If
  *     `roots` were ever dropped, the filter is what still stops a Task-tool
  *     CHILD from being adopted as the canonical root. One line, absolute. */
-async function listOpencodeRoots(baseUrl: string, workspace: string): Promise<RootLite[] | null> {
+async function listOpencodeRoots(
+  baseUrl: string,
+  workspace: string,
+  onHttpResponse?: () => void,
+): Promise<RootLite[] | null> {
   try {
     const res = await fetch(
       `${baseUrl}/session?directory=${encodeURIComponent(workspace)}&roots=true`,
@@ -1629,6 +1671,7 @@ async function listOpencodeRoots(baseUrl: string, workspace: string): Promise<Ro
         signal: AbortSignal.timeout(5_000),
       },
     )
+    onHttpResponse?.()
     if (!res.ok) return null
     const data = (await res.json()) as Array<{ id?: string; parentID?: string | null; time?: { created?: number; updated?: number } }>
     if (!Array.isArray(data)) return []

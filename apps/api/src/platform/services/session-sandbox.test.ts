@@ -89,6 +89,7 @@ let providerSyncCalls: Array<{ externalId: string; bindings: Array<Record<string
 let activeRouting: {
   activeProvider: string | null;
   activeExternalTemplateId: string | null;
+  activeSnapshotName: string | null;
 } | null = null;
 let projectImageResolved = false;
 function compile(condition: unknown): { sql: string; params: unknown[] } {
@@ -505,10 +506,49 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     expect(providerCreateOpts[0]?.snapshot).toBe('snap-test-1');
   });
 
-  test('a per-project image bypasses an older activated template id', async () => {
+  test('a per-project image uses the activated id when its image name matches', async () => {
+    activeRouting = {
+      activeProvider: 'platinum',
+      activeExternalTemplateId: 'tpl_current_project_image',
+      activeSnapshotName: 'snap-test-1',
+    };
+    projectImageResolved = true;
+    const opened = waitFor((resolve) => {
+      onComputeOpened = resolve;
+    });
+
+    await provisionSessionSandbox({ ...baseOpts(), provider: 'platinum' });
+    await opened;
+
+    expect(providerIdCreateCalls).toEqual(['tpl_current_project_image']);
+    expect(providerCreateCalls).toBe(1);
+    expect(providerCreateOpts[0]?.snapshot).toBe('snap-test-1');
+  });
+
+  test('a per-project image name-boots when its image name differs from the activated image', async () => {
     activeRouting = {
       activeProvider: 'platinum',
       activeExternalTemplateId: 'tpl_older_project_image',
+      activeSnapshotName: 'snap-project-older',
+    };
+    projectImageResolved = true;
+    const opened = waitFor((resolve) => {
+      onComputeOpened = resolve;
+    });
+
+    await provisionSessionSandbox({ ...baseOpts(), provider: 'platinum' });
+    await opened;
+
+    expect(providerIdCreateCalls).toEqual([]);
+    expect(providerCreateCalls).toBe(1);
+    expect(providerCreateOpts[0]?.snapshot).toBe('snap-test-1');
+  });
+
+  test('a per-project image name-boots when activated image metadata is missing', async () => {
+    activeRouting = {
+      activeProvider: 'platinum',
+      activeExternalTemplateId: 'tpl_without_image_name',
+      activeSnapshotName: null,
     };
     projectImageResolved = true;
     const opened = waitFor((resolve) => {
@@ -527,6 +567,7 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     activeRouting = {
       activeProvider: 'platinum',
       activeExternalTemplateId: 'tpl_activated_standard',
+      activeSnapshotName: null,
     };
     const opened = waitFor((resolve) => {
       onComputeOpened = resolve;

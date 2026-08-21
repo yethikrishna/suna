@@ -59,14 +59,16 @@ export interface ActiveRouting {
   activeProvider: string | null;
   /** The exact provider template id activation pinned. Boot should pin by this. */
   activeExternalTemplateId: string | null;
+  /** The exact image name associated with activeExternalTemplateId. */
+  activeSnapshotName: string | null;
   generation: number;
 }
 
 /**
  * Read the active routing identity from a SINGLE project row — pin + activated
- * external template id are written together in the activation transaction, so a
- * single row read gets them atomically. No path may derive the active provider
- * from an in-flight transition.
+ * external template id and image name are written together in the activation
+ * transaction, so a single row read gets them atomically. No path may derive the
+ * active provider from an in-flight transition.
  */
 export async function readActiveRouting(db: Database, projectId: string): Promise<ActiveRouting | null> {
   const [row] = await db
@@ -78,9 +80,11 @@ export async function readActiveRouting(db: Database, projectId: string): Promis
   const meta = asMeta(row.metadata);
   const pin = meta[PIN_META_KEY];
   const extId = meta[ACTIVE_EXTERNAL_ID_META_KEY];
+  const snapshotName = meta[ACTIVE_SNAPSHOT_NAME_META_KEY];
   return {
     activeProvider: typeof pin === 'string' ? pin : null,
     activeExternalTemplateId: typeof extId === 'string' ? extId : null,
+    activeSnapshotName: typeof snapshotName === 'string' ? snapshotName : null,
     generation: row.generation ?? 0,
   };
 }

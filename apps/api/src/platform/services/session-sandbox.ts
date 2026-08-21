@@ -28,7 +28,10 @@ import {
   type ProvisionResult,
   type ProviderName,
 } from '../providers';
-import { readActiveRouting } from '../../projects/provider-transition/provider-transition-store';
+import {
+  readActiveRouting,
+  type ActiveRouting,
+} from '../../projects/provider-transition/provider-transition-store';
 import {
   buildSandboxInitAttemptMetadata,
   buildSandboxInitFailureMetadata,
@@ -217,7 +220,7 @@ export function fastColdBootEnabled(): boolean {
  *   - the kill-switch is ON,
  *   - the provider actually supports id-boot (Platinum; others are name-only),
  *   - a non-empty pinned id exists, AND
- *   - the resolved image is not a newer per-project image, AND
+ *   - a per-project image exactly matches the activated image name, AND
  *   - MANDATORY provider-match: the pin belongs to the provider it was activated
  *     for — `routing.activeProvider === providerName`. This is what makes a
  *     rollback safe: a project reverted to Daytona with a leftover Platinum id
@@ -227,11 +230,15 @@ export function fastColdBootEnabled(): boolean {
  */
 export function decideSessionBoot(input: {
   killSwitchOn: boolean;
-  routing: { activeProvider: string | null; activeExternalTemplateId: string | null } | null;
+  routing: Pick<
+    ActiveRouting,
+    'activeProvider' | 'activeExternalTemplateId' | 'activeSnapshotName'
+  > | null;
   providerName: string;
   providerSupportsIdBoot: boolean;
   imageIsDefault?: boolean;
   imageIsProjectImage?: boolean;
+  imageSnapshotName?: string;
   disabledForSession?: boolean;
 }): { bootByTemplateId: string | null } {
   const {
@@ -241,20 +248,28 @@ export function decideSessionBoot(input: {
     providerSupportsIdBoot,
     imageIsDefault = true,
     imageIsProjectImage = false,
+    imageSnapshotName,
     disabledForSession,
   } = input;
   if (
     disabledForSession ||
     !killSwitchOn ||
     !providerSupportsIdBoot ||
-    !imageIsDefault ||
-    imageIsProjectImage
+    !imageIsDefault
   ) {
     return { bootByTemplateId: null };
   }
   const pinnedId = routing?.activeExternalTemplateId ?? null;
   if (!pinnedId) return { bootByTemplateId: null };
   if (routing?.activeProvider !== providerName) return { bootByTemplateId: null }; // provider-match
+  if (
+    imageIsProjectImage &&
+    (!imageSnapshotName ||
+      !routing.activeSnapshotName ||
+      routing.activeSnapshotName !== imageSnapshotName)
+  ) {
+    return { bootByTemplateId: null };
+  }
   return { bootByTemplateId: pinnedId };
 }
 
@@ -579,11 +594,11 @@ export async function provisionSessionSandbox(opts: {
       runtimeProfile?: 'standard' | 'fast' | 'meta';
       isProjectImage?: boolean;
     } | null = null;
-    // FIX-A: the project's ACTIVATED routing pin (provider + exact template id),
-    // read once, best-effort — a DB hiccup yields null → name-boot. Set
+    // FIX-A: the project's ACTIVATED routing pin (provider + exact template id
+    // and image name), read once, best-effort — a DB hiccup yields null → name-boot. Set
     // `idBootDisabled` once a definitive GC'd-pin 404 forces this session down to
     // a name-boot, so the retry never re-attempts the dead pin.
-    let activeRouting: { activeProvider: string | null; activeExternalTemplateId: string | null } | null = null;
+    let activeRouting: ActiveRouting | null = null;
     try {
       activeRouting = await readActiveRouting(db, projectId);
     } catch (routingErr) {
@@ -661,6 +676,7 @@ export async function provisionSessionSandbox(opts: {
         // standard pin by mistake.
         imageIsDefault: image.isDefault && image.runtimeProfile !== 'fast',
         imageIsProjectImage: image.isProjectImage,
+        imageSnapshotName: image.snapshotName,
         disabledForSession: idBootDisabled,
       });
       if (bootDecision.bootByTemplateId) {

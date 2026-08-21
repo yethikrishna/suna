@@ -1414,23 +1414,54 @@ async function which(bin: string): Promise<string | null> {
   })
 }
 
-async function detectOpencodeBinary(): Promise<string | null> {
-  if (await isExecutable(OPENCODE_CURRENT_LINK)) return OPENCODE_CURRENT_LINK
-  if (await isExecutable(OPENCODE_SYSTEM_LINK)) return OPENCODE_SYSTEM_LINK
+export interface OpencodeBinaryDetectionOptions {
+  nativeBinaryFastPathEnabled?: boolean
+  currentLink?: string
+  systemLink?: string
+  isExecutable?: (path: string) => Promise<boolean>
+  resolveInstalledNative?: () => Promise<string>
+  publishNativeLink?: (nativePath: string, linkPath: string) => Promise<void>
+  findOnPath?: (bin: string) => Promise<string | null>
+}
 
-  // Older images only have pnpm's small shell launcher. Discover the native
-  // executable once, then repair the user-owned stable link for this and every
-  // later daemon start. A discovery failure keeps the functional launcher.
+export async function detectOpencodeBinary(
+  options: OpencodeBinaryDetectionOptions = {},
+): Promise<string | null> {
+  const currentLink = options.currentLink ?? OPENCODE_CURRENT_LINK
+  const systemLink = options.systemLink ?? OPENCODE_SYSTEM_LINK
+  const checkExecutable = options.isExecutable ?? isExecutable
+  const findOnPath = options.findOnPath ?? which
+
+  // The one cold-boot experiment switch must restore the pre-optimization
+  // launch path completely. Disabled sessions use pnpm's PATH launcher and do
+  // not discover or publish native-binary links. Existing stable links remain
+  // an availability fallback only when that verified launcher disappeared.
+  if (!options.nativeBinaryFastPathEnabled) {
+    const pathLauncher = await findOnPath('opencode')
+    if (pathLauncher) return pathLauncher
+    if (await checkExecutable(currentLink)) return currentLink
+    if (await checkExecutable(systemLink)) return systemLink
+    return null
+  }
+
+  if (await checkExecutable(currentLink)) return currentLink
+  if (await checkExecutable(systemLink)) return systemLink
+
+  const resolveInstalledNative = options.resolveInstalledNative ?? resolveInstalledOpencodeNative
+  const publishNativeLink =
+    options.publishNativeLink ??
+    ((nativePath: string, linkPath: string) => publishOpencodeNativeLink(nativePath, linkPath))
   try {
-    const nativePath = await resolveInstalledOpencodeNative()
-    await publishOpencodeNativeLink(nativePath)
-    return OPENCODE_CURRENT_LINK
+    const nativePath = await resolveInstalledNative()
+    await publishNativeLink(nativePath, currentLink)
+    return currentLink
   } catch (err) {
     logger.warn('[opencode] native binary discovery failed; using PATH launcher', {
       err: err instanceof Error ? err.message : String(err),
     })
   }
-  return await which('opencode')
+
+  return await findOnPath('opencode')
 }
 
 const EXECUTABLE_PREFETCH_BUFFER_BYTES = 4 * 1024 * 1024
@@ -1438,10 +1469,11 @@ const EXECUTABLE_PREFETCH_BUFFER_BYTES = 4 * 1024 * 1024
 export async function prefetchExecutablePages(
   path: string,
   signal?: AbortSignal,
+  allocateBuffer: (size: number) => Buffer = (size) => Buffer.allocUnsafe(size),
 ): Promise<number> {
   if (signal?.aborted) throw signal.reason
+  const buffer = allocateBuffer(EXECUTABLE_PREFETCH_BUFFER_BYTES)
   const handle = await open(path, 'r')
-  const buffer = Buffer.allocUnsafe(EXECUTABLE_PREFETCH_BUFFER_BYTES)
   let bytes = 0
   try {
     while (true) {
@@ -1505,8 +1537,10 @@ export type Opencode = {
 
 export interface OpencodeSupervisorOptions {
   onStartupMark?: (label: string) => void
+  onFirstReadyResponse?: () => void
   binaryPathOverride?: string
   binaryPathResolverOverride?: () => Promise<string | null>
+  nativeBinaryFastPathEnabled?: boolean
   prefetchExecutableOverride?: (path: string, signal: AbortSignal) => Promise<number>
   configPathOverride?: string
   /**
@@ -1550,6 +1584,7 @@ export function createOpencodeSupervisor(
   let restartDelayMs = 500
   let state: OpencodeState = 'starting'
   let readinessTimer: ReturnType<typeof setTimeout> | null = null
+  let firstReadyResponseReported = false
   let opencodeCwd = cfg.workspace
   const startupMark = options.onStartupMark ?? (() => {})
   let binaryResolutionPromise: Promise<string | null> | null = null
@@ -1560,7 +1595,10 @@ export function createOpencodeSupervisor(
     if (!binaryResolutionPromise) {
       binaryResolutionPromise = options.binaryPathOverride
         ? Promise.resolve(options.binaryPathOverride)
-        : (options.binaryPathResolverOverride?.() ?? detectOpencodeBinary())
+        : (options.binaryPathResolverOverride?.() ??
+          detectOpencodeBinary({
+            nativeBinaryFastPathEnabled: options.nativeBinaryFastPathEnabled === true,
+          }))
     }
     let resolved: string | null
     try {
@@ -1801,6 +1839,12 @@ export function createOpencodeSupervisor(
     if (state !== 'ok') logger.info('[opencode] ready')
     state = 'ok'
     restartDelayMs = 500
+  }
+
+  function reportFirstReadyResponse() {
+    if (firstReadyResponseReported) return
+    firstReadyResponseReported = true
+    options.onFirstReadyResponse?.()
   }
 
   /**
@@ -2070,6 +2114,7 @@ export function createOpencodeSupervisor(
         return
       }
       if (ready) {
+        reportFirstReadyResponse()
         markReady()
       } else if (state !== 'starting') {
         state = 'starting'

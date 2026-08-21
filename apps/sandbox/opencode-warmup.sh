@@ -10,13 +10,51 @@ migration_attempts="${OPENCODE_WARMUP_MIGRATION_ATTEMPTS:-180}"
 instance_attempts="${OPENCODE_WARMUP_INSTANCE_ATTEMPTS:-300}"
 poll_seconds="${OPENCODE_WARMUP_POLL_SECONDS:-1}"
 settle_seconds="${OPENCODE_WARMUP_SETTLE_SECONDS:-3}"
+stop_attempts="${OPENCODE_WARMUP_STOP_ATTEMPTS:-50}"
+stop_poll_seconds="${OPENCODE_WARMUP_STOP_POLL_SECONDS:-0.1}"
 oc_pid=""
+oc_process_group=0
+
+start_opencode() {
+  local log_path="$1"
+  shift
+
+  # OpenCode can launch helpers while it initializes. Give the complete tree a
+  # private process group when setsid is available, so image builds never leave
+  # a helper behind after the warm-up finishes.
+  if command -v setsid >/dev/null 2>&1; then
+    setsid opencode "$@" >"$log_path" 2>&1 &
+    oc_process_group=1
+  else
+    opencode "$@" >"$log_path" 2>&1 &
+    oc_process_group=0
+  fi
+  oc_pid=$!
+}
 
 stop_opencode() {
   if [ -n "$oc_pid" ]; then
-    kill "$oc_pid" 2>/dev/null
+    local target="$oc_pid"
+    local attempt=0
+    if [ "$oc_process_group" = 1 ]; then
+      target="-$oc_pid"
+    fi
+
+    kill -TERM -- "$target" 2>/dev/null || true
+    while kill -0 -- "$target" 2>/dev/null && [ "$attempt" -lt "$stop_attempts" ]; do
+      sleep "$stop_poll_seconds"
+      attempt=$((attempt + 1))
+    done
+    if kill -0 -- "$target" 2>/dev/null; then
+      echo "opencode warm-up did not stop after ${stop_attempts} attempts; forcing process group shutdown" >&2
+      kill -KILL -- "$target" 2>/dev/null || true
+      # Keep wait bounded even if a non-util-linux setsid implementation did
+      # not make the background PID the process-group leader.
+      kill -KILL -- "$oc_pid" 2>/dev/null || true
+    fi
     wait "$oc_pid" 2>/dev/null
     oc_pid=""
+    oc_process_group=0
   fi
 }
 
@@ -51,8 +89,7 @@ warm_migration() {
 
   mkdir -p "$HOME/.local/share" "$HOME/.config" "$HOME/.cache" "$migration_dir" || return 1
   rm -f "$log_path"
-  opencode serve --port 4096 --hostname 127.0.0.1 >"$log_path" 2>&1 &
-  oc_pid=$!
+  start_opencode "$log_path" serve --port 4096 --hostname 127.0.0.1
   if ! wait_for_opencode \
     "http://127.0.0.1:4096/session?directory=$migration_dir" \
     "$migration_attempts"; then
@@ -106,8 +143,7 @@ warm_instance() {
   export OPENCODE_CONFIG_DIR=/workspace/.kortix/opencode
   cd /workspace || return 1
   rm -f "$log_path"
-  opencode serve --port 4096 --hostname 127.0.0.1 >"$log_path" 2>&1 &
-  oc_pid=$!
+  start_opencode "$log_path" serve --port 4096 --hostname 127.0.0.1
   if wait_for_opencode \
     'http://127.0.0.1:4096/session?directory=/workspace' \
     "$instance_attempts"; then

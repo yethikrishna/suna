@@ -180,8 +180,14 @@ async function main() {
   // reconfigured with the resolved dir below, before the process is ever
   // spawned. `reconfigure` only rewrites state read at spawn time, so this is
   // exactly equivalent to constructing it late.
+  const opencodeBinaryPrefetchEnabled = process.env.KORTIX_OPENCODE_BINARY_PREFETCH === '1'
   const opencode = createOpencodeSupervisor(cfg, cfg.defaultOpencodeConfigDir, projectEnv, {
     onStartupMark: bootMark,
+    onFirstReadyResponse: () => {
+      if (bootState.timeline.some((mark) => mark.label === 'opencode-listening')) return
+      bootMark('opencode-listening')
+    },
+    nativeBinaryFastPathEnabled: opencodeBinaryPrefetchEnabled,
   onUnplannedRespawn: () => {
       // opencode died on its own and is back. Close whatever turn it was
       // writing, or the client streams a part that will never complete.
@@ -241,7 +247,7 @@ async function main() {
   // executable sequentially while repository and config work run. Stop at the
   // spawn boundary, so a slow page fault cannot extend the critical path.
   const opencodeBinaryPrefetchPromise =
-    process.env.KORTIX_OPENCODE_BINARY_PREFETCH === '1'
+    opencodeBinaryPrefetchEnabled
       ? opencode.prefetchBinary()
       : Promise.resolve(false)
 
@@ -274,6 +280,11 @@ async function main() {
   await ensureInjectedManagedSkills(opencodeConfigDir)
   bootMark('config-deps')
 
+  // Repository/config work defines the free overlap window. Stop any
+  // remaining sequential read here so prefetch cannot outlive either outcome.
+  opencode.cancelBinaryPrefetch()
+  void opencodeBinaryPrefetchPromise
+
   if (bootState.repoMaterializationError) {
     logger.warn('[boot] skipping runtime readiness because repo materialization failed')
   } else {
@@ -285,10 +296,6 @@ async function main() {
         err: err instanceof Error ? err.message : String(err),
       })
     })
-    // Repository/config work defines the free overlap window. Stop any
-    // remaining sequential read here so prefetch can never extend boot.
-    opencode.cancelBinaryPrefetch()
-    void opencodeBinaryPrefetchPromise
     opencode.reconfigure(cfg, opencodeConfigDir, projectEnv)
     await opencode.start().catch((err) => {
       logger.warn('[boot] opencode.start() rejected', {

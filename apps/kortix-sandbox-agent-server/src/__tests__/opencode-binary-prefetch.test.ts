@@ -38,6 +38,16 @@ describe('OpenCode executable prefetch', () => {
     })
   })
 
+  test('does not open the executable when buffer allocation fails', async () => {
+    const missing = join(tmpdir(), 'kortix-opencode-prefetch-missing-buffer-target')
+
+    await expect(
+      prefetchExecutablePages(missing, undefined, () => {
+        throw new Error('synthetic allocation failure')
+      }),
+    ).rejects.toThrow('synthetic allocation failure')
+  })
+
   test('resolves and prefetches the binary once per supervisor', async () => {
     const fixture = await fixtureFile(1024)
     const marks: string[] = []
@@ -215,12 +225,14 @@ describe('OpenCode executable prefetch', () => {
     const main = await readFile(resolve(import.meta.dir, '..', 'main.ts'), 'utf8')
     const begin = main.indexOf('const opencodeBinaryPrefetchPromise')
     const repo = main.indexOf('const repoMaterializePromise')
+    const repoErrorBranch = main.indexOf('if (bootState.repoMaterializationError)')
     const cancelPrefetch = main.indexOf('opencode.cancelBinaryPrefetch()')
     const spawn = main.indexOf('await opencode.start()')
 
     expect(begin).toBeGreaterThan(-1)
     expect(begin).toBeLessThan(repo)
     expect(cancelPrefetch).toBeGreaterThan(repo)
+    expect(cancelPrefetch).toBeLessThan(repoErrorBranch)
     expect(cancelPrefetch).toBeLessThan(spawn)
     expect(main).not.toContain('await opencodeBinaryPrefetchPromise')
   })

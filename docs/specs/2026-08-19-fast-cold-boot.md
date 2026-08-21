@@ -40,8 +40,19 @@ shared default template. Each image adds the exact default-branch tip at
 missing, stale, building, failed, or unavailable image uses the current
 shared-image and authenticated-clone path. The miss starts one deduplicated
 background bake for a later session. Managed-git pushes start the same bake
-without blocking the push. Custom-template project images remain available only
-through the legacy `KORTIX_WARM_SNAPSHOT_ENABLED=true` rollout.
+without blocking the push. In explicit FAST mode, a push prebuilds only the
+project's enabled provider pin. An unpinned project waits for session provider
+selection and then bakes only on that provider. The legacy WARM rollout keeps
+its existing multi-provider fanout. Custom-template project images remain
+available only through `KORTIX_WARM_SNAPSHOT_ENABLED=true`.
+
+Only a default-agent branch workspace can use a project image. Read-only,
+runtime, meta, and persistent monitor workloads continue to use the shared
+image. A Platinum external-template pin is used only when its provider and
+snapshot name match the resolved image exactly. A missing project image removes
+only that exact `kortix-ppwarm-*` image, then re-resolves and boots the intact
+shared base. Standard-image recovery keeps its existing slug-based rebuild
+path.
 
 After a managed project seed completes, the API stores the verified bundle in
 `projects.metadata.git.fast_boot`. A later session validates the cached SHA
@@ -57,11 +68,26 @@ identical scaffold trees with different commit metadata. The bundle and parent
 payload share the existing 24 KiB limit. Cache version 2 invalidates earlier
 entries that do not contain the parent payload.
 
-Sessions continue to use the standard sandbox image. The standard image
+Project-image misses and ineligible workloads continue to use the standard
+sandbox image. The standard image
 fingerprint includes `packages/starter`, because that directory produces the
 baked `/opt/kortix/scaffold.git`. A starter change therefore forces a full image
 rebuild. It cannot use the agent-only image swap. This keeps the baked scaffold
 tree equal to the bundle prerequisite tree.
+
+The API stages the pinned checkout outside the provider build. It scrubs Git
+credentials, archives `.git` once, and removes the duplicate `.git` directory
+from the staged working tree. The image extracts that archive directly into
+`/workspace`; the final root filesystem contains no second tar copy. OpenCode
+indexes the project tree during the build with the canonical Kortix config.
+Repository-controlled `.kortix/opencode` plugins and tools remain hidden during
+this build step. Git reset and clean restore the exact checkout afterward.
+
+FAST builds do not run the legacy org-wide on-bake `ppwarm` reaper. Provider
+organizations can be shared by independent dev, staging, and production data
+planes, so one database cannot prove that another environment no longer uses an
+image. Daytona quota cleanup also blocks every `ppwarm` deletion when active-pin
+lookup fails. Independently safe non-project-image cleanup can continue.
 
 The daemon uses the hints as follows:
 
@@ -72,7 +98,12 @@ The daemon uses the hints as follows:
 - Clone credentials resolve only if a network fetch is required.
 - A missing SHA, a different base tip, an imported repository, or a local
   scaffold failure uses the existing shallow-clone fallback.
-- Restarted sessions keep the existing remote-branch fetch behavior.
+- In-place restarts keep the existing workspace and branch behavior.
+- Replacement project-image boots restore the remote session branch once.
+- A transient restore fetch fails closed. It never adopts a base-only local
+  branch that could hide remote session commits.
+- A genuinely absent remote session branch keeps the existing local-branch
+  fallback.
 
 The bundle is transported with the sandbox creation environment. The daemon
 recomputes the parent commit SHA before it writes the object. It also verifies
@@ -92,7 +123,8 @@ bakes. This explicit value overrides `KORTIX_WARM_SNAPSHOT_ENABLED=true`, so
 rollback requires one switch. When the FAST flag is absent, the legacy WARM flag
 preserves its prior behavior. The daemon uses the previous shared-image and
 network-clone path after rollback. Existing content-addressed images remain
-inert until the existing quota reaper removes them.
+inert. Provider-specific maintenance can remove them later. FAST rollback does
+not run an unsafe provider-wide deletion.
 
 ## Verification
 

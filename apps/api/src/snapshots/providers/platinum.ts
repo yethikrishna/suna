@@ -774,6 +774,27 @@ export class PlatinumAdapter implements SandboxProviderAdapter {
     }
   }
 
+  async findFirstActiveSnapshot(names: readonly string[]): Promise<string | null> {
+    if (!isPlatinumConfigured() || names.length === 0) return null;
+    const priorities = new Map(names.map((name, index) => [name, index]));
+    let bestIndex: number | null = null;
+    const { early } = await paginateTemplates<string>((page) => {
+      for (const template of page) {
+        const index = template.name ? priorities.get(template.name) : undefined;
+        if (
+          index !== undefined &&
+          normalizeExistingProviderState(template.state) === 'active' &&
+          (bestIndex === null || index < bestIndex)
+        ) {
+          bestIndex = index;
+        }
+      }
+      // No later page can improve on the caller's first candidate.
+      return bestIndex === 0 ? names[0] : undefined;
+    });
+    return early ?? (bestIndex === null ? null : names[bestIndex]!);
+  }
+
   async prepareSnapshot(snapshotName: string): Promise<void> {
     if (!this.isPreparationEnabled() || !isPlatinumConfigured()) return;
     const template = await findTemplateByName(snapshotName);

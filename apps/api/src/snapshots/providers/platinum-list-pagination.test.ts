@@ -148,6 +148,61 @@ describe('FIX-C — listSnapshots returns the FULL paginated set', () => {
   });
 });
 
+describe('findFirstActiveSnapshot', () => {
+  test('stops after page one when the highest-priority candidate is active', async () => {
+    const scoped = 'kpp2-scoped';
+    const page0 = [tpl(scoped), ...Array.from({ length: 49 }, (_, i) => tpl(`filler-${i}`))];
+    const requests: number[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      requests.push(offsetOf(input));
+      return jsonResponse(page0);
+    }) as unknown as typeof fetch;
+
+    await expect(
+      platinumProvider.findFirstActiveSnapshot([scoped, 'unscoped', 'legacy']),
+    ).resolves.toBe(scoped);
+    expect(requests).toEqual([0]);
+  });
+
+  test('selects the highest-priority active candidate after one complete pagination pass', async () => {
+    const scoped = 'kortix-ppwarm-scoped';
+    const unscoped = 'kortix-ppwarm-unscoped';
+    const legacy = 'kortix-ppwarm-legacy';
+    const page0 = [tpl(unscoped), ...Array.from({ length: 49 }, (_, i) => tpl(`filler-${i}`))];
+    const page1 = [tpl(scoped), tpl(legacy)];
+    const requests: number[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const offset = offsetOf(input);
+      requests.push(offset);
+      return jsonResponse(offset === 0 ? page0 : page1);
+    }) as unknown as typeof fetch;
+
+    await expect(
+      platinumProvider.findFirstActiveSnapshot([scoped, unscoped, legacy]),
+    ).resolves.toBe(scoped);
+    expect(requests).toEqual([0, 50]);
+  });
+
+  test('checks every candidate with one listing pass when only the lowest-priority name exists', async () => {
+    const scoped = 'kortix-ppwarm-scoped';
+    const unscoped = 'kortix-ppwarm-unscoped';
+    const legacy = 'kortix-ppwarm-legacy';
+    const page0 = Array.from({ length: 50 }, (_, i) => tpl(`filler-${i}`));
+    const page1 = [tpl(legacy)];
+    const requests: number[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const offset = offsetOf(input);
+      requests.push(offset);
+      return jsonResponse(offset === 0 ? page0 : page1);
+    }) as unknown as typeof fetch;
+
+    await expect(
+      platinumProvider.findFirstActiveSnapshot([scoped, unscoped, legacy]),
+    ).resolves.toBe(legacy);
+    expect(requests).toEqual([0, 50]);
+  });
+});
+
 describe('deleteSnapshot removes every exact-name Platinum template', () => {
   test('deletes exact-name duplicates across every page', async () => {
     const target = 'kortix-ppwarm-project';

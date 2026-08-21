@@ -128,6 +128,12 @@ export interface SandboxProviderAdapter {
   getSnapshotState(snapshotName: string): Promise<ProviderState>;
 
   /**
+   * Optional batch lookup for ordered snapshot candidates. Returns the first
+   * active name in caller order, or null when none is active.
+   */
+  findFirstActiveSnapshot?(names: readonly string[]): Promise<string | null>;
+
+  /**
    * Optional: prepare an already-active snapshot for the provider's fastest
    * launch path. Providers without a separate preparation phase omit it.
    * Implementations may throw; reuse callers must preserve the usable snapshot.

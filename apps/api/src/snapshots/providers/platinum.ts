@@ -545,8 +545,12 @@ export class UploadUrlRejectedError extends Error {
   }
 }
 
-class PlatinumAdapter implements SandboxProviderAdapter {
+export class PlatinumAdapter implements SandboxProviderAdapter {
   readonly id = 'platinum' as const;
+
+  constructor(
+    private readonly materializeTemplate: (externalId: string) => Promise<unknown> = materializeReadyTemplate,
+  ) {}
 
   isConfigured(): boolean {
     return isPlatinumConfigured();
@@ -648,7 +652,7 @@ class PlatinumAdapter implements SandboxProviderAdapter {
       // poll THAT id (never the truncated name list) — see waitForActive.
       const externalId = requireExternalTemplateId(registered?.id, `from-build for ${input.snapshotName}`);
       await waitForActive(input.snapshotName, tap, externalId);
-      await materializeReadyTemplate(externalId).catch((error) => {
+      await this.materializeTemplate(externalId).catch((error) => {
         console.warn(
           `[snapshots] platinum materialize ${externalId}: fail-open guard caught ` +
           `${error instanceof Error ? error.message : String(error)}`,
@@ -707,7 +711,7 @@ class PlatinumAdapter implements SandboxProviderAdapter {
       // the name list.
       const externalId = requireExternalTemplateId(patched?.id, `from-patch for ${newSnapshotName}`);
       await waitForActive(newSnapshotName, undefined, externalId);
-      await materializeReadyTemplate(externalId).catch((error) => {
+      await this.materializeTemplate(externalId).catch((error) => {
         console.warn(
           `[snapshots] platinum materialize ${externalId}: fail-open guard caught ` +
           `${error instanceof Error ? error.message : String(error)}`,

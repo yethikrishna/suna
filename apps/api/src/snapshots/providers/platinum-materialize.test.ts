@@ -175,7 +175,7 @@ describe('Platinum template materialization', () => {
       ['agent swap', swap, 'await waitForActive(newSnapshotName, undefined, externalId);'],
     ] as const) {
       const waitIndex = body.indexOf(waitCall);
-      const materializeIndex = body.indexOf('await materializeReadyTemplate(externalId).catch(');
+      const materializeIndex = body.indexOf('await this.materializeTemplate(externalId).catch(');
       const returnIndex = body.indexOf('return { externalTemplateId: externalId };');
 
       expect(waitIndex, `${flow} readiness call`).toBeGreaterThan(-1);

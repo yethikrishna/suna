@@ -101,6 +101,7 @@ import {
 import { canOverride, resolveSessionOrigin } from './session-origin';
 import { sessionCreatedAuditAttribution } from './session-audit';
 import {
+  projectImageAllowedForSession,
   resolveSessionSandboxSlug,
   workspaceModeAllowsFullRepository,
 } from './session-sandbox-metadata';
@@ -1602,6 +1603,7 @@ export async function createProjectSession(input: {
         projectId,
         userId,
         agentName,
+        allowProjectImage: projectImageAllowedForSession(agentName, workspaceMode),
         provider: providerName,
         metadata: { session_id: sessionId, project_id: projectId, ...(input.metadata ?? {}) },
         initialTurn,

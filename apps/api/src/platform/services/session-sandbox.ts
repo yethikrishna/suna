@@ -297,6 +297,8 @@ export async function provisionSessionSandbox(opts: {
   initialTurn?: PreparedInitialSandboxTurn | null;
   /** Project metadata, used for per-project experimental gates. */
   projectMetadata?: unknown;
+  /** False for meta/read/runtime sessions that may not receive repository bytes. */
+  allowProjectImage?: boolean;
   /**
    * Extra env vars injected into the sandbox at provider create-time. These
    * land in the Daytona snapshot's environment so its boot script can read
@@ -356,6 +358,7 @@ export async function provisionSessionSandbox(opts: {
           accountId,
           source: 'session-start',
           provider: targetProvider,
+          allowProjectImage: opts.allowProjectImage,
         });
 
   // Kick image resolution off NOW, in parallel with the token round-trip below.

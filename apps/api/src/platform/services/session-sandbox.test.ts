@@ -492,6 +492,19 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     });
   });
 
+  test('forwards the restricted-workspace project-image denial into image resolution', async () => {
+    const opened = waitFor((resolve) => {
+      onComputeOpened = resolve;
+    });
+
+    await provisionSessionSandbox({ ...baseOpts(), allowProjectImage: false });
+    await opened;
+
+    expect(imageRequests).toHaveLength(1);
+    expect(imageRequests[0]?.allowProjectImage).toBe(false);
+    expect(providerCreateOpts[0]?.snapshot).toBe('snap-test-1');
+  });
+
   test('a per-project image bypasses an older activated template id', async () => {
     activeRouting = {
       activeProvider: 'platinum',

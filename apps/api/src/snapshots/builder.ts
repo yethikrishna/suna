@@ -210,6 +210,8 @@ export async function ensureSandboxImage(
     slug?: string;
     accountId?: string;
     source?: SnapshotBuildSource;
+    /** False when the session may not receive full repository bytes. */
+    allowProjectImage?: boolean;
     /**
      * The provider the SESSION will run on (its sandbox provider). Build there,
      * not on the template row's last-built provider — otherwise a template built
@@ -238,6 +240,7 @@ export async function ensureSandboxImage(
   // session on this commit boots warm; this boot never blocks on the bake and
   // falls through to the normal cold path when no warm image exists yet.
   if (
+    opts.allowProjectImage !== false &&
     perProjectColdImageEnabled() &&
     (opts.source ?? 'session-start') === 'session-start' &&
     perProjectWarmEligible(template, buildProvider)

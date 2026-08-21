@@ -28,4 +28,22 @@ describe('session fast boot Git hint cache', () => {
     expect(fastBootBlock).toContain('clearTimeout(fastBootHintTimeout)');
     expect(fastBootBlock).toContain(': Promise.resolve(undefined)');
   });
+
+  test('gates every session allocation before a full-repository image can be selected', async () => {
+    const [sessions, allocator, actions, shared, sandbox] = await Promise.all([
+      sessionsSource(),
+      Bun.file(new URL('./session-runtime-allocator.ts', import.meta.url)).text(),
+      Bun.file(new URL('../session-lifecycle/actions.ts', import.meta.url)).text(),
+      Bun.file(new URL('../routes/shared.ts', import.meta.url)).text(),
+      Bun.file(new URL('../../platform/services/session-sandbox.ts', import.meta.url)).text(),
+    ]);
+
+    expect(sessions).toContain(
+      'allowProjectImage: projectImageAllowedForSession(agentName, workspaceMode)',
+    );
+    expect(actions).toContain('allowProjectImage: projectImageAllowedForSession(');
+    expect(shared).toContain('allowProjectImage: projectImageAllowedForSession(');
+    expect(allocator).toContain('allowProjectImage: input.allowProjectImage');
+    expect(sandbox).toContain('allowProjectImage: opts.allowProjectImage');
+  });
 });

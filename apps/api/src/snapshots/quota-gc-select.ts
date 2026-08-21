@@ -143,6 +143,12 @@ export interface SelectInput {
    * table); defaults to empty so pure-unit callers keep the prior behavior.
    */
   pinnedImages?: ReadonlySet<string>;
+  /**
+   * False when the IO layer could not load the complete active-pin set. Every
+   * ppwarm image is then excluded from this pass. Non-ppwarm namespaces retain
+   * their independent reference and freshness protections.
+   */
+  ppwarmPinProtectionAvailable?: boolean;
   now: number;
 }
 
@@ -221,6 +227,7 @@ function byFreshestFirst(a: SnapshotLike, b: SnapshotLike): number {
 export function selectSnapshotsToReap(input: SelectInput): SelectResult {
   const { all, referenced, now } = input;
   const pinned = input.pinnedImages ?? new Set<string>();
+  const ppwarmPinProtectionAvailable = input.ppwarmPinProtectionAvailable ?? true;
 
   const orgTotal = all.length;
   const managed = all.filter((s) => isManaged(s.name));
@@ -240,7 +247,12 @@ export function selectSnapshotsToReap(input: SelectInput): SelectResult {
   // and NEVER a live pinned image of any project (FIX-K-lite: guards a proj8
   // collision from deleting another project's active cache; matched by name OR id).
   const pool = managed.filter(
-    (s) => !referenced.has(s.name) && !IN_FLIGHT_STATES.has(s.state) && !pinned.has(s.name) && !pinned.has(s.id),
+    (s) =>
+      !referenced.has(s.name) &&
+      !IN_FLIGHT_STATES.has(s.state) &&
+      !pinned.has(s.name) &&
+      !pinned.has(s.id) &&
+      (ppwarmPinProtectionAvailable || !s.name.startsWith(PPWARM_PREFIX)),
   );
 
   const candidates: ReapCandidate[] = [];

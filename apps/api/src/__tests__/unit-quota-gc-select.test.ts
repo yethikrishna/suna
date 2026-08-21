@@ -309,4 +309,21 @@ describe('selectSnapshotsToReap — FIX-K-lite pinned-image guard', () => {
     const guarded = selectSnapshotsToReap({ all, referenced: new Set(), pinnedImages: new Set(['ext-tpl-123']), now: NOW });
     expect(guarded.doomed.map((d) => d.snapshot.name)).not.toContain(pinnedById.name);
   });
+
+  it('excludes every ppwarm candidate when pin protection is unavailable', () => {
+    const ppwarm = ppw('c0333abe', 'ffffffffffff', 30, { state: 'error' });
+    const standard = snap('kortix-default-broken', { state: 'error' });
+    const all = padToOrgSize([ppwarm, standard], QUOTA_GC_ORG_HIGH_WATER);
+    const result = selectSnapshotsToReap({
+      all,
+      referenced: new Set(),
+      pinnedImages: new Set(),
+      ppwarmPinProtectionAvailable: false,
+      now: NOW,
+    });
+
+    expect(result.doomed.map((candidate) => candidate.snapshot.name)).toEqual([
+      standard.name,
+    ]);
+  });
 });

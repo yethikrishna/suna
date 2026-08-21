@@ -518,6 +518,36 @@ async function markSessionCheckoutAdopted(target: string, branchName: string | u
   }
 }
 
+async function establishBaseRefsFromBakedHead(
+  target: string,
+  base: string,
+  bakedHead: string,
+): Promise<void> {
+  const localBaseRef = `refs/heads/${base}`
+  const remoteBaseRef = `refs/remotes/origin/${base}`
+  const remoteHeadRef = 'refs/remotes/origin/HEAD'
+  const commands: Array<{ args: string[]; action: string }> = [
+    { args: ['update-ref', localBaseRef, bakedHead], action: `set ${localBaseRef}` },
+    { args: ['update-ref', remoteBaseRef, bakedHead], action: `set ${remoteBaseRef}` },
+    { args: ['symbolic-ref', remoteHeadRef, remoteBaseRef], action: `set ${remoteHeadRef}` },
+    {
+      args: ['branch', `--set-upstream-to=origin/${base}`, '--', base],
+      action: `track origin/${base} from ${base}`,
+    },
+  ]
+  for (const command of commands) {
+    const result = await execGit(['-C', target, ...command.args])
+    if (result.code !== 0) {
+      throw new Error(`failed to ${command.action}: ${result.stderr || result.stdout}`)
+    }
+  }
+  logger.info('[git] established base refs from baked checkout', {
+    target,
+    base,
+    head: bakedHead,
+  })
+}
+
 /**
  * Remove a STALE git lock before a checkout. A `.git/index.lock` left behind by
  * a git process that crashed or was killed mid-op (e.g. the daemon was OOM-killed
@@ -749,6 +779,9 @@ export async function materializeRepo(cfg: Config): Promise<void> {
       logger.info('[git] using baked repo checkout (warm)', { target, head: bakedHead })
       const setUrl = await execGit(['-C', target, 'remote', 'set-url', 'origin', cfg.repoUrl])
       if (setUrl.code !== 0) throw new Error(`git remote set-url failed: ${setUrl.stderr}`)
+      if (cfg.branchName && cfg.sessionFresh && !adoption.adopted && cfg.baseSha === bakedHead) {
+        await establishBaseRefsFromBakedHead(target, base, bakedHead)
+      }
       if (cfg.branchName) await checkoutLocalSessionBranch(target, cfg.branchName)
       await configureRepoGitIdentity(cfg, target)
       if (!adoption.markerMatches) await markSessionCheckoutAdopted(target, cfg.branchName)

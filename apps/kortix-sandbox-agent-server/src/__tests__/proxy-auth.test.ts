@@ -141,6 +141,35 @@ function gitOutput(args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv
   }).trim()
 }
 
+function createDetachedWarmCheckout(prefix: string): {
+  root: string
+  remote: string
+  seed: string
+  target: string
+  baseSha: string
+} {
+  const root = mkdtempSync(join(tmpdir(), prefix))
+  const remote = join(root, 'remote.git')
+  const seed = join(root, 'seed')
+  const target = join(root, 'workspace')
+  git(['init', '--bare', remote])
+  mkdirSync(seed)
+  git(['init', '-b', 'main'], seed)
+  writeFileSync(join(seed, 'README.md'), 'base\n')
+  git(['add', 'README.md'], seed)
+  git(['-c', 'user.email=test@kortix.dev', '-c', 'user.name=Kortix Test', 'commit', '-m', 'base'], seed)
+  git(['remote', 'add', 'origin', remote], seed)
+  git(['push', '-u', 'origin', 'main'], seed)
+  git(['symbolic-ref', 'HEAD', 'refs/heads/main'], remote)
+  const baseSha = gitOutput(['-C', seed, 'rev-parse', 'HEAD'])
+  mkdirSync(target)
+  git(['init'], target)
+  git(['fetch', '--depth', '1', remote, baseSha], target)
+  git(['checkout', '--detach', 'FETCH_HEAD'], target)
+  git(['remote', 'add', 'origin', remote], target)
+  return { root, remote, seed, target, baseSha }
+}
+
 describe('daemon proxy auth gate', () => {
   beforeEach(() => {
     // Process-global caches reset between tests so each one observes its
@@ -445,6 +474,87 @@ describe('daemon proxy auth gate', () => {
       globalThis.fetch = originalFetch
       __setScaffoldRepoPathForTests()
       rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('establishes base refs and tracking from the validated baked HEAD on first adoption', async () => {
+    const fixture = createDetachedWarmCheckout('kortix-first-adoption-refs-')
+    try {
+      await materializeRepo(baseConfig({
+        autoClone: true,
+        projectTarget: fixture.target,
+        repoUrl: fixture.remote,
+        defaultBranch: 'main',
+        branchName: 'session-first',
+        sessionFresh: true,
+        baseSha: fixture.baseSha,
+      }))
+
+      expect(gitOutput(['-C', fixture.target, 'rev-parse', 'refs/heads/main'])).toBe(fixture.baseSha)
+      expect(gitOutput(['-C', fixture.target, 'rev-parse', 'refs/remotes/origin/main'])).toBe(fixture.baseSha)
+      expect(gitOutput(['-C', fixture.target, 'symbolic-ref', 'refs/remotes/origin/HEAD'])).toBe(
+        'refs/remotes/origin/main',
+      )
+      expect(gitOutput(['-C', fixture.target, 'config', '--local', '--get', 'branch.main.remote'])).toBe(
+        'origin',
+      )
+      expect(gitOutput(['-C', fixture.target, 'config', '--local', '--get', 'branch.main.merge'])).toBe(
+        'refs/heads/main',
+      )
+      expect(gitOutput(['-C', fixture.target, 'rev-parse', '--abbrev-ref', 'HEAD'])).toBe('session-first')
+      expect(gitOutput(['-C', fixture.target, 'diff', '--name-only', 'main'])).toBe('')
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not rewrite base refs or tracking on a marker-backed restart', async () => {
+    const fixture = createDetachedWarmCheckout('kortix-restart-base-refs-')
+    const cfg = baseConfig({
+      autoClone: true,
+      projectTarget: fixture.target,
+      repoUrl: fixture.remote,
+      defaultBranch: 'main',
+      branchName: 'session-restart',
+      sessionFresh: true,
+      baseSha: fixture.baseSha,
+    })
+    try {
+      await materializeRepo(cfg)
+      writeFileSync(join(fixture.target, 'agent.txt'), 'session work\n')
+      git(['-C', fixture.target, 'add', 'agent.txt'])
+      git(['-C', fixture.target, 'commit', '-m', 'session work'])
+      const sessionTip = gitOutput(['-C', fixture.target, 'rev-parse', 'HEAD'])
+
+      writeFileSync(join(fixture.seed, 'advanced.txt'), 'advanced base\n')
+      git(['add', 'advanced.txt'], fixture.seed)
+      git(['-c', 'user.email=test@kortix.dev', '-c', 'user.name=Kortix Test', 'commit', '-m', 'advance'], fixture.seed)
+      const advancedSha = gitOutput(['-C', fixture.seed, 'rev-parse', 'HEAD'])
+      git(['push', 'origin', 'main'], fixture.seed)
+      git(['-C', fixture.target, 'fetch', 'origin', 'main'])
+      git(['-C', fixture.target, 'update-ref', 'refs/heads/main', advancedSha])
+      git(['-C', fixture.target, 'update-ref', 'refs/remotes/origin/main', advancedSha])
+      git(['-C', fixture.target, 'update-ref', 'refs/remotes/origin/other', advancedSha])
+      git(['-C', fixture.target, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/other'])
+      git(['-C', fixture.target, 'config', '--local', 'branch.main.remote', 'custom-origin'])
+      git(['-C', fixture.target, 'config', '--local', 'branch.main.merge', 'refs/heads/trunk'])
+
+      await materializeRepo(cfg)
+
+      expect(gitOutput(['-C', fixture.target, 'rev-parse', 'HEAD'])).toBe(sessionTip)
+      expect(gitOutput(['-C', fixture.target, 'rev-parse', 'refs/heads/main'])).toBe(advancedSha)
+      expect(gitOutput(['-C', fixture.target, 'rev-parse', 'refs/remotes/origin/main'])).toBe(advancedSha)
+      expect(gitOutput(['-C', fixture.target, 'symbolic-ref', 'refs/remotes/origin/HEAD'])).toBe(
+        'refs/remotes/origin/other',
+      )
+      expect(gitOutput(['-C', fixture.target, 'config', '--local', '--get', 'branch.main.remote'])).toBe(
+        'custom-origin',
+      )
+      expect(gitOutput(['-C', fixture.target, 'config', '--local', '--get', 'branch.main.merge'])).toBe(
+        'refs/heads/trunk',
+      )
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true })
     }
   })
 

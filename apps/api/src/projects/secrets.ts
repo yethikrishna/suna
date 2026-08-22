@@ -156,6 +156,29 @@ export async function writeSharedProjectSecret(input: {
     });
 }
 
+/** Lock a legacy runtime secret to the server-side connector boundary. */
+export async function confineSharedProjectSecretToConnector(
+  projectId: string,
+  identifier: string,
+): Promise<void> {
+  await db
+    .update(projectSecrets)
+    .set({
+      scope: 'connector',
+      strategy: 'broker',
+      consumer: 'connector',
+      strategyLocked: true,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(projectSecrets.projectId, projectId),
+        eq(projectSecrets.identifier, identifier),
+        isNull(projectSecrets.ownerUserId),
+      ),
+    );
+}
+
 /**
  * Decrypted KEY->value map of the project's SHARED runtime secrets
  * (owner_user_id IS NULL). Platform-reserved KORTIX_* rows are excluded so

@@ -87,4 +87,28 @@ describe('ComputeNodeChannelHub', () => {
     await response.body!.cancel('browser left')
     expect(JSON.parse(socket.sent.at(-1)!).type).toBe('stream.cancel')
   })
+
+  test('relays a bidirectional WebSocket through the connected node', async () => {
+    const events: string[] = []
+    const hub = new ComputeNodeChannelHub(async (nodeId) => ({ nodeId, externalId: 'ext-1' }))
+    const socket = new FakeSocket()
+    hub.open(socket)
+    await hub.message(socket, JSON.stringify({ type: 'node.auth', node_id: 'node-1', token: 'valid' }))
+    const key = JSON.parse(socket.sent[0]!).signing_key as string
+    const relay = await hub.connectWebSocketByExternalId('ext-1', 8000, '/pty/1', { authorization: 'Bearer key' }, {
+      open: () => events.push('open'),
+      message: (data) => events.push(Buffer.from(data).toString()),
+      close: (code, reason) => events.push(`${code}:${reason}`),
+    })
+    const open = JSON.parse(socket.sent[1]!)
+    expect(open).toMatchObject({ type: 'socket.open', port: 8000, path: '/pty/1' })
+
+    await hub.message(socket, signed({ v: 1, type: 'socket.opened', stream_id: open.stream_id, seq: 0 }, key, 1))
+    await hub.message(socket, signed({ v: 1, type: 'socket.data', stream_id: open.stream_id, seq: 1, data: Buffer.from('reply').toString('base64'), binary: false, fin: true }, key, 2))
+    expect(events).toEqual(['open', 'reply'])
+    relay.send('request')
+    expect(JSON.parse(socket.sent.at(-1)!).type).toBe('socket.data')
+    relay.close(1000, 'done')
+    expect(JSON.parse(socket.sent.at(-1)!).type).toBe('socket.close')
+  })
 })

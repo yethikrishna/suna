@@ -1648,7 +1648,7 @@ export async function resolvePreviewWsUpstream(opts: {
    *  override reads it (connectors/share.ts). REQUIRED, same reasoning. */
   boundCredentialSessionId: string | null;
 }): Promise<
-  | { ok: true; url: string; headers: Record<string, string> }
+  | { ok: true; externalId: string; port: number; path: string; headers: Record<string, string> }
   | { ok: false; status: number; message: string }
 > {
   const { sandboxId, userId, remainingPath, queryString } = opts;
@@ -1658,12 +1658,7 @@ export async function resolvePreviewWsUpstream(opts: {
   const record = await loadSandbox(sandboxId);
   if (!record) return { ok: false, status: 404, message: 'sandbox not found' };
 
-  const ingressRequest = {
-    port: opts.upstreamPort,
-    path: remainingPath,
-    transport: 'websocket' as const,
-  };
-  const upstreamPort = routeSandboxIngress(record, ingressRequest).effectivePort;
+  const upstreamPort = opts.upstreamPort;
 
   if (!(await canAccessPreviewSandbox({ previewSandboxId: sandboxId, userId }))) {
     return { ok: false, status: 403, message: 'not authorized' };
@@ -1694,31 +1689,14 @@ export async function resolvePreviewWsUpstream(opts: {
     return { ok: false, status: 503, message: 'sandbox not ready' };
   }
 
-  const ingress = await resolveSandboxIngress(record, ingressRequest);
-  const previewUrl = ingress.url;
-  const wsBase = previewUrl
-    .replace(/\/$/, '')
-    .replace(/^http:/i, 'ws:')
-    .replace(/^https:/i, 'wss:');
+  if (!record.externalId) return { ok: false, status: 503, message: 'sandbox node is unavailable' };
   const headers = await buildSandboxUpstreamHeaders({
     sandboxId,
     userId,
     serviceKey: record.serviceKey,
-    providerHeaders: ingress.headers,
+    providerHeaders: {},
   });
-
-  const upstreamUrl = new URL(wsBase + remainingPath + queryString);
-  if (ingress.websocket?.userContextQueryParam) {
-    const signedContext = headers[KORTIX_USER_CONTEXT_HEADER];
-    if (signedContext) {
-      upstreamUrl.searchParams.set(ingress.websocket.userContextQueryParam, signedContext);
-    }
-  }
-  for (const [key, value] of Object.entries(ingress.websocket?.queryDefaults ?? {})) {
-    if (!upstreamUrl.searchParams.has(key)) upstreamUrl.searchParams.set(key, value);
-  }
-
-  return { ok: true, url: upstreamUrl.toString(), headers };
+  return { ok: true, externalId: record.externalId, port: upstreamPort, path: remainingPath + queryString, headers };
 }
 
 // The largest body the proxy will accept, matching Bun's own default socket

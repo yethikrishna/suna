@@ -48,3 +48,24 @@ export function fetchComputeNode(
   const url = `http://127.0.0.1:${port}${path.startsWith('/') ? path : `/${path}`}`
   return computeNodeChannel.fetchByExternalId(externalId, port, new Request(url, init))
 }
+
+export function fetchComputeNodeById(
+  nodeId: string,
+  port: number,
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const url = `http://127.0.0.1:${port}${path.startsWith('/') ? path : `/${path}`}`
+  return computeNodeChannel.fetch(nodeId, port, new Request(url, init))
+}
+
+/** Open one loopback WebSocket through the sole outbound kortixd channel. */
+export function connectComputeNodeWebSocket(
+  externalId: string,
+  port: number,
+  path: string,
+  headers: Record<string, string>,
+  handlers: { open(): void; message(data: Uint8Array, binary: boolean): void; close(code: number, reason: string): void },
+) {
+  return computeNodeChannel.connectWebSocketByExternalId(externalId, port, path, headers, handlers)
+}

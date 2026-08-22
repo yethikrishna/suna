@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { parseNodeChannelFrame, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
 import { NodeStreamAgent, type PortPolicy } from './stream-agent'
+import { NodeSocketAgent } from './socket-agent'
 
 interface ChannelOptions {
   apiUrl: string
@@ -30,9 +31,11 @@ export class KortixNodeChannel {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private shuttingDown = false
   private readonly streams: NodeStreamAgent
+  private readonly sockets: NodeSocketAgent
 
   constructor(private readonly options: ChannelOptions) {
     this.streams = new NodeStreamAgent((frame) => this.sendSigned(frame), fetch, options.ports)
+    this.sockets = new NodeSocketAgent((frame) => this.sendSigned(frame), options.ports)
   }
 
   connect(): void {
@@ -47,6 +50,7 @@ export class KortixNodeChannel {
     this.socket.addEventListener('close', (event) => {
       this.key = null
       this.streams.disconnect()
+      this.sockets.disconnect()
       if (!this.shuttingDown && ![4001, 4003, 4004].includes((event as CloseEvent).code)) this.scheduleReconnect()
     })
     this.socket.addEventListener('error', () => { this.lastError = 'WebSocket connection error' })
@@ -57,6 +61,7 @@ export class KortixNodeChannel {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.socket?.close(1000, 'kortixd shutdown')
     this.streams.disconnect()
+    this.sockets.disconnect()
   }
 
   status() { return { connected: this.key !== null, lastError: this.lastError } }
@@ -82,7 +87,8 @@ export class KortixNodeChannel {
       const expectedBytes = Buffer.from(expected, 'hex')
       if (actualBytes.length !== expectedBytes.length || !timingSafeEqual(actualBytes, expectedBytes)) throw new Error('invalid channel signature')
       this.receiveNonce = nonce as number
-      await this.streams.handle(parseNodeChannelFrame(JSON.stringify(frame)))
+      const parsed = parseNodeChannelFrame(JSON.stringify(frame))
+      if (!this.sockets.handle(parsed)) await this.streams.handle(parsed)
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error)
     }

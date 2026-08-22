@@ -2,6 +2,7 @@
 export const NODE_CHANNEL_VERSION = 1 as const;
 export const NODE_CHANNEL_MAX_FRAME_BYTES = 256 * 1024;
 export const NODE_CHANNEL_MAX_WINDOW_BYTES = 4 * 1024 * 1024;
+export const NODE_CHANNEL_MAX_SOCKET_MESSAGE_BYTES = 16 * 1024 * 1024;
 
 type HeaderList = Array<[string, string]>;
 
@@ -31,7 +32,16 @@ export type NodeChannelFrame =
   | (FrameBase & { type: 'stream.response.data'; data: string })
   | (FrameBase & { type: 'stream.response.end' })
   | (FrameBase & { type: 'stream.cancel'; reason: string })
-  | (FrameBase & { type: 'stream.window'; credit: number });
+  | (FrameBase & { type: 'stream.window'; credit: number })
+  | (FrameBase & {
+      type: 'socket.open';
+      port: number;
+      path: string;
+      headers: HeaderList;
+    })
+  | (FrameBase & { type: 'socket.opened' })
+  | (FrameBase & { type: 'socket.data'; data: string; binary: boolean; fin: boolean })
+  | (FrameBase & { type: 'socket.close'; code: number; reason: string });
 
 const STREAM_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
@@ -45,6 +55,10 @@ const TYPES = new Set([
   'stream.response.end',
   'stream.cancel',
   'stream.window',
+  'socket.open',
+  'socket.opened',
+  'socket.data',
+  'socket.close',
 ]);
 
 function invalid(message: string): never {
@@ -111,11 +125,25 @@ export function parseNodeChannelFrame(raw: string): NodeChannelFrame {
     case 'stream.response.data':
       data(value.data);
       break;
+    case 'socket.data':
+      data(value.data);
+      if (typeof value.binary !== 'boolean') invalid('binary');
+      if (typeof value.fin !== 'boolean') invalid('fin');
+      break;
     case 'stream.cancel':
       if (typeof value.reason !== 'string' || value.reason.length > 256 || /[\r\n]/.test(value.reason)) invalid('reason');
       break;
     case 'stream.window':
       integer(value.credit, 'credit', 1, NODE_CHANNEL_MAX_WINDOW_BYTES);
+      break;
+    case 'socket.open':
+      integer(value.port, 'port', 1, 65_535);
+      if (typeof value.path !== 'string' || !value.path.startsWith('/') || value.path.length > 16_384) invalid('path');
+      value.headers = headers(value.headers);
+      break;
+    case 'socket.close':
+      integer(value.code, 'code', 1000, 4999);
+      if (typeof value.reason !== 'string' || value.reason.length > 123 || /[\r\n]/.test(value.reason)) invalid('reason');
       break;
   }
   return value as unknown as NodeChannelFrame;

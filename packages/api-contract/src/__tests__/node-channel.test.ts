@@ -71,4 +71,12 @@ describe('node channel stream frames', () => {
   test('rejects frames beyond the fixed wire ceiling', () => {
     expect(() => parseNodeChannelFrame('x'.repeat(NODE_CHANNEL_MAX_FRAME_BYTES + 1))).toThrow();
   });
+
+  test('accepts the complete WebSocket lifecycle and rejects missing fragment metadata', () => {
+    expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'socket.open', stream_id: STREAM_ID, seq: 0, port: 8000, path: '/pty/1', headers: [] })).type).toBe('socket.open');
+    expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'socket.opened', stream_id: STREAM_ID, seq: 0 })).type).toBe('socket.opened');
+    expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'socket.data', stream_id: STREAM_ID, seq: 1, data: 'YQ==', binary: false, fin: true })).type).toBe('socket.data');
+    expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'socket.close', stream_id: STREAM_ID, seq: 2, code: 1000, reason: '' })).type).toBe('socket.close');
+    expect(() => parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'socket.data', stream_id: STREAM_ID, seq: 1, data: 'YQ==', binary: false }))).toThrow('fin');
+  });
 });

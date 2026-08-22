@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_WINDOW_BYTES, parseNodeChannelFrame, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
+import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_SOCKET_MESSAGE_BYTES, NODE_CHANNEL_MAX_WINDOW_BYTES, parseNodeChannelFrame, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
 
 interface SocketLike { send(value: string): void; close(code?: number, reason?: string): void }
 interface AuthResult { nodeId: string; externalId?: string }
@@ -29,6 +29,30 @@ interface StreamState {
   responsePullPending: boolean
 }
 
+interface SocketState {
+  nodeId: string
+  sendSeq: number
+  receiveSeq: number
+  opened: boolean
+  onOpen(): void
+  onData(data: Uint8Array, binary: boolean): void
+  onClose(code: number, reason: string): void
+  receiveChunks: Buffer[]
+  receiveBytes: number
+  receiveBinary?: boolean
+}
+
+export interface ComputeNodeSocket {
+  send(data: string | Buffer | ArrayBuffer | Uint8Array): void
+  close(code?: number, reason?: string): void
+}
+
+export interface ComputeNodeSocketHandlers {
+  open(): void
+  message(data: Uint8Array, binary: boolean): void
+  close(code: number, reason: string): void
+}
+
 const CHUNK_BYTES = Math.floor((NODE_CHANNEL_MAX_FRAME_BYTES - 2048) * 3 / 4)
 
 function signature(key: string, nonce: number, payload: string): string {
@@ -40,6 +64,7 @@ export class ComputeNodeChannelHub {
   private readonly byNode = new Map<string, Connection>()
   private readonly externalToNode = new Map<string, string>()
   private readonly streams = new Map<string, StreamState>()
+  private readonly sockets = new Map<string, SocketState>()
 
   constructor(
     private readonly authenticate: Authenticate,
@@ -85,6 +110,11 @@ export class ComputeNodeChannelHub {
     this.byNode.delete(connection.nodeId)
     if (connection.externalId) this.externalToNode.delete(connection.externalId)
     for (const [id, stream] of this.streams) if (stream.nodeId === connection.nodeId) this.fail(id, stream, new Error(`Compute node ${connection.nodeId} disconnected`))
+    for (const [id, state] of this.sockets) {
+      if (state.nodeId !== connection.nodeId) continue
+      this.sockets.delete(id)
+      state.onClose(1012, 'compute node disconnected')
+    }
   }
 
   isConnected(nodeId: string): boolean { return this.byNode.has(nodeId) }
@@ -124,6 +154,56 @@ export class ComputeNodeChannelHub {
     return result
   }
 
+  async connectWebSocketByExternalId(
+    externalId: string,
+    port: number,
+    path: string,
+    headers: Record<string, string>,
+    handlers: ComputeNodeSocketHandlers,
+  ): Promise<ComputeNodeSocket> {
+    let nodeId = this.externalToNode.get(externalId)
+    if (!nodeId && this.resolveNodeId) {
+      nodeId = (await this.resolveNodeId(externalId)) ?? undefined
+      if (nodeId && this.byNode.has(nodeId)) this.externalToNode.set(externalId, nodeId)
+    }
+    if (!nodeId) throw new Error(`Compute node for ${externalId} is not connected`)
+    const connection = this.byNode.get(nodeId)
+    if (!connection) throw new Error(`Compute node ${nodeId} is not connected`)
+    const id = crypto.randomUUID()
+    const state: SocketState = {
+      nodeId,
+      sendSeq: 0,
+      receiveSeq: 0,
+      opened: false,
+      onOpen: handlers.open,
+      onData: handlers.message,
+      onClose: handlers.close,
+      receiveChunks: [],
+      receiveBytes: 0,
+    }
+    this.sockets.set(id, state)
+    this.sendFrame(connection, state, { v: 1, type: 'socket.open', stream_id: id, seq: 0, port, path, headers: Object.entries(headers) })
+    return {
+      send: (data) => {
+        if (!this.sockets.has(id)) throw new Error('Compute node socket is closed')
+        const bytes = typeof data === 'string' ? Buffer.from(data) : Buffer.from(data as ArrayBuffer)
+        if (bytes.byteLength === 0) {
+          this.sendFrame(connection, state, { v: 1, type: 'socket.data', stream_id: id, seq: 0, data: '', binary: typeof data !== 'string', fin: true })
+          return
+        }
+        for (let offset = 0; offset < bytes.byteLength; offset += CHUNK_BYTES) {
+          const chunk = bytes.subarray(offset, offset + CHUNK_BYTES)
+          this.sendFrame(connection, state, { v: 1, type: 'socket.data', stream_id: id, seq: 0, data: chunk.toString('base64'), binary: typeof data !== 'string', fin: offset + chunk.byteLength === bytes.byteLength })
+        }
+      },
+      close: (code = 1000, reason = '') => {
+        if (!this.sockets.has(id)) return
+        this.sendFrame(connection, state, { v: 1, type: 'socket.close', stream_id: id, seq: 0, code: sanitizeSocketCode(code), reason: reason.replace(/[\r\n]/g, ' ').slice(0, 123) })
+        this.sockets.delete(id)
+      },
+    }
+  }
+
   private async authenticateSocket(socket: SocketLike, raw: string): Promise<void> {
     this.pending.delete(socket)
     try {
@@ -147,6 +227,10 @@ export class ComputeNodeChannelHub {
   }
 
   private handleFrame(connection: Connection, frame: NodeChannelFrame): void {
+    if (frame.type.startsWith('socket.')) {
+      this.handleSocketFrame(connection, frame)
+      return
+    }
     const state = this.streams.get(frame.stream_id)
     if (!state || state.nodeId !== connection.nodeId) throw new Error('unknown node stream')
     if (frame.seq !== state.receiveSeq) throw new Error(`invalid node stream sequence: expected ${state.receiveSeq}, received ${frame.seq}`)
@@ -204,6 +288,37 @@ export class ComputeNodeChannelHub {
     }
   }
 
+  private handleSocketFrame(connection: Connection, frame: NodeChannelFrame): void {
+    const state = this.sockets.get(frame.stream_id)
+    if (!state || state.nodeId !== connection.nodeId) throw new Error('unknown node socket')
+    if (frame.seq !== state.receiveSeq) throw new Error(`invalid node socket sequence: expected ${state.receiveSeq}, received ${frame.seq}`)
+    state.receiveSeq++
+    if (frame.type === 'socket.opened') {
+      if (state.opened) throw new Error('duplicate node socket open')
+      state.opened = true
+      state.onOpen()
+    } else if (frame.type === 'socket.data') {
+      if (!state.opened) throw new Error('node socket data before open')
+      if (state.receiveBinary !== undefined && state.receiveBinary !== frame.binary) throw new Error('node socket message type changed between fragments')
+      const bytes = Buffer.from(frame.data, 'base64')
+      state.receiveBinary = frame.binary
+      state.receiveChunks.push(bytes)
+      state.receiveBytes += bytes.byteLength
+      if (state.receiveBytes > NODE_CHANNEL_MAX_SOCKET_MESSAGE_BYTES) throw new Error('node socket message exceeds limit')
+      if (frame.fin) {
+        state.onData(Buffer.concat(state.receiveChunks, state.receiveBytes), Boolean(state.receiveBinary))
+        state.receiveChunks = []
+        state.receiveBytes = 0
+        state.receiveBinary = undefined
+      }
+    } else if (frame.type === 'socket.close') {
+      this.sockets.delete(frame.stream_id)
+      state.onClose(frame.code, frame.reason)
+    } else {
+      throw new Error(`unexpected node socket frame ${frame.type}`)
+    }
+  }
+
   private async sendBody(connection: Connection, state: StreamState, id: string, body: ReadableStream<Uint8Array> | null): Promise<void> {
     if (body) {
       const reader = body.getReader()
@@ -230,7 +345,7 @@ export class ComputeNodeChannelHub {
     }
   }
 
-  private sendFrame(connection: Connection, state: StreamState, frame: NodeChannelFrame): void {
+  private sendFrame(connection: Connection, state: { sendSeq: number }, frame: NodeChannelFrame): void {
     frame.seq = state.sendSeq++
     const nonce = ++connection.sendNonce
     const payload = JSON.stringify(frame)
@@ -244,4 +359,8 @@ export class ComputeNodeChannelHub {
     state.controller?.error(error)
     if (!state.settled) state.reject(error)
   }
+}
+
+function sanitizeSocketCode(code: number): number {
+  return code >= 1000 && code <= 4999 && ![1004, 1005, 1006, 1015].includes(code) ? code : 4500
 }

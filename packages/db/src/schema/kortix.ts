@@ -1864,6 +1864,10 @@ export const computeNodes = kortixSchema.table(
     harnesses: jsonb('harnesses').default([]).$type<Array<Record<string, unknown>>>().notNull(),
     concurrency: integer('concurrency').default(1).notNull(),
     lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
+    relayOwnerId: text('relay_owner_id'),
+    relayOwnerInstance: text('relay_owner_instance'),
+    relayOwnerStartedAt: timestamp('relay_owner_started_at', { withTimezone: true }),
+    relayOwnerHeartbeatAt: timestamp('relay_owner_heartbeat_at', { withTimezone: true }),
     desiredManifest: jsonb('desired_manifest').default({}).$type<Record<string, unknown>>().notNull(),
     metadata: jsonb('metadata').default({}).$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -1978,6 +1982,34 @@ export const computeNodeDeviceAuthRequests = kortixSchema.table(
     foreignKey({ name: 'cn_device_auth_node_fk', columns: [table.nodeId], foreignColumns: [computeNodes.nodeId] }).onDelete('cascade'),
     uniqueIndex('compute_node_device_auth_code_unique').on(table.deviceCode),
     index('compute_node_device_auth_expiry_idx').on(table.expiresAt),
+  ],
+);
+
+/** Durable cross-instance forwarding for bounded compute-node capability RPC. */
+export const computeNodeRpcForwards = kortixSchema.table(
+  'compute_node_rpc_forwards',
+  {
+    requestId: uuid('request_id').defaultRandom().primaryKey(),
+    nodeId: uuid('node_id').notNull(),
+    accountId: uuid('account_id').notNull(),
+    requesterRelayOwnerId: text('requester_relay_owner_id').notNull(),
+    targetRelayOwnerId: text('target_relay_owner_id').notNull(),
+    status: text('status').default('pending').notNull(),
+    method: text('method').notNull(),
+    params: jsonb('params').default({}).$type<Record<string, unknown>>().notNull(),
+    result: jsonb('result'),
+    error: jsonb('error').$type<{ code?: number; message?: string }>(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    check('compute_node_rpc_forwards_status_check', sql`${table.status} IN ('pending', 'processing', 'completed', 'error')`),
+    foreignKey({ name: 'cn_rpc_forwards_node_fk', columns: [table.nodeId], foreignColumns: [computeNodes.nodeId] }).onDelete('cascade'),
+    foreignKey({ name: 'cn_rpc_forwards_account_fk', columns: [table.accountId], foreignColumns: [accounts.accountId] }).onDelete('cascade'),
+    index('compute_node_rpc_forwards_target_idx').on(table.targetRelayOwnerId, table.status),
+    index('compute_node_rpc_forwards_expiry_idx').on(table.expiresAt),
   ],
 );
 

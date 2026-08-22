@@ -11,7 +11,8 @@ import {
   createNodeEnrollmentToken,
   revokeNodeCredentials,
 } from '../../repositories/compute-node-credentials'
-import { computeNodeChannel } from '../../compute-nodes'
+import { assignComputeNode, computeNodeChannel, stopComputeNodeAssignment } from '../../compute-nodes'
+import { nodeRelayIsLive } from '../../compute-nodes/cluster-forwarder'
 import { createAccountToken } from '../../repositories/account-tokens'
 import { deriveKortixApiBase, proxyGitUrl } from '../../projects/lib/sessions'
 import { encryptEnrollment } from '../../compute-nodes/device-auth'
@@ -63,7 +64,7 @@ function serializeNode(row: typeof computeNodes.$inferSelect) {
     capabilities: row.capabilities,
     harnesses: row.harnesses,
     concurrency: row.concurrency,
-    connected: computeNodeChannel.isConnected(row.nodeId),
+    connected: computeNodeChannel.isConnected(row.nodeId) || nodeRelayIsLive(row),
     last_heartbeat_at: row.lastHeartbeatAt?.toISOString() ?? null,
     desired_manifest: row.desiredManifest,
     metadata: row.metadata,
@@ -243,7 +244,7 @@ export function registerComputeNodeRoutes(): void {
       await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.ACCOUNT_WRITE)
       const node = await loadAccountNode(accountId, nodeId)
       if (!node || !(await authorizeProject(c, accountId, node.projectId, 'manage'))) return c.json({ error: 'Not found' }, 404)
-      if (!computeNodeChannel.isConnected(nodeId)) return c.json({ error: 'Compute node is not connected' }, 409)
+      if (!computeNodeChannel.isConnected(nodeId) && !nodeRelayIsLive(node)) return c.json({ error: 'Compute node is not connected' }, 409)
       const body = await c.req.json()
       const [runtime] = await db.select({ session: projectSessions, project: projects }).from(projectSessions).innerJoin(projects, eq(projectSessions.projectId, projects.projectId)).where(and(eq(projectSessions.sessionId, body.session_id), eq(projectSessions.accountId, accountId))).limit(1)
       if (!runtime || !(await authorizeProject(c, accountId, runtime.session.projectId, 'manage'))) return c.json({ error: 'Session not found' }, 404)
@@ -272,7 +273,7 @@ export function registerComputeNodeRoutes(): void {
         secrets_revision: 'current', ports: body.ports ?? [8000], writable_roots: body.writable_roots ?? [],
         env: { KORTIX_CLI_TOKEN: sessionToken.secretKey, KORTIX_API_URL: deriveKortixApiBase() },
       }
-      void computeNodeChannel.assign(nodeId, assignment).catch(async (error) => {
+      void assignComputeNode(nodeId, assignment).catch(async (error) => {
         await db.update(computeNodeAssignments).set({ status: 'failed', metadata: { detail: error instanceof Error ? error.message : String(error) }, updatedAt: new Date() }).where(eq(computeNodeAssignments.assignmentId, inserted.assignmentId))
       })
       return c.json(serializeAssignment(inserted), 202)
@@ -301,9 +302,11 @@ export function registerComputeNodeRoutes(): void {
       const [assignment] = await db.select().from(computeNodeAssignments).where(and(eq(computeNodeAssignments.assignmentId, assignmentId), eq(computeNodeAssignments.nodeId, nodeId), eq(computeNodeAssignments.accountId, accountId))).limit(1)
       if (!assignment || !(await authorizeProject(c, accountId, assignment.projectId, 'manage'))) return c.json({ error: 'Not found' }, 404)
       if (!['assigned', 'ready', 'draining'].includes(assignment.status)) return c.json({ error: 'Assignment is not active' }, 409)
-      if (!computeNodeChannel.isConnected(nodeId)) return c.json({ error: 'Compute node is not connected' }, 409)
+      const node = await loadAccountNode(accountId, nodeId)
+      if (!node) return c.json({ error: 'Not found' }, 404)
+      if (!computeNodeChannel.isConnected(nodeId) && !nodeRelayIsLive(node)) return c.json({ error: 'Compute node is not connected' }, 409)
       const [updated] = await db.update(computeNodeAssignments).set({ status: 'draining', updatedAt: new Date() }).where(eq(computeNodeAssignments.assignmentId, assignmentId)).returning()
-      try { computeNodeChannel.stopAssignment(nodeId, assignmentId, 'release') }
+      try { await stopComputeNodeAssignment(nodeId, assignmentId, 'release') }
       catch (error) {
         await db.update(computeNodeAssignments).set({ status: assignment.status, updatedAt: new Date() }).where(eq(computeNodeAssignments.assignmentId, assignmentId))
         return c.json({ error: error instanceof Error ? error.message : String(error) }, 409)

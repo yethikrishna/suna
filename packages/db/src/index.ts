@@ -80,6 +80,7 @@ export {
   computeNodes,
   computeNodeAssignments,
   computeNodeDeviceAuthRequests,
+  computeNodeRpcForwards,
   computeNodeCredentials,
   computeNodeEnrollmentTokens,
   sessionSandboxStatusEnum,

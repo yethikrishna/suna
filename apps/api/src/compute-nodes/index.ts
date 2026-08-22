@@ -3,6 +3,7 @@ import { computeNodeAssignments, computeNodes, sessionSandboxes } from '@kortix/
 import { validateNodeCredential } from '../repositories/compute-node-credentials'
 import { db } from '../shared/db'
 import { ComputeNodeChannelHub } from './channel'
+import { assignComputeNodeAcrossCluster, relayOwnerPatch, rpcComputeNodeAcrossCluster, stopComputeNodeAssignmentAcrossCluster } from './cluster-forwarder'
 
 export const computeNodeChannel = new ComputeNodeChannelHub(
   async (nodeId, token, info) => {
@@ -22,6 +23,7 @@ export const computeNodeChannel = new ComputeNodeChannelHub(
       status: 'online',
       capabilities: info.capabilities,
       lastHeartbeatAt: new Date(),
+      ...relayOwnerPatch(),
       updatedAt: new Date(),
     }).where(eq(computeNodes.nodeId, nodeId))
     return { nodeId, externalId: node.allocationId ?? undefined }
@@ -50,6 +52,7 @@ export const computeNodeChannel = new ComputeNodeChannelHub(
         capabilities: info.capabilities,
         status: 'online',
         lastHeartbeatAt: new Date(),
+        ...relayOwnerPatch(),
         updatedAt: new Date(),
       })
       .where(eq(computeNodes.nodeId, nodeId))
@@ -74,7 +77,7 @@ export const computeNodeWsHandlers = {
   close(ws: { send(value: string): void; close(code?: number, reason?: string): void }) {
     const nodeId = computeNodeChannel.nodeIdForSocket(ws)
     computeNodeChannel.close(ws)
-    if (nodeId) void db.update(computeNodes).set({ status: 'offline', updatedAt: new Date() }).where(eq(computeNodes.nodeId, nodeId))
+    if (nodeId && !computeNodeChannel.isConnected(nodeId)) void db.update(computeNodes).set({ status: 'offline', relayOwnerId: null, relayOwnerInstance: null, relayOwnerStartedAt: null, relayOwnerHeartbeatAt: null, updatedAt: new Date() }).where(and(eq(computeNodes.nodeId, nodeId), eq(computeNodes.relayOwnerId, (relayOwnerPatch().relayOwnerId))))
   },
 }
 
@@ -116,5 +119,13 @@ export function rpcComputeNode(
   params: Record<string, unknown>,
   timeoutMs?: number,
 ) {
-  return computeNodeChannel.rpc(nodeId, method, params, timeoutMs)
+  return rpcComputeNodeAcrossCluster(computeNodeChannel, nodeId, method, params, timeoutMs)
+}
+
+export function assignComputeNode(nodeId: string, assignment: import('@kortix/api-contract/node-channel').NodeAssignmentSpec, timeoutMs?: number) {
+  return assignComputeNodeAcrossCluster(computeNodeChannel, nodeId, assignment, timeoutMs)
+}
+
+export function stopComputeNodeAssignment(nodeId: string, assignmentId: string, reason: 'stop' | 'restart' | 'release' | 'drain') {
+  return stopComputeNodeAssignmentAcrossCluster(computeNodeChannel, nodeId, assignmentId, reason)
 }

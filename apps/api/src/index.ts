@@ -1406,6 +1406,9 @@ async function startReplicaServices() {
   warnIfPreviewOriginsMissing(appLogger);
   startAccessControlCache();
   startTunnelService();
+  const { computeNodeChannel } = await import('./compute-nodes');
+  const { startComputeNodeRpcForwarder } = await import('./compute-nodes/cluster-forwarder');
+  startComputeNodeRpcForwarder(computeNodeChannel);
   // Warm the runtime-settings cache BEFORE serving traffic so the admin-panel
   // toggles (warm_snapshot / provider_fallback) are honored from
   // request #1. Without this a fresh pod serves the cold-cache defaults for the
@@ -1536,6 +1539,8 @@ async function shutdown(signal: string) {
   stopModelPricing();
   runtimeModelCatalog.stop();
   stopTunnelService();
+  const { stopComputeNodeRpcForwarder } = await import('./compute-nodes/cluster-forwarder');
+  stopComputeNodeRpcForwarder();
   stopAccessControlCache();
   stopTmpReaper();
   // Flush observability data before exit. The audit queue is drained here

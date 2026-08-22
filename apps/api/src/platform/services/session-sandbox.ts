@@ -19,6 +19,7 @@ import { db } from '../../shared/db';
 import { PROVISIONING_SESSION_STATUSES } from '../../projects/lib/session-status';
 import { notifySessionProvisioningFailed } from '../../shared/session-failure-notifier';
 import { createApiKey } from '../../repositories/api-keys';
+import { rotateNodeCredential } from '../../repositories/compute-node-credentials';
 import { createAccountToken } from '../../repositories/account-tokens';
 import { ensureAgentServiceAccount } from '../../repositories/service-accounts';
 import {
@@ -493,8 +494,13 @@ export async function provisionSessionSandbox(opts: {
     return claimed;
   };
 
-  const [sandboxRows, sandboxKey, connectorToken, gatewayEntitled] = await Promise.all([
-    createOrClaimSandboxRow(),
+  const sandboxRowsPromise = createOrClaimSandboxRow();
+  const [sandboxRows, nodeCredential, sandboxKey, connectorToken, gatewayEntitled] = await Promise.all([
+    sandboxRowsPromise,
+    sandboxRowsPromise.then((rows) => {
+      if (rows.length === 0) throw new RuntimeIdentityConflictError(sandboxId);
+      return rotateNodeCredential(sandboxId, accountId);
+    }),
     createApiKey({
       sandboxId,
       accountId,
@@ -583,6 +589,9 @@ export async function provisionSessionSandbox(opts: {
       // (activeHost() resolves only the session token).
       KORTIX_SANDBOX_TOKEN: sandboxKey.secretKey,
       KORTIX_TOKEN: sandboxKey.secretKey,
+      // Node-only credential. This authenticates only the outbound kortixd
+      // channel and cannot call user, project, session, or sandbox routes.
+      KORTIX_NODE_TOKEN: nodeCredential.credential,
       // The stable logical node id. Provider allocation ids are assigned only
       // after create, so they cannot identify the outbound daemon handshake.
       KORTIX_COMPUTE_NODE_ID: sandbox.sandboxId,

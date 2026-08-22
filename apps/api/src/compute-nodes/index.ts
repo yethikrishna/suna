@@ -1,32 +1,21 @@
 import { eq } from 'drizzle-orm'
-import { computeNodeAssignments, computeNodes, sessionSandboxes } from '@kortix/db'
-import { validateSecretKey } from '../repositories/api-keys'
+import { computeNodes, sessionSandboxes } from '@kortix/db'
+import { validateNodeCredential } from '../repositories/compute-node-credentials'
 import { db } from '../shared/db'
 import { ComputeNodeChannelHub } from './channel'
 
 export const computeNodeChannel = new ComputeNodeChannelHub(
   async (nodeId, token, info) => {
-    const credential = await validateSecretKey(token)
-    if (!credential.isValid || credential.type !== 'sandbox' || credential.sandboxId !== nodeId) return null
-    const [sandbox] = await db
+    const credential = await validateNodeCredential(token, nodeId)
+    if (!credential) return null
+    const [node] = await db
       .select()
-      .from(sessionSandboxes)
-      .where(eq(sessionSandboxes.sandboxId, nodeId))
-      .limit(1)
-    if (!sandbox || sandbox.status === 'archived' || sandbox.status === 'error') return null
-    const [registered] = await db
-      .select({ status: computeNodes.status })
       .from(computeNodes)
       .where(eq(computeNodes.nodeId, nodeId))
       .limit(1)
-    if (registered?.status === 'disabled' || registered?.status === 'draining' || registered?.status === 'deleted') return null
-    await db.insert(computeNodes).values({
-      nodeId,
-      accountId: sandbox.accountId,
-      projectId: sandbox.projectId,
-      type: 'sandbox',
-      provider: sandbox.provider,
-      allocationId: sandbox.externalId,
+    if (!node || node.accountId !== credential.accountId) return null
+    if (node.status === 'disabled' || node.status === 'draining' || node.status === 'deleted') return null
+    await db.update(computeNodes).set({
       architecture: info.arch,
       operatingSystem: info.platform,
       daemonVersion: info.version,
@@ -34,28 +23,8 @@ export const computeNodeChannel = new ComputeNodeChannelHub(
       capabilities: info.capabilities,
       lastHeartbeatAt: new Date(),
       updatedAt: new Date(),
-    }).onConflictDoUpdate({
-      target: computeNodes.nodeId,
-      set: {
-        provider: sandbox.provider,
-        allocationId: sandbox.externalId,
-        architecture: info.arch,
-        operatingSystem: info.platform,
-        daemonVersion: info.version,
-        status: 'online',
-        capabilities: info.capabilities,
-        lastHeartbeatAt: new Date(),
-        updatedAt: new Date(),
-      },
-    })
-    await db.insert(computeNodeAssignments).values({
-      nodeId,
-      accountId: sandbox.accountId,
-      projectId: sandbox.projectId,
-      sessionId: sandbox.sessionId,
-      status: sandbox.status === 'active' ? 'ready' : 'assigned',
-    }).onConflictDoNothing({ target: [computeNodeAssignments.nodeId, computeNodeAssignments.sessionId] })
-    return { nodeId, externalId: sandbox.externalId ?? undefined }
+    }).where(eq(computeNodes.nodeId, nodeId))
+    return { nodeId, externalId: node.allocationId ?? undefined }
   },
   async (externalId) => {
     const [row] = await db

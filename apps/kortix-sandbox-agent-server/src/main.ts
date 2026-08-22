@@ -84,11 +84,11 @@ export async function runKortixDaemon(): Promise<void> {
   const cfg = loadConfig()
   // The sandbox has no inbound runtime path. kortixd opens the one authenticated
   // control-plane connection and relays signed requests to loopback services.
-  if (cfg.apiUrl && cfg.computeNodeId && cfg.sandboxToken) {
+  if (cfg.apiUrl && cfg.computeNodeId && cfg.nodeToken) {
     new KortixNodeChannel({
       apiUrl: cfg.apiUrl,
       nodeId: cfg.computeNodeId,
-      token: cfg.sandboxToken,
+      token: cfg.nodeToken,
       // A signed API frame is the authorization decision. The transport still
       // hardcodes 127.0.0.1, so it cannot become an SSRF path to another host.
       ports: { has: (port: number) => Number.isInteger(port) && port >= 1 && port <= 65_535 },

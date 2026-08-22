@@ -79,6 +79,8 @@ export {
   sessionSandboxes,
   computeNodes,
   computeNodeAssignments,
+  computeNodeCredentials,
+  computeNodeEnrollmentTokens,
   sessionSandboxStatusEnum,
   sessionTurns,
   providerEvents,

@@ -968,3 +968,24 @@ These contracts use product IDs. They replace the old route-coverage bucket IDs.
 `SYS-8` Live and ready health aliases return the same service-state contract.
 `SYS-9` Metrics requires internal authorization and router health returns its configured availability state.
 `TOK-5` Revoking a project CLI token immediately blocks its project, secret, and trigger mutations.
+# Kortix compute nodes
+
+## KXD-REST — compute-node registration and lifecycle
+
+An account owner registers a workstation node and receives one short-lived
+enrollment token. Anonymous and non-member registration fails. The daemon
+exchanges the token once for a node-only credential. Token replay fails. The
+owner lists, reads, updates, drains, enables, disables, restarts, rotates, and
+deletes the node. Every mutation returns durable read-back state. List and get
+responses never expose credential material. Rotation increments the credential
+generation. A deleted node is no longer readable.
+
+## KXD-CLI — compiled standalone node enrollment
+
+The suite compiles `kortixd` for the host operating system and runs the actual
+executable. Help, version, and invalid-command behavior return stable exit
+codes. `connect` exchanges a single-use enrollment token without printing the
+node credential. It stores the state directory as `0700` and the credential
+file as `0600` on POSIX. `doctor` validates the stored enrollment. An
+unreachable status endpoint returns exit `1`. `logout` deletes the credential
+and remains idempotent.

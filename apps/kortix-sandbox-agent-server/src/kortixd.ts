@@ -4,6 +4,7 @@ import { runGitCredentialHelper } from './git'
 import { runKortixDaemon } from './main'
 import { ENV_CONTRACT } from './node/env-contract'
 import { reconcileRuntimeAssets, runtimeConvergenceReport } from './runtime-assets'
+import { clearStoredNodeConfig, writeStoredNodeConfig } from './node/config-store'
 
 const VERSION = process.env.KORTIXD_VERSION ?? 'dev'
 
@@ -13,9 +14,11 @@ Run and manage a Kortix compute node.
 
 Commands:
   run       Run the node daemon in the foreground
+  connect   Enroll this computer as a Kortix compute node
   status    Read the local node health endpoint
   update    Reconcile node runtime components with the configured Kortix API
   doctor    Validate the node configuration and required host tools
+  logout    Remove the local node credential
   version   Print the kortixd version
   help      Show this help
 `
@@ -73,6 +76,30 @@ async function runUpdate(): Promise<number> {
   return Object.values(result).includes('failed') ? 1 : 0
 }
 
+async function runConnect(argv: readonly string[]): Promise<number> {
+  const apiUrl = option(argv, '--api')?.replace(/\/+$/, '')
+  const enrollmentToken = option(argv, '--token')
+  if (!apiUrl || !enrollmentToken) {
+    process.stderr.write('kortixd: connect requires --api <url> and --token <single-use-token>\n')
+    return 2
+  }
+  const response = await fetch(`${apiUrl}/nodes/enroll`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ enrollment_token: enrollmentToken }),
+    signal: AbortSignal.timeout(15_000),
+  })
+  const result = await response.json().catch(() => null) as { compute_node_id?: string; credential?: string; error?: string } | null
+  if (!response.ok || !result?.compute_node_id || !result.credential) {
+    process.stderr.write(`kortixd: enrollment failed (${response.status}): ${result?.error ?? 'invalid response'}\n`)
+    return 1
+  }
+  const path = writeStoredNodeConfig({ api_url: apiUrl, compute_node_id: result.compute_node_id, credential: result.credential })
+  process.stdout.write(`enrolled compute node ${result.compute_node_id}\n`)
+  process.stdout.write(`credential stored at ${path}\n`)
+  return 0
+}
+
 async function runDoctor(): Promise<number> {
   const problems: string[] = []
   for (const executable of ['git', 'bash']) {
@@ -87,8 +114,8 @@ async function runDoctor(): Promise<number> {
     return 1
   }
   if (!cfg.apiUrl) problems.push('KORTIX_API_URL is not set; enrollment and updates are unavailable')
-  if (!cfg.sandboxToken) {
-    problems.push('KORTIX_SANDBOX_TOKEN is not set; authenticated node control is unavailable')
+  if (!cfg.nodeToken) {
+    problems.push('KORTIX_NODE_TOKEN or an enrolled node credential is required for node control')
   }
 
   const configured = ENV_CONTRACT.filter(({ name }) => process.env[name] !== undefined).length
@@ -118,9 +145,15 @@ export async function runKortixd(argv: string[]): Promise<number> {
     await runKortixDaemon()
     return 0
   }
+  if (command === 'connect') return runConnect(argv.slice(1))
   if (command === 'status') return runStatus(argv.slice(1))
   if (command === 'update') return runUpdate()
   if (command === 'doctor') return runDoctor()
+  if (command === 'logout') {
+    const existed = clearStoredNodeConfig()
+    process.stdout.write(existed ? 'local node credential removed\n' : 'no local node credential found\n')
+    return 0
+  }
   // Permanent compatibility protocol for Git helpers written by old daemon
   // builds. It emits machine-readable key/value output only.
   if (command === 'git-credential') return runGitCredentialHelper(loadConfig(), argv[1])

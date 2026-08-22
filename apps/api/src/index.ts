@@ -76,6 +76,7 @@ import {
   stopTunnelService,
 } from './tunnel';
 import { computeNodeWsHandlers } from './compute-nodes';
+import { computeNodePublicApp } from './compute-nodes/routes';
 import { voiceMcpRoutes } from './channels/voice/routes';
 import { accessControlApp } from './access-control';
 import { startAccessControlCache, stopAccessControlCache } from './shared/access-control-cache';
@@ -791,6 +792,7 @@ app.openapi(
 
 // /v1/accounts/* — account & member management lives in ./accounts router.
 app.route('/v1/accounts', accountsRouter);
+app.route('/v1/nodes', computeNodePublicApp);
 // /v1/auth/* — auth-side server endpoints (logout for now). Audit
 // events for login/logout/failed-login live in the auth middleware
 // + this router so SOC2 reviews see the full auth lifecycle.

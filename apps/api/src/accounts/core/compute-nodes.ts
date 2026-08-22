@@ -1,0 +1,201 @@
+import { createRoute, z } from '@hono/zod-openapi'
+import { and, desc, eq, ne } from 'drizzle-orm'
+import { computeNodeAssignments, computeNodes } from '@kortix/db'
+import { ACCOUNT_ACTIONS, assertAuthorized } from '../../iam'
+import { actorOf } from '../../iam/actor'
+import { auth, errors, json } from '../../openapi'
+import { db } from '../../shared/db'
+import { loadProjectForUser } from '../../projects/lib/access'
+import {
+  createNodeEnrollmentToken,
+  revokeNodeCredentials,
+} from '../../repositories/compute-node-credentials'
+import { computeNodeChannel } from '../../compute-nodes'
+import { accountsRouter } from './app'
+
+const NodeType = z.enum(['sandbox', 'workstation', 'vm', 'container', 'bare_metal', 'ci'])
+const NodeSchema = z.object({
+  compute_node_id: z.string(),
+  account_id: z.string(),
+  project_id: z.string().nullable(),
+  type: z.string(),
+  provider: z.string().nullable(),
+  allocation_id: z.string().nullable(),
+  architecture: z.string().nullable(),
+  operating_system: z.string().nullable(),
+  daemon_version: z.string().nullable(),
+  update_channel: z.string(),
+  status: z.string(),
+  capabilities: z.array(z.string()),
+  harnesses: z.array(z.any()),
+  concurrency: z.number(),
+  connected: z.boolean(),
+  last_heartbeat_at: z.string().nullable(),
+  desired_manifest: z.record(z.string(), z.any()),
+  metadata: z.record(z.string(), z.any()),
+  created_at: z.string(),
+  updated_at: z.string(),
+})
+
+function serializeNode(row: typeof computeNodes.$inferSelect) {
+  return {
+    compute_node_id: row.nodeId,
+    account_id: row.accountId,
+    project_id: row.projectId,
+    type: row.type,
+    provider: row.provider,
+    allocation_id: row.allocationId,
+    architecture: row.architecture,
+    operating_system: row.operatingSystem,
+    daemon_version: row.daemonVersion,
+    update_channel: row.updateChannel,
+    status: row.status,
+    capabilities: row.capabilities,
+    harnesses: row.harnesses,
+    concurrency: row.concurrency,
+    connected: computeNodeChannel.isConnected(row.nodeId),
+    last_heartbeat_at: row.lastHeartbeatAt?.toISOString() ?? null,
+    desired_manifest: row.desiredManifest,
+    metadata: row.metadata,
+    created_at: row.createdAt.toISOString(),
+    updated_at: row.updatedAt.toISOString(),
+  }
+}
+
+async function loadAccountNode(accountId: string, nodeId: string) {
+  const [row] = await db
+    .select()
+    .from(computeNodes)
+    .where(and(eq(computeNodes.nodeId, nodeId), eq(computeNodes.accountId, accountId), ne(computeNodes.status, 'deleted')))
+    .limit(1)
+  return row ?? null
+}
+
+async function authorizeProject(c: any, accountId: string, projectId: string | null | undefined, action: 'read' | 'manage') {
+  if (!projectId) return true
+  const loaded = await loadProjectForUser(c, projectId, action)
+  return Boolean(loaded && loaded.row.accountId === accountId)
+}
+
+export function registerComputeNodeRoutes(): void {
+  accountsRouter.openapi(
+    createRoute({
+      method: 'post', path: '/{accountId}/compute-nodes', tags: ['compute-nodes'],
+      summary: 'Register a compute node and create a single-use enrollment token', ...auth,
+      request: { params: z.object({ accountId: z.string() }), body: { content: { 'application/json': { schema: z.object({ type: NodeType.default('workstation'), project_id: z.string().nullable().optional(), provider: z.string().optional(), allocation_id: z.string().optional(), update_channel: z.string().default('stable'), concurrency: z.number().int().min(1).max(1024).default(1), metadata: z.record(z.string(), z.any()).optional() }) } } } },
+      responses: { 201: json(z.object({ node: NodeSchema, enrollment_token: z.string(), enrollment_expires_at: z.string() }), 'Registered node'), ...errors(400, 401, 403, 409) },
+    }),
+    async (c: any) => {
+      const accountId = c.req.param('accountId')
+      await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.TOKEN_CREATE)
+      const body = await c.req.json()
+      if (!(await authorizeProject(c, accountId, body.project_id, 'manage'))) return c.json({ error: 'Project not found' }, 404)
+      const [row] = await db.insert(computeNodes).values({
+        accountId,
+        projectId: body.project_id ?? null,
+        type: body.type ?? 'workstation',
+        provider: body.provider ?? null,
+        allocationId: body.allocation_id ?? null,
+        updateChannel: body.update_channel ?? 'stable',
+        concurrency: body.concurrency ?? 1,
+        status: 'offline',
+        metadata: body.metadata ?? {},
+      }).returning()
+      if (!row) return c.json({ error: 'Failed to register compute node' }, 409)
+      const enrollment = await createNodeEnrollmentToken({ nodeId: row.nodeId, accountId, createdBy: c.get('userId') })
+      c.header('Cache-Control', 'no-store')
+      return c.json({ node: serializeNode(row), enrollment_token: enrollment.token, enrollment_expires_at: enrollment.expiresAt.toISOString() }, 201)
+    },
+  )
+
+  accountsRouter.openapi(
+    createRoute({ method: 'get', path: '/{accountId}/compute-nodes', tags: ['compute-nodes'], summary: 'List compute nodes', ...auth, request: { params: z.object({ accountId: z.string() }) }, responses: { 200: json(z.object({ nodes: z.array(NodeSchema) }), 'Compute nodes'), ...errors(401, 403) } }),
+    async (c: any) => {
+      const accountId = c.req.param('accountId')
+      await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.TOKEN_READ)
+      const rows = await db.select().from(computeNodes).where(and(eq(computeNodes.accountId, accountId), ne(computeNodes.status, 'deleted'))).orderBy(desc(computeNodes.createdAt))
+      return c.json({ nodes: rows.map(serializeNode) })
+    },
+  )
+
+  accountsRouter.openapi(
+    createRoute({ method: 'get', path: '/{accountId}/compute-nodes/{nodeId}', tags: ['compute-nodes'], summary: 'Get a compute node', ...auth, request: { params: z.object({ accountId: z.string(), nodeId: z.string() }) }, responses: { 200: json(NodeSchema, 'Compute node'), ...errors(401, 403, 404) } }),
+    async (c: any) => {
+      const accountId = c.req.param('accountId')
+      await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.TOKEN_READ)
+      const row = await loadAccountNode(accountId, c.req.param('nodeId'))
+      if (!row || !(await authorizeProject(c, accountId, row.projectId, 'read'))) return c.json({ error: 'Not found' }, 404)
+      return c.json(serializeNode(row))
+    },
+  )
+
+  accountsRouter.openapi(
+    createRoute({ method: 'patch', path: '/{accountId}/compute-nodes/{nodeId}', tags: ['compute-nodes'], summary: 'Update compute-node policy', ...auth, request: { params: z.object({ accountId: z.string(), nodeId: z.string() }), body: { content: { 'application/json': { schema: z.object({ project_id: z.string().nullable().optional(), update_channel: z.string().optional(), concurrency: z.number().int().min(1).max(1024).optional(), desired_manifest: z.record(z.string(), z.any()).optional(), metadata: z.record(z.string(), z.any()).optional() }) } } } }, responses: { 200: json(NodeSchema, 'Updated node'), ...errors(400, 401, 403, 404) } }),
+    async (c: any) => {
+      const accountId = c.req.param('accountId')
+      await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.ACCOUNT_WRITE)
+      const current = await loadAccountNode(accountId, c.req.param('nodeId'))
+      if (!current || !(await authorizeProject(c, accountId, current.projectId, 'manage'))) return c.json({ error: 'Not found' }, 404)
+      const body = await c.req.json()
+      if (body.project_id !== undefined && !(await authorizeProject(c, accountId, body.project_id, 'manage'))) return c.json({ error: 'Project not found' }, 404)
+      const [row] = await db.update(computeNodes).set({
+        ...(body.project_id !== undefined ? { projectId: body.project_id } : {}),
+        ...(body.update_channel !== undefined ? { updateChannel: body.update_channel } : {}),
+        ...(body.concurrency !== undefined ? { concurrency: body.concurrency } : {}),
+        ...(body.desired_manifest !== undefined ? { desiredManifest: body.desired_manifest } : {}),
+        ...(body.metadata !== undefined ? { metadata: body.metadata } : {}),
+        updatedAt: new Date(),
+      }).where(eq(computeNodes.nodeId, current.nodeId)).returning()
+      return c.json(serializeNode(row!))
+    },
+  )
+
+  for (const action of ['enable', 'disable', 'drain', 'restart'] as const) {
+    accountsRouter.openapi(
+      createRoute({ method: 'post', path: `/{accountId}/compute-nodes/{nodeId}/${action}`, tags: ['compute-nodes'], summary: `${action} a compute node`, ...auth, request: { params: z.object({ accountId: z.string(), nodeId: z.string() }) }, responses: { 200: json(NodeSchema, 'Updated node'), ...errors(401, 403, 404, 409) } }),
+      async (c: any) => {
+        const accountId = c.req.param('accountId')
+        await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.ACCOUNT_WRITE)
+        const current = await loadAccountNode(accountId, c.req.param('nodeId'))
+        if (!current || !(await authorizeProject(c, accountId, current.projectId, 'manage'))) return c.json({ error: 'Not found' }, 404)
+        const status = action === 'enable' ? 'offline' : action === 'drain' ? 'draining' : action === 'disable' ? 'disabled' : 'offline'
+        const metadata = action === 'restart' ? { ...current.metadata, restartRequestedAt: new Date().toISOString() } : current.metadata
+        const [row] = await db.update(computeNodes).set({ status, metadata, updatedAt: new Date() }).where(eq(computeNodes.nodeId, current.nodeId)).returning()
+        if (action !== 'enable') computeNodeChannel.disconnectNode(current.nodeId, action === 'restart' ? 1012 : 4003, `compute node ${action}`)
+        return c.json(serializeNode(row!))
+      },
+    )
+  }
+
+  accountsRouter.openapi(
+    createRoute({ method: 'post', path: '/{accountId}/compute-nodes/{nodeId}/rotate-credential', tags: ['compute-nodes'], summary: 'Revoke the active credential and create a new enrollment token', ...auth, request: { params: z.object({ accountId: z.string(), nodeId: z.string() }) }, responses: { 200: json(z.object({ enrollment_token: z.string(), enrollment_expires_at: z.string() }), 'Single-use enrollment token'), ...errors(401, 403, 404) } }),
+    async (c: any) => {
+      const accountId = c.req.param('accountId')
+      await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.TOKEN_CREATE)
+      const current = await loadAccountNode(accountId, c.req.param('nodeId'))
+      if (!current || !(await authorizeProject(c, accountId, current.projectId, 'manage'))) return c.json({ error: 'Not found' }, 404)
+      await revokeNodeCredentials(current.nodeId, accountId)
+      computeNodeChannel.disconnectNode(current.nodeId, 4003, 'compute node credential rotated')
+      const enrollment = await createNodeEnrollmentToken({ nodeId: current.nodeId, accountId, createdBy: c.get('userId') })
+      c.header('Cache-Control', 'no-store')
+      return c.json({ enrollment_token: enrollment.token, enrollment_expires_at: enrollment.expiresAt.toISOString() })
+    },
+  )
+
+  accountsRouter.openapi(
+    createRoute({ method: 'delete', path: '/{accountId}/compute-nodes/{nodeId}', tags: ['compute-nodes'], summary: 'Delete a compute node', ...auth, request: { params: z.object({ accountId: z.string(), nodeId: z.string() }) }, responses: { 200: json(z.object({ ok: z.boolean() }), 'Deleted'), ...errors(401, 403, 404) } }),
+    async (c: any) => {
+      const accountId = c.req.param('accountId')
+      await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.ACCOUNT_WRITE)
+      const current = await loadAccountNode(accountId, c.req.param('nodeId'))
+      if (!current || !(await authorizeProject(c, accountId, current.projectId, 'manage'))) return c.json({ error: 'Not found' }, 404)
+      await db.transaction(async (tx) => {
+        await tx.update(computeNodeAssignments).set({ status: 'released', updatedAt: new Date() }).where(eq(computeNodeAssignments.nodeId, current.nodeId))
+        await tx.update(computeNodes).set({ status: 'deleted', updatedAt: new Date() }).where(eq(computeNodes.nodeId, current.nodeId))
+      })
+      await revokeNodeCredentials(current.nodeId, accountId)
+      computeNodeChannel.disconnectNode(current.nodeId, 4003, 'compute node deleted')
+      return c.json({ ok: true })
+    },
+  )
+}

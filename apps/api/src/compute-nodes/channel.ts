@@ -142,6 +142,12 @@ export class ComputeNodeChannelHub {
 
   isConnected(nodeId: string): boolean { return this.byNode.has(nodeId) }
   nodeIdForSocket(socket: SocketLike): string | null { return [...this.byNode.values()].find((item) => item.socket === socket)?.nodeId ?? null }
+  disconnectNode(nodeId: string, code = 4003, reason = 'compute node disabled'): void {
+    const connection = this.byNode.get(nodeId)
+    if (!connection) return
+    connection.socket.close(code, reason)
+    this.close(connection.socket)
+  }
 
   async fetchByExternalId(externalId: string, port: number, request: Request): Promise<Response> {
     let nodeId = this.externalToNode.get(externalId)

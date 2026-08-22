@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 602,
+  "count": 613,
   "routes": [
     {
       "method": "GET",
@@ -213,6 +213,46 @@
     {
       "method": "POST",
       "path": "/v1/accounts/:accountId/audit/webhooks/:webhookId/deliveries/:deliveryId/replay"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/accounts/:accountId/compute-nodes"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/disable"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/drain"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/enable"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/restart"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/rotate-credential"
     },
     {
       "method": "GET",
@@ -1029,6 +1069,10 @@
     {
       "method": "DELETE",
       "path": "/v1/marketplace/sources/:id"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/nodes/enroll"
     },
     {
       "method": "GET",

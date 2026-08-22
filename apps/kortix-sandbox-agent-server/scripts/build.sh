@@ -19,7 +19,7 @@ else
 fi
 
 case "$target" in
-  bun-linux-x64|bun-linux-arm64) ;;
+  bun-linux-x64|bun-linux-arm64|bun-darwin-x64|bun-darwin-arm64|bun-windows-x64) ;;
   *)
     echo "Unsupported Bun compile target: $target" >&2
     exit 1

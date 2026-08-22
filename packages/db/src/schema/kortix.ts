@@ -1334,7 +1334,7 @@ export const projectMonitorBoxes = kortixSchema.table(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.projectId, { onDelete: 'cascade' }),
-    accountId: uuid('account_id').notNull(),
+    accountId: uuid('account_id').notNull().references(() => accounts.accountId, { onDelete: 'cascade' }),
     provider: varchar('provider', { length: 32 }).notNull(),
     /** The provider's sandbox id. Null until the create call returns. */
     externalId: text('external_id'),
@@ -1850,7 +1850,7 @@ export const computeNodes = kortixSchema.table(
   'compute_nodes',
   {
     nodeId: uuid('node_id').defaultRandom().primaryKey(),
-    accountId: uuid('account_id').notNull().references(() => accounts.accountId, { onDelete: 'cascade' }),
+    accountId: uuid('account_id').notNull(),
     projectId: uuid('project_id').references(() => projects.projectId, { onDelete: 'cascade' }),
     type: text('type').default('sandbox').notNull(),
     provider: text('provider'),
@@ -1902,6 +1902,55 @@ export const computeNodeAssignments = kortixSchema.table(
     uniqueIndex('compute_node_assignments_node_session_unique').on(table.nodeId, table.sessionId),
     index('compute_node_assignments_node_idx').on(table.nodeId, table.status),
     index('compute_node_assignments_session_idx').on(table.sessionId, table.status),
+  ],
+);
+
+/** Node-only channel credentials. Secrets are returned once and stored as hashes. */
+export const computeNodeCredentials = kortixSchema.table(
+  'compute_node_credentials',
+  {
+    credentialId: uuid('credential_id').defaultRandom().primaryKey(),
+    nodeId: uuid('node_id').notNull().references(() => computeNodes.nodeId, { onDelete: 'cascade' }),
+    accountId: uuid('account_id').notNull().references(() => accounts.accountId, { onDelete: 'cascade' }),
+    publicPrefix: varchar('public_prefix', { length: 32 }).notNull(),
+    secretHash: varchar('secret_hash', { length: 128 }).notNull(),
+    generation: integer('generation').default(1).notNull(),
+    status: text('status').default('active').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    check('compute_node_credentials_status_check', sql`${table.status} IN ('active', 'revoked')`),
+    check('compute_node_credentials_generation_check', sql`${table.generation} > 0`),
+    uniqueIndex('compute_node_credentials_hash_unique').on(table.secretHash),
+    uniqueIndex('compute_node_credentials_generation_unique').on(table.nodeId, table.generation),
+    index('compute_node_credentials_node_idx').on(table.nodeId, table.status),
+  ],
+);
+
+/** Short-lived single-use tokens that exchange into one node credential. */
+export const computeNodeEnrollmentTokens = kortixSchema.table(
+  'compute_node_enrollment_tokens',
+  {
+    enrollmentId: uuid('enrollment_id').defaultRandom().primaryKey(),
+    nodeId: uuid('node_id').notNull().references(() => computeNodes.nodeId, { onDelete: 'cascade' }),
+    accountId: uuid('account_id').notNull(),
+    secretHash: varchar('secret_hash', { length: 128 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdBy: uuid('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: 'compute_node_enrollment_account_fk',
+      columns: [table.accountId],
+      foreignColumns: [accounts.accountId],
+    }).onDelete('cascade'),
+    uniqueIndex('compute_node_enrollment_tokens_hash_unique').on(table.secretHash),
+    index('compute_node_enrollment_tokens_node_idx').on(table.nodeId, table.expiresAt),
   ],
 );
 

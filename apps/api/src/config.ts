@@ -133,7 +133,9 @@ const envSchema = z.object({
   // SUPABASE_URL is already public and no rewrite is needed.
   SUPABASE_PUBLIC_URL: z
     .string()
-    .refine((v) => v === '' || /^https?:\/\//.test(v), { message: 'SUPABASE_PUBLIC_URL must be a valid HTTP(S) URL' })
+    .refine((v) => v === '' || /^https?:\/\//.test(v), {
+      message: 'SUPABASE_PUBLIC_URL must be a valid HTTP(S) URL',
+    })
     .optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
 
@@ -495,15 +497,6 @@ const envSchema = z.object({
   XAI_API_URL: optUrl('https://api.x.ai/v1'),
   GEMINI_API_URL: optUrl('https://generativelanguage.googleapis.com/v1beta'),
   GROQ_API_URL: optUrl('https://api.groq.com/openai/v1'),
-  // ── LiveKit — the voice channel's transport (see channels/voice/livekit.ts) ──
-  // A room per call, an agents-js worker doing STT->LLM->TTS, a plain LiveKit
-  // client page a human opens directly. Defaults match the project's local dev
-  // server (ws://localhost:7880, devkey/secret are LiveKit's own published
-  // dev-mode credentials, not a real secret) — every real deployment overrides
-  // all three.
-  LIVEKIT_URL: optStrDefault('ws://localhost:7880'),
-  LIVEKIT_API_KEY: optStrDefault('devkey'),
-  LIVEKIT_API_SECRET: optStrDefault('secret'),
   // ── Billing — Stripe (optional, only for cloud billing) ──────────────────
   STRIPE_SECRET_KEY: optStr,
   STRIPE_WEBHOOK_SECRET: optStr,
@@ -660,11 +653,6 @@ const envSchema = z.object({
   KORTIX_INVITE_ACCEPT_REQS_PER_MIN: optInt(20),
   KORTIX_PUBLIC_SESSION_SHARE_REQS_PER_MIN: optInt(60),
   KORTIX_DEMO_REQUEST_REQS_PER_MIN: optInt(10),
-  KORTIX_VOICE_JOIN_LINK_REQS_PER_MIN: optInt(30),
-  // Higher than the resolve step above on purpose: the /voice page polls the
-  // call transcript for the whole call, so this is per-listener-per-minute
-  // traffic, not a one-shot handshake.
-  KORTIX_VOICE_TRANSCRIPT_REQS_PER_MIN: optInt(120),
   KORTIX_LLM_ROUTER_REQS_PER_MIN_FREE: optInt(60),
   KORTIX_LLM_ROUTER_REQS_PER_MIN_PAID: optInt(600),
   KORTIX_PROXY_REQS_PER_MIN: optInt(600),
@@ -995,16 +983,24 @@ function validateEnv(): z.infer<typeof envSchema> {
   }
 
   if (result.data.KORTIX_NODE_RELAY_ROLE === 'api') {
-    const value = result.data.KORTIX_NODE_RELAY_URL || result.data.KORTIX_URL
-    let valid = false
+    const value = result.data.KORTIX_NODE_RELAY_URL || result.data.KORTIX_URL;
+    let valid = false;
     try {
-      const url = new URL(value)
-      const loopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
-      valid = Boolean(value) && !url.username && !url.password && !url.hash && (url.protocol === 'https:' || (url.protocol === 'http:' && loopback))
+      const url = new URL(value);
+      const loopback =
+        url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
+      valid =
+        Boolean(value) &&
+        !url.username &&
+        !url.password &&
+        !url.hash &&
+        (url.protocol === 'https:' || (url.protocol === 'http:' && loopback));
     } catch {}
     if (!valid) {
-      console.error('[config] KORTIX_NODE_RELAY_URL must be HTTPS, or loopback HTTP, when KORTIX_NODE_RELAY_ROLE=api')
-      process.exit(1)
+      console.error(
+        '[config] KORTIX_NODE_RELAY_URL must be HTTPS, or loopback HTTP, when KORTIX_NODE_RELAY_ROLE=api',
+      );
+      process.exit(1);
     }
   }
 
@@ -1159,9 +1155,6 @@ export const config = {
   XAI_API_URL: env.XAI_API_URL,
   GEMINI_API_URL: env.GEMINI_API_URL,
   GROQ_API_URL: env.GROQ_API_URL,
-  LIVEKIT_URL: env.LIVEKIT_URL,
-  LIVEKIT_API_KEY: env.LIVEKIT_API_KEY,
-  LIVEKIT_API_SECRET: env.LIVEKIT_API_SECRET,
   // ─── Stripe (Billing) ─────────────────────────────────────────────────────
   STRIPE_SECRET_KEY: env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: env.STRIPE_WEBHOOK_SECRET,
@@ -1274,8 +1267,6 @@ export const config = {
   KORTIX_INVITE_ACCEPT_REQS_PER_MIN: env.KORTIX_INVITE_ACCEPT_REQS_PER_MIN,
   KORTIX_PUBLIC_SESSION_SHARE_REQS_PER_MIN: env.KORTIX_PUBLIC_SESSION_SHARE_REQS_PER_MIN,
   KORTIX_DEMO_REQUEST_REQS_PER_MIN: env.KORTIX_DEMO_REQUEST_REQS_PER_MIN,
-  KORTIX_VOICE_JOIN_LINK_REQS_PER_MIN: env.KORTIX_VOICE_JOIN_LINK_REQS_PER_MIN,
-  KORTIX_VOICE_TRANSCRIPT_REQS_PER_MIN: env.KORTIX_VOICE_TRANSCRIPT_REQS_PER_MIN,
   KORTIX_LLM_ROUTER_REQS_PER_MIN_FREE: env.KORTIX_LLM_ROUTER_REQS_PER_MIN_FREE,
   KORTIX_LLM_ROUTER_REQS_PER_MIN_PAID: env.KORTIX_LLM_ROUTER_REQS_PER_MIN_PAID,
   KORTIX_PROXY_REQS_PER_MIN: env.KORTIX_PROXY_REQS_PER_MIN,

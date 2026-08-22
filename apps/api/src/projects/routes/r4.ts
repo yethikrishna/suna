@@ -58,7 +58,6 @@ import {
   relayTurnQuestion,
   relayTurnStep,
 } from '../../channels/turn-relay';
-import { setProjectBotName } from '../../channels/voice-identity';
 import { config } from '../../config';
 import {
   resolveConnectionCredentialValue,
@@ -426,10 +425,7 @@ projectsApp.openapi(
         connectorConfig: connectors.config,
       })
       .from(connectorConnections)
-      .innerJoin(
-        connectors,
-        eq(connectors.connectorId, connectorConnections.connectorId),
-      )
+      .innerJoin(connectors, eq(connectors.connectorId, connectorConnections.connectorId))
       .where(eq(connectorConnections.projectId, projectId));
     return c.json({
       connections: rows
@@ -500,10 +496,7 @@ projectsApp.openapi(
         status: connectorConnections.status,
       })
       .from(connectorConnections)
-      .innerJoin(
-        connectors,
-        eq(connectors.connectorId, connectorConnections.connectorId),
-      )
+      .innerJoin(connectors, eq(connectors.connectorId, connectorConnections.connectorId))
       .where(eq(connectorConnections.projectId, projectId));
     return c.json({
       connections: rows.map((row) => ({
@@ -551,10 +544,7 @@ projectsApp.openapi(
     const loaded = await loadProjectForUser(c, projectId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     if (c.get('authType') === 'service_account') {
-      return c.json(
-        { error: 'Only human members can reconcile user connections' },
-        403,
-      );
+      return c.json({ error: 'Only human members can reconcile user connections' }, 403);
     }
     const body = await readBody(c);
     const connectorAlias = canonicalConnectorAlias(
@@ -654,10 +644,7 @@ projectsApp.openapi(
     const connectorAlias = canonicalConnectorAlias(requestedAlias);
     const ownerType = typeof body.owner_type === 'string' ? body.owner_type : 'external';
     if (ownerType === 'member' && c.get('authType') === 'service_account') {
-      return c.json(
-        { error: 'Only human members can reconcile user connections' },
-        403,
-      );
+      return c.json({ error: 'Only human members can reconcile user connections' }, 403);
     }
     // Backwards-compatible manager path: a submitted member owner is always
     // rewritten to the caller. Managers may create their own member connection,
@@ -2599,8 +2586,10 @@ projectsApp.openapi(
       // is the natural retry point — the generator is idempotent (needsTitle +
       // CAS) so an already-titled session is a cheap no-op. The stored
       // `title_source` outranks the supplied text inside the generator.
-      const titleRetrySource = [turnStreamMetadata.title_source, turnStreamMetadata.initial_prompt]
-        .find((v): v is string => typeof v === 'string' && v.trim().length > 0);
+      const titleRetrySource = [
+        turnStreamMetadata.title_source,
+        turnStreamMetadata.initial_prompt,
+      ].find((v): v is string => typeof v === 'string' && v.trim().length > 0);
       if (titleRetrySource && turnStreamSession.createdBy) {
         void generateSessionTitleFromFirstPrompt({
           projectId,
@@ -2861,43 +2850,6 @@ projectsApp.openapi(
     }
     await bindChatThread({ projectId, workspaceId, threadId: threadTs, sessionId });
     return c.json({ ok: true, bound: true, channel, thread_ts: threadTs });
-  },
-);
-
-// PUT /v1/projects/:projectId/channels/meet/name — set the bot's display name.
-projectsApp.openapi(
-  createRoute({
-    method: 'put',
-    path: '/{projectId}/channels/meet/name',
-    tags: ['channels'],
-    summary: 'PUT /:projectId/channels/meet/name',
-    ...auth,
-    request: {
-      params: z.object({ projectId: z.string() }),
-      body: { content: { 'application/json': { schema: AnyObject } } },
-    },
-    responses: {
-      200: json(z.object({ ok: z.boolean(), bot_name: z.string() }).passthrough(), 'Saved'),
-      ...errors(400, 404),
-    },
-  }),
-  async (c: any) => {
-    const projectId = c.req.param('projectId');
-    // Floor 'read'; project.customize.write is the real gate (setting the bot
-    // name is project customization). The built-in manager role holds the leaf.
-    const loaded = await loadProjectForUser(c, projectId, 'read');
-    if (!loaded) return c.json({ error: 'Not found' }, 404);
-    await assertProjectCapability(
-      c,
-      loaded.userId,
-      loaded.row.accountId,
-      projectId,
-      PROJECT_ACTIONS.PROJECT_CUSTOMIZE_WRITE,
-    );
-    const body = await readBody(c);
-    const name = String(body.name ?? body.bot_name ?? '');
-    const saved = await setProjectBotName(projectId, name);
-    return c.json({ ok: true, bot_name: saved });
   },
 );
 
@@ -3611,7 +3563,12 @@ projectsApp.openapi(
       projectId,
       PROJECT_ACTIONS.PROJECT_SESSION_READ,
     );
-    const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null, callerKortixSessionId(c));
+    const visible = await loadVisibleSession(
+      loaded,
+      sessionId,
+      c.get('sessionId') ?? null,
+      callerKortixSessionId(c),
+    );
     if (!visible) return c.json({ error: 'Not found' }, 404);
     return c.json({ question: await getOpenQuestion(sessionId) });
   },
@@ -3650,7 +3607,12 @@ projectsApp.openapi(
     // of the session — the same bar the question relay itself uses.
     const loaded = await loadProjectForUser(c, projectId, 'session');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
-    const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null, callerKortixSessionId(c));
+    const visible = await loadVisibleSession(
+      loaded,
+      sessionId,
+      c.get('sessionId') ?? null,
+      callerKortixSessionId(c),
+    );
     if (!visible) return c.json({ error: 'Not found' }, 404);
 
     const body = await readBody(c);

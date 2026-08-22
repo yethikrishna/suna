@@ -11880,3 +11880,16 @@ the new authorization page.
 **Status:** COMPLETE.
 
 **Shippable to production: YES.**
+
+### 2026-08-23 — remove the experimental voice API
+
+Removed the LiveKit join, transcript, project-channel, and session-handle
+surfaces. The product owner explicitly retired the experimental feature.
+
+The runtime and type surface snapshots were regenerated deliberately. Their
+diff contains only removed voice and speech-to-text names. The full SDK suite
+passes 2418 tests across 162 files. The packed install smoke test passes.
+
+**Status:** COMPLETE.
+
+**Shippable to production: YES.**

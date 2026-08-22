@@ -7,6 +7,7 @@ const GENERIC_DATA_PATHS = [
   'sandbox-proxy/backend.ts',
   'sandbox-proxy/routes/preview.ts',
   'sandbox-proxy/routes/public-share.ts',
+  'channels/voice/run-command.ts',
   'platform/sandbox-env.ts',
   'projects/lib/sandbox-daemon-ready.ts',
   'projects/lib/sandbox-env-sync.ts',

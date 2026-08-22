@@ -39,11 +39,7 @@ export interface SandboxRuntimeRefreshDeps {
   loadActiveSandbox: (
     sessionId: string,
   ) => Promise<{ externalId: string; serviceKey: string } | null>;
-  resolveIngress?: (
-    externalId: string,
-  ) => Promise<{ url: string; headers: Record<string, string> }>;
-  fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
-  fetchNode?: (externalId: string, path: string, init?: RequestInit) => Promise<Response>;
+  fetchNode: (externalId: string, path: string, init?: RequestInit) => Promise<Response>;
   sleep: (ms: number) => Promise<void>;
 }
 
@@ -92,16 +88,7 @@ export async function refreshSandboxRuntimeAssets(
           headers: { Authorization: `Bearer ${sandbox.serviceKey}` },
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       };
-      const response = deps.fetchNode
-        ? await deps.fetchNode(sandbox.externalId, '/kortix/refresh?restart=0', init)
-        : await (async () => {
-            if (!deps.resolveIngress || !deps.fetch) throw new Error('sandbox refresh transport is missing');
-            const ingress = await deps.resolveIngress(sandbox!.externalId);
-            return deps.fetch(`${ingress.url.replace(/\/+$/, '')}/kortix/refresh?restart=0`, {
-              ...init,
-              headers: { ...ingress.headers, ...(init.headers as Record<string, string>) },
-            });
-          })();
+      const response = await deps.fetchNode(sandbox.externalId, '/kortix/refresh?restart=0', init);
       // 409 = a refresh is already running in there, which serves the same
       // purpose. Anything else 2xx-or-409 counts as delivered.
       if (response.ok || response.status === 409) return 'refreshed';

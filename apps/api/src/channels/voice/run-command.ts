@@ -32,10 +32,9 @@ import { db } from '../../shared/db';
 import {
   buildSandboxUpstreamHeaders,
   loadSandbox,
-  resolveSandboxIngress,
   type SandboxRecord,
 } from '../../sandbox-proxy/backend';
-import { KORTIX_USER_CONTEXT_HEADER } from '../../shared/kortix-user-context';
+import { connectComputeNodeWebSocket, fetchComputeNode } from '../../compute-nodes';
 
 const SPAWN_TIMEOUT_MS = 3_000;
 const CAPTURE_TIMEOUT_MS = 6_000;
@@ -87,15 +86,17 @@ function parseExitCode(reason: string | undefined): number | null {
   return m ? parseInt(m[1]!, 10) : null;
 }
 
-function captureOverWs(
-  url: string,
+function captureOverNodeChannel(
+  externalId: string,
+  port: number,
+  path: string,
   headers: Record<string, string>,
   timeoutMs: number,
 ): Promise<RunCommandResult> {
   return new Promise((resolve) => {
     let output = '';
     let settled = false;
-    let ws: WebSocket | null = null;
+    let upstream: Awaited<ReturnType<typeof connectComputeNodeWebSocket>> | null = null;
 
     const done = (exitCode: number | null, timedOut: boolean) =>
       finish({ stdout: output, stderr: output, exitCode, timedOut });
@@ -106,29 +107,18 @@ function captureOverWs(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      try {
-        ws?.close();
-      } catch {}
+      try { upstream?.close(); } catch {}
       resolve(result);
     }
 
-    try {
-      // Bun extends the WebSocket constructor with a `headers` option — same
-      // mechanism ws-proxy.ts uses to forward the signed user-context, since
-      // this is a server-side client and not subject to the browser
-      // can't-set-headers-on-a-socket restriction that the query-param fallback
-      // below exists for.
-      ws = new WebSocket(url, { headers } as any);
-    } catch {
-      done(null, false);
-      return;
-    }
-
-    ws.onmessage = (ev: MessageEvent) => {
-      if (typeof ev.data === 'string') output += ev.data;
-    };
-    ws.onclose = (ev: CloseEvent) => done(parseExitCode(ev.reason), false);
-    ws.onerror = () => done(null, false);
+    void connectComputeNodeWebSocket(externalId, port, path, headers, {
+      open() {},
+      message(data) { output += new TextDecoder().decode(data); },
+      close(_code, reason) { done(parseExitCode(reason), false); },
+    }).then((socket) => {
+      if (settled) socket.close();
+      else upstream = socket;
+    }).catch(() => done(null, false));
   });
 }
 
@@ -141,17 +131,15 @@ async function execCommand(
   if (!resolved) throw new Error('sandbox not ready');
   const { record, userId } = resolved;
 
-  const httpIngress = await resolveSandboxIngress(record, { port: 8000, transport: 'http' });
   const httpHeaders = await buildSandboxUpstreamHeaders({
     sandboxId: record.sandboxId,
     userId: userId ?? '',
     serviceKey: record.serviceKey,
-    providerHeaders: httpIngress.headers,
   });
 
   const wrapped = `${command}; __kortix_exit=$?; sleep ${CAPTURE_TAIL_SECONDS}; exit $__kortix_exit`;
 
-  const createRes = await fetch(`${httpIngress.url.replace(/\/$/, '')}/kortix/pty`, {
+  const createRes = await fetchComputeNode(record.externalId, 8000, '/kortix/pty', {
     method: 'POST',
     headers: { ...httpHeaders, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -169,29 +157,16 @@ async function execCommand(
   const created = (await createRes.json()) as { id: string };
   const ptyPath = `/kortix/pty/${created.id}/connect`;
 
-  const wsIngress = await resolveSandboxIngress(record, { port: 8000, path: ptyPath, transport: 'websocket' });
   const wsHeaders = await buildSandboxUpstreamHeaders({
     sandboxId: record.sandboxId,
     userId: userId ?? '',
     serviceKey: record.serviceKey,
-    providerHeaders: wsIngress.headers,
   });
-
-  const wsUrl = new URL(wsIngress.url.replace(/\/$/, '') + ptyPath);
-  wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-  // Belt-and-suspenders for providers whose edge strips custom headers (see
-  // ResolvedSandboxIngress.websocket in platform/providers/index.ts) —
-  // identical to how preview.ts's resolvePreviewWsUpstream handles it.
-  if (wsIngress.websocket?.userContextQueryParam) {
-    const signed = wsHeaders[KORTIX_USER_CONTEXT_HEADER];
-    if (signed) wsUrl.searchParams.set(wsIngress.websocket.userContextQueryParam, signed);
-  }
-
-  const result = await captureOverWs(wsUrl.toString(), wsHeaders, CAPTURE_TIMEOUT_MS);
+  const result = await captureOverNodeChannel(record.externalId, 8000, ptyPath, wsHeaders, CAPTURE_TIMEOUT_MS);
 
   // Best-effort cleanup — never let a slow/failed DELETE hold up the tool
   // response, which by this point already has everything it needs.
-  void fetch(`${httpIngress.url.replace(/\/$/, '')}/kortix/pty/${created.id}`, {
+  void fetchComputeNode(record.externalId, 8000, `/kortix/pty/${created.id}`, {
     method: 'DELETE',
     headers: httpHeaders,
     signal: AbortSignal.timeout(SPAWN_TIMEOUT_MS),

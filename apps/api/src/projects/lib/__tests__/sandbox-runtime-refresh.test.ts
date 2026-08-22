@@ -18,12 +18,8 @@ function deps(overrides: Partial<SandboxRuntimeRefreshDeps> = {}): {
     sleeps,
     deps: {
       loadActiveSandbox: async () => SANDBOX,
-      resolveIngress: async (externalId) => ({
-        url: `http://localhost:8008/v1/p/${externalId}/8000/`,
-        headers: { 'X-Ingress': '1' },
-      }),
-      fetch: async (input, init) => {
-        calls.push({ url: String(input), init });
+      fetchNode: async (externalId, path, init) => {
+        calls.push({ url: `node://${externalId}${path}`, init });
         return new Response(null, { status: 200 });
       },
       // Never actually wait in a test; just record the schedule.
@@ -42,11 +38,10 @@ describe('refreshSandboxRuntimeAssets', () => {
 
     expect(outcome).toBe('refreshed');
     expect(d.calls.length).toBe(1);
-    expect(d.calls[0].url).toBe('http://localhost:8008/v1/p/sbx-1/8000/kortix/refresh?restart=0');
+    expect(d.calls[0].url).toBe('node://sbx-1/kortix/refresh?restart=0');
     expect(d.calls[0].init?.method).toBe('POST');
     const headers = d.calls[0].init?.headers as Record<string, string>;
     expect(headers.Authorization).toBe('Bearer svc-key-1');
-    expect(headers['X-Ingress']).toBe('1');
   });
 
   test('never sends base=1 or config_dir=1 — those are destructive/other jobs', async () => {
@@ -59,7 +54,7 @@ describe('refreshSandboxRuntimeAssets', () => {
   test('succeeds on a later attempt when the guest is still coming up', async () => {
     let attempt = 0;
     const d = deps({
-      fetch: async () => {
+      fetchNode: async () => {
         attempt += 1;
         if (attempt < 3) throw new Error('ECONNREFUSED');
         return new Response(null, { status: 200 });
@@ -73,7 +68,7 @@ describe('refreshSandboxRuntimeAssets', () => {
   });
 
   test('a 409 (refresh already running in the guest) counts as delivered', async () => {
-    const d = deps({ fetch: async () => new Response(null, { status: 409 }) });
+    const d = deps({ fetchNode: async () => new Response(null, { status: 409 }) });
     expect(await refreshSandboxRuntimeAssets('sess-1', d.deps)).toBe('refreshed');
     expect(d.calls.length).toBe(0);
   });
@@ -81,7 +76,7 @@ describe('refreshSandboxRuntimeAssets', () => {
   test('gives up after a bounded number of attempts', async () => {
     let attempts = 0;
     const d = deps({
-      fetch: async () => {
+      fetchNode: async () => {
         attempts += 1;
         return new Response(null, { status: 502 });
       },

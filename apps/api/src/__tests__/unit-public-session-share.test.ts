@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
 
 const SHARE_TOKEN = 'kps_11111111111141118111111111111111';
@@ -45,22 +45,21 @@ mock.module('../sandbox-proxy/backend', () => ({
     ...providerHeaders,
     ...(serviceKey ? { Authorization: `Bearer ${serviceKey}` } : {}),
   }),
-  invalidatePreviewLink: () => {},
   loadSandbox: async () => ({
     externalId: EXTERNAL_ID,
     status: 'active',
     serviceKey: 'service-key',
   }),
   markSandboxUsed: async () => {},
-  resolveSandboxIngress: async () => ({
-    url: 'https://preview.test',
-    headers: { 'e2b-traffic-access-token': 'preview-token' },
-    effectivePort: 3000,
-  }),
   wakeSandbox: async () => {},
 }));
 
-const originalFetch = globalThis.fetch;
+mock.module('../compute-nodes', () => ({
+  fetchComputeNode: async (_externalId: string, port: number, path: string) => {
+    fetchUrls.push(`http://127.0.0.1:${port}${path}`);
+    return new Response('ok', { status: 200 });
+  },
+}));
 
 beforeEach(() => {
   shareRow = {
@@ -83,14 +82,6 @@ beforeEach(() => {
   personalBindingRow = null;
   updateCalls = 0;
   fetchUrls = [];
-  globalThis.fetch = (async (url: RequestInfo | URL) => {
-    fetchUrls.push(String(url));
-    return new Response('ok', { status: 200 });
-  }) as unknown as typeof fetch;
-});
-
-afterEach(() => {
-  globalThis.fetch = originalFetch;
 });
 
 const { publicShareApp } = await import('../sandbox-proxy/routes/public-share');
@@ -160,7 +151,7 @@ describe('public session preview shares', () => {
 
     const res = await app().request(`/v1/p/public-share/${SHARE_TOKEN}/file`);
     expect(res.status).toBe(200);
-    expect(fetchUrls.at(-1)).toBe('https://preview.test/open?path=%2Fworkspace%2Fapp%2Findex.html');
+    expect(fetchUrls.at(-1)).toBe('http://127.0.0.1:3211/open?path=%2Fworkspace%2Fapp%2Findex.html');
   });
 
   test('rejects file share subpaths instead of exposing the static file server', async () => {
@@ -188,7 +179,7 @@ describe('public session preview shares', () => {
 
     const res = await app().request(`/v1/p/public-share/${SHARE_TOKEN}/file/open?path=/workspace/secret.env`);
     expect(res.status).toBe(200);
-    expect(fetchUrls.at(-1)).toBe('https://preview.test/open?path=%2Fworkspace%2Fapp%2Findex.html');
+    expect(fetchUrls.at(-1)).toBe('http://127.0.0.1:3211/open?path=%2Fworkspace%2Fapp%2Findex.html');
   });
 
   test('rejects static file server port as a preview share target', async () => {

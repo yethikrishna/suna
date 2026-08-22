@@ -997,12 +997,10 @@ describe('the streaming relay transport', () => {
       const request = init as RequestInit & { headers: Record<string, string> }
       if ('x-kortix-relay-probe' in request.headers) {
         probeStarted = true
-        await new Promise((r) => setTimeout(r, 600))
-        return new Response(null, { status: 204, headers: { 'x-kortix-relay': '1' } })
+        return await new Promise<Response>(() => {})
       }
       return new Response(null, { status: 500 })
     }) as unknown as typeof fetch
-    const started = Date.now()
     const server = await createEgressShim({
       ca: CA,
       rules: [{ hosts: ['api.example.com'], identifier: 'DEMO_TOKEN' }],
@@ -1012,8 +1010,6 @@ describe('the streaming relay transport', () => {
       brokerFetch,
     })
     open.push(server)
-    const elapsed = Date.now() - started
     expect(probeStarted).toBe(true)
-    expect(elapsed).toBeLessThan(300)
   }, 10_000)
 })

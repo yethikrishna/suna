@@ -4,6 +4,12 @@ Status: normative.
 Architecture rationale: `docs/specs/2026-08-21-kortixd.md`.  
 The terms MUST, MUST NOT, SHOULD, and MAY are normative.
 
+This release applies to provider-created sandbox compute nodes. Requirements
+for workstation enrollment, OS services, desktop capabilities, and retirement
+of `@kortix/agent-tunnel` are future requirements. They are not release gates
+for the sandbox-only implementation. This release MUST NOT modify, import, wrap,
+or replace `@kortix/agent-tunnel` or `apps/api/src/tunnel`.
+
 ## 1. Product boundary
 
 - `KXD-001` `kortix` and `kortixd` MUST remain separate executables.
@@ -15,8 +21,8 @@ The terms MUST, MUST NOT, SHOULD, and MAY are normative.
   MUST NOT publish a second `kortix-agent` artifact.
 - `KXD-005` A compute node MUST require only `kortixd` plus an enrollment
   credential. Provider SDKs and the Kortix SDK MUST NOT run on the node.
-- `KXD-006` Sandbox, VM, bare-metal, workstation, and CI compute MUST use the
-  same node protocol and workload contract.
+- `KXD-006` The sandbox node protocol MUST remain compute-type neutral. A future
+  VM, bare-metal, workstation, or CI implementation can implement it unchanged.
 - `KXD-007` Provider-specific code MUST stop after allocation lifecycle and
   initial `kortixd` installation.
 
@@ -40,8 +46,8 @@ The terms MUST, MUST NOT, SHOULD, and MAY are normative.
   release assignments, and preserve audit records.
 - `KXD-019` A disabled or draining node MUST receive no new assignment.
 - `KXD-020` A draining node MUST finish or explicitly stop its current workload.
-- `KXD-021` Installing and enrolling `kortixd` on a local computer MUST create
-  the same compute-node record and channel as a provider-created machine.
+- `KXD-021` [Future] Installing and enrolling `kortixd` on a local computer MUST
+  create the same compute-node record and channel as a provider-created machine.
 - `KXD-022` Current scheduling cardinality MUST be one session to one compute
   node. A session MUST NOT span multiple compute nodes in this release.
 - `KXD-023` The assignment schema MUST permit a future session-to-many-nodes
@@ -132,7 +138,7 @@ The terms MUST, MUST NOT, SHOULD, and MAY are normative.
   same adapter registry. They MUST NOT add provider branches.
 - `KXD-093` Filesystem, shell, desktop, and ports MUST be capability adapters in
   `kortixd`.
-- `KXD-094` The existing computer-agent tunnel filesystem, shell, desktop,
+- `KXD-094` [Future] The existing computer-agent tunnel filesystem, shell, desktop,
   permission, device-auth, credential, and service behavior MUST move into
   `kortixd` before the old executable is retired.
 - `KXD-095` The local permission ceiling MUST always win. API permissions MAY
@@ -203,14 +209,14 @@ The terms MUST, MUST NOT, SHOULD, and MAY are normative.
 - `KXD-152` `doctor` MUST validate configuration, credential-file ownership and
   mode, API reachability, channel authentication, writable state, required host
   tools, harnesses, and convergence.
-- `KXD-153` macOS LaunchAgent, Linux systemd user service, and Windows Task
+- `KXD-153` [Future] macOS LaunchAgent, Linux systemd user service, and Windows Task
   Scheduler installation MUST use the `kortixd` executable.
 - `KXD-154` Service installation MUST quote paths and arguments safely.
 - `KXD-155` Credentials MUST live in a regular owner-controlled file. POSIX mode
   MUST be `0600`; the containing directory MUST be `0700`.
 - `KXD-156` Status and logs MUST work without API connectivity.
 - `KXD-157` `logout` MUST revoke or clear credentials and stop the service.
-- `KXD-158` The retired `agent-tunnel` command MAY remain for one release only
+- `KXD-158` [Future] The retired `agent-tunnel` command MAY remain for one release only
   as a message-only migration shim to `kortixd connect`.
 
 ## 10. Security and observability
@@ -238,7 +244,7 @@ No requirement is complete until its mapped test passes.
 | `KXD-REST` | Create, list, get, patch, enable, disable, drain, rotate, restart, and delete a compute node. Assert auth failures and database read-back. |
 | `KXD-CLI` | Run the compiled `kortixd` process for help, version, doctor, connect, status JSON, update, service operations, logout, invalid input, and unreachable API. Assert exit code, stdout, stderr, files, modes, and process state. |
 | `KXD-WIRE` | Real WebSocket authentication, HMAC, nonce replay rejection, replacement, heartbeat, RPC, streaming HTTP, SSE, WebSocket, bodies, cancellation, backpressure, disconnect, reconnect, and cross-instance forwarding. |
-| `KXD-CAP` | Filesystem CRUD, traversal, symlink, blocked path, size, shell allow/deny/timeout/output/cancel, desktop driver absent/present, permission grant/revoke/expiry, and audit read-back. |
+| `KXD-CAP` | Sandbox filesystem CRUD, traversal, symlink, blocked path, size, shell allow/deny/timeout/output/cancel, port relay, and audit read-back. Desktop and workstation permission migration are future scope. |
 | `KXD-CONVERGE` | Current/no-download, stale update, digest mismatch, partial download, API 500, timeout, lower/equal/higher epoch, busy deferral, OpenCode+ABI update, skills atomicity, kill switch, and unsupported future component. |
 | `KXD-UPDATE` | Daemon stage, supervisor verification, atomic promote, healthy boot, first bad update, bad update after good update, rollback, pin, clear pin, interrupted promotion, and bounded version cleanup. |
 | `KXD-SESSION` | Provision a real provider allocation, observe outbound node connection, create/start a session, wait for channel-derived readiness, run a real prompt, observe SSE, filesystem CRUD, commit, stop, resume, restart, rotate credentials, run another prompt, release, and delete. |
@@ -246,7 +252,7 @@ No requirement is complete until its mapped test passes.
 | `KXD-STALE` | Boot a deliberately old sandbox image. Assert it cannot become ready until `kortixd`, `kortix`, OpenCode, ABI support, and managed skills match the current manifest. |
 | `KXD-FAIL` | Cut API connectivity during a turn, reconnect, kill the daemon, kill the harness, rotate the node credential, replace the channel, stop the provider allocation, and restore it. Assert explicit state and recovery. |
 | `KXD-WEB` | In Chromium, create a node, view live/offline/convergence status, create a project and session, observe ready state, send a prompt, see streamed output, inspect files, stop/restart, and delete. Assert DOM, network requests, payloads, and visible results. |
-| `KXD-COMPAT` | Old API/new daemon, new API/old daemon for the declared window, old snapshot entrypoint, `/p/:externalId` compatibility, and the `agent-tunnel` migration shim. |
+| `KXD-COMPAT` | Old API/new daemon, new API/old daemon for the declared window, old snapshot entrypoint, and `/p/:externalId` compatibility. The future `agent-tunnel` migration is excluded. |
 
 ## 12. Release gate
 

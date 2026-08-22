@@ -35,6 +35,21 @@ describe('ComputeNodeChannelHub', () => {
     expect(socket.closed[0]).toEqual([4001, 'node authentication failed'])
   })
 
+  test('authenticates before provider external id exists and resolves it later', async () => {
+    const hub = new ComputeNodeChannelHub(
+      async (nodeId) => ({ nodeId }),
+      async (externalId) => externalId === 'ext-later' ? 'node-1' : null,
+    )
+    const socket = new FakeSocket()
+    hub.open(socket)
+    await hub.message(socket, JSON.stringify({ type: 'node.auth', node_id: 'node-1', token: 'valid' }))
+    const response = hub.fetchByExternalId('ext-later', 8000, new Request('http://node.test/health'))
+    await Bun.sleep(0)
+    expect(JSON.parse(socket.sent[1]!).type).toBe('stream.open')
+    void response.catch(() => {})
+    hub.close(socket)
+  })
+
   test('streams an HTTP response from the connected node', async () => {
     const hub = new ComputeNodeChannelHub(async (nodeId) => ({ nodeId, externalId: 'ext-1' }))
     const socket = new FakeSocket()

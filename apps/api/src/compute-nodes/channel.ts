@@ -2,10 +2,13 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_WINDOW_BYTES, parseNodeChannelFrame, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
 
 interface SocketLike { send(value: string): void; close(code?: number, reason?: string): void }
-interface AuthResult { nodeId: string; externalId: string }
+interface AuthResult { nodeId: string; externalId?: string }
 type Authenticate = (nodeId: string, token: string, version?: string) => Promise<AuthResult | null>
+type ResolveNodeId = (externalId: string) => Promise<string | null>
 
-interface Connection extends AuthResult {
+interface Connection {
+  nodeId: string
+  externalId?: string
   socket: SocketLike
   key: string
   sendNonce: number
@@ -34,7 +37,10 @@ export class ComputeNodeChannelHub {
   private readonly externalToNode = new Map<string, string>()
   private readonly streams = new Map<string, StreamState>()
 
-  constructor(private readonly authenticate: Authenticate) {}
+  constructor(
+    private readonly authenticate: Authenticate,
+    private readonly resolveNodeId?: ResolveNodeId,
+  ) {}
 
   open(socket: SocketLike): void { this.pending.add(socket) }
 
@@ -73,15 +79,19 @@ export class ComputeNodeChannelHub {
     const connection = [...this.byNode.values()].find((item) => item.socket === socket)
     if (!connection) return
     this.byNode.delete(connection.nodeId)
-    this.externalToNode.delete(connection.externalId)
+    if (connection.externalId) this.externalToNode.delete(connection.externalId)
     for (const [id, stream] of this.streams) if (stream.nodeId === connection.nodeId) this.fail(id, stream, new Error(`Compute node ${connection.nodeId} disconnected`))
   }
 
   isConnected(nodeId: string): boolean { return this.byNode.has(nodeId) }
 
-  fetchByExternalId(externalId: string, port: number, request: Request): Promise<Response> {
-    const nodeId = this.externalToNode.get(externalId)
-    if (!nodeId) return Promise.reject(new Error(`Compute node for ${externalId} is not connected`))
+  async fetchByExternalId(externalId: string, port: number, request: Request): Promise<Response> {
+    let nodeId = this.externalToNode.get(externalId)
+    if (!nodeId && this.resolveNodeId) {
+      nodeId = (await this.resolveNodeId(externalId)) ?? undefined
+      if (nodeId && this.byNode.has(nodeId)) this.externalToNode.set(externalId, nodeId)
+    }
+    if (!nodeId) throw new Error(`Compute node for ${externalId} is not connected`)
     return this.fetch(nodeId, port, request)
   }
 
@@ -115,7 +125,7 @@ export class ComputeNodeChannelHub {
       const key = randomBytes(32).toString('hex')
       const connection: Connection = { ...result, socket, key, sendNonce: 0, receiveNonce: 0 }
       this.byNode.set(result.nodeId, connection)
-      this.externalToNode.set(result.externalId, result.nodeId)
+      if (result.externalId) this.externalToNode.set(result.externalId, result.nodeId)
       socket.send(JSON.stringify({ type: 'node.auth.ok', signing_key: key }))
     } catch {
       socket.close(4001, 'invalid node authentication')

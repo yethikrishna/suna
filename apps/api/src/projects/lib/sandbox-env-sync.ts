@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { projects, projectSessions, sessionSandboxes } from '@kortix/db';
 import { db } from '../../shared/db';
 import { resolveSandboxIngress } from '../../sandbox-proxy/backend';
+import { fetchComputeNode } from '../../compute-nodes';
 import { config } from '../../config';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { resolveLlmGatewayBaseUrl } from '../../llm-gateway/sandbox-base-url';
@@ -484,6 +485,7 @@ function isSecureOrPrivateTarget(rawUrl: string): boolean {
 }
 
 async function postEnvToDaemon(args: {
+  externalId: string;
   previewUrl: string;
   providerHeaders: Record<string, string>;
   serviceKey: string;
@@ -515,16 +517,13 @@ async function postEnvToDaemon(args: {
    */
   opencodeTurnEnded: boolean | null;
 }> {
-  if (!isSecureOrPrivateTarget(args.previewUrl)) {
-    throw new Error('refusing to push secrets over insecure transport (non-TLS public host)');
-  }
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${args.serviceKey}`,
     ...args.providerHeaders,
   };
 
-  const res = await fetch(`${args.previewUrl.replace(/\/$/, '')}/kortix/env`, {
+  const res = await fetchComputeNode(args.externalId, SANDBOX_SERVICE_PORT, '/kortix/env', {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -746,6 +745,7 @@ export async function syncSandboxEnvForPrompt(args: {
     return;
   }
   const { opencodeState } = await postEnvToDaemon({
+    externalId: args.externalId,
     previewUrl: args.previewUrl,
     providerHeaders: args.providerHeaders,
     serviceKey: args.serviceKey,
@@ -770,6 +770,10 @@ export async function syncSandboxEnvForPrompt(args: {
     const ready = await waitForDaemonOpencodeReady({
       previewUrl: args.previewUrl,
       providerHeaders: args.providerHeaders,
+      deps: {
+        fetchImpl: ((_url: string | URL | Request, init?: RequestInit) =>
+          fetchComputeNode(args.externalId, SANDBOX_SERVICE_PORT, '/kortix/health', init)) as typeof fetch,
+      },
     });
     console.log(
       `[env-sync] opencode restarted by prompt env-sync (state=${opencodeState}); ` +
@@ -886,6 +890,7 @@ async function runProjectSecretPropagation(
         await syncProviderNetworkBoundary(providerName, row.externalId, networkBoundary);
         const { url, headers } = await resolveSandboxIngress(row.externalId, { port: SANDBOX_SERVICE_PORT, transport: 'http' });
         const proof = await postEnvToDaemon({
+          externalId: row.externalId,
           previewUrl: url,
           providerHeaders: headers,
           serviceKey,
@@ -993,6 +998,7 @@ export async function propagateLlmGatewayModeToActiveSandboxes(
           emptySandboxEnvSnapshot(`llm-gateway-${enabled ? 'on' : 'off'}`);
         const { url, headers } = await resolveSandboxIngress(row.externalId, { port: SANDBOX_SERVICE_PORT, transport: 'http' });
         await postEnvToDaemon({
+          externalId: row.externalId,
           previewUrl: url,
           providerHeaders: headers,
           serviceKey,
@@ -1176,6 +1182,7 @@ export async function pushSessionAgentConfigToSandbox(input: {
     // apply-and-validate boundary instead of inventing sub-phases we cannot see.
     input.onPhase?.('applying-config');
     const pushed = await postEnvToDaemon({
+      externalId: row.externalId,
       previewUrl: url,
       providerHeaders: headers,
       serviceKey,
@@ -1237,6 +1244,7 @@ export async function pushSessionModelToSandbox(input: {
       transport: 'http',
     });
     await postEnvToDaemon({
+      externalId: row.externalId,
       previewUrl: url,
       providerHeaders: headers,
       serviceKey,
@@ -1327,6 +1335,7 @@ export async function pushSessionScopeToSandbox(input: {
       transport: 'http',
     });
     await postEnvToDaemon({
+      externalId: row.externalId,
       previewUrl: url,
       providerHeaders: headers,
       serviceKey,

@@ -75,6 +75,7 @@ import {
   startTunnelService,
   stopTunnelService,
 } from './tunnel';
+import { computeNodeWsHandlers } from './compute-nodes';
 import { voiceMcpRoutes } from './channels/voice/routes';
 import { accessControlApp } from './access-control';
 import { startAccessControlCache, stopAccessControlCache } from './shared/access-control-cache';
@@ -1764,6 +1765,16 @@ export default {
       if (success) return undefined;
     }
 
+    // ── kortixd compute-node WebSocket ──────────────────────────────────
+    // This is independent from the legacy computer agent tunnel. Sandboxes
+    // authenticate in the first frame, then carry all runtime traffic here.
+    if (isWsUpgrade && url.pathname === '/v1/nodes/ws') {
+      if (!schemaReady) return new Response(JSON.stringify({ error: 'Service starting up' }), { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5' } })
+      if (req.headers.has('origin')) return new Response(JSON.stringify({ error: 'Browser WebSockets are not allowed' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
+      if (server.upgrade(req, { data: { type: 'compute-node' } })) return undefined
+      return new Response(JSON.stringify({ error: 'Compute-node WebSocket upgrade failed' }), { status: 500, headers: { 'Content-Type': 'application/json' } })
+    }
+
     // ── Preview WebSocket proxy ─────────────────────────────────────────
     // Path-based preview upgrades (`/v1/p/{sandboxId}/{port}/...`) — today the
     // xterm PTY terminal. Authenticate via the `?token=` query param (browsers
@@ -1808,6 +1819,10 @@ export default {
         tunnelWsHandlers.onOpen(ws.data.tunnelId, ws as any);
         return;
       }
+      if (ws.data?.type === 'compute-node') {
+        computeNodeWsHandlers.open(ws as any);
+        return;
+      }
       if (ws.data?.type === 'preview-ws') {
         previewWsHandlers.open(ws as any);
         return;
@@ -1830,6 +1845,10 @@ export default {
         tunnelWsHandlers.onMessage(ws.data.tunnelId, ws as any, message);
         return;
       }
+      if (ws.data?.type === 'compute-node') {
+        computeNodeWsHandlers.message(ws as any, message);
+        return;
+      }
       if (ws.data?.type === 'preview-ws') {
         previewWsHandlers.message(ws as any, message);
         return;
@@ -1843,6 +1862,10 @@ export default {
     close(ws: { data: any }) {
       if (ws.data?.type === 'tunnel-agent') {
         tunnelWsHandlers.onClose(ws.data.tunnelId, ws as any);
+        return;
+      }
+      if (ws.data?.type === 'compute-node') {
+        computeNodeWsHandlers.close(ws as any);
         return;
       }
       if (ws.data?.type === 'preview-ws') {

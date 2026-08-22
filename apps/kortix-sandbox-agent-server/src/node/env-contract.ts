@@ -120,6 +120,7 @@ export const ENV_CONTRACT: readonly EnvBinding[] = [
   b('KORTIX_AGENT_STATE_DIR', 'core', 'boot', 'path', 'Where staged daemon updates land. Owned by the supervisor.'),
   b('KORTIX_AGENT_BIN', 'core', 'boot', 'path', 'Baked daemon path. Test seam only; production never sets it.'),
   b('KORTIX_API_URL', 'core', 'session', 'identity', 'The control plane this node converges against and reports to.'),
+  b('KORTIX_COMPUTE_NODE_ID', 'core', 'boot', 'identity', 'Stable logical compute-node id used by the outbound channel.'),
   b('KORTIX_SANDBOX_TOKEN', 'core', 'session', 'identity', 'The node credential: HMAC key for user-context and bearer for sandbox routes.', { secret: true }),
   b('KORTIX_TOKEN', 'core', 'session', 'identity', 'Legacy alias for KORTIX_SANDBOX_TOKEN. Kept for daemons baked before the rename.', { secret: true }),
   b('KORTIX_CLI_TOKEN', 'core', 'session', 'identity', 'Session token acting as the launching user. Distinct from the node credential.', { secret: true }),

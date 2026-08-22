@@ -553,6 +553,9 @@ export async function provisionSessionSandbox(opts: {
       // (activeHost() resolves only the session token).
       KORTIX_SANDBOX_TOKEN: sandboxKey.secretKey,
       KORTIX_TOKEN: sandboxKey.secretKey,
+      // The stable logical node id. Provider allocation ids are assigned only
+      // after create, so they cannot identify the outbound daemon handshake.
+      KORTIX_COMPUTE_NODE_ID: sandbox.sandboxId,
       ...(connectorToken
         ? { KORTIX_CLI_TOKEN: connectorToken }
         : {}),

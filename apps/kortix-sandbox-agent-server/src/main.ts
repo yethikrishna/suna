@@ -68,6 +68,7 @@ import type { SandboxBootState } from './routes/health'
 import { installShutdownHandlers } from './shutdown'
 import { startStaticWebServer } from './static-web'
 import { opencodeDeliveryInFlight, opencodeTurnInFlight } from './opencode-turn-state'
+import { KortixNodeChannel } from './node/channel/client'
 
 const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
   'deepseek-v4-flash-free',
@@ -80,6 +81,18 @@ const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
 export async function runKortixDaemon(): Promise<void> {
   const bootTime = Date.now()
   const cfg = loadConfig()
+  // The sandbox has no inbound runtime path. kortixd opens the one authenticated
+  // control-plane connection and relays signed requests to loopback services.
+  if (cfg.apiUrl && cfg.computeNodeId && cfg.sandboxToken) {
+    new KortixNodeChannel({
+      apiUrl: cfg.apiUrl,
+      nodeId: cfg.computeNodeId,
+      token: cfg.sandboxToken,
+      // A signed API frame is the authorization decision. The transport still
+      // hardcodes 127.0.0.1, so it cannot become an SSRF path to another host.
+      ports: { has: (port: number) => Number.isInteger(port) && port >= 1 && port <= 65_535 },
+    }).connect()
+  }
   const prompt = (process.env.KORTIX_INITIAL_PROMPT ?? '').trim()
   const bootstrapSession = (process.env.KORTIX_BOOTSTRAP_OPENCODE_SESSION ?? '').trim() === '1'
   const bootState: SandboxBootState = {

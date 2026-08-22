@@ -44,6 +44,10 @@ let upstreamPort = 3000;
 mock.module('../../config', () => ({
   config: {},
 }));
+mock.module('../../compute-nodes', () => ({
+  fetchComputeNode: async (_externalId: string, port: number, path: string, init?: RequestInit) =>
+    fetch(`http://127.0.0.1:${port}${path}`, init),
+}));
 // Importing the real lifecycle export surface must not initialize the actual
 // database module. The route under test replaces every lifecycle write below.
 mock.module('../../shared/db', () => ({

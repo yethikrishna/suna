@@ -135,6 +135,14 @@ mock.module('../../config', () => ({
   config: testConfig,
 }));
 
+mock.module('../../repositories/compute-node-credentials', () => ({
+  rotateNodeCredential: async () => ({
+    credential: 'knd_test_node_credential',
+    publicPrefix: 'knd_test',
+    generation: 1,
+  }),
+}));
+
 mock.module('../../shared/db', () => ({
   db: {
     insert: (table: unknown) => ({

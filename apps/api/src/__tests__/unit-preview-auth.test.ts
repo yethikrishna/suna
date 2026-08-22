@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import * as realPreviewOwnership from '../shared/preview-ownership';
+import * as realCrypto from '../shared/crypto';
 
 let mockSandboxAccountId: string | null = 'acct-owner';
 let mockResolvedAccountId = 'acct-owner';
@@ -47,6 +48,7 @@ mock.module('../repositories/api-keys', () => ({
 }));
 
 mock.module('../shared/crypto', () => ({
+  ...realCrypto,
   // Constants
   KEY_PREFIX: 'kortix_',
   KEY_PREFIX_PAT: 'kortix_pat_',

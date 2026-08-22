@@ -15,6 +15,11 @@ import * as realSecretGrant from './secret-grant';
 
 process.env.KORTIX_URL = 'https://api.example.com';
 
+mock.module('../../compute-nodes', () => ({
+  fetchComputeNode: async (_externalId: string, port: number, path: string, init?: RequestInit) =>
+    fetch(`http://127.0.0.1:${port}${path}`, init),
+}));
+
 let compiled: string | null = '{"agent":{"support":{"prompt":"fresh"}}}';
 let compileThrows: Error | null = null;
 let compileCalls: Array<{ ref: string | null | undefined; agent?: string }> = [];

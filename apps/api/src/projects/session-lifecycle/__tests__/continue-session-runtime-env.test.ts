@@ -78,8 +78,9 @@ mock.module('../../lib/sandbox-env-sync', () => ({
     expect(input).toMatchObject({
       projectId: PROJECT_ID,
       sessionId: SESSION_ID,
+      externalId: EXTERNAL_ID,
       serviceKey: 'service-key-1',
-      previewUrl: 'https://sandbox.test',
+      previewUrl: 'http://127.0.0.1:8000',
       providerName: 'daytona',
       opencodeEnv: { KORTIX_CONNECTORS_MCP_ENABLED: '1' },
     });

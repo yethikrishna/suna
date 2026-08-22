@@ -143,3 +143,12 @@ export async function validateNodeCredential(token: string, claimedNodeId: strin
     .catch(() => {})
   return { nodeId: row.nodeId, accountId: row.accountId }
 }
+
+/** Resolve a node credential without trusting a caller-supplied node id. */
+export async function validateNodeCredentialAny(token: string): Promise<{ nodeId: string; accountId: string } | null> {
+  if (!isNodeCredential(token)) return null
+  const [row] = await db.select({ credentialId: computeNodeCredentials.credentialId, nodeId: computeNodeCredentials.nodeId, accountId: computeNodeCredentials.accountId, expiresAt: computeNodeCredentials.expiresAt, nodeStatus: computeNodes.status }).from(computeNodeCredentials).innerJoin(computeNodes, eq(computeNodes.nodeId, computeNodeCredentials.nodeId)).where(and(inArray(computeNodeCredentials.secretHash, candidateSecretKeyHashes(token)), eq(computeNodeCredentials.status, 'active'))).limit(1)
+  if (!row || (row.expiresAt && row.expiresAt <= new Date()) || ['disabled', 'draining', 'deleted'].includes(row.nodeStatus)) return null
+  void db.update(computeNodeCredentials).set({ lastUsedAt: new Date() }).where(eq(computeNodeCredentials.credentialId, row.credentialId)).catch(() => {})
+  return { nodeId: row.nodeId, accountId: row.accountId }
+}

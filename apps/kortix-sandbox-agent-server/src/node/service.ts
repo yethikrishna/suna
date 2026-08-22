@@ -44,7 +44,7 @@ export function renderLaunchAgent(executable: string, env: NodeJS.ProcessEnv = p
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>${LABEL}</string>
-<key>ProgramArguments</key><array><string>${xml(executable)}</string><string>run</string></array>
+<key>ProgramArguments</key><array><string>${xml(executable)}</string><string>supervise</string></array>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
 <key>ProcessType</key><string>Background</string>
 <key>StandardOutPath</key><string>${xml(paths.stdout)}</string>
@@ -62,7 +62,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${shellQuote(executable)} run
+ExecStart=${shellQuote(executable)} supervise
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:${paths.stdout}
@@ -75,7 +75,7 @@ WantedBy=default.target
 
 export function renderWindowsRunner(executable: string, env: NodeJS.ProcessEnv = process.env): string {
   const paths = servicePaths(env)
-  return `& ${powershellQuote(executable)} 'run' >> ${powershellQuote(paths.stdout)} 2>> ${powershellQuote(paths.stderr)}\r\n`
+  return `& ${powershellQuote(executable)} 'supervise' >> ${powershellQuote(paths.stdout)} 2>> ${powershellQuote(paths.stderr)}\r\n`
 }
 
 function run(command: string, args: string[]): { ok: boolean; output: string } {

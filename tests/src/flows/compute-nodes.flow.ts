@@ -75,6 +75,7 @@ flow(
       'DELETE /v1/accounts/:accountId/compute-nodes/:nodeId',
       'POST /v1/nodes/enroll',
       'POST /v1/nodes/logout',
+      'GET /v1/runtime-assets/manifest',
     ],
   },
   async (ctx) => {
@@ -117,6 +118,11 @@ flow(
       if (!listed || 'credential' in listed || 'secret_hash' in listed) throw new Error('node list is missing the node or exposes credential material')
       const get = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/compute-nodes/:nodeId', { params: { accountId, nodeId } })
       get.status(200).body().has('$.compute_node_id', nodeId)
+    })
+
+    await ctx.step('node credential reads convergence truth but remains separate from user authority', async () => {
+      const manifest = await ctx.client.withBearer(firstCredential, 'NODE').get('/v1/runtime-assets/manifest')
+      manifest.status(200).body().exists('$.build').exists('$.components')
     })
 
     await ctx.step('owner updates concurrency, channel, and desired manifest with read-back proof', async () => {

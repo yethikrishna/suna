@@ -40,7 +40,7 @@ import { billingApp, accountDeletionApp } from './billing';
 import { platformApp } from './platform';
 import { sandboxProxyApp } from './sandbox-proxy';
 import { setupApp } from './setup';
-import { supabaseAuth, combinedAuth } from './middleware/auth';
+import { supabaseAuth, combinedAuth, nodeOrCombinedAuth } from './middleware/auth';
 import { createCorsMiddleware } from './middleware/cors';
 import { requestDeadline, isRequestDeadlineHTTPException } from './middleware/request-deadline';
 import { inspectDatabaseError } from './shared/database-errors';
@@ -898,7 +898,7 @@ app.route('/v1/skills', skillsApp); // GET /v1/skills, /v1/skills/:name[?full=1]
 // the in-sandbox KORTIX_CLI_TOKEN. The `/*` wildcard is what puts every payload
 // route behind auth — a new one must be added to runtimeAssetsApp, never mounted
 // beside it.
-app.use('/v1/runtime-assets/*', combinedAuth);
+app.use('/v1/runtime-assets/*', nodeOrCombinedAuth);
 app.route('/v1/runtime-assets', runtimeAssetsApp); // GET /manifest, /cli, /agent, /managed-skills
 
 // Universal git smart-HTTP proxy — every git-backed project's client origin.

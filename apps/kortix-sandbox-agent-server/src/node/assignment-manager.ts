@@ -75,6 +75,7 @@ export class NodeAssignmentManager {
     return assignment ? [join(this.directory, 'workspaces', assignment.session_id), ...assignment.writable_roots] : []
   }
   hasPort(port: number): boolean { return this.current?.state === 'ready' && this.current.assignment.ports.includes(port) }
+  isBusy(): boolean { return Boolean(this.child && this.child.exitCode === null) }
   resetSequences(): void { this.sendSequences.clear() }
 
   async handle(frame: NodeChannelFrame): Promise<boolean> {

@@ -6,6 +6,8 @@ import { ENV_CONTRACT } from './node/env-contract'
 import { reconcileRuntimeAssets, runtimeConvergenceReport } from './runtime-assets'
 import { clearStoredNodeConfig, readStoredNodeConfig, writeStoredNodeConfig } from './node/config-store'
 import { controlService, getServiceStatus, installService, readServiceLogs, uninstallService } from './node/service'
+import { superviseKortixd } from './node/supervisor'
+import { nodeRuntimePaths } from './node/convergence'
 
 const VERSION = process.env.KORTIXD_VERSION ?? 'dev'
 
@@ -81,7 +83,14 @@ async function runStatus(argv: readonly string[]): Promise<number> {
 async function runUpdate(): Promise<number> {
   const cfg = loadConfig()
   const configDir = await resolveOpencodeConfigDir(cfg).catch(() => undefined)
-  const result = await reconcileRuntimeAssets({ configDir })
+  const stored = readStoredNodeConfig()
+  const paths = nodeRuntimePaths()
+  const result = await reconcileRuntimeAssets(stored ? {
+    configDir, apiUrl: stored.api_url, token: stored.credential,
+    cliPath: paths.cliPath, managedSkillsDir: paths.managedSkillsDir,
+    statePath: paths.statePath, agentStateDir: paths.runtime,
+    agentBakedPath: process.execPath, runningAgentPath: process.execPath,
+  } : { configDir })
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
   return Object.values(result).includes('failed') ? 1 : 0
 }
@@ -159,6 +168,7 @@ export async function runKortixd(argv: string[]): Promise<number> {
     await runKortixDaemon()
     return 0
   }
+  if (command === 'supervise') return superviseKortixd()
   if (command === 'connect') return runConnect(argv.slice(1))
   if (command === 'status') return runStatus(argv.slice(1))
   if (command === 'update') return runUpdate()

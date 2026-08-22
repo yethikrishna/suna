@@ -12,6 +12,24 @@ interface FrameBase {
   seq: number;
 }
 
+export interface NodeAssignmentCapabilityPolicy {
+  filesystem?: {
+    operations: Array<'read' | 'write' | 'list' | 'stat' | 'delete'>;
+    readable_roots: string[];
+    writable_roots: string[];
+    exclude_patterns: string[];
+    max_file_size: number;
+  };
+  shell?: {
+    commands: string[];
+    working_roots: string[];
+    max_timeout_ms: number;
+  };
+  desktop?: {
+    features: Array<'screenshot' | 'mouse' | 'keyboard' | 'windows' | 'apps' | 'clipboard' | 'accessibility' | 'computer_use'>;
+  };
+}
+
 export interface NodeAssignmentSpec {
   assignment_id: string;
   session_id: string;
@@ -24,6 +42,7 @@ export interface NodeAssignmentSpec {
   secrets_revision: string;
   ports: number[];
   writable_roots: string[];
+  capability_policy?: NodeAssignmentCapabilityPolicy;
   env: Record<string, string>;
 }
 
@@ -153,12 +172,50 @@ function assignment(value: unknown): NodeAssignmentSpec {
   if (!Array.isArray(item.ports) || item.ports.length > 32) invalid('assignment.ports');
   item.ports = item.ports.map((port) => integer(port, 'assignment.port', 1, 65_535));
   if (!Array.isArray(item.writable_roots) || item.writable_roots.length > 32 || !item.writable_roots.every((root) => typeof root === 'string' && root.startsWith('/') && root.length <= 4096)) invalid('assignment.writable_roots');
+  if (item.capability_policy !== undefined) item.capability_policy = capabilityPolicy(item.capability_policy);
   if (!item.env || typeof item.env !== 'object' || Array.isArray(item.env)) invalid('assignment.env');
   const entries = Object.entries(item.env as Record<string, unknown>);
   if (entries.length > 128 || entries.some(([key, entry]) => !/^[A-Z_][A-Z0-9_]{0,127}$/.test(key) || typeof entry !== 'string' || entry.length > 131_072)) invalid('assignment.env');
   if (entries.reduce((total, [key, entry]) => total + key.length + (entry as string).length, 0) > 512 * 1024) invalid('assignment.env');
   for (const forbidden of ['KORTIX_NODE_TOKEN', 'KORTIX_SANDBOX_TOKEN', 'KORTIX_TOKEN']) if (forbidden in (item.env as object)) invalid(`assignment.env.${forbidden}`);
   return item as unknown as NodeAssignmentSpec;
+}
+
+function capabilityPolicy(value: unknown): NodeAssignmentCapabilityPolicy {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) invalid('assignment.capability_policy');
+  const policy = value as Record<string, unknown>;
+  if (Object.keys(policy).some((key) => !['filesystem', 'shell', 'desktop'].includes(key))) invalid('assignment.capability_policy.key');
+  const roots = (input: unknown, field: string) => {
+    if (!Array.isArray(input) || input.length > 32 || !input.every((root) => typeof root === 'string' && root.startsWith('/') && root.length <= 4096)) invalid(field);
+    return input as string[];
+  };
+  if (policy.filesystem !== undefined) {
+    if (!policy.filesystem || typeof policy.filesystem !== 'object' || Array.isArray(policy.filesystem)) invalid('assignment.capability_policy.filesystem');
+    const fs = policy.filesystem as Record<string, unknown>;
+    if (Object.keys(fs).some((key) => !['operations', 'readable_roots', 'writable_roots', 'exclude_patterns', 'max_file_size'].includes(key))) invalid('assignment.capability_policy.filesystem.key');
+    const operations = new Set(['read', 'write', 'list', 'stat', 'delete']);
+    if (!Array.isArray(fs.operations) || fs.operations.length > operations.size || !fs.operations.every((item) => typeof item === 'string' && operations.has(item))) invalid('assignment.capability_policy.filesystem.operations');
+    fs.readable_roots = roots(fs.readable_roots, 'assignment.capability_policy.filesystem.readable_roots');
+    fs.writable_roots = roots(fs.writable_roots, 'assignment.capability_policy.filesystem.writable_roots');
+    if (!Array.isArray(fs.exclude_patterns) || fs.exclude_patterns.length > 100 || !fs.exclude_patterns.every((item) => typeof item === 'string' && item.length > 0 && item.length <= 1024)) invalid('assignment.capability_policy.filesystem.exclude_patterns');
+    integer(fs.max_file_size, 'assignment.capability_policy.filesystem.max_file_size', 1, 1024 * 1024 * 1024);
+  }
+  if (policy.shell !== undefined) {
+    if (!policy.shell || typeof policy.shell !== 'object' || Array.isArray(policy.shell)) invalid('assignment.capability_policy.shell');
+    const shell = policy.shell as Record<string, unknown>;
+    if (Object.keys(shell).some((key) => !['commands', 'working_roots', 'max_timeout_ms'].includes(key))) invalid('assignment.capability_policy.shell.key');
+    if (!Array.isArray(shell.commands) || shell.commands.length > 100 || !shell.commands.every((item) => typeof item === 'string' && item.length > 0 && item.length <= 4096)) invalid('assignment.capability_policy.shell.commands');
+    shell.working_roots = roots(shell.working_roots, 'assignment.capability_policy.shell.working_roots');
+    integer(shell.max_timeout_ms, 'assignment.capability_policy.shell.max_timeout_ms', 1, 24 * 60 * 60 * 1000);
+  }
+  if (policy.desktop !== undefined) {
+    if (!policy.desktop || typeof policy.desktop !== 'object' || Array.isArray(policy.desktop)) invalid('assignment.capability_policy.desktop');
+    const desktop = policy.desktop as Record<string, unknown>;
+    if (Object.keys(desktop).some((key) => key !== 'features')) invalid('assignment.capability_policy.desktop.key');
+    const features = new Set(['screenshot', 'mouse', 'keyboard', 'windows', 'apps', 'clipboard', 'accessibility', 'computer_use']);
+    if (!Array.isArray(desktop.features) || desktop.features.length > features.size || !desktop.features.every((item) => typeof item === 'string' && features.has(item))) invalid('assignment.capability_policy.desktop.features');
+  }
+  return policy as NodeAssignmentCapabilityPolicy;
 }
 
 export function parseNodeChannelFrame(raw: string): NodeChannelFrame {

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
-import type { NodeAssignmentSpec, NodeChannelFrame } from '@kortix/api-contract/node-channel'
+import type { NodeAssignmentCapabilityPolicy, NodeAssignmentSpec, NodeChannelFrame } from '@kortix/api-contract/node-channel'
 import { nodeStateDirectory } from './config-store'
 
 interface PersistedAssignment {
@@ -70,6 +70,7 @@ export class NodeAssignmentManager {
   }
 
   get assignment(): NodeAssignmentSpec | null { return this.current?.assignment ?? null }
+  get capabilityPolicy(): NodeAssignmentCapabilityPolicy | undefined { return this.current?.assignment.capability_policy }
   get writableRoots(): readonly string[] {
     const assignment = this.current?.assignment
     return assignment ? [join(this.directory, 'workspaces', assignment.session_id), ...assignment.writable_roots] : []

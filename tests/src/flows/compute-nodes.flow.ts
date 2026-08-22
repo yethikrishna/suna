@@ -176,12 +176,18 @@ flow(
       const project = await ctx.fixtures.project()
       const session = await ctx.fixtures.session(project)
       peer = await connectNodePeer(ctx.env.apiUrl, nodeId, firstCredential)
-      const assigned = await ctx.client.as(ctx.P.OWNER).post('/v1/accounts/:accountId/compute-nodes/:nodeId/assignments', { session_id: session.id, lease_seconds: 300, ports: [8000], writable_roots: [] }, { params: { accountId, nodeId } })
+      const capabilityPolicy = {
+        filesystem: { operations: ['read', 'list'], readable_roots: ['/workspace'], writable_roots: [], exclude_patterns: ['**/.env'], max_file_size: 1048576 },
+        shell: { commands: ['git'], working_roots: ['/workspace'], max_timeout_ms: 30000 },
+        desktop: { features: ['screenshot', 'mouse'] },
+      }
+      const assigned = await ctx.client.as(ctx.P.OWNER).post('/v1/accounts/:accountId/compute-nodes/:nodeId/assignments', { session_id: session.id, lease_seconds: 300, ports: [8000], writable_roots: [], capability_policy: capabilityPolicy }, { params: { accountId, nodeId } })
       assigned.status(202).body().has('$.session_id', session.id).has('$.status', 'assigned')
       const assignmentId = assigned.json<any>().assignment_id
       await peer.assignmentReceived
       const apply = peer.assignment()
       if (apply.assignment.env.KORTIX_NODE_TOKEN || apply.assignment.env.KORTIX_SANDBOX_TOKEN) throw new Error('assignment exposed a node or sandbox credential')
+      if (JSON.stringify(apply.assignment.capability_policy) !== JSON.stringify(capabilityPolicy)) throw new Error(`assignment capability policy changed in transit: ${JSON.stringify(apply.assignment.capability_policy)}`)
       peer.send({ v: 1, type: 'assignment.accept', stream_id: assignmentId, seq: 0, status: 'starting' })
       peer.send({ v: 1, type: 'assignment.ready', stream_id: assignmentId, seq: 1, ports: [8000], native_conversation_id: 'e2e-opencode' })
       let row: any = null

@@ -30,6 +30,9 @@ function spec(epoch = 1): NodeAssignmentSpec {
     secrets_revision: 'rev-1',
     ports: [18000],
     writable_roots: ['/workspace'],
+    capability_policy: {
+      filesystem: { operations: ['read'], readable_roots: ['/workspace'], writable_roots: [], exclude_patterns: [], max_file_size: 1024 },
+    },
     env: { KORTIX_CLI_TOKEN: 'session-only', KORTIX_SESSION_ID: SESSION, KORTIX_PROJECT_ID: PROJECT },
   }
 }
@@ -53,6 +56,7 @@ describe('kortixd assignment manager', () => {
       expect(environments[0]?.KORTIX_NODE_TOKEN).toBeUndefined()
       expect(environments[0]?.KORTIX_CLI_TOKEN).toBe('session-only')
       expect(manager.hasPort(18000)).toBe(true)
+      expect(manager.capabilityPolicy?.filesystem?.operations).toEqual(['read'])
       await manager.handle({ v: 1, type: 'assignment.apply', stream_id: ID, seq: 0, assignment: spec() })
       expect(frames.at(-1)).toMatchObject({ type: 'assignment.accept', status: 'ready' })
       expect(environments).toHaveLength(1)

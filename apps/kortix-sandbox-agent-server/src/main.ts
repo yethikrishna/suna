@@ -101,7 +101,7 @@ export async function runKortixDaemon(): Promise<void> {
       ports: { has: (port: number) => assignmentManager.hasPort(port) || (Boolean(assignedSessionId) && port === cfg.servicePort) },
       capabilities: assignedSessionId
         ? createSandboxCapabilityRegistry()
-        : createNodeCapabilityRegistry({ assignmentRoots: () => assignmentManager.writableRoots, policy: () => loadNodeLocalPolicy() }),
+        : createNodeCapabilityRegistry({ assignmentRoots: () => assignmentManager.writableRoots, assignmentPolicy: () => assignmentManager.capabilityPolicy, policy: () => loadNodeLocalPolicy() }),
       assignments: assignmentManager,
       onAuthenticated: () => assignmentManager.restore(),
     })

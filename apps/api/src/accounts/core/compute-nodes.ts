@@ -20,6 +20,23 @@ import { generateNodeEnrollmentToken, hashSecretKey } from '../../shared/crypto'
 import { accountsRouter } from './app'
 
 const NodeType = z.enum(['sandbox', 'workstation', 'vm', 'container', 'bare_metal', 'ci'])
+const AssignmentCapabilityPolicy = z.object({
+  filesystem: z.object({
+    operations: z.array(z.enum(['read', 'write', 'list', 'stat', 'delete'])).max(5),
+    readable_roots: z.array(z.string().startsWith('/').max(4096)).max(32),
+    writable_roots: z.array(z.string().startsWith('/').max(4096)).max(32),
+    exclude_patterns: z.array(z.string().min(1).max(1024)).max(100),
+    max_file_size: z.number().int().min(1).max(1024 * 1024 * 1024),
+  }).optional(),
+  shell: z.object({
+    commands: z.array(z.string().min(1).max(4096)).max(100),
+    working_roots: z.array(z.string().startsWith('/').max(4096)).max(32),
+    max_timeout_ms: z.number().int().min(1).max(24 * 60 * 60 * 1000),
+  }).optional(),
+  desktop: z.object({
+    features: z.array(z.enum(['screenshot', 'mouse', 'keyboard', 'windows', 'apps', 'clipboard', 'accessibility', 'computer_use'])).max(8),
+  }).optional(),
+}).strict()
 const NodeSchema = z.object({
   compute_node_id: z.string(),
   account_id: z.string(),
@@ -235,7 +252,7 @@ export function registerComputeNodeRoutes(): void {
     createRoute({
       method: 'post', path: '/{accountId}/compute-nodes/{nodeId}/assignments', tags: ['compute-nodes'],
       summary: 'Assign an existing session to a connected compute node', ...auth,
-      request: { params: z.object({ accountId: z.string(), nodeId: z.string() }), body: { content: { 'application/json': { schema: z.object({ session_id: z.string().uuid(), lease_seconds: z.number().int().min(60).max(86400).default(3600), ports: z.array(z.number().int().min(1).max(65535)).min(1).max(16).default([8000]), writable_roots: z.array(z.string().min(1)).max(32).default([]) }) } } } },
+      request: { params: z.object({ accountId: z.string(), nodeId: z.string() }), body: { content: { 'application/json': { schema: z.object({ session_id: z.string().uuid(), lease_seconds: z.number().int().min(60).max(86400).default(3600), ports: z.array(z.number().int().min(1).max(65535)).min(1).max(16).default([8000]), writable_roots: z.array(z.string().startsWith('/').max(4096)).max(32).default([]), capability_policy: AssignmentCapabilityPolicy.optional() }) } } } },
       responses: { 202: json(AssignmentSchema, 'Assignment accepted for delivery'), ...errors(400, 401, 403, 404, 409) },
     }),
     async (c: any) => {
@@ -271,6 +288,7 @@ export function registerComputeNodeRoutes(): void {
         lease_epoch: inserted.leaseEpoch, lease_expires_at: leaseExpiresAt.toISOString(), workload: 'session', harness: 'opencode',
         repository: { url: proxyGitUrl(runtime.session.projectId), branch: runtime.session.branchName, base_ref: runtime.session.baseRef },
         secrets_revision: 'current', ports: body.ports ?? [8000], writable_roots: body.writable_roots ?? [],
+        ...(body.capability_policy ? { capability_policy: body.capability_policy } : {}),
         env: { KORTIX_CLI_TOKEN: sessionToken.secretKey, KORTIX_API_URL: deriveKortixApiBase() },
       }
       void assignComputeNode(nodeId, assignment).catch(async (error) => {

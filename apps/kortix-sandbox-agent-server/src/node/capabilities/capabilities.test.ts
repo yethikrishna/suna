@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { chmod, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createNodeCapabilityRegistry, createSandboxCapabilityRegistry } from '.'
 import { sandboxNodePolicy } from '../policy-store'
@@ -59,6 +59,51 @@ describe('kortixd native capabilities', () => {
     allowed = [second]
     await expect(read({ path: join(first, 'a') }, new AbortController().signal)).rejects.toThrow('outside assignment roots')
     expect(await read({ path: join(second, 'b') }, new AbortController().signal)).toMatchObject({ content: 'second' })
+  })
+
+  test('applies assignment capability restrictions below the local policy ceiling', async () => {
+    const dir = await root()
+    const writable = join(dir, 'write')
+    const readable = join(dir, 'read')
+    await mkdir(writable, { recursive: true })
+    await mkdir(readable, { recursive: true })
+    await writeFile(join(readable, 'visible.txt'), 'visible')
+    await writeFile(join(readable, 'hidden.secret'), 'x')
+    const policy = sandboxNodePolicy()
+    policy.allowedPaths = [dir]
+    const registry = createNodeCapabilityRegistry({
+      assignmentRoots: () => [dir],
+      assignmentPolicy: () => ({
+        filesystem: {
+          operations: ['read', 'list'],
+          readable_roots: [readable],
+          writable_roots: [writable],
+          exclude_patterns: ['**/*.secret'],
+          max_file_size: 4,
+        },
+        shell: { commands: ['printf'], working_roots: [writable], max_timeout_ms: 100 },
+        desktop: { features: ['mouse'] },
+      }),
+      policy: () => policy,
+    })
+    const signal = new AbortController().signal
+    await expect(registry.methods.get('fs.list')!({ path: readable }, signal)).rejects.toThrow('exclude pattern')
+    await expect(registry.methods.get('fs.read')!({ path: join(readable, 'visible.txt') }, signal)).rejects.toThrow('4 bytes')
+    await expect(registry.methods.get('fs.read')!({ path: join(readable, 'hidden.secret') }, signal)).rejects.toThrow('exclude pattern')
+    await expect(registry.methods.get('fs.write')!({ path: join(writable, 'new.txt'), content: 'x' }, signal)).rejects.toThrow('operation')
+    await expect(registry.methods.get('shell.exec')!({ command: 'uname', cwd: writable }, signal)).rejects.toThrow('assignment allowlist')
+    await expect(registry.methods.get('shell.exec')!({ command: 'printf', args: ['ok'], cwd: readable }, signal)).rejects.toThrow('assignment roots')
+  })
+
+  test('lists nested filesystem entries when recursive is true', async () => {
+    const dir = await root()
+    await mkdir(join(dir, 'a', 'b'), { recursive: true })
+    await writeFile(join(dir, 'a', 'b', 'nested.txt'), 'x')
+    const list = createSandboxCapabilityRegistry().methods.get('fs.list')!
+    const shallow = await list({ path: dir }, new AbortController().signal) as { entries: Array<{ path: string }> }
+    expect(shallow.entries.some((entry) => entry.path.endsWith('nested.txt'))).toBe(false)
+    const recursive = await list({ path: dir, recursive: true }, new AbortController().signal) as { entries: Array<{ path: string }> }
+    expect(recursive.entries.some((entry) => entry.path.endsWith('nested.txt'))).toBe(true)
   })
 
   test('discovers a trusted CUA driver and removes relay metadata from tool arguments', async () => {

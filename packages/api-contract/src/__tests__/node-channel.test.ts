@@ -120,6 +120,11 @@ describe('node channel stream frames', () => {
         secrets_revision: 'sha256:abc',
         ports: [8000],
         writable_roots: ['/workspace'],
+        capability_policy: {
+          filesystem: { operations: ['read', 'list'], readable_roots: ['/workspace'], writable_roots: [], exclude_patterns: ['**/.env'], max_file_size: 1048576 },
+          shell: { commands: ['git'], working_roots: ['/workspace'], max_timeout_ms: 30000 },
+          desktop: { features: ['screenshot', 'mouse'] },
+        },
         env: { KORTIX_SESSION_ID: '018f1f36-6ef9-7ca7-8e17-b97f405f1a64' },
       },
     } satisfies NodeChannelFrame;
@@ -131,5 +136,8 @@ describe('node channel stream frames', () => {
     const credentialInjection = structuredClone(apply) as any;
     credentialInjection.assignment.env.KORTIX_NODE_TOKEN = 'forbidden';
     expect(() => parseNodeChannelFrame(JSON.stringify(credentialInjection))).toThrow('KORTIX_NODE_TOKEN');
+    const invalidPolicy = structuredClone(apply) as any;
+    invalidPolicy.assignment.capability_policy.desktop.features = ['root'];
+    expect(() => parseNodeChannelFrame(JSON.stringify(invalidPolicy))).toThrow('desktop.features');
   });
 });

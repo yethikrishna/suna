@@ -987,7 +987,9 @@ generation. A deleted node is no longer readable. The API also assigns a real
 session through the authenticated outbound node channel. The node reports
 `accepted` and `ready`; the API persists `ready`. The API then sends `release`
 through that same channel and persists `released`. The assignment never carries
-the node credential or sandbox credential.
+the node credential or sandbox credential. The assignment carries filesystem,
+shell, and desktop restrictions unchanged. `kortixd` enforces those restrictions
+below its owner-controlled local policy.
 
 ## KXD-CLI — compiled standalone node enrollment
 

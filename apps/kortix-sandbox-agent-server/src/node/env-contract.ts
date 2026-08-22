@@ -111,16 +111,20 @@ const b = (
 export const ENV_CONTRACT: readonly EnvBinding[] = [
   // ── core ────────────────────────────────────────────────────────────────
   b('KORTIXD_VERSION', 'core', 'boot', 'tuning', 'Version stamped into the standalone daemon binary at build time.'),
+  b('KORTIXD_HOME', 'core', 'boot', 'path', 'Owner-controlled state directory for node identity, assignments, policies, and managed versions.'),
+  b('KORTIXD_ASSIGNED_CHILD', 'core', 'boot', 'flag', 'Marks a supervised assignment child so it runs the workload instead of opening another node channel.'),
   b('KORTIX_SERVICE_PORT', 'core', 'boot', 'port', 'The control server port. 8000 is a hard contract with the API proxy.'),
   b('KORTIX_WORKSPACE', 'core', 'boot', 'path', 'Workspace root. Defaults to /workspace.'),
   b('KORTIX_PROJECT_TARGET', 'core', 'boot', 'path', 'Where the project repo is materialized. Defaults to the workspace.'),
   b('KORTIX_WORKLOAD', 'core', 'boot', 'flag', 'Selects the workload. Empty means the session workload.'),
   b('KORTIX_RUNTIME_STATE_DIR', 'core', 'boot', 'path', 'Node state directory. Holds pins and convergence bookkeeping.'),
+  b('KORTIX_RUNTIME_ASSET_SIGNING_PUBLIC_KEY', 'core', 'boot', 'identity', 'Pinned Ed25519 public key used to authenticate runtime manifests and artifacts.'),
   b('KORTIX_AUDIT_SPOOL_PATH', 'core', 'boot', 'path', 'Local audit spool. Survives an unreachable API.'),
   b('KORTIX_AGENT_STATE_DIR', 'core', 'boot', 'path', 'Where staged daemon updates land. Owned by the supervisor.'),
   b('KORTIX_AGENT_BIN', 'core', 'boot', 'path', 'Baked daemon path. Test seam only; production never sets it.'),
   b('KORTIX_API_URL', 'core', 'session', 'identity', 'The control plane this node converges against and reports to.'),
   b('KORTIX_COMPUTE_NODE_ID', 'core', 'boot', 'identity', 'Stable logical compute-node id used by the outbound channel.'),
+  b('KORTIX_NODE_TOKEN', 'core', 'session', 'identity', 'Node-only credential used to authenticate the outbound compute-node channel.', { secret: true }),
   b('KORTIX_SANDBOX_TOKEN', 'core', 'session', 'identity', 'The node credential: HMAC key for user-context and bearer for sandbox routes.', { secret: true }),
   b('KORTIX_TOKEN', 'core', 'session', 'identity', 'Legacy alias for KORTIX_SANDBOX_TOKEN. Kept for daemons baked before the rename.', { secret: true }),
   b('KORTIX_CLI_TOKEN', 'core', 'session', 'identity', 'Session token acting as the launching user. Distinct from the node credential.', { secret: true }),
@@ -131,6 +135,7 @@ export const ENV_CONTRACT: readonly EnvBinding[] = [
 
   // ── host services ───────────────────────────────────────────────────────
   b('KORTIX_STATIC_PORT', 'host', 'boot', 'port', 'Static web server. 3211 is a hard contract with apps/web preview URLs.'),
+  b('CUA_DRIVER_BIN', 'host', 'boot', 'path', 'Explicit trusted CUA driver path. The daemon validates ownership and mode before execution.'),
 
   // ── git ─────────────────────────────────────────────────────────────────
   b('KORTIX_PROJECT_AUTO_CLONE', 'git', 'session', 'flag', 'Whether this session materializes a repo at boot.'),
@@ -200,6 +205,8 @@ export const ENV_CONTRACT: readonly EnvBinding[] = [
   // ── external ────────────────────────────────────────────────────────────
   b('SHELL', 'external', 'boot', 'path', 'Shell used for PTY and on_boot commands.'),
   b('TMPDIR', 'external', 'boot', 'path', 'Temp directory for staged writes.'),
+  b('XDG_STATE_HOME', 'external', 'boot', 'path', 'Linux user-state base used when KORTIXD_HOME is not set.'),
+  b('LOCALAPPDATA', 'external', 'boot', 'path', 'Windows user-state base used when KORTIXD_HOME is not set.'),
   b('SLACK_CHANNEL_ID', 'external', 'session', 'assignment', 'Present when the session was launched from a Slack channel.'),
   b('SLACK_THREAD_TS', 'external', 'session', 'assignment', 'Slack thread the session reports back into.'),
 ]

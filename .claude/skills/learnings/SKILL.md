@@ -1835,7 +1835,13 @@ possible conflicts, rebases, cherry-picks, checkouts of other branches.
 Resolve in a scratch worktree on a sibling branch, run the gates there, then
 `git merge --ff-only` inside the live worktree so it only ever moves between
 two consistent trees. Fast-forward is the only git write a live worktree
-should see.
+should see — and a fast-forward that moves `apps/kortix-sandbox-agent-server`,
+`apps/cli`, or `apps/kortix-app-runtime` source must be followed by the same
+artifact builds the launcher runs at start (`pnpm --filter` build for the
+agent server and CLI, `bash apps/kortix-app-runtime/build.sh`), or every new
+session fails provisioning with `kortix-agent dist binary … is older than its
+source` (seen 2026-08-22 21:41 right after the ff; rebuilt, sessions booted
+again).
 
 **The enforcement.** The integration-branch memory note names the rule; the
 scratch-worktree-then-ff sequence is the procedure

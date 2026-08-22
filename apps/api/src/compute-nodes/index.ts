@@ -1,20 +1,61 @@
 import { eq } from 'drizzle-orm'
-import { sessionSandboxes } from '@kortix/db'
+import { computeNodeAssignments, computeNodes, sessionSandboxes } from '@kortix/db'
 import { validateSecretKey } from '../repositories/api-keys'
 import { db } from '../shared/db'
 import { ComputeNodeChannelHub } from './channel'
 
 export const computeNodeChannel = new ComputeNodeChannelHub(
-  async (nodeId, token) => {
+  async (nodeId, token, info) => {
     const credential = await validateSecretKey(token)
     if (!credential.isValid || credential.type !== 'sandbox' || credential.sandboxId !== nodeId) return null
-    const [row] = await db
-      .select({ externalId: sessionSandboxes.externalId, status: sessionSandboxes.status })
+    const [sandbox] = await db
+      .select()
       .from(sessionSandboxes)
       .where(eq(sessionSandboxes.sandboxId, nodeId))
       .limit(1)
-    if (!row || row.status === 'archived' || row.status === 'error') return null
-    return { nodeId, externalId: row.externalId ?? undefined }
+    if (!sandbox || sandbox.status === 'archived' || sandbox.status === 'error') return null
+    const [registered] = await db
+      .select({ status: computeNodes.status })
+      .from(computeNodes)
+      .where(eq(computeNodes.nodeId, nodeId))
+      .limit(1)
+    if (registered?.status === 'disabled' || registered?.status === 'draining' || registered?.status === 'deleted') return null
+    await db.insert(computeNodes).values({
+      nodeId,
+      accountId: sandbox.accountId,
+      projectId: sandbox.projectId,
+      type: 'sandbox',
+      provider: sandbox.provider,
+      allocationId: sandbox.externalId,
+      architecture: info.arch,
+      operatingSystem: info.platform,
+      daemonVersion: info.version,
+      status: 'online',
+      capabilities: info.capabilities,
+      lastHeartbeatAt: new Date(),
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: computeNodes.nodeId,
+      set: {
+        provider: sandbox.provider,
+        allocationId: sandbox.externalId,
+        architecture: info.arch,
+        operatingSystem: info.platform,
+        daemonVersion: info.version,
+        status: 'online',
+        capabilities: info.capabilities,
+        lastHeartbeatAt: new Date(),
+        updatedAt: new Date(),
+      },
+    })
+    await db.insert(computeNodeAssignments).values({
+      nodeId,
+      accountId: sandbox.accountId,
+      projectId: sandbox.projectId,
+      sessionId: sandbox.sessionId,
+      status: sandbox.status === 'active' ? 'ready' : 'assigned',
+    }).onConflictDoNothing({ target: [computeNodeAssignments.nodeId, computeNodeAssignments.sessionId] })
+    return { nodeId, externalId: sandbox.externalId ?? undefined }
   },
   async (externalId) => {
     const [row] = await db
@@ -23,6 +64,26 @@ export const computeNodeChannel = new ComputeNodeChannelHub(
       .where(eq(sessionSandboxes.externalId, externalId))
       .limit(1)
     return row?.nodeId ?? null
+  },
+  async (nodeId, info) => {
+    const [registered] = await db
+      .select({ status: computeNodes.status })
+      .from(computeNodes)
+      .where(eq(computeNodes.nodeId, nodeId))
+      .limit(1)
+    if (!registered || registered.status === 'disabled' || registered.status === 'draining' || registered.status === 'deleted') return
+    await db
+      .update(computeNodes)
+      .set({
+        architecture: info.arch,
+        operatingSystem: info.platform,
+        daemonVersion: info.version,
+        capabilities: info.capabilities,
+        status: 'online',
+        lastHeartbeatAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(computeNodes.nodeId, nodeId))
   },
 )
 
@@ -34,7 +95,9 @@ export const computeNodeWsHandlers = {
     void computeNodeChannel.message(ws, message)
   },
   close(ws: { send(value: string): void; close(code?: number, reason?: string): void }) {
+    const nodeId = computeNodeChannel.nodeIdForSocket(ws)
     computeNodeChannel.close(ws)
+    if (nodeId) void db.update(computeNodes).set({ status: 'offline', updatedAt: new Date() }).where(eq(computeNodes.nodeId, nodeId))
   },
 }
 

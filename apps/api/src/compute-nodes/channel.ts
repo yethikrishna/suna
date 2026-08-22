@@ -3,8 +3,10 @@ import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_SOCKET_MESSAGE_BYTES, NO
 
 interface SocketLike { send(value: string): void; close(code?: number, reason?: string): void }
 interface AuthResult { nodeId: string; externalId?: string }
-type Authenticate = (nodeId: string, token: string, version?: string) => Promise<AuthResult | null>
+export interface NodeAuthInfo { version?: string; capabilities: string[]; platform?: string; arch?: string }
+type Authenticate = (nodeId: string, token: string, info: NodeAuthInfo) => Promise<AuthResult | null>
 type ResolveNodeId = (externalId: string) => Promise<string | null>
+type Heartbeat = (nodeId: string, info: NodeAuthInfo) => Promise<void>
 
 interface Connection {
   nodeId: string
@@ -83,6 +85,7 @@ export class ComputeNodeChannelHub {
   constructor(
     private readonly authenticate: Authenticate,
     private readonly resolveNodeId?: ResolveNodeId,
+    private readonly heartbeat?: Heartbeat,
   ) {}
 
   open(socket: SocketLike): void { this.pending.add(socket) }
@@ -110,7 +113,7 @@ export class ComputeNodeChannelHub {
       const actual = Buffer.from(sig, 'hex')
       if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw new Error('invalid node channel signature')
       connection.receiveNonce = nonce as number
-      this.handleFrame(connection, parseNodeChannelFrame(JSON.stringify(unsigned)))
+      await this.handleFrame(connection, parseNodeChannelFrame(JSON.stringify(unsigned)))
     } catch (error) {
       socket.close(4002, error instanceof Error ? error.message.slice(0, 120) : 'invalid node channel frame')
       this.close(socket)
@@ -138,6 +141,7 @@ export class ComputeNodeChannelHub {
   }
 
   isConnected(nodeId: string): boolean { return this.byNode.has(nodeId) }
+  nodeIdForSocket(socket: SocketLike): string | null { return [...this.byNode.values()].find((item) => item.socket === socket)?.nodeId ?? null }
 
   async fetchByExternalId(externalId: string, port: number, request: Request): Promise<Response> {
     let nodeId = this.externalToNode.get(externalId)
@@ -252,7 +256,14 @@ export class ComputeNodeChannelHub {
     try {
       const value = JSON.parse(raw) as Record<string, unknown>
       if (value.type !== 'node.auth' || typeof value.node_id !== 'string' || typeof value.token !== 'string') throw new Error('invalid node authentication')
-      const result = await this.authenticate(value.node_id, value.token, typeof value.version === 'string' ? value.version : undefined)
+      const capabilities = value.capabilities === undefined ? [] : value.capabilities
+      if (!Array.isArray(capabilities) || capabilities.length > 32 || !capabilities.every((item) => typeof item === 'string' && /^[a-z][a-z0-9_-]{0,63}$/.test(item))) throw new Error('invalid node capabilities')
+      const result = await this.authenticate(value.node_id, value.token, {
+        version: typeof value.version === 'string' ? value.version.slice(0, 128) : undefined,
+        capabilities,
+        platform: typeof value.platform === 'string' ? value.platform.slice(0, 64) : undefined,
+        arch: typeof value.arch === 'string' ? value.arch.slice(0, 64) : undefined,
+      })
       if (!result || result.nodeId !== value.node_id) {
         socket.close(4001, 'node authentication failed')
         return
@@ -269,7 +280,16 @@ export class ComputeNodeChannelHub {
     }
   }
 
-  private handleFrame(connection: Connection, frame: NodeChannelFrame): void {
+  private async handleFrame(connection: Connection, frame: NodeChannelFrame): Promise<void> {
+    if (frame.type === 'node.heartbeat') {
+      await this.heartbeat?.(connection.nodeId, {
+        version: frame.version,
+        capabilities: frame.capabilities,
+        platform: frame.platform,
+        arch: frame.arch,
+      })
+      return
+    }
     if (frame.type.startsWith('rpc.')) {
       this.handleRpcFrame(connection, frame)
       return

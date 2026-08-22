@@ -9,6 +9,21 @@ import {
 const STREAM_ID = '018f1f36-6ef9-7ca7-8e17-b97f405f1a63';
 
 describe('node channel stream frames', () => {
+  test('accepts a signed-channel heartbeat payload', () => {
+    const frame = {
+      v: 1,
+      type: 'node.heartbeat',
+      stream_id: STREAM_ID,
+      seq: 0,
+      version: '1.2.3',
+      capabilities: ['filesystem', 'terminal'],
+      platform: 'linux',
+      arch: 'x64',
+      sent_at: '2026-08-22T19:30:00.000Z',
+    } satisfies NodeChannelFrame;
+    expect(parseNodeChannelFrame(JSON.stringify(frame))).toEqual(frame);
+  });
+
   test('accepts the complete streaming HTTP lifecycle', () => {
     const frames: NodeChannelFrame[] = [
       {

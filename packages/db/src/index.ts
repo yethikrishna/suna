@@ -77,6 +77,8 @@ export {
   providerTransitionStatusEnum,
   sandboxTemplates,
   sessionSandboxes,
+  computeNodes,
+  computeNodeAssignments,
   sessionSandboxStatusEnum,
   sessionTurns,
   providerEvents,

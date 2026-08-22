@@ -35,6 +35,31 @@ describe('ComputeNodeChannelHub', () => {
     expect(socket.closed[0]).toEqual([4001, 'node authentication failed'])
   })
 
+  test('accepts signed heartbeats from the authenticated node', async () => {
+    const heartbeats: Array<{ nodeId: string; version?: string; capabilities: string[] }> = []
+    const hub = new ComputeNodeChannelHub(
+      async (nodeId) => ({ nodeId }),
+      undefined,
+      async (nodeId, info) => { heartbeats.push({ nodeId, version: info.version, capabilities: info.capabilities }) },
+    )
+    const socket = new FakeSocket()
+    hub.open(socket)
+    await hub.message(socket, JSON.stringify({ type: 'node.auth', node_id: 'node-1', token: 'valid' }))
+    const key = JSON.parse(socket.sent[0]!).signing_key as string
+    await hub.message(socket, signed({
+      v: 1,
+      type: 'node.heartbeat',
+      stream_id: crypto.randomUUID(),
+      seq: 0,
+      version: '1.2.3',
+      capabilities: ['filesystem', 'terminal'],
+      platform: 'linux',
+      arch: 'x64',
+      sent_at: new Date().toISOString(),
+    }, key, 1))
+    expect(heartbeats).toEqual([{ nodeId: 'node-1', version: '1.2.3', capabilities: ['filesystem', 'terminal'] }])
+  })
+
   test('authenticates before provider external id exists and resolves it later', async () => {
     const hub = new ComputeNodeChannelHub(
       async (nodeId) => ({ nodeId }),

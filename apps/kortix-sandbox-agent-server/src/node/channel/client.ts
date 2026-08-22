@@ -32,6 +32,9 @@ export class KortixNodeChannel {
   private lastError: string | null = null
   private reconnectAttempts = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  private readonly heartbeatStreamId = crypto.randomUUID()
+  private heartbeatSeq = 0
   private shuttingDown = false
   private readonly streams: NodeStreamAgent
   private readonly sockets: NodeSocketAgent
@@ -73,6 +76,7 @@ export class KortixNodeChannel {
   disconnect(): void {
     this.shuttingDown = true
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
     this.socket?.close(1000, 'kortixd shutdown')
     this.streams.disconnect()
     this.sockets.disconnect()
@@ -89,6 +93,7 @@ export class KortixNodeChannel {
         this.key = value.signing_key
         this.lastError = null
         this.reconnectAttempts = 0
+        this.startHeartbeats()
         return
       }
       if (!this.key) throw new Error('frame received before authentication')
@@ -117,10 +122,29 @@ export class KortixNodeChannel {
   }
 
   private scheduleReconnect(): void {
-    const delay = Math.min(1_000 * 2 ** this.reconnectAttempts++, 30_000)
+    const base = Math.min(1_000 * 2 ** this.reconnectAttempts++, 30_000)
+    const delay = Math.floor(base * (0.75 + Math.random() * 0.5))
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       this.connect()
     }, delay)
+  }
+
+  private startHeartbeats(): void {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
+    const send = () => this.sendSigned({
+      v: 1,
+      type: 'node.heartbeat',
+      stream_id: this.heartbeatStreamId,
+      seq: this.heartbeatSeq++,
+      version: process.env.KORTIXD_VERSION ?? 'dev',
+      capabilities: [...(this.options.capabilities?.names ?? [])],
+      platform: process.platform,
+      arch: process.arch,
+      sent_at: new Date().toISOString(),
+    })
+    send()
+    this.heartbeatTimer = setInterval(send, 15_000)
+    this.heartbeatTimer.unref?.()
   }
 }

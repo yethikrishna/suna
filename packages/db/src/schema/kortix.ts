@@ -1845,6 +1845,66 @@ export const sessionSandboxes = kortixSchema.table(
   ],
 );
 
+/** Provider-neutral machines connected by the outbound kortixd channel. */
+export const computeNodes = kortixSchema.table(
+  'compute_nodes',
+  {
+    nodeId: uuid('node_id').defaultRandom().primaryKey(),
+    accountId: uuid('account_id').notNull().references(() => accounts.accountId, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.projectId, { onDelete: 'cascade' }),
+    type: text('type').default('sandbox').notNull(),
+    provider: text('provider'),
+    allocationId: text('allocation_id'),
+    architecture: text('architecture'),
+    operatingSystem: text('operating_system'),
+    daemonVersion: text('daemon_version'),
+    updateChannel: text('update_channel').default('stable').notNull(),
+    status: text('status').default('provisioning').notNull(),
+    capabilities: jsonb('capabilities').default([]).$type<string[]>().notNull(),
+    harnesses: jsonb('harnesses').default([]).$type<Array<Record<string, unknown>>>().notNull(),
+    concurrency: integer('concurrency').default(1).notNull(),
+    lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
+    desiredManifest: jsonb('desired_manifest').default({}).$type<Record<string, unknown>>().notNull(),
+    metadata: jsonb('metadata').default({}).$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    check('compute_nodes_type_check', sql`${table.type} IN ('sandbox', 'workstation', 'vm', 'container', 'bare_metal', 'ci')`),
+    check('compute_nodes_status_check', sql`${table.status} IN ('provisioning', 'online', 'offline', 'disabled', 'draining', 'error', 'deleted')`),
+    check('compute_nodes_concurrency_check', sql`${table.concurrency} > 0 AND ${table.concurrency} <= 1024`),
+    uniqueIndex('compute_nodes_allocation_unique').on(table.provider, table.allocationId),
+    index('compute_nodes_account_idx').on(table.accountId),
+    index('compute_nodes_project_idx').on(table.projectId),
+    index('compute_nodes_status_idx').on(table.status),
+  ],
+);
+
+/** Lease-shaped session assignments. One active assignment is enforced by writers. */
+export const computeNodeAssignments = kortixSchema.table(
+  'compute_node_assignments',
+  {
+    assignmentId: uuid('assignment_id').defaultRandom().primaryKey(),
+    nodeId: uuid('node_id').notNull().references(() => computeNodes.nodeId, { onDelete: 'cascade' }),
+    accountId: uuid('account_id').notNull().references(() => accounts.accountId, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').notNull().references(() => projects.projectId, { onDelete: 'cascade' }),
+    sessionId: text('session_id').notNull(),
+    status: text('status').default('assigned').notNull(),
+    leaseEpoch: integer('lease_epoch').default(1).notNull(),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    metadata: jsonb('metadata').default({}).$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    check('compute_node_assignments_status_check', sql`${table.status} IN ('assigned', 'ready', 'draining', 'released', 'failed')`),
+    check('compute_node_assignments_lease_epoch_check', sql`${table.leaseEpoch} > 0`),
+    uniqueIndex('compute_node_assignments_node_session_unique').on(table.nodeId, table.sessionId),
+    index('compute_node_assignments_node_idx').on(table.nodeId, table.status),
+    index('compute_node_assignments_session_idx').on(table.sessionId, table.status),
+  ],
+);
+
 /**
  * Durable per-turn ledger.
  *

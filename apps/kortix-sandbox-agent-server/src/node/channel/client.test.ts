@@ -33,10 +33,12 @@ describe('kortixd outbound node channel', () => {
     channel.connect()
     socket.dispatchEvent(new Event('open'))
     socket.receive({ type: 'node.auth.ok', signing_key: 'session-key' })
+    await Bun.sleep(0)
+    expect(JSON.parse(socket.sent[1]!).type).toBe('node.heartbeat')
     const open = { v: 1, type: 'stream.open', stream_id: crypto.randomUUID(), seq: 0, port: 22, method: 'GET', path: '/', headers: [], window: 1024 }
     socket.receive(signed(open, 'session-key', 1))
     await Bun.sleep(0)
-    expect(JSON.parse(socket.sent[1]!).type).toBe('stream.cancel')
+    expect(JSON.parse(socket.sent[2]!).type).toBe('stream.cancel')
     socket.receive(signed(open, 'session-key', 1))
     await Bun.sleep(0)
     expect(channel.status().lastError).toContain('nonce')

@@ -14,6 +14,14 @@ interface FrameBase {
 
 export type NodeChannelFrame =
   | (FrameBase & {
+      type: 'node.heartbeat';
+      version: string;
+      capabilities: string[];
+      platform: string;
+      arch: string;
+      sent_at: string;
+    })
+  | (FrameBase & {
       type: 'stream.open';
       port: number;
       method: string;
@@ -50,6 +58,7 @@ const STREAM_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[
 const TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const TYPES = new Set([
+  'node.heartbeat',
   'stream.open',
   'stream.request',
   'stream.request.end',
@@ -115,6 +124,13 @@ export function parseNodeChannelFrame(raw: string): NodeChannelFrame {
   integer(value.seq, 'seq', 0, Number.MAX_SAFE_INTEGER);
 
   switch (value.type) {
+    case 'node.heartbeat':
+      if (typeof value.version !== 'string' || value.version.length > 128) invalid('version');
+      if (!Array.isArray(value.capabilities) || value.capabilities.length > 32 || !value.capabilities.every((item) => typeof item === 'string' && /^[a-z][a-z0-9_-]{0,63}$/.test(item))) invalid('capabilities');
+      if (typeof value.platform !== 'string' || value.platform.length > 64) invalid('platform');
+      if (typeof value.arch !== 'string' || value.arch.length > 64) invalid('arch');
+      if (typeof value.sent_at !== 'string' || Number.isNaN(Date.parse(value.sent_at))) invalid('sent_at');
+      break;
     case 'stream.open':
       integer(value.port, 'port', 1, 65_535);
       if (typeof value.method !== 'string' || !TOKEN.test(value.method)) invalid('method');

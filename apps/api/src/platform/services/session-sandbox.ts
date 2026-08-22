@@ -13,7 +13,7 @@
  */
 
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
-import { projectSessions, sessionSandboxes } from '@kortix/db';
+import { computeNodeAssignments, computeNodes, projectSessions, sessionSandboxes } from '@kortix/db';
 import { isMetaAgentName, META_SANDBOX_SLUG } from '@kortix/shared';
 import { db } from '../../shared/db';
 import { PROVISIONING_SESSION_STATUSES } from '../../projects/lib/session-status';
@@ -402,6 +402,31 @@ export async function provisionSessionSandbox(opts: {
   // (~100ms each on a warm DB), now ~one round-trip total.
   const sandboxName = `session-${sandboxId.slice(0, 8)}`;
   const llmGatewayEnabled = projectLlmGatewayEnabled(opts.projectMetadata);
+  const ensureComputeNodeRows = async () => {
+    await db
+      .insert(computeNodes)
+      .values({
+        nodeId: sandboxId,
+        accountId,
+        projectId,
+        type: 'sandbox',
+        provider: providerName,
+        status: 'provisioning',
+      })
+      .onConflictDoNothing({ target: computeNodes.nodeId });
+    await db
+      .insert(computeNodeAssignments)
+      .values({
+        nodeId: sandboxId,
+        accountId,
+        projectId,
+        sessionId: sandboxId,
+        status: 'assigned',
+      })
+      .onConflictDoNothing({
+        target: [computeNodeAssignments.nodeId, computeNodeAssignments.sessionId],
+      });
+  };
   const createOrClaimSandboxRow = async () => {
     const inserted = await db
       .insert(sessionSandboxes)
@@ -432,13 +457,16 @@ export async function provisionSessionSandbox(opts: {
       })
       .onConflictDoNothing({ target: sessionSandboxes.sessionId })
       .returning();
-    if (inserted.length > 0) return inserted;
+    if (inserted.length > 0) {
+      await ensureComputeNodeRows();
+      return inserted;
+    }
 
     // Provider-confirmed loss keeps the durable logical row because DB-level
     // identity guards and child records intentionally forbid deleting it. The
     // recovery transaction resets external_id to NULL and stamps an explicit
     // authorization marker; only that exact placeholder may be claimed here.
-    return db
+    const claimed = await db
       .update(sessionSandboxes)
       .set({
         provider: providerName,
@@ -461,6 +489,8 @@ export async function provisionSessionSandbox(opts: {
         ),
       )
       .returning();
+    if (claimed.length > 0) await ensureComputeNodeRows();
+    return claimed;
   };
 
   const [sandboxRows, sandboxKey, connectorToken, gatewayEntitled] = await Promise.all([
@@ -770,6 +800,14 @@ export async function provisionSessionSandbox(opts: {
         throw createErr;
       }
       bgExternalId = result.externalId;
+      await db
+        .update(computeNodes)
+        .set({
+          provider: providerName,
+          allocationId: result.externalId,
+          updatedAt: new Date(),
+        })
+        .where(eq(computeNodes.nodeId, sandbox.sandboxId));
       tl.mark(`provider-create:${attempts}x`);
       const timeline = tl.summary();
 
@@ -805,6 +843,10 @@ export async function provisionSessionSandbox(opts: {
             updatedAt: new Date(),
           })
           .where(eq(sessionSandboxes.sandboxId, sandbox.sandboxId));
+        await db
+          .update(computeNodes)
+          .set({ status: 'deleted', updatedAt: new Date() })
+          .where(eq(computeNodes.nodeId, sandbox.sandboxId));
         tl.mark('row-stopped-before-active');
         tl.log({ provider: providerName, attempts, stoppedBeforeActive: true });
         const stopTl = tl.summary();
@@ -848,6 +890,10 @@ export async function provisionSessionSandbox(opts: {
             updatedAt: new Date(),
           })
           .where(eq(sessionSandboxes.sandboxId, sandbox.sandboxId));
+        await db
+          .update(computeNodes)
+          .set({ status: 'offline', updatedAt: new Date() })
+          .where(eq(computeNodes.nodeId, sandbox.sandboxId));
         tl.mark('row-stopped-during-provision');
         tl.log({ provider: providerName, attempts, stoppedDuringProvisioning: true });
         const stoppedTl = tl.summary();
@@ -1140,6 +1186,10 @@ export async function provisionSessionSandbox(opts: {
             updatedAt: new Date(),
           })
           .where(eq(sessionSandboxes.sandboxId, sandbox.sandboxId));
+        await db
+          .update(computeNodes)
+          .set({ status: 'error', updatedAt: new Date() })
+          .where(eq(computeNodes.nodeId, sandbox.sandboxId));
         await db
           .update(projectSessions)
           .set({ status: 'failed', error: userMessage, updatedAt: new Date() })

@@ -110,6 +110,7 @@ const b = (
  */
 export const ENV_CONTRACT: readonly EnvBinding[] = [
   // ── core ────────────────────────────────────────────────────────────────
+  b('KORTIXD_VERSION', 'core', 'boot', 'tuning', 'Version stamped into the standalone daemon binary at build time.'),
   b('KORTIX_SERVICE_PORT', 'core', 'boot', 'port', 'The control server port. 8000 is a hard contract with the API proxy.'),
   b('KORTIX_WORKSPACE', 'core', 'boot', 'path', 'Workspace root. Defaults to /workspace.'),
   b('KORTIX_PROJECT_TARGET', 'core', 'boot', 'path', 'Where the project repo is materialized. Defaults to the workspace.'),
@@ -137,6 +138,7 @@ export const ENV_CONTRACT: readonly EnvBinding[] = [
   b('KORTIX_DEFAULT_BRANCH', 'git', 'session', 'assignment', 'Fallback branch when the session names none.'),
   b('KORTIX_BASE_SHA', 'git', 'session', 'assignment', 'Commit the session branches from.'),
   b('KORTIX_SESSION_FRESH', 'git', 'session', 'flag', 'Marks a session with no prior working tree.'),
+  b('KORTIX_SESSION_BRANCH_RESTORE', 'git', 'session', 'flag', 'Requires a resumed session to restore its recorded branch before readiness.'),
   b('KORTIX_GIT_DELTA_BUNDLE_BASE64', 'git', 'session', 'assignment', 'Inline git bundle carrying unpushed work into the box.'),
   b('KORTIX_GIT_DELTA_PARENT_SHA', 'git', 'session', 'assignment', 'Parent commit the delta bundle applies onto.'),
   b('KORTIX_GIT_DELTA_PARENT_COMMIT_BASE64', 'git', 'session', 'assignment', 'Inline parent commit object for the delta bundle.'),
@@ -172,6 +174,7 @@ export const ENV_CONTRACT: readonly EnvBinding[] = [
   b('KORTIX_OPENCODE_MODEL', 'harness/opencode', 'session', 'assignment', 'Model the session starts on.'),
   b('KORTIX_OPENCODE_DENY_ENV', 'harness/opencode', 'session', 'assignment', 'Env names withheld from the harness process.'),
   b('KORTIX_OPENCODE_DEBUG', 'harness/opencode', 'boot', 'flag', 'Verbose harness logging.'),
+  b('KORTIX_OPENCODE_BINARY_PREFETCH', 'harness/opencode', 'boot', 'flag', 'Prefetches the managed OpenCode executable off the session readiness path.'),
   b('KORTIX_COMPILED_AGENT_CONFIG', 'harness/opencode', 'session', 'assignment', 'Agent config compiled by the API. The box never compiles it itself.'),
   b('KORTIX_COMPILED_AGENT_CONFIG_ETAG', 'harness/opencode', 'session', 'assignment', 'Etag of the compiled config, so a stale config is detectable.'),
   b('KORTIX_INITIAL_PROMPT', 'harness/opencode', 'session', 'assignment', 'First prompt delivered at boot.'),

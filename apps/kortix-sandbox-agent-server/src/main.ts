@@ -76,7 +76,8 @@ const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
   'north-mini-code-free',
 ])
 
-async function main() {
+/** Run the node daemon in the current process. */
+export async function runKortixDaemon(): Promise<void> {
   const bootTime = Date.now()
   const cfg = loadConfig()
   const prompt = (process.env.KORTIX_INITIAL_PROMPT ?? '').trim()
@@ -2903,7 +2904,7 @@ if (import.meta.main) {
       .then((code) => process.exit(code))
       .catch(() => process.exit(0))
   } else {
-    main().catch((err) => {
+    runKortixDaemon().catch((err) => {
       logger.error('[boot] fatal', err)
       process.exit(1)
     })

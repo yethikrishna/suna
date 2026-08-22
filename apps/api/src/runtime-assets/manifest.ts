@@ -9,7 +9,7 @@
  * release, no separate artifact store, and CLI↔API consistency by construction:
  * whatever a sandbox converges on is by definition the build that serves it.
  *
- * The same image also carries the compiled `kortix-agent` daemon
+ * The same image also carries the compiled `kortixd` daemon
  * (apps/api/Dockerfile:234), so the manifest describes that too and a box can
  * converge the daemon itself — not only what the daemon manages.
  *
@@ -47,18 +47,18 @@ export function runtimeCliBinaryPath(): string {
 }
 
 /**
- * The `kortix-agent` daemon binary, resolved exactly like the CLI above and
+ * The `kortixd` daemon binary, resolved exactly like the CLI above and
  * through the SAME env override the snapshot builder already uses
  * (`KORTIX_SNAPSHOT_AGENT_BIN_PATH`, snapshots/build-context.ts:55). The
  * deployed API image carries it: apps/api/Dockerfile:234 copies
- * `/agent/dist/kortix-agent` out of the `sandbox-agent` stage into
- * `apps/kortix-sandbox-agent-server/dist/kortix-agent`. So the daemon a box
+ * `/agent/dist/kortixd` out of the `sandbox-agent` stage into
+ * `apps/kortix-sandbox-agent-server/dist/kortixd`. So the daemon a box
  * converges to is by construction the daemon the API serving it was built with.
  */
 export function runtimeAgentBinaryPath(): string {
   return (
     process.env.KORTIX_SNAPSHOT_AGENT_BIN_PATH ||
-    resolve(REPO_ROOT, 'apps/kortix-sandbox-agent-server/dist/kortix-agent')
+    resolve(REPO_ROOT, 'apps/kortix-sandbox-agent-server/dist/kortixd')
   );
 }
 

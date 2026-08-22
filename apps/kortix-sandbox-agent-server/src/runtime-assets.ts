@@ -66,7 +66,7 @@ const DEFAULT_STATE_PATH = '/opt/kortix/runtime-assets-state.json'
  * merely unlikely. Updates install BESIDE it, in the kortix-owned state dir
  * below, and the supervisor prefers `agent.current` when one is present.
  */
-const DEFAULT_AGENT_BAKED_PATH = '/usr/local/bin/kortix-agent'
+const DEFAULT_AGENT_BAKED_PATH = '/usr/local/bin/kortixd'
 /**
  * kortix-owned state dir. Holds this module's digest cache plus the four files
  * the supervisor owns: `agent.current` (the installed update), `agent.next`

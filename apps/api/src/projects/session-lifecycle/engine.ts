@@ -18,7 +18,7 @@ import { forwardToSandbox } from '../../sandbox-proxy/routes/preview';
 import { resolveSandboxIngress } from '../../sandbox-proxy/backend';
 import { serviceKeyForExternalId } from '../../platform/service-key';
 import type { ProviderName } from '../../platform/providers';
-import { sandboxOpencodeEndpoint } from '../opencode-mapping';
+import { sandboxOpencodeEndpoint, type SandboxOpencodeEndpoint } from '../opencode-mapping';
 import { sandboxRuntimeRequestHeaders } from '../sandbox-fetch';
 import { db } from '../../shared/db';
 import { connectorBindingPayloadConflicts } from '../lib/session-connector-bindings';
@@ -861,7 +861,7 @@ function isInboxRow(row: SessionLifecycleCommandRow): boolean {
  * terms.
  */
 async function queuedContinueOpencodeEndpoint(row: SessionLifecycleCommandRow): Promise<{
-  endpoint: { url: string; headers: Record<string, string> };
+  endpoint: SandboxOpencodeEndpoint;
   opencodeSessionId: string;
 } | null> {
   return resolveSessionOpencodeEndpoint(row.sessionId, row.actorUserId);
@@ -877,7 +877,7 @@ export async function resolveSessionOpencodeEndpoint(
   sessionId: string | null | undefined,
   actorUserId?: string | null,
 ): Promise<{
-  endpoint: { url: string; headers: Record<string, string> };
+  endpoint: SandboxOpencodeEndpoint;
   opencodeSessionId: string;
 } | null> {
   if (!sessionId) return null;
@@ -964,7 +964,7 @@ async function readInboxTranscriptState(
     // of a long session was ~1s of dead air on every queued message.
     const limit = opts.full ? '' : `&limit=${INBOX_TRANSCRIPT_TIP_LIMIT}`;
     const url = `${resolved.endpoint.url}/session/${encodeURIComponent(resolved.opencodeSessionId)}/message?directory=${encodeURIComponent(WORKSPACE)}${limit}`;
-    const res = await fetch(url, {
+    const res = await resolved.endpoint.fetch(url, {
       method: 'GET',
       headers: sandboxRuntimeRequestHeaders(resolved.endpoint.headers),
       signal: AbortSignal.timeout(5_000),
@@ -1246,7 +1246,7 @@ async function removeStrandedOpencodeMessage(
     const resolved = await queuedContinueOpencodeEndpoint(row);
     if (!resolved) return false;
     const url = `${resolved.endpoint.url}/session/${encodeURIComponent(resolved.opencodeSessionId)}/message/${encodeURIComponent(wireMessageId)}?directory=${encodeURIComponent(WORKSPACE)}`;
-    const res = await fetch(url, {
+    const res = await resolved.endpoint.fetch(url, {
       method: 'DELETE',
       headers: sandboxRuntimeRequestHeaders(resolved.endpoint.headers),
       signal: AbortSignal.timeout(5_000),
@@ -1314,7 +1314,7 @@ async function queuedContinueHasStagedRevert(row: SessionLifecycleCommandRow): P
     const { endpoint, opencodeSessionId } = resolved;
 
     const url = `${endpoint.url}/session/${encodeURIComponent(opencodeSessionId)}?directory=${encodeURIComponent(WORKSPACE)}`;
-    const res = await fetch(url, {
+    const res = await endpoint.fetch(url, {
       method: 'GET',
       headers: sandboxRuntimeRequestHeaders(endpoint.headers),
       signal: AbortSignal.timeout(5_000),

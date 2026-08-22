@@ -69,6 +69,7 @@ import { installShutdownHandlers } from './shutdown'
 import { startStaticWebServer } from './static-web'
 import { opencodeDeliveryInFlight, opencodeTurnInFlight } from './opencode-turn-state'
 import { KortixNodeChannel } from './node/channel/client'
+import { createSandboxCapabilityRegistry } from './node/capabilities'
 
 const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
   'deepseek-v4-flash-free',
@@ -91,6 +92,7 @@ export async function runKortixDaemon(): Promise<void> {
       // A signed API frame is the authorization decision. The transport still
       // hardcodes 127.0.0.1, so it cannot become an SSRF path to another host.
       ports: { has: (port: number) => Number.isInteger(port) && port >= 1 && port <= 65_535 },
+      capabilities: createSandboxCapabilityRegistry(),
     }).connect()
   }
   const prompt = (process.env.KORTIX_INITIAL_PROMPT ?? '').trim()

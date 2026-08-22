@@ -79,4 +79,11 @@ describe('node channel stream frames', () => {
     expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'socket.close', stream_id: STREAM_ID, seq: 2, code: 1000, reason: '' })).type).toBe('socket.close');
     expect(() => parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'socket.data', stream_id: STREAM_ID, seq: 1, data: 'YQ==', binary: false }))).toThrow('fin');
   });
+
+  test('accepts capability RPC results and rejects malformed methods', () => {
+    expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'rpc.request', stream_id: STREAM_ID, seq: 0, method: 'fs.read', params: { path: '/workspace/a' } })).type).toBe('rpc.request');
+    expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'rpc.result', stream_id: STREAM_ID, seq: 0, result: { size: 1 } })).type).toBe('rpc.result');
+    expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'rpc.error', stream_id: STREAM_ID, seq: 0, code: -32003, message: 'failed' })).type).toBe('rpc.error');
+    expect(() => parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'rpc.request', stream_id: STREAM_ID, seq: 0, method: '../exec', params: {} }))).toThrow('method');
+  });
 });

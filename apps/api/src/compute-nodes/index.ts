@@ -69,3 +69,12 @@ export function connectComputeNodeWebSocket(
 ) {
   return computeNodeChannel.connectWebSocketByExternalId(externalId, port, path, headers, handlers)
 }
+
+export function rpcComputeNode(
+  nodeId: string,
+  method: string,
+  params: Record<string, unknown>,
+  timeoutMs?: number,
+) {
+  return computeNodeChannel.rpc(nodeId, method, params, timeoutMs)
+}

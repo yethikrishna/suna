@@ -111,4 +111,21 @@ describe('ComputeNodeChannelHub', () => {
     relay.close(1000, 'done')
     expect(JSON.parse(socket.sent.at(-1)!).type).toBe('socket.close')
   })
+
+  test('relays capability RPC results and errors', async () => {
+    const hub = new ComputeNodeChannelHub(async (nodeId) => ({ nodeId }))
+    const socket = new FakeSocket()
+    hub.open(socket)
+    await hub.message(socket, JSON.stringify({ type: 'node.auth', node_id: 'node-1', token: 'valid' }))
+    const key = JSON.parse(socket.sent[0]!).signing_key as string
+    const resultPromise = hub.rpc('node-1', 'fs.stat', { path: '/workspace/a' })
+    const request = JSON.parse(socket.sent[1]!)
+    await hub.message(socket, signed({ v: 1, type: 'rpc.result', stream_id: request.stream_id, seq: 0, result: { size: 3 } }, key, 1))
+    expect(await resultPromise).toEqual({ size: 3 })
+
+    const errorPromise = hub.rpc('node-1', 'shell.exec', { command: 'false' })
+    const errorRequest = JSON.parse(socket.sent[2]!)
+    await hub.message(socket, signed({ v: 1, type: 'rpc.error', stream_id: errorRequest.stream_id, seq: 0, code: -32003, message: 'failed' }, key, 2))
+    await expect(errorPromise).rejects.toMatchObject({ code: -32003, message: 'failed' })
+  })
 })

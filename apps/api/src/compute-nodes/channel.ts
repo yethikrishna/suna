@@ -42,6 +42,19 @@ interface SocketState {
   receiveBinary?: boolean
 }
 
+interface RpcState {
+  nodeId: string
+  sendSeq: number
+  receiveSeq: number
+  timer: ReturnType<typeof setTimeout>
+  resolve(value: unknown): void
+  reject(error: Error): void
+}
+
+export class ComputeNodeRpcError extends Error {
+  constructor(readonly code: number, message: string) { super(message) }
+}
+
 export interface ComputeNodeSocket {
   send(data: string | Buffer | ArrayBuffer | Uint8Array): void
   close(code?: number, reason?: string): void
@@ -65,6 +78,7 @@ export class ComputeNodeChannelHub {
   private readonly externalToNode = new Map<string, string>()
   private readonly streams = new Map<string, StreamState>()
   private readonly sockets = new Map<string, SocketState>()
+  private readonly rpcs = new Map<string, RpcState>()
 
   constructor(
     private readonly authenticate: Authenticate,
@@ -114,6 +128,12 @@ export class ComputeNodeChannelHub {
       if (state.nodeId !== connection.nodeId) continue
       this.sockets.delete(id)
       state.onClose(1012, 'compute node disconnected')
+    }
+    for (const [id, state] of this.rpcs) {
+      if (state.nodeId !== connection.nodeId) continue
+      clearTimeout(state.timer)
+      this.rpcs.delete(id)
+      state.reject(new ComputeNodeRpcError(-32004, 'Compute node disconnected'))
     }
   }
 
@@ -204,6 +224,29 @@ export class ComputeNodeChannelHub {
     }
   }
 
+  rpc(nodeId: string, method: string, params: Record<string, unknown>, timeoutMs = 30_000): Promise<unknown> {
+    const connection = this.byNode.get(nodeId)
+    if (!connection) return Promise.reject(new ComputeNodeRpcError(-32004, `Compute node ${nodeId} is not connected`))
+    const id = crypto.randomUUID()
+    let resolve!: (value: unknown) => void
+    let reject!: (error: Error) => void
+    const result = new Promise<unknown>((ok, fail) => { resolve = ok; reject = fail })
+    const state: RpcState = {
+      nodeId,
+      sendSeq: 0,
+      receiveSeq: 0,
+      resolve,
+      reject,
+      timer: setTimeout(() => {
+        this.rpcs.delete(id)
+        reject(new ComputeNodeRpcError(-32002, `Compute node RPC timed out after ${timeoutMs}ms`))
+      }, timeoutMs),
+    }
+    this.rpcs.set(id, state)
+    this.sendFrame(connection, state, { v: 1, type: 'rpc.request', stream_id: id, seq: 0, method, params })
+    return result
+  }
+
   private async authenticateSocket(socket: SocketLike, raw: string): Promise<void> {
     this.pending.delete(socket)
     try {
@@ -227,6 +270,10 @@ export class ComputeNodeChannelHub {
   }
 
   private handleFrame(connection: Connection, frame: NodeChannelFrame): void {
+    if (frame.type.startsWith('rpc.')) {
+      this.handleRpcFrame(connection, frame)
+      return
+    }
     if (frame.type.startsWith('socket.')) {
       this.handleSocketFrame(connection, frame)
       return
@@ -286,6 +333,18 @@ export class ComputeNodeChannelHub {
     } else {
       throw new Error(`unexpected node frame ${frame.type}`)
     }
+  }
+
+  private handleRpcFrame(connection: Connection, frame: NodeChannelFrame): void {
+    const state = this.rpcs.get(frame.stream_id)
+    if (!state || state.nodeId !== connection.nodeId) throw new Error('unknown node RPC')
+    if (frame.seq !== state.receiveSeq) throw new Error(`invalid node RPC sequence: expected ${state.receiveSeq}, received ${frame.seq}`)
+    state.receiveSeq++
+    clearTimeout(state.timer)
+    this.rpcs.delete(frame.stream_id)
+    if (frame.type === 'rpc.result') state.resolve(frame.result)
+    else if (frame.type === 'rpc.error') state.reject(new ComputeNodeRpcError(frame.code, frame.message))
+    else throw new Error(`unexpected node RPC frame ${frame.type}`)
   }
 
   private handleSocketFrame(connection: Connection, frame: NodeChannelFrame): void {

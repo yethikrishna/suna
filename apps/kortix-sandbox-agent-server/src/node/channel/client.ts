@@ -2,12 +2,15 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { parseNodeChannelFrame, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
 import { NodeStreamAgent, type PortPolicy } from './stream-agent'
 import { NodeSocketAgent } from './socket-agent'
+import { NodeRpcAgent } from './rpc-agent'
+import type { NodeCapabilityRegistry } from '../capabilities'
 
 interface ChannelOptions {
   apiUrl: string
   nodeId: string
   token: string
   ports: PortPolicy
+  capabilities?: NodeCapabilityRegistry
   socketFactory?: (url: string) => WebSocket
 }
 
@@ -32,10 +35,12 @@ export class KortixNodeChannel {
   private shuttingDown = false
   private readonly streams: NodeStreamAgent
   private readonly sockets: NodeSocketAgent
+  private readonly rpc: NodeRpcAgent
 
   constructor(private readonly options: ChannelOptions) {
     this.streams = new NodeStreamAgent((frame) => this.sendSigned(frame), fetch, options.ports)
     this.sockets = new NodeSocketAgent((frame) => this.sendSigned(frame), options.ports)
+    this.rpc = new NodeRpcAgent((frame) => this.sendSigned(frame), options.capabilities?.methods ?? new Map())
   }
 
   connect(): void {
@@ -44,13 +49,22 @@ export class KortixNodeChannel {
       this.key = null
       this.sendNonce = 0
       this.receiveNonce = 0
-      this.socket?.send(JSON.stringify({ type: 'node.auth', node_id: this.options.nodeId, token: this.options.token, version: process.env.KORTIXD_VERSION ?? 'dev' }))
+      this.socket?.send(JSON.stringify({
+        type: 'node.auth',
+        node_id: this.options.nodeId,
+        token: this.options.token,
+        version: process.env.KORTIXD_VERSION ?? 'dev',
+        capabilities: this.options.capabilities?.names ?? [],
+        platform: process.platform,
+        arch: process.arch,
+      }))
     })
     this.socket.addEventListener('message', (event) => { void this.receive(event.data) })
     this.socket.addEventListener('close', (event) => {
       this.key = null
       this.streams.disconnect()
       this.sockets.disconnect()
+      this.rpc.disconnect()
       if (!this.shuttingDown && ![4001, 4003, 4004].includes((event as CloseEvent).code)) this.scheduleReconnect()
     })
     this.socket.addEventListener('error', () => { this.lastError = 'WebSocket connection error' })
@@ -62,6 +76,7 @@ export class KortixNodeChannel {
     this.socket?.close(1000, 'kortixd shutdown')
     this.streams.disconnect()
     this.sockets.disconnect()
+    this.rpc.disconnect()
   }
 
   status() { return { connected: this.key !== null, lastError: this.lastError } }
@@ -88,7 +103,7 @@ export class KortixNodeChannel {
       if (actualBytes.length !== expectedBytes.length || !timingSafeEqual(actualBytes, expectedBytes)) throw new Error('invalid channel signature')
       this.receiveNonce = nonce as number
       const parsed = parseNodeChannelFrame(JSON.stringify(frame))
-      if (!this.sockets.handle(parsed)) await this.streams.handle(parsed)
+      if (!this.sockets.handle(parsed) && !this.rpc.handle(parsed)) await this.streams.handle(parsed)
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error)
     }

@@ -41,7 +41,10 @@ export type NodeChannelFrame =
     })
   | (FrameBase & { type: 'socket.opened' })
   | (FrameBase & { type: 'socket.data'; data: string; binary: boolean; fin: boolean })
-  | (FrameBase & { type: 'socket.close'; code: number; reason: string });
+  | (FrameBase & { type: 'socket.close'; code: number; reason: string })
+  | (FrameBase & { type: 'rpc.request'; method: string; params: Record<string, unknown> })
+  | (FrameBase & { type: 'rpc.result'; result: unknown })
+  | (FrameBase & { type: 'rpc.error'; code: number; message: string });
 
 const STREAM_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
@@ -59,6 +62,9 @@ const TYPES = new Set([
   'socket.opened',
   'socket.data',
   'socket.close',
+  'rpc.request',
+  'rpc.result',
+  'rpc.error',
 ]);
 
 function invalid(message: string): never {
@@ -144,6 +150,14 @@ export function parseNodeChannelFrame(raw: string): NodeChannelFrame {
     case 'socket.close':
       integer(value.code, 'code', 1000, 4999);
       if (typeof value.reason !== 'string' || value.reason.length > 123 || /[\r\n]/.test(value.reason)) invalid('reason');
+      break;
+    case 'rpc.request':
+      if (typeof value.method !== 'string' || !/^[a-z][a-z0-9_.-]{0,127}$/.test(value.method)) invalid('method');
+      if (!value.params || typeof value.params !== 'object' || Array.isArray(value.params)) invalid('params');
+      break;
+    case 'rpc.error':
+      integer(value.code, 'code', -32_768, 32_767);
+      if (typeof value.message !== 'string' || value.message.length > 1024 || /[\r\n]/.test(value.message)) invalid('message');
       break;
   }
   return value as unknown as NodeChannelFrame;

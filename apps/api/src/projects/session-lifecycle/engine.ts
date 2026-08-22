@@ -15,7 +15,6 @@ import { config } from '../../config';
 import { logger } from '../../lib/logger';
 import { mayRequeueFailedCreate } from './requeue-policy';
 import { forwardToSandbox } from '../../sandbox-proxy/routes/preview';
-import { resolveSandboxIngress } from '../../sandbox-proxy/backend';
 import { serviceKeyForExternalId } from '../../platform/service-key';
 import type { ProviderName } from '../../platform/providers';
 import { sandboxOpencodeEndpoint, type SandboxOpencodeEndpoint } from '../opencode-mapping';
@@ -524,18 +523,15 @@ export async function continueSession(
       return 'pending';
     }
     try {
-      const [serviceKey, ingress] = await Promise.all([
-        serviceKeyForExternalId(externalId),
-        resolveSandboxIngress(externalId, { port: DAEMON_PORT, transport: 'http' }),
-      ]);
+      const serviceKey = await serviceKeyForExternalId(externalId);
       if (!serviceKey) throw new Error('sandbox service key is unavailable');
       await syncSandboxEnvForPrompt({
         projectId: session.projectId,
         sessionId,
         externalId,
         serviceKey,
-        previewUrl: ingress.url,
-        providerHeaders: ingress.headers,
+        previewUrl: `http://127.0.0.1:${DAEMON_PORT}`,
+        providerHeaders: {},
         providerName,
         opencodeEnv: command.opencodeEnv,
       });

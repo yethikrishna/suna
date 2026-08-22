@@ -155,7 +155,7 @@ flow(
       })
 
       await ctx.step('compiled connect stores the credential privately without printing it', async () => {
-        const connected = await processResult([binary, 'connect', '--api', ctx.env.apiUrl, '--token', token], { KORTIXD_HOME: stateDir })
+        const connected = await processResult([binary, 'connect', '--api', ctx.env.apiUrl, '--token', token, '--no-service'], { KORTIXD_HOME: stateDir })
         check('connect exits 0', connected.exitCode === 0, 0, connected.exitCode)
         check('stdout names node but not credential', connected.stdout.includes(nodeId) && !connected.stdout.includes('kortix_node_'), true, connected.stdout)
         if (process.platform !== 'win32') {
@@ -168,7 +168,9 @@ flow(
         const doctor = await processResult([binary, 'doctor'], { KORTIXD_HOME: stateDir })
         check('doctor exits 0', doctor.exitCode === 0 && doctor.stdout.includes('node configuration: ok'), true, doctor)
         const status = await processResult([binary, 'status', '--json', '--url', 'http://127.0.0.1:1'], { KORTIXD_HOME: stateDir })
-        check('unreachable status exits 1', status.exitCode === 1 && status.stderr.includes('not reachable'), true, status)
+        check('offline status is stable JSON without API connectivity', status.exitCode === 0 && JSON.parse(status.stdout).daemon.status === 'offline', true, status)
+        const logs = await processResult([binary, 'logs', '--lines', '10'], { KORTIXD_HOME: stateDir })
+        check('logs works without API connectivity', logs.exitCode === 0, 0, logs.exitCode)
       })
 
       await ctx.step('compiled logout removes the credential and is idempotent', async () => {

@@ -5,6 +5,7 @@ import { runKortixDaemon } from './main'
 import { ENV_CONTRACT } from './node/env-contract'
 import { reconcileRuntimeAssets, runtimeConvergenceReport } from './runtime-assets'
 import { clearStoredNodeConfig, readStoredNodeConfig, writeStoredNodeConfig } from './node/config-store'
+import { controlService, getServiceStatus, installService, readServiceLogs, uninstallService } from './node/service'
 
 const VERSION = process.env.KORTIXD_VERSION ?? 'dev'
 
@@ -18,6 +19,10 @@ Commands:
   status    Read the local node health endpoint
   update    Reconcile node runtime components with the configured Kortix API
   doctor    Validate the node configuration and required host tools
+  logs      Read local background-service logs
+  start     Install or start the background service
+  stop      Stop the background service
+  restart   Restart the background service
   logout    Remove the local node credential
   version   Print the kortixd version
   help      Show this help
@@ -44,7 +49,7 @@ async function runStatus(argv: readonly string[]): Promise<number> {
       return 1
     }
     if (argv.includes('--json')) {
-      process.stdout.write(`${text.trim()}\n`)
+      process.stdout.write(`${JSON.stringify({ daemon: JSON.parse(text), service: getServiceStatus() })}\n`)
       return 0
     }
     const health = JSON.parse(text) as {
@@ -61,6 +66,11 @@ async function runStatus(argv: readonly string[]): Promise<number> {
     process.stdout.write(`swap pending: ${health.runtime?.agentSwapPending === true ? 'yes' : 'no'}\n`)
     return 0
   } catch (error) {
+    const service = getServiceStatus()
+    if (argv.includes('--json')) {
+      process.stdout.write(`${JSON.stringify({ daemon: { status: 'offline', reachable: false }, service })}\n`)
+      return 0
+    }
     process.stderr.write(
       `kortixd: node is not reachable at ${url}: ${error instanceof Error ? error.message : String(error)}\n`,
     )
@@ -97,6 +107,10 @@ async function runConnect(argv: readonly string[]): Promise<number> {
   const path = writeStoredNodeConfig({ api_url: apiUrl, compute_node_id: result.compute_node_id, credential: result.credential })
   process.stdout.write(`enrolled compute node ${result.compute_node_id}\n`)
   process.stdout.write(`credential stored at ${path}\n`)
+  if (!argv.includes('--no-service')) {
+    const service = installService()
+    process.stdout.write(`background service: ${service.active ? 'running' : 'installed'}\n`)
+  }
   return 0
 }
 
@@ -149,10 +163,21 @@ export async function runKortixd(argv: string[]): Promise<number> {
   if (command === 'status') return runStatus(argv.slice(1))
   if (command === 'update') return runUpdate()
   if (command === 'doctor') return runDoctor()
+  if (command === 'logs') {
+    const lines = Number(option(argv.slice(1), '--lines') ?? '100')
+    process.stdout.write(`${readServiceLogs(Number.isFinite(lines) ? lines : 100)}\n`)
+    return 0
+  }
+  if (command === 'start' || command === 'stop' || command === 'restart') {
+    const service = controlService(command)
+    process.stdout.write(`${JSON.stringify(service)}\n`)
+    return 0
+  }
   if (command === 'logout') {
     const stored = (() => {
       try { return readStoredNodeConfig() } catch { return null }
     })()
+    uninstallService()
     if (stored) {
       await fetch(`${stored.api_url.replace(/\/+$/, '')}/nodes/logout`, {
         method: 'POST',

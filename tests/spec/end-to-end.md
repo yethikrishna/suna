@@ -986,6 +986,6 @@ The suite compiles `kortixd` for the host operating system and runs the actual
 executable. Help, version, and invalid-command behavior return stable exit
 codes. `connect` exchanges a single-use enrollment token without printing the
 node credential. It stores the state directory as `0700` and the credential
-file as `0600` on POSIX. `doctor` validates the stored enrollment. An
-unreachable status endpoint returns exit `1`. `logout` deletes the credential
-and remains idempotent.
+file as `0600` on POSIX. `doctor` validates the stored enrollment. Offline
+`status --json` and `logs` return local state without API connectivity.
+`logout` revokes and deletes the credential and remains idempotent.

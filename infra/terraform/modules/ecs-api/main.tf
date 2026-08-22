@@ -451,6 +451,7 @@ resource "aws_lb_listener" "https" {
 }
 
 resource "aws_lb_target_group" "node_relay" {
+  #checkov:skip=CKV_AWS_378:TLS terminates at the public HTTPS listener; this target group is private VPC traffic to the ECS task.
   count       = var.enable_node_relay ? 1 : 0
   name        = substr("${local.name}-node-relay", 0, 32)
   port        = var.container_port

@@ -103,6 +103,7 @@ let activeRouting: {
   activeSnapshotName: string | null;
 } | null = null;
 let projectImageResolved = false;
+let agentGrantError: Error | null = null;
 const testConfig = {
   ALLOWED_SANDBOX_PROVIDERS: ['daytona', 'e2b'],
   KORTIX_URL: 'http://localhost:8008',
@@ -380,7 +381,10 @@ mock.module('../../projects/lib/network-secret-boundary', () => ({
 
 mock.module('../../projects/agents', () => ({
   ...realAgents,
-  resolveAgentGrant: async (_agentName: string, _gitProject: unknown) => null,
+  resolveAgentGrant: async (_agentName: string, _gitProject: unknown) => {
+    if (agentGrantError) throw agentGrantError;
+    return null;
+  },
 }));
 
 mock.module('../../llm-gateway/enablement', () => ({
@@ -437,6 +441,7 @@ beforeEach(() => {
   providerSyncCalls = [];
   activeRouting = null;
   projectImageResolved = false;
+  agentGrantError = null;
   testConfig.KORTIX_FAST_COLD_BOOT_CONFIGURED = false;
   testConfig.KORTIX_FAST_COLD_BOOT_ENABLED = false;
 });
@@ -460,6 +465,14 @@ function baseOpts() {
 }
 
 describe('provisionSessionSandbox — mid-provision delete race', () => {
+  test('refuses to mint a session token when the agent grant cannot be resolved', async () => {
+    agentGrantError = new Error('manifest unavailable');
+
+    await expect(provisionSessionSandbox(baseOpts())).rejects.toThrow('manifest unavailable');
+    expect(accountTokenCreateCalls).toHaveLength(0);
+    expect(providerCreateCalls).toBe(0);
+  });
+
   test('meta sessions receive a full project grant without a standing service-account ceiling', async () => {
     await provisionSessionSandbox({
       ...baseOpts(),
@@ -520,6 +533,7 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     const envVars = providerCreateOpts[0]?.envVars as Record<string, string>;
     expect(envVars.KORTIX_TOKEN).toBe('exec-tok-1');
     expect(Object.keys(envVars).filter((name) => name.endsWith('_TOKEN'))).toEqual(['KORTIX_TOKEN']);
+    expect(envVars.KORTIX_OPENCODE_DENY_ENV).toBeUndefined();
 
     const finishCall = updateCalls.find(
       (call) =>

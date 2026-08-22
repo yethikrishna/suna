@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { type Ports, computePorts, repoRoot, runMigrate, sh } from '../../scripts/worktree/lib';
+import { runPsql } from './helpers/psql';
 
 const dockerOk = sh(['docker', 'info']).ok;
 const CONTAINER = 'kortix-credit-rpc-overloads-test';
@@ -15,13 +16,13 @@ const ports: Ports = { ...computePorts(0), sbDb: PORT };
 const url = `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres`;
 
 function psql(sql: string): string {
-  const res = sh(['psql', url, '-v', 'ON_ERROR_STOP=1', '-tAc', sql]);
+  const res = runPsql(url, sql);
   if (!res.ok) throw new Error(`psql failed: ${res.stderr}\n${sql}`);
   return res.stdout.trim();
 }
 
 function psqlAllowError(sql: string): { ok: boolean; stderr: string } {
-  const res = sh(['psql', url, '-v', 'ON_ERROR_STOP=1', '-tAc', sql]);
+  const res = runPsql(url, sql);
   return { ok: res.ok, stderr: res.stderr };
 }
 

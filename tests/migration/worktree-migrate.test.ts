@@ -2,11 +2,17 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   type Ports,
   computePorts,
-  hasKortixSchema,
   repoRoot,
   runMigrate,
   sh,
 } from '../../scripts/worktree/lib';
+import { runPsql } from './helpers/psql';
+
+const hasKortixSchema = (url: string): boolean =>
+  runPsql(
+    url,
+    "select count(*) from information_schema.tables where table_schema='kortix' and table_type='BASE TABLE'",
+  ).stdout !== '0';
 
 // Heavy integration test for the worktree's OWN migrate wrapper. The lightweight
 // scripts/worktree/__tests__ prove runMigrate references real things (the
@@ -79,16 +85,13 @@ suite('worktree runMigrate (end-to-end against throwaway Postgres)', () => {
     const code = await runMigrate(ROOT, ports);
     expect(code).toBe(0);
 
-    expect(hasKortixSchema(ports)).toBe(true);
-
     const url = `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres`;
+    expect(hasKortixSchema(url)).toBe(true);
     const count = Number(
-      sh([
-        'psql',
+      runPsql(
         url,
-        '-tAc',
         "select count(*) from information_schema.tables where table_schema='kortix' and table_type='BASE TABLE'",
-      ]).stdout.trim(),
+      ).stdout,
     );
     expect(count).toBeGreaterThanOrEqual(80);
   }, 180_000);
@@ -96,7 +99,7 @@ suite('worktree runMigrate (end-to-end against throwaway Postgres)', () => {
   test('is idempotent — a second run applies nothing and still exits 0', async () => {
     const code = await runMigrate(ROOT, ports);
     expect(code).toBe(0);
-    expect(hasKortixSchema(ports)).toBe(true);
+    expect(hasKortixSchema(`postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres`)).toBe(true);
   }, 120_000);
 });
 

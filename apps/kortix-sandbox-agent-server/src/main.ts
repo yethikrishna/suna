@@ -69,7 +69,7 @@ import { installShutdownHandlers } from './shutdown'
 import { startStaticWebServer } from './static-web'
 import { opencodeDeliveryInFlight, opencodeTurnInFlight } from './opencode-turn-state'
 import { KortixNodeChannel } from './node/channel/client'
-import { createSandboxCapabilityRegistry } from './node/capabilities'
+import { createNodeCapabilityRegistry, createSandboxCapabilityRegistry } from './node/capabilities'
 import { NodeAssignmentManager } from './node/assignment-manager'
 
 const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
@@ -96,7 +96,9 @@ export async function runKortixDaemon(): Promise<void> {
       // A signed API frame is the authorization decision. The transport still
       // hardcodes 127.0.0.1, so it cannot become an SSRF path to another host.
       ports: { has: (port: number) => assignmentManager.hasPort(port) || (Boolean(assignedSessionId) && port === cfg.servicePort) },
-      capabilities: createSandboxCapabilityRegistry(),
+      capabilities: assignedSessionId
+        ? createSandboxCapabilityRegistry()
+        : createNodeCapabilityRegistry(() => assignmentManager.writableRoots),
       assignments: assignmentManager,
       onAuthenticated: () => assignmentManager.restore(),
     })

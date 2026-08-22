@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createSandboxCapabilityRegistry } from '.'
+import { createNodeCapabilityRegistry, createSandboxCapabilityRegistry } from '.'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((path) => rm(path, { recursive: true, force: true }))) })
@@ -42,5 +42,18 @@ describe('kortixd native capabilities', () => {
     await expect(shell({ command: 'sh;id', cwd: dir }, new AbortController().signal)).rejects.toThrow('Invalid command')
     const timed = await shell({ command: 'sleep', args: ['1'], cwd: dir, timeout: 5 }, new AbortController().signal) as { signal: string }
     expect(timed.signal).toBe('SIGKILL')
+  })
+
+  test('changes workstation access when the active assignment roots change', async () => {
+    const first = await root()
+    const second = await root()
+    let allowed = [first]
+    const read = createNodeCapabilityRegistry(() => allowed).methods.get('fs.read')!
+    await writeFile(join(first, 'a'), 'first')
+    await writeFile(join(second, 'b'), 'second')
+    expect(await read({ path: join(first, 'a') }, new AbortController().signal)).toMatchObject({ content: 'first' })
+    allowed = [second]
+    await expect(read({ path: join(first, 'a') }, new AbortController().signal)).rejects.toThrow('outside allowed roots')
+    expect(await read({ path: join(second, 'b') }, new AbortController().signal)).toMatchObject({ content: 'second' })
   })
 })

@@ -31,7 +31,7 @@ function inside(path: string, root: string): boolean {
   return child === '' || (!child.startsWith('..') && !isAbsolute(child))
 }
 
-function resolveSafe(path: unknown, write = false): string {
+function resolveSafe(path: unknown, write = false, allowedRoots: readonly string[] = SANDBOX_ROOTS): string {
   if (typeof path !== 'string' || !isAbsolute(path)) throw new Error('Path must be absolute')
   const requested = normalize(resolve(path))
   let resolved: string
@@ -54,7 +54,7 @@ function resolveSafe(path: unknown, write = false): string {
     resolved ??= requested
   }
   if (BLOCKED_ROOTS.some((root) => inside(resolved, existingRoot(root)))) throw new Error(`Access denied: blocked path "${path}"`)
-  if (!SANDBOX_ROOTS.some((root) => inside(resolved, existingRoot(root)))) throw new Error(`Access denied: path "${path}" is outside allowed roots`)
+  if (!allowedRoots.some((root) => inside(resolved, existingRoot(root)))) throw new Error(`Access denied: path "${path}" is outside allowed roots`)
   return resolved
 }
 
@@ -64,10 +64,10 @@ function encoding(value: unknown): 'utf8' | 'base64' {
   throw new Error('Encoding must be utf8 or base64')
 }
 
-function filesystemMethods(): Map<string, NodeCapabilityHandler> {
+function filesystemMethods(roots: () => readonly string[]): Map<string, NodeCapabilityHandler> {
   return new Map<string, NodeCapabilityHandler>([
     ['fs.read', async (params) => {
-      const path = resolveSafe(params.path)
+      const path = resolveSafe(params.path, false, roots())
       const format = encoding(params.encoding)
       const handle = await open(path, 'r')
       try {
@@ -78,27 +78,27 @@ function filesystemMethods(): Map<string, NodeCapabilityHandler> {
       } finally { await handle.close() }
     }],
     ['fs.write', async (params) => {
-      const path = resolveSafe(params.path, true)
+      const path = resolveSafe(params.path, true, roots())
       const content = params.content
       const format = encoding(params.encoding)
       if (typeof content !== 'string') throw new Error('Content must be a string')
       if (Buffer.byteLength(content, format) > MAX_FILE_BYTES) throw new Error(`Content exceeds ${MAX_FILE_BYTES} bytes`)
       await mkdir(dirname(path), { recursive: true })
-      resolveSafe(path, true)
+      resolveSafe(path, true, roots())
       await writeFile(path, content, { encoding: format, mode: 0o600 })
       return { path, size: (await stat(path)).size }
     }],
     ['fs.list', async (params) => {
-      const path = resolveSafe(params.path)
+      const path = resolveSafe(params.path, false, roots())
       const entries = await readdir(path, { withFileTypes: true })
       return { entries: entries.map((entry) => ({ name: entry.name, path: join(path, entry.name), isDirectory: entry.isDirectory(), isFile: entry.isFile(), isSymlink: entry.isSymbolicLink() })), count: entries.length }
     }],
     ['fs.stat', async (params) => {
-      const info = await stat(resolveSafe(params.path))
+      const info = await stat(resolveSafe(params.path, false, roots()))
       return { size: info.size, isDirectory: info.isDirectory(), isFile: info.isFile(), isSymlink: info.isSymbolicLink(), mode: info.mode, mtime: info.mtime.toISOString(), ctime: info.ctime.toISOString(), atime: info.atime.toISOString() }
     }],
     ['fs.delete', async (params) => {
-      const path = resolveSafe(params.path)
+      const path = resolveSafe(params.path, false, roots())
       const info = await stat(path)
       if (!info.isFile()) throw new Error('Only regular files can be deleted')
       await unlink(path)
@@ -107,12 +107,13 @@ function filesystemMethods(): Map<string, NodeCapabilityHandler> {
   ])
 }
 
-function shellMethods(): Map<string, NodeCapabilityHandler> {
+function shellMethods(roots: () => readonly string[]): Map<string, NodeCapabilityHandler> {
   return new Map([['shell.exec', async (params, signal) => {
     if (typeof params.command !== 'string' || !params.command.trim() || COMMAND_METACHARS.test(params.command)) throw new Error('Invalid command')
     const args = params.args ?? []
     if (!Array.isArray(args) || !args.every((arg) => typeof arg === 'string')) throw new Error('Command args must be strings')
-    const cwd = resolveSafe(params.cwd ?? '/workspace')
+    const allowed = roots()
+    const cwd = resolveSafe(params.cwd ?? allowed[0], false, allowed)
     const requestedTimeout = params.timeout === undefined ? DEFAULT_SHELL_TIMEOUT_MS : Number(params.timeout)
     if (!Number.isSafeInteger(requestedTimeout) || requestedTimeout <= 0) throw new Error('Command timeout must be a positive integer')
     const timeout = Math.min(requestedTimeout, MAX_SHELL_TIMEOUT_MS)
@@ -146,7 +147,12 @@ function shellMethods(): Map<string, NodeCapabilityHandler> {
 }
 
 export function createSandboxCapabilityRegistry(): NodeCapabilityRegistry {
-  const methods = new Map<string, NodeCapabilityHandler>([...filesystemMethods(), ...shellMethods()])
+  return createNodeCapabilityRegistry(() => SANDBOX_ROOTS)
+}
+
+/** Create host capabilities constrained to roots supplied by the active lease. */
+export function createNodeCapabilityRegistry(allowedRoots: () => readonly string[]): NodeCapabilityRegistry {
+  const methods = new Map<string, NodeCapabilityHandler>([...filesystemMethods(allowedRoots), ...shellMethods(allowedRoots)])
   const names: NodeCapabilityName[] = ['filesystem', 'shell']
   try {
     const driver = process.env.CUA_DRIVER_BIN

@@ -70,6 +70,10 @@ export class NodeAssignmentManager {
   }
 
   get assignment(): NodeAssignmentSpec | null { return this.current?.assignment ?? null }
+  get writableRoots(): readonly string[] {
+    const assignment = this.current?.assignment
+    return assignment ? [join(this.directory, 'workspaces', assignment.session_id), ...assignment.writable_roots] : []
+  }
   hasPort(port: number): boolean { return this.current?.state === 'ready' && this.current.assignment.ports.includes(port) }
   resetSequences(): void { this.sendSequences.clear() }
 
@@ -136,6 +140,8 @@ export class NodeAssignmentManager {
     env.KORTIX_PROJECT_TARGET = workspace
     env.KORTIX_PROJECT_SECRETS_REVISION = assignment.secrets_revision
     env.KORTIX_SERVICE_PORT = String(assignment.ports[0] ?? 8000)
+    env.KORTIXD_HOME = join(workspace, '.kortixd-runtime')
+    mkdirSync(env.KORTIXD_HOME, { recursive: true, mode: 0o700 })
     const child = (this.options.spawnProcess ?? defaultSpawn)(this.executable, ['run'], env)
     this.child = child
     child.once('exit', () => {

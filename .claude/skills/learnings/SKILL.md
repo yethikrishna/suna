@@ -1741,3 +1741,33 @@ API origin and requires the standalone gateway health response.
 *Incident:* dev API returned `gateway_unavailable` after gateway PR #6737.
 The public edge surfaced it as blocking maintenance. Direct origin inspection
 identified the missing target before user traffic resumed.
+
+## Two dev stacks on one shared DB share one work queue
+
+2026-08-22. A `timeline-parity` worktree session's first prompt died inside
+OpenCode with `Cannot connect to API …
+subdivision-marine-acne-shorter.trycloudflare.com/v1/llm-gateway/v1/chat/completions`.
+That host belonged to a different worktree (`mw-perf`) whose quick tunnel had
+rotted. Both worktrees reuse the primary local Supabase, so prompt-inbox
+delivery, session-lifecycle commands, and sandbox env sync form ONE queue.
+`mw-perf`'s API grabbed the job, pushed its `KORTIX_URL`-derived gateway URL
+into the other worktree's sandbox, and forwarded the prompt. The owning
+worktree's log showed no env sync and no prompt POST, so nothing local
+explained the failure.
+
+**The rule.** A sandbox's gateway URL and credentials must come from the
+instance that owns the sandbox, never from whichever instance dequeues work.
+In local development, run one stack against the shared DB, or create the
+worktree with `--db`. When an OpenCode error names a host, grep EVERY stack
+log on the machine for that host before suspecting the branch.
+
+**The enforcement.** `pnpm worktree start` (`scripts/worktree/cli.ts`,
+`warnOnSharedDbCrosstalk`) now warns at start when another stack — a worktree
+in `shared` DB mode or the primary `pnpm dev` on `:8008` — is live on the
+same database, names it, and states the remedy. The product fix (persist the
+provisioning API origin on `session_sandboxes` and make env sync / delivery
+use it, or scope workers by instance) is an open follow-up.
+
+*Incident:* session `b090016e…` on worktree `timeline-parity`, first prompt
+`APIError` to a dead tunnel; prompts 2–3 succeeded after the owning instance's
+env sync rewrote the URL.

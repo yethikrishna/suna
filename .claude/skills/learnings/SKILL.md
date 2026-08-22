@@ -33,6 +33,25 @@ Platinum probe then found the initial-turn nonce still inherited by OpenCode.
 assert the authenticated claim, and the live guest probe must print only
 `KORTIX_TOKEN` for credential-like names.
 
+### Prove the gated query ran after enabling its feature (2026-08-22)
+
+**When:** enabling a feature on one page, then navigating to its data page in a
+browser test. A route render does not prove the gated query ran. Wait for the
+exact API response around an explicit reload before asserting its empty state.
+*Near-miss:* release PR #6746 browser shard 2 failed twice with a permanent Apps
+skeleton after a `200` feature PATCH and zero `GET /apps` requests. *Enforcer:*
+`18-apps-ui.spec.ts` requires the Apps list response before the empty state.
+
+### Fence every detached lifecycle mutation with a durable operation id (2026-08-22)
+
+**When:** an HTTP handler returns before a sandbox stop, start, or recovery
+finishes. Acquire one database claim per `session_id`. Predicate every provider
+step and completion write on that claim. A client mutation flag cannot serialize
+tabs, refreshes, or repeated requests. *Incident:* session
+`ebdcac7f-58bd-4a9f-ad82-b5f536f12c9c` accepted three restarts in 27 seconds and
+oscillated through `running -> provisioning -> stopped -> running -> stopped`.
+*Enforcer:* `runtime-restart-fence.test.ts` and the restart compare-and-set query.
+
 ### Assert an asynchronous timestamp write on its own row (2026-08-22)
 
 **When:** proving that one request advances a row timestamp while asynchronous

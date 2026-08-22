@@ -400,7 +400,7 @@ export function PlanCard({ sessionId }: { sessionId: string }) {
     <Disclosure
       open={open}
       onOpenChange={setOpen}
-      className="group/plan select-none w-full"
+      className="group/plan w-full select-none"
       variant="outline"
       // bounce 0 — a plan opening is a disclosure, not a toy.
       transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
@@ -461,15 +461,10 @@ export function PlanCard({ sessionId }: { sessionId: string }) {
                   cancels text-overflow:ellipsis. shrink-0 on the count so the
                   title is the only flex child that may narrow. Complete labels
                   mute so they read as status, not as a fake live step. */}
-              <span
-                className={cn(
-                  'min-w-0 flex-1 truncate',
-                  complete && 'text-muted-foreground',
-                )}
-              >
+              <span className={cn('min-w-0 flex-1 truncate', complete && 'text-muted-foreground')}>
                 {label}
               </span>
-              <span className="text-muted-foreground shrink-0 tabular-nums text-xs">
+              <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
                 {done} of {total}
               </span>
             </span>
@@ -481,7 +476,7 @@ export function PlanCard({ sessionId }: { sessionId: string }) {
         {/* No stepper rail. Each todo carries its own status glyph, so a
             connecting separator drew a second, weaker reading of the sequence
             the list already implies. */}
-        <ul className="flex w-full flex-col gap-2 px-3 pt-1 pb-3">
+        <ul className="flex w-full flex-col gap-2 px-3 py-2">
           {keyedTodos.map(({ todo, key }) => (
             <li key={key} className={cn(RAIL_ROW, 'items-start')}>
               <TodoStatusIcon status={todo.status} className={cn(RAIL_SLOT, GLYPH_ON_FIRST_LINE)} />

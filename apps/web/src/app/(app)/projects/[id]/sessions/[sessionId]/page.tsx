@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
-import { ClientErrorBoundary } from '@/components/common/error-boundary';
+import { AppErrorCard, ClientErrorBoundary } from '@/components/common/error-boundary';
 import { isLegacyMigratedSession, sessionDisplayLabel } from '@/components/projects/session-label';
 import { Button } from '@/components/ui/button';
 import Loading from '@/components/ui/loading';
@@ -765,6 +765,22 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
               // complete underneath the whole time; the overlay above
               // dissolves off it. Coverage is 1 at every frame of the fade.
               !chatReady && 'pointer-events-none',
+              // `isolate` is what makes the overlay's `bg-background` below
+              // actually cover this layer. `absolute` alone is NOT a stacking
+              // context, so `SessionLayout`'s `z-10` panel wrapper (and the
+              // `z-20` handle, and `z-[35]` while a detail is expanded) resolved
+              // against a context far ABOVE both layers and painted straight
+              // through the overlay — which is how a crashed chat's "Something
+              // went wrong" card ended up drawn on top of a live "Connecting"
+              // loader. Isolating traps those z-indices in here, where they only
+              // ever needed to order this layer's own children.
+              //
+              // Scoped to the overlay's lifetime on purpose: once it unmounts
+              // this layer stacks exactly as it does today, so the expanded
+              // detail keeps competing with the shell chrome as `session-layout`
+              // intends. The panel cannot be usefully expanded behind an opaque
+              // overlay anyway.
+              loaderMounted && 'isolate',
             )}
           >
             <ProjectSessionRuntimeConnection>
@@ -1101,7 +1117,18 @@ function ActiveSessionChat({
       projectId={projectId}
       projectSessionId={sessionId}
     >
-      <ClientErrorBoundary>
+      {/* A crash in the chat is a RESOLUTION of this layer, and the route has to
+          hear about it. `onChatReady` is otherwise the only thing that lowers
+          the boot overlay, and it is reported by `SessionChat` itself — so a
+          `SessionChat` that throws could never report it, and the overlay stayed
+          at full opacity forever with its 1s boot clock still ticking. The user
+          got a permanent "Connecting" spinner over a crash that had already
+          happened, and no way out but a page reload. */}
+      <ClientErrorBoundary
+        fallback={({ error, reset }) => (
+          <SessionChatCrashCard error={error} reset={reset} onSettled={onChatReady} />
+        )}
+      >
         <SessionChat
           key={chatSessionId}
           sessionId={chatSessionId}
@@ -1115,4 +1142,31 @@ function ActiveSessionChat({
       </ClientErrorBoundary>
     </SessionLayout>
   );
+}
+
+/**
+ * The chat's crash card, plus the one thing the card alone cannot say: this
+ * layer is done resolving, so stop covering it.
+ *
+ * `onSettled` fires in an effect rather than during render because it drives a
+ * `setState` in the route above — calling it while rendering the fallback would
+ * be a render-phase update of a different component.
+ *
+ * It deliberately does NOT reset itself: the boundary keeps the error until the
+ * user chooses. `reset()` remounts `SessionChat`, which then reports readiness
+ * again through its own path.
+ */
+function SessionChatCrashCard({
+  error,
+  reset,
+  onSettled,
+}: {
+  error: Error;
+  reset: () => void;
+  onSettled?: () => void;
+}) {
+  useEffect(() => {
+    onSettled?.();
+  }, [onSettled]);
+  return <AppErrorCard error={error} reset={reset} />;
 }

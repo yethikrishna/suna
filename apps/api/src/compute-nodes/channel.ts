@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_SOCKET_MESSAGE_BYTES, NODE_CHANNEL_MAX_WINDOW_BYTES, parseNodeChannelFrame, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
+import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_SOCKET_MESSAGE_BYTES, NODE_CHANNEL_MAX_WINDOW_BYTES, parseNodeChannelFrame, type NodeAssignmentSpec, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
 
 interface SocketLike { send(value: string): void; close(code?: number, reason?: string): void }
 interface AuthResult { nodeId: string; externalId?: string }
@@ -7,6 +7,7 @@ export interface NodeAuthInfo { version?: string; capabilities: string[]; platfo
 type Authenticate = (nodeId: string, token: string, info: NodeAuthInfo) => Promise<AuthResult | null>
 type ResolveNodeId = (externalId: string) => Promise<string | null>
 type Heartbeat = (nodeId: string, info: NodeAuthInfo) => Promise<void>
+type AssignmentEvent = (nodeId: string, assignmentId: string, state: 'accepted' | 'ready' | 'rejected' | 'stopped', detail?: string) => Promise<void> | void
 
 interface Connection {
   nodeId: string
@@ -53,6 +54,16 @@ interface RpcState {
   reject(error: Error): void
 }
 
+interface AssignmentState {
+  nodeId: string
+  sendSeq: number
+  receiveSeq: number
+  timer: ReturnType<typeof setTimeout>
+  resolve(value: Extract<NodeChannelFrame, { type: 'assignment.ready' }>): void
+  reject(error: Error): void
+  settled: boolean
+}
+
 export class ComputeNodeRpcError extends Error {
   constructor(readonly code: number, message: string) { super(message) }
 }
@@ -81,11 +92,13 @@ export class ComputeNodeChannelHub {
   private readonly streams = new Map<string, StreamState>()
   private readonly sockets = new Map<string, SocketState>()
   private readonly rpcs = new Map<string, RpcState>()
+  private readonly assignments = new Map<string, AssignmentState>()
 
   constructor(
     private readonly authenticate: Authenticate,
     private readonly resolveNodeId?: ResolveNodeId,
     private readonly heartbeat?: Heartbeat,
+    private readonly assignmentEvent?: AssignmentEvent,
   ) {}
 
   open(socket: SocketLike): void { this.pending.add(socket) }
@@ -137,6 +150,12 @@ export class ComputeNodeChannelHub {
       clearTimeout(state.timer)
       this.rpcs.delete(id)
       state.reject(new ComputeNodeRpcError(-32004, 'Compute node disconnected'))
+    }
+    for (const [id, state] of this.assignments) {
+      if (state.nodeId !== connection.nodeId) continue
+      clearTimeout(state.timer)
+      this.assignments.delete(id)
+      state.reject(new Error(`Compute node ${connection.nodeId} disconnected during assignment`))
     }
   }
 
@@ -257,6 +276,33 @@ export class ComputeNodeChannelHub {
     return result
   }
 
+  assign(nodeId: string, assignment: NodeAssignmentSpec, timeoutMs = 120_000): Promise<Extract<NodeChannelFrame, { type: 'assignment.ready' }>> {
+    const connection = this.byNode.get(nodeId)
+    if (!connection) return Promise.reject(new Error(`Compute node ${nodeId} is not connected`))
+    if (this.assignments.has(assignment.assignment_id)) return Promise.reject(new Error(`Assignment ${assignment.assignment_id} is already pending`))
+    let resolve!: AssignmentState['resolve']
+    let reject!: AssignmentState['reject']
+    const result = new Promise<Extract<NodeChannelFrame, { type: 'assignment.ready' }>>((ok, fail) => { resolve = ok; reject = fail })
+    const state: AssignmentState = {
+      nodeId, sendSeq: 0, receiveSeq: 0, resolve, reject, settled: false,
+      timer: setTimeout(() => {
+        this.assignments.delete(assignment.assignment_id)
+        reject(new Error(`Assignment ${assignment.assignment_id} timed out after ${timeoutMs}ms`))
+      }, timeoutMs),
+    }
+    this.assignments.set(assignment.assignment_id, state)
+    this.sendFrame(connection, state, { v: 1, type: 'assignment.apply', stream_id: assignment.assignment_id, seq: 0, assignment })
+    return result
+  }
+
+  stopAssignment(nodeId: string, assignmentId: string, reason: 'stop' | 'restart' | 'release' | 'drain' = 'stop'): void {
+    const connection = this.byNode.get(nodeId)
+    if (!connection) throw new Error(`Compute node ${nodeId} is not connected`)
+    const state = this.assignments.get(assignmentId)
+    if (!state || state.nodeId !== nodeId) throw new Error(`Assignment ${assignmentId} is not active on compute node ${nodeId}`)
+    this.sendFrame(connection, state, { v: 1, type: 'assignment.stop', stream_id: assignmentId, seq: 0, reason })
+  }
+
   private async authenticateSocket(socket: SocketLike, raw: string): Promise<void> {
     this.pending.delete(socket)
     try {
@@ -294,6 +340,10 @@ export class ComputeNodeChannelHub {
         platform: frame.platform,
         arch: frame.arch,
       })
+      return
+    }
+    if (frame.type.startsWith('assignment.')) {
+      await this.handleAssignmentFrame(connection, frame)
       return
     }
     if (frame.type.startsWith('rpc.')) {
@@ -359,6 +409,34 @@ export class ComputeNodeChannelHub {
     } else {
       throw new Error(`unexpected node frame ${frame.type}`)
     }
+  }
+
+  private async handleAssignmentFrame(connection: Connection, frame: NodeChannelFrame): Promise<void> {
+    if (frame.type === 'assignment.apply' || frame.type === 'assignment.stop') throw new Error(`unexpected node frame ${frame.type}`)
+    const state = this.assignments.get(frame.stream_id)
+    if (!state || state.nodeId !== connection.nodeId) throw new Error('unknown node assignment')
+    if (frame.seq !== state.receiveSeq) throw new Error(`invalid node assignment sequence: expected ${state.receiveSeq}, received ${frame.seq}`)
+    state.receiveSeq++
+    if (frame.type === 'assignment.accept') {
+      await this.assignmentEvent?.(connection.nodeId, frame.stream_id, 'accepted', frame.status)
+      return
+    }
+    if (frame.type === 'assignment.ready') {
+      clearTimeout(state.timer)
+      state.settled = true
+      await this.assignmentEvent?.(connection.nodeId, frame.stream_id, 'ready')
+      state.resolve(frame)
+    } else if (frame.type === 'assignment.reject') {
+      clearTimeout(state.timer)
+      this.assignments.delete(frame.stream_id)
+      await this.assignmentEvent?.(connection.nodeId, frame.stream_id, 'rejected', frame.reason)
+      state.reject(new Error(frame.reason))
+    } else if (frame.type === 'assignment.stopped') {
+      clearTimeout(state.timer)
+      this.assignments.delete(frame.stream_id)
+      await this.assignmentEvent?.(connection.nodeId, frame.stream_id, 'stopped', frame.reason)
+      if (!state.settled) state.reject(new Error(`Assignment stopped: ${frame.reason}`))
+    } else throw new Error(`unexpected node frame ${frame.type}`)
   }
 
   private handleRpcFrame(connection: Connection, frame: NodeChannelFrame): void {

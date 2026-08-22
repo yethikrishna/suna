@@ -4,6 +4,7 @@ import { NodeStreamAgent, type PortPolicy } from './stream-agent'
 import { NodeSocketAgent } from './socket-agent'
 import { NodeRpcAgent } from './rpc-agent'
 import type { NodeCapabilityRegistry } from '../capabilities'
+import type { NodeAssignmentManager } from '../assignment-manager'
 
 interface ChannelOptions {
   apiUrl: string
@@ -11,6 +12,8 @@ interface ChannelOptions {
   token: string
   ports: PortPolicy
   capabilities?: NodeCapabilityRegistry
+  assignments?: NodeAssignmentManager
+  onAuthenticated?: () => void | Promise<void>
   socketFactory?: (url: string) => WebSocket
 }
 
@@ -94,6 +97,8 @@ export class KortixNodeChannel {
         this.lastError = null
         this.reconnectAttempts = 0
         this.startHeartbeats()
+        this.options.assignments?.resetSequences()
+        await this.options.onAuthenticated?.()
         return
       }
       if (!this.key) throw new Error('frame received before authentication')
@@ -108,11 +113,14 @@ export class KortixNodeChannel {
       if (actualBytes.length !== expectedBytes.length || !timingSafeEqual(actualBytes, expectedBytes)) throw new Error('invalid channel signature')
       this.receiveNonce = nonce as number
       const parsed = parseNodeChannelFrame(JSON.stringify(frame))
+      if (await this.options.assignments?.handle(parsed)) return
       if (!this.sockets.handle(parsed) && !this.rpc.handle(parsed)) await this.streams.handle(parsed)
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error)
     }
   }
+
+  send(frame: NodeChannelFrame): void { this.sendSigned(frame) }
 
   private sendSigned(frame: NodeChannelFrame): void {
     if (!this.key || !this.socket || this.socket.readyState !== WebSocket.OPEN) return

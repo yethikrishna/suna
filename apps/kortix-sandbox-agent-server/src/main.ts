@@ -70,6 +70,7 @@ import { startStaticWebServer } from './static-web'
 import { opencodeDeliveryInFlight, opencodeTurnInFlight } from './opencode-turn-state'
 import { KortixNodeChannel } from './node/channel/client'
 import { createSandboxCapabilityRegistry } from './node/capabilities'
+import { NodeAssignmentManager } from './node/assignment-manager'
 
 const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
   'deepseek-v4-flash-free',
@@ -82,18 +83,34 @@ const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
 export async function runKortixDaemon(): Promise<void> {
   const bootTime = Date.now()
   const cfg = loadConfig()
+  const assignedSessionId = process.env.KORTIX_SESSION_ID?.trim()
   // The sandbox has no inbound runtime path. kortixd opens the one authenticated
   // control-plane connection and relays signed requests to loopback services.
-  if (cfg.apiUrl && cfg.computeNodeId && cfg.nodeToken) {
-    new KortixNodeChannel({
+  if (cfg.apiUrl && cfg.computeNodeId && cfg.nodeToken && process.env.KORTIXD_ASSIGNED_CHILD !== '1') {
+    let channel: KortixNodeChannel
+    const assignmentManager = new NodeAssignmentManager({ onFrame: (frame) => channel.send(frame) })
+    channel = new KortixNodeChannel({
       apiUrl: cfg.apiUrl,
       nodeId: cfg.computeNodeId,
       token: cfg.nodeToken,
       // A signed API frame is the authorization decision. The transport still
       // hardcodes 127.0.0.1, so it cannot become an SSRF path to another host.
-      ports: { has: (port: number) => Number.isInteger(port) && port >= 1 && port <= 65_535 },
+      ports: { has: (port: number) => assignmentManager.hasPort(port) || (Boolean(assignedSessionId) && port === cfg.servicePort) },
       capabilities: createSandboxCapabilityRegistry(),
-    }).connect()
+      assignments: assignmentManager,
+      onAuthenticated: () => assignmentManager.restore(),
+    })
+    channel.connect()
+    // An enrolled workstation starts without a session. It remains a node
+    // supervisor until the API assigns a workload over the outbound channel.
+    if (!assignedSessionId) {
+      await new Promise<void>((resolve) => {
+        const stop = () => { channel.disconnect(); resolve() }
+        process.once('SIGINT', stop)
+        process.once('SIGTERM', stop)
+      })
+      return
+    }
   }
   const prompt = (process.env.KORTIX_INITIAL_PROMPT ?? '').trim()
   const bootstrapSession = (process.env.KORTIX_BOOTSTRAP_OPENCODE_SESSION ?? '').trim() === '1'

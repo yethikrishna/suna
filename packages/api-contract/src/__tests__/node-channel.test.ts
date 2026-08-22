@@ -101,4 +101,35 @@ describe('node channel stream frames', () => {
     expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'rpc.error', stream_id: STREAM_ID, seq: 0, code: -32003, message: 'failed' })).type).toBe('rpc.error');
     expect(() => parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'rpc.request', stream_id: STREAM_ID, seq: 0, method: '../exec', params: {} }))).toThrow('method');
   });
+
+  test('accepts a complete lease-bound assignment lifecycle and rejects credential injection', () => {
+    const apply = {
+      v: 1,
+      type: 'assignment.apply',
+      stream_id: STREAM_ID,
+      seq: 0,
+      assignment: {
+        assignment_id: STREAM_ID,
+        session_id: '018f1f36-6ef9-7ca7-8e17-b97f405f1a64',
+        project_id: '018f1f36-6ef9-7ca7-8e17-b97f405f1a65',
+        lease_epoch: 3,
+        lease_expires_at: '2026-08-22T20:30:00.000Z',
+        workload: 'session',
+        harness: 'opencode',
+        repository: { url: 'https://api.kortix.test/v1/git/project.git', branch: 'session', base_ref: 'main' },
+        secrets_revision: 'sha256:abc',
+        ports: [8000],
+        writable_roots: ['/workspace'],
+        env: { KORTIX_SESSION_ID: '018f1f36-6ef9-7ca7-8e17-b97f405f1a64' },
+      },
+    } satisfies NodeChannelFrame;
+    expect(parseNodeChannelFrame(JSON.stringify(apply))).toEqual(apply);
+    expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'assignment.accept', stream_id: STREAM_ID, seq: 0, status: 'starting' })).type).toBe('assignment.accept');
+    expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'assignment.ready', stream_id: STREAM_ID, seq: 1, ports: [8000] })).type).toBe('assignment.ready');
+    expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'assignment.stop', stream_id: STREAM_ID, seq: 1, reason: 'release' })).type).toBe('assignment.stop');
+    expect(parseNodeChannelFrame(JSON.stringify({ v: 1, type: 'assignment.stopped', stream_id: STREAM_ID, seq: 2, reason: 'released' })).type).toBe('assignment.stopped');
+    const credentialInjection = structuredClone(apply) as any;
+    credentialInjection.assignment.env.KORTIX_NODE_TOKEN = 'forbidden';
+    expect(() => parseNodeChannelFrame(JSON.stringify(credentialInjection))).toThrow('KORTIX_NODE_TOKEN');
+  });
 });

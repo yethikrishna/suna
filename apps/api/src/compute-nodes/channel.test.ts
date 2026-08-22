@@ -153,4 +153,42 @@ describe('ComputeNodeChannelHub', () => {
     await hub.message(socket, signed({ v: 1, type: 'rpc.error', stream_id: errorRequest.stream_id, seq: 0, code: -32003, message: 'failed' }, key, 2))
     await expect(errorPromise).rejects.toMatchObject({ code: -32003, message: 'failed' })
   })
+
+  test('applies, observes, and stops a compute node assignment over the same channel', async () => {
+    const events: string[] = []
+    const hub = new ComputeNodeChannelHub(
+      async (nodeId) => ({ nodeId }),
+      undefined,
+      undefined,
+      async (_nodeId, _assignmentId, state) => { events.push(state) },
+    )
+    const socket = new FakeSocket()
+    hub.open(socket)
+    await hub.message(socket, JSON.stringify({ type: 'node.auth', node_id: 'node-1', token: 'valid' }))
+    const key = JSON.parse(socket.sent[0]!).signing_key as string
+    const assignmentId = crypto.randomUUID()
+    const readyPromise = hub.assign('node-1', {
+      assignment_id: assignmentId,
+      session_id: crypto.randomUUID(),
+      project_id: crypto.randomUUID(),
+      lease_epoch: 1,
+      lease_expires_at: '2030-01-01T00:00:00.000Z',
+      workload: 'session',
+      harness: 'opencode',
+      repository: { url: 'https://api.test/repo.git', branch: 'session', base_ref: 'main' },
+      secrets_revision: 'rev-1',
+      ports: [8000],
+      writable_roots: ['/workspace'],
+      env: {},
+    })
+    const apply = JSON.parse(socket.sent[1]!)
+    expect(apply).toMatchObject({ type: 'assignment.apply', stream_id: assignmentId, seq: 0 })
+    await hub.message(socket, signed({ v: 1, type: 'assignment.accept', stream_id: assignmentId, seq: 0, status: 'starting' }, key, 1))
+    await hub.message(socket, signed({ v: 1, type: 'assignment.ready', stream_id: assignmentId, seq: 1, ports: [8000] }, key, 2))
+    expect((await readyPromise).ports).toEqual([8000])
+    hub.stopAssignment('node-1', assignmentId, 'release')
+    expect(JSON.parse(socket.sent.at(-1)!)).toMatchObject({ type: 'assignment.stop', seq: 1, reason: 'release' })
+    await hub.message(socket, signed({ v: 1, type: 'assignment.stopped', stream_id: assignmentId, seq: 2, reason: 'release' }, key, 3))
+    expect(events).toEqual(['accepted', 'ready', 'stopped'])
+  })
 })

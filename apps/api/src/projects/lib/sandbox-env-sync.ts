@@ -6,7 +6,6 @@ import { resolveSandboxIngress } from '../../sandbox-proxy/backend';
 import { config } from '../../config';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { resolveLlmGatewayBaseUrl } from '../../llm-gateway/sandbox-base-url';
-import { nativeProviderEnvNames } from '../../llm-gateway/sandbox-credentials';
 import type { ProviderName } from '../../platform/providers';
 import {
   intersectSecretGrants,
@@ -148,10 +147,7 @@ export function __resetPromptModelSignatureCacheForTests(): void {
  *     would silently stop propagating an unrelated secret rotation.
  *   - `snapshot.capabilitiesJson` — pushed as `KORTIX_SECRET_CAPABILITIES`,
  *     which is on the daemon's `RESPAWN_REQUIRED_ENV_NAMES` list.
- *   - the LLM-gateway triple (`enabled`, `baseUrl`, `denyEnv`) — the daemon
- *     maps these onto `KORTIX_LLM_API_KEY` / `KORTIX_LLM_BASE_URL` /
- *     `KORTIX_OPENCODE_DENY_ENV`, the model/token/key values the task calls
- *     out by name.
+ *   - the LLM-gateway mode and base URL.
  *   - `args.opencodeEnv` — an explicit runtime-env push a caller asked this
  *     same call to carry (e.g. a channel follow-up's `KORTIX_CONNECTORS_MCP_ENABLED`,
  *     see `continueSession`/engine.ts). Omitting it would silently drop that
@@ -165,7 +161,6 @@ function promptModelSignature(input: {
   capabilitiesJson: string;
   llmGatewayEnabled: boolean;
   llmGatewayBaseUrl?: string;
-  llmGatewayDenyEnv?: string;
   opencodeEnv?: Record<string, string | null>;
 }): string {
   const opencodeEnvEntries = Object.entries(input.opencodeEnv ?? {}).sort(([a], [b]) =>
@@ -176,7 +171,6 @@ function promptModelSignature(input: {
     input.capabilitiesJson,
     input.llmGatewayEnabled,
     input.llmGatewayBaseUrl ?? '',
-    input.llmGatewayDenyEnv ?? '',
     opencodeEnvEntries,
   ]);
 }
@@ -493,7 +487,6 @@ async function postEnvToDaemon(args: {
   opencodeEnv?: Record<string, string | null>;
   llmGatewayEnabled?: boolean;
   llmGatewayBaseUrl?: string;
-  llmGatewayDenyEnv?: string;
   requireAgentEnvProof?: boolean;
 }): Promise<{
   opencodeState: string | null;
@@ -540,7 +533,6 @@ async function postEnvToDaemon(args: {
         ? {
             llmGatewayEnabled: args.llmGatewayEnabled,
             ...(args.llmGatewayBaseUrl ? { llmGatewayBaseUrl: args.llmGatewayBaseUrl } : {}),
-            llmGatewayDenyEnv: args.llmGatewayDenyEnv ?? '',
           }
         : {}),
     }),
@@ -713,7 +705,6 @@ export async function syncSandboxEnvForPrompt(args: {
   const llmGatewayBaseUrl = llmGatewayEnabled
     ? llmGatewayBaseUrlForProvider(args.providerName)
     : undefined;
-  const llmGatewayDenyEnv = llmGatewayEnabled ? nativeProviderEnvNames().join(',') : '';
   // Only ask the daemon to reload when something that could move ITS
   // `result.changed || opencodeEnvChanged` gate has actually changed since the
   // last time THIS process pushed to THIS sandbox. The daemon already no-ops a
@@ -728,7 +719,6 @@ export async function syncSandboxEnvForPrompt(args: {
     capabilitiesJson: snapshot.capabilitiesJson,
     llmGatewayEnabled,
     llmGatewayBaseUrl,
-    llmGatewayDenyEnv,
     opencodeEnv: args.opencodeEnv,
   });
   const refreshModels = lastPromptModelSignature.get(args.externalId) !== signature;
@@ -754,7 +744,6 @@ export async function syncSandboxEnvForPrompt(args: {
     opencodeEnv: args.opencodeEnv,
     llmGatewayEnabled,
     llmGatewayBaseUrl,
-    llmGatewayDenyEnv,
   });
   // Remember only AFTER a successful push. A throw below (network/HTTP
   // failure) must leave the memo alone so the next prompt retries with
@@ -1000,7 +989,6 @@ export async function propagateLlmGatewayModeToActiveSandboxes(
           refreshModels: true,
           llmGatewayEnabled: enabled,
           llmGatewayBaseUrl: enabled ? llmGatewayBaseUrlForProvider(row.provider as ProviderName) : undefined,
-          llmGatewayDenyEnv: enabled ? nativeProviderEnvNames().join(',') : '',
         });
         await markSandboxLlmGatewayMode(row.sessionId, enabled);
       } catch (err) {
@@ -1340,7 +1328,6 @@ export async function pushSessionScopeToSandbox(input: {
       llmGatewayBaseUrl: llmGatewayEnabled
         ? llmGatewayBaseUrlForProvider(row.provider as ProviderName)
         : undefined,
-      llmGatewayDenyEnv: llmGatewayEnabled ? nativeProviderEnvNames().join(',') : '',
     });
     await markSandboxLlmGatewayMode(input.sessionId, llmGatewayEnabled);
     return { applied: true };

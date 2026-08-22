@@ -21,6 +21,18 @@ linked, not inlined.
 
 ## Register
 
+### A sandbox environment carries one credential, not a boot protocol (2026-08-22)
+
+**When:** provisioning a session or adding daemon boot data. Inject only the
+session-bound `KORTIX_TOKEN`. The daemon must claim prompts and lifecycle
+identifiers from the API with that token. Connector, provider, prompt, and
+turn-ledger values must not enter the VM environment. *Incident:* an Essentia
+`env` dump exposed connector credentials and four Kortix aliases; a real
+Platinum probe then found the initial-turn nonce still inherited by OpenCode.
+*Enforcer:* runtime-env tests reject all boot payload keys, daemon wire tests
+assert the authenticated claim, and the live guest probe must print only
+`KORTIX_TOKEN` for credential-like names.
+
 ### Prove the gated query ran after enabling its feature (2026-08-22)
 
 **When:** enabling a feature on one page, then navigating to its data page in a

@@ -509,6 +509,25 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     expect(envVars).not.toHaveProperty('KORTIX_LLM_AI_SDK_NATIVE');
   });
 
+  test('injects one session credential under one canonical environment name', async () => {
+    const opened = waitFor((resolve) => {
+      onComputeOpened = resolve;
+    });
+
+    await provisionSessionSandbox(baseOpts());
+    await opened;
+
+    const envVars = providerCreateOpts[0]?.envVars as Record<string, string>;
+    expect(envVars.KORTIX_TOKEN).toBe('exec-tok-1');
+    expect(Object.keys(envVars).filter((name) => name.endsWith('_TOKEN'))).toEqual(['KORTIX_TOKEN']);
+
+    const finishCall = updateCalls.find(
+      (call) =>
+        call.table === sessionSandboxes && 'externalId' in call.updates && 'config' in call.updates,
+    );
+    expect(finishCall?.updates.config).toMatchObject({ serviceKey: 'exec-tok-1' });
+  });
+
   test('the fast flag keeps the standard image so the edge optimization stays isolated', async () => {
     process.env.KORTIX_FAST_COLD_BOOT_ENABLED = 'true';
     const opened = waitFor((resolve) => {

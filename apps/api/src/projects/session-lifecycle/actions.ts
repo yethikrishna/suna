@@ -264,8 +264,6 @@ export async function restartSession(input: {
           repoUrl: loaded.row.repoUrl,
           baseRef: session.baseRef ?? loaded.row.defaultBranch,
           agentName: session.agentName ?? 'default',
-          initialPrompt,
-          initialTurn,
           opencodeModel,
           defaultBranch: loaded.row.defaultBranch,
           manifestPath: loaded.row.manifestPath,

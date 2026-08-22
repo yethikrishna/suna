@@ -296,11 +296,13 @@ describe('UserMessage timestamp', () => {
 
 describe('UserMessage renders the plan it owns', () => {
   /**
-   * The plan card is the ONLY surface left for session todos: `session-chat`
-   * drops every `todowrite` part before segmentation ("the plan card beneath
-   * the user message is now the single canonical todo surface"). So if this
-   * component stops mounting `PlanCard`, the agent's plan renders NOWHERE and
-   * reads to the user as "the agent never made a plan".
+   * The plan card is the only surface left for session todos ON MOBILE:
+   * `session-chat` drops every `todowrite` part before segmentation, and above
+   * 768px it also nulls the anchor so the Easy panel's card draws instead
+   * (`chatPlanAnchorId`, plan-anchor.test.ts). These tests pass `ownsPlan`
+   * directly, so they pin the mobile path: if this component stops mounting
+   * `PlanCard` when it owns the plan, a phone user's plan renders NOWHERE and
+   * reads as "the agent never made a plan".
    *
    * Seeded through the query cache on the exact key the `todo.updated` SSE
    * handler writes (`['opencode','session-todo',<sessionID>]`), so the test

@@ -39,7 +39,7 @@ import { projectQueueRows } from './queue-projection';
 import { createQueueUndoAction } from './queued-message-restore';
 import { ActivityBurst } from './turn/activity-burst';
 import { ExpandableOutput } from './turn/expandable-output';
-import { isPlanWriteTool, planAnchorMessageId } from './turn/plan-anchor';
+import { chatPlanAnchorId, isPlanWriteTool } from './turn/plan-anchor';
 import {
   QUEUED_BUBBLE_OPACITY_CLASS,
   QueuedPromptActions,
@@ -102,6 +102,7 @@ import {
   buildPromptPartsWithUploads,
 } from '@/features/session/uploaded-file-refs';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
+import { usePlanInChat } from '@/features/session/plan-surface';
 import { useModelPricingLookup } from '@/lib/model-pricing';
 import {
   type AgentRefLike,
@@ -1542,9 +1543,10 @@ function SessionTurnImpl({
 			  features/session/turn/segment-turn.ts.
 			  Two part kinds are filtered out before segmentation:
 			    - the plan write (`todowrite` / `todo_write`, matched by
-			      `isPlanWriteTool`) — `PlanCard` beneath the user message is
-			      the single canonical todo surface; showing the same checklist
-			      again inside a burst would just duplicate it.
+			      `isPlanWriteTool`) — the Easy panel's Plan card (mobile: the
+			      plan card beneath the user message) is the single canonical
+			      todo surface; showing the same checklist again inside a burst
+			      would just duplicate it.
 			    - `question`: only answered questions are kept — they fold into
 			      their burst as a "Questions · N answered" chain row
 			      (turn/answered-question-step.tsx). Pending and dismissed
@@ -3035,13 +3037,25 @@ export function SessionChat({
   }, [projectSessionId, firstPromptPreview, transcriptShowsFirstPrompt, clearFirstPromptPreview]);
 
   /**
-   * One scan of the transcript, not one per turn.
+   * Which turn, if any, draws the plan.
    *
-   * `planAnchorMessageId` inspects every part of every message. It used to run
-   * inside each turn, which made it O(turns x total-parts) — on the order of
-   * 100k part inspections per frame for a long session.
+   * Null whenever the Easy panel's card column is actually on screen — the
+   * panel owns the plan there, so no turn claims it and the transcript scan
+   * below never runs. The chat takes it back for every state where the panel
+   * is not drawing it: mobile, a collapsed column, a detail panel covering it,
+   * Advanced mode. `usePlanInChat` is the single decision both surfaces read;
+   * see `plan-surface.ts` and `chatPlanAnchorId`.
+   *
+   * One scan of the transcript, not one per turn. `planAnchorMessageId`
+   * inspects every part of every message. It used to run inside each turn,
+   * which made it O(turns x total-parts) — on the order of 100k part
+   * inspections per frame for a long session.
    */
-  const planAnchorId = useMemo(() => (messages ? planAnchorMessageId(messages) : null), [messages]);
+  const planInChat = usePlanInChat();
+  const planAnchorId = useMemo(
+    () => chatPlanAnchorId(messages, planInChat),
+    [messages, planInChat],
+  );
   const lastUserMessageId = useMemo(() => {
     if (!messages) return null;
     for (let i = messages.length - 1; i >= 0; i--) {

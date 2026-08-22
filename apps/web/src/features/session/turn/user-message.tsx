@@ -1034,7 +1034,9 @@ export function UserMessage({
    *
    * `ownsPlan` alone is not the answer: `planAnchorMessageId` falls back to the
    * last turn when no turn ever wrote todos, so a session with zero todos still
-   * nominates an owner. `useHasPlan` is the second half — it asks the runtime
+   * nominates an owner. (It is also already false on every turn while the Easy
+   * panel is drawing the plan — see `chatPlanAnchorId`.) `useHasPlan` is the
+   * second half — it asks the runtime
    * whether a plan exists at all, on the same query key the `todo.updated` SSE
    * event writes, so the card appears the moment the agent writes its first
    * todo and never appears for a session that has none.
@@ -1463,9 +1465,13 @@ export function UserMessage({
       {actions}
 
       {/* The plan, last — closest to the assistant work it governs.
-          `session-chat` drops every `todowrite` part before segmentation, so
-          this card is the ONLY surface session todos have. Without it the
-          agent's plan renders nowhere and reads as "no plan was made".
+          THE FALLBACK SURFACE: `session-chat` nulls the anchor whenever the
+          Easy panel's column is on screen to draw the plan itself
+          (`usePlanInChat` -> `chatPlanAnchorId`). Everywhere else — mobile, a
+          collapsed column, a detail panel over it, Advanced mode — this is the
+          only surface session todos have, because `session-chat` drops every
+          `todowrite` part before segmentation. Without it the plan renders
+          nowhere and reads as "no plan was made".
           `w-full` because the column is `items-end`: a checklist is a panel
           across the column, not something trailing off a sentence. */}
       {showPlan && (

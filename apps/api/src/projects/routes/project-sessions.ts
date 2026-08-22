@@ -19,7 +19,7 @@ import { auth, errors, json } from '../../openapi';
 import { db } from '../../shared/db';
 
 import { createRoute, z } from '@hono/zod-openapi';
-import { projectSessions, sessionSandboxes } from '@kortix/db';
+import { computeNodeAssignments, projectSessions, sessionSandboxes } from '@kortix/db';
 import { and, desc, eq, inArray, or } from 'drizzle-orm';
 import { callerHasManagerStanding, loadProjectForUser, loadVisibleSession, lookupEmailsByUserIds, assertProjectCapability, projectCapabilityAllowed, resolveSessionOwnerIdentities, viewerManagerStanding } from '../lib/access';
 import { AnyObject, OkSchema, SessionCreateAcceptedSchema, SessionCreateInputSchema, SessionSchema, projectsApp } from '../lib/app';
@@ -37,7 +37,7 @@ import { sessionHasMemberConnectorBinding } from '../lib/session-connector-bindi
 import { createSession, deleteSession } from '../session-lifecycle';
 import { callerKortixSessionId } from '../lib/caller-session';
 import { selectSessionRowsForViewer, type ProjectSessionListScope } from '../lib/session-inventory';
-import { rpcComputeNode } from '../../compute-nodes';
+import { computeNodeChannel, rpcComputeNode } from '../../compute-nodes';
 import { recordAuditEvent } from '../../shared/audit';
 
 const SERVER_MANAGED_SESSION_METADATA_KEYS = [
@@ -100,7 +100,10 @@ projectsApp.openapi(
     const startedAt = Date.now();
     let outcome: 'success' | 'failure' = 'failure';
     try {
-      const result = await rpcComputeNode(sessionId, body.method, body.params ?? {});
+      const [assignment] = await db.select({ nodeId: computeNodeAssignments.nodeId }).from(computeNodeAssignments).where(and(eq(computeNodeAssignments.sessionId, sessionId), eq(computeNodeAssignments.status, 'ready'))).limit(1);
+      const nodeId = assignment?.nodeId ?? (computeNodeChannel.isConnected(sessionId) ? sessionId : null);
+      if (!nodeId) return c.json({ error: 'Session has no ready compute-node assignment' }, 502);
+      const result = await rpcComputeNode(nodeId, body.method, body.params ?? {});
       outcome = 'success';
       return c.json({ result }, 200);
     } catch (error) {

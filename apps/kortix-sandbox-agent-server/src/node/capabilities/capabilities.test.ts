@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createNodeCapabilityRegistry, createSandboxCapabilityRegistry } from '.'
+import { sandboxNodePolicy } from '../policy-store'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((path) => rm(path, { recursive: true, force: true }))) })
@@ -29,8 +30,8 @@ describe('kortixd native capabilities', () => {
     const link = join(dir, 'escape')
     await symlink('/etc', link)
     const read = createSandboxCapabilityRegistry().methods.get('fs.read')!
-    await expect(read({ path: '/etc/passwd' }, new AbortController().signal)).rejects.toThrow('outside allowed roots')
-    await expect(read({ path: join(link, 'passwd') }, new AbortController().signal)).rejects.toThrow('outside allowed roots')
+    await expect(read({ path: '/etc/passwd' }, new AbortController().signal)).rejects.toThrow('blocked path')
+    await expect(read({ path: join(link, 'passwd') }, new AbortController().signal)).rejects.toThrow('blocked path')
     await expect(read({ path: 'relative' }, new AbortController().signal)).rejects.toThrow('absolute')
   })
 
@@ -48,12 +49,14 @@ describe('kortixd native capabilities', () => {
     const first = await root()
     const second = await root()
     let allowed = [first]
-    const read = createNodeCapabilityRegistry(() => allowed).methods.get('fs.read')!
+    const policy = sandboxNodePolicy()
+    policy.allowedPaths = [first, second]
+    const read = createNodeCapabilityRegistry({ assignmentRoots: () => allowed, policy: () => policy }).methods.get('fs.read')!
     await writeFile(join(first, 'a'), 'first')
     await writeFile(join(second, 'b'), 'second')
     expect(await read({ path: join(first, 'a') }, new AbortController().signal)).toMatchObject({ content: 'first' })
     allowed = [second]
-    await expect(read({ path: join(first, 'a') }, new AbortController().signal)).rejects.toThrow('outside allowed roots')
+    await expect(read({ path: join(first, 'a') }, new AbortController().signal)).rejects.toThrow('outside assignment roots')
     expect(await read({ path: join(second, 'b') }, new AbortController().signal)).toMatchObject({ content: 'second' })
   })
 })

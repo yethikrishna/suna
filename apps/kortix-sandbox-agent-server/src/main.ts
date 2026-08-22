@@ -71,6 +71,7 @@ import { opencodeDeliveryInFlight, opencodeTurnInFlight } from './opencode-turn-
 import { KortixNodeChannel } from './node/channel/client'
 import { createNodeCapabilityRegistry, createSandboxCapabilityRegistry } from './node/capabilities'
 import { NodeAssignmentManager } from './node/assignment-manager'
+import { loadNodeLocalPolicy } from './node/policy-store'
 
 const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
   'deepseek-v4-flash-free',
@@ -98,7 +99,7 @@ export async function runKortixDaemon(): Promise<void> {
       ports: { has: (port: number) => assignmentManager.hasPort(port) || (Boolean(assignedSessionId) && port === cfg.servicePort) },
       capabilities: assignedSessionId
         ? createSandboxCapabilityRegistry()
-        : createNodeCapabilityRegistry(() => assignmentManager.writableRoots),
+        : createNodeCapabilityRegistry({ assignmentRoots: () => assignmentManager.writableRoots, policy: () => loadNodeLocalPolicy() }),
       assignments: assignmentManager,
       onAuthenticated: () => assignmentManager.restore(),
     })

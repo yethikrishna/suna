@@ -27,10 +27,13 @@ async function connectNodePeer(apiUrl: string, nodeId: string, credential: strin
   let nonce = 0
   let assignmentFrame: any = null
   let stopFrame: any = null
+  let rpcFrame: any = null
   let resolveAssignment!: () => void
   let resolveStop!: () => void
+  let resolveRpc!: () => void
   const assignmentReceived = new Promise<void>((resolve) => { resolveAssignment = resolve })
   const stopReceived = new Promise<void>((resolve) => { resolveStop = resolve })
+  const rpcReceived = new Promise<void>((resolve) => { resolveRpc = resolve })
   await new Promise<void>((resolveOpen, reject) => {
     socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'node.auth', node_id: nodeId, token: credential, version: 'e2e', capabilities: ['filesystem', 'shell'], platform: process.platform, arch: process.arch })))
     socket.addEventListener('error', () => reject(new Error('node peer WebSocket failed')))
@@ -39,6 +42,7 @@ async function connectNodePeer(apiUrl: string, nodeId: string, credential: strin
       if (value.type === 'node.auth.ok') { key = value.signing_key; resolveOpen(); return }
       if (value.type === 'assignment.apply') { assignmentFrame = value; resolveAssignment() }
       if (value.type === 'assignment.stop') { stopFrame = value; resolveStop() }
+      if (value.type === 'rpc.request') { rpcFrame = value; resolveRpc() }
     })
   })
   const send = (frame: Record<string, unknown>) => {
@@ -46,7 +50,7 @@ async function connectNodePeer(apiUrl: string, nodeId: string, credential: strin
     const payload = JSON.stringify(frame)
     socket.send(JSON.stringify({ ...frame, _nonce: next, _sig: createHmac('sha256', key).update(`${next}:${payload}`).digest('hex') }))
   }
-  return { socket, assignmentReceived, stopReceived, assignment: () => assignmentFrame, stop: () => stopFrame, send }
+  return { socket, assignmentReceived, stopReceived, rpcReceived, assignment: () => assignmentFrame, stop: () => stopFrame, rpc: () => rpcFrame, send }
 }
 
 flow(
@@ -67,6 +71,7 @@ flow(
       'POST /v1/accounts/:accountId/compute-nodes/:nodeId/assignments',
       'GET /v1/accounts/:accountId/compute-nodes/:nodeId/assignments',
       'POST /v1/accounts/:accountId/compute-nodes/:nodeId/assignments/:assignmentId/release',
+      'POST /v1/projects/:projectId/sessions/:sessionId/node/rpc',
       'DELETE /v1/accounts/:accountId/compute-nodes/:nodeId',
       'POST /v1/nodes/enroll',
       'POST /v1/nodes/logout',
@@ -140,6 +145,11 @@ flow(
       listed.status(200)
       const row = listed.json<any>().assignments.find((item: any) => item.assignment_id === assignmentId)
       if (row?.status !== 'ready') throw new Error(`assignment state did not persist ready: ${JSON.stringify(row)}`)
+      const rpcResult = ctx.client.as(ctx.P.OWNER).post('/v1/projects/:projectId/sessions/:sessionId/node/rpc', { method: 'fs.stat', params: { path: '/workspace' } }, { params: { projectId: project.id, sessionId: session.id } })
+      await peer.rpcReceived
+      const rpc = peer.rpc()
+      peer.send({ v: 1, type: 'rpc.result', stream_id: rpc.stream_id, seq: 0, result: { isDirectory: true, source: 'workstation-node' } })
+      ;(await rpcResult).status(200).body().has('$.result.source', 'workstation-node')
       const release = await ctx.client.as(ctx.P.OWNER).post('/v1/accounts/:accountId/compute-nodes/:nodeId/assignments/:assignmentId/release', {}, { params: { accountId, nodeId, assignmentId } })
       release.status(202).body().has('$.status', 'draining')
       await peer.stopReceived

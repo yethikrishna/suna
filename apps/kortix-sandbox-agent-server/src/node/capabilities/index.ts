@@ -3,14 +3,9 @@ import { constants, realpathSync, statSync } from 'node:fs'
 import { mkdir, open, readdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import type { NodeCapabilityHandler, NodeCapabilityName, NodeCapabilityRegistry } from './types'
+import { sandboxNodePolicy, type NodeLocalPolicy } from '../policy-store'
 
-const MAX_FILE_BYTES = 10 * 1024 * 1024
-const MAX_SHELL_OUTPUT_BYTES = 1024 * 1024
-const MAX_SHELL_TIMEOUT_MS = 120_000
-const DEFAULT_SHELL_TIMEOUT_MS = 30_000
 const SANDBOX_ROOTS = ['/workspace', '/tmp', '/home', '/opt']
-const BLOCKED_ROOTS = ['/etc/shadow', '/etc/sudoers', '/etc/ssh', '/root/.ssh', '/proc', '/sys', '/dev']
-const ENV_ALLOWLIST = ['PATH', 'HOME', 'USER', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'NODE_ENV', 'HOSTNAME']
 const COMMAND_METACHARS = /[;&|`$(){}[\]<>!#~]/
 const CUA_TOOLS = [
   'bring_to_front', 'check_permissions', 'click', 'double_click', 'drag', 'end_session',
@@ -31,7 +26,7 @@ function inside(path: string, root: string): boolean {
   return child === '' || (!child.startsWith('..') && !isAbsolute(child))
 }
 
-function resolveSafe(path: unknown, write = false, allowedRoots: readonly string[] = SANDBOX_ROOTS): string {
+function resolveSafe(path: unknown, write: boolean, policy: NodeLocalPolicy, assignmentRoots: readonly string[]): string {
   if (typeof path !== 'string' || !isAbsolute(path)) throw new Error('Path must be absolute')
   const requested = normalize(resolve(path))
   let resolved: string
@@ -53,8 +48,9 @@ function resolveSafe(path: unknown, write = false, allowedRoots: readonly string
     }
     resolved ??= requested
   }
-  if (BLOCKED_ROOTS.some((root) => inside(resolved, existingRoot(root)))) throw new Error(`Access denied: blocked path "${path}"`)
-  if (!allowedRoots.some((root) => inside(resolved, existingRoot(root)))) throw new Error(`Access denied: path "${path}" is outside allowed roots`)
+  if (policy.blockedPaths.some((root) => inside(resolved, existingRoot(root)))) throw new Error(`Access denied: blocked path "${path}"`)
+  if (!policy.allowedPaths.some((root) => inside(resolved, existingRoot(root)))) throw new Error(`Access denied: path "${path}" is outside local allowed roots`)
+  if (assignmentRoots.length > 0 && !assignmentRoots.some((root) => inside(resolved, existingRoot(root)))) throw new Error(`Access denied: path "${path}" is outside assignment roots`)
   return resolved
 }
 
@@ -64,41 +60,43 @@ function encoding(value: unknown): 'utf8' | 'base64' {
   throw new Error('Encoding must be utf8 or base64')
 }
 
-function filesystemMethods(roots: () => readonly string[]): Map<string, NodeCapabilityHandler> {
+function filesystemMethods(policy: () => NodeLocalPolicy, roots: () => readonly string[]): Map<string, NodeCapabilityHandler> {
   return new Map<string, NodeCapabilityHandler>([
     ['fs.read', async (params) => {
-      const path = resolveSafe(params.path, false, roots())
+      const current = policy()
+      const path = resolveSafe(params.path, false, current, roots())
       const format = encoding(params.encoding)
       const handle = await open(path, 'r')
       try {
         const info = await handle.stat()
         if (!info.isFile()) throw new Error('Path is not a regular file')
-        if (info.size > MAX_FILE_BYTES) throw new Error(`File exceeds ${MAX_FILE_BYTES} bytes`)
+        if (info.size > current.maxFileSize) throw new Error(`File exceeds ${current.maxFileSize} bytes`)
         return { content: await handle.readFile({ encoding: format }), size: info.size, encoding: format }
       } finally { await handle.close() }
     }],
     ['fs.write', async (params) => {
-      const path = resolveSafe(params.path, true, roots())
+      const current = policy()
+      const path = resolveSafe(params.path, true, current, roots())
       const content = params.content
       const format = encoding(params.encoding)
       if (typeof content !== 'string') throw new Error('Content must be a string')
-      if (Buffer.byteLength(content, format) > MAX_FILE_BYTES) throw new Error(`Content exceeds ${MAX_FILE_BYTES} bytes`)
+      if (Buffer.byteLength(content, format) > current.maxFileSize) throw new Error(`Content exceeds ${current.maxFileSize} bytes`)
       await mkdir(dirname(path), { recursive: true })
-      resolveSafe(path, true, roots())
+      resolveSafe(path, true, current, roots())
       await writeFile(path, content, { encoding: format, mode: 0o600 })
       return { path, size: (await stat(path)).size }
     }],
     ['fs.list', async (params) => {
-      const path = resolveSafe(params.path, false, roots())
+      const path = resolveSafe(params.path, false, policy(), roots())
       const entries = await readdir(path, { withFileTypes: true })
       return { entries: entries.map((entry) => ({ name: entry.name, path: join(path, entry.name), isDirectory: entry.isDirectory(), isFile: entry.isFile(), isSymlink: entry.isSymbolicLink() })), count: entries.length }
     }],
     ['fs.stat', async (params) => {
-      const info = await stat(resolveSafe(params.path, false, roots()))
+      const info = await stat(resolveSafe(params.path, false, policy(), roots()))
       return { size: info.size, isDirectory: info.isDirectory(), isFile: info.isFile(), isSymlink: info.isSymbolicLink(), mode: info.mode, mtime: info.mtime.toISOString(), ctime: info.ctime.toISOString(), atime: info.atime.toISOString() }
     }],
     ['fs.delete', async (params) => {
-      const path = resolveSafe(params.path, false, roots())
+      const path = resolveSafe(params.path, false, policy(), roots())
       const info = await stat(path)
       if (!info.isFile()) throw new Error('Only regular files can be deleted')
       await unlink(path)
@@ -107,18 +105,22 @@ function filesystemMethods(roots: () => readonly string[]): Map<string, NodeCapa
   ])
 }
 
-function shellMethods(roots: () => readonly string[]): Map<string, NodeCapabilityHandler> {
+function shellMethods(policy: () => NodeLocalPolicy, roots: () => readonly string[]): Map<string, NodeCapabilityHandler> {
   return new Map([['shell.exec', async (params, signal) => {
+    const current = policy()
     if (typeof params.command !== 'string' || !params.command.trim() || COMMAND_METACHARS.test(params.command)) throw new Error('Invalid command')
+    const command = params.command.trim()
+    if (current.blockedCommands.includes(command)) throw new Error(`Command "${command}" is blocked`)
+    if (current.allowedCommands.length > 0 && !current.allowedCommands.includes(command)) throw new Error(`Command "${command}" is outside the local allowlist`)
     const args = params.args ?? []
     if (!Array.isArray(args) || !args.every((arg) => typeof arg === 'string')) throw new Error('Command args must be strings')
-    const allowed = roots()
-    const cwd = resolveSafe(params.cwd ?? allowed[0], false, allowed)
-    const requestedTimeout = params.timeout === undefined ? DEFAULT_SHELL_TIMEOUT_MS : Number(params.timeout)
+    const assigned = roots()
+    const cwd = resolveSafe(params.cwd ?? assigned[0] ?? current.allowedPaths[0], false, current, assigned)
+    const requestedTimeout = params.timeout === undefined ? current.shellTimeout : Number(params.timeout)
     if (!Number.isSafeInteger(requestedTimeout) || requestedTimeout <= 0) throw new Error('Command timeout must be a positive integer')
-    const timeout = Math.min(requestedTimeout, MAX_SHELL_TIMEOUT_MS)
+    const timeout = Math.min(requestedTimeout, current.shellMaxTimeout)
     const env: Record<string, string> = { TERM: 'dumb' }
-    for (const key of ENV_ALLOWLIST) if (process.env[key] !== undefined) env[key] = process.env[key]!
+    for (const key of current.shellEnvPassthrough) if (process.env[key] !== undefined) env[key] = process.env[key]!
     return await new Promise((resolveResult, reject) => {
       const child = spawn(params.command as string, args as string[], { cwd, shell: false, env, stdio: ['ignore', 'pipe', 'pipe'] })
       let stdout: Buffer<ArrayBufferLike> = Buffer.alloc(0)
@@ -126,7 +128,7 @@ function shellMethods(roots: () => readonly string[]): Map<string, NodeCapabilit
       let stdoutTruncated = false
       let stderrTruncated = false
       const append = (current: Buffer<ArrayBufferLike>, chunk: Buffer<ArrayBufferLike>, mark: () => void): Buffer<ArrayBufferLike> => {
-        const remaining = MAX_SHELL_OUTPUT_BYTES - current.byteLength
+        const remaining = policy().shellMaxOutputSize - current.byteLength
         if (remaining <= 0) { mark(); return current }
         if (chunk.byteLength > remaining) mark()
         return Buffer.concat([current, chunk.subarray(0, remaining)])
@@ -147,16 +149,19 @@ function shellMethods(roots: () => readonly string[]): Map<string, NodeCapabilit
 }
 
 export function createSandboxCapabilityRegistry(): NodeCapabilityRegistry {
-  return createNodeCapabilityRegistry(() => SANDBOX_ROOTS)
+  return createNodeCapabilityRegistry({ assignmentRoots: () => SANDBOX_ROOTS, policy: sandboxNodePolicy })
 }
 
 /** Create host capabilities constrained to roots supplied by the active lease. */
-export function createNodeCapabilityRegistry(allowedRoots: () => readonly string[]): NodeCapabilityRegistry {
-  const methods = new Map<string, NodeCapabilityHandler>([...filesystemMethods(allowedRoots), ...shellMethods(allowedRoots)])
-  const names: NodeCapabilityName[] = ['filesystem', 'shell']
+export function createNodeCapabilityRegistry(options: { assignmentRoots: () => readonly string[]; policy: () => NodeLocalPolicy }): NodeCapabilityRegistry {
+  const current = options.policy()
+  const methods = new Map<string, NodeCapabilityHandler>()
+  const names: NodeCapabilityName[] = []
+  if (current.enabledCapabilities.includes('filesystem')) { for (const entry of filesystemMethods(options.policy, options.assignmentRoots)) methods.set(...entry); names.push('filesystem') }
+  if (current.enabledCapabilities.includes('shell')) { for (const entry of shellMethods(options.policy, options.assignmentRoots)) methods.set(...entry); names.push('shell') }
   try {
     const driver = process.env.CUA_DRIVER_BIN
-    if (driver) {
+    if (driver && current.enabledCapabilities.includes('desktop')) {
       const resolved = realpathSync(driver)
       const info = statSync(resolved)
       if (!info.isFile() || (info.mode & constants.X_OK) === 0 || (info.mode & 0o022) !== 0) throw new Error('CUA driver is not a trusted executable')

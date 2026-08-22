@@ -4,7 +4,7 @@ import { runGitCredentialHelper } from './git'
 import { runKortixDaemon } from './main'
 import { ENV_CONTRACT } from './node/env-contract'
 import { reconcileRuntimeAssets, runtimeConvergenceReport } from './runtime-assets'
-import { clearStoredNodeConfig, writeStoredNodeConfig } from './node/config-store'
+import { clearStoredNodeConfig, readStoredNodeConfig, writeStoredNodeConfig } from './node/config-store'
 
 const VERSION = process.env.KORTIXD_VERSION ?? 'dev'
 
@@ -150,6 +150,17 @@ export async function runKortixd(argv: string[]): Promise<number> {
   if (command === 'update') return runUpdate()
   if (command === 'doctor') return runDoctor()
   if (command === 'logout') {
+    const stored = (() => {
+      try { return readStoredNodeConfig() } catch { return null }
+    })()
+    if (stored) {
+      await fetch(`${stored.api_url.replace(/\/+$/, '')}/nodes/logout`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${stored.credential}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ compute_node_id: stored.compute_node_id }),
+        signal: AbortSignal.timeout(10_000),
+      }).catch(() => null)
+    }
     const existed = clearStoredNodeConfig()
     process.stdout.write(existed ? 'local node credential removed\n' : 'no local node credential found\n')
     return 0

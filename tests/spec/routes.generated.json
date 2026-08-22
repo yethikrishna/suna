@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 613,
+  "count": 614,
   "routes": [
     {
       "method": "GET",
@@ -1073,6 +1073,10 @@
     {
       "method": "POST",
       "path": "/v1/nodes/enroll"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/nodes/logout"
     },
     {
       "method": "GET",

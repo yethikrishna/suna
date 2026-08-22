@@ -35,12 +35,14 @@ flow(
       'POST /v1/accounts/:accountId/compute-nodes/:nodeId/rotate-credential',
       'DELETE /v1/accounts/:accountId/compute-nodes/:nodeId',
       'POST /v1/nodes/enroll',
+      'POST /v1/nodes/logout',
     ],
   },
   async (ctx) => {
     const accountId = ctx.P.accountId
     let nodeId = ''
     let enrollmentToken = ''
+    let firstCredential = ''
 
     await ctx.step('anonymous and non-member callers cannot register an account compute node', async () => {
       await ctx.client.as(ctx.P.ANON).post('/v1/accounts/:accountId/compute-nodes', { type: 'workstation' }, { params: { accountId } }).then((r) => r.status(401))
@@ -63,6 +65,7 @@ flow(
     await ctx.step('daemon exchanges the token once and replay fails', async () => {
       const first = await ctx.client.as(ctx.P.ANON).post('/v1/nodes/enroll', { enrollment_token: enrollmentToken })
       first.status(200).body().has('$.compute_node_id', nodeId).exists('$.credential').has('$.generation', 1)
+      firstCredential = first.json<any>().credential
       const replay = await ctx.client.as(ctx.P.ANON).post('/v1/nodes/enroll', { enrollment_token: enrollmentToken })
       replay.status(401)
     })
@@ -98,6 +101,8 @@ flow(
       const token = rotate.json<any>().enrollment_token
       const enroll = await ctx.client.as(ctx.P.ANON).post('/v1/nodes/enroll', { enrollment_token: token })
       enroll.status(200).body().has('$.compute_node_id', nodeId).has('$.generation', 2).exists('$.credential')
+      const oldCredential = await ctx.client.withBearer(firstCredential, 'NODE').post('/v1/nodes/logout', { compute_node_id: nodeId })
+      oldCredential.status(401)
     })
 
     await ctx.step('delete releases the node and subsequent reads return 404', async () => {
@@ -118,6 +123,7 @@ flow(
     routes: [
       'POST /v1/accounts/:accountId/compute-nodes',
       'POST /v1/nodes/enroll',
+      'POST /v1/nodes/logout',
       'DELETE /v1/accounts/:accountId/compute-nodes/:nodeId',
     ],
   },

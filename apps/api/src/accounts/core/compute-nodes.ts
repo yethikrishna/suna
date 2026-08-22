@@ -1,6 +1,7 @@
 import { createRoute, z } from '@hono/zod-openapi'
-import { and, desc, eq, ne } from 'drizzle-orm'
-import { computeNodeAssignments, computeNodes } from '@kortix/db'
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
+import { computeNodeAssignments, computeNodes, projects, projectSessions } from '@kortix/db'
+import type { NodeAssignmentSpec } from '@kortix/api-contract/node-channel'
 import { ACCOUNT_ACTIONS, assertAuthorized } from '../../iam'
 import { actorOf } from '../../iam/actor'
 import { auth, errors, json } from '../../openapi'
@@ -11,6 +12,8 @@ import {
   revokeNodeCredentials,
 } from '../../repositories/compute-node-credentials'
 import { computeNodeChannel } from '../../compute-nodes'
+import { createAccountToken } from '../../repositories/account-tokens'
+import { deriveKortixApiBase, proxyGitUrl } from '../../projects/lib/sessions'
 import { accountsRouter } from './app'
 
 const NodeType = z.enum(['sandbox', 'workstation', 'vm', 'container', 'bare_metal', 'ci'])
@@ -35,6 +38,11 @@ const NodeSchema = z.object({
   metadata: z.record(z.string(), z.any()),
   created_at: z.string(),
   updated_at: z.string(),
+})
+const AssignmentSchema = z.object({
+  assignment_id: z.string(), node_id: z.string(), account_id: z.string(), project_id: z.string(),
+  session_id: z.string(), status: z.string(), lease_epoch: z.number(), lease_expires_at: z.string().nullable(),
+  metadata: z.record(z.string(), z.any()), created_at: z.string(), updated_at: z.string(),
 })
 
 function serializeNode(row: typeof computeNodes.$inferSelect) {
@@ -75,6 +83,15 @@ async function authorizeProject(c: any, accountId: string, projectId: string | n
   if (!projectId) return true
   const loaded = await loadProjectForUser(c, projectId, action)
   return Boolean(loaded && loaded.row.accountId === accountId)
+}
+
+function serializeAssignment(row: typeof computeNodeAssignments.$inferSelect) {
+  return {
+    assignment_id: row.assignmentId, node_id: row.nodeId, account_id: row.accountId,
+    project_id: row.projectId, session_id: row.sessionId, status: row.status,
+    lease_epoch: row.leaseEpoch, lease_expires_at: row.leaseExpiresAt?.toISOString() ?? null,
+    metadata: row.metadata, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString(),
+  }
 }
 
 export function registerComputeNodeRoutes(): void {
@@ -166,6 +183,88 @@ export function registerComputeNodeRoutes(): void {
       },
     )
   }
+
+  accountsRouter.openapi(
+    createRoute({
+      method: 'post', path: '/{accountId}/compute-nodes/{nodeId}/assignments', tags: ['compute-nodes'],
+      summary: 'Assign an existing session to a connected compute node', ...auth,
+      request: { params: z.object({ accountId: z.string(), nodeId: z.string() }), body: { content: { 'application/json': { schema: z.object({ session_id: z.string().uuid(), lease_seconds: z.number().int().min(60).max(86400).default(3600), ports: z.array(z.number().int().min(1).max(65535)).min(1).max(16).default([8000]), writable_roots: z.array(z.string().min(1)).max(32).default([]) }) } } } },
+      responses: { 202: json(AssignmentSchema, 'Assignment accepted for delivery'), ...errors(400, 401, 403, 404, 409) },
+    }),
+    async (c: any) => {
+      const accountId = c.req.param('accountId')
+      const nodeId = c.req.param('nodeId')
+      await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.ACCOUNT_WRITE)
+      const node = await loadAccountNode(accountId, nodeId)
+      if (!node || !(await authorizeProject(c, accountId, node.projectId, 'manage'))) return c.json({ error: 'Not found' }, 404)
+      if (!computeNodeChannel.isConnected(nodeId)) return c.json({ error: 'Compute node is not connected' }, 409)
+      const body = await c.req.json()
+      const [runtime] = await db.select({ session: projectSessions, project: projects }).from(projectSessions).innerJoin(projects, eq(projectSessions.projectId, projects.projectId)).where(and(eq(projectSessions.sessionId, body.session_id), eq(projectSessions.accountId, accountId))).limit(1)
+      if (!runtime || !(await authorizeProject(c, accountId, runtime.session.projectId, 'manage'))) return c.json({ error: 'Session not found' }, 404)
+      if (node.projectId && node.projectId !== runtime.session.projectId) return c.json({ error: 'Compute node is restricted to another project' }, 409)
+      const leaseExpiresAt = new Date(Date.now() + (body.lease_seconds ?? 3600) * 1000)
+      const inserted = await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`kortixd-session:${body.session_id}`}))`)
+        const active = await tx.select({ id: computeNodeAssignments.assignmentId }).from(computeNodeAssignments).where(and(eq(computeNodeAssignments.sessionId, body.session_id), inArray(computeNodeAssignments.status, ['assigned', 'ready', 'draining']))).limit(1)
+        if (active.length) return null
+        const nodeActive = await tx.select({ id: computeNodeAssignments.assignmentId }).from(computeNodeAssignments).where(and(eq(computeNodeAssignments.nodeId, nodeId), inArray(computeNodeAssignments.status, ['assigned', 'ready', 'draining'])))
+        if (nodeActive.length >= node.concurrency) return null
+        const [prior] = await tx.select().from(computeNodeAssignments).where(and(eq(computeNodeAssignments.nodeId, nodeId), eq(computeNodeAssignments.sessionId, body.session_id))).limit(1)
+        if (prior) {
+          const [row] = await tx.update(computeNodeAssignments).set({ status: 'assigned', leaseEpoch: prior.leaseEpoch + 1, leaseExpiresAt, metadata: {}, updatedAt: new Date() }).where(eq(computeNodeAssignments.assignmentId, prior.assignmentId)).returning()
+          return row ?? null
+        }
+        const [row] = await tx.insert(computeNodeAssignments).values({ nodeId, accountId, projectId: runtime.session.projectId, sessionId: runtime.session.sessionId, status: 'assigned', leaseEpoch: 1, leaseExpiresAt }).returning()
+        return row ?? null
+      })
+      if (!inserted) return c.json({ error: 'Session or compute node has no free assignment capacity' }, 409)
+      const sessionToken = await createAccountToken({ accountId, userId: c.get('userId'), projectId: runtime.session.projectId, sessionId: runtime.session.sessionId, name: `Compute Session ${runtime.session.sessionId.slice(0, 8)}`, expiresAt: leaseExpiresAt })
+      const assignment: NodeAssignmentSpec = {
+        assignment_id: inserted.assignmentId, session_id: runtime.session.sessionId, project_id: runtime.session.projectId,
+        lease_epoch: inserted.leaseEpoch, lease_expires_at: leaseExpiresAt.toISOString(), workload: 'session', harness: 'opencode',
+        repository: { url: proxyGitUrl(runtime.session.projectId), branch: runtime.session.branchName, base_ref: runtime.session.baseRef },
+        secrets_revision: 'current', ports: body.ports ?? [8000], writable_roots: body.writable_roots ?? [],
+        env: { KORTIX_CLI_TOKEN: sessionToken.secretKey, KORTIX_API_URL: deriveKortixApiBase() },
+      }
+      void computeNodeChannel.assign(nodeId, assignment).catch(async (error) => {
+        await db.update(computeNodeAssignments).set({ status: 'failed', metadata: { detail: error instanceof Error ? error.message : String(error) }, updatedAt: new Date() }).where(eq(computeNodeAssignments.assignmentId, inserted.assignmentId))
+      })
+      return c.json(serializeAssignment(inserted), 202)
+    },
+  )
+
+  accountsRouter.openapi(
+    createRoute({ method: 'get', path: '/{accountId}/compute-nodes/{nodeId}/assignments', tags: ['compute-nodes'], summary: 'List compute-node assignments', ...auth, request: { params: z.object({ accountId: z.string(), nodeId: z.string() }) }, responses: { 200: json(z.object({ assignments: z.array(AssignmentSchema) }), 'Assignments'), ...errors(401, 403, 404) } }),
+    async (c: any) => {
+      const accountId = c.req.param('accountId')
+      await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.TOKEN_READ)
+      const node = await loadAccountNode(accountId, c.req.param('nodeId'))
+      if (!node || !(await authorizeProject(c, accountId, node.projectId, 'read'))) return c.json({ error: 'Not found' }, 404)
+      const rows = await db.select().from(computeNodeAssignments).where(and(eq(computeNodeAssignments.accountId, accountId), eq(computeNodeAssignments.nodeId, node.nodeId))).orderBy(desc(computeNodeAssignments.createdAt))
+      return c.json({ assignments: rows.map(serializeAssignment) })
+    },
+  )
+
+  accountsRouter.openapi(
+    createRoute({ method: 'post', path: '/{accountId}/compute-nodes/{nodeId}/assignments/{assignmentId}/release', tags: ['compute-nodes'], summary: 'Stop and release a compute-node assignment', ...auth, request: { params: z.object({ accountId: z.string(), nodeId: z.string(), assignmentId: z.string().uuid() }) }, responses: { 202: json(AssignmentSchema, 'Release requested'), ...errors(401, 403, 404, 409) } }),
+    async (c: any) => {
+      const accountId = c.req.param('accountId')
+      const nodeId = c.req.param('nodeId')
+      const assignmentId = c.req.param('assignmentId')
+      await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.ACCOUNT_WRITE)
+      const [assignment] = await db.select().from(computeNodeAssignments).where(and(eq(computeNodeAssignments.assignmentId, assignmentId), eq(computeNodeAssignments.nodeId, nodeId), eq(computeNodeAssignments.accountId, accountId))).limit(1)
+      if (!assignment || !(await authorizeProject(c, accountId, assignment.projectId, 'manage'))) return c.json({ error: 'Not found' }, 404)
+      if (!['assigned', 'ready', 'draining'].includes(assignment.status)) return c.json({ error: 'Assignment is not active' }, 409)
+      if (!computeNodeChannel.isConnected(nodeId)) return c.json({ error: 'Compute node is not connected' }, 409)
+      const [updated] = await db.update(computeNodeAssignments).set({ status: 'draining', updatedAt: new Date() }).where(eq(computeNodeAssignments.assignmentId, assignmentId)).returning()
+      try { computeNodeChannel.stopAssignment(nodeId, assignmentId, 'release') }
+      catch (error) {
+        await db.update(computeNodeAssignments).set({ status: assignment.status, updatedAt: new Date() }).where(eq(computeNodeAssignments.assignmentId, assignmentId))
+        return c.json({ error: error instanceof Error ? error.message : String(error) }, 409)
+      }
+      return c.json(serializeAssignment(updated!), 202)
+    },
+  )
 
   accountsRouter.openapi(
     createRoute({ method: 'post', path: '/{accountId}/compute-nodes/{nodeId}/rotate-credential', tags: ['compute-nodes'], summary: 'Revoke the active credential and create a new enrollment token', ...auth, request: { params: z.object({ accountId: z.string(), nodeId: z.string() }) }, responses: { 200: json(z.object({ enrollment_token: z.string(), enrollment_expires_at: z.string() }), 'Single-use enrollment token'), ...errors(401, 403, 404) } }),

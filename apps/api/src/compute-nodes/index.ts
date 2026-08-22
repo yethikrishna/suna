@@ -1,5 +1,5 @@
-import { eq } from 'drizzle-orm'
-import { computeNodes, sessionSandboxes } from '@kortix/db'
+import { and, eq } from 'drizzle-orm'
+import { computeNodeAssignments, computeNodes, sessionSandboxes } from '@kortix/db'
 import { validateNodeCredential } from '../repositories/compute-node-credentials'
 import { db } from '../shared/db'
 import { ComputeNodeChannelHub } from './channel'
@@ -53,6 +53,14 @@ export const computeNodeChannel = new ComputeNodeChannelHub(
         updatedAt: new Date(),
       })
       .where(eq(computeNodes.nodeId, nodeId))
+  },
+  async (nodeId, assignmentId, state, detail) => {
+    const status = state === 'ready' ? 'ready' : state === 'rejected' ? 'failed' : state === 'stopped' ? 'released' : 'assigned'
+    await db.update(computeNodeAssignments).set({
+      status,
+      updatedAt: new Date(),
+      ...(detail ? { metadata: { detail } } : {}),
+    }).where(and(eq(computeNodeAssignments.assignmentId, assignmentId), eq(computeNodeAssignments.nodeId, nodeId)))
   },
 )
 

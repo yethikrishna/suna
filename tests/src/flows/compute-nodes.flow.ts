@@ -3,6 +3,7 @@ import { assert } from '../core/expect'
 import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
+import { createHmac } from 'node:crypto'
 
 function check(description: string, pass: boolean, expected: unknown, actual: unknown): void {
   assert({ kind: 'cli', description, expected, actual, pass })
@@ -16,6 +17,36 @@ async function processResult(command: string[], env: Record<string, string>, cwd
     child.exited,
   ])
   return { stdout, stderr, exitCode, all: `${stdout}\n${stderr}` }
+}
+
+async function connectNodePeer(apiUrl: string, nodeId: string, credential: string) {
+  const url = new URL(apiUrl.replace(/\/$/, '') + '/nodes/ws')
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  const socket = new WebSocket(url)
+  let key = ''
+  let nonce = 0
+  let assignmentFrame: any = null
+  let stopFrame: any = null
+  let resolveAssignment!: () => void
+  let resolveStop!: () => void
+  const assignmentReceived = new Promise<void>((resolve) => { resolveAssignment = resolve })
+  const stopReceived = new Promise<void>((resolve) => { resolveStop = resolve })
+  await new Promise<void>((resolveOpen, reject) => {
+    socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'node.auth', node_id: nodeId, token: credential, version: 'e2e', capabilities: ['filesystem', 'shell'], platform: process.platform, arch: process.arch })))
+    socket.addEventListener('error', () => reject(new Error('node peer WebSocket failed')))
+    socket.addEventListener('message', (event) => {
+      const value = JSON.parse(String(event.data))
+      if (value.type === 'node.auth.ok') { key = value.signing_key; resolveOpen(); return }
+      if (value.type === 'assignment.apply') { assignmentFrame = value; resolveAssignment() }
+      if (value.type === 'assignment.stop') { stopFrame = value; resolveStop() }
+    })
+  })
+  const send = (frame: Record<string, unknown>) => {
+    const next = ++nonce
+    const payload = JSON.stringify(frame)
+    socket.send(JSON.stringify({ ...frame, _nonce: next, _sig: createHmac('sha256', key).update(`${next}:${payload}`).digest('hex') }))
+  }
+  return { socket, assignmentReceived, stopReceived, assignment: () => assignmentFrame, stop: () => stopFrame, send }
 }
 
 flow(
@@ -33,6 +64,9 @@ flow(
       'POST /v1/accounts/:accountId/compute-nodes/:nodeId/drain',
       'POST /v1/accounts/:accountId/compute-nodes/:nodeId/restart',
       'POST /v1/accounts/:accountId/compute-nodes/:nodeId/rotate-credential',
+      'POST /v1/accounts/:accountId/compute-nodes/:nodeId/assignments',
+      'GET /v1/accounts/:accountId/compute-nodes/:nodeId/assignments',
+      'POST /v1/accounts/:accountId/compute-nodes/:nodeId/assignments/:assignmentId/release',
       'DELETE /v1/accounts/:accountId/compute-nodes/:nodeId',
       'POST /v1/nodes/enroll',
       'POST /v1/nodes/logout',
@@ -43,6 +77,7 @@ flow(
     let nodeId = ''
     let enrollmentToken = ''
     let firstCredential = ''
+    let peer: Awaited<ReturnType<typeof connectNodePeer>> | null = null
 
     await ctx.step('anonymous and non-member callers cannot register an account compute node', async () => {
       await ctx.client.as(ctx.P.ANON).post('/v1/accounts/:accountId/compute-nodes', { type: 'workstation' }, { params: { accountId } }).then((r) => r.status(401))
@@ -86,6 +121,36 @@ flow(
         desired_manifest: { epoch: 7, components: [] },
       }, { params: { accountId, nodeId } })
       patch.status(200).body().has('$.concurrency', 2).has('$.update_channel', 'canary').has('$.desired_manifest.epoch', 7)
+    })
+
+    await ctx.step('API assigns and releases a real session over the sole outbound node channel', async () => {
+      const project = await ctx.fixtures.project()
+      const session = await ctx.fixtures.session(project)
+      peer = await connectNodePeer(ctx.env.apiUrl, nodeId, firstCredential)
+      const assigned = await ctx.client.as(ctx.P.OWNER).post('/v1/accounts/:accountId/compute-nodes/:nodeId/assignments', { session_id: session.id, lease_seconds: 300, ports: [8000], writable_roots: [] }, { params: { accountId, nodeId } })
+      assigned.status(202).body().has('$.session_id', session.id).has('$.status', 'assigned')
+      const assignmentId = assigned.json<any>().assignment_id
+      await peer.assignmentReceived
+      const apply = peer.assignment()
+      if (apply.assignment.env.KORTIX_NODE_TOKEN || apply.assignment.env.KORTIX_SANDBOX_TOKEN) throw new Error('assignment exposed a node or sandbox credential')
+      peer.send({ v: 1, type: 'assignment.accept', stream_id: assignmentId, seq: 0, status: 'starting' })
+      peer.send({ v: 1, type: 'assignment.ready', stream_id: assignmentId, seq: 1, ports: [8000], native_conversation_id: 'e2e-opencode' })
+      await Bun.sleep(25)
+      const listed = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/compute-nodes/:nodeId/assignments', { params: { accountId, nodeId } })
+      listed.status(200)
+      const row = listed.json<any>().assignments.find((item: any) => item.assignment_id === assignmentId)
+      if (row?.status !== 'ready') throw new Error(`assignment state did not persist ready: ${JSON.stringify(row)}`)
+      const release = await ctx.client.as(ctx.P.OWNER).post('/v1/accounts/:accountId/compute-nodes/:nodeId/assignments/:assignmentId/release', {}, { params: { accountId, nodeId, assignmentId } })
+      release.status(202).body().has('$.status', 'draining')
+      await peer.stopReceived
+      if (peer.stop().reason !== 'release') throw new Error('release did not reach the compute node')
+      peer.send({ v: 1, type: 'assignment.stopped', stream_id: assignmentId, seq: 2, reason: 'release' })
+      await Bun.sleep(25)
+      const released = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/compute-nodes/:nodeId/assignments', { params: { accountId, nodeId } })
+      const releasedRow = released.json<any>().assignments.find((item: any) => item.assignment_id === assignmentId)
+      if (releasedRow?.status !== 'released') throw new Error(`assignment state did not persist released: ${JSON.stringify(releasedRow)}`)
+      peer.socket.close()
+      peer = null
     })
 
     for (const [action, status] of [['drain', 'draining'], ['enable', 'offline'], ['disable', 'disabled'], ['enable', 'offline'], ['restart', 'offline']] as const) {

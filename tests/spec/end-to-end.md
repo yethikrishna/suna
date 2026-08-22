@@ -978,7 +978,11 @@ exchanges the token once for a node-only credential. Token replay fails. The
 owner lists, reads, updates, drains, enables, disables, restarts, rotates, and
 deletes the node. Every mutation returns durable read-back state. List and get
 responses never expose credential material. Rotation increments the credential
-generation. A deleted node is no longer readable.
+generation. A deleted node is no longer readable. The API also assigns a real
+session through the authenticated outbound node channel. The node reports
+`accepted` and `ready`; the API persists `ready`. The API then sends `release`
+through that same channel and persists `released`. The assignment never carries
+the node credential or sandbox credential.
 
 ## KXD-CLI — compiled standalone node enrollment
 

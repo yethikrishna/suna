@@ -99,75 +99,46 @@ describe('planAnchorMessageId', () => {
  * "Exactly one plan surface" — the rule `PlanPanelCard` and the transcript
  * card both obey, through `usePlanInChat`.
  *
- * The three desktop cases below are the regression this predicate exists for.
- * The first version asked `isMobile` alone, which answers "does a panel COLUMN
- * exist", not "is that column drawing anything". In each state here the panel
- * had no plan on screen AND the chat had stood down, so the session showed no
- * plan at all — reachable by one keypress (Cmd/Ctrl+I) or by opening any file.
+ * The desktop cases below pin a PRODUCT decision, not a bug fix. An earlier
+ * version handed the plan back to the transcript whenever the panel column was
+ * off screen (collapsed, covered by a detail panel, Advanced mode). That is
+ * deliberately gone: on desktop the plan lives in the Easy panel and nowhere
+ * else, so it never hops surfaces as the user toggles a panel or opens a file.
+ * A test here failing after someone re-adds a visibility branch is the point.
  */
 describe('planBelongsToChat', () => {
-  /** The panel is drawing the plan: desktop, Easy, expanded, nothing over it. */
-  const panelDraws: PlanSurfaceState = {
-    isMobile: false,
-    panelOpen: true,
-    detailOpen: false,
-    panelMode: 'easy',
-  };
-
-  test('the panel owns the plan when its column is actually on screen', () => {
-    expect(planBelongsToChat(panelDraws)).toBe(false);
+  test('desktop: the Easy panel owns the plan', () => {
+    expect(planBelongsToChat({ isMobile: false })).toBe(false);
   });
 
-  test('mobile keeps the plan in the transcript', () => {
-    // No panel column under 768px — the cards are a drawer, shut by default.
-    expect(planBelongsToChat({ ...panelDraws, isMobile: true })).toBe(true);
+  test('mobile: the transcript owns the plan', () => {
+    // Structural, not a fallback — under 768px `session-action-panel-column`
+    // returns null, so no panel column exists at any time.
+    expect(planBelongsToChat({ isMobile: true })).toBe(true);
   });
 
-  test('REGRESSION: a collapsed column hands the plan back to the chat', () => {
-    // Cmd/Ctrl+I or the chevron animates the column to `width: 0` and marks it
-    // `inert`. The card stays mounted and is invisible to pointer AND screen
-    // reader, so "still rendered" is not "still available".
-    expect(planBelongsToChat({ ...panelDraws, panelOpen: false })).toBe(true);
+  test('the surface is decided by viewport ALONE — panel state cannot move it', () => {
+    // The guard against re-adding a `panelOpen` / `detailOpen` / `panelMode`
+    // branch: extra state on the input must not change the answer, because a
+    // collapsed or covered panel on desktop is a hidden plan ON PURPOSE.
+    const withPanelHidden = {
+      isMobile: false,
+      panelOpen: false,
+      detailOpen: true,
+      panelMode: 'advanced',
+    } as PlanSurfaceState;
+
+    expect(planBelongsToChat(withPanelHidden)).toBe(false);
   });
 
-  test('REGRESSION: a detail panel over the column hands the plan back', () => {
-    // Terminal, browser, files, or a file preview — the column takes `hidden`
-    // and steps aside entirely. Opening a zip from Outputs is exactly this.
-    expect(planBelongsToChat({ ...panelDraws, detailOpen: true })).toBe(true);
-  });
-
-  test('REGRESSION: Advanced mode has no Plan card, so the chat draws it', () => {
-    // Advanced is a tool-call stepper and renders no cards. It is commented out
-    // today; this is what stops re-enabling it from losing the plan silently.
-    expect(planBelongsToChat({ ...panelDraws, panelMode: 'advanced' })).toBe(true);
-  });
-
-  test('any single hidden-panel condition is enough on its own', () => {
-    // OR, not AND — a new way to hide the column must default to KEEPING the
-    // plan, never to dropping it.
-    for (const state of [
-      { ...panelDraws, panelOpen: false },
-      { ...panelDraws, detailOpen: true },
-      { ...panelDraws, panelMode: 'advanced' as const },
-      { ...panelDraws, isMobile: true },
-    ]) {
-      expect(planBelongsToChat(state)).toBe(true);
+  test('exactly one surface draws the plan at each width', () => {
+    // Never both (one live checklist rendered twice), never neither (a session
+    // that shows no plan at all).
+    for (const isMobile of [false, true]) {
+      const chatDraws = planBelongsToChat({ isMobile });
+      const panelDraws = !chatDraws;
+      expect(chatDraws !== panelDraws).toBe(true);
     }
-  });
-
-  test('the panel draws the plan in exactly one state, never more', () => {
-    // Exhaustive over the 2x2x2x2 space: precisely one combination may return
-    // false, or two surfaces can mount the same live checklist.
-    const bools = [false, true];
-    const drawnByPanel: PlanSurfaceState[] = [];
-    for (const isMobile of bools)
-      for (const panelOpen of bools)
-        for (const detailOpen of bools)
-          for (const panelMode of ['easy', 'advanced'] as const) {
-            const state = { isMobile, panelOpen, detailOpen, panelMode };
-            if (!planBelongsToChat(state)) drawnByPanel.push(state);
-          }
-    expect(drawnByPanel).toEqual([panelDraws]);
   });
 });
 

@@ -68,46 +68,45 @@ export function planAnchorMessageId(
  * card under a user message in the transcript. Two would render the same live
  * checklist twice; zero would lose it.
  *
- * This used to be `isMobile` alone, which was a proxy standing in for the real
- * question and got it wrong in three states. Width tells you a panel COLUMN
- * exists; it does not tell you the column is currently drawing anything. On
- * desktop the column is hidden whenever:
+ * DESKTOP IS ALWAYS THE PANEL. Above 768px the Easy panel's Plan card is the
+ * plan's only home — including when the column is collapsed (the chevron, or
+ * Cmd/Ctrl+I) and when a detail panel covers it. The plan does NOT reappear in
+ * the transcript in either state.
  *
- *   - the user collapses it (the chevron, or Cmd/Ctrl+I) — the column animates
- *     to `width: 0` and goes `inert`, so the card is mounted, invisible, and
- *     unreachable by pointer and screen reader alike;
- *   - a detail panel is up (terminal, browser, files, a file preview) — the
- *     column takes `hidden` and steps aside entirely;
- *   - the panel is in Advanced mode, which renders a stepper and no cards at
- *     all.
+ * That reverses an earlier version of this predicate, which treated the chat
+ * as a fallback for every state where the column was off screen. The fallback
+ * is gone on purpose: a live checklist that MOVES between two places as you
+ * collapse a panel or open a file is worse than one that is reliably in a
+ * single place. You learn where the plan lives once, and bringing the panel
+ * back is one keypress.
  *
- * In each the panel had no plan on screen and the chat had already stood down,
- * so the session showed no plan anywhere. The chat is the fallback surface: it
- * takes the plan back whenever the panel is not drawing it.
+ * So do NOT re-add a `panelOpen` / `detailOpen` / "the column is hidden"
+ * branch here. A hidden panel is a hidden plan, deliberately. Changing that is
+ * a product call, not a bug fix.
+ *
+ * Mobile is the one exception, and it is structural rather than a fallback:
+ * under 768px `session-action-panel-column.tsx` returns null, so no panel
+ * column exists at any time — the cards are a drawer that is shut by default,
+ * and the transcript is the only surface always on screen.
+ *
+ * Advanced mode is deliberately NOT a condition either. It renders a stepper
+ * with no Plan card, but it is commented out today (`action-panel/index.tsx`)
+ * and every user gets the Easy panel whatever their stored `panelMode`, so a
+ * branch here would only misroute the plan. Re-enabling Advanced must give it
+ * a Plan card of its own — see the note at that commented-out branch.
  *
  * Pure, and the single source both surfaces read (through `usePlanInChat`),
  * so they cannot disagree about who owns the plan.
  */
 export interface PlanSurfaceState {
   /** Under 768px there is no panel column at all — only a drawer, shut by
-   *  default. See `session-action-panel-column.tsx`. */
+   *  default. See `session-action-panel-column.tsx`. This is the entire rule:
+   *  whether the panel is OPEN deliberately does not enter into it. */
   isMobile: boolean;
-  /** The action-panel column is expanded. Collapsed it is zero-width and
-   *  `inert`, which is invisible, not "showing a small version". */
-  panelOpen: boolean;
-  /** A detail panel (terminal / browser / files / preview) is on screen, which
-   *  hides the card column entirely. */
-  detailOpen: boolean;
-  /** Only the Easy panel has a Plan card. Advanced is a tool-call stepper. */
-  panelMode: 'easy' | 'advanced';
 }
 
 export function planBelongsToChat(state: PlanSurfaceState): boolean {
-  if (state.isMobile) return true;
-  if (state.panelMode !== 'easy') return true;
-  if (!state.panelOpen) return true;
-  if (state.detailOpen) return true;
-  return false;
+  return state.isMobile;
 }
 
 /**

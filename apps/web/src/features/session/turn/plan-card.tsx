@@ -7,17 +7,17 @@
  * session todos are drawn ONLY by the two surfaces built here and in
  * `action-panel/easy/plan-card.tsx`. Exactly one of them is live at a time:
  *
- *  - **The Easy panel, whenever its card column is on screen.** The plan is
- *    session state, not a turn artifact: one live singleton on one query key.
- *    The panel is where the session's other live singletons already are
- *    (Outputs, Context, Preview), and it does not scroll away mid-run.
- *  - **The chat, here, for everything else.** Mobile has no panel COLUMN at
- *    all (<768px is a drawer, shut by default), and on desktop the column is
- *    gone whenever it is collapsed, covered by a detail panel, or in Advanced
- *    mode. The chat is the FALLBACK, so a hidden panel relocates the plan
- *    instead of losing it. `usePlanInChat` (`plan-surface.ts`) makes the call
- *    once; `session-chat.tsx` nulls the anchor when the panel wins, so
- *    `ownsPlan` is false for every turn and this card never mounts.
+ *  - **The Easy panel, on every desktop width.** The plan is session state,
+ *    not a turn artifact: one live singleton on one query key. The panel is
+ *    where the session's other live singletons already are (Outputs, Context,
+ *    Preview), and it does not scroll away mid-run. Collapsing the column or
+ *    covering it with a detail panel hides the plan rather than moving it —
+ *    deliberately, so it is never in two places across a session.
+ *  - **The chat, here, on mobile only.** Under 768px there is no panel COLUMN
+ *    at all — the cards are a drawer, shut by default — so the transcript is
+ *    the only surface always on screen. `usePlanInChat` (`plan-surface.ts`)
+ *    makes the call once; `session-chat.tsx` nulls the anchor on desktop, so
+ *    `ownsPlan` is false for every turn and this card never mounts there.
  *
  * The two never render together, and they share their ring (`PlanRing`) and
  * their step list (`PlanSteps`) rather than reimplementing either — so the

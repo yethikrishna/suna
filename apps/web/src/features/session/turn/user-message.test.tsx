@@ -292,6 +292,24 @@ describe('UserMessage timestamp', () => {
     // Exactly one reveal — the row's. Nothing nested fades on its own.
     expect(markup.split('group-hover/turn:opacity-100').length - 1).toBe(1);
   });
+
+  test('the reveal is desktop-only: under 768px the row is always visible', () => {
+    // A touch screen has no hover, so without this the timestamp, Copy and
+    // Edit-from-here sit at zero opacity for the whole session — present,
+    // sized, and unreachable. Touch browsers also leave an emulated `:hover`
+    // stuck on the last-tapped element, so the failure mode was not "never
+    // shows" but "one arbitrary turn stays lit".
+    //
+    // `max-md` is Tailwind's `width < 48rem` = 768px, the same breakpoint
+    // `useIsMobile` uses, so the CSS and the JS agree on what mobile is.
+    const markup = render(false, stamped);
+    expect(markup).toContain('max-md:opacity-100');
+
+    // On the SAME element as the fade it overrides, not a nested wrapper.
+    const row = markup.match(/class="[^"]*group-hover\/turn:opacity-100[^"]*"/)?.[0] ?? '';
+    expect(row).toContain('opacity-0');
+    expect(row).toContain('max-md:opacity-100');
+  });
 });
 
 describe('UserMessage renders the plan it owns', () => {

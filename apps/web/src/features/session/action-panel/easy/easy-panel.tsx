@@ -38,12 +38,12 @@ import { PlanPanelCard } from './plan-card';
 
 export function EasyPanel() {
   const panel = useOptionalSessionPanel();
-  // Exactly one plan surface is mounted, ever. This card stands down whenever
-  // the transcript is drawing the plan instead — on mobile (where this same
-  // component is the detail drawer's home view and the drawer is shut by
-  // default), and on desktop whenever this column is collapsed or covered by a
-  // detail panel. `usePlanInChat` is that one decision, shared with
-  // `session-chat.tsx` so the two cannot disagree; see `plan-surface.ts`.
+  // Exactly one plan surface is mounted, ever. This card stands down only on
+  // mobile, where this same component is the detail drawer's home view and the
+  // drawer is shut by default, so the transcript keeps the plan. On desktop it
+  // always draws — a collapsed or covered column is a hidden plan on purpose
+  // (see `planBelongsToChat`). `usePlanInChat` is that one decision, shared
+  // with `session-chat.tsx` so the two cannot disagree.
   const planInChat = usePlanInChat();
   // Null outside a `SessionPanelProvider` — `SessionChat` also renders
   // read-only inside `sub-session-modal.tsx`, which has no panel at all.

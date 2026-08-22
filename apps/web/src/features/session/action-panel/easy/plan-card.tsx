@@ -21,12 +21,14 @@
  * planned, and the plan sits closest to the composer, which is where the eye
  * already is while an agent works.
  *
- * THE CHAT KEEPS IT WHENEVER THIS COLUMN IS NOT ON SCREEN — mobile (no column
- * at all, just a drawer that is shut by default), a collapsed column, a detail
- * panel covering it, or Advanced mode. `usePlanInChat` (`plan-surface.ts`)
- * makes that call once and both surfaces read it, so exactly one is ever
- * mounted. See `turn/plan-card.tsx`, which owns the ring and the step rows
- * both surfaces draw.
+ * THIS IS THE PLAN'S ONLY HOME ON DESKTOP. Collapsing the column (Cmd/Ctrl+I)
+ * or covering it with a detail panel hides the plan; it does not send it back
+ * to the transcript. That is deliberate — see `planBelongsToChat`, which also
+ * says why not to re-add a visibility branch. The chat keeps the plan on
+ * mobile only, where no panel column exists at all. `usePlanInChat`
+ * (`plan-surface.ts`) makes that call once and both surfaces read it, so
+ * exactly one is ever mounted. See `turn/plan-card.tsx`, which owns the ring
+ * and the step rows both surfaces draw.
  */
 
 import { useRuntimeSessionTodo } from '@kortix/sdk/react';

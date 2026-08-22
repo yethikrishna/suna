@@ -1744,9 +1744,15 @@ function SessionTurnImpl({
           Gated on `!working` only. A turn that ends in tool calls has no closing
           prose, but its finished-at / duration / cost are still turn facts —
           `SessionTurnMeta` self-hides when it has no rows. Only the copy button
-          needs a response to copy. */}
+          needs a response to copy.
+
+          `max-md:opacity-100` — same rule as the user turn's meta row
+          (`turn/user-message.tsx`): hover-to-reveal is a desktop affordance.
+          On touch there is no hover, so Copy and the turn's finished-at /
+          duration / cost would be permanently invisible, and tap-emulated
+          `:hover` would leave exactly one arbitrary turn's bar lit. */}
       {!working && (
-        <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/turn:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100">
+        <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/turn:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100 max-md:opacity-100">
           {response ? (
             <Button
               variant="ghost"
@@ -3039,12 +3045,11 @@ export function SessionChat({
   /**
    * Which turn, if any, draws the plan.
    *
-   * Null whenever the Easy panel's card column is actually on screen — the
-   * panel owns the plan there, so no turn claims it and the transcript scan
-   * below never runs. The chat takes it back for every state where the panel
-   * is not drawing it: mobile, a collapsed column, a detail panel covering it,
-   * Advanced mode. `usePlanInChat` is the single decision both surfaces read;
-   * see `plan-surface.ts` and `chatPlanAnchorId`.
+   * Null on desktop, always: the Easy panel owns the plan at every width above
+   * 768px — collapsed column and detail panel included — so no turn claims it
+   * and the transcript scan below never runs. Mobile has no panel column at
+   * all, so the chat keeps it there. `usePlanInChat` is the single decision
+   * both surfaces read; see `plan-surface.ts` and `planBelongsToChat`.
    *
    * One scan of the transcript, not one per turn. `planAnchorMessageId`
    * inspects every part of every message. It used to run inside each turn,

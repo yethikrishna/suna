@@ -18,7 +18,6 @@ import { isMetaAgentName, META_SANDBOX_SLUG } from '@kortix/shared';
 import { db } from '../../shared/db';
 import { PROVISIONING_SESSION_STATUSES } from '../../projects/lib/session-status';
 import { notifySessionProvisioningFailed } from '../../shared/session-failure-notifier';
-import { createApiKey } from '../../repositories/api-keys';
 import { rotateNodeCredential } from '../../repositories/compute-node-credentials';
 import { createAccountToken } from '../../repositories/account-tokens';
 import { ensureAgentServiceAccount } from '../../repositories/service-accounts';
@@ -135,20 +134,19 @@ function isSnapshotMissingOnProvider(error: unknown): boolean {
 
 /**
  * Resolve the agent's grant from the manifest's `[[agents]]` overlay, then mint
- * the per-session connector/CLI account token carrying it. Best-effort: a manifest
- * hiccup yields a null grant (full access, capped at the user by the route's own
- * role check) and a mint failure yields null — neither bricks a session. The
- * grant is read from the default branch, so any `[[agents]]` change activates
- * only via a merged CR.
+ * the per-session account token carrying it. Grant resolution is fail-closed:
+ * an unreadable manifest stops provisioning instead of minting an unrestricted
+ * credential. The grant is read from the default branch, so any `[[agents]]`
+ * change activates only through a merged change request.
  */
-async function mintConnectorToken(opts: {
+async function mintSessionToken(opts: {
   accountId: string;
   userId: string;
   projectId: string;
   sandboxId: string;
   agentName: string;
   gitProject: GitBackedProject;
-}): Promise<string | null> {
+}): Promise<string> {
   const platformMetaAgent = isMetaAgentName(opts.agentName);
   // The reserved coordinator uses a platform-owned full project grant. It acts
   // as the launching user and never resolves through a project-declared agent
@@ -157,16 +155,11 @@ async function mintConnectorToken(opts: {
     ? [platformMetaAgentGrant(), null]
     : await Promise.all([
         // Resolve the per-session grant AND the agent's standing-identity
-        // service account in parallel. The SA resolution is FAIL-SAFE: on error
+        // service account in parallel. Grant resolution must throw on failure.
+        // The SA resolution is FAIL-SAFE: on error
         // we mint without a service_account_id, which is the legacy behavior
         // (authorize as the user ∩ grant). It never widens authority.
-        resolveAgentGrant(opts.agentName, opts.gitProject).catch((err) => {
-          console.warn(
-            `[session-sandbox] failed to resolve agent grant for ${opts.projectId}:`,
-            err,
-          );
-          return null;
-        }),
+        resolveAgentGrant(opts.agentName, opts.gitProject),
         ensureAgentServiceAccount({
           accountId: opts.accountId,
           projectId: opts.projectId,
@@ -179,23 +172,19 @@ async function mintConnectorToken(opts: {
           return null;
         }),
       ]);
-  try {
-    const tok = await createAccountToken({
-      accountId: opts.accountId,
-      userId: opts.userId,
-      projectId: opts.projectId,
-      // session_id == sandbox_id by construction — lets the LLM gateway attribute
-      // usage_events to this session (the reaper's reliable activity signal).
-      sessionId: opts.sandboxId,
-      name: `Connector Session ${opts.sandboxId.slice(0, 8)}`,
-      agentGrant,
-      serviceAccountId,
-    });
-    return tok.secretKey;
-  } catch (err) {
-    console.warn(`[session-sandbox] failed to mint connector token for ${opts.projectId}:`, err);
-    return null;
-  }
+  const tok = await createAccountToken({
+    accountId: opts.accountId,
+    userId: opts.userId,
+    projectId: opts.projectId,
+    // session_id == sandbox_id by construction. This is the sandbox's one
+    // Kortix credential. Every API surface derives its narrower authority from
+    // these claims and the route's own authorization gate.
+    sessionId: opts.sandboxId,
+    name: `Session ${opts.sandboxId.slice(0, 8)}`,
+    agentGrant,
+    serviceAccountId,
+  });
+  return tok.secretKey;
 }
 
 /**
@@ -496,21 +485,16 @@ export async function provisionSessionSandbox(opts: {
   };
 
   const sandboxRowsPromise = createOrClaimSandboxRow();
-  const [sandboxRows, nodeCredential, sandboxKey, connectorToken, gatewayEntitled] = await Promise.all([
+  const [sandboxRows, nodeCredential, sessionToken, gatewayEntitled] = await Promise.all([
     sandboxRowsPromise,
     sandboxRowsPromise.then((rows) => {
       if (rows.length === 0) throw new RuntimeIdentityConflictError(sandboxId);
       return rotateNodeCredential(sandboxId, accountId);
     }),
-    createApiKey({
-      sandboxId,
-      accountId,
-      title: 'Sandbox Token',
-      type: 'sandbox',
-    }),
-    // Resolve the per-agent grant from kortix.yaml's `agents:` overlay and mint
-    // the connector/CLI account token carrying it (best-effort — see helper).
-    mintConnectorToken({
+    // Resolve the per-agent grant and mint the sole sandbox credential. Token
+    // minting is fail-closed: a sandbox without its session identity cannot
+    // securely reach any Kortix service.
+    mintSessionToken({
       accountId,
       userId,
       projectId,
@@ -558,8 +542,7 @@ export async function provisionSessionSandbox(opts: {
   // accountEntitledToLlmGateway gates on the resolved TIER, not billing_model,
   // so legacy paying customers are no longer wrongly stripped to the Zen-only
   // catalog. Per-request affordability stays in the gateway's own billing gate.
-  const gatewayLlmKey: string | null =
-    llmGatewayEnabled && gatewayEntitled ? connectorToken : null;
+  const gatewayEnabled = llmGatewayEnabled && gatewayEntitled;
 
   const providerCreateInput: CreateSandboxOpts = {
     accountId,
@@ -574,22 +557,8 @@ export async function provisionSessionSandbox(opts: {
     location,
     envVars: {
       ...(opts.extraEnvVars ?? {}),
-      // ── Sandbox token model — TWO credentials, two principals ──────────────
-      // 1) The SANDBOX credential (`kortix_sb_…`): the daemon's identity. It is
-      //    the HMAC key the API signs `X-Kortix-User-Context` with (the daemon
-      //    verifies it) AND the bearer for the 3 sandbox-identity routes
-      //    (/git/clone-credential, /turn-stream, /turn-question). It carries NO
-      //    user identity, so project-scoped routes reject it. Injected under the
-      //    self-documenting `KORTIX_SANDBOX_TOKEN`; `KORTIX_TOKEN` is kept as a
-      //    back-compat alias for daemons baked before the rename.
-      // 2) The SESSION credential (`kortix_pat_…`, `connectorToken`): acts AS the
-      //    launching user, scoped by the agent grant. It backs the Connector
-      //    gateway AND the in-sandbox `kortix` CLI. Injected under
-      //    `KORTIX_CLI_TOKEN`.
-      // The agent never needs the sandbox credential — see apps/cli config.ts
-      // (activeHost() resolves only the session token).
-      KORTIX_SANDBOX_TOKEN: sandboxKey.secretKey,
-      KORTIX_TOKEN: sandboxKey.secretKey,
+      // The session token is the sandbox's sole user-authority credential.
+      KORTIX_TOKEN: sessionToken,
       // Node-only credential. This authenticates only the outbound kortixd
       // channel and cannot call user, project, session, or sandbox routes.
       KORTIX_NODE_TOKEN: nodeCredential.credential,
@@ -599,15 +568,7 @@ export async function provisionSessionSandbox(opts: {
       ...(runtimeAssetSigningPublicKey()
         ? { KORTIX_RUNTIME_ASSET_SIGNING_PUBLIC_KEY: runtimeAssetSigningPublicKey()! }
         : {}),
-      ...(connectorToken
-        ? { KORTIX_CLI_TOKEN: connectorToken }
-        : {}),
-      ...(gatewayLlmKey
-        ? {
-            KORTIX_LLM_API_KEY: gatewayLlmKey,
-            KORTIX_LLM_BASE_URL: llmBaseUrl,
-          }
-        : {}),
+      ...(gatewayEnabled ? { KORTIX_LLM_BASE_URL: llmBaseUrl } : {}),
     },
     // Idle lifecycle: we pass NO explicit autoStopInterval for a normal session,
     // so each provider gets its native idle timer set from
@@ -975,7 +936,7 @@ export async function provisionSessionSandbox(opts: {
           attempts,
           lastProvisionMaxAttempts,
         ),
-        config: { serviceKey: sandboxKey.secretKey, llmGatewayEnabled: !!gatewayLlmKey },
+        config: { serviceKey: sessionToken, llmGatewayEnabled: gatewayEnabled },
         lastUsedAt: new Date(),
         updatedAt: new Date(),
       };

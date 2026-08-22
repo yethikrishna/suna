@@ -897,7 +897,6 @@ describe('Preview proxy: forwarding', () => {
         OPENROUTER_API_KEY: 'sk-live',
         SENTRY_DSN: 'https://example.test/1',
       },
-      llmGatewayDenyEnv: '',
       llmGatewayEnabled: false,
       names: ['OPENROUTER_API_KEY', 'SENTRY_DSN'],
       opencodeEnv: {},

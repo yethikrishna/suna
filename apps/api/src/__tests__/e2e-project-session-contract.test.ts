@@ -1631,7 +1631,7 @@ describe('project session API contract', () => {
     const env = lastProvisionInput!.extraEnvVars ?? {};
     expect(env.KORTIX_GIT_AUTH_TOKEN).toBeUndefined();
     expect(env.KORTIX_GITHUB_TOKEN).toBeUndefined();
-    expect(env.KORTIX_CLI_TOKEN).toBeUndefined();
+    expect(env.KORTIX_TOKEN).toBeUndefined();
     expect(env.KORTIX_TOKEN).toBeUndefined();
 
     sessionSandboxRows = [
@@ -1655,16 +1655,7 @@ describe('project session API contract', () => {
     const cloneRes = await app.request(`/v1/projects/${PROJECT_ID}/git/clone-credential`, {
       headers: { Authorization: `Bearer ${PROJECT_SANDBOX_TOKEN}` },
     });
-    expect(cloneRes.status).toBe(200);
-    expect(await cloneRes.json()).toMatchObject({
-      repo_url: 'https://gitlab.com/acme/private-project.git',
-      source: 'project_credential',
-      auth: {
-        username: 'x-access-token',
-        token: 'gitlab-project-token',
-        type: 'basic',
-      },
-    });
+    expect(cloneRes.status).toBe(404);
   });
 
   test('derives session origin from the caller token without session attribution fields', async () => {
@@ -1767,18 +1758,12 @@ describe('project session API contract', () => {
     const patCloneRes = await app.request(`/v1/projects/${PROJECT_ID}/git/clone-credential`, {
       headers: { Authorization: `Bearer ${SESSION_AGENT_PAT}` },
     });
-    expect(patCloneRes.status).toBe(403);
-    expect(await patCloneRes.json()).toMatchObject({
-      message: 'session workspace does not allow repository access',
-    });
+    expect(patCloneRes.status).toBe(404);
 
     const sandboxCloneRes = await app.request(`/v1/projects/${PROJECT_ID}/git/clone-credential`, {
       headers: { Authorization: `Bearer ${PROJECT_SANDBOX_TOKEN}` },
     });
-    expect(sandboxCloneRes.status).toBe(403);
-    expect(await sandboxCloneRes.json()).toMatchObject({
-      error: 'sandbox workspace does not allow repository access',
-    });
+    expect(sandboxCloneRes.status).toBe(404);
 
     for (const suffix of ['diff', 'merge-preview']) {
       const crRes = await app.request(
@@ -2083,16 +2068,7 @@ describe('project session API contract', () => {
     const cloneRes = await app.request(`/v1/projects/${PROJECT_ID}/git/clone-credential`, {
       headers: { Authorization: `Bearer ${PROJECT_SANDBOX_TOKEN}` },
     });
-    expect(cloneRes.status).toBe(200);
-    expect(await cloneRes.json()).toMatchObject({
-      repo_url: 'https://git.example.test/legacy-private-project',
-      source: 'project_credential',
-      auth: {
-        username: 'x-access-token',
-        token: 'legacy-git-token',
-        type: 'basic',
-      },
-    });
+    expect(cloneRes.status).toBe(404);
   });
 
   test('rejects reserved platform secret names', async () => {
@@ -3877,13 +3853,10 @@ describe('project session API contract', () => {
 
     expect(env.KORTIX_PROJECT_ID).toBe(PROJECT_ID);
     expect(env.KORTIX_SESSION_ID).toBeTruthy();
-    const expectedRepoUrl =
-      process.env.KORTIX_GIT_PROXY === 'true'
-        ? new URL(
-            `/v1/git/${PROJECT_ID}.git`,
-            process.env.KORTIX_URL ?? 'https://test.kortix.local',
-          ).toString()
-        : projectRow.repoUrl;
+    const expectedRepoUrl = new URL(
+      `/v1/git/${PROJECT_ID}.git`,
+      process.env.KORTIX_URL ?? 'https://test.kortix.local',
+    ).toString();
     expect(env.KORTIX_REPO_URL).toBe(expectedRepoUrl);
     expect(env.KORTIX_BASE_REF).toBe('main');
     // LLM/tool-router URLs are no longer injected — the sandbox derives any
@@ -3891,7 +3864,7 @@ describe('project session API contract', () => {
     expect(env.KORTIX_LLM_TOKEN).toBeUndefined();
     expect(env.KORTIX_LLM_BASE_URL).toBeUndefined();
     expect(env.TAVILY_API_URL).toBeUndefined();
-    expect(env.KORTIX_CLI_TOKEN).toBeUndefined();
+    expect(env.KORTIX_TOKEN).toBeUndefined();
     expect(env.KORTIX_TOKEN).toBeUndefined();
     expect(env.KORTIX_API_URL).toBeTruthy();
     expect(env.KORTIX_GIT_AUTH_TOKEN).toBeUndefined();
@@ -3942,7 +3915,7 @@ describe('project session API contract', () => {
     expect(sandboxProvisionCalls).toBe(1);
     expect(lastProvisionInput!.extraEnvVars?.KORTIX_BOOTSTRAP_OPENCODE_SESSION).toBe('1');
     expect(lastProvisionInput!.extraEnvVars?.KORTIX_BASE_REF).toBe('dev');
-    expect(lastProvisionInput!.extraEnvVars?.KORTIX_INITIAL_PROMPT).toBe('Review the repo');
+    expect(lastProvisionInput!.extraEnvVars?.KORTIX_INITIAL_PROMPT).toBeUndefined();
   });
 
   test('persists runtime_context separately and injects one server-owned JSON envelope', async () => {

@@ -21,6 +21,56 @@ linked, not inlined.
 
 ## Register
 
+### Assert monotonic timestamps when later writes can advance one field (2026-08-22)
+
+**When:** a test reads two timestamps written by one statement after asynchronous
+lifecycle work starts. Require the invariant's monotonic order. Do not require
+equality when later writes can advance one field before read-back. *Near-miss:*
+release gate run 32598056475 failed `SESS-18` after `updated_at` advanced 223 ms
+past `last_activity_at`. *Enforcer:* `SESS-18` requires
+`last_activity_at > created_at` and `updated_at >= last_activity_at`.
+
+### A sandbox environment carries one credential, not a boot protocol (2026-08-22)
+
+**When:** provisioning a session or adding daemon boot data. Inject only the
+session-bound `KORTIX_TOKEN`. The daemon must claim prompts and lifecycle
+identifiers from the API with that token. Connector, provider, prompt, and
+turn-ledger values must not enter the VM environment. *Incident:* an Essentia
+`env` dump exposed connector credentials and four Kortix aliases; a real
+Platinum probe then found the initial-turn nonce still inherited by OpenCode.
+*Enforcer:* runtime-env tests reject all boot payload keys, daemon wire tests
+assert the authenticated claim, and the live guest probe must print only
+`KORTIX_TOKEN` for credential-like names.
+
+### Prove the gated query ran after enabling its feature (2026-08-22)
+
+**When:** enabling a feature on one page, then navigating to its data page in a
+browser test. A route render does not prove the gated query ran. Wait for the
+exact API response around an explicit reload before asserting its empty state.
+*Near-miss:* release PR #6746 browser shard 2 failed twice with a permanent Apps
+skeleton after a `200` feature PATCH and zero `GET /apps` requests. *Enforcer:*
+`18-apps-ui.spec.ts` requires the Apps list response before the empty state.
+
+### Fence every detached lifecycle mutation with a durable operation id (2026-08-22)
+
+**When:** an HTTP handler returns before a sandbox stop, start, or recovery
+finishes. Acquire one database claim per `session_id`. Predicate every provider
+step and completion write on that claim. A client mutation flag cannot serialize
+tabs, refreshes, or repeated requests. *Incident:* session
+`ebdcac7f-58bd-4a9f-ad82-b5f536f12c9c` accepted three restarts in 27 seconds and
+oscillated through `running -> provisioning -> stopped -> running -> stopped`.
+*Enforcer:* `runtime-restart-fence.test.ts` and the restart compare-and-set query.
+
+### Assert an asynchronous timestamp write on its own row (2026-08-22)
+
+**When:** proving that one request advances a row timestamp while asynchronous
+lifecycle work can update sibling rows. Compare the target row before and after,
+or compare two fields written by the same statement. Do not infer the write from
+relative list order. *Near-miss:* release gate run 32588846407 failed `SESS-18`
+twice after a later sandbox transition advanced the older session's `updated_at`.
+*Enforcer:* `SESS-18` requires adoption `updated_at == last_activity_at` and
+`updated_at > created_at` on the adopted row.
+
 ### Bind public Vercel runtime metadata to the deployment, not the project environment (2026-08-22)
 
 **When:** passing public release metadata to a Vercel Production deployment.
@@ -1663,3 +1713,163 @@ must update and pass this invariant before deployment.
 Verification that settles it: deploy the bounded pools, confirm the exact
 production SHA, exercise webhook and session traffic, then query Better Stack
 for zero new SQLSTATE `53300` occurrences after the rollout completed.
+
+## Admission after allocation is accounting, not admission
+
+2026-08-22. A 28.37 MB multimodal request repeatedly OOM-killed a 512 MiB
+standalone gateway. The existing in-flight budget did not protect the process.
+Both gateway hosts called `readBoundedBody()` before `InflightBudget.admit()`.
+Concurrent requests therefore allocated complete JavaScript strings before the
+budget could reject them. The hosts also released the lease when the handler
+returned a streaming `Response`. Parsed request data could remain reachable
+until the response stream ended.
+
+**The rule.** Reserve declared bytes before the first body read. Grow a chunked
+request's reservation before retaining each chunk. Hold the lease until response
+EOF, error, or cancellation. A test that asserts only `503` counts does not prove
+a memory bound. It must assert allocation order and lease lifetime.
+
+**Remove amplification sources before raising memory.** The same request existed
+as HTTP chunks, a JavaScript string, a parsed object, an AI SDK request graph, a
+serialized provider payload, and trace capture. The gateway now clears the raw
+string after parsing, uses direct `fetch` for OpenAI-compatible providers, loads
+protocol translators lazily, retains no response body, and stores metadata-only
+traces. A container memory increase can raise throughput. It cannot repair an
+unbounded allocation path.
+
+*Incident:* Essentia standalone gateway, repeated cgroup OOM kills and Caddy
+`502 Bad Gateway`. Enforcement: `readAdmittedBody` allocation-order tests,
+response-lifetime lease tests, one-dispatch tests, and a mounted 28 MiB request
+test that asserts one provider call and an intact response.
+
+## A standalone service needs explicit caller wiring in every environment
+
+2026-08-22. The API stopped hosting an in-process gateway and became a reverse
+proxy. Self-host Compose configured `LLM_GATEWAY_PROXY_TARGET`. Dev ECS did not.
+The gateway deployed healthy at the correct SHA, but the API returned
+`gateway_unavailable` for every LLM route. The edge converted that origin `503`
+into `MAINTENANCE_MODE`, which hid the missing environment variable.
+
+**The rule.** A service extraction is incomplete until every caller in every
+deployment topology has an explicit target. Configure local, self-host, dev,
+staging, production, and shadow environments in the same change. Verify through
+the caller route. A healthy callee does not prove that its caller can reach it.
+
+**The enforcement.** Terraform now injects `LLM_GATEWAY_PROXY_TARGET` into each
+cloud API task. The end-to-end verification calls `/v1/llm/health` through the
+API origin and requires the standalone gateway health response.
+
+*Incident:* dev API returned `gateway_unavailable` after gateway PR #6737.
+The public edge surfaced it as blocking maintenance. Direct origin inspection
+identified the missing target before user traffic resumed.
+
+## Two dev stacks on one shared DB share one work queue
+
+2026-08-22. A `timeline-parity` worktree session's first prompt died inside
+OpenCode with `Cannot connect to API …
+subdivision-marine-acne-shorter.trycloudflare.com/v1/llm-gateway/v1/chat/completions`.
+That host belonged to a different worktree (`mw-perf`) whose quick tunnel had
+rotted. Both worktrees reuse the primary local Supabase, so prompt-inbox
+delivery, session-lifecycle commands, and sandbox env sync form ONE queue.
+`mw-perf`'s API grabbed the job, pushed its `KORTIX_URL`-derived gateway URL
+into the other worktree's sandbox, and forwarded the prompt. The owning
+worktree's log showed no env sync and no prompt POST, so nothing local
+explained the failure.
+
+**The rule.** A sandbox's gateway URL and credentials must come from the
+instance that owns the sandbox, never from whichever instance dequeues work.
+In local development, run one stack against the shared DB, or create the
+worktree with `--db`. When an OpenCode error names a host, grep EVERY stack
+log on the machine for that host before suspecting the branch.
+
+**The enforcement.** `pnpm worktree start` (`scripts/worktree/cli.ts`,
+`warnOnSharedDbCrosstalk`) now warns at start when another stack — a worktree
+in `shared` DB mode or the primary `pnpm dev` on `:8008` — is live on the
+same database, names it, and states the remedy. The product fix (persist the
+provisioning API origin on `session_sandboxes` and make env sync / delivery
+use it, or scope workers by instance) is an open follow-up.
+
+*Incident:* session `b090016e…` on worktree `timeline-parity`, first prompt
+`APIError` to a dead tunnel; prompts 2–3 succeeded after the owning instance's
+env sync rewrote the URL.
+
+## Every stack launcher needs the tunnel watchdog, not only `pnpm dev`
+
+2026-08-22. The `timeline-parity` worktree's quick tunnel died three times in
+one evening (30 min – 3 h after mint). The symptom in the session UI was
+OpenCode `Retrying in 81s · #1 · <none>` — Cloudflare's HTML 530 carries no
+message — or `Cannot connect to API …trycloudflare.com/v1/llm-gateway` on the
+first prompt. The local API was healthy each time. `scripts/dev-local.sh` had
+a watchdog that rotates a dead tunnel and bounces the API; the worktree
+launcher (`scripts/worktree/cli.ts`) did not, so every death needed a hand
+restart and a new `KORTIX_URL`.
+
+**The rule.** A component that bakes a public callback URL at spawn must own
+the liveness of that URL. Any launcher that mints a quick tunnel ships the
+watchdog with it: probe the URL while the local API is healthy; on death,
+mint a new tunnel and respawn the API with the new URL; say so in the log.
+Diagnose a `<none>` retry row by `curl $KORTIX_URL/v1/health` (530 = dead
+tunnel) and `pgrep -f 'cloudflared tunnel'`.
+
+**The enforcement.** `pnpm worktree start` now runs `startTunnelWatchdog`
+(60 s tick, two-probe confirmation, cloudflared exit detection, API respawn
+with the new `KORTIX_URL`). The worktree launcher gets the same tunnel
+watchdog as `pnpm dev`. Proven by killing cloudflared on a live stack and
+watching the rotation (PR #6755).
+
+*Incident:* session `b090016e…` / `cbde77cf…` on worktree `timeline-parity`,
+three tunnel deaths, each surfaced as an OpenCode retry loop.
+
+## A credential boundary cannot depend on a feature flag
+
+2026-08-22. Session provisioning could advertise a direct upstream Git origin
+when `KORTIX_GIT_PROXY` was false. The sandbox daemon then called
+`/projects/:id/git/clone-credential`, which returned the raw upstream token.
+The proxy path was secure, but an environment flag could restore credential
+delivery into every sandbox.
+
+**The rule.** A server-side credential boundary is unconditional. Runtime
+clients receive one session credential and a Kortix proxy URL. No feature flag,
+compatibility endpoint, or generic authorization-header helper may expose or
+attach an upstream credential inside the sandbox.
+
+**The enforcement.** Session provisioning and project serialization always use
+`/v1/git/:project.git`. The clone-credential route no longer exists. The daemon
+rejects direct network Git origins and builds auth headers only for `/v1/git/`.
+Route coverage pins the endpoint removal. Daemon tests pin direct-origin denial.
+
+*Incident:* a sandbox environment audit found four Kortix token aliases and
+provider credentials. The Git compatibility path could also return a raw Git
+provider token to the sandbox.
+
+## Never resolve a merge inside a worktree whose API runs `--hot`
+
+2026-08-22. `git merge origin/main` was run inside `suna-timeline-parity`, the
+worktree that served the user's live test stack (`bun --hot` API, Next dev
+web). The merge stopped on conflicts, the tree held conflict markers, and the
+hot-reloading API picked them up (`tsc`: `TS1185: Merge conflict marker
+encountered` in `r4.ts`) while the user was testing. `git merge --abort`
+restored it within a minute; no sandbox was lost.
+
+**The rule.** A worktree that serves a live stack is read-only to git
+operations that can leave the tree in a non-compiling state: merges with
+possible conflicts, rebases, cherry-picks, checkouts of other branches.
+Resolve in a scratch worktree on a sibling branch, run the gates there, then
+`git merge --ff-only` inside the live worktree so it only ever moves between
+two consistent trees. Fast-forward is the only git write a live worktree
+should see — and a fast-forward that moves `apps/kortix-sandbox-agent-server`,
+`apps/cli`, or `apps/kortix-app-runtime` source must be followed by the same
+artifact builds the launcher runs at start (`pnpm --filter` build for the
+agent server and CLI, `bash apps/kortix-app-runtime/build.sh`), or every new
+session fails provisioning with `kortix-agent dist binary … is older than its
+source` (seen 2026-08-22 21:41 right after the ff; rebuilt, sessions booted
+again).
+
+**The enforcement.** The integration-branch memory note names the rule; the
+scratch-worktree-then-ff sequence is the procedure
+(`timeline-parity-main-merge` → `git merge --ff-only`). Candidate for a
+`pnpm worktree` guard: refuse `merge`/`rebase` in a slot whose API port is
+listening unless `--ff-only`.
+
+*Incident:* `timeline-parity` worktree, 2026-08-22 ~21:35 UTC, ~60 s of
+`tsc` errors on the live API; aborted, re-done in `tp-main-merge`, ff'd.

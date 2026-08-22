@@ -755,8 +755,6 @@ export async function reconcileRuntimeAssets(
     ((configDir: string, bakedDir: string) => ensureInjectedManagedSkills(configDir, { bakedDir }))
   const token = (
     options.token ??
-    process.env.KORTIX_CLI_TOKEN ??
-    process.env.KORTIX_SANDBOX_TOKEN ??
     process.env.KORTIX_TOKEN ??
     ''
   ).trim()

@@ -82,6 +82,19 @@ const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
   'north-mini-code-free',
 ])
 
+interface InitialTurnClaim {
+  prompt: string
+  turnToken: string
+  messageId: string
+}
+
+let claimedInitialTurn: InitialTurnClaim | null = null
+
+/** Test seam: a daemon process claims at most one initial turn. */
+export function resetClaimedInitialTurnForTests(): void {
+  claimedInitialTurn = null
+}
+
 /** Run the node daemon in the current process. */
 export async function runKortixDaemon(): Promise<void> {
   const bootTime = Date.now()
@@ -123,7 +136,7 @@ export async function runKortixDaemon(): Promise<void> {
   const bootState: SandboxBootState = {
     repoMaterializationError: null,
     timeline: [],
-    initialOpenCodeSessionRequired: prompt.length > 0 || bootstrapSession,
+    initialOpenCodeSessionRequired: bootstrapSession,
     initialOpenCodeSessionId: null,
     initialOpenCodeSessionError: null,
   }
@@ -295,7 +308,7 @@ export async function runKortixDaemon(): Promise<void> {
   // `ModelNotFound: kortix/<id>` (prod incident 2026-08-19). The result is
   // consumed by buildOpencodeConfigContent at spawn; the clone is the boot
   // long-pole, so the fetch costs no critical-path time.
-  startManagedModelsPrefetch(process.env.KORTIX_LLM_BASE_URL, process.env.KORTIX_LLM_API_KEY)
+  startManagedModelsPrefetch(process.env.KORTIX_LLM_BASE_URL, process.env.KORTIX_TOKEN)
 
   // Platinum lazily faults image pages into a fresh VM. Read the OpenCode
   // executable sequentially while repository and config work run. Stop at the
@@ -365,7 +378,7 @@ export async function runKortixDaemon(): Promise<void> {
   // AFTER the spawn and without a restart, because the whole point is that a
   // ~400KB cross-region catalog fetch never gates a session boot again.
   if (catalogIsDegraded(process.env.KORTIX_LLM_CATALOG_FILE)) {
-    scheduleCatalogWarm(process.env.KORTIX_LLM_BASE_URL, process.env.KORTIX_LLM_API_KEY)
+    scheduleCatalogWarm(process.env.KORTIX_LLM_BASE_URL, process.env.KORTIX_TOKEN)
   }
 
   logger.info('[boot] proxy up; runtime bootstrap complete', {
@@ -482,7 +495,6 @@ function armSeedAdoption(
       // deriving session's credentials, which must never serve this fork.
       server.reload(cfg2)
       bootState.initialOpenCodeSessionRequired =
-        (process.env.KORTIX_INITIAL_PROMPT ?? '').trim().length > 0 ||
         (process.env.KORTIX_BOOTSTRAP_OPENCODE_SESSION ?? '').trim() === '1'
       logger.info('[seed] adoption — initializing session', { trigger, branch: process.env.KORTIX_BRANCH_NAME })
       try { await configureGlobalGitIdentity(cfg2, OPENCODE_HOME) } catch {}
@@ -700,8 +712,8 @@ async function startSessionRuntime(
   const reconcileInitialTurnAcceptance = async () => {
     if (initialTurnAcceptanceSettled || initialTurnAcceptanceInFlight) return
     const opencodeSessionId = bootState.initialOpenCodeSessionId
-    const turnToken = process.env.KORTIX_INITIAL_TURN_TOKEN?.trim()
-    const messageId = process.env.KORTIX_INITIAL_TURN_MESSAGE_ID?.trim()
+    const turnToken = claimedInitialTurn?.turnToken
+    const messageId = claimedInitialTurn?.messageId
     if (!opencodeSessionId || !turnToken || !messageId) return
     initialTurnAcceptanceInFlight = true
     try {
@@ -828,11 +840,11 @@ function reloadSessionEnv(paths: string[] = ['/etc/pt-env']): void {
 // failure just leaves the fallback catalog (LLM + tools still work via proxies).
 //
 // ENDPOINT CONTRACT (apps/api, to be added deliberately): GET KORTIX_LLM_CATALOG_URL with
-// `Authorization: Bearer <KORTIX_SANDBOX_TOKEN>` → `{ models: {...} }` ==
+// `Authorization: Bearer <KORTIX_TOKEN>` → `{ models: {...} }` ==
 // gatewayModelCatalog(projectId, userId). During seed capture there is NO live
 // sessionSandboxes row (it's a template build), and the token is a type='user'
 // account key, so the route must authorize by validateAccountToken→accountId/projectId,
-// NOT by the sandbox-row check clone-credential uses.
+// NOT by the live-session check used for ordinary sandbox tokens.
 async function prefetchSeedCatalog(cfg: Config): Promise<void> {
   const url = process.env.KORTIX_LLM_CATALOG_URL
   if (!url || !cfg.sandboxToken) return
@@ -1110,7 +1122,6 @@ async function runWarmSeedMode(
       // tokenless or with seed-only credentials.
       server.reload(cfg2)
       bootState.initialOpenCodeSessionRequired =
-        (process.env.KORTIX_INITIAL_PROMPT ?? '').trim().length > 0 ||
         (process.env.KORTIX_BOOTSTRAP_OPENCODE_SESSION ?? '').trim() === '1'
       logger.info('[seed] adopting forked session', { trigger, projectId: cfg2.projectId, autoClone: cfg2.autoClone })
       try { await configureGlobalGitIdentity(cfg2, OPENCODE_HOME) } catch {}
@@ -1151,7 +1162,7 @@ async function runWarmSeedMode(
       // restart; an identical catalog keeps the hot-swap path.
       let gatewayCatalogChanged = false
       const llmBaseUrl = process.env.KORTIX_LLM_BASE_URL
-      const llmApiKey = process.env.KORTIX_LLM_API_KEY
+      const llmApiKey = process.env.KORTIX_TOKEN
       if (llmBaseUrl && llmApiKey) {
         const currentCatalogFile =
           process.env.KORTIX_LLM_CATALOG_FILE ?? '/opt/kortix/llm-catalog.json'
@@ -1185,12 +1196,12 @@ async function runWarmSeedMode(
         !bootState.repoMaterializationError
       ) {
         // LLM gateway: required for the session to function.
-        setLlmProxyToken(process.env.KORTIX_LLM_API_KEY, process.env.KORTIX_LLM_BASE_URL)
+        setLlmProxyToken(process.env.KORTIX_TOKEN, process.env.KORTIX_LLM_BASE_URL)
         // Optional Connector MCP compatibility: if the seed enabled that face,
         // the running MCP points at this proxy. The CLI path does not need this;
         // it reads the live session env through BASH_ENV on every command.
         if (process.env.KORTIX_CONNECTORS_PROXY_URL && connectorProxyBaseUrl() != null) {
-          setConnectorProxyToken(process.env.KORTIX_CLI_TOKEN, process.env.KORTIX_API_URL)
+          setConnectorProxyToken(process.env.KORTIX_TOKEN, process.env.KORTIX_API_URL)
         }
         if (llmProxyReady()) {
           hotSwapped = true
@@ -1273,7 +1284,8 @@ async function maybeCreateInitialOpencodeSession(
   eventLoopConnected?: Promise<void>,
   onListening?: () => void,
 ): Promise<void> {
-  const prompt = (process.env.KORTIX_INITIAL_PROMPT ?? '').trim()
+  const claimedTurn = await claimInitialTurnFromApi()
+  const prompt = claimedTurn?.prompt ?? ''
   const bootstrapSession = (process.env.KORTIX_BOOTSTRAP_OPENCODE_SESSION ?? '').trim() === '1'
   if (!prompt && !bootstrapSession) return
 
@@ -1412,7 +1424,12 @@ async function maybeCreateInitialOpencodeSession(
       bootMark('event-loop-connected')
     }
     await publishInitialOpenCodeSessionAfterPrompt(bootState, sessionId, () =>
-      deliverInitialOpenCodePrompt(opencode, sessionId, workspace, buildInitialPromptBody(prompt)),
+      deliverInitialOpenCodePrompt(
+        opencode,
+        sessionId,
+        workspace,
+        buildInitialPromptBody(prompt, claimedTurn?.messageId),
+      ),
     )
     // F1: written ONLY after delivery actually succeeded (an exception above
     // skips this line) — the durable receipt `reusedRootAlreadyDelivered`
@@ -2078,12 +2095,7 @@ async function relayBootstrapPinToApi(opencodeSessionId: string): Promise<void> 
   // /turn-stream accepts EITHER the session token or the sandbox credential
   // (it's a sandbox-identity route). Prefer the session token; fall back to the
   // sandbox credential — canonical name first, legacy KORTIX_TOKEN alias last.
-  const token = (
-    process.env.KORTIX_CLI_TOKEN ||
-    process.env.KORTIX_SANDBOX_TOKEN ||
-    process.env.KORTIX_TOKEN ||
-    ''
-  ).trim()
+  const token = (process.env.KORTIX_TOKEN || '').trim()
   const apiUrl = process.env.KORTIX_API_URL?.replace(/\/$/, '')
   if (!projectId || !sessionId || !token || !apiUrl) return
   const apiRoot = apiUrl.endsWith('/v1') ? apiUrl : `${apiUrl}/v1`
@@ -2151,7 +2163,7 @@ export async function relayInitialTurnAcceptedToApi(
 ): Promise<boolean> {
   const projectId = process.env.KORTIX_PROJECT_ID?.trim()
   const sessionId = process.env.KORTIX_SESSION_ID?.trim()
-  const sandboxToken = (process.env.KORTIX_SANDBOX_TOKEN || process.env.KORTIX_TOKEN || '').trim()
+  const sandboxToken = (process.env.KORTIX_TOKEN || '').trim()
   const apiUrl = process.env.KORTIX_API_URL?.replace(/\/$/, '')
   if (!projectId || !sessionId || !sandboxToken || !apiUrl) {
     throw new Error('initial turn acceptance relay context is unavailable')
@@ -2180,11 +2192,62 @@ export async function relayInitialTurnAcceptedToApi(
   return body.ok === true
 }
 
+/** Claim the pending first turn through the session-bound Kortix credential. */
+export async function claimInitialTurnFromApi(): Promise<InitialTurnClaim | null> {
+  if (claimedInitialTurn) return claimedInitialTurn
+  const projectId = process.env.KORTIX_PROJECT_ID?.trim()
+  const sessionId = process.env.KORTIX_SESSION_ID?.trim()
+  const token = process.env.KORTIX_TOKEN?.trim()
+  const apiUrl = process.env.KORTIX_API_URL?.replace(/\/$/, '')
+  if (!projectId || !sessionId || !token || !apiUrl) return null
+  const apiRoot = apiUrl.endsWith('/v1') ? apiUrl : `${apiUrl}/v1`
+  let response: Response | null = null
+  let lastError: unknown = null
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      response = await fetch(`${apiRoot}/projects/${encodeURIComponent(projectId)}/turn-stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ session_id: sessionId, kind: 'initial_turn_claim' }),
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (response.ok || response.status < 500) break
+      lastError = new Error(`initial turn claim returned ${response.status}`)
+    } catch (error) {
+      lastError = error
+    }
+    if (attempt < 2) await Bun.sleep(250 * 2 ** attempt)
+  }
+  if (!response) {
+    throw new Error(`initial turn claim failed after 3 attempts: ${String(lastError)}`)
+  }
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    throw new Error(`initial turn claim rejected: ${response.status} ${body.slice(0, 200)}`)
+  }
+  const body = (await response.json()) as {
+    initial_turn?: { prompt?: unknown; turn_token?: unknown; message_id?: unknown } | null
+  }
+  const turn = body.initial_turn
+  if (
+    !turn ||
+    typeof turn.prompt !== 'string' ||
+    typeof turn.turn_token !== 'string' ||
+    typeof turn.message_id !== 'string'
+  ) return null
+  claimedInitialTurn = {
+    prompt: turn.prompt,
+    turnToken: turn.turn_token,
+    messageId: turn.message_id,
+  }
+  return claimedInitialTurn
+}
+
 /** Remove only a pre-created initial-turn record that OpenCode never accepted. */
 export async function relayInitialTurnAbandonedToApi(turnToken: string): Promise<boolean> {
   const projectId = process.env.KORTIX_PROJECT_ID?.trim()
   const sessionId = process.env.KORTIX_SESSION_ID?.trim()
-  const sandboxToken = (process.env.KORTIX_SANDBOX_TOKEN || process.env.KORTIX_TOKEN || '').trim()
+  const sandboxToken = (process.env.KORTIX_TOKEN || '').trim()
   const apiUrl = process.env.KORTIX_API_URL?.replace(/\/$/, '')
   if (!projectId || !sessionId || !sandboxToken || !apiUrl) {
     throw new Error('initial turn abandonment relay context is unavailable')
@@ -2322,12 +2385,7 @@ function sandboxRelayContext(tokenOverride?: string | null): SandboxRelayContext
   const token =
     tokenOverride !== undefined
       ? (tokenOverride ?? '')
-      : (
-          process.env.KORTIX_CLI_TOKEN ||
-          process.env.KORTIX_SANDBOX_TOKEN ||
-          process.env.KORTIX_TOKEN ||
-          ''
-        ).trim()
+      : (process.env.KORTIX_TOKEN || '').trim()
   const apiUrl = process.env.KORTIX_API_URL?.replace(/\/$/, '')
   if (!projectId || !sessionId || !token || !apiUrl) {
     logger.warn('[opencode-events] missing env to relay to apps/api', {
@@ -2510,20 +2568,9 @@ export async function relayTurnBeginToApi(
   opencode: Pick<Opencode, 'getInternalUrl'>,
   cfg: Config,
 ): Promise<void> {
-  // THE SANDBOX CREDENTIAL, EXPLICITLY — never the default token chain.
-  // `sandboxRelayContext()` prefers `KORTIX_CLI_TOKEN` (a user/agent PAT), and
-  // adoption is a sandbox-identity operation: the route refuses a PAT, so the
-  // default chain made this relay 403 on every status frame — silently, since
-  // a 403 is a non-ok that just retries and gives up (measured on dev
-  // 2026-08-20: events fired, binary correct, zero ledger rows). Same failure
-  // class as the turn-end 403s on Essentia that r4.ts's kind-gate comment
-  // records. No sandbox credential means adoption is simply not available here;
-  // relaying a PAT would only reproduce the 403 loop.
-  const sandboxToken = (
-    process.env.KORTIX_SANDBOX_TOKEN ||
-    process.env.KORTIX_TOKEN ||
-    ''
-  ).trim()
+  // The session credential is bound to this sandbox's session_id. The API
+  // treats that claim as the daemon identity for lifecycle-only callbacks.
+  const sandboxToken = (process.env.KORTIX_TOKEN || '').trim()
   if (!sandboxToken) return
   const ctx = sandboxRelayContext(sandboxToken)
   if (!ctx) return
@@ -2900,7 +2947,7 @@ export function resolveOpencodeModel(): { providerID: string; modelID: string } 
 }
 
 /** Build the first-turn request from the session-bound runtime environment. */
-export function buildInitialPromptBody(prompt: string): {
+export function buildInitialPromptBody(prompt: string, claimedMessageId?: string): {
   messageID?: string
   parts: Array<{ type: 'text'; text: string }>
   model?: { providerID: string; modelID: string }
@@ -2909,7 +2956,7 @@ export function buildInitialPromptBody(prompt: string): {
   const model = resolveOpencodeModel()
   const agentName = (process.env.KORTIX_AGENT_NAME ?? '').trim()
   const agent = agentName && agentName !== 'default' ? agentName : undefined
-  const messageID = process.env.KORTIX_INITIAL_TURN_MESSAGE_ID?.trim() || undefined
+  const messageID = claimedMessageId
   return {
     ...(messageID ? { messageID } : {}),
     parts: [{ type: 'text', text: prompt }],
@@ -2918,8 +2965,7 @@ export function buildInitialPromptBody(prompt: string): {
   }
 }
 
-/** Read the pinned opencode session id (set at boot when KORTIX_INITIAL_PROMPT
- *  was delivered). Returns null if no session was pinned — caller decides
+/** Read the pinned OpenCode session id. Returns null if no session was pinned — caller decides
  *  whether to fail or fall back to creating a fresh session. */
 export function readPinnedOpencodeSessionId(): string | null {
   try {

@@ -954,6 +954,8 @@ These contracts use product IDs. They replace the old route-coverage bucket IDs.
 
 ## KXD-REST — compute-node registration and lifecycle
 
+`KXD-REST` An account owner manages a compute node through its complete REST lifecycle.
+
 An account owner registers a workstation node and receives one short-lived
 enrollment token. Anonymous and non-member registration fails. The daemon
 exchanges the token once for a node-only credential. Token replay fails. The
@@ -974,6 +976,8 @@ shell, and desktop restrictions unchanged. `kortixd` enforces those restrictions
 below its owner-controlled local policy.
 
 ## KXD-CLI — compiled standalone node enrollment
+
+`KXD-CLI` The compiled `kortixd` executable enrolls and manages a local compute node.
 
 The suite compiles `kortixd` for the host operating system and runs the actual
 executable. Help, version, and invalid-command behavior return stable exit

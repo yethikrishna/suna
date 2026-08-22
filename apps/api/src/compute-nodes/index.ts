@@ -62,11 +62,18 @@ export const computeNodeChannel = new ComputeNodeChannelHub(
   },
   async (nodeId, assignmentId, state, detail) => {
     const status = state === 'ready' ? 'ready' : state === 'rejected' ? 'failed' : state === 'stopped' ? 'released' : 'assigned'
+    const predicates = [
+      eq(computeNodeAssignments.assignmentId, assignmentId),
+      eq(computeNodeAssignments.nodeId, nodeId),
+    ]
+    // WebSocket callbacks can overlap. A delayed `accepted` write must never
+    // move an assignment backward after `ready`, `failed`, or `released` wins.
+    if (state === 'accepted') predicates.push(eq(computeNodeAssignments.status, 'assigned'))
     await db.update(computeNodeAssignments).set({
       status,
       updatedAt: new Date(),
       ...(detail ? { metadata: { detail } } : {}),
-    }).where(and(eq(computeNodeAssignments.assignmentId, assignmentId), eq(computeNodeAssignments.nodeId, nodeId)))
+    }).where(and(...predicates))
   },
 )
 

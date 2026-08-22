@@ -90,6 +90,7 @@ flow(
     let firstCredential = ''
     let deviceNodeId = ''
     let peer: Awaited<ReturnType<typeof connectNodePeer>> | null = null
+    try {
 
     await ctx.step('daemon starts browser enrollment and only its device secret can poll', async () => {
       const created = await ctx.client.as(ctx.P.ANON).post('/v1/nodes/device-auth', { machine_hostname: 'kxd-e2e-workstation', type: 'workstation' })
@@ -248,6 +249,9 @@ flow(
         await ctx.client.as(ctx.P.OWNER).del('/v1/accounts/:accountId/compute-nodes/:nodeId', { params: { accountId, nodeId: deviceNodeId } }).then((response) => response.status(200))
       }
     })
+    } finally {
+      peer?.socket.close()
+    }
   },
 )
 

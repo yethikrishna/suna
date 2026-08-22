@@ -22,8 +22,12 @@ import { flow } from "../core/flow";
 
 flow(
   "PRX-1",
-  { domain: "preview-proxy", tags: ["smoke"], routes: ["POST /v1/p/auth", "OPTIONS /v1/p/auth"] },
+  { domain: "preview-proxy", tags: ["smoke"], routes: ["POST /v1/p/auth", "OPTIONS /v1/p/auth", "GET /v1/p/config"] },
   async (ctx) => {
+    await ctx.step("GET /p/config publishes preview addressing without authentication", async () => {
+      const r = await ctx.client.as(ctx.P.ANON).get("/v1/p/config");
+      r.status(200).body().exists("$.preview_url_template");
+    });
     await ctx.step("OPTIONS /p/auth → CORS preflight 204", async () => {
       const r = await ctx.client.as(ctx.P.ANON).request("OPTIONS", "/v1/p/auth");
       r.status([200, 204]);

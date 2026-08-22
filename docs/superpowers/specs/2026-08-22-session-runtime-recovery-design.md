@@ -53,35 +53,32 @@ The claim is cleared only by its owner.
 
 ### Provider-stop confirmation
 
-Do not change an active row to stopped from one provider read while a control-
-plane turn is active. Record the first observation and confirm it on a later
-maintenance pass. A running observation clears the pending marker. Two stopped
-observations separated by the confirmation interval permit `provider_reconcile`.
-Provider webhooks remain authoritative when they carry a provider event identity.
+Retain and verify the existing 60-second confirmation mechanism in
+`sandbox-state-sync.ts`. One provider read does not park an active session while
+a control-plane turn is active. A running observation clears the pending marker.
+Two stopped observations separated by the confirmation interval permit
+`provider_reconcile`.
 
 ### Session presentation
 
-The session page always mounts chat when it has a runtime session id or cached
-messages. Recoverable runtime errors render a compact recovery notice above the
-composer. The notice contains state, automatic retry, and one manual restart
-button below the message. Full-screen errors remain for 404, access denial,
-billing denial, unrecoverable runtime identity loss, and sessions with no
-renderable content.
+The session page always mounts chat when it has a resolved OpenCode session id.
+The existing composer recovery notice exposes reconnect state and queued-send
+behavior. Full-screen runtime errors remain for sessions without a renderable
+conversation. The full-screen restart action sits below the error detail.
 
 ### Tool panels
 
-Terminal and Files map transport state independently: connecting, ready,
-recovering, failed. Connecting becomes recovering after a bounded timeout.
-Recovering retries with bounded exponential backoff. Failed retains the last
-known content and offers retry. Panel state never changes session phase.
+Terminal and Files map transport state independently. A connecting state becomes
+an actionable local error after 15 seconds. Retry re-arms the deadline and asks
+the shared runtime connection to reconnect. Panel state never changes the
+session phase.
 
 ### Turn cleanup
 
 When provider reconciliation parks a sandbox, the existing stopped-state
-transaction settles open turn rows. The SDK then reconciles empty assistant
-envelopes against the settled turn and removes envelopes that never received a
-part. The busy indicator reads the control-plane turn record plus runtime state;
-it cannot remain active after `runtime_gone` settlement.
+transaction settles open turn rows. This change verifies that mechanism. Empty
+assistant envelopes contain no visible parts, so cached conversation remains
+readable while the runtime reconnects.
 
 ## Verification
 
@@ -98,4 +95,3 @@ it cannot remain active after `runtime_gone` settlement.
   Files show local retry controls; recovery removes the notices without reload.
 - Live sandbox test: stop ingress during an active turn, restore it, and verify
   chat, Terminal, Files, queued send, and busy state.
-

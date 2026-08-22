@@ -21,6 +21,26 @@ linked, not inlined.
 
 ## Register
 
+### A selective capacity release must include the pool isolation it budgets (2026-08-22)
+
+**When:** selecting database-capacity commits for a release. Do not ship pool
+arithmetic without every pool and writer that arithmetic assumes. Verify the
+release tree, not `main`, contains the dedicated pool and its call sites.
+*Incident:* staging release `2e01bad2` included the bounded connection budget
+but omitted PR #6702. All 6 API shards returned `503` while 14-23 slow audit
+inserts occupied the shared pools. *Enforcer:* `database-capacity.test.ts`
+reads `audit-db.ts` and every high-volume writer from the release tree.
+
+### A browser retry must wait for the result it is retrying (2026-08-22)
+
+**When:** retrying a client-rendered page after an eventually consistent write.
+`domcontentloaded` does not mean that React consumed the API response. Wait for
+the exact response and the final DOM state before the next navigation. A poll
+that reloads immediately can abort every successful render itself.
+*Near-miss:* PR #6724 failed browser-1 twice while every repeated account read
+returned `200`. *Enforcer:* `08-accounts-project-access.spec.ts` waits for the
+exact account response and the visible `Members` heading on each attempt.
+
 ### Mint every OpenCode message id with the native sortable codec (2026-08-22)
 
 **When:** delivering an initial, queued, retried, or imported OpenCode prompt.

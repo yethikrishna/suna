@@ -35,7 +35,7 @@ Global options:
   --host <name>      Operate against a non-default Kortix host.
   -h, --help         Show this help.
 
-Inside an agent sandbox the CLI reads KORTIX_CLI_TOKEN and KORTIX_PROJECT_ID
+Inside an agent sandbox the CLI reads KORTIX_TOKEN and KORTIX_PROJECT_ID
 from the environment automatically — you don't need to log in or link.
 (KORTIX_TOKEN is the sandbox service key, not a CLI token.)
 `;

@@ -63,6 +63,7 @@ import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { resolveLlmGatewayBaseUrl } from '../../llm-gateway/sandbox-base-url';
 import { RuntimeIdentityConflictError } from '../../projects/runtime-identity-error';
 import { grantWarmPoolLifetime } from '../../projects/sandbox-deadline';
+import { instanceStampMetadata } from '../../projects/instance-scope';
 import { withTimeout, configuredTimeoutMs } from '../../shared/with-timeout';
 import { classifySandboxProvisioningFailure } from './sandbox-provisioning-error';
 import { platformMetaAgentGrant } from '../../projects/lib/platform-meta-agent';
@@ -433,6 +434,9 @@ export async function provisionSessionSandbox(opts: {
         config: {},
         metadata: {
           ...(opts.metadata ?? {}),
+          // Instance scope for background work on a shared DB — see
+          // projects/instance-scope.ts. `{}` when KORTIX_INSTANCE_ID is unset.
+          ...instanceStampMetadata(),
           ...(opts.initialTurn
             ? {
                 activeTurns: {
@@ -468,7 +472,7 @@ export async function provisionSessionSandbox(opts: {
         // out. Consume their authorization marker atomically so at most one
         // allocator can claim the row and call provider.create(). New code never
         // creates this marker because established identities are fail-closed.
-        metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) - 'identityRecoveryAuthorizedAt'`,
+        metadata: sql`(coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) - 'identityRecoveryAuthorizedAt') || ${JSON.stringify(instanceStampMetadata())}::jsonb`,
         updatedAt: new Date(),
       })
       .where(

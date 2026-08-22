@@ -90,6 +90,7 @@ async function runUpdate(): Promise<number> {
     cliPath: paths.cliPath, managedSkillsDir: paths.managedSkillsDir,
     statePath: paths.statePath, agentStateDir: paths.runtime,
     agentBakedPath: process.execPath, runningAgentPath: process.execPath,
+    manifestSigningPublicKey: stored.artifact_signing_public_key,
   } : { configDir })
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
   return Object.values(result).includes('failed') ? 1 : 0
@@ -108,12 +109,12 @@ async function runConnect(argv: readonly string[]): Promise<number> {
     body: JSON.stringify({ enrollment_token: enrollmentToken }),
     signal: AbortSignal.timeout(15_000),
   })
-  const result = await response.json().catch(() => null) as { compute_node_id?: string; credential?: string; error?: string } | null
+  const result = await response.json().catch(() => null) as { compute_node_id?: string; credential?: string; artifact_signing_public_key?: string | null; error?: string } | null
   if (!response.ok || !result?.compute_node_id || !result.credential) {
     process.stderr.write(`kortixd: enrollment failed (${response.status}): ${result?.error ?? 'invalid response'}\n`)
     return 1
   }
-  const path = writeStoredNodeConfig({ api_url: apiUrl, compute_node_id: result.compute_node_id, credential: result.credential })
+  const path = writeStoredNodeConfig({ api_url: apiUrl, compute_node_id: result.compute_node_id, credential: result.credential, ...(result.artifact_signing_public_key ? { artifact_signing_public_key: result.artifact_signing_public_key } : {}) })
   process.stdout.write(`enrolled compute node ${result.compute_node_id}\n`)
   process.stdout.write(`credential stored at ${path}\n`)
   if (!argv.includes('--no-service')) {

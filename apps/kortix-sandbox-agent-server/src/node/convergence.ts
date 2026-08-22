@@ -11,6 +11,7 @@ export interface NodeConvergenceOptions {
   stateDirectory?: string
   intervalMs?: number
   reconcile?: typeof reconcileRuntimeAssets
+  manifestSigningPublicKey?: string
 }
 
 export function nodeRuntimePaths(stateDirectory = nodeStateDirectory()) {
@@ -38,6 +39,7 @@ export function startNodeConvergence(options: NodeConvergenceOptions) {
       agentStateDir: paths.runtime,
       agentBakedPath: process.execPath,
       runningAgentPath: process.execPath,
+      manifestSigningPublicKey: options.manifestSigningPublicKey,
     }).then(async (result) => {
       noteRuntimeConvergence(result)
       if (result.agent === 'staged') await requestAgentSwapIfIdle({ agentStateDir: paths.runtime, turnInFlight: async () => options.busy(), minUptimeMs: 0 })

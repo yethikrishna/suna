@@ -6,6 +6,7 @@ export interface StoredNodeConfig {
   api_url: string
   compute_node_id: string
   credential: string
+  artifact_signing_public_key?: string
 }
 
 export function nodeStateDirectory(env: NodeJS.ProcessEnv = process.env): string {
@@ -28,6 +29,7 @@ export function readStoredNodeConfig(env: NodeJS.ProcessEnv = process.env): Stor
     if (typeof parsed.api_url !== 'string' || typeof parsed.compute_node_id !== 'string' || typeof parsed.credential !== 'string') {
       throw new Error('node credential file is invalid')
     }
+    if (parsed.artifact_signing_public_key !== undefined && typeof parsed.artifact_signing_public_key !== 'string') throw new Error('node signing public key is invalid')
     return parsed as StoredNodeConfig
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null

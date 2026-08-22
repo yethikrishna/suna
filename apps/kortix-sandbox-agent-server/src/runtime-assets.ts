@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, createPublicKey, verify } from 'node:crypto'
+import { runtimeManifestSigningPayload, type RuntimeManifestSignature } from '@kortix/api-contract/runtime-manifest'
 import {
   chmod,
   mkdir,
@@ -173,6 +174,8 @@ export interface RuntimeAssetsOptions {
   opencodeDepsDir?: string
   /** Test seam for the `bun install` that materializes a refreshed plugin pin. */
   installPluginDeps?: (dir: string) => Promise<void>
+  /** Enrollment-pinned Ed25519 key. When present, unsigned manifests fail closed. */
+  manifestSigningPublicKey?: string
 }
 
 /** One entry of the v2 `components` map. Every field is optional by contract. */
@@ -195,6 +198,7 @@ interface RuntimeAssetsManifest {
   build?: unknown
   components?: unknown
   policy?: unknown
+  signature?: RuntimeManifestSignature | null
 }
 
 interface OverlayFile {
@@ -778,6 +782,10 @@ export async function reconcileRuntimeAssets(
   if (!manifest) {
     return { cli: 'skipped', skills: 'skipped', reason: 'manifest unavailable' }
   }
+  const publicKey = options.manifestSigningPublicKey ?? process.env.KORTIX_RUNTIME_ASSET_SIGNING_PUBLIC_KEY?.replace(/\\n/g, '\n')
+  if (publicKey && !verifyRuntimeManifest(manifest, publicKey)) {
+    return { cli: 'failed', skills: 'failed', reason: 'runtime manifest signature is missing or invalid' }
+  }
 
   const state = await readState(statePath)
   const nextState: RuntimeAssetsState = { ...state }
@@ -1108,6 +1116,13 @@ export async function reconcileRuntimeAssets(
   if (agentSwapPending) result.agentSwapPending = true
   if (Object.keys(reasons).length > 0) result.reasons = reasons
   return result
+}
+
+export function verifyRuntimeManifest(manifest: RuntimeAssetsManifest, publicKey: string): boolean {
+  try {
+    if (manifest.signature?.algorithm !== 'ed25519' || typeof manifest.signature.value !== 'string') return false
+    return verify(null, Buffer.from(runtimeManifestSigningPayload(manifest as unknown as Record<string, unknown>)), createPublicKey(publicKey), Buffer.from(manifest.signature.value, 'base64'))
+  } catch { return false }
 }
 
 // ── Requesting the swap ────────────────────────────────────────────────────

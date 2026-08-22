@@ -73,6 +73,7 @@ import { createNodeCapabilityRegistry, createSandboxCapabilityRegistry } from '.
 import { NodeAssignmentManager } from './node/assignment-manager'
 import { loadNodeLocalPolicy } from './node/policy-store'
 import { startNodeConvergence } from './node/convergence'
+import { readStoredNodeConfig } from './node/config-store'
 
 const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
   'deepseek-v4-flash-free',
@@ -108,7 +109,7 @@ export async function runKortixDaemon(): Promise<void> {
     // An enrolled workstation starts without a session. It remains a node
     // supervisor until the API assigns a workload over the outbound channel.
     if (!assignedSessionId) {
-      const convergence = startNodeConvergence({ apiUrl: cfg.apiUrl, token: cfg.nodeToken, busy: () => assignmentManager.isBusy() })
+      const convergence = startNodeConvergence({ apiUrl: cfg.apiUrl, token: cfg.nodeToken, busy: () => assignmentManager.isBusy(), manifestSigningPublicKey: readStoredNodeConfig()?.artifact_signing_public_key ?? process.env.KORTIX_RUNTIME_ASSET_SIGNING_PUBLIC_KEY ?? undefined })
       await new Promise<void>((resolve) => {
         const stop = () => { convergence.stop(); channel.disconnect(); resolve() }
         process.once('SIGINT', stop)

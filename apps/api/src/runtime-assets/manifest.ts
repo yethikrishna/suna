@@ -21,6 +21,7 @@
  */
 
 import { stat } from 'node:fs/promises';
+import { createHash, createPrivateKey, createPublicKey, sign } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildFileSha256 } from '@kortix/shared/sandbox-runtime-artifact';
@@ -30,6 +31,7 @@ import {
   managedSkillOverlayHash,
   type ManagedSkillOverlayFile,
 } from './managed-skills';
+import { runtimeManifestSigningPayload, type RuntimeManifestSignature } from '@kortix/api-contract/runtime-manifest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '../../../..');
@@ -210,6 +212,7 @@ export interface RuntimeAssetsManifest {
   build: number;
   components: RuntimeComponents;
   policy: RuntimeAssetsPolicy;
+  signature?: RuntimeManifestSignature | null;
 }
 
 /**
@@ -217,7 +220,7 @@ export interface RuntimeAssetsManifest {
  * cannot change for the lifetime of a process (immutable image layers).
  * `policy` is deliberately NOT in here — see agentSelfUpdateEnabled().
  */
-type RuntimeAssetsDigests = Omit<RuntimeAssetsManifest, 'policy'>;
+type RuntimeAssetsDigests = Omit<RuntimeAssetsManifest, 'policy' | 'signature'>;
 
 let manifestPromise: Promise<RuntimeAssetsDigests> | null = null;
 let overlayCache: { files: ManagedSkillOverlayFile[]; hash: string } | null = null;
@@ -324,7 +327,32 @@ export async function runtimeAssetsManifest(): Promise<RuntimeAssetsManifest> {
   // Assembled per call so `policy` is read live: the kill switch must never
   // cost an extra deploy. Everything expensive comes from the memo, so the
   // marginal cost of a call is one object spread.
-  return { ...(await runtimeAssetsDigests()), policy: { agent_self_update: agentSelfUpdateEnabled() } };
+  const unsigned: RuntimeAssetsManifest = { ...(await runtimeAssetsDigests()), policy: { agent_self_update: agentSelfUpdateEnabled() } };
+  const signature = signRuntimeManifest(unsigned);
+  return { ...unsigned, signature };
+}
+
+function signingPrivateKey(): string | null {
+  const raw = process.env.RUNTIME_ASSET_SIGNING_PRIVATE_KEY?.trim();
+  if (!raw) return null;
+  return raw.includes('BEGIN ') ? raw.replace(/\\n/g, '\n') : Buffer.from(raw, 'base64').toString('utf8');
+}
+
+export function runtimeAssetSigningPublicKey(): string | null {
+  const privatePem = signingPrivateKey();
+  if (!privatePem) return null;
+  return createPublicKey(createPrivateKey(privatePem)).export({ type: 'spki', format: 'pem' }).toString();
+}
+
+function signRuntimeManifest(manifest: RuntimeAssetsManifest): RuntimeManifestSignature | null {
+  const privatePem = signingPrivateKey();
+  if (!privatePem) return null;
+  const publicPem = runtimeAssetSigningPublicKey()!;
+  return {
+    algorithm: 'ed25519',
+    key_id: createHash('sha256').update(publicPem).digest('hex').slice(0, 16),
+    value: sign(null, Buffer.from(runtimeManifestSigningPayload(manifest as unknown as Record<string, unknown>)), createPrivateKey(privatePem)).toString('base64'),
+  };
 }
 
 /** Test-only: drop both memos so a case can recompute against a mutated fixture. */

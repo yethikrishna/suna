@@ -4,6 +4,7 @@ import type { AppEnv } from '../types'
 import { consumeNodeEnrollmentToken } from '../repositories/compute-node-credentials'
 import { revokeNodeCredentials, validateNodeCredential } from '../repositories/compute-node-credentials'
 import { computeNodeChannel } from '.'
+import { runtimeAssetSigningPublicKey } from '../runtime-assets/manifest'
 
 export const computeNodePublicApp = makeOpenApiApp<AppEnv>()
 
@@ -27,6 +28,7 @@ computeNodePublicApp.openapi(
         compute_node_id: z.string(),
         credential: z.string(),
         generation: z.number(),
+        artifact_signing_public_key: z.string().nullable(),
       }), 'Node credential returned once'),
       ...errors(400, 401),
     },
@@ -43,6 +45,7 @@ computeNodePublicApp.openapi(
       compute_node_id: result.nodeId,
       credential: result.credential,
       generation: result.generation,
+      artifact_signing_public_key: runtimeAssetSigningPublicKey(),
     }, 200)
   },
 )

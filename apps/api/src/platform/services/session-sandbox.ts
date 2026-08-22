@@ -22,6 +22,7 @@ import { createApiKey } from '../../repositories/api-keys';
 import { rotateNodeCredential } from '../../repositories/compute-node-credentials';
 import { createAccountToken } from '../../repositories/account-tokens';
 import { ensureAgentServiceAccount } from '../../repositories/service-accounts';
+import { runtimeAssetSigningPublicKey } from '../../runtime-assets/manifest';
 import {
   getProvider,
   SandboxTemplateNotFoundError,
@@ -595,6 +596,9 @@ export async function provisionSessionSandbox(opts: {
       // The stable logical node id. Provider allocation ids are assigned only
       // after create, so they cannot identify the outbound daemon handshake.
       KORTIX_COMPUTE_NODE_ID: sandbox.sandboxId,
+      ...(runtimeAssetSigningPublicKey()
+        ? { KORTIX_RUNTIME_ASSET_SIGNING_PUBLIC_KEY: runtimeAssetSigningPublicKey()! }
+        : {}),
       ...(connectorToken
         ? { KORTIX_CLI_TOKEN: connectorToken }
         : {}),

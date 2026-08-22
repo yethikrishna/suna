@@ -33,6 +33,7 @@
     "STREAM_OBSERVATION_MAX_MS",
     "SessionNotReadyError",
     "SessionStartError",
+    "TURN_END_LEDGER_LAG_MS",
     "__getConfigResolver",
     "__setConfigResolver",
     "abortErrorReason",
@@ -1145,6 +1146,7 @@
     "useOpenCodeSkills",
     "useOpenCodeToolIds",
     "useOpenCodeTools",
+    "useOpenCodeVcsDiff",
     "useOpsOverview",
     "usePatchProject",
     "usePermissionSelfHeal",
@@ -1195,6 +1197,7 @@
     "useRuntimeSessionTodo",
     "useRuntimeSessions",
     "useRuntimeStore",
+    "useRuntimeVcsDiff",
     "useSandboxConnectionStore",
     "useSandboxRuntimeReload",
     "useSandboxServiceAction",
@@ -2007,6 +2010,7 @@
     "SERVER_COMPACTION_REVALIDATE_MS",
     "SERVER_OBSERVATION_MAX_MS",
     "STREAM_OBSERVATION_MAX_MS",
+    "TURN_END_LEDGER_LAG_MS",
     "appendPreviewToken",
     "authorizePreviewUrl",
     "buildPresentationTemplateImageUrl",
@@ -2049,6 +2053,7 @@
     "proxyUrlToInternal",
     "rewriteLocalhostUrl",
     "serverCompactionRevalidateAtMs",
+    "stripTrailingSlashes",
     "toInternalUrl",
     "workingExpiryAtMs"
   ],
@@ -2076,6 +2081,7 @@
     "proxyLocalhostUrl",
     "proxyUrlToInternal",
     "rewriteLocalhostUrl",
+    "stripTrailingSlashes",
     "toInternalUrl"
   ],
   "./message-queue": [

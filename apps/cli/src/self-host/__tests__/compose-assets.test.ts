@@ -335,6 +335,28 @@ describe('full self-host Docker distribution', () => {
     expect(caddyfile).toContain('fail_duration');
   });
 
+  test('supabase-db gets tunable max_connections headroom (injected, not vendored) so the stack scales past ~4 api replicas', () => {
+    const rendered = renderFullDockerCompose('kortix-default', { domainConfigured: true });
+    // Rendered compose carries the override (injected in renderFullDockerCompose,
+    // NOT in the upstream-locked vendored docker-compose.yml — the separate
+    // upstream-lock test above guards that the vendored file stays pristine).
+    expect(rendered).toContain('max_connections=${POSTGRES_MAX_CONNECTIONS:-200}');
+    // It rides the postgres command, right after the config_file arg.
+    expect(rendered).toContain('config_file=/etc/postgresql/postgresql.conf');
+  });
+
+  test('every replicated upstream carries in-request retry so a recreate-window pick failure is retried, not 502ed', () => {
+    const caddyfile = kortixRuntimeAssets.Caddyfile;
+    // One lb_try_duration/lb_try_interval per replicated app upstream
+    // (api, gateway, frontend). Dial-level failures (connection refused / no
+    // upstreams available) are retried against the healthy replica — POST-safe
+    // because the upstream never received the request. See the Bad-Gateway fix.
+    expect((caddyfile.match(/lb_try_duration 5s/g) ?? []).length).toBe(3);
+    expect((caddyfile.match(/lb_try_interval 250ms/g) ?? []).length).toBe(3);
+    // No raw retry_match that would unsafely replay a non-idempotent POST.
+    expect(caddyfile).not.toContain('retry_match');
+  });
+
   test('Caddyfile sends a conservative HSTS header (no preload) on both site blocks', () => {
     const caddyfile = kortixRuntimeAssets.Caddyfile;
     const matches = [...caddyfile.matchAll(/Strict-Transport-Security "([^"]+)"/g)];
@@ -513,7 +535,9 @@ describe('full self-host Docker distribution', () => {
     }
     const db = document.services['supabase-db'];
     expect(db?.oom_score_adj).toBeLessThan(0);
-    expect(document.services['kortix-api']?.mem_limit).toBe('${KORTIX_API_MEMORY_LIMIT:-640m}');
+    // Matched to the gateway's ceiling on purpose: the API mounts the gateway
+    // in-process, so image-heavy request bodies transit BOTH containers.
+    expect(document.services['kortix-api']?.mem_limit).toBe('${KORTIX_API_MEMORY_LIMIT:-2048m}');
     const analytics = document.services['supabase-analytics'];
     const vector = document.services['supabase-vector'];
     expect(analytics?.oom_score_adj).toBeGreaterThan(0);

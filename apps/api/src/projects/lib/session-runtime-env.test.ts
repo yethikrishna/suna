@@ -116,6 +116,26 @@ describe('buildSessionRuntimeEnv — workspace mode', () => {
 });
 
 describe('buildSessionRuntimeEnv — fast Git boot hints', () => {
+  test('marks replacement runtimes for remote session-branch restoration', () => {
+    const env = buildSessionRuntimeEnv({
+      ...BASE_INPUT,
+      restoreSessionBranch: true,
+    });
+
+    expect(env.KORTIX_SESSION_BRANCH_RESTORE).toBe('1');
+    expect(env).not.toHaveProperty('KORTIX_SESSION_FRESH');
+  });
+
+  test('does not emit branch-restore authority for repository-free workspaces', () => {
+    const env = buildSessionRuntimeEnv({
+      ...BASE_INPUT,
+      workspaceMode: 'runtime',
+      restoreSessionBranch: true,
+    });
+
+    expect(env).not.toHaveProperty('KORTIX_SESSION_BRANCH_RESTORE');
+  });
+
   test('sends fresh-session and base-tip hints when the experiment is enabled', () => {
     const baseSha = 'a'.repeat(40);
     const gitDeltaBundleBase64 = 'R0lUIEJVTkRMRQ==';
@@ -184,5 +204,40 @@ describe('buildSessionRuntimeEnv — fast Git boot hints', () => {
       expect(env).not.toHaveProperty('KORTIX_GIT_DELTA_PARENT_SHA');
       expect(env).not.toHaveProperty('KORTIX_GIT_DELTA_PARENT_COMMIT_BASE64');
     }
+  });
+});
+
+describe('buildSessionRuntimeEnv — OpenCode executable prefetch', () => {
+  test('enables prefetch through the single fast cold boot flag', () => {
+    const env = buildSessionRuntimeEnv({
+      ...BASE_INPUT,
+      fastColdBootEnabled: true,
+      freshSession: false,
+    });
+
+    expect(env.KORTIX_OPENCODE_BINARY_PREFETCH).toBe('1');
+    expect(env).not.toHaveProperty('KORTIX_SESSION_FRESH');
+  });
+
+  test('omits prefetch when the fast cold boot flag is disabled', () => {
+    const env = buildSessionRuntimeEnv({
+      ...BASE_INPUT,
+      fastColdBootEnabled: false,
+      freshSession: true,
+    });
+
+    expect(env).not.toHaveProperty('KORTIX_OPENCODE_BINARY_PREFETCH');
+  });
+
+  test('keeps prefetch enabled for runtime-only sessions', () => {
+    const env = buildSessionRuntimeEnv({
+      ...BASE_INPUT,
+      workspaceMode: 'runtime',
+      fastColdBootEnabled: true,
+      freshSession: true,
+    });
+
+    expect(env.KORTIX_OPENCODE_BINARY_PREFETCH).toBe('1');
+    expect(env).not.toHaveProperty('KORTIX_REPO_URL');
   });
 });

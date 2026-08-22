@@ -223,10 +223,6 @@ export function ComposerToolbar({
 
         {toolbarSlot}
 
-        {/* Voice, then send — the order the header comment above describes.
-            This render is the whole feature: the props were threaded here and
-            destructured, but `VoiceRecorder` was never placed in the JSX, so
-            dictation was unreachable from every composer in the app. */}
         <VoiceRecorder
           onTranscription={onTranscription}
           disabled={voiceDisabled}

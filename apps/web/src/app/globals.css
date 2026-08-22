@@ -2195,3 +2195,14 @@ html[data-desktop='true'] .kx-titlebar-row[data-sidebar-collapsed] {
   p.is-editor-empty:first-child::before {
   color: var(--color-amber-400);
 }
+
+/* ── Sidebar rail drag ──────────────────────────────────────────────────────
+   While `SidebarRail` is being dragged the pointer must read as a resize
+   everywhere it travels — it leaves the 16px handle within the first few
+   pixels — and nothing under it may select. `<html>` carries the attribute for
+   the duration of the drag only; `!important` is what beats every element's
+   own cursor/user-select, which is the entire point of a global drag state. */
+[data-sidebar-resizing] * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}

@@ -1,4 +1,21 @@
-import { createGateway, gatewayErrorResponse } from '@kortix/llm-gateway';
+import {
+  DEFAULT_INFLIGHT_BUDGET_BYTES,
+  DEFAULT_MAX_REQUEST_BYTES,
+  InflightBudget,
+  createGateway,
+  gatewayErrorResponse,
+  gatewayOverloadedResponse,
+  readBoundedBody,
+  requestTooLargeResponse,
+} from '@kortix/llm-gateway';
+
+// Same contract as the in-process host: work beyond capacity is refused loudly,
+// never accepted into an OOM. One budget per process — it rations process
+// memory, so anything narrower rations nothing.
+const inflight = new InflightBudget({
+  maxBytes: Number(process.env.GATEWAY_INFLIGHT_BUDGET_BYTES) || DEFAULT_INFLIGHT_BUDGET_BYTES,
+  perRequestMaxBytes: DEFAULT_MAX_REQUEST_BYTES,
+});
 import { Hono } from 'hono';
 import { createApiClient } from './clients/api-client';
 import { config } from './config';
@@ -166,21 +183,42 @@ export function buildServer(): GatewayServer {
     req: {
       header: (k: string) => string | undefined;
       text: () => Promise<string>;
-      raw?: { signal?: AbortSignal };
+      // The standard Request, needed to size-limit the body BEFORE reading it
+      // (readBoundedBody). `signal` is read off the same object for the
+      // client-disconnect abort below.
+      raw: Request;
     };
   }) => {
     const requestId = `req_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
     try {
-      const res = await gateway.chatCompletions({
-        authorization: c.req.header('authorization'),
-        rawBody: await c.req.text(),
-        // `c.req.raw` is Hono's underlying standard Request — its `.signal`
-        // fires on client disconnect, so a caller that goes away mid-request
-        // stops the upstream fetch/stream instead of running to completion.
-        signal: c.req.raw?.signal,
-      });
-      recordOutcome(res.status);
-      return res;
+      // Size-limited BEFORE the body is materialized — see readBoundedBody.
+      const body = await readBoundedBody(c.req.raw, DEFAULT_MAX_REQUEST_BYTES);
+      if (!body.ok) {
+        recordOutcome(413);
+        return requestTooLargeResponse(requestId);
+      }
+      const lease = inflight.admit(body.body.length);
+      if (!lease.ok) {
+        const status = lease.reason === 'too_large' ? 413 : 503;
+        recordOutcome(status);
+        return status === 413
+          ? requestTooLargeResponse(requestId)
+          : gatewayOverloadedResponse(lease.retryAfterSeconds, requestId);
+      }
+      try {
+        const res = await gateway.chatCompletions({
+          authorization: c.req.header('authorization'),
+          rawBody: body.body,
+          // `c.req.raw` is Hono's underlying standard Request — its `.signal`
+          // fires on client disconnect, so a caller that goes away mid-request
+          // stops the upstream fetch/stream instead of running to completion.
+          signal: c.req.raw?.signal,
+        });
+        recordOutcome(res.status);
+        return res;
+      } finally {
+        lease.release();
+      }
     } catch (err) {
       console.error('[gateway] request failed', err);
       recordOutcome(503);
@@ -213,13 +251,32 @@ export function buildServer(): GatewayServer {
     req: {
       header: (k: string) => string | undefined;
       text: () => Promise<string>;
+      raw: Request;
     };
   }) => {
     try {
-      const res = await gateway.messages({
-        authorization: c.req.header('authorization'),
-        rawBody: await c.req.text(),
-      });
+      const body = await readBoundedBody(c.req.raw, DEFAULT_MAX_REQUEST_BYTES);
+      if (!body.ok) {
+        recordOutcome(413);
+        return requestTooLargeResponse();
+      }
+      const lease = inflight.admit(body.body.length);
+      if (!lease.ok) {
+        const status = lease.reason === 'too_large' ? 413 : 503;
+        recordOutcome(status);
+        return status === 413
+          ? requestTooLargeResponse()
+          : gatewayOverloadedResponse(lease.retryAfterSeconds);
+      }
+      let res: Response;
+      try {
+        res = await gateway.messages({
+          authorization: c.req.header('authorization'),
+          rawBody: body.body,
+        });
+      } finally {
+        lease.release();
+      }
       recordOutcome(res.status);
       return res;
     } catch (err) {

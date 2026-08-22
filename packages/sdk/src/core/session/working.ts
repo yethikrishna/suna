@@ -104,6 +104,31 @@ export const STREAM_OBSERVATION_MAX_MS = 45_000;
 export const INBOX_OBSERVATION_MAX_MS = 10_000;
 
 /**
+ * How long a runtime `idle` frame may outrank the control plane's turn row.
+ *
+ * The ledger is closed by a SEPARATE daemon relay (`POST .../turn-stream`
+ * `kind:"end"`), so for a moment after the runtime goes idle the row is still
+ * open and a `/turn` read taken in that window honestly reports a turn that has
+ * finished. MEASURED 2026-08-21 on a healthy stack: the relay POST itself took
+ * 1765ms, while the idle frame reaches the tab immediately and triggers its own
+ * refetch that lands ~186ms later — squarely inside the gap. Without this the
+ * composer's Stop button and the turn shimmer came back ~200ms after the reply
+ * and stayed for the whole poll interval.
+ *
+ * BOUNDED, and this is the important half. An idle frame is NOT proof the turn
+ * ended: `session.error` is relayed as `idle` too ("errors terminate the
+ * response"), and OpenCode emits it while it is RETRYING a provider — a 429
+ * backoff, a transient upstream 5xx — with the turn still very much live. An
+ * unbounded rule therefore un-busied the composer mid-turn on every retry and
+ * held it that way until the next `busy` frame, which is a worse flicker than
+ * the one it fixes. Past this window the ledger is believed again, so a retry
+ * blip self-heals in seconds instead of lasting the stream's whole 45s life.
+ *
+ * Comfortably above the measured relay, far below a provider backoff.
+ */
+export const TURN_END_LEDGER_LAG_MS = 3_000;
+
+/**
  * How long a stop this tab issued may bar a server read from reporting the
  * turn it is ending.
  *
@@ -288,8 +313,70 @@ export function projectWorking(inputs: WorkingInputs): WorkingProjection {
   const serverFresh = !!server && nowMs - server.atMs <= SERVER_OBSERVATION_MAX_MS;
   const streamFresh = !!stream && nowMs - stream.atMs <= STREAM_OBSERVATION_MAX_MS;
   const inboxFresh = !!inbox && nowMs - inbox.atMs <= INBOX_OBSERVATION_MAX_MS;
-  const openTurn = serverFresh ? server!.turns[0] : undefined;
-  const serverOpenTurnToken = openTurn?.turn_token ?? null;
+
+  // The runtime's own end-of-turn frame, while it is fresh enough to decide
+  // anything at all. It borrows `STREAM_OBSERVATION_MAX_MS` rather than
+  // inventing a second bound: a frame too stale to answer is too stale to veto.
+  const idleFrame = streamFresh && stream!.type === 'idle' ? stream! : null;
+
+  /**
+   * Whether the runtime has already finished this turn.
+   *
+   * "Newer read wins" is the rule this replaces, and it is wrong here, because
+   * the two observers do not learn the same fact at the same time. The idle
+   * frame comes straight off the runtime over SSE. The ledger row is closed by
+   * a SEPARATE daemon relay (`POST .../turn-stream` `kind:"end"`) — so a `/turn`
+   * read ISSUED after the frame is still ABOUT a turn the frame already ended.
+   *
+   * MEASURED, local stack 2026-08-21, one ordinary composer turn: the idle
+   * frame reached the tab at 00:03:59.964, the refetch that frame itself
+   * triggers landed at 00:04:00.150 stamped 44ms later and still reported the
+   * turn `active`, and the ledger did not record `ended_at` until 00:04:15.132
+   * — the relay for that turn never arrived and a reconciliation sweep closed
+   * it 15.1s late. The composer's Stop button and the turn's shimmer came back
+   * 186ms after they left and stayed for fifteen seconds, with the finished
+   * reply already on screen. Even in the healthy case the relay lands ~200ms
+   * after the frame, which is still inside the window its own refetch lands in.
+   *
+   * `started_at` is what separates the two turns the rule has to tell apart: a
+   * turn that began BEFORE the frame is the turn that frame ended, and a turn
+   * that began after it is a NEW one the frame knows nothing about — a queued
+   * prompt draining, a trigger firing, a second device sending. That one keeps
+   * the ledger's full authority, with no delay and no window.
+   *
+   * A row with no start instant (a legacy `activeTurn`) cannot be ranked
+   * against the frame at all, and inventing an order there would hide a live
+   * turn. The ledger keeps it.
+   */
+  const endedByRuntime = (candidate: SessionTurn): boolean => {
+    if (!idleFrame) return false;
+    // Only a turn that began BEFORE the frame — a turn started after it is a
+    // new one the frame knows nothing about.
+    const startedAt = instant(candidate.started_at);
+    if (startedAt === null || startedAt >= idleFrame.atMs) return false;
+    // And only while the ledger has not had time to record the close. Past
+    // `TURN_END_LEDGER_LAG_MS` a row that is STILL open is saying something the
+    // frame cannot explain — the commonest cause being that the frame was a
+    // retry's `session.error`, not the end of anything — so the ledger wins
+    // again and the composer goes back to working.
+    return nowMs - idleFrame.atMs < TURN_END_LEDGER_LAG_MS;
+  };
+
+  const ledgerTurn = serverFresh ? server!.turns[0] : undefined;
+  // `serverOpenTurnToken` deliberately keeps reporting the LEDGER's turn even
+  // when the runtime's frame has decided the state above — see its docstring.
+  // It answers "is the control plane still holding authority", which is what a
+  // `/` command must check before going straight at OpenCode with no admission
+  // gate in front of it, and that stays true for as long as the row does.
+  // Only the WORKING decision moves.
+  const serverOpenTurnToken = ledgerTurn?.turn_token ?? null;
+  // EVERY row, not just the first. The ledger holds more than one open turn
+  // whenever a prompt is forwarded while another is running — measured on the
+  // local stack as `turns: [B@00:28:56, A@00:28:22]` — and the list is not
+  // ordered newest-first. Testing only `turns[0]` would let one spent row hide
+  // a live one behind it, so the projection keeps the first turn the runtime
+  // has NOT finished.
+  const openTurn = serverFresh ? server!.turns.find((t) => !endedByRuntime(t)) : undefined;
 
   // A turn the authority is holding open, unless the stream has since said the
   // session went idle. The stream frame is newer BY OBSERVATION, and the daemon
@@ -307,6 +394,13 @@ export function projectWorking(inputs: WorkingInputs): WorkingProjection {
 
   // Durable rows outrank an idle read: the read is right that no TURN is
   // running and wrong that nothing is happening.
+  //
+  // Every live row counts, INCLUDING the ones already forwarded to the runtime.
+  // A prompt queued behind a running turn is handed to OpenCode early and sits
+  // in `delivering` ACROSS the turn boundary, so the idle frame that ends the
+  // turn in front of it says nothing about it. Measured on the local stack
+  // 2026-08-21: suppressing forwarded rows on that frame left the composer idle
+  // for 13.8s with the user's queued prompt still waiting to run.
   if (inboxFresh && inbox!.pending > 0) {
     return {
       state: 'working',
@@ -389,6 +483,10 @@ export function projectWorking(inputs: WorkingInputs): WorkingProjection {
 export function workingExpiryAtMs(inputs: WorkingInputs): number | null {
   const { optimistic, abort, inbox, server, stream, nowMs } = inputs;
   const deadlines = [
+    // The instant a runtime idle frame stops outranking the ledger's turn row.
+    // Nothing else re-renders then, and a session held `idle` by that rule has
+    // to go back to `working` on its own when the frame's window closes.
+    stream && stream.type === 'idle' ? stream.atMs + TURN_END_LEDGER_LAG_MS : null,
     optimistic ? optimistic.atMs + OPTIMISTIC_RECEIPT_MAX_MS : null,
     abort ? abort.atMs + OPTIMISTIC_ABORT_MAX_MS : null,
     inbox ? inbox.atMs + INBOX_OBSERVATION_MAX_MS : null,

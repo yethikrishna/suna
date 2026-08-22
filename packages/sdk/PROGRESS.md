@@ -12,6 +12,151 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-21 — session `session-busy-flicker` — display order was not an order — DONE
+
+**Files:** `core/turns/grouping.ts` (`compareMessagesForDisplay` rewritten as two
+segments) + `core/turns/display-order.test.ts` (new, 7 tests). No public surface
+change.
+
+**What.** Three prompts sent "who", "are", "you" rendered "who", "you", "are",
+and assistant replies attached to the wrong user messages.
+
+`compareMessagesForDisplay` switched ordering PER PAIR: wire-id order when both
+ids were well-formed wire ids, `time.created` for every pair involving anything
+else. A queued row carries a host-fabricated stamp, so two placed messages A, B
+and one queued row S compared as A < B (by id), S < A (by time), B > S (by
+time) — a cycle. `Array.prototype.sort` may emit any permutation of a cyclic
+comparator and V8 switches algorithm with input length, which is why the order
+looked random. `groupMessagesIntoTurns` walks the same sorted list to attach
+assistant messages with no `parentID`, so the replies re-parented too, and a
+queued row could sort ABOVE the entire transcript.
+
+**Fix.** Two disjoint segments, each internally a total order: everything the
+server has PLACED (it has a wire id) first, in wire-id order; everything still
+only LOCAL (an optimistic stub, a queued inbox row) after all of it, by send
+instant, untimed last. A local placeholder exists precisely because the server
+has not placed it, and gains a wire id the moment it is echoed. No fabricated
+timestamps anywhere, so no clock skew can reorder a conversation.
+
+Two untimed messages stay a TIE so the stable sort keeps the host's input order
+— an id tiebreak there regrouped `groupMessagesIntoTurns`' own sequential
+fallback (`u1`, `a1`, `a2` → `a1`, `a2`, `u1`), caught by its existing test.
+
+**Gates:** `typecheck` clean (both projects) · `bun test --isolate src` 2426
+pass / 0 fail · surface snapshots unchanged.
+
+---
+
+### 2026-08-21 — session `changes-truth` — the Changes surface has ONE source of truth — DONE
+
+**Files:** `react/use-opencode-sessions/vcs.ts` (NEW: `useOpenCodeVcsDiff`,
+`VcsDiffMode`, re-exported `VcsFileDiff`) + `vcs.test.ts` (NEW, 8 tests) ·
+`react/use-opencode-sessions/keys.ts` (+`opencodeKeys.vcsDiff`, `vcsDiffAll`) ·
+`react/use-opencode-sessions/index.ts` (barrel) · `react/opencode.ts`
+(+`useRuntimeVcsDiff` alias) · `react/use-opencode-events/handle-event.ts`
+(+5 invalidation points) + `handle-event.test.ts` (+5 tests) · both surface
+snapshots. Additive only — no rename, no breaking change, no new subpath.
+
+**What.** A fresh session showed a tab badge reading "Changes 32" directly above
+a body reading "No changes yet". Two sources of truth, contradicting each other
+on screen at the same moment:
+
+- the badge counted `GET /file/status` (`git status --porcelain -uall`);
+- the body read `client.session.diff({ sessionID })`, which answers "what did
+  ONE user message change". Zero user messages on a fresh session → `[]`.
+
+`session.diff` is a message-scoped endpoint, so `useRuntimeSessionDiff` was a
+misnomer for what the panel wanted. The correct endpoint is `GET /vcs/diff`,
+already in the pinned `@opencode-ai/sdk@1.18.19`. `useOpenCodeVcsDiff` wraps it
+with ONE query key per (mode, sandbox), so every Changes surface reads the same
+cache entry and they cannot disagree by construction.
+
+**Mode is `branch`, not `git`.** `git` is the working tree alone and drops to
+zero the moment the agent commits — the badge and the "Propose changes" CTA
+vanished while the work still was not in the base version, which is the exact
+opposite of what the surface's own copy promises. `branch` = branch commits +
+working tree. Verified live against a real `opencode-ai@1.18.19` server: on a
+branch with one commit plus one untracked file, `mode=git` returned 1 entry
+(the untracked file) and `mode=branch` returned 2.
+
+`useRuntimeSessionDiff` / `useOpenCodeSessionDiff` stay exported — public API.
+
+**Gates:** `typecheck` clean (both projects) · `bun test --isolate src` 2401
+pass / 2 skip / 0 fail · `smoke:install` passed.
+
+---
+
+### 2026-08-21 — session `session-busy-flicker` — the ledger is not timely about the END of a turn — DONE
+
+**Files:** `core/session/working.ts` (`endedByRuntime`, all-rows `openTurn`),
+`react/use-session-working.ts` (+`streamTurnPhase`, phase-keyed invalidation),
+`react/use-session-prompts.ts` (`sessionPromptsPollMs` believed-pending arg)
++ 4 test files. **No public surface change** — both snapshots are byte-identical.
+
+**What.** The agent finished, the reply was on screen, and the spinner and Stop
+button came BACK about 200ms later and stayed for up to 18s.
+
+`projectWorking` ranked its observations by wall-clock: a newer read beat an
+older frame. That is wrong here, because the two observers do not learn the
+same fact at the same time. `session.idle` comes straight off the runtime over
+SSE; the ledger row is closed by a SEPARATE daemon relay
+(`POST .../turn-stream` `kind:"end"`). The idle frame ALSO triggers an immediate
+`/turn` refetch (`use-session-working.ts`), and that refetch is stamped after
+the frame while still reporting the turn the frame just ended → `working`.
+
+MEASURED, local stack, five consecutive turns: ledger lag behind the runtime of
+**6.9s, 10s, 15.2s and 18.5s**, and only ONE of the five turns produced a relay
+POST at all — the rest were closed late by a reconciliation sweep. One captured
+transition: idle frame 00:03:59.964 → `working` again at 00:04:00.150 (read
+stamped +44ms, turn still `active`) → idle at 00:04:15.248. 15.1s of false busy.
+
+**Fix.** A turn whose `started_at` PREDATES the freshest idle frame is the turn
+that frame ended, and no ledger read may report it as working. A turn that
+started after the frame is a new one the frame knows nothing about and keeps the
+ledger's full authority — so a queued prompt draining, a trigger, or a second
+device still lights the composer immediately, with no window and no delay. The
+rule scans every open row, not `turns[0]`: the ledger holds two open turns while
+a prompt is forwarded under a running one, and the list is not newest-first.
+`serverOpenTurnToken` deliberately does NOT move — it answers "does the control
+plane still hold authority", which is what an admission-gate-less `/` command
+checks.
+
+**Also.** (a) `streamTurnPhase` keys the SSE-triggered invalidation on the
+idle/active PHASE instead of the observation instant: the runtime alternates
+`busy`→`retry` about every 140ms mid-turn (measured), and each flip was
+re-invalidating `/turn` AND `/prompts`, once per mount, three mounts per session.
+(b) `sessionPromptsPollMs` now counts what the tab BELIEVES is pending, not only
+the fetched list length — a first read that landed before the row existed
+answered zero, locked the 15s idle cadence, and let the 10s
+`INBOX_OBSERVATION_MAX_MS` belief die under a prompt that was still queued
+(captured: `inbox=1@10004` → `idle`).
+
+**Tried and reverted.** Excluding FORWARDED (`delivering`) inbox rows on the same
+idle frame. A prompt queued behind a running turn is handed to OpenCode early and
+sits in `delivering` ACROSS the turn boundary, so that frame says nothing about
+it; the change put the composer back on Send for 13.8s with the user's queued
+prompt still waiting. Reverted whole, including its `countForwardedInboxPrompts`
+export — the hypothesis it was built on (rows closing late) is also false: rows
+leave `GET .../prompts` at acceptance, ~1.7s after the turn opens.
+
+**Open, server side, NOT fixed here.** The daemon's `kind:"end"` relay is
+missing for most turns on the local stack, which is what makes the ledger 7-18s
+late and also delays `reconcileForwardedTurnsAtEnd` — a prompt queued behind a
+running turn was stranded and re-queued, starting 13.6s after the turn ahead of
+it ended. The client is now correct regardless, but the relay gap is worth its
+own investigation.
+
+**Verification.** Real turns against a live Platinum sandbox, UI sampled at 100ms
+on `[data-testid="session-busy-indicator"]` + the Stop control: **0 busy
+reversals in 1133 samples** on a turn whose ledger lagged 18.5s. Before the fix
+the same measurement showed idle→working→idle with a 15.1s false-busy leg.
+
+**Gates:** `typecheck` clean (both projects) · `bun test --isolate src`
+2402 pass / 2 skip / 0 fail · `smoke:install` — see below.
+
+---
+
+||||||| 73f35677cd
 ### 2026-08-20 — session `session-ux` — a session with no project never reads a project-scoped inbox — DONE
 
 **Files:** `react/use-session-prompts.ts` (+`readSessionPromptsInbox`, gated

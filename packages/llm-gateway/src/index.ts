@@ -1,5 +1,17 @@
 export { createGateway } from './create-gateway';
 export { DEFAULT_MAX_REQUEST_BYTES } from './domain/config';
+export {
+  gatewayOverloadedResponse,
+  readBoundedBody,
+  requestTooLargeResponse,
+} from './pipeline/read-bounded-body';
+export {
+  DEFAULT_BODY_AMPLIFICATION,
+  DEFAULT_INFLIGHT_BUDGET_BYTES,
+  InflightBudget,
+} from './pipeline/inflight-budget';
+export type { InflightBudgetOptions, InflightLease } from './pipeline/inflight-budget';
+export type { BoundedBodyResult } from './pipeline/read-bounded-body';
 export type { ChatCompletionRequest, GatewayDeps } from './pipeline';
 export {
   MAX_RELAYED_RETRY_AFTER_SECONDS,

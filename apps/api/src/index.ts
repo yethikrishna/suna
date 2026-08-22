@@ -55,7 +55,7 @@ import {
 } from './shared/daytona-transient';
 import { GitOperationError, isGitOperationError } from './projects/git/mirror';
 import { resolvePrefixEscape } from './sandbox-proxy/prefix-escape';
-import { previewBaseDomain } from './sandbox-proxy/preview-hosts';
+import { previewBaseDomain, warnIfPreviewOriginsMissing } from './sandbox-proxy/preview-hosts';
 // Statically imported (NOT await import() in the handlers): on a long-running
 // `bun --hot` dev process, dynamic import() can wedge permanently after enough
 // hot reloads — the promise never settles, the handler hangs, and Bun's
@@ -118,6 +118,7 @@ import {
 import { startProjectMaintenance, stopProjectMaintenance } from './projects/maintenance';
 import { startActiveTurnRenewal, stopActiveTurnRenewal } from './projects/active-turn-renewal';
 import { kickStartupPreBuild } from './snapshots/builder';
+import { projectImageRolloutDiagnostic } from './snapshots/project-image-scope';
 import { registerSunaMigrationRoutes } from './projects/suna-migration/suna-migration-routes';
 import { handleAppPublicRequest, resolveAppRequest } from './apps/public-proxy';
 import { edgeApp } from './edge/tls-check';
@@ -146,6 +147,16 @@ import {
 } from './shared/audit-reconciliation-worker';
 import { opsApp } from './ops';
 import { adminApp } from './admin';
+
+/**
+ * The streaming secret relay routes, matched on the raw pathname in
+ * `Bun.serve`'s fetch — before Hono sees the request.
+ *
+ * Covers both `…/relay` and `…/relay/ws-ticket` (and the ws upgrade path when
+ * it lands). These carry SSE and long-lived upstream bodies, so they need the
+ * same `server.timeout(req, 0)` treatment as /v1/p/ and /v1/llm-gateway.
+ */
+const SECRET_RELAY_PATH = /^\/v1\/projects\/[^/]+\/secrets\/[^/]+\/relay(?:\/|$)/;
 
 // ─── Process-level crash guards ───────────────────────────────────────────────
 // A stray rejected promise or throw escaping any fire-and-forget path — the
@@ -1385,6 +1396,11 @@ let draining = false;
 // service serve request-path needs (per-node caches + the WS acceptor), so they
 // must be live on each node behind the load balancer.
 async function startReplicaServices() {
+  appLogger.info(
+    '[snapshots] project image rollout',
+    projectImageRolloutDiagnostic(),
+  );
+  warnIfPreviewOriginsMissing(appLogger);
   startAccessControlCache();
   startTunnelService();
   // Warm the runtime-settings cache BEFORE serving traffic so the admin-panel
@@ -1606,6 +1622,15 @@ export default {
       server.timeout(req, 0);
     }
 
+    // The secret streaming relay carries SSE and long-lived upstream bodies.
+    // Without this Bun cuts the socket with an empty reply that the LB turns
+    // into a 502 with no CORS headers — the same shape as the gateway
+    // idleTimeout incident. The global `idleTimeout: 0` above is necessary but
+    // not sufficient: `server.timeout(req, …)` is the PER-REQUEST budget.
+    if (SECRET_RELAY_PATH.test(url.pathname)) {
+      server.timeout(req, 0);
+    }
+
     // The standalone-gateway reverse proxy streams chat completions (SSE). Let
     // the gateway's own keep-alive / upstream timeout govern it instead of Bun
     // closing the client socket at idleTimeout with an empty reply.
@@ -1616,7 +1641,6 @@ export default {
     // ── Subdomain preview routing ──────────────────────────────────────
     // Matches `p{port}-{sandboxId}.localhost:{apiPort}` regardless of path.
     // Same per-request long-poll/SSE timeout posture as /v1/p/.
-    const host = req.headers.get('host') || '';
     if (resolveAppRequest(req, url)) {
       server.timeout(req, 0);
       if (isWsUpgrade) {

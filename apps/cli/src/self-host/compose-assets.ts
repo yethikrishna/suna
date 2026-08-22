@@ -148,13 +148,15 @@ const APPS_SITE_BLOCK = `# *.<apps base domain>: every deployed Kortix App, serv
 		dynamic a {
 			name kortix-api
 			port 8008
-			refresh 5s
+			refresh 2s
 		}
 		lb_policy round_robin
-		fail_duration 10s
+		lb_try_duration 5s
+		lb_try_interval 250ms
+		fail_duration 30s
 		health_uri /v1/health
-		health_interval 10s
-		health_timeout 5s
+		health_interval 3s
+		health_timeout 2s
 	}
 }`;
 
@@ -193,13 +195,15 @@ const PREVIEW_SITE_BLOCK = `# *.<preview base domain>: one origin per sandbox po
 		dynamic a {
 			name kortix-api
 			port 8008
-			refresh 5s
+			refresh 2s
 		}
 		lb_policy round_robin
-		fail_duration 10s
+		lb_try_duration 5s
+		lb_try_interval 250ms
+		fail_duration 30s
 		health_uri /v1/health
-		health_interval 10s
-		health_timeout 5s
+		health_interval 3s
+		health_timeout 2s
 	}
 }`;
 
@@ -436,6 +440,26 @@ export function renderFullDockerCompose(composeProject: string, options: RenderC
       retries: 20,
       start_period: '10s',
     };
+    // Connection headroom for horizontal scaling (Essentia scale work,
+    // 2026-08-21). Each kortix-api replica opens DB_POOL_MAX (15) main +
+    // DB_AUDIT_POOL_MAX (3) audit = 18 DIRECT Postgres backends; the Supabase
+    // data plane adds ~30. The image default of 100 caps the stack at ~4 api
+    // replicas; 200 (each backend ~10 MiB → ~2 GiB, fine on a typical box)
+    // lifts that to ~8-9. Injected here, NOT in the upstream-locked vendored
+    // docker-compose.yml, so it survives a Supabase bump. We keep the api on
+    // DIRECT connections rather than the supavisor transaction pooler because
+    // supavisor does NOT propagate the per-connection statement_timeout
+    // (verified on the box: a stuck query is never killed) — that timeout is the
+    // anti-cascade lever in packages/db/src/client.ts. Scale further by raising
+    // POSTGRES_MAX_CONNECTIONS (needs a db restart) and DB_POOL_MAX per replica.
+    if (Array.isArray(database.command)) {
+      const cmd = database.command as string[];
+      if (!cmd.some((arg) => String(arg).startsWith('max_connections='))) {
+        const cfgIdx = cmd.findIndex((arg) => String(arg).startsWith('config_file='));
+        const insertAt = cfgIdx >= 0 ? cfgIdx + 1 : cmd.length;
+        cmd.splice(insertAt, 0, '-c', 'max_connections=${POSTGRES_MAX_CONNECTIONS:-200}');
+      }
+    }
   }
   const supavisor = services['supabase-supavisor'];
   if (supavisor) {
@@ -617,7 +641,14 @@ interface MemSpec {
 
 const MEM_LIMITS: Readonly<Record<string, MemSpec>> = {
   'supabase-db': { limit: '1280m', reservation: '512m', oomScoreAdj: -900 },
-  'kortix-api': { limit: '${KORTIX_API_MEMORY_LIMIT:-640m}', reservation: '256m' },
+  // The API HOSTS THE GATEWAY IN-PROCESS (apps/api/src/index.ts mounts
+  // `/v1/llm` via mountLlmGateway), so every byte the note below describes for
+  // the standalone gateway also transits this container. 640m was the same
+  // mistake one service down: on 2026-08-21 the dev API — capped at 1024 MiB,
+  // still under the 2 GiB proven necessary here — was OOM-killed three times
+  // in eleven minutes during an image-heavy session, and the browser was shown
+  // Cloudflare's "Bad Gateway" page. Matched to the gateway's ceiling.
+  'kortix-api': { limit: '${KORTIX_API_MEMORY_LIMIT:-2048m}', reservation: '256m' },
   // Headroom for large multimodal requests: the gateway buffers the raw request
   // body (image-heavy agent turns run tens of MiB — see DEFAULT_MAX_REQUEST_BYTES),
   // so 512m was far too tight once the body ceiling was raised. Give it a generous

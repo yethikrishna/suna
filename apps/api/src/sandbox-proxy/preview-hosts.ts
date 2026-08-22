@@ -144,3 +144,89 @@ export function resolvePreviewHost(hostname: string): ResolvedPreviewHost | null
   if (port < 1 || port > 65535) return null;
   return { port, sandboxLabel: match[3]!, local: false };
 }
+
+/**
+ * Cross-origin access to a preview, granted to the Kortix web app and nobody
+ * else.
+ *
+ * The preview cookie is `SameSite=None` — it must be, for the session panel to
+ * embed a preview — so the browser ATTACHES it to cross-site requests. Echoing
+ * an arbitrary `Origin` back with `Allow-Credentials: true` therefore hands any
+ * website a credentialed read of a signed-in user's preview. An allowlist is
+ * the only safe form, and it lives here, once, because BOTH edges answer with
+ * these headers and a policy in two places is a policy that drifts.
+ *
+ * Same-origin requests need none of this and are given none: callers pass ''.
+ */
+export function isAllowedPreviewOrigin(origin: string): boolean {
+  const frontend = (config.FRONTEND_URL || '').trim();
+  if (!frontend) return false;
+  try {
+    return new URL(origin).origin === new URL(frontend).origin;
+  } catch {
+    return false;
+  }
+}
+
+export function previewCorsHeaders(origin: string): Record<string, string> {
+  if (!origin || !isAllowedPreviewOrigin(origin)) return {};
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
+    Vary: 'Origin',
+  };
+}
+
+/**
+ * Whether this deployment serves browsers on a public origin — the only case
+ * where a missing preview domain is a misconfiguration rather than the correct
+ * setup.
+ *
+ * A laptop and a worktree are excluded deliberately. Their clients build
+ * `p{port}-{sandbox}.localhost:{apiPort}` themselves (see previewUrlTemplate's
+ * null contract), and a quick cloudflared tunnel has no wildcard DNS and no
+ * certificate a preview origin could ever use — warning there would train
+ * operators to ignore the warning that matters.
+ */
+function servesPublicBrowsers(): boolean {
+  const raw = (config.KORTIX_URL || '').trim();
+  if (!raw) return false;
+  let host: string;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:') return false;
+    host = url.hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host === 'localhost' || host.endsWith('.localhost')) return false;
+  if (host === '127.0.0.1' || host === '::1') return false;
+  // Ephemeral quick tunnels: public, but nothing durable to anchor an origin to.
+  if (host.endsWith('.trycloudflare.com')) return false;
+  return true;
+}
+
+/**
+ * Say — once, at boot, at WARN — that this deployment hands browsers path
+ * previews. Nothing fails when KORTIX_PREVIEW_BASE_DOMAIN is unset: the path
+ * proxy answers 200 and the app inside it quietly loses every root-absolute
+ * link. That silence is the whole problem, and it is why this is a startup log
+ * rather than a health check: an operator reading boot logs after a deploy is
+ * the earliest moment anyone can notice.
+ *
+ * Deliberately never throws and never blocks startup. Refusing to boot would
+ * turn a degraded preview into an outage for every instance that has not set
+ * the variable yet — trading a broken stylesheet for a dead API.
+ */
+export function warnIfPreviewOriginsMissing(
+  log: { warn: (message: string, meta?: Record<string, unknown>) => void },
+): void {
+  if (previewBaseDomain() || !servesPublicBrowsers()) return;
+  log.warn(
+    '[preview] no KORTIX_PREVIEW_BASE_DOMAIN — browsers get /v1/p/ path previews, which break root-absolute links',
+    {
+      kortix_url: config.KORTIX_URL,
+      fix: 'point *.p.<your domain> at this deployment, then set KORTIX_PREVIEW_BASE_DOMAIN (self-host: `kortix self-host doctor`)',
+    },
+  );
+}

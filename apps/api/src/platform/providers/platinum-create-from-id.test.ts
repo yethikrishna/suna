@@ -28,6 +28,9 @@ let sandboxesError: Error | null = null;
 
 mock.module('../../shared/platinum', () => ({
   isPlatinumConfigured: () => true,
+  platinumJsonResponse: async () => {
+    throw new Error('unexpected Platinum materialization request');
+  },
   platinumJson: async (path: string, init: RequestInit = {}) => {
     const body = init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
     calls.push({ path, method: String(init.method ?? 'GET'), body });

@@ -1,5 +1,6 @@
+import { Button } from '@/components/ui/button';
+import { errorToast, infoToast, successToast } from '@/components/ui/toast';
 import { getEnv } from '@/lib/env-config';
-import { toast } from '@/lib/toast';
 import {
   buildPresentationTemplateImageUrl,
   buildPresentationTemplatePdfUrl,
@@ -135,19 +136,19 @@ export async function downloadPresentation(
     }
     const blob = await convertRuntimePresentation(format, sandboxUrl, presentationPath, {
       onGenerating: () => {
-        toast.info(`Generating ${format.toUpperCase()}… this can take a moment for large decks`, {
-            duration: 6000,
+        infoToast(`Generating ${format.toUpperCase()}… this can take a moment for large decks`, {
+          duration: 6000,
         });
       },
     });
     saveBlob(blob, `${presentationName}.${format}`);
-    toast.success(`Downloaded ${presentationName} as ${format.toUpperCase()}`, {
+    successToast(`Downloaded ${presentationName} as ${format.toUpperCase()}`, {
       duration: 8000,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[downloadPresentation] Error downloading ${format}:`, error);
-    toast.error(message, { duration: 10000 });
+    errorToast(message, { duration: 10000 });
     throw error; // Re-throw to allow calling code to handle
   }
 }
@@ -172,7 +173,7 @@ export const handleGoogleAuth = async (presentationPath: string, sandboxUrl: str
     }
   } catch (error) {
     console.error('Error initiating Google auth:', error);
-    toast.error('Failed to initiate Google authentication');
+    errorToast('Failed to initiate Google authentication');
   }
 };
 
@@ -185,7 +186,7 @@ export const handleGoogleSlidesUpload = async (sandboxUrl: string, presentationP
     const result = await convertPresentationToGoogleSlides(presentationPath, sandboxUrl);
 
     if (!result.success && !result.is_api_enabled) {
-      toast.info('Redirecting to Google authentication...', {
+      infoToast('Redirecting to Google authentication...', {
         duration: 3000,
       });
       handleGoogleAuth(presentationPath, sandboxUrl);
@@ -198,11 +199,18 @@ export const handleGoogleSlidesUpload = async (sandboxUrl: string, presentationP
 
     if (result.google_slides_url) {
       // Always show rich success toast - this is universal
-      toast.success('🎉 Presentation uploaded successfully!', {
-        action: {
-          label: 'Open in Google Slides',
-          onClick: () => window.open(result.google_slides_url, '_blank', 'noopener,noreferrer'),
-        },
+      successToast('🎉 Presentation uploaded successfully!', {
+        button: (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              window.open(result.google_slides_url, '_blank', 'noopener,noreferrer')
+            }
+          >
+            Open in Google Slides
+          </Button>
+        ),
         duration: 20000,
       });
 
@@ -223,9 +231,9 @@ export const handleGoogleSlidesUpload = async (sandboxUrl: string, presentationP
 
     // Show error toasts - this is also universal
     if (error instanceof Error && error.message.includes('not authenticated')) {
-      toast.error('Please authenticate with Google first');
+      errorToast('Please authenticate with Google first');
     } else {
-      toast.error('Failed to upload to Google Slides');
+      errorToast('Failed to upload to Google Slides');
     }
 
     // Re-throw for any calling code that needs to handle it

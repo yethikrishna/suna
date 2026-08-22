@@ -188,8 +188,8 @@ describe('env contract', () => {
     const mustReload = [
       'KORTIX_SESSION_ID',
       'KORTIX_PROJECT_ID',
-      'KORTIX_SANDBOX_TOKEN',
-      'KORTIX_CLI_TOKEN',
+      'KORTIX_NODE_TOKEN',
+      'KORTIX_TOKEN',
       'KORTIX_BRANCH_NAME',
       'KORTIX_REPO_URL',
       'KORTIX_INITIAL_PROMPT',

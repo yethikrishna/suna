@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createNodeCapabilityRegistry, createSandboxCapabilityRegistry } from '.'
 import { sandboxNodePolicy } from '../policy-store'
+import { findCuaDriverBinary, NativeCuaDriver } from './cua-driver'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((path) => rm(path, { recursive: true, force: true }))) })
@@ -58,5 +59,33 @@ describe('kortixd native capabilities', () => {
     allowed = [second]
     await expect(read({ path: join(first, 'a') }, new AbortController().signal)).rejects.toThrow('outside assignment roots')
     expect(await read({ path: join(second, 'b') }, new AbortController().signal)).toMatchObject({ content: 'second' })
+  })
+
+  test('discovers a trusted CUA driver and removes relay metadata from tool arguments', async () => {
+    const dir = await root()
+    const binary = join(dir, 'cua-driver')
+    await writeFile(binary, `#!/usr/bin/env bun
+const [command, tool, payload] = process.argv.slice(2)
+if (command === '--version') console.log('cua-driver 1.2.3')
+else if (command === 'status') console.log('running')
+else if (command === 'list-tools') console.log('click\\ntype_text')
+else if (command === 'describe') console.log('description:' + tool)
+else if (command === 'call') console.log(JSON.stringify({ tool, args: JSON.parse(payload || '{}') }))
+else process.exit(2)
+`)
+    await chmod(binary, 0o700)
+    expect(findCuaDriverBinary({ ...process.env, CUA_DRIVER_BIN: binary })).toBe(await realpath(binary))
+    const driver = new NativeCuaDriver({ ...process.env, CUA_DRIVER_BIN: binary })
+    expect(await driver.version()).toBe('cua-driver 1.2.3')
+    expect(await driver.call('click', { x: 10, _sig: 'private', node_id: 'private' })).toEqual({ tool: 'click', args: { x: 10 } })
+  })
+
+  test('rejects a CUA driver writable by another local user', async () => {
+    if (process.platform === 'win32') return
+    const dir = await root()
+    const binary = join(dir, 'cua-driver')
+    await writeFile(binary, '#!/bin/sh\nexit 0\n')
+    await chmod(binary, 0o722)
+    expect(() => findCuaDriverBinary({ ...process.env, CUA_DRIVER_BIN: binary })).toThrow('must not be writable')
   })
 })

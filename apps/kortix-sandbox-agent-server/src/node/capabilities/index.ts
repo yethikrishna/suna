@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
-import { constants, realpathSync, statSync } from 'node:fs'
+import { realpathSync } from 'node:fs'
 import { mkdir, open, readdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import type { NodeCapabilityHandler, NodeCapabilityName, NodeCapabilityRegistry } from './types'
 import { sandboxNodePolicy, type NodeLocalPolicy } from '../policy-store'
+import { findCuaDriverBinary, NativeCuaDriver } from './cua-driver'
 
 const SANDBOX_ROOTS = ['/workspace', '/tmp', '/home', '/opt']
 const COMMAND_METACHARS = /[;&|`$(){}[\]<>!#~]/
@@ -160,31 +161,24 @@ export function createNodeCapabilityRegistry(options: { assignmentRoots: () => r
   if (current.enabledCapabilities.includes('filesystem')) { for (const entry of filesystemMethods(options.policy, options.assignmentRoots)) methods.set(...entry); names.push('filesystem') }
   if (current.enabledCapabilities.includes('shell')) { for (const entry of shellMethods(options.policy, options.assignmentRoots)) methods.set(...entry); names.push('shell') }
   try {
-    const driver = process.env.CUA_DRIVER_BIN
-    if (driver && current.enabledCapabilities.includes('desktop')) {
-      const resolved = realpathSync(driver)
-      const info = statSync(resolved)
-      if (!info.isFile() || (info.mode & constants.X_OK) === 0 || (info.mode & 0o022) !== 0) throw new Error('CUA driver is not a trusted executable')
-      methods.set('desktop.cua.ensure', async (_params, signal) => ({ ok: true, binary: resolved, version: await shellText(resolved, ['--version'], signal) }))
-      methods.set('desktop.cua.start_daemon', async () => {
-        const child = spawn(resolved, ['serve'], { detached: true, stdio: 'ignore' })
-        child.unref()
-        return { ok: true }
-      })
-      methods.set('desktop.cua.status', async (_params, signal) => ({ status: await shellText(resolved, ['status'], signal) }))
-      methods.set('desktop.cua.version', async (_params, signal) => ({ version: await shellText(resolved, ['--version'], signal) }))
-      methods.set('desktop.cua.list_tools', async (_params, signal) => ({ tools: await shellText(resolved, ['list-tools'], signal) }))
+    const driver = new NativeCuaDriver()
+    if (current.enabledCapabilities.includes('desktop') && findCuaDriverBinary()) {
+      methods.set('desktop.cua.ensure', async (_params, signal) => ({ ok: true, binary: await driver.ensureInstalled(), version: await driver.version(signal) }))
+      methods.set('desktop.cua.start_daemon', async () => driver.startDaemon())
+      methods.set('desktop.cua.status', async (_params, signal) => ({ status: await driver.status(signal) }))
+      methods.set('desktop.cua.version', async (_params, signal) => ({ version: await driver.version(signal) }))
+      methods.set('desktop.cua.list_tools', async (_params, signal) => ({ tools: await driver.listTools(signal) }))
       methods.set('desktop.cua.describe', async (params, signal) => {
         if (typeof params.tool !== 'string' || !params.tool) throw new Error('CUA tool is required')
-        return { description: await shellText(resolved, ['describe', params.tool], signal) }
+        return { description: await driver.describe(params.tool, signal) }
       })
       methods.set('desktop.cua.call', async (params, signal) => {
         if (typeof params.tool !== 'string' || !params.tool) throw new Error('CUA tool is required')
         if (params.tool === 'check_for_update' || params.tool === 'install_ffmpeg') throw new Error(`CUA tool "${params.tool}" is local-only`)
-        return shellJson(resolved, ['call', params.tool, JSON.stringify(params.args ?? {})], signal)
+        return driver.call(params.tool, params.args as Record<string, unknown> ?? {}, signal)
       })
       for (const tool of CUA_TOOLS) {
-        methods.set(`desktop.cua.${tool}`, async (params, signal) => shellJson(resolved, ['call', tool, JSON.stringify(params)], signal))
+        methods.set(`desktop.cua.${tool}`, async (params, signal) => driver.call(tool, params, signal))
       }
       names.push('desktop')
     }
@@ -192,29 +186,6 @@ export function createNodeCapabilityRegistry(options: { assignmentRoots: () => r
     // Desktop remains unregistered when no trusted local driver exists.
   }
   return { methods, names }
-}
-
-async function shellJson(command: string, args: string[], signal: AbortSignal): Promise<unknown> {
-  return await new Promise((resolveResult, reject) => {
-    const child = spawn(command, args, { shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
-    const chunks: Buffer[] = []
-    let bytes = 0
-    const abort = () => child.kill('SIGKILL')
-    signal.addEventListener('abort', abort, { once: true })
-    child.stdout.on('data', (chunk: Buffer) => { bytes += chunk.byteLength; if (bytes > 5 * 1024 * 1024) child.kill('SIGKILL'); else chunks.push(chunk) })
-    child.once('error', reject)
-    child.once('close', (code) => {
-      signal.removeEventListener('abort', abort)
-      if (code !== 0) return reject(new Error(`CUA driver failed with exit code ${code}`))
-      const output = Buffer.concat(chunks).toString().trim()
-      try { resolveResult(output ? JSON.parse(output) : {}) } catch { resolveResult(output) }
-    })
-  })
-}
-
-async function shellText(command: string, args: string[], signal: AbortSignal): Promise<string> {
-  const result = await shellJson(command, args, signal)
-  return typeof result === 'string' ? result : JSON.stringify(result)
 }
 
 export type { NodeCapabilityRegistry } from './types'

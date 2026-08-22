@@ -63,10 +63,14 @@ describe('ComputeNodeChannelHub', () => {
     await hub.message(socket, signed({ v: 1, type: 'stream.response.data', stream_id: open.stream_id, seq: 1, data: Buffer.from('data: ok\n\n').toString('base64') }, key, 2))
     const response = await responsePromise
     expect(response.status).toBe(200)
+    expect(socket.sent.slice(2).some((raw) => JSON.parse(raw).type === 'stream.window')).toBe(false)
     const reader = response.body!.getReader()
     expect(Buffer.from((await reader.read()).value!).toString()).toBe('data: ok\n\n')
+    const endRead = reader.read()
+    await Bun.sleep(0)
+    expect(JSON.parse(socket.sent.at(-1)!).type).toBe('stream.window')
     await hub.message(socket, signed({ v: 1, type: 'stream.response.end', stream_id: open.stream_id, seq: 2 }, key, 3))
-    expect((await reader.read()).done).toBe(true)
+    expect((await endRead).done).toBe(true)
   })
 
   test('relays response-consumer cancellation to kortixd', async () => {

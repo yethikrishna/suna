@@ -1,4 +1,4 @@
-import { NODE_CHANNEL_MAX_FRAME_BYTES, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
+import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_WINDOW_BYTES, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
 
 type FetchLike = (request: Request) => Promise<Response>
 export interface PortPolicy { has(port: number): boolean }
@@ -10,6 +10,10 @@ interface StreamState {
   request: ReadableStreamDefaultController<Uint8Array>
   abort: AbortController
   task: Promise<void>
+  sendCredit: number
+  creditWaiter?: () => void
+  requestCreditPending: number
+  requestPullPending: boolean
 }
 
 export class NodeStreamAgent {
@@ -30,8 +34,31 @@ export class NodeStreamAgent {
         return
       }
       let request!: ReadableStreamDefaultController<Uint8Array>
-      const body = new ReadableStream<Uint8Array>({ start: (controller) => { request = controller } })
-      const state: StreamState = { receiveSeq: 1, sendSeq: 0, request, abort: new AbortController(), task: Promise.resolve() }
+      let state!: StreamState
+      const body = new ReadableStream<Uint8Array>({
+        start: (controller) => { request = controller },
+        pull: () => {
+          if (!this.streams.has(frame.stream_id)) return
+          if (state.requestCreditPending <= 0) {
+            state.requestPullPending = true
+            return
+          }
+          const credit = state.requestCreditPending
+          state.requestCreditPending = 0
+          state.requestPullPending = false
+          this.emit(frame.stream_id, state, { v: 1, type: 'stream.window', stream_id: frame.stream_id, seq: 0, credit })
+        },
+      }, new ByteLengthQueuingStrategy({ highWaterMark: 0 }))
+      state = {
+        receiveSeq: 1,
+        sendSeq: 0,
+        request,
+        abort: new AbortController(),
+        task: Promise.resolve(),
+        sendCredit: frame.window,
+        requestCreditPending: 0,
+        requestPullPending: false,
+      }
       this.streams.set(frame.stream_id, state)
       state.task = this.run(frame, state, body)
       this.tasks.add(state.task)
@@ -45,14 +72,24 @@ export class NodeStreamAgent {
     if (frame.type === 'stream.request') {
       const bytes = Buffer.from(frame.data, 'base64')
       state.request.enqueue(bytes)
-      this.emit(frame.stream_id, state, { v: 1, type: 'stream.window', stream_id: frame.stream_id, seq: 0, credit: bytes.byteLength })
+      if (state.requestPullPending) {
+        state.requestPullPending = false
+        this.emit(frame.stream_id, state, { v: 1, type: 'stream.window', stream_id: frame.stream_id, seq: 0, credit: bytes.byteLength })
+      } else {
+        state.requestCreditPending += bytes.byteLength
+      }
     } else if (frame.type === 'stream.request.end') {
       state.request.close()
     } else if (frame.type === 'stream.cancel') {
       state.abort.abort(frame.reason)
       state.request.error(new Error(frame.reason))
       this.streams.delete(frame.stream_id)
-    } else if (frame.type !== 'stream.window') {
+      state.creditWaiter?.()
+    } else if (frame.type === 'stream.window') {
+      state.sendCredit = Math.min(NODE_CHANNEL_MAX_WINDOW_BYTES, state.sendCredit + frame.credit)
+      state.creditWaiter?.()
+      state.creditWaiter = undefined
+    } else {
       throw new Error(`Unexpected API frame ${frame.type}`)
     }
   }
@@ -80,8 +117,14 @@ export class NodeStreamAgent {
         for (;;) {
           const { done, value } = await reader.read()
           if (done) break
-          for (let offset = 0; offset < value.byteLength; offset += CHUNK_BYTES) {
-            this.emit(open.stream_id, state, { v: 1, type: 'stream.response.data', stream_id: open.stream_id, seq: 0, data: Buffer.from(value.subarray(offset, offset + CHUNK_BYTES)).toString('base64') })
+          let offset = 0
+          while (offset < value.byteLength) {
+            await this.waitForCredit(state)
+            if (!this.streams.has(open.stream_id)) throw new Error('Node stream closed while sending response')
+            const length = Math.min(CHUNK_BYTES, state.sendCredit, value.byteLength - offset)
+            state.sendCredit -= length
+            this.emit(open.stream_id, state, { v: 1, type: 'stream.response.data', stream_id: open.stream_id, seq: 0, data: Buffer.from(value.subarray(offset, offset + length)).toString('base64') })
+            offset += length
           }
         }
       }
@@ -90,7 +133,16 @@ export class NodeStreamAgent {
       if (!state.abort.signal.aborted) this.emit(open.stream_id, state, { v: 1, type: 'stream.cancel', stream_id: open.stream_id, seq: 0, reason: (error instanceof Error ? error.message : String(error)).slice(0, 256) })
     } finally {
       this.streams.delete(open.stream_id)
+      state.creditWaiter?.()
+      state.creditWaiter = undefined
     }
+  }
+
+  private async waitForCredit(state: StreamState): Promise<void> {
+    while (state.sendCredit <= 0 && !state.abort.signal.aborted) {
+      await new Promise<void>((resolve) => { state.creditWaiter = resolve })
+    }
+    if (state.abort.signal.aborted) throw new Error(String(state.abort.signal.reason ?? 'Node stream aborted'))
   }
 
   private emit(streamId: string, state: StreamState, frame: NodeChannelFrame): void {

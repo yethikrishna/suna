@@ -23,6 +23,10 @@ interface StreamState {
   resolve(response: Response): void
   reject(error: Error): void
   controller?: ReadableStreamDefaultController<Uint8Array>
+  sendCredit: number
+  creditWaiter?: () => void
+  responseCreditPending: number
+  responsePullPending: boolean
 }
 
 const CHUNK_BYTES = Math.floor((NODE_CHANNEL_MAX_FRAME_BYTES - 2048) * 3 / 4)
@@ -102,7 +106,17 @@ export class ComputeNodeChannelHub {
     let resolve!: (response: Response) => void
     let reject!: (error: Error) => void
     const result = new Promise<Response>((ok, fail) => { resolve = ok; reject = fail })
-    const state: StreamState = { nodeId, sendSeq: 0, receiveSeq: 0, settled: false, resolve, reject }
+    const state: StreamState = {
+      nodeId,
+      sendSeq: 0,
+      receiveSeq: 0,
+      settled: false,
+      resolve,
+      reject,
+      sendCredit: NODE_CHANNEL_MAX_WINDOW_BYTES,
+      responseCreditPending: 0,
+      responsePullPending: false,
+    }
     this.streams.set(id, state)
     const url = new URL(request.url)
     this.sendFrame(connection, state, { v: 1, type: 'stream.open', stream_id: id, seq: 0, port, method: request.method, path: url.pathname + url.search, headers: [...request.headers.entries()], window: NODE_CHANNEL_MAX_WINDOW_BYTES })
@@ -142,6 +156,17 @@ export class ComputeNodeChannelHub {
       state.settled = true
       const body = new ReadableStream<Uint8Array>({
         start: (controller) => { state.controller = controller },
+        pull: () => {
+          if (!this.streams.has(frame.stream_id)) return
+          if (state.responseCreditPending <= 0) {
+            state.responsePullPending = true
+            return
+          }
+          const credit = state.responseCreditPending
+          state.responseCreditPending = 0
+          state.responsePullPending = false
+          this.sendFrame(connection, state, { v: 1, type: 'stream.window', stream_id: frame.stream_id, seq: 0, credit })
+        },
         cancel: (reason) => {
           if (!this.streams.has(frame.stream_id)) return
           this.sendFrame(connection, state, {
@@ -153,19 +178,28 @@ export class ComputeNodeChannelHub {
           })
           this.streams.delete(frame.stream_id)
         },
-      })
+      }, new ByteLengthQueuingStrategy({ highWaterMark: 0 }))
       state.resolve(new Response(body, { status: frame.status, headers: frame.headers }))
     } else if (frame.type === 'stream.response.data') {
       if (!state.controller) throw new Error('node data before response')
       const bytes = Buffer.from(frame.data, 'base64')
       state.controller.enqueue(bytes)
-      this.sendFrame(connection, state, { v: 1, type: 'stream.window', stream_id: frame.stream_id, seq: 0, credit: bytes.byteLength })
+      if (state.responsePullPending) {
+        state.responsePullPending = false
+        this.sendFrame(connection, state, { v: 1, type: 'stream.window', stream_id: frame.stream_id, seq: 0, credit: bytes.byteLength })
+      } else {
+        state.responseCreditPending += bytes.byteLength
+      }
     } else if (frame.type === 'stream.response.end') {
       state.controller?.close()
       this.streams.delete(frame.stream_id)
     } else if (frame.type === 'stream.cancel') {
       this.fail(frame.stream_id, state, new Error(`Node stream cancelled: ${frame.reason}`))
-    } else if (frame.type !== 'stream.window') {
+    } else if (frame.type === 'stream.window') {
+      state.sendCredit = Math.min(NODE_CHANNEL_MAX_WINDOW_BYTES, state.sendCredit + frame.credit)
+      state.creditWaiter?.()
+      state.creditWaiter = undefined
+    } else {
       throw new Error(`unexpected node frame ${frame.type}`)
     }
   }
@@ -176,10 +210,24 @@ export class ComputeNodeChannelHub {
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
-        for (let offset = 0; offset < value.byteLength; offset += CHUNK_BYTES) this.sendFrame(connection, state, { v: 1, type: 'stream.request', stream_id: id, seq: 0, data: Buffer.from(value.subarray(offset, offset + CHUNK_BYTES)).toString('base64') })
+        let offset = 0
+        while (offset < value.byteLength) {
+          await this.waitForCredit(state)
+          if (!this.streams.has(id)) throw new Error('Compute node stream closed while sending request')
+          const length = Math.min(CHUNK_BYTES, state.sendCredit, value.byteLength - offset)
+          state.sendCredit -= length
+          this.sendFrame(connection, state, { v: 1, type: 'stream.request', stream_id: id, seq: 0, data: Buffer.from(value.subarray(offset, offset + length)).toString('base64') })
+          offset += length
+        }
       }
     }
     this.sendFrame(connection, state, { v: 1, type: 'stream.request.end', stream_id: id, seq: 0 })
+  }
+
+  private async waitForCredit(state: StreamState): Promise<void> {
+    while (state.sendCredit <= 0) {
+      await new Promise<void>((resolve) => { state.creditWaiter = resolve })
+    }
   }
 
   private sendFrame(connection: Connection, state: StreamState, frame: NodeChannelFrame): void {
@@ -191,6 +239,8 @@ export class ComputeNodeChannelHub {
 
   private fail(id: string, state: StreamState, error: Error): void {
     this.streams.delete(id)
+    state.creditWaiter?.()
+    state.creditWaiter = undefined
     state.controller?.error(error)
     if (!state.settled) state.reject(error)
   }

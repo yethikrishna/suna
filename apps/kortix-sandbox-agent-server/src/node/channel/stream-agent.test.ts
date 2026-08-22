@@ -40,4 +40,33 @@ describe('kortixd node stream agent', () => {
     await expect(agent.handle({ v: 1, type: 'stream.request.end', stream_id: id, seq: 2 })).rejects.toThrow('sequence')
     agent.disconnect()
   })
+
+  test('does not send response bytes beyond granted credit', async () => {
+    const sent: any[] = []
+    const agent = new NodeStreamAgent(
+      (frame) => sent.push(frame),
+      async () => new Response(Buffer.alloc(2048, 7)),
+      new Set([8000]),
+    )
+    const id = crypto.randomUUID()
+
+    await agent.handle({ v: 1, type: 'stream.open', stream_id: id, seq: 0, port: 8000, method: 'GET', path: '/', headers: [], window: 1024 })
+    await agent.handle({ v: 1, type: 'stream.request.end', stream_id: id, seq: 1 })
+    const idle = agent.idle()
+    await Bun.sleep(0)
+
+    const beforeCredit = sent
+      .filter((frame) => frame.type === 'stream.response.data')
+      .reduce((total, frame) => total + Buffer.from(frame.data, 'base64').byteLength, 0)
+    expect(beforeCredit).toBe(1024)
+    expect(sent.some((frame) => frame.type === 'stream.response.end')).toBe(false)
+
+    await agent.handle({ v: 1, type: 'stream.window', stream_id: id, seq: 2, credit: 1024 })
+    await idle
+    const afterCredit = sent
+      .filter((frame) => frame.type === 'stream.response.data')
+      .reduce((total, frame) => total + Buffer.from(frame.data, 'base64').byteLength, 0)
+    expect(afterCredit).toBe(2048)
+    expect(sent.at(-1)?.type).toBe('stream.response.end')
+  })
 })

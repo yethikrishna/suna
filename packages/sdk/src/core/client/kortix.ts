@@ -159,6 +159,13 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
       create: P.createAccountToken,
       revoke: P.revokeAccountToken,
     },
+    computeNodes: {
+      deviceAuth: {
+        get: P.getComputeNodeDeviceAuth,
+        approve: P.approveComputeNodeDeviceAuth,
+        deny: P.denyComputeNodeDeviceAuth,
+      },
+    },
     /** Enterprise audit log — events + CSV/JSONL export + SIEM webhooks. */
     audit: {
       log: P.listAccountAudit,

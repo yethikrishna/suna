@@ -183,6 +183,8 @@ const envSchema = z.object({
   KORTIX_SECRET_RELAY_STREAM_ENABLED: optBoolTrue,
   /** Websocket relay, gated separately so it can roll out behind the HTTP leg. */
   KORTIX_RELAY_WS_ENABLED: optBoolTrue,
+  KORTIX_NODE_RELAY_ROLE: z.enum(['combined', 'api', 'relay']).optional().default('combined'),
+  KORTIX_NODE_RELAY_URL: optStr,
   // Byte budgets. These are a RESOURCE guard, not a product limit: 1 GiB is
   // 1024x the legacy request cap and 205x the response cap — effectively
   // uncapped for any real API call — but it stops one runaway sandbox.
@@ -992,6 +994,20 @@ function validateEnv(): z.infer<typeof envSchema> {
     process.exit(1);
   }
 
+  if (result.data.KORTIX_NODE_RELAY_ROLE === 'api') {
+    const value = result.data.KORTIX_NODE_RELAY_URL || result.data.KORTIX_URL
+    let valid = false
+    try {
+      const url = new URL(value)
+      const loopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
+      valid = Boolean(value) && !url.username && !url.password && !url.hash && (url.protocol === 'https:' || (url.protocol === 'http:' && loopback))
+    } catch {}
+    if (!valid) {
+      console.error('[config] KORTIX_NODE_RELAY_URL must be HTTPS, or loopback HTTP, when KORTIX_NODE_RELAY_ROLE=api')
+      process.exit(1)
+    }
+  }
+
   console.log(
     `[config] Environment validated (${Object.keys(envSchema.shape).length} vars, ${warnings.length} warnings)`,
   );
@@ -1026,6 +1042,8 @@ export const config = {
   KORTIX_SANDBOX_EGRESS_PIN_ENFORCED: env.KORTIX_SANDBOX_EGRESS_PIN_ENFORCED,
   KORTIX_SECRET_RELAY_STREAM_ENABLED: env.KORTIX_SECRET_RELAY_STREAM_ENABLED,
   KORTIX_RELAY_WS_ENABLED: env.KORTIX_RELAY_WS_ENABLED,
+  KORTIX_NODE_RELAY_ROLE: env.KORTIX_NODE_RELAY_ROLE,
+  KORTIX_NODE_RELAY_URL: env.KORTIX_NODE_RELAY_URL || env.KORTIX_URL,
   KORTIX_RELAY_MAX_REQUEST_BYTES: env.KORTIX_RELAY_MAX_REQUEST_BYTES,
   GATEWAY_INFLIGHT_BUDGET_BYTES: env.GATEWAY_INFLIGHT_BUDGET_BYTES,
   KORTIX_RELAY_MAX_RESPONSE_BYTES: env.KORTIX_RELAY_MAX_RESPONSE_BYTES,

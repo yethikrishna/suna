@@ -75,8 +75,11 @@ import {
   startTunnelService,
   stopTunnelService,
 } from './tunnel';
-import { computeNodeWsHandlers } from './compute-nodes';
+import { computeNodeChannel, computeNodeWsHandlers } from './compute-nodes';
 import { computeNodePublicApp } from './compute-nodes/routes';
+import { RelayReplayGuard } from './compute-nodes/relay-auth';
+import { handleRelayHttpRequest } from './compute-nodes/relay-server';
+import { prepareRelaySocketUpgrade, relaySocketHandlers } from './compute-nodes/relay-socket';
 import { voiceMcpRoutes } from './channels/voice/routes';
 import { accessControlApp } from './access-control';
 import { startAccessControlCache, stopAccessControlCache } from './shared/access-control-cache';
@@ -1406,9 +1409,10 @@ async function startReplicaServices() {
   warnIfPreviewOriginsMissing(appLogger);
   startAccessControlCache();
   startTunnelService();
-  const { computeNodeChannel } = await import('./compute-nodes');
-  const { startComputeNodeRpcForwarder } = await import('./compute-nodes/cluster-forwarder');
-  startComputeNodeRpcForwarder(computeNodeChannel);
+  if (config.KORTIX_NODE_RELAY_ROLE !== 'api') {
+    const { startComputeNodeRpcForwarder } = await import('./compute-nodes/cluster-forwarder');
+    startComputeNodeRpcForwarder(computeNodeChannel);
+  }
   // Warm the runtime-settings cache BEFORE serving traffic so the admin-panel
   // toggles (warm_snapshot / provider_fallback) are honored from
   // request #1. Without this a fresh pod serves the cold-cache defaults for the
@@ -1591,6 +1595,9 @@ import {
   previewWsHandlers,
 } from './sandbox-proxy/ws-proxy';
 
+const computeNodeRelayReplayGuard = new RelayReplayGuard();
+const computeNodeRelaySocketHandlers = relaySocketHandlers(computeNodeChannel);
+
 export default {
   port: config.PORT,
 
@@ -1622,6 +1629,21 @@ export default {
     req = ensureAbsoluteRequestUrl(req, config.PORT);
     const url = getRequestUrl(req, config.PORT);
     const isWsUpgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket';
+
+    if (isWsUpgrade && url.pathname.startsWith('/v1/internal/node-relay/socket/')) {
+      if (config.KORTIX_NODE_RELAY_ROLE === 'api') return Response.json({ error: 'This API process does not own compute-node relay sockets' }, { status: 503 });
+      const prepared = prepareRelaySocketUpgrade({ request: req, key: config.INTERNAL_SERVICE_KEY, guard: computeNodeRelayReplayGuard });
+      if (!prepared.ok) return Response.json({ error: prepared.message }, { status: prepared.status });
+      if (server.upgrade(req, { data: prepared.data })) return undefined;
+      return Response.json({ error: 'Compute-node relay WebSocket upgrade failed' }, { status: 500 });
+    }
+
+    if (url.pathname.startsWith('/v1/internal/node-relay/http/')) {
+      server.timeout(req, 0);
+      if (config.KORTIX_NODE_RELAY_ROLE === 'api') return Response.json({ error: 'This API process does not own compute-node relay sockets' }, { status: 503 });
+      return (await handleRelayHttpRequest({ request: req, hub: computeNodeChannel, key: config.INTERNAL_SERVICE_KEY, guard: computeNodeRelayReplayGuard }))
+        ?? Response.json({ error: 'Malformed compute-node relay target' }, { status: 400 });
+    }
 
     // Sandbox preview traffic includes OpenCode long-poll and SSE routes. Let
     // the proxy's own upstream timeout decide instead of Bun closing the client
@@ -1777,6 +1799,7 @@ export default {
     // authenticate in the first frame, then carry all runtime traffic here.
     if (isWsUpgrade && url.pathname === '/v1/nodes/ws') {
       if (!schemaReady) return new Response(JSON.stringify({ error: 'Service starting up' }), { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5' } })
+      if (config.KORTIX_NODE_RELAY_ROLE === 'api') return Response.json({ error: 'Compute-node WebSockets are served by the node-relay role' }, { status: 503 })
       if (req.headers.has('origin')) return new Response(JSON.stringify({ error: 'Browser WebSockets are not allowed' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
       if (server.upgrade(req, { data: { type: 'compute-node' } })) return undefined
       return new Response(JSON.stringify({ error: 'Compute-node WebSocket upgrade failed' }), { status: 500, headers: { 'Content-Type': 'application/json' } })
@@ -1830,6 +1853,10 @@ export default {
         computeNodeWsHandlers.open(ws as any);
         return;
       }
+      if (ws.data?.type === 'compute-node-relay-socket') {
+        computeNodeRelaySocketHandlers.open(ws as any);
+        return;
+      }
       if (ws.data?.type === 'preview-ws') {
         previewWsHandlers.open(ws as any);
         return;
@@ -1856,6 +1883,10 @@ export default {
         computeNodeWsHandlers.message(ws as any, message);
         return;
       }
+      if (ws.data?.type === 'compute-node-relay-socket') {
+        computeNodeRelaySocketHandlers.message(ws as any, message);
+        return;
+      }
       if (ws.data?.type === 'preview-ws') {
         previewWsHandlers.message(ws as any, message);
         return;
@@ -1866,13 +1897,17 @@ export default {
       }
     },
 
-    close(ws: { data: any }) {
+    close(ws: { data: any }, code?: number, reason?: string | Buffer) {
       if (ws.data?.type === 'tunnel-agent') {
         tunnelWsHandlers.onClose(ws.data.tunnelId, ws as any);
         return;
       }
       if (ws.data?.type === 'compute-node') {
         computeNodeWsHandlers.close(ws as any);
+        return;
+      }
+      if (ws.data?.type === 'compute-node-relay-socket') {
+        computeNodeRelaySocketHandlers.close(ws as any, code, reason);
         return;
       }
       if (ws.data?.type === 'preview-ws') {

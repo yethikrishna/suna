@@ -1,4 +1,4 @@
-import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_SOCKET_MESSAGE_BYTES, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
+import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_SOCKET_MESSAGE_BYTES, sanitizeNodeRelayHeaders, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
 import type { PortPolicy } from './stream-agent'
 
 interface SocketState {
@@ -37,7 +37,7 @@ export class NodeSocketAgent {
         this.send({ v: 1, type: 'socket.close', stream_id: frame.stream_id, seq: 0, code: 4403, reason: `Port ${frame.port} is not authorized` })
         return true
       }
-      const socket = this.socketFactory(`ws://127.0.0.1:${frame.port}${frame.path}`, Object.fromEntries(frame.headers))
+      const socket = this.socketFactory(`ws://127.0.0.1:${frame.port}${frame.path}`, Object.fromEntries(sanitizeNodeRelayHeaders(frame.headers)))
       socket.binaryType = 'arraybuffer'
       const state: SocketState = { socket, receiveSeq: 1, sendSeq: 0, opened: false, queue: [], receiveChunks: [], receiveBytes: 0 }
       this.sockets.set(frame.stream_id, state)

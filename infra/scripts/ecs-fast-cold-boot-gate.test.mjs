@@ -21,6 +21,12 @@ function runFunction(name, ...args) {
 }
 
 describe('fast cold boot deployment gate', () => {
+  test('maps node-relay deploys to the dedicated service in the API cluster', () => {
+    const result = spawnSync('bash', ['-c', 'set -uo pipefail; export KORTIX_ECS_DEPLOY_LIB=1 SERVICE_PREFIX=kortix-dev; source "$1"; configure_service_coordinates node-relay; printf "%s|%s|%s" "$CLUSTER" "$SERVICE" "$CONTAINER"', 'bash', deployScript], { encoding: 'utf8' });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe('kortix-dev|kortix-dev-node-relay|api');
+  });
+
   test('requires the capability only for a flag-on deployment that can use Platinum', () => {
     expect(runFunction(
       'fast_cold_boot_requires_atomic_admission',

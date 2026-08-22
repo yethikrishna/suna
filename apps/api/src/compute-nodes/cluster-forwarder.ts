@@ -32,9 +32,17 @@ export async function stopComputeNodeAssignmentAcrossCluster(hub: ComputeNodeCha
   return queueForward(nodeId, '$assignment.stop', { assignment_id: assignmentId, reason }, TIMEOUT_MS)
 }
 
-async function queueForward(nodeId: string, method: string, params: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
+export async function disconnectComputeNodeAcrossCluster(hub: ComputeNodeChannelHub, nodeId: string, code: number, reason: string): Promise<void> {
+  if (hub.isConnected(nodeId)) { hub.disconnectNode(nodeId, code, reason); return }
+  try { await queueForward(nodeId, '$node.disconnect', { code, reason }, 10_000, true) }
+  catch (error) { if (!(error instanceof ComputeNodeRpcError) || error.code !== -32004) throw error }
+}
+
+async function queueForward(nodeId: string, method: string, params: Record<string, unknown>, timeoutMs: number, allowInactive = false): Promise<unknown> {
   const [node] = await db.select({ accountId: computeNodes.accountId, status: computeNodes.status, relayOwnerId: computeNodes.relayOwnerId, relayOwnerHeartbeatAt: computeNodes.relayOwnerHeartbeatAt }).from(computeNodes).where(eq(computeNodes.nodeId, nodeId)).limit(1)
-  if (!node || !nodeRelayIsLive(node)) throw new ComputeNodeRpcError(-32004, `Compute node ${nodeId} is not connected`)
+  const heartbeat = node?.relayOwnerHeartbeatAt?.getTime() ?? 0
+  const relayFresh = Boolean(node?.relayOwnerId) && Date.now() - heartbeat <= 60_000
+  if (!node || (allowInactive ? !relayFresh : !nodeRelayIsLive(node))) throw new ComputeNodeRpcError(-32004, `Compute node ${nodeId} is not connected`)
   if (node.relayOwnerId === API_INSTANCE_ID) {
     await db.update(computeNodes).set({ status: 'offline', relayOwnerId: null, relayOwnerInstance: null, relayOwnerStartedAt: null, relayOwnerHeartbeatAt: null, updatedAt: new Date() }).where(and(eq(computeNodes.nodeId, nodeId), eq(computeNodes.relayOwnerId, API_INSTANCE_ID)))
     throw new ComputeNodeRpcError(-32004, `Compute node ${nodeId} is not connected on its relay owner`)

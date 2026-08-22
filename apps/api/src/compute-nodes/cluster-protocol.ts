@@ -10,7 +10,7 @@ export function nodeRelayIsLive(row: { status: string; relayOwnerId?: string | n
 }
 
 export async function dispatchForwardedComputeNodeCall(
-  hub: Pick<ComputeNodeChannelHub, 'rpc' | 'assign' | 'stopAssignment'>,
+  hub: Pick<ComputeNodeChannelHub, 'rpc' | 'assign' | 'stopAssignment' | 'disconnectNode'>,
   row: { nodeId: string; method: string; params: Record<string, unknown>; expiresAt: Date },
 ): Promise<unknown> {
   const remaining = Math.max(1_000, row.expiresAt.getTime() - Date.now())
@@ -20,6 +20,13 @@ export async function dispatchForwardedComputeNodeCall(
     const reason = row.params.reason
     if (typeof id !== 'string' || !['stop', 'restart', 'release', 'drain'].includes(String(reason))) throw new Error('Invalid forwarded assignment stop')
     hub.stopAssignment(row.nodeId, id, reason as 'stop' | 'restart' | 'release' | 'drain')
+    return { accepted: true }
+  }
+  if (row.method === '$node.disconnect') {
+    const code = row.params.code
+    const reason = row.params.reason
+    if (!Number.isSafeInteger(code) || (code as number) < 1000 || (code as number) > 4999 || [1004, 1005, 1006, 1015].includes(code as number) || typeof reason !== 'string' || reason.length > 123 || /[\r\n]/.test(reason)) throw new Error('Invalid forwarded node disconnect')
+    hub.disconnectNode(row.nodeId, code as number, reason)
     return { accepted: true }
   }
   return hub.rpc(row.nodeId, row.method, row.params, remaining)

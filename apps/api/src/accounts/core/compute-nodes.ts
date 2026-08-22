@@ -11,7 +11,7 @@ import {
   createNodeEnrollmentToken,
   revokeNodeCredentials,
 } from '../../repositories/compute-node-credentials'
-import { assignComputeNode, computeNodeChannel, stopComputeNodeAssignment } from '../../compute-nodes'
+import { assignComputeNode, computeNodeChannel, disconnectComputeNode, stopComputeNodeAssignment } from '../../compute-nodes'
 import { nodeRelayIsLive } from '../../compute-nodes/cluster-forwarder'
 import { createAccountToken } from '../../repositories/account-tokens'
 import { deriveKortixApiBase, proxyGitUrl } from '../../projects/lib/sessions'
@@ -242,7 +242,7 @@ export function registerComputeNodeRoutes(): void {
         const status = action === 'enable' ? 'offline' : action === 'drain' ? 'draining' : action === 'disable' ? 'disabled' : 'offline'
         const metadata = action === 'restart' ? { ...current.metadata, restartRequestedAt: new Date().toISOString() } : current.metadata
         const [row] = await db.update(computeNodes).set({ status, metadata, updatedAt: new Date() }).where(eq(computeNodes.nodeId, current.nodeId)).returning()
-        if (action !== 'enable') computeNodeChannel.disconnectNode(current.nodeId, action === 'restart' ? 1012 : 4003, `compute node ${action}`)
+        if (action !== 'enable') await disconnectComputeNode(current.nodeId, action === 'restart' ? 1012 : 4003, `compute node ${action}`)
         return c.json(serializeNode(row!))
       },
     )
@@ -341,7 +341,7 @@ export function registerComputeNodeRoutes(): void {
       const current = await loadAccountNode(accountId, c.req.param('nodeId'))
       if (!current || !(await authorizeProject(c, accountId, current.projectId, 'manage'))) return c.json({ error: 'Not found' }, 404)
       await revokeNodeCredentials(current.nodeId, accountId)
-      computeNodeChannel.disconnectNode(current.nodeId, 4003, 'compute node credential rotated')
+      await disconnectComputeNode(current.nodeId, 4003, 'compute node credential rotated')
       const enrollment = await createNodeEnrollmentToken({ nodeId: current.nodeId, accountId, createdBy: c.get('userId') })
       c.header('Cache-Control', 'no-store')
       return c.json({ enrollment_token: enrollment.token, enrollment_expires_at: enrollment.expiresAt.toISOString() })
@@ -360,7 +360,7 @@ export function registerComputeNodeRoutes(): void {
         await tx.update(computeNodes).set({ status: 'deleted', updatedAt: new Date() }).where(eq(computeNodes.nodeId, current.nodeId))
       })
       await revokeNodeCredentials(current.nodeId, accountId)
-      computeNodeChannel.disconnectNode(current.nodeId, 4003, 'compute node deleted')
+      await disconnectComputeNode(current.nodeId, 4003, 'compute node deleted')
       return c.json({ ok: true })
     },
   )

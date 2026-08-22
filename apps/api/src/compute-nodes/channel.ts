@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_SOCKET_MESSAGE_BYTES, NODE_CHANNEL_MAX_WINDOW_BYTES, parseNodeChannelFrame, type NodeAssignmentSpec, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
+import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_SOCKET_MESSAGE_BYTES, NODE_CHANNEL_MAX_WINDOW_BYTES, parseNodeChannelFrame, sanitizeNodeRelayHeaders, type NodeAssignmentSpec, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
 
 interface SocketLike { send(value: string): void; close(code?: number, reason?: string): void }
 interface AuthResult { nodeId: string; externalId?: string }
@@ -198,7 +198,7 @@ export class ComputeNodeChannelHub {
     }
     this.streams.set(id, state)
     const url = new URL(request.url)
-    this.sendFrame(connection, state, { v: 1, type: 'stream.open', stream_id: id, seq: 0, port, method: request.method, path: url.pathname + url.search, headers: [...request.headers.entries()], window: NODE_CHANNEL_MAX_WINDOW_BYTES })
+    this.sendFrame(connection, state, { v: 1, type: 'stream.open', stream_id: id, seq: 0, port, method: request.method, path: url.pathname + url.search, headers: sanitizeNodeRelayHeaders(request.headers.entries()), window: NODE_CHANNEL_MAX_WINDOW_BYTES })
     void this.sendBody(connection, state, id, request.body).catch((error) => this.fail(id, state, error))
     return result
   }
@@ -216,6 +216,16 @@ export class ComputeNodeChannelHub {
       if (nodeId && this.byNode.has(nodeId)) this.externalToNode.set(externalId, nodeId)
     }
     if (!nodeId) throw new Error(`Compute node for ${externalId} is not connected`)
+    return this.connectWebSocket(nodeId, port, path, headers, handlers)
+  }
+
+  async connectWebSocket(
+    nodeId: string,
+    port: number,
+    path: string,
+    headers: Record<string, string>,
+    handlers: ComputeNodeSocketHandlers,
+  ): Promise<ComputeNodeSocket> {
     const connection = this.byNode.get(nodeId)
     if (!connection) throw new Error(`Compute node ${nodeId} is not connected`)
     const id = crypto.randomUUID()
@@ -231,7 +241,7 @@ export class ComputeNodeChannelHub {
       receiveBytes: 0,
     }
     this.sockets.set(id, state)
-    this.sendFrame(connection, state, { v: 1, type: 'socket.open', stream_id: id, seq: 0, port, path, headers: Object.entries(headers) })
+    this.sendFrame(connection, state, { v: 1, type: 'socket.open', stream_id: id, seq: 0, port, path, headers: sanitizeNodeRelayHeaders(Object.entries(headers)) })
     return {
       send: (data) => {
         if (!this.sockets.has(id)) throw new Error('Compute node socket is closed')
@@ -386,7 +396,7 @@ export class ComputeNodeChannelHub {
           this.streams.delete(frame.stream_id)
         },
       }, new ByteLengthQueuingStrategy({ highWaterMark: 0 }))
-      state.resolve(new Response(body, { status: frame.status, headers: frame.headers }))
+      state.resolve(new Response(body, { status: frame.status, headers: sanitizeNodeRelayHeaders(frame.headers) }))
     } else if (frame.type === 'stream.response.data') {
       if (!state.controller) throw new Error('node data before response')
       const bytes = Buffer.from(frame.data, 'base64')

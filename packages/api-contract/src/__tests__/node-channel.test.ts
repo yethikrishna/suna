@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   NODE_CHANNEL_MAX_FRAME_BYTES,
   NODE_CHANNEL_VERSION,
+  sanitizeNodeRelayHeaders,
   parseNodeChannelFrame,
   type NodeChannelFrame,
 } from '../node-channel';
@@ -9,6 +10,9 @@ import {
 const STREAM_ID = '018f1f36-6ef9-7ca7-8e17-b97f405f1a63';
 
 describe('node channel stream frames', () => {
+  test('removes hop-by-hop and connection-nominated headers at the wire boundary', () => {
+    expect(sanitizeNodeRelayHeaders([['Connection', 'keep-alive, x-private'], ['Keep-Alive', 'timeout=5'], ['X-Private', 'drop'], ['Authorization', 'Bearer scoped'], ['X-Test', 'keep']])).toEqual([['authorization', 'Bearer scoped'], ['x-test', 'keep']]);
+  });
   test('accepts a signed-channel heartbeat payload', () => {
     const frame = {
       v: 1,

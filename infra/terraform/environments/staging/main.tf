@@ -84,6 +84,7 @@ module "api" {
   private_subnet_ids = module.network.private_subnet_ids
 
   image                   = var.api_image
+  enable_node_relay       = true
   container_port          = var.container_port
   certificate_arn         = var.wildcard_certificate_arn
   environment             = var.api_environment

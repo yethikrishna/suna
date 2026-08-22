@@ -6,6 +6,21 @@ export const NODE_CHANNEL_MAX_SOCKET_MESSAGE_BYTES = 16 * 1024 * 1024;
 
 type HeaderList = Array<[string, string]>;
 
+const NODE_RELAY_HOP_HEADERS = new Set([
+  'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+  'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'host',
+  'content-length',
+]);
+
+/** Remove transport-specific headers before crossing either side of the node channel. */
+export function sanitizeNodeRelayHeaders(input: Iterable<readonly [string, string]>): HeaderList {
+  const entries = [...input].map(([name, value]) => [name.toLowerCase(), value] as [string, string]);
+  const nominated = new Set(entries
+    .filter(([name]) => name === 'connection')
+    .flatMap(([, value]) => value.split(',').map((name) => name.trim().toLowerCase()).filter(Boolean)));
+  return entries.filter(([name]) => !NODE_RELAY_HOP_HEADERS.has(name) && !nominated.has(name));
+}
+
 interface FrameBase {
   v: typeof NODE_CHANNEL_VERSION;
   stream_id: string;

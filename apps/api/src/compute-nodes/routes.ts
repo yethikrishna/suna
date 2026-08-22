@@ -3,7 +3,7 @@ import { makeOpenApiApp, errors, json } from '../openapi'
 import type { AppEnv } from '../types'
 import { consumeNodeEnrollmentToken } from '../repositories/compute-node-credentials'
 import { revokeNodeCredentials, validateNodeCredential } from '../repositories/compute-node-credentials'
-import { computeNodeChannel } from '.'
+import { disconnectComputeNode } from '.'
 import { runtimeAssetSigningPublicKey } from '../runtime-assets/manifest'
 import { computeNodeDeviceAuthRequests } from '@kortix/db'
 import { eq } from 'drizzle-orm'
@@ -115,7 +115,7 @@ computeNodePublicApp.openapi(
     const identity = await validateNodeCredential(token, nodeId)
     if (!identity) return c.json({ error: 'Node credential is invalid' }, 401)
     await revokeNodeCredentials(nodeId, identity.accountId)
-    computeNodeChannel.disconnectNode(nodeId, 4003, 'compute node logged out')
+    await disconnectComputeNode(nodeId, 4003, 'compute node logged out')
     return c.json({ ok: true })
   },
 )

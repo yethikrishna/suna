@@ -3,7 +3,10 @@ import { computeNodeAssignments, computeNodes, sessionSandboxes } from '@kortix/
 import { validateNodeCredential } from '../repositories/compute-node-credentials'
 import { db } from '../shared/db'
 import { ComputeNodeChannelHub } from './channel'
-import { assignComputeNodeAcrossCluster, relayOwnerPatch, rpcComputeNodeAcrossCluster, stopComputeNodeAssignmentAcrossCluster } from './cluster-forwarder'
+import { assignComputeNodeAcrossCluster, disconnectComputeNodeAcrossCluster, relayOwnerPatch, rpcComputeNodeAcrossCluster, stopComputeNodeAssignmentAcrossCluster } from './cluster-forwarder'
+import { config } from '../config'
+import { fetchComputeNodeThroughRelay } from './relay-client'
+import { connectComputeNodeSocketThroughRelay } from './relay-socket'
 
 export const computeNodeChannel = new ComputeNodeChannelHub(
   async (nodeId, token, info) => {
@@ -89,7 +92,11 @@ export function fetchComputeNode(
   init: RequestInit = {},
 ): Promise<Response> {
   const url = `http://127.0.0.1:${port}${path.startsWith('/') ? path : `/${path}`}`
-  return computeNodeChannel.fetchByExternalId(externalId, port, new Request(url, init))
+  const request = new Request(url, init)
+  return resolveComputeNodeId(externalId).then((nodeId) => {
+    if (!nodeId) throw new Error(`Compute node for ${externalId} is not registered`)
+    return fetchComputeNodeRequest(nodeId, port, request)
+  })
 }
 
 export function fetchComputeNodeById(
@@ -99,7 +106,18 @@ export function fetchComputeNodeById(
   init: RequestInit = {},
 ): Promise<Response> {
   const url = `http://127.0.0.1:${port}${path.startsWith('/') ? path : `/${path}`}`
-  return computeNodeChannel.fetch(nodeId, port, new Request(url, init))
+  return fetchComputeNodeRequest(nodeId, port, new Request(url, init))
+}
+
+async function resolveComputeNodeId(externalId: string): Promise<string | null> {
+  const [row] = await db.select({ nodeId: sessionSandboxes.sandboxId }).from(sessionSandboxes).where(eq(sessionSandboxes.externalId, externalId)).limit(1)
+  return row?.nodeId ?? null
+}
+
+function fetchComputeNodeRequest(nodeId: string, port: number, request: Request): Promise<Response> {
+  if (computeNodeChannel.isConnected(nodeId)) return computeNodeChannel.fetch(nodeId, port, request)
+  if (!config.KORTIX_NODE_RELAY_URL) return Promise.reject(new Error(`Compute node ${nodeId} is not connected and KORTIX_NODE_RELAY_URL is not configured`))
+  return fetchComputeNodeThroughRelay({ relayUrl: config.KORTIX_NODE_RELAY_URL, key: config.INTERNAL_SERVICE_KEY, nodeId, port, request })
 }
 
 /** Open one loopback WebSocket through the sole outbound kortixd channel. */
@@ -110,7 +128,12 @@ export function connectComputeNodeWebSocket(
   headers: Record<string, string>,
   handlers: { open(): void; message(data: Uint8Array, binary: boolean): void; close(code: number, reason: string): void },
 ) {
-  return computeNodeChannel.connectWebSocketByExternalId(externalId, port, path, headers, handlers)
+  return resolveComputeNodeId(externalId).then((nodeId) => {
+    if (!nodeId) throw new Error(`Compute node for ${externalId} is not registered`)
+    if (computeNodeChannel.isConnected(nodeId)) return computeNodeChannel.connectWebSocket(nodeId, port, path, headers, handlers)
+    if (!config.KORTIX_NODE_RELAY_URL) throw new Error(`Compute node ${nodeId} is not connected and KORTIX_NODE_RELAY_URL is not configured`)
+    return connectComputeNodeSocketThroughRelay({ relayUrl: config.KORTIX_NODE_RELAY_URL, key: config.INTERNAL_SERVICE_KEY, nodeId, port, path, headers, handlers })
+  })
 }
 
 export function rpcComputeNode(
@@ -128,4 +151,8 @@ export function assignComputeNode(nodeId: string, assignment: import('@kortix/ap
 
 export function stopComputeNodeAssignment(nodeId: string, assignmentId: string, reason: 'stop' | 'restart' | 'release' | 'drain') {
   return stopComputeNodeAssignmentAcrossCluster(computeNodeChannel, nodeId, assignmentId, reason)
+}
+
+export function disconnectComputeNode(nodeId: string, code: number, reason: string) {
+  return disconnectComputeNodeAcrossCluster(computeNodeChannel, nodeId, code, reason)
 }

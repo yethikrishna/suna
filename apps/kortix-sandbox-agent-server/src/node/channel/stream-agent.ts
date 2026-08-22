@@ -1,4 +1,4 @@
-import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_WINDOW_BYTES, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
+import { NODE_CHANNEL_MAX_FRAME_BYTES, NODE_CHANNEL_MAX_WINDOW_BYTES, sanitizeNodeRelayHeaders, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
 
 type FetchLike = (request: Request) => Promise<Response>
 export interface PortPolicy { has(port: number): boolean }
@@ -106,12 +106,12 @@ export class NodeStreamAgent {
       const hasBody = open.method !== 'GET' && open.method !== 'HEAD'
       const response = await this.fetchImpl(new Request(`http://127.0.0.1:${open.port}${open.path}`, {
         method: open.method,
-        headers: open.headers,
+        headers: sanitizeNodeRelayHeaders(open.headers),
         body: hasBody ? body : undefined,
         duplex: hasBody ? 'half' : undefined,
         signal: state.abort.signal,
       } as RequestInit))
-      this.emit(open.stream_id, state, { v: 1, type: 'stream.response', stream_id: open.stream_id, seq: 0, status: response.status, headers: [...response.headers.entries()], window: open.window })
+      this.emit(open.stream_id, state, { v: 1, type: 'stream.response', stream_id: open.stream_id, seq: 0, status: response.status, headers: sanitizeNodeRelayHeaders(response.headers.entries()), window: open.window })
       if (response.body) {
         const reader = response.body.getReader()
         for (;;) {

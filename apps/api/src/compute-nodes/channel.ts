@@ -140,7 +140,20 @@ export class ComputeNodeChannelHub {
     if (frame.type === 'stream.response') {
       if (state.settled) throw new Error('duplicate node stream response')
       state.settled = true
-      const body = new ReadableStream<Uint8Array>({ start: (controller) => { state.controller = controller }, cancel: () => { this.streams.delete(frame.stream_id) } })
+      const body = new ReadableStream<Uint8Array>({
+        start: (controller) => { state.controller = controller },
+        cancel: (reason) => {
+          if (!this.streams.has(frame.stream_id)) return
+          this.sendFrame(connection, state, {
+            v: 1,
+            type: 'stream.cancel',
+            stream_id: frame.stream_id,
+            seq: 0,
+            reason: String(reason ?? 'response consumer cancelled').replace(/[\r\n]/g, ' ').slice(0, 256),
+          })
+          this.streams.delete(frame.stream_id)
+        },
+      })
       state.resolve(new Response(body, { status: frame.status, headers: frame.headers }))
     } else if (frame.type === 'stream.response.data') {
       if (!state.controller) throw new Error('node data before response')

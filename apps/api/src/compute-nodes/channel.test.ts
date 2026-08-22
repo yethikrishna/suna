@@ -68,4 +68,19 @@ describe('ComputeNodeChannelHub', () => {
     await hub.message(socket, signed({ v: 1, type: 'stream.response.end', stream_id: open.stream_id, seq: 2 }, key, 3))
     expect((await reader.read()).done).toBe(true)
   })
+
+  test('relays response-consumer cancellation to kortixd', async () => {
+    const hub = new ComputeNodeChannelHub(async (nodeId) => ({ nodeId, externalId: 'ext-1' }))
+    const socket = new FakeSocket()
+    hub.open(socket)
+    await hub.message(socket, JSON.stringify({ type: 'node.auth', node_id: 'node-1', token: 'valid' }))
+    const key = JSON.parse(socket.sent[0]!).signing_key as string
+    const responsePromise = hub.fetch('node-1', 8000, new Request('http://node.test/events'))
+    await Bun.sleep(0)
+    const open = JSON.parse(socket.sent[1]!)
+    await hub.message(socket, signed({ v: 1, type: 'stream.response', stream_id: open.stream_id, seq: 0, status: 200, headers: [], window: 1024 }, key, 1))
+    const response = await responsePromise
+    await response.body!.cancel('browser left')
+    expect(JSON.parse(socket.sent.at(-1)!).type).toBe('stream.cancel')
+  })
 })

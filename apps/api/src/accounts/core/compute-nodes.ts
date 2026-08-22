@@ -1,6 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi'
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
-import { computeNodeAssignments, computeNodes, projects, projectSessions } from '@kortix/db'
+import { computeNodeAssignments, computeNodeDeviceAuthRequests, computeNodeEnrollmentTokens, computeNodes, projects, projectSessions } from '@kortix/db'
 import type { NodeAssignmentSpec } from '@kortix/api-contract/node-channel'
 import { ACCOUNT_ACTIONS, assertAuthorized } from '../../iam'
 import { actorOf } from '../../iam/actor'
@@ -14,6 +14,8 @@ import {
 import { computeNodeChannel } from '../../compute-nodes'
 import { createAccountToken } from '../../repositories/account-tokens'
 import { deriveKortixApiBase, proxyGitUrl } from '../../projects/lib/sessions'
+import { encryptEnrollment } from '../../compute-nodes/device-auth'
+import { generateNodeEnrollmentToken, hashSecretKey } from '../../shared/crypto'
 import { accountsRouter } from './app'
 
 const NodeType = z.enum(['sandbox', 'workstation', 'vm', 'container', 'bare_metal', 'ci'])
@@ -95,6 +97,50 @@ function serializeAssignment(row: typeof computeNodeAssignments.$inferSelect) {
 }
 
 export function registerComputeNodeRoutes(): void {
+  accountsRouter.openapi(
+    createRoute({ method: 'get', path: '/{accountId}/compute-nodes/device-auth/{code}', tags: ['compute-nodes'], summary: 'Read a pending node enrollment challenge', ...auth, request: { params: z.object({ accountId: z.string(), code: z.string() }) }, responses: { 200: json(z.object({ device_code: z.string(), machine_hostname: z.string(), type: z.string(), expires_at: z.string() }), 'Pending device challenge'), ...errors(401, 403, 404) } }),
+    async (c: any) => {
+      const accountId = c.req.param('accountId')
+      await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.TOKEN_CREATE)
+      const [row] = await db.select().from(computeNodeDeviceAuthRequests).where(and(eq(computeNodeDeviceAuthRequests.deviceCode, c.req.param('code')), eq(computeNodeDeviceAuthRequests.status, 'pending'))).limit(1)
+      if (!row || row.expiresAt <= new Date()) return c.json({ error: 'Device authorization request not found or expired' }, 404)
+      return c.json({ device_code: row.deviceCode, machine_hostname: row.machineHostname, type: row.nodeType, expires_at: row.expiresAt.toISOString() })
+    },
+  )
+
+  accountsRouter.openapi(
+    createRoute({ method: 'post', path: '/{accountId}/compute-nodes/device-auth/{code}/approve', tags: ['compute-nodes'], summary: 'Approve and register a compute node', ...auth, request: { params: z.object({ accountId: z.string(), code: z.string() }), body: { content: { 'application/json': { schema: z.object({ project_id: z.string().uuid().nullable().optional(), update_channel: z.string().default('stable'), concurrency: z.number().int().min(1).max(1024).default(1) }) } } } }, responses: { 201: json(NodeSchema, 'Registered compute node'), ...errors(400, 401, 403, 404, 409) } }),
+    async (c: any) => {
+      const accountId = c.req.param('accountId')
+      await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.TOKEN_CREATE)
+      const body = await c.req.json()
+      if (!(await authorizeProject(c, accountId, body.project_id, 'manage'))) return c.json({ error: 'Project not found' }, 404)
+      const token = generateNodeEnrollmentToken()
+      const result = await db.transaction(async (tx) => {
+        const [request] = await tx.update(computeNodeDeviceAuthRequests).set({ status: 'approved', accountId, resolvedAt: new Date() }).where(and(eq(computeNodeDeviceAuthRequests.deviceCode, c.req.param('code')), eq(computeNodeDeviceAuthRequests.status, 'pending'), sql`${computeNodeDeviceAuthRequests.expiresAt} > now()`)).returning()
+        if (!request) return null
+        const [node] = await tx.insert(computeNodes).values({ accountId, projectId: body.project_id ?? null, type: request.nodeType, updateChannel: body.update_channel ?? 'stable', concurrency: body.concurrency ?? 1, status: 'offline', metadata: { machineHostname: request.machineHostname, enrollment: 'device-auth' } }).returning()
+        if (!node) return null
+        await tx.insert(computeNodeEnrollmentTokens).values({ nodeId: node.nodeId, accountId, secretHash: hashSecretKey(token), expiresAt: new Date(Math.min(request.expiresAt.getTime(), Date.now() + 10 * 60_000)), createdBy: c.get('userId') })
+        await tx.update(computeNodeDeviceAuthRequests).set({ nodeId: node.nodeId, encryptedEnrollment: encryptEnrollment(token, request.secretHash) }).where(eq(computeNodeDeviceAuthRequests.requestId, request.requestId))
+        return node
+      })
+      if (!result) return c.json({ error: 'Device authorization request not found, expired, or resolved' }, 409)
+      return c.json(serializeNode(result), 201)
+    },
+  )
+
+  accountsRouter.openapi(
+    createRoute({ method: 'post', path: '/{accountId}/compute-nodes/device-auth/{code}/deny', tags: ['compute-nodes'], summary: 'Deny a compute-node enrollment challenge', ...auth, request: { params: z.object({ accountId: z.string(), code: z.string() }) }, responses: { 200: json(z.object({ ok: z.boolean() }), 'Denied'), ...errors(401, 403, 404) } }),
+    async (c: any) => {
+      const accountId = c.req.param('accountId')
+      await assertAuthorized(await actorOf(c, accountId), ACCOUNT_ACTIONS.TOKEN_CREATE)
+      const [row] = await db.update(computeNodeDeviceAuthRequests).set({ status: 'denied', accountId, resolvedAt: new Date() }).where(and(eq(computeNodeDeviceAuthRequests.deviceCode, c.req.param('code')), eq(computeNodeDeviceAuthRequests.status, 'pending'))).returning({ id: computeNodeDeviceAuthRequests.requestId })
+      if (!row) return c.json({ error: 'Device authorization request not found' }, 404)
+      return c.json({ ok: true })
+    },
+  )
+
   accountsRouter.openapi(
     createRoute({
       method: 'post', path: '/{accountId}/compute-nodes', tags: ['compute-nodes'],

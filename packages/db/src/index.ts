@@ -79,6 +79,7 @@ export {
   sessionSandboxes,
   computeNodes,
   computeNodeAssignments,
+  computeNodeDeviceAuthRequests,
   computeNodeCredentials,
   computeNodeEnrollmentTokens,
   sessionSandboxStatusEnum,

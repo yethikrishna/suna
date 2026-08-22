@@ -8,6 +8,7 @@ import { clearStoredNodeConfig, readStoredNodeConfig, writeStoredNodeConfig } fr
 import { controlService, getServiceStatus, installService, readServiceLogs, uninstallService } from './node/service'
 import { superviseKortixd } from './node/supervisor'
 import { nodeRuntimePaths } from './node/convergence'
+import { openNodeAuthorization, pollNodeDeviceAuth, requestNodeDeviceAuth } from './node/device-auth'
 
 const VERSION = process.env.KORTIXD_VERSION ?? 'dev'
 
@@ -98,10 +99,20 @@ async function runUpdate(): Promise<number> {
 
 async function runConnect(argv: readonly string[]): Promise<number> {
   const apiUrl = option(argv, '--api')?.replace(/\/+$/, '')
-  const enrollmentToken = option(argv, '--token')
-  if (!apiUrl || !enrollmentToken) {
-    process.stderr.write('kortixd: connect requires --api <url> and --token <single-use-token>\n')
+  let enrollmentToken = option(argv, '--token')
+  let signingPublicKey: string | undefined
+  if (!apiUrl) {
+    process.stderr.write('kortixd: connect requires --api <url>\n')
     return 2
+  }
+  if (!enrollmentToken) {
+    const challenge = await requestNodeDeviceAuth(apiUrl)
+    process.stdout.write(`authorize this compute node: ${challenge.verification_url}\n`)
+    process.stdout.write(`device code: ${challenge.device_code}\n`)
+    if (!argv.includes('--no-browser')) openNodeAuthorization(challenge.verification_url)
+    const approved = await pollNodeDeviceAuth(apiUrl, challenge)
+    enrollmentToken = approved.enrollmentToken
+    signingPublicKey = approved.signingPublicKey
   }
   const response = await fetch(`${apiUrl}/nodes/enroll`, {
     method: 'POST',
@@ -114,7 +125,7 @@ async function runConnect(argv: readonly string[]): Promise<number> {
     process.stderr.write(`kortixd: enrollment failed (${response.status}): ${result?.error ?? 'invalid response'}\n`)
     return 1
   }
-  const path = writeStoredNodeConfig({ api_url: apiUrl, compute_node_id: result.compute_node_id, credential: result.credential, ...(result.artifact_signing_public_key ? { artifact_signing_public_key: result.artifact_signing_public_key } : {}) })
+  const path = writeStoredNodeConfig({ api_url: apiUrl, compute_node_id: result.compute_node_id, credential: result.credential, ...(result.artifact_signing_public_key || signingPublicKey ? { artifact_signing_public_key: result.artifact_signing_public_key ?? signingPublicKey } : {}) })
   process.stdout.write(`enrolled compute node ${result.compute_node_id}\n`)
   process.stdout.write(`credential stored at ${path}\n`)
   if (!argv.includes('--no-service')) {

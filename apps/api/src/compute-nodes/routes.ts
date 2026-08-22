@@ -5,8 +5,53 @@ import { consumeNodeEnrollmentToken } from '../repositories/compute-node-credent
 import { revokeNodeCredentials, validateNodeCredential } from '../repositories/compute-node-credentials'
 import { computeNodeChannel } from '.'
 import { runtimeAssetSigningPublicKey } from '../runtime-assets/manifest'
+import { computeNodeDeviceAuthRequests } from '@kortix/db'
+import { eq } from 'drizzle-orm'
+import { db } from '../shared/db'
+import { config } from '../config'
+import { generateDeviceCode, hashSecretKey, randomAlphanumeric, verifySecretKey } from '../shared/crypto'
+import { decryptEnrollment } from './device-auth'
 
 export const computeNodePublicApp = makeOpenApiApp<AppEnv>()
+
+const DEVICE_AUTH_TTL_MS = 5 * 60_000
+
+computeNodePublicApp.openapi(
+  createRoute({ method: 'post', path: '/device-auth', tags: ['compute-nodes'], summary: 'Create a browser-approved node enrollment challenge', request: { body: { content: { 'application/json': { schema: z.object({ machine_hostname: z.string().min(1).max(255), type: z.enum(['workstation', 'vm', 'container', 'bare_metal', 'ci']).default('workstation') }) } } } }, responses: { 201: json(z.object({ device_code: z.string(), device_secret: z.string(), verification_url: z.string(), expires_at: z.string(), poll_interval_ms: z.number() }), 'Device authorization challenge'), ...errors(400, 429) } }),
+  async (c: any) => {
+    const body = await c.req.json()
+    const deviceSecret = randomAlphanumeric(32)
+    const expiresAt = new Date(Date.now() + DEVICE_AUTH_TTL_MS)
+    let deviceCode = ''
+    for (let attempt = 0; attempt < 5; attempt++) {
+      deviceCode = generateDeviceCode()
+      try {
+        await db.insert(computeNodeDeviceAuthRequests).values({ deviceCode, secretHash: hashSecretKey(deviceSecret), machineHostname: body.machine_hostname, nodeType: body.type ?? 'workstation', expiresAt })
+        break
+      } catch (error) {
+        if (!(error && typeof error === 'object' && 'code' in error && error.code === '23505')) throw error
+        if (attempt === 4) throw error
+      }
+    }
+    c.header('Cache-Control', 'no-store')
+    return c.json({ device_code: deviceCode, device_secret: deviceSecret, verification_url: `${config.FRONTEND_URL.replace(/\/$/, '')}/nodes/authorize/${deviceCode}`, expires_at: expiresAt.toISOString(), poll_interval_ms: 1000 }, 201)
+  },
+)
+
+computeNodePublicApp.openapi(
+  createRoute({ method: 'get', path: '/device-auth/{code}/status', tags: ['compute-nodes'], summary: 'Poll browser-approved node enrollment', request: { params: z.object({ code: z.string() }) }, responses: { 200: json(z.object({ status: z.enum(['pending', 'approved', 'denied', 'expired']), enrollment_token: z.string().optional(), artifact_signing_public_key: z.string().nullable().optional() }), 'Device authorization status'), ...errors(400, 401, 404) } }),
+  async (c: any) => {
+    const secret = (c.req.header('authorization') ?? '').replace(/^Bearer\s+/i, '')
+    if (!secret) return c.json({ error: 'Device secret is required' }, 400)
+    const [row] = await db.select().from(computeNodeDeviceAuthRequests).where(eq(computeNodeDeviceAuthRequests.deviceCode, c.req.param('code'))).limit(1)
+    if (!row) return c.json({ error: 'Device authorization request not found' }, 404)
+    if (!verifySecretKey(secret, row.secretHash)) return c.json({ error: 'Device secret is invalid' }, 401)
+    c.header('Cache-Control', 'no-store')
+    if (row.expiresAt <= new Date() && row.status === 'pending') return c.json({ status: 'expired' })
+    if (row.status === 'approved' && row.encryptedEnrollment) return c.json({ status: 'approved', enrollment_token: decryptEnrollment(row.encryptedEnrollment, row.secretHash), artifact_signing_public_key: runtimeAssetSigningPublicKey() })
+    return c.json({ status: row.status })
+  },
+)
 
 computeNodePublicApp.openapi(
   createRoute({

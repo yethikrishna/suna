@@ -975,6 +975,11 @@ These contracts use product IDs. They replace the old route-coverage bucket IDs.
 An account owner registers a workstation node and receives one short-lived
 enrollment token. Anonymous and non-member registration fails. The daemon
 exchanges the token once for a node-only credential. Token replay fails. The
+daemon can also create a browser device challenge without a user credential.
+Only the device secret can poll the challenge. An account owner can inspect,
+approve, or deny the challenge. Approval registers the node and returns one
+encrypted, single-use enrollment token to the polling daemon. Denial creates no
+node.
 owner lists, reads, updates, drains, enables, disables, restarts, rotates, and
 deletes the node. Every mutation returns durable read-back state. List and get
 responses never expose credential material. Rotation increments the credential
@@ -989,7 +994,8 @@ the node credential or sandbox credential.
 The suite compiles `kortixd` for the host operating system and runs the actual
 executable. Help, version, and invalid-command behavior return stable exit
 codes. `connect` exchanges a single-use enrollment token without printing the
-node credential. It stores the state directory as `0700` and the credential
+node credential. Without `--token`, `connect` prints a device code and completes
+browser-approved enrollment. It stores the state directory as `0700` and the credential
 file as `0600` on POSIX. `doctor` validates the stored enrollment. Offline
 `status --json` and `logs` return local state without API connectivity.
 `logout` revokes and deletes the credential and remains idempotent.

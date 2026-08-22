@@ -59,6 +59,11 @@ flow(
     domain: 'compute-nodes',
     serial: true,
     routes: [
+      'POST /v1/nodes/device-auth',
+      'GET /v1/nodes/device-auth/:code/status',
+      'GET /v1/accounts/:accountId/compute-nodes/device-auth/:code',
+      'POST /v1/accounts/:accountId/compute-nodes/device-auth/:code/approve',
+      'POST /v1/accounts/:accountId/compute-nodes/device-auth/:code/deny',
       'POST /v1/accounts/:accountId/compute-nodes',
       'GET /v1/accounts/:accountId/compute-nodes',
       'GET /v1/accounts/:accountId/compute-nodes/:nodeId',
@@ -83,7 +88,40 @@ flow(
     let nodeId = ''
     let enrollmentToken = ''
     let firstCredential = ''
+    let deviceNodeId = ''
     let peer: Awaited<ReturnType<typeof connectNodePeer>> | null = null
+
+    await ctx.step('daemon starts browser enrollment and only its device secret can poll', async () => {
+      const created = await ctx.client.as(ctx.P.ANON).post('/v1/nodes/device-auth', { machine_hostname: 'kxd-e2e-workstation', type: 'workstation' })
+      created.status(201).body().exists('$.device_code').exists('$.device_secret').exists('$.verification_url').has('$.poll_interval_ms', 1000)
+      const challenge = created.json<any>()
+      const invalid = await ctx.client.withBearer('wrong-device-secret', 'DEVICE').get('/v1/nodes/device-auth/:code/status', { params: { code: challenge.device_code } })
+      invalid.status(401)
+      const pending = await ctx.client.withBearer(challenge.device_secret, 'DEVICE').get('/v1/nodes/device-auth/:code/status', { params: { code: challenge.device_code } })
+      pending.status(200).body().has('$.status', 'pending')
+      const info = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/compute-nodes/device-auth/:code', { params: { accountId, code: challenge.device_code } })
+      info.status(200).body().has('$.machine_hostname', 'kxd-e2e-workstation').has('$.type', 'workstation')
+      const approved = await ctx.client.as(ctx.P.OWNER).post('/v1/accounts/:accountId/compute-nodes/device-auth/:code/approve', {}, { params: { accountId, code: challenge.device_code } })
+      approved.status(201).body().has('$.type', 'workstation').has('$.status', 'offline')
+      deviceNodeId = approved.json<any>().compute_node_id
+      const resolved = await ctx.client.withBearer(challenge.device_secret, 'DEVICE').get('/v1/nodes/device-auth/:code/status', { params: { code: challenge.device_code } })
+      resolved.status(200).body().has('$.status', 'approved').exists('$.enrollment_token')
+      const token = resolved.json<any>().enrollment_token
+      const enrolled = await ctx.client.as(ctx.P.ANON).post('/v1/nodes/enroll', { enrollment_token: token })
+      enrolled.status(200).body().has('$.compute_node_id', deviceNodeId).has('$.generation', 1)
+      const replay = await ctx.client.as(ctx.P.ANON).post('/v1/nodes/enroll', { enrollment_token: token })
+      replay.status(401)
+    })
+
+    await ctx.step('owner can deny a second browser enrollment without creating a node', async () => {
+      const created = await ctx.client.as(ctx.P.ANON).post('/v1/nodes/device-auth', { machine_hostname: 'denied-workstation', type: 'workstation' })
+      created.status(201)
+      const challenge = created.json<any>()
+      const denied = await ctx.client.as(ctx.P.OWNER).post('/v1/accounts/:accountId/compute-nodes/device-auth/:code/deny', {}, { params: { accountId, code: challenge.device_code } })
+      denied.status(200).body().has('$.ok', true)
+      const poll = await ctx.client.withBearer(challenge.device_secret, 'DEVICE').get('/v1/nodes/device-auth/:code/status', { params: { code: challenge.device_code } })
+      poll.status(200).body().has('$.status', 'denied')
+    })
 
     await ctx.step('anonymous and non-member callers cannot register an account compute node', async () => {
       await ctx.client.as(ctx.P.ANON).post('/v1/accounts/:accountId/compute-nodes', { type: 'workstation' }, { params: { accountId } }).then((r) => r.status(401))
@@ -146,10 +184,14 @@ flow(
       if (apply.assignment.env.KORTIX_NODE_TOKEN || apply.assignment.env.KORTIX_SANDBOX_TOKEN) throw new Error('assignment exposed a node or sandbox credential')
       peer.send({ v: 1, type: 'assignment.accept', stream_id: assignmentId, seq: 0, status: 'starting' })
       peer.send({ v: 1, type: 'assignment.ready', stream_id: assignmentId, seq: 1, ports: [8000], native_conversation_id: 'e2e-opencode' })
-      await Bun.sleep(25)
-      const listed = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/compute-nodes/:nodeId/assignments', { params: { accountId, nodeId } })
-      listed.status(200)
-      const row = listed.json<any>().assignments.find((item: any) => item.assignment_id === assignmentId)
+      let row: any = null
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const listed = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/compute-nodes/:nodeId/assignments', { params: { accountId, nodeId } })
+        listed.status(200)
+        row = listed.json<any>().assignments.find((item: any) => item.assignment_id === assignmentId)
+        if (row?.status === 'ready') break
+        await Bun.sleep(50)
+      }
       if (row?.status !== 'ready') throw new Error(`assignment state did not persist ready: ${JSON.stringify(row)}`)
       const rpcResult = ctx.client.as(ctx.P.OWNER).post('/v1/projects/:projectId/sessions/:sessionId/node/rpc', { method: 'fs.stat', params: { path: '/workspace' } }, { params: { projectId: project.id, sessionId: session.id } })
       await peer.rpcReceived
@@ -161,9 +203,14 @@ flow(
       await peer.stopReceived
       if (peer.stop().reason !== 'release') throw new Error('release did not reach the compute node')
       peer.send({ v: 1, type: 'assignment.stopped', stream_id: assignmentId, seq: 2, reason: 'release' })
-      await Bun.sleep(25)
-      const released = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/compute-nodes/:nodeId/assignments', { params: { accountId, nodeId } })
-      const releasedRow = released.json<any>().assignments.find((item: any) => item.assignment_id === assignmentId)
+      let releasedRow: any = null
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const released = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/compute-nodes/:nodeId/assignments', { params: { accountId, nodeId } })
+        released.status(200)
+        releasedRow = released.json<any>().assignments.find((item: any) => item.assignment_id === assignmentId)
+        if (releasedRow?.status === 'released') break
+        await Bun.sleep(50)
+      }
       if (releasedRow?.status !== 'released') throw new Error(`assignment state did not persist released: ${JSON.stringify(releasedRow)}`)
       peer.socket.close()
       peer = null
@@ -191,6 +238,9 @@ flow(
       deleted.status(200).body().has('$.ok', true)
       const get = await ctx.client.as(ctx.P.OWNER).get('/v1/accounts/:accountId/compute-nodes/:nodeId', { params: { accountId, nodeId } })
       get.status(404)
+      if (deviceNodeId) {
+        await ctx.client.as(ctx.P.OWNER).del('/v1/accounts/:accountId/compute-nodes/:nodeId', { params: { accountId, nodeId: deviceNodeId } }).then((response) => response.status(200))
+      }
     })
   },
 )
@@ -203,6 +253,9 @@ flow(
     timeoutMs: 180_000,
     routes: [
       'POST /v1/accounts/:accountId/compute-nodes',
+      'POST /v1/nodes/device-auth',
+      'GET /v1/nodes/device-auth/:code/status',
+      'POST /v1/accounts/:accountId/compute-nodes/device-auth/:code/approve',
       'POST /v1/nodes/enroll',
       'POST /v1/nodes/logout',
       'DELETE /v1/accounts/:accountId/compute-nodes/:nodeId',
@@ -215,6 +268,7 @@ flow(
     const binaryDir = mkdtempSync(join(tmpdir(), 'kortixd-e2e-bin-'))
     const binary = join(binaryDir, process.platform === 'win32' ? 'kortixd.exe' : 'kortixd')
     let nodeId = ''
+    let browserNodeId = ''
     try {
       await ctx.step('compile the native kortixd executable and run help, version, and invalid input', async () => {
         const built = await processResult(['bun', 'build', '--compile', '--outfile', binary, 'src/kortixd.ts'], {}, daemonDir)
@@ -260,9 +314,45 @@ flow(
         const second = await processResult([binary, 'logout'], { KORTIXD_HOME: stateDir })
         check('second logout exits 0', second.exitCode === 0 && second.stdout.includes('no local node credential'), true, second)
       })
+
+      await ctx.step('compiled connect completes browser device authorization without a supplied token', async () => {
+        const child = Bun.spawn([binary, 'connect', '--api', ctx.env.apiUrl, '--no-browser', '--no-service'], {
+          env: { ...process.env, KORTIXD_HOME: stateDir }, stdout: 'pipe', stderr: 'pipe',
+        })
+        const reader = child.stdout.getReader()
+        const decoder = new TextDecoder()
+        let stdout = ''
+        let resolveCode!: (code: string) => void
+        const codePromise = new Promise<string>((resolve) => { resolveCode = resolve })
+        const outputPromise = (async () => {
+          let resolved = false
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            stdout += decoder.decode(value, { stream: true })
+            const match = stdout.match(/device code: ([A-Z]{4}-[0-9]{4})/)
+            if (match && !resolved) { resolved = true; resolveCode(match[1]!) }
+          }
+          stdout += decoder.decode()
+        })()
+        const code = await Promise.race([
+          codePromise,
+          Bun.sleep(15_000).then(() => { throw new Error(`compiled connect did not print a device code: ${stdout}`) }),
+        ])
+        const approved = await ctx.client.as(ctx.P.OWNER).post('/v1/accounts/:accountId/compute-nodes/device-auth/:code/approve', {}, { params: { accountId: ctx.P.accountId, code } })
+        approved.status(201)
+        browserNodeId = approved.json<any>().compute_node_id
+        const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+        await outputPromise
+        check('browser connect exits 0 and names approved node', exitCode === 0 && stdout.includes(browserNodeId), true, { exitCode, stdout, stderr })
+        check('browser connect does not print credential material', !stdout.includes('kortix_node_') && !stderr.includes('kortix_node_'), true, { stdout, stderr })
+        const logout = await processResult([binary, 'logout'], { KORTIXD_HOME: stateDir })
+        check('browser-enrolled node logs out', logout.exitCode === 0, 0, logout.exitCode)
+      })
     } finally {
-      if (nodeId) {
-        await ctx.client.as(ctx.P.OWNER).del('/v1/accounts/:accountId/compute-nodes/:nodeId', { params: { accountId: ctx.P.accountId, nodeId } }).catch(() => {})
+      for (const cleanupNodeId of [nodeId, browserNodeId]) {
+        if (!cleanupNodeId) continue
+        await ctx.client.as(ctx.P.OWNER).del('/v1/accounts/:accountId/compute-nodes/:nodeId', { params: { accountId: ctx.P.accountId, nodeId: cleanupNodeId } }).catch(() => {})
       }
       rmSync(stateDir, { recursive: true, force: true })
       rmSync(binaryDir, { recursive: true, force: true })

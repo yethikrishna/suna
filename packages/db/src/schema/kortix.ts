@@ -1954,6 +1954,33 @@ export const computeNodeEnrollmentTokens = kortixSchema.table(
   ],
 );
 
+/** Browser-approved enrollment challenges for headless/local node installation. */
+export const computeNodeDeviceAuthRequests = kortixSchema.table(
+  'compute_node_device_auth_requests',
+  {
+    requestId: uuid('request_id').defaultRandom().primaryKey(),
+    deviceCode: varchar('device_code', { length: 16 }).notNull(),
+    secretHash: varchar('secret_hash', { length: 128 }).notNull(),
+    machineHostname: varchar('machine_hostname', { length: 255 }).notNull(),
+    nodeType: text('node_type').default('workstation').notNull(),
+    status: text('status').default('pending').notNull(),
+    accountId: uuid('account_id'),
+    nodeId: uuid('node_id'),
+    encryptedEnrollment: jsonb('encrypted_enrollment').$type<{ iv: string; ciphertext: string; tag: string }>(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    check('compute_node_device_auth_status_check', sql`${table.status} IN ('pending', 'approved', 'denied')`),
+    check('compute_node_device_auth_type_check', sql`${table.nodeType} IN ('workstation', 'vm', 'container', 'bare_metal', 'ci')`),
+    foreignKey({ name: 'cn_device_auth_account_fk', columns: [table.accountId], foreignColumns: [accounts.accountId] }).onDelete('cascade'),
+    foreignKey({ name: 'cn_device_auth_node_fk', columns: [table.nodeId], foreignColumns: [computeNodes.nodeId] }).onDelete('cascade'),
+    uniqueIndex('compute_node_device_auth_code_unique').on(table.deviceCode),
+    index('compute_node_device_auth_expiry_idx').on(table.expiresAt),
+  ],
+);
+
 /**
  * Durable per-turn ledger.
  *

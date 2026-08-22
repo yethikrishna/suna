@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 614,
+  "count": 622,
   "routes": [
     {
       "method": "GET",
@@ -235,6 +235,18 @@
       "path": "/v1/accounts/:accountId/compute-nodes/:nodeId"
     },
     {
+      "method": "GET",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/assignments"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/assignments"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/assignments/:assignmentId/release"
+    },
+    {
       "method": "POST",
       "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/disable"
     },
@@ -253,6 +265,18 @@
     {
       "method": "POST",
       "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/rotate-credential"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/accounts/:accountId/compute-nodes/device-auth/:code"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/device-auth/:code/approve"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/device-auth/:code/deny"
     },
     {
       "method": "GET",
@@ -1069,6 +1093,14 @@
     {
       "method": "DELETE",
       "path": "/v1/marketplace/sources/:id"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/nodes/device-auth"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/nodes/device-auth/:code/status"
     },
     {
       "method": "POST",

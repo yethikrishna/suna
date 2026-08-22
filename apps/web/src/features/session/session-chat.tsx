@@ -56,6 +56,8 @@ import { resolveWorkingTurn } from './turn/working-turn';
 
 import { Composer as SessionChatInput } from '@/features/session/composer/composer';
 import { resolveComposerAgent } from '@/features/session/composer/composer-agent-access';
+import { sessionSlashFiles } from '@/features/session/composer/menus/slash-files';
+import { useOptionalSessionPanel } from '@/features/session/action-panel/session-panel-provider';
 import { ConnectorRequiredNotice } from '@/features/session/connector-required-notice';
 import { SessionSiteHeader } from '@/features/session/header/session-site-header';
 import {
@@ -4203,6 +4205,42 @@ export function SessionChat({
   }, []);
 
   const chatCommands = useMemo(() => commands || [], [commands]);
+
+  // Null in the sub-session modal, which renders this chat read-only and
+  // OUTSIDE `SessionPanelProvider` — the same self-gating every other panel
+  // consumer does (see `easy-panel.tsx`).
+  const panel = useOptionalSessionPanel();
+
+  /**
+   * The session's files, handed to the composer so the `/` palette can offer
+   * them — the Outputs card's deliverables and the Context card's reads, as
+   * `sessionSlashFiles` flattens them.
+   *
+   * Read here rather than inside the composer because this component already
+   * sits beside the panel, and the composer is also mounted on project home
+   * and in the marketing demo, where importing the panel provider would drag
+   * the whole detail-panel tree into their bundles. See `Composer`'s
+   * `slashFiles` prop.
+   *
+   * `panel.files` arrives already ranked — this run's deliverables first, then
+   * everything older, each group in `sortOutputs` order — so the palette and
+   * the Outputs card cannot disagree about which file matters most.
+   *
+   * Both inputs are re-derived from `messages`, so their identity changes on
+   * every streaming update and this memo re-runs with them. That is a walk of
+   * a few dozen items; it is not worth a deeper equality check, and this
+   * component is already re-rendered by the same `messages` change.
+   */
+  const panelOutputs = panel?.files;
+  const panelContextFiles = panel?.context.files;
+  const chatSlashFiles = useMemo(
+    () =>
+      sessionSlashFiles({
+        outputs: panelOutputs ?? [],
+        contextFiles: panelContextFiles ?? [],
+      }),
+    [panelOutputs, panelContextFiles],
+  );
   const sessionScopeAgentName = composerAgentName ?? undefined;
 
   const chatToolbarSlot = useMemo(
@@ -4839,6 +4877,7 @@ export function SessionChat({
               onAgentChange={handleAgentChange}
               noAccessibleAgents={noAccessibleAgents}
               commands={chatCommands}
+              slashFiles={chatSlashFiles}
               onCommand={handleCommand}
               models={local.model.list}
               selectedModel={local.model.currentKey ?? null}

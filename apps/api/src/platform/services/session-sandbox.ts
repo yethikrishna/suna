@@ -13,15 +13,13 @@
  */
 
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
-import { computeNodeAssignments, computeNodes, projectSessions, sessionSandboxes } from '@kortix/db';
+import { projectSessions, sessionSandboxes } from '@kortix/db';
 import { isMetaAgentName, META_SANDBOX_SLUG } from '@kortix/shared';
 import { db } from '../../shared/db';
 import { PROVISIONING_SESSION_STATUSES } from '../../projects/lib/session-status';
 import { notifySessionProvisioningFailed } from '../../shared/session-failure-notifier';
-import { rotateNodeCredential } from '../../repositories/compute-node-credentials';
 import { createAccountToken } from '../../repositories/account-tokens';
 import { ensureAgentServiceAccount } from '../../repositories/service-accounts';
-import { runtimeAssetSigningPublicKey } from '../../runtime-assets/manifest';
 import {
   getProvider,
   SandboxTemplateNotFoundError,
@@ -394,31 +392,6 @@ export async function provisionSessionSandbox(opts: {
   // (~100ms each on a warm DB), now ~one round-trip total.
   const sandboxName = `session-${sandboxId.slice(0, 8)}`;
   const llmGatewayEnabled = projectLlmGatewayEnabled(opts.projectMetadata);
-  const ensureComputeNodeRows = async () => {
-    await db
-      .insert(computeNodes)
-      .values({
-        nodeId: sandboxId,
-        accountId,
-        projectId,
-        type: 'sandbox',
-        provider: providerName,
-        status: 'provisioning',
-      })
-      .onConflictDoNothing({ target: computeNodes.nodeId });
-    await db
-      .insert(computeNodeAssignments)
-      .values({
-        nodeId: sandboxId,
-        accountId,
-        projectId,
-        sessionId: sandboxId,
-        status: 'assigned',
-      })
-      .onConflictDoNothing({
-        target: [computeNodeAssignments.nodeId, computeNodeAssignments.sessionId],
-      });
-  };
   const createOrClaimSandboxRow = async () => {
     const inserted = await db
       .insert(sessionSandboxes)
@@ -452,16 +425,13 @@ export async function provisionSessionSandbox(opts: {
       })
       .onConflictDoNothing({ target: sessionSandboxes.sessionId })
       .returning();
-    if (inserted.length > 0) {
-      await ensureComputeNodeRows();
-      return inserted;
-    }
+    if (inserted.length > 0) return inserted;
 
     // Provider-confirmed loss keeps the durable logical row because DB-level
     // identity guards and child records intentionally forbid deleting it. The
     // recovery transaction resets external_id to NULL and stamps an explicit
     // authorization marker; only that exact placeholder may be claimed here.
-    const claimed = await db
+    return db
       .update(sessionSandboxes)
       .set({
         provider: providerName,
@@ -484,17 +454,10 @@ export async function provisionSessionSandbox(opts: {
         ),
       )
       .returning();
-    if (claimed.length > 0) await ensureComputeNodeRows();
-    return claimed;
   };
 
-  const sandboxRowsPromise = createOrClaimSandboxRow();
-  const [sandboxRows, nodeCredential, sessionToken, gatewayEntitled] = await Promise.all([
-    sandboxRowsPromise,
-    sandboxRowsPromise.then((rows) => {
-      if (rows.length === 0) throw new RuntimeIdentityConflictError(sandboxId);
-      return rotateNodeCredential(sandboxId, accountId);
-    }),
+  const [sandboxRows, sessionToken, gatewayEntitled] = await Promise.all([
+    createOrClaimSandboxRow(),
     // Resolve the per-agent grant and mint the sole sandbox credential. Token
     // minting is fail-closed: a sandbox without its session identity cannot
     // securely reach any Kortix service.
@@ -561,17 +524,10 @@ export async function provisionSessionSandbox(opts: {
     location,
     envVars: {
       ...(opts.extraEnvVars ?? {}),
-      // The session token is the sandbox's sole user-authority credential.
+      // One sandbox, one session-scoped Kortix credential. Provider, connector,
+      // executor and Git credentials stay server-side. The route being called
+      // determines what this token may do.
       KORTIX_TOKEN: sessionToken,
-      // Node-only credential. This authenticates only the outbound kortixd
-      // channel and cannot call user, project, session, or sandbox routes.
-      KORTIX_NODE_TOKEN: nodeCredential.credential,
-      // The stable logical node id. Provider allocation ids are assigned only
-      // after create, so they cannot identify the outbound daemon handshake.
-      KORTIX_COMPUTE_NODE_ID: sandbox.sandboxId,
-      ...(runtimeAssetSigningPublicKey()
-        ? { KORTIX_RUNTIME_ASSET_SIGNING_PUBLIC_KEY: runtimeAssetSigningPublicKey()! }
-        : {}),
       ...(gatewayEnabled ? { KORTIX_LLM_BASE_URL: llmBaseUrl } : {}),
     },
     // Idle lifecycle: we pass NO explicit autoStopInterval for a normal session,
@@ -778,14 +734,6 @@ export async function provisionSessionSandbox(opts: {
         throw createErr;
       }
       bgExternalId = result.externalId;
-      await db
-        .update(computeNodes)
-        .set({
-          provider: providerName,
-          allocationId: result.externalId,
-          updatedAt: new Date(),
-        })
-        .where(eq(computeNodes.nodeId, sandbox.sandboxId));
       tl.mark(`provider-create:${attempts}x`);
       const timeline = tl.summary();
 
@@ -821,10 +769,6 @@ export async function provisionSessionSandbox(opts: {
             updatedAt: new Date(),
           })
           .where(eq(sessionSandboxes.sandboxId, sandbox.sandboxId));
-        await db
-          .update(computeNodes)
-          .set({ status: 'deleted', updatedAt: new Date() })
-          .where(eq(computeNodes.nodeId, sandbox.sandboxId));
         tl.mark('row-stopped-before-active');
         tl.log({ provider: providerName, attempts, stoppedBeforeActive: true });
         const stopTl = tl.summary();
@@ -868,10 +812,6 @@ export async function provisionSessionSandbox(opts: {
             updatedAt: new Date(),
           })
           .where(eq(sessionSandboxes.sandboxId, sandbox.sandboxId));
-        await db
-          .update(computeNodes)
-          .set({ status: 'offline', updatedAt: new Date() })
-          .where(eq(computeNodes.nodeId, sandbox.sandboxId));
         tl.mark('row-stopped-during-provision');
         tl.log({ provider: providerName, attempts, stoppedDuringProvisioning: true });
         const stoppedTl = tl.summary();
@@ -1164,10 +1104,6 @@ export async function provisionSessionSandbox(opts: {
             updatedAt: new Date(),
           })
           .where(eq(sessionSandboxes.sandboxId, sandbox.sandboxId));
-        await db
-          .update(computeNodes)
-          .set({ status: 'error', updatedAt: new Date() })
-          .where(eq(computeNodes.nodeId, sandbox.sandboxId));
         await db
           .update(projectSessions)
           .set({ status: 'failed', error: userMessage, updatedAt: new Date() })

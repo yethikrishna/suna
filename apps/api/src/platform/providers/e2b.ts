@@ -4,7 +4,6 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:cr
 import { type Sandbox as E2BSandbox, Sandbox, SandboxNotFoundError } from 'e2b';
 import { SANDBOX_VERSION, config } from '../../config';
 import { configuredTimeoutMs, withTimeout } from '../../shared/with-timeout';
-import { providerEnvironmentOwner } from '../../projects/instance-scope';
 import { sandboxFrontendBaseUrl } from '../sandbox-frontend-url';
 import { serviceKeyForExternalId } from '../service-key';
 import { e2bDomain } from './e2b-domain';
@@ -324,7 +323,7 @@ export class E2BProvider implements SandboxProvider {
       envs: envVars,
       metadata: {
         [MANAGED_METADATA]: 'true',
-        [ENV_METADATA]: providerEnvironmentOwner(),
+        [ENV_METADATA]: config.INTERNAL_KORTIX_ENV,
         kortix_account_id: opts.accountId,
         kortix_created_by: opts.userId,
         ...(workloadType === 'app' ? { kortix_workload: workloadType } : {}),
@@ -541,7 +540,7 @@ export class E2BProvider implements SandboxProvider {
       ...apiOpts(),
       limit: 100,
       query: {
-        metadata: { [MANAGED_METADATA]: 'true', [ENV_METADATA]: providerEnvironmentOwner() },
+        metadata: { [MANAGED_METADATA]: 'true', [ENV_METADATA]: config.INTERNAL_KORTIX_ENV },
         state: ['running'],
       },
     });

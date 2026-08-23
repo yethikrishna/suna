@@ -36,7 +36,7 @@ describe('composeSandboxDockerfile', () => {
   test('omits the artifact tail — those COPYs need binaries a consumer cannot stage', () => {
     const out = composeSandboxDockerfile(USER, { layer: true });
     for (const artifact of [
-      'COPY kortixd.gz',
+      'COPY kortix-agent.gz',
       'kortix.gz',
       'kortix-entrypoint',
       'kortix-slack-cli',

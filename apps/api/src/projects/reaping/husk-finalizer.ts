@@ -50,8 +50,7 @@
  * guess, so the transcript read stays.
  */
 
-import { resolveServiceKey } from '../../sandbox-proxy/backend';
-import { fetchComputeNode } from '../../compute-nodes';
+import { resolveSandboxIngress, resolveServiceKey } from '../../sandbox-proxy/backend';
 import {
   KORTIX_USER_CONTEXT_HEADER,
   encodeKortixUserContext,
@@ -145,12 +144,17 @@ const HUSK_SETTLE_MS = 2_000;
 async function resolveDaemonEndpoint(
   externalId: string,
   sandboxId: string,
-): Promise<{ url: string; headers: Record<string, string>; fetch(input: string | URL, init?: RequestInit): Promise<Response> } | null> {
+): Promise<{ url: string; headers: Record<string, string> } | null> {
   try {
     const serviceKey = await resolveServiceKey(externalId);
     if (!serviceKey) return null; // nothing to sign with — box has no key on record
 
+    const ingress = await resolveSandboxIngress(externalId, {
+      port: DAEMON_PORT,
+      transport: 'http',
+    });
     const headers: Record<string, string> = {
+      ...ingress.headers,
       'Content-Type': 'application/json',
       Authorization: `Bearer ${serviceKey}`,
       [KORTIX_USER_CONTEXT_HEADER]: encodeKortixUserContext(
@@ -163,14 +167,7 @@ async function resolveDaemonEndpoint(
         serviceKey,
       ),
     };
-    return {
-      url: `http://127.0.0.1:${DAEMON_PORT}`,
-      headers,
-      fetch(input, init) {
-        const url = new URL(input, `http://127.0.0.1:${DAEMON_PORT}/`);
-        return fetchComputeNode(externalId, DAEMON_PORT, url.pathname + url.search, init);
-      },
-    };
+    return { url: ingress.url.replace(/\/$/, ''), headers };
   } catch (err) {
     console.warn(
       `[husk-finalizer] endpoint unresolved for sandbox ${sandboxId}:`,
@@ -225,7 +222,7 @@ function isAbortableHusk(inspection: HuskInspection): boolean {
  * the post-condition needs the target itself.
  */
 async function inspectRoot(
-  endpoint: { url: string; headers: Record<string, string>; fetch(input: string | URL, init?: RequestInit): Promise<Response> },
+  endpoint: { url: string; headers: Record<string, string> },
   opencodeSessionId: string,
   messageId: string,
 ): Promise<HuskInspection> {
@@ -233,7 +230,7 @@ async function inspectRoot(
     const url = new URL(`${endpoint.url}/session/${encodeURIComponent(opencodeSessionId)}/message`);
     url.searchParams.set('directory', WORKSPACE);
     url.searchParams.set('limit', String(READ_MESSAGE_LIMIT));
-    const res = await endpoint.fetch(url, {
+    const res = await fetch(url, {
       headers: sandboxRuntimeRequestHeaders(endpoint.headers),
       signal: AbortSignal.timeout(READ_TIMEOUT_MS),
     });
@@ -325,7 +322,7 @@ export async function finalizeHuskTurn(
   }
 
   try {
-    const res = await endpoint.fetch(
+    const res = await fetch(
       `${endpoint.url}/session/${encodeURIComponent(opencodeSessionId)}/abort?directory=${encodeURIComponent(WORKSPACE)}`,
       {
         method: 'POST',

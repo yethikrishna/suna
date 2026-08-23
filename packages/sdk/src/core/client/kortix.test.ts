@@ -884,45 +884,6 @@ test('two session handles resolve independent sandboxes: A.send never crosses to
   expect(aAbortCall?.url).not.toContain('sb-B');
 });
 
-test('session send uses prompt_async and returns the completed assistant message', async () => {
-  let promptMessageId = '';
-  globalThis.fetch = mock(async (input: unknown, init?: RequestInit) => {
-    const url = requestUrl(input);
-    const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
-    calls.push({ url, method });
-    if (url.includes('/sessions/SESS-A/start')) {
-      return jsonResponse(sessionStartPayload('sb-A', 'ocs-A'));
-    }
-    if (url.includes('/prompt_async')) {
-      const body = input instanceof Request ? await input.clone().json() : JSON.parse(String(init?.body));
-      promptMessageId = (body as { messageID: string }).messageID;
-      return new Response(null, { status: 204 });
-    }
-    if (url.includes('/session/ocs-A/message')) {
-      return jsonResponse([
-        {
-          info: {
-            id: 'msg_assistant',
-            sessionID: 'ocs-A',
-            role: 'assistant',
-            parentID: promptMessageId,
-            time: { created: 1, completed: 2 },
-          },
-          parts: [{ id: 'prt_1', sessionID: 'ocs-A', messageID: 'msg_assistant', type: 'text', text: 'done' }],
-        },
-      ]);
-    }
-    return jsonResponse({ ok: true });
-  }) as unknown as typeof fetch;
-
-  const k = createKortix({ backendUrl: 'http://test.local', getToken: async () => 'tok' });
-  const result = await k.session('PROJ', 'SESS-A').send('hello');
-
-  expect(calls.some((call) => call.url.includes('/prompt_async'))).toBe(true);
-  expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/message'))).toBe(false);
-  expect(result.data?.info.id).toBe('msg_assistant');
-});
-
 test('send applies persisted session defaults when the OpenCode pin came from a snapshot', async () => {
   globalThis.fetch = mock(async (input: unknown, init?: RequestInit) => {
     const url = requestUrl(input);
@@ -954,7 +915,7 @@ test('send applies persisted session defaults when the OpenCode pin came from a 
 
   const promptCall = calls.find(
     (call) =>
-      call.url.includes('/p/sb-inherited/8000/session/shared-snapshot-pin/prompt_async') &&
+      call.url.includes('/p/sb-inherited/8000/session/shared-snapshot-pin/message') &&
       call.method === 'POST',
   );
   expect(promptCall?.body).toMatchObject({
@@ -1007,7 +968,7 @@ test('changeModel invalidates the persisted default before the next send', async
 
   const prompts = calls.filter(
     (call) =>
-      call.url.includes('/p/sb-model-change/8000/session/shared-snapshot-pin/prompt_async') &&
+      call.url.includes('/p/sb-model-change/8000/session/shared-snapshot-pin/message') &&
       call.method === 'POST',
   );
   expect(prompts.map((call) => call.body)).toEqual([
@@ -1081,7 +1042,7 @@ test('per-call and handle prompt choices override persisted session defaults', a
 
   const prompts = calls.filter(
     (call) =>
-      call.url.includes('/p/sb-overrides/8000/session/shared-snapshot-pin/prompt_async') &&
+      call.url.includes('/p/sb-overrides/8000/session/shared-snapshot-pin/message') &&
       call.method === 'POST',
   );
   expect(prompts.map((call) => call.body)).toEqual([
@@ -1143,7 +1104,7 @@ test('a failed persisted-default read is retried by the next send', async () => 
   expect(sessionReads).toBe(4);
   const prompts = calls.filter(
     (call) =>
-      call.url.includes('/p/sb-default-retry/8000/session/shared-snapshot-pin/prompt_async') &&
+      call.url.includes('/p/sb-default-retry/8000/session/shared-snapshot-pin/message') &&
       call.method === 'POST',
   );
   expect(prompts).toHaveLength(1);

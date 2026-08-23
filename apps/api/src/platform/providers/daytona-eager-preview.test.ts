@@ -118,34 +118,3 @@ test('App workload bootstrap starts kortix-appd through the Daytona toolbox', as
   expect(processCommands[0]?.command).toBe('/kortix/bin/kortix-appd --daemon');
   expect(processCommands[0]?.timeout).toBe(15);
 });
-
-test('session runtime convergence starts the kortixd supervisor with the current relay URL', async () => {
-  processCommands = [];
-
-  await new DaytonaProvider().ensureSessionRuntimeStarted('sbx-eager-1', {
-    nodeId: 'node-legacy-1',
-    nodeToken: 'knd_test_legacy_credential',
-  });
-
-  expect(processCommands).toHaveLength(1);
-  expect(processCommands[0]?.command).toContain('/opt/kortix/agent.bootstrap supervise');
-  expect(processCommands[0]?.command).toContain('KORTIX_API_URL=\'https://api.example.com/v1\'');
-  expect(processCommands[0]?.command).toContain("KORTIX_COMPUTE_NODE_ID='node-legacy-1'");
-  expect(processCommands[0]?.command).toContain("KORTIX_NODE_TOKEN='knd_test_legacy_credential'");
-  expect(processCommands[0]?.command).toContain('kill -TERM');
-  expect(processCommands[0]?.command).toContain('/proc/[0-9]*');
-  expect(processCommands[0]?.command).toContain('/runtime-assets/agent');
-  expect(processCommands[0]?.command).toContain('agent.bootstrap supervise');
-  expect(processCommands[0]?.command).toContain("HOME='/home/kortix'");
-  expect(processCommands[0]?.command).toContain('/home/kortix/.bun/bin');
-  expect(processCommands[0]?.command).toContain('mkdir /opt/kortix/bootstrap.lock');
-  expect(processCommands[0]?.command).toContain('agent.bootstrap.tmp.$$');
-  expect(processCommands[0]?.command).toContain('/opt/kortix/agent.bootstrap run');
-  expect(processCommands[0]?.command).not.toContain('"/usr/local/bin/kortix-entrypoint"|');
-  expect(processCommands[0]?.command).not.toContain('"/bin/sh /usr/local/bin/kortix-entrypoint"');
-  expect(processCommands[0]?.command).toContain('[ "$pid" = 1 ] && continue');
-  expect(processCommands[0]?.command).not.toContain('"/usr/local/bin/kortix-agent"|');
-  expect(processCommands[0]?.command).toContain('KORTIXD_ADOPT_EXISTING_RUNTIME=1');
-  expect(processCommands[0]?.command).not.toContain('ps -u');
-  expect(processCommands[0]?.timeout).toBe(15);
-});

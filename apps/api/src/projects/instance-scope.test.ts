@@ -13,7 +13,7 @@
 // must treat rows that predate the stamp as everyone's (legacy rows).
 import { afterEach, describe, expect, test } from 'bun:test';
 import { config } from '../config';
-import { providerEnvironmentOwner, sandboxBelongsToThisInstance } from './instance-scope';
+import { sandboxBelongsToThisInstance } from './instance-scope';
 
 const ORIGINAL = (config as { KORTIX_INSTANCE_ID?: string }).KORTIX_INSTANCE_ID;
 const setInstance = (value: string | undefined) => {
@@ -52,17 +52,5 @@ describe('sandboxBelongsToThisInstance', () => {
   test('empty-string KORTIX_INSTANCE_ID reads as unset', () => {
     setInstance('');
     expect(sandboxBelongsToThisInstance({ instanceId: 'primary' })).toBe(true);
-  });
-});
-
-describe('providerEnvironmentOwner', () => {
-  test('keeps the deployed environment marker unchanged', () => {
-    setInstance(undefined);
-    expect(providerEnvironmentOwner()).toBe(config.INTERNAL_KORTIX_ENV);
-  });
-
-  test('gives a worktree a marker that an older deployed reaper cannot match', () => {
-    setInstance('wt-a');
-    expect(providerEnvironmentOwner()).toBe(`${config.INTERNAL_KORTIX_ENV}:wt-a`);
   });
 });

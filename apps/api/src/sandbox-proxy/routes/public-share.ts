@@ -9,11 +9,12 @@ import {
 } from '../../shared/session-public-shares';
 import {
   buildSandboxUpstreamHeaders,
+  invalidatePreviewLink,
   loadSandbox,
   markSandboxUsed,
+  resolveSandboxIngress,
   wakeSandbox,
 } from '../backend';
-import { fetchComputeNode } from '../../compute-nodes';
 
 const publicShareApp = new Hono();
 
@@ -158,7 +159,12 @@ async function forwardPublicShare(c: any, args: {
   const maxRetries = 2;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const previewUrl = `http://127.0.0.1:${args.port}`;
+      const ingress = await resolveSandboxIngress(sandbox, {
+        port: args.port,
+        path: args.remainingPath,
+        transport: 'http',
+      });
+      const previewUrl = ingress.url;
       const targetUrl = previewUrl.replace(/\/$/, '') + args.remainingPath + args.queryString;
       const headers = new Headers();
       for (const [key, value] of c.req.raw.headers.entries()) {
@@ -173,6 +179,7 @@ async function forwardPublicShare(c: any, args: {
         sandboxId: args.share.externalId!,
         userId: '',
         serviceKey: sandbox.serviceKey,
+        providerHeaders: ingress.headers,
       });
       for (const [key, value] of Object.entries(authHeaders)) {
         headers.set(key, value);
@@ -182,7 +189,7 @@ async function forwardPublicShare(c: any, args: {
       headers.set('x-forwarded-host', previewOrigin.host);
       headers.set('X-Forwarded-Prefix', `${publicOrigin(c)}${args.redirectPrefix}`);
 
-      const upstream = await fetchComputeNode(sandbox.externalId, args.port, args.remainingPath + args.queryString, {
+      const upstream = await fetch(targetUrl, {
         method,
         headers,
         body,
@@ -193,6 +200,7 @@ async function forwardPublicShare(c: any, args: {
       } as RequestInit);
 
       if ((upstream.status === 502 || upstream.status === 503) && attempt < maxRetries) {
+        invalidatePreviewLink(args.share.externalId!, args.port);
         await wakeSandbox(args.share.externalId!);
         await new Promise((r) => setTimeout(r, 1500));
         continue;

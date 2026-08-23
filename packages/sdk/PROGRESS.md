@@ -4374,7 +4374,6 @@ Required SDK gates are typecheck, the full test suite, and packed-install smoke.
 
 **Status:** IN PROGRESS.
 
-
 **SDK package shippable to production: NOT YET.**
 
 ### 2026-08-07 — session `apps-experimental-gate` completion
@@ -4738,7 +4737,6 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B49 | **`applyOptimisticAbort` marks a turn errored but never ends it.** It sets `error: AbortError` and flips the session idle, but leaves `time.completed` unset — and an aborted turn may never receive a `message.updated` that sets it. Any host predicate written as `!lastAssistant.time?.completed` therefore stays true for the life of the tab after every stop. It wedged `apps/web`'s message-queue drain gate permanently: every message typed after an interrupt queued behind one that could never be released. | `src/react/use-session-send.ts:271-296` — sets `error`, no `time.completed`. Worked around host-side in `apps/web/src/features/session/assistant-turn-open.ts` (errored ⇒ ended), which is a patch on the symptom; the SDK should end the turn it aborts. | OPEN |
 | B50 | **`applyPostCreateActions`'s `deliver_prompt` action shares `postPrompt`/`continueSession` with `executeQueuedContinue` but has no equivalent no-blind-repost protection at the call-site level for its OWN retry path.** A `create_session` command whose post-create actions fail (`postCreate.ok === false`) is re-queued `retryable: true` (`engine.ts` `drainSessionLifecycleQueue`, the `create_session` branch); the NEXT drain sees `row.sessionId` already set, returns the existing session immediately, then re-runs `applyPostCreateActions` — including `deliver_prompt` — from scratch. The re-post is protected by the SAME prompt-dedupe TTL fix landed in T13 (identical `sessionId`+`text` on retry → identical content-hash key → collides), so it is NOT currently broken, but nothing documents or pins that shared guarantee at this second call site the way `executeQueuedContinue`'s doc comment now does. | `engine.ts` `drainSessionLifecycleQueue` create-session branch (~lines 513-535 pre-edit) → `applyPostCreateActions` → `continueSession` with `action.source`/`action.text`, same `postPrompt` as the continue_session path. Out of scope for T13 (task named `engine.ts`'s "delivery-retry region" as `executeQueuedContinue`/`postPrompt`, not the create-session post-actions branch). | OPEN — same fix already covers it in practice; needs its own doc comment + pinning test if this path is ever revisited. |
 | B51 | **Recoverable runtime loss must preserve the conversation and lifecycle operations must serialize per session.** Restart currently runs detached, unfenced provider `stop -> start` operations. A runtime error can replace cached chat with a full-screen card. | Dev incident `ebdcac7f-58bd-4a9f-ad82-b5f536f12c9c` on 2026-08-22: three restart requests in 27 seconds; status oscillated `running -> provisioning -> stopped -> running -> stopped`; Terminal, Files, and OpenCode failed together while cached transcript existed. Spec and plan: `2026-08-22-session-runtime-recovery-*`. | **COMPLETE 2026-08-22** — PR `#6748`, merge `623db9e1adad11f0107276b738a9846938d79467`, and Deploy Dev run `32596581140`. Local gates passed: 53 focused tests, API and web typechecks, 383 REST/CLI flows, SDK 2424 pass/2 skip, and browser replay. Live dev replay issued three simultaneous restarts against a new Platinum session: one returned `restart_started`, two returned `restart_in_progress`, and all returned operation `87f216f7-a432-4448-8d92-262b73c49805`. The session returned to `running`; `/global/health` and `/kortix/health` returned `200`. **Shippable: YES.** |
-| B52 | **`SessionHandle.send()` uses OpenCode's broken synchronous `/message` route.** OpenCode `1.18.19` accepts `/prompt_async` with `204`, while synchronous `/message` returns `500 UnknownError` from `SessionPrompt.createUserMessage`. The web uses the async route, but the CLI uses `SessionHandle.send()`, so `kortix sessions chat` fails against a healthy daemon. | Live dev session `2e1fcec9-2485-481f-afca-8d1ab035761a`: daemon health and OpenCode health passed; direct synchronous message returned `500`; direct async prompt returned `204`. `packages/sdk/src/core/client/kortix.ts:send` calls `session.prompt()`. | **IN PROGRESS 2026-08-23** — session `compute-node-repair-clean`; RED test, async send with completion read-back, full SDK gates, real CLI chat, merge, and Deploy Dev proof required. |
 
 ## DISCOVERED THIS SESSION — append freely
 
@@ -11853,53 +11851,3 @@ assistant-turn-open 10 pass / 0 fail; `tsc --noEmit` 15 lines, all the known
 on both touched web files.
 
 **Shippable to production: YES.**
-
-### 2026-08-22 — session `kortixd` claim: compute-node browser authorization
-
-Claimed the additive SDK account surface for compute-node device authorization.
-Scope: read, approve, and deny a `kortixd` device code through the existing
-authenticated backend transport. The web `/nodes/authorize/[code]` page is the
-first consumer. RED → GREEN → REFACTOR and all SDK release gates are required.
-
-**Status:** IN PROGRESS.
-
-### 2026-08-22 — session `kortixd` completion: compute-node browser authorization
-
-Added `accounts.computeNodes.deviceAuth.get`, `approve`, and `deny`. The methods
-use the existing authenticated backend transport. The web authorization page
-does not contain a raw backend request.
-
-TDD evidence: the new SDK test failed first because `compute-nodes.ts` did not
-exist. The focused SDK test then passed 3/3. The web contract test passed 1/1.
-
-Release evidence: `pnpm test` passed 2429 tests with 0 failures across 163 files.
-`pnpm run smoke:install` packed, installed, imported, and constructed the SDK.
-Both public-surface snapshot tests passed after deliberate additive updates.
-The focused web ESLint command passed with no output. Web `tsc --noEmit` reports
-only the repository's documented Bun `test.each` errors. It reports no error in
-the new authorization page.
-
-**Status:** COMPLETE.
-
-**Shippable to production: YES.**
-
-### 2026-08-23 — remove the experimental voice API
-
-Removed the LiveKit join, transcript, project-channel, and session-handle
-surfaces. The product owner explicitly retired the experimental feature.
-
-The runtime and type surface snapshots were regenerated deliberately. Their
-diff contains only removed voice and speech-to-text names. The full SDK suite
-passes 2418 tests across 162 files. The packed install smoke test passes.
-
-**Status:** COMPLETE.
-
-**Shippable to production: YES.**
-### 2026-08-23 — session `session-parts-guard` claim
-
-**Status:** IN PROGRESS.
-
-**Scope:** Normalize malformed runtime message `parts` at the SDK hydration
-boundary. Add a regression test that reproduces the deployed web crash. Remove
-references to the unavailable `tdd` skill while retaining mandatory RED → GREEN
-testing. Local verification precedes any merge or deployment.

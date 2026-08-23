@@ -124,17 +124,6 @@ describe('groupMessagesIntoTurns — display order is by time.created, id is the
 });
 
 describe('groupMessagesIntoTurns', () => {
-  test('normalizes a malformed wire parts field before exposing a turn', () => {
-    const malformed = {
-      info: { id: 'u-malformed', role: 'user' },
-      parts: undefined,
-    } as unknown as MessageWithPartsLike;
-
-    const [turn] = groupMessagesIntoTurns([malformed]);
-
-    expect(turn.userMessage.parts).toEqual([]);
-  });
-
   test('groups assistant messages under their parent user message', () => {
     const turns = groupMessagesIntoTurns([
       userMsg('u1'),

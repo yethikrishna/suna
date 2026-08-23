@@ -26,8 +26,7 @@ import { authenticatePreviewPrincipalDetailed } from './preview-auth';
 import { resolvePreviewWsUpstream } from './routes/preview';
 import { classifyPtyWebSocketPath } from '../platform/providers/pty-ingress';
 import { OPENCODE_PRIMARY_PORT, isOpencodePort } from '../shared/opencode-ports';
-import { fetchComputeNodeById, connectComputeNodeWebSocket } from '../compute-nodes';
-import { startWebSocketHeartbeat } from '../compute-nodes/ws-heartbeat';
+import { resolveSandboxIngress } from './backend';
 import { establishPreviewSession, resolvePreviewRequest, sessionFromCookies } from './preview-origin';
 
 // opencode's PTY WebSocket endpoint lives on opencode's own port, reachable via
@@ -56,7 +55,12 @@ const AGENT_PORT = 8000;
  */
 async function resolveLiveOpencodePort(sandboxId: string): Promise<number> {
   try {
-    const res = await fetchComputeNodeById(sandboxId, AGENT_PORT, '/kortix/health', {
+    const { url, headers } = await resolveSandboxIngress(sandboxId, {
+      port: AGENT_PORT,
+      transport: 'http',
+    });
+    const res = await fetch(`${url.replace(/\/$/, '')}/kortix/health`, {
+      headers,
       signal: AbortSignal.timeout(2_000),
     });
     if (!res.ok) return OPENCODE_FALLBACK_PORT;
@@ -76,15 +80,12 @@ async function resolveLiveOpencodePort(sandboxId: string): Promise<number> {
 /** Per-connection state stashed on the upgraded socket's `data`. */
 export interface PreviewWsData {
   type: 'preview-ws';
-  externalId: string;
-  port: number;
-  path: string;
+  url: string;
   headers: Record<string, string>;
   // Populated in the `open` handler once the upstream socket exists.
-  upstream?: Awaited<ReturnType<typeof connectComputeNodeWebSocket>>;
+  upstream?: WebSocket;
   ready?: boolean;
   queue?: Array<string | Buffer | ArrayBuffer | Uint8Array>;
-  stopHeartbeat?: () => void;
 }
 
 /** Minimal shape of the Bun server WebSocket we touch. */
@@ -92,7 +93,6 @@ interface ServerWs {
   data: PreviewWsData;
   send: (data: string | ArrayBufferView | ArrayBuffer) => void;
   close: (code?: number, reason?: string) => void;
-  ping: () => void;
 }
 
 /** True when the path is a path-based preview route eligible for WS proxying. */
@@ -242,13 +242,7 @@ async function resolveUpgradeForPrincipal(input: {
     }
     return {
       ok: true,
-      data: {
-        type: 'preview-ws',
-        externalId: upstream.externalId,
-        port: upstream.port,
-        path: upstream.path,
-        headers: upstream.headers,
-      },
+      data: { type: 'preview-ws', url: upstream.url, headers: upstream.headers },
     };
   } catch (err) {
     console.warn('[PREVIEW-WS] upstream resolve failed:', (err as Error)?.message || err);
@@ -280,35 +274,47 @@ export const previewWsHandlers = {
     const state = ws.data;
     state.queue = [];
     state.ready = false;
-    state.stopHeartbeat = startWebSocketHeartbeat(ws);
 
-    void connectComputeNodeWebSocket(state.externalId, state.port, state.path, state.headers, {
-      open: () => {
-        state.ready = true;
-        const queued = state.queue ?? [];
-        state.queue = [];
-        for (const msg of queued) {
-          try { state.upstream?.send(msg); } catch {}
-        }
-      },
-      message: (data, binary) => {
-        try { ws.send(binary ? data : Buffer.from(data).toString('utf8')); } catch {}
-      },
-      close: (code, reason) => {
-        try { ws.close(sanitizePreviewWsCloseCode(code), reason.slice(0, 120)); } catch {}
-      },
-    }).then((upstream) => {
-      state.upstream = upstream;
-    }).catch((err) => {
-      console.warn('[PREVIEW-WS] node relay connect failed:', (err as Error)?.message || err);
+    let upstream: WebSocket;
+    try {
+      // Bun extends the WebSocket constructor with a `headers` option so we can
+      // forward the Daytona preview token / service key / signed user-context.
+      upstream = new WebSocket(state.url, { headers: state.headers } as any);
+    } catch (err) {
+      console.warn('[PREVIEW-WS] upstream connect threw:', (err as Error)?.message || err);
       try { ws.close(1011, 'upstream connect failed'); } catch {}
-    });
+      return;
+    }
+
+    upstream.binaryType = 'arraybuffer';
+    state.upstream = upstream;
+
+    upstream.onopen = () => {
+      state.ready = true;
+      const queued = state.queue ?? [];
+      state.queue = [];
+      for (const msg of queued) {
+        try { upstream.send(msg as any); } catch {}
+      }
+    };
+
+    upstream.onmessage = (ev: MessageEvent) => {
+      try { ws.send(ev.data as any); } catch {}
+    };
+
+    upstream.onclose = (ev: CloseEvent) => {
+      try { ws.close(sanitizePreviewWsCloseCode(ev.code), (ev.reason || '').slice(0, 120)); } catch {}
+    };
+
+    upstream.onerror = () => {
+      try { ws.close(4502, 'upstream error'); } catch {}
+    };
   },
 
   message(ws: ServerWs, message: string | Buffer) {
     const state = ws.data;
     const upstream = state.upstream;
-    if (state.ready && upstream) {
+    if (state.ready && upstream && upstream.readyState === WebSocket.OPEN) {
       try { upstream.send(message as any); } catch {}
     } else {
       (state.queue ??= []).push(message);
@@ -316,7 +322,6 @@ export const previewWsHandlers = {
   },
 
   close(ws: ServerWs) {
-    ws.data.stopHeartbeat?.();
     try { ws.data.upstream?.close(); } catch {}
   },
 };

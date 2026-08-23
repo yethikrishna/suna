@@ -40,7 +40,7 @@ import { billingApp, accountDeletionApp } from './billing';
 import { platformApp } from './platform';
 import { sandboxProxyApp } from './sandbox-proxy';
 import { setupApp } from './setup';
-import { supabaseAuth, combinedAuth, nodeOrCombinedAuth } from './middleware/auth';
+import { supabaseAuth, combinedAuth } from './middleware/auth';
 import { createCorsMiddleware } from './middleware/cors';
 import { requestDeadline, isRequestDeadlineHTTPException } from './middleware/request-deadline';
 import { inspectDatabaseError } from './shared/database-errors';
@@ -75,11 +75,6 @@ import {
   startTunnelService,
   stopTunnelService,
 } from './tunnel';
-import { computeNodeChannel, computeNodeWsHandlers } from './compute-nodes';
-import { computeNodePublicApp } from './compute-nodes/routes';
-import { RelayReplayGuard } from './compute-nodes/relay-auth';
-import { handleRelayHttpRequest } from './compute-nodes/relay-server';
-import { prepareRelaySocketUpgrade, relaySocketHandlers } from './compute-nodes/relay-socket';
 import { accessControlApp } from './access-control';
 import { startAccessControlCache, stopAccessControlCache } from './shared/access-control-cache';
 import { startTmpReaper, stopTmpReaper } from './snapshots/tmp-reaper';
@@ -794,7 +789,6 @@ app.openapi(
 
 // /v1/accounts/* — account & member management lives in ./accounts router.
 app.route('/v1/accounts', accountsRouter);
-app.route('/v1/nodes', computeNodePublicApp);
 // /v1/auth/* — auth-side server endpoints (logout for now). Audit
 // events for login/logout/failed-login live in the auth middleware
 // + this router so SOC2 reviews see the full auth lifecycle.
@@ -894,7 +888,7 @@ app.route('/v1/skills', skillsApp); // GET /v1/skills, /v1/skills/:name[?full=1]
 // the in-sandbox KORTIX_TOKEN. The `/*` wildcard is what puts every payload
 // route behind auth — a new one must be added to runtimeAssetsApp, never mounted
 // beside it.
-app.use('/v1/runtime-assets/*', nodeOrCombinedAuth);
+app.use('/v1/runtime-assets/*', combinedAuth);
 app.route('/v1/runtime-assets', runtimeAssetsApp); // GET /manifest, /cli, /agent, /managed-skills
 
 // Universal git smart-HTTP proxy — every git-backed project's client origin.
@@ -1010,6 +1004,7 @@ app.route('/v1/p', sandboxProxyApp);
 // === Error Handling ===
 
 app.onError((err, c) => {
+
   const method = c.req.method;
   const path = c.req.path;
   const errName = err.constructor?.name || 'Error';
@@ -1387,14 +1382,13 @@ let draining = false;
 // service serve request-path needs (per-node caches + the WS acceptor), so they
 // must be live on each node behind the load balancer.
 async function startReplicaServices() {
-  appLogger.info('[snapshots] project image rollout', projectImageRolloutDiagnostic());
+  appLogger.info(
+    '[snapshots] project image rollout',
+    projectImageRolloutDiagnostic(),
+  );
   warnIfPreviewOriginsMissing(appLogger);
   startAccessControlCache();
   startTunnelService();
-  if (config.KORTIX_NODE_RELAY_ROLE !== 'api') {
-    const { startComputeNodeRpcForwarder } = await import('./compute-nodes/cluster-forwarder');
-    startComputeNodeRpcForwarder(computeNodeChannel);
-  }
   // Warm the runtime-settings cache BEFORE serving traffic so the admin-panel
   // toggles (warm_snapshot / provider_fallback) are honored from
   // request #1. Without this a fresh pod serves the cold-cache defaults for the
@@ -1525,8 +1519,6 @@ async function shutdown(signal: string) {
   stopModelPricing();
   runtimeModelCatalog.stop();
   stopTunnelService();
-  const { stopComputeNodeRpcForwarder } = await import('./compute-nodes/cluster-forwarder');
-  stopComputeNodeRpcForwarder();
   stopAccessControlCache();
   stopTmpReaper();
   // Flush observability data before exit. The audit queue is drained here
@@ -1577,9 +1569,6 @@ import {
   previewWsHandlers,
 } from './sandbox-proxy/ws-proxy';
 
-const computeNodeRelayReplayGuard = new RelayReplayGuard();
-const computeNodeRelaySocketHandlers = relaySocketHandlers(computeNodeChannel);
-
 export default {
   port: config.PORT,
 
@@ -1611,43 +1600,6 @@ export default {
     req = ensureAbsoluteRequestUrl(req, config.PORT);
     const url = getRequestUrl(req, config.PORT);
     const isWsUpgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket';
-
-    if (isWsUpgrade && url.pathname.startsWith('/v1/internal/node-relay/socket/')) {
-      if (config.KORTIX_NODE_RELAY_ROLE === 'api')
-        return Response.json(
-          { error: 'This API process does not own compute-node relay sockets' },
-          { status: 503 },
-        );
-      const prepared = prepareRelaySocketUpgrade({
-        request: req,
-        key: config.INTERNAL_SERVICE_KEY,
-        guard: computeNodeRelayReplayGuard,
-      });
-      if (!prepared.ok)
-        return Response.json({ error: prepared.message }, { status: prepared.status });
-      if (server.upgrade(req, { data: prepared.data })) return undefined;
-      return Response.json(
-        { error: 'Compute-node relay WebSocket upgrade failed' },
-        { status: 500 },
-      );
-    }
-
-    if (url.pathname.startsWith('/v1/internal/node-relay/http/')) {
-      server.timeout(req, 0);
-      if (config.KORTIX_NODE_RELAY_ROLE === 'api')
-        return Response.json(
-          { error: 'This API process does not own compute-node relay sockets' },
-          { status: 503 },
-        );
-      return (
-        (await handleRelayHttpRequest({
-          request: req,
-          hub: computeNodeChannel,
-          key: config.INTERNAL_SERVICE_KEY,
-          guard: computeNodeRelayReplayGuard,
-        })) ?? Response.json({ error: 'Malformed compute-node relay target' }, { status: 400 })
-      );
-    }
 
     // Sandbox preview traffic includes OpenCode long-poll and SSE routes. Let
     // the proxy's own upstream timeout decide instead of Bun closing the client
@@ -1798,32 +1750,6 @@ export default {
       if (success) return undefined;
     }
 
-    // ── kortixd compute-node WebSocket ──────────────────────────────────
-    // This is independent from the legacy computer agent tunnel. Sandboxes
-    // authenticate in the first frame, then carry all runtime traffic here.
-    if (isWsUpgrade && url.pathname === '/v1/nodes/ws') {
-      if (!schemaReady)
-        return new Response(JSON.stringify({ error: 'Service starting up' }), {
-          status: 503,
-          headers: { 'Content-Type': 'application/json', 'Retry-After': '5' },
-        });
-      if (config.KORTIX_NODE_RELAY_ROLE === 'api')
-        return Response.json(
-          { error: 'Compute-node WebSockets are served by the node-relay role' },
-          { status: 503 },
-        );
-      if (req.headers.has('origin'))
-        return new Response(JSON.stringify({ error: 'Browser WebSockets are not allowed' }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      if (server.upgrade(req, { data: { type: 'compute-node' } })) return undefined;
-      return new Response(JSON.stringify({ error: 'Compute-node WebSocket upgrade failed' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
     // ── Preview WebSocket proxy ─────────────────────────────────────────
     // Path-based preview upgrades (`/v1/p/{sandboxId}/{port}/...`) — today the
     // xterm PTY terminal. Authenticate via the `?token=` query param (browsers
@@ -1868,14 +1794,6 @@ export default {
         tunnelWsHandlers.onOpen(ws.data.tunnelId, ws as any);
         return;
       }
-      if (ws.data?.type === 'compute-node') {
-        computeNodeWsHandlers.open(ws as any);
-        return;
-      }
-      if (ws.data?.type === 'compute-node-relay-socket') {
-        computeNodeRelaySocketHandlers.open(ws as any);
-        return;
-      }
       if (ws.data?.type === 'preview-ws') {
         previewWsHandlers.open(ws as any);
         return;
@@ -1898,14 +1816,6 @@ export default {
         tunnelWsHandlers.onMessage(ws.data.tunnelId, ws as any, message);
         return;
       }
-      if (ws.data?.type === 'compute-node') {
-        computeNodeWsHandlers.message(ws as any, message);
-        return;
-      }
-      if (ws.data?.type === 'compute-node-relay-socket') {
-        computeNodeRelaySocketHandlers.message(ws as any, message);
-        return;
-      }
       if (ws.data?.type === 'preview-ws') {
         previewWsHandlers.message(ws as any, message);
         return;
@@ -1916,17 +1826,9 @@ export default {
       }
     },
 
-    close(ws: { data: any }, code?: number, reason?: string | Buffer) {
+    close(ws: { data: any }) {
       if (ws.data?.type === 'tunnel-agent') {
         tunnelWsHandlers.onClose(ws.data.tunnelId, ws as any);
-        return;
-      }
-      if (ws.data?.type === 'compute-node') {
-        computeNodeWsHandlers.close(ws as any);
-        return;
-      }
-      if (ws.data?.type === 'compute-node-relay-socket') {
-        computeNodeRelaySocketHandlers.close(ws as any, code, reason);
         return;
       }
       if (ws.data?.type === 'preview-ws') {

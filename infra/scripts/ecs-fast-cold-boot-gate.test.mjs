@@ -21,12 +21,6 @@ function runFunction(name, ...args) {
 }
 
 describe('fast cold boot deployment gate', () => {
-  test('maps node-relay deploys to the dedicated service in the API cluster', () => {
-    const result = spawnSync('bash', ['-c', 'set -uo pipefail; export KORTIX_ECS_DEPLOY_LIB=1 SERVICE_PREFIX=kortix-dev; source "$1"; configure_service_coordinates node-relay; printf "%s|%s|%s" "$CLUSTER" "$SERVICE" "$CONTAINER"', 'bash', deployScript], { encoding: 'utf8' });
-    expect(result.status).toBe(0);
-    expect(result.stdout).toBe('kortix-dev|kortix-dev-node-relay|api');
-  });
-
   test('maps every permanent API environment to its standalone gateway origin', () => {
     const targets = {
       dev: 'https://gateway-dev-ecs-fargate.kortix.com',

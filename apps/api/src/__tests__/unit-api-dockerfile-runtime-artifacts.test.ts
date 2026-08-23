@@ -24,7 +24,7 @@ describe('API image sandbox runtime artifacts', () => {
       'COPY apps/kortix-sandbox-agent-server/src ./apps/kortix-sandbox-agent-server/src',
     );
     const artifactRefresh = dockerfile.lastIndexOf(
-      'touch apps/kortix-sandbox-agent-server/dist/kortixd',
+      'touch apps/kortix-sandbox-agent-server/dist/kortix-agent',
     );
 
     expect(sourceCopy).toBeGreaterThan(-1);

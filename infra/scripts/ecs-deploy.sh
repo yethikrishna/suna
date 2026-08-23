@@ -9,7 +9,7 @@
 # an optional JSON key cannot invalidate an already-registered task definition.
 #
 # Usage:
-#   ecs-deploy.sh <env> <image> [--service api|node-relay|gateway|web] [--version X.Y.Z]
+#   ecs-deploy.sh <env> <image> [--service api|gateway|web] [--version X.Y.Z]
 #                 [--database-migrated] [--no-wait] [--dry-run]
 #
 #   env        dev | staging | prod | prod-use2-shadow
@@ -58,11 +58,6 @@ configure_service_coordinates() {
       SERVICE="$SERVICE_PREFIX"
       CONTAINER="api"
       ;;
-    node-relay)
-      CLUSTER="$SERVICE_PREFIX"
-      SERVICE="${SERVICE_PREFIX}-node-relay"
-      CONTAINER="api"
-      ;;
     gateway)
       CLUSTER="${SERVICE_PREFIX}-gateway"
       SERVICE="${SERVICE_PREFIX}-gateway"
@@ -76,7 +71,7 @@ configure_service_coordinates() {
       VERSION_ENV_NAME="KORTIX_PUBLIC_VERSION"
       ;;
     *)
-      echo "unknown service: $service_kind (expected api|node-relay|gateway|web)" >&2
+      echo "unknown service: $service_kind (expected api|gateway|web)" >&2
       return 2
       ;;
   esac
@@ -196,7 +191,7 @@ if [ "$DRY_RUN" != "1" ] \
   exit 2
 fi
 
-# API and node-relay share the API cluster. Gateway and web use their own clusters.
+# Each service lives in its own cluster (the ecs-api module names cluster==service).
 configure_service_coordinates "$SVC_KIND"
 
 echo "▶ env=$ENV region=$REGION cluster=$CLUSTER service=$SERVICE container=$CONTAINER"

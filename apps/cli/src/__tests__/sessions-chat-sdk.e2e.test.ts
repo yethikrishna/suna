@@ -54,13 +54,13 @@ function sessionRow() {
   };
 }
 
-function assistantReply(parentID = 'msg_user') {
+function assistantReply() {
   return {
     info: {
       id: 'msg_assistant',
       role: 'assistant',
       sessionID: OPENCODE_SESSION_ID,
-      parentID,
+      parentID: 'msg_user',
       agent: 'default',
       mode: 'build',
       modelID: 'test-model',
@@ -124,18 +124,18 @@ describe('sessions chat uses the session-scoped SDK runtime', () => {
         }
         if (
           request.method === 'POST' &&
-          url.pathname === `/v1/p/${EXTERNAL_ID}/8000/session/${OPENCODE_SESSION_ID}/prompt_async`
+          url.pathname === `/v1/p/${EXTERNAL_ID}/8000/session/${OPENCODE_SESSION_ID}/message`
         ) {
           runtimeAuthorization = request.headers.get('authorization');
           promptBody = (await request.json()) as Record<string, unknown>;
-          return new Response(null, { status: 204 });
+          return Response.json(assistantReply());
         }
         if (
           request.method === 'GET' &&
           url.pathname === `/v1/p/${EXTERNAL_ID}/8000/session/${OPENCODE_SESSION_ID}/message`
         ) {
           runtimeAuthorization = request.headers.get('authorization');
-          return Response.json([assistantReply(String(promptBody?.messageID ?? 'msg_user'))]);
+          return Response.json([assistantReply()]);
         }
         return Response.json(
           { error: `unexpected ${request.method} ${url.pathname}` },

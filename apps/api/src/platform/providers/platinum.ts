@@ -41,7 +41,7 @@
 
 import { createHash } from 'node:crypto';
 import { SANDBOX_VERSION, config } from '../../config';
-import { currentInstanceId, providerEnvironmentOwner } from '../../projects/instance-scope';
+import { currentInstanceId, sandboxBelongsToThisInstance } from '../../projects/instance-scope';
 import { isOpencodePort } from '../../shared/opencode-ports';
 import { platinumJson } from '../../shared/platinum';
 import { sandboxFrontendBaseUrl } from '../sandbox-frontend-url';
@@ -66,19 +66,10 @@ import {
 } from './index';
 import { providerAutoStopBackstopMinutes } from './index';
 import { classifyPtyWebSocketPath } from './pty-ingress';
-import { buildSessionSupervisorCommand } from './session-supervisor-command';
 
 const AGENT_PORT = 8000;
 const START_CONFLICT_GRACE_MS = 30_000;
 const START_CONFLICT_POLL_MS = 250;
-
-// The Platinum org is shared by deployed stacks and local worktrees. Every
-// provider object needs one explicit owner because the orphan reaper operates
-// from provider inventory, not from a shared database. Legacy unstamped boxes
-// fail closed and are never candidates for destructive orphan cleanup.
-function platinumInstanceOwner(): string {
-  return currentInstanceId() ?? 'deployed';
-}
 
 interface PlatinumSandbox {
   id: string;
@@ -102,22 +93,14 @@ interface PlatinumSandboxPage {
 }
 type PlatinumExposedPort = { port: number; url: string; token?: string; public: boolean };
 type PlatinumExecResponse = {
-  ok?: boolean;
-  stdout?: string;
-  stderr?: string;
-  exit_code?: number;
-  error?: string;
   result?: {
     stdout?: string;
     stderr?: string;
     exit_code?: number;
     error?: string;
   };
+  error?: string;
 };
-
-function platinumExecResult(response: PlatinumExecResponse): NonNullable<PlatinumExecResponse['result']> {
-  return response.result ?? response;
-}
 
 /**
  * FIX-A: a DEFINITIVE "pinned template is gone" signal — a 404 on the create
@@ -330,13 +313,13 @@ export class PlatinumProvider implements SandboxProvider {
       // The reaper's filter is unaffected (it reads the two keys above only).
       metadata: {
         'kortix.managed': 'true',
-        'kortix.env': providerEnvironmentOwner(),
+        'kortix.env': config.INTERNAL_KORTIX_ENV,
         'kortix.workload': workloadType,
         ...(opts.sandboxId ? { 'kortix.sandbox_id': opts.sandboxId } : {}),
         // Instance scope for local dev on a shared DB (projects/instance-scope.ts):
         // `listManagedRunningSandboxes` skips another instance's boxes. Absent
         // in deployed environments.
-        'kortix.instance': platinumInstanceOwner(),
+        ...(currentInstanceId() ? { 'kortix.instance': currentInstanceId()! } : {}),
       },
     };
     if (dedup) {
@@ -436,10 +419,6 @@ export class PlatinumProvider implements SandboxProvider {
     }
     const _exposeMs = Date.now() - _tExpose0;
 
-    if (workloadType !== 'app') {
-      await this.ensureSessionRuntimeStarted(externalId);
-    }
-
     // Return as soon as the VM is running and the agent port is exposed — do NOT
     // block on the in-guest runtime (repo clone + opencode). That readiness is
     // polled by the frontend (useOpenCodeRuntimeReady + the react-query
@@ -475,39 +454,6 @@ export class PlatinumProvider implements SandboxProvider {
     };
   }
 
-  async ensureSessionRuntimeStarted(
-    externalId: string,
-    identity?: { nodeId: string; nodeToken: string },
-  ): Promise<void> {
-    // Platinum restores a template under pt-init and does not execute the image
-    // ENTRYPOINT. Start the supervisor through the native exec API. The process
-    // owns daemon updates and rollback, so launching kortixd directly would
-    // bypass the convergent-runtime contract.
-    // A resumed VM can retain an obsolete relay URL. Stop its inactive daemon
-    // tree and relaunch the existing verified supervisor with this API's relay
-    // URL. No human can be attached while the provider VM is stopped. The new
-    // process starts with an empty PTY registry and converges its own binary.
-    const allProcessCommand = buildSessionSupervisorCommand(
-      config.KORTIX_NODE_RELAY_URL || config.KORTIX_URL,
-      identity,
-      config.KORTIX_URL,
-    );
-    const response = await platinumJson<PlatinumExecResponse>(`/v1/sandboxes/${externalId}/exec`, {
-      method: 'POST',
-      body: JSON.stringify({ cmd: ['/bin/sh', '-lc', allProcessCommand], timeout_ms: 15_000 }),
-    });
-    const result = platinumExecResult(response);
-    // Platinum has returned both a direct exec result and an empty 2xx body
-    // across control-plane versions. A non-zero exit is a hard failure. An
-    // empty successful response still proves that the launch request landed.
-    if (typeof result.exit_code === 'number' && result.exit_code !== 0) {
-      const detail = result.stderr || result.error || response.error || 'missing exec result';
-      throw new Error(
-        `Platinum kortixd bootstrap failed for ${externalId}: exit ${result.exit_code ?? 'unknown'}: ${detail.slice(0, 500)}`,
-      );
-    }
-  }
-
   async ensureAppRuntimeStarted(externalId: string): Promise<void> {
     // Platinum restores the template filesystem but does not run the image
     // ENTRYPOINT. appd owns daemonization, locking, and PID validation so this
@@ -516,8 +462,8 @@ export class PlatinumProvider implements SandboxProvider {
       method: 'POST',
       body: JSON.stringify({ cmd: ['/kortix/bin/kortix-appd', '--daemon'], timeout_ms: 15_000 }),
     });
-    const result = platinumExecResult(response);
-    if (result.exit_code !== 0) {
+    const result = response.result;
+    if (!result || result.exit_code !== 0) {
       const detail = result?.stderr || result?.error || response.error || 'missing exec result';
       throw new Error(
         `Platinum App bootstrap failed for ${externalId}: exit ${result?.exit_code ?? 'unknown'}: ${detail.slice(0, 500)}`,
@@ -532,24 +478,7 @@ export class PlatinumProvider implements SandboxProvider {
     for (;;) {
       try {
         await platinumJson(`/v1/sandboxes/${externalId}/start`, { method: 'POST' });
-        // Platinum accepts the start before guest exec is available. Do not
-        // return until the control plane reports running, otherwise the
-        // immediate kortixd convergence exec races the starting state.
-        for (;;) {
-          const sandbox = await platinumJson<PlatinumSandbox>(`/v1/sandboxes/${externalId}`);
-          const state = String(sandbox.state ?? '').toLowerCase();
-          if (state === 'running') return;
-          const isRestoreTransition = state === 'archived' || state === 'archiving';
-          if (
-            (!['starting', 'pending'].includes(state) && !isRestoreTransition) ||
-            Date.now() >= deadline
-          ) {
-            throw new Error(
-              `Platinum sandbox ${externalId} did not reach running after start (state=${state || 'unknown'})`,
-            );
-          }
-          await Bun.sleep(START_CONFLICT_POLL_MS);
-        }
+        return;
       } catch (error) {
         // Platinum acknowledges stop before the VM always reaches `stopped`.
         // An immediate user reopen can therefore race `stopping` and receive
@@ -565,11 +494,8 @@ export class PlatinumProvider implements SandboxProvider {
         const sandbox = await platinumJson<PlatinumSandbox>(`/v1/sandboxes/${externalId}`);
         const state = String(sandbox.state ?? '').toLowerCase();
         if (state === 'running') return;
-        if (state === 'stopped' || state === 'archived') break;
-        if (
-          !['starting', 'stopping', 'pending', 'archiving'].includes(state) ||
-          Date.now() >= deadline
-        ) {
+        if (state === 'stopped' || state.includes('archiv')) break;
+        if (!['starting', 'stopping', 'pending'].includes(state) || Date.now() >= deadline) {
           throw firstConflict;
         }
         await Bun.sleep(START_CONFLICT_POLL_MS);
@@ -629,12 +555,11 @@ export class PlatinumProvider implements SandboxProvider {
         if (!sandbox.id) continue;
         const metadata = sandbox.metadata ?? {};
         if (String(metadata['kortix.managed'] ?? '') !== 'true') continue;
-        if (String(metadata['kortix.env'] ?? '') !== providerEnvironmentOwner()) continue;
-        // Exact provider ownership is mandatory. An unstamped legacy box is
-        // skipped, never reaped. This differs from DB-backed background work:
-        // provider inventory is shared across databases, so "belongs to
-        // everyone" would let deployed dev stop a local worktree sandbox.
-        if (String(metadata['kortix.instance'] ?? '') !== platinumInstanceOwner()) continue;
+        if (String(metadata['kortix.env'] ?? '') !== config.INTERNAL_KORTIX_ENV) continue;
+        // Instance scope beside the env scope: another local instance's box is
+        // not ours to stop. Unstamped boxes stay everyone's. No-op when
+        // KORTIX_INSTANCE_ID is unset.
+        if (!sandboxBelongsToThisInstance({ instanceId: metadata['kortix.instance'] })) continue;
         if (String(sandbox.state ?? '').toLowerCase() !== 'running') continue;
         const rawCreatedAt = sandbox.created_at ?? sandbox.createdAt ?? null;
         const createdAt = rawCreatedAt ? new Date(rawCreatedAt) : null;
@@ -819,7 +744,6 @@ export class PlatinumProvider implements SandboxProvider {
     if (status === 'stopped') {
       console.log(`[PLATINUM] Sandbox ${externalId} is stopped, waking up...`);
       await this.start(externalId);
-      await this.ensureSessionRuntimeStarted(externalId);
     }
   }
 }

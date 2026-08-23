@@ -619,7 +619,6 @@ flow(
       "POST /v1/projects/:projectId/apps",
       "DELETE /v1/projects/:projectId/apps/:appId",
       "GET /v1/apps/edge/tls-check",
-      "GET /v1/edge/tls-check",
     ],
   },
   async (ctx) => {
@@ -665,10 +664,6 @@ flow(
         query: { domain: appHost },
       });
       response.status(200).body().has("$.ok", true);
-      const canonical = await anon.get("/v1/edge/tls-check", {
-        query: { domain: appHost },
-      });
-      canonical.status(200).body().has("$.ok", true);
     });
 
     await ctx.step("a hostname that is not an App host is refused", async () => {

@@ -187,30 +187,6 @@ export function buildOpencodeApp(
     kortixRouter.route('/env/', envRouter)
   }
 
-  // Terminate the namespace. Without this, an UNMATCHED `/kortix/*` path falls
-  // through to the reverse-proxy catch-all below — and the auth gate that sits
-  // between them deliberately skips anything under `/kortix/`, so the request
-  // reaches opencode with NO signed context at all.
-  //
-  // Measured before the fix (src/node/__tests__/route-contract.test.ts):
-  //   GET /kortix/zzz      -> 200, upstream saw "/kortix/zzz"
-  //   GET /kortix/session  -> 200, upstream saw "/kortix/session"
-  // both with no `X-Kortix-User-Context`.
-  //
-  // Not exploitable today: the `/kortix/` prefix is forwarded verbatim and
-  // opencode serves nothing under it, so every such request 404s upstream. Path
-  // traversal does not widen it either — `/kortix/../session` normalizes to
-  // `/session` and is correctly rejected 401. It is closed anyway because the
-  // gate having ANY bypass surface is the defect: the day opencode gains a
-  // prefix-tolerant route, this becomes a real unauthenticated path into it.
-  //
-  // No legitimate caller relies on the fallthrough. Every real control route is
-  // matched above, and an unmatched one is a caller bug that should say 404
-  // rather than silently proxy.
-  kortixRouter.all('*', (c) =>
-    c.json({ error: 'not found', detail: 'unknown /kortix control route' }, 404),
-  )
-
   app.route('/kortix', kortixRouter)
 
   // Auth gate for everything except /kortix/*. Spec §3.5: the daemon MUST
@@ -435,10 +411,14 @@ export function startProxy(
   // Constructed once, outside reload() — pty state must survive a config
   // hot-swap (warm-snapshot restore) exactly like `opencode`/`bootState` do.
   const ptyRegistry = createPtyRegistry(cfg)
-  // Do not replace the daemon while a live viewer is attached. Detached shells
-  // must not block updates forever. The daemon can retain them until the next
-  // safe update, then the client recreates a missing PTY through attachOrCreate.
-  registerAgentSwapBlocker('pty', () => ptyRegistry.hasAttachedViewers())
+  // A staged daemon update must not exit this process while somebody has a
+  // terminal open — the PTY dies with the daemon that spawned it. The registry
+  // is the only thing that knows, so it answers the question rather than the
+  // updater guessing at it. A busy box just keeps the staging: the supervisor
+  // installs it at the next start.
+  registerAgentSwapBlocker('pty', () =>
+    ptyRegistry.list().some((entry) => entry.status === 'running'),
+  )
   let app = buildOpencodeApp(cfg, opencode, bootTime, bootState, projectEnv, staticWebPort, ptyRegistry)
 
   const server = Bun.serve<OpencodeWsData>({

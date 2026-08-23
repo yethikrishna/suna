@@ -229,6 +229,12 @@ rollback_agent() {
 mkdir -p "${AGENT_STATE_DIR}" 2>/dev/null || true
 
 echo "[entrypoint] daemon takeover (cwd=/, workspace=${WORKSPACE})" >&2
+# `kortixd` is a standalone CLI. The sandbox supervisor owns its daemon mode,
+# so an ordinary image boot must select `run` explicitly. Preserve caller
+# arguments for supervisor tests and operator diagnostics.
+if [ "$#" -eq 0 ]; then
+  set -- run
+fi
 while :; do
   # A staged binary from the previous run is installed before launch, never
   # while the daemon it replaces is running.

@@ -66,6 +66,9 @@ function expectSessionBootstrap(body: string, legacyEnrollment = false): void {
     expect(parsed.cmd[2]).toContain('agent.bootstrap supervise');
     expect(parsed.cmd[2]).toContain("HOME='/home/kortix'");
     expect(parsed.cmd[2]).toContain('/home/kortix/.bun/bin');
+    expect(parsed.cmd[2]).toContain('mkdir /opt/kortix/bootstrap.lock');
+    expect(parsed.cmd[2]).toContain('agent.bootstrap.tmp.$$');
+    expect(parsed.cmd[2]).toContain('/opt/kortix/agent.bootstrap run');
   }
   expect(parsed.cmd[2]).toContain('/usr/local/bin/kortix-agent');
   expect(parsed.cmd[2]).toContain('/opt/kortix/agent.current run');

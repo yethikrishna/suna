@@ -331,7 +331,6 @@ export class DaytonaProvider implements SandboxProvider {
     const command = buildSessionSupervisorCommand(
       config.KORTIX_NODE_RELAY_URL || config.KORTIX_URL,
       identity,
-      config.KORTIX_URL,
     );
     const result = await withTimeout(
       sandbox.process.executeCommand(command, undefined, undefined, 15),

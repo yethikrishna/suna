@@ -57,14 +57,10 @@ const baseOpts = {
   snapshot: 'tpl_test',
 };
 
-function expectSessionBootstrap(body: string, legacyEnrollment = false): void {
+function expectSessionBootstrap(body: string): void {
   const parsed = JSON.parse(body) as { cmd: string[]; timeout_ms: number };
   expect(parsed.cmd.slice(0, 2)).toEqual(['/bin/sh', '-lc']);
   expect(parsed.cmd[2]).toContain('/proc/[0-9]*');
-  if (legacyEnrollment) {
-    expect(parsed.cmd[2]).toContain('/runtime-assets/agent');
-    expect(parsed.cmd[2]).toContain('agent.bootstrap supervise');
-  }
   expect(parsed.cmd[2]).toContain('/usr/local/bin/kortix-agent');
   expect(parsed.cmd[2]).toContain('/opt/kortix/agent.current run');
   expect(parsed.cmd[2]).toContain('kill -TERM "${proc#/proc/}"');
@@ -115,7 +111,7 @@ test('session runtime convergence starts the kortixd supervisor after a wake', a
   const bootstrap = calls.find(
     (c) => c.method === 'POST' && c.path === '/v1/sandboxes/sbx_session/exec',
   );
-  expectSessionBootstrap(bootstrap!.body!, true);
+  expectSessionBootstrap(bootstrap!.body!);
   expect(bootstrap!.body!).toContain("KORTIX_COMPUTE_NODE_ID='node-legacy-1'");
   expect(bootstrap!.body!).toContain("KORTIX_NODE_TOKEN='knd_test_legacy_credential'");
 });

@@ -2110,23 +2110,3 @@ updated daemon, then verify chat, Files, and Terminal through the relay.
 
 *Incident:* PR #6776 dev verification, session
 `2e1fcec9-2485-481f-afca-8d1ab035761a`.
-
-## Bootstrap the current daemon before starting a legacy sandbox
-
-2026-08-23. The API enrolled an old Daytona sandbox as a compute node and
-rotated its node credential. The wake command then started the image's old
-`/usr/local/bin/kortix-entrypoint`. That entrypoint predated daemon self-update,
-so the node channel never connected and the API stopped the sandbox after 184
-seconds.
-
-**The rule.** A legacy-sandbox repair cannot depend on code baked into the
-legacy image. The provider bootstrap must download the authenticated daemon
-artifact first. It must then launch that artifact through its native supervisor.
-
-**The enforcement.** Provider bootstrap tests assert the authenticated
-`/v1/runtime-assets/agent` download and `kortixd supervise` launch. Dev
-acceptance must wake a sandbox created before the rollout and prove terminal,
-filesystem, and chat traffic through its new node channel.
-
-*Incident:* PR #6780 dev verification, session
-`e5d79018-2787-42e5-b2df-b605b82f928d`.

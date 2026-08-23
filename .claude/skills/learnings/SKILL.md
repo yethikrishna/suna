@@ -2130,23 +2130,3 @@ filesystem, and chat traffic through its new node channel.
 
 *Incident:* PR #6780 dev verification, session
 `e5d79018-2787-42e5-b2df-b605b82f928d`.
-
-## Serialize provider-side daemon repair
-
-2026-08-23. Files, Terminal, and chat can discover the same missing node
-channel concurrently. Each path ran the provider bootstrap. The commands used
-one temporary daemon path and each command killed the current supervisor. The
-node became ready, then disappeared while the VM remained running.
-
-**The rule.** Provider-side daemon repair is a single-writer operation. A
-concurrent repair must wait for the current repair result. It must not kill or
-replace the process tree independently.
-
-**The enforcement.** The bootstrap uses an atomic lock directory and a
-process-specific download path. Its process convergence list includes the
-bootstrap supervisor, bootstrap child, and native-supervisor child paths.
-Acceptance opens files, PTY, and chat concurrently, then repeats them after an
-idle interval.
-
-*Incident:* PR #6782 dev verification, session
-`e5d79018-2787-42e5-b2df-b605b82f928d`.

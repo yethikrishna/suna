@@ -138,9 +138,6 @@ test('session runtime convergence starts the kortixd supervisor with the current
   expect(processCommands[0]?.command).toContain('agent.bootstrap supervise');
   expect(processCommands[0]?.command).toContain("HOME='/home/kortix'");
   expect(processCommands[0]?.command).toContain('/home/kortix/.bun/bin');
-  expect(processCommands[0]?.command).toContain('mkdir /opt/kortix/bootstrap.lock');
-  expect(processCommands[0]?.command).toContain('agent.bootstrap.tmp.$$');
-  expect(processCommands[0]?.command).toContain('/opt/kortix/agent.bootstrap run');
   expect(processCommands[0]?.command).not.toContain('ps -u');
   expect(processCommands[0]?.timeout).toBe(15);
 });

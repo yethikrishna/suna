@@ -15,10 +15,9 @@ import { config } from '../../config';
 import { logger } from '../../lib/logger';
 import { mayRequeueFailedCreate } from './requeue-policy';
 import { forwardToSandbox } from '../../sandbox-proxy/routes/preview';
-import { resolveSandboxIngress } from '../../sandbox-proxy/backend';
 import { serviceKeyForExternalId } from '../../platform/service-key';
 import type { ProviderName } from '../../platform/providers';
-import { sandboxOpencodeEndpoint } from '../opencode-mapping';
+import { sandboxOpencodeEndpoint, type SandboxOpencodeEndpoint } from '../opencode-mapping';
 import { sandboxRuntimeRequestHeaders } from '../sandbox-fetch';
 import {
   currentInstanceId,
@@ -539,18 +538,15 @@ export async function continueSession(
       return 'pending';
     }
     try {
-      const [serviceKey, ingress] = await Promise.all([
-        serviceKeyForExternalId(externalId),
-        resolveSandboxIngress(externalId, { port: DAEMON_PORT, transport: 'http' }),
-      ]);
+      const serviceKey = await serviceKeyForExternalId(externalId);
       if (!serviceKey) throw new Error('sandbox service key is unavailable');
       await syncSandboxEnvForPrompt({
         projectId: session.projectId,
         sessionId,
         externalId,
         serviceKey,
-        previewUrl: ingress.url,
-        providerHeaders: ingress.headers,
+        previewUrl: `http://127.0.0.1:${DAEMON_PORT}`,
+        providerHeaders: {},
         providerName,
         opencodeEnv: command.opencodeEnv,
       });
@@ -916,7 +912,7 @@ function isInboxRow(row: SessionLifecycleCommandRow): boolean {
  * terms.
  */
 async function queuedContinueOpencodeEndpoint(row: SessionLifecycleCommandRow): Promise<{
-  endpoint: { url: string; headers: Record<string, string> };
+  endpoint: SandboxOpencodeEndpoint;
   opencodeSessionId: string;
 } | null> {
   return resolveSessionOpencodeEndpoint(row.sessionId, row.actorUserId);
@@ -932,7 +928,7 @@ export async function resolveSessionOpencodeEndpoint(
   sessionId: string | null | undefined,
   actorUserId?: string | null,
 ): Promise<{
-  endpoint: { url: string; headers: Record<string, string> };
+  endpoint: SandboxOpencodeEndpoint;
   opencodeSessionId: string;
 } | null> {
   if (!sessionId) return null;
@@ -1019,7 +1015,7 @@ async function readInboxTranscriptState(
     // of a long session was ~1s of dead air on every queued message.
     const limit = opts.full ? '' : `&limit=${INBOX_TRANSCRIPT_TIP_LIMIT}`;
     const url = `${resolved.endpoint.url}/session/${encodeURIComponent(resolved.opencodeSessionId)}/message?directory=${encodeURIComponent(WORKSPACE)}${limit}`;
-    const res = await fetch(url, {
+    const res = await resolved.endpoint.fetch(url, {
       method: 'GET',
       headers: sandboxRuntimeRequestHeaders(resolved.endpoint.headers),
       signal: AbortSignal.timeout(5_000),
@@ -1301,7 +1297,7 @@ async function removeStrandedOpencodeMessage(
     const resolved = await queuedContinueOpencodeEndpoint(row);
     if (!resolved) return false;
     const url = `${resolved.endpoint.url}/session/${encodeURIComponent(resolved.opencodeSessionId)}/message/${encodeURIComponent(wireMessageId)}?directory=${encodeURIComponent(WORKSPACE)}`;
-    const res = await fetch(url, {
+    const res = await resolved.endpoint.fetch(url, {
       method: 'DELETE',
       headers: sandboxRuntimeRequestHeaders(resolved.endpoint.headers),
       signal: AbortSignal.timeout(5_000),
@@ -1369,7 +1365,7 @@ async function queuedContinueHasStagedRevert(row: SessionLifecycleCommandRow): P
     const { endpoint, opencodeSessionId } = resolved;
 
     const url = `${endpoint.url}/session/${encodeURIComponent(opencodeSessionId)}?directory=${encodeURIComponent(WORKSPACE)}`;
-    const res = await fetch(url, {
+    const res = await endpoint.fetch(url, {
       method: 'GET',
       headers: sandboxRuntimeRequestHeaders(endpoint.headers),
       signal: AbortSignal.timeout(5_000),

@@ -4374,6 +4374,7 @@ Required SDK gates are typecheck, the full test suite, and packed-install smoke.
 
 **Status:** IN PROGRESS.
 
+
 **SDK package shippable to production: NOT YET.**
 
 ### 2026-08-07 — session `apps-experimental-gate` completion
@@ -11849,5 +11850,47 @@ conversion, then GREEN 10/10.
 assistant-turn-open 10 pass / 0 fail; `tsc --noEmit` 15 lines, all the known
 `@types/bun` `test.each` noise in the 3 documented files; eslint clean (no output)
 on both touched web files.
+
+**Shippable to production: YES.**
+
+### 2026-08-22 — session `kortixd` claim: compute-node browser authorization
+
+Claimed the additive SDK account surface for compute-node device authorization.
+Scope: read, approve, and deny a `kortixd` device code through the existing
+authenticated backend transport. The web `/nodes/authorize/[code]` page is the
+first consumer. RED → GREEN → REFACTOR and all SDK release gates are required.
+
+**Status:** IN PROGRESS.
+
+### 2026-08-22 — session `kortixd` completion: compute-node browser authorization
+
+Added `accounts.computeNodes.deviceAuth.get`, `approve`, and `deny`. The methods
+use the existing authenticated backend transport. The web authorization page
+does not contain a raw backend request.
+
+TDD evidence: the new SDK test failed first because `compute-nodes.ts` did not
+exist. The focused SDK test then passed 3/3. The web contract test passed 1/1.
+
+Release evidence: `pnpm test` passed 2429 tests with 0 failures across 163 files.
+`pnpm run smoke:install` packed, installed, imported, and constructed the SDK.
+Both public-surface snapshot tests passed after deliberate additive updates.
+The focused web ESLint command passed with no output. Web `tsc --noEmit` reports
+only the repository's documented Bun `test.each` errors. It reports no error in
+the new authorization page.
+
+**Status:** COMPLETE.
+
+**Shippable to production: YES.**
+
+### 2026-08-23 — remove the experimental voice API
+
+Removed the LiveKit join, transcript, project-channel, and session-handle
+surfaces. The product owner explicitly retired the experimental feature.
+
+The runtime and type surface snapshots were regenerated deliberately. Their
+diff contains only removed voice and speech-to-text names. The full SDK suite
+passes 2418 tests across 162 files. The packed install smoke test passes.
+
+**Status:** COMPLETE.
 
 **Shippable to production: YES.**

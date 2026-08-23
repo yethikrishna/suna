@@ -5,6 +5,7 @@ import * as realRequestContext from '../lib/request-context';
 import * as realAuthAudit from '../shared/auth-audit';
 import * as realSentry from '../lib/sentry';
 import * as realSsoSync from '../iam/sso-sync';
+import * as realCrypto from '../shared/crypto';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 // Two projects under the same account, each with its own sandbox — this is
@@ -23,6 +24,7 @@ const sandboxProjectByOwnSandboxId: Record<string, string> = {
 };
 
 mock.module('../shared/crypto', () => ({
+  ...realCrypto,
   isAccountToken: (t: string) => t.startsWith('kortix_pat_'),
   isServiceAccountToken: (t: string) => t.startsWith('kortix_sa_'),
   isKortixToken: (t: string) => t.startsWith('kortix_'),

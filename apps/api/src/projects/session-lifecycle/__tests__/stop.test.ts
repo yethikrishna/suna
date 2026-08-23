@@ -18,9 +18,9 @@ let executedStatements: Array<{ sql: unknown; inTransaction: boolean }> = [];
 let inTransaction = false;
 
 // ── Pre-stop abort call (T11): the daemon fetch is the only real
-// I/O `abortLiveTurnBeforeStop` still performs once resolveServiceKey /
-// resolveSandboxIngress are stubbed below, so intercepting `fetch` is enough
-// to observe and control it without a real network call.
+// I/O `abortLiveTurnBeforeStop` still performs once the compute-node transport
+// is stubbed below, so intercepting `fetch` is enough to observe and control it
+// without a real network call.
 let callOrder: string[] = [];
 let abortServiceKey: string | null = 'daemon-service-key';
 let abortFetchCalls: Array<{ url: string; init: Record<string, unknown> }> = [];
@@ -44,6 +44,11 @@ function describeSql(expression: unknown): string {
 
 mock.module('../../../config', () => ({
   config: { ALLOWED_SANDBOX_PROVIDERS: ['daytona', 'platinum'] },
+}));
+
+mock.module('../../../compute-nodes', () => ({
+  fetchComputeNode: async (_externalId: string, port: number, path: string, init?: RequestInit) =>
+    fetch(`http://127.0.0.1:${port}${path}`, init),
 }));
 
 const updater = (table: unknown) => ({
@@ -376,7 +381,7 @@ describe('stopSession', () => {
 
       expect(result.status).toBe(200);
       expect(abortFetchCalls).toHaveLength(1);
-      expect(abortFetchCalls[0]?.url).toBe('https://daemon.example.test/kortix/abort');
+      expect(abortFetchCalls[0]?.url).toBe('http://127.0.0.1:8000/kortix/abort');
       expect(abortFetchCalls[0]?.init.method).toBe('POST');
       // Ordering: the abort call happens strictly before provider.stop().
       expect(callOrder).toEqual(['abort', 'provider.stop']);

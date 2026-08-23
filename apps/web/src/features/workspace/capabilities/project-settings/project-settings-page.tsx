@@ -20,7 +20,6 @@ import { useReviewSessionSummary } from '@/features/review-center/hooks/use-revi
 import { detectManifestVersion } from '@/features/workspace/customize/migrate-to-v2/manifest-version';
 import { UpgradesView } from '@/features/workspace/customize/migrate-to-v2/upgrade-view';
 import { ReviewView } from '@/features/workspace/customize/sections/view/review-view';
-import { VoiceView } from '@/features/workspace/customize/sections/view/voice-view';
 import { ExperimentalTab } from '@/features/workspace/settings/tabs/experimental-tab';
 import { GeneralTab } from '@/features/workspace/settings/tabs/general-tab';
 import { SandboxTab } from '@/features/workspace/settings/tabs/sandbox-tab';
@@ -139,19 +138,15 @@ export function ProjectSettingsPage({ projectId }: { projectId: string }) {
       ),
     [caps],
   );
-  const projectCan = useCallback(
-    (action: ProjectAction) => caps[action]?.allowed === true,
-    [caps],
-  );
+  const projectCan = useCallback((action: ProjectAction) => caps[action]?.allowed === true, [caps]);
 
-  const voiceEnabled = project?.experimental?.voice ?? false;
   const reviewEnabled = project?.experimental?.review_center ?? false;
 
   const sections = useMemo(() => {
-    const all = projectSettingsSections({ reviewEnabled, voiceEnabled });
+    const all = projectSettingsSections({ reviewEnabled });
     if (!capsResolved) return all;
     return all.filter((s) => isCustomizeSectionVisible(s.gate, projectCan));
-  }, [reviewEnabled, voiceEnabled, capsResolved, projectCan]);
+  }, [reviewEnabled, capsResolved, projectCan]);
 
   const requested = parseProjectSettingsSection(searchParams.get('section'));
   // A section named in the URL but hidden (flag off, or an explicit permission
@@ -335,7 +330,11 @@ function SectionTrigger({
         <Icon className="size-4 shrink-0" />
         <span className={cn(!horizontal && 'truncate')}>{section.label}</span>
         {showCount ? (
-          <Badge variant="kortix" size="xs" className={cn('tabular-nums', !horizontal && 'ml-auto')}>
+          <Badge
+            variant="kortix"
+            size="xs"
+            className={cn('tabular-nums', !horizontal && 'ml-auto')}
+          >
             {count}
           </Badge>
         ) : attention ? (
@@ -380,8 +379,6 @@ function ProjectSettingsSectionPane({
       );
     case 'review':
       return <ReviewView projectId={projectId} />;
-    case 'voice':
-      return <VoiceView projectId={projectId} />;
     case 'feature-flags':
       return <ExperimentalTab projectId={projectId} />;
     case 'upgrades':

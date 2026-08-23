@@ -108,7 +108,9 @@ async function observeCreatedContext(
       resolveContext(join(tempBase, filename));
     }
   });
-  const timeout = setTimeout(() => resolveContext(''), 2_000);
+  // Staging performs synchronous copies. Under the full parallel package gate,
+  // macOS can delay the watch callback for more than 5 seconds.
+  const timeout = setTimeout(() => resolveContext(''), 15_000);
   try {
     let error: unknown;
     await run().catch((caught) => {

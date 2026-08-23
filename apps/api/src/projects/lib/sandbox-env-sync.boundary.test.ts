@@ -24,6 +24,11 @@ import * as realSecretGrant from './secret-grant';
 import type { ProviderName } from '../../platform/providers';
 import type { NetworkBoundarySecretBinding } from '../../secrets/network-boundary';
 
+mock.module('../../compute-nodes', () => ({
+  fetchComputeNode: async (_externalId: string, port: number, path: string, init?: RequestInit) =>
+    fetch(`http://127.0.0.1:${port}${path}`, init),
+}));
+
 /** Which provider the single active sandbox row reports for the case in flight. */
 let sandboxProvider: ProviderName = 'daytona';
 let envPushes: Array<{ url: string }> = [];

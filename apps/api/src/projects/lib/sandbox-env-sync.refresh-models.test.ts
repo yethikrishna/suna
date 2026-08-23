@@ -16,6 +16,11 @@ import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import * as realSecrets from '../secrets';
 import * as realSecretGrant from './secret-grant';
 
+mock.module('../../compute-nodes', () => ({
+  fetchComputeNode: async (_externalId: string, port: number, path: string, init?: RequestInit) =>
+    fetch(`http://127.0.0.1:${port}${path}`, init),
+}));
+
 const PROJECT_ROW = {
   repoUrl: 'https://example.test/acme/repo.git',
   defaultBranch: 'main',

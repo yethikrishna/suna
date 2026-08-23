@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 599,
+  "count": 617,
   "routes": [
     {
       "method": "GET",
@@ -213,6 +213,70 @@
     {
       "method": "POST",
       "path": "/v1/accounts/:accountId/audit/webhooks/:webhookId/deliveries/:deliveryId/replay"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/accounts/:accountId/compute-nodes"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/assignments"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/assignments"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/assignments/:assignmentId/release"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/disable"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/drain"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/enable"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/restart"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/:nodeId/rotate-credential"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/accounts/:accountId/compute-nodes/device-auth/:code"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/device-auth/:code/approve"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/compute-nodes/device-auth/:code/deny"
     },
     {
       "method": "GET",
@@ -940,6 +1004,10 @@
     },
     {
       "method": "GET",
+      "path": "/v1/edge/tls-check"
+    },
+    {
+      "method": "GET",
       "path": "/v1/generation"
     },
     {
@@ -1027,6 +1095,22 @@
       "path": "/v1/marketplace/sources/:id"
     },
     {
+      "method": "POST",
+      "path": "/v1/nodes/device-auth"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/nodes/device-auth/:code/status"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/nodes/enroll"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/nodes/logout"
+    },
+    {
       "method": "GET",
       "path": "/v1/oauth/authorize"
     },
@@ -1061,6 +1145,10 @@
     {
       "method": "POST",
       "path": "/v1/p/auth"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/p/config"
     },
     {
       "method": "GET",
@@ -1373,10 +1461,6 @@
     {
       "method": "GET",
       "path": "/v1/projects/:projectId/channels/email/mode"
-    },
-    {
-      "method": "PUT",
-      "path": "/v1/projects/:projectId/channels/meet/name"
     },
     {
       "method": "POST",
@@ -1828,11 +1912,11 @@
     },
     {
       "method": "POST",
-      "path": "/v1/projects/:projectId/secrets/:identifier/relay"
+      "path": "/v1/projects/:projectId/secrets/:identifier/grant"
     },
     {
       "method": "POST",
-      "path": "/v1/projects/:projectId/secrets/:identifier/grant"
+      "path": "/v1/projects/:projectId/secrets/:identifier/relay"
     },
     {
       "method": "PUT",
@@ -1891,12 +1975,12 @@
       "path": "/v1/projects/:projectId/sessions/:sessionId/config"
     },
     {
-      "method": "POST",
-      "path": "/v1/projects/:projectId/sessions/:sessionId/mcp/voice"
-    },
-    {
       "method": "PUT",
       "path": "/v1/projects/:projectId/sessions/:sessionId/model"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/:projectId/sessions/:sessionId/node/rpc"
     },
     {
       "method": "GET",
@@ -1981,10 +2065,6 @@
     {
       "method": "GET",
       "path": "/v1/projects/:projectId/sessions/:sessionId/turn"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/projects/:projectId/sessions/:sessionId/voice-transcript"
     },
     {
       "method": "POST",
@@ -2117,14 +2197,6 @@
     {
       "method": "GET",
       "path": "/v1/public/session-shares/:shareId/messages"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/public/voice-join/:token"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/public/voice-join/:token/transcript"
     },
     {
       "method": "POST",

@@ -21,50 +21,6 @@ linked, not inlined.
 
 ## Register
 
-### Scope provider inventory labels by API instance, not only environment (2026-08-23)
-
-**When:** creating provider objects or changing orphan reconciliation. Include
-the local API instance in the provider environment marker. Require exact owner
-matching. *Incident:* deployed dev repeatedly stopped an active worktree
-sandbox because both objects used `kortix.env=dev`. *Enforcer:*
-`instance-scope.test.ts` and provider managed-list tests.
-
-### Rewrite durable sandbox URLs whenever a runtime resumes (2026-08-23)
-
-**When:** resuming or opening a provider-running session after an API origin can
-change. Persist the current relay URL before reporting readiness. *Incident:*
-kortixd reconnected to the new worktree tunnel while the SDK kept calling the
-dead provisioning-time tunnel. *Enforcer:* `runtime-relay-repair.test.ts`.
-
-### Stop every stale supervisor before starting one replacement (2026-08-23)
-
-**When:** converging a daemon after resume or relay rotation. Enumerate and stop
-all matching daemon and entrypoint PIDs. Never stop only the first match.
-*Incident:* repeated repairs left multiple kortixd processes competing for one
-node channel. *Enforcer:* `platinum-create-terminal.test.ts`.
-
-### Separate relay liveness from workload readiness (2026-08-23)
-
-**When:** repairing an outbound node channel. Stop retrying after the channel
-reconnects. OpenCode `starting` is not proof that the relay is disconnected.
-*Incident:* a 30-second repair loop restarted kortixd and closed attached PTYs
-with code `1012`. *Enforcer:* `runtime-relay-repair.test.ts`.
-
-### Authorize sandbox relay ports by capability and deny credential helpers (2026-08-23)
-
-**When:** adding a signed compute-node relay. Assigned sandbox nodes must reach
-user preview ports. Explicitly deny egress, LLM, connector, and standby helper
-ports. *Incident:* Browser port `3000` returned `502 upstream_port` while the
-guest server was healthy. *Enforcer:* `sandbox-port-policy.test.ts`.
-
-### Normalize transient REST error bodies before iterating UI data (2026-08-23)
-
-**When:** a React query expects a list from a runtime route. Convert every
-non-array response to `[]` at the query boundary and guard downstream helpers.
-*Incident:* `/command` returned a temporary `503` object during restart and the
-session page crashed with `TypeError: t is not iterable`. *Enforcer:*
-`detect-command.test.ts`.
-
 ### Keep self-host sandbox gateway URLs aligned with the public proxy route (2026-08-23)
 
 **When:** changing `LLM_GATEWAY_PROXY_TARGET`, Caddy LLM matchers, or sandbox
@@ -2001,6 +1957,7 @@ past its `Move :dev` step.
 *Incident:* PR #6764, merge `e6c4ba0b62`, 2026-08-22 23:43 UTC. No outage —
 a frontend-only fix sat undeployed on dev for ~25 minutes while both the run
 list and the deployed-SHA probe read as healthy.
+
 ## Test the compiled daemon through the deployed WebSocket edge
 
 2026-08-23. The `kortixd` node channel passed local Bun tests. The compiled
@@ -2021,21 +1978,3 @@ against the Cloudflare origin, and reads the persisted compute-node status.
 *Incident:* PR #6686 dev verification, compute node
 `65ad5a11-472b-4670-932a-fae12e772fd6`. The API kept the node `offline` until
 the client transport changed from Bun's native WebSocket to `ws`.
-## A relay migration must preserve browser filesystem and PTY flows
-
-2026-08-23. PR #6686 replaced provider ingress with the compute-node relay on
-dev. Session chat and OpenCode REST remained healthy. Files returned `Failed
-to fetch`. Terminal WebSockets closed with code `1006`. The API proxied PTY
-requests to `http://127.0.0.1:8000`, which was not the sandbox runtime.
-
-**The rule.** Do not merge an ingress or relay migration after REST-only tests.
-Verify Files and Terminal through the real web client against a real sandbox.
-The Files check must list the workspace and read one file. The Terminal check
-must create a PTY, connect its WebSocket, send a command, and observe its output.
-
-**The enforcement.** Add both checks to the compute-node browser journey before
-the rollout returns to `main`. Keep the provider ingress path until those checks
-pass through the same network boundary used by dev.
-
-*Incident:* PR #6686, merge `b03f92bdcd`, and PR #6773, merge `32abd10082`.
-The local rollback restored file reads and PTY command output before deployment.

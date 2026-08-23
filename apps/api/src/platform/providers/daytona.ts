@@ -8,7 +8,6 @@
 import { SandboxState } from '@daytonaio/sdk';
 import { SANDBOX_VERSION, config } from '../../config';
 import { triggerEmergencyDiskArchiveSweep } from '../../projects/disk-quota-guard';
-import { providerEnvironmentOwner } from '../../projects/instance-scope';
 import {
   archiveDaytonaSandboxById,
   getDaytona,
@@ -90,7 +89,7 @@ function reportIfDiskQuotaError(err: unknown, reason: string): never {
 function managedSandboxLabels(workloadType?: SandboxWorkloadType): Record<string, string> {
   return {
     'kortix.managed': 'true',
-    'kortix.env': providerEnvironmentOwner(),
+    'kortix.env': config.INTERNAL_KORTIX_ENV,
     ...(workloadType === 'app' ? { 'kortix.workload': workloadType } : {}),
   };
 }

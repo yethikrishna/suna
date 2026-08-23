@@ -55,19 +55,6 @@ const baseOpts = {
   envVars: { KORTIX_TOKEN: 'tok_test' },
 };
 
-function expectSessionBootstrap(body: string): void {
-  const parsed = JSON.parse(body) as { cmd: string[]; timeout_ms: number };
-  expect(parsed.cmd.slice(0, 2)).toEqual(['/bin/sh', '-lc']);
-  expect(parsed.cmd[2]).toContain('daemon_pids=');
-  expect(parsed.cmd[2]).toContain('entry_pids=');
-  expect(parsed.cmd[2]).toContain('kill -TERM $daemon_pids');
-  expect(parsed.cmd[2]).toContain('kill -TERM $entry_pids');
-  expect(parsed.cmd[2]).not.toContain('print $1; exit');
-  expect(parsed.cmd[2]).toContain("KORTIX_API_URL='https://api.example.com/v1'");
-  expect(parsed.cmd[2]).toContain('/usr/local/bin/kortix-entrypoint');
-  expect(parsed.timeout_ms).toBe(15_000);
-}
-
 beforeEach(() => {
   calls.length = 0;
 });
@@ -95,18 +82,14 @@ test('create() does NOT throw when the box is running', async () => {
     (c) => c.method === 'POST' && c.path === '/v1/sandboxes/sbx_dead/exec',
   );
   expect(bootstrap).toBeDefined();
-  expectSessionBootstrap(bootstrap!.body!);
-});
-
-test('session runtime convergence starts the kortixd supervisor after a wake', async () => {
-  const p = await makeProvider();
-
-  await p.ensureSessionRuntimeStarted('sbx_session');
-
-  const bootstrap = calls.find(
-    (c) => c.method === 'POST' && c.path === '/v1/sandboxes/sbx_session/exec',
-  );
-  expectSessionBootstrap(bootstrap!.body!);
+  expect(JSON.parse(bootstrap!.body!)).toEqual({
+    cmd: [
+      '/bin/sh',
+      '-lc',
+      'if pgrep -u kortix -x kortixd >/dev/null; then exit 0; fi; setsid -f /usr/local/bin/kortix-entrypoint >>/tmp/kortix-entrypoint.log 2>&1 </dev/null',
+    ],
+    timeout_ms: 15_000,
+  });
 });
 
 test("create() does NOT tear down a still-'provisioning' box (FE poll picks it up)", async () => {

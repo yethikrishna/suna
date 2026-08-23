@@ -11894,11 +11894,3 @@ passes 2418 tests across 162 files. The packed install smoke test passes.
 **Status:** COMPLETE.
 
 **Shippable to production: YES.**
-### 2026-08-23 — session `session-parts-guard` claim
-
-**Status:** IN PROGRESS.
-
-**Scope:** Normalize malformed runtime message `parts` at the SDK hydration
-boundary. Add a regression test that reproduces the deployed web crash. Remove
-references to the unavailable `tdd` skill while retaining mandatory RED → GREEN
-testing. Local verification precedes any merge or deployment.

@@ -9,7 +9,6 @@ class FakeSocket extends EventTarget {
   send(value: string) { this.sent.push(value) }
   close() {}
   receive(value: unknown) { this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(value) })) }
-  disconnect(code: number) { this.dispatchEvent(new CloseEvent('close', { code })) }
 }
 
 function signed(value: Record<string, unknown>, key: string, nonce: number) {
@@ -88,33 +87,5 @@ describe('kortixd outbound node channel', () => {
     await Bun.sleep(0)
     expect(channel.status()).toEqual({ connected: true, lastError: null })
     expect(JSON.parse(socket.sent[1]!).type).toBe('node.heartbeat')
-  })
-
-  test('reconnects after an API restart and ignores events from the replaced socket', async () => {
-    const sockets = [new FakeSocket(), new FakeSocket()]
-    let created = 0
-    const channel = new KortixNodeChannel({
-      apiUrl: 'https://api.test/v1',
-      nodeId: 'node-1',
-      token: 'secret',
-      ports: new Set([8000]),
-      reconnectDelayMs: () => 0,
-      socketFactory: () => sockets[created++]! as unknown as WebSocket,
-    })
-
-    channel.connect()
-    sockets[0]!.dispatchEvent(new Event('open'))
-    sockets[0]!.receive({ type: 'node.auth.ok', signing_key: 'old-key' })
-    await Bun.sleep(0)
-    sockets[0]!.disconnect(4004)
-    await Bun.sleep(5)
-    expect(created).toBe(2)
-
-    sockets[1]!.dispatchEvent(new Event('open'))
-    sockets[1]!.receive({ type: 'node.auth.ok', signing_key: 'new-key' })
-    await Bun.sleep(0)
-    sockets[0]!.disconnect(1012)
-    expect(channel.status()).toEqual({ connected: true, lastError: null })
-    channel.disconnect()
   })
 })

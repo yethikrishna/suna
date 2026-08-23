@@ -36,15 +36,9 @@ import {
   encodeKortixUserContext,
   KORTIX_USER_CONTEXT_HEADER,
 } from '../shared/kortix-user-context';
-import { extendConnectedSessionDeadline } from '../projects/sandbox-deadline';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-// Outbound compute-node relays do not touch the provider's ingress, so provider
-// idle timers cannot observe an active browser by themselves. Keep this below
-// the shortest supported provider idle timer (one minute on legacy Platinum
-// sandboxes). A 30-second throttle turns the UI health poll into a durable
-// provider activity signal without issuing one provider request per proxy call.
-const SANDBOX_TOUCH_INTERVAL_MS = 30 * 1000;
+const SANDBOX_TOUCH_INTERVAL_MS = 60 * 1000;
 
 /** Everything the proxy needs to know about a sandbox, from one row fetch. */
 export interface SandboxRecord {
@@ -356,8 +350,6 @@ export async function markSandboxUsed(sandboxId: string): Promise<void> {
       .select({
         sandboxId: sessionSandboxes.sandboxId,
         sessionId: sessionSandboxes.sessionId,
-        provider: sessionSandboxes.provider,
-        externalId: sessionSandboxes.externalId,
         status: sessionSandboxes.status,
         metadata: sessionSandboxes.metadata,
       })
@@ -371,34 +363,6 @@ export async function markSandboxUsed(sandboxId: string): Promise<void> {
       .update(sessionSandboxes)
       .set({ lastUsedAt: now, updatedAt: now })
       .where(eq(sessionSandboxes.sandboxId, row.sandboxId));
-    try {
-      await extendConnectedSessionDeadline({ sandboxId: row.sandboxId });
-    } catch (err) {
-      // Presence renewal is additive. A temporary deadline-write failure must
-      // not skip the existing last-used and project-session bookkeeping.
-      console.warn(
-        `[PREVIEW] Failed to extend connected-session deadline for ${row.externalId}:`,
-        err instanceof Error ? err.message : err,
-      );
-    }
-
-    // The compute-node channel is outbound. Relay traffic therefore bypasses
-    // Daytona/Platinum ingress and does not reset the provider's native idle
-    // timer. Renew it explicitly while authenticated traffic proves that a
-    // human still has the session open. This also works when the local API is
-    // not the scheduler leader, which is the normal isolated-worktree setup.
-    try {
-      if (row.externalId) {
-        await getProvider(row.provider as ProviderName).renewLifecycle(row.externalId);
-      }
-    } catch (err) {
-      // A stopped provider is handled by wakeSandbox on the request failure.
-      // Activity bookkeeping must still complete so the wake keeps its lease.
-      console.warn(
-        `[PREVIEW] Failed to renew provider lifecycle for ${row.externalId}:`,
-        err instanceof Error ? err.message : err,
-      );
-    }
 
     // Passive proxy traffic (an open tab polling opencode, a background stream
     // reconnect) must NOT heal a deliberately-stopped box back to active —

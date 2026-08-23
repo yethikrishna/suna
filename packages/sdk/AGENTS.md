@@ -10,8 +10,8 @@ the repo.
 > 0. **Read `packages/sdk/PROGRESS.md` first, and update it before you finish.**
 >    Multiple sessions run against this repo. It tracks what is done, what is in
 >    flight, and what is next. Claim a task before you work on it.
-> 1. **Write the failing test first.** Run the test before any implementation
->    code. RED → GREEN → REFACTOR, no exceptions. *A test you have
+> 1. **Write the failing test first.** Invoke the `tdd` skill (`/tdd`) before any
+>    implementation code. RED → GREEN → REFACTOR, no exceptions. *A test you have
 >    never seen fail is not a test.*
 > 2. **Never hand back a red suite.** Loop — run, read, fix, re-run — until every
 >    test passes. **Loop on the code, never on the test.** Deleting, skipping,
@@ -566,9 +566,10 @@ in the log rather than overwriting silently.
 
 ## Test-driven, always. No exceptions in this package.
 
-**Before writing any implementation code, write and run the failing test.** For
-broader repo conventions — which test type a change needs, factories,
-determinism, CI gates — read `.claude/skills/testing/SKILL.md`.
+**Before writing any implementation code, invoke the `tdd` skill** (`/tdd`, or
+`superpowers:test-driven-development`). For broader repo conventions — which test
+type a change needs, factories, determinism, CI gates — the project skill is
+`.claude/skills/testing/SKILL.md`.
 
 This is not a preference. This package is **published to npm**. A regression here
 does not show up in a PR review; it shows up in a stranger's build, on their

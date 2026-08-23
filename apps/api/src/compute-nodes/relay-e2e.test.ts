@@ -10,14 +10,12 @@ afterEach(() => { for (const server of servers.splice(0)) server.stop(true) })
 describe('compute-node relay across a real API network boundary', () => {
   test('streams a request body and incremental SSE response through the relay role', async () => {
     const key = 'relay-e2e-key'
-    let releaseSecondEvent!: () => void
-    const secondEventGate = new Promise<void>((resolve) => { releaseSecondEvent = resolve })
     const hub = { fetch: async (nodeId: string, port: number, request: Request) => {
       expect({ nodeId, port, path: new URL(request.url).pathname }).toEqual({ nodeId: 'node-1', port: 8000, path: '/events' })
       expect(await request.text()).toBe('request-stream')
       return new Response(new ReadableStream({ async start(controller) {
         controller.enqueue(new TextEncoder().encode('data: first\n\n'))
-        await secondEventGate
+        await Bun.sleep(5)
         controller.enqueue(new TextEncoder().encode('data: second\n\n'))
         controller.close()
       } }), { headers: { 'content-type': 'text/event-stream' } })
@@ -27,14 +25,10 @@ describe('compute-node relay across a real API network boundary', () => {
     servers.push(server)
     const response = await fetchComputeNodeThroughRelay({ relayUrl: server.url.toString(), key, nodeId: 'node-1', port: 8000, request: new Request('http://127.0.0.1:8000/events', { method: 'POST', body: 'request-stream' }) })
     expect(response.headers.get('content-type')).toContain('text/event-stream')
+    const chunks: string[] = []
     const reader = response.body!.getReader()
-    const first = await reader.read()
-    expect(first.done).toBe(false)
-    expect(new TextDecoder().decode(first.value)).toBe('data: first\n\n')
-    releaseSecondEvent()
-    const remainder: string[] = []
-    for (;;) { const { done, value } = await reader.read(); if (done) break; remainder.push(new TextDecoder().decode(value)) }
-    expect(remainder.join('')).toBe('data: second\n\n')
+    for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(new TextDecoder().decode(value)) }
+    expect(chunks).toEqual(['data: first\n\n', 'data: second\n\n'])
   })
 
   test('relays bidirectional WebSocket frames through the relay role', async () => {

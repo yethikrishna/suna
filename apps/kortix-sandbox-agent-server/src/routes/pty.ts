@@ -50,8 +50,6 @@ export interface PtyAttachHandle {
 
 export interface PtyRegistry {
   list(): KortixPtyMeta[]
-  /** True only while at least one live WebSocket viewer is attached. */
-  hasAttachedViewers(): boolean
   create(opts: { command?: string; args?: string[]; cwd?: string; title?: string; env?: Record<string, string> }): KortixPtyMeta
   update(id: string, opts: { title?: string; size?: { rows: number; cols: number } }): KortixPtyMeta | null
   remove(id: string): boolean
@@ -185,10 +183,6 @@ export function createPtyRegistry(cfg: Config): PtyRegistry {
   return {
     list() {
       return [...entries.values()].map((e) => ({ ...e.meta }))
-    },
-
-    hasAttachedViewers() {
-      return [...entries.values()].some((entry) => entry.viewers.size > 0)
     },
 
     create(opts) {

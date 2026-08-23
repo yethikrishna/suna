@@ -2063,14 +2063,7 @@ export function SessionChat({
     { refetchInterval: 5_000 },
   );
   const hasPendingApproval = (approvalAudit?.actions ?? []).some(isPendingAction);
-  const { data: runtimeCommands } = useRuntimeCommands();
-  // A runtime restart can briefly answer `/command` with a typed 503 body.
-  // The query transport can expose that body as `data`; keep one normalized
-  // array boundary so a transient readiness response cannot crash every turn.
-  const commands = useMemo(
-    () => (Array.isArray(runtimeCommands) ? runtimeCommands : []),
-    [runtimeCommands],
-  );
+  const { data: commands } = useRuntimeCommands();
   const { data: providers, isLoading: providersLoading } = useRuntimeProviders();
   const { data: allSessions } = useRuntimeSessions();
   const { data: config } = useRuntimeConfig();

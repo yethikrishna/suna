@@ -1,6 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { parseNodeChannelFrame, type NodeChannelFrame } from '@kortix/api-contract/node-channel'
-import { WebSocket as StandardWebSocket } from 'ws'
 import { NodeStreamAgent, type PortPolicy } from './stream-agent'
 import { NodeSocketAgent } from './socket-agent'
 import { NodeRpcAgent } from './rpc-agent'
@@ -15,28 +14,7 @@ interface ChannelOptions {
   capabilities?: NodeCapabilityRegistry
   assignments?: NodeAssignmentManager
   onAuthenticated?: () => void | Promise<void>
-  socketFactory?: (url: string) => WebSocketLike
-}
-
-interface WebSocketLike {
-  readonly readyState: number
-  addEventListener(type: string, listener: (event: any) => void): void
-  send(data: string): void
-  close(code?: number, reason?: string): void
-}
-
-function defaultSocketFactory(url: string): WebSocketLike {
-  // Bun omits User-Agent from its native WebSocket handshake. Cloudflare
-  // rejects that upgrade with `Expected 101 status code`. The `ws` constructor
-  // accepts an explicit header even when Bun provides its compatible runtime.
-  return new StandardWebSocket(url, { headers: { 'User-Agent': 'kortixd' } }) as unknown as WebSocketLike
-}
-
-function textFrame(raw: unknown): string | null {
-  if (typeof raw === 'string') return raw
-  if (raw instanceof ArrayBuffer) return Buffer.from(raw).toString('utf8')
-  if (ArrayBuffer.isView(raw)) return Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength).toString('utf8')
-  return null
+  socketFactory?: (url: string) => WebSocket
 }
 
 function wsUrl(apiUrl: string): string {
@@ -50,7 +28,7 @@ function signature(key: string, nonce: number, payload: string): string {
 }
 
 export class KortixNodeChannel {
-  private socket: WebSocketLike | null = null
+  private socket: WebSocket | null = null
   private key: string | null = null
   private sendNonce = 0
   private receiveNonce = 0
@@ -72,7 +50,7 @@ export class KortixNodeChannel {
   }
 
   connect(): void {
-    this.socket = (this.options.socketFactory ?? defaultSocketFactory)(wsUrl(this.options.apiUrl))
+    this.socket = (this.options.socketFactory ?? ((url) => new WebSocket(url)))(wsUrl(this.options.apiUrl))
     this.socket.addEventListener('open', () => {
       this.key = null
       this.sendNonce = 0
@@ -112,9 +90,8 @@ export class KortixNodeChannel {
 
   private async receive(raw: unknown): Promise<void> {
     try {
-      const text = textFrame(raw)
-      if (text === null) throw new Error('non-text node channel frame')
-      const value = JSON.parse(text) as Record<string, unknown>
+      if (typeof raw !== 'string') throw new Error('non-text node channel frame')
+      const value = JSON.parse(raw) as Record<string, unknown>
       if (value.type === 'node.auth.ok' && typeof value.signing_key === 'string') {
         this.key = value.signing_key
         this.lastError = null
@@ -146,7 +123,7 @@ export class KortixNodeChannel {
   send(frame: NodeChannelFrame): void { this.sendSigned(frame) }
 
   private sendSigned(frame: NodeChannelFrame): void {
-    if (!this.key || !this.socket || this.socket.readyState !== StandardWebSocket.OPEN) return
+    if (!this.key || !this.socket || this.socket.readyState !== WebSocket.OPEN) return
     const nonce = ++this.sendNonce
     const payload = JSON.stringify(frame)
     this.socket.send(JSON.stringify({ ...frame, _nonce: nonce, _sig: signature(this.key, nonce, payload) }))

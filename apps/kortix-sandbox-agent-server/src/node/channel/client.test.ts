@@ -16,32 +16,6 @@ function signed(value: Record<string, unknown>, key: string, nonce: number) {
 }
 
 describe('kortixd outbound node channel', () => {
-  test('sends a User-Agent required by deployed WebSocket edges', async () => {
-    let server: ReturnType<typeof Bun.serve>
-    server = Bun.serve<{ authenticated?: boolean }>({
-      port: 0,
-      fetch(request, bunServer) {
-        if (request.headers.get('user-agent') !== 'kortixd') return new Response('missing user-agent', { status: 403 })
-        return bunServer.upgrade(request, { data: {} }) ? undefined : new Response('upgrade failed', { status: 500 })
-      },
-      websocket: {
-        message(socket, raw) {
-          const frame = JSON.parse(String(raw))
-          if (frame.type === 'node.auth') socket.send(JSON.stringify({ type: 'node.auth.ok', signing_key: 'edge-key' }))
-        },
-      },
-    })
-    try {
-      const channel = new KortixNodeChannel({ apiUrl: `http://127.0.0.1:${server.port}/v1`, nodeId: 'node-1', token: 'secret', ports: new Set() })
-      channel.connect()
-      for (let attempt = 0; attempt < 40 && !channel.status().connected; attempt++) await Bun.sleep(25)
-      expect(channel.status()).toEqual({ connected: true, lastError: null })
-      channel.disconnect()
-    } finally {
-      server.stop(true)
-    }
-  })
-
   test('authenticates without putting the credential in the URL', () => {
     const socket = new FakeSocket()
     const channel = new KortixNodeChannel({ apiUrl: 'https://api.test/v1', nodeId: 'node-1', token: 'secret', ports: new Set([8000]), socketFactory: (url) => {
@@ -68,24 +42,5 @@ describe('kortixd outbound node channel', () => {
     socket.receive(signed(open, 'session-key', 1))
     await Bun.sleep(0)
     expect(channel.status().lastError).toContain('nonce')
-  })
-
-  test('accepts text frames delivered as Node WebSocket buffers', async () => {
-    const socket = new FakeSocket()
-    const channel = new KortixNodeChannel({
-      apiUrl: 'https://api.test/v1',
-      nodeId: 'node-1',
-      token: 'secret',
-      ports: new Set([8000]),
-      socketFactory: () => socket as unknown as WebSocket,
-    })
-    channel.connect()
-    socket.dispatchEvent(new Event('open'))
-    socket.dispatchEvent(new MessageEvent('message', {
-      data: Buffer.from(JSON.stringify({ type: 'node.auth.ok', signing_key: 'session-key' })),
-    }))
-    await Bun.sleep(0)
-    expect(channel.status()).toEqual({ connected: true, lastError: null })
-    expect(JSON.parse(socket.sent[1]!).type).toBe('node.heartbeat')
   })
 })

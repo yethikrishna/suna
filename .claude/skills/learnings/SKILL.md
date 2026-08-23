@@ -21,6 +21,16 @@ linked, not inlined.
 
 ## Register
 
+### Keep the legacy relay until old sessions pass a real cutover gate (2026-08-23)
+
+**When:** replacing sandbox runtime startup, ingress, or relay ownership.
+Do not merge the cutover until one pre-change session passes chat, files, PTY,
+idle survival, and stop/start recovery through the browser. A persistent boot
+lock must record the boot ID and owner PID, and recover an empty or stale lock.
+*Incident:* PRs #6686 and #6773–#6786 moved the relay to `kortixd`; an empty
+`/opt/kortix/bootstrap.lock` then blocked every later wake for that node.
+*Enforcer:* TODO: add the pre-change-session journey to the browser release gate.
+
 ### Keep self-host sandbox gateway URLs aligned with the public proxy route (2026-08-23)
 
 **When:** changing `LLM_GATEWAY_PROXY_TARGET`, Caddy LLM matchers, or sandbox

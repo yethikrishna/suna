@@ -2039,23 +2039,3 @@ pass through the same network boundary used by dev.
 
 *Incident:* PR #6686, merge `b03f92bdcd`, and PR #6773, merge `32abd10082`.
 The local rollback restored file reads and PTY command output before deployment.
-
-## Every WebSocket hop through Cloudflare needs an explicit User-Agent
-
-2026-08-23. The browser-to-API PTY upgrade returned HTTP `101`, but the API's
-second WebSocket hop to `/v1/internal/node-relay/socket/*` failed before the
-relay handler. Bun's WebSocket client omitted `User-Agent`. Cloudflare rejected
-that internal handshake, so clients received `relay socket failed` after a
-successful outer upgrade.
-
-**The rule.** Treat each WebSocket hop as a separate edge contract. Every Bun
-WebSocket client that crosses Cloudflare must send an explicit `User-Agent`.
-A successful outer upgrade does not prove that a chained internal upgrade works.
-
-**The enforcement.** The relay socket unit test asserts
-`User-Agent: kortix-api/node-relay`. Dev acceptance must send a command through
-the PTY WebSocket and observe its output. HTTP `101` alone is insufficient.
-
-*Incident:* PR #6776 dev verification, session
-`92f4c37c-ad04-496e-8c52-3068a629214b`, PTY
-`kpty_f59eca26882440fdaeb6fccc24e5990d`.

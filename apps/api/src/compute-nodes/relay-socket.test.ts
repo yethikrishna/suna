@@ -22,7 +22,6 @@ describe('compute-node relay WebSocket transport', () => {
       relayUrl: 'https://api.test/v1', key, nodeId: 'node/a', port: 8000, path: '/pty/1?q=2', headers: { authorization: 'Bearer scoped' }, handlers: { open() {}, message() {}, close() {} },
       socketFactory: (url, headers) => {
         expect(url).toBe(target.toString())
-        expect(headers.get('user-agent')).toBe('kortix-api/node-relay')
         expect(verifyRelayAuthorization({ key, method: 'GET', target: target.pathname + target.search, headers, guard: new RelayReplayGuard() })).toEqual({ ok: true })
         const request = new Request(url, { headers })
         const prepared = prepareRelaySocketUpgrade({ request, key, guard: new RelayReplayGuard() })

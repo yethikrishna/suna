@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { describe, expect, test } from 'bun:test'
-import { KortixNodeChannel } from './client'
+import { KortixNodeChannel, NODE_CHANNEL_WEBSOCKET_OPTIONS } from './client'
 
 class FakeSocket extends EventTarget {
   static readonly OPEN = 1
@@ -17,6 +17,13 @@ function signed(value: Record<string, unknown>, key: string, nonce: number) {
 }
 
 describe('kortixd outbound node channel', () => {
+  test('disables per-message compression for Bun compatibility', () => {
+    expect(NODE_CHANNEL_WEBSOCKET_OPTIONS).toEqual({
+      headers: { 'User-Agent': 'kortixd' },
+      perMessageDeflate: false,
+    })
+  })
+
   test('sends a User-Agent required by deployed WebSocket edges', async () => {
     let server: ReturnType<typeof Bun.serve>
     server = Bun.serve<{ authenticated?: boolean }>({

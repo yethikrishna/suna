@@ -2059,3 +2059,21 @@ the PTY WebSocket and observe its output. HTTP `101` alone is insufficient.
 *Incident:* PR #6776 dev verification, session
 `92f4c37c-ad04-496e-8c52-3068a629214b`, PTY
 `kpty_f59eca26882440fdaeb6fccc24e5990d`.
+
+## Disable compression on Bun WebSocket clients
+
+2026-08-23. The `kortixd` node channel authenticated through Cloudflare, then
+Bun 1.3.14 emitted repeated `Decompression error: ZlibError` messages. The API
+lost the node channel. Session REST routes returned `503` although the daemon
+and OpenCode remained healthy inside the sandbox.
+
+**The rule.** Disable `permessage-deflate` on every `ws` client that runs under
+Bun. Small control frames do not justify a runtime-specific compression failure
+that disconnects the only control-plane channel.
+
+**The enforcement.** The node-channel unit test asserts
+`perMessageDeflate: false`. Dev acceptance must restart a sandbox, wait for the
+updated daemon, then verify chat, Files, and Terminal through the relay.
+
+*Incident:* PR #6776 dev verification, session
+`2e1fcec9-2485-481f-afca-8d1ab035761a`.

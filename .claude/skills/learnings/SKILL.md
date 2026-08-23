@@ -2150,3 +2150,22 @@ idle interval.
 
 *Incident:* PR #6782 dev verification, session
 `e5d79018-2787-42e5-b2df-b605b82f928d`.
+
+## Never terminate a provider container entrypoint during runtime convergence
+
+2026-08-23. Legacy-node convergence terminated
+`/usr/local/bin/kortix-entrypoint` while replacing its daemon child. That
+entrypoint owned the Daytona container lifecycle. Files and PTY worked briefly,
+then Daytona stopped the VM and chat returned `503`.
+
+**The rule.** Runtime convergence may terminate replaceable daemon processes.
+It must not terminate a provider or image entrypoint. Treat the entrypoint as
+container lifecycle infrastructure even when its name contains `kortix`.
+
+**The enforcement.** Daytona and Platinum bootstrap tests reject both legacy
+entrypoint command lines in the convergence kill list. Dev acceptance must keep
+a PTY connected while Files and chat run, then reuse the PTY after the prior
+failure interval.
+
+*Incident:* PR #6783 dev verification, session
+`e5d79018-2787-42e5-b2df-b605b82f928d`.

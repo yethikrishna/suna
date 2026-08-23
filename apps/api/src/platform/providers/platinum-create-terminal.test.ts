@@ -103,12 +103,17 @@ test('create() does NOT throw when the box is running', async () => {
 test('session runtime convergence starts the kortixd supervisor after a wake', async () => {
   const p = await makeProvider();
 
-  await p.ensureSessionRuntimeStarted('sbx_session');
+  await p.ensureSessionRuntimeStarted('sbx_session', {
+    nodeId: 'node-legacy-1',
+    nodeToken: 'knd_test_legacy_credential',
+  });
 
   const bootstrap = calls.find(
     (c) => c.method === 'POST' && c.path === '/v1/sandboxes/sbx_session/exec',
   );
   expectSessionBootstrap(bootstrap!.body!);
+  expect(bootstrap!.body!).toContain("KORTIX_COMPUTE_NODE_ID='node-legacy-1'");
+  expect(bootstrap!.body!).toContain("KORTIX_NODE_TOKEN='knd_test_legacy_credential'");
 });
 
 test("create() does NOT tear down a still-'provisioning' box (FE poll picks it up)", async () => {

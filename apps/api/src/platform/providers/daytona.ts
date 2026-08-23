@@ -318,7 +318,10 @@ export class DaytonaProvider implements SandboxProvider {
     }
   }
 
-  async ensureSessionRuntimeStarted(externalId: string): Promise<void> {
+  async ensureSessionRuntimeStarted(
+    externalId: string,
+    identity?: { nodeId: string; nodeToken: string },
+  ): Promise<void> {
     const daytona = getDaytona();
     const sandbox = await withTimeout(
       daytona.get(externalId),
@@ -327,6 +330,7 @@ export class DaytonaProvider implements SandboxProvider {
     );
     const command = buildSessionSupervisorCommand(
       config.KORTIX_NODE_RELAY_URL || config.KORTIX_URL,
+      identity,
     );
     const result = await withTimeout(
       sandbox.process.executeCommand(command, undefined, undefined, 15),

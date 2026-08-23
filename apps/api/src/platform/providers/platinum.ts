@@ -475,7 +475,10 @@ export class PlatinumProvider implements SandboxProvider {
     };
   }
 
-  async ensureSessionRuntimeStarted(externalId: string): Promise<void> {
+  async ensureSessionRuntimeStarted(
+    externalId: string,
+    identity?: { nodeId: string; nodeToken: string },
+  ): Promise<void> {
     // Platinum restores a template under pt-init and does not execute the image
     // ENTRYPOINT. Start the supervisor through the native exec API. The process
     // owns daemon updates and rollback, so launching kortixd directly would
@@ -484,7 +487,7 @@ export class PlatinumProvider implements SandboxProvider {
     // tree and relaunch the existing verified supervisor with this API's relay
     // URL. No human can be attached while the provider VM is stopped. The new
     // process starts with an empty PTY registry and converges its own binary.
-    const allProcessCommand = buildSessionSupervisorCommand(config.KORTIX_NODE_RELAY_URL);
+    const allProcessCommand = buildSessionSupervisorCommand(config.KORTIX_NODE_RELAY_URL, identity);
     const response = await platinumJson<PlatinumExecResponse>(`/v1/sandboxes/${externalId}/exec`, {
       method: 'POST',
       body: JSON.stringify({ cmd: ['/bin/sh', '-lc', allProcessCommand], timeout_ms: 15_000 }),

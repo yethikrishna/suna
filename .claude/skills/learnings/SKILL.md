@@ -1957,3 +1957,24 @@ past its `Move :dev` step.
 *Incident:* PR #6764, merge `e6c4ba0b62`, 2026-08-22 23:43 UTC. No outage —
 a frontend-only fix sat undeployed on dev for ~25 minutes while both the run
 list and the deployed-SHA probe read as healthy.
+
+## Test the compiled daemon through the deployed WebSocket edge
+
+2026-08-23. The `kortixd` node channel passed local Bun tests. The compiled
+daemon still failed against `wss://dev-api.kortix.com/v1/nodes/ws` with
+`Expected 101 status code`. Bun's native WebSocket client did not complete the
+Cloudflare upgrade. Node's standards-based WebSocket client completed the same
+upgrade and received `node.auth.ok`.
+
+**The rule.** A local WebSocket server does not prove the released daemon can
+cross the deployed edge. Every node-channel release must run the compiled
+daemon against the deployed API. The API must persist the node as `online`.
+
+**The enforcement.** `kortixd` uses the `ws` HTTP/1.1 client for its outbound
+channel. The channel test covers the Buffer text-frame representation used by
+that client. Dev verification compiles the executable, enrolls it, runs it
+against the Cloudflare origin, and reads the persisted compute-node status.
+
+*Incident:* PR #6686 dev verification, compute node
+`65ad5a11-472b-4670-932a-fae12e772fd6`. The API kept the node `offline` until
+the client transport changed from Bun's native WebSocket to `ws`.

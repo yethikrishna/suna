@@ -144,6 +144,8 @@ test('session runtime convergence starts the kortixd supervisor with the current
   expect(processCommands[0]?.command).not.toContain('"/usr/local/bin/kortix-entrypoint"|');
   expect(processCommands[0]?.command).not.toContain('"/bin/sh /usr/local/bin/kortix-entrypoint"');
   expect(processCommands[0]?.command).toContain('[ "$pid" = 1 ] && continue');
+  expect(processCommands[0]?.command).not.toContain('"/usr/local/bin/kortix-agent"|');
+  expect(processCommands[0]?.command).toContain('KORTIXD_ADOPT_EXISTING_RUNTIME=1');
   expect(processCommands[0]?.command).not.toContain('ps -u');
   expect(processCommands[0]?.timeout).toBe(15);
 });

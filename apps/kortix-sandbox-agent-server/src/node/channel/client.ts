@@ -26,11 +26,20 @@ interface WebSocketLike {
   close(code?: number, reason?: string): void
 }
 
+export const NODE_CHANNEL_WEBSOCKET_OPTIONS = {
+  headers: { 'User-Agent': 'kortixd' },
+  // Cloudflare negotiates permessage-deflate by default. Bun 1.3.14 can fail
+  // to inflate those frames with `ZlibError`, which silently drops the only
+  // control-plane channel. Node-channel frames are small, so compression adds
+  // risk without meaningful bandwidth savings.
+  perMessageDeflate: false,
+} as const
+
 function defaultSocketFactory(url: string): WebSocketLike {
   // Bun omits User-Agent from its native WebSocket handshake. Cloudflare
   // rejects that upgrade with `Expected 101 status code`. The `ws` constructor
   // accepts an explicit header even when Bun provides its compatible runtime.
-  return new StandardWebSocket(url, { headers: { 'User-Agent': 'kortixd' } }) as unknown as WebSocketLike
+  return new StandardWebSocket(url, NODE_CHANNEL_WEBSOCKET_OPTIONS) as unknown as WebSocketLike
 }
 
 function textFrame(raw: unknown): string | null {

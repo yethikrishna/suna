@@ -2159,13 +2159,15 @@ entrypoint owned the Daytona container lifecycle. Files and PTY worked briefly,
 then Daytona stopped the VM and chat returned `503`.
 
 **The rule.** Runtime convergence may terminate replaceable daemon processes.
-It must not terminate a provider or image entrypoint. Treat the entrypoint as
-container lifecycle infrastructure even when its name contains `kortix`.
+It must never signal PID `1`. It must not terminate a provider or image
+entrypoint. Treat PID `1` as container lifecycle infrastructure even when its
+command line is the legacy daemon binary.
 
 **The enforcement.** Daytona and Platinum bootstrap tests reject both legacy
-entrypoint command lines in the convergence kill list. Dev acceptance must keep
-a PTY connected while Files and chat run, then reuse the PTY after the prior
-failure interval.
+entrypoint command lines in the convergence kill list. They also require an
+explicit PID `1` exclusion before command-line matching. Dev acceptance must
+keep a PTY connected while Files and chat run, then reuse the PTY after the
+prior failure interval.
 
 *Incident:* PR #6783 dev verification, session
 `e5d79018-2787-42e5-b2df-b605b82f928d`.

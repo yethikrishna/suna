@@ -1957,7 +1957,6 @@ past its `Move :dev` step.
 *Incident:* PR #6764, merge `e6c4ba0b62`, 2026-08-22 23:43 UTC. No outage —
 a frontend-only fix sat undeployed on dev for ~25 minutes while both the run
 list and the deployed-SHA probe read as healthy.
-
 ## Test the compiled daemon through the deployed WebSocket edge
 
 2026-08-23. The `kortixd` node channel passed local Bun tests. The compiled
@@ -1978,3 +1977,21 @@ against the Cloudflare origin, and reads the persisted compute-node status.
 *Incident:* PR #6686 dev verification, compute node
 `65ad5a11-472b-4670-932a-fae12e772fd6`. The API kept the node `offline` until
 the client transport changed from Bun's native WebSocket to `ws`.
+## A relay migration must preserve browser filesystem and PTY flows
+
+2026-08-23. PR #6686 replaced provider ingress with the compute-node relay on
+dev. Session chat and OpenCode REST remained healthy. Files returned `Failed
+to fetch`. Terminal WebSockets closed with code `1006`. The API proxied PTY
+requests to `http://127.0.0.1:8000`, which was not the sandbox runtime.
+
+**The rule.** Do not merge an ingress or relay migration after REST-only tests.
+Verify Files and Terminal through the real web client against a real sandbox.
+The Files check must list the workspace and read one file. The Terminal check
+must create a PTY, connect its WebSocket, send a command, and observe its output.
+
+**The enforcement.** Add both checks to the compute-node browser journey before
+the rollout returns to `main`. Keep the provider ingress path until those checks
+pass through the same network boundary used by dev.
+
+*Incident:* PR #6686, merge `b03f92bdcd`, and PR #6773, merge `32abd10082`.
+The local rollback restored file reads and PTY command output before deployment.

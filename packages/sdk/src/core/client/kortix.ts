@@ -41,52 +41,6 @@ import {
 /** A model the agent can run, as the opencode runtime identifies it. */
 export type SessionModel = { providerID: string; modelID: string };
 
-type PromptResult = Awaited<ReturnType<OpencodeClient['session']['prompt']>>;
-const MESSAGE_ID_CLOCK_MASK = (BigInt(1) << BigInt(48)) - BigInt(1);
-const MESSAGE_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-let lastCorePromptClock = BigInt(0);
-
-function corePromptMessageId(): string {
-  const wallClock = (BigInt(Date.now()) * BigInt(0x1000)) & MESSAGE_ID_CLOCK_MASK;
-  const clock = wallClock > lastCorePromptClock ? wallClock : lastCorePromptClock + BigInt(1);
-  lastCorePromptClock = clock;
-  const bytes = new Uint8Array(14);
-  crypto.getRandomValues(bytes);
-  let suffix = '';
-  for (const byte of bytes) suffix += MESSAGE_ID_ALPHABET[byte % MESSAGE_ID_ALPHABET.length];
-  return `msg_${clock.toString(16).padStart(12, '0')}${suffix}`;
-}
-
-async function sendPromptAndWait(
-  client: OpencodeClient,
-  input: {
-    sessionID: string;
-    parts: Array<{ type: 'text'; text: string }>;
-    model?: SessionModel;
-    agent?: string;
-  },
-): Promise<PromptResult> {
-  const messageID = corePromptMessageId();
-  const accepted = await client.session.promptAsync({ ...input, messageID });
-  if (accepted.error) return accepted as PromptResult;
-
-  for (;;) {
-    const page = await client.session.messages({ sessionID: input.sessionID, limit: 100 });
-    if (page.error) return page as PromptResult;
-    if (!Array.isArray(page.data)) return page as unknown as PromptResult;
-    const assistant = page.data.find(
-      (message) =>
-        message.info.role === 'assistant' &&
-        message.info.parentID === messageID &&
-        (message.info.time?.completed !== undefined || message.info.error !== undefined),
-    );
-    if (assistant) {
-      return { data: assistant, request: page.request, response: page.response } as PromptResult;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-}
-
 /** The opencode runtime client for the currently-active sandbox (set by the host). */
 function runtime(): OpencodeClient {
   return getClient();
@@ -1195,7 +1149,7 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
         const persisted = selectedModel && selectedAgent ? {} : await persistedPromptDefaults();
         const model = selectedModel ?? persisted.model;
         const agent = selectedAgent ?? persisted.agent;
-        return sendPromptAndWait(getClientForUrl(runtimeUrl), {
+        return getClientForUrl(runtimeUrl).session.prompt({
           sessionID: opencodeSessionId,
           parts: [{ type: 'text', text }],
           ...(model ? { model } : {}),

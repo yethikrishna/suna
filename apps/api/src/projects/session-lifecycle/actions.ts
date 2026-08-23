@@ -9,10 +9,6 @@ import { isMetaAgentName } from '@kortix/shared';
 import { and, eq, sql } from 'drizzle-orm';
 import { revokeSessionConnectorTokens } from '../../repositories/account-tokens';
 import {
-  ensureSessionComputeNode,
-  rotateNodeCredential,
-} from '../../repositories/compute-node-credentials';
-import {
   legacyRehydrateSpec,
   rehydrateSessionChat,
 } from '../legacy-migration-rehydrate';
@@ -471,14 +467,7 @@ export async function restartSession(input: {
           );
         const reconnectAfter = new Date();
         await provider.start(externalId);
-        if (provider.ensureSessionRuntimeStarted) {
-          await ensureSessionComputeNode(sessionId);
-          const nodeCredential = await rotateNodeCredential(sessionId, loaded.row.accountId);
-          await provider.ensureSessionRuntimeStarted(externalId, {
-            nodeId: sessionId,
-            nodeToken: nodeCredential.credential,
-          });
-        }
+        await provider.ensureSessionRuntimeStarted?.(externalId);
         if (provider.ensureSessionRuntimeStarted) {
           await waitForComputeNodeConnection(sessionId, reconnectAfter);
         }

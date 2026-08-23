@@ -11,7 +11,6 @@ process.env.PLATINUM_API_KEY = 'pt_test_key';
 process.env.PLATINUM_API_URL = 'https://api.platinum.dev';
 process.env.PLATINUM_TEMPLATE = 'tpl_test';
 process.env.KORTIX_URL ??= 'https://api.example.com';
-process.env.KORTIX_NODE_RELAY_URL ??= 'https://api.example.com';
 process.env.DATABASE_URL ??= 'postgres://x';
 
 // Capture the paths platinumJson is called with so we can assert the dead box
@@ -54,17 +53,16 @@ const baseOpts = {
   userId: 'usr_1',
   name: 'test-box',
   envVars: { KORTIX_TOKEN: 'tok_test' },
-  snapshot: 'tpl_test',
 };
 
 function expectSessionBootstrap(body: string): void {
   const parsed = JSON.parse(body) as { cmd: string[]; timeout_ms: number };
   expect(parsed.cmd.slice(0, 2)).toEqual(['/bin/sh', '-lc']);
-  expect(parsed.cmd[2]).toContain('/proc/[0-9]*');
-  expect(parsed.cmd[2]).toContain('/usr/local/bin/kortix-agent');
-  expect(parsed.cmd[2]).toContain('/opt/kortix/agent.current run');
-  expect(parsed.cmd[2]).toContain('kill -TERM "${proc#/proc/}"');
-  expect(parsed.cmd[2]).not.toContain('ps -u');
+  expect(parsed.cmd[2]).toContain('daemon_pids=');
+  expect(parsed.cmd[2]).toContain('entry_pids=');
+  expect(parsed.cmd[2]).toContain('kill -TERM $daemon_pids');
+  expect(parsed.cmd[2]).toContain('kill -TERM $entry_pids');
+  expect(parsed.cmd[2]).not.toContain('print $1; exit');
   expect(parsed.cmd[2]).toContain("KORTIX_API_URL='https://api.example.com/v1'");
   expect(parsed.cmd[2]).toContain('/usr/local/bin/kortix-entrypoint');
   expect(parsed.timeout_ms).toBe(15_000);
@@ -103,17 +101,12 @@ test('create() does NOT throw when the box is running', async () => {
 test('session runtime convergence starts the kortixd supervisor after a wake', async () => {
   const p = await makeProvider();
 
-  await p.ensureSessionRuntimeStarted('sbx_session', {
-    nodeId: 'node-legacy-1',
-    nodeToken: 'knd_test_legacy_credential',
-  });
+  await p.ensureSessionRuntimeStarted('sbx_session');
 
   const bootstrap = calls.find(
     (c) => c.method === 'POST' && c.path === '/v1/sandboxes/sbx_session/exec',
   );
   expectSessionBootstrap(bootstrap!.body!);
-  expect(bootstrap!.body!).toContain("KORTIX_COMPUTE_NODE_ID='node-legacy-1'");
-  expect(bootstrap!.body!).toContain("KORTIX_NODE_TOKEN='knd_test_legacy_credential'");
 });
 
 test("create() does NOT tear down a still-'provisioning' box (FE poll picks it up)", async () => {

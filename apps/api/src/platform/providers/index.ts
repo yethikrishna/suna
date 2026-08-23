@@ -306,10 +306,7 @@ export interface SandboxProvider {
   ): Promise<ResolvedSandboxIngress>;
   ensureRunning(externalId: string): Promise<void>;
   /** Reconcile the session daemon after a provider-native wake. */
-  ensureSessionRuntimeStarted?(
-    externalId: string,
-    identity?: { nodeId: string; nodeToken: string },
-  ): Promise<void>;
+  ensureSessionRuntimeStarted?(externalId: string): Promise<void>;
   getProvisioningStatus(sandboxId: string): Promise<ProvisioningStatus | null>;
   /**
    * List the running boxes this deployment owns, for the orphan-box reaper

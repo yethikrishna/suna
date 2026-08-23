@@ -72,6 +72,10 @@ interface ClientWebSocket {
 export function connectComputeNodeSocketThroughRelay(input: { relayUrl: string; key: string; nodeId: string; port: number; path: string; headers: Record<string, string>; handlers: ComputeNodeSocketHandlers; socketFactory?: (url: string, headers: Headers) => ClientWebSocket }): ComputeNodeSocket {
   const target = computeNodeRelaySocketTarget(input.relayUrl, input.nodeId, input.port, input.path)
   const headers = createRelayAuthorization({ key: input.key, method: 'GET', target: target.pathname + target.search })
+  // Bun's WebSocket client sends no User-Agent by default. Cloudflare rejects
+  // that handshake before it reaches the relay server, while localhost accepts
+  // it. Keep this edge-compatible just like the node channel client.
+  headers.set('user-agent', 'kortix-api/node-relay')
   headers.set(UPSTREAM_HEADERS, encodeHeaders(input.headers))
   const socket = (input.socketFactory ?? ((url, requestHeaders) => new WebSocket(url, { headers: Object.fromEntries(requestHeaders) } as any) as unknown as ClientWebSocket))(target.toString(), headers)
   socket.binaryType = 'arraybuffer'

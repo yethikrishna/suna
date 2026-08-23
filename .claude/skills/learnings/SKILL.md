@@ -2169,10 +2169,5 @@ explicit PID `1` exclusion before command-line matching. Dev acceptance must
 keep a PTY connected while Files and chat run, then reuse the PTY after the
 prior failure interval.
 
-Legacy entrypoints can also wait on `/usr/local/bin/kortix-agent` as a child.
-Convergence must preserve that child. The current daemon adopts its healthy
-port instead of spawning a second workload. Assignment tests require zero spawn
-calls when adoption health succeeds.
-
 *Incident:* PR #6783 dev verification, session
 `e5d79018-2787-42e5-b2df-b605b82f928d`.

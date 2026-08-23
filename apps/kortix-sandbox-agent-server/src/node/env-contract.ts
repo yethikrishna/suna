@@ -113,7 +113,6 @@ export const ENV_CONTRACT: readonly EnvBinding[] = [
   b('KORTIXD_VERSION', 'core', 'boot', 'tuning', 'Version stamped into the standalone daemon binary at build time.'),
   b('KORTIXD_HOME', 'core', 'boot', 'path', 'Owner-controlled state directory for node identity, assignments, policies, and managed versions.'),
   b('KORTIXD_ASSIGNED_CHILD', 'core', 'boot', 'flag', 'Marks a supervised assignment child so it runs the workload instead of opening another node channel.'),
-  b('KORTIXD_ADOPT_EXISTING_RUNTIME', 'core', 'boot', 'flag', 'Adopts a healthy image-baked session runtime instead of starting a conflicting assignment child.'),
   b('KORTIX_SERVICE_PORT', 'core', 'boot', 'port', 'The control server port. 8000 is a hard contract with the API proxy.'),
   b('KORTIX_WORKSPACE', 'core', 'boot', 'path', 'Workspace root. Defaults to /workspace.'),
   b('KORTIX_PROJECT_TARGET', 'core', 'boot', 'path', 'Where the project repo is materialized. Defaults to the workspace.'),

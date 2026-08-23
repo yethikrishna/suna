@@ -24,8 +24,6 @@ export interface AssignmentManagerOptions {
   executable?: string
   spawnProcess?: (executable: string, args: string[], env: NodeJS.ProcessEnv) => AssignmentProcess
   checkReady?: (port: number, signal: AbortSignal) => Promise<{ ready: boolean; nativeConversationId?: string }>
-  /** Preserve and relay an image-baked runtime when it is already healthy. */
-  adoptExistingRuntime?: boolean
   now?: () => Date
   onFrame(frame: NodeChannelFrame): void
 }
@@ -78,10 +76,7 @@ export class NodeAssignmentManager {
     return assignment ? [join(this.directory, 'workspaces', assignment.session_id), ...assignment.writable_roots] : []
   }
   hasPort(port: number): boolean { return this.current?.state === 'ready' && this.current.assignment.ports.includes(port) }
-  isBusy(): boolean {
-    return Boolean(this.child && this.child.exitCode === null)
-      || Boolean(this.options.adoptExistingRuntime && this.current?.state === 'ready')
-  }
+  isBusy(): boolean { return Boolean(this.child && this.child.exitCode === null) }
   resetSequences(): void { this.sendSequences.clear() }
 
   async handle(frame: NodeChannelFrame): Promise<boolean> {
@@ -149,35 +144,6 @@ export class NodeAssignmentManager {
     env.KORTIX_SERVICE_PORT = String(assignment.ports[0] ?? 8000)
     env.KORTIXD_HOME = join(workspace, '.kortixd-runtime')
     mkdirSync(env.KORTIXD_HOME, { recursive: true, mode: 0o700 })
-    if (this.options.adoptExistingRuntime) {
-      const port = assignment.ports[0] ?? 8000
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 5_000)
-      try {
-        const existing = await (this.options.checkReady ?? defaultReady)(port, controller.signal)
-        if (existing.ready) {
-          if (!this.current || this.current.assignment.assignment_id !== assignment.assignment_id) return
-          this.current.state = 'ready'
-          this.current.updated_at = this.now().toISOString()
-          this.persist()
-          this.emit({
-            v: 1,
-            type: 'assignment.ready',
-            stream_id: assignment.assignment_id,
-            seq: responseSeq,
-            ports: assignment.ports,
-            ...(existing.nativeConversationId
-              ? { native_conversation_id: existing.nativeConversationId }
-              : {}),
-          })
-          return
-        }
-      } catch {
-        // No healthy runtime exists. Start the assigned workload normally.
-      } finally {
-        clearTimeout(timeout)
-      }
-    }
     const child = (this.options.spawnProcess ?? defaultSpawn)(this.executable, ['run'], env)
     this.child = child
     child.once('exit', () => {

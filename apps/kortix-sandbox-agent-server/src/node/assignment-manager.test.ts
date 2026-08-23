@@ -38,27 +38,6 @@ function spec(epoch = 1): NodeAssignmentSpec {
 }
 
 describe('kortixd assignment manager', () => {
-  test('adopts an existing healthy legacy runtime without spawning a conflicting child', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'kortixd-assignment-'))
-    const frames: NodeChannelFrame[] = []
-    let spawnCalls = 0
-    try {
-      const manager = new NodeAssignmentManager({
-        stateDirectory: directory,
-        adoptExistingRuntime: true,
-        spawnProcess: () => { spawnCalls++; return new FakeChild() },
-        checkReady: async () => ({ ready: true, nativeConversationId: 'oc-legacy' }),
-        onFrame: (frame) => frames.push(frame),
-      })
-      await manager.handle({ v: 1, type: 'assignment.apply', stream_id: ID, seq: 0, assignment: spec() })
-      expect(spawnCalls).toBe(0)
-      expect(manager.isBusy()).toBe(true)
-      expect(manager.hasPort(18000)).toBe(true)
-      expect(frames.map((frame) => frame.type)).toEqual(['assignment.accept', 'assignment.ready'])
-      expect(frames.at(-1)).toMatchObject({ native_conversation_id: 'oc-legacy' })
-    } finally { rmSync(directory, { recursive: true, force: true }) }
-  })
-
   test('accepts, starts, reports ready, and idempotently accepts the same lease', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'kortixd-assignment-'))
     const frames: NodeChannelFrame[] = []

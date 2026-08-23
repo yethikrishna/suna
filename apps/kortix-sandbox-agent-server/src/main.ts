@@ -126,10 +126,7 @@ export async function runKortixDaemon(): Promise<void> {
   // control-plane connection and relays signed requests to loopback services.
   if (cfg.apiUrl && cfg.computeNodeId && cfg.nodeToken && process.env.KORTIXD_ASSIGNED_CHILD !== '1') {
     let channel: KortixNodeChannel
-    const assignmentManager = new NodeAssignmentManager({
-      adoptExistingRuntime: process.env.KORTIXD_ADOPT_EXISTING_RUNTIME === '1',
-      onFrame: (frame) => channel.send(frame),
-    })
+    const assignmentManager = new NodeAssignmentManager({ onFrame: (frame) => channel.send(frame) })
     channel = new KortixNodeChannel({
       apiUrl: cfg.apiUrl,
       nodeId: cfg.computeNodeId,

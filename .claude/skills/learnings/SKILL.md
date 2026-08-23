@@ -21,6 +21,14 @@ linked, not inlined.
 
 ## Register
 
+### Send protocol pings on every user-facing WebSocket hop (2026-08-23)
+
+**When:** proxying PTY or preview WebSockets through an edge. Send a protocol
+ping every 30 seconds on both the browser-facing socket and any internal relay
+socket. A daemon heartbeat does not keep sibling WebSockets alive. *Incident:*
+an attached terminal disconnected after about two idle minutes while the node
+channel and session remained online. *Enforcer:* `ws-heartbeat.test.ts`.
+
 ### Treat provider archive states as distinct lifecycle phases (2026-08-23)
 
 **When:** starting or restoring a Platinum compute node. Wait through

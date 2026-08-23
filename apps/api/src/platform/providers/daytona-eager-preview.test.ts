@@ -118,3 +118,15 @@ test('App workload bootstrap starts kortix-appd through the Daytona toolbox', as
   expect(processCommands[0]?.command).toBe('/kortix/bin/kortix-appd --daemon');
   expect(processCommands[0]?.timeout).toBe(15);
 });
+
+test('session runtime convergence starts the kortixd supervisor with the current relay URL', async () => {
+  processCommands = [];
+
+  await new DaytonaProvider().ensureSessionRuntimeStarted('sbx-eager-1');
+
+  expect(processCommands).toHaveLength(1);
+  expect(processCommands[0]?.command).toContain('/usr/local/bin/kortix-entrypoint');
+  expect(processCommands[0]?.command).toContain('KORTIX_API_URL=\'https://api.example.com/v1\'');
+  expect(processCommands[0]?.command).toContain('kill -TERM');
+  expect(processCommands[0]?.timeout).toBe(15);
+});

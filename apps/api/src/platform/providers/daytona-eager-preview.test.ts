@@ -128,5 +128,7 @@ test('session runtime convergence starts the kortixd supervisor with the current
   expect(processCommands[0]?.command).toContain('/usr/local/bin/kortix-entrypoint');
   expect(processCommands[0]?.command).toContain('KORTIX_API_URL=\'https://api.example.com/v1\'');
   expect(processCommands[0]?.command).toContain('kill -TERM');
+  expect(processCommands[0]?.command).toContain('/proc/[0-9]*');
+  expect(processCommands[0]?.command).not.toContain('ps -u');
   expect(processCommands[0]?.timeout).toBe(15);
 });

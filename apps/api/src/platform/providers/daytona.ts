@@ -24,6 +24,7 @@ import {
   sandboxWorkloadType,
 } from './index';
 import { classifyDaytonaState } from './daytona-state';
+import { buildSessionSupervisorCommand } from './session-supervisor-command';
 
 // The Daytona SDK's axios client is created with a 24-HOUR timeout (see
 // @daytonaio/sdk's Daytona.createAxiosInstance) — effectively unbounded for
@@ -324,12 +325,9 @@ export class DaytonaProvider implements SandboxProvider {
       PROVIDER_CALL_TIMEOUT_MS,
       `Daytona get(${externalId}) for session bootstrap`,
     );
-    const relayUrl = `${(config.KORTIX_NODE_RELAY_URL || config.KORTIX_URL)
-      .replace(/\/+$/, '')
-      .replace(/\/v1\/router$/, '')
-      .replace(/\/v1$/, '')}/v1`;
-    const quotedRelayUrl = `'${relayUrl.replace(/'/g, `'"'"'`)}'`;
-    const command = String.raw`daemon_pids=$(ps -u kortix -o pid= -o args= | awk '$NF == "run" { print $1 }'); entry_pids=$(ps -u kortix -o pid= -o args= | awk '$0 ~ /\/usr\/local\/bin\/kortix-entrypoint$/ { print $1 }'); [ -z "$daemon_pids" ] || kill -TERM $daemon_pids; [ -z "$entry_pids" ] || kill -TERM $entry_pids; sleep 1; KORTIX_API_URL=` + quotedRelayUrl + String.raw` setsid -f /usr/local/bin/kortix-entrypoint >>/tmp/kortix-entrypoint.log 2>&1 </dev/null`;
+    const command = buildSessionSupervisorCommand(
+      config.KORTIX_NODE_RELAY_URL || config.KORTIX_URL,
+    );
     const result = await withTimeout(
       sandbox.process.executeCommand(command, undefined, undefined, 15),
       PROVIDER_CALL_TIMEOUT_MS,

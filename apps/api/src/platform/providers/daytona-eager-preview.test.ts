@@ -134,6 +134,8 @@ test('session runtime convergence starts the kortixd supervisor with the current
   expect(processCommands[0]?.command).toContain("KORTIX_NODE_TOKEN='knd_test_legacy_credential'");
   expect(processCommands[0]?.command).toContain('kill -TERM');
   expect(processCommands[0]?.command).toContain('/proc/[0-9]*');
+  expect(processCommands[0]?.command).toContain('/runtime-assets/agent');
+  expect(processCommands[0]?.command).toContain('agent.bootstrap supervise');
   expect(processCommands[0]?.command).not.toContain('ps -u');
   expect(processCommands[0]?.timeout).toBe(15);
 });

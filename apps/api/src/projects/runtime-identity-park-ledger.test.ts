@@ -22,6 +22,8 @@ let statements: Array<{ sql: string; inTransaction: boolean }> = [];
 let sandboxUpdates = 0;
 let inTransaction = false;
 let liveSession = true;
+let liveSandbox = true;
+let providerStops = 0;
 let savepoints = 0;
 /** When set, every `tx.execute` fails with this message. */
 let executeThrows: string | null = null;
@@ -47,6 +49,7 @@ const updater = (table: unknown) => ({
     where: () => ({
       returning: async () => {
         if (table === projectSessions) return liveSession ? [{ sessionId: 'sess-1' }] : [];
+        if (!liveSandbox) return [];
         sandboxUpdates += 1;
         return [{ sandboxId: 'sb-1', sessionId: 'sess-1' }];
       },
@@ -95,7 +98,7 @@ mock.module('../billing/services/compute-metering', () => ({
 
 mock.module('../platform/providers', () => ({
   ...realProviders,
-  getProvider: () => ({ stop: async () => {} }),
+  getProvider: () => ({ stop: async () => { providerStops += 1; } }),
 }));
 
 const { parkEstablishedRuntime, preserveEstablishedRuntime } = await import('./runtime-identity');
@@ -110,6 +113,7 @@ const ROW = {
     },
   },
   provider: 'daytona',
+  updatedAt: new Date('2026-08-23T00:00:00.000Z'),
 };
 
 beforeEach(() => {
@@ -117,6 +121,8 @@ beforeEach(() => {
   sandboxUpdates = 0;
   inTransaction = false;
   liveSession = true;
+  liveSandbox = true;
+  providerStops = 0;
   savepoints = 0;
   executeThrows = null;
 });
@@ -158,12 +164,24 @@ describe('parks outside applyStoppedState settle the turn ledger', () => {
     expect(statements).toEqual([]);
   });
 
-  // Both parks stop the PROVIDER BOX before they open this transaction
-  // (parkEstablishedRuntime calls provider.stop(); preserveEstablishedRuntime
-  // runs because the provider already reports it gone). An abort here would
-  // leave the row 'active' and the session 'running' against a dead box, and
-  // every retry would fail the same way. The settle is savepoint-bounded so it
-  // cannot do that.
+  test('a stale readiness park that loses the sandbox CAS never stops the provider', async () => {
+    liveSandbox = false;
+
+    expect(
+      await parkEstablishedRuntime(
+        ROW as Parameters<typeof parkEstablishedRuntime>[0],
+        'runtime_unreachable_timeout',
+        'runtime_boot_failed',
+      ),
+    ).toBeNull();
+
+    expect(providerStops).toBe(0);
+    expect(statements).toEqual([]);
+  });
+
+  // The settle is savepoint-bounded so an observation-table failure cannot
+  // abort the park transaction. parkEstablishedRuntime stops the provider only
+  // after this transaction's row CAS wins.
   test('a ledger settle that throws leaves the park committed', async () => {
     executeThrows = 'canceling statement due to statement timeout';
     const error = console.error;

@@ -9,6 +9,17 @@ export function nodeRelayIsLive(row: { status: string; relayOwnerId?: string | n
   return Number.isFinite(time) && Date.now() - time <= LIVE_WINDOW_MS
 }
 
+export function nodeRelayConnectedAfter(
+  row: { status: string; relayOwnerId?: string | null; relayOwnerHeartbeatAt?: Date | string | null },
+  after: Date,
+): boolean {
+  if (row.status !== 'online' || !row.relayOwnerId || !row.relayOwnerHeartbeatAt) return false
+  const time = row.relayOwnerHeartbeatAt instanceof Date
+    ? row.relayOwnerHeartbeatAt.getTime()
+    : Date.parse(row.relayOwnerHeartbeatAt)
+  return Number.isFinite(time) && time >= after.getTime()
+}
+
 export async function dispatchForwardedComputeNodeCall(
   hub: Pick<ComputeNodeChannelHub, 'rpc' | 'assign' | 'stopAssignment' | 'disconnectNode'>,
   row: { nodeId: string; method: string; params: Record<string, unknown>; expiresAt: Date },

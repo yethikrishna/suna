@@ -31,7 +31,11 @@ mock.module('../sandbox-frontend-url', () => ({
   sandboxFrontendBaseUrl: () => 'https://app.example.test',
 }));
 
-const MANAGED = { 'kortix.managed': 'true', 'kortix.env': 'dev' };
+const MANAGED = {
+  'kortix.managed': 'true',
+  'kortix.env': 'dev',
+  'kortix.instance': 'deployed',
+};
 
 let pages: Array<Record<string, unknown>> = [];
 let requested: string[] = [];
@@ -113,16 +117,16 @@ test('a box with no readable creation time reports createdAt null so the reaper 
   expect(listed).toEqual([{ externalId: 'sbx_undated', createdAt: null }]);
 });
 
-test('INSTANCE SCOPE: with KORTIX_INSTANCE_ID set, another instance’s box is skipped; own and unstamped boxes are listed', async () => {
+test('INSTANCE SCOPE: with KORTIX_INSTANCE_ID set, only that exact provider owner is listed', async () => {
   // Shared Platinum org + shared local DB: instance A must never stop instance
-  // B's boxes (projects/instance-scope.ts). Boxes created before the stamp
-  // carry no `kortix.instance` and stay everyone's — the safe direction.
+  // B's boxes. Boxes created before the stamp carry no `kortix.instance` and
+  // are skipped because provider orphan cleanup must fail closed.
   platinumConfig.KORTIX_INSTANCE_ID = 'wt-a';
   try {
     pages = [
       {
         rows: [
-          { id: 'sbx_mine', state: 'running', metadata: { ...MANAGED, 'kortix.instance': 'wt-a' }, created_at: '2026-08-12T00:00:00Z' },
+          { id: 'sbx_mine', state: 'running', metadata: { ...MANAGED, 'kortix.env': 'dev:wt-a', 'kortix.instance': 'wt-a' }, created_at: '2026-08-12T00:00:00Z' },
           { id: 'sbx_other', state: 'running', metadata: { ...MANAGED, 'kortix.instance': 'primary' }, created_at: '2026-08-12T00:00:00Z' },
           { id: 'sbx_unstamped', state: 'running', metadata: MANAGED, created_at: '2026-08-12T00:00:00Z' },
         ],
@@ -133,17 +137,19 @@ test('INSTANCE SCOPE: with KORTIX_INSTANCE_ID set, another instance’s box is s
     const { PlatinumProvider } = await import('./platinum');
     const listed = await new PlatinumProvider().listManagedRunningSandboxes();
 
-    expect(listed.map((box) => box.externalId)).toEqual(['sbx_mine', 'sbx_unstamped']);
+    expect(listed.map((box) => box.externalId)).toEqual(['sbx_mine']);
   } finally {
     delete platinumConfig.KORTIX_INSTANCE_ID;
   }
 });
 
-test('INSTANCE SCOPE off (unset): a stamped box from any instance is listed as before', async () => {
+test('INSTANCE SCOPE off (unset): only the deployed provider owner is listed', async () => {
   pages = [
     {
       rows: [
+        { id: 'sbx_deployed', state: 'running', metadata: MANAGED, created_at: '2026-08-12T00:00:00Z' },
         { id: 'sbx_other', state: 'running', metadata: { ...MANAGED, 'kortix.instance': 'primary' }, created_at: '2026-08-12T00:00:00Z' },
+        { id: 'sbx_unstamped', state: 'running', metadata: { 'kortix.managed': 'true', 'kortix.env': 'dev' }, created_at: '2026-08-12T00:00:00Z' },
       ],
       has_more: false,
     },
@@ -152,5 +158,5 @@ test('INSTANCE SCOPE off (unset): a stamped box from any instance is listed as b
   const { PlatinumProvider } = await import('./platinum');
   const listed = await new PlatinumProvider().listManagedRunningSandboxes();
 
-  expect(listed.map((box) => box.externalId)).toEqual(['sbx_other']);
+  expect(listed.map((box) => box.externalId)).toEqual(['sbx_deployed']);
 });

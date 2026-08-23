@@ -31,6 +31,7 @@ describe('detectCommandFromText', () => {
       detectCommandFromText('', [cmd('build', 'build the project now please $ARGUMENTS')]),
     ).toBeUndefined();
     expect(detectCommandFromText('text')).toBeUndefined();
+    expect(detectCommandFromText('text', { error: 'opencode not ready' } as never)).toBeUndefined();
   });
 
   // Regression for Better Stack error "TypeError: e.template.trim is not a

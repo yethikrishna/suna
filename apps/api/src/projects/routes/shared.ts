@@ -15,6 +15,7 @@ import { auth, json } from '../../openapi';
 import { type SandboxStatus, getProvider } from '../../platform/providers';
 import { classifySandboxProvisioningFailure } from '../../platform/services/sandbox-provisioning-error';
 import { db } from '../../shared/db';
+import { isComputeNodeRelayLive, waitForComputeNodeConnection } from '../../compute-nodes';
 import { resolveBranchTip } from '../git';
 import { legacyRehydrateSpec, rehydrateSessionChat } from '../legacy-migration-rehydrate';
 import { withProjectGitAuth } from '../lib/git';
@@ -54,6 +55,101 @@ import {
   runtimeWakeInProgress,
   runtimeWakeRetryCoolingDown,
 } from '../session-lifecycle/runtime-wake-fence';
+
+const RUNTIME_RELAY_REPAIR_COOLDOWN_MS = 30_000;
+
+export function currentSessionSandboxUrl(externalId: string): string {
+  const apiOrigin = (config.KORTIX_URL || '')
+    .replace(/\/+$/, '')
+    .replace(/\/v1\/router$/, '')
+    .replace(/\/v1$/, '');
+  return `${apiOrigin}/v1/p/${externalId}/8000`;
+}
+
+export function runtimeRelayRepairDue(
+  metadata: Record<string, unknown> | null | undefined,
+  relayUrl: string,
+  nowMs = Date.now(),
+): boolean {
+  const lastUrl = typeof metadata?.runtimeRelayRepairUrl === 'string'
+    ? metadata.runtimeRelayRepairUrl
+    : null;
+  const lastAt = typeof metadata?.runtimeRelayRepairStartedAt === 'string'
+    ? Date.parse(metadata.runtimeRelayRepairStartedAt)
+    : Number.NaN;
+  return lastUrl !== relayUrl
+    || !Number.isFinite(lastAt)
+    || nowMs - lastAt >= RUNTIME_RELAY_REPAIR_COOLDOWN_MS;
+}
+
+export function runtimeRelayRepairNeeded(
+  metadata: Record<string, unknown> | null | undefined,
+  relayUrl: string,
+  relayLive: boolean,
+  nowMs = Date.now(),
+): boolean {
+  if (!runtimeRelayRepairDue(metadata, relayUrl, nowMs)) return false;
+  return metadata?.runtimeRelayRepairUrl !== relayUrl || !relayLive;
+}
+
+async function scheduleRuntimeRelayRepair(
+  row: typeof sessionSandboxes.$inferSelect,
+  provider: ReturnType<typeof getProvider>,
+): Promise<boolean> {
+  if (!row.externalId || !provider.ensureSessionRuntimeStarted) return false;
+  const relayUrl = (config.KORTIX_NODE_RELAY_URL || config.KORTIX_URL || '').replace(/\/+$/, '');
+  const now = new Date();
+  const metadata = sandboxMetadata(row);
+  if (!relayUrl || !runtimeRelayRepairDue(metadata, relayUrl, now.getTime())) {
+    return false;
+  }
+  // A retry for the SAME relay URL is only valid when the channel is still
+  // absent. OpenCode can remain `starting` after kortixd has reconnected; that
+  // state must not restart the daemon and disconnect PTYs every 30 seconds.
+  const relayLive = await isComputeNodeRelayLive(row.sandboxId);
+  if (!runtimeRelayRepairNeeded(metadata, relayUrl, relayLive, now.getTime())) {
+    return false;
+  }
+  const retryBefore = new Date(now.getTime() - RUNTIME_RELAY_REPAIR_COOLDOWN_MS).toISOString();
+  const [claimed] = await db
+    .update(sessionSandboxes)
+    .set({
+      updatedAt: now,
+      metadata: sql`coalesce(${sessionSandboxes.metadata}, '{}'::jsonb) || ${JSON.stringify({
+        runtimeRelayRepairUrl: relayUrl,
+        runtimeRelayRepairStartedAt: now.toISOString(),
+      })}::jsonb`,
+    })
+    .where(and(
+      eq(sessionSandboxes.sandboxId, row.sandboxId),
+      eq(sessionSandboxes.externalId, row.externalId),
+      eq(sessionSandboxes.status, 'active'),
+      sql`(
+        ${sessionSandboxes.metadata}->>'runtimeRelayRepairUrl' IS DISTINCT FROM ${relayUrl}
+        OR ${sessionSandboxes.metadata}->>'runtimeRelayRepairStartedAt' IS NULL
+        OR ${sessionSandboxes.metadata}->>'runtimeRelayRepairStartedAt' !~ '^\\d{4}-\\d{2}-\\d{2}T'
+        OR ${sessionSandboxes.metadata}->>'runtimeRelayRepairStartedAt' <= ${retryBefore}
+      )`,
+    ))
+    .returning({ sandboxId: sessionSandboxes.sandboxId });
+  if (!claimed) return false;
+
+  const externalId = row.externalId;
+  void (async () => {
+    const reconnectAfter = new Date();
+    try {
+      await provider.ensureSessionRuntimeStarted!(externalId);
+      await waitForComputeNodeConnection(row.sandboxId, reconnectAfter, 60_000);
+    } catch (error) {
+      console.warn('[start] kortixd relay repair failed', {
+        sandboxId: row.sandboxId,
+        externalId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  })();
+  return true;
+}
 
 /**
  * Resume a hibernated (status='stopped') session sandbox IN PLACE instead of
@@ -96,12 +192,22 @@ export async function resumeStoppedSandbox(
     runtimeWakeLeaseExpiresAt: leaseExpiresAt.toISOString(),
     runtimeWakeProviderStatus: 'starting',
   };
-  // Metadata CAS is the lock. The row deliberately stays stopped. A retry can
-  // replace only an expired lease and cannot bypass a failed-wake cooldown.
+  // Metadata CAS is the lock. Provisioning authorizes daemon boot callbacks,
+  // but billing remains closed until the live node connection is confirmed.
+  // A retry can replace only an expired lease and cannot bypass a cooldown.
   const [won] = await db
     .update(sessionSandboxes)
     .set({
+      status: 'provisioning',
       updatedAt: now,
+      // A stopped row retains its expired idle deadline. Provider callbacks
+      // can move it to provisioning while this wake is still running. Give
+      // that transition the full wake lease so the reaper cannot stop the VM
+      // between provider start and kortixd reconnection.
+      deadlineAt: sql`GREATEST(
+        ${sessionSandboxes.deadlineAt},
+        now() + make_interval(secs => ${Math.ceil(RUNTIME_WAKE_LEASE_MS / 1000)})
+      )`,
       metadata: sql`(
         coalesce(${sessionSandboxes.metadata}, '{}'::jsonb)
           - 'runtimeIdentityState'
@@ -149,7 +255,14 @@ export async function resumeStoppedSandbox(
   void executeClaimedRuntimeWake({
     knownStatus: knownProviderStatus ?? null,
     getStatus: () => provider.getStatus(externalId),
-    start: () => provider.start(externalId),
+    start: async () => {
+      const reconnectAfter = new Date();
+      await provider.start(externalId);
+      await provider.ensureSessionRuntimeStarted?.(externalId);
+      if (provider.ensureSessionRuntimeStarted) {
+        await waitForComputeNodeConnection(row.sandboxId, reconnectAfter);
+      }
+    },
     stop: () => provider.stop(externalId),
     isMissingError: isMissingRuntimeError,
     finalize: async () => {
@@ -181,7 +294,7 @@ export async function resumeStoppedSandbox(
             and(
               eq(sessionSandboxes.sandboxId, row.sandboxId),
               eq(sessionSandboxes.externalId, externalId),
-              eq(sessionSandboxes.status, 'stopped'),
+              eq(sessionSandboxes.status, 'provisioning'),
               sql`${sessionSandboxes.metadata}->>'runtimeWakeId' = ${runtimeWakeId}`,
             ),
           )
@@ -189,7 +302,17 @@ export async function resumeStoppedSandbox(
         if (!activated) return false;
         await tx
           .update(projectSessions)
-          .set({ status: 'running', error: null, updatedAt: confirmedAt })
+          .set({
+            status: 'running',
+            error: null,
+            // A local quick tunnel changes whenever the worktree restarts.
+            // Keep the durable session URL on the same relay origin as the
+            // newly-started kortixd process. Otherwise old sessions reconnect
+            // kortixd successfully while the SDK continues to call the dead
+            // tunnel stored at initial provisioning.
+            sandboxUrl: currentSessionSandboxUrl(externalId),
+            updatedAt: confirmedAt,
+          })
           .where(eq(projectSessions.sessionId, row.sessionId));
         return true;
       });
@@ -230,6 +353,7 @@ export async function resumeStoppedSandbox(
       const [failed] = await db
         .update(sessionSandboxes)
         .set({
+          status: 'stopped',
           updatedAt: failedAt,
           metadata: sql`(
             coalesce(${sessionSandboxes.metadata}, '{}'::jsonb)
@@ -242,7 +366,7 @@ export async function resumeStoppedSandbox(
           and(
             eq(sessionSandboxes.sandboxId, row.sandboxId),
             eq(sessionSandboxes.externalId, externalId),
-            eq(sessionSandboxes.status, 'stopped'),
+            eq(sessionSandboxes.status, 'provisioning'),
             sql`${sessionSandboxes.metadata}->>'runtimeWakeId' = ${runtimeWakeId}`,
           ),
         )
@@ -260,14 +384,14 @@ export async function resumeStoppedSandbox(
         .limit(1);
       const metadata = (current?.metadata ?? {}) as Record<string, unknown>;
       if (
-        current?.status === 'stopped' &&
+        current?.status === 'provisioning' &&
         typeof metadata.runtimeWakeId === 'string' &&
         metadata.runtimeWakeId !== runtimeWakeId &&
         runtimeWakeInProgress(metadata)
       ) {
         return 'delegated';
       }
-      return current?.status === 'stopped' && metadata.runtimeWakeId === runtimeWakeId
+      return current?.status === 'provisioning' && metadata.runtimeWakeId === runtimeWakeId
         ? 'owned'
         : 'cancelled';
     },
@@ -1164,6 +1288,15 @@ export async function openSession(args: {
     throw new Error(`Provider-running sandbox ${row.sandboxId} has no external_id`);
   }
 
+  const currentSandboxUrl = currentSessionSandboxUrl(runningExternalId);
+  await db
+    .update(projectSessions)
+    .set({ sandboxUrl: currentSandboxUrl, updatedAt: new Date() })
+    .where(and(
+      eq(projectSessions.sessionId, sessionId),
+      sql`${projectSessions.sandboxUrl} IS DISTINCT FROM ${currentSandboxUrl}`,
+    ));
+
   // Box is provider-running. Resolve OpenCode readiness + the canonical pin
   // server-side — safe now that the box is confirmed up, so the daemon answers
   // FAST (a 503 'not_ready' while OpenCode is still booting, not an 8s timeout
@@ -1179,6 +1312,9 @@ export async function openSession(args: {
   });
   const booting = ensured.reason === 'not_ready' || ensured.reason === 'unreachable';
   if (booting) {
+    if (ensured.reason === 'unreachable') {
+      await scheduleRuntimeRelayRepair(row, provider);
+    }
     const staleBoot = staleOpencodeReadyReason(
       sandboxMetadata(row),
       ensured.reason,

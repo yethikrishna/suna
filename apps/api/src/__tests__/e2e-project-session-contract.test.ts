@@ -1211,11 +1211,11 @@ describe('project session API contract', () => {
     expect(assertedIamActions).toContain('project.session.read');
   });
 
-  test('in-place resume keeps stopped state and billing closed until the provider proves running', async () => {
+  test('in-place resume exposes provisioning state and keeps billing closed until the provider proves running', async () => {
     const staleReadyWaitStartedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     sessionRow = {
       ...sessionRow!,
-      status: 'stopped',
+      status: 'provisioning',
       error:
         'The original sandbox is unavailable. Its identity was preserved and no replacement sandbox was created.',
     };
@@ -1257,9 +1257,9 @@ describe('project session API contract', () => {
     });
 
     expect(won).toBe(true);
-    expect(sessionRow).toMatchObject({ status: 'stopped' });
+    expect(sessionRow).toMatchObject({ status: 'provisioning' });
     expect(sessionSandboxRows[0]).toMatchObject({
-      status: 'stopped',
+      status: 'provisioning',
       externalId: 'original-provider-identity',
       metadata: {
         initStatus: 'ready',
@@ -1283,7 +1283,7 @@ describe('project session API contract', () => {
     expect(computeReopenCalls).toBe(1);
   });
 
-  test('provider reconciliation observes a stopped row while an in-place resume is starting', async () => {
+  test('provider reconciliation ignores a provisioning row while an in-place resume is starting', async () => {
     sessionRow = {
       ...sessionRow!,
       status: 'stopped',
@@ -1324,7 +1324,7 @@ describe('project session API contract', () => {
     );
     expect(won).toBe(true);
     expect(reconciled).toBe(false);
-    expect(sessionSandboxRows[0]?.status).toBe('stopped');
+    expect(sessionSandboxRows[0]?.status).toBe('provisioning');
     expect(sessionRow?.status).toBe('stopped');
     expect(computeReopenCalls).toBe(0);
 
@@ -2967,7 +2967,7 @@ describe('project session API contract', () => {
     ).toEqual(expect.any(String));
   });
 
-  test('a removed stopped runtime keeps the original identity fenced without optimistic activation', async () => {
+  test('a removed stopped runtime reports provisioning while the original identity stays fenced', async () => {
     const app = createApp();
     sessionRow = {
       ...sessionRow!,
@@ -3005,9 +3005,12 @@ describe('project session API contract', () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
-      stage: 'starting',
+      stage: 'provisioning',
       retriable: true,
-      reason: 'runtime_waking',
+      sandbox: {
+        external_id: 'box-original-archived',
+        status: 'provisioning',
+      },
     });
     expect(providerStartCalls).toBe(0);
     expect(sandboxProvisionCalls).toBe(0);

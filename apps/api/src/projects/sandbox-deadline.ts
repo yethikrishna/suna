@@ -139,6 +139,25 @@ export async function extendSandboxDeadline(
 }
 
 /**
+ * Keep an authenticated, human-observed session alive while its UI traffic is
+ * still reaching the control plane. Each observation grants one idle window.
+ * This is uncapped because a human can keep one session open for longer than a
+ * provider run's original 24-hour anchor.
+ */
+export async function extendConnectedSessionDeadline(
+  target: DeadlineTarget,
+  grantMs: number = idleGraceMs(),
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE kortix.session_sandboxes s
+       SET deadline_at = GREATEST(
+             s.deadline_at,
+             now() + make_interval(secs => ${secs(grantMs)})),
+           updated_at = now()
+     WHERE ${targetPredicate(target)} AND s.status IN ('active', 'provisioning')`);
+}
+
+/**
  * The BOUNDED DRIP for a provider-running box whose daemon says nothing about a
  * turn the control plane can prove it minted.
  *

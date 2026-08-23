@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test'
-import { dispatchForwardedComputeNodeCall, nodeRelayIsLive } from './cluster-protocol'
+import { dispatchForwardedComputeNodeCall, nodeRelayConnectedAfter, nodeRelayIsLive } from './cluster-protocol'
 
 describe('compute-node cross-instance relay', () => {
   test('requires online state, an owner, and a fresh owner heartbeat', () => {
@@ -7,6 +7,12 @@ describe('compute-node cross-instance relay', () => {
     expect(nodeRelayIsLive({ status: 'offline', relayOwnerId: 'pod-a', relayOwnerHeartbeatAt: new Date() })).toBe(false)
     expect(nodeRelayIsLive({ status: 'online', relayOwnerId: null, relayOwnerHeartbeatAt: new Date() })).toBe(false)
     expect(nodeRelayIsLive({ status: 'online', relayOwnerId: 'pod-a', relayOwnerHeartbeatAt: new Date(Date.now() - 61_000) })).toBe(false)
+  })
+
+  test('requires a daemon connection from the current wake generation', () => {
+    const wake = new Date('2026-08-23T03:00:00.000Z')
+    expect(nodeRelayConnectedAfter({ status: 'online', relayOwnerId: 'old-api', relayOwnerHeartbeatAt: new Date('2026-08-23T02:00:00.000Z') }, wake)).toBe(false)
+    expect(nodeRelayConnectedAfter({ status: 'online', relayOwnerId: 'current-api', relayOwnerHeartbeatAt: wake }, wake)).toBe(true)
   })
 
   test('dispatches capability RPC, assignment, and disconnect control on the socket owner', async () => {

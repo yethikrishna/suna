@@ -7,6 +7,8 @@ import { assignComputeNodeAcrossCluster, disconnectComputeNodeAcrossCluster, rel
 import { config } from '../config'
 import { fetchComputeNodeThroughRelay } from './relay-client'
 import { connectComputeNodeSocketThroughRelay } from './relay-socket'
+import { nodeRelayConnectedAfter, nodeRelayIsLive } from './cluster-protocol'
+import { API_INSTANCE_ID } from '../shared/instance'
 
 export const computeNodeChannel = new ComputeNodeChannelHub(
   async (nodeId, token, info) => {
@@ -89,6 +91,48 @@ export const computeNodeWsHandlers = {
     computeNodeChannel.close(ws)
     if (nodeId && !computeNodeChannel.isConnected(nodeId)) void db.update(computeNodes).set({ status: 'offline', relayOwnerId: null, relayOwnerInstance: null, relayOwnerStartedAt: null, relayOwnerHeartbeatAt: null, updatedAt: new Date() }).where(and(eq(computeNodes.nodeId, nodeId), eq(computeNodes.relayOwnerId, (relayOwnerPatch().relayOwnerId))))
   },
+}
+
+export async function waitForComputeNodeConnection(
+  nodeId: string,
+  after: Date,
+  timeoutMs = 180_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const [node] = await db
+      .select({
+        status: computeNodes.status,
+        relayOwnerId: computeNodes.relayOwnerId,
+        relayOwnerHeartbeatAt: computeNodes.relayOwnerHeartbeatAt,
+      })
+      .from(computeNodes)
+      .where(eq(computeNodes.nodeId, nodeId))
+      .limit(1)
+    if (node && nodeRelayConnectedAfter(node, after)) return
+    if (Date.now() >= deadline) {
+      throw new Error(`Compute node ${nodeId} did not reconnect within ${timeoutMs}ms`)
+    }
+    await Bun.sleep(250)
+  }
+}
+
+/** True when this API or a live cluster peer owns the node relay. */
+export async function isComputeNodeRelayLive(nodeId: string): Promise<boolean> {
+  if (computeNodeChannel.isConnected(nodeId)) return true
+  const [node] = await db
+    .select({
+      status: computeNodes.status,
+      relayOwnerId: computeNodes.relayOwnerId,
+      relayOwnerHeartbeatAt: computeNodes.relayOwnerHeartbeatAt,
+    })
+    .from(computeNodes)
+    .where(eq(computeNodes.nodeId, nodeId))
+    .limit(1)
+  // This process cannot own a live socket that is absent from its hub. Treat
+  // its database heartbeat as stale immediately instead of waiting 60 seconds.
+  if (node?.relayOwnerId === API_INSTANCE_ID) return false
+  return Boolean(node && nodeRelayIsLive(node))
 }
 
 /** Send one HTTP request through the sole outbound kortixd channel. */

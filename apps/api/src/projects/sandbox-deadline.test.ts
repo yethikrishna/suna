@@ -48,6 +48,7 @@ mock.module('../shared/db', () => ({
 const {
   NON_TURN_DEADLINE_CAP_MS,
   extendSandboxDeadline,
+  extendConnectedSessionDeadline,
   extendUnconfirmedTurnDeadline,
   grantWarmPoolLifetime,
   idleGraceMs,
@@ -154,6 +155,16 @@ describe('extendSandboxDeadline — control-plane-observed, monotone, capped', (
     expect(executed[0]).toContain('sandbox_id');
     expect(executed[1]).toContain('session_id');
     expect(executed[2]).toContain('external_id');
+  });
+});
+
+describe('extendConnectedSessionDeadline — authenticated UI presence', () => {
+  test('extends from now without the provider-run cap', async () => {
+    await extendConnectedSessionDeadline({ sessionId: 'sess-1' }, 15 * 60_000);
+    const query = squish(executed.at(-1) ?? '');
+    expect(query).toContain('GREATEST');
+    expect(query).toContain('now() + make_interval');
+    expect(query).not.toContain('active_since');
   });
 });
 

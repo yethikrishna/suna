@@ -118,7 +118,13 @@ export function compareMessagesForDisplay(
 export function groupMessagesIntoTurns<M extends MessageWithPartsLike>(
   input: readonly M[],
 ): TurnLike<M>[] {
-  const messages = [...input].sort(compareMessagesForDisplay);
+  const messages = input
+    .map((message) =>
+      Array.isArray(message.parts)
+        ? message
+        : ({ ...message, parts: [] } as unknown as M),
+    )
+    .sort(compareMessagesForDisplay);
   const turns: TurnLike<M>[] = [];
   const turnsByUserMsgId = new Map<string, TurnLike<M>>();
 

@@ -153,6 +153,21 @@ test("start waits for an accepted wake to reach running before returning", async
   ]);
 });
 
+test("start waits through archived restore states after an accepted wake", async () => {
+  sandboxStateSequence = ["archived", "archiving", "starting", "running"];
+  const provider = new PlatinumProvider();
+
+  await expect(provider.start("sbx_app")).resolves.toBeUndefined();
+
+  expect(calls.map(({ path, method }) => ({ path, method }))).toEqual([
+    { path: "/v1/sandboxes/sbx_app/start", method: "POST" },
+    { path: "/v1/sandboxes/sbx_app", method: "GET" },
+    { path: "/v1/sandboxes/sbx_app", method: "GET" },
+    { path: "/v1/sandboxes/sbx_app", method: "GET" },
+    { path: "/v1/sandboxes/sbx_app", method: "GET" },
+  ]);
+});
+
 test("start waits for an accepted stop to settle before retrying the wake", async () => {
   startError = new Error(
     'platinum POST /v1/sandboxes/sbx_app/start -> 409 {"error":"conflict","state":"stopping","code":"conflict"}',
@@ -166,6 +181,24 @@ test("start waits for an accepted stop to settle before retrying the wake", asyn
     { path: "/v1/sandboxes/sbx_app", method: "GET" },
     { path: "/v1/sandboxes/sbx_app", method: "GET" },
     { path: "/v1/sandboxes/sbx_app/start", method: "POST" },
+    { path: "/v1/sandboxes/sbx_app", method: "GET" },
+  ]);
+});
+
+test("start waits for archiving to reach archived before retrying a conflicted wake", async () => {
+  startError = new Error(
+    'platinum POST /v1/sandboxes/sbx_app/start -> 409 {"error":"conflict","state":"archiving","code":"conflict"}',
+  );
+  sandboxStateSequence = ["archiving", "archived", "starting", "running"];
+  const provider = new PlatinumProvider();
+
+  await expect(provider.start("sbx_app")).resolves.toBeUndefined();
+  expect(calls.map(({ path, method }) => ({ path, method }))).toEqual([
+    { path: "/v1/sandboxes/sbx_app/start", method: "POST" },
+    { path: "/v1/sandboxes/sbx_app", method: "GET" },
+    { path: "/v1/sandboxes/sbx_app", method: "GET" },
+    { path: "/v1/sandboxes/sbx_app/start", method: "POST" },
+    { path: "/v1/sandboxes/sbx_app", method: "GET" },
     { path: "/v1/sandboxes/sbx_app", method: "GET" },
   ]);
 });

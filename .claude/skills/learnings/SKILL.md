@@ -21,6 +21,23 @@ linked, not inlined.
 
 ## Register
 
+### Send protocol pings on every user-facing WebSocket hop (2026-08-23)
+
+**When:** proxying PTY or preview WebSockets through an edge. Send a protocol
+ping every 30 seconds on both the browser-facing socket and any internal relay
+socket. A daemon heartbeat does not keep sibling WebSockets alive. *Incident:*
+an attached terminal disconnected after about two idle minutes while the node
+channel and session remained online. *Enforcer:* `ws-heartbeat.test.ts`.
+
+### Treat provider archive states as distinct lifecycle phases (2026-08-23)
+
+**When:** starting or restoring a Platinum compute node. Wait through
+`archiving`. Retry `/start` only after `archived`. Accept `archived` and
+`archiving` after an accepted wake until the node reaches `running`.
+*Incident:* a July sandbox failed every legacy wake because the API treated
+`archiving` as a terminal start failure. *Enforcer:*
+`platinum-app-runtime.test.ts` covers accepted and conflicted restore flows.
+
 ### Scope provider inventory labels by API instance, not only environment (2026-08-23)
 
 **When:** creating provider objects or changing orphan reconciliation. Include

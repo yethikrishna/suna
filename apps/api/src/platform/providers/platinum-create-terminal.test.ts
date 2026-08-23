@@ -64,6 +64,8 @@ function expectSessionBootstrap(body: string, legacyEnrollment = false): void {
   if (legacyEnrollment) {
     expect(parsed.cmd[2]).toContain('/runtime-assets/agent');
     expect(parsed.cmd[2]).toContain('agent.bootstrap supervise');
+    expect(parsed.cmd[2]).toContain("HOME='/home/kortix'");
+    expect(parsed.cmd[2]).toContain('/home/kortix/.bun/bin');
   }
   expect(parsed.cmd[2]).toContain('/usr/local/bin/kortix-agent');
   expect(parsed.cmd[2]).toContain('/opt/kortix/agent.current run');

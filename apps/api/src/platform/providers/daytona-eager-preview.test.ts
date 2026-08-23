@@ -128,7 +128,7 @@ test('session runtime convergence starts the kortixd supervisor with the current
   });
 
   expect(processCommands).toHaveLength(1);
-  expect(processCommands[0]?.command).toContain('/opt/kortix/agent.bootstrap supervise');
+  expect(processCommands[0]?.command).toContain('/usr/local/bin/kortix-entrypoint');
   expect(processCommands[0]?.command).toContain('KORTIX_API_URL=\'https://api.example.com/v1\'');
   expect(processCommands[0]?.command).toContain("KORTIX_COMPUTE_NODE_ID='node-legacy-1'");
   expect(processCommands[0]?.command).toContain("KORTIX_NODE_TOKEN='knd_test_legacy_credential'");
@@ -141,8 +141,6 @@ test('session runtime convergence starts the kortixd supervisor with the current
   expect(processCommands[0]?.command).toContain('mkdir /opt/kortix/bootstrap.lock');
   expect(processCommands[0]?.command).toContain('agent.bootstrap.tmp.$$');
   expect(processCommands[0]?.command).toContain('/opt/kortix/agent.bootstrap run');
-  expect(processCommands[0]?.command).not.toContain('"/usr/local/bin/kortix-entrypoint"|');
-  expect(processCommands[0]?.command).not.toContain('"/bin/sh /usr/local/bin/kortix-entrypoint"');
   expect(processCommands[0]?.command).not.toContain('ps -u');
   expect(processCommands[0]?.timeout).toBe(15);
 });

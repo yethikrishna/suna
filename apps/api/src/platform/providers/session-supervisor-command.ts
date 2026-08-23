@@ -14,10 +14,7 @@ export function buildSessionSupervisorCommand(
   const identityEnv = identity
     ? ` KORTIX_COMPUTE_NODE_ID=${quoteShell(identity.nodeId)} KORTIX_NODE_TOKEN=${quoteShell(identity.nodeToken)}`
     : '';
-  // Never terminate the image entrypoint. On legacy Daytona snapshots it owns
-  // the container lifecycle, so killing it stops the VM after a short delay.
-  // Converge only the replaceable daemon processes that the entrypoint starts.
-  const stopOldProcesses = String.raw`for proc in /proc/[0-9]*; do [ -r "$proc/cmdline" ] || continue; cmd=$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null); cmd=${'${cmd% }'}; case "$cmd" in "/usr/local/bin/kortix-agent"|"/opt/kortix/agent.current run"|"/opt/kortix/agent.bootstrap run"|"/opt/kortix/agent.bootstrap supervise"|"/opt/kortix/node/runtime/agent.current run") kill -TERM "${'${proc#/proc/}'}" 2>/dev/null || true;; esac; done; sleep 1`;
+  const stopOldProcesses = String.raw`for proc in /proc/[0-9]*; do [ -r "$proc/cmdline" ] || continue; cmd=$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null); cmd=${'${cmd% }'}; case "$cmd" in "/usr/local/bin/kortix-agent"|"/opt/kortix/agent.current run"|"/opt/kortix/agent.bootstrap run"|"/opt/kortix/agent.bootstrap supervise"|"/opt/kortix/node/runtime/agent.current run"|"/usr/local/bin/kortix-entrypoint"|"/bin/sh /usr/local/bin/kortix-entrypoint") kill -TERM "${'${proc#/proc/}'}" 2>/dev/null || true;; esac; done; sleep 1`;
   if (!identity) {
     return `${stopOldProcesses}; KORTIX_API_URL=${quoteShell(normalizedRelayUrl)} setsid -f /usr/local/bin/kortix-entrypoint >>/tmp/kortix-entrypoint.log 2>&1 </dev/null`;
   }

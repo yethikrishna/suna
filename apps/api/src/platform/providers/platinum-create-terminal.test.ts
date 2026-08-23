@@ -69,15 +69,13 @@ function expectSessionBootstrap(body: string, legacyEnrollment = false): void {
     expect(parsed.cmd[2]).toContain('mkdir /opt/kortix/bootstrap.lock');
     expect(parsed.cmd[2]).toContain('agent.bootstrap.tmp.$$');
     expect(parsed.cmd[2]).toContain('/opt/kortix/agent.bootstrap run');
-    expect(parsed.cmd[2]).not.toContain('"/usr/local/bin/kortix-entrypoint"|');
-    expect(parsed.cmd[2]).not.toContain('"/bin/sh /usr/local/bin/kortix-entrypoint"');
   }
   expect(parsed.cmd[2]).toContain('/usr/local/bin/kortix-agent');
   expect(parsed.cmd[2]).toContain('/opt/kortix/agent.current run');
   expect(parsed.cmd[2]).toContain('kill -TERM "${proc#/proc/}"');
   expect(parsed.cmd[2]).not.toContain('ps -u');
   expect(parsed.cmd[2]).toContain("KORTIX_API_URL='https://api.example.com/v1'");
-  expect(parsed.cmd[2]).toContain('/opt/kortix/agent.bootstrap supervise');
+  expect(parsed.cmd[2]).toContain('/usr/local/bin/kortix-entrypoint');
   expect(parsed.timeout_ms).toBe(15_000);
 }
 

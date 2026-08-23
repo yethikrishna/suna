@@ -4,6 +4,7 @@ import { KORTIX_USER_CONTEXT_HEADER } from '../kortix-user-context'
 import type { Config } from '../config'
 import type { Opencode } from '../opencode'
 import { startProxy } from '../proxy'
+import { createPtyRegistry } from '../routes/pty'
 
 const TEST_TOKEN = 'test-kortix-token-32-chars-1234567890'
 
@@ -131,6 +132,20 @@ function waitForData(ws: WebSocket, predicate: (acc: string) => boolean, timeout
 }
 
 describe('kortix-native pty', () => {
+  it('blocks daemon replacement only while a viewer is attached', () => {
+    const registry = createPtyRegistry(baseConfig())
+    const created = registry.create({ command: 'bash', args: ['-c', 'sleep 30'] })
+
+    expect(registry.hasAttachedViewers()).toBe(false)
+    const handle = registry.attach(created.id, { onData: () => {}, onExit: () => {} })
+    expect(handle).not.toBeNull()
+    expect(registry.hasAttachedViewers()).toBe(true)
+
+    handle?.detach()
+    expect(registry.hasAttachedViewers()).toBe(false)
+    registry.remove(created.id)
+  })
+
   it('rejects HTTP routes without a signed user context', async () => {
     const proxy = startTestProxy()
     try {

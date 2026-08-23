@@ -95,6 +95,28 @@ export function resetClaimedInitialTurnForTests(): void {
   claimedInitialTurn = null
 }
 
+/**
+ * A session sandbox exposes user-started loopback services through the signed
+ * compute-node channel. The API already authorizes the user, sandbox, and port
+ * before it emits a frame. Keep credential-bearing helper ports unreachable so
+ * an arbitrary preview URL cannot bypass their API-side policy.
+ */
+export function sandboxRelayPortPolicy(cfg: {
+  servicePort: number
+  opencodeStandbyPort: number
+}, env: NodeJS.ProcessEnv = process.env): { has(port: number): boolean } {
+  const blocked = new Set([
+    Number(env.KORTIX_EGRESS_SHIM_PORT) || 3128,
+    Number(env.KORTIX_LLM_PROXY_PORT) || 4319,
+    Number(env.KORTIX_CONNECTORS_PROXY_PORT) || 4320,
+    cfg.opencodeStandbyPort,
+  ])
+  return {
+    has: (port) => Number.isSafeInteger(port) && port > 0 && port <= 65_535
+      && (port === cfg.servicePort || !blocked.has(port)),
+  }
+}
+
 /** Run the node daemon in the current process. */
 export async function runKortixDaemon(): Promise<void> {
   const bootTime = Date.now()
@@ -111,7 +133,9 @@ export async function runKortixDaemon(): Promise<void> {
       token: cfg.nodeToken,
       // A signed API frame is the authorization decision. The transport still
       // hardcodes 127.0.0.1, so it cannot become an SSRF path to another host.
-      ports: { has: (port: number) => assignmentManager.hasPort(port) || (Boolean(assignedSessionId) && port === cfg.servicePort) },
+      ports: assignedSessionId
+        ? sandboxRelayPortPolicy(cfg)
+        : { has: (port: number) => assignmentManager.hasPort(port) },
       capabilities: assignedSessionId
         ? createSandboxCapabilityRegistry()
         : createNodeCapabilityRegistry({ assignmentRoots: () => assignmentManager.writableRoots, assignmentPolicy: () => assignmentManager.capabilityPolicy, policy: () => loadNodeLocalPolicy() }),

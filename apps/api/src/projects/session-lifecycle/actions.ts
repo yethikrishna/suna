@@ -3,6 +3,7 @@ import { config, type SandboxProviderName } from '../../config';
 import { logger } from '../../lib/logger';
 import { getProvider } from '../../platform/providers';
 import { db } from '../../shared/db';
+import { waitForComputeNodeConnection } from '../../compute-nodes';
 import { projectSessions, sessionSandboxes } from '@kortix/db';
 import { isMetaAgentName } from '@kortix/shared';
 import { and, eq, sql } from 'drizzle-orm';
@@ -464,7 +465,12 @@ export async function restartSession(input: {
               sql`${sessionSandboxes.metadata}->>'runtimeRestartId' = ${restartId}`,
             ),
           );
+        const reconnectAfter = new Date();
         await provider.start(externalId);
+        await provider.ensureSessionRuntimeStarted?.(externalId);
+        if (provider.ensureSessionRuntimeStarted) {
+          await waitForComputeNodeConnection(sessionId, reconnectAfter);
+        }
         if (!(await ownsRestart())) return;
         // Provider ingress credentials can change on every stop/start cycle.
         // Remove any link resolved while the sandbox was stopped.

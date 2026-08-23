@@ -12,7 +12,7 @@ export function detectCommandFromText(
   rawText: string,
   commands?: Command[],
 ): { name: string; args?: string } | undefined {
-  if (!commands || !rawText) return undefined;
+  if (!Array.isArray(commands) || !rawText) return undefined;
 
   const trimmedRawText = rawText.trim();
   const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

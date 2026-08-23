@@ -16,6 +16,7 @@ interface ChannelOptions {
   assignments?: NodeAssignmentManager
   onAuthenticated?: () => void | Promise<void>
   socketFactory?: (url: string) => WebSocketLike
+  reconnectDelayMs?: () => number
 }
 
 interface WebSocketLike {
@@ -72,12 +73,14 @@ export class KortixNodeChannel {
   }
 
   connect(): void {
-    this.socket = (this.options.socketFactory ?? defaultSocketFactory)(wsUrl(this.options.apiUrl))
-    this.socket.addEventListener('open', () => {
+    const socket = (this.options.socketFactory ?? defaultSocketFactory)(wsUrl(this.options.apiUrl))
+    this.socket = socket
+    socket.addEventListener('open', () => {
+      if (this.socket !== socket) return
       this.key = null
       this.sendNonce = 0
       this.receiveNonce = 0
-      this.socket?.send(JSON.stringify({
+      socket.send(JSON.stringify({
         type: 'node.auth',
         node_id: this.options.nodeId,
         token: this.options.token,
@@ -87,15 +90,30 @@ export class KortixNodeChannel {
         arch: process.arch,
       }))
     })
-    this.socket.addEventListener('message', (event) => { void this.receive(event.data) })
-    this.socket.addEventListener('close', (event) => {
+    socket.addEventListener('message', (event) => {
+      if (this.socket === socket) void this.receive(event.data)
+    })
+    socket.addEventListener('close', (event) => {
+      if (this.socket !== socket) return
       this.key = null
+      this.socket = null
+      if (this.heartbeatTimer) {
+        clearInterval(this.heartbeatTimer)
+        this.heartbeatTimer = null
+      }
       this.streams.disconnect()
       this.sockets.disconnect()
       this.rpc.disconnect()
-      if (!this.shuttingDown && ![4001, 4003, 4004].includes((event as CloseEvent).code)) this.scheduleReconnect()
+      const code = (event as CloseEvent).code
+      this.lastError = `Node channel closed (${code})`
+      // 4001 rejects invalid credentials. 4003 explicitly disables the node.
+      // 4004 only means another connection won a replacement race. Reconnect
+      // because the winning socket can belong to an API process that is exiting.
+      if (!this.shuttingDown && ![4001, 4003].includes(code)) this.scheduleReconnect()
     })
-    this.socket.addEventListener('error', () => { this.lastError = 'WebSocket connection error' })
+    socket.addEventListener('error', () => {
+      if (this.socket === socket) this.lastError = 'WebSocket connection error'
+    })
   }
 
   disconnect(): void {
@@ -153,8 +171,10 @@ export class KortixNodeChannel {
   }
 
   private scheduleReconnect(): void {
-    const base = Math.min(1_000 * 2 ** this.reconnectAttempts++, 30_000)
-    const delay = Math.floor(base * (0.75 + Math.random() * 0.5))
+    const delay = this.options.reconnectDelayMs?.() ?? (() => {
+      const base = Math.min(1_000 * 2 ** this.reconnectAttempts++, 30_000)
+      return Math.floor(base * (0.75 + Math.random() * 0.5))
+    })()
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       this.connect()

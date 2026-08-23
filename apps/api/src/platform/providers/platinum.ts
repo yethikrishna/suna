@@ -41,7 +41,7 @@
 
 import { createHash } from 'node:crypto';
 import { SANDBOX_VERSION, config } from '../../config';
-import { currentInstanceId, sandboxBelongsToThisInstance } from '../../projects/instance-scope';
+import { currentInstanceId, providerEnvironmentOwner } from '../../projects/instance-scope';
 import { isOpencodePort } from '../../shared/opencode-ports';
 import { platinumJson } from '../../shared/platinum';
 import { sandboxFrontendBaseUrl } from '../sandbox-frontend-url';
@@ -70,6 +70,14 @@ import { classifyPtyWebSocketPath } from './pty-ingress';
 const AGENT_PORT = 8000;
 const START_CONFLICT_GRACE_MS = 30_000;
 const START_CONFLICT_POLL_MS = 250;
+
+// The Platinum org is shared by deployed stacks and local worktrees. Every
+// provider object needs one explicit owner because the orphan reaper operates
+// from provider inventory, not from a shared database. Legacy unstamped boxes
+// fail closed and are never candidates for destructive orphan cleanup.
+function platinumInstanceOwner(): string {
+  return currentInstanceId() ?? 'deployed';
+}
 
 interface PlatinumSandbox {
   id: string;
@@ -321,13 +329,13 @@ export class PlatinumProvider implements SandboxProvider {
       // The reaper's filter is unaffected (it reads the two keys above only).
       metadata: {
         'kortix.managed': 'true',
-        'kortix.env': config.INTERNAL_KORTIX_ENV,
+        'kortix.env': providerEnvironmentOwner(),
         'kortix.workload': workloadType,
         ...(opts.sandboxId ? { 'kortix.sandbox_id': opts.sandboxId } : {}),
         // Instance scope for local dev on a shared DB (projects/instance-scope.ts):
         // `listManagedRunningSandboxes` skips another instance's boxes. Absent
         // in deployed environments.
-        ...(currentInstanceId() ? { 'kortix.instance': currentInstanceId()! } : {}),
+        'kortix.instance': platinumInstanceOwner(),
       },
     };
     if (dedup) {
@@ -428,7 +436,7 @@ export class PlatinumProvider implements SandboxProvider {
     const _exposeMs = Date.now() - _tExpose0;
 
     if (workloadType !== 'app') {
-      await this.ensureNodeRuntimeStarted(externalId);
+      await this.ensureSessionRuntimeStarted(externalId);
     }
 
     // Return as soon as the VM is running and the agent port is exposed — do NOT
@@ -466,17 +474,24 @@ export class PlatinumProvider implements SandboxProvider {
     };
   }
 
-  private async ensureNodeRuntimeStarted(externalId: string): Promise<void> {
+  async ensureSessionRuntimeStarted(externalId: string): Promise<void> {
     // Platinum restores a template under pt-init and does not execute the image
     // ENTRYPOINT. Start the supervisor through the native exec API. The process
     // owns daemon updates and rollback, so launching kortixd directly would
     // bypass the convergent-runtime contract.
-    const command =
-      'if pgrep -u kortix -x kortixd >/dev/null; then exit 0; fi; ' +
-      'setsid -f /usr/local/bin/kortix-entrypoint >>/tmp/kortix-entrypoint.log 2>&1 </dev/null';
+    const relayUrl = `${config.KORTIX_NODE_RELAY_URL
+      .replace(/\/+$/, '')
+      .replace(/\/v1\/router$/, '')
+      .replace(/\/v1$/, '')}/v1`;
+    const quotedRelayUrl = `'${relayUrl.replace(/'/g, `'"'"'`)}'`;
+    // A resumed VM can retain an obsolete relay URL. Stop its inactive daemon
+    // tree and relaunch the existing verified supervisor with this API's relay
+    // URL. No human can be attached while the provider VM is stopped. The new
+    // process starts with an empty PTY registry and converges its own binary.
+    const allProcessCommand = String.raw`daemon_pids=$(ps -u kortix -o pid= -o args= | awk '$NF == "run" { print $1 }'); entry_pids=$(ps -u kortix -o pid= -o args= | awk '$0 ~ /\/usr\/local\/bin\/kortix-entrypoint$/ { print $1 }'); [ -z "$daemon_pids" ] || kill -TERM $daemon_pids; [ -z "$entry_pids" ] || kill -TERM $entry_pids; sleep 1; KORTIX_API_URL=` + quotedRelayUrl + String.raw` setsid -f /usr/local/bin/kortix-entrypoint >>/tmp/kortix-entrypoint.log 2>&1 </dev/null`;
     const response = await platinumJson<PlatinumExecResponse>(`/v1/sandboxes/${externalId}/exec`, {
       method: 'POST',
-      body: JSON.stringify({ cmd: ['/bin/sh', '-lc', command], timeout_ms: 15_000 }),
+      body: JSON.stringify({ cmd: ['/bin/sh', '-lc', allProcessCommand], timeout_ms: 15_000 }),
     });
     const result = platinumExecResult(response);
     // Platinum has returned both a direct exec result and an empty 2xx body
@@ -514,7 +529,20 @@ export class PlatinumProvider implements SandboxProvider {
     for (;;) {
       try {
         await platinumJson(`/v1/sandboxes/${externalId}/start`, { method: 'POST' });
-        return;
+        // Platinum accepts the start before guest exec is available. Do not
+        // return until the control plane reports running, otherwise the
+        // immediate kortixd convergence exec races the starting state.
+        for (;;) {
+          const sandbox = await platinumJson<PlatinumSandbox>(`/v1/sandboxes/${externalId}`);
+          const state = String(sandbox.state ?? '').toLowerCase();
+          if (state === 'running') return;
+          if (!['starting', 'pending'].includes(state) || Date.now() >= deadline) {
+            throw new Error(
+              `Platinum sandbox ${externalId} did not reach running after start (state=${state || 'unknown'})`,
+            );
+          }
+          await Bun.sleep(START_CONFLICT_POLL_MS);
+        }
       } catch (error) {
         // Platinum acknowledges stop before the VM always reaches `stopped`.
         // An immediate user reopen can therefore race `stopping` and receive
@@ -591,11 +619,12 @@ export class PlatinumProvider implements SandboxProvider {
         if (!sandbox.id) continue;
         const metadata = sandbox.metadata ?? {};
         if (String(metadata['kortix.managed'] ?? '') !== 'true') continue;
-        if (String(metadata['kortix.env'] ?? '') !== config.INTERNAL_KORTIX_ENV) continue;
-        // Instance scope beside the env scope: another local instance's box is
-        // not ours to stop. Unstamped boxes stay everyone's. No-op when
-        // KORTIX_INSTANCE_ID is unset.
-        if (!sandboxBelongsToThisInstance({ instanceId: metadata['kortix.instance'] })) continue;
+        if (String(metadata['kortix.env'] ?? '') !== providerEnvironmentOwner()) continue;
+        // Exact provider ownership is mandatory. An unstamped legacy box is
+        // skipped, never reaped. This differs from DB-backed background work:
+        // provider inventory is shared across databases, so "belongs to
+        // everyone" would let deployed dev stop a local worktree sandbox.
+        if (String(metadata['kortix.instance'] ?? '') !== platinumInstanceOwner()) continue;
         if (String(sandbox.state ?? '').toLowerCase() !== 'running') continue;
         const rawCreatedAt = sandbox.created_at ?? sandbox.createdAt ?? null;
         const createdAt = rawCreatedAt ? new Date(rawCreatedAt) : null;
@@ -780,6 +809,7 @@ export class PlatinumProvider implements SandboxProvider {
     if (status === 'stopped') {
       console.log(`[PLATINUM] Sandbox ${externalId} is stopped, waking up...`);
       await this.start(externalId);
+      await this.ensureSessionRuntimeStarted(externalId);
     }
   }
 }

@@ -435,14 +435,10 @@ export function startProxy(
   // Constructed once, outside reload() — pty state must survive a config
   // hot-swap (warm-snapshot restore) exactly like `opencode`/`bootState` do.
   const ptyRegistry = createPtyRegistry(cfg)
-  // A staged daemon update must not exit this process while somebody has a
-  // terminal open — the PTY dies with the daemon that spawned it. The registry
-  // is the only thing that knows, so it answers the question rather than the
-  // updater guessing at it. A busy box just keeps the staging: the supervisor
-  // installs it at the next start.
-  registerAgentSwapBlocker('pty', () =>
-    ptyRegistry.list().some((entry) => entry.status === 'running'),
-  )
+  // Do not replace the daemon while a live viewer is attached. Detached shells
+  // must not block updates forever. The daemon can retain them until the next
+  // safe update, then the client recreates a missing PTY through attachOrCreate.
+  registerAgentSwapBlocker('pty', () => ptyRegistry.hasAttachedViewers())
   let app = buildOpencodeApp(cfg, opencode, bootTime, bootState, projectEnv, staticWebPort, ptyRegistry)
 
   const server = Bun.serve<OpencodeWsData>({

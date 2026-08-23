@@ -300,7 +300,7 @@ export function parkMetadataPatch(
 
 type ParkableRuntimeRow = Pick<
   typeof sessionSandboxes.$inferSelect,
-  'sandboxId' | 'sessionId' | 'externalId' | 'metadata' | 'provider'
+  'sandboxId' | 'sessionId' | 'externalId' | 'metadata' | 'provider' | 'updatedAt'
 >;
 
 /**
@@ -323,23 +323,6 @@ export async function parkEstablishedRuntime(
   }
   const externalId = row.externalId;
 
-  await endComputeSession(row.sandboxId).catch((err) =>
-    console.warn(
-      `[runtime-identity] failed to close compute for ${row.sandboxId} while parking ${externalId}:`,
-      err,
-    ),
-  );
-  // try/catch, not .catch(): getProvider() throws synchronously for a
-  // disabled provider, and a park must survive that too.
-  try {
-    await getProvider(row.provider as ProviderName).stop(externalId);
-  } catch (err) {
-    console.warn(
-      `[runtime-identity] provider stop failed while parking ${externalId}:`,
-      err instanceof Error ? err.message : err,
-    );
-  }
-
   const metadata = {
     ...((row.metadata as Record<string, unknown> | null) ?? {}),
   };
@@ -349,8 +332,9 @@ export async function parkEstablishedRuntime(
   delete metadata.runtimeRecoveryLeaseExpiresAtMs;
   Object.assign(metadata, parkMetadataPatch(reason, stopReason, now));
 
+  let parked: typeof sessionSandboxes.$inferSelect | null = null;
   try {
-    return await db.transaction(async (tx) => {
+    parked = await db.transaction(async (tx) => {
       const [liveSession] = await tx
         .update(projectSessions)
         .set({ status: 'stopped', error: null, updatedAt: now })
@@ -364,6 +348,13 @@ export async function parkEstablishedRuntime(
           and(
             eq(sessionSandboxes.sandboxId, row.sandboxId),
             eq(sessionSandboxes.externalId, externalId),
+            eq(sessionSandboxes.status, 'active'),
+            // A readiness request can outlive the wake it inspected. The wake
+            // rewrites this row before starting the provider. Without this
+            // CAS, the stale request can stop the newly running VM minutes
+            // later. No provider or billing side effect is allowed until the
+            // exact observed row wins this comparison.
+            eq(sessionSandboxes.updatedAt, row.updatedAt),
           ),
         )
         .returning();
@@ -379,6 +370,27 @@ export async function parkEstablishedRuntime(
     if (err instanceof RuntimeIdentityCasLostError) return null;
     throw err;
   }
+
+  if (!parked) return null;
+
+  await endComputeSession(row.sandboxId).catch((err) =>
+    console.warn(
+      `[runtime-identity] failed to close compute for ${row.sandboxId} while parking ${externalId}:`,
+      err,
+    ),
+  );
+  // The row CAS above must win before this call. A stale readiness request
+  // therefore cannot stop a VM that a newer wake already owns.
+  try {
+    await getProvider(row.provider as ProviderName).stop(externalId);
+  } catch (err) {
+    console.warn(
+      `[runtime-identity] provider stop failed while parking ${externalId}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  return parked;
 }
 
 /**

@@ -21,6 +21,50 @@ linked, not inlined.
 
 ## Register
 
+### Scope provider inventory labels by API instance, not only environment (2026-08-23)
+
+**When:** creating provider objects or changing orphan reconciliation. Include
+the local API instance in the provider environment marker. Require exact owner
+matching. *Incident:* deployed dev repeatedly stopped an active worktree
+sandbox because both objects used `kortix.env=dev`. *Enforcer:*
+`instance-scope.test.ts` and provider managed-list tests.
+
+### Rewrite durable sandbox URLs whenever a runtime resumes (2026-08-23)
+
+**When:** resuming or opening a provider-running session after an API origin can
+change. Persist the current relay URL before reporting readiness. *Incident:*
+kortixd reconnected to the new worktree tunnel while the SDK kept calling the
+dead provisioning-time tunnel. *Enforcer:* `runtime-relay-repair.test.ts`.
+
+### Stop every stale supervisor before starting one replacement (2026-08-23)
+
+**When:** converging a daemon after resume or relay rotation. Enumerate and stop
+all matching daemon and entrypoint PIDs. Never stop only the first match.
+*Incident:* repeated repairs left multiple kortixd processes competing for one
+node channel. *Enforcer:* `platinum-create-terminal.test.ts`.
+
+### Separate relay liveness from workload readiness (2026-08-23)
+
+**When:** repairing an outbound node channel. Stop retrying after the channel
+reconnects. OpenCode `starting` is not proof that the relay is disconnected.
+*Incident:* a 30-second repair loop restarted kortixd and closed attached PTYs
+with code `1012`. *Enforcer:* `runtime-relay-repair.test.ts`.
+
+### Authorize sandbox relay ports by capability and deny credential helpers (2026-08-23)
+
+**When:** adding a signed compute-node relay. Assigned sandbox nodes must reach
+user preview ports. Explicitly deny egress, LLM, connector, and standby helper
+ports. *Incident:* Browser port `3000` returned `502 upstream_port` while the
+guest server was healthy. *Enforcer:* `sandbox-port-policy.test.ts`.
+
+### Normalize transient REST error bodies before iterating UI data (2026-08-23)
+
+**When:** a React query expects a list from a runtime route. Convert every
+non-array response to `[]` at the query boundary and guard downstream helpers.
+*Incident:* `/command` returned a temporary `503` object during restart and the
+session page crashed with `TypeError: t is not iterable`. *Enforcer:*
+`detect-command.test.ts`.
+
 ### Keep self-host sandbox gateway URLs aligned with the public proxy route (2026-08-23)
 
 **When:** changing `LLM_GATEWAY_PROXY_TARGET`, Caddy LLM matchers, or sandbox

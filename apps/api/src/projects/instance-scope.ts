@@ -33,6 +33,18 @@ export function currentInstanceId(): string | undefined {
 }
 
 /**
+ * Provider inventories are shared across deployed dev and local worktrees.
+ * A scoped environment marker keeps older deployed reapers, which only know
+ * the environment label, from adopting a local worktree's provider object.
+ */
+export function providerEnvironmentOwner(): string {
+  const instanceId = currentInstanceId();
+  return instanceId
+    ? `${config.INTERNAL_KORTIX_ENV}:${instanceId}`
+    : config.INTERNAL_KORTIX_ENV;
+}
+
+/**
  * True when background work on this sandbox may run here:
  *  - `KORTIX_INSTANCE_ID` is unset (scoping off), or
  *  - the row carries no `instanceId` (legacy row), or

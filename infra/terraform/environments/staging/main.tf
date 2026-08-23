@@ -83,10 +83,9 @@ module "api" {
   ]
   private_subnet_ids = module.network.private_subnet_ids
 
-  image             = var.api_image
-  enable_node_relay = true
-  container_port    = var.container_port
-  certificate_arn   = var.wildcard_certificate_arn
+  image           = var.api_image
+  container_port  = var.container_port
+  certificate_arn = var.wildcard_certificate_arn
   environment = merge(var.api_environment, {
     LLM_GATEWAY_PROXY_TARGET = "https://gateway-staging-ecs-fargate.kortix.com"
   })

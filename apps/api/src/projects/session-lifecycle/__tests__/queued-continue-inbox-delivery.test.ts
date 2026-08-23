@@ -183,7 +183,7 @@ mock.module('../store', () => ({
 }));
 
 mock.module('../../opencode-mapping', () => ({
-  sandboxOpencodeEndpoint: async () => ({ url: 'https://sandbox.test', headers: {}, fetch: (input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init) }),
+  sandboxOpencodeEndpoint: async () => ({ url: 'https://sandbox.test', headers: {} }),
 }));
 
 // The wake path now converges the box before every delivery (engine.ts

@@ -82,7 +82,7 @@ describe('useFeatureFlag', () => {
 
   test('reports the loading state so callers can gate on it', () => {
     nextResult = { data: undefined, isLoading: true };
-    const flag = useFeatureFlag('p', 'review_center');
+    const flag = useFeatureFlag('p', 'voice');
 
     expect(flag.isLoading).toBe(true);
     // Loading is NOT enabled — the surface stays dark until the server answers.
@@ -90,9 +90,9 @@ describe('useFeatureFlag', () => {
   });
 
   test('one flag never reads another flag`s slot', () => {
-    withDetail({ apps: true, review_center: false });
+    withDetail({ apps: true, voice: false });
 
     expect(useFeatureFlag('p', 'apps').enabled).toBe(true);
-    expect(useFeatureFlag('p', 'review_center').enabled).toBe(false);
+    expect(useFeatureFlag('p', 'voice').enabled).toBe(false);
   });
 });

@@ -295,7 +295,7 @@ documented boundaries, not flow ids: they carry no HTTP surface of their own.
 
 All under `/p/:sandboxId/:port/*` (`combinedAuth` + rate-limit). `:sandboxId` = `external_id` (Daytona) / container name (local). `:port` = `8000` for OpenCode. Auth via header / `X-Kortix-Token` / `?token=` / `__preview_session` cookie.
 
-`PRX-1` `GET /p/config` returns `preview_url_template` as a string or `null` for path-proxy deployments. `POST /p/auth` (JWT or token) → 200 sets `__preview_session` cookie (1h). Invalid token → 401.
+`PRX-1` `POST /p/auth` (JWT or token) → 200 sets `__preview_session` cookie (1h). Invalid token → 401.
 `PRX-2` `POST /p/share` → `combinedAuth` → 201 share link; `GET /p/share` → list; `DELETE /p/share/:token` → revoke. Shared link grants scoped preview access.
 `RUN-1` `POST /p/<sbx>/8000/session` → create OpenCode conversation → returns `{id}`.
 `RUN-2` `POST /p/<sbx>/8000/session/<ocId>/prompt_async {parts:[{type:text,text}]}` → **204** (async; agent runs in background).
@@ -417,7 +417,25 @@ Tokens stored as encrypted project secrets; webhooks public + signature-gated.
 `CHN-17` `GET /projects/:id/channels/email/mode` → `read` → `{provider:"agentmail",enabled:boolean,managed_available:boolean}` so the UI can hide Email until `agentmail_email` is enabled and require a project AgentMail key when no managed server key exists.
 `CHN-18` `GET /projects/:id/channels/bindings` → `read` → `{projectDefaultAgent, bindings:[{bindingId,platform,workspaceId,channelId,channelName,channelType,agentName,opencodeModel,conversationPolicy,installedAt,effectiveAgent:{agent,source}}]}` — the web management surface for `chat_channel_bindings` (today populated only via Slack `/kortix agent|model|policy`); `effectiveAgent` resolves `agentName ?? project default ?? 'default'` the same way the Slack panel does.
 `CHN-19` `PATCH /projects/:id/channels/bindings/:bindingId {agentName?,opencodeModel?,conversationPolicy?}` → `project.connector.write` (no dedicated channel-binding leaf exists; reuses the same capability that gates connecting/disconnecting the channel itself) → updates via the same `setChannelAgent`/`setChannelModel`/`setChannelConversationPolicy` helpers the Slack commands call; `agentName` validated against the project's declared `[[agents]]` when adopted (any name accepted for a legacy/undeclared project), `null` resets to the project default, `"default"` is an alias for `null`; `opencodeModel` validated via `isModelServableForAccount` (409 `model_not_servable` when not servable) and normalized to the opencode `kortix/…` ref before storing; unknown `bindingId` → 404 before body validation; empty body on an existing binding → 400 `empty_patch`.
-`CHN-20` send-primitive IAM gate — `POST /projects/:id/channels/slack/file/upload` posts to a channel with the project's bot credentials and asserts leaf `project.connector.write` (IAM enforcement audit; previously gated by project-read only, so any read-capable caller could drive them). A floor `user` member (project.read, no connector.write) → 403 before any Slack call; a `manager` (holds connector.write) passes the gate (200/400/404/502/503, never 403); non-member 403/404; ANON 401. The `channel.*` catalog leaves were removed (never wired to a route). Scoped-agent-token variant proven at the API layer in `integration-project-read-leaf-gates-http.test.ts`.
+`CHN-20` send-primitive IAM gate — `POST /projects/:id/channels/slack/file/upload` posts to a channel with the project's bot credentials and asserts leaf `project.connector.write` (IAM enforcement audit; previously gated by project-read only, so any read-capable caller could drive them). A floor `user` member (project.read, no connector.write) → 403 before any Slack call; a `manager` (holds connector.write) passes the gate (200/400/404/502/503, never 403); non-member 403/404; ANON 401. The `channel.*` catalog leaves were removed (never wired to a route). Scoped-agent-token variant proven at the API layer in `integration-project-read-leaf-gates-http.test.ts`. (The former `meet/speak` half of this gate went away with the notetaker — see §VOICE.)
+### Voice (live calls) — §VOICE
+
+The agent starts a live voice call bound to its session and hands out a join link — it does not join a third-party meeting. Whoever opens the link lands on a plain LiveKit client page (`/voice/:token`, public); the realtime provider connection is held SERVER-side (apps/voice-agent), so no provider credential or session authority ever reaches that page. Per-project bot name lives in `projects.metadata.meet`.
+
+**Two surfaces exist and they point in opposite directions.** Keeping them straight is the whole of this section:
+
+- **The Kortix agent's side is the `kortix_voice` CONNECTOR** — `spawn_room`, `read_transcript`, `send_prompt`, `end_call`, plus `join_gmeet`/`join_zoom` which are declared for a stable surface but deliberately not implemented (calling either returns a clear `not_implemented` error, never a silent no-op). These are `{kind:'voice'}` bindings executed by the API's own server-side code (`connector/db-deps.ts`'s `executeVoiceCall`), routed through the connector gateway like every other connector, so policies, approvals and the audit trail apply. The connector is materialized per-project only when the `voice` experimental flag is on (`connector/channel-materialize.ts`). It has **no HTTP route of its own** — it is covered by the connector catalog flows, not by a voice flow. It used to be an MCP at `POST /projects/:id/mcp/voice`; **that route no longer exists.**
+- **The LiveKit worker's side is the voice MCP**, `POST /projects/:id/sessions/:sid/mcp/voice`, serving `ask_kortix` / `run_command` / `post_turn`. `ask_kortix` returns the instant the request is queued and refuses a second while one is unanswered; `run_command` is bounded by a short server-side timeout and reports `timed_out`; `post_turn` persists one transcript line. No follow/tail/stream tool exists, by design. Unknown JSON-RPC method → `-32601`; a tool that throws surfaces as a tool-error RESULT, not a protocol error, so the caller can read and react to it. That tool half is only reachable holding a per-call HMAC minted server-side, so it is proven in apps/api's own tests — the flow here asserts the boundary.
+
+`VOICE-1` `PUT /projects/:id/channels/meet/name {name}` → `manage` → sets the bot's display name in the call (default "Kortix"); NONMEMBER → 403/404; ANON → 401.
+`VOICE-2` `POST /projects/:id/sessions/:sid/mcp/voice` — the worker MCP's auth boundary. Authed ONLY by the per-call `kortix_api_token`: an HMAC over the call id (the call id IS the session id), minted server-side in `startCall` and delivered to the worker in the LiveKit room metadata (`channels/voice/worker-token.ts`). It is NOT session/PAT auth, and the route is mounted BEFORE `projectsApp` precisely so `supabaseAuth` never claims it. ANON → 401; an OWNER session → 401; an account PAT → 401; a forged 64-hex bearer → 401 (the HMAC compare is length-guarded and timing-safe). Auth is checked BEFORE the body, so a malformed JSON-RPC payload from an unauthenticated caller is still 401 — never 400, never 500.
+`VOICE-3` `GET /projects/:id/sessions/:sid/voice-transcript[?cursor&limit]` — a Kortix-authenticated read of the same durable record (`voice_call_turns`), for the web app. Project `read` + the session must be visible to the caller; explicitly NOT the worker's per-call HMAC. Non-uuid session id → 400; unparseable `cursor` → 400; unknown session → 404; NONMEMBER → 403/404; ANON → 401.
+`VOICE-4` Same route, happy path: a session that has never had a call → 200 `{session_id, call_id, live:false, cursor, count:0, turns:[]}` — an empty transcript, never a 404. `call_id === session_id`. `role` alone does not identify a turn: `user`+null is a human, `agent`+`kortix` is what the Kortix agent put into the call, `agent`+bot-name is what the voice said, `tool`+tool-name is an `ask_kortix`/`run_command`. Ordering is the monotonic `voice_call_turns.cursor`, never `created_at` (two turns can share a millisecond and a wall-clock tie would silently drop one).
+`VOICE-5` `GET /public/voice-join/:token` — PUBLIC and unauthenticated by design: a join link IS the capability (256 bits of `randomBytes`, `vjl_`-prefixed, hashed at rest), and requiring login would defeat handing it to someone outside the account. Resolves to `{call_id, url, token}` with a FRESHLY minted LiveKit access token each time. Unknown/garbage/never-issued token → 404 (indistinguishable from each other); a project id or a bare uuid is not a join token → 404, never 401. Revoked (the call ended) or expired → 410 — that half needs a real call to end and is proven against the real route + DB in apps/api's `integration-voice-join-links.test.ts`.
+`VOICE-6` `GET /public/voice-join/:token/transcript[?cursor&limit]` — the same join-link capability, strictly less power: transcript text for the ONE call the link was minted for, never a LiveKit token. Deliberately takes NO project or session id — `resolveJoinLink` yields the call id and nothing the caller wrote reaches `readTurns`, so there is no id for an anonymous caller to swap for someone else's call; the project id is not echoed back either. Unknown token → 404 even with `call_id`/`session_id`/`project_id` query parameters attached. A mangled `cursor`/`limit` is CLAMPED, not rejected (a link truncated in a chat client must still show the call), so it never turns into a 400. Both public routes are IP-keyed rate limited (resolve 30/min, transcript poll 120/min — the poller cannot share the resolve budget).
+
+---
+
 ## 14. GitHub integration + `kortix ship`/`deploy`
 
 GitHub is **outbound only** (repo create, Contents API commits, installation-token git transport). No inbound event receiver.
@@ -949,40 +967,3 @@ These contracts use product IDs. They replace the old route-coverage bucket IDs.
 `SYS-8` Live and ready health aliases return the same service-state contract.
 `SYS-9` Metrics requires internal authorization and router health returns its configured availability state.
 `TOK-5` Revoking a project CLI token immediately blocks its project, secret, and trigger mutations.
-# Kortix compute nodes
-
-## KXD-REST — compute-node registration and lifecycle
-
-`KXD-REST` An account owner manages a compute node through its complete REST lifecycle.
-
-An account owner registers a workstation node and receives one short-lived
-enrollment token. Anonymous and non-member registration fails. The daemon
-exchanges the token once for a node-only credential. Token replay fails. The
-daemon can also create a browser device challenge without a user credential.
-Only the device secret can poll the challenge. An account owner can inspect,
-approve, or deny the challenge. Approval registers the node and returns one
-encrypted, single-use enrollment token to the polling daemon. Denial creates no
-node.
-owner lists, reads, updates, drains, enables, disables, restarts, rotates, and
-deletes the node. Every mutation returns durable read-back state. List and get
-responses never expose credential material. Rotation increments the credential
-generation. A deleted node is no longer readable. The API also assigns a real
-session through the authenticated outbound node channel. The node reports
-`accepted` and `ready`; the API persists `ready`. The API then sends `release`
-through that same channel and persists `released`. The assignment never carries
-the node credential or sandbox credential. The assignment carries filesystem,
-shell, and desktop restrictions unchanged. `kortixd` enforces those restrictions
-below its owner-controlled local policy.
-
-## KXD-CLI — compiled standalone node enrollment
-
-`KXD-CLI` The compiled `kortixd` executable enrolls and manages a local compute node.
-
-The suite compiles `kortixd` for the host operating system and runs the actual
-executable. Help, version, and invalid-command behavior return stable exit
-codes. `connect` exchanges a single-use enrollment token without printing the
-node credential. Without `--token`, `connect` prints a device code and completes
-browser-approved enrollment. It stores the state directory as `0700` and the credential
-file as `0600` on POSIX. `doctor` validates the stored enrollment. Offline
-`status --json` and `logs` return local state without API connectivity.
-`logout` revokes and deletes the credential and remains idempotent.

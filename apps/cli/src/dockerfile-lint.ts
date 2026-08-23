@@ -38,7 +38,7 @@ export interface LintDockerfileOpts {
  * there is no false positive to trade against.
  */
 export const STAGED_CONTEXT_ENTRIES = [
-  'kortixd.gz',
+  'kortix-agent.gz',
   'kortix.gz',
   'kortix-entrypoint',
   'kortix-slack-cli/',

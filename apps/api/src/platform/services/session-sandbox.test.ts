@@ -136,14 +136,6 @@ mock.module('../../config', () => ({
   config: testConfig,
 }));
 
-mock.module('../../repositories/compute-node-credentials', () => ({
-  rotateNodeCredential: async () => ({
-    credential: 'knd_test_node_credential',
-    publicPrefix: 'knd_test',
-    generation: 1,
-  }),
-}));
-
 mock.module('../../shared/db', () => ({
   db: {
     insert: (table: unknown) => ({
@@ -530,7 +522,7 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     expect(envVars).not.toHaveProperty('KORTIX_LLM_AI_SDK_NATIVE');
   });
 
-  test('injects one session credential and one node-only transport credential', async () => {
+  test('injects one session credential under one canonical environment name', async () => {
     const opened = waitFor((resolve) => {
       onComputeOpened = resolve;
     });
@@ -540,12 +532,7 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
 
     const envVars = providerCreateOpts[0]?.envVars as Record<string, string>;
     expect(envVars.KORTIX_TOKEN).toBe('exec-tok-1');
-    expect(envVars.KORTIX_NODE_TOKEN).toBe('knd_test_node_credential');
-    expect(envVars.KORTIX_COMPUTE_NODE_ID).toBe(SANDBOX_ID);
-    expect(Object.keys(envVars).filter((name) => name.endsWith('_TOKEN')).sort()).toEqual([
-      'KORTIX_NODE_TOKEN',
-      'KORTIX_TOKEN',
-    ]);
+    expect(Object.keys(envVars).filter((name) => name.endsWith('_TOKEN'))).toEqual(['KORTIX_TOKEN']);
     expect(envVars.KORTIX_OPENCODE_DENY_ENV).toBeUndefined();
 
     const finishCall = updateCalls.find(
@@ -554,6 +541,7 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     );
     expect(finishCall?.updates.config).toMatchObject({ serviceKey: 'exec-tok-1' });
   });
+
   test('stamps metadata.instanceId from KORTIX_INSTANCE_ID on the row it creates, and the finish write keeps it', async () => {
     // Instance scoping for background work on a shared DB (projects/instance-scope.ts).
     // The stamp is what lets another local API instance recognise this box as

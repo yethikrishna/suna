@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { projects, projectSessions, sessionSandboxes } from '@kortix/db';
 import { db } from '../../shared/db';
-import { fetchComputeNode } from '../../compute-nodes';
+import { resolveSandboxIngress } from '../../sandbox-proxy/backend';
 import { config } from '../../config';
 import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { resolveLlmGatewayBaseUrl } from '../../llm-gateway/sandbox-base-url';
@@ -455,8 +455,32 @@ export async function resolveSandboxEnvSnapshot(
   };
 }
 
+function isSecureOrPrivateTarget(rawUrl: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  if (u.protocol === 'https:') return true;
+  if (u.protocol !== 'http:') return false;
+  const h = u.hostname;
+  if (['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(h)) return true;
+  if (!h.includes('.')) return true; // single-label docker/service name on a private bridge
+  if (/\.(local|internal|svc|cluster\.local)$/.test(h)) return true;
+  // RFC1918 / link-local — anchored to full IPv4 literals so a public hostname
+  // like "10.foo.evil.com" can't slip through a `^10.` prefix match.
+  if (/^10(\.\d{1,3}){3}$/.test(h)) return true;
+  if (/^192\.168(\.\d{1,3}){2}$/.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])(\.\d{1,3}){2}$/.test(h)) return true;
+  if (/^169\.254(\.\d{1,3}){2}$/.test(h)) return true;
+  if (/^f[cd][0-9a-f]{2}:/i.test(h)) return true; // IPv6 unique-local
+  return false; // plain http to a public host — refuse to send secrets in cleartext
+}
+
 async function postEnvToDaemon(args: {
-  externalId: string;
+  previewUrl: string;
+  providerHeaders: Record<string, string>;
   serviceKey: string;
   snapshot: SandboxEnvSnapshot;
   refreshModels?: boolean;
@@ -485,12 +509,16 @@ async function postEnvToDaemon(args: {
    */
   opencodeTurnEnded: boolean | null;
 }> {
+  if (!isSecureOrPrivateTarget(args.previewUrl)) {
+    throw new Error('refusing to push secrets over insecure transport (non-TLS public host)');
+  }
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${args.serviceKey}`,
+    ...args.providerHeaders,
   };
 
-  const res = await fetchComputeNode(args.externalId, SANDBOX_SERVICE_PORT, '/kortix/env', {
+  const res = await fetch(`${args.previewUrl.replace(/\/$/, '')}/kortix/env`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -709,7 +737,8 @@ export async function syncSandboxEnvForPrompt(args: {
     return;
   }
   const { opencodeState } = await postEnvToDaemon({
-    externalId: args.externalId,
+    previewUrl: args.previewUrl,
+    providerHeaders: args.providerHeaders,
     serviceKey: args.serviceKey,
     snapshot,
     refreshModels,
@@ -731,10 +760,6 @@ export async function syncSandboxEnvForPrompt(args: {
     const ready = await waitForDaemonOpencodeReady({
       previewUrl: args.previewUrl,
       providerHeaders: args.providerHeaders,
-      deps: {
-        fetchImpl: ((_url: string | URL | Request, init?: RequestInit) =>
-          fetchComputeNode(args.externalId, SANDBOX_SERVICE_PORT, '/kortix/health', init)) as typeof fetch,
-      },
     });
     console.log(
       `[env-sync] opencode restarted by prompt env-sync (state=${opencodeState}); ` +
@@ -854,8 +879,10 @@ async function runProjectSecretPropagation(
         // secret. An arming failure has to be visible there, so it stays a
         // `status: 'failed'` row rather than a warning nobody reads.
         await syncProviderNetworkBoundary(providerName, row.externalId, networkBoundary);
+        const { url, headers } = await resolveSandboxIngress(row.externalId, { port: SANDBOX_SERVICE_PORT, transport: 'http' });
         const proof = await postEnvToDaemon({
-          externalId: row.externalId,
+          previewUrl: url,
+          providerHeaders: headers,
           serviceKey,
           snapshot,
           refreshModels: opts?.refreshModels,
@@ -959,8 +986,10 @@ export async function propagateLlmGatewayModeToActiveSandboxes(
         const snapshot =
           (await resolveSandboxEnvSnapshot(projectId, row.sessionId)) ??
           emptySandboxEnvSnapshot(`llm-gateway-${enabled ? 'on' : 'off'}`);
+        const { url, headers } = await resolveSandboxIngress(row.externalId, { port: SANDBOX_SERVICE_PORT, transport: 'http' });
         await postEnvToDaemon({
-          externalId: row.externalId,
+          previewUrl: url,
+          providerHeaders: headers,
           serviceKey,
           snapshot,
           refreshModels: true,
@@ -1132,12 +1161,17 @@ export async function pushSessionAgentConfigToSandbox(input: {
     const snapshot = await resolveSandboxEnvSnapshot(input.projectId, input.sessionId);
     if (!snapshot) return { applied: false, reason: 'no env snapshot' };
 
+    const { url, headers } = await resolveSandboxIngress(row.externalId, {
+      port: SANDBOX_SERVICE_PORT,
+      transport: 'http',
+    });
     // The daemon call blocks until its verified reload either promotes the new
     // runtime or keeps the old one. This phase therefore names the whole
     // apply-and-validate boundary instead of inventing sub-phases we cannot see.
     input.onPhase?.('applying-config');
     const pushed = await postEnvToDaemon({
-      externalId: row.externalId,
+      previewUrl: url,
+      providerHeaders: headers,
       serviceKey,
       snapshot,
       opencodeEnv: {
@@ -1192,8 +1226,13 @@ export async function pushSessionModelToSandbox(input: {
     const snapshot = await resolveSandboxEnvSnapshot(input.projectId, input.sessionId);
     if (!snapshot) return { applied: false, reason: 'no env snapshot' };
 
+    const { url, headers } = await resolveSandboxIngress(row.externalId, {
+      port: SANDBOX_SERVICE_PORT,
+      transport: 'http',
+    });
     await postEnvToDaemon({
-      externalId: row.externalId,
+      previewUrl: url,
+      providerHeaders: headers,
       serviceKey,
       snapshot,
       opencodeEnv: { KORTIX_OPENCODE_MODEL: input.model },
@@ -1277,8 +1316,13 @@ export async function pushSessionScopeToSandbox(input: {
     if (!snapshot) return { applied: false, reason: 'no env snapshot' };
 
     const llmGatewayEnabled = await resolveProjectLlmGatewayEnabled(input.projectId);
+    const { url, headers } = await resolveSandboxIngress(row.externalId, {
+      port: SANDBOX_SERVICE_PORT,
+      transport: 'http',
+    });
     await postEnvToDaemon({
-      externalId: row.externalId,
+      previewUrl: url,
+      providerHeaders: headers,
       serviceKey,
       snapshot,
       // Restarts opencode so spawnChild re-runs mergeProjectEnv + the gateway

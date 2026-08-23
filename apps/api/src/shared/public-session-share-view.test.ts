@@ -18,10 +18,9 @@ let listResult: { ok: true; sessions: unknown[] } | { ok: false; reason: 'no_key
   ok: true,
   sessions: [],
 };
-let endpointResult: { url: string; headers: Record<string, string>; fetch(input: string | URL, init?: RequestInit): Promise<Response> } | null = {
+let endpointResult: { url: string; headers: Record<string, string> } | null = {
   url: 'http://daemon.local',
   headers: {},
-  fetch: (input, init) => globalThis.fetch(input, init),
 };
 // When set, `sandboxOpencodeEndpoint` throws this error instead of resolving —
 // simulates a Daytona 429 `ThrottlerException` / archived box on preview-link
@@ -43,7 +42,7 @@ const { getPublicSessionInfo, getPublicSessionMessages } = await import('./publi
 beforeEach(() => {
   sessionRows = [];
   listResult = { ok: true, sessions: [] };
-  endpointResult = { url: 'http://daemon.local', headers: {}, fetch: (input, init) => globalThis.fetch(input, init) };
+  endpointResult = { url: 'http://daemon.local', headers: {} };
   endpointThrow = null;
   resolvedRootId = 'oc-root-1';
   globalThis.fetch = mock(async () => new Response('[]', { status: 200 })) as unknown as typeof fetch;

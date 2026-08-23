@@ -11,6 +11,7 @@ export type SessionInvocationSource =
   | 'email'
   | 'telegram'
   | 'teams'
+  | 'voice'
   | 'trigger:webhook'
   | 'trigger:cron'
   | 'trigger:manual'

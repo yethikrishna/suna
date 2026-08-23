@@ -93,22 +93,14 @@ interface PlatinumSandboxPage {
 }
 type PlatinumExposedPort = { port: number; url: string; token?: string; public: boolean };
 type PlatinumExecResponse = {
-  ok?: boolean;
-  stdout?: string;
-  stderr?: string;
-  exit_code?: number;
-  error?: string;
   result?: {
     stdout?: string;
     stderr?: string;
     exit_code?: number;
     error?: string;
   };
+  error?: string;
 };
-
-function platinumExecResult(response: PlatinumExecResponse): NonNullable<PlatinumExecResponse['result']> {
-  return response.result ?? response;
-}
 
 /**
  * FIX-A: a DEFINITIVE "pinned template is gone" signal — a 404 on the create
@@ -427,10 +419,6 @@ export class PlatinumProvider implements SandboxProvider {
     }
     const _exposeMs = Date.now() - _tExpose0;
 
-    if (workloadType !== 'app') {
-      await this.ensureNodeRuntimeStarted(externalId);
-    }
-
     // Return as soon as the VM is running and the agent port is exposed — do NOT
     // block on the in-guest runtime (repo clone + opencode). That readiness is
     // polled by the frontend (useOpenCodeRuntimeReady + the react-query
@@ -466,30 +454,6 @@ export class PlatinumProvider implements SandboxProvider {
     };
   }
 
-  private async ensureNodeRuntimeStarted(externalId: string): Promise<void> {
-    // Platinum restores a template under pt-init and does not execute the image
-    // ENTRYPOINT. Start the supervisor through the native exec API. The process
-    // owns daemon updates and rollback, so launching kortixd directly would
-    // bypass the convergent-runtime contract.
-    const command =
-      'if pgrep -u kortix -x kortixd >/dev/null; then exit 0; fi; ' +
-      'setsid -f /usr/local/bin/kortix-entrypoint >>/tmp/kortix-entrypoint.log 2>&1 </dev/null';
-    const response = await platinumJson<PlatinumExecResponse>(`/v1/sandboxes/${externalId}/exec`, {
-      method: 'POST',
-      body: JSON.stringify({ cmd: ['/bin/sh', '-lc', command], timeout_ms: 15_000 }),
-    });
-    const result = platinumExecResult(response);
-    // Platinum has returned both a direct exec result and an empty 2xx body
-    // across control-plane versions. A non-zero exit is a hard failure. An
-    // empty successful response still proves that the launch request landed.
-    if (typeof result.exit_code === 'number' && result.exit_code !== 0) {
-      const detail = result.stderr || result.error || response.error || 'missing exec result';
-      throw new Error(
-        `Platinum kortixd bootstrap failed for ${externalId}: exit ${result.exit_code ?? 'unknown'}: ${detail.slice(0, 500)}`,
-      );
-    }
-  }
-
   async ensureAppRuntimeStarted(externalId: string): Promise<void> {
     // Platinum restores the template filesystem but does not run the image
     // ENTRYPOINT. appd owns daemonization, locking, and PID validation so this
@@ -498,8 +462,8 @@ export class PlatinumProvider implements SandboxProvider {
       method: 'POST',
       body: JSON.stringify({ cmd: ['/kortix/bin/kortix-appd', '--daemon'], timeout_ms: 15_000 }),
     });
-    const result = platinumExecResult(response);
-    if (result.exit_code !== 0) {
+    const result = response.result;
+    if (!result || result.exit_code !== 0) {
       const detail = result?.stderr || result?.error || response.error || 'missing exec result';
       throw new Error(
         `Platinum App bootstrap failed for ${externalId}: exit ${result?.exit_code ?? 'unknown'}: ${detail.slice(0, 500)}`,

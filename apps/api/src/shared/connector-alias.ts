@@ -15,6 +15,7 @@
 const PUBLIC_TO_CANONICAL_CONNECTOR_ALIAS: Readonly<Record<string, string>> = {
   email: 'kortix_email',
   slack: 'kortix_slack',
+  meet: 'kortix_voice',
 };
 
 /** The stored slug for an alias written in either spelling. */

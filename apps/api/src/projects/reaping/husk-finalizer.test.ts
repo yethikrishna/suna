@@ -21,15 +21,12 @@ const originalFetch = globalThis.fetch;
 mock.module('../../sandbox-proxy/backend', () => ({
   ...realSandboxProxyBackend,
   resolveServiceKey: async (_externalId: string) => serviceKey,
-}));
-
-mock.module('../../compute-nodes', () => ({
-  fetchComputeNode: async (
-    _externalId: string,
-    _port: number,
-    path: string,
-    init?: RequestInit,
-  ) => globalThis.fetch(`https://daemon.example.test${path}`, init),
+  resolveSandboxIngress: async (_ref: string, _req: unknown) => ({
+    url: 'https://daemon.example.test',
+    headers: {},
+    effectivePort: 8000,
+    websocket: false,
+  }),
 }));
 
 const { finalizeHuskTurn } = await import('./husk-finalizer');

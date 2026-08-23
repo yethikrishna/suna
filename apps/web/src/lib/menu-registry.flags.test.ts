@@ -11,6 +11,7 @@ import { settingsPaletteGroups } from '@/features/workspace/settings-palette-ite
 import { menuRegistry } from './menu-registry';
 
 const ALL_FLAGS_OFF: ProjectSettingsSectionFlags = {
+  voiceEnabled: false,
   reviewEnabled: false,
 };
 
@@ -24,7 +25,10 @@ const ALL_FLAGS_OFF: ProjectSettingsSectionFlags = {
 const root = resolve(import.meta.dir, '..');
 const registrySource = readFileSync(join(root, 'lib/menu-registry.ts'), 'utf8');
 const flagMapSource = readFileSync(join(root, 'lib/use-project-feature-flags.ts'), 'utf8');
-const paletteSource = readFileSync(join(root, 'features/workspace/command-palette.tsx'), 'utf8');
+const paletteSource = readFileSync(
+  join(root, 'features/workspace/command-palette.tsx'),
+  'utf8',
+);
 const sidebarSource = readFileSync(join(root, 'components/sidebar/sidebar-right.tsx'), 'utf8');
 
 describe('menu registry feature-flag gating', () => {
@@ -43,7 +47,7 @@ describe('menu registry feature-flag gating', () => {
     }
   });
 
-  test('Review Center is reachable behind its flag and removed features stay absent', () => {
+  test('Review Center and Voice are reachable, behind their flags — Marketplace is gone outright', () => {
     // These were `proj-review` / `proj-voice` / `proj-marketplace` registry
     // entries carrying their own `requiresFlag`. Review and Voice's
     // "reachable" and "behind the flag" halves come from the sub-nav of
@@ -60,7 +64,10 @@ describe('menu registry feature-flag gating', () => {
     expect(off).not.toContain('marketplace');
 
     expect(keysFor({ ...ALL_FLAGS_OFF, reviewEnabled: true })).toContain('review');
-    expect(keysFor({ ...ALL_FLAGS_OFF, reviewEnabled: true })).not.toContain('marketplace');
+    expect(keysFor({ ...ALL_FLAGS_OFF, voiceEnabled: true })).toContain('voice');
+    expect(keysFor({ ...ALL_FLAGS_OFF, reviewEnabled: true, voiceEnabled: true })).not.toContain(
+      'marketplace',
+    );
 
     // None of them is a settings tab any more, so the derived palette list
     // must not offer one — that would open the overlay on nothing.

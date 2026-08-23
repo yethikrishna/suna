@@ -48,12 +48,6 @@ variable "container_name" {
   default     = "api"
 }
 
-variable "enable_node_relay" {
-  description = "Run one dedicated Kortix API node-relay task and route compute-node WebSockets and internal streams to it."
-  type        = bool
-  default     = false
-}
-
 variable "environment" {
   description = "Plain (non-secret) environment variables for the container."
   type        = map(string)

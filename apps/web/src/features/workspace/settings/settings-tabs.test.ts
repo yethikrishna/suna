@@ -31,19 +31,9 @@ describe('SETTINGS_TABS', () => {
   // opens onto nothing.
   test('no project-configuration id is a settings tab any more', () => {
     for (const gone of [
-      'general',
-      'members',
-      'secrets',
-      'channels',
-      'repositories',
-      'models',
-      'marketplace',
-      'review',
-      'sandbox',
-      'snapshots',
-      'experimental',
-      'feature-flags',
-      'upgrades',
+      'general', 'members', 'secrets', 'channels', 'repositories',
+      'models', 'marketplace', 'review', 'voice', 'sandbox', 'snapshots',
+      'experimental', 'feature-flags', 'upgrades',
     ]) {
       expect(SETTINGS_TABS).not.toContain(gone as never);
       expect(parseSettingsTab(gone)).toBeNull();
@@ -161,6 +151,7 @@ describe('legacySectionRedirect', () => {
       // history of a sandbox template, not a separate pane any more.
       snapshots: 'sandbox',
       review: 'review',
+      voice: 'voice',
       experimental: 'feature-flags',
       'feature-flags': 'feature-flags',
       upgrades: 'upgrades',
@@ -225,15 +216,7 @@ describe('legacySectionRedirect', () => {
   });
 
   test('every llm sub-section lands on the top-level Models tab', () => {
-    for (const s of [
-      'llm-management',
-      'llm-overview',
-      'llm-providers',
-      'llm-logs',
-      'llm-budgets',
-      'llm-keys',
-      'llm-api',
-    ]) {
+    for (const s of ['llm-management', 'llm-overview', 'llm-providers', 'llm-logs', 'llm-budgets', 'llm-keys', 'llm-api']) {
       expect(legacySectionRedirect('p1', s)).toBe('/projects/p1/models');
     }
   });
@@ -249,9 +232,7 @@ describe('legacySectionRedirect', () => {
   });
 
   test('changes redirects to the files proposed-changes panel', () => {
-    expect(legacySectionRedirect('p1', 'changes')).toBe(
-      '/projects/p1/files?panel=proposed-changes',
-    );
+    expect(legacySectionRedirect('p1', 'changes')).toBe('/projects/p1/files?panel=proposed-changes');
   });
 
   test('an id that is still a settings tab resolves to its own overlay URL', () => {

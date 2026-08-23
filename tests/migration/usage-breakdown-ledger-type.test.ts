@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { createDb } from '../../packages/db/src/client';
 import { type Ports, computePorts, repoRoot, runMigrate, sh } from '../../scripts/worktree/lib';
-import { runPsql } from './helpers/psql';
 
 const dockerOk = sh(['docker', 'info']).ok;
 const CONTAINER = 'kortix-usage-breakdown-test';
@@ -28,9 +27,9 @@ const { getUsageBreakdownThisPeriod } = await import(
 const PERIOD_START = '2026-07-01T00:00:00.000Z';
 
 function psql(sql: string): string {
-  const res = runPsql(url, sql);
+  const res = sh(['psql', url, '-v', 'ON_ERROR_STOP=1', '-tAc', sql]);
   if (!res.ok) throw new Error(`psql failed: ${res.stderr}\n${sql}`);
-  return res.stdout;
+  return res.stdout.trim();
 }
 
 function pgReady(): boolean {

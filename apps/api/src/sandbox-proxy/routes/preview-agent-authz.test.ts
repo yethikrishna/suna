@@ -35,10 +35,6 @@ let remintCalls: Array<{ requestedAgent: string | null }> = [];
 let envSyncCalls: Array<{ requestedAgent: string | null | undefined }> = [];
 
 mock.module('../../config', () => ({ config: {} }));
-mock.module('../../compute-nodes', () => ({
-  fetchComputeNode: async (_externalId: string, port: number, path: string, init?: RequestInit) =>
-    fetch(`http://127.0.0.1:${port}${path}`, init),
-}));
 mock.module('../../lib/request-context', () => ({
   ...realRequestContext,
   getTraceHeaders: () => ({}),

@@ -1,13 +1,16 @@
 // Instance scope on the project-wide env-sync fan-out.
 //
-// `propagateProjectSecretsToActiveSandboxes` enumerates EVERY active compute
-// node of a project and sends this instance's env through the node relay.
-// On a shared local DB, a worktree must not target another instance's node.
+// `propagateProjectSecretsToActiveSandboxes` enumerates EVERY active box of a
+// project and pushes this instance's env — including its `KORTIX_URL`-derived
+// gateway URL — into each one. On a shared local DB that is how one worktree's
+// dead tunnel ended up inside another worktree's sandbox (2026-08-22, twice).
 // With `KORTIX_INSTANCE_ID` set, boxes stamped by another instance are skipped
 // and not counted as targets; legacy rows (no stamp) and own rows are pushed.
 // With it unset, nothing changes.
 //
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+// Same `mock.module` + `globalThis.fetch` pattern as the sibling
+// `sandbox-env-sync.refresh-models.test.ts` (runs isolated per file).
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
 import * as realSecrets from '../secrets';
 import * as realSecretGrant from './secret-grant';
@@ -44,10 +47,8 @@ mock.module('../../shared/db', () => ({
           const rows = wantsSandboxes ? sandboxRows : wantsSession ? [SESSION_ROW] : [PROJECT_ROW];
           return {
             limit: async () => rows,
-            then: (
-              resolve: (value: typeof rows) => unknown,
-              reject?: (reason: unknown) => unknown,
-            ) => Promise.resolve(rows).then(resolve, reject),
+            then: (resolve: (value: typeof rows) => unknown, reject?: (reason: unknown) => unknown) =>
+              Promise.resolve(rows).then(resolve, reject),
           };
         },
       }),
@@ -72,28 +73,31 @@ mock.module('../secrets', () => ({
 mock.module('./network-secret-boundary', () => ({
   resolveSessionNetworkBoundary: async () => [],
 }));
-/** External ids whose kortixd relay received an env push, in order. */
-let pushed: string[] = [];
-mock.module('../../compute-nodes', () => ({
-  fetchComputeNode: async (
-    externalId: string,
-    _port: number,
-    _path: string,
-    init?: { body?: string },
-  ) => {
-    pushed.push(externalId);
-    const body = init?.body ? (JSON.parse(init.body) as { revision?: unknown }) : {};
-    return Response.json({
-      ok: true,
-      revision: body.revision,
-      exported: 1,
-      managed: 1,
-      withheld: 0,
-      agent_env_written: true,
-      opencode: 'ok',
-    });
-  },
+mock.module('../../sandbox-proxy/backend', () => ({
+  resolveSandboxIngress: async (externalId: string) => ({
+    url: `https://daemon.test/${externalId}`,
+    headers: {},
+  }),
 }));
+
+/** External ids whose daemon received an env push, in order. */
+let pushed: string[] = [];
+const ORIGINAL_FETCH = globalThis.fetch;
+(globalThis as { fetch: unknown }).fetch = async (url: unknown, init?: { body?: string }) => {
+  const href = String(url);
+  const externalId = new URL(href).pathname.split('/')[1]!;
+  pushed.push(externalId);
+  const body = init?.body ? (JSON.parse(init.body) as { revision?: unknown }) : {};
+  return Response.json({
+    ok: true,
+    revision: body.revision,
+    exported: 1,
+    managed: 1,
+    withheld: 0,
+    agent_env_written: true,
+    opencode: 'ok',
+  });
+};
 
 const { propagateProjectSecretsToActiveSandboxes } = await import('./sandbox-env-sync');
 const { config } = await import('../../config');
@@ -117,6 +121,9 @@ let projectSeq = 0;
  *  second call within its cooldown would wait on the first. */
 const nextProject = () => `proj-scope-${++projectSeq}`;
 
+afterAll(() => {
+  (globalThis as { fetch: unknown }).fetch = ORIGINAL_FETCH;
+});
 beforeEach(() => {
   pushed = [];
   sandboxRows = [

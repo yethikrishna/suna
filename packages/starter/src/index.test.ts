@@ -287,6 +287,7 @@ describe('KORTIX_MANAGED_SKILL_NAMES', () => {
       'kortix-connectors',
       'kortix-harness-refinement',
       'kortix-marketplace',
+      'kortix-voice',
       'kortix-memory',
       'kortix-onboarding',
       'kortix-slack',

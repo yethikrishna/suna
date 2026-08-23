@@ -16,7 +16,7 @@ process.env.DATABASE_URL ??= 'postgres://x';
 // Capture the paths platinumJson is called with so we can assert the dead box
 // gets a DELETE. `state` is driven per-test via the closure below.
 let createState = 'running';
-const calls: { path: string; method: string; body?: string }[] = [];
+const calls: { path: string; method: string }[] = [];
 
 mock.module('../../shared/platinum', () => ({
   isPlatinumConfigured: () => true,
@@ -24,11 +24,7 @@ mock.module('../../shared/platinum', () => ({
     throw new Error('unexpected Platinum materialization request');
   },
   platinumJson: async (path: string, init: RequestInit = {}) => {
-    calls.push({
-      path,
-      method: String(init.method ?? 'GET'),
-      body: typeof init.body === 'string' ? init.body : undefined,
-    });
+    calls.push({ path, method: String(init.method ?? 'GET') });
     // POST /v1/sandboxes?wait_for_state=running — return a box in `createState`.
     if (path.startsWith('/v1/sandboxes?')) {
       return { id: 'sbx_dead', state: createState };
@@ -78,18 +74,6 @@ test('create() does NOT throw when the box is running', async () => {
   // No DELETE for a healthy box.
   const deleted = calls.some((c) => c.method === 'DELETE');
   expect(deleted).toBe(false);
-  const bootstrap = calls.find(
-    (c) => c.method === 'POST' && c.path === '/v1/sandboxes/sbx_dead/exec',
-  );
-  expect(bootstrap).toBeDefined();
-  expect(JSON.parse(bootstrap!.body!)).toEqual({
-    cmd: [
-      '/bin/sh',
-      '-lc',
-      'if pgrep -u kortix -x kortixd >/dev/null; then exit 0; fi; setsid -f /usr/local/bin/kortix-entrypoint >>/tmp/kortix-entrypoint.log 2>&1 </dev/null',
-    ],
-    timeout_ms: 15_000,
-  });
 });
 
 test("create() does NOT tear down a still-'provisioning' box (FE poll picks it up)", async () => {

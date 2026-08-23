@@ -328,7 +328,6 @@ jobs:
       - name: Roll staging ECS (api + gateway) from the staging-env blob
         run: |
           bash infra/scripts/ecs-deploy.sh staging "kortix/kortix-api:staging-${SHA8}" --version "${VERSION}"
-          bash infra/scripts/ecs-deploy.sh staging "kortix/kortix-api:staging-${SHA8}" --service node-relay --version "${VERSION}"
           bash infra/scripts/ecs-deploy.sh staging "kortix/kortix-gateway:staging-${SHA8}" --service gateway --version "${VERSION}"
 
   wire-cloudflare:

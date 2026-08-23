@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import {
   ArrowsClockwiseIcon,
   BrainIcon,
+  MicrophoneIcon,
   PaperclipIcon,
   PlugsConnectedIcon,
   PuzzlePieceIcon,
@@ -60,6 +61,8 @@ function SlashRowIcon({
         return <BrainIcon className={className} />;
       case 'attach-file':
         return <PaperclipIcon className={className} />;
+      case 'start-voice':
+        return <MicrophoneIcon className={className} />;
       default:
         return <SlidersHorizontalIcon className={className} />;
     }

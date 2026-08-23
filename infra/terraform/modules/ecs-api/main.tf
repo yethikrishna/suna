@@ -20,13 +20,7 @@ terraform {
 locals {
   name = var.name
   # PORT is always injected so the app binds the port the target group checks.
-  environment = merge(var.environment, { PORT = tostring(var.container_port) }, var.enable_node_relay ? { KORTIX_NODE_RELAY_ROLE = "api" } : {})
-  node_relay_environment = merge(var.environment, {
-    PORT                   = tostring(var.container_port)
-    KORTIX_NODE_RELAY_ROLE = "relay"
-    KORTIX_WORKERS_ENABLED = "false"
-    TUNNEL_ENABLED         = "false"
-  })
+  environment = merge(var.environment, { PORT = tostring(var.container_port) })
 
   # Capacity-provider strategy for the service.
   #
@@ -450,45 +444,6 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-resource "aws_lb_target_group" "node_relay" {
-  #checkov:skip=CKV_AWS_378:TLS terminates at the public HTTPS listener; this target group is private VPC traffic to the ECS task.
-  count       = var.enable_node_relay ? 1 : 0
-  name        = substr("${local.name}-node-relay", 0, 32)
-  port        = var.container_port
-  protocol    = "HTTP"
-  vpc_id      = var.vpc_id
-  target_type = "ip"
-
-  health_check {
-    path                = var.health_check_path
-    healthy_threshold   = 2
-    unhealthy_threshold = 3
-    interval            = 15
-    timeout             = 5
-    matcher             = "200-399"
-  }
-
-  deregistration_delay = 30
-  tags                 = var.tags
-}
-
-resource "aws_lb_listener_rule" "node_relay" {
-  count        = var.enable_node_relay ? 1 : 0
-  listener_arn = aws_lb_listener.https.arn
-  priority     = 10
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.node_relay[0].arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/v1/nodes/ws", "/v1/internal/node-relay/*"]
-    }
-  }
-}
-
 # ── ECS cluster + service ─────────────────────────────────────────────────────
 resource "aws_ecs_cluster" "this" {
   name = local.name
@@ -571,39 +526,6 @@ resource "aws_ecs_task_definition" "this" {
   }
 }
 
-resource "aws_ecs_task_definition" "node_relay" {
-  count                    = var.enable_node_relay ? 1 : 0
-  family                   = "${local.name}-node-relay"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = var.task_cpu
-  memory                   = var.task_memory
-  execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.task.arn
-
-  container_definitions = jsonencode([{
-    name         = var.container_name
-    image        = var.image
-    essential    = true
-    portMappings = [{ containerPort = var.container_port, protocol = "tcp" }]
-    environment  = [for k, v in local.node_relay_environment : { name = k, value = v }]
-    secrets = var.secrets_blob_arn != "" ? [
-      { name = "KORTIX_ENV_JSON", valueFrom = var.secrets_blob_arn }
-    ] : [for k, v in var.secrets : { name = k, valueFrom = v }]
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.this.name
-        "awslogs-region"        = var.aws_region
-        "awslogs-stream-prefix" = "node-relay"
-      }
-    }
-  }])
-
-  lifecycle { ignore_changes = [container_definitions] }
-  tags = merge(var.tags, { Name = "${local.name}-node-relay" })
-}
-
 resource "aws_ecs_service" "this" {
   name            = local.name
   cluster         = aws_ecs_cluster.this.id
@@ -665,45 +587,6 @@ resource "aws_ecs_service" "this" {
     Project     = lookup(var.tags, "Project", "kortix")
     Service     = lookup(var.tags, "Service", local.name)
   }
-}
-
-resource "aws_ecs_service" "node_relay" {
-  count           = var.enable_node_relay ? 1 : 0
-  name            = "${local.name}-node-relay"
-  cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.node_relay[0].arn
-  desired_count   = 1
-
-  capacity_provider_strategy {
-    capacity_provider = "FARGATE"
-    weight            = 1
-    base              = 1
-  }
-
-  network_configuration {
-    subnets          = var.private_subnet_ids
-    security_groups  = [aws_security_group.service.id]
-    assign_public_ip = var.assign_public_ip
-  }
-
-  load_balancer {
-    target_group_arn = aws_lb_target_group.node_relay[0].arn
-    container_name   = var.container_name
-    container_port   = var.container_port
-  }
-
-  # One socket owner avoids cross-owner byte routing. Roll with a bounded
-  # reconnect window instead of overlapping two owners for the same node.
-  deployment_minimum_healthy_percent = 0
-  deployment_maximum_percent         = 100
-  deployment_circuit_breaker {
-    enable   = true
-    rollback = true
-  }
-
-  lifecycle { ignore_changes = [task_definition, desired_count] }
-  depends_on = [aws_lb_listener_rule.node_relay]
-  tags       = merge(var.tags, { Name = "${local.name}-node-relay" })
 }
 
 # ── Autoscaling (target tracking on CPU + memory) ─────────────────────────────

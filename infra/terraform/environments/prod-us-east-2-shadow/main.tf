@@ -69,7 +69,6 @@ module "api" {
   private_subnet_ids = module.network.private_subnet_ids
 
   image             = var.api_image
-  enable_node_relay = true
   container_name    = "api"
   container_port    = 8000
   health_check_path = "/health/ready"

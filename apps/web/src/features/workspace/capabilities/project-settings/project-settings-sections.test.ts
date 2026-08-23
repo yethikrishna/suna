@@ -15,6 +15,7 @@ import {
 
 const OFF: ProjectSettingsSectionFlags = {
   reviewEnabled: false,
+  voiceEnabled: false,
 };
 
 const keysFor = (flags: ProjectSettingsSectionFlags) =>
@@ -37,24 +38,31 @@ describe('projectSettingsSections', () => {
     expect(keysFor(OFF)).toEqual(['general', 'sandbox', 'feature-flags', 'upgrades']);
   });
 
-  test('the review flag adds its section', () => {
+  test('each flag adds exactly its own section', () => {
     expect(keysFor({ ...OFF, reviewEnabled: true })).toContain('review');
+    expect(keysFor({ ...OFF, voiceEnabled: true })).toContain('voice');
     expect(keysFor(OFF)).not.toContain('review');
+    expect(keysFor(OFF)).not.toContain('voice');
   });
 
-  test('the review flag preserves all static sections', () => {
-    const keys = keysFor({ reviewEnabled: true });
+  test('both flags in one pass both land — the early-return regression the old rail documented', () => {
+    // The old rail's bug: Marketplace defaulted on for effectively every
+    // project, so an early return on the first matching flag made Review and
+    // Voice unreachable. Marketplace is gone now, but the same one-pass rule
+    // still matters for the two flags that are left.
+    const keys = keysFor({ reviewEnabled: true, voiceEnabled: true });
     expect(keys).toContain('review');
-    expect(keys).toHaveLength(5);
+    expect(keys).toContain('voice');
+    expect(keys).toHaveLength(6);
   });
 
   test('Upgrades is last, where the rail pinned it', () => {
-    const keys = keysFor({ reviewEnabled: true });
+    const keys = keysFor({ reviewEnabled: true, voiceEnabled: true });
     expect(keys[keys.length - 1]).toBe('upgrades');
   });
 
   test('no section appears twice', () => {
-    const keys = keysFor({ reviewEnabled: true });
+    const keys = keysFor({ reviewEnabled: true, voiceEnabled: true });
     expect(new Set(keys).size).toBe(keys.length);
   });
 
@@ -94,12 +102,12 @@ describe('projectSettingsSections', () => {
   });
 
   test('Marketplace is gone, not merely hidden', () => {
-    expect(keysFor({ reviewEnabled: true })).not.toContain('marketplace');
+    expect(keysFor({ reviewEnabled: true, voiceEnabled: true })).not.toContain('marketplace');
     expect(parseProjectSettingsSection('marketplace')).toBeNull();
   });
 
   test('Models, Channels, Secrets, and Members are not sections here — they graduated to their own tabs', () => {
-    const keys = keysFor({ reviewEnabled: true });
+    const keys = keysFor({ reviewEnabled: true, voiceEnabled: true });
     expect(keys).not.toContain('models');
     expect(keys).not.toContain('channels');
     expect(keys).not.toContain('secrets');
@@ -107,7 +115,7 @@ describe('projectSettingsSections', () => {
   });
 
   test('Repositories is not a section here — it merged into General', () => {
-    const keys = keysFor({ reviewEnabled: true });
+    const keys = keysFor({ reviewEnabled: true, voiceEnabled: true });
     expect(keys).not.toContain('repositories');
     expect(parseProjectSettingsSection('repositories')).toBeNull();
   });
@@ -178,7 +186,9 @@ describe('every section is reachable from its retired settings-tab URL', () => {
   test('secrets, channels, and models redirect OFF this page, to their own top-level tab', () => {
     expect(legacySectionRedirect('p1', 'secrets')).toBe('/projects/p1/secrets');
     // Channels came back down off its own tab and into the Connectors page.
-    expect(legacySectionRedirect('p1', 'channels')).toBe('/projects/p1/connectors?scope=channels');
+    expect(legacySectionRedirect('p1', 'channels')).toBe(
+      '/projects/p1/connectors?scope=channels',
+    );
     expect(legacySectionRedirect('p1', 'models')).toBe('/projects/p1/models');
     expect(legacySectionRedirect('p1', 'llm-providers')).toBe('/projects/p1/models');
   });
@@ -220,12 +230,7 @@ describe('the sub-nav is flat', () => {
   });
 
   test('the list order IS the rail order — one pass, nothing re-sorted', () => {
-    expect(projectSettingsSections({ reviewEnabled: true }).map((s) => s.key)).toEqual([
-      'general',
-      'sandbox',
-      'review',
-      'feature-flags',
-      'upgrades',
-    ]);
+    expect(projectSettingsSections({ reviewEnabled: true, voiceEnabled: true }).map((s) => s.key))
+      .toEqual(['general', 'sandbox', 'review', 'voice', 'feature-flags', 'upgrades']);
   });
 });

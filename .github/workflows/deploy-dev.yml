@@ -541,9 +541,7 @@ jobs:
       # the computed dev version even if the image's baked string ever diverges
       # (retags, rebuilds) — same parity rule as staging/prod.
       - name: Roll the dev ECS service onto the freshly-built image
-        run: |
-          bash infra/scripts/ecs-deploy.sh dev "${{ needs.tag-api.outputs.image }}" --version "${{ needs.dev-version.outputs.version }}"
-          bash infra/scripts/ecs-deploy.sh dev "${{ needs.tag-api.outputs.image }}" --service node-relay --version "${{ needs.dev-version.outputs.version }}"
+        run: bash infra/scripts/ecs-deploy.sh dev "${{ needs.tag-api.outputs.image }}" --version "${{ needs.dev-version.outputs.version }}"
 
   deploy-apps-router:
     name: Deploy Kortix Apps router

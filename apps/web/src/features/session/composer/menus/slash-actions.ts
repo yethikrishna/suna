@@ -2,7 +2,8 @@ export type SlashActionId =
   | 'switch-model'
   | 'switch-agent'
   | 'set-reasoning-effort'
-  | 'attach-file';
+  | 'attach-file'
+  | 'start-voice';
 
 export interface SlashAction {
   id: SlashActionId;
@@ -47,6 +48,11 @@ export const SLASH_ACTIONS: SlashAction[] = [
     description: 'How much thinking the model does before answering',
   },
   { id: 'attach-file', label: 'Attach file', description: 'Add an image or document' },
+  {
+    id: 'start-voice',
+    label: 'Start voice input',
+    description: 'Dictate the message with your microphone',
+  },
 ];
 
 /*

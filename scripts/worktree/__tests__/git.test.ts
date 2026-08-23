@@ -1,19 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { branchExists, remoteBranchExists, worktreeAddArgs } from '../lib';
 
 const git = (cwd: string, ...args: string[]) => {
-  const output = join(tmpdir(), `kortix-git-test-${process.pid}-${crypto.randomUUID()}`);
-  const r = Bun.spawnSync(['git', '-C', cwd, ...args], {
-    stdout: Bun.file(output),
-    stderr: 'pipe',
-  });
+  const r = Bun.spawnSync(['git', '-C', cwd, ...args], { stdout: 'pipe', stderr: 'pipe' });
   if (r.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr.toString()}`);
-  const stdout = readFileSync(output, 'utf8').trim();
-  rmSync(output, { force: true });
-  return stdout;
+  return r.stdout.toString().trim();
 };
 
 /** A clone with one local branch (`main`) and one remote-only branch (`origin/feature`). */
@@ -58,7 +52,7 @@ describe('worktreeAddArgs', () => {
     const root = fixture();
     const wt = join(root, '..', 'wt-feature');
     const { args } = worktreeAddArgs(root, wt, 'feature', 'HEAD');
-    const r = Bun.spawnSync(args, { stdout: 'ignore', stderr: 'pipe' });
+    const r = Bun.spawnSync(args, { stdout: 'pipe', stderr: 'pipe' });
     expect(r.exitCode).toBe(0);
     expect(git(wt, 'rev-parse', 'HEAD')).toBe(git(root, 'rev-parse', 'origin/feature'));
     expect(git(wt, 'rev-parse', '--abbrev-ref', '@{upstream}')).toBe('origin/feature');

@@ -24,6 +24,7 @@ import {
   sandboxWorkloadType,
 } from './index';
 import { classifyDaytonaState } from './daytona-state';
+import { buildSessionSupervisorCommand } from './session-supervisor-command';
 
 // The Daytona SDK's axios client is created with a 24-HOUR timeout (see
 // @daytonaio/sdk's Daytona.createAxiosInstance) — effectively unbounded for
@@ -313,6 +314,32 @@ export class DaytonaProvider implements SandboxProvider {
     if (result.exitCode !== 0) {
       throw new Error(
         `Daytona App bootstrap failed for ${externalId}: exit ${result.exitCode}: ${result.result.slice(0, 500)}`,
+      );
+    }
+  }
+
+  async ensureSessionRuntimeStarted(
+    externalId: string,
+    identity?: { nodeId: string; nodeToken: string },
+  ): Promise<void> {
+    const daytona = getDaytona();
+    const sandbox = await withTimeout(
+      daytona.get(externalId),
+      PROVIDER_CALL_TIMEOUT_MS,
+      `Daytona get(${externalId}) for session bootstrap`,
+    );
+    const command = buildSessionSupervisorCommand(
+      config.KORTIX_NODE_RELAY_URL || config.KORTIX_URL,
+      identity,
+    );
+    const result = await withTimeout(
+      sandbox.process.executeCommand(command, undefined, undefined, 15),
+      PROVIDER_CALL_TIMEOUT_MS,
+      `Daytona kortixd bootstrap(${externalId})`,
+    );
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Daytona kortixd bootstrap failed for ${externalId}: exit ${result.exitCode}: ${result.result.slice(0, 500)}`,
       );
     }
   }

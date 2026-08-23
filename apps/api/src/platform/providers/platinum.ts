@@ -66,6 +66,7 @@ import {
 } from './index';
 import { providerAutoStopBackstopMinutes } from './index';
 import { classifyPtyWebSocketPath } from './pty-ingress';
+import { buildSessionSupervisorCommand } from './session-supervisor-command';
 
 const AGENT_PORT = 8000;
 const START_CONFLICT_GRACE_MS = 30_000;
@@ -474,21 +475,19 @@ export class PlatinumProvider implements SandboxProvider {
     };
   }
 
-  async ensureSessionRuntimeStarted(externalId: string): Promise<void> {
+  async ensureSessionRuntimeStarted(
+    externalId: string,
+    identity?: { nodeId: string; nodeToken: string },
+  ): Promise<void> {
     // Platinum restores a template under pt-init and does not execute the image
     // ENTRYPOINT. Start the supervisor through the native exec API. The process
     // owns daemon updates and rollback, so launching kortixd directly would
     // bypass the convergent-runtime contract.
-    const relayUrl = `${config.KORTIX_NODE_RELAY_URL
-      .replace(/\/+$/, '')
-      .replace(/\/v1\/router$/, '')
-      .replace(/\/v1$/, '')}/v1`;
-    const quotedRelayUrl = `'${relayUrl.replace(/'/g, `'"'"'`)}'`;
     // A resumed VM can retain an obsolete relay URL. Stop its inactive daemon
     // tree and relaunch the existing verified supervisor with this API's relay
     // URL. No human can be attached while the provider VM is stopped. The new
     // process starts with an empty PTY registry and converges its own binary.
-    const allProcessCommand = String.raw`daemon_pids=$(ps -u kortix -o pid= -o args= | awk '$NF == "run" { print $1 }'); entry_pids=$(ps -u kortix -o pid= -o args= | awk '$0 ~ /\/usr\/local\/bin\/kortix-entrypoint$/ { print $1 }'); [ -z "$daemon_pids" ] || kill -TERM $daemon_pids; [ -z "$entry_pids" ] || kill -TERM $entry_pids; sleep 1; KORTIX_API_URL=` + quotedRelayUrl + String.raw` setsid -f /usr/local/bin/kortix-entrypoint >>/tmp/kortix-entrypoint.log 2>&1 </dev/null`;
+    const allProcessCommand = buildSessionSupervisorCommand(config.KORTIX_NODE_RELAY_URL, identity);
     const response = await platinumJson<PlatinumExecResponse>(`/v1/sandboxes/${externalId}/exec`, {
       method: 'POST',
       body: JSON.stringify({ cmd: ['/bin/sh', '-lc', allProcessCommand], timeout_ms: 15_000 }),

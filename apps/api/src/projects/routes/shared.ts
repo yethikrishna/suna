@@ -15,6 +15,10 @@ import { auth, json } from '../../openapi';
 import { type SandboxStatus, getProvider } from '../../platform/providers';
 import { classifySandboxProvisioningFailure } from '../../platform/services/sandbox-provisioning-error';
 import { db } from '../../shared/db';
+import {
+  ensureSessionComputeNode,
+  rotateNodeCredential,
+} from '../../repositories/compute-node-credentials';
 import { isComputeNodeRelayLive, waitForComputeNodeConnection } from '../../compute-nodes';
 import { resolveBranchTip } from '../git';
 import { legacyRehydrateSpec, rehydrateSessionChat } from '../legacy-migration-rehydrate';
@@ -138,7 +142,13 @@ async function scheduleRuntimeRelayRepair(
   void (async () => {
     const reconnectAfter = new Date();
     try {
-      await provider.ensureSessionRuntimeStarted!(externalId);
+      if (await isComputeNodeRelayLive(row.sandboxId)) return;
+      await ensureSessionComputeNode(row.sandboxId);
+      const nodeCredential = await rotateNodeCredential(row.sandboxId, row.accountId);
+      await provider.ensureSessionRuntimeStarted!(externalId, {
+        nodeId: row.sandboxId,
+        nodeToken: nodeCredential.credential,
+      });
       await waitForComputeNodeConnection(row.sandboxId, reconnectAfter, 60_000);
     } catch (error) {
       console.warn('[start] kortixd relay repair failed', {
@@ -258,7 +268,14 @@ export async function resumeStoppedSandbox(
     start: async () => {
       const reconnectAfter = new Date();
       await provider.start(externalId);
-      await provider.ensureSessionRuntimeStarted?.(externalId);
+      if (provider.ensureSessionRuntimeStarted) {
+        await ensureSessionComputeNode(row.sandboxId);
+        const nodeCredential = await rotateNodeCredential(row.sandboxId, row.accountId);
+        await provider.ensureSessionRuntimeStarted(externalId, {
+          nodeId: row.sandboxId,
+          nodeToken: nodeCredential.credential,
+        });
+      }
       if (provider.ensureSessionRuntimeStarted) {
         await waitForComputeNodeConnection(row.sandboxId, reconnectAfter);
       }

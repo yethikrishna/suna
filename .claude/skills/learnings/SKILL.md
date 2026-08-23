@@ -21,6 +21,22 @@ linked, not inlined.
 
 ## Register
 
+### Converge the session supervisor after every provider wake (2026-08-23)
+
+**When:** adding a compute provider or changing session wake logic. Implement
+`ensureSessionRuntimeStarted()`. Launch the supervisor with the current relay
+URL. Wait for its new node channel before finalizing the wake. *Incident:* an
+August Daytona sandbox reached provider-running but never launched `kortixd`,
+so Files stayed unavailable. *Enforcer:* `daytona-eager-preview.test.ts`.
+
+### Select provider diagnostics before printing them (2026-08-23)
+
+**When:** inspecting a provider sandbox object. Select named lifecycle fields
+inside the process before stdout. Never pipe the full object through a later
+filter because intermediate output or parse failures can expose environment
+credentials. *Near-miss:* a legacy restore probe printed the complete archived
+environment. *Enforcer:* TODO: add a safe provider-inspection command.
+
 ### Send protocol pings on every user-facing WebSocket hop (2026-08-23)
 
 **When:** proxying PTY or preview WebSockets through an edge. Send a protocol

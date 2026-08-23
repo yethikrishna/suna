@@ -2,7 +2,9 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import {
   computeNodeCredentials,
   computeNodeEnrollmentTokens,
+  computeNodeAssignments,
   computeNodes,
+  sessionSandboxes,
 } from '@kortix/db'
 import { db } from '../shared/db'
 import {
@@ -15,6 +17,32 @@ import {
 } from '../shared/crypto'
 
 const ENROLLMENT_TTL_MS = 10 * 60 * 1000
+
+export async function ensureSessionComputeNode(nodeId: string): Promise<void> {
+  const [session] = await db.select({
+    accountId: sessionSandboxes.accountId,
+    projectId: sessionSandboxes.projectId,
+    provider: sessionSandboxes.provider,
+  }).from(sessionSandboxes).where(eq(sessionSandboxes.sandboxId, nodeId)).limit(1)
+  if (!session) throw new Error(`Session sandbox ${nodeId} does not exist`)
+  await db.insert(computeNodes).values({
+    nodeId,
+    accountId: session.accountId,
+    projectId: session.projectId,
+    type: 'sandbox',
+    provider: session.provider,
+    status: 'provisioning',
+  }).onConflictDoNothing({ target: computeNodes.nodeId })
+  await db.insert(computeNodeAssignments).values({
+    nodeId,
+    accountId: session.accountId,
+    projectId: session.projectId,
+    sessionId: nodeId,
+    status: 'assigned',
+  }).onConflictDoNothing({
+    target: [computeNodeAssignments.nodeId, computeNodeAssignments.sessionId],
+  })
+}
 
 export async function createNodeEnrollmentToken(input: {
   nodeId: string

@@ -1,6 +1,5 @@
 import type { ComputeNodeChannelHub, ComputeNodeSocket, ComputeNodeSocketHandlers } from './channel'
 import { createRelayAuthorization, RelayReplayGuard, verifyRelayAuthorization } from './relay-auth'
-import { startWebSocketHeartbeat } from './ws-heartbeat'
 
 const PREFIX = '/v1/internal/node-relay/socket/'
 const UPSTREAM_HEADERS = 'x-kortix-relay-upstream-headers'
@@ -100,15 +99,13 @@ export interface RelaySocketServerState {
   ready: boolean
   queue: Array<string | Buffer>
   upstream?: ComputeNodeSocket
-  stopHeartbeat?: () => void
 }
 
-interface RelayServerSocket { data: RelaySocketServerState; send(data: string | Buffer | Uint8Array): void; close(code?: number, reason?: string): void; ping(): void }
+interface RelayServerSocket { data: RelaySocketServerState; send(data: string | Buffer | Uint8Array): void; close(code?: number, reason?: string): void }
 
 export function relaySocketHandlers(hub: ComputeNodeChannelHub) {
   return {
     open(ws: RelayServerSocket) {
-      ws.data.stopHeartbeat = startWebSocketHeartbeat(ws)
       void hub.connectWebSocket(ws.data.nodeId, ws.data.port, ws.data.path, ws.data.headers, {
         open: () => {
           ws.data.ready = true
@@ -122,9 +119,6 @@ export function relaySocketHandlers(hub: ComputeNodeChannelHub) {
       if (ws.data.ready && ws.data.upstream) ws.data.upstream.send(message)
       else ws.data.queue.push(message)
     },
-    close(ws: RelayServerSocket, code = 1000, reason: string | Buffer = '') {
-      ws.data.stopHeartbeat?.()
-      try { ws.data.upstream?.close(code, typeof reason === 'string' ? reason : reason.toString('utf8')) } catch {}
-    },
+    close(ws: RelayServerSocket, code = 1000, reason: string | Buffer = '') { try { ws.data.upstream?.close(code, typeof reason === 'string' ? reason : reason.toString('utf8')) } catch {} },
   }
 }

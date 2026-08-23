@@ -536,11 +536,7 @@ export class PlatinumProvider implements SandboxProvider {
           const sandbox = await platinumJson<PlatinumSandbox>(`/v1/sandboxes/${externalId}`);
           const state = String(sandbox.state ?? '').toLowerCase();
           if (state === 'running') return;
-          const isRestoreTransition = state === 'archived' || state === 'archiving';
-          if (
-            (!['starting', 'pending'].includes(state) && !isRestoreTransition) ||
-            Date.now() >= deadline
-          ) {
+          if (!['starting', 'pending'].includes(state) || Date.now() >= deadline) {
             throw new Error(
               `Platinum sandbox ${externalId} did not reach running after start (state=${state || 'unknown'})`,
             );
@@ -562,11 +558,8 @@ export class PlatinumProvider implements SandboxProvider {
         const sandbox = await platinumJson<PlatinumSandbox>(`/v1/sandboxes/${externalId}`);
         const state = String(sandbox.state ?? '').toLowerCase();
         if (state === 'running') return;
-        if (state === 'stopped' || state === 'archived') break;
-        if (
-          !['starting', 'stopping', 'pending', 'archiving'].includes(state) ||
-          Date.now() >= deadline
-        ) {
+        if (state === 'stopped' || state.includes('archiv')) break;
+        if (!['starting', 'stopping', 'pending'].includes(state) || Date.now() >= deadline) {
           throw firstConflict;
         }
         await Bun.sleep(START_CONFLICT_POLL_MS);

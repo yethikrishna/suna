@@ -27,7 +27,6 @@ import { resolvePreviewWsUpstream } from './routes/preview';
 import { classifyPtyWebSocketPath } from '../platform/providers/pty-ingress';
 import { OPENCODE_PRIMARY_PORT, isOpencodePort } from '../shared/opencode-ports';
 import { fetchComputeNodeById, connectComputeNodeWebSocket } from '../compute-nodes';
-import { startWebSocketHeartbeat } from '../compute-nodes/ws-heartbeat';
 import { establishPreviewSession, resolvePreviewRequest, sessionFromCookies } from './preview-origin';
 
 // opencode's PTY WebSocket endpoint lives on opencode's own port, reachable via
@@ -84,7 +83,6 @@ export interface PreviewWsData {
   upstream?: Awaited<ReturnType<typeof connectComputeNodeWebSocket>>;
   ready?: boolean;
   queue?: Array<string | Buffer | ArrayBuffer | Uint8Array>;
-  stopHeartbeat?: () => void;
 }
 
 /** Minimal shape of the Bun server WebSocket we touch. */
@@ -92,7 +90,6 @@ interface ServerWs {
   data: PreviewWsData;
   send: (data: string | ArrayBufferView | ArrayBuffer) => void;
   close: (code?: number, reason?: string) => void;
-  ping: () => void;
 }
 
 /** True when the path is a path-based preview route eligible for WS proxying. */
@@ -280,7 +277,6 @@ export const previewWsHandlers = {
     const state = ws.data;
     state.queue = [];
     state.ready = false;
-    state.stopHeartbeat = startWebSocketHeartbeat(ws);
 
     void connectComputeNodeWebSocket(state.externalId, state.port, state.path, state.headers, {
       open: () => {
@@ -316,7 +312,6 @@ export const previewWsHandlers = {
   },
 
   close(ws: ServerWs) {
-    ws.data.stopHeartbeat?.();
     try { ws.data.upstream?.close(); } catch {}
   },
 };

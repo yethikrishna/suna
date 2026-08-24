@@ -234,7 +234,7 @@ test('composioConnectUrl uses session.authorize and does not treat its id as the
   });
 });
 
-test('composioConnectUrl binds Gmail to a managed auth config with explicit mail scopes', async () => {
+test('composioConnectUrl uses the verified Composio-managed Gmail defaults without scope overrides', async () => {
   const calls: Array<Record<string, unknown>> = [];
   const created = session({
     toolkit: { slug: 'gmail', name: 'Gmail', isNoAuth: false },
@@ -249,39 +249,16 @@ test('composioConnectUrl binds Gmail to a managed auth config with explicit mail
     runtime: fakeRuntime({ created, calls, authConfigs: [] }),
   });
 
-  expect(calls[0]).toEqual({
-    type: 'auth-config-list',
-    query: {
-      toolkit: 'gmail',
-      search: 'Kortix Gmail managed actions v1',
-      isComposioManaged: true,
-      limit: 100,
-    },
-  });
-  expect(calls[1]).toEqual({
-    type: 'auth-config-create',
-    toolkit: 'gmail',
-    options: {
-      type: 'use_composio_managed_auth',
-      name: 'Kortix Gmail managed actions v1',
-      credentials: {
-        scopes: [
-          'https://www.googleapis.com/auth/gmail.readonly',
-          'https://www.googleapis.com/auth/gmail.send',
-          'https://www.googleapis.com/auth/gmail.compose',
-          'https://www.googleapis.com/auth/gmail.modify',
-          'https://www.googleapis.com/auth/gmail.labels',
-        ].join(','),
-      },
-      isEnabledForToolRouter: true,
-    },
-  });
-  expect(calls[2]).toMatchObject({
+  expect(calls.some((call) => call.type === 'auth-config-list')).toBe(false);
+  expect(calls.some((call) => call.type === 'auth-config-create')).toBe(false);
+  expect(calls[0]).toMatchObject({
     type: 'create',
     config: {
-      authConfigs: { gmail: 'auth-config-created' },
+      sessionPreset: 'direct_tools',
+      toolkits: ['gmail'],
     },
   });
+  expect((calls[0]?.config as Record<string, unknown>)?.authConfigs).toBeUndefined();
 });
 
 test('composioConnectUrl completes no-auth toolkits without authorization', async () => {

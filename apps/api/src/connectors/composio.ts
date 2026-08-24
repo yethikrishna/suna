@@ -107,21 +107,11 @@ export interface ComposioFinalizeResult {
 
 let runtime: ComposioRuntime | null = null;
 
-const MANAGED_AUTH_CONFIGS: Record<string, { name: string; scopes: readonly string[] }> = {
-  gmail: {
-    name: 'Kortix Gmail managed actions v1',
-    // Composio's default Gmail auth config did not grant fetch_emails enough
-    // access in a real connection. Keep the permissions explicit instead of
-    // using the broader https://mail.google.com/ scope.
-    scopes: [
-      'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/gmail.send',
-      'https://www.googleapis.com/auth/gmail.compose',
-      'https://www.googleapis.com/auth/gmail.modify',
-      'https://www.googleapis.com/auth/gmail.labels',
-    ],
-  },
-};
+// Do not override scopes on Composio-managed Google apps. Google blocks a
+// managed OAuth client when it requests sensitive scopes that are not verified
+// for that client. The toolkit's managed default is the safe connection path.
+// A verified Kortix OAuth app can be introduced later as a custom auth config.
+const MANAGED_AUTH_CONFIGS: Record<string, { name: string; scopes: readonly string[] }> = {};
 
 const authConfigCache = new WeakMap<ComposioRuntime, Map<string, Promise<string>>>();
 

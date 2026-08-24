@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import type { GatewayHooks, GatewayTrace, UpstreamDescriptor, UsageEvent } from '../domain';
-import { handleChatCompletions } from './simple-handler';
+import {
+  handleChatCompletions,
+  streamErrorTraceStatus,
+  upstreamHeadersTimeoutMs,
+  withUpstreamHeadersTimeout,
+} from './simple-handler';
 
 const principal = { userId: 'user', accountId: 'account', projectId: 'project' };
 const primary: UpstreamDescriptor = {
@@ -36,6 +41,69 @@ function hooks(usage: UsageEvent[], traces: GatewayTrace[]): GatewayHooks {
 }
 
 describe('simple gateway pipeline', () => {
+  test('aborts a provider fetch that does not return response headers before the deadline', async () => {
+    const fetchWithTimeout = withUpstreamHeadersTimeout(
+      async (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+        }),
+      5,
+    );
+
+    await expect(fetchWithTimeout('https://provider.example', {})).rejects.toMatchObject({
+      name: 'TimeoutError',
+    });
+  });
+
+  test('clears the provider-headers deadline before consuming the response body', async () => {
+    const providerSignals: AbortSignal[] = [];
+    const fetchWithTimeout = withUpstreamHeadersTimeout(async (_input, init) => {
+      if (init.signal) providerSignals.push(init.signal);
+      return new Response(
+        new ReadableStream({
+          async start(controller) {
+            await Bun.sleep(15);
+            controller.enqueue(new TextEncoder().encode('late body'));
+            controller.close();
+          },
+        }),
+      );
+    }, 5);
+
+    const response = await fetchWithTimeout('https://provider.example', {});
+    expect(await response.text()).toBe('late body');
+    expect(providerSignals[0]?.aborted).toBe(false);
+  });
+
+  test('keeps client cancellation attached after provider headers arrive', async () => {
+    const client = new AbortController();
+    const providerSignals: AbortSignal[] = [];
+    const fetchWithTimeout = withUpstreamHeadersTimeout(async (_input, init) => {
+      if (init.signal) providerSignals.push(init.signal);
+      return new Response('stream');
+    }, 50);
+
+    await fetchWithTimeout('https://provider.example', {
+      signal: client.signal,
+    });
+    client.abort('client left');
+    expect(providerSignals[0]?.aborted).toBe(true);
+    expect(providerSignals[0]?.reason).toBe('client left');
+  });
+
+  test('preserves numeric stream failures and distinguishes client cancellation', () => {
+    expect(streamErrorTraceStatus({ message: 'limited', code: 429 })).toBe(429);
+    expect(streamErrorTraceStatus({ message: 'left', code: 'client_aborted' })).toBe(499);
+    expect(streamErrorTraceStatus({ message: 'timeout', code: 'upstream_timeout' })).toBe(502);
+  });
+
+  test('keeps a bounded but longer header budget for synthetic streaming responses', () => {
+    const limits = { direct: 90_000, syntheticStreaming: 300_000 };
+    expect(upstreamHeadersTimeoutMs({ stream: true }, { ...primary, kind: 'bedrock' }, true, limits)).toBe(300_000);
+    expect(upstreamHeadersTimeoutMs({ stream: true }, primary, true, limits)).toBe(90_000);
+    expect(upstreamHeadersTimeoutMs({ stream: false }, { ...primary, kind: 'bedrock' }, false, limits)).toBe(90_000);
+  });
+
   test('dispatches once and passes a provider 503 through without fallback or retry', async () => {
     const usage: UsageEvent[] = [];
     const traces: GatewayTrace[] = [];
@@ -93,6 +161,40 @@ describe('simple gateway pipeline', () => {
     expect(usage).toHaveLength(1);
     expect(usage[0]).toMatchObject({ promptTokens: 10, completionTokens: 4 });
     expect(traces).toHaveLength(1);
+  });
+
+  test('records an in-band streaming provider error as a failed gateway request', async () => {
+    const usage: UsageEvent[] = [];
+    const traces: GatewayTrace[] = [];
+    const response = await handleChatCompletions(
+      {
+        hooks: hooks(usage, traces),
+        logger: { info() {}, warn() {}, error() {} },
+        fetchImpl: async () =>
+          new Response('data: {"error":{"message":"provider timed out","code":"upstream_timeout"}}\n\n', {
+            headers: { 'content-type': 'text/event-stream' },
+          }),
+      },
+      {
+        authorization: 'Bearer token',
+        rawBody: JSON.stringify({
+          model: 'requested-model',
+          messages: [],
+          stream: true,
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('provider timed out');
+    expect(usage).toHaveLength(0);
+    expect(traces).toHaveLength(1);
+    expect(traces[0]).toMatchObject({
+      status: 502,
+      ok: false,
+      errorCode: 'upstream_timeout',
+      errorMessage: 'provider timed out',
+    });
   });
 
   test('drops wire-framing headers the provider sent for a body fetch already decompressed', async () => {

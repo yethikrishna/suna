@@ -21,6 +21,27 @@ linked, not inlined.
 
 ## Register
 
+### A stale readiness observer must claim the runtime row before stopping its provider (2026-08-24)
+
+**When:** parking an established runtime after a failed readiness or wake probe.
+CAS the exact observed `active` row, including `updated_at`, before closing
+compute or calling `provider.stop()`. Never write a stale metadata object after
+an external stop. Persist stop intent so a parked-row sweep retries after a
+crash. *Incident:* overlapping Essentia `/start` requests paused each new E2B
+boot after about 8 seconds and erased its wake fence; OpenCode needed 11.574
+seconds. *Enforcer:* runtime-identity and parked-runtime verification tests pin
+the CAS and durable retry.
+
+### A response-header timeout must end when actual provider headers arrive (2026-08-24)
+
+**When:** wrapping an AI SDK streaming request with a response-header deadline.
+Apply the deadline to the provider `fetch`, then clear it when `fetch` resolves.
+Do not use that deadline as the full-stream abort signal; AI SDK returns
+synthetic gateway headers before Bedrock `/converse-stream` returns. Keep client
+cancellation attached for the full body. *Incident:* Essentia Fable produced 14
+zero-token turns at 89-91 seconds, recorded as `200 ok=true`. *Enforcer:* gateway
+header/body/cancellation and timeout-classification tests.
+
 ### Refuse a release version whose tag already names another commit (2026-08-24)
 
 **When:** resolving a production version before migrations or rollout. Check

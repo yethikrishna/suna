@@ -9,7 +9,8 @@ import type {
 } from '../domain';
 import { GatewayResolutionError, UpstreamHttpError } from '../errors';
 import { type FetchImpl, callUpstream } from '../http';
-import { type ExtractedUsage, extractUsageFromJson } from '../usage';
+import { resolveTransportKind } from '../transports/route-kind';
+import { type ExtractedUsage, type SseErrorFrame, extractUsageFromJson } from '../usage';
 import { calculateCost } from '../usage/pricing';
 import { gatewayErrorResponse } from './error-response';
 import { applyGenerationDefaults } from './generation-defaults';
@@ -58,12 +59,63 @@ export interface HandlerRuntime {
  * an admission reservation forever while Cloudflare gave the caller a 524 at
  * 100s. This fires first, so the caller gets a typed 503 it can retry.
  *
- * Headers only: once the stream is flowing, `relayStream`'s heartbeat and its
- * 90-minute inactivity budget govern it — a long-thinking model is not a
- * timeout.
+ * Headers only: once the provider fetch resolves, the timer is cleared and
+ * `relayStream`'s heartbeat plus inactivity budget govern the response body.
+ * AI SDK streams get five minutes because their synthetic gateway headers keep
+ * the client alive while a large model prefill still waits on provider headers.
  */
 const UPSTREAM_HEADERS_TIMEOUT_MS =
   Number(process.env.GATEWAY_UPSTREAM_HEADERS_TIMEOUT_MS) || 90_000;
+const SYNTHETIC_STREAMING_HEADERS_TIMEOUT_MS =
+  Number(process.env.GATEWAY_STREAMING_UPSTREAM_HEADERS_TIMEOUT_MS) || 5 * 60_000;
+
+export function upstreamHeadersTimeoutMs(
+  body: Record<string, unknown>,
+  descriptor: UpstreamDescriptor,
+  streaming: boolean,
+  limits: { direct: number; syntheticStreaming: number } = {
+    direct: UPSTREAM_HEADERS_TIMEOUT_MS,
+    syntheticStreaming: SYNTHETIC_STREAMING_HEADERS_TIMEOUT_MS,
+  },
+): number {
+  const transportKind = resolveTransportKind(body, descriptor);
+  const hasSyntheticStreamingHeaders =
+    streaming && transportKind !== 'openai-compat' && transportKind !== 'custom';
+  return hasSyntheticStreamingHeaders ? limits.syntheticStreaming : limits.direct;
+}
+
+export function withUpstreamHeadersTimeout(
+  fetchImpl: FetchImpl,
+  timeoutMs: number = UPSTREAM_HEADERS_TIMEOUT_MS,
+): FetchImpl {
+  return async (input, init) => {
+    const deadline = new AbortController();
+    const timer = setTimeout(
+      () => deadline.abort(new DOMException('Provider response headers timed out', 'TimeoutError')),
+      timeoutMs,
+    );
+    const signal = init.signal ? AbortSignal.any([init.signal, deadline.signal]) : deadline.signal;
+
+    try {
+      return await fetchImpl(input, { ...init, signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
+export function streamErrorTraceStatus(error: SseErrorFrame): number {
+  if (error.code === 'client_aborted') return 499;
+  if (
+    typeof error.code === 'number' &&
+    Number.isInteger(error.code) &&
+    error.code >= 400 &&
+    error.code <= 599
+  ) {
+    return error.code;
+  }
+  return 502;
+}
 
 const EMPTY_USAGE: TokenCounts = {
   promptTokens: 0,
@@ -314,14 +366,15 @@ export async function handleChatCompletions(
 
   const streaming = body.stream === true;
   if (streaming) body.stream_options = { include_usage: true };
+  const dispatchFetch = withUpstreamHeadersTimeout(
+    fetchImpl ?? ((input, init) => globalThis.fetch(input, init)),
+    upstreamHeadersTimeoutMs(body, descriptor, streaming),
+  );
   let upstream: Response;
   try {
-    // Abort the dispatch if the provider has not produced response headers in
-    // time — combined with the client's own signal so a disconnect still wins.
-    const headersDeadline = AbortSignal.timeout(UPSTREAM_HEADERS_TIMEOUT_MS);
     const dispatch = callUpstream(body, descriptor, {
-      fetchImpl,
-      signal: req.signal ? AbortSignal.any([req.signal, headersDeadline]) : headersDeadline,
+      fetchImpl: dispatchFetch,
+      signal: req.signal,
       requestId: id,
     });
     // Dispatch has serialized (openai-compat) or translated (ai-sdk) the
@@ -369,7 +422,10 @@ export async function handleChatCompletions(
     });
   }
 
-  const settle = async (usage: ExtractedUsage | null): Promise<void> => {
+  const settle = async (
+    usage: ExtractedUsage | null,
+    streamError: SseErrorFrame | null = null,
+  ): Promise<void> => {
     const counts: TokenCounts = usage
       ? {
           promptTokens: usage.promptTokens,
@@ -409,8 +465,10 @@ export async function handleChatCompletions(
       provider: descriptor.provider,
       billingMode: descriptor.billingMode,
       streaming,
-      status: upstream.status,
-      ok: upstream.ok,
+      status: streamError ? streamErrorTraceStatus(streamError) : upstream.status,
+      ok: !streamError && upstream.ok,
+      errorCode: streamError ? String(streamError.code ?? 'upstream_stream_error') : undefined,
+      errorMessage: streamError?.message,
       attempts: 1,
       candidatesTried: [descriptor.provider],
       usage: counts,
@@ -426,7 +484,7 @@ export async function handleChatCompletions(
         requestId: id,
         logger,
         signal: req.signal,
-        settle: async (usage) => settle(usage),
+        settle,
       }),
       { status: upstream.status, headers: passthroughHeaders(upstream.headers) },
     );

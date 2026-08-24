@@ -1,6 +1,7 @@
 import { logger } from '../lib/logger';
 import { buildArgsPreviewDetails, summarizeArgsPreview } from './args-preview';
 import type { ConnectorAttachmentStore } from './attachments';
+import { executeComposio } from './composio';
 import {
   EMAIL_CHANNEL_CONNECTOR_SLUG,
   SLACK_CHANNEL_CONNECTOR_SLUG,
@@ -47,6 +48,7 @@ export interface GatewayConnector {
   slug: string;
   provider:
     | 'pipedream'
+    | 'composio'
     | 'mcp'
     | 'openapi'
     | 'postman'
@@ -197,6 +199,16 @@ export interface GatewayDeps {
     /** { method, url, body?, headers? }. */
     args: Record<string, unknown>;
     accountId: string;
+    userId: string | null;
+  }): Promise<ExecResult>;
+  /** Composio execution through server-side sessions. */
+  executeComposio?(input: {
+    projectId: string;
+    connectorSlug: string;
+    toolkit: string;
+    toolSlug: string;
+    args: Record<string, unknown>;
+    accountId: string | null;
     userId: string | null;
   }): Promise<ExecResult>;
   /**
@@ -699,6 +711,22 @@ export async function handleCall(deps: GatewayDeps, input: CallInput): Promise<C
       } else {
         throw new Error(`pipedream connector has unexpected binding kind "${b.kind}"`);
       }
+    } else if (connector.provider === 'composio') {
+      const b = action.binding;
+      if (b.kind !== 'composio') {
+        throw new Error(`composio connector has unexpected binding kind "${b.kind}"`);
+      }
+      const userId = connector.connectionId && !connector.connectionIsDefault ? connector.connectionId : null;
+      const runner = deps.executeComposio ?? executeComposio;
+      result = await runner({
+        projectId: input.projectId,
+        connectorSlug: input.connectorSlug,
+        toolkit: b.toolkit,
+        toolSlug: b.toolSlug,
+        args: executionArgs,
+        accountId: usable.secret,
+        userId,
+      });
     } else {
       let providerArgs = executionArgs;
       if (connector.provider === 'channel' && connector.platform === 'email') {

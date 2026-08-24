@@ -47,6 +47,7 @@ export type ActionBinding =
   // docs/specs/computer-connector.md.
   | { kind: 'tunnel'; method: string }
   | { kind: 'pipedream'; app: string; actionKey: string }
+  | { kind: 'composio'; toolkit: string; toolSlug: string }
   // Generic Connect-Proxy request: hit ANY endpoint of a Pipedream-connected
   // app's API. Pipedream injects the user's credential server-side, so this
   // makes a pipedream connector behave like an openapi/http one — the agent
@@ -64,6 +65,15 @@ export interface PipedreamActionLike {
     required?: boolean;
     description?: string;
   }>;
+}
+
+/** A Composio session tool. */
+export interface ComposioToolLike {
+  slug: string;
+  name: string;
+  description?: string;
+  inputParameters?: Record<string, unknown> | null;
+  outputParameters?: Record<string, unknown> | null;
 }
 
 /** A declared HTTP route (provider=http, from `.kortix/connectors/*.http.toml`). */

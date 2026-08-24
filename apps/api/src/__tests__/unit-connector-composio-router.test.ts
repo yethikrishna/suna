@@ -40,17 +40,25 @@ describe('connector router provider-neutral connect routes', () => {
     });
   });
 
-  test('connect and finalize call provider-neutral deps and preserve Pipedream fallback path', async () => {
+  test('toolkit discovery forwards pagination', async () => {
+    const app = createConnectorRouter(deps({ listConnectToolkits: async (projectId, input) => ({ provider: 'composio', projectId, input }) }));
+    const res = await request(app, `/projects/${PROJECT}/connect/toolkits?q=remote&cursor=next&limit=25`, { headers: ADMIN });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ provider: 'composio', projectId: PROJECT, input: { q: 'remote', cursor: 'next', limit: 25 } });
+  });
+
+  test('connect and finalize call provider-neutral deps with connection selector', async () => {
     const calls: string[] = [];
+    const connectionId = '11111111-1111-4111-8111-111111111111';
     const app = createConnectorRouter(
       deps({
         connectorConnect: async (_projectId, slug, _userId, redirects) => {
           calls.push(`connect:${slug}:${redirects?.success ?? ''}`);
-          return { provider: 'composio', app: 'github', connectUrl: 'https://composio.test/connect', requestId: 'req_1' };
+          return { provider: 'composio', app: 'composio', connected: true, isNoAuth: true, sessionId: 'session_1', connectionId };
         },
-        connectorFinalize: async (_projectId, slug) => {
-          calls.push(`finalize:${slug}`);
-          return { provider: 'composio', connected: true, accountId: 'ca_1', connectionId: 'conn_1' };
+        connectorFinalize: async (_projectId, slug, _userId, selector) => {
+          calls.push(`finalize:${slug}:${selector?.connectionId}:${selector?.requestId}`);
+          return { provider: 'composio', connected: true, isNoAuth: true, connectionId };
         },
       }),
     );
@@ -63,22 +71,32 @@ describe('connector router provider-neutral connect routes', () => {
     expect(connect.status).toBe(200);
     expect(await connect.json()).toMatchObject({
       provider: 'composio',
-      app: 'github',
-      connectUrl: 'https://composio.test/connect',
-      requestId: 'req_1',
+      app: 'composio', connected: true, isNoAuth: true, connectionId,
     });
 
     const finalize = await request(app, `/projects/${PROJECT}/connectors/github/connect/finalize`, {
       method: 'POST',
-      headers: ADMIN,
+      headers: { ...ADMIN, 'content-type': 'application/json' },
+      body: JSON.stringify({ connection_id: connectionId, request_id: 'req_1' }),
     });
     expect(finalize.status).toBe(200);
     expect(await finalize.json()).toEqual({
       provider: 'composio',
       connected: true,
-      accountId: 'ca_1',
-      connectionId: 'conn_1',
+      isNoAuth: true,
+      connectionId,
     });
-    expect(calls).toEqual(['connect:github:kortix://success', 'finalize:github']);
+    expect(calls).toEqual(['connect:github:kortix://success', `finalize:github:${connectionId}:req_1`]);
+  });
+
+  test('legacy Pipedream deps remain a rollback path', async () => {
+    const app = createConnectorRouter(deps({
+      pipedreamConnect: async () => ({ app: 'github', token: 'rollback-token' }),
+      pipedreamFinalize: async () => ({ connected: true, accountId: 'pd-account' }),
+    }));
+    const connect = await request(app, `/projects/${PROJECT}/connectors/github/connect`, { method: 'POST', headers: ADMIN });
+    expect(await connect.json()).toEqual({ provider: 'pipedream', app: 'github', token: 'rollback-token' });
+    const finalize = await request(app, `/projects/${PROJECT}/connectors/github/connect/finalize`, { method: 'POST', headers: ADMIN });
+    expect(await finalize.json()).toEqual({ provider: 'pipedream', connected: true, accountId: 'pd-account' });
   });
 });

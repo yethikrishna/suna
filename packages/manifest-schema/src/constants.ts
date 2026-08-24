@@ -158,6 +158,7 @@ export const CONNECTOR_PROVIDERS = [
   'http',
   'channel',
 ] as const;
+export type ConnectorProvider = (typeof CONNECTOR_PROVIDERS)[number];
 export const CONNECTOR_AUTH_TYPES = [
   'bearer',
   'basic',

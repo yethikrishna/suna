@@ -39,8 +39,10 @@ import { createHash } from 'node:crypto';
 import {
   CHANNEL_PLATFORMS,
   CONNECTOR_AUTHORIZATION_STRATEGIES,
+  CONNECTOR_PROVIDERS,
   RESERVED_SLUG_PROVIDERS,
   SLUG_RE,
+  type ConnectorProvider as ManifestConnectorProvider,
   parseConnectorHeaders,
 } from '@kortix/manifest-schema';
 import {
@@ -51,25 +53,9 @@ import {
 import { isValidSecretName } from './secrets';
 import { MANIFEST_FILENAME, type ParsedManifest } from './triggers';
 
-export type ConnectorProvider =
-  | 'pipedream'
-  | 'composio'
-  | 'mcp'
-  | 'openapi'
-  | 'postman'
-  | 'graphql'
-  | 'http'
-  | 'channel'
-  | 'computer';
+export type ConnectorProvider = ManifestConnectorProvider | 'computer';
 const PROVIDERS: readonly ConnectorProvider[] = [
-  'pipedream',
-  'composio',
-  'mcp',
-  'openapi',
-  'postman',
-  'graphql',
-  'http',
-  'channel',
+  ...CONNECTOR_PROVIDERS,
   'computer',
 ];
 export type ConnectorAuthorizationStrategy = (typeof CONNECTOR_AUTHORIZATION_STRATEGIES)[number];
@@ -182,7 +168,7 @@ export interface ConnectorSpec {
    *  action defaults to require_approval unless an explicit policy opens it. */
   sensitive: boolean;
   // ── provider-specific ──
-  /** pipedream: app slug (`gmail`, `slack`). */
+  /** pipedream: app slug; composio: toolkit slug (`gmail`, `slack`). */
   app: string | null;
   /** pipedream: named connected-account binding. */
   account: string | null;

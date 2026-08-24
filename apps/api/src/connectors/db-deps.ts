@@ -315,6 +315,38 @@ function authOf(row: ConnectorRow): { auth: ConnectorAuth; hasAuth: boolean } {
   return { auth, hasAuth };
 }
 
+function metadataString(metadata: Record<string, unknown> | null | undefined, key: string): string | null {
+  const value = metadata?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+export function composioConnectionIsNoAuth(metadata: Record<string, unknown> | null | undefined): boolean {
+  return metadata?.provider === 'composio' && metadata.is_no_auth === true;
+}
+
+export function composioConnectedAccountId(metadata: Record<string, unknown> | null | undefined): string | null {
+  return metadata?.provider === 'composio' ? metadataString(metadata, 'connected_account_id') : null;
+}
+
+export function composioConnectionMetadata(input: {
+  toolkit: string;
+  stableUserId: string;
+  sessionId: string;
+  authRequestId?: string;
+  connectedAccountId?: string;
+  isNoAuth: boolean;
+}): Record<string, unknown> {
+  return {
+    provider: 'composio',
+    toolkit: input.toolkit,
+    stable_user_id: input.stableUserId,
+    session_id: input.sessionId,
+    auth_request_id: input.authRequestId ?? null,
+    connected_account_id: input.connectedAccountId ?? null,
+    is_no_auth: input.isNoAuth,
+  };
+}
+
 /**
  * The connector's static request headers (kortix.yaml `headers:`, persisted
  * into `config` by the materializer). Sanitized on the way out — a row written
@@ -417,7 +449,7 @@ async function connectorConnected(
     return true;
   }
   if (row.providerType === 'composio') {
-    return typeof connection?.metadata.connected_account_id === 'string';
+    return composioConnectionIsNoAuth(connection?.metadata) || composioConnectedAccountId(connection?.metadata) !== null;
   }
   return connection
     ? (await connectionCredentialExists({
@@ -436,8 +468,11 @@ function toGatewayConnector(
     metadata: Record<string, unknown>;
   } | null,
 ): GatewayConnector {
-  const { auth, hasAuth } = authOf(row);
+  const { auth, hasAuth: configuredHasAuth } = authOf(row);
   const config = (row.config ?? {}) as Record<string, unknown>;
+  const hasAuth = row.providerType === 'composio'
+    ? !composioConnectionIsNoAuth(connection?.metadata)
+    : configuredHasAuth;
   return {
     connectorId: row.connectorId,
     authSecret: row.authSecret,
@@ -554,6 +589,9 @@ export function makeDbGatewayDeps(principal: ConnectorPrincipal): GatewayDeps {
         return row
           ? channelToken(row.projectId, channelPlatform(row.config), connectionSlug)
           : null;
+      }
+      if (connector.provider === 'composio') {
+        return composioConnectedAccountId(connector.connectionMetadata);
       }
       if (connector.connectionId) {
         const credential = await resolveConnectionCredentialValue({
@@ -737,7 +775,7 @@ export async function loadComposioConnector(projectId: string, slug: string) {
 
 type ComposioAdapter = {
   composioConfigured(): boolean;
-  composioCatalogPage?(input: { q?: string; cursor?: string; limit?: number }): Promise<unknown>;
+  composioCatalogPage?(input: { projectId: string; q?: string; cursor?: string; limit?: number }): Promise<unknown>;
   composioConnectUrl(input: {
     projectId: string;
     slug: string;
@@ -745,7 +783,7 @@ type ComposioAdapter = {
     connectionId: string;
     stableUserId: string;
     redirects?: { success?: string; error?: string };
-  }): Promise<{ connectUrl?: string; sessionId: string; authRequestId?: string; connectedAccountId?: string }>;
+  }): Promise<{ connectUrl?: string; sessionId: string; authRequestId?: string; connectedAccountId?: string; isNoAuth: boolean; connected: boolean }>;
   finalizeComposioConnection(input: {
     projectId: string;
     slug: string;
@@ -755,7 +793,7 @@ type ComposioAdapter = {
     sessionId: string;
     authRequestId?: string;
     expectedConnectedAccountId?: string;
-  }): Promise<{ connected: boolean; connectedAccountId?: string; sessionId?: string; authRequestId?: string }>;
+  }): Promise<{ connected: boolean; connectedAccountId?: string; sessionId: string; authRequestId?: string; isNoAuth: boolean }>;
 };
 
 async function loadComposioAdapter(): Promise<ComposioAdapter | null> {
@@ -1790,6 +1828,13 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
     ];
     return { configured: providers.length > 0, provider: providers[0] ?? null, providers };
   },
+  listConnectToolkits: async (projectId, input) => {
+    const composio = await loadComposioAdapter();
+    if (composio?.composioConfigured?.() && composio.composioCatalogPage) {
+      return composio.composioCatalogPage({ projectId, ...input });
+    }
+    return pipedreamConfigured() ? { provider: 'pipedream', ...(await pipedreamCatalogPage(input)) } : null;
+  },
   connectorConnect: async (projectId, slug, _userId, redirects) => {
     const conn = await loadComposioConnector(projectId, slug);
     if (conn) {
@@ -1801,6 +1846,7 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
         .from(connectorConnections)
         .where(
           and(
+            eq(connectorConnections.accountId, conn.accountId),
             eq(connectorConnections.projectId, projectId),
             eq(connectorConnections.connectorId, conn.connectorId),
             eq(connectorConnections.ownerType, 'project'),
@@ -1812,8 +1858,21 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
       const [connection] = existingConnection
         ? await db
             .update(connectorConnections)
-            .set({ status: 'active', isDefault: true, updatedAt: sql`now()` })
-            .where(eq(connectorConnections.connectionId, existingConnection.connectionId))
+            .set({
+              status: 'active',
+              isDefault: true,
+              // Clear any previous account binding before authorization starts.
+              // Pending rows stay active because the DB enum has no needs_auth
+              // value. The gateway still fails closed on missing auth metadata.
+              metadata: { provider: 'composio', toolkit: conn.app },
+              updatedAt: sql`now()`,
+            })
+            .where(and(
+              eq(connectorConnections.accountId, conn.accountId),
+              eq(connectorConnections.projectId, projectId),
+              eq(connectorConnections.connectorId, conn.connectorId),
+              eq(connectorConnections.connectionId, existingConnection.connectionId),
+            ))
             .returning({ connectionId: connectorConnections.connectionId })
         : await db
             .insert(connectorConnections)
@@ -1826,7 +1885,7 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
               label: 'Default',
               status: 'active',
               isDefault: true,
-              metadata: { provider: 'composio', app: conn.app },
+              metadata: { provider: 'composio', toolkit: conn.app },
               createdBy: null,
             })
             .returning({ connectionId: connectorConnections.connectionId });
@@ -1842,17 +1901,23 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
       await db
         .update(connectorConnections)
         .set({
-          metadata: {
-            provider: 'composio',
-            app: conn.app,
-            stable_user_id: stableUserId,
-            session_id: result.sessionId,
-            auth_request_id: result.authRequestId ?? null,
-            connected_account_id: result.connectedAccountId ?? null,
-          },
+          status: 'active',
+          metadata: composioConnectionMetadata({
+            toolkit: conn.app,
+            stableUserId,
+            sessionId: result.sessionId,
+            authRequestId: result.authRequestId,
+            connectedAccountId: result.connectedAccountId,
+            isNoAuth: result.isNoAuth,
+          }),
           updatedAt: sql`now()`,
         })
-        .where(eq(connectorConnections.connectionId, connection.connectionId));
+        .where(and(
+          eq(connectorConnections.accountId, conn.accountId),
+          eq(connectorConnections.projectId, projectId),
+          eq(connectorConnections.connectorId, conn.connectorId),
+          eq(connectorConnections.connectionId, connection.connectionId),
+        ));
       return {
         provider: 'composio',
         app: conn.app,
@@ -1860,6 +1925,8 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
         requestId: result.authRequestId,
         sessionId: result.sessionId,
         connectionId: connection.connectionId,
+        connected: result.connected,
+        isNoAuth: result.isNoAuth,
       };
     }
     if (!pipedreamConfigured()) return null;
@@ -1868,7 +1935,7 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
     const { connectUrl, token } = await pipedreamConnectUrl(projectId, slug, pipedream.app, null, redirects);
     return { provider: 'pipedream', token, app: pipedream.app, connectUrl };
   },
-  connectorFinalize: async (projectId, slug, _userId) => {
+  connectorFinalize: async (projectId, slug, _userId, selector) => {
     const conn = await loadComposioConnector(projectId, slug);
     if (conn) {
       if (conn.authorizationStrategy !== 'project') return null;
@@ -1879,19 +1946,26 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
         .from(connectorConnections)
         .where(
           and(
+            eq(connectorConnections.accountId, conn.accountId),
             eq(connectorConnections.projectId, projectId),
             eq(connectorConnections.connectorId, conn.connectorId),
             eq(connectorConnections.ownerType, 'project'),
             isNull(connectorConnections.ownerId),
-            eq(connectorConnections.isDefault, true),
+            selector?.connectionId
+              ? eq(connectorConnections.connectionId, selector.connectionId)
+              : eq(connectorConnections.isDefault, true),
           ),
         )
         .limit(1);
+      if (selector?.connectionId && !connection) throw new HTTPException(404, { message: 'connector connection not found' });
       if (!connection) return { provider: 'composio', connected: false };
       const metadata = (connection.metadata ?? {}) as Record<string, unknown>;
       const sessionId = typeof metadata.session_id === 'string' ? metadata.session_id : '';
       const authRequestId = typeof metadata.auth_request_id === 'string' ? metadata.auth_request_id : undefined;
       const expectedConnectedAccountId = typeof metadata.connected_account_id === 'string' ? metadata.connected_account_id : undefined;
+      if (selector?.requestId && selector.requestId !== authRequestId) {
+        throw new HTTPException(409, { message: 'authorization request does not match connection' });
+      }
       if (!sessionId) return { provider: 'composio', connected: false, connectionId: connection.connectionId };
       const stableUserId = composioStableUserId(connection.connectionId);
       const result = await composio.finalizeComposioConnection({
@@ -1907,23 +1981,32 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
       await db
         .update(connectorConnections)
         .set({
-          status: result.connected ? 'active' : 'error',
-          metadata: {
-            provider: 'composio',
-            app: conn.app,
-            stable_user_id: stableUserId,
-            session_id: result.sessionId ?? sessionId,
-            auth_request_id: result.authRequestId ?? authRequestId ?? null,
-            connected_account_id: result.connectedAccountId ?? expectedConnectedAccountId ?? null,
-          },
+          // An incomplete authorization is a retryable needs-auth state. The
+          // gateway derives it from metadata and rejects execution until an
+          // account id exists or the toolkit is explicitly no-auth.
+          status: 'active',
+          metadata: composioConnectionMetadata({
+            toolkit: conn.app,
+            stableUserId,
+            sessionId: result.sessionId,
+            authRequestId: result.authRequestId ?? authRequestId,
+            connectedAccountId: result.connectedAccountId ?? expectedConnectedAccountId,
+            isNoAuth: result.isNoAuth,
+          }),
           updatedAt: sql`now()`,
         })
-        .where(eq(connectorConnections.connectionId, connection.connectionId));
+        .where(and(
+          eq(connectorConnections.accountId, conn.accountId),
+          eq(connectorConnections.projectId, projectId),
+          eq(connectorConnections.connectorId, conn.connectorId),
+          eq(connectorConnections.connectionId, connection.connectionId),
+        ));
       return {
         provider: 'composio',
         connected: result.connected,
         accountId: result.connectedAccountId,
         connectionId: connection.connectionId,
+        isNoAuth: result.isNoAuth,
       };
     }
     if (!pipedreamConfigured()) return null;

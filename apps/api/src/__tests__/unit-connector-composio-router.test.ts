@@ -42,9 +42,9 @@ describe('connector router provider-neutral connect routes', () => {
 
   test('toolkit discovery forwards pagination', async () => {
     const app = createConnectorRouter(deps({ listConnectToolkits: async (projectId, input) => ({ provider: 'composio', projectId, input }) }));
-    const res = await request(app, `/projects/${PROJECT}/connect/toolkits?q=remote&cursor=next&limit=25`, { headers: ADMIN });
+    const res = await request(app, `/projects/${PROJECT}/connect/toolkits?q=remote&category=productivity&cursor=next&limit=25`, { headers: ADMIN });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ provider: 'composio', projectId: PROJECT, input: { q: 'remote', cursor: 'next', limit: 25 } });
+    expect(await res.json()).toEqual({ provider: 'composio', projectId: PROJECT, input: { q: 'remote', category: 'productivity', cursor: 'next', limit: 25 } });
   });
 
   test('connect and finalize call provider-neutral deps with connection selector', async () => {

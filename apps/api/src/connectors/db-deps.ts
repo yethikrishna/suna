@@ -776,7 +776,13 @@ export async function loadComposioConnector(projectId: string, slug: string) {
 
 type ComposioAdapter = {
   composioConfigured(): boolean;
-  composioCatalogPage?(input: { projectId: string; q?: string; cursor?: string; limit?: number }): Promise<unknown>;
+  composioCatalogPage?(input: {
+    projectId: string;
+    q?: string;
+    category?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<unknown>;
   composioConnectUrl(input: {
     projectId: string;
     slug: string;

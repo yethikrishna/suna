@@ -406,7 +406,7 @@ export interface ConnectorRouterDeps {
     selector?: { connectionId?: string; requestId?: string },
   ): Promise<{ provider: string; connected: boolean; accountId?: string; connectionId?: string; isNoAuth?: boolean } | null>;
   connectStatus?(): Promise<{ configured: boolean; provider: string | null; providers?: string[] }>;
-  listConnectToolkits?(projectId: string, input: { q?: string; cursor?: string; limit?: number }): Promise<unknown | null>;
+  listConnectToolkits?(projectId: string, input: { q?: string; category?: string; cursor?: string; limit?: number }): Promise<unknown | null>;
   /**
    * Pipedream webhook: verify sig + finalize. `ok:false` = the signature (or the
    * connector/authorization binding the id names) did not check out → 401.
@@ -1363,6 +1363,7 @@ export function createConnectorRouter(deps: ConnectorRouterDeps): OpenAPIHono {
         params: ProjectParam,
         query: z.object({
           q: z.string().optional(),
+          category: z.string().optional(),
           cursor: z.string().optional(),
           limit: z.coerce.number().int().positive().max(100).optional(),
         }),
@@ -1377,6 +1378,7 @@ export function createConnectorRouter(deps: ConnectorRouterDeps): OpenAPIHono {
       const limit = Number(c.req.query('limit'));
       const result = await deps.listConnectToolkits(projectId, {
         q: c.req.query('q') || undefined,
+        category: c.req.query('category') || undefined,
         cursor: c.req.query('cursor') || undefined,
         ...(Number.isFinite(limit) && limit > 0 ? { limit } : {}),
       });

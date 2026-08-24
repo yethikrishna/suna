@@ -23,6 +23,20 @@ export interface ComposioRuntime {
     create(userId: string, config?: ToolRouterCreateSessionConfig): Promise<ComposioSessionLike>;
     use(sessionId: string): Promise<ComposioSessionLike>;
   };
+  toolkits?: {
+    get(query: { category?: string; limit?: number }): Promise<
+      Array<{
+        slug: string;
+        name: string;
+        noAuth?: boolean;
+        meta: {
+          logo?: string | null;
+          description?: string | null;
+          categories?: Array<{ slug: string; name: string }>;
+        };
+      }>
+    >;
+  };
 }
 
 export interface ComposioSessionLike {
@@ -155,11 +169,58 @@ function activeConnectedAccountId(
 export async function composioCatalogPage(input: {
   projectId: string;
   q?: string;
+  category?: string;
   cursor?: string;
   limit?: number;
   runtime?: ComposioRuntime;
-}): Promise<ToolkitConnectionsDetails> {
-  const session = await (input.runtime ?? getComposioRuntime()).sessions.create(
+}): Promise<ToolkitConnectionsDetails | {
+  provider: 'composio';
+  toolkits: Array<{
+    slug: string;
+    name: string;
+    logo: string | null;
+    description: string | null;
+    categories: string[];
+    isNoAuth: boolean;
+    connected: boolean;
+  }>;
+  total: number;
+  hasMore: false;
+}> {
+  const runtime = input.runtime ?? getComposioRuntime();
+  const category = input.category?.trim();
+  if (category) {
+    if (!runtime.toolkits) throw new Error('Composio toolkit catalogue is unavailable');
+    const page = await runtime.toolkits.get({
+      category,
+      // The core SDK intentionally drops the provider cursor from this endpoint.
+      // Fetch the complete category so "View all" never becomes a first-page slice.
+      limit: 1000,
+    });
+    const search = input.q?.trim().toLowerCase();
+    const toolkits = search
+      ? page.filter((toolkit) =>
+          `${toolkit.name} ${toolkit.slug} ${toolkit.meta.description ?? ''}`
+            .toLowerCase()
+            .includes(search),
+        )
+      : page;
+    return {
+      provider: 'composio',
+      toolkits: toolkits.map((toolkit) => ({
+        slug: toolkit.slug,
+        name: toolkit.name,
+        logo: toolkit.meta.logo ?? null,
+        description: toolkit.meta.description ?? null,
+        categories: (toolkit.meta.categories ?? []).map((item) => item.slug),
+        isNoAuth: toolkit.noAuth === true,
+        connected: false,
+      })),
+      total: toolkits.length,
+      hasMore: false,
+    };
+  }
+  const session = await runtime.sessions.create(
     `kortix-discovery:${input.projectId}`,
     {
       manageConnections: false,

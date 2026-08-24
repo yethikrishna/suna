@@ -56,6 +56,7 @@ function fakeRuntime(
     created?: ComposioSessionLike;
     resumed?: ComposioSessionLike;
     calls?: Array<Record<string, unknown>>;
+    catalogPage?: Awaited<ReturnType<NonNullable<ComposioRuntime['toolkits']>['get']>>;
   } = {},
 ): ComposioRuntime {
   const calls = input.calls ?? [];
@@ -70,6 +71,16 @@ function fakeRuntime(
         return input.resumed ?? input.created ?? session({ id: sessionId });
       },
     },
+    ...(input.catalogPage
+      ? {
+          toolkits: {
+            async get(query) {
+              calls.push({ type: 'catalog', query });
+              return input.catalogPage!;
+            },
+          },
+        }
+      : {}),
   };
 }
 
@@ -448,6 +459,52 @@ test('composioCatalogPage uses a discovery-only identity and session.toolkits pa
       options: { search: 'search', cursor: 'cursor-1', limit: 20 },
     },
   ]);
+});
+
+test('composioCatalogPage applies category filtering to the provider catalogue', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const result = await composioCatalogPage({
+    projectId: 'project-1',
+    q: 'mail',
+    category: 'productivity',
+    cursor: 'cursor-1',
+    limit: 20,
+    runtime: fakeRuntime({
+      calls,
+      catalogPage: [
+        {
+          slug: 'gmail',
+          name: 'Gmail',
+          noAuth: false,
+          meta: {
+            logo: 'https://cdn.example.test/gmail.svg',
+            description: 'Email',
+            categories: [{ slug: 'productivity', name: 'Productivity' }],
+          },
+        },
+      ],
+    }),
+  });
+
+  expect(calls).toEqual([
+    { type: 'catalog', query: { category: 'productivity', limit: 1000 } },
+  ]);
+  expect(result).toEqual({
+    provider: 'composio',
+    toolkits: [
+      {
+        slug: 'gmail',
+        name: 'Gmail',
+        logo: 'https://cdn.example.test/gmail.svg',
+        description: 'Email',
+        categories: ['productivity'],
+        isNoAuth: false,
+        connected: false,
+      },
+    ],
+    total: 1,
+    hasMore: false,
+  });
 });
 
 test('gateway executes Composio with selected-row metadata and never exposes a secret', async () => {

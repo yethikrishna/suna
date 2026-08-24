@@ -970,6 +970,34 @@ flow(
       }
     });
 
+    await ctx.step('Composio category filtering is provider-side and returns the complete category', async () => {
+      if (!composioConfigured) return;
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .get('/v1/connectors/projects/:projectId/connect/toolkits', {
+          params: { projectId: p.id },
+          query: { category: 'developer-tools', limit: '20' },
+        });
+      r.status(200)
+        .body()
+        .has('$.provider', 'composio')
+        .has('$.hasMore', false)
+        .exists('$.toolkits');
+      const body = r.json<{
+        toolkits: Array<{ slug?: string; categories?: string[] }>;
+        total?: number;
+      }>();
+      if (body.total !== body.toolkits.length) {
+        throw new Error(`category total ${body.total} did not match ${body.toolkits.length} returned toolkits`);
+      }
+      if (!body.toolkits.some((item) => item.slug === toolkit)) {
+        throw new Error(`developer-tools category omitted ${toolkit}`);
+      }
+      if (body.toolkits.some((item) => !item.categories?.includes('developer-tools'))) {
+        throw new Error('Composio returned an item outside the requested developer-tools category');
+      }
+    });
+
     await ctx.step('declare a no-auth Composio toolkit without storing the platform key in project config', async () => {
       const created = await ctx.client
         .as(ctx.P.OWNER)

@@ -155,16 +155,15 @@ export async function listConnectCatalogPage(input: {
   category?: string;
   limit: number;
 }) {
+  const category = input.category;
   const query = {
     ...(input.q ? { q: input.q } : {}),
     ...(input.cursor ? { cursor: input.cursor } : {}),
+    ...(category ? { category } : {}),
     limit: input.limit,
   };
   if (input.provider === 'pipedream') {
-    return listPipedreamApps(input.projectId, {
-      ...query,
-      ...(input.category ? { category: input.category } : {}),
-    });
+    return listPipedreamApps(input.projectId, query);
   }
   try {
     const page = await listConnectToolkits(input.projectId, query);
@@ -188,10 +187,7 @@ export async function listConnectCatalogPage(input: {
     };
   } catch (error) {
     if (input.provider !== 'auto' || !connectCatalogEndpointUnavailable(error)) throw error;
-    return listPipedreamApps(input.projectId, {
-      ...query,
-      ...(input.category ? { category: input.category } : {}),
-    });
+    return listPipedreamApps(input.projectId, query);
   }
 }
 

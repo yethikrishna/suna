@@ -665,12 +665,14 @@ test('listConnectToolkits GETs the Composio-first toolkit catalog with paginatio
 
   const result = await listConnectToolkits('P1', {
     q: 'mail',
+    category: 'productivity',
     cursor: 'cursor-1',
     limit: 24,
   });
 
   expect(last().url).toContain('/connectors/projects/P1/connect/toolkits?');
   expect(last().url).toContain('q=mail');
+  expect(last().url).toContain('category=productivity');
   expect(last().url).toContain('cursor=cursor-1');
   expect(last().url).toContain('limit=24');
   expect(result.provider).toBe('composio');

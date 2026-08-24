@@ -1205,6 +1205,7 @@ export interface ConnectToolkitsPage {
 
 export interface ConnectToolkitsQuery {
   q?: string;
+  category?: string;
   cursor?: string;
   limit?: number;
 }
@@ -1222,6 +1223,7 @@ export async function listConnectToolkits(
 ) {
   const params = new URLSearchParams();
   if (query.q) params.set('q', query.q);
+  if (query.category) params.set('category', query.category);
   if (query.cursor) params.set('cursor', query.cursor);
   if (query.limit) params.set('limit', String(query.limit));
   const qs = params.toString();

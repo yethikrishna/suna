@@ -39,25 +39,8 @@ type SharedPreviewContextValue = {
 
 const SharedPreviewContext = createContext<SharedPreviewContextValue | null>(null);
 
-export function shouldRenderInlinePreviewClone(input: {
-  shared: boolean;
-  isOwner: boolean;
-  hasPanelDestination: boolean;
-  hasPreviewUrl: boolean;
-  isLoading: boolean;
-  hasError: boolean;
-  linkOnlyPreview: boolean;
-}): boolean {
-  return (
-    input.shared &&
-    input.isOwner &&
-    input.hasPanelDestination &&
-    input.hasPreviewUrl &&
-    !input.isLoading &&
-    !input.hasError &&
-    !input.linkOnlyPreview
-  );
-}
+export const SHARED_PREVIEW_FRAME_MODES = ['inline', 'panel'] as const;
+type SharedPreviewFrameMode = (typeof SHARED_PREVIEW_FRAME_MODES)[number];
 
 function notify(store: SharedPreviewStore) {
   store.revision += 1;
@@ -223,7 +206,7 @@ export function useSharedPreviewDestination(key: string, element: HTMLElement | 
     context.setDestination(key, element, true);
     return () => context.setDestination(key, element, false);
   }, [context, element, key]);
-  return useCallback(() => context?.store.frames.get(key)?.focus(), [context, key]);
+  return useCallback(() => context?.store.frames.get(`${key}:panel`)?.focus(), [context, key]);
 }
 
 export function useSharedPreviewInlineDestination(
@@ -246,7 +229,10 @@ export function useSharedPreviewInlineDestination(
       notify(context.store);
     };
   }, [context, element, key, owner]);
-  return useCallback(() => context?.store.frames.get(key ?? '')?.focus(), [context, key]);
+  return useCallback(
+    () => context?.store.frames.get(`${key ?? ''}:inline`)?.focus(),
+    [context, key],
+  );
 }
 
 export function useSharedPreviewHasPanelDestination(key: string | null): boolean {
@@ -311,10 +297,11 @@ function SharedPreviewFrames({ context }: { context: SharedPreviewContextValue }
       const panelDestinations = context.store.destinations.get(key) ?? [];
       const inlineDestination = context.store.inlineDestinations.get(key)?.get(owner) ?? null;
       const src = context.store.frameUrls.get(key) ?? preview.previewUrl;
-      if ((panelDestinations.length === 0 && !inlineDestination) || !src) return null;
-      return (
+      if (!inlineDestination || !src) return null;
+      return SHARED_PREVIEW_FRAME_MODES.map((mode) => (
         <SharedPreviewFrame
-          key={key}
+          key={`${key}:${mode}`}
+          mode={mode}
           previewKey={key}
           preview={preview}
           panelDestinations={panelDestinations}
@@ -323,13 +310,14 @@ function SharedPreviewFrames({ context }: { context: SharedPreviewContextValue }
           refreshVersion={context.store.refreshVersions.get(key) ?? 0}
           store={context.store}
         />
-      );
+      ));
     }),
     document.body,
   );
 }
 
 function SharedPreviewFrame({
+  mode,
   previewKey,
   preview,
   panelDestinations,
@@ -338,10 +326,11 @@ function SharedPreviewFrame({
   refreshVersion,
   store,
 }: {
+  mode: SharedPreviewFrameMode;
   previewKey: string;
   preview: ServicePreviewState;
   panelDestinations: HTMLElement[];
-  inlineDestination: HTMLElement | null;
+  inlineDestination: HTMLElement;
   src: string;
   refreshVersion: number;
   store: SharedPreviewStore;
@@ -350,18 +339,20 @@ function SharedPreviewFrame({
 
   useEffect(() => {
     if (!iframeElement) return;
-    store.frames.set(previewKey, iframeElement);
+    const frameKey = `${previewKey}:${mode}`;
+    store.frames.set(frameKey, iframeElement);
     return () => {
-      if (store.frames.get(previewKey) === iframeElement) store.frames.delete(previewKey);
+      if (store.frames.get(frameKey) === iframeElement) store.frames.delete(frameKey);
     };
-  }, [iframeElement, previewKey, store]);
+  }, [iframeElement, mode, previewKey, store]);
 
   useEffect(() => {
     if (!iframeElement) return;
 
-    const allDestinations = [...panelDestinations, inlineDestination].filter(
-      (element): element is HTMLElement => !!element,
-    );
+    const allDestinations =
+      mode === 'inline'
+        ? [inlineDestination]
+        : panelDestinations.filter((element): element is HTMLElement => !!element);
     const allAncestors = new Set<HTMLElement>();
     for (const destination of allDestinations) {
       for (let ancestor = destination.parentElement; ancestor; ancestor = ancestor.parentElement) {
@@ -413,10 +404,20 @@ function SharedPreviewFrame({
     };
 
     const placeFrame = () => {
-      const destination = [...panelDestinations].reverse().find(isVisible) ?? inlineDestination;
+      const destination =
+        mode === 'inline'
+          ? inlineDestination
+          : ([...panelDestinations].reverse().find(isVisible) ?? null);
       if (!destination) {
-        iframeElement.style.visibility = 'hidden';
-        iframeElement.style.pointerEvents = 'none';
+        Object.assign(iframeElement.style, {
+          position: 'fixed',
+          top: '-10000px',
+          left: '-10000px',
+          width: '1px',
+          height: '1px',
+          visibility: 'hidden',
+          pointerEvents: 'none',
+        });
         return;
       }
       const rect = destination.getBoundingClientRect();
@@ -479,7 +480,7 @@ function SharedPreviewFrame({
         borderTopRightRadius: topRight,
         borderBottomRightRadius: bottomRight,
         borderBottomLeftRadius: bottomLeft,
-        zIndex: panelDestinations.includes(destination) ? '60' : '15',
+        zIndex: mode === 'panel' ? '60' : '15',
       });
     };
 
@@ -520,13 +521,24 @@ function SharedPreviewFrame({
       window.removeEventListener('resize', placeFrame);
       window.removeEventListener('scroll', placeFrame, true);
     };
-  }, [iframeElement, inlineDestination, panelDestinations, preview.hasError, preview.isLoading]);
+  }, [
+    iframeElement,
+    inlineDestination,
+    mode,
+    panelDestinations,
+    preview.hasError,
+    preview.isLoading,
+  ]);
 
   const handleLoad = () => {
-    store.previews.get(previewKey)?.forEach((record) => record.onLoad());
+    if (mode === 'inline') {
+      store.previews.get(previewKey)?.forEach((record) => record.onLoad());
+    }
   };
   const handleError = () => {
-    store.previews.get(previewKey)?.forEach((record) => record.onError());
+    if (mode === 'inline') {
+      store.previews.get(previewKey)?.forEach((record) => record.onError());
+    }
   };
 
   return (
@@ -534,9 +546,10 @@ function SharedPreviewFrame({
       ref={setIframeElement}
       key={refreshVersion}
       src={src}
-      title={preview.displayLabel}
+      title={`${preview.displayLabel}${mode === 'panel' ? ' panel preview' : ''}`}
       tabIndex={-1}
-      data-shared-preview={previewKey}
+      data-shared-preview={mode === 'inline' ? previewKey : undefined}
+      data-panel-preview={mode === 'panel' ? previewKey : undefined}
       style={{ visibility: 'hidden' }}
       className="bg-secondary border-0"
       sandbox={INTERACTIVE_PREVIEW_IFRAME_SANDBOX}

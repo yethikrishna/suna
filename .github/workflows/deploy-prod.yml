@@ -79,6 +79,15 @@ jobs:
           echo "tag=v$V" >> "$GITHUB_OUTPUT"
           echo "Publishing v$V"
 
+          # action-gh-release reuses an existing tag without moving it. Refuse
+          # a collision before migrations or image rollout can publish a release
+          # whose tag names unrelated code. A same-commit tag permits safe reruns.
+          EXISTING="$(git rev-parse -q --verify "refs/tags/v$V^{commit}" || true)"
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "$GITHUB_SHA" ]; then
+            echo "::error::Tag v$V already points at $EXISTING, not this prod commit $GITHUB_SHA. Refusing to reuse or move an immutable release tag."
+            exit 1
+          fi
+
           # promote.yml committed RELEASE_NOTES.md (line 1 = title, rest = notes)
           # onto the release branch; it merged into prod with this release. The
           # tag does NOT exist yet — the GitHub Release job creates it at this
@@ -715,6 +724,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           # Human title + notes from the tag annotation (set at promote time) lead
           # the release; the auto-generated PR list is appended below them.
           name: ${{ needs.version.outputs.title != '' && format('{0} — {1}', needs.version.outputs.tag, needs.version.outputs.title) || needs.version.outputs.tag }}

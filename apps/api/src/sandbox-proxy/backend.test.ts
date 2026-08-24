@@ -40,7 +40,8 @@ let resolveCalls: Array<{ port: number; transport?: string; path?: string }> = [
 
 mock.module('../platform/providers', () => ({
   ...realProviders,
-  getProvider: () => ({
+  getProvider: (provider: string) => ({
+    ingressCacheTtlMs: provider === 'e2b' ? 0 : undefined,
     async resolveIngress(_externalId: string, request: { port: number; transport?: string; path?: string }) {
       resolveCalls.push(request);
       const isPty = request.transport === 'websocket' && request.path?.includes('/pty/');

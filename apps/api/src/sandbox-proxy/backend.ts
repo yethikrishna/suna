@@ -254,13 +254,12 @@ export async function resolveSandboxIngress(
 
   const record = typeof sandboxRef === 'string' ? await loadSandbox(sandboxRef) : sandboxRef;
   if (!record) throw new Error(`[proxy] no sandbox row for ${sandboxId}`);
-  const ingress = await getProvider(record.provider as ProviderName).resolveIngress(record.externalId, request);
+  const provider = getProvider(record.provider as ProviderName);
+  const ingress = await provider.resolveIngress(record.externalId, request);
 
-  // E2B traffic tokens rotate when a paused sandbox resumes. Provider handles
-  // already carry their own short, single-flight cache; an outer five-minute
-  // cache would keep stale tokens alive across API replicas.
-  if (record.provider !== 'e2b') {
-    previewLinkCache.set(key, { ingress, expiresAt: Date.now() + CACHE_TTL_MS });
+  const cacheTtlMs = provider.ingressCacheTtlMs ?? CACHE_TTL_MS;
+  if (cacheTtlMs > 0) {
+    previewLinkCache.set(key, { ingress, expiresAt: Date.now() + cacheTtlMs });
   }
   return ingress;
 }

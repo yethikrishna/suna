@@ -310,6 +310,7 @@ async function ensureAppEntrypoint(
 
 export class E2BProvider implements SandboxProvider {
   readonly name: ProviderName = 'e2b';
+  readonly ingressCacheTtlMs = 0;
 
   constructor(
     private readonly removeTimeoutMs = E2B_REMOVE_TIMEOUT_MS,

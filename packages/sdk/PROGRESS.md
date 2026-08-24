@@ -12,6 +12,105 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-24 — session `read-is-the-liveness-check` — a session page must never wait on a probe — DONE
+
+**Files:** `core/session-sync/session-sync-controller.ts` (`markLoaded` on
+SUCCESS only; `scheduleTailRetry` with backoff; destroy cancels it) + tests
+(+4, one replaced) · `react/use-session-sync.ts` (the initial read no longer
+waits for `runtimeHealthy`).
+
+**What.** Two screenshots, same page: the SIDEBAR showed a session live with a
+green dot while the MAIN PANE sat on "Waking the agent — this is taking longer
+than usual". Elsewhere, a session opened completely blank while its runtime
+terminal held the whole conversation.
+
+One mechanism under both. `resolveSessionContentState` keeps the web app on its
+loader while there are no messages, and exactly one thing produces messages:
+`reconcile('initial')`. That read was gated on `runtimeHealthy === true`. So the
+page's only exit from the loader was a health probe — and a box that is up while
+failing its probe (loaded, mid-turn, slow) shows a spinner over a session that
+could have been read the whole time. The sidebar reads the session list instead,
+which is why one page gave two answers.
+
+The blank came from the same function, eight lines away. `markLoaded` ran in a
+`finally`, so a read that FAILED still told the store the session was loaded —
+and the store plants an empty message list for that. A first read losing to a
+waking box therefore RECORDED "this session has no messages", the UI painted an
+empty conversation, and nothing came back: the mount had run, and the liveness
+poll only turns on while a session is working.
+
+**Fix.** `markLoaded` on success only — a successful read of zero messages is a
+fact about the session, a failed read is a fact about nothing. Failures schedule
+a retry with backoff (1s -> 15s cap) until one lands. And the read no longer
+waits for the probe: it starts as soon as the sandbox is known, because THE READ
+IS THE LIVENESS CHECK. Readiness is a byproduct of asking for what we wanted
+anyway, not a precondition for asking.
+
+**And the last blank.** The session OBJECT arriving is not the transcript
+arriving — two different requests, and the message read is the one that loses.
+`resolveSessionContentState` treated the first as proof of the second, so a
+session whose read had not landed rendered the full shell — header, composer,
+empty thread — over a long history. It now takes `transcriptLoaded` (the sync
+hook's `isLoading`, which flips only when an authoritative read lands) and waits
+for the read rather than for the metadata.
+
+**And the blank thread whose reads ALL returned 200.** Measured from the
+network panel (essentia, a run with hundreds of image reads):
+
+```
+message?limit=50            200   8,228 kB   30.39 s
+message?limit=50            200  24,460 kB   48.76 s
+message?limit=50&before=..  200  20,284 kB   35.74 s
+message?limit=50&before=..  200  25,125 kB   29.23 s
+-> 78,097 kB transferred, finish 3.8 min, NOTHING on screen
+```
+
+Fifty messages weigh 8-25 MB because the parts carry image bytes. The tail read
+kept walking backwards until every assistant message had its parent prompt in
+hand — so an assistant reply could never render above its own prompt — and
+`hydrate` ran only when that walk ENDED. On a long turn the walk is the whole
+session, serially, through the sandbox proxy.
+
+The tail is now ONE page, rendered — what OpenCode's own client does. The window
+may start on an assistant whose prompt is a page up; that is what OpenCode shows
+too, and `loadOlder` (user-driven) still completes the turn, bounded by
+`MAX_TURN_BACKFILL_PAGES`.
+
+**Gates:** `typecheck` clean (both projects) · `pnpm test` 2467 pass / 0 fail ·
+apps/web tsc clean, session suite 2523 pass / 0 fail.
+
+---
+
+### 2026-08-24 — session `reconcile-on-eviction` — close the hole the IndexedDB removal named — DONE
+
+**Files:** `core/session-sync/fragment.ts` (NEW — `transcriptIsFragment`) +
+`fragment.test.ts` (4 tests) · `core/session-sync/session-sync-controller.ts`
+(`SessionSyncReason` += `eviction`) · `react/use-session-sync.ts` (subscribes
+and repairs).
+
+**What.** `5a7a43517f` removed the IndexedDB transcript mirror and said so in
+its own message: "#6146 evicts a detached session's transcript, and a session
+evicted while its agent runs comes back from SSE as a fragment; that repaint is
+gone here and no reconcile is keyed on eviction, so an evicted-then-refilled
+session can sit on a partial transcript until a reload. This PR does not address
+that; it should land with, or before, a reconcile-on-eviction fix." It landed
+without one. Reported the same day from live sessions: transcript blank or
+starting mid-conversation while the runtime held everything.
+
+**Fix.** The store already carries the exact signature. Eviction drops the
+messages AND marks the id; every authoritative re-establishment — `hydrate`,
+`clearSession`, `optimisticAdd` — clears the mark, and `applyEvent` does not. So
+messages present while the mark is still set can only have come from frames that
+arrived after the eviction: a fragment, by construction. `transcriptIsFragment`
+names that, and `useSessionSync` subscribes to the store rather than checking
+once, because the refill happens while the component is already mounted. The
+successful read disarms it — `hydrate` clears the mark.
+
+**Gates:** `typecheck` clean (both projects) · `pnpm test` 2460 pass / 0 fail ·
+`smoke:install` passed · apps/web tsc clean, session suite 2517 pass / 0 fail.
+
+---
+
 ### 2026-08-24 — session `transcript-convergence` — the transcript must catch up, and five things stopped it — DONE
 
 **Files:** `core/session-sync/session-sync-controller.ts` (turn-end reconcile,

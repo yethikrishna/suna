@@ -4,6 +4,7 @@ import {
   createSharedPreviewStore,
   publishSharedPreview,
   removeSharedPreview,
+  shouldRenderInlinePreviewClone,
 } from './shared-preview';
 
 const preview = (refreshKey: number, previewUrl = 'https://preview.test/authenticated') =>
@@ -40,5 +41,30 @@ describe('shared preview ownership', () => {
 
     expect(store.previews.get('https://preview.test')?.keys().next().value).toBe(first);
     expect(store.previews.get('https://preview.test')?.get(first)).toBe(refreshed);
+  });
+});
+
+describe('inline preview clone', () => {
+  const ready = {
+    shared: true,
+    isOwner: true,
+    hasPanelDestination: true,
+    hasPreviewUrl: true,
+    isLoading: false,
+    hasError: false,
+    linkOnlyPreview: false,
+  };
+
+  test('renders only while a panel owns the loaded primary preview', () => {
+    expect(shouldRenderInlinePreviewClone(ready)).toBe(true);
+    expect(shouldRenderInlinePreviewClone({ ...ready, hasPanelDestination: false })).toBe(false);
+    expect(shouldRenderInlinePreviewClone({ ...ready, isLoading: true })).toBe(false);
+    expect(shouldRenderInlinePreviewClone({ ...ready, hasError: true })).toBe(false);
+  });
+
+  test('does not clone non-owner, standalone, or link-only previews', () => {
+    expect(shouldRenderInlinePreviewClone({ ...ready, isOwner: false })).toBe(false);
+    expect(shouldRenderInlinePreviewClone({ ...ready, shared: false })).toBe(false);
+    expect(shouldRenderInlinePreviewClone({ ...ready, linkOnlyPreview: true })).toBe(false);
   });
 });

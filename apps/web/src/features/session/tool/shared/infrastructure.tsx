@@ -16,6 +16,7 @@ import { openSessionQuickView } from '@/features/session/open-session-quick-view
 import { prefersPreviewLink } from '@/features/session/preview-url-fallback';
 import { isEmptyShowPart } from '@/features/session/session-activity-groups';
 import {
+  shouldRenderInlinePreviewClone,
   usePublishSharedPreview,
   useSharedPreview,
   useSharedPreviewHasPanelDestination,
@@ -338,6 +339,40 @@ export function ServicePreviewUrlFallback({ preview }: { preview: ServicePreview
   );
 }
 
+function InlinePreviewClone({ preview }: { preview: ServicePreviewState }) {
+  const tHardcodedUi = useTranslations('hardcodedUi');
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  return (
+    <>
+      {isLoading && !hasError && (
+        <div className="bg-background/60 absolute inset-0 z-10 flex items-center justify-center">
+          <div className="text-muted-foreground flex items-center gap-2">
+            <Loading />
+            <span className="text-xs">
+              {tHardcodedUi.raw('componentsSessionToolRenderers.line380JsxTextLoadingPreview')}
+            </span>
+          </div>
+        </div>
+      )}
+      {hasError && <ServicePreviewUrlFallback preview={preview} />}
+      <iframe
+        src={preview.previewUrl!}
+        title={`${preview.displayLabel} inline preview`}
+        data-inline-preview-clone
+        className="bg-secondary absolute inset-0 h-full w-full border-0"
+        sandbox={INTERACTIVE_PREVIEW_IFRAME_SANDBOX}
+        onLoad={() => setIsLoading(false)}
+        onError={() => {
+          setIsLoading(false);
+          setHasError(true);
+        }}
+      />
+    </>
+  );
+}
+
 export function ServicePreviewViewport({ preview }: { preview: ServicePreviewState }) {
   const fill = useContext(ToolSurfaceContext) === 'panel';
   const { previewUrl, displayLabel, isLoading, hasError } = preview;
@@ -353,6 +388,15 @@ export function ServicePreviewViewport({ preview }: { preview: ServicePreviewSta
     inlineDestination,
   );
   const hasPanelDestination = useSharedPreviewHasPanelDestination(sharedPreviewKey);
+  const renderInlineClone = shouldRenderInlinePreviewClone({
+    shared,
+    isOwner,
+    hasPanelDestination,
+    hasPreviewUrl: !!previewUrl,
+    isLoading,
+    hasError,
+    linkOnlyPreview,
+  });
 
   return (
     <div
@@ -393,6 +437,7 @@ export function ServicePreviewViewport({ preview }: { preview: ServicePreviewSta
           onError={preview.onError}
         />
       )}
+      {renderInlineClone && <InlinePreviewClone key={preview.refreshKey} preview={preview} />}
     </div>
   );
 }

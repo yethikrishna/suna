@@ -39,6 +39,26 @@ type SharedPreviewContextValue = {
 
 const SharedPreviewContext = createContext<SharedPreviewContextValue | null>(null);
 
+export function shouldRenderInlinePreviewClone(input: {
+  shared: boolean;
+  isOwner: boolean;
+  hasPanelDestination: boolean;
+  hasPreviewUrl: boolean;
+  isLoading: boolean;
+  hasError: boolean;
+  linkOnlyPreview: boolean;
+}): boolean {
+  return (
+    input.shared &&
+    input.isOwner &&
+    input.hasPanelDestination &&
+    input.hasPreviewUrl &&
+    !input.isLoading &&
+    !input.hasError &&
+    !input.linkOnlyPreview
+  );
+}
+
 function notify(store: SharedPreviewStore) {
   store.revision += 1;
   store.listeners.forEach((listener) => listener());

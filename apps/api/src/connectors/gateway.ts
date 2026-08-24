@@ -205,11 +205,12 @@ export interface GatewayDeps {
   executeComposio?(input: {
     projectId: string;
     connectorSlug: string;
+    connectionId: string;
+    sessionId: string | null;
     toolkit: string;
     toolSlug: string;
     args: Record<string, unknown>;
-    accountId: string | null;
-    userId: string | null;
+    connectedAccountId: string | null;
   }): Promise<ExecResult>;
   /**
    * Computer (Agent Computer Tunnel) execution — required for `computer`
@@ -338,6 +339,18 @@ async function connectorUsable(
   _input: CallInput,
   credentialOverride?: string | null,
 ): Promise<{ ok: true; secret: string | null } | { ok: false; reason: string }> {
+  // Composio never uses connector credentials. Its account binding and session
+  // id are server-owned fields on the selected connector_connections row. This
+  // branch also lets no-auth toolkits execute without inventing a credential.
+  if (connector.provider === 'composio') {
+    if (!connector.connectionId) return { ok: false, reason: 'composio_connection_missing' };
+    if (!connector.hasAuth || connector.connectionMetadata?.is_no_auth === true) {
+      return { ok: true, secret: null };
+    }
+    return typeof connector.connectionMetadata?.connected_account_id === 'string'
+      ? { ok: true, secret: null }
+      : { ok: false, reason: 'needs_auth' };
+  }
   // Credential — none needed (public), or the one shared project credential.
   // (`per_user` — each member's own — was removed 2026-07-05; every connector
   // now resolves the shared, userId-null credential.)
@@ -716,16 +729,25 @@ export async function handleCall(deps: GatewayDeps, input: CallInput): Promise<C
       if (b.kind !== 'composio') {
         throw new Error(`composio connector has unexpected binding kind "${b.kind}"`);
       }
-      const userId = connector.connectionId && !connector.connectionIsDefault ? connector.connectionId : null;
+      if (!connector.connectionId) throw new Error('composio_connection_missing');
+      const persistedSessionId =
+        typeof connector.connectionMetadata?.session_id === 'string'
+          ? connector.connectionMetadata.session_id
+          : null;
+      const connectedAccountId =
+        typeof connector.connectionMetadata?.connected_account_id === 'string'
+          ? connector.connectionMetadata.connected_account_id
+          : null;
       const runner = deps.executeComposio ?? executeComposio;
       result = await runner({
         projectId: input.projectId,
         connectorSlug: input.connectorSlug,
+        connectionId: connector.connectionId,
+        sessionId: persistedSessionId,
         toolkit: b.toolkit,
         toolSlug: b.toolSlug,
         args: executionArgs,
-        accountId: usable.secret,
-        userId,
+        connectedAccountId,
       });
     } else {
       let providerArgs = executionArgs;

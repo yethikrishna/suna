@@ -1,53 +1,97 @@
 import { expect, test } from 'bun:test';
-import { composioUserId, executeComposio, type ComposioRuntime } from './composio';
-import { handleCall, type GatewayDeps } from './gateway';
+import {
+  composioCatalogPage,
+  composioConnectUrl,
+  composioSessionTools,
+  composioUserId,
+  executeComposio,
+  finalizeComposioConnection,
+  type ComposioRuntime,
+  type ComposioSessionLike,
+} from './composio';
+import { handleCall, type GatewayDeps, type GatewayConnector } from './gateway';
 import { normalizeComposio } from './normalize';
-import type { GatewayConnector } from './gateway';
 
-function fakeRuntime(calls: Array<Record<string, unknown>>): ComposioRuntime {
+type ToolkitItem = Awaited<ReturnType<ComposioSessionLike['toolkits']>>['items'][number];
+
+function session(
+  input: {
+    id?: string;
+    tools?: ComposioSessionLike['tools'] extends (...args: never[]) => Promise<infer T> ? T : never;
+    toolkit?: ToolkitItem;
+    execute?: ComposioSessionLike['execute'];
+    authorize?: ComposioSessionLike['authorize'];
+  } = {},
+): ComposioSessionLike {
+  return {
+    sessionId: input.id ?? 'session-1',
+    async tools() {
+      return input.tools ?? [];
+    },
+    async toolkits() {
+      return {
+        items: input.toolkit ? [input.toolkit] : [],
+        cursor: undefined,
+        totalPages: 1,
+      };
+    },
+    authorize:
+      input.authorize ??
+      (async () => ({
+        id: 'auth-request-1',
+        status: 'INITIATED',
+        redirectUrl: 'https://composio.test/connect',
+        toJSON: () => ({
+          id: 'auth-request-1',
+          status: 'INITIATED',
+          redirectUrl: 'https://composio.test/connect',
+        }),
+      })),
+    execute: input.execute ?? (async () => ({ data: { ok: true }, error: null, logId: 'log-123' })),
+  };
+}
+
+function fakeRuntime(
+  input: {
+    created?: ComposioSessionLike;
+    resumed?: ComposioSessionLike;
+    calls?: Array<Record<string, unknown>>;
+  } = {},
+): ComposioRuntime {
+  const calls = input.calls ?? [];
   return {
     sessions: {
       async create(userId, config) {
         calls.push({ type: 'create', userId, config });
-        return {
-          sessionId: 'session-1',
-          async tools() {
-            return [];
-          },
-          async authorize() {
-            return { id: 'conn-1', redirectUrl: 'https://composio.test/connect' };
-          },
-          async execute(toolSlug, args, options) {
-            calls.push({ type: 'execute', toolSlug, args, options });
-            return { data: { ok: true }, error: null, logId: 'log-123' };
-          },
-        };
+        return input.created ?? session();
       },
-      async use() {
-        throw new Error('unexpected use');
+      async use(sessionId) {
+        calls.push({ type: 'use', sessionId });
+        return input.resumed ?? input.created ?? session({ id: sessionId });
       },
     },
   };
 }
 
-test('composioUserId is stable per connector and connection', () => {
-  expect(composioUserId('project-1', 'gmail', null)).toBe('kortix-connector:project-1:gmail');
-  expect(composioUserId('project-1', 'gmail', 'connection-1')).toBe('kortix-connection:connection-1');
+test('composioUserId is always connection-scoped', () => {
+  expect(composioUserId('connection-1')).toBe('kortix-connection:connection-1');
+  expect(() => composioUserId(' ')).toThrow('composio connection id is required');
 });
 
-test('normalizeComposio emits Composio action bindings and bounded schemas', () => {
+test('normalizeComposio maps the installed 0.17 OpenAI-style session tools', () => {
   const actions = normalizeComposio(
     [
       {
-        slug: 'GMAIL_SEND_EMAIL',
-        name: 'Send email',
-        description: 'Send one email',
-        inputParameters: {
-          type: 'object',
-          properties: { to: { type: 'string' } },
-          required: ['to'],
+        type: 'function',
+        function: {
+          name: 'GMAIL_SEND_EMAIL',
+          description: 'Send one email',
+          parameters: {
+            type: 'object',
+            properties: { to: { type: 'string' } },
+            required: ['to'],
+          },
         },
-        outputParameters: { type: 'object', properties: { id: { type: 'string' } } },
       },
     ],
     'gmail',
@@ -56,95 +100,365 @@ test('normalizeComposio emits Composio action bindings and bounded schemas', () 
   expect(actions).toEqual([
     {
       path: 'send_email',
-      name: 'Send email',
+      name: 'GMAIL_SEND_EMAIL',
       description: 'Send one email',
       inputSchema: {
         type: 'object',
         properties: { to: { type: 'string' } },
         required: ['to'],
       },
-      outputSchema: { type: 'object', properties: { id: { type: 'string' } } },
+      outputSchema: null,
       risk: 'write',
-      binding: { kind: 'composio', toolkit: 'gmail', toolSlug: 'GMAIL_SEND_EMAIL' },
+      binding: {
+        kind: 'composio',
+        toolkit: 'gmail',
+        toolSlug: 'GMAIL_SEND_EMAIL',
+      },
     },
   ]);
 });
 
-test('executeComposio uses sessions and returns provider result with log id', async () => {
+test('composioSessionTools creates a direct-tools session with the sandbox disabled', async () => {
   const calls: Array<Record<string, unknown>> = [];
+  const tools = [
+    {
+      type: 'function' as const,
+      function: {
+        name: 'HACKERNEWS_GET_TOP_STORIES',
+        parameters: { type: 'object' },
+      },
+    },
+  ];
+  const result = await composioSessionTools({
+    connectionId: 'connection-1',
+    toolkit: 'hackernews',
+    runtime: fakeRuntime({ created: session({ tools }), calls }),
+  });
+
+  expect(result).toEqual(tools);
+  expect(calls).toEqual([
+    {
+      type: 'create',
+      userId: 'kortix-connection:connection-1',
+      config: {
+        sessionPreset: 'direct_tools',
+        toolkits: ['hackernews'],
+        manageConnections: false,
+        sandbox: { enable: false },
+      },
+    },
+  ]);
+});
+
+test('composioSessionTools resumes the persisted session id', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  await composioSessionTools({
+    connectionId: 'connection-1',
+    toolkit: 'hackernews',
+    sessionId: 'persisted-session',
+    runtime: fakeRuntime({ calls }),
+  });
+  expect(calls).toEqual([{ type: 'use', sessionId: 'persisted-session' }]);
+});
+
+test('composioConnectUrl uses session.authorize and does not treat its id as the connected account', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const created = session({
+    toolkit: { slug: 'gmail', name: 'Gmail', isNoAuth: false },
+    authorize: async (toolkit, options) => {
+      calls.push({ type: 'authorize', toolkit, options });
+      return {
+        id: 'auth-request-1',
+        status: 'INITIATED',
+        redirectUrl: 'https://composio.test/connect',
+        toJSON: () => ({
+          id: 'auth-request-1',
+          status: 'INITIATED',
+          redirectUrl: 'https://composio.test/connect',
+        }),
+      };
+    },
+  });
+
+  const result = await composioConnectUrl({
+    projectId: 'project-1',
+    slug: 'gmail',
+    app: 'gmail',
+    connectionId: 'connection-1',
+    stableUserId: 'kortix-connection:connection-1',
+    redirects: { success: 'https://kortix.test/success' },
+    runtime: fakeRuntime({ created, calls }),
+  });
+
+  expect(result).toEqual({
+    connectUrl: 'https://composio.test/connect',
+    sessionId: 'session-1',
+    authRequestId: 'auth-request-1',
+    connected: false,
+    isNoAuth: false,
+  });
+  expect(calls.at(-1)).toEqual({
+    type: 'authorize',
+    toolkit: 'gmail',
+    options: { callbackUrl: 'https://kortix.test/success', alias: 'gmail' },
+  });
+});
+
+test('composioConnectUrl completes no-auth toolkits without authorization', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const created = session({
+    toolkit: {
+      slug: 'composio_search',
+      name: 'Composio Search',
+      isNoAuth: true,
+    },
+    authorize: async () => {
+      throw new Error('authorize must not run for no-auth toolkits');
+    },
+  });
+
+  const result = await composioConnectUrl({
+    projectId: 'project-1',
+    slug: 'search',
+    app: 'composio_search',
+    connectionId: 'connection-1',
+    stableUserId: 'kortix-connection:connection-1',
+    runtime: fakeRuntime({ created, calls }),
+  });
+
+  expect(result).toEqual({
+    sessionId: 'session-1',
+    connected: true,
+    isNoAuth: true,
+  });
+  expect(calls.some((call) => call.type === 'authorize')).toBe(false);
+});
+
+test('finalizeComposioConnection resumes the persisted session and reads the active account', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const resumed = session({
+    id: 'persisted-session',
+    toolkit: {
+      slug: 'gmail',
+      name: 'Gmail',
+      isNoAuth: false,
+      connection: {
+        isActive: true,
+        connectedAccount: { id: 'connected-account-1', status: 'ACTIVE' },
+      },
+    },
+  });
+
+  const result = await finalizeComposioConnection({
+    projectId: 'project-1',
+    slug: 'gmail',
+    app: 'gmail',
+    connectionId: 'connection-1',
+    stableUserId: 'kortix-connection:connection-1',
+    sessionId: 'persisted-session',
+    authRequestId: 'auth-request-1',
+    runtime: fakeRuntime({ resumed, calls }),
+  });
+
+  expect(result).toEqual({
+    connected: true,
+    connectedAccountId: 'connected-account-1',
+    sessionId: 'persisted-session',
+    authRequestId: 'auth-request-1',
+    isNoAuth: false,
+  });
+  expect(calls).toEqual([{ type: 'use', sessionId: 'persisted-session' }]);
+});
+
+test('executeComposio resumes the selected connection session and returns real data plus log id', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const resumed = session({
+    id: 'persisted-session',
+    toolkit: {
+      slug: 'gmail',
+      name: 'Gmail',
+      isNoAuth: false,
+      connection: {
+        isActive: true,
+        connectedAccount: { id: 'connected-account-1', status: 'ACTIVE' },
+      },
+    },
+    execute: async (toolSlug, args, options) => {
+      calls.push({ type: 'execute', toolSlug, args, options });
+      return { data: { sent: true }, error: null, logId: 'log-123' };
+    },
+  });
+
   const result = await executeComposio({
     projectId: 'project-1',
     connectorSlug: 'gmail',
+    connectionId: 'connection-1',
+    sessionId: 'persisted-session',
     toolkit: 'gmail',
     toolSlug: 'GMAIL_SEND_EMAIL',
     args: { to: 'a@example.com' },
-    accountId: 'account-1',
-    userId: 'connection-1',
-    runtime: fakeRuntime(calls),
+    connectedAccountId: 'connected-account-1',
+    runtime: fakeRuntime({ resumed, calls }),
   });
 
   expect(result).toEqual({
     ok: true,
     status: 200,
-    data: { provider: 'composio', requestId: 'log-123', result: { ok: true } },
+    data: {
+      provider: 'composio',
+      requestId: 'log-123',
+      logId: 'log-123',
+      sessionId: 'persisted-session',
+      result: { sent: true },
+    },
   });
   expect(calls).toEqual([
-    {
-      type: 'create',
-      userId: 'kortix-connection:connection-1',
-      config: { toolkits: ['gmail'], manageConnections: true },
-    },
+    { type: 'use', sessionId: 'persisted-session' },
     {
       type: 'execute',
       toolSlug: 'GMAIL_SEND_EMAIL',
       args: { to: 'a@example.com' },
-      options: { account: 'account-1' },
+      options: { account: 'connected-account-1' },
     },
   ]);
 });
 
-test('executeComposio rejects empty Composio log id', async () => {
-  const runtime: ComposioRuntime = {
-    sessions: {
-      async create() {
-        return {
-          sessionId: 'session-1',
-          async tools() {
-            return [];
-          },
-          async authorize() {
-            return { id: 'conn-1', redirectUrl: 'https://composio.test/connect' };
-          },
-          async execute() {
-            return { data: {}, error: null, logId: ' ' };
-          },
-        };
-      },
-      async use() {
-        throw new Error('unexpected use');
+test('executeComposio supports no-auth direct tools without an account id', async () => {
+  const resumed = session({
+    id: 'persisted-session',
+    toolkit: {
+      slug: 'composio_search',
+      name: 'Composio Search',
+      isNoAuth: true,
+    },
+    execute: async () => ({
+      data: { results: [{ title: 'Kortix' }] },
+      error: null,
+      logId: 'log-search',
+    }),
+  });
+  const result = await executeComposio({
+    projectId: 'project-1',
+    connectorSlug: 'search',
+    connectionId: 'connection-1',
+    sessionId: 'persisted-session',
+    toolkit: 'composio_search',
+    toolSlug: 'COMPOSIO_SEARCH_DUCK_DUCK_GO',
+    args: { query: 'Kortix' },
+    connectedAccountId: null,
+    runtime: fakeRuntime({ resumed }),
+  });
+  expect(result.ok).toBe(true);
+  expect(result.data).toMatchObject({
+    logId: 'log-search',
+    result: { results: [{ title: 'Kortix' }] },
+  });
+});
+
+test('executeComposio fails closed when the resumed session is bound to another account', async () => {
+  const resumed = session({
+    toolkit: {
+      slug: 'gmail',
+      name: 'Gmail',
+      isNoAuth: false,
+      connection: {
+        isActive: true,
+        connectedAccount: { id: 'wrong-account', status: 'ACTIVE' },
       },
     },
-  };
-
+  });
   await expect(
     executeComposio({
       projectId: 'project-1',
       connectorSlug: 'gmail',
+      connectionId: 'connection-1',
+      sessionId: 'persisted-session',
       toolkit: 'gmail',
       toolSlug: 'GMAIL_SEND_EMAIL',
       args: {},
-      accountId: null,
-      userId: null,
-      runtime,
+      connectedAccountId: 'connected-account-1',
+      runtime: fakeRuntime({ resumed }),
+    }),
+  ).rejects.toThrow('composio_connected_account_mismatch');
+});
+
+test('executeComposio rejects an empty Composio log id', async () => {
+  const resumed = session({
+    toolkit: {
+      slug: 'composio_search',
+      name: 'Composio Search',
+      isNoAuth: true,
+    },
+    execute: async () => ({ data: {}, error: null, logId: ' ' }),
+  });
+  await expect(
+    executeComposio({
+      projectId: 'project-1',
+      connectorSlug: 'search',
+      connectionId: 'connection-1',
+      sessionId: 'persisted-session',
+      toolkit: 'composio_search',
+      toolSlug: 'COMPOSIO_SEARCH_DUCK_DUCK_GO',
+      args: {},
+      connectedAccountId: null,
+      runtime: fakeRuntime({ resumed }),
     }),
   ).rejects.toThrow('composio execution returned no log id');
 });
 
-test('gateway executes composio binding without exposing API key or credential to args', async () => {
+test('composioCatalogPage uses a discovery-only identity and session.toolkits pagination', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const created = session({
+    toolkit: {
+      slug: 'composio_search',
+      name: 'Composio Search',
+      isNoAuth: true,
+    },
+  });
+  created.toolkits = async (options) => {
+    calls.push({ type: 'toolkits', options });
+    return {
+      items: [{ slug: 'composio_search', name: 'Composio Search', isNoAuth: true }],
+      cursor: 'next-page',
+      totalPages: 2,
+    };
+  };
+
+  const result = await composioCatalogPage({
+    projectId: 'project-1',
+    q: 'search',
+    cursor: 'cursor-1',
+    limit: 20,
+    runtime: fakeRuntime({ created, calls }),
+  });
+
+  expect(result).toEqual({
+    items: [{ slug: 'composio_search', name: 'Composio Search', isNoAuth: true }],
+    cursor: 'next-page',
+    totalPages: 2,
+  });
+  expect(calls).toEqual([
+    {
+      type: 'create',
+      userId: 'kortix-discovery:project-1',
+      config: { manageConnections: false, sandbox: { enable: false } },
+    },
+    {
+      type: 'toolkits',
+      options: { search: 'search', cursor: 'cursor-1', limit: 20 },
+    },
+  ]);
+});
+
+test('gateway executes Composio with selected-row metadata and never exposes a secret', async () => {
   const connector: GatewayConnector = {
     connectorId: 'connector-1',
     connectionId: 'connection-1',
-    connectionIsDefault: false,
+    connectionIsDefault: true,
+    connectionMetadata: {
+      session_id: 'persisted-session',
+      connected_account_id: 'connected-account-1',
+    },
     slug: 'gmail',
     provider: 'composio',
     platform: 'gmail',
@@ -165,11 +479,15 @@ test('gateway executes composio binding without exposing API key or credential t
         relPath: 'send_email',
         inputSchema: null,
         risk: 'write',
-        binding: { kind: 'composio', toolkit: 'gmail', toolSlug: 'GMAIL_SEND_EMAIL' },
+        binding: {
+          kind: 'composio',
+          toolkit: 'gmail',
+          toolSlug: 'GMAIL_SEND_EMAIL',
+        },
       };
     },
     async resolveCredential() {
-      return 'connected-account-1';
+      throw new Error('Composio must not use connector credentials');
     },
     async loadPolicies() {
       return [];
@@ -185,7 +503,13 @@ test('gateway executes composio binding without exposing API key or credential t
       return {
         ok: true,
         status: 200,
-        data: { provider: 'composio', requestId: 'log-123', result: { sent: true } },
+        data: {
+          provider: 'composio',
+          requestId: 'log-123',
+          logId: 'log-123',
+          sessionId: 'persisted-session',
+          result: { sent: true },
+        },
       };
     },
   };
@@ -194,7 +518,7 @@ test('gateway executes composio binding without exposing API key or credential t
     projectId: 'project-1',
     accountId: 'account-1',
     subject: { userId: 'user-1', groupIds: [] },
-    sessionId: 'session-1',
+    sessionId: 'kortix-session-1',
     connectorSlug: 'gmail',
     actionPath: 'send_email',
     args: { to: 'a@example.com' },
@@ -203,17 +527,24 @@ test('gateway executes composio binding without exposing API key or credential t
   expect(result).toEqual({
     status: 'ok',
     risk: 'write',
-    data: { provider: 'composio', requestId: 'log-123', result: { sent: true } },
+    data: {
+      provider: 'composio',
+      requestId: 'log-123',
+      logId: 'log-123',
+      sessionId: 'persisted-session',
+      result: { sent: true },
+    },
   });
   expect(executions[0]).toEqual({
     composioInput: {
       projectId: 'project-1',
       connectorSlug: 'gmail',
+      connectionId: 'connection-1',
+      sessionId: 'persisted-session',
       toolkit: 'gmail',
       toolSlug: 'GMAIL_SEND_EMAIL',
       args: { to: 'a@example.com' },
-      accountId: 'connected-account-1',
-      userId: 'connection-1',
+      connectedAccountId: 'connected-account-1',
     },
   });
   expect(JSON.stringify(executions)).not.toContain('COMPOSIO_API_KEY');

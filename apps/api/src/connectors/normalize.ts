@@ -416,16 +416,26 @@ export function normalizeComposio(tools: ComposioToolLike[], toolkit: string): N
   if (!Array.isArray(tools)) return [];
   const prefix = `${toolkit.toUpperCase()}_`;
   const actions: NormalizedAction[] = tools
-    .filter((tool) => tool && typeof tool.slug === 'string' && tool.slug)
-    .map((tool) => ({
-      path: seg(tool.slug.startsWith(prefix) ? tool.slug.slice(prefix.length) : tool.slug),
-      name: tool.name || tool.slug,
-      description: String(tool.description || tool.name || tool.slug),
-      inputSchema: normalizeJsonSchema(tool.inputParameters),
-      outputSchema: normalizeJsonSchema(tool.outputParameters),
-      risk: 'write' as Risk,
-      binding: { kind: 'composio', toolkit, toolSlug: tool.slug } as ActionBinding,
-    }));
+    .filter(
+      (tool) =>
+        tool?.type === 'function' &&
+        typeof tool.function?.name === 'string' &&
+        tool.function.name.length > 0,
+    )
+    .map((tool) => {
+      const toolSlug = tool.function.name;
+      return {
+        path: seg(toolSlug.startsWith(prefix) ? toolSlug.slice(prefix.length) : toolSlug),
+        name: toolSlug,
+        description: String(tool.function.description || toolSlug),
+        inputSchema: normalizeJsonSchema(tool.function.parameters),
+        outputSchema: null,
+        // The OpenAI wrapper does not retain Composio tool annotations. Default
+        // to write so policy evaluation fails closed for unknown mutations.
+        risk: 'write' as Risk,
+        binding: { kind: 'composio', toolkit, toolSlug } as ActionBinding,
+      };
+    });
   return dedupePaths(actions);
 }
 

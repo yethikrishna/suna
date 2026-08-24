@@ -67,13 +67,19 @@ export interface PipedreamActionLike {
   }>;
 }
 
-/** A Composio session tool. */
+/**
+ * A tool returned by `@composio/core` 0.17 `session.tools()` with its default
+ * OpenAI provider. This is the runtime shape. It is not the legacy raw
+ * `{ slug, inputParameters }` Composio tool shape.
+ */
 export interface ComposioToolLike {
-  slug: string;
-  name: string;
-  description?: string;
-  inputParameters?: Record<string, unknown> | null;
-  outputParameters?: Record<string, unknown> | null;
+  type: 'function';
+  function: {
+    name: string;
+    description?: string;
+    parameters?: Record<string, unknown>;
+    strict?: boolean;
+  };
 }
 
 /** A declared HTTP route (provider=http, from `.kortix/connectors/*.http.toml`). */

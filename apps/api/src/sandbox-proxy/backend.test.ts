@@ -79,6 +79,16 @@ describe('resolveSandboxIngress cache key — http', () => {
     expect(resolveCalls.length).toBe(1);
     expect(second).toEqual(first);
   });
+
+  test('E2B ingress bypasses the outer cache so rotated traffic tokens can refresh', async () => {
+    resolveCalls = [];
+    const record = { ...BASE_RECORD, provider: 'e2b', externalId: 'ext-e2b-token-rotation' };
+
+    await resolveSandboxIngress(record, { port: 8000, transport: 'http', path: '/foo' });
+    await resolveSandboxIngress(record, { port: 8000, transport: 'http', path: '/bar' });
+
+    expect(resolveCalls.length).toBe(2);
+  });
 });
 
 describe('resolveSandboxIngress cache key — websocket', () => {

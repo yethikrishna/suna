@@ -17,22 +17,22 @@
  * ENABLE_EMAIL_AUTOCONFIRM to 'false' — once they configure real SMTP.
  */
 export const SHARED_AUTH_DEFAULTS: Record<string, string> = {
-  DISABLE_SIGNUP: "false",
-  ENABLE_EMAIL_SIGNUP: "true",
-  ENABLE_EMAIL_AUTOCONFIRM: "true",
-  ENABLE_ANONYMOUS_USERS: "false",
-  ENABLE_PHONE_SIGNUP: "false",
-  ENABLE_PHONE_AUTOCONFIRM: "false",
+  DISABLE_SIGNUP: 'false',
+  ENABLE_EMAIL_SIGNUP: 'true',
+  ENABLE_EMAIL_AUTOCONFIRM: 'true',
+  ENABLE_ANONYMOUS_USERS: 'false',
+  ENABLE_PHONE_SIGNUP: 'false',
+  ENABLE_PHONE_AUTOCONFIRM: 'false',
   // Sign-in UI method order. Password-first so no email is required out of the
   // box; add 'magic' after SMTP is configured.
-  KORTIX_PUBLIC_AUTH_METHODS: "password",
+  KORTIX_PUBLIC_AUTH_METHODS: 'password',
 };
 
 /** Agent code-execution sandbox provider (Daytona SaaS by default). */
 export const SHARED_SANDBOX_DEFAULTS: Record<string, string> = {
-  ALLOWED_SANDBOX_PROVIDERS: "daytona",
-  DAYTONA_SERVER_URL: "https://app.daytona.io/api",
-  DAYTONA_TARGET: "us",
+  ALLOWED_SANDBOX_PROVIDERS: 'daytona',
+  DAYTONA_SERVER_URL: 'https://app.daytona.io/api',
+  DAYTONA_TARGET: 'us',
 };
 
 /**
@@ -49,18 +49,18 @@ export const SHARED_SANDBOX_DEFAULTS: Record<string, string> = {
  */
 export const SHARED_FEATURE_FLAG_DEFAULTS: Record<string, string> = {
   // Marketing site off by default on self-host — redirect straight to the app.
-  KORTIX_PUBLIC_DISABLE_LANDING_PAGE: "true",
-  ENTERPRISE_LICENSE_AVAILABLE: "false",
-  KORTIX_BILLING_INTERNAL_ENABLED: "false",
-  KORTIX_PUBLIC_BILLING_ENABLED: "false",
+  KORTIX_PUBLIC_DISABLE_LANDING_PAGE: 'true',
+  ENTERPRISE_LICENSE_AVAILABLE: 'false',
+  KORTIX_BILLING_INTERNAL_ENABLED: 'false',
+  KORTIX_PUBLIC_BILLING_ENABLED: 'false',
   // Connector UI (the "Connect your tools" onboarding step,
   // the "Easy connect" app catalogue) off by default — a fresh self-host has
   // no COMPOSIO_API_KEY configured, and those surfaces
   // would otherwise dead-end in a 501. `kortix self-host configure` flips
   // this to 'true' once connector credentials are set (see selfHostConfigure
   // in commands/self-host.ts). Custom connectors (OpenAPI/GraphQL/MCP/HTTP)
-  // and Slack/email channels are unaffected — they don't depend on connector auth.
-  KORTIX_PUBLIC_CONNECTORS_ENABLED: "false",
+  // and Slack/email channels are unaffected.
+  KORTIX_PUBLIC_CONNECTORS_ENABLED: 'false',
   // Account-creation restriction: DEFAULT ON for self-host — a VPS operator
   // usually wants to be the only one who can spin up new organizations on
   // their own instance. Signups, existing teams, and SSO/JIT membership are
@@ -72,8 +72,8 @@ export const SHARED_FEATURE_FLAG_DEFAULTS: Record<string, string> = {
   // deployment-shape question (promptFeatureFlags) flips both; disable via
   // `env set KORTIX_RESTRICT_ACCOUNT_CREATION=false
   // KORTIX_PUBLIC_RESTRICT_ACCOUNT_CREATION=false` or `--no-restrict-account-creation`.
-  KORTIX_RESTRICT_ACCOUNT_CREATION: "true",
-  KORTIX_PUBLIC_RESTRICT_ACCOUNT_CREATION: "true",
+  KORTIX_RESTRICT_ACCOUNT_CREATION: 'true',
+  KORTIX_PUBLIC_RESTRICT_ACCOUNT_CREATION: 'true',
 };
 
 /** Every target-agnostic default in one object, for a single spread. */

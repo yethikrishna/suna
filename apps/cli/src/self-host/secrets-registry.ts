@@ -9,42 +9,42 @@
 // command and its tests without pulling in Docker/child_process.
 
 export type SecretCategory =
-  | "database"
-  | "auth_email"
-  | "sandbox"
-  | "managed_git"
-  | "llm"
-  | "connectors"
-  | "reachability"
-  | "internal_tokens";
+  | 'database'
+  | 'auth_email'
+  | 'sandbox'
+  | 'managed_git'
+  | 'llm'
+  | 'connectors'
+  | 'reachability'
+  | 'internal_tokens';
 
 export const CATEGORY_ORDER: SecretCategory[] = [
-  "database",
-  "auth_email",
-  "sandbox",
-  "managed_git",
-  "llm",
-  "connectors",
-  "reachability",
-  "internal_tokens",
+  'database',
+  'auth_email',
+  'sandbox',
+  'managed_git',
+  'llm',
+  'connectors',
+  'reachability',
+  'internal_tokens',
 ];
 
 export const CATEGORY_LABELS: Record<SecretCategory, string> = {
-  database: "Database & Supabase",
-  auth_email: "Auth / Email / SMTP",
-  sandbox: "Agent sandbox",
-  managed_git: "Managed git",
-  llm: "LLM",
-  connectors: "Connectors",
-  reachability: "Reachability (Cloudflare tunnel)",
-  internal_tokens: "Internal tokens",
+  database: 'Database & Supabase',
+  auth_email: 'Auth / Email / SMTP',
+  sandbox: 'Agent sandbox',
+  managed_git: 'Managed git',
+  llm: 'LLM',
+  connectors: 'Connectors',
+  reachability: 'Reachability (Cloudflare tunnel)',
+  internal_tokens: 'Internal tokens',
 };
 
 export interface SecretDef {
   key: string;
   category: SecretCategory;
   /** The CLI generates this value (crypto-random) vs. an operator supplies it. */
-  kind: "generated" | "operator";
+  kind: 'generated' | 'operator';
   /** Core functionality breaks/degrades without this set. */
   required: boolean;
   /** Eligible for `kortix self-host env rotate <KEY>` / `--all-generated`. */
@@ -71,167 +71,37 @@ export interface SecretDef {
  */
 export const SECRET_DEFS: SecretDef[] = [
   // Database & Supabase
-  {
-    key: "POSTGRES_PASSWORD",
-    category: "database",
-    kind: "generated",
-    required: true,
-    rotatable: true,
-  },
-  {
-    key: "SUPABASE_JWT_SECRET",
-    category: "database",
-    kind: "generated",
-    required: true,
-    rotatable: true,
-  },
-  {
-    key: "SUPABASE_ANON_KEY",
-    category: "database",
-    kind: "generated",
-    required: true,
-    rotatable: false,
-  },
-  {
-    key: "SUPABASE_SERVICE_ROLE_KEY",
-    category: "database",
-    kind: "generated",
-    required: true,
-    rotatable: false,
-  },
-  {
-    key: "DASHBOARD_USERNAME",
-    category: "database",
-    kind: "generated",
-    required: true,
-    rotatable: false,
-  },
-  {
-    key: "DASHBOARD_PASSWORD",
-    category: "database",
-    kind: "generated",
-    required: true,
-    rotatable: true,
-  },
-  {
-    key: "S3_PROTOCOL_ACCESS_KEY_ID",
-    category: "database",
-    kind: "generated",
-    required: false,
-    rotatable: true,
-  },
-  {
-    key: "S3_PROTOCOL_ACCESS_KEY_SECRET",
-    category: "database",
-    kind: "generated",
-    required: false,
-    rotatable: true,
-  },
+  { key: 'POSTGRES_PASSWORD', category: 'database', kind: 'generated', required: true, rotatable: true },
+  { key: 'SUPABASE_JWT_SECRET', category: 'database', kind: 'generated', required: true, rotatable: true },
+  { key: 'SUPABASE_ANON_KEY', category: 'database', kind: 'generated', required: true, rotatable: false },
+  { key: 'SUPABASE_SERVICE_ROLE_KEY', category: 'database', kind: 'generated', required: true, rotatable: false },
+  { key: 'DASHBOARD_USERNAME', category: 'database', kind: 'generated', required: true, rotatable: false },
+  { key: 'DASHBOARD_PASSWORD', category: 'database', kind: 'generated', required: true, rotatable: true },
+  { key: 'S3_PROTOCOL_ACCESS_KEY_ID', category: 'database', kind: 'generated', required: false, rotatable: true },
+  { key: 'S3_PROTOCOL_ACCESS_KEY_SECRET', category: 'database', kind: 'generated', required: false, rotatable: true },
   // Internal Supabase-infra encryption keys — see the array-level comment
   // above for why these are generated-but-not-rotatable.
-  {
-    key: "SECRET_KEY_BASE",
-    category: "database",
-    kind: "generated",
-    required: true,
-    rotatable: false,
-  },
-  {
-    key: "REALTIME_DB_ENC_KEY",
-    category: "database",
-    kind: "generated",
-    required: true,
-    rotatable: false,
-  },
-  {
-    key: "VAULT_ENC_KEY",
-    category: "database",
-    kind: "generated",
-    required: true,
-    rotatable: false,
-  },
-  {
-    key: "PG_META_CRYPTO_KEY",
-    category: "database",
-    kind: "generated",
-    required: true,
-    rotatable: false,
-  },
-  {
-    key: "LOGFLARE_PUBLIC_ACCESS_TOKEN",
-    category: "database",
-    kind: "generated",
-    required: true,
-    rotatable: false,
-  },
-  {
-    key: "LOGFLARE_PRIVATE_ACCESS_TOKEN",
-    category: "database",
-    kind: "generated",
-    required: true,
-    rotatable: false,
-  },
+  { key: 'SECRET_KEY_BASE', category: 'database', kind: 'generated', required: true, rotatable: false },
+  { key: 'REALTIME_DB_ENC_KEY', category: 'database', kind: 'generated', required: true, rotatable: false },
+  { key: 'VAULT_ENC_KEY', category: 'database', kind: 'generated', required: true, rotatable: false },
+  { key: 'PG_META_CRYPTO_KEY', category: 'database', kind: 'generated', required: true, rotatable: false },
+  { key: 'LOGFLARE_PUBLIC_ACCESS_TOKEN', category: 'database', kind: 'generated', required: true, rotatable: false },
+  { key: 'LOGFLARE_PRIVATE_ACCESS_TOKEN', category: 'database', kind: 'generated', required: true, rotatable: false },
 
   // Auth / Email / SMTP
   // EMAIL_URL is THE email setting: one connection string that configures both
   // product email (kortix-api) and auth email (GoTrue, via the send-email
   // hook). The SMTP_* quartet below is the pre-EMAIL_URL surface, still read by
   // GoTrue directly when no EMAIL_URL is set.
-  {
-    key: "EMAIL_URL",
-    category: "auth_email",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "EMAIL_FROM",
-    category: "auth_email",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "AUTH_EMAIL_HOOK_SECRET",
-    category: "auth_email",
-    kind: "generated",
-    required: false,
-    rotatable: true,
-  },
-  {
-    key: "SMTP_HOST",
-    category: "auth_email",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "SMTP_PORT",
-    category: "auth_email",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "SMTP_USER",
-    category: "auth_email",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "SMTP_PASS",
-    category: "auth_email",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "SMTP_ADMIN_EMAIL",
-    category: "auth_email",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "SMTP_SENDER_NAME",
-    category: "auth_email",
-    kind: "operator",
-    required: false,
-  },
+  { key: 'EMAIL_URL', category: 'auth_email', kind: 'operator', required: false },
+  { key: 'EMAIL_FROM', category: 'auth_email', kind: 'operator', required: false },
+  { key: 'AUTH_EMAIL_HOOK_SECRET', category: 'auth_email', kind: 'generated', required: false, rotatable: true },
+  { key: 'SMTP_HOST', category: 'auth_email', kind: 'operator', required: false },
+  { key: 'SMTP_PORT', category: 'auth_email', kind: 'operator', required: false },
+  { key: 'SMTP_USER', category: 'auth_email', kind: 'operator', required: false },
+  { key: 'SMTP_PASS', category: 'auth_email', kind: 'operator', required: false },
+  { key: 'SMTP_ADMIN_EMAIL', category: 'auth_email', kind: 'operator', required: false },
+  { key: 'SMTP_SENDER_NAME', category: 'auth_email', kind: 'operator', required: false },
   // GoTrue SAML SSO signing key — generated once at `init` (samlPrivateKeyDer()
   // in commands/self-host.ts) so GOTRUE_SAML_ENABLED=true (the self-host
   // default) always has a key to boot with. `required: false` here on purpose:
@@ -241,13 +111,7 @@ export const SECRET_DEFS: SecretDef[] = [
   // for secrets with no other way to get set. NOT rotatable: regenerating it
   // changes the SAML SP's signing identity and breaks every already-registered
   // IdP until re-registered.
-  {
-    key: "SAML_PRIVATE_KEY",
-    category: "auth_email",
-    kind: "generated",
-    required: false,
-    rotatable: false,
-  },
+  { key: 'SAML_PRIVATE_KEY', category: 'auth_email', kind: 'generated', required: false, rotatable: false },
 
   // Agent sandbox — three interchangeable providers (SandboxProviderName in
   // apps/api/src/config.ts). `init`/`configure` ask which ONE this instance
@@ -257,208 +121,58 @@ export const SECRET_DEFS: SecretDef[] = [
   // PROVIDERS names), not a blanket `required` flag per key here — Daytona
   // stays `required: true` below only because it's the default/recommended
   // provider, not because it's unconditionally needed.
-  {
-    key: "DAYTONA_API_KEY",
-    category: "sandbox",
-    kind: "operator",
-    required: true,
-  },
-  {
-    key: "E2B_API_KEY",
-    category: "sandbox",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "PLATINUM_API_KEY",
-    category: "sandbox",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "PLATINUM_WEBHOOK_SECRET",
-    category: "sandbox",
-    kind: "operator",
-    required: false,
-  },
+  { key: 'DAYTONA_API_KEY', category: 'sandbox', kind: 'operator', required: true },
+  { key: 'E2B_API_KEY', category: 'sandbox', kind: 'operator', required: false },
+  { key: 'PLATINUM_API_KEY', category: 'sandbox', kind: 'operator', required: false },
+  { key: 'PLATINUM_WEBHOOK_SECRET', category: 'sandbox', kind: 'operator', required: false },
 
   // Managed git — NOT init-required: configured in-app (Settings → Git,
   // DB-backed) after `start`, not by the CLI. See missingRequiredSecrets() in
   // commands/self-host.ts.
-  {
-    key: "MANAGED_GIT_GITHUB_OWNER",
-    category: "managed_git",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "MANAGED_GIT_GITHUB_TOKEN",
-    category: "managed_git",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "MANAGED_GIT_GITHUB_INSTALL_ID",
-    category: "managed_git",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "KORTIX_GITHUB_APP_ID",
-    category: "managed_git",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "KORTIX_GITHUB_APP_PRIVATE_KEY",
-    category: "managed_git",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "KORTIX_GITHUB_APP_SLUG",
-    category: "managed_git",
-    kind: "operator",
-    required: false,
-  },
+  { key: 'MANAGED_GIT_GITHUB_OWNER', category: 'managed_git', kind: 'operator', required: false },
+  { key: 'MANAGED_GIT_GITHUB_TOKEN', category: 'managed_git', kind: 'operator', required: false },
+  { key: 'MANAGED_GIT_GITHUB_INSTALL_ID', category: 'managed_git', kind: 'operator', required: false },
+  { key: 'KORTIX_GITHUB_APP_ID', category: 'managed_git', kind: 'operator', required: false },
+  { key: 'KORTIX_GITHUB_APP_PRIVATE_KEY', category: 'managed_git', kind: 'operator', required: false },
+  { key: 'KORTIX_GITHUB_APP_SLUG', category: 'managed_git', kind: 'operator', required: false },
   // Minted alongside the App by `connect-github`'s manifest-conversion
   // exchange. Not read by the API today (installation-token auth doesn't need
   // them) — kept so the App can be managed/re-verified later without
   // regenerating it from scratch.
-  {
-    key: "KORTIX_GITHUB_APP_CLIENT_ID",
-    category: "managed_git",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "KORTIX_GITHUB_APP_CLIENT_SECRET",
-    category: "managed_git",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "KORTIX_GITHUB_APP_WEBHOOK_SECRET",
-    category: "managed_git",
-    kind: "operator",
-    required: false,
-  },
+  { key: 'KORTIX_GITHUB_APP_CLIENT_ID', category: 'managed_git', kind: 'operator', required: false },
+  { key: 'KORTIX_GITHUB_APP_CLIENT_SECRET', category: 'managed_git', kind: 'operator', required: false },
+  { key: 'KORTIX_GITHUB_APP_WEBHOOK_SECRET', category: 'managed_git', kind: 'operator', required: false },
   // Signs the GitHub App install-state HMAC (buildGitHubAppInstallState in
   // apps/api/src/projects/github.ts). `connect-github` generates this once
   // (if unset) alongside the App credentials.
-  {
-    key: "KORTIX_GITHUB_APP_STATE_SECRET",
-    category: "managed_git",
-    kind: "generated",
-    required: false,
-    rotatable: true,
-  },
+  { key: 'KORTIX_GITHUB_APP_STATE_SECRET', category: 'managed_git', kind: 'generated', required: false, rotatable: true },
 
   // LLM — NOT init-required: BYOK via the frontend's model picker after
   // `start`, not collected by the CLI.
-  {
-    key: "OPENROUTER_API_KEY",
-    category: "llm",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "AWS_BEDROCK_API_KEY",
-    category: "llm",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "AWS_BEDROCK_REGION",
-    category: "llm",
-    kind: "operator",
-    required: false,
-  },
+  { key: 'OPENROUTER_API_KEY', category: 'llm', kind: 'operator', required: false },
+  { key: 'AWS_BEDROCK_API_KEY', category: 'llm', kind: 'operator', required: false },
+  { key: 'AWS_BEDROCK_REGION', category: 'llm', kind: 'operator', required: false },
 
   // Connectors
-  {
-    key: "COMPOSIO_API_KEY",
-    category: "connectors",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "PIPEDREAM_CLIENT_ID",
-    category: "connectors",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "PIPEDREAM_CLIENT_SECRET",
-    category: "connectors",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "PIPEDREAM_PROJECT_ID",
-    category: "connectors",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "POSTMAN_API_KEY",
-    category: "connectors",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "PIPEDREAM_WEBHOOK_SECRET",
-    category: "connectors",
-    kind: "operator",
-    required: false,
-  },
+  { key: 'COMPOSIO_API_KEY', category: 'connectors', kind: 'operator', required: false },
+  { key: 'PIPEDREAM_CLIENT_ID', category: 'connectors', kind: 'operator', required: false },
+  { key: 'PIPEDREAM_CLIENT_SECRET', category: 'connectors', kind: 'operator', required: false },
+  { key: 'PIPEDREAM_PROJECT_ID', category: 'connectors', kind: 'operator', required: false },
+  { key: 'POSTMAN_API_KEY', category: 'connectors', kind: 'operator', required: false },
+  { key: 'PIPEDREAM_WEBHOOK_SECRET', category: 'connectors', kind: 'operator', required: false },
 
   // Reachability (tunnel mode only — see self-host/tunnel.ts). Both optional:
   // absent, the `cloudflared` service runs a free zero-config quick tunnel
   // whose URL is ephemeral (re-captured on every start/update). Setting both
   // switches to a stable named tunnel instead.
-  {
-    key: "CLOUDFLARE_TUNNEL_TOKEN",
-    category: "reachability",
-    kind: "operator",
-    required: false,
-  },
-  {
-    key: "CLOUDFLARE_TUNNEL_HOSTNAME",
-    category: "reachability",
-    kind: "operator",
-    required: false,
-  },
+  { key: 'CLOUDFLARE_TUNNEL_TOKEN', category: 'reachability', kind: 'operator', required: false },
+  { key: 'CLOUDFLARE_TUNNEL_HOSTNAME', category: 'reachability', kind: 'operator', required: false },
 
   // Internal tokens
-  {
-    key: "GATEWAY_INTERNAL_TOKEN",
-    category: "internal_tokens",
-    kind: "generated",
-    required: true,
-    rotatable: true,
-  },
-  {
-    key: "INTERNAL_SERVICE_KEY",
-    category: "internal_tokens",
-    kind: "generated",
-    required: true,
-    rotatable: true,
-  },
-  {
-    key: "API_KEY_SECRET",
-    category: "internal_tokens",
-    kind: "generated",
-    required: true,
-    rotatable: true,
-  },
-  {
-    key: "TUNNEL_SIGNING_SECRET",
-    category: "internal_tokens",
-    kind: "generated",
-    required: true,
-    rotatable: true,
-  },
+  { key: 'GATEWAY_INTERNAL_TOKEN', category: 'internal_tokens', kind: 'generated', required: true, rotatable: true },
+  { key: 'INTERNAL_SERVICE_KEY', category: 'internal_tokens', kind: 'generated', required: true, rotatable: true },
+  { key: 'API_KEY_SECRET', category: 'internal_tokens', kind: 'generated', required: true, rotatable: true },
+  { key: 'TUNNEL_SIGNING_SECRET', category: 'internal_tokens', kind: 'generated', required: true, rotatable: true },
 ];
 
 const SECRET_DEF_BY_KEY: ReadonlyMap<string, SecretDef> = new Map(
@@ -471,7 +185,7 @@ export function secretDefFor(key: string): SecretDef | undefined {
 
 /** Keys eligible for `env rotate --all-generated`, in a stable order. */
 export const ROTATABLE_GENERATED_KEYS: string[] = SECRET_DEFS.filter(
-  (def) => def.kind === "generated" && def.rotatable,
+  (def) => def.kind === 'generated' && def.rotatable,
 ).map((def) => def.key);
 
 /**
@@ -483,18 +197,18 @@ export const ROTATABLE_GENERATED_KEYS: string[] = SECRET_DEFS.filter(
  * Use `--tag`/`--channel`/`--release` (which drive these) instead.
  */
 export const UPDATER_MANAGED_RUNTIME_KEYS: ReadonlySet<string> = new Set([
-  "KORTIX_VERSION",
-  "FRONTEND_IMAGE",
-  "API_IMAGE",
-  "GATEWAY_IMAGE",
-  "KORTIX_APP_REPLICAS",
+  'KORTIX_VERSION',
+  'FRONTEND_IMAGE',
+  'API_IMAGE',
+  'GATEWAY_IMAGE',
+  'KORTIX_APP_REPLICAS',
   // The instance directory's absolute HOST path — recomputed from
   // instanceDir() on every render (see normalizeFullSupabaseEnv() in
   // commands/self-host.ts). Hand-setting it to anything other than where the
   // instance's docker-compose.yml/.env actually live would break the
   // in-compose auto-updater's bind mount (see the KORTIX_INSTANCE_DIR field's
   // doc comment on SelfHostEnv), and the very next render clobbers it anyway.
-  "KORTIX_INSTANCE_DIR",
+  'KORTIX_INSTANCE_DIR',
 ]);
 
 export function isUpdaterManagedKey(key: string): boolean {
@@ -513,135 +227,105 @@ export function isUpdaterManagedKey(key: string): boolean {
 export const KEY_SERVICE_MAP: Record<string, readonly string[]> = {
   // Database & Supabase
   POSTGRES_PASSWORD: [
-    "supabase-db",
-    "supabase-auth",
-    "supabase-rest",
-    "supabase-realtime",
-    "supabase-storage",
-    "supabase-meta",
-    "supabase-functions",
-    "supabase-supavisor",
-    "supabase-analytics",
-    "kortix-api",
+    'supabase-db', 'supabase-auth', 'supabase-rest', 'supabase-realtime',
+    'supabase-storage', 'supabase-meta', 'supabase-functions', 'supabase-supavisor',
+    'supabase-analytics', 'kortix-api',
   ],
   SUPABASE_JWT_SECRET: [
-    "supabase-db",
-    "supabase-kong",
-    "supabase-auth",
-    "supabase-rest",
-    "supabase-realtime",
-    "supabase-storage",
-    "supabase-meta",
-    "supabase-functions",
-    "supabase-analytics",
-    "kortix-api",
-    "frontend",
+    'supabase-db', 'supabase-kong', 'supabase-auth', 'supabase-rest', 'supabase-realtime',
+    'supabase-storage', 'supabase-meta', 'supabase-functions', 'supabase-analytics',
+    'kortix-api', 'frontend',
   ],
-  SUPABASE_ANON_KEY: [
-    "supabase-kong",
-    "supabase-realtime",
-    "supabase-storage",
-    "supabase-meta",
-    "supabase-functions",
-    "frontend",
-    "kortix-api",
-  ],
-  SUPABASE_SERVICE_ROLE_KEY: [
-    "supabase-kong",
-    "supabase-realtime",
-    "supabase-storage",
-    "supabase-meta",
-    "supabase-functions",
-    "kortix-api",
-  ],
-  DASHBOARD_USERNAME: ["supabase-kong"],
-  DASHBOARD_PASSWORD: ["supabase-kong"],
-  S3_PROTOCOL_ACCESS_KEY_ID: ["supabase-storage"],
-  S3_PROTOCOL_ACCESS_KEY_SECRET: ["supabase-storage"],
-  SECRET_KEY_BASE: ["supabase-realtime", "supabase-supavisor"],
-  REALTIME_DB_ENC_KEY: ["supabase-realtime"],
-  VAULT_ENC_KEY: ["supabase-supavisor"],
-  PG_META_CRYPTO_KEY: ["supabase-studio"],
-  LOGFLARE_PUBLIC_ACCESS_TOKEN: ["supabase-analytics", "supabase-vector"],
-  LOGFLARE_PRIVATE_ACCESS_TOKEN: ["supabase-studio", "supabase-analytics"],
+  SUPABASE_ANON_KEY: ['supabase-kong', 'supabase-realtime', 'supabase-storage', 'supabase-meta', 'supabase-functions', 'frontend', 'kortix-api'],
+  SUPABASE_SERVICE_ROLE_KEY: ['supabase-kong', 'supabase-realtime', 'supabase-storage', 'supabase-meta', 'supabase-functions', 'kortix-api'],
+  DASHBOARD_USERNAME: ['supabase-kong'],
+  DASHBOARD_PASSWORD: ['supabase-kong'],
+  S3_PROTOCOL_ACCESS_KEY_ID: ['supabase-storage'],
+  S3_PROTOCOL_ACCESS_KEY_SECRET: ['supabase-storage'],
+  SECRET_KEY_BASE: ['supabase-realtime', 'supabase-supavisor'],
+  REALTIME_DB_ENC_KEY: ['supabase-realtime'],
+  VAULT_ENC_KEY: ['supabase-supavisor'],
+  PG_META_CRYPTO_KEY: ['supabase-studio'],
+  LOGFLARE_PUBLIC_ACCESS_TOKEN: ['supabase-analytics', 'supabase-vector'],
+  LOGFLARE_PRIVATE_ACCESS_TOKEN: ['supabase-studio', 'supabase-analytics'],
 
   // Auth / Email / SMTP.
   // EMAIL_URL / EMAIL_FROM reach BOTH halves: kortix-api sends with them, and
   // GoTrue's send-email hook wiring is derived from them.
-  EMAIL_URL: ["kortix-api", "supabase-auth"],
-  EMAIL_FROM: ["kortix-api"],
-  AUTH_EMAIL_HOOK_SECRET: ["kortix-api", "supabase-auth"],
+  EMAIL_URL: ['kortix-api', 'supabase-auth'],
+  EMAIL_FROM: ['kortix-api'],
+  AUTH_EMAIL_HOOK_SECRET: ['kortix-api', 'supabase-auth'],
   // The rest are consumed by GoTrue only.
-  SMTP_HOST: ["supabase-auth"],
-  SMTP_PORT: ["supabase-auth"],
-  SMTP_USER: ["supabase-auth"],
-  SMTP_PASS: ["supabase-auth"],
-  SMTP_ADMIN_EMAIL: ["supabase-auth"],
-  SMTP_SENDER_NAME: ["supabase-auth"],
-  SAML_PRIVATE_KEY: ["supabase-auth"],
+  SMTP_HOST: ['supabase-auth'],
+  SMTP_PORT: ['supabase-auth'],
+  SMTP_USER: ['supabase-auth'],
+  SMTP_PASS: ['supabase-auth'],
+  SMTP_ADMIN_EMAIL: ['supabase-auth'],
+  SMTP_SENDER_NAME: ['supabase-auth'],
+  SAML_PRIVATE_KEY: ['supabase-auth'],
 
   // Agent sandbox — all three interchangeable providers
-  DAYTONA_API_KEY: ["kortix-api"],
-  DAYTONA_SERVER_URL: ["kortix-api"],
-  DAYTONA_TARGET: ["kortix-api"],
-  E2B_API_KEY: ["kortix-api"],
-  PLATINUM_API_KEY: ["kortix-api"],
-  PLATINUM_API_URL: ["kortix-api"],
-  PLATINUM_TEMPLATE: ["kortix-api"],
-  PLATINUM_WEBHOOK_SECRET: ["kortix-api"],
+  DAYTONA_API_KEY: ['kortix-api'],
+  DAYTONA_SERVER_URL: ['kortix-api'],
+  DAYTONA_TARGET: ['kortix-api'],
+  E2B_API_KEY: ['kortix-api'],
+  PLATINUM_API_KEY: ['kortix-api'],
+  PLATINUM_API_URL: ['kortix-api'],
+  PLATINUM_TEMPLATE: ['kortix-api'],
+  PLATINUM_WEBHOOK_SECRET: ['kortix-api'],
 
   // Managed git
-  MANAGED_GIT_GITHUB_OWNER: ["kortix-api"],
-  MANAGED_GIT_GITHUB_TOKEN: ["kortix-api"],
-  MANAGED_GIT_GITHUB_INSTALL_ID: ["kortix-api"],
-  KORTIX_GITHUB_APP_ID: ["kortix-api"],
-  KORTIX_GITHUB_APP_PRIVATE_KEY: ["kortix-api"],
-  KORTIX_GITHUB_APP_SLUG: ["kortix-api"],
-  KORTIX_GITHUB_APP_CLIENT_ID: ["kortix-api"],
-  KORTIX_GITHUB_APP_CLIENT_SECRET: ["kortix-api"],
-  KORTIX_GITHUB_APP_WEBHOOK_SECRET: ["kortix-api"],
-  KORTIX_GITHUB_APP_STATE_SECRET: ["kortix-api"],
-  KORTIX_GITHUB_TOKEN: ["kortix-api"],
-  KORTIX_GITHUB_OWNER: ["kortix-api"],
+  MANAGED_GIT_GITHUB_OWNER: ['kortix-api'],
+  MANAGED_GIT_GITHUB_TOKEN: ['kortix-api'],
+  MANAGED_GIT_GITHUB_INSTALL_ID: ['kortix-api'],
+  KORTIX_GITHUB_APP_ID: ['kortix-api'],
+  KORTIX_GITHUB_APP_PRIVATE_KEY: ['kortix-api'],
+  KORTIX_GITHUB_APP_SLUG: ['kortix-api'],
+  KORTIX_GITHUB_APP_CLIENT_ID: ['kortix-api'],
+  KORTIX_GITHUB_APP_CLIENT_SECRET: ['kortix-api'],
+  KORTIX_GITHUB_APP_WEBHOOK_SECRET: ['kortix-api'],
+  KORTIX_GITHUB_APP_STATE_SECRET: ['kortix-api'],
+  KORTIX_GITHUB_TOKEN: ['kortix-api'],
+  KORTIX_GITHUB_OWNER: ['kortix-api'],
 
   // LLM
-  OPENROUTER_API_KEY: ["kortix-api"],
-  AWS_BEDROCK_API_KEY: ["kortix-api"],
-  AWS_BEDROCK_REGION: ["kortix-api"],
+  OPENROUTER_API_KEY: ['kortix-api'],
+  AWS_BEDROCK_API_KEY: ['kortix-api'],
+  AWS_BEDROCK_REGION: ['kortix-api'],
 
   // Connectors
-  COMPOSIO_API_KEY: ["kortix-api"],
-  PIPEDREAM_CLIENT_ID: ["kortix-api"],
-  PIPEDREAM_CLIENT_SECRET: ["kortix-api"],
-  PIPEDREAM_PROJECT_ID: ["kortix-api"],
-  POSTMAN_API_KEY: ["kortix-api"],
-  PIPEDREAM_ENVIRONMENT: ["kortix-api"],
-  PIPEDREAM_WEBHOOK_SECRET: ["kortix-api"],
+  COMPOSIO_API_KEY: ['kortix-api'],
+  PIPEDREAM_CLIENT_ID: ['kortix-api'],
+  PIPEDREAM_CLIENT_SECRET: ['kortix-api'],
+  PIPEDREAM_PROJECT_ID: ['kortix-api'],
+  POSTMAN_API_KEY: ['kortix-api'],
+  PIPEDREAM_ENVIRONMENT: ['kortix-api'],
+  PIPEDREAM_WEBHOOK_SECRET: ['kortix-api'],
 
   // Reachability
-  CLOUDFLARE_TUNNEL_TOKEN: ["cloudflared"],
-  CLOUDFLARE_TUNNEL_HOSTNAME: ["cloudflared"],
+  CLOUDFLARE_TUNNEL_TOKEN: ['cloudflared'],
+  CLOUDFLARE_TUNNEL_HOSTNAME: ['cloudflared'],
 
   // Apps hosting — kortix-api reads both to derive/serve App hostnames, and
   // caddy must restart to reload the rewritten Caddyfile (the wildcard
   // App-serving block is added/removed by KORTIX_APPS_BASE_DOMAIN; Caddy does
   // not hot-reload a bind-mounted config on its own).
-  KORTIX_APPS_BASE_DOMAIN: ["kortix-api", "caddy"],
+  KORTIX_APPS_BASE_DOMAIN: ['kortix-api', 'caddy'],
   // Same shape as the Apps domain: the API builds preview hostnames from it and
   // Caddy's *.<preview base domain> site block is added/removed by it.
-  KORTIX_PREVIEW_BASE_DOMAIN: ["kortix-api", "caddy"],
-  KORTIX_PREVIEW_ALLOW_DIRECT_EDGE: ["kortix-api"],
-  KORTIX_APPS_ALLOW_DIRECT_EDGE: ["kortix-api"],
+  KORTIX_PREVIEW_BASE_DOMAIN: ['kortix-api', 'caddy'],
+  KORTIX_PREVIEW_ALLOW_DIRECT_EDGE: ['kortix-api'],
+  KORTIX_APPS_ALLOW_DIRECT_EDGE: ['kortix-api'],
 
   // Internal tokens
-  GATEWAY_INTERNAL_TOKEN: ["kortix-api", "llm-gateway"],
-  INTERNAL_SERVICE_KEY: ["kortix-api"],
-  API_KEY_SECRET: ["kortix-api"],
-  TUNNEL_SIGNING_SECRET: ["kortix-api"],
+  GATEWAY_INTERNAL_TOKEN: ['kortix-api', 'llm-gateway'],
+  INTERNAL_SERVICE_KEY: ['kortix-api'],
+  API_KEY_SECRET: ['kortix-api'],
+  TUNNEL_SIGNING_SECRET: ['kortix-api'],
 };
 
 /** Safe fallback for any key not explicitly mapped above. */
-const DEFAULT_SERVICES: readonly string[] = ["kortix-api"];
+const DEFAULT_SERVICES: readonly string[] = ['kortix-api'];
 
 /** Union of the services a set of changed keys affects, sorted + deduped. */
 export function servicesForKeys(keys: readonly string[]): string[] {
@@ -657,16 +341,15 @@ export function servicesForKeys(keys: readonly string[]): string[] {
  *  last 4 characters for anything long enough to make that safe, otherwise a
  *  fixed-width mask. Empty input stays empty (an unset secret, not a masked one). */
 export function maskSecretValue(value: string): string {
-  if (!value) return "";
-  if (value.length <= 10)
-    return "•".repeat(Math.max(4, Math.min(8, value.length)));
+  if (!value) return '';
+  if (value.length <= 10) return '•'.repeat(Math.max(4, Math.min(8, value.length)));
   return `${value.slice(0, 3)}…${value.slice(-4)}`;
 }
 
 export interface SecretRow {
   key: string;
   category: SecretCategory;
-  kind: "generated" | "operator";
+  kind: 'generated' | 'operator';
   required: boolean;
   rotatable: boolean;
   configured: boolean;
@@ -682,21 +365,19 @@ export interface SecretCategoryGroup {
 
 /** Group every declared secret by category against a live env snapshot, for
  *  `kortix self-host env ls`. Preserves CATEGORY_ORDER / SECRET_DEFS order. */
-export function groupSecretsByCategory(
-  env: Record<string, string>,
-): SecretCategoryGroup[] {
+export function groupSecretsByCategory(env: Record<string, string>): SecretCategoryGroup[] {
   const byCategory = new Map<SecretCategory, SecretRow[]>();
   for (const category of CATEGORY_ORDER) byCategory.set(category, []);
 
   for (const def of SECRET_DEFS) {
-    const value = env[def.key] ?? "";
+    const value = env[def.key] ?? '';
     byCategory.get(def.category)!.push({
       key: def.key,
       category: def.category,
       kind: def.kind,
       required: def.required,
       rotatable: Boolean(def.rotatable),
-      configured: value.trim() !== "",
+      configured: value.trim() !== '',
       masked: maskSecretValue(value),
       updaterManaged: isUpdaterManagedKey(def.key),
     });

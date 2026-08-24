@@ -311,9 +311,7 @@ test.describe("23 — Composio managed connector", () => {
         app: "gmail",
         connected: false,
         isNoAuth: false,
-        connectUrl: expect.stringMatching(
-          /^https:\/\/connect\.composio\.dev\//,
-        ),
+        connectUrl: expect.stringMatching(/^https:\/\/connect\.composio\.dev\//),
         sessionId: expect.stringMatching(/^trs_/),
         requestId: expect.any(String),
       }),
@@ -337,10 +335,9 @@ test.describe("23 — Composio managed connector", () => {
       "https://www.googleapis.com/auth/gmail.modify",
       "https://www.googleapis.com/auth/gmail.labels",
     ]) {
-      expect(
-        scopes,
-        `stale Gmail scope leaked into OAuth: ${staleScope}`,
-      ).not.toContain(staleScope);
+      expect(scopes, `stale Gmail scope leaked into OAuth: ${staleScope}`).not.toContain(
+        staleScope,
+      );
     }
     const googleBody = await page.locator("body").innerText();
     expect(googleBody).not.toMatch(/this app is blocked/i);

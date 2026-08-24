@@ -1209,6 +1209,12 @@ export interface ConnectToolkitsQuery {
   limit?: number;
 }
 
+interface ConnectToolkitsWirePage {
+  items: ConnectToolkit[];
+  cursor?: string | null;
+  totalPages?: number;
+}
+
 /** List hosted Composio toolkits. Legacy Pipedream catalog methods stay separate. */
 export async function listConnectToolkits(
   projectId: string,
@@ -1219,11 +1225,22 @@ export async function listConnectToolkits(
   if (query.cursor) params.set('cursor', query.cursor);
   if (query.limit) params.set('limit', String(query.limit));
   const qs = params.toString();
-  return unwrap(
-    await backendApi.get<ConnectToolkitsPage>(
+  const page = unwrap(
+    await backendApi.get<ConnectToolkitsWirePage | ConnectToolkitsPage>(
       `/connectors/projects/${projectId}/connect/toolkits${qs ? `?${qs}` : ''}`,
     ),
   );
+  // The provider returns its native `items` / `cursor` page. Keep accepting the
+  // earlier normalized shape during rolling deploys, but expose one stable SDK
+  // contract to web and other consumers.
+  if ('toolkits' in page) return page;
+  const nextCursor = page.cursor?.trim() || undefined;
+  return {
+    provider: 'composio' as const,
+    toolkits: page.items,
+    nextCursor,
+    hasMore: Boolean(nextCursor),
+  };
 }
 
 export type DiscoverConnectorKind = 'openapi' | 'mcp' | 'graphql' | 'cli';

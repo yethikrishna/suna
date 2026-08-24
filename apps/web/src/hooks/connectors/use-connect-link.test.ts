@@ -90,19 +90,47 @@ describe('runConnectLinkFlow', () => {
     expect((harness.popup as unknown as { opener: unknown }).opener).toBeNull();
   });
 
-  test('surfaces a popup blocker before requesting a Connect Link', async () => {
+  test('surfaces a popup blocker after confirming the connector still needs OAuth', async () => {
     let requested = false;
     await expect(
       runConnectLinkFlow(
         async () => {
           requested = true;
-          return { connectUrl: 'https://connect.example/link' };
+          return { connected: false, connectUrl: 'https://connect.example/link' };
         },
         async () => ({ connected: true }),
         { openWindow: () => null },
       ),
     ).rejects.toThrow('browser blocked the connection popup');
-    expect(requested).toBe(false);
+    expect(requested).toBe(true);
+  });
+
+  test('completes a no-auth toolkit without navigation or finalize polling', async () => {
+    const harness = popupHarness();
+    let finalizeCalls = 0;
+    await expect(
+      runConnectLinkFlow(
+        async () => ({ provider: 'composio', connected: true, isNoAuth: true }),
+        async () => {
+          finalizeCalls += 1;
+          return { connected: true };
+        },
+        { openWindow: () => harness.popup },
+      ),
+    ).resolves.toEqual({ connected: true });
+    expect(finalizeCalls).toBe(0);
+    expect(harness.navigated).toEqual([]);
+    expect(harness.closeCalls).toBe(1);
+  });
+
+  test('completes a no-auth toolkit even when popups are blocked', async () => {
+    await expect(
+      runConnectLinkFlow(
+        async () => ({ provider: 'composio', connected: true, isNoAuth: true }),
+        async () => ({ connected: true }),
+        { openWindow: () => null },
+      ),
+    ).resolves.toEqual({ connected: true });
   });
 
   test('surfaces a user-closed popup and does not leave the mutation pending', async () => {
@@ -171,9 +199,13 @@ describe('runConnectLinkFlow', () => {
   test('requires a Connect Link URL and closes the blank popup', async () => {
     const harness = popupHarness();
     await expect(
-      runConnectLinkFlow(async () => ({}), async () => ({ connected: true }), {
-        openWindow: () => harness.popup,
-      }),
+      runConnectLinkFlow(
+        async () => ({}),
+        async () => ({ connected: true }),
+        {
+          openWindow: () => harness.popup,
+        },
+      ),
     ).rejects.toThrow('did not return a Connect Link');
     expect(harness.closeCalls).toBe(1);
   });

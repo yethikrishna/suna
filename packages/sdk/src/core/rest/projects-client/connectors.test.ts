@@ -649,8 +649,7 @@ test('listConnectToolkits GETs the Composio-first toolkit catalog with paginatio
   nextResponse = {
     status: 200,
     body: {
-      provider: 'composio',
-      toolkits: [
+      items: [
         {
           slug: 'gmail',
           name: 'Gmail',
@@ -659,8 +658,8 @@ test('listConnectToolkits GETs the Composio-first toolkit catalog with paginatio
           connected: false,
         },
       ],
-      nextCursor: 'cursor-2',
-      hasMore: true,
+      cursor: 'cursor-2',
+      totalPages: 2,
     },
   };
 
@@ -676,6 +675,8 @@ test('listConnectToolkits GETs the Composio-first toolkit catalog with paginatio
   expect(last().url).toContain('limit=24');
   expect(result.provider).toBe('composio');
   expect(result.toolkits[0]?.slug).toBe('gmail');
+  expect(result.nextCursor).toBe('cursor-2');
+  expect(result.hasMore).toBe(true);
 });
 
 test('listPipedreamApps GETs with q + cursor as query params when given', async () => {

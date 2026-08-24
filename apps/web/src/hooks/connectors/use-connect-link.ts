@@ -55,6 +55,11 @@ export async function runConnectLinkFlow(
 
   const popup = (options.openWindow ?? defaultOpenWindow)();
   if (!popup) {
+    // A no-auth toolkit completes in the start response and never needs a
+    // browser window. Still attempt it when popups are blocked, but keep OAuth
+    // fail-closed because its hosted authorization page cannot be shown.
+    const response = await start();
+    if (response.connected) return { connected: true };
     throw new Error('Your browser blocked the connection popup. Allow popups and try again.');
   }
 
@@ -69,6 +74,7 @@ export async function runConnectLinkFlow(
     }
 
     const response = await start();
+    if (response.connected) return { connected: true };
     const url = connectLinkUrl(response);
     if (!url) throw new Error('The connector did not return a Connect Link. Try again.');
     if (popup.closed) {

@@ -193,7 +193,11 @@ import {
   ConnectorAppIcon,
   ConnectorStatusBadge,
 } from '@/features/workspace/capabilities/connectors/connector-identity';
-import { providerLabel } from '@/features/workspace/capabilities/connectors/provider-label';
+import {
+  composioConnectionIsAuthorized,
+  isManagedConnectorProvider,
+  providerLabel,
+} from '@/features/workspace/capabilities/connectors/provider-label';
 import { usePipedreamConnect } from '@/hooks/connectors/use-pipedream-connect-app';
 import { useCopy } from '@/hooks/use-copy';
 
@@ -1090,7 +1094,7 @@ export function ConnectorDetail({
   canWrite?: boolean;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
-  const isPipedream = connector.provider === 'pipedream';
+  const isManagedProvider = isManagedConnectorProvider(connector.provider);
   const isChannel = connector.provider === 'channel';
   // A computer profile has no generic credential or connection form. Its
   // project-scoped tool policy remains editable here like every other connector.
@@ -1100,7 +1104,6 @@ export function ConnectorDetail({
     connector.provider,
   );
   const usesProjectAuthorization = connector.authorizationStrategy === 'project';
-  const connected = usesProjectAuthorization && connector.secretSet;
   // The connection's connection_id — the reference a backend (Kortix as a Backend)
   // passes in `connector_bindings` to run a session AS this connection. It isn't
   // surfaced anywhere else, so we expose + copy it here. Project-default connection
@@ -1120,6 +1123,11 @@ export function ConnectorDetail({
   const myPrivateConnection = connectionsQuery.data?.connections.find(
     (p) => p.connector_alias === connector.slug && p.owner_type === 'member',
   );
+  const selectedConnection = usesProjectAuthorization ? connection : myPrivateConnection;
+  const connected =
+    connector.provider === 'composio'
+      ? composioConnectionIsAuthorized(selectedConnection?.metadata)
+      : usesProjectAuthorization && connector.secretSet;
   const reconnect = usePipedreamConnect(projectId, connector.slug, onChanged);
   // Administering project connections (adding another, changing the project default)
   // is manager-gated; a member always manages their OWN connections.
@@ -1143,8 +1151,8 @@ export function ConnectorDetail({
   // Which tabs this connector actually has. Pipedream connectors hold many
   // connections (project + per-member), so they get Connections; everything else
   // has at most one shared credential, which lives under Connection.
-  const showConnections = isPipedream && !isChannel && !isComputer;
-  const showConnectionTab = canWrite && !isPipedream && !isManaged;
+  const showConnections = isManagedProvider && !isChannel && !isComputer;
+  const showConnectionTab = canWrite && !isManagedProvider && !isManaged;
   const showPermissions = canWrite;
   const showRoster =
     showConnections && canManageConnections && connector.authorizationStrategy === 'user';
@@ -1326,11 +1334,11 @@ export function ConnectorDetail({
             small header button buried next to the title. (Channel connectors
             are managed from the Channels tab, so neither shows.) */}
         {canWrite &&
-          connector.authSecret &&
+          (isManagedProvider || connector.authSecret) &&
           connected &&
           !isChannel &&
           usesProjectAuthorization &&
-          (isPipedream ? (
+          (isManagedProvider ? (
             <Button
               size="sm"
               variant="outline"
@@ -1386,32 +1394,37 @@ export function ConnectorDetail({
           </div>
         </section>
         {/* Project-owned connectors accept only project-managed connections. */}
-        {connector.authSecret && !connected && !isChannel && usesProjectAuthorization && (
-          <InfoBanner
-            tone="info"
-            icon={Users}
-            title={`Connect ${displayName} for the project`}
-            action={
-              canWrite ? (
-                <Button
-                  size="lg"
-                  className="h-11 shrink-0 gap-2 px-5 font-semibold"
-                  onClick={() => (isPipedream ? reconnect.mutate() : setCredOpen(true))}
-                  disabled={strategyUpdating || (isPipedream && reconnect.isPending)}
-                >
-                  {isPipedream && reconnect.isPending && <Loading className="size-4 shrink-0" />}
-                  {isPipedream ? 'Connect for the project' : 'Set shared credential'}
-                </Button>
-              ) : undefined
-            }
-          >
-            {isPipedream
-              ? `One project-managed ${displayName} account is available to allowed sessions and triggers.`
-              : `One shared credential that everyone on this project uses — the agent and your triggers run on it.`}
-          </InfoBanner>
-        )}
+        {(isManagedProvider || connector.authSecret) &&
+          !connected &&
+          !isChannel &&
+          usesProjectAuthorization && (
+            <InfoBanner
+              tone="info"
+              icon={Users}
+              title={`Connect ${displayName} for the project`}
+              action={
+                canWrite ? (
+                  <Button
+                    size="lg"
+                    className="h-11 shrink-0 gap-2 px-5 font-semibold"
+                    onClick={() => (isManagedProvider ? reconnect.mutate() : setCredOpen(true))}
+                    disabled={strategyUpdating || (isManagedProvider && reconnect.isPending)}
+                  >
+                    {isManagedProvider && reconnect.isPending && (
+                      <Loading className="size-4 shrink-0" />
+                    )}
+                    {isManagedProvider ? 'Connect for the project' : 'Set shared credential'}
+                  </Button>
+                ) : undefined
+              }
+            >
+              {isManagedProvider
+                ? `One project-managed ${displayName} account is available to allowed sessions and triggers.`
+                : `One shared credential that everyone on this project uses — the agent and your triggers run on it.`}
+            </InfoBanner>
+          )}
         {connector.authSecret &&
-          !isPipedream &&
+          !isManagedProvider &&
           !isChannel &&
           !isComputer &&
           !usesProjectAuthorization && (
@@ -1511,7 +1524,7 @@ export function ConnectorDetail({
                     onChanged={onChanged}
                     canWrite={canWrite && !strategyUpdating}
                     onSetCredential={
-                      isPipedream || !usesProjectAuthorization ? undefined : () => setCredOpen(true)
+                      isManagedProvider || !usesProjectAuthorization ? undefined : () => setCredOpen(true)
                     }
                   />
                 )}

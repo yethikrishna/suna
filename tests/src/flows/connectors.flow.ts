@@ -303,6 +303,7 @@ flow(
     routes: [
       'GET /v1/connectors/projects/:projectId/pipedream/apps',
       'GET /v1/connectors/projects/:projectId/pipedream/sections',
+      'GET /v1/connectors/connect-status',
     ],
   },
   async (ctx) => {
@@ -324,6 +325,14 @@ flow(
       if (r.statusCode === 200) {
         r.body().exists('$.sections').exists('$.categories').exists('$.indexReady');
       }
+    });
+    await ctx.step('connect provider status reports configured providers without requiring OAuth', async () => {
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/connectors/connect-status');
+      r.status(200).body().exists('$.configured');
+      const status = r.json<{ provider?: unknown; providers?: unknown }>();
+      if (!('provider' in status)) throw new Error('provider key must be present');
+      const providers = status.providers;
+      if (providers !== undefined && !Array.isArray(providers)) throw new Error('providers must be an array when present');
     });
     await ctx.step('NONMEMBER cannot read pipedream category sections → 403', async () => {
       const r = await ctx.client
@@ -873,6 +882,108 @@ flow(
           });
         r.status(404);
       }
+    });
+  },
+);
+
+flow(
+  'CONN-24',
+  {
+    domain: 'connectors',
+    serial: true,
+    routes: [
+      'POST /v1/connectors/projects/:projectId/connectors',
+      'GET /v1/connectors/projects/:projectId/connectors/:slug/config',
+      'POST /v1/connectors/projects/:projectId/connectors/:slug/connect',
+      'POST /v1/connectors/projects/:projectId/connectors/:slug/connect/finalize',
+      'POST /v1/connectors/call',
+    ],
+  },
+  async (ctx) => {
+    const p = await ctx.fixtures.project({ managedGit: true });
+    const slug = `ke2e-composio-${Date.now().toString(36)}`;
+
+    let composioCreated = false;
+    await ctx.step('seed a Composio connector configuration from the public manifest contract', async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .post(
+          '/v1/connectors/projects/:projectId/connectors',
+          { slug, provider: 'composio', app: 'gmail', auth: { type: 'none' } },
+          { params: { projectId: p.id } },
+        );
+      r.status([200, 400]);
+      if (r.statusCode === 400) {
+        r.body().exists('$.error');
+        return;
+      }
+      r.body().has('$.ok', true);
+      composioCreated = true;
+    });
+
+    if (!composioCreated) return;
+
+    await ctx.step('read Composio connector config without exposing a provider key', async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .get('/v1/connectors/projects/:projectId/connectors/:slug/config', {
+          params: { projectId: p.id, slug },
+        });
+      r.status(200)
+        .body()
+        .has('$.provider', 'composio')
+        .has('$.app', 'gmail')
+        .has('$.auth.type', 'none');
+    });
+
+    await ctx.step('connect returns a Composio URL when configured, otherwise a missing-key 404/501', async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .post(
+          '/v1/connectors/projects/:projectId/connectors/:slug/connect',
+          { success_redirect_uri: 'kortix://connect/success', error_redirect_uri: 'kortix://connect/error' },
+          { params: { projectId: p.id, slug } },
+        );
+      r.status([200, 404, 501]);
+      if (r.statusCode === 200) {
+        r.body().has('$.provider', 'composio').exists('$.connectUrl').exists('$.connectionId');
+      } else {
+        r.body().exists('$.error');
+      }
+    });
+
+    await ctx.step('finalize without an authorized Composio account is false or unavailable', async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .post(
+          '/v1/connectors/projects/:projectId/connectors/:slug/connect/finalize',
+          {},
+          { params: { projectId: p.id, slug } },
+        );
+      r.status([200, 404, 501]);
+      if (r.statusCode === 200) {
+        r.body().has('$.provider', 'composio').exists('$.connected');
+      } else {
+        r.body().exists('$.error');
+      }
+    });
+
+    await ctx.step('wrong tenant cannot connect or finalize another project connector', async () => {
+      for (const op of ['connect', 'connect/finalize'] as const) {
+        const r = await ctx.client
+          .as(ctx.P.NONMEMBER)
+          .post(`/v1/connectors/projects/:projectId/connectors/:slug/${op}`, {}, {
+            params: { projectId: p.id, slug },
+          });
+        r.status(403);
+      }
+    });
+
+    await ctx.step('dashboard JWT cannot call a Composio action through the connector-principal route', async () => {
+      const r = await ctx.client
+        .as(ctx.P.OWNER)
+        .post('/v1/connectors/call', { connector: slug, action: 'GMAIL_SEND_EMAIL', args: {} });
+      r.status(401);
     });
   },
 );

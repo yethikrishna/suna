@@ -261,4 +261,89 @@ test.describe("23 — Composio managed connector", () => {
     );
     expect(pageErrors, `client errors: ${pageErrors.join(" | ")}`).toEqual([]);
   });
+
+  test("a fresh Gmail Connect Link uses the safe managed scopes and reaches Google", async ({
+    page,
+  }) => {
+    const status = await api<ConnectStatus>(
+      session.access_token,
+      "GET",
+      "/connectors/connect-status",
+    );
+    const providers =
+      status.providers ?? (status.provider ? [status.provider] : []);
+    test.skip(!providers.includes("composio"), "Composio is not configured");
+
+    const slug = `gmail-oauth-${Date.now().toString(36)}`;
+    await api(
+      session.access_token,
+      "POST",
+      `/connectors/projects/${project.id}/connectors`,
+      {
+        slug,
+        name: "Gmail OAuth regression",
+        provider: "composio",
+        app: "gmail",
+        auth: { type: "none" },
+        create_only: true,
+      },
+    );
+    const connected = await api<{
+      provider: string;
+      app: string;
+      connected: boolean;
+      isNoAuth: boolean;
+      connectUrl: string;
+      sessionId: string;
+      requestId: string;
+    }>(
+      session.access_token,
+      "POST",
+      `/connectors/projects/${project.id}/connectors/${slug}/connect`,
+      {
+        success_redirect_uri: "https://dev.kortix.com/oauth-proof",
+        error_redirect_uri: "https://dev.kortix.com/oauth-proof-error",
+      },
+    );
+    expect(connected).toEqual(
+      expect.objectContaining({
+        provider: "composio",
+        app: "gmail",
+        connected: false,
+        isNoAuth: false,
+        connectUrl: expect.stringMatching(
+          /^https:\/\/connect\.composio\.dev\//,
+        ),
+        sessionId: expect.stringMatching(/^trs_/),
+        requestId: expect.any(String),
+      }),
+    );
+
+    await page.goto(connected.connectUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
+    await page.waitForURL((url) => url.hostname === "accounts.google.com", {
+      timeout: 60_000,
+    });
+    const googleUrl = new URL(page.url());
+    const scopes = new Set(
+      (googleUrl.searchParams.get("scope") ?? "").split(" ").filter(Boolean),
+    );
+    for (const staleScope of [
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/gmail.compose",
+      "https://www.googleapis.com/auth/gmail.modify",
+      "https://www.googleapis.com/auth/gmail.labels",
+    ]) {
+      expect(
+        scopes,
+        `stale Gmail scope leaked into OAuth: ${staleScope}`,
+      ).not.toContain(staleScope);
+    }
+    const googleBody = await page.locator("body").innerText();
+    expect(googleBody).not.toMatch(/this app is blocked/i);
+    expect(googleBody).toMatch(/sign in|choose an account/i);
+  });
 });

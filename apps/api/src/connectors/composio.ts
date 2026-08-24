@@ -42,14 +42,21 @@ export interface ComposioRuntime {
       toolkit?: string;
       search?: string;
       isComposioManaged?: boolean;
+      showDisabled?: boolean;
       limit?: number;
-    }): Promise<{ items: Array<{ id: string; name: string }> }>;
+    }): Promise<{
+      items: Array<{
+        id: string;
+        name: string;
+        status?: 'ENABLED' | 'DISABLED';
+        isComposioManaged?: boolean;
+      }>;
+    }>;
     create(
       toolkit: string,
       options: {
         type: 'use_composio_managed_auth';
         name: string;
-        credentials: { scopes: string };
         isEnabledForToolRouter: boolean;
       },
     ): Promise<{ id: string }>;
@@ -109,9 +116,19 @@ let runtime: ComposioRuntime | null = null;
 
 // Do not override scopes on Composio-managed Google apps. Google blocks a
 // managed OAuth client when it requests sensitive scopes that are not verified
-// for that client. The toolkit's managed default is the safe connection path.
-// A verified Kortix OAuth app can be introduced later as a custom auth config.
-const MANAGED_AUTH_CONFIGS: Record<string, { name: string; scopes: readonly string[] }> = {};
+// for that client. Pin Gmail to an enabled managed config without relying on
+// provider list order: an older Kortix config with explicit scopes can remain in
+// the project for rollback, but must never be selected for new connections.
+const MANAGED_AUTH_CONFIGS: Record<
+  string,
+  { name: string; fallbackNamePrefixes: readonly string[]; blockedNames: readonly string[] }
+> = {
+  gmail: {
+    name: 'Kortix Gmail managed default v2',
+    fallbackNamePrefixes: ['auth_config_gmail_'],
+    blockedNames: ['Kortix Gmail managed actions v1'],
+  },
+};
 
 const authConfigCache = new WeakMap<ComposioRuntime, Map<string, Promise<string>>>();
 
@@ -183,17 +200,26 @@ async function managedAuthConfigId(
   const resolved = (async () => {
     const page = await runtime.authConfigs!.list({
       toolkit,
-      search: spec.name,
       isComposioManaged: true,
+      showDisabled: false,
       limit: 100,
     });
-    const match = page.items.find((item) => item.name === spec.name);
+    const eligible = page.items.filter(
+      (item) =>
+        item.status !== 'DISABLED' &&
+        item.isComposioManaged !== false &&
+        !spec.blockedNames.includes(item.name),
+    );
+    const match =
+      eligible.find((item) => item.name === spec.name) ??
+      eligible.find((item) =>
+        spec.fallbackNamePrefixes.some((prefix) => item.name.startsWith(prefix)),
+      );
     if (match) return match.id;
 
     const created = await runtime.authConfigs!.create(toolkit, {
       type: 'use_composio_managed_auth',
       name: spec.name,
-      credentials: { scopes: spec.scopes.join(',') },
       isEnabledForToolRouter: true,
     });
     return created.id;

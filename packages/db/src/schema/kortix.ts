@@ -4824,6 +4824,7 @@ export const accountSsoGroupMappings = kortixSchema.table(
  */
 export const connectorProviderEnum = kortixSchema.enum('connector_provider', [
   'pipedream',
+  'composio',
   'mcp',
   'openapi',
   'postman',
@@ -5036,6 +5037,9 @@ export const connectorConnections = kortixSchema.table(
       .where(sql`${table.ownerId} is null`),
     index('idx_connector_connections_project').on(table.projectId),
     index('idx_connector_connections_connector').on(table.connectorId),
+    index('idx_connector_connections_composio_account').on(
+      sql`(${table.metadata}->>'connected_account_id')`,
+    ),
     check(
       'connector_connections_owner_check',
       sql`(${table.ownerType} = 'project' AND ${table.ownerId} IS NULL) OR (${table.ownerType} <> 'project' AND ${table.ownerId} IS NOT NULL AND btrim(${table.ownerId}) <> '')`,

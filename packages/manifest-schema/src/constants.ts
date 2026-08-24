@@ -150,6 +150,7 @@ export function formatDurationSeconds(seconds: number): string {
 // deliberately absent: it is synth-only and never written to a manifest.
 export const CONNECTOR_PROVIDERS = [
   'pipedream',
+  'composio',
   'mcp',
   'openapi',
   'postman',

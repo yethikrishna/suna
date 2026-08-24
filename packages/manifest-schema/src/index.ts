@@ -1271,10 +1271,10 @@ function validateConnectors(node: unknown, path: string, issues: ManifestIssue[]
         severity: 'error',
       });
     }
-    if (provider === 'pipedream' && typeof entry.app !== 'string') {
+    if ((provider === 'pipedream' || provider === 'composio') && typeof entry.app !== 'string') {
       issues.push({
         path: `${where}.app`,
-        message: 'pipedream connectors require `app`.',
+        message: `${provider} connectors require \`app\`.`,
         severity: 'error',
       });
     }
@@ -1403,11 +1403,11 @@ function validateConnectors(node: unknown, path: string, issues: ManifestIssue[]
         severity: version === 2 ? 'error' : 'warning',
       });
     }
-    if (provider === 'pipedream' && entry.auth !== undefined) {
+    if ((provider === 'pipedream' || provider === 'composio') && entry.auth !== undefined) {
       issues.push({
         path: `${where}.auth`,
         message:
-          'pipedream connectors authenticate via the connected account — [connectors.auth] is ignored at runtime.',
+          `${provider} connectors authenticate via the connected account — [connectors.auth] is ignored at runtime.`,
         severity: 'warning',
       });
     }
@@ -1458,7 +1458,7 @@ function validateConnectors(node: unknown, path: string, issues: ManifestIssue[]
       const parsedHeaders = parseConnectorHeaders(entry.headers);
       if (!parsedHeaders.ok) {
         issues.push({ path: `${where}.headers`, message: `${parsedHeaders.error}.`, severity: 'error' });
-      } else if (provider === 'pipedream' || provider === 'channel') {
+      } else if (provider === 'pipedream' || provider === 'composio' || provider === 'channel') {
         issues.push({
           path: `${where}.headers`,
           message:

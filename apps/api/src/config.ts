@@ -623,6 +623,11 @@ const envSchema = z.object({
   PIPEDREAM_PROJECT_ID: optStr,
   PIPEDREAM_ENVIRONMENT: optStrDefault('production'),
   PIPEDREAM_WEBHOOK_SECRET: optStr,
+
+  // ── Composio Connect (optional — powers provider-neutral connector connect) ─
+  COMPOSIO_API_KEY: optStr,
+  COMPOSIO_PROJECT_ID: optStr,
+  COMPOSIO_BASE_URL: optUrl(''),
   // Optional: required only when importing a public Postman workspace URL.
   // Exported collection JSON and Postman-managed Git repositories need no key.
   POSTMAN_API_KEY: optStr,
@@ -1041,6 +1046,11 @@ export const config = {
   PIPEDREAM_PROJECT_ID: env.PIPEDREAM_PROJECT_ID,
   PIPEDREAM_ENVIRONMENT: env.PIPEDREAM_ENVIRONMENT,
   PIPEDREAM_WEBHOOK_SECRET: env.PIPEDREAM_WEBHOOK_SECRET,
+
+  // ─── Composio Connect (Connector connect provider) ─────────────────────────
+  COMPOSIO_API_KEY: env.COMPOSIO_API_KEY,
+  COMPOSIO_PROJECT_ID: env.COMPOSIO_PROJECT_ID,
+  COMPOSIO_BASE_URL: env.COMPOSIO_BASE_URL,
   POSTMAN_API_KEY: env.POSTMAN_API_KEY,
 
   // ─── Search Providers ──────────────────────────────────────────────────────

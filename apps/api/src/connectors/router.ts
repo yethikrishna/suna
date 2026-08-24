@@ -382,6 +382,27 @@ export interface ConnectorRouterDeps {
     slug: string,
     userId: string,
   ): Promise<{ connected: boolean; accountId?: string } | null>;
+  /** Provider-neutral connect routes. Prefer Composio when wired; keep Pipedream path intact. */
+  connectorConnect?(
+    projectId: string,
+    slug: string,
+    userId: string,
+    redirects?: { success?: string; error?: string },
+  ): Promise<{
+    provider: string;
+    token?: string;
+    app?: string;
+    connectUrl?: string;
+    requestId?: string;
+    sessionId?: string;
+    connectionId?: string;
+  } | null>;
+  connectorFinalize?(
+    projectId: string,
+    slug: string,
+    userId: string,
+  ): Promise<{ provider: string; connected: boolean; accountId?: string; connectionId?: string } | null>;
+  connectStatus?(): Promise<{ configured: boolean; provider: string | null; providers?: string[] }>;
   /**
    * Pipedream webhook: verify sig + finalize. `ok:false` = the signature (or the
    * connector/authorization binding the id names) did not check out → 401.
@@ -1425,8 +1446,10 @@ export function createConnectorRouter(deps: ConnectorRouterDeps): OpenAPIHono {
       },
     }),
     async (c: any) => {
-      const configured = !!deps.listPipedreamApps;
-      return c.json({ configured, provider: configured ? 'pipedream' : null });
+      const result = deps.connectStatus
+        ? await deps.connectStatus()
+        : { configured: !!deps.listPipedreamApps, provider: deps.listPipedreamApps ? 'pipedream' : null };
+      return c.json(result);
     },
   );
 
@@ -1740,7 +1763,13 @@ export function createConnectorRouter(deps: ConnectorRouterDeps): OpenAPIHono {
       const slug = c.req.param('slug');
       const admin = await deps.resolveAdmin(c, projectId);
       if (!admin) return c.json({ error: 'forbidden' }, 403);
-      if (!deps.pipedreamConnect) return featureNotSupportedResponse(c, 'pipedream_connect');
+      const connect = deps.connectorConnect ?? (deps.pipedreamConnect
+        ? async (pid: string, s: string, uid: string, r?: { success?: string; error?: string }) => {
+            const result = await deps.pipedreamConnect!(pid, s, uid, r);
+            return result ? { provider: 'pipedream', ...result } : null;
+          }
+        : undefined);
+      if (!connect) return featureNotSupportedResponse(c, 'connector_connect');
       // Native clients pass app deep-link redirect URIs so the in-app browser
       // auto-dismisses back to the app instead of landing on a web page.
       let redirects: { success?: string; error?: string } | undefined;
@@ -1752,8 +1781,8 @@ export function createConnectorRouter(deps: ConnectorRouterDeps): OpenAPIHono {
       } catch {
         /* no body */
       }
-      const result = await deps.pipedreamConnect(projectId, slug, admin.userId, redirects);
-      if (!result) return c.json({ error: 'not a pipedream connector' }, 404);
+      const result = await connect(projectId, slug, admin.userId, redirects);
+      if (!result) return c.json({ error: 'not a supported connect connector' }, 404);
       return c.json(result);
     },
   );
@@ -1776,9 +1805,15 @@ export function createConnectorRouter(deps: ConnectorRouterDeps): OpenAPIHono {
       const slug = c.req.param('slug');
       const admin = await deps.resolveAdmin(c, projectId);
       if (!admin) return c.json({ error: 'forbidden' }, 403);
-      if (!deps.pipedreamFinalize) return featureNotSupportedResponse(c, 'pipedream_finalize');
-      const result = await deps.pipedreamFinalize(projectId, slug, admin.userId);
-      if (!result) return c.json({ error: 'not a pipedream connector' }, 404);
+      const finalize = deps.connectorFinalize ?? (deps.pipedreamFinalize
+        ? async (pid: string, s: string, uid: string) => {
+            const result = await deps.pipedreamFinalize!(pid, s, uid);
+            return result ? { provider: 'pipedream', ...result } : null;
+          }
+        : undefined);
+      if (!finalize) return featureNotSupportedResponse(c, 'connector_finalize');
+      const result = await finalize(projectId, slug, admin.userId);
+      if (!result) return c.json({ error: 'not a supported connect connector' }, 404);
       return c.json(result);
     },
   );

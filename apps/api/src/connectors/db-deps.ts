@@ -311,7 +311,7 @@ function authOf(row: ConnectorRow): { auth: ConnectorAuth; hasAuth: boolean } {
         prefix: cfg.auth.prefix ?? null,
       }
     : DEFAULT_AUTH;
-  const hasAuth = row.providerType === 'pipedream' || auth.type !== 'none';
+  const hasAuth = row.providerType === 'pipedream' || row.providerType === 'composio' || auth.type !== 'none';
   return { auth, hasAuth };
 }
 
@@ -415,6 +415,9 @@ async function connectorConnected(
       return install?.inboxId === connection.metadata.inbox_id;
     }
     return true;
+  }
+  if (row.providerType === 'composio') {
+    return typeof connection?.metadata.connected_account_id === 'string';
   }
   return connection
     ? (await connectionCredentialExists({
@@ -706,6 +709,69 @@ export async function loadPipedreamConnector(projectId: string, slug: string) {
     app,
     authorizationStrategy: row.authorizationStrategy,
   };
+}
+
+/** Load a Composio connector's toolkit slug + id (verifies provider). */
+export async function loadComposioConnector(projectId: string, slug: string) {
+  const [row] = await db
+    .select({
+      connectorId: connectors.connectorId,
+      accountId: connectors.accountId,
+      providerType: connectors.providerType,
+      config: connectors.config,
+      authorizationStrategy: connectors.authorizationStrategy,
+    })
+    .from(connectors)
+    .where(and(eq(connectors.projectId, projectId), eq(connectors.slug, slug)))
+    .limit(1);
+  if (!row || row.providerType !== 'composio') return null;
+  const app = (row.config as any)?.app;
+  if (typeof app !== 'string' || !app) return null;
+  return {
+    connectorId: row.connectorId,
+    accountId: row.accountId,
+    app,
+    authorizationStrategy: row.authorizationStrategy,
+  };
+}
+
+type ComposioAdapter = {
+  composioConfigured(): boolean;
+  composioCatalogPage?(input: { q?: string; cursor?: string; limit?: number }): Promise<unknown>;
+  composioConnectUrl(input: {
+    projectId: string;
+    slug: string;
+    app: string;
+    connectionId: string;
+    stableUserId: string;
+    redirects?: { success?: string; error?: string };
+  }): Promise<{ connectUrl?: string; sessionId: string; authRequestId?: string; connectedAccountId?: string }>;
+  finalizeComposioConnection(input: {
+    projectId: string;
+    slug: string;
+    app: string;
+    connectionId: string;
+    stableUserId: string;
+    sessionId: string;
+    authRequestId?: string;
+    expectedConnectedAccountId?: string;
+  }): Promise<{ connected: boolean; connectedAccountId?: string; sessionId?: string; authRequestId?: string }>;
+};
+
+async function loadComposioAdapter(): Promise<ComposioAdapter | null> {
+  if (!config.COMPOSIO_API_KEY) return null;
+  try {
+    await import('@composio/core');
+    const modulePath = './composio';
+    return (await import(modulePath)) as ComposioAdapter;
+  } catch (err) {
+    console.warn('[composio] adapter unavailable', { error: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
+}
+
+function composioStableUserId(connectionId: string): string {
+  return `kortix-connection:${connectionId}`;
 }
 
 export type ConnectLinkEligibility =
@@ -1716,6 +1782,162 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
   listPipedreamSections: pipedreamConfigured()
     ? (input) => pipedreamCatalogSections(input)
     : undefined,
+  connectStatus: async () => {
+    const composio = await loadComposioAdapter();
+    const providers = [
+      ...(composio?.composioConfigured?.() ? ['composio'] : []),
+      ...(pipedreamConfigured() ? ['pipedream'] : []),
+    ];
+    return { configured: providers.length > 0, provider: providers[0] ?? null, providers };
+  },
+  connectorConnect: async (projectId, slug, _userId, redirects) => {
+    const conn = await loadComposioConnector(projectId, slug);
+    if (conn) {
+      if (conn.authorizationStrategy !== 'project') return null;
+      const composio = await loadComposioAdapter();
+      if (!composio?.composioConfigured?.()) return null;
+      const [existingConnection] = await db
+        .select({ connectionId: connectorConnections.connectionId })
+        .from(connectorConnections)
+        .where(
+          and(
+            eq(connectorConnections.projectId, projectId),
+            eq(connectorConnections.connectorId, conn.connectorId),
+            eq(connectorConnections.ownerType, 'project'),
+            isNull(connectorConnections.ownerId),
+            eq(connectorConnections.label, 'Default'),
+          ),
+        )
+        .limit(1);
+      const [connection] = existingConnection
+        ? await db
+            .update(connectorConnections)
+            .set({ status: 'active', isDefault: true, updatedAt: sql`now()` })
+            .where(eq(connectorConnections.connectionId, existingConnection.connectionId))
+            .returning({ connectionId: connectorConnections.connectionId })
+        : await db
+            .insert(connectorConnections)
+            .values({
+              accountId: conn.accountId,
+              projectId,
+              connectorId: conn.connectorId,
+              ownerType: 'project',
+              ownerId: null,
+              label: 'Default',
+              status: 'active',
+              isDefault: true,
+              metadata: { provider: 'composio', app: conn.app },
+              createdBy: null,
+            })
+            .returning({ connectionId: connectorConnections.connectionId });
+      const stableUserId = composioStableUserId(connection.connectionId);
+      const result = await composio.composioConnectUrl({
+        projectId,
+        slug,
+        app: conn.app,
+        connectionId: connection.connectionId,
+        stableUserId,
+        redirects,
+      });
+      await db
+        .update(connectorConnections)
+        .set({
+          metadata: {
+            provider: 'composio',
+            app: conn.app,
+            stable_user_id: stableUserId,
+            session_id: result.sessionId,
+            auth_request_id: result.authRequestId ?? null,
+            connected_account_id: result.connectedAccountId ?? null,
+          },
+          updatedAt: sql`now()`,
+        })
+        .where(eq(connectorConnections.connectionId, connection.connectionId));
+      return {
+        provider: 'composio',
+        app: conn.app,
+        connectUrl: result.connectUrl,
+        requestId: result.authRequestId,
+        sessionId: result.sessionId,
+        connectionId: connection.connectionId,
+      };
+    }
+    if (!pipedreamConfigured()) return null;
+    const pipedream = await loadPipedreamConnector(projectId, slug);
+    if (!pipedream || pipedream.authorizationStrategy !== 'project') return null;
+    const { connectUrl, token } = await pipedreamConnectUrl(projectId, slug, pipedream.app, null, redirects);
+    return { provider: 'pipedream', token, app: pipedream.app, connectUrl };
+  },
+  connectorFinalize: async (projectId, slug, _userId) => {
+    const conn = await loadComposioConnector(projectId, slug);
+    if (conn) {
+      if (conn.authorizationStrategy !== 'project') return null;
+      const composio = await loadComposioAdapter();
+      if (!composio?.composioConfigured?.()) return null;
+      const [connection] = await db
+        .select({ connectionId: connectorConnections.connectionId, metadata: connectorConnections.metadata })
+        .from(connectorConnections)
+        .where(
+          and(
+            eq(connectorConnections.projectId, projectId),
+            eq(connectorConnections.connectorId, conn.connectorId),
+            eq(connectorConnections.ownerType, 'project'),
+            isNull(connectorConnections.ownerId),
+            eq(connectorConnections.isDefault, true),
+          ),
+        )
+        .limit(1);
+      if (!connection) return { provider: 'composio', connected: false };
+      const metadata = (connection.metadata ?? {}) as Record<string, unknown>;
+      const sessionId = typeof metadata.session_id === 'string' ? metadata.session_id : '';
+      const authRequestId = typeof metadata.auth_request_id === 'string' ? metadata.auth_request_id : undefined;
+      const expectedConnectedAccountId = typeof metadata.connected_account_id === 'string' ? metadata.connected_account_id : undefined;
+      if (!sessionId) return { provider: 'composio', connected: false, connectionId: connection.connectionId };
+      const stableUserId = composioStableUserId(connection.connectionId);
+      const result = await composio.finalizeComposioConnection({
+        projectId,
+        slug,
+        app: conn.app,
+        connectionId: connection.connectionId,
+        stableUserId,
+        sessionId,
+        authRequestId,
+        expectedConnectedAccountId,
+      });
+      await db
+        .update(connectorConnections)
+        .set({
+          status: result.connected ? 'active' : 'error',
+          metadata: {
+            provider: 'composio',
+            app: conn.app,
+            stable_user_id: stableUserId,
+            session_id: result.sessionId ?? sessionId,
+            auth_request_id: result.authRequestId ?? authRequestId ?? null,
+            connected_account_id: result.connectedAccountId ?? expectedConnectedAccountId ?? null,
+          },
+          updatedAt: sql`now()`,
+        })
+        .where(eq(connectorConnections.connectionId, connection.connectionId));
+      return {
+        provider: 'composio',
+        connected: result.connected,
+        accountId: result.connectedAccountId,
+        connectionId: connection.connectionId,
+      };
+    }
+    if (!pipedreamConfigured()) return null;
+    const pipedream = await loadPipedreamConnector(projectId, slug);
+    if (!pipedream || pipedream.authorizationStrategy !== 'project') return null;
+    const r = await finalizePipedreamConnection({
+      projectId,
+      slug,
+      app: pipedream.app,
+      connectorId: pipedream.connectorId,
+      userId: null,
+    });
+    return { provider: 'pipedream', connected: r.connected, accountId: r.accountId };
+  },
   discoverConnectorAuth: discoverDraftConnectorAuth,
   listDiscoverConnectors: (input) => listConnectorCatalog(input),
   getDiscoverConnector: (id) => getConnectorCatalogDetail(id),

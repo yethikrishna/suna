@@ -1,6 +1,7 @@
 import type { ServicePreviewState } from '@/features/session/tool/shared/infrastructure';
 import { describe, expect, test } from 'bun:test';
 import {
+  SHARED_PREVIEW_FRAME_MODES,
   createSharedPreviewStore,
   publishSharedPreview,
   removeSharedPreview,
@@ -40,5 +41,11 @@ describe('shared preview ownership', () => {
 
     expect(store.previews.get('https://preview.test')?.keys().next().value).toBe(first);
     expect(store.previews.get('https://preview.test')?.get(first)).toBe(refreshed);
+  });
+});
+
+describe('shared preview frames', () => {
+  test('preloads both inline and panel iframe documents', () => {
+    expect(SHARED_PREVIEW_FRAME_MODES).toEqual(['inline', 'panel']);
   });
 });

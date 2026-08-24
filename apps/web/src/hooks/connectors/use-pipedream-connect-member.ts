@@ -20,13 +20,20 @@ export function usePipedreamConnectMember(
 ) {
   return useMutation({
     mutationFn: async (input?: { label?: string }) => {
-      const connection = await reconcileMemberConnection(projectId, {
-        connector_alias: slug,
-        label: input?.label?.trim() || 'Private connection',
-      });
-      const connect = await pipedreamConnectConnection(projectId, connection.connection_id);
-      return runConnectLinkFlow(connect, () =>
-        pipedreamFinalizeConnection(projectId, connection.connection_id),
+      let connectionId: string | null = null;
+      return runConnectLinkFlow(
+        async () => {
+          const connection = await reconcileMemberConnection(projectId, {
+            connector_alias: slug,
+            label: input?.label?.trim() || 'Private connection',
+          });
+          connectionId = connection.connection_id;
+          return pipedreamConnectConnection(projectId, connection.connection_id);
+        },
+        () => {
+          if (!connectionId) throw new Error('The private connection was not created.');
+          return pipedreamFinalizeConnection(projectId, connectionId);
+        },
       );
     },
     onSuccess: (res) => {

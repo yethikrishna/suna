@@ -12,8 +12,10 @@ import { pipedreamConnect, pipedreamFinalize } from '@kortix/sdk';
 export function usePipedreamConnect(projectId: string, slug: string, onConnected: () => void) {
   return useMutation({
     mutationFn: async () => {
-      const connect = await pipedreamConnect(projectId, slug);
-      return runConnectLinkFlow(connect, () => pipedreamFinalize(projectId, slug));
+      return runConnectLinkFlow(
+        () => pipedreamConnect(projectId, slug),
+        () => pipedreamFinalize(projectId, slug),
+      );
     },
     onSuccess: (res) => {
       if (!res.connected) return;

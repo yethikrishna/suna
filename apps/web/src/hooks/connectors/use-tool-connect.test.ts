@@ -8,6 +8,7 @@ describe('buildToolConnectorDraft', () => {
       buildToolConnectorDraft({
         appSlug: 'notion',
         appName: 'Notion',
+        provider: 'composio',
         connectorName: 'Product workspace',
         connectorSlug: 'notion-product',
         authorizationStrategy: 'user',
@@ -15,7 +16,7 @@ describe('buildToolConnectorDraft', () => {
     ).toEqual({
       slug: 'notion-product',
       name: 'Product workspace',
-      provider: 'pipedream',
+      provider: 'composio',
       app: 'notion',
       account: 'default',
       authorization_strategy: 'user',

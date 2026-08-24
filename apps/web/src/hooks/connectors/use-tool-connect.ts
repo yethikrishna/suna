@@ -3,6 +3,7 @@
 import { useMutation } from '@tanstack/react-query';
 
 import {
+  type ConnectorConnectResult,
   type ConnectorAuthorizationStrategy,
   createConnector,
   pipedreamConnect,
@@ -17,11 +18,12 @@ import {
   buildEasyConnectConnectorDraft,
   connectorSyncErrorForSlug,
 } from '@/features/workspace/customize/sections/connector-connection-form';
-import { runConnectLinkFlow, type ConnectLinkResponse } from '@/hooks/connectors/use-connect-link';
+import { runConnectLinkFlow } from '@/hooks/connectors/use-connect-link';
 
 export interface ToolConnectInput {
   appSlug: string;
   appName: string;
+  provider?: 'composio' | 'pipedream';
   connectorName: string;
   connectorSlug: string;
   authorizationStrategy: ConnectorAuthorizationStrategy;
@@ -29,7 +31,7 @@ export interface ToolConnectInput {
 
 export function buildToolConnectorDraft(input: ToolConnectInput) {
   return buildEasyConnectConnectorDraft(
-    { slug: input.appSlug, name: input.appName },
+    { slug: input.appSlug, name: input.appName, provider: input.provider },
     {
       name: input.connectorName,
       slug: input.connectorSlug,
@@ -46,7 +48,7 @@ export async function requestToolAuthorization(
     reconcileMember: typeof reconcileMemberConnection;
     connectMember: typeof pipedreamConnectConnection;
   },
-): Promise<ConnectLinkResponse & { connectionId: string | null }> {
+): Promise<Omit<ConnectorConnectResult, 'connectionId'> & { connectionId: string | null }> {
   if (input.authorizationStrategy === 'user') {
     const connection = await deps.reconcileMember(projectId, {
       connector_alias: input.connectorSlug,
@@ -75,16 +77,22 @@ export function useToolConnect(projectId: string, onConnected: () => void) {
       }
 
       try {
-        const { connectionId, ...connect } = await requestToolAuthorization(projectId, input, {
-          connectProject: pipedreamConnect,
-          reconcileMember: reconcileMemberConnection,
-          connectMember: pipedreamConnectConnection,
-        });
-
-        const connected = await runConnectLinkFlow(connect, () =>
-          connectionId
-            ? pipedreamFinalizeConnection(projectId, connectionId)
-            : pipedreamFinalize(projectId, draft.slug),
+        let connectionId: string | null = null;
+        const connected = await runConnectLinkFlow(
+          async () => {
+            const authorization = await requestToolAuthorization(projectId, input, {
+              connectProject: pipedreamConnect,
+              reconcileMember: reconcileMemberConnection,
+              connectMember: pipedreamConnectConnection,
+            });
+            connectionId = authorization.connectionId;
+            const { connectionId: _connectionId, ...connect } = authorization;
+            return connect;
+          },
+          () =>
+            connectionId
+              ? pipedreamFinalizeConnection(projectId, connectionId)
+              : pipedreamFinalize(projectId, draft.slug),
         );
 
         if (!connected.connected) {

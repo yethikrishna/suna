@@ -50,6 +50,7 @@ import {
   isDormantSessionWithoutRuntime,
   isUnmaterializedSessionFailure,
 } from '@/features/session/session-terminal-state';
+import { SidebarToggle } from '@/features/workspace/project-layout/sidebar-toggle';
 import { SessionDeleteModal } from '@/features/workspace/project-sidebar/modal/session-delete-modal';
 import { useAccountState } from '@/hooks/billing';
 import { useSandboxConnection } from '@/hooks/platform/use-sandbox-connection';
@@ -585,11 +586,13 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
   const inner = (() => {
     if (sessionSwitchLoading) {
       return (
-        <SessionStartingLoader
-          stage={switchingToSessionId === sessionId ? startStage : 'starting'}
-          projectId={projectId}
-          sessionId={switchingToSessionId ?? sessionId}
-        />
+        <HeaderlessSessionSurface>
+          <SessionStartingLoader
+            stage={switchingToSessionId === sessionId ? startStage : 'starting'}
+            projectId={projectId}
+            sessionId={switchingToSessionId ?? sessionId}
+          />
+        </HeaderlessSessionSurface>
       );
     }
 
@@ -739,7 +742,9 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
       // dead-end, so the user just sees it come back (as a hard refresh would).
       if (autoResuming) {
         return (
-          <SessionStartingLoader stage="starting" projectId={projectId} sessionId={sessionId} />
+          <HeaderlessSessionSurface>
+            <SessionStartingLoader stage="starting" projectId={projectId} sessionId={sessionId} />
+          </HeaderlessSessionSurface>
         );
       }
       // Auto-resume exhausted (or genuinely un-resumable): give an in-place
@@ -833,11 +838,13 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
                 onSubmit={() => setSubmittedOnShell(true)}
               />
             ) : (
-              <SessionStartingLoader
-                stage={authLoading || !user ? 'provisioning' : startStage}
-                projectId={projectId}
-                sessionId={sessionId}
-              />
+              <HeaderlessSessionSurface>
+                <SessionStartingLoader
+                  stage={authLoading || !user ? 'provisioning' : startStage}
+                  projectId={projectId}
+                  sessionId={sessionId}
+                />
+              </HeaderlessSessionSurface>
             )}
           </div>
         )}
@@ -907,6 +914,36 @@ function RestartSessionButton({
   );
 }
 
+/* ─── Headerless full-screen surfaces ──────────────────────────────────── */
+
+/**
+ * The sidebar opener for every surface on this route that has no header.
+ *
+ * `SessionSiteHeader` carries the opener, and it only renders once the chat
+ * (or the instant shell) mounts. Every state before or instead of that — the
+ * boot loader, the session-switch loader, the billing gate, and all five
+ * terminal cards — is a bare centred block. Collapse the sidebar, then open a
+ * session that is booting, stopped, or broken, and there was no control on
+ * screen to bring the panel back: the app's primary navigation surface was
+ * reachable only by reloading the page. That is the state a user is MOST
+ * likely to want to leave.
+ *
+ * `SidebarToggle` self-gates — it returns null with no sidebar context, on the
+ * Electron shell (which draws the canonical opener in the OS title-bar band),
+ * and while the panel is already docked open on desktop — so wrapping every
+ * such surface unconditionally cannot produce a second opener. `relative` is
+ * load-bearing: the toggle positions itself `absolute top-2 left-2` against
+ * the nearest positioned ancestor.
+ */
+function HeaderlessSessionSurface({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <SidebarToggle placement="floating" />
+      {children}
+    </div>
+  );
+}
+
 /* ─── Inline error card (used inside the project shell) ────────────────── */
 
 function InlineSessionError({
@@ -921,24 +958,26 @@ function InlineSessionError({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center px-6">
-      <ErrorState
-        title={title}
-        description={message}
-        action={
-          detail || action ? (
-            <div className="flex max-w-sm flex-col items-center gap-3">
-              {detail ? (
-                <code className="border-border/60 bg-muted/40 text-muted-foreground max-w-full rounded-md border px-2 py-1 font-mono text-xs leading-relaxed break-all">
-                  {detail}
-                </code>
-              ) : null}
-              {action}
-            </div>
-          ) : undefined
-        }
-      />
-    </div>
+    <HeaderlessSessionSurface>
+      <div className="flex min-h-0 flex-1 items-center justify-center px-6">
+        <ErrorState
+          title={title}
+          description={message}
+          action={
+            detail || action ? (
+              <div className="flex max-w-sm flex-col items-center gap-3">
+                {detail ? (
+                  <code className="border-border/60 bg-muted/40 text-muted-foreground max-w-full rounded-md border px-2 py-1 font-mono text-xs leading-relaxed break-all">
+                    {detail}
+                  </code>
+                ) : null}
+                {action}
+              </div>
+            ) : undefined
+          }
+        />
+      </div>
+    </HeaderlessSessionSurface>
   );
 }
 

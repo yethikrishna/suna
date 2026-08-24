@@ -55,13 +55,12 @@ describe('requestToolAuthorization', () => {
       },
       connectMember: async (_projectId, connectionId) => {
         calls.push(`member-connect:${connectionId}`);
-        return { token: 'token', app: 'notion' };
+        return { connectUrl: 'https://connect.example/member' };
       },
     });
 
     expect(result).toEqual({
-      token: 'token',
-      app: 'notion',
+      connectUrl: 'https://connect.example/member',
       connectionId: 'connection-1',
     });
     expect(calls).toEqual([
@@ -78,7 +77,7 @@ describe('requestToolAuthorization', () => {
       {
         connectProject: async (_projectId, slug) => {
           calls.push(`project-connect:${slug}`);
-          return { token: 'token', app: 'notion' };
+          return { connectUrl: 'https://connect.example/project' };
         },
         reconcileMember: async () => {
           throw new Error('member reconciliation must not run');
@@ -89,7 +88,10 @@ describe('requestToolAuthorization', () => {
       },
     );
 
-    expect(result).toEqual({ token: 'token', app: 'notion', connectionId: null });
+    expect(result).toEqual({
+      connectUrl: 'https://connect.example/project',
+      connectionId: null,
+    });
     expect(calls).toEqual(['project-connect:notion-product']);
   });
 });

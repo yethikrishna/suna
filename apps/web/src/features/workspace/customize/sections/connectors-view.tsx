@@ -23,7 +23,6 @@ import {
   XIcon as X,
   LightningIcon as Zap,
 } from '@phosphor-icons/react';
-import { createFrontendClient } from '@pipedream/sdk/browser';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import Image from 'next/image';
@@ -87,10 +86,8 @@ import {
   useSlackMode,
   useUpdateEmailPolicy,
 } from '@/hooks/channels/use-channels-installations';
-import {
-  usePipedreamConnectMember,
-  withPipedreamOverlayEscape,
-} from '@/hooks/connectors/use-pipedream-connect-member';
+import { usePipedreamConnectMember } from '@/hooks/connectors/use-pipedream-connect-member';
+import { usePipedreamConnectProject } from '@/hooks/connectors/use-pipedream-connect-project';
 import { useNewProjectSession } from '@/hooks/projects/use-new-project-session';
 import { isConnectorsEnabled } from '@/lib/config';
 import { PROJECT_ACTIONS } from '@/lib/project-actions';
@@ -124,10 +121,6 @@ import {
   listProjectAccess,
   type OAuth2DeviceAuthorizationStartResult,
   type OAuth2ResourceDiscovery,
-  pipedreamConnect,
-  pipedreamConnectConnection,
-  pipedreamFinalize,
-  pipedreamFinalizeConnection,
   pollConnectionOAuth2DeviceAuthorization,
   putConnectionOAuth2Application,
   reconcileConnection,
@@ -212,54 +205,6 @@ const RISK_VARIANT: Record<ConnectorAction['risk'], 'outline' | 'secondary' | 'd
 
 const BUILT_IN_CHANNEL_APP_SLUGS = new Set(['slack', 'slack_v2']);
 const SLACK_ICON_SRC = 'https://www.google.com/s2/favicons?domain=slack.com&sz=128';
-
-/**
- * Connect another project-owned account under one connector (support@ alongside
- * sales@). Mints a labelled project-owned connection, then runs that connection's
- * OAuth handshake — the same per-connection flow the personal connect uses.
- */
-function usePipedreamConnectProject(projectId: string, slug: string, onConnected: () => void) {
-  return useMutation({
-    mutationFn: async (input: { label: string }) => {
-      const connection = await reconcileConnection(projectId, {
-        connector_alias: slug,
-        owner_type: 'project',
-        label: input.label.trim(),
-      });
-      const { token, app } = await pipedreamConnectConnection(projectId, connection.connection_id);
-      if (!token || !app) throw new Error('App connect is not configured');
-      const pd = createFrontendClient({
-        externalUserId: `${projectId}:${slug}:${connection.connection_id}`,
-        tokenCallback: async () => ({ token, connect_link_url: undefined, expires_at: '' }) as any,
-      });
-      const release = withPipedreamOverlayEscape();
-      let connected = false;
-      try {
-        connected = await new Promise<boolean>((resolve, reject) => {
-          pd.connectAccount({
-            app,
-            token,
-            onSuccess: () => resolve(true),
-            onClose: (status: { successful: boolean }) => resolve(status.successful),
-            onError: (err: unknown) =>
-              reject(new Error((err as Error)?.message || 'Connection cancelled')),
-          });
-        });
-      } finally {
-        release();
-      }
-      if (!connected) return { connected: false };
-      await pipedreamFinalizeConnection(projectId, connection.connection_id);
-      return { connected: true };
-    },
-    onSuccess: (res) => {
-      if (!res.connected) return;
-      successToast('Project connection added');
-      onConnected();
-    },
-    onError: (err: Error) => errorToast(err.message),
-  });
-}
 
 type Selection = { kind: 'connector'; slug: string } | { kind: 'global' } | { kind: 'add' };
 

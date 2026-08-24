@@ -6645,11 +6645,6 @@ packages:
     engines: {vscode: ^1.0.0}
     dev: false
 
-  /@pipedream/sdk@2.5.0:
-    resolution: {integrity: sha512-xo91ONoXbcKEF52ILmzbXvvlrxhNE2lc+GnCRbs4cv4Gqu9Kacx7Shz2m2IdrnuiGgrQvZ9mUXfAR6S3CeJusg==}
-    engines: {node: '>=18.0.0'}
-    dev: false
-
   /@pkgjs/parseargs@0.11.0:
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
     engines: {node: '>=14'}

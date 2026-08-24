@@ -212,7 +212,12 @@ async function discoverConnectorAuthFromSource(
   draft: Record<string, unknown>,
 ): Promise<ConnectorAuthDiscovery> {
   const provider = typeof draft.provider === 'string' ? draft.provider.toLowerCase() : '';
-  if (provider === 'pipedream' || provider === 'channel' || provider === 'computer') {
+  if (
+    provider === 'pipedream' ||
+    provider === 'composio' ||
+    provider === 'channel' ||
+    provider === 'computer'
+  ) {
     return EMPTY_AUTH_DISCOVERY;
   }
   const spec = typeof draft.spec === 'string' ? draft.spec.trim() : '';

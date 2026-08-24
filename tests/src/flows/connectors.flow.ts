@@ -912,10 +912,11 @@ flow(
   async (ctx) => {
     const team = await ctx.fixtures.team({ enterprise: true });
     const p = await team.project({ managedGit: true });
+    const cliPat = await ctx.fixtures.pat({ name: ctx.fixtures.name('composio-cli') });
     const slug = `ke2e-composio-${Date.now().toString(36)}`;
     const otherSlug = `${slug}-other`;
     const toolkit = 'composio_search';
-    const action = 'COMPOSIO_SEARCH_DUCK_DUCK_GO';
+    const action = 'duck_duck_go';
     let composioConfigured = false;
     let connectionId = '';
     let requestId: string | undefined;
@@ -1129,7 +1130,7 @@ flow(
         );
       r.status(200)
         .body()
-        .has('$.status', 'ok')
+        .has('$.ok', true)
         .has('$.data.provider', 'composio')
         .exists('$.data.logId')
         .exists('$.data.requestId')
@@ -1147,23 +1148,23 @@ flow(
     await ctx.step('real CLI lists and calls the same Composio action through project routes', async () => {
       const cli = new CliSandbox('composio');
       const env = {
-        KORTIX_TOKEN: ctx.P.OWNER.token ?? '',
+        KORTIX_TOKEN: cliPat,
         KORTIX_PROJECT_ID: p.id,
         KORTIX_API_URL: ctx.env.apiUrl,
       };
       try {
         const listed = parseCliJson<{
-          connectors: Array<{ slug: string; provider: string; tools: string[] }>;
-        }>(await cli.run(['connectors', 'ls'], { env }), 'kortix connectors ls');
+          connectors: Array<{ slug: string; provider: string; actions: Array<{ path: string }> }>;
+        }>(await cli.run(['connectors', 'ls', '--json'], { env }), 'kortix connectors ls');
         const connector = listed.connectors.find((item) => item.slug === slug);
         if (!connector) throw new Error(`CLI catalog omitted ${slug}`);
         if (connector.provider !== 'composio') throw new Error(`CLI catalog returned provider ${connector.provider}`);
-        if (!connector.tools.includes(`${slug}.${action}`)) {
+        if (!connector.actions.some((item) => item.path === action)) {
           throw new Error(`CLI catalog omitted ${slug}.${action}`);
         }
 
         const called = parseCliJson<{
-          status: string;
+          ok: boolean;
           data: { provider: string; logId: string; requestId: string; result: unknown };
         }>(
           await cli.run(['connectors', 'call', `${slug}.${action}`, JSON.stringify({ query: 'Kortix' })], {
@@ -1172,7 +1173,7 @@ flow(
           }),
           'kortix connectors call',
         );
-        if (called.status !== 'ok') throw new Error(`CLI call returned status ${called.status}`);
+        if (called.ok !== true) throw new Error(`CLI call did not report success: ${JSON.stringify(called)}`);
         if (called.data.provider !== 'composio') throw new Error(`CLI call returned provider ${called.data.provider}`);
         if (!called.data.logId || called.data.logId !== called.data.requestId) {
           throw new Error(`CLI call returned invalid provider log id: ${JSON.stringify(called.data)}`);

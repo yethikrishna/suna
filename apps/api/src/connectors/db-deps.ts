@@ -64,6 +64,7 @@ import {
   credentialExists,
   deleteCredential,
   connectionCredentialExists,
+  ensureDefaultConnection,
   resolveCredentialValue,
   resolveConnectionCredentialValue,
 } from './credentials';
@@ -1841,60 +1842,38 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
       if (conn.authorizationStrategy !== 'project') return null;
       const composio = await loadComposioAdapter();
       if (!composio?.composioConfigured?.()) return null;
-      const [existingConnection] = await db
-        .select({ connectionId: connectorConnections.connectionId })
-        .from(connectorConnections)
+      // Sync creates the canonical project-default connection for every
+      // materialized connector. Reuse it rather than inserting a second row,
+      // which violates idx_connector_connections_default_project.
+      const connectionId = await ensureDefaultConnection({
+        projectId,
+        connectorId: conn.connectorId,
+      });
+      await db
+        .update(connectorConnections)
+        .set({
+          status: 'active',
+          isDefault: true,
+          // Clear any previous account binding before authorization starts.
+          // Pending rows stay active because the DB enum has no needs_auth
+          // value. The gateway still fails closed on missing auth metadata.
+          metadata: { provider: 'composio', toolkit: conn.app },
+          updatedAt: sql`now()`,
+        })
         .where(
           and(
             eq(connectorConnections.accountId, conn.accountId),
             eq(connectorConnections.projectId, projectId),
             eq(connectorConnections.connectorId, conn.connectorId),
-            eq(connectorConnections.ownerType, 'project'),
-            isNull(connectorConnections.ownerId),
-            eq(connectorConnections.label, 'Default'),
+            eq(connectorConnections.connectionId, connectionId),
           ),
-        )
-        .limit(1);
-      const [connection] = existingConnection
-        ? await db
-            .update(connectorConnections)
-            .set({
-              status: 'active',
-              isDefault: true,
-              // Clear any previous account binding before authorization starts.
-              // Pending rows stay active because the DB enum has no needs_auth
-              // value. The gateway still fails closed on missing auth metadata.
-              metadata: { provider: 'composio', toolkit: conn.app },
-              updatedAt: sql`now()`,
-            })
-            .where(and(
-              eq(connectorConnections.accountId, conn.accountId),
-              eq(connectorConnections.projectId, projectId),
-              eq(connectorConnections.connectorId, conn.connectorId),
-              eq(connectorConnections.connectionId, existingConnection.connectionId),
-            ))
-            .returning({ connectionId: connectorConnections.connectionId })
-        : await db
-            .insert(connectorConnections)
-            .values({
-              accountId: conn.accountId,
-              projectId,
-              connectorId: conn.connectorId,
-              ownerType: 'project',
-              ownerId: null,
-              label: 'Default',
-              status: 'active',
-              isDefault: true,
-              metadata: { provider: 'composio', toolkit: conn.app },
-              createdBy: null,
-            })
-            .returning({ connectionId: connectorConnections.connectionId });
-      const stableUserId = composioStableUserId(connection.connectionId);
+        );
+      const stableUserId = composioStableUserId(connectionId);
       const result = await composio.composioConnectUrl({
         projectId,
         slug,
         app: conn.app,
-        connectionId: connection.connectionId,
+        connectionId,
         stableUserId,
         redirects,
       });
@@ -1916,7 +1895,7 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
           eq(connectorConnections.accountId, conn.accountId),
           eq(connectorConnections.projectId, projectId),
           eq(connectorConnections.connectorId, conn.connectorId),
-          eq(connectorConnections.connectionId, connection.connectionId),
+          eq(connectorConnections.connectionId, connectionId),
         ));
       return {
         provider: 'composio',
@@ -1924,7 +1903,7 @@ export const dbConnectorRouterDeps: ConnectorRouterDeps = {
         connectUrl: result.connectUrl,
         requestId: result.authRequestId,
         sessionId: result.sessionId,
-        connectionId: connection.connectionId,
+        connectionId,
         connected: result.connected,
         isNoAuth: result.isNoAuth,
       };

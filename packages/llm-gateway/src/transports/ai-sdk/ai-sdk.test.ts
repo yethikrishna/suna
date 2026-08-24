@@ -177,6 +177,16 @@ describe('ai-sdk SSE adapter — /v1/llm contract fidelity', () => {
     expect(frame?.code).toBe(529);
   });
 
+  it('classifies a fetch headers TimeoutError with a stable gateway code', async () => {
+    const timeout = new DOMException('Provider response headers timed out', 'TimeoutError');
+    const sse = await readAll(openAiSseFromFullStream(parts({ type: 'error', error: timeout }), CTX));
+
+    expect(sseErrorFrame(sse)).toMatchObject({
+      message: 'Provider response headers timed out',
+      code: 'upstream_timeout',
+    });
+  });
+
   it('maps reasoning deltas to delta.reasoning (counts as content)', async () => {
     const sse = await readAll(
       openAiSseFromFullStream(

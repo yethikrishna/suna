@@ -272,6 +272,10 @@ export function ConnectorsPage({ projectId }: { projectId: string }) {
   const [category, setCategory] = useState<string>(ALL_CATEGORIES);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [catalogTarget, setCatalogTarget] = useState<CatalogEntry | null>(null);
+  const [pendingDetail, setPendingDetail] = useState<{
+    slug: string;
+    dataUpdatedAt: number;
+  } | null>(null);
 
   const search = useSearchParams();
   const router = useRouter();
@@ -532,7 +536,15 @@ export function ConnectorsPage({ projectId }: { projectId: string }) {
   const detail = detailSelection({
     selection: detailSlug,
     record: connectors.find((c) => c.slug === detailSlug),
-    isSuccess: connectorsQuery.isSuccess,
+    // A catalogue create returns before the invalidated connector list has
+    // refetched. Its previous successful result is stale but still reports
+    // `isSuccess`, so treating it as authoritative closes the detail we just
+    // opened. Wait until one newer successful list result has landed.
+    isSuccess:
+      connectorsQuery.isSuccess &&
+      (!pendingDetail ||
+        pendingDetail.slug !== detailSlug ||
+        connectorsQuery.dataUpdatedAt > pendingDetail.dataUpdatedAt),
   });
 
   // The one honest auto-close: the list came back, and this connector is not
@@ -558,10 +570,13 @@ export function ConnectorsPage({ projectId }: { projectId: string }) {
   const onCatalogAdded = useCallback(
     (slug?: string) => {
       setCatalogTarget(null);
+      if (slug) {
+        setPendingDetail({ slug, dataUpdatedAt: connectorsQuery.dataUpdatedAt });
+        showConnected(slug);
+      }
       invalidate();
-      if (slug) showConnected(slug);
     },
-    [invalidate, showConnected],
+    [connectorsQuery.dataUpdatedAt, invalidate, showConnected],
   );
 
   return (

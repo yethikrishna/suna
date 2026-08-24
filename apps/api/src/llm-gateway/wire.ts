@@ -343,14 +343,11 @@ function modelsRoute(path: string) {
     description: `Servable model catalog for the caller\'s account/project — a keyed object (NOT the OpenAI \`{object:"list",data:[...]}\` array shape) mapping model id → capabilities.\n\nAuth: ${AUTH_DESCRIPTION}\n\n\`\`\`\ncurl -sS $KORTIX_API_URL${fullPath} -H "Authorization: Bearer $KORTIX_GATEWAY_KEY"\n\`\`\``,
     request: {
       query: z.object({
-        scope: z
-          .enum(['managed'])
-          .optional()
-          .openapi({
-            description:
-              'Set to `managed` for the platform-managed lineup only (~3KB instead of ~3.3MB). Sandboxes call this on every boot to learn the current managed set. Omit for the caller\'s full catalog.',
-            example: 'managed',
-          }),
+        scope: z.enum(['managed']).optional().openapi({
+          description:
+            "Set to `managed` for the platform-managed lineup only (~3KB instead of ~3.3MB). Sandboxes call this on every boot to learn the current managed set. Omit for the caller's full catalog.",
+          example: 'managed',
+        }),
       }),
     },
     ...auth,
@@ -367,9 +364,7 @@ export function mountLlmGateway(app: OpenAPIHono): void {
 
   const rawTarget =
     config.LLM_GATEWAY_PROXY_TARGET ||
-    (config.LLM_GATEWAY_PROXY_PORT
-      ? `http://127.0.0.1:${config.LLM_GATEWAY_PROXY_PORT}`
-      : '');
+    (config.LLM_GATEWAY_PROXY_PORT ? `http://127.0.0.1:${config.LLM_GATEWAY_PROXY_PORT}` : '');
   let proxyBase: string | null = null;
   if (rawTarget) {
     try {
@@ -403,17 +398,45 @@ export function mountLlmGateway(app: OpenAPIHono): void {
     }
     try {
       const upstream = await fetch(`${proxyBase}${path}${query}`, init);
+      // The gateway owns the body framing (it re-materializes or relays what
+      // fetch already decoded), and so does this hop: never forward
+      // content-encoding/content-length/transfer-encoding from a response
+      // whose bytes fetch has already inflated.
+      const headers = new Headers(upstream.headers);
+      for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection'])
+        headers.delete(name);
       return new Response(upstream.body, {
         status: upstream.status,
         statusText: upstream.statusText,
-        headers: upstream.headers,
+        headers,
       });
     } catch (error) {
-      console.error('[gateway] standalone gateway unreachable:', error);
-      return c.json(
-        { error: 'Standalone LLM gateway is unreachable', code: 'gateway_proxy_unreachable' },
-        502,
-      );
+      // Say what actually happened. Until 2026-08-24 every throw here was
+      // reported as "unreachable", which is what a ZlibError (the gateway
+      // forwarded `content-encoding: gzip` on a body fetch had already
+      // inflated) looked like to users and to the edge worker for days.
+      const err = error as { code?: unknown; name?: unknown; message?: unknown };
+      const cause =
+        typeof err?.code === 'string'
+          ? err.code
+          : typeof err?.name === 'string'
+            ? err.name
+            : 'Error';
+      const detail = typeof err?.message === 'string' ? err.message : String(error);
+      const unreachable =
+        /ECONNREFUSED|ENOTFOUND|ECONNRESET|ETIMEDOUT|ConnectionRefused|FailedToOpenSocket|timed out/i.test(
+          `${cause} ${detail}`,
+        );
+      const code = unreachable ? 'gateway_proxy_unreachable' : 'gateway_proxy_error';
+      const message = unreachable
+        ? `Standalone LLM gateway is unreachable (${cause}: ${detail})`
+        : `Standalone LLM gateway response could not be relayed (${cause}: ${detail})`;
+      console.error(`[gateway] ${code}:`, error);
+      // 503, not 502: Cloudflare replaces an origin 502/504 body with its own
+      // HTML page, which is how this error reached users as a blank "Bad
+      // gateway" screen. 503 passes through with this JSON intact.
+      c.header('retry-after', '5');
+      return c.json({ error: { message, type: code, code }, message, code, cause, detail }, 503);
     }
   };
 

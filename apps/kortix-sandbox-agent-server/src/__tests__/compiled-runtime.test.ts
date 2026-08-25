@@ -32,7 +32,10 @@ function artifact(overrides: Record<string, string> = {}): string {
     source_sha: 'a'.repeat(40),
     ...overrides,
   }
-  return `export const manifest = ${JSON.stringify(manifest)};
+  const encoded = Buffer.from(JSON.stringify(manifest)).toString('base64url')
+  return `#!/usr/bin/env node
+// kortix-manifest-base64url:${encoded}
+export const manifest = ${JSON.stringify(manifest)};
 if (process.argv.includes("--manifest")) process.stdout.write(JSON.stringify(manifest) + "\\n");
 `
 }
@@ -120,5 +123,20 @@ describe('compiled runtime bootstrap', () => {
       }),
     ).rejects.toThrow('compiled runtime manifest does not match this session')
     await expect(readFile(destination)).rejects.toThrow()
+  })
+
+  test('rejects a runtime without executing it during manifest verification', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kortix-runtime-install-'))
+    roots.push(root)
+    const destination = join(root, 'server.mjs')
+    const executed = join(root, 'executed')
+    const source = `${artifact()}\nawait Bun.write(${JSON.stringify(executed)}, "executed");\n`
+
+    await installCompiledRuntime(config, {
+      destination,
+      fetchImpl: async () => response(source),
+    })
+
+    await expect(readFile(executed)).rejects.toThrow()
   })
 })

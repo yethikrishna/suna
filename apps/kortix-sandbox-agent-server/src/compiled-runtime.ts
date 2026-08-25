@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
 import { dirname } from 'node:path'
 
 import type { Config } from './config'
@@ -10,7 +9,7 @@ export const COMPILED_RUNTIME_CONTENT_TYPE =
   'application/vnd.kortix.compiled-runtime.v1+javascript'
 const MAX_RUNTIME_BYTES = 16 * 1024 * 1024
 const DOWNLOAD_TIMEOUT_MS = 15_000
-const VERIFY_TIMEOUT_MS = 5_000
+const MANIFEST_MARKER = '// kortix-manifest-base64url:'
 
 interface CompiledRuntimeManifest {
   format: typeof COMPILED_RUNTIME_FORMAT
@@ -48,41 +47,21 @@ export function buildCompiledRuntimeUrl(repoUrl: string, ref: string, sourceSha:
   return url.toString()
 }
 
-async function runManifest(path: string): Promise<CompiledRuntimeManifest> {
-  return new Promise((resolve, reject) => {
-    const child = spawn('node', [path, '--manifest'], {
-      env: { ...process.env },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    let stdout = ''
-    let stderr = ''
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL')
-      reject(new Error(`compiled runtime verification exceeded ${VERIFY_TIMEOUT_MS}ms`))
-    }, VERIFY_TIMEOUT_MS)
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString()
-    })
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString()
-    })
-    child.once('error', (error) => {
-      clearTimeout(timer)
-      reject(error)
-    })
-    child.once('close', (code) => {
-      clearTimeout(timer)
-      if (code !== 0) {
-        reject(new Error(`compiled runtime manifest failed: ${stderr.trim() || `exit ${code}`}`))
-        return
-      }
-      try {
-        resolve(JSON.parse(stdout) as CompiledRuntimeManifest)
-      } catch {
-        reject(new Error('compiled runtime manifest is not valid JSON'))
-      }
-    })
-  })
+export function parseCompiledRuntimeManifest(
+  source: Uint8Array | string,
+): CompiledRuntimeManifest {
+  const prefix = typeof source === 'string' ? source : Buffer.from(source).toString('utf8')
+  const marker = prefix
+    .split('\n', 4)
+    .find((line) => line.startsWith(MANIFEST_MARKER))
+  if (!marker) throw new Error('compiled runtime manifest marker is missing')
+  try {
+    const encoded = marker.slice(MANIFEST_MARKER.length).trim()
+    if (!encoded || !/^[A-Za-z0-9_-]+$/.test(encoded)) throw new Error('invalid marker')
+    return JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as CompiledRuntimeManifest
+  } catch {
+    throw new Error('compiled runtime manifest is not valid JSON')
+  }
 }
 
 function validateManifest(cfg: Config, manifest: CompiledRuntimeManifest): void {
@@ -152,9 +131,9 @@ export async function installCompiledRuntime(
     }
 
     await mkdir(dirname(destination), { recursive: true })
-    await writeFile(staged, body, { mode: 0o700 })
-    const manifest = await runManifest(staged)
+    const manifest = parseCompiledRuntimeManifest(body)
     validateManifest(cfg, manifest)
+    await writeFile(staged, body, { mode: 0o700 })
     await rename(staged, destination)
     await chmod(destination, 0o700)
     return {
@@ -173,6 +152,5 @@ export async function installCompiledRuntime(
 export async function readInstalledCompiledRuntimeManifest(
   path: string,
 ): Promise<CompiledRuntimeManifest> {
-  await readFile(path)
-  return runManifest(path)
+  return parseCompiledRuntimeManifest(await readFile(path))
 }

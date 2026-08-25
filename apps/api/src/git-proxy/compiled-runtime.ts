@@ -45,6 +45,7 @@ function etag(value: string | null): string | null {
 function runtimeSource(manifest: CompiledRuntimeManifest): string {
   const encodedManifest = Buffer.from(JSON.stringify(manifest)).toString('base64url');
   return `#!/usr/bin/env node
+// kortix-manifest-base64url:${encodedManifest}
 import { spawn } from "node:child_process";
 
 export const manifest = Object.freeze(

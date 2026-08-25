@@ -154,7 +154,7 @@ async function main() {
   }
   bootMark('git-identity')
 
-  // The normal OpenCode config dir lives inside the repo. A v2 compiled runtime
+  // The normal OpenCode config dir lives inside the repo. A compiled runtime
   // extracts the exact Git revision's OpenCode config to
   // tmpfs before this bundle executes. That lets OpenCode start while the full
   // checkout extracts. The first directory-scoped request still waits below

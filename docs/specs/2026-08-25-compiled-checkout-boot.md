@@ -69,7 +69,7 @@ must contain:
   "compiled_boot_mode": "prefer",
   "compiled_checkout": true,
   "compiled_runtime": true,
-  "compiled_runtime_format": "kortix.compiled-runtime.v2"
+  "compiled_runtime_format": "kortix.compiled-runtime.v1"
 }
 ```
 

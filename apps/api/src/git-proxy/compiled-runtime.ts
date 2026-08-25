@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 
-export const COMPILED_RUNTIME_FORMAT = 'kortix.compiled-runtime.v2' as const;
+export const COMPILED_RUNTIME_FORMAT = 'kortix.compiled-runtime.v1' as const;
 export const COMPILED_RUNTIME_CONTENT_TYPE =
-  'application/vnd.kortix.compiled-runtime.v2+javascript';
+  'application/vnd.kortix.compiled-runtime.v1+javascript';
 
 export interface CompiledRuntimeManifest {
   format: typeof COMPILED_RUNTIME_FORMAT;

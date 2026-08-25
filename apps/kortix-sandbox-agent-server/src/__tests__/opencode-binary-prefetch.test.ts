@@ -31,7 +31,7 @@ describe('OpenCode executable prefetch', () => {
     await chmod(fixture.path, 0o755)
     const previousFormat = process.env.KORTIX_COMPILED_RUNTIME_FORMAT
     const previousCapture = process.env.CAPTURE_PATH
-    process.env.KORTIX_COMPILED_RUNTIME_FORMAT = 'kortix.compiled-runtime.v2'
+    process.env.KORTIX_COMPILED_RUNTIME_FORMAT = 'kortix.compiled-runtime.v1'
     process.env.CAPTURE_PATH = capturePath
     const cfg = {
       workspace: fixture.dir,

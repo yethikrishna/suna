@@ -52,6 +52,8 @@ import {
   COMPILED_RUNTIME_CONTENT_TYPE,
   COMPILED_RUNTIME_FORMAT,
 } from './compiled-runtime';
+import { prebuildDefaultBranchArtifacts } from './compiled-prebuild';
+import { config } from '../config';
 
 export const gitProxyApp = makeOpenApiApp();
 
@@ -190,7 +192,26 @@ async function forward(c: any, projectId: string, scope: GitScope, suffix: strin
           typeof (auth.project.metadata as Record<string, unknown> | null)?.default_sandbox_provider === 'string'
             ? ((auth.project.metadata as Record<string, unknown>).default_sandbox_provider as string)
             : null;
-        await kickProjectWarmPrebake(gitProject, { accountId: auth.project.accountId, projectPin });
+        const [compiledResult] = await Promise.allSettled([
+          config.KORTIX_COMPILED_BOOT_MODE !== 'off'
+            ? prebuildDefaultBranchArtifacts(
+                gitProject,
+                `${new URL(c.req.url).origin}/v1/git/${projectId}.git`,
+              )
+            : Promise.resolve(null),
+          kickProjectWarmPrebake(gitProject, {
+            accountId: auth.project.accountId,
+            projectPin,
+          }),
+        ]);
+        if (compiledResult.status === 'rejected') {
+          console.warn(
+            `[git-proxy] compiled artifact prebuild skipped for ${projectId}:`,
+            compiledResult.reason instanceof Error
+              ? compiledResult.reason.message
+              : compiledResult.reason,
+          );
+        }
       } catch (err) {
         console.warn(
           `[git-proxy] warm prebake-on-push skipped for ${projectId}:`,

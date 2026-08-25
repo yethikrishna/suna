@@ -115,6 +115,7 @@ import {
   buildPlatformMetaOpenCodeConfig,
   resolvePlatformMetaSandbox,
 } from './platform-meta-agent';
+import { prebuildCompiledBootArtifacts } from '../../git-proxy/compiled-prebuild';
 
 export type SessionCreateError = {
   status: number;
@@ -1667,6 +1668,38 @@ export async function createProjectSession(input: {
             if (fastBootHintTimeout) clearTimeout(fastBootHintTimeout);
           })
         : Promise.resolve(undefined);
+      if (config.KORTIX_COMPILED_BOOT_MODE !== 'off') {
+        void Promise.all([projectWithGitAuthPromise, fastBootGitHintPromise])
+          .then(([projectWithGitAuth, hint]) =>
+            hint?.baseSha
+              ? prebuildCompiledBootArtifacts(
+                  projectWithGitAuth,
+                  baseRef,
+                  hint.baseSha,
+                  proxyGitUrl(projectId),
+                )
+              : null,
+          )
+          .then((artifacts) => {
+            if (!artifacts) return;
+            console.info('[compiled-boot] session artifacts ready', {
+              projectId,
+              sessionId,
+              ref: baseRef,
+              sourceSha: artifacts.runtime.sourceSha,
+              checkoutCache: artifacts.checkout.cacheHit ? 'hit' : 'miss',
+              runtimeCache: artifacts.runtime.cacheHit ? 'hit' : 'miss',
+            });
+          })
+          .catch((error) => {
+            console.warn('[compiled-boot] session artifact prebuild failed', {
+              projectId,
+              sessionId,
+              ref: baseRef,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+      }
       const envPromise = fastBootGitHintPromise
         .then((fastBootGitHint) =>
           buildSessionSandboxEnvVars({

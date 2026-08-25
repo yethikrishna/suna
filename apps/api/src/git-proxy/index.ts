@@ -44,6 +44,14 @@ import {
   CompiledCheckoutTooLargeError,
   buildCompiledCheckoutArtifact,
 } from './compiled-checkout';
+import {
+  CompiledRuntimeSourceMovedError,
+  buildCompiledRuntimeArtifact,
+} from './compiled-runtime-artifact';
+import {
+  COMPILED_RUNTIME_CONTENT_TYPE,
+  COMPILED_RUNTIME_FORMAT,
+} from './compiled-runtime';
 
 export const gitProxyApp = makeOpenApiApp();
 
@@ -220,7 +228,6 @@ gitProxyApp.openapi(
     return forward(c, projectId, scope, '/info/refs');
   },
 );
-
 // Clone / fetch.
 gitProxyApp.openapi(
   createRoute({
@@ -306,6 +313,70 @@ gitProxyApp.openapi(
         error: error instanceof Error ? error.message : String(error),
       });
       return c.text('compiled checkout unavailable', 503);
+    }
+  },
+);
+
+gitProxyApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{project}/compiled-runtime',
+    tags: ['git'],
+    summary: 'Download an exact compiled OpenCode server for sandbox cold boot',
+    request: {
+      params: projectParam,
+      query: z.object({
+        ref: z.string().min(1),
+        sha: z.string().regex(/^[0-9a-f]{40}$/),
+      }),
+    },
+    responses: {
+      200: {
+        description: 'Executable server.mjs containing immutable project agent configuration',
+        content: { [COMPILED_RUNTIME_CONTENT_TYPE]: { schema: z.any() } },
+      },
+      400: { description: 'Invalid project id, ref, or source SHA' },
+      401: gitResponses[401],
+      403: gitResponses[403],
+      404: gitResponses[404],
+      409: { description: 'The requested ref no longer points at the requested source SHA' },
+      503: { description: 'The compiled runtime could not be generated' },
+    },
+  }),
+  async (c) => {
+    const projectId = validProjectIdOrResponse(c, c.req.param('project'));
+    if (projectId instanceof Response) return projectId;
+    const auth = await authorize(c, projectId, 'read');
+    if (!auth.ok) {
+      if (auth.status === 401) return unauthorized(c, auth.message);
+      return c.text(auth.message, auth.status === 404 ? 404 : 403);
+    }
+    const { ref, sha } = c.req.valid('query');
+    try {
+      const project = await loadGitProject({ row: auth.project });
+      const artifact = await buildCompiledRuntimeArtifact(project, ref, sha);
+      return new Response(Bun.file(artifact.path), {
+        status: 200,
+        headers: {
+          'cache-control': 'private, max-age=31536000, immutable',
+          'content-length': String(artifact.size),
+          'content-type': COMPILED_RUNTIME_CONTENT_TYPE,
+          etag: `"sha256-${artifact.sha256}"`,
+          'x-kortix-artifact-format': COMPILED_RUNTIME_FORMAT,
+          'x-kortix-artifact-sha256': artifact.sha256,
+          'x-kortix-artifact-source-sha': artifact.sourceSha,
+          'x-kortix-artifact-cache': artifact.cacheHit ? 'hit' : 'miss',
+        },
+      });
+    } catch (error) {
+      if (error instanceof CompiledRuntimeSourceMovedError) return c.text(error.message, 409);
+      console.warn('[git-proxy] compiled runtime unavailable', {
+        projectId,
+        ref,
+        sha,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return c.text('compiled runtime unavailable', 503);
     }
   },
 );

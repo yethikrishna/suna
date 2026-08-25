@@ -63,6 +63,7 @@ let activeSessionCount = 0;
 let sessionRow: typeof projectSessions.$inferSelect | null;
 let lastSessionInsertValues: Record<string, unknown> | null = null;
 const lifecycleCommandInserts: Array<Record<string, unknown>> = [];
+let lifecycleDrainClaimWhere: unknown = null;
 let lastSessionListWhere: unknown = null;
 // `active_since` / `deadline_at` are assigned by a DB trigger, never by
 // application code, so these HTTP-contract fixtures deliberately omit them —
@@ -133,6 +134,7 @@ function resetState() {
   activeSessionCount = 0;
   lastSessionInsertValues = null;
   lifecycleCommandInserts.length = 0;
+  lifecycleDrainClaimWhere = null;
   lastProvisionInput = null;
   projectRow.repoUrl = `https://github.com/${TEST_GITHUB_OWNER}/contract-project.git`;
   projectRow.defaultBranch = 'main';
@@ -624,7 +626,11 @@ mock.module('../shared/db', () => ({
           then: (resolve: (value: unknown[]) => unknown, reject?: (reason: unknown) => unknown) => {
             Promise.resolve(table === projectSecrets ? secretRows : []).then(resolve, reject);
           },
-          orderBy: async () => {
+          orderBy: () => {
+            if (table === sessionLifecycleCommands) {
+              lifecycleDrainClaimWhere = predicate ?? null;
+              return { limit: async () => [] };
+            }
             if (table === projectSecrets) return secretRows;
             if (table === projectSessions) {
               // Recorded so a test can assert WHICH predicate the list route
@@ -632,9 +638,9 @@ mock.module('../shared/db', () => ({
               // asserting on the response alone would pass even if the filter
               // were never applied.
               lastSessionListWhere = predicate ?? null;
-              return sessionRow ? [sessionRow] : [];
+              return Promise.resolve(sessionRow ? [sessionRow] : []);
             }
-            return [];
+            return Promise.resolve([]);
           },
           limit: async () => {
             if (fields && Object.keys(fields).includes('activeCount'))
@@ -3840,6 +3846,9 @@ describe('project session API contract', () => {
     });
     await flushUntil(() => sandboxProvisionCalls === 1);
     expect(lastProvisionInput!.extraEnvVars?.KORTIX_INITIAL_PROMPT).toBeUndefined();
+    await flushUntil(() => lifecycleDrainClaimWhere !== null);
+    const drainClaim = new PgDialect().sqlToQuery(lifecycleDrainClaimWhere as SQL);
+    expect(drainClaim.params).toContain(`prompt:${SESSION_ID}:pending-first`);
   });
 
   test('a pending prompt with data-URL file parts rides the row; an empty one makes no row', async () => {

@@ -849,6 +849,7 @@ export async function createProjectSession(input: {
   row?: ProjectSessionRow;
   error?: SessionCreateError;
   headers?: Record<string, string>;
+  pendingPromptIdempotencyKey?: string | null;
 }> {
   const { project, userId, body } = input;
   const projectId = project.projectId;
@@ -1833,5 +1834,10 @@ export async function createProjectSession(input: {
     }
   })();
 
-  return { row: sessionRow, headers: responseHeaders };
+  return {
+    row: sessionRow,
+    headers: responseHeaders,
+    pendingPromptIdempotencyKey:
+      pendingPromptConversion?.rowValues?.idempotencyKey ?? null,
+  };
 }

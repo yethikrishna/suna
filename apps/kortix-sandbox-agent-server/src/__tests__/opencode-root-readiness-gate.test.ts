@@ -106,4 +106,15 @@ describe('fast OpenCode root readiness gate', () => {
     expect(initial).toContain('fastPathEnabled: fastRootReadinessEnabled')
     expect(initial).toContain('onListening,\n    fastRootReadinessEnabled,')
   })
+
+  test('initial prompt delivery never waits for the event stream handshake', async () => {
+    const src = await Bun.file(new URL('../main.ts', import.meta.url).pathname).text()
+    const initialStart = src.indexOf('async function maybeCreateInitialOpencodeSession(')
+    const initialEnd = src.indexOf('\nasync function resolveExistingRoot', initialStart)
+    const initial = src.slice(initialStart, initialEnd)
+
+    expect(initial).not.toContain('eventLoopConnected')
+    expect(initial).not.toContain('timer = setTimeout(r, 10_000)')
+    expect(initial).not.toContain("bootMark('event-loop-connected')")
+  })
 })

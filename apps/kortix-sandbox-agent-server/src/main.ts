@@ -706,19 +706,16 @@ async function startSessionRuntime(
   }
   let loopStarted = false
   if (bootState.initialOpenCodeSessionRequired) {
-    // SUBSCRIBE BEFORE PROMPT: start the /event loop first and hand its
-    // `connected` promise to the initial-session path, which awaits it before
-    // firing prompt_async. This guarantees the subscription is live before the
-    // first turn is launched, so a fast trivial turn can't reach session.idle in
-    // an unsubscribed gap (the event-loss race). The reconcile on connect is the
-    // backstop for any residual gap.
-    const loop = startOpencodeEventLoop(opencode, cfg, eventHandlers)
+    // Start the /event loop before resolving the root and delivering the prompt.
+    // Do not await the response headers: OpenCode can withhold them until the
+    // first event, which makes an await here deadlock with prompt delivery. The
+    // connect reconciliation closes the residual event-loss race.
+    startOpencodeEventLoop(opencode, cfg, eventHandlers)
     loopStarted = true
     await maybeCreateInitialOpencodeSession(
       opencode,
       bootState,
       bootMark,
-      loop.connected,
       markOpencodeListening,
     ).catch(
       (err) => {
@@ -1222,12 +1219,6 @@ async function maybeCreateInitialOpencodeSession(
   opencode: Opencode,
   bootState: SandboxBootState,
   bootMark: (label: string) => void,
-  // Resolves when the /event SSE subscription is live. The first turn's
-  // prompt_async is held until this resolves so a fast trivial turn cannot reach
-  // session.idle before anyone is subscribed (the event-loss race). Optional so
-  // the reused-root / no-prompt paths (which never fire a new turn) don't depend
-  // on it; a missing promise just skips the wait.
-  eventLoopConnected?: Promise<void>,
   onListening?: () => void,
 ): Promise<void> {
   const claimedTurn = await claimInitialTurnFromApi()
@@ -1243,7 +1234,6 @@ async function maybeCreateInitialOpencodeSession(
   //   opencode-answering  → opencode's own cold start (runtime + config +
   //                         provider init + per-directory project init)
   //   opencode-root-ready → resolving/creating this session's root
-  //   event-loop-connected→ the SSE subscribe we hold the first turn on
   //   opencode-session-created (existing) → first prompt delivered
   // A big opencode-answering means the fix is in the image (pre-booted
   // opencode); a big root-ready means it's our bootstrap.
@@ -1353,22 +1343,6 @@ async function maybeCreateInitialOpencodeSession(
   void relayBootstrapPinToApi(sessionId)
 
   if (prompt && !alreadyDelivered) {
-    // Hold the first turn until the /event subscription is live so a fast
-    // trivial turn can't reach session.idle in an unsubscribed gap. Bounded so a
-    // stuck subscribe never blocks boot — the reconcile-on-connect backstop still
-    // finalizes a turn that finishes before the (late) subscribe. The timer is
-    // cleared when `connected` wins so it never dangles holding the event loop.
-    if (eventLoopConnected) {
-      let timer: ReturnType<typeof setTimeout> | undefined
-      await Promise.race([
-        eventLoopConnected,
-        new Promise<void>((r) => {
-          timer = setTimeout(r, 10_000)
-        }),
-      ])
-      if (timer) clearTimeout(timer)
-      bootMark('event-loop-connected')
-    }
     await publishInitialOpenCodeSessionAfterPrompt(bootState, sessionId, () =>
       deliverInitialOpenCodePrompt(
         opencode,
@@ -1466,10 +1440,10 @@ function pinOpencodeSessionFile(sessionId: string): void {
  * F1: durable proof that `deliverInitialOpenCodePrompt` actually SUCCEEDED —
  * not just that boot intended to deliver it. `OPENCODE_SESSION_PIN_PATH` is
  * written BEFORE delivery (see `pinOpencodeSessionFile` above, called ahead
- * of the delivery call at this function's call site), with an up-to-10s
- * `eventLoopConnected` wait in between. A daemon crash in that window leaves
- * the pin behind but never delivers — a bare-pin check alone would then read
- * every future boot as "already delivered" and silence the session forever
+ * of the delivery call at this function's call site). A daemon crash after
+ * that write can leave the pin behind but never deliver. A bare-pin check
+ * alone would then read every future boot as "already delivered". That would
+ * silence the session forever.
  * (see `reusedRootAlreadyDelivered`). This marker is written ONLY after
  * `deliverInitialOpenCodePrompt` returns successfully, right next to the pin,
  * so its mere existence is the delivery receipt the pin alone can't provide.

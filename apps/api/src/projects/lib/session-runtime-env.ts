@@ -16,7 +16,7 @@ export interface SessionRuntimeEnvInput {
   workspaceMode?: WorkspaceModeV2 | null;
   /** Enables the rollback-safe fresh-session Git fast path. */
   fastColdBootEnabled?: boolean;
-  /** Experimental compiled-checkout rollout mode. */
+  /** Experimental compiled checkout and OpenCode launcher rollout mode. */
   compiledBootMode?: 'off' | 'shadow' | 'prefer' | 'required';
   /** True only for a newly-created session branch that still equals base. */
   freshSession?: boolean;

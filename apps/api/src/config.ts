@@ -539,9 +539,10 @@ const envSchema = z.object({
   // legacy session per-project image path. An unset value preserves the legacy
   // KORTIX_WARM_SNAPSHOT_ENABLED rollout while leaving new accelerators off.
   KORTIX_FAST_COLD_BOOT_ENABLED: optBoolUnset,
-  // Experimental repository compiler. `off` preserves the current Git clone
-  // path. `shadow` validates the compiled checkout but still clones. `prefer`
-  // uses the compiled checkout first and falls back to clone on any failure.
+  // Experimental compiled boot path. The API builds a verified checkout and
+  // OpenCode launcher for one exact Git SHA. `off` preserves the clone and
+  // baked-agent path. `shadow` verifies both artifacts without using them.
+  // `prefer` uses both artifacts with legacy fallback. `required` fails closed.
   KORTIX_COMPILED_BOOT_MODE: z
     .enum(['off', 'shadow', 'prefer', 'required'])
     .optional()

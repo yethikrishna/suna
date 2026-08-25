@@ -1,6 +1,7 @@
 # Standalone compiled boot demo
 
-This folder compares two boot paths without importing or starting Kortix.
+This folder compares two boot paths without importing or starting Kortix. It is
+an isolated performance and runtime-update demonstration.
 
 - The old path clones a Git repository, compiles TypeScript into
   `dist/server.mjs`, starts the bundle, and verifies `/health`.
@@ -11,6 +12,10 @@ This folder compares two boot paths without importing or starting Kortix.
 The model matches Flue's Node deployment output: a build produces one runnable
 `dist/server.mjs` file. This demo uses Bun's built-in bundler, so it has no npm
 dependencies.
+
+The production Kortix compiler lives in `apps/api/src/git-proxy`. It generates
+a verified `server.mjs` that launches the existing OpenCode-based sandbox
+daemon. The production launcher does not use Pi and does not embed OpenCode.
 
 ## Requirements
 

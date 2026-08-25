@@ -52,18 +52,20 @@ in-process daemon.
    It only reads files off disk, so it comes up first and stays up regardless
    of repo/opencode state — previews work while the agent is still booting.
    Non-fatal: a bind failure is logged and `static_web_port` reports `null`.
-3. Materialize the project repo in `/workspace/.kortix`. `prefer` mode first
-   downloads a compiled checkout. `shadow` mode validates the checkout without
-   using it. `off` mode and any compiled-checkout failure use `git clone`.
-   Failures are logged but non-fatal — the daemon still serves
-   `/kortix/health`.
-4. Inject managed system skills into `.kortix/opencode/skills`.
-5. Resolve `OPENCODE_CONFIG_DIR`.
-6. Start the OpenCode REST supervisor in the cloned project directory
+3. The sandbox entrypoint downloads and verifies the compiled `server.mjs` when
+   compiled boot is enabled. `prefer` executes it with baked-agent fallback.
+   `shadow` verifies it and executes the baked agent. `required` fails closed.
+4. Materialize the project repo in `/workspace/.kortix`. `prefer` and
+   `required` first download a compiled checkout. `shadow` validates the
+   checkout without using it. `off` mode and `prefer` failures use `git clone`.
+   Materialization failures are logged but non-fatal in non-required modes.
+5. Inject managed system skills into `.kortix/opencode/skills`.
+6. Resolve `OPENCODE_CONFIG_DIR`.
+7. Start the OpenCode REST supervisor in the project directory
    (`opencode serve --port <internal> --hostname 127.0.0.1`).
    If the binary isn't found we keep going and report `opencode: 'starting'`.
-7. Start the Hono proxy on `0.0.0.0:KORTIX_SERVICE_PORT`.
-8. Trap signals; on shutdown, drain proxy + static web + kill child processes.
+8. Start the Hono proxy on `0.0.0.0:KORTIX_SERVICE_PORT`.
+9. Trap signals; on shutdown, drain proxy + static web + kill child processes.
 
 ## Routes
 
@@ -86,7 +88,10 @@ in-process daemon.
   "branch": "main",
   "commit_sha": "abc123...",
   "compiled_boot_mode": "prefer",
-  "compiled_checkout": true
+  "compiled_checkout": true,
+  "compiled_runtime": true,
+  "compiled_runtime_format": "kortix.compiled-runtime.v1",
+  "compiled_runtime_source_sha": "abc123..."
 }
 ```
 
@@ -95,9 +100,11 @@ in-process daemon.
   pre-bind and between-restart states.
 - `repo`, `branch`, `commit_sha` come from `git` in `KORTIX_PROJECT_TARGET` and
   are `null` when no repo has been materialized.
-- `compiled_boot_mode` reports `off`, `shadow`, or `prefer`.
+- `compiled_boot_mode` reports `off`, `shadow`, `prefer`, or `required`.
 - `compiled_checkout` is `true` only when the current repo came from a verified
   compiled checkout.
+- `compiled_runtime` is `true` only when `server.mjs` launched the daemon.
+- `compiled_runtime_source_sha` is the exact Git SHA compiled into `server.mjs`.
 
 ### `POST /kortix/refresh`
 
@@ -132,6 +139,8 @@ KORTIX_BRANCH_FETCH_DELAY=0.25
 KORTIX_DEFAULT_OPENCODE_CONFIG_DIR=/ephemeral/kortix-master/opencode
 KORTIX_PROJECT_AUTO_CLONE=0
 KORTIX_COMPILED_BOOT_MODE=off
+KORTIX_COMPILED_RUNTIME_FORMAT=
+KORTIX_COMPILED_RUNTIME_SOURCE_SHA=
 KORTIX_REPO_URL=
 KORTIX_BRANCH_NAME=
 KORTIX_GITHUB_TOKEN=

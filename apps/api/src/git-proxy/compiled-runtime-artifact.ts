@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
+import { manifestCandidatePaths, parseManifestText } from "@kortix/manifest-schema";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveCompiledAgentConfigForSession } from "../projects/lib/compile-agent-config";
 import { validateRef, validateSha } from "../projects/git-ref";
-import { refreshMirror, runGit } from "../projects/git/mirror";
+import { refreshMirror, runGit, runGitCapture, spawn } from "../projects/git/mirror";
 import type { GitBackedProject } from "../projects/git/types";
 import {
   getCompiledAgentBundle,
@@ -37,6 +38,8 @@ interface CachedRuntimeMetadata {
 
 const builds = new Map<string, Promise<StoredCompiledRuntimeArtifact>>();
 const MANIFEST_MARKER = "// kortix-manifest-base64url:";
+const DEFAULT_OPENCODE_CONFIG_DIR = ".kortix/opencode";
+const MAX_OPENCODE_CONFIG_ARCHIVE_BYTES = 4 * 1024 * 1024;
 
 export class CompiledRuntimeSourceMovedError extends Error {
   constructor(expectedSha: string, actualSha: string) {
@@ -87,7 +90,7 @@ async function assertExactSource(
   project: GitBackedProject,
   ref: string,
   sourceSha: string,
-): Promise<void> {
+): Promise<string> {
   let mirror = await refreshMirror(project);
   let actualSha = (
     await runGit(["rev-parse", "--verify", `${ref}^{commit}`], mirror, false)
@@ -100,6 +103,77 @@ async function assertExactSource(
   }
   if (actualSha !== sourceSha)
     throw new CompiledRuntimeSourceMovedError(sourceSha, actualSha);
+  return mirror;
+}
+
+function safeConfigDir(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed || trimmed.startsWith("/") || trimmed.startsWith("-")) return null;
+  if (
+    trimmed
+      .split("/")
+      .some((part) => !part || part === "." || part === ".." || !/^[\w .-]+$/.test(part))
+  ) return null;
+  return trimmed;
+}
+
+async function resolveOpencodeConfigDirAtSha(
+  mirror: string,
+  project: GitBackedProject,
+  sourceSha: string,
+): Promise<string | null> {
+  let configDir = DEFAULT_OPENCODE_CONFIG_DIR;
+  for (const candidate of manifestCandidatePaths(project.manifestPath)) {
+    const manifest = await runGitCapture(["show", `${sourceSha}:${candidate.path}`], mirror);
+    if (manifest.exitCode !== 0) continue;
+    const parsed = parseManifestText(manifest.stdout, candidate.format);
+    const opencode = parsed.opencode;
+    if (opencode && typeof opencode === "object" && !Array.isArray(opencode)) {
+      configDir = safeConfigDir((opencode as Record<string, unknown>).config_dir) ?? configDir;
+    }
+    break;
+  }
+  for (const filename of ["opencode.jsonc", "opencode.json"]) {
+    const exists = await runGitCapture(
+      ["cat-file", "-e", `${sourceSha}:${configDir}/${filename}`],
+      mirror,
+    );
+    if (exists.exitCode === 0) return configDir;
+  }
+  return null;
+}
+
+async function archiveOpencodeConfig(
+  mirror: string,
+  sourceSha: string,
+  configDir: string,
+): Promise<Buffer> {
+  const child = spawn("git", ["archive", "--format=tar.gz", `${sourceSha}:${configDir}`], {
+    cwd: mirror,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const stdout: Buffer[] = [];
+  const stderr: Buffer[] = [];
+  let size = 0;
+  child.stdout.on("data", (chunk: Buffer) => {
+    size += chunk.length;
+    if (size > MAX_OPENCODE_CONFIG_ARCHIVE_BYTES) child.kill("SIGKILL");
+    else stdout.push(chunk);
+  });
+  child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", resolve);
+  });
+  if (size > MAX_OPENCODE_CONFIG_ARCHIVE_BYTES) {
+    throw new Error(`OpenCode config archive exceeds ${MAX_OPENCODE_CONFIG_ARCHIVE_BYTES} bytes`);
+  }
+  if (exitCode !== 0) {
+    throw new Error(`OpenCode config archive failed: ${Buffer.concat(stderr).toString("utf8").trim()}`);
+  }
+  return Buffer.concat(stdout);
 }
 
 async function readCachedArtifact(
@@ -152,17 +226,23 @@ async function compileArtifact(
   runtimePath: string,
   metadataPath: string,
 ): Promise<StoredCompiledRuntimeArtifact> {
-  await assertExactSource(project, ref, sourceSha);
+  const mirror = await assertExactSource(project, ref, sourceSha);
   const agentConfig = await resolveCompiledAgentConfigForSession(
     project,
     sourceSha,
   );
+  const opencodeConfigDir = await resolveOpencodeConfigDirAtSha(mirror, project, sourceSha);
+  const opencodeConfigArchive = opencodeConfigDir
+    ? await archiveOpencodeConfig(mirror, sourceSha, opencodeConfigDir)
+    : null;
   const artifact = compileOpenCodeRuntime({
     projectId: project.projectId,
     ref,
     sourceSha,
     agentConfig,
     agentBundle: agentBundle.source,
+    opencodeConfigDir,
+    opencodeConfigArchiveBase64: opencodeConfigArchive?.toString("base64") ?? null,
   });
   const stagedPath = `${runtimePath}.${crypto.randomUUID()}.tmp`;
   try {

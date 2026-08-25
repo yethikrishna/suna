@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 
-export const COMPILED_RUNTIME_FORMAT = 'kortix.compiled-runtime.v1' as const;
+export const COMPILED_RUNTIME_FORMAT = 'kortix.compiled-runtime.v2' as const;
 export const COMPILED_RUNTIME_CONTENT_TYPE =
-  'application/vnd.kortix.compiled-runtime.v1+javascript';
+  'application/vnd.kortix.compiled-runtime.v2+javascript';
 
 export interface CompiledRuntimeManifest {
   format: typeof COMPILED_RUNTIME_FORMAT;
@@ -12,6 +12,9 @@ export interface CompiledRuntimeManifest {
   source_sha: string;
   agent_config: string | null;
   agent_config_etag: string | null;
+  opencode_config_dir: string | null;
+  opencode_config_archive_sha256: string | null;
+  opencode_config_archive_bytes: number | null;
 }
 
 export interface CompiledRuntimeArtifact {
@@ -27,6 +30,8 @@ export interface CompileOpenCodeRuntimeInput {
   sourceSha: string;
   agentConfig?: string | null;
   agentBundle: string;
+  opencodeConfigDir?: string | null;
+  opencodeConfigArchiveBase64?: string | null;
 }
 
 function validateInput(input: CompileOpenCodeRuntimeInput): void {
@@ -37,6 +42,9 @@ function validateInput(input: CompileOpenCodeRuntimeInput): void {
   }
   if (input.agentConfig) JSON.parse(input.agentConfig);
   if (!input.agentBundle.trim()) throw new Error('agentBundle is required');
+  if (Boolean(input.opencodeConfigDir) !== Boolean(input.opencodeConfigArchiveBase64)) {
+    throw new Error('opencodeConfigDir and opencodeConfigArchiveBase64 must be supplied together');
+  }
 }
 
 function etag(value: string | null): string | null {
@@ -44,7 +52,11 @@ function etag(value: string | null): string | null {
   return createHash('sha256').update(value).digest('hex').slice(0, 16);
 }
 
-function runtimeSource(manifest: CompiledRuntimeManifest, agentBundle: string): string {
+function runtimeSource(
+  manifest: CompiledRuntimeManifest,
+  agentBundle: string,
+  opencodeConfigArchiveBase64: string | null,
+): string {
   const encodedManifest = Buffer.from(JSON.stringify(manifest)).toString('base64url');
   return `#!/usr/bin/env bun
 // kortix-manifest-base64url:${encodedManifest}
@@ -110,6 +122,52 @@ if (typeof globalThis.Bun === "undefined") {
   process.exit(result.code ?? 1);
 }
 
+const opencodeConfigArchiveBase64 = ${JSON.stringify(opencodeConfigArchiveBase64)};
+if (opencodeConfigArchiveBase64 && manifest.opencode_config_archive_sha256) {
+  const { createHash } = await import("node:crypto");
+  const { access, mkdir, readFile, rename, rm, writeFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const archive = Buffer.from(opencodeConfigArchiveBase64, "base64");
+  const actualSha = createHash("sha256").update(archive).digest("hex");
+  if (actualSha !== manifest.opencode_config_archive_sha256) {
+    throw new Error("Compiled OpenCode config checksum mismatch");
+  }
+  const root = process.env.KORTIX_COMPILED_CONFIG_ROOT || "/dev/shm/kortix-compiled-config";
+  const target = join(root, actualSha.slice(0, 24));
+  const marker = join(target, ".kortix-config-sha256");
+  let ready = false;
+  try {
+    ready = (await readFile(marker, "utf8")).trim() === actualSha;
+  } catch {}
+  if (!ready) {
+    await mkdir(root, { recursive: true });
+    const staged = target + "." + crypto.randomUUID() + ".tmp";
+    const archivePath = staged + ".tar.gz";
+    try {
+      await mkdir(staged, { recursive: true });
+      await writeFile(archivePath, archive, { mode: 0o600 });
+      const extract = Bun.spawn(["tar", "-xzf", archivePath, "-C", staged], {
+        stdout: "ignore",
+        stderr: "pipe",
+      });
+      const stderrPromise = new Response(extract.stderr).text();
+      const exitCode = await extract.exited;
+      const stderr = await stderrPromise;
+      if (exitCode !== 0) throw new Error("OpenCode config extraction failed: " + stderr.trim());
+      await writeFile(join(staged, ".kortix-config-sha256"), actualSha + "\\n", { mode: 0o600 });
+      try {
+        await rename(staged, target);
+      } catch (error) {
+        await access(marker);
+      }
+    } finally {
+      await rm(staged, { recursive: true, force: true });
+      await rm(archivePath, { force: true });
+    }
+  }
+  process.env.KORTIX_COMPILED_OPENCODE_CONFIG_DIR = target;
+}
+
 ${agentBundle}
 `;
 }
@@ -119,6 +177,10 @@ export function compileOpenCodeRuntime(
 ): CompiledRuntimeArtifact {
   validateInput(input);
   const agentConfig = input.agentConfig ?? null;
+  const opencodeConfigArchiveBase64 = input.opencodeConfigArchiveBase64 ?? null;
+  const opencodeConfigArchive = opencodeConfigArchiveBase64
+    ? Buffer.from(opencodeConfigArchiveBase64, 'base64')
+    : null;
   const manifest: CompiledRuntimeManifest = {
     format: COMPILED_RUNTIME_FORMAT,
     engine: 'opencode',
@@ -127,8 +189,13 @@ export function compileOpenCodeRuntime(
     source_sha: input.sourceSha,
     agent_config: agentConfig,
     agent_config_etag: etag(agentConfig),
+    opencode_config_dir: input.opencodeConfigDir ?? null,
+    opencode_config_archive_sha256: opencodeConfigArchive
+      ? createHash('sha256').update(opencodeConfigArchive).digest('hex')
+      : null,
+    opencode_config_archive_bytes: opencodeConfigArchive?.byteLength ?? null,
   };
-  const source = runtimeSource(manifest, input.agentBundle);
+  const source = runtimeSource(manifest, input.agentBundle, opencodeConfigArchiveBase64);
   return {
     source,
     sha256: createHash('sha256').update(source).digest('hex'),

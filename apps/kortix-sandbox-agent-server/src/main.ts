@@ -154,17 +154,11 @@ async function main() {
   }
   bootMark('git-identity')
 
-  // The opencode config dir lives INSIDE the repo (`<workspace>/.kortix/
-  // opencode`), so the repo MUST be materialized before we can resolve which
-  // config dir opencode should launch with. Resolving before the clone always
-  // missed the project's opencode.jsonc and silently fell back to the baked
-  // default dir — so the session ran with NO custom agents/plugins/commands
-  // and not even the project's `default_agent`. Clone first, then resolve.
-  //
-  // opencode is spawned AFTER the clone (not in parallel): OPENCODE_CONFIG_DIR
-  // is fixed at spawn time, so the dir has to be known up front. The clone is
-  // the boot long-pole; the opencode spawn (binary launch + port bind) is fast
-  // and opencode doesn't touch the workspace until its first request anyway.
+  // The normal OpenCode config dir lives inside the repo. A v2 compiled runtime
+  // extracts the exact Git revision's OpenCode config to
+  // tmpfs before this bundle executes. That lets OpenCode start while the full
+  // checkout extracts. The first directory-scoped request still waits below
+  // for repoMaterializePromise, so tools never observe a partial workspace.
   const projectEnv = createProjectEnvStore()
   if (!agentEnvDirIsTmpfs()) {
     logger.error('[boot] /dev/shm is not tmpfs — agent secret file would persist to disk; check the sandbox runtime mount')
@@ -271,11 +265,35 @@ async function main() {
       })
     : Promise.resolve()
 
+  const compiledOpencodeConfigDir = (process.env.KORTIX_COMPILED_OPENCODE_CONFIG_DIR ?? '').trim()
+  const hasCompiledOpencodeConfig =
+    compiledOpencodeConfigDir.length > 0 &&
+    (existsSync(join(compiledOpencodeConfigDir, 'opencode.jsonc')) ||
+      existsSync(join(compiledOpencodeConfigDir, 'opencode.json')))
+  let opencodeStartedFromCompiledConfig = false
+  const compiledOpencodeStartPromise: Promise<void> | null = hasCompiledOpencodeConfig
+    ? (async () => {
+        await ensureOpencodeConfigDeps(compiledOpencodeConfigDir)
+        await ensureInjectedManagedSkills(compiledOpencodeConfigDir)
+        bootMark('compiled-config-deps')
+        opencode.cancelBinaryPrefetch()
+        opencode.reconfigure(cfg, compiledOpencodeConfigDir, projectEnv)
+        await opencode.start()
+        opencodeStartedFromCompiledConfig = opencode.getPid() !== null
+        if (opencodeStartedFromCompiledConfig) bootMark('opencode-spawned')
+      })().catch((err) => {
+        logger.warn('[boot] compiled-config OpenCode start failed; using checkout fallback', {
+          err: err instanceof Error ? err.message : String(err),
+        })
+      })
+    : null
+
   // Wait for the clone to finish before we let downstream code (config-dir
   // resolution, readiness probe, initial session creation) think the workspace
   // is ready.
   await repoMaterializePromise
   bootMark('repo-materialized')
+  await compiledOpencodeStartPromise
 
   // The boot clone is shallow; restore history in the background now that the
   // workspace is usable, so `git log`/`blame`/`diff` work without ever having
@@ -289,9 +307,23 @@ async function main() {
     opencodeConfigDir,
     usingProjectConfig: opencodeConfigDir !== cfg.defaultOpencodeConfigDir,
   })
-  await ensureOpencodeConfigDeps(opencodeConfigDir)
-  await ensureInjectedManagedSkills(opencodeConfigDir)
-  bootMark('config-deps')
+  if (!opencodeStartedFromCompiledConfig) {
+    await ensureOpencodeConfigDeps(opencodeConfigDir)
+    await ensureInjectedManagedSkills(opencodeConfigDir)
+    bootMark('config-deps')
+  } else if (opencodeConfigDir !== compiledOpencodeConfigDir) {
+    // Prepare the checked-out directory for the next runtime restart without
+    // delaying this session's readiness. The current process uses the exact
+    // same revision from the verified tmpfs capsule.
+    void Promise.all([
+      ensureOpencodeConfigDeps(opencodeConfigDir),
+      ensureInjectedManagedSkills(opencodeConfigDir),
+    ]).catch((err) => {
+      logger.warn('[boot] checked-out OpenCode config background preparation failed', {
+        err: err instanceof Error ? err.message : String(err),
+      })
+    })
+  }
 
   // Repository/config work defines the free overlap window. Stop any
   // remaining sequential read here so prefetch cannot outlive either outcome.
@@ -300,6 +332,7 @@ async function main() {
 
   if (bootState.repoMaterializationError) {
     logger.warn('[boot] skipping runtime readiness because repo materialization failed')
+    if (opencodeStartedFromCompiledConfig) await opencode.stop()
   } else {
     // Now that the repo exists, pin the credential helper repo-locally too, so
     // `git push` authenticates regardless of the invoking shell's HOME (the
@@ -309,13 +342,17 @@ async function main() {
         err: err instanceof Error ? err.message : String(err),
       })
     })
+    // Reconfigure now so any later restart uses the checked-out config. The
+    // already-running compiled-config process stays untouched.
     opencode.reconfigure(cfg, opencodeConfigDir, projectEnv)
-    await opencode.start().catch((err) => {
-      logger.warn('[boot] opencode.start() rejected', {
-        err: err instanceof Error ? err.message : String(err),
+    if (!opencodeStartedFromCompiledConfig) {
+      await opencode.start().catch((err) => {
+        logger.warn('[boot] opencode.start() rejected', {
+          err: err instanceof Error ? err.message : String(err),
+        })
       })
-    })
-    bootMark('opencode-spawned')
+      bootMark('opencode-spawned')
+    }
   }
 
   // If the image shipped without its baked catalog, opencode just booted on the

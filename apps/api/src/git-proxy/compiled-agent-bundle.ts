@@ -29,6 +29,7 @@ function validateBundle(source: string): CompiledAgentBundle {
 async function buildDevelopmentBundle(): Promise<string> {
   const result = await Bun.build({
     entrypoints: [resolve(agentRoot(), 'src/main.ts')],
+    root: agentRoot(),
     target: 'bun',
     format: 'esm',
     sourcemap: 'none',

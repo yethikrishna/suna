@@ -25,6 +25,11 @@ const originalBundlePath = process.env.KORTIX_COMPILED_AGENT_BUNDLE_PATH;
 
 beforeEach(() => {
   resetCompiledAgentBundleForTests();
+  const bundleRoot = mkdtempSync(join(tmpdir(), "kortix-runtime-test-bundle-"));
+  roots.push(bundleRoot);
+  const bundlePath = join(bundleRoot, "server.mjs");
+  writeFileSync(bundlePath, 'console.log("kortix-sandbox-agent-server starting:test");\n');
+  process.env.KORTIX_COMPILED_AGENT_BUNDLE_PATH = bundlePath;
 });
 
 function git(args: string[], cwd: string): string {
@@ -58,6 +63,10 @@ function makeProject(): {
   writeFileSync(
     join(source, ".kortix", "opencode", "agents", "kortix.md"),
     "---\nmode: primary\n---\nAnswer from the compiled runtime.\n",
+  );
+  writeFileSync(
+    join(source, ".kortix", "opencode", "opencode.jsonc"),
+    '{"default_agent":"kortix"}\n',
   );
   git(["add", "-A"], source);
   git(["commit", "-m", "runtime source"], source);
@@ -116,6 +125,9 @@ describe("buildCompiledRuntimeArtifact", () => {
         },
       },
     });
+    expect(manifest.opencode_config_dir).toBe(".kortix/opencode");
+    expect(manifest.opencode_config_archive_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(manifest.opencode_config_archive_bytes).toBeGreaterThan(0);
   });
 
   test("reuses a verified content-addressed artifact", async () => {

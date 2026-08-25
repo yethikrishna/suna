@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compileOpenCodeRuntime } from './compiled-runtime';
@@ -33,13 +34,16 @@ describe('compileOpenCodeRuntime', () => {
 
     expect(second).toEqual(first);
     expect(first.manifest).toEqual({
-      format: 'kortix.compiled-runtime.v1',
+      format: 'kortix.compiled-runtime.v2',
       engine: 'opencode',
       project_id: 'project-1',
       ref: 'main',
       source_sha: 'a'.repeat(40),
       agent_config: INPUT.agentConfig,
       agent_config_etag: expect.stringMatching(/^[0-9a-f]{16}$/),
+      opencode_config_dir: null,
+      opencode_config_archive_sha256: null,
+      opencode_config_archive_bytes: null,
     });
     expect(first.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(first.size).toBe(Buffer.byteLength(first.source));
@@ -105,11 +109,64 @@ writeFileSync(process.env.CAPTURE_PATH, JSON.stringify({
       projectId: 'project-1',
       ref: 'main',
       sourceSha: 'a'.repeat(40),
-      runtimeFormat: 'kortix.compiled-runtime.v1',
+      runtimeFormat: 'kortix.compiled-runtime.v2',
       agentConfig: INPUT.agentConfig,
       token: 'runtime-only-token',
     });
     expect(artifactSourceHasSecret(await readFile(runtimePath, 'utf8'))).toBe(false);
+  });
+
+  test('extracts the compiled OpenCode config before running the daemon', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kortix-compiled-config-'));
+    roots.push(root);
+    const sourceDir = join(root, 'source');
+    const extractionRoot = join(root, 'extracted');
+    const capturePath = join(root, 'capture.json');
+    const archivePath = join(root, 'opencode-config.tar.gz');
+    await mkdir(join(sourceDir, 'agents'), { recursive: true });
+    await writeFile(join(sourceDir, 'opencode.jsonc'), '{"default_agent":"kortix"}\n');
+    await writeFile(join(sourceDir, 'agents', 'kortix.md'), 'Compiled config marker.\n');
+    execFileSync('tar', ['-czf', archivePath, '-C', sourceDir, '.']);
+    const archive = await readFile(archivePath);
+    const artifact = compileOpenCodeRuntime({
+      ...INPUT,
+      opencodeConfigDir: '.kortix/opencode',
+      opencodeConfigArchiveBase64: archive.toString('base64'),
+      agentBundle: `
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+writeFileSync(process.env.CAPTURE_PATH, JSON.stringify({
+  configDir: process.env.KORTIX_COMPILED_OPENCODE_CONFIG_DIR,
+  config: readFileSync(join(process.env.KORTIX_COMPILED_OPENCODE_CONFIG_DIR, "opencode.jsonc"), "utf8"),
+  agent: readFileSync(join(process.env.KORTIX_COMPILED_OPENCODE_CONFIG_DIR, "agents", "kortix.md"), "utf8"),
+}));
+`,
+    });
+    const runtimePath = join(root, 'server.mjs');
+    await writeFile(runtimePath, artifact.source, { mode: 0o700 });
+
+    const child = Bun.spawn([process.execPath, runtimePath], {
+      env: {
+        ...process.env,
+        CAPTURE_PATH: capturePath,
+        KORTIX_COMPILED_CONFIG_ROOT: extractionRoot,
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const [exitCode, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stderr).text(),
+    ]);
+
+    expect(exitCode, stderr).toBe(0);
+    expect(JSON.parse(await readFile(capturePath, 'utf8'))).toEqual({
+      configDir: expect.stringContaining(extractionRoot),
+      config: '{"default_agent":"kortix"}\n',
+      agent: 'Compiled config marker.\n',
+    });
+    expect(artifact.manifest.opencode_config_dir).toBe('.kortix/opencode');
+    expect(artifact.manifest.opencode_config_archive_sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
   test('uses Bun to run the bundle when an older snapshot invokes it with Node', async () => {

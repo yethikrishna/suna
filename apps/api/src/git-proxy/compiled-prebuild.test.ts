@@ -34,13 +34,16 @@ function dependencies(calls: string[]) {
         sourceSha,
         cacheHit: true,
         manifest: {
-          format: 'kortix.compiled-runtime.v1' as const,
+          format: 'kortix.compiled-runtime.v2' as const,
           engine: 'opencode' as const,
           project_id: 'project-1',
           ref,
           source_sha: sourceSha,
           agent_config: null,
           agent_config_etag: null,
+          opencode_config_dir: null,
+          opencode_config_archive_sha256: null,
+          opencode_config_archive_bytes: null,
         },
       };
     },

@@ -9,8 +9,8 @@ Git remains the source of truth. The API compiles one exact commit into two
 immutable artifacts:
 
 - `checkout.tar.gz`: the project files and Git metadata.
-- `server.mjs`: the verified OpenCode runtime launcher and compiled agent
-  configuration.
+- `server.mjs`: the verified daemon bundle, compiled agent configuration, and
+  compressed project OpenCode configuration.
 
 The sandbox downloads and verifies both artifacts. `server.mjs` starts the
 OpenCode-based Kortix daemon that is already present in the sandbox image.
@@ -39,11 +39,11 @@ replacement sandboxes, and runtime-only sessions keep their existing behavior.
 2. The API starts both builds while the provider creates the sandbox.
 3. The sandbox downloads both artifacts with its session token.
 4. The sandbox verifies each SHA-256, format, project, ref, and source SHA.
-5. The sandbox verifies Git HEAD and the clean working tree in the checkout.
-6. The sandbox creates the local session branch.
-7. The sandbox executes `server.mjs`.
-8. `server.mjs` validates its runtime identity and launches the baked daemon.
-9. The daemon starts OpenCode in the compiled checkout.
+5. `server.mjs` extracts the OpenCode configuration to tmpfs and starts the daemon.
+6. The daemon starts OpenCode while the checkout extraction continues.
+7. The sandbox verifies Git HEAD and the clean working tree in the checkout.
+8. The sandbox creates the local session branch.
+9. The daemon permits the first directory-scoped OpenCode request.
 10. The existing background Git history fetch continues after startup.
 
 The artifact includes Git metadata. The sandbox sets `origin` to the Kortix Git
@@ -69,7 +69,7 @@ must contain:
   "compiled_boot_mode": "prefer",
   "compiled_checkout": true,
   "compiled_runtime": true,
-  "compiled_runtime_format": "kortix.compiled-runtime.v1"
+  "compiled_runtime_format": "kortix.compiled-runtime.v2"
 }
 ```
 
@@ -136,9 +136,13 @@ optimization must target OpenCode initialization rather than Git.
   rebuild the same content-addressed artifact.
 - One compressed checkout cannot exceed 512 MiB.
 - One compiled runtime cannot exceed 16 MiB.
-- `server.mjs` compiles configuration and launch behavior. It does not package
-  the OpenCode executable.
-- OpenCode process initialization remains on the critical path.
+- `server.mjs` does not package the OpenCode executable. The sandbox image
+  contains OpenCode 1.18.19 at `/opt/kortix/opencode.current`.
+- Compiled boot disables OpenCode's remote models.dev refresh. The embedded
+  model snapshot and Kortix managed provider catalog remain available.
+- Daytona SDK 0.184 supports disk-preserving stop/start. It does not expose a
+  running-process memory checkpoint API. Daytona resume therefore restarts
+  OpenCode instead of restoring its process memory.
 
 The next compiler step is shared object storage. It will let every API replica
 serve the artifact produced by the Git push. The next latency target after that

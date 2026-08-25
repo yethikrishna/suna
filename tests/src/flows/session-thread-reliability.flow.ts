@@ -95,14 +95,17 @@ async function waitForSessionReady(
 
 async function bootSandbox(
   ctx: FlowContext,
-  opts?: { prompt?: string; readinessTimeoutMs?: number },
+  opts?: { prompt?: string; readinessTimeoutMs?: number; opencodeModel?: string },
 ): Promise<{ projectId: string; sessionId: string; sandboxId: string; sandbox: any }> {
   // Inside a step so a boot failure records its `POST /start` polls — request
   // capture is AsyncLocalStorage-scoped to `ctx.step`. See the twin helper in
   // run-session-backlog.flow.ts for the run that proved this matters.
   return ctx.step('a fresh session boots to a ready runtime', async () => {
     const project = await ctx.fixtures.sharedSeededProject();
-    const session = await ctx.fixtures.session(project, { prompt: opts?.prompt ?? 'say hello' });
+    const session = await ctx.fixtures.session(project, {
+      prompt: opts?.prompt ?? 'say hello',
+      opencodeModel: opts?.opencodeModel,
+    });
     const started = await waitForSessionReady(
       ctx,
       project.id,
@@ -482,7 +485,9 @@ flow(
     ],
   },
   async (ctx) => {
-    const { projectId, sessionId, sandboxId } = await bootSandbox(ctx);
+    const { projectId, sessionId, sandboxId } = await bootSandbox(ctx, {
+      opencodeModel: 'gpt-5.6-luna',
+    });
     const ocSessionId = await createOcConversation(ctx, sandboxId);
 
     const originalMarker = `SESS23_ORIGINAL_${Date.now()}`;
@@ -490,6 +495,7 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(ocPath(sandboxId, `/session/${ocSessionId}/prompt_async`), {
+          model: { providerID: 'kortix', modelID: 'gpt-5.6-luna' },
           parts: [
             {
               type: 'text',
@@ -595,6 +601,7 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(ocPath(sandboxId, `/session/${ocSessionId}/prompt_async`), {
+          model: { providerID: 'kortix', modelID: 'gpt-5.6-luna' },
           parts: [
             {
               type: 'text',

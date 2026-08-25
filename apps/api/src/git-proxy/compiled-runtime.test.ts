@@ -72,6 +72,7 @@ writeFileSync(process.env.CAPTURE_PATH, JSON.stringify({
   projectId: process.env.KORTIX_PROJECT_ID,
   ref: process.env.KORTIX_DEFAULT_BRANCH,
   sourceSha: process.env.KORTIX_BASE_SHA,
+  runtimeFormat: process.env.KORTIX_COMPILED_RUNTIME_FORMAT,
   agentConfig: process.env.KORTIX_COMPILED_AGENT_CONFIG,
   token: process.env.KORTIX_TOKEN,
 }));
@@ -98,6 +99,7 @@ writeFileSync(process.env.CAPTURE_PATH, JSON.stringify({
       projectId: 'project-1',
       ref: 'main',
       sourceSha: 'a'.repeat(40),
+      runtimeFormat: 'kortix.compiled-runtime.v1',
       agentConfig: INPUT.agentConfig,
       token: 'runtime-only-token',
     });

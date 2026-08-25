@@ -222,6 +222,10 @@ export function createHealthRouter(
       branch: repoInfo?.branch ?? null,
       commit_sha: repoInfo?.commit ?? null,
       compiled_boot_mode: cfg.compiledBootMode,
+      compiled_runtime:
+        process.env.KORTIX_COMPILED_RUNTIME_FORMAT === 'kortix.compiled-runtime.v1',
+      compiled_runtime_format: process.env.KORTIX_COMPILED_RUNTIME_FORMAT || null,
+      compiled_runtime_source_sha: process.env.KORTIX_COMPILED_RUNTIME_SOURCE_SHA || null,
       compiled_checkout: existsSync(
         join(cfg.projectTarget, '.git', 'kortix-compiled-checkout.json'),
       ),

@@ -119,6 +119,18 @@ describe('buildSessionRuntimeEnv — fast Git boot hints', () => {
     expect(env).not.toHaveProperty('KORTIX_OPENCODE_BINARY_PREFETCH');
   });
 
+  test('emits required mode for strict compiled runtime verification', () => {
+    const env = buildSessionRuntimeEnv({
+      ...BASE_INPUT,
+      compiledBootMode: 'required',
+      freshSession: true,
+      baseSha: 'a'.repeat(40),
+    });
+
+    expect(env.KORTIX_COMPILED_BOOT_MODE).toBe('required');
+    expect(env.KORTIX_BASE_SHA).toBe('a'.repeat(40));
+  });
+
   test('keeps off, resumed, and repository-free sessions on the existing path', () => {
     for (const env of [
       buildSessionRuntimeEnv({

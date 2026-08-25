@@ -722,6 +722,7 @@ export async function materializeRepo(cfg: Config): Promise<void> {
         }
       } catch (error) {
         await rm(stage, { recursive: true, force: true }).catch(() => {})
+        if (cfg.compiledBootMode === 'required') throw error
         logger.warn('[git] compiled checkout unavailable; using clone path', {
           mode: cfg.compiledBootMode,
           error: error instanceof Error ? error.message : String(error),

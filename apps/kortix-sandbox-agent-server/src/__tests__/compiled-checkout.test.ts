@@ -227,4 +227,25 @@ describe('materializeRepo compiled boot', () => {
     expect(git(target, 'branch', '--show-current')).toBe('session-2')
     expect(git(target, 'rev-parse', 'HEAD')).toBe(sha)
   })
+
+  test('required mode rejects an unavailable artifact before the clone path', async () => {
+    const targetRoot = mkdtempSync(join(tmpdir(), 'kortix-daemon-required-target-'))
+    roots.push(targetRoot)
+    const target = join(targetRoot, 'workspace')
+    const cfg = loadConfig({
+      KORTIX_PROJECT_AUTO_CLONE: '1',
+      KORTIX_PROJECT_TARGET: target,
+      KORTIX_PROJECT_ID: '44444444-4444-4444-8444-444444444444',
+      KORTIX_REPO_URL: 'file:///unavailable.git',
+      KORTIX_DEFAULT_BRANCH: 'main',
+      KORTIX_BRANCH_NAME: 'session-3',
+      KORTIX_SESSION_FRESH: '1',
+      KORTIX_BASE_SHA: 'a'.repeat(40),
+      KORTIX_TOKEN: 'sandbox-token',
+      KORTIX_COMPILED_BOOT_MODE: 'required',
+    } as NodeJS.ProcessEnv)
+
+    await expect(materializeRepo(cfg)).rejects.toThrow(/requires an HTTP\(S\) Git proxy URL/)
+    expect(() => readFileSync(join(target, 'README.md'), 'utf8')).toThrow()
+  })
 })

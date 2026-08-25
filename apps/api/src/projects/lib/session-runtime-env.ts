@@ -17,7 +17,7 @@ export interface SessionRuntimeEnvInput {
   /** Enables the rollback-safe fresh-session Git fast path. */
   fastColdBootEnabled?: boolean;
   /** Experimental compiled-checkout rollout mode. */
-  compiledBootMode?: 'off' | 'shadow' | 'prefer';
+  compiledBootMode?: 'off' | 'shadow' | 'prefer' | 'required';
   /** True only for a newly-created session branch that still equals base. */
   freshSession?: boolean;
   /** Replacement runtime must fetch the existing remote session branch once. */

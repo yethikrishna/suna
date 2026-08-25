@@ -988,11 +988,13 @@ describe('daemon proxy auth gate', () => {
       auth: string
       compiled_boot_mode: string
       compiled_checkout: boolean
+      compiled_runtime: boolean
     }
     expect(body.daemon).toBe('ok')
     expect(body.auth).toBe('configured')
     expect(body.compiled_boot_mode).toBe('off')
     expect(body.compiled_checkout).toBe(false)
+    expect(body.compiled_runtime).toBe(false)
   })
 
   it('reports when the workspace came from a compiled checkout', async () => {

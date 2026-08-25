@@ -57,6 +57,8 @@ if (process.argv.includes("--manifest")) {
 }
 
 const compiledEnv = {
+  KORTIX_COMPILED_RUNTIME_FORMAT: manifest.format,
+  KORTIX_COMPILED_RUNTIME_SOURCE_SHA: manifest.source_sha,
   KORTIX_PROJECT_ID: manifest.project_id,
   KORTIX_DEFAULT_BRANCH: manifest.ref,
   KORTIX_BASE_REF: manifest.ref,

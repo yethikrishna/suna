@@ -67,6 +67,7 @@ import type { SandboxBootState } from './routes/health'
 import { installShutdownHandlers } from './shutdown'
 import { startStaticWebServer } from './static-web'
 import { opencodeDeliveryInFlight, opencodeTurnInFlight } from './opencode-turn-state'
+import { installCompiledRuntime } from './compiled-runtime'
 
 const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
   'deepseek-v4-flash-free',
@@ -2938,6 +2939,18 @@ if (import.meta.main) {
     runGitCredentialHelper(loadConfig(), process.argv[3])
       .then((code) => process.exit(code))
       .catch(() => process.exit(0))
+  } else if (subcommand === 'install-compiled-runtime') {
+    installCompiledRuntime(loadConfig())
+      .then((result) => {
+        process.stdout.write(`${result.path}\n`)
+        process.exit(0)
+      })
+      .catch((error) => {
+        process.stderr.write(
+          `[compiled-runtime] install failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        )
+        process.exit(1)
+      })
   } else {
     main().catch((err) => {
       logger.error('[boot] fatal', err)

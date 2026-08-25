@@ -62,7 +62,7 @@ describe('clone depth configuration', () => {
     expect(loadConfig(BASE_ENV as NodeJS.ProcessEnv).compiledBootMode).toBe('off')
   })
 
-  test.each(['shadow', 'prefer'] as const)('accepts compiled boot mode %s', (mode) => {
+  test.each(['shadow', 'prefer', 'required'] as const)('accepts compiled boot mode %s', (mode) => {
     expect(
       loadConfig({ ...BASE_ENV, KORTIX_COMPILED_BOOT_MODE: mode } as NodeJS.ProcessEnv)
         .compiledBootMode,

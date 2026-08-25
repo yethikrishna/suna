@@ -542,7 +542,10 @@ const envSchema = z.object({
   // Experimental repository compiler. `off` preserves the current Git clone
   // path. `shadow` validates the compiled checkout but still clones. `prefer`
   // uses the compiled checkout first and falls back to clone on any failure.
-  KORTIX_COMPILED_BOOT_MODE: z.enum(['off', 'shadow', 'prefer']).optional().default('off'),
+  KORTIX_COMPILED_BOOT_MODE: z
+    .enum(['off', 'shadow', 'prefer', 'required'])
+    .optional()
+    .default('off'),
   // Per-provider allowlist for legacy WARM project images of CUSTOM
   // (non-default-slug) templates. The FAST experiment never uses this
   // allowlist; it creates project images only for the shared default template.

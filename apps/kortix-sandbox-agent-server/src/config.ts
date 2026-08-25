@@ -18,7 +18,7 @@ const BoolFlag = z.preprocess((v) => {
   return s === '1' || s === 'true' || s === 'yes' || s === 'on'
 }, z.boolean())
 
-export const CompiledBootModeSchema = z.enum(['off', 'shadow', 'prefer'])
+export const CompiledBootModeSchema = z.enum(['off', 'shadow', 'prefer', 'required'])
 export type CompiledBootMode = z.infer<typeof CompiledBootModeSchema>
 
 const Schema = z.object({

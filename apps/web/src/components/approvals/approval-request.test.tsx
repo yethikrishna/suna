@@ -106,10 +106,14 @@ describe('ApprovalParameters', () => {
     expect(html).toContain('Hidden credential');
   });
 
-  test('says so when the row carries no preview', () => {
+  test('says so when the row carries no preview — and does not tell you to approve it', () => {
     const html = renderToStaticMarkup(<ApprovalParameters dense argsPreview={null} />);
 
-    expect(html).toContain('no recorded parameter preview');
+    expect(html).toContain('No parameters were recorded for this call.');
+    // The old empty state said "Review the session context before you approve
+    // it", next to an Approve button that could not be clicked.
+    expect(html).not.toContain('before you approve');
+    expect(html).not.toContain('the redacted values the connector will receive');
   });
 });
 

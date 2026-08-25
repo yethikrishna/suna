@@ -142,18 +142,23 @@ export function ApprovalParameters({
     >
       <div
         className={cn(
-          'bg-primary/[0.03] border-border border-b',
+          'bg-primary/[0.03] border-border',
+          // No list under it means no divider — otherwise the empty case draws
+          // a rule along the bottom of the box for nothing.
+          entries.length > 0 && 'border-b',
           dense ? 'px-3 py-1.5' : 'px-4 py-2',
         )}
       >
         <p className="text-foreground text-xs font-medium">Parameters</p>
         <p className="text-muted-foreground mt-0.5 text-xs text-pretty">
-          {reviewComplete
-            ? 'These are the redacted values the connector will receive.'
-            : 'These are the redacted values the connector will receive. Values too long to show are marked in place.'}
+          {entries.length === 0
+            ? 'No parameters were recorded for this call.'
+            : reviewComplete
+              ? 'These are the redacted values the connector will receive.'
+              : 'These are the redacted values the connector will receive. Values too long to show are marked in place.'}
         </p>
       </div>
-      {entries.length > 0 ? (
+      {entries.length > 0 && (
         <dl>
           {entries.map(([key, value]) => (
             <div
@@ -181,16 +186,6 @@ export function ApprovalParameters({
             </div>
           ))}
         </dl>
-      ) : (
-        <p
-          className={cn(
-            'text-muted-foreground text-xs text-pretty',
-            dense ? 'px-3 py-2' : 'px-4 py-4',
-          )}
-        >
-          This call has no recorded parameter preview. Review the session context before you approve
-          it.
-        </p>
       )}
     </div>
   );

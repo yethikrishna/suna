@@ -983,9 +983,40 @@ describe('daemon proxy auth gate', () => {
     const app = buildOpencodeApp(baseConfig(), fakeOpencode(), Date.now())
     const res = await app.request('/kortix/health')
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { daemon: string; auth: string }
+    const body = (await res.json()) as {
+      daemon: string
+      auth: string
+      compiled_boot_mode: string
+      compiled_checkout: boolean
+    }
     expect(body.daemon).toBe('ok')
     expect(body.auth).toBe('configured')
+    expect(body.compiled_boot_mode).toBe('off')
+    expect(body.compiled_checkout).toBe(false)
+  })
+
+  it('reports when the workspace came from a compiled checkout', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'kortix-compiled-health-'))
+    try {
+      const target = join(root, 'workspace')
+      git(['init', '-b', 'main', target])
+      writeFileSync(join(target, '.git', 'kortix-compiled-checkout.json'), '{}')
+      const app = buildOpencodeApp(
+        baseConfig({ projectTarget: target, compiledBootMode: 'prefer' }),
+        fakeOpencode(),
+        Date.now(),
+      )
+
+      const res = await app.request('/kortix/health')
+      const body = (await res.json()) as {
+        compiled_boot_mode: string
+        compiled_checkout: boolean
+      }
+      expect(body.compiled_boot_mode).toBe('prefer')
+      expect(body.compiled_checkout).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('reports auth=unconfigured when the sandbox token is unset', async () => {

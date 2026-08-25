@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import type { Config } from '../config'
 import { readRepoInfo } from '../git'
@@ -220,6 +221,10 @@ export function createHealthRouter(
       repo: repoInfo?.remoteUrl ?? null,
       branch: repoInfo?.branch ?? null,
       commit_sha: repoInfo?.commit ?? null,
+      compiled_boot_mode: cfg.compiledBootMode,
+      compiled_checkout: existsSync(
+        join(cfg.projectTarget, '.git', 'kortix-compiled-checkout.json'),
+      ),
       // The content hash of the compiled agent config THIS opencode spawned
       // with. Not derivable from commit_sha: a warm-workspace refresh advances
       // the commit while deliberately skipping the restart, so a box can report

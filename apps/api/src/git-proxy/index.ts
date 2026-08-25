@@ -271,7 +271,7 @@ gitProxyApp.openapi(
     const auth = await authorize(c, projectId, 'read');
     if (!auth.ok) {
       if (auth.status === 401) return unauthorized(c, auth.message);
-      return c.text(auth.message, auth.status);
+      return c.text(auth.message, auth.status === 404 ? 404 : 403);
     }
     const { ref, sha } = c.req.valid('query');
     const runtimeRepoUrl = `${new URL(c.req.url).origin}/v1/git/${projectId}.git`;

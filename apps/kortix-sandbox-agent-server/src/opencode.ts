@@ -1699,6 +1699,15 @@ export function createOpencodeSupervisor(
   let currentProjectEnv = projectEnv
   let child: ChildProcess | null = null
   let activePort = cfg.opencodeInternalPort
+  // The port each spawned opencode was told to serve on. THIS is the truth
+  // about where the live process listens; `activePort` is only the plan for the
+  // next spawn. Every reader of the live port goes through livePort(), so the
+  // two can never disagree the way they did on Essentia 2026-08-25 (daemon
+  // `starting` on 4096 for two hours while its own child served on 4097).
+  const childPorts = new WeakMap<ChildProcess, number>()
+  function livePort(): number {
+    return (child ? childPorts.get(child) : undefined) ?? activePort
+  }
   let binaryPath: string | null = null
   let stopping = false
   let restartDelayMs = 500
@@ -1811,7 +1820,7 @@ export function createOpencodeSupervisor(
     bin: string,
     opts: { port?: number; supervise?: boolean } = {},
   ): Promise<ChildProcess> {
-    const port = opts.port ?? activePort
+    const port = opts.port ?? livePort()
     const supervise = opts.supervise !== false
     sweepBunExtractions()
     try {
@@ -1888,6 +1897,7 @@ export function createOpencodeSupervisor(
       stdio: ['ignore', 'inherit', 'inherit'],
       detached: true,
     })
+    childPorts.set(proc, port)
     proc.on('error', (err) => {
       logger.error('[opencode] spawn error', err)
     })
@@ -2076,9 +2086,23 @@ export function createOpencodeSupervisor(
     if (!binaryPath) return { ok: false, reason: 'opencode binary not resolved yet' }
     if (stopping) return { ok: false, reason: 'supervisor is shutting down' }
 
-    const candidatePort = activePort === currentCfg.opencodeInternalPort
+    const candidatePort = livePort() === currentCfg.opencodeInternalPort
       ? currentCfg.opencodeStandbyPort
       : currentCfg.opencodeInternalPort
+    // The idle half must be idle. `opencode serve --port <busy>` exits at once
+    // with ServeError (verified on 1.18.23), but `probeUntilReady` asks the
+    // PORT, not the process: whatever already answers there — the incumbent,
+    // if `activePort` has drifted from where opencode really listens — would
+    // "prove" a candidate that is already dead, and promotion would then kill
+    // the only opencode the box has. Decline instead, loudly.
+    if (await checkReady(candidatePort)) {
+      logger.error('[opencode] candidate port already answers; port pair is desynced, keeping the running instance', {
+        livePort: livePort(),
+        candidatePort,
+        pid: child?.pid ?? null,
+      })
+      return { ok: false, reason: `port ${candidatePort} already answers; the port pair is desynced` }
+    }
     let candidate: ChildProcess
     try {
       candidate = await spawnChild(binaryPath, { port: candidatePort, supervise: false })
@@ -2157,7 +2181,7 @@ export function createOpencodeSupervisor(
     }
   }
 
-  async function checkReady(port = activePort): Promise<boolean> {
+  async function checkReady(port = livePort()): Promise<boolean> {
     return probeOpencodeSessionApi(`http://127.0.0.1:${port}`, currentCfg.projectTarget, 2_000)
   }
 
@@ -2194,7 +2218,7 @@ export function createOpencodeSupervisor(
     if (!written) return false
     try {
       const res = await fetch(
-        `http://127.0.0.1:${activePort}/global/dispose`,
+        `http://127.0.0.1:${livePort()}/global/dispose`,
         { method: 'POST', signal: AbortSignal.timeout(15_000) },
       )
       // Content-type matters: the SPA catch-all also answers 200, so a status
@@ -2250,11 +2274,11 @@ export function createOpencodeSupervisor(
     const interval = state === 'ok' ? READY_LIVENESS_MS : READY_POLL_MS
     readinessTimer = setTimeout(async () => {
       if (stopping) return
-      const probedPort = activePort
+      const probedPort = livePort()
       const probedChild = child
       const ready = await checkReady(probedPort)
       if (stopping) return
-      if (probedPort !== activePort) {
+      if (probedPort !== livePort()) {
         scheduleReadinessProbe()
         return
       }
@@ -2271,6 +2295,7 @@ export function createOpencodeSupervisor(
       scheduleReadinessProbe()
     }, interval)
   }
+
 
   return {
     prefetchBinary() {
@@ -2440,7 +2465,7 @@ export function createOpencodeSupervisor(
       if (!proven.ok) return { outcome: 'kept-old', reason: proven.reason }
 
       const previous = child
-      const previousPort = activePort
+      const previousPort = livePort()
       activePort = proven.port
       child = proven.candidate
       superviseChild(proven.candidate)
@@ -2502,11 +2527,11 @@ export function createOpencodeSupervisor(
     },
 
     getActivePort() {
-      return activePort
+      return livePort()
     },
 
     getInternalUrl() {
-      return `http://127.0.0.1:${activePort}`
+      return `http://127.0.0.1:${livePort()}`
     },
 
     getBinaryPath() {

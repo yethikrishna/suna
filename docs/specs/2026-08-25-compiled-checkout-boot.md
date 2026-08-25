@@ -92,6 +92,42 @@ A later local Daytona sample measured OpenCode spawn-to-ready at 5.96 seconds.
 The compiled launcher preserves that process and therefore does not remove this
 time.
 
+The first full `server.mjs` session used the same managed GitHub project and a
+new Daytona sandbox. The one-time content-addressed image build took 423.702
+seconds and is excluded from the guest boot stages below.
+
+| Guest stage | Cumulative time |
+| --- | ---: |
+| Compiled checkout materialized | 861 ms |
+| Runtime process spawned | 1,074 ms |
+| OpenCode ready | 6,795 ms |
+
+The health response reported `compiled_runtime: true` and
+`compiled_checkout: true`. Both artifacts reported source SHA
+`536684344bc174c2068e0964bc20481182d604f4`. A real OpenCode session then
+accepted a prompt and returned the expected response in 3,916 ms.
+
+The installer originally executed Node once to inspect the MJS manifest. The
+compiler now emits a base64url manifest marker. The installer validates that
+marker after digest verification without executing the artifact. The focused
+install test decreased from 74 ms to 1.44 ms.
+
+A second session used the final ready Daytona image with warm project snapshots
+disabled. End-to-end runtime readiness took 11,852 ms:
+
+| Host or guest stage | Time |
+| --- | ---: |
+| API session response | 1,268 ms |
+| Cached image lookup | 458 ms |
+| Daytona VM creation | 2,302 ms |
+| Compiled checkout materialization | 700 ms |
+| Remaining daemon setup before OpenCode | 376 ms |
+| OpenCode spawn to ready | 6,034 ms |
+
+The compiler has reduced repository delivery below one second. OpenCode now
+accounts for 84% of the 7,143 ms in-guest boot timeline. The next session-boot
+optimization must target OpenCode initialization rather than Git.
+
 ## Current limits
 
 - The API prebuilds on a managed Git push and overlaps on-demand builds with

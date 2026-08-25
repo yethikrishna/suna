@@ -35,8 +35,9 @@
 import {
   ApprovalDecisionActions,
   type ApprovalDecisionValue,
-  ApprovalIncompleteNotice,
   ApprovalParameters,
+  ApprovalUnreviewableNotice,
+  approvalReviewable,
 } from '@/components/approvals/approval-request';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -204,6 +205,11 @@ export function SessionApprovalNotice({
           const request = approvalRequestFromAction(action, decision === null);
           const open = expanded === executionId;
           const reviewComplete = request.reviewComplete !== false;
+          // NOT the same test. A shortened value is still a reviewable one —
+          // see `approvalReviewable`. Only a call with nothing to show loses
+          // the Approve button, and it loses the button rather than wearing a
+          // disabled one.
+          const reviewable = approvalReviewable(request.argsPreview, request.reviewComplete);
 
           return (
             <li key={executionId}>
@@ -289,13 +295,13 @@ export function SessionApprovalNotice({
                       argsPreview={request.argsPreview}
                       reviewComplete={reviewComplete}
                     />
-                    {!reviewComplete ? <ApprovalIncompleteNotice dense /> : null}
+                    {decision === null && !reviewable ? <ApprovalUnreviewableNotice dense /> : null}
                     {decision === null ? (
                       <ApprovalDecisionActions
                         dense
                         onDecision={(next) => onDecide(executionId, next)}
                         busyDecision={busy[executionId] ?? null}
-                        approveDisabled={!reviewComplete}
+                        approvable={reviewable}
                       />
                     ) : null}
                   </div>

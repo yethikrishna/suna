@@ -38,7 +38,7 @@ export type VerifiedReloadResult =
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
-import { access, constants, open, stat } from 'node:fs/promises'
+import { access, constants, open, readFile, realpath, stat } from 'node:fs/promises'
 import { isDeepStrictEqual } from 'node:util'
 
 import { AGENT_ENV_SH } from './agent-env-file'
@@ -294,17 +294,16 @@ export async function buildOpencodeConfigContent(
     typeof env.OPENCODE_CONFIG_CONTENT === 'string' &&
     env.OPENCODE_CONFIG_CONTENT.includes('"kortix/')
 
-  if (
-    !hasConnectorMcp &&
-    !hasLlmGateway &&
-    !nativeSessionModel &&
-    !nativeScrubNeeded &&
-    !isSlackSession &&
-    !hasCompiledAgentConfig &&
-    !injectedSkillsDir &&
-    !secretCapabilitiesInstructionPath
-  )
-    return undefined
+  // (0) Kortix owns the OpenCode binary: the daemon converges it to the
+  // manifest pin (runtime-assets.ts) with `pnpm add -g --allow-build`. OpenCode's
+  // own autoupdate (`autoupdate` unset = on) runs whenever a human launches the
+  // CLI/TUI in the Session terminal and installs via plain `pnpm add -g`, which
+  // skips the postinstall: the launcher becomes a 479-byte stub, the old global
+  // dir is deleted and `/opt/kortix/opencode.current` dangles. Essentia
+  // 2026-08-22 (session dead, "Still waking this session up") and again
+  // 2026-08-25 on two boxes. This contributor ALWAYS applies, so the composed
+  // config is never `undefined` any more.
+  const KORTIX_MANAGED_OPENCODE_OVERLAY: Record<string, unknown> = { autoupdate: false }
 
   let base: Record<string, unknown> = {}
   if (hasCompiledAgentConfig) {
@@ -477,6 +476,7 @@ export async function buildOpencodeConfigContent(
     out.permission = { ...permission, question: 'deny' }
   }
 
+  Object.assign(out, KORTIX_MANAGED_OPENCODE_OVERLAY)
   return JSON.stringify(out)
 }
 
@@ -1462,6 +1462,36 @@ export interface OpencodeBinaryDetectionOptions {
   resolveInstalledNative?: () => Promise<string>
   publishNativeLink?: (nativePath: string, linkPath: string) => Promise<void>
   findOnPath?: (bin: string) => Promise<string | null>
+  isStubLauncher?: (path: string) => Promise<boolean>
+}
+
+/**
+ * True when `launcherPath` is — or is a pnpm shim for — the tiny shell stub pnpm
+ * leaves in place of a native OpenCode when the package's postinstall did not
+ * run. The real launcher is a >100 MB executable; pnpm's shim is a short shell
+ * script that `exec`s it and names it in a trailing `# cmd-shim-target=` line.
+ * Conservative by construction: anything this cannot read or resolve is NOT a
+ * stub, so a false positive can never take a working launcher away.
+ */
+export async function isStubOpencodeLauncher(launcherPath: string): Promise<boolean> {
+  try {
+    const target = await realpath(launcherPath)
+    const info = await stat(target)
+    if (info.size > 64 * 1024) return false
+    const text = await readFile(target, 'utf8')
+    if (/postinstall script was not run/i.test(text)) return true
+    // pnpm's cmd-shim: follow one hop to the package's own launcher.
+    const shimTarget =
+      text.match(/^#\s*cmd-shim-target=(.+)$/m)?.[1]?.trim() ??
+      text.match(/"?([^"\s]+opencode-ai\/bin\/opencode(?:\.exe)?)"?/)?.[1]
+    if (!shimTarget) return false
+    const resolved = shimTarget.replace(/^\$basedir/, dirname(target))
+    const binInfo = await stat(resolved).catch(() => null)
+    if (!binInfo || binInfo.size > 64 * 1024) return false
+    return /postinstall script was not run/i.test(await readFile(resolved, 'utf8'))
+  } catch {
+    return false
+  }
 }
 
 export async function detectOpencodeBinary(
@@ -1478,7 +1508,15 @@ export async function detectOpencodeBinary(
   // an availability fallback only when that verified launcher disappeared.
   if (!options.nativeBinaryFastPathEnabled) {
     const pathLauncher = await findOnPath('opencode')
-    if (pathLauncher) return pathLauncher
+    // A pnpm launcher that resolves to the postinstall-less stub OpenCode's own
+    // autoupdate leaves behind (479 bytes: "opencode-ai's postinstall script was
+    // not run") exits at once; spawning it puts the daemon in a respawn loop
+    // with "binary not found" and the session never wakes (Essentia
+    // 2026-08-22, re-armed 2026-08-25). Never launch it; fall through to the
+    // managed links, which the convergence pass repairs.
+    if (pathLauncher && !(await (options.isStubLauncher ?? isStubOpencodeLauncher)(pathLauncher))) {
+      return pathLauncher
+    }
     if (await checkExecutable(currentLink)) return currentLink
     if (await checkExecutable(systemLink)) return systemLink
     return null

@@ -40,6 +40,20 @@ interface CachedArtifactMetadata {
 
 const builds = new Map<string, Promise<CompiledCheckoutArtifact>>();
 
+export class CompiledCheckoutSourceMovedError extends Error {
+  constructor(expectedSha: string, actualSha: string) {
+    super(`compiled checkout source moved: expected ${expectedSha}, got ${actualSha}`);
+    this.name = 'CompiledCheckoutSourceMovedError';
+  }
+}
+
+export class CompiledCheckoutTooLargeError extends Error {
+  constructor(maxBytes: number, actualBytes: number) {
+    super(`compiled checkout exceeds ${maxBytes} bytes (${actualBytes})`);
+    this.name = 'CompiledCheckoutTooLargeError';
+  }
+}
+
 function cacheRoot(): string {
   return process.env.KORTIX_COMPILED_BOOT_CACHE_DIR || '/tmp/kortix/compiled-boot';
 }
@@ -109,7 +123,7 @@ async function resolveExactMirror(
     ).stdout.trim();
   }
   if (actualSha !== expectedSha) {
-    throw new Error(`compiled checkout source moved: expected ${expectedSha}, got ${actualSha}`);
+    throw new CompiledCheckoutSourceMovedError(expectedSha, actualSha);
   }
   return mirror;
 }
@@ -182,7 +196,7 @@ async function compileArtifact(
     const archive = await stat(stagedArchive);
     const maxBytes = maxArtifactBytes();
     if (archive.size > maxBytes) {
-      throw new Error(`compiled checkout exceeds ${maxBytes} bytes (${archive.size})`);
+      throw new CompiledCheckoutTooLargeError(maxBytes, archive.size);
     }
     const sha256 = await sha256File(stagedArchive);
     const metadata: CachedArtifactMetadata = {

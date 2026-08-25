@@ -653,6 +653,7 @@ export async function buildSessionSandboxEnvVars(input: {
       compiledAgentConfig,
       workspaceMode: input.workspaceMode,
       fastColdBootEnabled: config.KORTIX_FAST_COLD_BOOT_ENABLED,
+      compiledBootMode: config.KORTIX_COMPILED_BOOT_MODE,
       freshSession: input.freshSession,
       restoreSessionBranch: input.restoreSessionBranch,
       baseSha: input.baseSha,
@@ -1647,7 +1648,8 @@ export async function createProjectSession(input: {
       // the hint is omitted → daemon delta-fetches as before. Runs CONCURRENTLY
       // with gitAuth (folded into the env-build chain, not awaited inline).
       let fastBootHintTimeout: ReturnType<typeof setTimeout> | undefined;
-      const fastBootGitHintPromise = config.KORTIX_FAST_COLD_BOOT_ENABLED
+      const fastBootGitHintPromise =
+        config.KORTIX_FAST_COLD_BOOT_ENABLED || config.KORTIX_COMPILED_BOOT_MODE !== 'off'
         ? Promise.race([
             projectWithGitAuthPromise
               .then((projectWithGitAuth) =>

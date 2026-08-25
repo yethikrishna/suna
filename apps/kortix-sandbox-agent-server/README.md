@@ -5,7 +5,7 @@ Thin sandbox-side daemon that runs inside every Kortix project-session sandbox
 
 **Boot modes** (decided by `KORTIX_WORKLOAD` at startup):
 
-- *(default)* **session** — everything under "Scope" below.
+- _(default)_ **session** — everything under "Scope" below.
 - **`monitor`** — the box supervises the project's monitor processes instead
   of opencode (`src/monitor-runner.ts`): it parses `KORTIX_MONITORS` (JSON
   injected by the API — the daemon never parses `kortix.yaml` itself), spawns
@@ -52,9 +52,11 @@ in-process daemon.
    It only reads files off disk, so it comes up first and stays up regardless
    of repo/opencode state — previews work while the agent is still booting.
    Non-fatal: a bind failure is logged and `static_web_port` reports `null`.
-3. If `KORTIX_PROJECT_AUTO_CLONE=1`, `git clone` the project repo to
-   `/workspace/.kortix` and check out the requested branch. Failures are
-   logged but non-fatal — the daemon still serves `/kortix/health`.
+3. Materialize the project repo in `/workspace/.kortix`. `prefer` mode first
+   downloads a compiled checkout. `shadow` mode validates the checkout without
+   using it. `off` mode and any compiled-checkout failure use `git clone`.
+   Failures are logged but non-fatal — the daemon still serves
+   `/kortix/health`.
 4. Inject managed system skills into `.kortix/opencode/skills`.
 5. Resolve `OPENCODE_CONFIG_DIR`.
 6. Start the OpenCode REST supervisor in the cloned project directory
@@ -65,11 +67,11 @@ in-process daemon.
 
 ## Routes
 
-| Path             | Purpose                                                                  |
-| ---------------- | ------------------------------------------------------------------------ |
-| `GET /kortix/health` | Daemon liveness + opencode state + repo info (always 200 from daemon) |
-| `POST /kortix/refresh` | Signed-context protected repo fast-forward + opencode restart.     |
-| `/*`             | Reverse-proxied to opencode. 503 while `opencode !== 'ok'`.              |
+| Path                   | Purpose                                                               |
+| ---------------------- | --------------------------------------------------------------------- |
+| `GET /kortix/health`   | Daemon liveness + opencode state + repo info (always 200 from daemon) |
+| `POST /kortix/refresh` | Signed-context protected repo fast-forward + opencode restart.        |
+| `/*`                   | Reverse-proxied to opencode. 503 while `opencode !== 'ok'`.           |
 
 ### `GET /kortix/health` response shape
 
@@ -82,7 +84,9 @@ in-process daemon.
   "static_web_port": 3211,
   "repo": "https://github.com/owner/name.git",
   "branch": "main",
-  "commit_sha": "abc123..."
+  "commit_sha": "abc123...",
+  "compiled_boot_mode": "prefer",
+  "compiled_checkout": true
 }
 ```
 
@@ -91,6 +95,9 @@ in-process daemon.
   pre-bind and between-restart states.
 - `repo`, `branch`, `commit_sha` come from `git` in `KORTIX_PROJECT_TARGET` and
   are `null` when no repo has been materialized.
+- `compiled_boot_mode` reports `off`, `shadow`, or `prefer`.
+- `compiled_checkout` is `true` only when the current repo came from a verified
+  compiled checkout.
 
 ### `POST /kortix/refresh`
 
@@ -124,6 +131,7 @@ KORTIX_BRANCH_FETCH_ATTEMPTS=60
 KORTIX_BRANCH_FETCH_DELAY=0.25
 KORTIX_DEFAULT_OPENCODE_CONFIG_DIR=/ephemeral/kortix-master/opencode
 KORTIX_PROJECT_AUTO_CLONE=0
+KORTIX_COMPILED_BOOT_MODE=off
 KORTIX_REPO_URL=
 KORTIX_BRANCH_NAME=
 KORTIX_GITHUB_TOKEN=

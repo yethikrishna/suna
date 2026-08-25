@@ -195,9 +195,9 @@ describe('approvalPreviewReviewable', () => {
     const details = buildArgsPreviewDetails(undefined);
 
     expect(details).toEqual({ preview: null, complete: true });
-    expect(
-      approvalPreviewReviewable({ args_preview: null, args_preview_complete: true }),
-    ).toBe(true);
+    expect(approvalPreviewReviewable({ args_preview: null, args_preview_complete: true })).toBe(
+      true,
+    );
   });
 
   test('an empty argument object is reviewable', () => {

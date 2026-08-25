@@ -37,31 +37,6 @@ export interface ComposioRuntime {
       }>
     >;
   };
-  authConfigs?: {
-    list(query: {
-      toolkit?: string;
-      search?: string;
-      isComposioManaged?: boolean;
-      showDisabled?: boolean;
-      limit?: number;
-    }): Promise<{
-      items: Array<{
-        id: string;
-        name: string;
-        status?: 'ENABLED' | 'DISABLED';
-        isComposioManaged?: boolean;
-      }>;
-    }>;
-    create(
-      toolkit: string,
-      options: {
-        type: 'use_composio_managed_auth';
-        name: string;
-        isEnabledForToolRouter: boolean;
-        credentials?: { scopes: string };
-      },
-    ): Promise<{ id: string }>;
-  };
 }
 
 export interface ComposioSessionLike {
@@ -115,35 +90,6 @@ export interface ComposioFinalizeResult {
 
 let runtime: ComposioRuntime | null = null;
 
-// Pin Gmail to the smallest permission set the current product surface needs.
-// Provider list order is not stable, and Composio's generated default currently
-// asks for full mailbox access plus unrelated Google profile/contacts scopes.
-// Older configs remain available for rollback but must never be selected for a
-// new connection.
-const MANAGED_AUTH_CONFIGS: Record<
-  string,
-  {
-    name: string;
-    scopes: string;
-    blockedNames: readonly string[];
-  }
-> = {
-  gmail: {
-    name: 'Kortix Gmail read-only v3',
-    scopes: [
-      'https://www.googleapis.com/auth/userinfo.profile',
-      'https://www.googleapis.com/auth/userinfo.email',
-      'https://www.googleapis.com/auth/gmail.readonly',
-    ].join(','),
-    blockedNames: [
-      'Kortix Gmail managed actions v1',
-      'Kortix Gmail managed default v2',
-    ],
-  },
-};
-
-const authConfigCache = new WeakMap<ComposioRuntime, Map<string, Promise<string>>>();
-
 export function composioConfigured(): boolean {
   return !!process.env.COMPOSIO_API_KEY;
 }
@@ -176,70 +122,14 @@ export function setComposioRuntimeForTest(next: ComposioRuntime | null): void {
   runtime = next;
 }
 
-function directSessionConfig(
-  toolkit: string,
-  connectedAccountId?: string | null,
-  authConfigId?: string,
-): ToolRouterCreateSessionConfig {
+function directSessionConfig(toolkit: string, connectedAccountId?: string | null): ToolRouterCreateSessionConfig {
   return {
     sessionPreset: 'direct_tools',
     toolkits: [toolkit],
     manageConnections: false,
     sandbox: { enable: false },
-    ...(authConfigId ? { authConfigs: { [toolkit]: authConfigId } } : {}),
     ...(connectedAccountId ? { connectedAccounts: { [toolkit]: connectedAccountId } } : {}),
   };
-}
-
-async function managedAuthConfigId(
-  runtime: ComposioRuntime,
-  toolkit: string,
-): Promise<string | undefined> {
-  const spec = MANAGED_AUTH_CONFIGS[toolkit.toLowerCase()];
-  if (!spec) return undefined;
-  if (!runtime.authConfigs) {
-    throw new Error('Composio auth config API is unavailable');
-  }
-
-  let cache = authConfigCache.get(runtime);
-  if (!cache) {
-    cache = new Map();
-    authConfigCache.set(runtime, cache);
-  }
-  const existing = cache.get(toolkit);
-  if (existing) return existing;
-
-  const resolved = (async () => {
-    const page = await runtime.authConfigs!.list({
-      toolkit,
-      isComposioManaged: true,
-      showDisabled: false,
-      limit: 100,
-    });
-    const eligible = page.items.filter(
-      (item) =>
-        item.status !== 'DISABLED' &&
-        item.isComposioManaged !== false &&
-        !spec.blockedNames.includes(item.name),
-    );
-    const match = eligible.find((item) => item.name === spec.name);
-    if (match) return match.id;
-
-    const created = await runtime.authConfigs!.create(toolkit, {
-      type: 'use_composio_managed_auth',
-      name: spec.name,
-      isEnabledForToolRouter: true,
-      credentials: { scopes: spec.scopes },
-    });
-    return created.id;
-  })();
-  cache.set(toolkit, resolved);
-  try {
-    return await resolved;
-  } catch (error) {
-    cache.delete(toolkit);
-    throw error;
-  }
 }
 
 async function useOrCreateSession(input: {
@@ -424,10 +314,12 @@ export async function composioConnectUrl(input: {
 }): Promise<ComposioConnectResult> {
   assertStableUserId(input.connectionId, input.stableUserId);
   const runtime = input.runtime ?? getComposioRuntime();
-  const authConfigId = await managedAuthConfigId(runtime, input.app);
   const session = await runtime.sessions.create(
     input.stableUserId,
-    directSessionConfig(input.app, null, authConfigId),
+    // Leave authConfigs unset. Composio's managed app is the supported
+    // zero-setup path. Custom OAuth scopes require a verified app owned by the
+    // customer and must not be smuggled into the managed client.
+    directSessionConfig(input.app),
   );
   const state = await loadToolkitState(session, input.app);
   if (state.isNoAuth) {

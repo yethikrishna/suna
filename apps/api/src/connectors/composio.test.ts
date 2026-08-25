@@ -57,12 +57,6 @@ function fakeRuntime(
     resumed?: ComposioSessionLike;
     calls?: Array<Record<string, unknown>>;
     catalogPage?: Awaited<ReturnType<NonNullable<ComposioRuntime['toolkits']>['get']>>;
-    authConfigs?: Array<{
-      id: string;
-      name: string;
-      status?: 'ENABLED' | 'DISABLED';
-      isComposioManaged?: boolean;
-    }>;
   } = {},
 ): ComposioRuntime {
   const calls = input.calls ?? [];
@@ -83,20 +77,6 @@ function fakeRuntime(
             async get(query) {
               calls.push({ type: 'catalog', query });
               return input.catalogPage!;
-            },
-          },
-        }
-      : {}),
-    ...(input.authConfigs
-      ? {
-          authConfigs: {
-            async list(query) {
-              calls.push({ type: 'auth-config-list', query });
-              return { items: input.authConfigs! };
-            },
-            async create(toolkit, options) {
-              calls.push({ type: 'auth-config-create', toolkit, options });
-              return { id: 'auth-config-created' };
             },
           },
         }
@@ -221,7 +201,6 @@ test('composioConnectUrl uses session.authorize and does not treat its id as the
     runtime: fakeRuntime({
       created,
       calls,
-      authConfigs: [{ id: 'auth-config-existing', name: 'Kortix Gmail managed actions v1' }],
     }),
   });
 
@@ -239,7 +218,7 @@ test('composioConnectUrl uses session.authorize and does not treat its id as the
   });
 });
 
-test('composioConnectUrl pins the exact least-privilege Gmail config and ignores broader configs', async () => {
+test('composioConnectUrl uses Composio managed Gmail defaults without selecting stale auth configs', async () => {
   const calls: Array<Record<string, unknown>> = [];
   const created = session({
     toolkit: { slug: 'gmail', name: 'Gmail', isNoAuth: false },
@@ -254,50 +233,21 @@ test('composioConnectUrl pins the exact least-privilege Gmail config and ignores
     runtime: fakeRuntime({
       created,
       calls,
-      authConfigs: [
-        {
-          id: 'auth-config-stale',
-          name: 'Kortix Gmail managed actions v1',
-          status: 'ENABLED',
-          isComposioManaged: true,
-        },
-        {
-          id: 'auth-config-generated-default',
-          name: 'auth_config_gmail_123',
-          status: 'ENABLED',
-          isComposioManaged: true,
-        },
-        {
-          id: 'auth-config-read-only',
-          name: 'Kortix Gmail read-only v3',
-          status: 'ENABLED',
-          isComposioManaged: true,
-        },
-      ],
     }),
   });
 
-  expect(calls.find((call) => call.type === 'auth-config-list')).toEqual({
-    type: 'auth-config-list',
-    query: {
-      toolkit: 'gmail',
-      isComposioManaged: true,
-      showDisabled: false,
-      limit: 100,
-    },
-  });
+  expect(calls.some((call) => call.type === 'auth-config-list')).toBe(false);
   expect(calls.some((call) => call.type === 'auth-config-create')).toBe(false);
   expect(calls.find((call) => call.type === 'create')).toMatchObject({
     type: 'create',
     config: {
       sessionPreset: 'direct_tools',
       toolkits: ['gmail'],
-      authConfigs: { gmail: 'auth-config-read-only' },
     },
   });
 });
 
-test('composioConnectUrl creates a least-privilege Gmail managed config when none exists', async () => {
+test('composioConnectUrl does not create a custom Gmail auth config', async () => {
   const calls: Array<Record<string, unknown>> = [];
   const created = session({
     toolkit: { slug: 'gmail', name: 'Gmail', isNoAuth: false },
@@ -309,27 +259,17 @@ test('composioConnectUrl creates a least-privilege Gmail managed config when non
     app: 'gmail',
     connectionId: 'connection-scoped-gmail-new',
     stableUserId: 'kortix-connection:connection-scoped-gmail-new',
-    runtime: fakeRuntime({ created, calls, authConfigs: [] }),
+    runtime: fakeRuntime({ created, calls }),
   });
 
-  expect(calls.find((call) => call.type === 'auth-config-create')).toEqual({
-    type: 'auth-config-create',
-    toolkit: 'gmail',
-    options: {
-      type: 'use_composio_managed_auth',
-      name: 'Kortix Gmail read-only v3',
-      isEnabledForToolRouter: true,
-      credentials: {
-        scopes: [
-          'https://www.googleapis.com/auth/userinfo.profile',
-          'https://www.googleapis.com/auth/userinfo.email',
-          'https://www.googleapis.com/auth/gmail.readonly',
-        ].join(','),
-      },
-    },
-  });
+  expect(calls.some((call) => call.type === 'auth-config-create')).toBe(false);
   expect(calls.find((call) => call.type === 'create')).toMatchObject({
-    config: { authConfigs: { gmail: 'auth-config-created' } },
+    config: {
+      sessionPreset: 'direct_tools',
+      toolkits: ['gmail'],
+      manageConnections: false,
+      sandbox: { enable: false },
+    },
   });
 });
 

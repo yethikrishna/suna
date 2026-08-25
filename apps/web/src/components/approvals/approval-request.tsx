@@ -23,6 +23,10 @@ export interface ApprovalRequestData {
   requestedAt: string;
   argsPreview: Record<string, unknown> | null;
   reviewComplete?: boolean;
+  /** False when the VIEWER may not see connector arguments (Review Center
+   *  read-only members). Changes only the wording — the call is unreviewable
+   *  either way, but "nothing was recorded" would be a lie here. */
+  previewAuthorized?: boolean;
   resolution?: ApprovalDecisionValue | null;
   pending: boolean;
   status?: string | null;
@@ -199,9 +203,10 @@ export function ApprovalParameters({
  * next to a warning is not a decision, it is a dead end.
  */
 export function ApprovalUnreviewableNotice({
+  previewAuthorized = true,
   dense = false,
   className,
-}: DenseProp & { className?: string }) {
+}: DenseProp & { previewAuthorized?: boolean; className?: string }) {
   return (
     <p
       className={cn(
@@ -210,8 +215,9 @@ export function ApprovalUnreviewableNotice({
         className,
       )}
     >
-      Nothing was recorded about what this call would do, so it cannot be reviewed here — only
-      denied.
+      {previewAuthorized
+        ? 'Nothing was recorded about what this call would do, so it cannot be reviewed here — only denied.'
+        : 'You are not allowed to see this call’s parameters, so it cannot be approved here. Ask a project manager to review it.'}
     </p>
   );
 }
@@ -350,7 +356,9 @@ export function ApprovalRequest({
         <p className="text-destructive border-border border-t px-4 py-3 text-xs">{error}</p>
       ) : null}
 
-      {actionable && !reviewable ? <ApprovalUnreviewableNotice /> : null}
+      {actionable && !reviewable ? (
+        <ApprovalUnreviewableNotice previewAuthorized={request.previewAuthorized !== false} />
+      ) : null}
 
       {actionable ? (
         <ApprovalDecisionActions

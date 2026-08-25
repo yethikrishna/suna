@@ -78,6 +78,24 @@ describe('ApprovalRequest', () => {
     // The point of the change: no dead control. Not disabled — absent.
     expect(html).not.toContain('Approve this call');
   });
+
+  test('an unauthorised viewer is told THAT, not that nothing was recorded', () => {
+    const html = renderToStaticMarkup(
+      <ApprovalRequest
+        request={{
+          ...request,
+          reviewComplete: false,
+          argsPreview: null,
+          previewAuthorized: false,
+        }}
+        onDecision={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('not allowed to see');
+    expect(html).not.toContain('Nothing was recorded');
+    expect(html).not.toContain('Approve this call');
+  });
 });
 
 describe('approvalReviewable', () => {

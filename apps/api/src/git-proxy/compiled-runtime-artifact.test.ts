@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -124,6 +126,33 @@ describe("buildCompiledRuntimeArtifact", () => {
     expect(readFileSync(second.path, "utf8")).toBe(
       readFileSync(first.path, "utf8"),
     );
+  });
+
+  test("rebuilds a cache entry whose body has no embedded manifest", async () => {
+    const { project, sha } = makeProject();
+    const cache = mkdtempSync(join(tmpdir(), "kortix-runtime-cache-"));
+    const mirrors = mkdtempSync(join(tmpdir(), "kortix-runtime-mirrors-"));
+    roots.push(cache, mirrors);
+    process.env.KORTIX_COMPILED_BOOT_CACHE_DIR = cache;
+    process.env.KORTIX_GIT_CACHE_DIR = mirrors;
+
+    const first = await buildCompiledRuntimeArtifact(project, "main", sha);
+    const invalidSource = "#!/usr/bin/env node\nprocess.exit(0);\n";
+    writeFileSync(first.path, invalidSource);
+    const metadataPath = join(
+      cache,
+      readdirSync(cache).find((name) => name.endsWith(".runtime.json"))!,
+    );
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
+    metadata.sha256 = createHash("sha256").update(invalidSource).digest("hex");
+    metadata.size = Buffer.byteLength(invalidSource);
+    writeFileSync(metadataPath, `${JSON.stringify(metadata)}\n`);
+
+    const rebuilt = await buildCompiledRuntimeArtifact(project, "main", sha);
+    const rebuiltSource = readFileSync(rebuilt.path, "utf8");
+
+    expect(rebuilt.cacheHit).toBe(false);
+    expect(rebuiltSource).toContain("// kortix-manifest-base64url:");
   });
 
   test("rejects a named ref that moved from the expected commit", async () => {

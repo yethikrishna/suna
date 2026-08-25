@@ -31,6 +31,7 @@ interface CachedRuntimeMetadata {
 }
 
 const builds = new Map<string, Promise<StoredCompiledRuntimeArtifact>>();
+const MANIFEST_MARKER = "// kortix-manifest-base64url:";
 
 export class CompiledRuntimeSourceMovedError extends Error {
   constructor(expectedSha: string, actualSha: string) {
@@ -55,6 +56,23 @@ function artifactKey(
   return createHash("sha256")
     .update(`${COMPILED_RUNTIME_FORMAT}\0${projectId}\0${ref}\0${sourceSha}`)
     .digest("hex");
+}
+
+function readEmbeddedManifest(source: Buffer): CompiledRuntimeManifest | null {
+  const marker = source
+    .toString("utf8")
+    .split("\n", 4)
+    .find((line) => line.startsWith(MANIFEST_MARKER));
+  if (!marker) return null;
+  try {
+    const encoded = marker.slice(MANIFEST_MARKER.length).trim();
+    if (!encoded || !/^[A-Za-z0-9_-]+$/.test(encoded)) return null;
+    return JSON.parse(
+      Buffer.from(encoded, "base64url").toString("utf8"),
+    ) as CompiledRuntimeManifest;
+  } catch {
+    return null;
+  }
 }
 
 async function assertExactSource(
@@ -90,6 +108,7 @@ async function readCachedArtifact(
     const source = await readFile(runtimePath);
     const runtime = await stat(runtimePath);
     const sha256 = createHash("sha256").update(source).digest("hex");
+    const embeddedManifest = readEmbeddedManifest(source);
     if (
       metadata.format !== COMPILED_RUNTIME_FORMAT ||
       metadata.projectId !== projectId ||
@@ -97,6 +116,7 @@ async function readCachedArtifact(
       metadata.sourceSha !== sourceSha ||
       metadata.size !== runtime.size ||
       metadata.sha256 !== sha256 ||
+      JSON.stringify(embeddedManifest) !== JSON.stringify(metadata.manifest) ||
       runtime.size <= 0
     ) {
       return null;

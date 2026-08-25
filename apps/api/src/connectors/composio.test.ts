@@ -239,7 +239,7 @@ test('composioConnectUrl uses session.authorize and does not treat its id as the
   });
 });
 
-test('composioConnectUrl pins a safe Composio-managed Gmail config and ignores the stale scoped config', async () => {
+test('composioConnectUrl pins the exact least-privilege Gmail config and ignores broader configs', async () => {
   const calls: Array<Record<string, unknown>> = [];
   const created = session({
     toolkit: { slug: 'gmail', name: 'Gmail', isNoAuth: false },
@@ -262,8 +262,14 @@ test('composioConnectUrl pins a safe Composio-managed Gmail config and ignores t
           isComposioManaged: true,
         },
         {
-          id: 'auth-config-safe',
+          id: 'auth-config-generated-default',
           name: 'auth_config_gmail_123',
+          status: 'ENABLED',
+          isComposioManaged: true,
+        },
+        {
+          id: 'auth-config-read-only',
+          name: 'Kortix Gmail read-only v3',
           status: 'ENABLED',
           isComposioManaged: true,
         },
@@ -286,12 +292,12 @@ test('composioConnectUrl pins a safe Composio-managed Gmail config and ignores t
     config: {
       sessionPreset: 'direct_tools',
       toolkits: ['gmail'],
-      authConfigs: { gmail: 'auth-config-safe' },
+      authConfigs: { gmail: 'auth-config-read-only' },
     },
   });
 });
 
-test('composioConnectUrl creates a managed Gmail config without overriding scopes when none is safe', async () => {
+test('composioConnectUrl creates a least-privilege Gmail managed config when none exists', async () => {
   const calls: Array<Record<string, unknown>> = [];
   const created = session({
     toolkit: { slug: 'gmail', name: 'Gmail', isNoAuth: false },
@@ -311,8 +317,15 @@ test('composioConnectUrl creates a managed Gmail config without overriding scope
     toolkit: 'gmail',
     options: {
       type: 'use_composio_managed_auth',
-      name: 'Kortix Gmail managed default v2',
+      name: 'Kortix Gmail read-only v3',
       isEnabledForToolRouter: true,
+      credentials: {
+        scopes: [
+          'https://www.googleapis.com/auth/userinfo.profile',
+          'https://www.googleapis.com/auth/userinfo.email',
+          'https://www.googleapis.com/auth/gmail.readonly',
+        ].join(','),
+      },
     },
   });
   expect(calls.find((call) => call.type === 'create')).toMatchObject({

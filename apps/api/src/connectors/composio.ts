@@ -58,6 +58,7 @@ export interface ComposioRuntime {
         type: 'use_composio_managed_auth';
         name: string;
         isEnabledForToolRouter: boolean;
+        credentials?: { scopes: string };
       },
     ): Promise<{ id: string }>;
   };
@@ -114,19 +115,30 @@ export interface ComposioFinalizeResult {
 
 let runtime: ComposioRuntime | null = null;
 
-// Do not override scopes on Composio-managed Google apps. Google blocks a
-// managed OAuth client when it requests sensitive scopes that are not verified
-// for that client. Pin Gmail to an enabled managed config without relying on
-// provider list order: an older Kortix config with explicit scopes can remain in
-// the project for rollback, but must never be selected for new connections.
+// Pin Gmail to the smallest permission set the current product surface needs.
+// Provider list order is not stable, and Composio's generated default currently
+// asks for full mailbox access plus unrelated Google profile/contacts scopes.
+// Older configs remain available for rollback but must never be selected for a
+// new connection.
 const MANAGED_AUTH_CONFIGS: Record<
   string,
-  { name: string; fallbackNamePrefixes: readonly string[]; blockedNames: readonly string[] }
+  {
+    name: string;
+    scopes: string;
+    blockedNames: readonly string[];
+  }
 > = {
   gmail: {
-    name: 'Kortix Gmail managed default v2',
-    fallbackNamePrefixes: ['auth_config_gmail_'],
-    blockedNames: ['Kortix Gmail managed actions v1'],
+    name: 'Kortix Gmail read-only v3',
+    scopes: [
+      'https://www.googleapis.com/auth/userinfo.profile',
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/gmail.readonly',
+    ].join(','),
+    blockedNames: [
+      'Kortix Gmail managed actions v1',
+      'Kortix Gmail managed default v2',
+    ],
   },
 };
 
@@ -210,17 +222,14 @@ async function managedAuthConfigId(
         item.isComposioManaged !== false &&
         !spec.blockedNames.includes(item.name),
     );
-    const match =
-      eligible.find((item) => item.name === spec.name) ??
-      eligible.find((item) =>
-        spec.fallbackNamePrefixes.some((prefix) => item.name.startsWith(prefix)),
-      );
+    const match = eligible.find((item) => item.name === spec.name);
     if (match) return match.id;
 
     const created = await runtime.authConfigs!.create(toolkit, {
       type: 'use_composio_managed_auth',
       name: spec.name,
       isEnabledForToolRouter: true,
+      credentials: { scopes: spec.scopes },
     });
     return created.id;
   })();

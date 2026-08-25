@@ -262,8 +262,9 @@ test.describe("23 — Composio managed connector", () => {
     expect(pageErrors, `client errors: ${pageErrors.join(" | ")}`).toEqual([]);
   });
 
-  test("a fresh Gmail Connect Link uses the safe managed scopes and reaches Google", async ({
+  test("a fresh Gmail Connect Link emits least-privilege scopes and Google serves sign-in", async ({
     page,
+    request,
   }) => {
     const status = await api<ConnectStatus>(
       session.access_token,
@@ -317,29 +318,41 @@ test.describe("23 — Composio managed connector", () => {
       }),
     );
 
+    const googleRequest = page.waitForRequest(
+      (request) => new URL(request.url()).hostname === "accounts.google.com",
+      { timeout: 60_000 },
+    );
     await page.goto(connected.connectUrl, {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
-    await page.waitForURL((url) => url.hostname === "accounts.google.com", {
-      timeout: 60_000,
-    });
-    const googleUrl = new URL(page.url());
+    const googleUrl = new URL((await googleRequest).url());
     const scopes = new Set(
       (googleUrl.searchParams.get("scope") ?? "").split(" ").filter(Boolean),
     );
-    for (const staleScope of [
-      "https://www.googleapis.com/auth/gmail.readonly",
+    expect(scopes).toEqual(
+      new Set([
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/gmail.readonly",
+      ]),
+    );
+    for (const broadScope of [
       "https://www.googleapis.com/auth/gmail.send",
       "https://www.googleapis.com/auth/gmail.compose",
       "https://www.googleapis.com/auth/gmail.modify",
       "https://www.googleapis.com/auth/gmail.labels",
+      "https://mail.google.com/",
     ]) {
-      expect(scopes, `stale Gmail scope leaked into OAuth: ${staleScope}`).not.toContain(
-        staleScope,
+      expect(scopes, `broad Gmail scope leaked into OAuth: ${broadScope}`).not.toContain(
+        broadScope,
       );
     }
-    const googleBody = await page.locator("body").innerText();
+    const googleResponse = await request.get(googleUrl.toString(), {
+      timeout: 60_000,
+    });
+    expect(googleResponse.ok()).toBe(true);
+    const googleBody = await googleResponse.text();
     expect(googleBody).not.toMatch(/this app is blocked/i);
     expect(googleBody).toMatch(/sign in|choose an account/i);
   });

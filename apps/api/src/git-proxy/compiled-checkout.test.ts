@@ -40,6 +40,8 @@ function makeProject(): { project: GitBackedProject; sha: string; source: string
   git(['add', '-A'], source);
   git(['commit', '-m', 'first'], source);
   writeFileSync(join(source, 'README.md'), 'second\n');
+  mkdirSync(join(source, '.kortix', 'memory'), { recursive: true });
+  writeFileSync(join(source, '.kortix', 'memory', 'MEMORY.md'), 'Remember the customer context.\n');
   writeFileSync(join(source, 'run.sh'), '#!/bin/sh\necho ok\n', { mode: 0o755 });
   symlinkSync('README.md', join(source, 'readme-link'));
   git(['add', '-A'], source);
@@ -89,12 +91,19 @@ describe('buildCompiledCheckoutArtifact', () => {
     expect(artifact.size).toBeGreaterThan(0);
     expect(artifact.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(readFileSync(join(extracted, 'README.md'), 'utf8')).toBe('second\n');
+    expect(readFileSync(join(extracted, '.kortix', 'memory', 'MEMORY.md'), 'utf8')).toBe(
+      'Remember the customer context.\n',
+    );
     expect(git(['rev-parse', 'HEAD'], extracted)).toBe(sha);
     expect(git(['rev-list', '--count', 'HEAD'], extracted)).toBe('1');
     expect(git(['status', '--porcelain'], extracted)).toBe('');
     expect(git(['config', '--get', 'remote.origin.url'], extracted)).toBe(
       `https://api.kortix.test/v1/git/${project.projectId}.git`,
     );
+    writeFileSync(join(extracted, 'agent-output.txt'), 'new work\n');
+    git(['add', 'agent-output.txt'], extracted);
+    git(['commit', '-m', 'agent work'], extracted);
+    expect(git(['show', 'HEAD:agent-output.txt'], extracted)).toBe('new work');
     expect(JSON.parse(readFileSync(join(extracted, '.git', 'kortix-compiled-checkout.json'), 'utf8')))
       .toEqual({
         format: COMPILED_CHECKOUT_FORMAT,

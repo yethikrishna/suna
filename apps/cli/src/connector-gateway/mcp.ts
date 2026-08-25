@@ -867,6 +867,7 @@ async function runMetaTool(client: ConnectorClient, name: string, args: Record<s
         };
       }
       const draft: Record<string, unknown> = { slug, provider };
+      if (provider === 'pipedream') draft.allow_legacy_pipedream = true;
       for (const k of [
         'app',
         'name',

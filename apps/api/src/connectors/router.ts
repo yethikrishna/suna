@@ -1154,6 +1154,16 @@ export function createConnectorRouter(deps: ConnectorRouterDeps): OpenAPIHono {
       if (body?.create_only !== undefined && typeof body.create_only !== 'boolean') {
         return c.json({ error: 'create_only must be a boolean' }, 400);
       }
+      if (body?.provider === 'pipedream' && body?.allow_legacy_pipedream !== true) {
+        return c.json(
+          {
+            error:
+              'Pipedream is legacy rollback only. Use provider "composio" for managed SaaS apps. Explicit human approval is required for a legacy Pipedream addition.',
+          },
+          400,
+        );
+      }
+      delete body.allow_legacy_pipedream;
       let authDiscovery: ConnectorAuthDiscovery | undefined;
       if (body.auth === undefined && deps.discoverConnectorAuth) {
         // `discoverConnectorAuth` → `discoverConnectorAuthFromSource` calls

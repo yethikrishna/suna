@@ -105,7 +105,14 @@ function connectorDraftFromFlags(
     );
   if (!PROVIDERS.includes(provider))
     throw new CliError(`--provider must be one of ${PROVIDERS.join(', ')}`, 'USAGE');
+  if (provider === 'pipedream' && flags['allow-legacy-pipedream'] !== 'true') {
+    throw new CliError(
+      'Pipedream is legacy rollback only. Use --provider composio for managed SaaS apps. Ask the human before retrying with --allow-legacy-pipedream.',
+      'LEGACY_PROVIDER_REQUIRES_APPROVAL',
+    );
+  }
   const draft: Record<string, unknown> = { slug, provider };
+  if (provider === 'pipedream') draft.allow_legacy_pipedream = true;
   if (flags.name) draft.name = flags.name;
   if (flags.app) draft.app = flags.app;
   if (flags.url) draft.url = flags.url;

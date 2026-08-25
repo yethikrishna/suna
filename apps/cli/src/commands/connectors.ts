@@ -154,7 +154,7 @@ Subcommands:
   connect-finalize <slug>           Confirm authorization completed. Accepts
        [--connection-id <uuid>]     the IDs returned by \`connect\`.
        [--request-id <id>]
-  apps [<query>] [--category <c>]   Browse the Pipedream app catalog.
+  apps [<query>] [--category <c>]   Browse the legacy Pipedream app catalog.
        [--cursor <c>] [--json]
   catalog [<query>] [--cursor <c>]  Browse the direct-connector catalogue.
           [--json]                  Needs the \`connectors_api_discover\` flag.
@@ -194,6 +194,8 @@ named after one of those verbs must be addressed as \`policy <slug> ls\` etc.
 Add options (provider-specific):
   --name <label>           Human label (default: slug).
   --provider <p>           ${PROVIDERS.join('|')}.
+  --allow-legacy-pipedream Explicit human-approved rollback only. Never set this
+                           automatically; managed SaaS apps use Composio.
   --app <slug>             Composio toolkit or Pipedream app slug.
   --url <url>              MCP server URL (provider=mcp).
   --transport <http|sse>   MCP transport (provider=mcp).
@@ -243,7 +245,7 @@ Add options:
   --mine               Derive a member owner from the current human token.
   --metadata <json>    Connection metadata as a JSON object.
 
-Pipedream options:
+Managed connector options:
   --success-redirect <url>   Redirect after a successful connection.
   --error-redirect <url>     Redirect after a failed connection.
 
@@ -290,6 +292,7 @@ export async function runConnectors(argv: string[]): Promise<number> {
   let statusOnly = false;
   let json = false;
   let applyRemote = false;
+  let allowLegacyPipedream = false;
   let clearSecretBinding = false;
   let allConnections = false;
   let mine = false;
@@ -301,6 +304,7 @@ export async function runConnectors(argv: string[]): Promise<number> {
   try {
     json = takeFlagBool(rest, ['--json']);
     applyRemote = takeFlagBool(rest, ['--apply']);
+    allowLegacyPipedream = takeFlagBool(rest, ['--allow-legacy-pipedream']);
     clearSecretBinding = takeFlagBool(rest, ['--clear']);
     allConnections = takeFlagBool(rest, ['--all']);
     mine = takeFlagBool(rest, ['--mine']);
@@ -350,7 +354,7 @@ export async function runConnectors(argv: string[]): Promise<number> {
   //    instantly on the cloud project (commit to kortix.yaml on main + sync,
   //    exactly like the dashboard) — handled in the switch below.
   if ((sub === 'add' || sub === 'create') && !applyRemote)
-    return connectorAddLocal(positional[0], f);
+    return connectorAddLocal(positional[0], f, allowLegacyPipedream);
   if ((sub === 'rm' || sub === 'remove' || sub === 'delete') && !applyRemote)
     return connectorRmLocal(positional[0]);
   // `policy set --default` stays a LOCAL kortix.yaml edit unless --apply asks
@@ -391,7 +395,14 @@ export async function runConnectors(argv: string[]): Promise<number> {
         if (!(PROVIDERS as readonly string[]).includes(f.provider)) {
           return missing(`--provider ${PROVIDERS.join('|')}`);
         }
+        if (f.provider === 'pipedream' && !allowLegacyPipedream) {
+          process.stderr.write(
+            `${status.err('Pipedream is legacy rollback only. Use --provider composio for managed SaaS apps. Ask the human before retrying with --allow-legacy-pipedream.')}\n`,
+          );
+          return 1;
+        }
         const draft: Record<string, unknown> = { slug, provider: f.provider };
+        if (allowLegacyPipedream) draft.allow_legacy_pipedream = true;
         if (f.name) draft.name = f.name;
         if (f.app) draft.app = f.app;
         if (f.url) draft.url = f.url;
@@ -1316,12 +1327,19 @@ function connectionActionPastTense(action: 'revoke' | 'activate' | 'default'): s
 function connectorAddLocal(
   slug: string | undefined,
   f: Record<string, string | undefined>,
+  allowLegacyPipedream: boolean,
 ): number {
   if (!slug) return missing('a connector slug');
   if (!f.provider) return missing('--provider');
   if (!(PROVIDERS as readonly string[]).includes(f.provider)) {
     process.stderr.write(`${status.err(`--provider must be one of ${PROVIDERS.join(', ')}`)}\n`);
     return 2;
+  }
+  if (f.provider === 'pipedream' && !allowLegacyPipedream) {
+    process.stderr.write(
+      `${status.err('Pipedream is legacy rollback only. Use --provider composio for managed SaaS apps. Ask the human before retrying with --allow-legacy-pipedream.')}\n`,
+    );
+    return 1;
   }
   try {
     if (arrayEntryExists('connectors', 'slug', slug)) {

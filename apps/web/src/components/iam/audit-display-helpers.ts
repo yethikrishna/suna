@@ -142,6 +142,8 @@ const ROUTE_LABEL_OVERRIDES: Record<string, string> = {
   'POST /v1/projects/:projectId/gateway/playground': 'Ran gateway playground request',
   'POST /v1/projects/:projectId/gateway/routing-policy/preview': 'Previewed gateway routing policy',
   'POST /v1/projects/:projectId/git/collaborators': 'Added Git collaborator',
+  'GET /v1/git/:project/compiled-checkout': 'Downloaded compiled project checkout',
+  'GET /v1/git/:project/compiled-runtime': 'Downloaded compiled session runtime',
   'POST /v1/projects/:projectId/marketplace/install-session': 'Started marketplace install',
   'POST /v1/projects/:projectId/review/bulk': 'Updated review items in bulk',
   'POST /v1/projects/:projectId/snapshots/fix-with-agent': 'Fixed snapshot with agent',

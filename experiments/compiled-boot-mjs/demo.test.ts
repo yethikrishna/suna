@@ -22,6 +22,7 @@ describe("standalone compiled boot demo", () => {
     expect(result.health).toEqual({
       status: "ok",
       agent: "compiled-boot-demo",
+      version: "v1",
     });
   });
 
@@ -37,6 +38,7 @@ describe("standalone compiled boot demo", () => {
     expect(result.health).toEqual({
       status: "ok",
       agent: "compiled-boot-demo",
+      version: "v1",
     });
   });
 

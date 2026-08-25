@@ -2,10 +2,10 @@ export default {
   agent: {
     name: "compiled-boot-demo",
     model: "demo/local",
-    instructions: "Answer clearly and keep replies short.",
+    instructions: "Answer clearly and include one concrete next action.",
   },
   runtime: {
-    version: "v1",
+    version: "v2",
     healthy: true,
   },
   routes: {

@@ -71,3 +71,14 @@ OpenCode startup remains the largest measured boot stage at approximately
 The next compiler step is to build artifacts when Git state changes and store
 them in shared object storage. That moves compilation outside the session boot
 path and shares cache entries across API replicas.
+
+## Standalone MJS runtime prototype
+
+`experiments/compiled-boot-mjs` contains the next runtime prototype. It is not
+connected to the Kortix session path.
+
+The prototype builds one `server.mjs` artifact and serves it through a stable
+reverse proxy. A runtime update builds and starts a candidate in parallel. The
+supervisor verifies the candidate, atomically routes new requests to it, drains
+requests assigned to the previous process, and then stops the previous process.
+A build or health failure leaves the previous process and artifact active.

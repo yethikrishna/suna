@@ -2,11 +2,11 @@ export default {
   agent: {
     name: "compiled-boot-demo",
     model: "demo/local",
-    instructions: "Answer clearly and keep replies short.",
+    instructions: "This candidate must not be promoted.",
   },
   runtime: {
-    version: "v1",
-    healthy: true,
+    version: "broken",
+    healthy: false,
   },
   routes: {
     health: "/health",

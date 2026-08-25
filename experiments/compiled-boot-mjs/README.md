@@ -25,6 +25,7 @@ Run these commands from this folder:
 ```bash
 bun clone-and-compile.mjs
 bun run-precompiled.mjs
+bun runtime-update-demo.mjs
 ```
 
 The first run creates a deterministic 16 MiB fixture repository under
@@ -77,6 +78,19 @@ session starts.
 This local demo has no network latency. It proves the artifact shape and boot
 sequence. Use a real sandbox benchmark to measure production Git and network
 latency.
+
+## Live runtime update
+
+`runtime-update-demo.mjs` starts `v1` behind a stable local reverse proxy. It
+then performs two updates:
+
+1. It builds and verifies `v2` while `v1` continues to serve requests.
+2. It promotes `v2`, routes new requests to it, and drains requests already
+   assigned to `v1` before stopping `v1`.
+3. It starts an unhealthy candidate, rejects it, and proves `v2` remains live.
+
+The supervisor never overwrites an artifact. A failed build or health check
+keeps the active process and its artifact unchanged.
 
 ## Test
 

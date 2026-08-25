@@ -940,6 +940,7 @@ flow(
     });
     const slug = `ke2e-composio-${Date.now().toString(36)}`;
     const otherSlug = `${slug}-other`;
+    const rejectedLegacySlug = `${slug}-legacy-rejected`;
     const toolkit = 'composio_search';
     const action = 'duck_duck_go';
     let composioConfigured = false;
@@ -1007,6 +1008,74 @@ flow(
           throw new Error(
             `Composio toolkit catalog omitted ${toolkit}: ${JSON.stringify(body.items.slice(0, 10))}`,
           );
+        }
+      },
+    );
+
+    await ctx.step(
+      'project REST rejects an accidental Pipedream declaration and persists nothing',
+      async () => {
+        const rejected = await ctx.client.as(ctx.P.OWNER).post(
+          '/v1/connectors/projects/:projectId/connectors',
+          {
+            slug: rejectedLegacySlug,
+            provider: 'pipedream',
+            app: 'gmail',
+            create_only: true,
+          },
+          { params: { projectId: p.id } },
+        );
+        rejected.status(400).body().exists('$.error');
+        const error = rejected.json<{ error?: string }>().error ?? '';
+        if (!error.includes('legacy rollback only') || !error.includes('composio')) {
+          throw new Error(`unexpected Pipedream provider guard error: ${error}`);
+        }
+
+        const readback = await ctx.client
+          .as(ctx.P.OWNER)
+          .get('/v1/connectors/projects/:projectId/connectors/:slug/config', {
+            params: { projectId: p.id, slug: rejectedLegacySlug },
+          });
+        readback.status(404);
+      },
+    );
+
+    await ctx.step(
+      'real CLI process rejects accidental Pipedream before calling the project API',
+      async () => {
+        const cli = new CliSandbox('composio-provider-guard');
+        try {
+          const result = await cli.run(
+            [
+              'connectors',
+              'add',
+              rejectedLegacySlug,
+              '--provider',
+              'pipedream',
+              '--app',
+              'gmail',
+              '--apply',
+            ],
+            {
+              env: {
+                KORTIX_TOKEN: cliPat,
+                KORTIX_PROJECT_ID: p.id,
+                KORTIX_API_URL: ctx.env.apiUrl,
+              },
+            },
+          );
+          throwIfCliInfraFailure(result, 'kortix connectors add Pipedream provider guard');
+          if (result.exitCode !== 1) {
+            throw new Error(`CLI Pipedream guard exited ${result.exitCode}: ${result.all}`);
+          }
+          if (
+            !result.stderr.includes('Pipedream is legacy rollback only') ||
+            !result.stderr.includes('--provider composio')
+          ) {
+            throw new Error(`CLI returned the wrong Pipedream guard: ${result.stderr}`);
+          }
+        } finally {
+          cli.dispose();
         }
       },
     );

@@ -6,6 +6,10 @@ import { validateRef, validateSha } from "../projects/git-ref";
 import { refreshMirror, runGit } from "../projects/git/mirror";
 import type { GitBackedProject } from "../projects/git/types";
 import {
+  getCompiledAgentBundle,
+  type CompiledAgentBundle,
+} from "./compiled-agent-bundle";
+import {
   COMPILED_RUNTIME_FORMAT,
   compileOpenCodeRuntime,
   type CompiledRuntimeManifest,
@@ -25,6 +29,7 @@ interface CachedRuntimeMetadata {
   projectId: string;
   ref: string;
   sourceSha: string;
+  agentBundleSha256: string;
   sha256: string;
   size: number;
   manifest: CompiledRuntimeManifest;
@@ -52,9 +57,12 @@ function artifactKey(
   projectId: string,
   ref: string,
   sourceSha: string,
+  agentBundleSha256: string,
 ): string {
   return createHash("sha256")
-    .update(`${COMPILED_RUNTIME_FORMAT}\0${projectId}\0${ref}\0${sourceSha}`)
+    .update(
+      `${COMPILED_RUNTIME_FORMAT}\0${projectId}\0${ref}\0${sourceSha}\0${agentBundleSha256}`,
+    )
     .digest("hex");
 }
 
@@ -100,6 +108,7 @@ async function readCachedArtifact(
   projectId: string,
   ref: string,
   sourceSha: string,
+  agentBundleSha256: string,
 ): Promise<StoredCompiledRuntimeArtifact | null> {
   try {
     const metadata = JSON.parse(
@@ -114,6 +123,7 @@ async function readCachedArtifact(
       metadata.projectId !== projectId ||
       metadata.ref !== ref ||
       metadata.sourceSha !== sourceSha ||
+      metadata.agentBundleSha256 !== agentBundleSha256 ||
       metadata.size !== runtime.size ||
       metadata.sha256 !== sha256 ||
       JSON.stringify(embeddedManifest) !== JSON.stringify(metadata.manifest) ||
@@ -138,6 +148,7 @@ async function compileArtifact(
   project: GitBackedProject,
   ref: string,
   sourceSha: string,
+  agentBundle: CompiledAgentBundle,
   runtimePath: string,
   metadataPath: string,
 ): Promise<StoredCompiledRuntimeArtifact> {
@@ -151,6 +162,7 @@ async function compileArtifact(
     ref,
     sourceSha,
     agentConfig,
+    agentBundle: agentBundle.source,
   });
   const stagedPath = `${runtimePath}.${crypto.randomUUID()}.tmp`;
   try {
@@ -161,6 +173,7 @@ async function compileArtifact(
       projectId: project.projectId,
       ref,
       sourceSha,
+      agentBundleSha256: agentBundle.sha256,
       sha256: artifact.sha256,
       size: artifact.size,
       manifest: artifact.manifest,
@@ -188,7 +201,8 @@ export async function buildCompiledRuntimeArtifact(
 ): Promise<StoredCompiledRuntimeArtifact> {
   const ref = validateRef(refInput);
   const sourceSha = validateSha(sourceShaInput);
-  const key = artifactKey(project.projectId, ref, sourceSha);
+  const agentBundle = await getCompiledAgentBundle();
+  const key = artifactKey(project.projectId, ref, sourceSha, agentBundle.sha256);
   await mkdir(cacheRoot(), { recursive: true });
   const runtimePath = join(cacheRoot(), `${key}.server.mjs`);
   const metadataPath = join(cacheRoot(), `${key}.runtime.json`);
@@ -198,6 +212,7 @@ export async function buildCompiledRuntimeArtifact(
     project.projectId,
     ref,
     sourceSha,
+    agentBundle.sha256,
   );
   if (cached) return cached;
 
@@ -207,6 +222,7 @@ export async function buildCompiledRuntimeArtifact(
     project,
     ref,
     sourceSha,
+    agentBundle,
     runtimePath,
     metadataPath,
   ).finally(() => {

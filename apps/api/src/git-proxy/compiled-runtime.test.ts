@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compileOpenCodeRuntime } from './compiled-runtime';
@@ -10,12 +10,13 @@ const INPUT = {
   ref: 'main',
   sourceSha: 'a'.repeat(40),
   agentConfig: JSON.stringify({ agent: { kortix: { prompt: 'Ship safely.' } } }),
+  agentBundle: 'process.exit(0);',
 };
 
-async function materializeRuntime() {
+async function materializeRuntime(agentBundle = INPUT.agentBundle) {
   const root = await mkdtemp(join(tmpdir(), 'kortix-compiled-runtime-'));
   roots.push(root);
-  const artifact = compileOpenCodeRuntime(INPUT);
+  const artifact = compileOpenCodeRuntime({ ...INPUT, agentBundle });
   const runtimePath = join(root, 'server.mjs');
   await writeFile(runtimePath, artifact.source, { mode: 0o700 });
   return { artifact, root, runtimePath };
@@ -44,6 +45,17 @@ describe('compileOpenCodeRuntime', () => {
     expect(first.size).toBe(Buffer.byteLength(first.source));
   });
 
+  test('contains the supplied daemon bundle instead of launching the baked agent', () => {
+    const bundleMarker = 'globalThis.__KORTIX_COMPILED_DAEMON__ = true;';
+    const artifact = compileOpenCodeRuntime({
+      ...INPUT,
+      agentBundle: bundleMarker,
+    });
+
+    expect(artifact.source).toContain(bundleMarker);
+    expect(artifact.source).not.toContain('KORTIX_AGENT_BIN');
+  });
+
   test('prints its compiled manifest without starting the agent', async () => {
     const { artifact, runtimePath } = await materializeRuntime();
     const child = Bun.spawn([process.execPath, runtimePath, '--manifest'], {
@@ -60,13 +72,10 @@ describe('compileOpenCodeRuntime', () => {
     expect(JSON.parse(stdout)).toEqual(artifact.manifest);
   });
 
-  test('starts the baked agent with compiled config and runtime secrets', async () => {
-    const { root, runtimePath } = await materializeRuntime();
+  test('runs the bundled daemon with compiled config and runtime secrets', async () => {
+    const { root } = await materializeRuntime();
     const capturePath = join(root, 'capture.json');
-    const agentPath = join(root, 'agent.mjs');
-    await writeFile(
-      agentPath,
-      `#!/usr/bin/env node
+    const { runtimePath } = await materializeRuntime(`
 import { writeFileSync } from "node:fs";
 writeFileSync(process.env.CAPTURE_PATH, JSON.stringify({
   projectId: process.env.KORTIX_PROJECT_ID,
@@ -76,14 +85,11 @@ writeFileSync(process.env.CAPTURE_PATH, JSON.stringify({
   agentConfig: process.env.KORTIX_COMPILED_AGENT_CONFIG,
   token: process.env.KORTIX_TOKEN,
 }));
-`,
-    );
-    await chmod(agentPath, 0o700);
+`);
     const child = Bun.spawn([process.execPath, runtimePath], {
       env: {
         ...process.env,
         CAPTURE_PATH: capturePath,
-        KORTIX_AGENT_BIN: agentPath,
         KORTIX_TOKEN: 'runtime-only-token',
       },
       stdout: 'pipe',
@@ -106,13 +112,38 @@ writeFileSync(process.env.CAPTURE_PATH, JSON.stringify({
     expect(artifactSourceHasSecret(await readFile(runtimePath, 'utf8'))).toBe(false);
   });
 
+  test('uses Bun to run the bundle when an older snapshot invokes it with Node', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kortix-compiled-runtime-'));
+    roots.push(root);
+    const capturePath = join(root, 'node-trampoline.txt');
+    const { runtimePath } = await materializeRuntime(`
+import { writeFileSync } from "node:fs";
+writeFileSync(process.env.CAPTURE_PATH, typeof Bun);
+`);
+    const child = Bun.spawn(['node', runtimePath], {
+      env: {
+        ...process.env,
+        CAPTURE_PATH: capturePath,
+        KORTIX_BUN_BIN: process.execPath,
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const [exitCode, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stderr).text(),
+    ]);
+
+    expect(exitCode, stderr).toBe(0);
+    expect(await readFile(capturePath, 'utf8')).toBe('object');
+  });
+
   test('rejects a runtime identity that differs from the compiled artifact', async () => {
     const { runtimePath } = await materializeRuntime();
     const child = Bun.spawn([process.execPath, runtimePath], {
       env: {
         ...process.env,
         KORTIX_PROJECT_ID: 'different-project',
-        KORTIX_AGENT_BIN: '/bin/true',
       },
       stdout: 'pipe',
       stderr: 'pipe',
@@ -131,6 +162,9 @@ writeFileSync(process.env.CAPTURE_PATH, JSON.stringify({
       'sourceSha must be a lowercase 40-character Git SHA',
     );
     expect(() => compileOpenCodeRuntime({ ...INPUT, agentConfig: '{' })).toThrow();
+    expect(() => compileOpenCodeRuntime({ ...INPUT, agentBundle: '' })).toThrow(
+      'agentBundle is required',
+    );
   });
 });
 

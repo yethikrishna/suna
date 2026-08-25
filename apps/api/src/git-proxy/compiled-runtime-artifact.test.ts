@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -16,10 +16,16 @@ import {
   __clearCompiledRuntimeBuildsForTests,
   buildCompiledRuntimeArtifact,
 } from "./compiled-runtime-artifact";
+import { resetCompiledAgentBundleForTests } from "./compiled-agent-bundle";
 
 const roots: string[] = [];
 const originalCacheRoot = process.env.KORTIX_COMPILED_BOOT_CACHE_DIR;
 const originalMirrorRoot = process.env.KORTIX_GIT_CACHE_DIR;
+const originalBundlePath = process.env.KORTIX_COMPILED_AGENT_BUNDLE_PATH;
+
+beforeEach(() => {
+  resetCompiledAgentBundleForTests();
+});
 
 function git(args: string[], cwd: string): string {
   return execFileSync("git", args, {
@@ -70,6 +76,7 @@ function makeProject(): {
 
 afterEach(() => {
   __clearCompiledRuntimeBuildsForTests();
+  resetCompiledAgentBundleForTests();
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
   if (originalCacheRoot === undefined)
@@ -77,6 +84,8 @@ afterEach(() => {
   else process.env.KORTIX_COMPILED_BOOT_CACHE_DIR = originalCacheRoot;
   if (originalMirrorRoot === undefined) delete process.env.KORTIX_GIT_CACHE_DIR;
   else process.env.KORTIX_GIT_CACHE_DIR = originalMirrorRoot;
+  if (originalBundlePath === undefined) delete process.env.KORTIX_COMPILED_AGENT_BUNDLE_PATH;
+  else process.env.KORTIX_COMPILED_AGENT_BUNDLE_PATH = originalBundlePath;
 });
 
 describe("buildCompiledRuntimeArtifact", () => {
@@ -153,6 +162,32 @@ describe("buildCompiledRuntimeArtifact", () => {
 
     expect(rebuilt.cacheHit).toBe(false);
     expect(rebuiltSource).toContain("// kortix-manifest-base64url:");
+  });
+
+  test("changes the artifact identity when the bundled daemon changes", async () => {
+    const { project, sha } = makeProject();
+    const cache = mkdtempSync(join(tmpdir(), "kortix-runtime-cache-"));
+    const mirrors = mkdtempSync(join(tmpdir(), "kortix-runtime-mirrors-"));
+    const bundles = mkdtempSync(join(tmpdir(), "kortix-runtime-bundles-"));
+    roots.push(cache, mirrors, bundles);
+    process.env.KORTIX_COMPILED_BOOT_CACHE_DIR = cache;
+    process.env.KORTIX_GIT_CACHE_DIR = mirrors;
+
+    const firstBundle = join(bundles, "first.mjs");
+    const secondBundle = join(bundles, "second.mjs");
+    writeFileSync(firstBundle, 'console.log("kortix-sandbox-agent-server starting:first");\n');
+    writeFileSync(secondBundle, 'console.log("kortix-sandbox-agent-server starting:second");\n');
+
+    process.env.KORTIX_COMPILED_AGENT_BUNDLE_PATH = firstBundle;
+    const first = await buildCompiledRuntimeArtifact(project, "main", sha);
+    resetCompiledAgentBundleForTests();
+    process.env.KORTIX_COMPILED_AGENT_BUNDLE_PATH = secondBundle;
+    const second = await buildCompiledRuntimeArtifact(project, "main", sha);
+
+    expect(first.cacheHit).toBe(false);
+    expect(second.cacheHit).toBe(false);
+    expect(second.path).not.toBe(first.path);
+    expect(readFileSync(second.path, "utf8")).toContain("starting:second");
   });
 
   test("rejects a named ref that moved from the expected commit", async () => {

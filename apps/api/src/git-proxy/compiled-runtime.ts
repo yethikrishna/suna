@@ -26,6 +26,7 @@ export interface CompileOpenCodeRuntimeInput {
   ref: string;
   sourceSha: string;
   agentConfig?: string | null;
+  agentBundle: string;
 }
 
 function validateInput(input: CompileOpenCodeRuntimeInput): void {
@@ -35,6 +36,7 @@ function validateInput(input: CompileOpenCodeRuntimeInput): void {
     throw new Error('sourceSha must be a lowercase 40-character Git SHA');
   }
   if (input.agentConfig) JSON.parse(input.agentConfig);
+  if (!input.agentBundle.trim()) throw new Error('agentBundle is required');
 }
 
 function etag(value: string | null): string | null {
@@ -42,12 +44,10 @@ function etag(value: string | null): string | null {
   return createHash('sha256').update(value).digest('hex').slice(0, 16);
 }
 
-function runtimeSource(manifest: CompiledRuntimeManifest): string {
+function runtimeSource(manifest: CompiledRuntimeManifest, agentBundle: string): string {
   const encodedManifest = Buffer.from(JSON.stringify(manifest)).toString('base64url');
-  return `#!/usr/bin/env node
+  return `#!/usr/bin/env bun
 // kortix-manifest-base64url:${encodedManifest}
-import { spawn } from "node:child_process";
-
 export const manifest = Object.freeze(
   JSON.parse(Buffer.from("${encodedManifest}", "base64url").toString("utf8")),
 );
@@ -82,29 +82,35 @@ for (const [name, value] of Object.entries(compiledEnv)) {
   }
 }
 
-const executable = process.env.KORTIX_AGENT_BIN || "/usr/local/bin/kortix-agent";
-const child = spawn(executable, [], {
-  env: { ...process.env, ...compiledEnv },
-  stdio: "inherit",
-});
+Object.assign(process.env, compiledEnv);
 
-const forward = (signal) => {
-  if (!child.killed) child.kill(signal);
-};
-
-process.on("SIGINT", () => forward("SIGINT"));
-process.on("SIGTERM", () => forward("SIGTERM"));
-child.once("error", (error) => {
-  process.stderr.write("Failed to start Kortix agent: " + error.message + "\\n");
-  process.exit(127);
-});
-child.once("exit", (code, signal) => {
-  if (signal) {
-    process.stderr.write("Kortix agent exited from signal " + signal + "\\n");
+if (typeof globalThis.Bun === "undefined") {
+  const { spawn } = await import("node:child_process");
+  const executable = process.env.KORTIX_BUN_BIN || "/home/kortix/.bun/bin/bun";
+  const child = spawn(executable, [process.argv[1], ...process.argv.slice(2)], {
+    env: process.env,
+    stdio: "inherit",
+  });
+  const forward = (signal) => {
+    if (!child.killed) child.kill(signal);
+  };
+  process.on("SIGINT", () => forward("SIGINT"));
+  process.on("SIGTERM", () => forward("SIGTERM"));
+  const result = await new Promise((resolve) => {
+    child.once("error", (error) => {
+      process.stderr.write("Failed to start compiled Kortix daemon: " + error.message + "\\n");
+      resolve({ code: 127, signal: null });
+    });
+    child.once("exit", (code, signal) => resolve({ code, signal }));
+  });
+  if (result.signal) {
+    process.stderr.write("Compiled Kortix daemon exited from signal " + result.signal + "\\n");
     process.exit(1);
   }
-  process.exit(code ?? 1);
-});
+  process.exit(result.code ?? 1);
+}
+
+${agentBundle}
 `;
 }
 
@@ -122,7 +128,7 @@ export function compileOpenCodeRuntime(
     agent_config: agentConfig,
     agent_config_etag: etag(agentConfig),
   };
-  const source = runtimeSource(manifest);
+  const source = runtimeSource(manifest, input.agentBundle);
   return {
     source,
     sha256: createHash('sha256').update(source).digest('hex'),

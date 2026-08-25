@@ -128,6 +128,30 @@ The compiler has reduced repository delivery below one second. OpenCode now
 accounts for 84% of the 7,143 ms in-guest boot timeline. The next session-boot
 optimization must target OpenCode initialization rather than Git.
 
+The compiled-config overlap change was measured on 2026-08-25 with three new
+Daytona sandboxes. Warm sessions and project snapshots were disabled. All
+sessions used the same ready default image and the same seeded managed project.
+
+| Measurement | P50 | Range |
+| --- | ---: | ---: |
+| API session response | 595 ms | 495–608 ms |
+| Daytona VM created | 2,643 ms | 2,135–2,758 ms |
+| Daemon reachable | 3,959 ms | 3,465–4,005 ms |
+| Runtime ready | 9,548 ms | 5,614–10,281 ms |
+| OpenCode process spawned in guest | 131 ms | 111–213 ms |
+| Checkout ready in guest | 989 ms | 623–1,255 ms |
+| Guest runtime ready | 6,116 ms | 1,764–6,381 ms |
+
+OpenCode now starts 492–1,124 ms before checkout completion. The prior recorded
+sample reached runtime readiness in 11,852 ms and guest readiness in 7,143 ms.
+The new three-run median is 9,548 ms and 6,116 ms respectively. OpenCode's
+remaining process and project initialization varies from about 1.6 to 6.2
+seconds and is now the dominant boot cost.
+
+The new artifact keeps the v1 wire-format marker. Existing Daytona images
+contain the v1 installer. The bundled daemon SHA already changes the artifact
+cache identity, so the config capsule does not require a wire-format bump.
+
 ## Current limits
 
 - The API prebuilds on a managed Git push and overlaps on-demand builds with

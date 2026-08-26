@@ -25,6 +25,7 @@
 import { createScopedKortix, forwardKortixRequest } from './server';
 import type { Kortix } from '../core/client/kortix';
 import type { AccountIdentity } from '../core/rest/projects-client/accounts';
+import { stripTrailingSlashes } from '../platform/strings';
 
 /** The subset of `fetch` the kit needs — assignable from any fetch-shaped function. */
 export type KortixFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -229,8 +230,9 @@ export function createKortixAuth(options: KortixAuthOptions): KortixAuth {
   if (!options.clientId) throw new KortixAuthError('invalid_options', 'clientId is required');
   if (!options.backendUrl) throw new KortixAuthError('invalid_options', 'backendUrl is required');
 
-  const backendUrl = options.backendUrl.replace(/\/+$/, '');
-  const basePath = (options.basePath ?? redirect.pathname.replace(/\/callback\/?$/, '')).replace(/\/+$/, '') || '/';
+  const backendUrl = stripTrailingSlashes(options.backendUrl);
+  const rawBase = options.basePath ?? (redirect.pathname.endsWith('/callback/') ? redirect.pathname.slice(0, -'/callback/'.length) : redirect.pathname.endsWith('/callback') ? redirect.pathname.slice(0, -'/callback'.length) : redirect.pathname);
+  const basePath = stripTrailingSlashes(rawBase) || '/';
   const secure = redirect.protocol === 'https:';
   const sessionCookie = secure ? '__Host-kortix_session' : 'kortix_session';
   const txnCookie = secure ? '__Host-kortix_oauth_txn' : 'kortix_oauth_txn';
@@ -528,7 +530,7 @@ export function createKortixAuth(options: KortixAuthOptions): KortixAuth {
     signOutUrl,
     clientConfig(origin?: string) {
       const base = origin ?? (typeof window !== 'undefined' ? window.location.origin : '');
-      return { backendUrl: `${base.replace(/\/+$/, '')}${basePath}/proxy`, getToken: async () => KORTIX_SESSION_SENTINEL };
+      return { backendUrl: `${stripTrailingSlashes(base)}${basePath}/proxy`, getToken: async () => KORTIX_SESSION_SENTINEL };
     },
     __setNow(next) {
       now = next;

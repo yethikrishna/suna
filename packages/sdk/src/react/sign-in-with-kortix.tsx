@@ -11,6 +11,7 @@
  * browser never sees, so there is no token to manage here.
  */
 import { createElement, useEffect, useState, type AnchorHTMLAttributes, type ReactNode } from 'react';
+import { stripTrailingSlashes } from '../platform/strings';
 
 export const KORTIX_AUTH_DEFAULT_BASE_PATH = '/api/kortix/auth';
 
@@ -36,7 +37,7 @@ export async function fetchKortixViewer(
 ): Promise<KortixViewerState> {
   let res: Response;
   try {
-    res = await fetchImpl(`${basePath.replace(/\/+$/, '')}/me`, {
+    res = await fetchImpl(`${stripTrailingSlashes(basePath)}/me`, {
       credentials: 'same-origin',
       headers: { accept: 'application/json' },
     });
@@ -50,12 +51,12 @@ export async function fetchKortixViewer(
 }
 
 export function kortixSignInHref(basePath: string = KORTIX_AUTH_DEFAULT_BASE_PATH, returnTo?: string): string {
-  const base = `${basePath.replace(/\/+$/, '')}/signin`;
+  const base = `${stripTrailingSlashes(basePath)}/signin`;
   return returnTo ? `${base}?return_to=${encodeURIComponent(returnTo)}` : base;
 }
 
 export function kortixSignOutHref(basePath: string = KORTIX_AUTH_DEFAULT_BASE_PATH, returnTo?: string): string {
-  const base = `${basePath.replace(/\/+$/, '')}/signout`;
+  const base = `${stripTrailingSlashes(basePath)}/signout`;
   return returnTo ? `${base}?return_to=${encodeURIComponent(returnTo)}` : base;
 }
 

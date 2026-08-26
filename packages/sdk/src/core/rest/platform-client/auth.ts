@@ -12,6 +12,7 @@
  * token explicitly so a host can call them before its `getToken` is wired.
  */
 import { platformConfig } from '../../http/config';
+import { stripTrailingSlashes } from '../../../platform/strings';
 
 export interface AuthSession {
   access_token: string;
@@ -73,9 +74,9 @@ export interface AuthRequestOptions {
 }
 
 function apiBase(opts?: AuthRequestOptions): string {
-  const raw = (opts?.backendUrl ?? platformConfig().backendUrl ?? '').replace(/\/+$/, '');
+  const raw = stripTrailingSlashes(opts?.backendUrl ?? platformConfig().backendUrl ?? '');
   if (!raw) throw new HeadlessAuthError('not_configured', 'backendUrl is not configured (configureKortix / createKortix first)', 0);
-  return /\/v1$/.test(raw) ? raw : `${raw}/v1`;
+  return raw.endsWith('/v1') ? raw : `${raw}/v1`;
 }
 
 async function call<T>(

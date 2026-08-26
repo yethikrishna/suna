@@ -124,6 +124,82 @@ current web SSE consumer reads.
 fallbacks above resolved either way, and the cold-boot number for the bundled
 server.
 
+**Phase 0 output:** a short findings doc — pass/fail per proof, the two
+fallbacks above resolved either way, and the cold-boot number for the bundled
+server.
+
+---
+
+## Gate G0 — the RPC tax. Runs after Phase 0, before P1.1.
+
+Phase 0 answers "can this be built". G0 answers "should it be", and it is the
+only question that can still kill the design after Phase 0 passes.
+
+Splitting the harness from the environment turns every tool call into a network
+round trip. `bash` is a local fork today: about a millisecond. A tool-heavy turn
+makes hundreds of calls. If the per-call cost is high enough, the tax on every
+turn exceeds the one-off boot saving the whole split is justified by — and no
+amount of Phase 1 makes it not so.
+
+### Threshold
+
+| verdict | p50 per call | 200-call turn | meaning |
+|---|---|---|---|
+| pass | ≤ 10 ms | ≤ 2 s | comfortably under the boot saving. Net win everywhere. |
+| warn | ≤ 25 ms | ≤ 5 s | net win except for tool-heavy work. Ship, but scope reduction before tool-heavy agents move over. |
+| fail | > 25 ms | > 5 s | costs more than the split saves. Do not write P1.1 against this transport. |
+
+Measured from inside the worker sandbox, worker → provider edge → environment,
+which is the shape production uses (worker → Kortix proxy → sandbox daemon).
+
+### Result: WARN
+
+`spikes/pi-worker/bench/rpc-tax.ts`, 200 calls per transport on Daytona:
+
+| transport | p50 | p95 | per 200-call turn |
+|---|---|---|---|
+| `fetch` per call | 20.3 ms | 26.8 ms | 4.1 s |
+| pooled keep-alive | 19.2 ms | 23.9 ms | 3.8 s |
+| multiplexed WebSocket | **16.0 ms** | 17.9 ms | **3.2 s** |
+
+Two things follow, and the second is the important one.
+
+1. **The transport choice is worth 21%, not an order of magnitude.** A
+   multiplexed socket beats naive per-call `fetch` by 4 ms. Worth taking — it is
+   also more robust, since per-call HTTP already produced a correctness bug in
+   the spike when a keep-alive socket was retired between calls — but it is not
+   the lever.
+2. **The tax is dominated by the provider's network topology, not by us.**
+   Both sandboxes sit in one Daytona region, yet traffic leaves through the
+   public edge because Daytona isolates sandboxes from each other
+   (`EHOSTUNREACH` on the private IP, verified). The lever that matters is
+   **co-location**, not protocol. Any provider that lets a worker reach its
+   environment over a private network should collapse this number, and that is
+   a provider-selection criterion the plan did not previously have.
+
+### Sensitivity — who actually pays
+
+| tool calls in a turn | added latency at 16 ms |
+|---|---|
+| 5 | 0.08 s |
+| 30 | 0.5 s |
+| 100 | 1.6 s |
+| 200 | 3.2 s |
+
+Against boot savings of 1.3 s (create) and 2.8 s (archived resume), the split is
+a clear win up to roughly 100 tool calls per turn and roughly break-even beyond
+that. Most sessions are nowhere near 200 calls; coding agents on large refactors
+are.
+
+### What WARN obliges us to do
+
+- Ship P1.7 with the multiplexed transport from the start. Per-call HTTP is not
+  an acceptable interim: it is both slower and, demonstrably, less correct.
+- Add a co-location requirement to the provider criteria, and measure the same
+  gate on Platinum and E2B before committing tool-heavy agents.
+- Keep this gate as a regression test. If p50 crosses 25 ms the split stops
+  paying, and that must fail loudly rather than be discovered by a customer.
+
 ---
 
 ## Phase 1 — the worker
@@ -145,6 +221,9 @@ Add an API-side clock: `POST /sessions` → first streamed token.
   **warm-pool hit**, 10 runs each. Both matter — see "What we measure".
 
 ### P1.1 — `apps/kortix-worker`, standalone
+
+> Blocked on gate G0 above. G0 returned WARN, so P1.1 proceeds with the
+> multiplexed transport mandatory rather than optional.
 
 The HTTP + SSE server wrapping Pi. Runs from a local config file with no Kortix
 API dependency. Minimum surface: `POST /prompt`, `GET /events` (SSE),

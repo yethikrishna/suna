@@ -11,6 +11,7 @@
  * files created by the agent land HERE and not in the worker's process cwd.
  */
 import { createServer } from 'node:http';
+import { WebSocketServer } from 'ws';
 import { exec as execCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
@@ -140,12 +141,45 @@ export async function startStubEnvironment(opts: StubEnvOptions) {
   // reusing it and the next RPC dies with "socket connection was closed".
   // The production answer is one multiplexed connection per session, not a
   // longer timeout — this is the spike making the problem visible, not solved.
+  // Multiplexed transport: one socket, many in-flight calls correlated by id.
+  // Same op table as /rpc — the transport changes, the protocol does not.
+  const wss = new WebSocketServer({ server, path: '/rpc-ws' });
+  wss.on('connection', (socket) => {
+    socket.on('message', async (raw) => {
+      let msg: any;
+      try { msg = JSON.parse(String(raw)); } catch { return; }
+      let body: unknown;
+      try {
+        const fn = ops[msg.op];
+        body = fn
+          ? { ok: true, value: await fn(msg.args ?? {}, msg.cwd ?? '/workspace') }
+          : { ok: false, error: { code: 'not_supported', message: `no op ${msg.op}` } };
+      } catch (e: any) {
+        body = { ok: false, error: { code: codeFor(e), message: String(e?.message ?? e), path: e?.path } };
+      }
+      socket.send(JSON.stringify({ id: msg.id, body }));
+    });
+  });
+
   server.keepAliveTimeout = 120_000;
   server.headersTimeout = 125_000;
 
   await new Promise<void>((r) => server.listen(opts.port ?? 0, '0.0.0.0', r));
   const port = (server.address() as any).port;
-  return { port, root, url: `http://127.0.0.1:${port}`, close: () => new Promise<void>((r) => server.close(() => r())) };
+  return {
+    port, root, url: `http://127.0.0.1:${port}`,
+    // Forceful on purpose: `server.close()` waits for every live connection to
+    // end, and a keep-alive socket or an open WebSocket will hold it open
+    // forever. A test that hangs on teardown looks exactly like a test that
+    // silently passed, which is worse than one that fails.
+    close: () =>
+      new Promise<void>((r) => {
+        for (const client of wss.clients) client.terminate();
+        wss.close();
+        (server as any).closeAllConnections?.();
+        server.close(() => r());
+      }),
+  };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

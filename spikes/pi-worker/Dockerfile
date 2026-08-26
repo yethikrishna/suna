@@ -24,6 +24,8 @@ RUN apk add --no-cache libstdc++
 WORKDIR /opt/kortix
 # One self-contained .mjs. No node_modules in the image, no install at boot.
 COPY dist/worker.mjs /opt/kortix/worker.mjs
+# Bench-only: lets the RPC-tax gate import the transports inside the sandbox.
+COPY dist/rpc-transport.mjs /opt/kortix/rpc-transport.mjs
 
 # Unprivileged, and intended to run with `--read-only`. Defence in depth behind
 # the ExecutionEnv seam: even a hand-written tool reaching for node:fs finds

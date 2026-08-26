@@ -128,6 +128,7 @@ export interface WorkerConfig {
   envCwd: string;
   envToken?: string;
   envHeaders?: Record<string, string>;
+  envTransport?: 'fetch' | 'keepalive' | 'ws';
   systemPrompt: string;
   modelMode: 'faux' | 'real';
   providerId?: string;
@@ -148,6 +149,7 @@ export function configFromEnv(): WorkerConfig {
     envCwd: process.env.KORTIX_ENV_CWD ?? '/workspace',
     envToken: process.env.KORTIX_ENV_TOKEN,
     envHeaders: process.env.KORTIX_ENV_HEADERS ? JSON.parse(process.env.KORTIX_ENV_HEADERS) : undefined,
+    envTransport: (process.env.KORTIX_ENV_TRANSPORT as any) ?? 'keepalive',
     systemPrompt:
       process.env.KORTIX_SYSTEM_PROMPT ??
       'You are a Kortix agent. All file and shell work happens in the environment, never locally.',
@@ -182,7 +184,7 @@ function bindTool(tool: any, context: object) {
 }
 
 export async function buildHarness(cfg: WorkerConfig) {
-  const env = new KortixExecutionEnv({ baseUrl: cfg.envUrl, cwd: cfg.envCwd, token: cfg.envToken, headers: cfg.envHeaders });
+  const env = new KortixExecutionEnv({ baseUrl: cfg.envUrl, cwd: cfg.envCwd, token: cfg.envToken, headers: cfg.envHeaders, transport: cfg.envTransport });
 
   const credentials = new InMemoryCredentialStore();
   const models = createModels({ credentials });

@@ -17,6 +17,8 @@
  * `Result.err` rather than letting them escape.
  */
 
+import { makeTransport, type RpcTransport } from './rpc-transport.ts';
+
 type Ok<T> = { ok: true; value: T };
 type Err<E> = { ok: false; error: E };
 type Result<T, E> = Ok<T> | Err<E>;
@@ -45,6 +47,8 @@ class ExecutionErrorLike extends Error {
   }
 }
 
+export type TransportKind = 'fetch' | 'keepalive' | 'ws';
+
 export interface KortixEnvOptions {
   /** Base URL of the environment's RPC endpoint. In production this is the Kortix sandbox proxy. */
   baseUrl: string;
@@ -56,6 +60,8 @@ export interface KortixEnvOptions {
   headers?: Record<string, string>;
   /** Per-call timeout. */
   timeoutMs?: number;
+  /** Which transport carries the RPC. See src/rpc-transport.ts and the gate. */
+  transport?: TransportKind;
 }
 
 export class KortixExecutionEnv {
@@ -63,6 +69,7 @@ export class KortixExecutionEnv {
   private readonly baseUrl: string;
   private readonly token?: string;
   private readonly headers: Record<string, string>;
+  private readonly transport: RpcTransport;
   private readonly timeoutMs: number;
 
   /** Every RPC that crossed the boundary. The proof harness reads this. */
@@ -73,6 +80,9 @@ export class KortixExecutionEnv {
     this.cwd = opts.cwd;
     this.token = opts.token;
     this.headers = opts.headers ?? {};
+    // Default to keepalive: one pooled connection, handshake paid once per
+    // session rather than once per tool call. See the RPC-tax gate.
+    this.transport = makeTransport(opts.transport ?? 'keepalive', this.baseUrl, this.headers);
     this.timeoutMs = opts.timeoutMs ?? 120_000;
   }
 
@@ -96,31 +106,16 @@ export class KortixExecutionEnv {
   }
 
   private async rpcOnce<T>(op: string, args: Record<string, unknown>): Promise<Result<T, any>> {
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), this.timeoutMs);
+    const timer = new Promise<never>((_, rej) =>
+      setTimeout(() => rej(new Error('rpc timeout')), this.timeoutMs).unref?.(),
+    );
     try {
-      const res = await fetch(`${this.baseUrl}/rpc`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
-          ...this.headers,
-        },
-        body: JSON.stringify({ op, args, cwd: this.cwd }),
-        signal: ctl.signal,
-      });
-      if (!res.ok) {
-        return err(new FileErrorLike('unknown', `environment returned HTTP ${res.status}`));
-      }
-      const body: any = await res.json();
-      if (body.ok) return ok(body.value as T);
-      return err(new FileErrorLike(body.error?.code ?? 'unknown', body.error?.message ?? 'environment error', body.error?.path));
+      const body: any = await Promise.race([this.transport.call(op, args, this.cwd), timer]);
+      if (body?.ok) return ok(body.value as T);
+      return err(new FileErrorLike(body?.error?.code ?? 'unknown', body?.error?.message ?? 'environment error', body?.error?.path));
     } catch (e: any) {
       // Never throw. A dead environment is a Result, not an exception.
-      const aborted = e?.name === 'AbortError';
-      return err(new FileErrorLike(aborted ? 'aborted' : 'unknown', String(e?.message ?? e)));
-    } finally {
-      clearTimeout(timer);
+      return err(new FileErrorLike('unknown', String(e?.message ?? e)));
     }
   }
 

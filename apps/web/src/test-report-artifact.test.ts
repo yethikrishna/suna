@@ -20,16 +20,9 @@ describe('frontend browser report artifact contract', () => {
     expect(playwrightConfig).toContain("outputFolder: './test-results/html'");
     expect(playwrightConfig).toContain("outputDir: './test-results/artifacts'");
     expect(workflow).toContain('actions/upload-artifact@v7');
-<<<<<<< HEAD
-    // Block-scalar upload path (`path: |` + glob + bypass-state exclusion) —
-  // assert the meaningful lines, not the old one-line form.
-  expect(workflow).toContain('tests/test-results/**');
-  expect(workflow).toContain('!tests/test-results/deployment-bypass-state.json');
-=======
     // Multi-line `path: |` since the bypass-state exclusion landed in tests.yml.
     expect(workflow).toMatch(/path: \|\s*\n\s*tests\/test-results\/\*\*/);
     expect(workflow).toContain('!tests/test-results/deployment-bypass-state.json');
->>>>>>> origin/main
     expect(workflow).toContain('if: always()');
   });
 });

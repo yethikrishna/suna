@@ -465,6 +465,93 @@ that revert lands later.
 
 ---
 
+## Gate G0 — the RPC tax
+
+Runs **after** Phase 0 and **before** P1.1. Phase 0 answers "can this be
+built"; G0 answers "should it be", and it is the only thing that can still kill
+the design once Phase 0 passes.
+
+```bash
+bun bench/rpc-tax.ts              # on Daytona, through the provider edge
+bun bench/rpc-tax.ts --local      # loopback floor
+```
+
+| verdict | p50/call | 200-call turn |
+|---|---|---|
+| pass | ≤ 10 ms | ≤ 2 s |
+| warn | ≤ 25 ms | ≤ 5 s |
+| fail | > 25 ms | > 5 s |
+
+### Result: WARN
+
+| transport | p50 | p95 | per 200-call turn |
+|---|---|---|---|
+| `fetch` per call | 20.3 ms | 26.8 ms | 4.1 s |
+| pooled keep-alive | 19.2 ms | 23.9 ms | 3.8 s |
+| multiplexed WebSocket | **16.0 ms** | 17.9 ms | **3.2 s** |
+
+Two conclusions, and the second matters more:
+
+1. **Transport is worth 21%, not an order of magnitude.** A multiplexed socket
+   beats naive per-call `fetch` by 4 ms. Take it anyway — per-call HTTP already
+   produced a *correctness* bug in this spike when a keep-alive socket was
+   retired between calls — but it is not the lever.
+2. **The tax is set by the provider's topology, not by us.** Both sandboxes sit
+   in one Daytona region, yet traffic leaves through the public edge because
+   Daytona isolates sandboxes from each other. The lever is **co-location**, and
+   that is a provider-selection criterion the plan did not previously have.
+
+Sensitivity — 5 calls costs 0.08 s, 30 costs 0.5 s, 100 costs 1.6 s, 200 costs
+3.2 s. Against boot savings of 1.3 s (create) and 2.8 s (archived resume), the
+split wins clearly up to ~100 tool calls per turn and is roughly break-even
+beyond. Most sessions are nowhere near that; large refactors are.
+
+One correction: the 67 ms figure reported earlier was a whole `/prompt`
+round trip including harness work, not a raw RPC. The raw RPC is 16–20 ms.
+
+---
+
+## kx — a terminal for the worker
+
+No UI, no browser, no Kortix API. Brings up store, environment and worker in one
+process and gives you a prompt.
+
+```bash
+pnpm kx                      # or: bun bin/kx.ts
+bun bin/kx.ts --faux         # no credentials needed
+bun bin/kx.ts --session my-work   # resume a previous conversation
+bun bin/kx.ts --transport=ws      # pick the RPC transport
+```
+
+It is also scriptable — piped input runs as a script, which is how the smoke
+test drives it:
+
+```
+$ printf 'Create /workspace/hello.txt containing exactly the word kortix, then read it back.\n/env\n/rpc\n' | bun bin/kx.ts
+
+› Create /workspace/hello.txt containing exactly the word kortix, then read it back.
+  I'll create the file with "kortix" and then read it back.
+  ⚙ write  /workspace/hello.txt  ✓ 9ms
+  ⚙ read   /workspace/hello.txt  ✓ 5ms
+  The file `/workspace/hello.txt` contains exactly the word "kortix".
+  7316ms
+› /env
+  hello.txt  6b
+› /rpc
+  8 RPCs to the environment: {"absolutePath":3,"canonicalPath":1,"writeFile":1,
+                              "exists":1,"readBinaryFile":1,"listDir":1}
+```
+
+Commands: `/tools` (and where they execute) · `/history` · `/transcript` (reads
+the durable store directly, no worker involved) · `/env` · `/rpc` · `/stats` ·
+`/quit`.
+
+The per-tool timings and the RPC counter are there on purpose: they make the
+architecture's one real cost visible while you use it, rather than only in a
+benchmark.
+
+---
+
 ## Still open in Phase 0
 
 - **S0.4** — a custom session store read back with no Pi process running. The

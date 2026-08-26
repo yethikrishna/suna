@@ -395,12 +395,82 @@ today's warm-pool hit.
    multiplexed connection is not an optimization; it showed up as a correctness
    bug at trivial scale.
 
+## S0.5 — the event stream vs the frontend we already have
+
+The gate is not "pi emits events". It is: does every event `packages/sdk`
+narrows and classifies have a pi source, and does pi's output survive the SDK's
+**own** code unchanged?
+
+```bash
+bun test/proof-s05.ts   # 9/9
+```
+
+So the test asserts nothing by hand. It runs a real turn — text, a tool call, a
+tool result, more text — through `src/chat-events.ts`, then through the shipped
+`narrowChatEvent()` (`packages/sdk/src/core/stream/chat-events.ts`),
+`classifyPart()` and `toolViewModel()` (`.../core/turns/`). If the frontend can
+render it, those three accept it.
+
+```
+  PASS  every adapter event is accepted by the SDK narrowChatEvent()  — 20 events
+  PASS  every part classifies to a known kind  — kinds: tool, text
+  PASS  text arrives incrementally (streaming works)  — 4 text part updates
+  PASS  tool lifecycle reaches a terminal state  — statuses seen: running -> done
+  PASS  pi tool names drive the UI's per-tool rendering unchanged  — kinds: shell
+  PASS  the completed shell view-model carries command AND stdout
+                                            — command="echo hi" stdout="hi"
+  PASS  session goes running -> idle
+9/9
+```
+
+### Coverage of the whole chat surface
+
+| consumer | source | status |
+|---|---|---|
+| `message.updated` | pi `message_start` / `message_end` | adapter |
+| `message.part.updated` | pi `message_update` + `tool_execution_*` | adapter |
+| `session.status` | pi `agent_start` / `agent_end` | adapter |
+| `session.idle` | pi `agent_end` | adapter |
+| `session.error` | `message_end` with `stopReason: 'error'` | adapter |
+| `permission.asked` / `.replied` | pi `Agent.beforeToolCall` hook | hook to write |
+| `question.asked` / `.answered` | a Kortix `ask_question` tool | tool to write |
+| `todo.updated` | a Kortix todo tool | tool to write |
+| `connection`, `heartbeat-gap` | SSE transport, never the harness | already ours |
+| `message.removed`, `message.part.removed` | **no Agent-layer deletion** | **gap** |
+
+### The one real gap
+
+`message.removed` and `message.part.removed` have no Agent-layer source. Kortix
+uses them for revert and compaction. pi's `Session` tree does have branching
+(`navigateTree`, `branch`), so the capability exists — it just is not wired to
+`Agent`, because the thing that would wire it is `AgentHarness`, and that is
+unimplemented in 0.84.3. Scope it as frontend-visible work in Phase 1 or accept
+that revert lands later.
+
+### Two findings, one of them a correction
+
+1. **pi's builtin tool names are already the UI's names.** `bash`, `read`,
+   `write`, `edit`, `grep`, `glob` are exactly what `toolViewModel()` switches
+   on, so shell / file-read / file-write / file-edit / search rendering works
+   with **no remapping layer**. That is a larger piece of luck than it looks:
+   per-tool rendering is where a harness swap usually costs a frontend rewrite.
+
+2. **A correction to an earlier entry in this file.** I recorded that
+   `Agent.subscribe` emits no text deltas and that streaming would have to tap
+   the pi-ai layer. That was wrong. `AgentEvent` includes `message_update`,
+   carrying both the accumulating message and the raw `assistantMessageEvent`;
+   a 30-word answer produces 21 of them (`text_start`, 19x `text_delta`,
+   `text_end`). Measuring it is what caught it. Streaming works straight off
+   Agent events.
+
+---
+
 ## Still open in Phase 0
 
 - **S0.4** — a custom session store read back with no Pi process running. The
   interfaces exist (`SessionStorage`, `SessionRepo`, `InMemorySessionRepo`,
   `JsonlSessionRepo` with an injectable filesystem); not yet exercised.
-- **S0.5** — mapping the `Agent` event stream onto what `apps/web` consumes.
+- ~~**S0.5**~~ — done, see below.
 - **S0.2 end-to-end** — a real turn through the deployed Kortix gateway with
   attribution visible in its log. The wiring is in `src/worker.ts`; it needs a
   key and a gateway URL to run.

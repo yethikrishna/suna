@@ -66,16 +66,18 @@ function toDurable<T>(value: T, path = 'message'): T {
 }
 
 /**
- * True time-to-first-token.
+ * True time-to-first-token, measured at the provider stream boundary.
  *
- * `Agent.subscribe` in 0.84.3 emits agent_start -> turn_start -> message_start
- * -> message_end with NO text deltas in between: at the Agent layer the text
- * arrives whole. Deltas exist one layer down, on the pi-ai stream. A streaming
- * frontend therefore has to tap the stream, not the Agent events — a finding
- * for S0.5 (event-stream mapping), recorded here because this is where it bit.
+ * NOTE — this file previously claimed that `Agent.subscribe` emits no text
+ * deltas and that a streaming frontend must tap the pi-ai layer. That was
+ * WRONG. `AgentEvent` includes `message_update`, which carries both the
+ * accumulating message and the raw `assistantMessageEvent`; a 30-word answer
+ * produces 21 of them (text_start / 19x text_delta / text_end). S0.5's adapter
+ * streams straight off Agent events and needs no pi-ai tap.
  *
- * This wraps the stream, forwards every event untouched, and reports when the
- * first text delta crossed.
+ * This wrapper is kept only because it times the FIRST byte at the provider
+ * boundary, before the Agent loop sees it — a slightly earlier and more
+ * honest instant for a latency number. It is instrumentation, not plumbing.
  */
 function tapFirstToken(inner: AssistantMessageEventStream, onFirst: (ms: number) => void): AssistantMessageEventStream {
   const out = new AssistantMessageEventStream();

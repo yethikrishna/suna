@@ -14,6 +14,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { exec as execCb } from 'node:child_process';
 import { promisify } from 'node:util';
+import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -95,11 +96,18 @@ export async function startStubEnvironment(opts: StubEnvOptions) {
     createTempFile: async (a, cwd) => {
       const d = abs('/tmp', cwd);
       await fs.mkdir(d, { recursive: true });
-      const f = path.join(d, `${a.prefix ?? ''}${Date.now()}${Math.floor(Math.random() * 1e6)}${a.suffix ?? ''}`);
-      await fs.writeFile(f, '');
+      // Crypto-random name + exclusive create: the env root is private to this
+      // stub, but a predictable Date.now() name is still the pattern CodeQL's
+      // js/insecure-temporary-file exists to kill. 'wx' refuses to clobber.
+      const f = path.join(d, `${a.prefix ?? ''}${randomBytes(12).toString('hex')}${a.suffix ?? ''}`);
+      await fs.writeFile(f, '', { flag: 'wx' });
       return f.slice(root.length);
     },
     exec: async (a, cwd) => {
+      // codeql[js/command-line-injection] — intentional: this op IS "execute a
+      // shell command", standing in for the sandbox daemon's bash contract.
+      // Benchmark/test scaffolding only; never deployed, binds loopback in
+      // tests, and the Daytona benches run it inside a disposable sandbox.
       const wd = abs(a.cwd ?? cwd, cwd);
       await fs.mkdir(wd, { recursive: true });
       try {
@@ -128,7 +136,10 @@ export async function startStubEnvironment(opts: StubEnvOptions) {
         if (!fn) out = { ok: false, error: { code: 'not_supported', message: `no op ${op}` } };
         else out = { ok: true, value: await fn(args ?? {}, cwd ?? '/workspace') };
       } catch (e: any) {
-        out = { ok: false, error: { code: codeFor(e), message: String(e?.message ?? e), path: e?.path } };
+        // First line only: an Error whose message embeds a stack (some libs do)
+        // must not leak frames to the caller (js/stack-trace-exposure).
+        const msg = String(e?.message ?? e).split('\n')[0];
+        out = { ok: false, error: { code: codeFor(e), message: msg, path: e?.path } };
       }
       const payload = JSON.stringify(out);
       res.writeHead(200, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) });

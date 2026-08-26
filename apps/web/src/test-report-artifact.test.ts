@@ -20,7 +20,10 @@ describe('frontend browser report artifact contract', () => {
     expect(playwrightConfig).toContain("outputFolder: './test-results/html'");
     expect(playwrightConfig).toContain("outputDir: './test-results/artifacts'");
     expect(workflow).toContain('actions/upload-artifact@v7');
-    expect(workflow).toContain('path: tests/test-results/**');
+    // Block-scalar upload path (`path: |` + glob + bypass-state exclusion) —
+  // assert the meaningful lines, not the old one-line form.
+  expect(workflow).toContain('tests/test-results/**');
+  expect(workflow).toContain('!tests/test-results/deployment-bypass-state.json');
     expect(workflow).toContain('if: always()');
   });
 });

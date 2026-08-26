@@ -222,6 +222,78 @@ including it only adds noise to the decision.
 
 ---
 
+## Head to head against the sandbox we ship today
+
+`bench/compare.ts` boots both on Daytona, same region, same account, same spec
+(2 vCPU / 6 GB / 20 GB — production's `DEFAULT_*` from
+`apps/api/src/snapshots/build-context.ts`), and asks the new one a real question
+through OpenRouter, the path production uses.
+
+```bash
+cd spikes/pi-worker
+bun bench/compare.ts --runs=5
+bun bench/compare.ts --runs=3 --say "Write a haiku about cold starts."
+bun bench/compare.ts --runs=3 --model=openai/gpt-5 --keep
+```
+
+Everything it creates it deletes, including on failure. `--delete-snapshots`
+also removes the worker snapshot it built.
+
+### What it prints
+
+```
+run 2/5
+  NEW      create    986 ms   serving   1159 ms   ANSWERED   3800 ms
+           first token after prompt   1988 ms
+           > A sandbox is an isolated testing environment where code can run
+             safely without affecting the main system or production environment.
+  CURRENT  create    872 ms   daemon alive    972 ms   RUNTIME READY   2272 ms
+```
+
+Both arms are held to the same bar: `runtimeReady:true` on the current box's
+`/kortix/health` is the point it could actually serve a prompt, which is the
+honest equivalent of the worker being able to answer.
+
+### Result — 8 runs
+
+| | worker (140 MB) | today (6.2 GB) |
+|---|---|---|
+| ready to take a prompt, median | **1.45 s** | 2.72 s |
+| ready to take a prompt, worst | **2.08 s** | **22.7 s** |
+| answered a real model prompt | 3.7 s (incl. ~1.7 s model latency) | not reached in-window |
+
+**The median win is ~1.9x. The tail win is ~11x, and the tail is the point.**
+The worker's spread across every run was 1.16–2.08 s. Today's sandbox ranged
+2.3–22.7 s on identical infrastructure with identical inputs. That 22-second
+outlier is the "intermittently slow start" from the huddle, reproduced and
+measured.
+
+### The premise correction
+
+The huddle assumed the 6–8 GB image *is* the boot cost — restore from object
+storage at ~50 MB/s. **On Daytona's warm-snapshot path that is not what
+happens.** A 6.2 GB active snapshot typically boots in ~1.5 s, and the 44x
+image-size ratio buys roughly 1.9x, not 44x.
+
+So the case for the split is not "the image is huge". It is:
+
+1. **Predictability** — a bounded, boring 1.2–2.1 s instead of a distribution
+   with a 22-second tail.
+2. **Decoupling** — harness upgrades stop requiring image turnover.
+3. **Zero-compute sessions** — a session that only reasons never provisions
+   the fat box at all.
+
+Speed is real but modest. Determinism is the product. That reframing should
+reach the plan before Phase 1 is scoped, and it makes P1.0's clock more
+important, not less: the number that justifies this work is a p99, not a
+median.
+
+Not measured here, and it matters: **resume from an archived snapshot**, which
+is the case the huddle actually complained about. This benchmark only covers
+create-from-active-snapshot.
+
+---
+
 ## Measured locally
 
 | | today (`apps/sandbox`) | this worker |

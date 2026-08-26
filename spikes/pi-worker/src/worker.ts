@@ -31,7 +31,44 @@ import {
   fauxProvider,
   fauxToolCall,
 } from '@earendil-works/pi-ai';
+import { AssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { KortixExecutionEnv } from './kortix-env.ts';
+
+/**
+ * True time-to-first-token.
+ *
+ * `Agent.subscribe` in 0.84.3 emits agent_start -> turn_start -> message_start
+ * -> message_end with NO text deltas in between: at the Agent layer the text
+ * arrives whole. Deltas exist one layer down, on the pi-ai stream. A streaming
+ * frontend therefore has to tap the stream, not the Agent events — a finding
+ * for S0.5 (event-stream mapping), recorded here because this is where it bit.
+ *
+ * This wraps the stream, forwards every event untouched, and reports when the
+ * first text delta crossed.
+ */
+function tapFirstToken(inner: AssistantMessageEventStream, onFirst: (ms: number) => void): AssistantMessageEventStream {
+  const out = new AssistantMessageEventStream();
+  const t0 = process.hrtime.bigint();
+  let fired = false;
+  (async () => {
+    try {
+      for await (const ev of inner) {
+        if (!fired) {
+          const t = (ev as any)?.type;
+          if (t === 'text_delta' || t === 'text_start' || t === 'thinking_delta') {
+            fired = true;
+            onFirst(Number(process.hrtime.bigint() - t0) / 1e6);
+          }
+        }
+        out.push(ev);
+      }
+      out.end(await inner.result());
+    } catch {
+      out.end(undefined as any);
+    }
+  })();
+  return out;
+}
 
 const BOOT_T0 = Date.now();
 
@@ -78,7 +115,7 @@ export function configFromEnv(): WorkerConfig {
       process.env.KORTIX_SYSTEM_PROMPT ??
       'You are a Kortix agent. All file and shell work happens in the environment, never locally.',
     modelMode: mode,
-    providerId: process.env.KORTIX_PROVIDER ?? 'anthropic',
+    providerId: process.env.KORTIX_PROVIDER ?? 'openrouter',
     modelId: process.env.KORTIX_MODEL,
     apiKey: process.env.KORTIX_API_KEY,
     gatewayUrl: process.env.KORTIX_GATEWAY_URL,
@@ -118,8 +155,12 @@ export async function buildHarness(cfg: WorkerConfig) {
     models.setProvider(faux.provider);
     model = faux.getModel();
   } else {
-    const { anthropicProvider } = await import('@earendil-works/pi-ai/providers/anthropic');
-    const provider = anthropicProvider();
+    // Provider is selectable so the benchmark can use the same path production
+    // does (OpenRouter behind the Kortix gateway), not a second one.
+    const provider =
+      cfg.providerId === 'openrouter'
+        ? (await import('@earendil-works/pi-ai/providers/openrouter')).openrouterProvider()
+        : (await import('@earendil-works/pi-ai/providers/anthropic')).anthropicProvider();
     models.setProvider(provider);
     if (cfg.apiKey) {
       await credentials.modify(provider.id, async () => ({
@@ -139,8 +180,13 @@ export async function buildHarness(cfg: WorkerConfig) {
   const tools = [createBashTool(), createReadTool(), createWriteTool(), createEditTool()]
     .map((t) => bindTool(t, toolContext));
 
+  const timing: { firstTokenMs: number | null } = { firstTokenMs: null };
+
   const agent = new Agent({
-    streamFn: (m: any, ctx: any, opts: any) => models.streamSimple(m, ctx, opts),
+    streamFn: (m: any, ctx: any, opts: any) =>
+      tapFirstToken(models.streamSimple(m, ctx, opts), (ms) => {
+        if (timing.firstTokenMs === null) timing.firstTokenMs = ms;
+      }),
     toolExecution: 'sequential',
     initialState: {
       systemPrompt: cfg.systemPrompt,
@@ -151,7 +197,7 @@ export async function buildHarness(cfg: WorkerConfig) {
     } as any,
   });
 
-  return { agent, env, faux, models };
+  return { agent, env, faux, models, timing };
 }
 
 let LISTEN_UPTIME_MS: number | null = null;
@@ -160,7 +206,7 @@ let LISTEN_UPTIME_MS: number | null = null;
 let LISTEN_MS: number | null = null;
 
 export async function startWorker(cfg = configFromEnv()) {
-  const { agent, env, faux } = await buildHarness(cfg);
+  const { agent, env, faux, timing } = await buildHarness(cfg);
   const listeners = new Set<(chunk: string) => void>();
 
   agent.subscribe((event: any) => {
@@ -252,6 +298,41 @@ export async function startWorker(cfg = configFromEnv()) {
         } finally {
           unsub();
           res.end();
+        }
+      });
+      return;
+    }
+
+    // One real turn, answer + timings, as JSON. This is the endpoint the
+    // comparison benchmark calls, and the one to curl by hand.
+    if (url.pathname === '/say' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', async () => {
+        try {
+          const { text } = JSON.parse(body || '{}');
+          timing.firstTokenMs = null;
+          const t0 = process.hrtime.bigint();
+          await agent.prompt(String(text ?? ''));
+          const totalMs = Number(process.hrtime.bigint() - t0) / 1e6;
+          const last = agent.state.messages.filter((m: any) => m.role === 'assistant').pop();
+          const answer = (last?.content ?? [])
+            .filter((c: any) => c.type === 'text')
+            .map((c: any) => c.text)
+            .join('');
+          res.writeHead(200, { 'content-type': 'application/json' }).end(
+            JSON.stringify({
+              ok: true,
+              answer,
+              firstTokenMs: timing.firstTokenMs,
+              totalMs,
+              model: (last as any)?.model ?? null,
+              rpcCalls: env.calls.map((c) => c.op),
+            }),
+          );
+        } catch (e: any) {
+          res.writeHead(500, { 'content-type': 'application/json' })
+             .end(JSON.stringify({ ok: false, error: String(e?.message ?? e) }));
         }
       });
       return;

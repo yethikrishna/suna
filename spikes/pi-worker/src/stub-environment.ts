@@ -89,29 +89,35 @@ export async function startStubEnvironment(opts: StubEnvOptions) {
     exists: async (a, cwd) => { try { await fs.lstat(abs(a.path, cwd)); return true; } catch (e: any) { if (e.code === 'ENOENT') return false; throw e; } },
     createDir: async (a, cwd) => { await fs.mkdir(abs(a.path, cwd), { recursive: a.recursive !== false }); },
     remove: async (a, cwd) => { await fs.rm(abs(a.path, cwd), { recursive: !!a.recursive, force: !!a.force }); },
-    createTempDir: async (a, cwd) => {
-      const d = await fs.mkdtemp(path.join(abs('/tmp', cwd), a.prefix ?? 'tmp-').replace(/\/$/, ''));
+    // Temp objects live under a root-private staging area, never a shared or
+    // world-writable temp dir: fs.mkdtemp gives the crypto-random component,
+    // and the parent is inside this environment's own jail (`root`), so no
+    // other principal can pre-create or swap entries (the attack
+    // js/insecure-temporary-file exists for). Env-visible paths come back
+    // root-relative, like every other op here.
+    createTempDir: async (a, _cwd) => {
+      const staging = path.join(root, 'ephemeral');
+      await fs.mkdir(staging, { recursive: true });
+      const d = await fs.mkdtemp(path.join(staging, a.prefix ?? 'tmp-'));
       return d.slice(root.length);
     },
-    createTempFile: async (a, cwd) => {
-      const d = abs('/tmp', cwd);
-      await fs.mkdir(d, { recursive: true });
-      // Crypto-random name + exclusive create: the env root is private to this
-      // stub, but a predictable Date.now() name is still the pattern CodeQL's
-      // js/insecure-temporary-file exists to kill. 'wx' refuses to clobber.
-      const f = path.join(d, `${a.prefix ?? ''}${randomBytes(12).toString('hex')}${a.suffix ?? ''}`);
+    createTempFile: async (a, _cwd) => {
+      const staging = path.join(root, 'ephemeral');
+      await fs.mkdir(staging, { recursive: true });
+      const d = await fs.mkdtemp(path.join(staging, 'f-'));
+      const f = path.join(d, `${a.prefix ?? ''}file${a.suffix ?? ''}`);
       await fs.writeFile(f, '', { flag: 'wx' });
       return f.slice(root.length);
     },
     exec: async (a, cwd) => {
-      // codeql[js/command-line-injection] — intentional: this op IS "execute a
-      // shell command", standing in for the sandbox daemon's bash contract.
-      // Benchmark/test scaffolding only; never deployed, binds loopback in
-      // tests, and the Daytona benches run it inside a disposable sandbox.
+      // Intentional by contract: this op IS "execute a shell command" — the
+      // stub stands in for the sandbox daemon's bash tool. Test/benchmark
+      // scaffolding only; never deployed, loopback in tests, disposable
+      // sandboxes in benches. Suppressed on the call line below.
       const wd = abs(a.cwd ?? cwd, cwd);
       await fs.mkdir(wd, { recursive: true });
       try {
-        const { stdout, stderr } = await execAsync(a.command, {
+        const { stdout, stderr } = await execAsync(a.command, { // codeql[js/command-line-injection]
           cwd: wd,
           env: { ...process.env, ...(a.env ?? {}) },
           timeout: a.timeout ? a.timeout * 1000 : undefined,

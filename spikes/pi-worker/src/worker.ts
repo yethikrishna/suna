@@ -35,11 +35,29 @@ import { KortixExecutionEnv } from './kortix-env.ts';
 
 const BOOT_T0 = Date.now();
 
+/**
+ * Seconds since the machine booted, read at the moment we start serving.
+ *
+ * This is the number the whole project turns on. The in-guest clock the
+ * platform already has (`bootMark()` in kortixd) starts at PROCESS start, so
+ * it cannot see VM allocation or rootfs restore — the two costs the small
+ * image actually removes. Reading /proc/uptime at listen time gives
+ * machine-boot -> serving from inside the box, with no dependency on the
+ * benchmark host's clock or its latency to the provider.
+ */
+function vmUptimeMs(): number | null {
+  try {
+    const raw = require('node:fs').readFileSync('/proc/uptime', 'utf8');
+    return Math.round(Number.parseFloat(raw.split(' ')[0]) * 1000);
+  } catch { return null; }
+}
+
 export interface WorkerConfig {
   port: number;
   envUrl: string;
   envCwd: string;
   envToken?: string;
+  envHeaders?: Record<string, string>;
   systemPrompt: string;
   modelMode: 'faux' | 'real';
   providerId?: string;
@@ -55,6 +73,7 @@ export function configFromEnv(): WorkerConfig {
     envUrl: process.env.KORTIX_ENV_URL ?? 'http://127.0.0.1:8100',
     envCwd: process.env.KORTIX_ENV_CWD ?? '/workspace',
     envToken: process.env.KORTIX_ENV_TOKEN,
+    envHeaders: process.env.KORTIX_ENV_HEADERS ? JSON.parse(process.env.KORTIX_ENV_HEADERS) : undefined,
     systemPrompt:
       process.env.KORTIX_SYSTEM_PROMPT ??
       'You are a Kortix agent. All file and shell work happens in the environment, never locally.',
@@ -86,7 +105,7 @@ function bindTool(tool: any, context: object) {
 }
 
 export async function buildHarness(cfg: WorkerConfig) {
-  const env = new KortixExecutionEnv({ baseUrl: cfg.envUrl, cwd: cfg.envCwd, token: cfg.envToken });
+  const env = new KortixExecutionEnv({ baseUrl: cfg.envUrl, cwd: cfg.envCwd, token: cfg.envToken, headers: cfg.envHeaders });
 
   const credentials = new InMemoryCredentialStore();
   const models = createModels({ credentials });
@@ -135,6 +154,11 @@ export async function buildHarness(cfg: WorkerConfig) {
   return { agent, env, faux, models };
 }
 
+let LISTEN_UPTIME_MS: number | null = null;
+/** Process start -> listening. Captured ONCE at listen; reporting
+ *  `Date.now() - BOOT_T0` at request time measures process AGE, not boot. */
+let LISTEN_MS: number | null = null;
+
 export async function startWorker(cfg = configFromEnv()) {
   const { agent, env, faux } = await buildHarness(cfg);
   const listeners = new Set<(chunk: string) => void>();
@@ -150,7 +174,10 @@ export async function startWorker(cfg = configFromEnv()) {
     if (url.pathname === '/health') {
       const body = JSON.stringify({
         ok: true,
-        bootMs: Date.now() - BOOT_T0,
+        bootMs: LISTEN_MS,
+        processAgeMs: Date.now() - BOOT_T0,
+        vmUptimeAtListenMs: LISTEN_UPTIME_MS,
+        vmUptimeNowMs: vmUptimeMs(),
         modelMode: cfg.modelMode,
         environment: { url: cfg.envUrl, cwd: cfg.envCwd, rpcCalls: env.calls.length },
       });
@@ -196,6 +223,40 @@ export async function startWorker(cfg = configFromEnv()) {
       return;
     }
 
+    // Streaming turn. The benchmark measures time-to-first-token off the first
+    // chunk that carries assistant text, which is what a user actually waits
+    // for — not when the turn finishes.
+    if (url.pathname === '/turn' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', async () => {
+        res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
+        const { text, script } = JSON.parse(body || '{}');
+        if (faux && Array.isArray(script)) {
+          faux.setResponses(
+            script.map((step: any) =>
+              step.tool
+                ? fauxAssistantMessage([fauxToolCall(step.tool, step.args ?? {})], { stopReason: 'toolUse' })
+                : fauxAssistantMessage(String(step.text ?? ''), { stopReason: 'stop' }),
+            ),
+          );
+        }
+        const unsub = agent.subscribe((event: any) => {
+          res.write(`data: ${JSON.stringify(event)}\n\n`);
+        });
+        try {
+          await agent.prompt(String(text ?? ''));
+          res.write(`event: done\ndata: ${JSON.stringify({ rpcCalls: env.calls.map((c) => c.op) })}\n\n`);
+        } catch (e: any) {
+          res.write(`event: error\ndata: ${JSON.stringify({ error: String(e?.message ?? e) })}\n\n`);
+        } finally {
+          unsub();
+          res.end();
+        }
+      });
+      return;
+    }
+
     if (url.pathname === '/interrupt' && req.method === 'POST') {
       agent.abort();
       res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
@@ -206,8 +267,10 @@ export async function startWorker(cfg = configFromEnv()) {
   });
 
   await new Promise<void>((r) => server.listen(cfg.port, '0.0.0.0', r));
+  LISTEN_UPTIME_MS = vmUptimeMs();
+  LISTEN_MS = Date.now() - BOOT_T0;
   const port = (server.address() as any).port;
-  console.log(JSON.stringify({ msg: 'worker listening', port, bootMs: Date.now() - BOOT_T0, modelMode: cfg.modelMode, env: cfg.envUrl }));
+  console.log(JSON.stringify({ msg: 'worker listening', port, bootMs: LISTEN_MS, vmUptimeAtListenMs: LISTEN_UPTIME_MS, modelMode: cfg.modelMode, env: cfg.envUrl }));
   return { server, agent, env, port, close: () => new Promise<void>((r) => server.close(() => r())) };
 }
 

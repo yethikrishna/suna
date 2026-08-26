@@ -168,7 +168,61 @@ gateway integration, because pi models `ModelAuth` as
 
 ---
 
-## Measured
+## Benchmark: real Daytona sandboxes
+
+`bench/daytona-bench.ts` is standalone — no Kortix API, no database, no UI. It
+builds a Daytona snapshot from the worker image, boots real sandboxes, measures,
+and deletes everything it created.
+
+```bash
+bun bench/daytona-bench.ts --runs=5                     # faux model
+bun bench/daytona-bench.ts --runs=5 --delete-snapshots  # also drop the snapshots
+KORTIX_API_KEY=sk-... bun bench/daytona-bench.ts --real # absolute TTFT
+```
+
+Credentials are read with `dotenvx get` from `apps/api/.env` and never written
+anywhere. `--keep` leaves the sandboxes up for poking; without it the `finally`
+block deletes them even on failure.
+
+### Results — 5 runs, Daytona `us`, 1 vCPU / 1 GB
+
+```
+daytona create() call      min  1205 ms   med  1410 ms   max  1633 ms
+process start -> serving   min   211 ms   med   543 ms   max   759 ms
+time to first token        min    12 ms   med    13 ms   max    16 ms
+bash tool round trip       min    60 ms   med    67 ms   max   284 ms
+```
+
+**The tool round trip is the finding.** 67 ms median, worker → provider edge →
+environment — the same shape production would use (worker → Kortix proxy →
+sandbox daemon). At that cost **a 200-tool-call turn pays 13.3 s, on every turn,
+forever**, against a `bash` that is a local fork today at roughly 1 ms.
+
+That is larger than the one-off boot saving. The split is a clear win for
+reasoning-heavy sessions and a regression for tool-heavy ones unless the RPC is
+multiplexed and co-located. It is not a detail to schedule later; it decides
+whether the architecture pays.
+
+With the faux model, TTFT is infrastructure only — boot plus dispatch. That is
+deliberate: provider latency is identical before and after the split, so
+including it only adds noise to the decision.
+
+### Two measurement traps this hit, both worth knowing
+
+1. **Daytona isolates sandboxes from each other.** A worker cannot reach an
+   environment by private IP — `EHOSTUNREACH`. The first run reported a
+   suspiciously constant "3.07 s round trip" which was a TCP connect timeout
+   times one retry, not latency. The reachable path is the provider's edge,
+   which is also the production topology.
+2. **`/proc/uptime` is virtualized in Daytona** and disagrees with the process
+   clock read microseconds later (280 ms vs 513 ms), so "VM boot → serving"
+   cannot be measured from inside the sandbox at all. That gap is precisely
+   what P1.0's API-side clock exists to measure — independent evidence that it
+   is needed, not optional.
+
+---
+
+## Measured locally
 
 | | today (`apps/sandbox`) | this worker |
 |---|---|---|
@@ -178,9 +232,10 @@ gateway integration, because pi models `ModelAuth` as
 | harness construction | — | **56–88 ms** |
 | runtime module resolution | npm/plugin load at boot | **none** |
 
-Docker on macOS, so these are a proxy for a micro-VM, not a substitute. The
-number the plan actually needs is P1.0's: `POST /sessions` → first token, on
-dev, against today's warm-pool hit.
+Docker on macOS, so these are a proxy for a micro-VM, not a substitute — see
+the Daytona benchmark above for numbers on real infrastructure. The number the
+plan still needs is P1.0's: `POST /sessions` → first token, on dev, against
+today's warm-pool hit.
 
 ---
 
@@ -199,7 +254,9 @@ dev, against today's warm-pool hit.
    version and watch this.
 4. **The gateway is a `baseUrl`** — `ModelAuth { apiKey?, headers?, baseUrl? }`.
    S0.2's kill condition does not fire.
-5. **Per-call HTTP is already fragile at three calls.** The first end-to-end run
+5. **The tool RPC tax is measured, and it is the deciding number.** 67 ms
+   median per call on Daytona. See the benchmark section.
+6. **Per-call HTTP is already fragile at three calls.** The first end-to-end run
    died on `"The socket connection was closed unexpectedly"` — a keep-alive
    socket retired between RPCs. It is patched here with a longer server timeout
    and one client retry, which is a plaster. The plan's requirement for a single

@@ -52,6 +52,8 @@ export interface KortixEnvOptions {
   cwd: string;
   /** Bearer token for the environment. Optional for the local stub. */
   token?: string;
+  /** Extra headers sent with every RPC (provider preview tokens, tracing). */
+  headers?: Record<string, string>;
   /** Per-call timeout. */
   timeoutMs?: number;
 }
@@ -60,6 +62,7 @@ export class KortixExecutionEnv {
   readonly cwd: string;
   private readonly baseUrl: string;
   private readonly token?: string;
+  private readonly headers: Record<string, string>;
   private readonly timeoutMs: number;
 
   /** Every RPC that crossed the boundary. The proof harness reads this. */
@@ -69,6 +72,7 @@ export class KortixExecutionEnv {
     this.baseUrl = opts.baseUrl.replace(/\/$/, '');
     this.cwd = opts.cwd;
     this.token = opts.token;
+    this.headers = opts.headers ?? {};
     this.timeoutMs = opts.timeoutMs ?? 120_000;
   }
 
@@ -100,6 +104,7 @@ export class KortixExecutionEnv {
         headers: {
           'content-type': 'application/json',
           ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
+          ...this.headers,
         },
         body: JSON.stringify({ op, args, cwd: this.cwd }),
         signal: ctl.signal,

@@ -88,7 +88,10 @@ async function main() {
     console.log('  [local] starting stub environment…');
     const { startStubEnvironment } = await import('../src/stub-environment.ts');
     const { makeTransport } = await import('../src/rpc-transport.ts');
-    const env = await startStubEnvironment({ root: '/tmp/kx-rpc-' + Date.now() });
+    const { mkdtemp } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const env = await startStubEnvironment({ root: await mkdtemp(join(tmpdir(), 'kx-rpc-')) });
     console.log(`  [local] env ${env.url}`);
     where = 'localhost (loopback — a floor, not a prediction)';
     const results: Record<string, any> = {};

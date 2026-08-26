@@ -62,7 +62,10 @@ function apiKey(): string | undefined {
 
 async function main() {
   const envRoot = await mkdtemp(join(tmpdir(), 'kx-term-env-'));
-  const storeRoot = join(tmpdir(), 'kx-term-store');
+  // Stable across runs so --session resumes, but NOT a fixed name in the
+  // world-writable tmpdir (another local user could pre-own it). Per-user
+  // cache dir instead.
+  const storeRoot = join(process.env.HOME ?? tmpdir(), '.cache', 'kx-term-store');
 
   const env = await startStubEnvironment({ root: envRoot });
   const store = await startStoreService({ root: storeRoot });

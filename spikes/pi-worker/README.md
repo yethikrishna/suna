@@ -511,6 +511,68 @@ round trip including harness work, not a raw RPC. The raw RPC is 16–20 ms.
 
 ---
 
+## Cold time-to-first-token — the number that isolates the architecture
+
+Total task time buries the signal: ~8 of ~11 seconds are the model thinking,
+which is identical on both sides. This measures only the part the split can
+move — **cold create to the agent's first token**.
+
+```bash
+bun bench/ttft-cold.ts --runs=3
+```
+
+Both arms cold, same model, same provider, same region. Each is timed in two
+sequential segments: `create` on the host's clock, then a measurer running
+*inside* the sandbox that waits for readiness, sends the prompt, and stops at
+the first streamed token. The exec that starts that measurer is charged to both
+arms identically.
+
+### Result — 3 runs
+
+| | create | ready | **first token** |
+|---|---|---|---|
+| today — one 6.2 GB box | 992 ms | 2440 ms | **4999 ms** |
+| worker | 1308 ms | 1319 ms | **3037 ms** |
+
+**1.65x — the agent starts speaking 1.96 s sooner.** Across all four runs taken
+the range was 1.7–2.3x (2.0–3.7 s sooner).
+
+### Where the gap comes from
+
+| | boot to ready | ready → first token |
+|---|---|---|
+| today | 2440 ms | 2559 ms |
+| worker | 1319 ms | 1718 ms |
+
+Two roughly equal halves, and only one of them is about image size:
+
+- **~1.1 s of boot** — the 6.2 GB restore versus 140 MB.
+- **~0.8 s of pre-model work** — after `runtimeReady:true`, today's box still
+  creates a session and loads plugins before the first model call goes out (the
+  live capture shows a `plugin.added` flood at 2075 ms). The worker has a
+  bundled agent already in memory and calls the model immediately.
+
+The second half is the more durable win: it does not depend on the provider,
+the image, or how warm anything is.
+
+### Two measurement traps, both hit
+
+1. **The naive "first event containing text" detector is wrong for opencode.**
+   It echoes the USER message over the same stream the moment the prompt is
+   accepted — user text at 1975 ms, assistant announced at 2013 ms, its first
+   real token later still. Detecting that as the first token undercounted the
+   old arm by seconds and briefly made it look *faster*. The fix latches the
+   assistant message id and only counts parts belonging to it. The same class
+   of bug existed on the worker side (agent events carry the accumulating
+   message, so a loose check matched the user's own text and reported a first
+   token 35 ms after ready — before any model call could have returned).
+2. **Three layers of escaping ate a `\n`** and turned the old arm's measurer
+   into a SyntaxError, which read as "the old architecture produced no
+   measurement". Both measurers are now real files in `bench/measure/`,
+   uploaded verbatim.
+
+---
+
 ## One task, both architectures, from cold
 
 Every other benchmark here measures a piece — boot, resume, per-call RPC. This

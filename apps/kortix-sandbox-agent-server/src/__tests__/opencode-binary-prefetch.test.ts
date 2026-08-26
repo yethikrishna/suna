@@ -291,4 +291,17 @@ describe('OpenCode executable prefetch', () => {
     expect(compiledStart).toBeLessThan(checkoutWait)
     expect(main.slice(compiledStart, checkoutWait)).toContain('await opencode.start()')
   })
+
+  test('starts the LLM proxy before compiled OpenCode can spawn', async () => {
+    const main = await readFile(resolve(import.meta.dir, '..', 'main.ts'), 'utf8')
+    const llmProxyStart = main.indexOf('const llmUrl = startLlmProxy(')
+    const llmProxyExport = main.indexOf('process.env.KORTIX_LLM_PROXY_URL = llmUrl', llmProxyStart)
+    const compiledStart = main.indexOf('const compiledOpencodeStartPromise')
+    const opencodeSpawn = main.indexOf('await opencode.start()', compiledStart)
+
+    expect(llmProxyStart).toBeGreaterThan(-1)
+    expect(llmProxyExport).toBeGreaterThan(llmProxyStart)
+    expect(compiledStart).toBeGreaterThan(llmProxyExport)
+    expect(opencodeSpawn).toBeGreaterThan(compiledStart)
+  })
 })

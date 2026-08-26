@@ -57,12 +57,6 @@ function fakeRuntime(
     resumed?: ComposioSessionLike;
     calls?: Array<Record<string, unknown>>;
     catalogPage?: Awaited<ReturnType<NonNullable<ComposioRuntime['toolkits']>['get']>>;
-    authConfigs?: Array<{
-      id: string;
-      name: string;
-      status?: 'ENABLED' | 'DISABLED';
-      isComposioManaged?: boolean;
-    }>;
   } = {},
 ): ComposioRuntime {
   const calls = input.calls ?? [];
@@ -83,20 +77,6 @@ function fakeRuntime(
             async get(query) {
               calls.push({ type: 'catalog', query });
               return input.catalogPage!;
-            },
-          },
-        }
-      : {}),
-    ...(input.authConfigs
-      ? {
-          authConfigs: {
-            async list(query) {
-              calls.push({ type: 'auth-config-list', query });
-              return { items: input.authConfigs! };
-            },
-            async create(toolkit, options) {
-              calls.push({ type: 'auth-config-create', toolkit, options });
-              return { id: 'auth-config-created' };
             },
           },
         }
@@ -221,7 +201,6 @@ test('composioConnectUrl uses session.authorize and does not treat its id as the
     runtime: fakeRuntime({
       created,
       calls,
-      authConfigs: [{ id: 'auth-config-existing', name: 'Kortix Gmail managed actions v1' }],
     }),
   });
 
@@ -239,7 +218,7 @@ test('composioConnectUrl uses session.authorize and does not treat its id as the
   });
 });
 
-test('composioConnectUrl pins the exact least-privilege Gmail config and ignores broader configs', async () => {
+test('composioConnectUrl uses Composio managed Gmail defaults without selecting stale auth configs', async () => {
   const calls: Array<Record<string, unknown>> = [];
   const created = session({
     toolkit: { slug: 'gmail', name: 'Gmail', isNoAuth: false },
@@ -254,50 +233,21 @@ test('composioConnectUrl pins the exact least-privilege Gmail config and ignores
     runtime: fakeRuntime({
       created,
       calls,
-      authConfigs: [
-        {
-          id: 'auth-config-stale',
-          name: 'Kortix Gmail managed actions v1',
-          status: 'ENABLED',
-          isComposioManaged: true,
-        },
-        {
-          id: 'auth-config-generated-default',
-          name: 'auth_config_gmail_123',
-          status: 'ENABLED',
-          isComposioManaged: true,
-        },
-        {
-          id: 'auth-config-read-only',
-          name: 'Kortix Gmail read-only v3',
-          status: 'ENABLED',
-          isComposioManaged: true,
-        },
-      ],
     }),
   });
 
-  expect(calls.find((call) => call.type === 'auth-config-list')).toEqual({
-    type: 'auth-config-list',
-    query: {
-      toolkit: 'gmail',
-      isComposioManaged: true,
-      showDisabled: false,
-      limit: 100,
-    },
-  });
+  expect(calls.some((call) => call.type === 'auth-config-list')).toBe(false);
   expect(calls.some((call) => call.type === 'auth-config-create')).toBe(false);
   expect(calls.find((call) => call.type === 'create')).toMatchObject({
     type: 'create',
     config: {
       sessionPreset: 'direct_tools',
       toolkits: ['gmail'],
-      authConfigs: { gmail: 'auth-config-read-only' },
     },
   });
 });
 
-test('composioConnectUrl creates a least-privilege Gmail managed config when none exists', async () => {
+test('composioConnectUrl does not create a custom Gmail auth config', async () => {
   const calls: Array<Record<string, unknown>> = [];
   const created = session({
     toolkit: { slug: 'gmail', name: 'Gmail', isNoAuth: false },
@@ -309,27 +259,17 @@ test('composioConnectUrl creates a least-privilege Gmail managed config when non
     app: 'gmail',
     connectionId: 'connection-scoped-gmail-new',
     stableUserId: 'kortix-connection:connection-scoped-gmail-new',
-    runtime: fakeRuntime({ created, calls, authConfigs: [] }),
+    runtime: fakeRuntime({ created, calls }),
   });
 
-  expect(calls.find((call) => call.type === 'auth-config-create')).toEqual({
-    type: 'auth-config-create',
-    toolkit: 'gmail',
-    options: {
-      type: 'use_composio_managed_auth',
-      name: 'Kortix Gmail read-only v3',
-      isEnabledForToolRouter: true,
-      credentials: {
-        scopes: [
-          'https://www.googleapis.com/auth/userinfo.profile',
-          'https://www.googleapis.com/auth/userinfo.email',
-          'https://www.googleapis.com/auth/gmail.readonly',
-        ].join(','),
-      },
-    },
-  });
+  expect(calls.some((call) => call.type === 'auth-config-create')).toBe(false);
   expect(calls.find((call) => call.type === 'create')).toMatchObject({
-    config: { authConfigs: { gmail: 'auth-config-created' } },
+    config: {
+      sessionPreset: 'direct_tools',
+      toolkits: ['gmail'],
+      manageConnections: false,
+      sandbox: { enable: false },
+    },
   });
 });
 
@@ -561,8 +501,19 @@ test('composioCatalogPage uses a discovery-only identity and session.toolkits pa
     runtime: fakeRuntime({ created, calls }),
   });
 
+  // Enriched even with no metadata available: the fields are part of the page's
+  // contract now, so the client's category bucketing reads `[]` rather than
+  // `undefined` and cannot fork on which branch answered.
   expect(result).toEqual({
-    items: [{ slug: 'composio_search', name: 'Composio Search', isNoAuth: true }],
+    items: [
+      {
+        slug: 'composio_search',
+        name: 'Composio Search',
+        isNoAuth: true,
+        description: null,
+        categories: [],
+      },
+    ],
     cursor: 'next-page',
     totalPages: 2,
   });
@@ -721,4 +672,60 @@ test('gateway executes Composio with selected-row metadata and never exposes a s
     },
   });
   expect(JSON.stringify(executions)).not.toContain('COMPOSIO_API_KEY');
+});
+
+test('composioCatalogPage enriches the paged catalogue with the metadata that page omits', async () => {
+  // `session.toolkits()` returns no description and no categories, so every card
+  // fell into the client's synthetic "Other" bucket and opening it asked for
+  // `category=Other` — a category no provider has. The page then reported the
+  // catalogue as unavailable while showing it.
+  const calls: Array<Record<string, unknown>> = [];
+  const created = session({ toolkit: { slug: 'gmail', name: 'Gmail', isNoAuth: false } });
+  created.toolkits = async (options) => {
+    calls.push({ type: 'toolkits', options });
+    return {
+      items: [
+        { slug: 'gmail', name: 'Gmail', isNoAuth: false },
+        { slug: 'beyond_the_metadata_cap', name: 'Uncatalogued', isNoAuth: true },
+      ],
+      totalPages: 1,
+    };
+  };
+
+  const result = await composioCatalogPage({
+    projectId: 'project-1',
+    runtime: fakeRuntime({
+      created,
+      calls,
+      catalogPage: [
+        {
+          slug: 'gmail',
+          name: 'Gmail',
+          noAuth: false,
+          meta: {
+            description: 'Google email',
+            categories: [
+              { slug: 'email', name: 'email' },
+              { slug: 'productivity', name: 'productivity' },
+            ],
+          },
+        },
+      ],
+    }),
+  });
+
+  if (!('items' in result)) throw new Error('expected the paged browse shape');
+  const items = result.items;
+  expect(items[0]).toMatchObject({
+    slug: 'gmail',
+    description: 'Google email',
+    categories: ['email', 'productivity'],
+  });
+  // Past the provider's 1000-toolkit metadata cap there is nothing to enrich
+  // with. The card still ships, uncategorized, rather than being dropped.
+  expect(items[1]).toMatchObject({
+    slug: 'beyond_the_metadata_cap',
+    description: null,
+    categories: [],
+  });
 });

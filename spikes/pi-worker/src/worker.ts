@@ -32,7 +32,38 @@ import {
   fauxToolCall,
 } from '@earendil-works/pi-ai';
 import { AssistantMessageEventStream } from '@earendil-works/pi-ai';
+import { Session } from '@earendil-works/pi-agent-core';
 import { KortixExecutionEnv } from './kortix-env.ts';
+import { DurableSessionStorage, RemoteSessionLog } from './session-store.ts';
+
+/**
+ * pi's session layer runs `assertJsonSerializable` on every durable payload:
+ * no `undefined`, no non-finite numbers, no cycles. That is a deliberate and
+ * correct guard — it means anything accepted into a session is guaranteed
+ * persistable — but provider messages routinely carry `undefined` optional
+ * fields, so a bridge has to normalize before appending.
+ *
+ * Dropping an `undefined`-valued key is lossless: JSON has no representation
+ * for it, and a reader cannot distinguish "absent" from "present but
+ * undefined". Non-finite numbers would be a real loss, so those are surfaced
+ * rather than silently coerced.
+ */
+function toDurable<T>(value: T, path = 'message'): T {
+  if (value === null) return value;
+  if (typeof value === 'number' && !Number.isFinite(value)) {
+    throw new Error(`non-finite number at ${path} cannot be persisted`);
+  }
+  if (Array.isArray(value)) return value.map((v, i) => toDurable(v, `${path}[${i}]`)) as unknown as T;
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v === undefined) continue;
+      out[k] = toDurable(v, `${path}.${k}`);
+    }
+    return out as unknown as T;
+  }
+  return value;
+}
 
 /**
  * True time-to-first-token.
@@ -101,6 +132,10 @@ export interface WorkerConfig {
   modelId?: string;
   apiKey?: string;
   gatewayUrl?: string;
+  /** Durable session store. Absent = in-memory only (conversation dies with the process). */
+  storeUrl?: string;
+  storeHeaders?: Record<string, string>;
+  sessionId?: string;
 }
 
 export function configFromEnv(): WorkerConfig {
@@ -119,6 +154,9 @@ export function configFromEnv(): WorkerConfig {
     modelId: process.env.KORTIX_MODEL,
     apiKey: process.env.KORTIX_API_KEY,
     gatewayUrl: process.env.KORTIX_GATEWAY_URL,
+    storeUrl: process.env.KORTIX_STORE_URL,
+    storeHeaders: process.env.KORTIX_STORE_HEADERS ? JSON.parse(process.env.KORTIX_STORE_HEADERS) : undefined,
+    sessionId: process.env.KORTIX_SESSION_ID ?? 'session-local',
   };
 }
 
@@ -180,6 +218,23 @@ export async function buildHarness(cfg: WorkerConfig) {
   const tools = [createBashTool(), createReadTool(), createWriteTool(), createEditTool()]
     .map((t) => bindTool(t, toolContext));
 
+  // Durable transcript. The worker is a cache of it, not its owner: kill this
+  // process and the conversation is still whole in the store.
+  let session: Session | undefined;
+  let restoredEntries = 0;
+  let restoredMessages: any[] = [];
+  if (cfg.storeUrl && cfg.sessionId) {
+    const log = new RemoteSessionLog(cfg.storeUrl, cfg.sessionId, cfg.storeHeaders ?? {});
+    const opened = await DurableSessionStorage.open({ id: cfg.sessionId } as any, log);
+    restoredEntries = opened.restoredEntries;
+    session = new Session(opened.storage as any);
+    const leaf = await session.getLeafId();
+    if (leaf) {
+      const entries = await session.findEntriesOnBranch({ start: leaf } as any);
+      restoredMessages = entries.filter((e: any) => e.type === 'message').map((e: any) => e.message);
+    }
+  }
+
   const timing: { firstTokenMs: number | null } = { firstTokenMs: null };
 
   const agent = new Agent({
@@ -193,11 +248,32 @@ export async function buildHarness(cfg: WorkerConfig) {
       model,
       thinkingLevel: 'off',
       tools,
-      messages: [],
+      // Seeded from the durable store, so a restarted worker continues the
+      // same conversation rather than starting a new one.
+      messages: restoredMessages,
     } as any,
   });
 
-  return { agent, env, faux, models, timing };
+  // Bridge Agent -> Session. AgentHarness would own this natively, but every
+  // one of its 23 methods throws HarnessNotImplemented in 0.84.3, so the
+  // projection is ours — the fallback the plan named for exactly this case.
+  // The on-disk shape is still pi's own MessageEntry, so this stays compatible
+  // when AgentHarness lands.
+  if (session) {
+    let persisted = restoredMessages.length;
+    agent.subscribe(async (event: any) => {
+      if (event.type !== 'agent_end' && event.type !== 'turn_end') return;
+      const all = agent.state.messages;
+      for (let i = persisted; i < all.length; i++) {
+        await session!.appendMessage(toDurable(all[i])).catch((e) =>
+          console.error(JSON.stringify({ msg: 'session append failed', error: String(e?.message ?? e) })),
+        );
+      }
+      persisted = all.length;
+    });
+  }
+
+  return { agent, env, faux, models, timing, session, restoredEntries, restoredMessages };
 }
 
 let LISTEN_UPTIME_MS: number | null = null;
@@ -206,7 +282,7 @@ let LISTEN_UPTIME_MS: number | null = null;
 let LISTEN_MS: number | null = null;
 
 export async function startWorker(cfg = configFromEnv()) {
-  const { agent, env, faux, timing } = await buildHarness(cfg);
+  const { agent, env, faux, timing, session, restoredEntries } = await buildHarness(cfg);
   const listeners = new Set<(chunk: string) => void>();
 
   agent.subscribe((event: any) => {
@@ -226,6 +302,7 @@ export async function startWorker(cfg = configFromEnv()) {
         vmUptimeNowMs: vmUptimeMs(),
         modelMode: cfg.modelMode,
         environment: { url: cfg.envUrl, cwd: cfg.envCwd, rpcCalls: env.calls.length },
+        store: cfg.storeUrl ? { url: cfg.storeUrl, sessionId: cfg.sessionId, restoredEntries } : null,
       });
       res.writeHead(200, { 'content-type': 'application/json' }).end(body);
       return;
@@ -335,6 +412,21 @@ export async function startWorker(cfg = configFromEnv()) {
              .end(JSON.stringify({ ok: false, error: String(e?.message ?? e) }));
         }
       });
+      return;
+    }
+
+    // History straight from the durable tree. Present here for convenience;
+    // the real point is that the SAME data is readable from the store with no
+    // worker running at all — see bench/read-transcript.ts.
+    if (url.pathname === '/history') {
+      if (!session) { res.writeHead(200, { 'content-type': 'application/json' }).end('{"messages":[]}'); return; }
+      const leaf = await session.getLeafId();
+      const entries = leaf ? await session.findEntriesOnBranch({ start: leaf } as any) : [];
+      const payload = JSON.stringify({
+        restoredEntries,
+        messages: entries.filter((e: any) => e.type === 'message').map((e: any) => e.message),
+      });
+      res.writeHead(200, { 'content-type': 'application/json' }).end(payload);
       return;
     }
 

@@ -346,7 +346,22 @@ export type {
  * and `createKortixSession`, the self-refreshing token store for `getToken`.
  */
 export {
+  // The functions behind `kortix.auth.*` — exported so `Kortix`'s inferred type
+  // stays nameable from the root entry (TS2742 in a consumer's declaration
+  // emit otherwise, e.g. apps/whitelabel-demo `next build`).
+  signUp,
+  signInWithPassword,
+  sendMagicLink,
+  verifyOtp,
+  signInWithProvider,
+  exchangeCode,
+  refreshSession,
+  resetPassword,
+  updatePassword,
+  authUser,
+  signOut,
   HeadlessAuthError,
+  type HeadlessAuthApi,
   type AuthSession,
   type AuthUser,
   type AuthSessionResult,

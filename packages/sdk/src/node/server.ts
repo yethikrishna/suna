@@ -230,3 +230,10 @@ export {
   type KortixViewer,
   type RequireViewerResult,
 } from './auth';
+
+/**
+ * Types a server-side consumer's declaration emit may need to name `Kortix`
+ * (the `auth` member and its session store) without reaching into src/.
+ */
+export type { HeadlessAuthApi, AuthSession, AuthUser, AuthSessionResult, AuthRequestOptions } from '../core/rest/platform-client/auth';
+export type { KortixSession, KortixSessionOptions, KortixSessionStorage } from '../core/auth/session';

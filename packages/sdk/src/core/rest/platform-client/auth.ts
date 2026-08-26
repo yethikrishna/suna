@@ -13,6 +13,7 @@
  */
 import { platformConfig } from '../../http/config';
 import { stripTrailingSlashes } from '../../../platform/strings';
+import type { KortixSession, KortixSessionOptions } from '../../auth/session';
 
 export interface AuthSession {
   access_token: string;
@@ -174,3 +175,23 @@ export function signOut(accessToken: string, input: { scope?: 'global' | 'local'
   return call<{ ok: true }>('/auth/sign-out', { body: input, bearer: accessToken }, opts);
 }
 
+/**
+ * The shape of `kortix.auth`. A named interface (not an inferred object type)
+ * so `Kortix` stays nameable from every entry point — a consumer's declaration
+ * emit otherwise fails with TS2742 pointing at this file's path.
+ */
+export interface HeadlessAuthApi {
+  signUp: typeof signUp;
+  signInWithPassword: typeof signInWithPassword;
+  sendMagicLink: typeof sendMagicLink;
+  verifyOtp: typeof verifyOtp;
+  signInWithProvider: typeof signInWithProvider;
+  exchangeCode: typeof exchangeCode;
+  refresh: typeof refreshSession;
+  resetPassword: typeof resetPassword;
+  updatePassword: typeof updatePassword;
+  user: typeof authUser;
+  signOut: typeof signOut;
+  /** A self-refreshing session store; wire `session.getToken` into `createKortix`. */
+  session: (options?: KortixSessionOptions) => KortixSession;
+}

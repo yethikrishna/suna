@@ -22,6 +22,7 @@ import { ApiError } from '../http/api/errors';
 import { type KortixPlatformConfig, configureKortix, platformConfig } from '../http/config';
 import * as P from '../rest/projects-client';
 import * as A from '../rest/platform-client/auth';
+import type { HeadlessAuthApi } from '../rest/platform-client/auth';
 import { createKortixSession } from '../auth/session';
 import { getSessionHealth } from '../session/health';
 import { type SubdomainUrlOptions, proxyLocalhostUrl, rewriteLocalhostUrl } from '../session/url';
@@ -145,7 +146,7 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
    * Supabase. `session()` returns a store whose `getToken` refreshes itself;
    * pass it to `createKortix({ getToken: session.getToken })`.
    */
-  const auth = {
+  const auth: HeadlessAuthApi = {
     signUp: A.signUp,
     signInWithPassword: A.signInWithPassword,
     sendMagicLink: A.sendMagicLink,

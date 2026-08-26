@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 600,
+  "count": 602,
   "routes": [
     {
       "method": "GET",
@@ -957,6 +957,10 @@
     {
       "method": "GET",
       "path": "/v1/git/:project/compiled-checkout"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/git/:project/compiled-pi-runtime"
     },
     {
       "method": "GET",

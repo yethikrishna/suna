@@ -21,6 +21,8 @@ import { getClient, getClientForUrl } from '../runtime/client';
 import { ApiError } from '../http/api/errors';
 import { type KortixPlatformConfig, configureKortix, platformConfig } from '../http/config';
 import * as P from '../rest/projects-client';
+import * as A from '../rest/platform-client/auth';
+import { createKortixSession } from '../auth/session';
 import { getSessionHealth } from '../session/health';
 import { type SubdomainUrlOptions, proxyLocalhostUrl, rewriteLocalhostUrl } from '../session/url';
 import { loadPreviewUrlTemplate } from '../session/preview-config';
@@ -136,6 +138,27 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     // Assembled by the single producer, never by hand — see preview-options.ts.
     return resolvePreviewOptions({ sandboxId, apiBaseUrl, backendPort });
   }
+
+  /**
+   * Headless regular auth — sign-up, sign-in (password, magic link, social),
+   * refresh, password reset, sign-out — through the Kortix API, never
+   * Supabase. `session()` returns a store whose `getToken` refreshes itself;
+   * pass it to `createKortix({ getToken: session.getToken })`.
+   */
+  const auth = {
+    signUp: A.signUp,
+    signInWithPassword: A.signInWithPassword,
+    sendMagicLink: A.sendMagicLink,
+    verifyOtp: A.verifyOtp,
+    signInWithProvider: A.signInWithProvider,
+    exchangeCode: A.exchangeCode,
+    refresh: A.refreshSession,
+    resetPassword: A.resetPassword,
+    updatePassword: A.updatePassword,
+    user: A.authUser,
+    signOut: A.signOut,
+    session: createKortixSession,
+  };
 
   /** Account-scoped operations. */
   const accounts = {
@@ -1281,6 +1304,8 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
   return {
     /** The platform config in effect (for diagnostics). */
     config,
+    /** Headless regular auth — see `auth` above. */
+    auth,
     accounts,
     /** Identity and access — assignments, roles, permissions, groups, probes. */
     iam,

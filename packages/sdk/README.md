@@ -430,7 +430,7 @@ them too). They're real classes: `instanceof` works across every host, and
 - `ApiError` — any failed request; branch on `.status` / `.code` (e.g.
   `'TIMEOUT'`, `'RUNTIME_UNAVAILABLE'`, `'ABORTED'`). Timeout errors carry
   `.url` / `.endpoint` / `.timeout`.
-- `AuthError extends ApiError` — `getToken()` returned null; the request was
+- `HeadlessAuthError extends ApiError` — `getToken()` returned null; the request was
   never sent (`code: 'NO_SESSION'`).
 - `BillingError` — HTTP 402, with the backend's payload on `.detail`.
 - `RequestTooLargeError` — HTTP 431 (usually a too-large upload batch), with a
@@ -443,7 +443,7 @@ The canonical server-side wrapper shape — catch a 402 and pass the payload
 through to your own client for re-billing, instead of leaking a Kortix error:
 
 ```ts
-import { ApiError, AuthError, BillingError } from "@kortix/sdk";
+import { ApiError, HeadlessAuthError, BillingError } from "@kortix/sdk";
 
 try {
   await kortix.session(pid, sid).send(prompt);
@@ -452,7 +452,7 @@ try {
     // 402 — surface the upgrade/cost payload under YOUR billing story.
     return res.status(402).json({ reason: "quota", detail: err.detail });
   }
-  if (err instanceof AuthError)
+  if (err instanceof HeadlessAuthError)
     return res.status(401).json({ error: "not authenticated" });
   if (err instanceof ApiError)
     return res.status(err.status ?? 502).json({ error: err.message });
@@ -584,6 +584,19 @@ const client = createKortix(auth.clientConfig());  // talks to Kortix through /p
 
 `@kortix/sdk/react` adds `useKortixViewer()` and `<SignInWithKortix />`.
 Full guide: `/docs/sdk/sign-in`. Example: `examples/11-sign-in-with-kortix.ts`.
+
+### Headless sign-in (your users, straight through the API)
+
+```ts
+const session = kortix.auth.session({ storage });             // self-refreshing token store
+const { session: s, user } = await kortix.auth.signInWithPassword({ email, password });
+await session.set(s, user);
+const asUser = createKortix({ backendUrl, getToken: session.getToken });
+```
+
+Also `signUp`, `sendMagicLink` + `verifyOtp`, `signInWithProvider` +
+`exchangeCode` (PKCE), `resetPassword`, `updatePassword`, `user`, `signOut` —
+all `/v1/auth/*`, no Supabase in the client. Guide: `/docs/sdk/auth`.
 
 ## Tests
 

@@ -46,6 +46,7 @@ import { startAppIdleReaper, stopAppIdleReaper } from './apps/idle-reaper';
 import { handleAppPublicRequest, resolveAppRequest } from './apps/public-proxy';
 import { appWsHandlers, prepareAppWsUpgrade } from './apps/ws-proxy';
 import { authRouter } from './auth';
+import { headlessAuthRouter } from './auth/headless';
 import { authEmailHookApp } from './auth/send-email-hook';
 import { accountDeletionApp, billingApp } from './billing';
 import {
@@ -834,6 +835,9 @@ app.route('/v1/accounts', accountsRouter);
 // /v1/auth/* — auth-side server endpoints (logout for now). Audit
 // events for login/logout/failed-login live in the auth middleware
 // + this router so SOC2 reviews see the full auth lifecycle.
+// Headless regular auth (signup / sign-in / magic link / social / refresh /
+// reset) — public, mounted BEFORE the bearer-gated auth router on the same prefix.
+app.route('/v1/auth', headlessAuthRouter);
 app.route('/v1/auth', authRouter);
 // SCIM 2.0 — separate auth (per-account bearer tokens, not Supabase JWT).
 // Mounted outside /v1 so IdPs configure the documented protocol URL.

@@ -44,6 +44,15 @@ first-class credential on both auth middlewares, self-serve client registry.
 **Gates:** `pnpm --filter @kortix/sdk typecheck` clean (package + examples) ·
 `test` exit 0, no failing file · `smoke:install` pass.
 
+**Phase B (same session) — headless regular auth.** `core/rest/platform-client/auth.ts`
+(+ test) — `kortix.auth.{signUp, signInWithPassword, sendMagicLink, verifyOtp,
+signInWithProvider, exchangeCode, refresh, resetPassword, updatePassword,
+user, signOut}` over `/v1/auth/*` (API side: `apps/api/src/auth/headless.ts`
++ `gotrue.ts`, GoTrue called server-side with the API key + forwarded IP,
+per-IP token bucket) · `core/auth/session.ts` (+ test) — `createKortixSession`
+(storage adapter, shared in-flight refresh, 4xx on refresh = signed out) ·
+`HeadlessAuthError`. Public surface: additive.
+
 ### 2026-08-26 — session `session-ux` (WS-R) — stop-release: a re-minted prompt's echo must find ITS OWN bubble — DONE
 
 **Files:** `browser/stores/sync-store.ts` (`registerOptimisticEcho` follows the

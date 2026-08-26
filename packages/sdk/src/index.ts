@@ -341,6 +341,27 @@ export type {
 } from './core/rest/projects-client';
 
 /**
+ * Headless regular auth — `kortix.auth.*` (sign-up, password / magic-link /
+ * social sign-in, refresh, password reset, sign-out through the Kortix API)
+ * and `createKortixSession`, the self-refreshing token store for `getToken`.
+ */
+export {
+  HeadlessAuthError,
+  type AuthSession,
+  type AuthUser,
+  type AuthSessionResult,
+  type AuthOtpType,
+  type AuthProvider,
+  type AuthRequestOptions,
+} from './core/rest/platform-client/auth';
+export {
+  createKortixSession,
+  type KortixSession,
+  type KortixSessionOptions,
+  type KortixSessionStorage,
+} from './core/auth/session';
+
+/**
  * Linear-time trailing-slash strip shared with hosts — see
  * `platform/strings.ts` for why this replaces the regex idiom.
  */

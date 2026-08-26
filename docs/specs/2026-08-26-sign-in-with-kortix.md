@@ -132,3 +132,46 @@ paragraph, README. Example: `packages/sdk/examples/sign-in-with-kortix.ts`.
    `iam.can` as the viewer.
 4. Dev: same flow against `https://dev-api.kortix.com` after Deploy Dev; record
    the deployed SHA.
+
+## Phase B — regular auth, headless (added 2026-08-26)
+
+Requirement (Marko): the API must be usable "completely headless — whatever way
+you want", including ordinary sign-up / sign-in, through the API and the SDK,
+with no Supabase in the client contract. Today `apps/web` calls supabase-js
+directly for `signUp`, `signInWithPassword`, `signInWithOtp`, `verifyOtp`,
+`signInWithOAuth` + `exchangeCodeForSession`, `resetPasswordForEmail`,
+`updateUser`, `signOut`. The API owns only `/v1/auth/logout`.
+
+### API — `/v1/auth/*` (public unless marked; every call is a server-side
+GoTrue request with the API's own key, the client IP forwarded for GoTrue's
+rate limits, plus a Kortix per-IP token bucket)
+
+| Route | Body | Returns |
+|---|---|---|
+| `POST /v1/auth/signup` | `{email, password, data?, redirect_to?}` | `{user, session\|null, requires_email_confirmation}` |
+| `POST /v1/auth/sign-in/password` | `{email, password}` | `{session, user}` |
+| `POST /v1/auth/sign-in/magic-link` | `{email, create_user?, redirect_to?, data?}` | `{sent: true}` |
+| `POST /v1/auth/verify-otp` | `{email, token, type}` (`magiclink\|signup\|recovery\|email`) | `{session, user}` |
+| `POST /v1/auth/sign-in/oauth` | `{provider, redirect_to, scopes?}` | `{url, code_verifier}` — PKCE; the client keeps the verifier |
+| `POST /v1/auth/oauth/exchange` | `{code, code_verifier}` | `{session, user}` |
+| `POST /v1/auth/refresh` | `{refresh_token}` | `{session, user}` |
+| `POST /v1/auth/password/reset` | `{email, redirect_to?}` | `{sent: true}` |
+| `POST /v1/auth/password/update` (bearer) | `{password}` | `{user}` |
+| `GET /v1/auth/user` (bearer) | — | `{user}` |
+| `POST /v1/auth/sign-out` (bearer) | `{scope?}` | `{ok: true}` — GoTrue logout + the existing audit/session revoke |
+
+`session` = `{access_token, refresh_token, token_type, expires_in, expires_at}`.
+Errors are GoTrue's, normalised to `{error, error_description}` with the
+upstream status. `redirect_to` values must be on Supabase's redirect
+allow-list (deployment config, documented). MFA stays on the web app for now
+(documented gap).
+
+### SDK
+
+`kortix.auth.{signUp, signInWithPassword, sendMagicLink, verifyOtp,
+signInWithProvider, exchangeCode, refresh, resetPassword, updatePassword,
+user, signOut}` — unauthenticated calls go straight to `backendUrl`; bearer
+calls use the token passed in. `createKortixSession({ storage?, onChange? })`
+keeps a session, refreshes it 60 s before expiry through `kortix.auth.refresh`,
+and exposes `getToken` for `createKortix`. Docs: `docs/sdk/auth.mdx` gains a
+"Headless sign-in" section.

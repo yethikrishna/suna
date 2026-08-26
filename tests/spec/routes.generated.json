@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 610,
+  "count": 621,
   "routes": [
     {
       "method": "GET",
@@ -653,6 +653,50 @@
     {
       "method": "POST",
       "path": "/v1/auth/logout"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/oauth/exchange"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/password/reset"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/password/update"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/refresh"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/sign-in/magic-link"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/sign-in/oauth"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/sign-in/password"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/sign-out"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/signup"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/auth/user"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/verify-otp"
     },
     {
       "method": "GET",

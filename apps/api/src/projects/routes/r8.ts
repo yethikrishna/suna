@@ -1040,7 +1040,9 @@ projectsApp.openapi(
     const requeued = await retryInboxPrompt(sessionId, promptId);
     if (!requeued) return c.json({ error: 'Not found' }, 404);
 
-    void drainSessionLifecycleQueue({ limit: 1 }).catch(() => undefined);
+    void drainSessionLifecycleQueue(
+      requeued.idempotencyKey ? { idempotencyKey: requeued.idempotencyKey } : { limit: 1 },
+    ).catch(() => undefined);
     return c.json(serializePrompt(requeued), 200);
   },
 );

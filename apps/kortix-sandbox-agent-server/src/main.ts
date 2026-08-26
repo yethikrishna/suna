@@ -67,6 +67,7 @@ import type { SandboxBootState } from './routes/health'
 import { installShutdownHandlers } from './shutdown'
 import { startStaticWebServer } from './static-web'
 import { opencodeDeliveryInFlight, opencodeTurnInFlight } from './opencode-turn-state'
+import { installCompiledRuntime } from './compiled-runtime'
 
 const LEGACY_OPENCODE_ZEN_FREE_MODELS = new Set([
   'deepseek-v4-flash-free',
@@ -161,17 +162,11 @@ async function main() {
   }
   bootMark('git-identity')
 
-  // The opencode config dir lives INSIDE the repo (`<workspace>/.kortix/
-  // opencode`), so the repo MUST be materialized before we can resolve which
-  // config dir opencode should launch with. Resolving before the clone always
-  // missed the project's opencode.jsonc and silently fell back to the baked
-  // default dir — so the session ran with NO custom agents/plugins/commands
-  // and not even the project's `default_agent`. Clone first, then resolve.
-  //
-  // opencode is spawned AFTER the clone (not in parallel): OPENCODE_CONFIG_DIR
-  // is fixed at spawn time, so the dir has to be known up front. The clone is
-  // the boot long-pole; the opencode spawn (binary launch + port bind) is fast
-  // and opencode doesn't touch the workspace until its first request anyway.
+  // The normal OpenCode config dir lives inside the repo. A compiled runtime
+  // extracts the exact Git revision's OpenCode config to
+  // tmpfs before this bundle executes. That lets OpenCode start while the full
+  // checkout extracts. The first directory-scoped request still waits below
+  // for repoMaterializePromise, so tools never observe a partial workspace.
   const projectEnv = createProjectEnvStore()
   if (!agentEnvDirIsTmpfs()) {
     logger.error('[boot] /dev/shm is not tmpfs — agent secret file would persist to disk; check the sandbox runtime mount')
@@ -278,11 +273,52 @@ async function main() {
       })
     : Promise.resolve()
 
+  // Every gateway session routes OpenCode through the localhost LLM proxy.
+  // Start it before either compiled-config or checkout-config OpenCode can
+  // spawn, so both boot paths receive the same provider base URL.
+  if (
+    hasKortixLlmGateway(process.env) &&
+    !process.env.KORTIX_LLM_PROXY_URL &&
+    process.env.KORTIX_LLM_PROXY_DISABLE !== '1'
+  ) {
+    const llmPort = Number(process.env.KORTIX_LLM_PROXY_PORT) || 4319
+    const llmUrl = startLlmProxy(llmPort, process.env.KORTIX_LLM_BASE_URL, process.env.KORTIX_TOKEN)
+    if (llmUrl) {
+      process.env.KORTIX_LLM_PROXY_URL = llmUrl
+      bootMark('llm-proxy-started')
+      logger.info('[boot] llm proxy up; opencode provider routes through it', { llmUrl })
+    }
+  }
+
+  const compiledOpencodeConfigDir = (process.env.KORTIX_COMPILED_OPENCODE_CONFIG_DIR ?? '').trim()
+  const hasCompiledOpencodeConfig =
+    compiledOpencodeConfigDir.length > 0 &&
+    (existsSync(join(compiledOpencodeConfigDir, 'opencode.jsonc')) ||
+      existsSync(join(compiledOpencodeConfigDir, 'opencode.json')))
+  let opencodeStartedFromCompiledConfig = false
+  const compiledOpencodeStartPromise: Promise<void> | null = hasCompiledOpencodeConfig
+    ? (async () => {
+        await ensureOpencodeConfigDeps(compiledOpencodeConfigDir)
+        await ensureInjectedManagedSkills(compiledOpencodeConfigDir)
+        bootMark('compiled-config-deps')
+        opencode.cancelBinaryPrefetch()
+        opencode.reconfigure(cfg, compiledOpencodeConfigDir, projectEnv)
+        await opencode.start()
+        opencodeStartedFromCompiledConfig = opencode.getPid() !== null
+        if (opencodeStartedFromCompiledConfig) bootMark('opencode-spawned')
+      })().catch((err) => {
+        logger.warn('[boot] compiled-config OpenCode start failed; using checkout fallback', {
+          err: err instanceof Error ? err.message : String(err),
+        })
+      })
+    : null
+
   // Wait for the clone to finish before we let downstream code (config-dir
   // resolution, readiness probe, initial session creation) think the workspace
   // is ready.
   await repoMaterializePromise
   bootMark('repo-materialized')
+  await compiledOpencodeStartPromise
 
   // The boot clone is shallow; restore history in the background now that the
   // workspace is usable, so `git log`/`blame`/`diff` work without ever having
@@ -296,9 +332,23 @@ async function main() {
     opencodeConfigDir,
     usingProjectConfig: opencodeConfigDir !== cfg.defaultOpencodeConfigDir,
   })
-  await ensureOpencodeConfigDeps(opencodeConfigDir)
-  await ensureInjectedManagedSkills(opencodeConfigDir)
-  bootMark('config-deps')
+  if (!opencodeStartedFromCompiledConfig) {
+    await ensureOpencodeConfigDeps(opencodeConfigDir)
+    await ensureInjectedManagedSkills(opencodeConfigDir)
+    bootMark('config-deps')
+  } else if (opencodeConfigDir !== compiledOpencodeConfigDir) {
+    // Prepare the checked-out directory for the next runtime restart without
+    // delaying this session's readiness. The current process uses the exact
+    // same revision from the verified tmpfs capsule.
+    void Promise.all([
+      ensureOpencodeConfigDeps(opencodeConfigDir),
+      ensureInjectedManagedSkills(opencodeConfigDir),
+    ]).catch((err) => {
+      logger.warn('[boot] checked-out OpenCode config background preparation failed', {
+        err: err instanceof Error ? err.message : String(err),
+      })
+    })
+  }
 
   // Repository/config work defines the free overlap window. Stop any
   // remaining sequential read here so prefetch cannot outlive either outcome.
@@ -307,6 +357,7 @@ async function main() {
 
   if (bootState.repoMaterializationError) {
     logger.warn('[boot] skipping runtime readiness because repo materialization failed')
+    if (opencodeStartedFromCompiledConfig) await opencode.stop()
   } else {
     // Now that the repo exists, pin the credential helper repo-locally too, so
     // `git push` authenticates regardless of the invoking shell's HOME (the
@@ -316,32 +367,17 @@ async function main() {
         err: err instanceof Error ? err.message : String(err),
       })
     })
-    // Every gateway session routes OpenCode through the localhost LLM proxy,
-    // not only warm hot-swap forks: the proxy is where inline images are
-    // windowed BEFORE a request leaves the sandbox (llm-image-window.ts).
-    // Essentia 2026-08-25: >128 MiB vision bodies were refused at the gateway
-    // edge with a silent 413 and the turn died. Kill switch:
-    // KORTIX_LLM_PROXY_DISABLE=1 restores the direct provider config.
-    if (
-      hasKortixLlmGateway(process.env) &&
-      !process.env.KORTIX_LLM_PROXY_URL &&
-      process.env.KORTIX_LLM_PROXY_DISABLE !== '1'
-    ) {
-      const llmPort = Number(process.env.KORTIX_LLM_PROXY_PORT) || 4319
-      const llmUrl = startLlmProxy(llmPort, process.env.KORTIX_LLM_BASE_URL, process.env.KORTIX_TOKEN)
-      if (llmUrl) {
-        process.env.KORTIX_LLM_PROXY_URL = llmUrl
-        bootMark('llm-proxy-started')
-        logger.info('[boot] llm proxy up; opencode provider routes through it', { llmUrl })
-      }
-    }
+    // Reconfigure now so any later restart uses the checked-out config. The
+    // already-running compiled-config process stays untouched.
     opencode.reconfigure(cfg, opencodeConfigDir, projectEnv)
-    await opencode.start().catch((err) => {
-      logger.warn('[boot] opencode.start() rejected', {
-        err: err instanceof Error ? err.message : String(err),
+    if (!opencodeStartedFromCompiledConfig) {
+      await opencode.start().catch((err) => {
+        logger.warn('[boot] opencode.start() rejected', {
+          err: err instanceof Error ? err.message : String(err),
+        })
       })
-    })
-    bootMark('opencode-spawned')
+      bootMark('opencode-spawned')
+    }
   }
 
   // If the image shipped without its baked catalog, opencode just booted on the
@@ -739,13 +775,11 @@ async function startSessionRuntime(
   }
   let loopStarted = false
   if (bootState.initialOpenCodeSessionRequired) {
-    // SUBSCRIBE BEFORE PROMPT: start the /event loop first and hand its
-    // `connected` promise to the initial-session path, which awaits it before
-    // firing prompt_async. This guarantees the subscription is live before the
-    // first turn is launched, so a fast trivial turn can't reach session.idle in
-    // an unsubscribed gap (the event-loss race). The reconcile on connect is the
-    // backstop for any residual gap.
-    const loop = startOpencodeEventLoop(opencode, cfg, eventHandlers)
+    // Start the /event loop before resolving the root and delivering the prompt.
+    // Do not await the response headers: OpenCode can withhold them until the
+    // first event, which makes an await here deadlock with prompt delivery. The
+    // connect reconciliation closes the residual event-loss race.
+    startOpencodeEventLoop(opencode, cfg, eventHandlers)
     loopStarted = true
     const finalizeInitialSession = async () => {
       await reconcileInitialTurnAcceptance()
@@ -764,7 +798,6 @@ async function startSessionRuntime(
       opencode,
       bootState,
       bootMark,
-      loop.connected,
       markOpencodeListening,
     ).catch((err) => {
       bootState.initialOpenCodeSessionError = err instanceof Error ? err.message : String(err)
@@ -775,7 +808,6 @@ async function startSessionRuntime(
         opencode,
         bootState,
         bootMark,
-        loop.connected,
         markOpencodeListening,
       ).catch((err) => {
         bootState.initialOpenCodeSessionError = err instanceof Error ? err.message : String(err)
@@ -1316,12 +1348,6 @@ async function maybeCreateInitialOpencodeSession(
   opencode: Opencode,
   bootState: SandboxBootState,
   bootMark: (label: string) => void,
-  // Resolves when the /event SSE subscription is live. The first turn's
-  // prompt_async is held until this resolves so a fast trivial turn cannot reach
-  // session.idle before anyone is subscribed (the event-loss race). Optional so
-  // the reused-root / no-prompt paths (which never fire a new turn) don't depend
-  // on it; a missing promise just skips the wait.
-  eventLoopConnected?: Promise<void>,
   onListening?: () => void,
 ): Promise<void> {
   const claimedTurn = await claimInitialTurnFromApi()
@@ -1337,7 +1363,6 @@ async function maybeCreateInitialOpencodeSession(
   //   opencode-answering  → opencode's own cold start (runtime + config +
   //                         provider init + per-directory project init)
   //   opencode-root-ready → resolving/creating this session's root
-  //   event-loop-connected→ the SSE subscribe we hold the first turn on
   //   opencode-session-created (existing) → first prompt delivered
   // A big opencode-answering means the fix is in the image (pre-booted
   // opencode); a big root-ready means it's our bootstrap.
@@ -1447,22 +1472,6 @@ async function maybeCreateInitialOpencodeSession(
   void relayBootstrapPinToApi(sessionId)
 
   if (prompt && !alreadyDelivered) {
-    // Hold the first turn until the /event subscription is live so a fast
-    // trivial turn can't reach session.idle in an unsubscribed gap. Bounded so a
-    // stuck subscribe never blocks boot — the reconcile-on-connect backstop still
-    // finalizes a turn that finishes before the (late) subscribe. The timer is
-    // cleared when `connected` wins so it never dangles holding the event loop.
-    if (eventLoopConnected) {
-      let timer: ReturnType<typeof setTimeout> | undefined
-      await Promise.race([
-        eventLoopConnected,
-        new Promise<void>((r) => {
-          timer = setTimeout(r, 10_000)
-        }),
-      ])
-      if (timer) clearTimeout(timer)
-      bootMark('event-loop-connected')
-    }
     await publishInitialOpenCodeSessionAfterPrompt(bootState, sessionId, () =>
       deliverInitialOpenCodePrompt(
         opencode,
@@ -1560,10 +1569,10 @@ function pinOpencodeSessionFile(sessionId: string): void {
  * F1: durable proof that `deliverInitialOpenCodePrompt` actually SUCCEEDED —
  * not just that boot intended to deliver it. `OPENCODE_SESSION_PIN_PATH` is
  * written BEFORE delivery (see `pinOpencodeSessionFile` above, called ahead
- * of the delivery call at this function's call site), with an up-to-10s
- * `eventLoopConnected` wait in between. A daemon crash in that window leaves
- * the pin behind but never delivers — a bare-pin check alone would then read
- * every future boot as "already delivered" and silence the session forever
+ * of the delivery call at this function's call site). A daemon crash after
+ * that write can leave the pin behind but never deliver. A bare-pin check
+ * alone would then read every future boot as "already delivered". That would
+ * silence the session forever.
  * (see `reusedRootAlreadyDelivered`). This marker is written ONLY after
  * `deliverInitialOpenCodePrompt` returns successfully, right next to the pin,
  * so its mere existence is the delivery receipt the pin alone can't provide.
@@ -3033,6 +3042,18 @@ if (import.meta.main) {
     runGitCredentialHelper(loadConfig(), process.argv[3])
       .then((code) => process.exit(code))
       .catch(() => process.exit(0))
+  } else if (subcommand === 'install-compiled-runtime') {
+    installCompiledRuntime(loadConfig())
+      .then((result) => {
+        process.stdout.write(`${result.path}\n`)
+        process.exit(0)
+      })
+      .catch((error) => {
+        process.stderr.write(
+          `[compiled-runtime] install failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        )
+        process.exit(1)
+      })
   } else {
     main().catch((err) => {
       logger.error('[boot] fatal', err)

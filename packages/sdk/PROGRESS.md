@@ -12,6 +12,93 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-26 — session `session-ux-ws-l` — a stopped session paints its transcript from the SERVER's mirror — DONE
+
+**Files:** `core/rest/projects-client/sessions.ts` (`SessionTranscriptSource`,
+`SessionTranscriptSyncMessage`, `SessionTranscriptSyncEnvelope`,
+`getSessionTranscriptSync`; `SessionTranscript` gains `source`/`complete`/`captured_at`)
+· `browser/session-sync/server-transcript-mirror.ts` (NEW — `shouldHydrateFromMirror`,
+`mirrorMessagesForHydrate`, `parseKortixSessionScope`, `loadSessionTranscriptMirror`)
+· `browser/session-sync/server-transcript-mirror.test.ts` (NEW, 12 tests)
+· `react/use-session-sync.ts` (first-paint hydrate, NOT gated on `networkEnabled`)
+· `core/client/kortix.ts` (`kortix.session(p,s).transcriptSync()`)
+· `index.ts` + both public-surface snapshots (additive only).
+Hosts: `apps/api` (the mirror itself), `apps/web` (the banner that replaces the wall).
+
+**What.** Opening a stopped/hibernated session showed a full-screen "Connecting…"
+with NO transcript for the whole wake — measured 5-240 s — although every message
+existed. `apps/api` `buildSessionTranscriptDigest` proxied the sandbox, so it
+answered `unavailable` for any non-running session, and the browser-side
+IndexedDB mirror that used to cover the gap was deleted (`5a7a43517f`).
+
+**Why the old mirror was deleted, and why this one is different.** Its freshness
+test read the transcript's SHAPE (message count, part count, tail id) and the two
+things that end a turn move none of them: `time.completed`, and the `error` a
+Stop stamps. `use-session-sync.ts` states the acceptance criterion for any
+replacement — *a mirror whose freshness test reads the MESSAGE, not its shape*.
+This one satisfies it three ways: (1) the SERVER writes it BECAUSE a turn ended,
+so there is no client-side freshness test left to get wrong; (2) `info` travels
+VERBATIM, so `time.completed`/`error` reach every turn predicate; (3) the
+envelope names the OpenCode root it was captured from, so a mirror belonging to a
+re-pinned box is REFUSED instead of painted as ghosts — a check the scope-keyed
+disk cache could not make.
+
+**Fix.** Hydrated with `source: 'cache'`, so the store's existing `cacheSourcedIds`
+settle rule owns reconciliation unchanged: the first runtime read confirms every
+id it contains and drops any it covers but lacks. The rule needed no extension —
+what it lacked was real OpenCode ids to settle, which the server payload
+guarantees and the disk cache did not (it also held optimistic stubs the runtime
+never had).
+
+**Public surface: additive.** Three new types, one new function, three new fields
+on `SessionTranscript`. No rename, no removal — both snapshots reviewed.
+
+**Known cost, accepted:** one extra control-plane GET per session mount. It is
+not gated on the runtime, which is the entire point.
+
+**Left in place, deliberately:** the settle rule's `id >= oldestIncoming` bound is
+an id comparison over a time-ordered list (`sync-store.ts:1704`, flagged there as
+an open question). A server mirror carries real ids from the same root, so it is
+neither better nor worse off than the runtime's own page. Not touched here.
+
+**Gates:** `typecheck` clean (both projects) · `bun run test` (`--isolate`)
+**2593 pass / 0 fail**, 174 files · `smoke:install` passed · apps/web
+`bun test src/features/session` 2628 pass / 0 fail · apps/api canonical
+`bash scripts/test.sh` **8304 pass / 0 fail / 78 skip**, 722 files.
+
+> **Trap for the next session:** the mirror capture reuses
+> `resolveSessionOpencodeEndpoint`, so on a local Platinum box it fails with
+> `expose -> 409 sandbox_not_running` whenever the provider has parked the box —
+> the same exposure `reconcileForwardedTurnsAtEnd` already has. A capture that
+> fails is not lost work: the next one re-reads the last 80 messages and
+> back-fills, and it never throws.
+
+---
+
+### 2026-08-26 — session `session-ux-ws-k` (round 2) — the bare Bedrock id is healed at RESOLUTION time — DONE
+
+**Files:** `react/bedrock-invokable.ts` (NEW, internal — `healBedrockModelKey`)
+· `react/use-opencode-local.ts` (guard applied to `currentModelKey` AND
+`sendModelKey`; the fallback's "first model of provider" loop now iterates
+`autoSeedableModels`).
+
+**Why.** Round 1 fixed the catalog default and was merged (PR #6914,
+865223ebea), and the Essentia frontend bundle was proven new by content — yet
+a fresh native Bedrock workspace still preselected "Grok 4.6". The catalog
+default is only Priority 3 of the LAST source in this hook's chain
+(explicit > serverDefault > globalDefault > agent.model > fallback), and the
+explicit slot is browser-global: `agentScopedModelSelectionKey(mode, name)` is
+`` `${mode}:${name ?? ''}` `` (use-opencode-local.ts:226-231), and the
+project-home composer has no agent and no sessionId — so every native project
+in one browser shares the slot `native:`. One earlier wedged session pinned
+`xai.grok-4.6` there and every future workspace inherited it. Healing at the
+resolution seam covers that slot and every other source (recent,
+globalDefault, agent.model, config.model, first-model), and repairs
+already-pinned browsers with no migration.
+
+**Public surface: unchanged** — `bedrock-invokable.ts` is internal (not
+re-exported from `react/index`); both snapshots are untouched.
+
 ### 2026-08-26 — session `session-ux-ws-k` — a fresh Bedrock workspace never auto-seeds a bare in-region id — DONE
 
 **Files:** `react/provider-selection.ts` (`nativeProviderListFromCatalog`: the

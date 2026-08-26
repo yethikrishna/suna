@@ -288,9 +288,69 @@ reach the plan before Phase 1 is scoped, and it makes P1.0's clock more
 important, not less: the number that justifies this work is a p99, not a
 median.
 
-Not measured here, and it matters: **resume from an archived snapshot**, which
-is the case the huddle actually complained about. This benchmark only covers
-create-from-active-snapshot.
+---
+
+## Resume from ARCHIVED — the case the huddle argued about
+
+Daytona's own docs: archiving moves *"the entire filesystem state to
+cost-effective object storage… starting an archived sandbox takes more time,
+**depending on its size**."* That is the Marko/Kubet disagreement, stated by the
+provider. `bench/resume.ts` puts both arms through the identical journey —
+create → fully warm → stop → archive → **start** — and times that last step.
+
+```bash
+bun bench/resume.ts --runs=2                     # ~10 min: archiving 6.2 GB is slow
+bun bench/resume.ts --runs=2 --delete-snapshots
+```
+
+### Result — 4 cycles each
+
+| archived → able to serve | worker (140 MB) | today (6.2 GB) |
+|---|---|---|
+| `start()` returns | 2.7 s | 3.0–6.3 s |
+| VM reports started | 3.1 s | 3.3–6.6 s |
+| **able to serve a prompt** | **3.2 s** (2.77–3.46) | **6.0 s** (4.85–8.12) |
+
+**~2x, and size does matter here** — unlike create-from-snapshot, where it
+barely did. But it is still 2x off a 44x image-size ratio, so "the image is
+huge" remains the wrong headline.
+
+### Where the 2x actually comes from
+
+Split the resume into provider restore and software re-init:
+
+| | provider restore | software re-init | total |
+|---|---|---|---|
+| worker | ~2.7 s | **0.16 s** | 3.2 s |
+| today | ~3.0–6.3 s | **1.5–1.8 s** | 6.0 s |
+
+Roughly half the gap is Daytona pulling more bytes back. The other half is
+kortixd and OpenCode re-initialising after the VM is already up — **0.16 s
+versus 1.5–1.8 s**. The worker `exec`s one pre-bundled `.mjs` and is done;
+today's box has to bring a runtime back to life.
+
+That second column is the part the split actually controls, and it is the
+better argument: not "our image is smaller" but "our box has almost nothing to
+do once it exists".
+
+### Side finding: archiving costs minutes
+
+| | archive → archived |
+|---|---|
+| worker | 24–31 s (median 28 s) |
+| today | **121–199 s** (median 135 s) |
+
+~5x. A box being archived is unavailable for over two minutes today. Nothing in
+the plan accounts for that, and it is worth checking whether the reaper's
+archive path can collide with a wake.
+
+### One honest wrinkle in the output
+
+Asked what it had just resumed from, the worker answered *"I didn't resume from
+anything — this is the start of our conversation."* Correct, and a problem: the
+spike uses `InMemorySessionRepo`, so conversation state does not survive the
+archive. That is exactly what **S0.4** (a durable session store) exists to fix,
+and this is the first time it has bitten in a measurable way.
 
 ---
 

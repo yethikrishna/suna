@@ -104,7 +104,9 @@ RUN printf '{"name":"kortix-cli-build","private":true,"workspaces":["apps/cli","
 # (src/git-proxy/pi-worker-bundle.ts reads dist/worker-runtime.mjs).
 # Standalone bun package with its own bun.lock — deliberately outside the pnpm
 # workspace (see pnpm-workspace.yaml).
-FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim AS pi-worker
+# Bun 1.3 (not the base's 1.2): apps/kortix-worker/bun.lock is 1.3-format
+# (`configVersion`), and --frozen-lockfile must read it byte-for-byte.
+FROM --platform=$BUILDPLATFORM oven/bun:${SANDBOX_AGENT_BUN_VERSION}-slim AS pi-worker
 
 WORKDIR /repo/apps/kortix-worker
 COPY apps/kortix-worker/package.json apps/kortix-worker/bun.lock ./

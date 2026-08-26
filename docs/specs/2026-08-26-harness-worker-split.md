@@ -124,10 +124,6 @@ current web SSE consumer reads.
 fallbacks above resolved either way, and the cold-boot number for the bundled
 server.
 
-**Phase 0 output:** a short findings doc — pass/fail per proof, the two
-fallbacks above resolved either way, and the cold-boot number for the bundled
-server.
-
 ---
 
 ## Gate G0 — the RPC tax. Runs after Phase 0, before P1.1.

@@ -21,6 +21,30 @@ linked, not inlined.
 
 ## Register
 
+### A row lock held to COMMIT makes batch size a blast radius, and a 500 turns backpressure into a livelock (2026-08-26)
+
+**When:** writing anything that inserts into `kortix.audit_events`, sizing an
+audit batch, or triaging `insert into "kortix"."audit_events"` blocking another
+one in `pg_stat_activity`.
+`kortix.audit_prepare_event` allocates the per-session sequence and hash-chain
+head from `kortix.audit_session_sequences`; PostgreSQL holds that row lock until
+the inserting transaction COMMITs. So the lock is held for the WHOLE statement,
+not the allocation: one 200-row ingest pinned a session for its full duration and
+one 100-row queue flush built in arrival order pinned up to 100 sessions at once.
+Rules: (1) one statement never spans two sessions; (2) chunk a batch so the lock
+is held per chunk and committed chunks survive a later failure; (3) give the
+audit pool a `lock_timeout` far below its `statement_timeout` — a lock wait is
+not work; (4) report contention (57014/55P03/40001/40P01) as a retryable 503 with
+`Retry-After`, never a 500, and back the client off exponentially.
+*Incident:* Essentia self-host 2026-08-26 — `POST …/audit/events` returned
+500 [57014] 445 times in 3h, each at ~10s, while the sandbox relay's flat 1s
+retry re-entered the same lock queue and kept the convoy alive. Predecessor:
+PR #6702's dedicated audit pool isolated the damage but did not remove it.
+*Enforcer:* `statementBatches` + its tests (`apps/api/src/shared/audit-queue.ts`),
+`isAuditContentionError` tests (`apps/api/src/shared/audit-db.test.ts`), the
+per-session lock-scope integration test in
+`packages/db/scripts/centralized-audit-v2.integration.test.ts`.
+
 ### A CI lane that runs inside a third-party sandbox inherits that provider's availability, and a fallback nobody exercises is not a fallback (2026-08-26)
 
 **When:** deciding where a test lane executes, or adding a provider fallback
@@ -2920,3 +2944,113 @@ which fails on any unlisted non-prod secret that equals its prod value;
 *Incident:* no known misuse. The Armor audit log shows the PROD keypairs were
 decrypted by 4 members and 1 former member before the restriction; the shared
 vendor credentials remain to be rotated per the allowlist (PR #6910).
+
+## A stamped failure is a cooldown, never a gravestone — and a negative is a claim
+
+*Incident (2026-08-26, Essentia).* Two sessions could only be recovered by a
+human pressing Restart.
+
+- Session `e06ad0c4` answered `POST …/start` with `stage:"failed"` in **47 ms**,
+  making **no provider call**. A wake had exceeded the FIXED
+  `RUNTIME_WAKE_LEASE_MS = 240_000`, and maintenance stamped
+  `stopReason:"runtime_wake_failed"`. The box was startable: the manual restart
+  reached ready in **10 s**.
+- Session `9c8749ac` (box `i67m4fhw2t3nesssgl4yf`) replayed
+  `{"stage":"failed","retriable":false,…"stopReason":"runtime_boot_failed",
+  "healthStatus":"unknown","lastInitError":null}` on **every open for 10+
+  hours** from a stamp written at 03:37Z. Four fields from four different
+  writes; none described the call, which touched nothing.
+
+Both stamps were written by a budget that measured wall clock, and both were
+consumed by a `/start` branch that returned before any provider call. Only
+`POST …/restart` cleared them, which is why the human's one click always worked.
+
+**The rules.**
+
+1. **A stamped runtime failure suppresses re-attempts for a COOLDOWN, and for
+   nothing longer.** After it lapses the next `/start` re-attempts by itself.
+   The cooldown escalates with consecutive failures (2 / 5 / 10 min) so a broken
+   provider is not hammered, and the verdict expires 30 min after the last
+   failure: no verdict outlives its evidence.
+2. **Cover every stamp that short-circuits the path**, not the one in the
+   report. `runtime_wake_failed` AND `runtime_boot_failed` produced the same
+   dead end from two different writers.
+3. **`retriable` is derived on every call, never persisted.** Anything the
+   server can still re-attempt must not answer `retriable:false` — that flag
+   tells the client's escalation ladder to stop.
+4. **A negative is a claim: carry its evidence.** Every `/start` failure now
+   ships `failure.evidence` = which check, when it ran, the provider text, the
+   attempt count, and `next_retry_at`. A `failed` payload with
+   `lastInitError:null` tells a user nothing.
+5. **The answer states what THIS call did and observed.** `action`,
+   `observation` (with `known:false` meaning NOT CHECKED, never "checked and
+   unknown"), `boot.actively_starting`, and one `observed_at`. A payload no live
+   check supports is not a state worth naming.
+6. **The wake budget measures lack of progress** — the same rule as
+   "A boot budget measures lack of progress, not wall-clock". A provider-state
+   change restarts the 90 s no-progress budget and refreshes the durable lease;
+   `RUNTIME_WAKE_HARD_MS = 10 min` bounds the whole wake and never restarts, so
+   the reconcile/billing exemption that lease grants can never be held open by a
+   flapping provider.
+7. **The observer that DEFERS a park owns the confirmation.** A mid-turn
+   `stopped` read that waits for a second observation must schedule that second
+   read itself, not assume someone polls again. Session `29861dfa` /
+   `inqwpv4a1cc1kynlg46k8` read `running` for 5+ minutes while the provider said
+   `not running (status: stopped)`, and the queued prompt burned against it.
+
+*Automation:* `apps/api/src/projects/routes/stopped-wake-result.test.ts` (the
+10-hour replay, both stamps, the ladder, the evidence),
+`session-lifecycle/runtime-wake-fence.test.ts` (progress-aware budget, hard cap,
+cooldown ladder), `session-lifecycle/runtime-wake-billing-invariant.test.ts`
+(the 2026-08-17 mid-turn park and the compute-close exemption stay intact),
+`session-lifecycle/stopped-observation-followup.test.ts` (bounded confirmation),
+`session-lifecycle/start-envelope.test.ts` (one envelope per open state).
+
+### A retry class is a claim about the FAILURE, not about the call that returned it (2026-08-26)
+
+**When:** writing or reviewing any `retryable = <outcome> === …` line on a
+delivery/queue path. `executeQueuedContinue` derived retryability from one
+outcome value, and every producer of that value — a stopped box, a parked
+session, a dead resolved target — was a DOWN RUNTIME, not a bad message. A
+queued prompt delivered while its box was unreachable went `dead_lettered` on
+attempt 1 (`state:failed, attempts:1, last_error:"delivery outcome: failed"`)
+and was never re-tried when the box returned minutes later. Rule: **name the
+unreachable-runtime class separately from the refusal class, keep the work
+queued with a runtime-scaled backoff, spend no dead-letter budget on it, and
+re-arm it on the event you are actually waiting for.** *Enforcer:*
+`deliver.test.ts` (stopped/parked → `unreachable`, missing → `no-session`) and
+`runtime-unreachable-park.test.ts` (bounded budget, backoff ladder, fresh
+idempotency key, Stop survives as a hold).
+
+### A provider's "resume" is not a promise that your processes come back (2026-08-26)
+
+**When:** using any pause/resume sandbox lifecycle that persists the filesystem
+only. E2B's `lifecycle.autoResume` requires a MEMORY snapshot; with
+`keepMemory:false` the SDK documents the box as cold-booting and needing an
+explicit `connect()`, and Kortix sets no template `startCmd` — so apps/api is
+the only thing that starts the runtime. Resumes that came back with a dead
+process tree burned the full 190 s health wait and handed back an unreachable
+box; only a human restart (a NEW sandbox) healed it. Rule: **after a resume,
+prove the daemon answers on a short bound; if it does not AND no supervisor
+process is alive, clear the stale lock, relaunch once, re-verify, and log the
+workaround under one greppable string so its rate is countable.** Never `rm` a
+flock'd lock while a live holder exists — that does not free the lock, it lets a
+second daemon win a different inode. *Enforcer:* `e2b.test.ts` — dead resume is
+revived and re-verified, a healthy resume touches nothing, a merely-slow resume
+is never double-started.
+
+### An image is a cache; a boot that blocks on building one has confused it for the truth (2026-08-26)
+
+**When:** touching `ensureSandboxImage` or any boot-path call that can reach a
+provider build. Every `self-host update` bumps the runtime fingerprint and
+starts a template rebuild (14 m 11 s measured); session starts inside that
+window sat in `provisioning` for 10–34 minutes, polling the in-flight build for
+up to 12 minutes or building inline. The daemon converges on the deploy's
+runtime assets at boot and on every resume, so a box booted from the previous
+ready image serves the same CLI, skills and OpenCode pin. Rule: **a session boot
+serves the last image its template lineage actually shipped and lets the new one
+bake behind it; only a genuinely FIRST build may block.** Bound the fallback to
+the same lineage, same provider, recent — convergence does not rebuild the base
+rootfs. *Enforcer:* `last-ready-image.test.ts` (predecessor served while the new
+identity builds; first build still blocks) and `e2b.test.ts` (a resume never
+consults a template at all).

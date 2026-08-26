@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   DAYTONA_CI_SNAPSHOT_VERSION,
   DaytonaApi,
@@ -22,8 +22,11 @@ import { buildWorkerScript, providerMetadataIdentifier } from '../src/core/plati
 const sha = 'a'.repeat(40);
 const lockHash = 'b'.repeat(64);
 
+// bun's vitest shim (1.3.14, the CI-pinned version) has no vi.stubGlobal /
+// vi.unstubAllGlobals — stub the global directly and restore it after each test.
+const originalFetch = globalThis.fetch;
 afterEach(() => {
-  vi.unstubAllGlobals();
+  globalThis.fetch = originalFetch;
 });
 
 describe('Daytona CI worker plan', () => {
@@ -194,7 +197,7 @@ describe('Daytona CI worker plan', () => {
 
   test('reconciles a lost sandbox create response by exact name', async () => {
     const requests: string[] = [];
-    vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
       requests.push(`${init?.method ?? 'GET'} ${String(input)}`);
       if (init?.method === 'POST') throw new TypeError('fetch failed');
       return Response.json({
@@ -202,7 +205,7 @@ describe('Daytona CI worker plan', () => {
         name: 'kortix-ci-run-1',
         state: 'creating',
       });
-    });
+    }) as typeof fetch;
 
     const api = new DaytonaApi('https://app.daytona.io/api', 'test');
     await expect(createDaytonaSandbox(api, {
@@ -217,7 +220,7 @@ describe('Daytona CI worker plan', () => {
 
   test('post cleanup deletes only the exact labelled worker', async () => {
     const requests: string[] = [];
-    vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       requests.push(`${init?.method ?? 'GET'} ${url}`);
       if (init?.method === 'DELETE') return new Response(null, { status: 204 });
@@ -231,7 +234,7 @@ describe('Daytona CI worker plan', () => {
           'kortix-ci-run-attempt': '1',
         },
       });
-    });
+    }) as typeof fetch;
 
     await expect(
       cleanupDaytonaCiSandbox({

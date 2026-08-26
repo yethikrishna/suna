@@ -511,6 +511,65 @@ round trip including harness work, not a raw RPC. The raw RPC is 16–20 ms.
 
 ---
 
+## One task, both architectures, from cold
+
+Every other benchmark here measures a piece — boot, resume, per-call RPC. This
+measures what a user experiences: they ask for something that needs real
+compute, and they wait until it is done.
+
+```bash
+bun bench/task-e2e.ts --runs=3
+```
+
+Task: *create a file in the workspace, read it back, report its contents.* Same
+model, same provider (OpenRouter), both arms. Clock starts at "create the
+sandbox" and stops when the answer is in hand.
+
+Today's approach is ONE box that is both harness and compute; the new approach
+is TWO. Counting only the worker would flatter it, so the new arm is measured
+twice — with the environment cold (worst case, first-ever session) and warm
+(the pooled steady state the plan designs for).
+
+### Result — 3 runs
+
+| | create | ready | **answered** |
+|---|---|---|---|
+| today — one 6.2 GB box | 1781 ms | 3423 ms | **11745 ms** |
+| worker + cold environment | 2694 ms | 2924 ms | **11311 ms** |
+| worker + warm environment | 1621 ms | 1785 ms | **9758 ms** |
+
+**0.4 s faster cold, 2.0 s faster warm — on an ~11 s task.** That is 3–17%,
+not the 1.9x the infrastructure numbers suggest.
+
+### Why, and what it means
+
+About 8 of those 11 seconds are the model thinking, and the split does not
+touch that. The infrastructure half genuinely is ~1.9x better (1785 ms vs
+3423 ms to ready), but it is the minority of what the user waits for on a task
+like this.
+
+So the case for the split does not rest on total task time. It rests on:
+
+- **Time to first token**, which is what a user feels first: 1.45 s vs 2.72 s
+  measured earlier. The answer starts arriving sooner even when it finishes at
+  a similar moment.
+- **The tail.** Today's box ranged 2.3–22.7 s to ready across runs; the worker
+  stayed inside 1.16–2.08 s.
+- **Sessions that never touch compute**, which under the split never provision
+  the fat box at all — the entire 6.2 GB cost disappears rather than shrinking.
+- **Decoupling** harness upgrades from image turnover.
+
+And against it: the RPC tax, which grows with tool calls while all of the above
+are fixed wins.
+
+One caveat in the numbers above: the two arms produced different-length answers
+(*"The file says kortix."* versus a fuller sentence), so a few hundred
+milliseconds of the gap is output tokens, not architecture. The `ready` column
+is the clean infrastructure comparison; `answered` is the honest user-facing
+one with that noise included.
+
+---
+
 ## kx — a terminal for the worker
 
 No UI, no browser, no Kortix API. Brings up store, environment and worker in one

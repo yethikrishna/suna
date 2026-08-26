@@ -6,10 +6,11 @@ import { join } from 'node:path';
 import {
   COMPILED_PI_RUNTIME_FORMAT,
   compilePiRuntime,
+  type CompilePiRuntimeInput,
 } from './compiled-pi-runtime';
 
 const roots: string[] = [];
-const INPUT = {
+const INPUT: CompilePiRuntimeInput = {
   projectId: 'project-1',
   ref: 'main',
   sourceSha: 'a'.repeat(40),

@@ -203,8 +203,14 @@ async function forward(c: any, projectId: string, scope: GitScope, suffix: strin
           typeof (auth.project.metadata as Record<string, unknown> | null)?.default_sandbox_provider === 'string'
             ? ((auth.project.metadata as Record<string, unknown>).default_sandbox_provider as string)
             : null;
+        // The pi_worker flag also lifts the compiled-boot env gate for THIS
+        // project's opencode artifacts: dev runs with KORTIX_COMPILED_BOOT_MODE
+        // unset ('off'), and the harness/worker experiment needs both engines'
+        // artifacts warm per project without touching the environment. The env
+        // mode stays the platform-wide switch; the flag is the per-project one.
+        const piWorkerEnabled = resolveFeatureFlag(auth.project.metadata, 'pi_worker');
         const [compiledResult, piResult] = await Promise.allSettled([
-          config.KORTIX_COMPILED_BOOT_MODE !== 'off'
+          config.KORTIX_COMPILED_BOOT_MODE !== 'off' || piWorkerEnabled
             ? prebuildDefaultBranchArtifacts(
                 gitProject,
                 `${new URL(c.req.url).origin}/v1/git/${projectId}.git`,
@@ -216,9 +222,7 @@ async function forward(c: any, projectId: string, scope: GitScope, suffix: strin
           // like everything else in this block — the on-demand build inside
           // GET /compiled-pi-runtime stays the correctness path for pushes
           // that bypass this proxy (e.g. straight to a user's own GitHub).
-          resolveFeatureFlag(auth.project.metadata, 'pi_worker')
-            ? prebuildDefaultBranchPiRuntime(gitProject)
-            : Promise.resolve(null),
+          piWorkerEnabled ? prebuildDefaultBranchPiRuntime(gitProject) : Promise.resolve(null),
           kickProjectWarmPrebake(gitProject, {
             accountId: auth.project.accountId,
             projectPin,

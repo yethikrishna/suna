@@ -551,8 +551,39 @@ Native cannot consume the SDK's fetch-based SSE stream.
 
 ## Auth
 
-`Authorization: Bearer <token>` — a Supabase JWT (user sessions) or a Kortix PAT
-(`kortix_pat_…`) for server-side / automation use, supplied via `getToken`.
+`Authorization: Bearer <token>` — a Supabase JWT (user sessions), a Kortix PAT
+(`kortix_pat_…`) for server-side / automation use, or an OAuth access token
+(`kortix_oat_…`) minted by "Sign in with Kortix" — supplied via `getToken`.
+
+### Sign in with Kortix (your app, their Kortix account)
+
+Make Kortix the identity provider for an app you run. Register the app once
+(`kortix.iam.oauthClients.create`, or Account → Tokens → OAuth apps), then:
+
+```ts
+import { createKortixAuth } from '@kortix/sdk/server';
+
+export const auth = createKortixAuth({
+  backendUrl: 'https://api.kortix.com/v1',
+  clientId: process.env.KORTIX_OAUTH_CLIENT_ID!,
+  clientSecret: process.env.KORTIX_OAUTH_CLIENT_SECRET,   // omit for a public (PKCE-only) client
+  redirectUri: 'https://app.example.com/api/kortix/auth/callback',
+  cookieSecret: process.env.KORTIX_AUTH_COOKIE_SECRET!,   // ≥ 32 chars
+});
+
+// one catch-all route: /signin /callback /refresh /signout /me /proxy/*
+export const GET = (req: Request) => auth.handler(req);
+export const POST = GET;
+
+// anywhere on the server
+const gate = await auth.requireViewer(req);        // { viewer } | { response: 302 }
+const kortix = await auth.kortix(req);             // acts as the viewer
+// in the browser
+const client = createKortix(auth.clientConfig());  // talks to Kortix through /proxy
+```
+
+`@kortix/sdk/react` adds `useKortixViewer()` and `<SignInWithKortix />`.
+Full guide: `/docs/sdk/sign-in`. Example: `examples/11-sign-in-with-kortix.ts`.
 
 ## Tests
 

@@ -75,6 +75,7 @@ import { combinedAuth, supabaseAuth } from './middleware/auth';
 import { createCorsMiddleware } from './middleware/cors';
 import { isRequestDeadlineHTTPException, requestDeadline } from './middleware/request-deadline';
 import { oauthApp } from './oauth';
+import { oauthAuthorizationServerMetadata } from './oauth/discovery';
 import { opsApp } from './ops';
 import { platformApp } from './platform';
 import { sandboxWebhooksApp } from './platform/webhooks/routes';
@@ -576,6 +577,16 @@ function hasInternalObservabilityAuth(c: any): boolean {
   };
   return (!!bearer && safeEq(bearer, expected)) || (!!header && safeEq(header, expected));
 }
+
+// Sign in with Kortix — RFC 8414 discovery at the API root. The issuer is the
+// configured public API origin (KORTIX_URL); the request origin is only the
+// fallback for a bare local run. Mirrored under /v1/oauth/.well-known/… for
+// edges that route only /v1/*.
+app.get('/.well-known/oauth-authorization-server', (c) => {
+  return c.json(oauthAuthorizationServerMetadata(new URL(c.req.url).origin), 200, {
+    'cache-control': 'public, max-age=3600',
+  });
+});
 
 app.get('/metrics', (c) => {
   if (!hasInternalObservabilityAuth(c)) {

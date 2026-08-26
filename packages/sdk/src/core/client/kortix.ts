@@ -219,6 +219,16 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     /** Auto-provisioned agent identities — the principal picker for binding a
      *  role to an agent. */
     agentIdentities: P.listAgentIdentities,
+    /** "Sign in with Kortix" app registry — pair a client with `createKortixAuth`
+     *  from `@kortix/sdk/server`. The secret is returned once, on create/rotate. */
+    oauthClients: {
+      list: P.listOAuthClients,
+      get: P.getOAuthClient,
+      create: P.createOAuthClient,
+      update: P.updateOAuthClient,
+      rotateSecret: P.rotateOAuthClientSecret,
+      remove: P.deleteOAuthClient,
+    },
     /** Ask the engine. This is the ONLY authorization read a client should make:
      *  probe the LEAF a route asserts, never a role label. */
     can: P.probeEffectivePermission,

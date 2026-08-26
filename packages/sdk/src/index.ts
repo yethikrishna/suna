@@ -331,6 +331,13 @@ export type {
   // Auth validate helper
   AccountIdentity,
   ValidateTokenResult,
+  // Sign in with Kortix — OAuth client registry (`kortix.iam.oauthClients`)
+  OAuthClient,
+  CreatedOAuthClient,
+  CreateOAuthClientInput,
+  UpdateOAuthClientInput,
+  OAuthClientType,
+  OAuthScope,
 } from './core/rest/projects-client';
 
 /**

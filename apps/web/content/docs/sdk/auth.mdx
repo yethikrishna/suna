@@ -62,6 +62,14 @@ role to an agent. See
   instead.
 </Callout>
 
+## OAuth access tokens (Sign in with Kortix)
+
+A third-party app that signs users in through Kortix receives a `kortix_oat_`
+token per user. With the `kortix` scope it acts as that user on the whole API,
+exactly like a personal access token, but it expires after an hour and rotates
+through a refresh token. `createKortixAuth` in `@kortix/sdk/server` owns the
+whole lifecycle — see [Sign in with Kortix](/docs/sdk/sign-in).
+
 ## Supabase JWT
 
 If your app uses Kortix's own sign-in, return the live session token instead
@@ -83,3 +91,4 @@ automatically.
 | The Kortix CLI | `kortix login` (mints a personal access token) |
 | A web app on Kortix sign-in | A Supabase JWT |
 | An automated caller with its own project assignment | A service account |
+| Your own app, signed in by its users with their Kortix account | [Sign in with Kortix](/docs/sdk/sign-in) — an OAuth access token the SDK manages for you |

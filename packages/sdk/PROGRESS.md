@@ -12,6 +12,38 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-26 — session `sign-in-with-kortix` — the SDK owns third-party auth end to end — DONE
+
+**Files:** `node/auth.ts` (+ `auth.test.ts`, 15 cases) — `createKortixAuth`:
+PKCE S256 sign-in, callback exchange, AES-256-GCM `HttpOnly` session cookie,
+`/refresh` rotation, `/signout` revocation, `/me`, same-origin `/proxy`,
+`viewer()` / `requireViewer()` / `kortix()` / `clientConfig()` ·
+`node/server.ts` (re-exports; `forwardKortixRequest` gains an optional
+`fetch`) · `core/rest/projects-client/oauth-clients.ts` (+ test) —
+`kortix.iam.oauthClients.{list,get,create,update,rotateSecret,remove}` ·
+`react/sign-in-with-kortix.tsx` (+ test) — `useKortixViewer`,
+`SignInWithKortix`, `fetchKortixViewer`, link helpers ·
+`platform-client/host-boundary.ts` (`OAuthConsentRequest` gains
+`client_id`, `client_type`, `remembered`) · `core/http/config.ts`
+(`fetch` accepts any fetch-shaped function — the global `typeof fetch` type
+carries Bun's `preconnect`, which no adapter provides) ·
+`examples/11-sign-in-with-kortix.ts` · `scripts/smoke-install.mjs` imports
+`createKortixAuth` from the packed tarball. **Public surface: additive** —
+both snapshots regenerated and reviewed (new names only; nothing renamed or
+removed).
+
+**Why.** A third-party app could not sign users in with Kortix: the SDK was
+token-in only, `/v1/oauth` was half-built (hand-inserted clients, in-memory
+requests, a token that opened only `/userinfo`) and the documented path was
+"embed supabase-js against Kortix's Supabase project". Spec:
+`docs/specs/2026-08-26-sign-in-with-kortix.md`. Docs: `docs/sdk/sign-in`.
+API side in the same branch: persisted authorization requests, remembered
+consent, public clients, `/revoke`, RFC 8414 discovery, `kortix_oat_` as a
+first-class credential on both auth middlewares, self-serve client registry.
+
+**Gates:** `pnpm --filter @kortix/sdk typecheck` clean (package + examples) ·
+`test` exit 0, no failing file · `smoke:install` pass.
+
 ### 2026-08-26 — session `session-ux` (WS-R) — stop-release: a re-minted prompt's echo must find ITS OWN bubble — DONE
 
 **Files:** `browser/stores/sync-store.ts` (`registerOptimisticEcho` follows the

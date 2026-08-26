@@ -1,7 +1,11 @@
 {
   "generatedAt": "static",
-  "count": 600,
+  "count": 610,
   "routes": [
+    {
+      "method": "GET",
+      "path": "/.well-known/oauth-authorization-server"
+    },
     {
       "method": "GET",
       "path": "/health"
@@ -309,6 +313,30 @@
     {
       "method": "GET",
       "path": "/v1/accounts/:accountId/iam/mfa-required/preview"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/accounts/:accountId/iam/oauth-clients"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/iam/oauth-clients"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/accounts/:accountId/iam/oauth-clients/:clientId"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/accounts/:accountId/iam/oauth-clients/:clientId"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/accounts/:accountId/iam/oauth-clients/:clientId"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/accounts/:accountId/iam/oauth-clients/:clientId/rotate-secret"
     },
     {
       "method": "GET",
@@ -1020,6 +1048,10 @@
     },
     {
       "method": "GET",
+      "path": "/v1/oauth/.well-known/oauth-authorization-server"
+    },
+    {
+      "method": "GET",
       "path": "/v1/oauth/authorize"
     },
     {
@@ -1029,6 +1061,10 @@
     {
       "method": "GET",
       "path": "/v1/oauth/authorize/consent/:requestId"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/oauth/revoke"
     },
     {
       "method": "POST",

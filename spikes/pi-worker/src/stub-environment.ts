@@ -14,7 +14,6 @@ import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { exec as execCb } from 'node:child_process';
 import { promisify } from 'node:util';
-import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';

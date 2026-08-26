@@ -12,6 +12,76 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-26 — session `session-random-pause` — transcript freeze mid-turn: unbreakable repair loop — DONE
+
+**Files:** `react/use-session-sync.ts` (`livenessBusy` + `UseSessionSyncOptions`
+gain optional `serverHoldsTurn`) · `react/use-session.ts` (passes
+`working.serverOpenTurnToken !== null`) ·
+`core/session-sync/session-sync-controller.ts` (optional `verifyIntervalMs`,
+default 30s: a busy session re-reads the tail on that cadence even while
+`noteActivity` keeps firing) · `browser/stores/sync-store.ts` (`hydrate` stamps
+`sessionActivityAt` when a RUNTIME read shows the transcript moved with an
+open tail) · comment corrections in `core/session/working.ts`. Tests beside
+each. **Public surface: additive only** (three optional fields on published
+option types).
+
+**Why.** Prod report (essentia, 2026-08-26, after #6864): randomly mid-run the
+transcript freezes minutes behind the runtime and the session renders stopped;
+only a reload repairs. Root cause is a self-sustaining chain: the SSE stream
+black-holes (server audit: a stale cached ingress can answer 200 and never
+write; no keepalives exist; suppressed from api logs), the stale wire idle
+frame then vetoes the server's open `/turn` row (`endedByRuntime` — the veto is
+deliberately unbounded, and `started_at` (server clock) vs `atMs` (tab clock)
+skew can veto even new turns), the projection answers idle, and `working:
+false` switches off the liveness poll — the ONE read whose evidence could
+disprove the veto. Fix is evidence, not time: the poll stays on while the
+server holds a turn open, its hydrate stamps activity when the transcript
+moved mid-turn, and `activityAfterIdle` outranks the stale frame. Separately,
+`noteActivity` let a degraded-but-alive stream postpone the tail read forever;
+the verify cadence bounds divergence to 30s.
+
+**Gates:** `pnpm --filter @kortix/sdk typecheck` clean · `pnpm --filter
+@kortix/sdk test` 2550 pass 0 fail across 155 files (baseline 2541 + 9 new) ·
+`smoke:install` pass.
+
+**Round 2 (same session, same branch; committed `4fe9531e28` on Jay's "make
+the pr" — PR #6899):** two remaining holes closed in the SDK, and the
+server-side follow-ups implemented.
+SDK: `browser/stores/sync-store.ts` gains `sessionStatusAt` (arrival stamp per
+status frame; stamped on value change and origin flip, kept across same-value
+rewrites); `use-opencode-events/helpers.ts` gains pure `shouldSkipStatusFill`
+(+`WIRE_STATUS_FILL_FRESHNESS_MS` = `STREAM_OBSERVATION_MAX_MS`) — the
+reconnect status fill now OVERWRITES a wire frame older than 45s, so a dead
+stream's idle frame stops vetoing `/turn` even when a long tool call moves no
+transcript; `use-session-working.ts` gains `streamObservationStamp` — the
+observation stamp comes from the store, so a remount cannot resurrect a stale
+frame as fresh. Server: `apps/kortix-sandbox-agent-server/src/sse-keepalive.ts`
+injects a typed `kortix.keepalive` event (NOT an SSE comment — parsers swallow
+comments without feeding any client heartbeat) every 20s of upstream silence,
+event-boundary-guarded, backpressure-preserving, wired in `proxy.ts` for
+`text/event-stream` responses; `apps/api/src/sandbox-proxy/sse-stall.ts`
+counts `/global/event` bytes and a zero-byte stream (the stale-cached-ingress
+200-then-silence signature) makes the NEXT connect bypass the ingress cache
+(consume-once), wired in `routes/preview.ts`. Consumers verified tolerant of
+`kortix.keepalive`: SDK event machine (resets heartbeat, drops unknown type),
+`narrowChatEvent` (default null), apps/mobile (`resetHeartbeat()` on any
+message, unmatched switch case).
+
+**Gates (round 2):** sdk typecheck clean · sdk suite 2565 pass / 0 fail / 155
+files · `smoke:install` pass · daemon `bun test` 864 pass / 0 fail / 71 files +
+`tsc --noEmit` clean · api `tsc --noEmit` clean + `bun test --isolate
+src/sandbox-proxy/` 311 pass / 0 fail (non-isolated shows the known
+process-wide mock.module fails — not new).
+
+**Still open (not claimed):** link browser-disconnect aborts to the api's
+upstream fetch; `preview-retry-budget.ts` comments still say "60s ALB idle
+timeout" while terraform sets 300s; daemon keepalives reach only sandboxes
+built from a NEW snapshot (agent-server changes are baked, not hot-deployed)
+and only providers routed through the daemon (Platinum; Daytona dials opencode
+directly).
+
+---
+
 ### 2026-08-26 — session `session-ux-ws-l` — a stopped session paints its transcript from the SERVER's mirror — DONE
 
 **Files:** `core/rest/projects-client/sessions.ts` (`SessionTranscriptSource`,

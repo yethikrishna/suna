@@ -46,15 +46,18 @@ describe('compilePiRuntime', () => {
     const second = compilePiRuntime(INPUT);
 
     expect(second).toEqual(first);
-    expect(first.manifest).toEqual({
+    // The etag is asserted by shape separately: mixing an asymmetric matcher
+    // into a typed object literal fails tsc's toEqual overloads.
+    const { agent_config_etag, ...manifest } = first.manifest;
+    expect(agent_config_etag).toMatch(/^[0-9a-f]{16}$/);
+    expect(manifest).toEqual({
       format: COMPILED_PI_RUNTIME_FORMAT,
       engine: 'pi',
       project_id: 'project-1',
       ref: 'main',
       source_sha: 'a'.repeat(40),
       default_agent: 'kortix',
-      agent_config: INPUT.agentConfig,
-      agent_config_etag: expect.stringMatching(/^[0-9a-f]{16}$/),
+      agent_config: INPUT.agentConfig ?? null,
     });
     expect(first.size).toBe(Buffer.byteLength(first.source));
   });

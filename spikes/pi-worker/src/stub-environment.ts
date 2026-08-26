@@ -199,7 +199,13 @@ export async function startStubEnvironment(opts: StubEnvOptions) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const root = process.env.ENV_ROOT ?? path.join(os.tmpdir(), 'kortix-stub-env');
+  // A FIXED name under the shared os tmpdir was the one real instance of the
+  // insecure-temp-file pattern here: another local user could pre-create
+  // /tmp/kortix-stub-env and own everything the stub writes. mkdtemp gives the
+  // standalone default a private, unpredictable root; tests and the Docker
+  // image always pass ENV_ROOT explicitly.
+  const root =
+    process.env.ENV_ROOT ?? (await fs.mkdtemp(path.join(os.tmpdir(), 'kortix-stub-env-')));
   startStubEnvironment({ root, port: Number(process.env.PORT ?? 8100) }).then((s) =>
     console.log(`[stub-environment] ${s.url}  root=${s.root}`),
   );

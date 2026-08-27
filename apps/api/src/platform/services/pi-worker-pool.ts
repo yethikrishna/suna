@@ -175,6 +175,12 @@ export async function claimParkedPiWorkerBox(
         PROVIDER_CALL_TIMEOUT_MS,
         `Daytona get(${box.externalId})`,
       );
+      // The list can serve stale labels (see verifyStillParked). The direct
+      // object is authoritative — a box already claimed by another session
+      // has lost its park label and must not be dialled.
+      const liveLabels =
+        (sandbox as unknown as { labels?: Record<string, string> }).labels ?? {};
+      if (liveLabels[PARK_LABEL] !== '1') continue;
       const preview = await withTimeout(
         (sandbox as unknown as {
           getPreviewLink(port: number): Promise<{ url: string; token?: string }>;
@@ -229,6 +235,29 @@ export async function claimParkedPiWorkerBox(
 let maintainInFlight: Promise<void> | null = null;
 
 /**
+ * The paginated Daytona list can serve STALE labels: observed live on dev
+ * 2026-08-27, a claimed box (park labels correctly replaced — the direct GET
+ * proved it) still appeared park-labeled in the list minutes later. A reap
+ * decided on that view would delete a LIVE SESSION box. So before any
+ * destructive action, re-read the box directly — the direct GET is the
+ * authority. A box that no longer carries the park label is simply not ours.
+ */
+async function verifyStillParked(externalId: string): Promise<boolean> {
+  try {
+    const sandbox = await withTimeout(
+      getDaytona().get(externalId),
+      PROVIDER_CALL_TIMEOUT_MS,
+      `Daytona get(${externalId})`,
+    );
+    const labels = (sandbox as unknown as { labels?: Record<string, string> }).labels ?? {};
+    return labels[PARK_LABEL] === '1';
+  } catch {
+    // Unknowable ≠ reapable. Skip this round; the next tick retries.
+    return false;
+  }
+}
+
+/**
  * Reconcile the pool toward the target: reap stale-hash / over-age / dead /
  * surplus parked boxes, then create up to MAX_CREATES_PER_MAINTAIN missing
  * ones. Concurrent invocations coalesce; every error is contained (the pool
@@ -241,7 +270,13 @@ export function maintainPiWorkerPool(): Promise<void> {
     const target = config.KORTIX_PI_WORKER_POOL_TARGET;
     const maxAgeMs = config.KORTIX_PI_WORKER_POOL_MAX_AGE_MINUTES * 60_000;
     const image = await ensurePiWorkerImage({ provider: 'daytona' });
-    const parked = await listParkedBoxes();
+    const listed = await listParkedBoxes();
+    // Re-verify every listed box against the direct GET (stale-label hazard
+    // above). Claimed boxes drop out here instead of polluting the counts.
+    const parked: ParkedBox[] = [];
+    for (const box of listed) {
+      if (await verifyStillParked(box.externalId)) parked.push(box);
+    }
     const now = Date.now();
     const alive: ParkedBox[] = [];
     const reap: ParkedBox[] = [];

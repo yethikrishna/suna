@@ -34,6 +34,7 @@ import {
 import { AssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { Session } from '@earendil-works/pi-agent-core';
 import { KortixExecutionEnv } from './kortix-env.ts';
+import { LazyKortixEnv } from './lazy-env.ts';
 import { DurableSessionStorage, RemoteSessionLog } from './session-store.ts';
 
 /**
@@ -125,10 +126,17 @@ function vmUptimeMs(): number | null {
 export interface WorkerConfig {
   port: number;
   envUrl: string;
+  /** True only when KORTIX_ENV_URL was set explicitly (spike/bench rigs). */
+  envUrlExplicit?: boolean;
   envCwd: string;
   envToken?: string;
   envHeaders?: Record<string, string>;
   envTransport?: 'fetch' | 'keepalive' | 'ws';
+  /** Lazy-environment identity (P1.7): all four present → first compute tool
+   *  call provisions the session's environment through the Kortix API. */
+  apiUrl?: string;
+  kortixToken?: string;
+  projectId?: string;
   systemPrompt: string;
   modelMode: 'faux' | 'real';
   providerId?: string;
@@ -146,7 +154,11 @@ export function configFromEnv(): WorkerConfig {
   return {
     port: Number(process.env.PORT ?? 8080),
     envUrl: process.env.KORTIX_ENV_URL ?? 'http://127.0.0.1:8100',
+    envUrlExplicit: Boolean(process.env.KORTIX_ENV_URL),
     envCwd: process.env.KORTIX_ENV_CWD ?? '/workspace',
+    apiUrl: process.env.KORTIX_API_URL,
+    kortixToken: process.env.KORTIX_TOKEN,
+    projectId: process.env.KORTIX_PROJECT_ID,
     envToken: process.env.KORTIX_ENV_TOKEN,
     envHeaders: process.env.KORTIX_ENV_HEADERS ? JSON.parse(process.env.KORTIX_ENV_HEADERS) : undefined,
     envTransport: (process.env.KORTIX_ENV_TRANSPORT as any) ?? 'keepalive',
@@ -184,7 +196,23 @@ function bindTool(tool: any, context: object) {
 }
 
 export async function buildHarness(cfg: WorkerConfig) {
-  const env = new KortixExecutionEnv({ baseUrl: cfg.envUrl, cwd: cfg.envCwd, token: cfg.envToken, headers: cfg.envHeaders, transport: cfg.envTransport });
+  // P1.7 lazy environment: in a session sandbox (identity present, no explicit
+  // env URL) the first compute tool call provisions the session's environment
+  // through the Kortix API and every operation then runs over the provider
+  // edge. Bench/spike rigs keep the direct-URL path by setting KORTIX_ENV_URL.
+  const lazy =
+    !cfg.envUrlExplicit && cfg.apiUrl && cfg.kortixToken && cfg.projectId && cfg.sessionId
+      ? new LazyKortixEnv({
+          apiUrl: cfg.apiUrl,
+          token: cfg.kortixToken,
+          projectId: cfg.projectId,
+          sessionId: cfg.sessionId,
+          cwd: cfg.envCwd,
+        })
+      : null;
+  const env =
+    lazy ??
+    new KortixExecutionEnv({ baseUrl: cfg.envUrl, cwd: cfg.envCwd, token: cfg.envToken, headers: cfg.envHeaders, transport: cfg.envTransport });
 
   const credentials = new InMemoryCredentialStore();
   const models = createModels({ credentials });
@@ -358,7 +386,16 @@ export async function startWorker(cfg = configFromEnv()) {
         vmUptimeAtListenMs: LISTEN_UPTIME_MS,
         vmUptimeNowMs: vmUptimeMs(),
         modelMode: cfg.modelMode,
-        environment: { url: cfg.envUrl, cwd: cfg.envCwd, rpcCalls: env.calls.length },
+        environment:
+          env instanceof LazyKortixEnv
+            ? {
+                mode: 'lazy',
+                attached: env.attached,
+                external_id: env.externalId,
+                cwd: cfg.envCwd,
+                rpcCalls: env.calls.length,
+              }
+            : { mode: 'url', url: cfg.envUrl, cwd: cfg.envCwd, rpcCalls: env.calls.length },
         store: cfg.storeUrl ? { url: cfg.storeUrl, sessionId: cfg.sessionId, restoredEntries } : null,
       });
       res.writeHead(200, { 'content-type': 'application/json' }).end(body);

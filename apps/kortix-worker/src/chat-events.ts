@@ -41,6 +41,14 @@ export interface AdapterOptions {
   sessionID: string;
   /** Stable id for the assistant message currently being streamed. */
   messageId?: () => string;
+  /**
+   * Session-scoped id mint. Without it ids restart at `msg-1` per adapter
+   * instance, so two turns through two adapters collide — and the id ORDER is
+   * load-bearing (the transcript sorts by it, and OpenCode's own id order is
+   * how an answered prompt is detected). The worker passes its surface's
+   * zero-padded counter.
+   */
+  mintMessageId?: () => string;
 }
 
 /**
@@ -52,6 +60,7 @@ export interface AdapterOptions {
  */
 export class ChatEventAdapter {
   private readonly sessionID: string;
+  private readonly mint?: () => string;
   private messageSeq = 0;
   private currentMessageId = '';
   private textIndex = new Map<string, number>();
@@ -61,6 +70,7 @@ export class ChatEventAdapter {
 
   constructor(opts: AdapterOptions) {
     this.sessionID = opts.sessionID;
+    this.mint = opts.mintMessageId;
   }
 
   private nextPart(): string {
@@ -74,7 +84,7 @@ export class ChatEventAdapter {
         return [{ type: 'session.status', properties: { sessionID, status: { type: 'running' } } }];
 
       case 'message_start': {
-        this.currentMessageId = `msg-${++this.messageSeq}`;
+        this.currentMessageId = this.mint ? this.mint() : `msg-${++this.messageSeq}`;
         this.partCount = 0;
         this.textIndex.clear();
         this.accum.clear();

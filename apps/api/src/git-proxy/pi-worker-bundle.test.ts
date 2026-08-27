@@ -184,7 +184,10 @@ describe.skipIf(!existsSync(WORKER_DIST))('compiled pi runtime — session read 
         seq: number;
       };
       const roles = page.messages.map((m) => m.info.role);
-      expect(roles).toContain('user');
+      // EXACTLY one user message: pi emits its own user message_start, which
+      // the adapter must skip (the worker publishes the user turn itself) —
+      // the duplicate rendered as an empty second bubble on dev.
+      expect(roles.filter((r) => r === 'user')).toEqual(['user']);
       expect(roles).toContain('assistant');
       const ids = page.messages.map((m) => m.info.id);
       expect([...ids].sort()).toEqual(ids);

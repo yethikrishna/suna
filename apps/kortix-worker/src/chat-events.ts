@@ -84,6 +84,11 @@ export class ChatEventAdapter {
         return [{ type: 'session.status', properties: { sessionID, status: { type: 'running' } } }];
 
       case 'message_start': {
+        // The worker publishes the USER message itself at prompt time (with its
+        // real text); translating pi's user message_start too would render an
+        // empty duplicate user bubble — observed live on dev (session ae3a07fc,
+        // roles ['user','user','assistant']).
+        if ((event.message?.role ?? 'assistant') === 'user') return [];
         this.currentMessageId = this.mint ? this.mint() : `msg-${++this.messageSeq}`;
         this.partCount = 0;
         this.textIndex.clear();
@@ -180,6 +185,7 @@ export class ChatEventAdapter {
       }
 
       case 'message_end': {
+        if ((event.message?.role ?? 'assistant') === 'user') return [];
         const stop = event.message?.stopReason;
         const out: Wire[] = [
           {

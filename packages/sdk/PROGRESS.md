@@ -12,6 +12,36 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-27 — session `app-viewer-token` — a Kortix-hosted App is already signed in — DONE
+
+**Files:** `core/auth/app-viewer.ts` (+ test) — `fetchKortixAppViewer`,
+`kortixAppViewerToken`, `clearKortixAppViewerCache`: the browser half, one
+cached `GET /_kortix/viewer` on the App's own origin · `node/app-viewer.ts`
+(+ test) — `readAppViewer` (WebCrypto HMAC over the gate's
+`x-kortix-app-viewer` header, secret from `KORTIX_APP_VIEWER_SECRET`),
+`createAppViewerKortix` (a scoped client acting AS the viewer),
+`AppViewerUnavailableError` · `react/use-kortix-app-viewer.ts` —
+`useKortixAppViewer` · `projects-client/apps.ts` — `AppAccessConfig` /
+`UpdateAppAccessInput` gain `viewer_token_scope`, new `AppViewerTokenScope`.
+**Public surface: additive** (both snapshots regenerated).
+
+**Why.** Sign in with Kortix (2026-08-26) solved a third-party app on its OWN
+domain. A Kortix-HOSTED App has a gate in front of it that already
+authenticated the visitor, so making them log in again — or making the App hold
+the account's API key and treat every viewer as the same principal, which is
+what essentia-dashboards did — is both worse UX and worse security. The gate now
+signs the viewer's identity into every proxied request and, for an `api`-scoped
+App, mints a `kortix_oat_` bound to (viewer, App). The user signs in to Kortix
+once and every App is authenticated instantly; App code never sees the user's
+Supabase session. API side in the same branch: `apps/api/src/apps/viewer.ts`
+plus the gate wiring and `apps.viewer_token_scope`.
+
+**Trap for the next person:** the isomorphic tripwire greps for the literal
+`document.` — a JSDoc sentence ending in "…the `/_kortix/viewer` document."
+fails `core/ never touches a bare global`. Reword; it is not a real import.
+
+**Gates:** `typecheck` clean (package + examples) · `test` · `smoke:install`.
+
 ### 2026-08-27 — session `model-heal-gateway` — the Bedrock heal is inert on the gateway — DONE
 
 **Defect (Essentia, deployed web `39685da4`):** clicking any model in the

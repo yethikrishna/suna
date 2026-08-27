@@ -196,6 +196,19 @@ describe.skipIf(!existsSync(WORKER_DIST))('compiled pi runtime — session read 
       expect(assistant?.parts.some((p) => p.type === 'text' && p.text === 'rendered, chief')).toBe(true);
       expect(page.seq).toBeGreaterThan(0);
 
+      // Raw /session list — the control plane's pin probe
+      // (ensureOpencodeSessionPin) reads THIS to resolve /start to 'ready';
+      // without it the healthy box parks at the 90s no-progress budget.
+      const rawList = (await (
+        await fetch(`${base}/session?directory=%2Fworkspace`, authed)
+      ).json()) as Array<{ id: string; title: string }>;
+      expect(rawList.map((s) => s.id)).toEqual([rootId]);
+      const rawDenied = await fetch(`${base}/session`);
+      expect(rawDenied.status).toBe(401);
+      // Only user/assistant roles reach the transcript — pi's toolResult
+      // messages ride as tool PARTS, never as their own rows.
+      expect(new Set(roles).size).toBeLessThanOrEqual(2);
+
       // State: identity + roster + idle status for the root.
       const state = (await (await fetch(`${base}/kortix/opencode/state`, authed)).json()) as {
         identity: { opencode_session_id: string };

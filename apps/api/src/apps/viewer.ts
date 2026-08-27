@@ -34,7 +34,14 @@ import { accountGroupMembers, oauthAccessTokens, oauthClients } from '@kortix/db
 import { db } from '../shared/db';
 import { hashSecretKey, randomAlphanumeric } from '../shared/crypto';
 import { hashOauthToken } from '../oauth/token-hash';
-import { lookupEmailsByUserIds } from '../projects/lib/access';
+/*
+ * The narrow email lookup (drizzle + db, its own cache, never throws) rather
+ * than `projects/lib/access`'s re-export of it: that module drags the whole
+ * project/session/IAM read graph in behind it, which the gate does not need and
+ * which every hand-written module mock in the suite would then have to grow a
+ * matching export for.
+ */
+import { lookupEmailsByUserIds } from '../accounts/core/owner-emails';
 import { appAccessSecret } from './access';
 
 /** The signed identity the gate adds to every proxied request. */

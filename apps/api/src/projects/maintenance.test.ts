@@ -58,6 +58,7 @@ mock.module('../snapshots/builder', () => ({
   // not found` (learnings 2026-08-27, import-edge rule).
   ensurePiWorkerImage: async () => ({ snapshotName: 'kortix-pi-test', slug: 'pi', contentHash: 'c'.repeat(64), built: false, isDefault: false }),
   routedPerProjectWarmImageName: () => 'kpp2-test',
+  ensurePiWorkerImage: async () => undefined,
   reconcileStaleBuilds: async () => ({ checked: 0, closedReady: 0, closedFailed: 0 }),
 }));
 mock.module('../snapshots/quota-gc', () => ({

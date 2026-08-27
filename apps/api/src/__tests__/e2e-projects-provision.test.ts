@@ -197,6 +197,7 @@ mock.module("../snapshots/builder", () => ({
   // not found` (learnings 2026-08-27, import-edge rule).
   ensurePiWorkerImage: async () => ({ snapshotName: 'kortix-pi-test', slug: 'pi', contentHash: 'c'.repeat(64), built: false, isDefault: false }),
   routedPerProjectWarmImageName: () => "kpp2-test",
+  ensurePiWorkerImage: async () => undefined,
   ensureSandboxImage: async () => ({ snapshotName: "kortix-default-test", slug: "default", contentHash: "a".repeat(64), built: false, isDefault: true }),
   ensureFastSandboxImage: async () => ({ snapshotName: "kortix-fast-test", slug: "default", contentHash: "f".repeat(64), built: false, isDefault: true, runtimeProfile: "fast" }),
   ensureMetaSandboxImage: async () => ({ snapshotName: "kortix-meta-test", slug: "meta", contentHash: "b".repeat(64), built: false, isDefault: false }),

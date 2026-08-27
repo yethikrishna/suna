@@ -284,6 +284,7 @@ mock.module('../../snapshots/builder', () => ({
   ensurePiWorkerImage: async () => ({ snapshotName: 'kortix-pi-test', slug: 'pi', contentHash: 'c'.repeat(64), built: false, isDefault: false }),
   DEFAULT_SANDBOX_SLUG: 'default',
   routedPerProjectWarmImageName: () => 'kpp2-test',
+  ensurePiWorkerImage: async () => undefined,
   ensureSandboxImage: async (_gitProject: unknown, opts: Record<string, unknown>) => {
     imageRequests.push(opts);
     const queued = imageResolutionQueue.shift();

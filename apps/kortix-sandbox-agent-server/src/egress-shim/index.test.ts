@@ -23,7 +23,10 @@ import {
 } from './index'
 
 /** Well clear of the daemon's own 4319/4320/4321 block. */
-const PORT = 45321
+// PID-derived so two lane processes on one CI runner (or a re-run racing the
+// previous attempt's TIME_WAIT) never contend for the same listener — the
+// fixed 45321 made these four tests the packages lane's top flake.
+const PORT = 40000 + (process.pid % 20000)
 
 interface TestRule {
   identifier: string

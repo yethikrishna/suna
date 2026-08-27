@@ -1059,3 +1059,27 @@ describe('pi worker pool claim (P1.8)', () => {
     expect(mark).toBeLessThan(elseBranch);
   });
 });
+
+describe('pi worker pool — stale-label hazard', () => {
+  test('reap and claim both re-verify the park label on the direct object', async () => {
+    const source = await Bun.file(new URL('./pi-worker-pool.ts', import.meta.url)).text();
+    // Maintain: every listed box passes verifyStillParked BEFORE the
+    // dead/stale/over-age triage that feeds the reap list.
+    const verify = source.indexOf('async function verifyStillParked');
+    const maintain = source.indexOf('export function maintainPiWorkerPool');
+    const verifyCall = source.indexOf('await verifyStillParked(box.externalId)', maintain);
+    const triage = source.indexOf("state === 'stopped'", maintain);
+    expect(verify).toBeGreaterThan(-1);
+    expect(verifyCall).toBeGreaterThan(maintain);
+    expect(verifyCall).toBeLessThan(triage);
+    // An unknowable box is never reapable.
+    const verifyBody = source.slice(verify, source.indexOf('}', source.indexOf('catch', verify)));
+    expect(verifyBody).toContain('return false');
+    // Claim: the direct object's labels gate the dial.
+    const claim = source.indexOf('export async function claimParkedPiWorkerBox');
+    const gate = source.indexOf("liveLabels[PARK_LABEL] !== '1'", claim);
+    const dial = source.indexOf('/kortix/claim', claim);
+    expect(gate).toBeGreaterThan(claim);
+    expect(gate).toBeLessThan(dial);
+  });
+});

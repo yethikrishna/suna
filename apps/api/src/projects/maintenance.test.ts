@@ -53,10 +53,6 @@ mock.module('../billing/services/compute-metering', () => ({
   tickRunningComputeCharges: async () => ({ settled: 0, reconciled: 0 }),
 }));
 mock.module('../snapshots/builder', () => ({
-  // sessions.ts imports this since d990e122aa (pi worker); a wholesale mock
-  // that omits it fails the file at load: `Export named 'ensurePiWorkerImage'
-  // not found` (learnings 2026-08-27, import-edge rule).
-  ensurePiWorkerImage: async () => ({ snapshotName: 'kortix-pi-test', slug: 'pi', contentHash: 'c'.repeat(64), built: false, isDefault: false }),
   routedPerProjectWarmImageName: () => 'kpp2-test',
   ensurePiWorkerImage: async () => undefined,
   reconcileStaleBuilds: async () => ({ checked: 0, closedReady: 0, closedFailed: 0 }),

@@ -214,10 +214,6 @@ mock.module('../projects/git', () => ({
 // resolves cleanly. We stub the helpers projects/index calls so the
 // fire-and-forget snapshot kickoff in the create paths is a no-op here.
 mock.module('../snapshots/builder', () => ({
-  // sessions.ts imports this since d990e122aa (pi worker); a wholesale mock
-  // that omits it fails the file at load: `Export named 'ensurePiWorkerImage'
-  // not found` (learnings 2026-08-27, import-edge rule).
-  ensurePiWorkerImage: async () => ({ snapshotName: 'kortix-pi-test', slug: 'pi', contentHash: 'c'.repeat(64), built: false, isDefault: false }),
   routedPerProjectWarmImageName: () => 'kpp2-test',
   ensurePiWorkerImage: async () => undefined,
   ensureSandboxImage: async () => ({

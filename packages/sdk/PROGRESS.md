@@ -12,6 +12,20 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-27 — session `session-queue-state` — direct idle sends must own the working turn — IN PROGRESS
+
+**Defect:** every direct composer send briefly becomes a durable inbox row. The
+inbox working observation currently replaces the send receipt's `turnId` with
+`null`, so the web transcript classifies the new bubble as pending. The bubble
+renders dimmed with queue controls and the working indicator stays on the prior
+turn, even when no response was active at send time.
+
+**Scope:** preserve the receipt's explicit turn association through inbox
+admission. Keep sends made during an active response pending. Add RED-first SDK
+projection coverage and web working-turn integration coverage.
+
+---
+
 ### 2026-08-27 — session `app-viewer-token` — a Kortix-hosted App is already signed in — DONE
 
 **Files:** `core/auth/app-viewer.ts` (+ test) — `fetchKortixAppViewer`,

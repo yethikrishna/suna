@@ -337,6 +337,9 @@ async function main() {
   // dispose the instances in place (~50 ms) so the next request re-detects
   // the git root and re-reads config. No hint → the serial boot below.
   const earlyOpencodeConfigDir = cfg.autoClone ? resolveHintedOpencodeConfigDir(cfg) : null
+  // Only the early-spawn path can expose a half-built workspace; every other
+  // boot leaves this undefined and the proxy gate below is inert.
+  if (earlyOpencodeConfigDir) bootState.workspaceReady = false
   let opencodeStartedEarly = false
   const earlyOpencodeStartPromise: Promise<void> | null =
     earlyOpencodeConfigDir && !(process.env.KORTIX_COMPILED_OPENCODE_CONFIG_DIR ?? '').trim()
@@ -347,6 +350,7 @@ async function main() {
           opencodeStartedEarly = opencode.getPid() !== null
           // The checkout, its config-dir deps and the injected skills are all in
     // place now: OpenCode may build its Instance.
+    bootState.workspaceReady = true
     opencode.markWorkspaceReady()
     if (opencodeStartedEarly) {
             bootMark('opencode-spawned')
@@ -440,6 +444,7 @@ async function main() {
 
   if (bootState.repoMaterializationError) {
     logger.warn('[boot] skipping runtime readiness because repo materialization failed')
+    bootState.workspaceReady = true
     opencode.markWorkspaceReady()
     if (opencodeStartedFromCompiledConfig || opencodeStartedEarly) await opencode.stop()
   } else {

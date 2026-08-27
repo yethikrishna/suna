@@ -63,6 +63,16 @@ describe('boot instrumentation', () => {
     expect(reload).toBeGreaterThan(open)
   })
 
+  test('the proxy holds every caller off until the workspace is complete', () => {
+    const PROXY = readFileSync(join(import.meta.dir, '..', 'proxy.ts'), 'utf8')
+    expect(PROXY).toContain("bootState.workspaceReady === false")
+    expect(PROXY).toContain("'workspace_not_ready'")
+    // set false only on the early-spawn path, true once deps + skills are in
+    expect(MAIN).toContain('if (earlyOpencodeConfigDir) bootState.workspaceReady = false')
+    const deps = MAIN.indexOf("bootMark('config-deps')")
+    expect(MAIN.indexOf('bootState.workspaceReady = true', deps)).toBeGreaterThan(deps)
+  })
+
   test('an instance that answered before the workspace was ready forces a restart, not a dispose', () => {
     const fn = OPENCODE.indexOf('async reloadForWorkspace()')
     const body = OPENCODE.slice(fn, OPENCODE.indexOf('async reloadConfig(', fn))

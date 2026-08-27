@@ -241,6 +241,12 @@ export async function ensureSessionEnvironment(
       name: `env-${input.sessionId.slice(0, 8)}`,
       sandboxId: environmentId,
       snapshot: image.snapshotName,
+      // Environments have no session_sandboxes row, so the box reaper does not
+      // manage them yet: the provider's own idle timer is the ONLY stop. Keep
+      // it tight (a stopped box resumes on the next ensure) instead of the 12h
+      // backstop a reaper-managed session box gets. Metering + reaper tie-in
+      // is the recorded fast-follow.
+      autoStopInterval: 60,
       envVars: {
         ...envVars,
         KORTIX_TOKEN: token,

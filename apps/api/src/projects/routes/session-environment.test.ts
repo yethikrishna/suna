@@ -77,3 +77,12 @@ describe('session environment service', () => {
     expect(infoBlock).toContain('previewUrl');
   });
 });
+
+describe('session environment lifecycle bounds', () => {
+  test('an environment box carries a tight idle auto-stop, never the 12h backstop', async () => {
+    const source = await serviceSource();
+    const create = source.indexOf('provider.create({');
+    const block = source.slice(create, source.indexOf('} as never', create));
+    expect(block).toContain('autoStopInterval: 60');
+  });
+});

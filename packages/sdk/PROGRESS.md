@@ -12,6 +12,31 @@ tracked, and it is not forgotten just because it isn't scheduled.
 
 ---
 
+### 2026-08-27 — session `interrupted-marker` — `applyOptimisticAbort` stops at the newest turn — DONE
+
+**Files:** `src/react/use-session-send.ts` (+ its test). **Public surface: no
+changes** — `applyOptimisticAbort`'s signature is untouched; only which message
+it patches changed.
+
+The backward walk skipped any assistant message that already carried an error
+and kept going, so stopping a turn whose assistant message was already marked
+(an earlier interrupt, or a turn that failed) stamped `AbortError` onto a
+COMPLETED turn further up the transcript. apps/web renders that as the
+"Interrupted" checkpoint row, so the marker appeared detached, above the turn it
+belonged to, instead of at the end of it. It now stops at the newest assistant
+message and leaves it alone when it already has an error.
+
+RED first: `never reaches back past the newest assistant message` failed with
+`m2.error` = the synthetic AbortError. Gates: typecheck 0 · `bun run test`
+2538 pass / 0 fail / 2 skip · `smoke:install` passed. Shippable: YES.
+
+> Note for the next session: a bare `bun test src` here reports ~478 failures on
+> a clean tree — the cross-file `mock.module` leak. The package's own `test`
+> script (`xargs -n1 -P4 bun test --isolate`) is the real gate. Baseline before
+> blaming a diff.
+
+---
+
 ### 2026-08-25 — session `opencode-bump-11823` — OpenCode 1.18.19 → 1.18.23 lockstep — DONE
 
 **Files:** `package.json` (`@opencode-ai/sdk` 1.18.23) · `packages/shared/src/runtime-versions.json`

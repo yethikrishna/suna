@@ -42,9 +42,11 @@ describe('session fast boot Git hint cache', () => {
       Bun.file(new URL('../../platform/services/session-sandbox.ts', import.meta.url)).text(),
     ]);
 
-    expect(sessions).toContain(
-      'allowProjectImage: projectImageAllowedForSession(agentName, workspaceMode)',
-    );
+    // The pi worker boot (harness/worker split) wraps the gate in a ternary:
+    // a pi session never receives a project image, every other session still
+    // goes through projectImageAllowedForSession. Both halves are pinned.
+    expect(sessions).toContain('allowProjectImage: piWorkerBoot');
+    expect(sessions).toContain(': projectImageAllowedForSession(agentName, workspaceMode)');
     expect(actions).toContain('allowProjectImage: projectImageAllowedForSession(');
     expect(shared).toContain('allowProjectImage: projectImageAllowedForSession(');
     expect(actions).toContain('restoreSessionBranch: true');

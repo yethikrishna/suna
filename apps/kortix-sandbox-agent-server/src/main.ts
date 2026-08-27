@@ -218,6 +218,10 @@ async function main() {
       bootMark('opencode-session-api-ready')
     },
     nativeBinaryFastPathEnabled: opencodeBinaryPrefetchEnabled,
+    // The early-spawn path (below) starts OpenCode before the checkout exists.
+    // Keep the directory-scoped probe closed until the workspace is complete so
+    // no Instance — and no tool registry — is built against a partial tree.
+    deferDirectoryProbe: cfg.autoClone && resolveHintedOpencodeConfigDir(cfg) !== null,
   onUnplannedRespawn: () => {
       // opencode died on its own and is back. Close whatever turn it was
       // writing, or the client streams a part that will never complete.
@@ -341,7 +345,10 @@ async function main() {
           opencode.reconfigure(cfg, earlyOpencodeConfigDir, projectEnv)
           await opencode.start()
           opencodeStartedEarly = opencode.getPid() !== null
-          if (opencodeStartedEarly) {
+          // The checkout, its config-dir deps and the injected skills are all in
+    // place now: OpenCode may build its Instance.
+    opencode.markWorkspaceReady()
+    if (opencodeStartedEarly) {
             bootMark('opencode-spawned')
             logger.info('[boot] opencode spawned before checkout (config-dir hint)', {
               opencodeConfigDir: earlyOpencodeConfigDir,
@@ -433,6 +440,7 @@ async function main() {
 
   if (bootState.repoMaterializationError) {
     logger.warn('[boot] skipping runtime readiness because repo materialization failed')
+    opencode.markWorkspaceReady()
     if (opencodeStartedFromCompiledConfig || opencodeStartedEarly) await opencode.stop()
   } else {
     // Now that the repo exists, pin the credential helper repo-locally too, so

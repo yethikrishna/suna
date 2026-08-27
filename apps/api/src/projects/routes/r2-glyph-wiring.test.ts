@@ -122,6 +122,10 @@ mock.module('../github', () => ({
 // no work keeps running after the test (and after the response) returns.
 const realBuilder = await import('../../snapshots/builder');
 mock.module('../../snapshots/builder', () => ({
+  // sessions.ts imports this since d990e122aa (pi worker); a wholesale mock
+  // that omits it fails the file at load: `Export named 'ensurePiWorkerImage'
+  // not found` (learnings 2026-08-27, import-edge rule).
+  ensurePiWorkerImage: async () => ({ snapshotName: 'kortix-pi-test', slug: 'pi', contentHash: 'c'.repeat(64), built: false, isDefault: false }),
   ...realBuilder,
   kickProjectTemplatePrebuilds: () => {},
 }));

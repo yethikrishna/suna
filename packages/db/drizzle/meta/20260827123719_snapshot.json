@@ -1,6 +1,6 @@
 {
-  "id": "1fc56941-33cb-4705-9ee1-d4b13e93b072",
-  "prevId": "5e77f4d8-9ac8-455b-8a38-595e021e4a4f",
+  "id": "0504e751-27f6-4845-98c7-a99098fce766",
+  "prevId": "1fc56941-33cb-4705-9ee1-d4b13e93b072",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1950,6 +1950,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "branding": {
+          "name": "branding",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1963,13 +1970,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "branding": {
-          "name": "branding",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
         }
       },
       "indexes": {},
@@ -3019,6 +3019,13 @@
           "notNull": true,
           "default": 300
         },
+        "viewer_token_scope": {
+          "name": "viewer_token_scope",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'identity'"
+        },
         "monthly_budget_usd": {
           "name": "monthly_budget_usd",
           "type": "numeric(12, 2)",
@@ -3168,6 +3175,10 @@
         "apps_idle_timeout_check": {
           "name": "apps_idle_timeout_check",
           "value": "\"kortix\".\"apps\".\"idle_timeout_seconds\" BETWEEN 120 AND 86400"
+        },
+        "apps_viewer_token_scope_check": {
+          "name": "apps_viewer_token_scope_check",
+          "value": "\"kortix\".\"apps\".\"viewer_token_scope\" IN ('off', 'identity', 'api')"
         },
         "apps_budget_check": {
           "name": "apps_budget_check",
@@ -10561,6 +10572,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "app_id": {
+          "name": "app_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_by": {
           "name": "created_by",
           "type": "uuid",
@@ -10603,6 +10620,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "idx_oauth_clients_app": {
+          "name": "idx_oauth_clients_app",
+          "columns": [
+            {
+              "expression": "app_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -10616,6 +10648,20 @@
           ],
           "columnsTo": [
             "account_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "oauth_clients_app_id_apps_app_id_fk": {
+          "name": "oauth_clients_app_id_apps_app_id_fk",
+          "tableFrom": "oauth_clients",
+          "tableTo": "apps",
+          "schemaTo": "kortix",
+          "columnsFrom": [
+            "app_id"
+          ],
+          "columnsTo": [
+            "app_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"

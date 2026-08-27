@@ -348,11 +348,7 @@ async function main() {
           opencode.reconfigure(cfg, earlyOpencodeConfigDir, projectEnv)
           await opencode.start()
           opencodeStartedEarly = opencode.getPid() !== null
-          // The checkout, its config-dir deps and the injected skills are all in
-    // place now: OpenCode may build its Instance.
-    bootState.workspaceReady = true
-    opencode.markWorkspaceReady()
-    if (opencodeStartedEarly) {
+          if (opencodeStartedEarly) {
             bootMark('opencode-spawned')
             logger.info('[boot] opencode spawned before checkout (config-dir hint)', {
               opencodeConfigDir: earlyOpencodeConfigDir,
@@ -459,6 +455,13 @@ async function main() {
     // Reconfigure now so any later restart uses the checked-out config. The
     // already-running compiled-config process stays untouched.
     opencode.reconfigure(cfg, opencodeConfigDir, projectEnv)
+    // The checkout, its config-dir dependencies and the injected skills are ALL
+    // on disk now — this is the first moment a directory-scoped request may
+    // reach OpenCode. Opening the gate earlier is the bug this exists to stop
+    // (an Instance built against a partial workspace caches failed tool
+    // imports for the life of the process).
+    bootState.workspaceReady = true
+    opencode.markWorkspaceReady()
     if (opencodeStartedEarly) {
       // The process is up on the right dir; the workspace arrived after it.
       // Dispose in place so instances re-read config + re-detect the git root.

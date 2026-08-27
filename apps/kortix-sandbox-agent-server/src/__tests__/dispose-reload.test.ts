@@ -29,7 +29,8 @@ import { join } from 'node:path'
 const OPENCODE_SRC = readFileSync(join(import.meta.dir, '..', 'opencode.ts'), 'utf8')
 
 function disposeReloadBody(): string {
-  const body = OPENCODE_SRC.split('async function tryDisposeReload(')[1]?.split('\n  }\n')[0]
+  // tryDisposeReload + the disposeInstances helper it delegates the HTTP call to.
+  const body = OPENCODE_SRC.split('async function tryDisposeReload(')[1]?.split('async function waitUntilReady(')[0]
   expect(body).toBeTruthy()
   return body as string
 }

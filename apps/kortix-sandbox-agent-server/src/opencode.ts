@@ -2306,6 +2306,11 @@ export function createOpencodeSupervisor(
       return null
     })
     if (!written) return false
+    return disposeInstances()
+  }
+
+  /** `POST /global/dispose`: every instance re-reads config on its next request. */
+  async function disposeInstances(): Promise<boolean> {
     try {
       const res = await fetch(
         `http://127.0.0.1:${livePort()}/global/dispose`,
@@ -2558,7 +2563,29 @@ export function createOpencodeSupervisor(
      */
     async reloadForWorkspace(): Promise<boolean> {
       if (stopping || !child) return false
-      return tryDisposeReload()
+      // The composed config was written at spawn, when the workspace's
+      // injected-skills dir did not exist yet: rewrite it now so the FIRST
+      // Instance init reads the complete config.
+      const baseEnv = currentProjectEnv
+        ? mergeProjectEnv(process.env, currentProjectEnv)
+        : process.env
+      const written = await writeComposedConfig(baseEnv).catch((err) => {
+        logger.warn('[opencode] could not rewrite config for workspace reload', {
+          err: (err as Error).message,
+        })
+        return null
+      })
+      if (!written) return false
+      // Instances are created lazily by the first directory-scoped request.
+      // If none answered yet, nothing has read the old config or the missing
+      // git root — there is nothing to dispose, and disposing would only
+      // fail against a port that is still coming up (a restart would then
+      // throw away a perfectly good boot).
+      if (readyResponseProcess !== child) {
+        logger.info('[opencode] workspace landed before the first instance; no dispose needed')
+        return true
+      }
+      return disposeInstances()
     },
     async reloadConfig(opts: { mustRespawn?: boolean } = {}): Promise<ReloadConfigResult> {
       // A dispose re-reads the config in place — same process, no turn lost.

@@ -28,7 +28,9 @@ scaffold, ≤ 24 KiB.
 1. **Fresh sessions always get the fast path** (`session-runtime-env.ts`):
    `KORTIX_SESSION_FRESH=1`, `KORTIX_BASE_SHA`, the delta bundle and the
    OpenCode config-dir hint are emitted for every new full-repository session.
-   `KORTIX_FAST_COLD_BOOT_ENABLED=false` (explicit) pins it off; unset = on.
+   Own switch `KORTIX_FAST_GIT_BOOT_ENABLED` (default on; `false` pins it off).
+   It is NOT tied to `KORTIX_FAST_COLD_BOOT_ENABLED`: deploy-dev injects an
+   explicit `false` for that experiment flag on every push.
 2. **Delta = every commit above the scaffold root** (`commits.ts`
    `buildScaffoldDeltaBundle`): boundary is the first-parent root commit; the
    API bundles only when the root's tree equals the current starter scaffold's
@@ -70,6 +72,6 @@ present; `opencode-workspace-reloaded` marks the in-place reload.
 
 ## Rollback
 
-`KORTIX_FAST_COLD_BOOT_ENABLED=false` on the API restores the pre-2026-08-27
+`KORTIX_FAST_GIT_BOOT_ENABLED=false` on the API restores the pre-2026-08-27
 env contract (no fresh-session hints). The daemon paths are additive: without
 the env they run the previous scaffold-fetch / clone code.

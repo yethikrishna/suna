@@ -214,6 +214,16 @@ export async function buildHarness(cfg: WorkerConfig) {
     }
     const list = models.getModels(provider.id);
     model = cfg.modelId ? models.getModel(provider.id, cfg.modelId) : list[0];
+    if (!model && cfg.modelId && cfg.gatewayUrl && list[0]) {
+      // Behind the Kortix gateway the model ref is the GATEWAY's contract
+      // (native `<provider>/<model>`), not a catalog-membership question —
+      // the first dev session died here with "no model resolved" because the
+      // baked ref is not an OpenRouter catalog id. Clone a catalog entry for
+      // its field shape, stamp the requested ref, and point it at the
+      // gateway directly so routing does not depend on auth-layer env
+      // plumbing.
+      model = { ...list[0], id: cfg.modelId, name: cfg.modelId, baseUrl: cfg.gatewayUrl };
+    }
     if (!model) throw new Error(`no model resolved for provider ${provider.id}`);
   }
 

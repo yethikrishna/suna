@@ -297,6 +297,49 @@ export async function startWorker(cfg = configFromEnv()) {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
 
+    // ── Platform compatibility surface ─────────────────────────────────────
+    // The session lifecycle (start envelope, wake fences, env fan-out) speaks
+    // kortixd's /kortix/* contract. The worker answers just enough of it that
+    // a pi session reads as ready without a daemon in the box.
+    if (url.pathname === '/kortix/health') {
+      const compiled = (globalThis as Record<string, unknown>).__KORTIX_COMPILED__ as
+        | { manifest?: { agent_config_etag?: string | null; source_sha?: string; ref?: string } }
+        | undefined;
+      const body = JSON.stringify({
+        daemon: 'ok',
+        status: 'ok',
+        runtimeReady: true,
+        workload: 'session',
+        opencode: 'ok',
+        engine: 'pi',
+        uptime_s: Math.floor((Date.now() - BOOT_T0) / 1000),
+        repo_required: false,
+        repo_ready: true,
+        boot_error: null,
+        // The pi worker has no OpenCode store to pin — the start path must not
+        // wait for one.
+        opencode_session_id: null,
+        opencode_session_required: false,
+        agent_config_etag: compiled?.manifest?.agent_config_etag ?? null,
+        commit_sha: compiled?.manifest?.source_sha ?? null,
+        branch: compiled?.manifest?.ref ?? null,
+        boot_timeline: [{ label: 'worker-listening', atMs: LISTEN_MS ?? 0 }],
+        runtime: { build: null, at: null, components: {}, agentSwapPending: false, pinned: false },
+      });
+      res.writeHead(200, { 'content-type': 'application/json' }).end(body);
+      return;
+    }
+
+    // Env fan-out and config refresh land here on secret writes and reloads.
+    // Acknowledged, not applied: a pi worker's config is immutable per artifact
+    // — a new commit compiles a new artifact. Refusing (non-200) would surface
+    // every flagged session as a sync failure in the fan-out's logs.
+    if ((url.pathname === '/kortix/env' || url.pathname === '/kortix/refresh') && req.method === 'POST') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+         .end(JSON.stringify({ ok: true, changed: false, engine: 'pi' }));
+      return;
+    }
+
     if (url.pathname === '/health') {
       const body = JSON.stringify({
         ok: true,

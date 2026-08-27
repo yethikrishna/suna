@@ -312,6 +312,7 @@ mock.module('../projects/git', () => ({
 }));
 
 mock.module('../snapshots/builder', () => ({
+  ensurePiWorkerImage: async () => undefined,
   ensureSandboxImage: async () => ({
     snapshotName: 'kortix-default-test',
     slug: 'default',

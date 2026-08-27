@@ -2380,10 +2380,10 @@ export function SessionChat({
    */
   const receiptSessionId = projectSessionId ?? '';
   const noteSendReceipt = useCallback(
-    (messageId: string) =>
+    (messageId: string, turnId: string | null = messageId) =>
       useSessionWorkingStore
         .getState()
-        .noteSendReceipt(receiptSessionId, { messageId, atMs: Date.now() }),
+        .noteSendReceipt(receiptSessionId, { messageId, turnId, atMs: Date.now() }),
     [receiptSessionId],
   );
   const acceptSendReceipt = useCallback(
@@ -3251,6 +3251,10 @@ export function SessionChat({
     () => resolveWorkingTurn({ turns, hintMessageId: working.turnId, unrunTurnIds }),
     [turns, working.turnId, unrunTurnIds],
   );
+  const workingTurnIdRef = useRef<string | null>(workingTurn.workingTurnId);
+  useEffect(() => {
+    workingTurnIdRef.current = workingTurn.workingTurnId;
+  }, [workingTurn.workingTurnId]);
   const pendingTurnIds = useMemo(() => new Set(workingTurn.pendingTurnIds), [workingTurn]);
   /**
    * ONE render key per turn. A turn keeps the id its bubble was FIRST painted
@@ -3637,6 +3641,7 @@ export function SessionChat({
       // row that no longer had a transcript twin to hide behind.
       markOptimisticSendInboxBacked(sessionId, messageID);
       const sendingIntoRunningTurn = isBusyRef.current;
+      const receiptTurnId = sendingIntoRunningTurn ? workingTurnIdRef.current : messageID;
 
       // A send follows from here: the new bubble lands at the top of the
       // screen the frame it commits (use-auto-scroll.ts, FACT 2 + THE RULE).
@@ -3811,7 +3816,7 @@ export function SessionChat({
       // The prompt is out of this tab's hands the moment the row lands, so the
       // receipt is taken BEFORE the POST: it is what holds the composer on
       // "working" until `GET .../turn` reports the turn the inbox admitted.
-      noteSendReceipt(messageID);
+      noteSendReceipt(messageID, receiptTurnId);
       const result = await (async () => {
         try {
           if (!projectId || !projectSessionId) {

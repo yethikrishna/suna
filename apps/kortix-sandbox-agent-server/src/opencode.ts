@@ -1690,6 +1690,14 @@ export type Opencode = {
   restart(): Promise<void>
   reloadConfig(opts?: { mustRespawn?: boolean }): Promise<ReloadConfigResult>
   /**
+   * The workspace (repo checkout, config-dir deps, injected skills) landed
+   * AFTER this process spawned. Rewrite the composed config with the same
+   * inputs a spawn uses and dispose every OpenCode instance in place, so the
+   * next directory-scoped request re-detects the git root and re-reads config
+   * without a respawn. False when dispose is unavailable (caller restarts).
+   */
+  reloadForWorkspace(): Promise<boolean>
+  /**
    * Boot the new opencode, verify it serves, then swap and retire the old one.
    * Never leaves the session without an opencode.
    */
@@ -1884,6 +1892,28 @@ export function createOpencodeSupervisor(
    * it exits: it is on trial, and a candidate that dies is a verdict, not an
    * outage.
    */
+  /**
+   * Compose + write the Kortix OpenCode config exactly as a spawn does: the
+   * injected managed-skills dir under the CURRENT config dir and the secret
+   * capability instruction. Shared by spawn and by the in-place reloads so a
+   * reload can never drop a contributor the spawn declared.
+   */
+  async function writeComposedConfig(baseEnv: NodeJS.ProcessEnv): Promise<string | null> {
+    let secretCapabilitiesInstructionPath: string | null = null
+    try {
+      secretCapabilitiesInstructionPath = writeSecretCapabilitiesInstruction(baseEnv)
+    } catch (err) {
+      logger.warn('[opencode] secret capability instruction file unavailable; env catalog remains available', {
+        err: err instanceof Error ? err.message : String(err),
+      })
+    }
+    return writeKortixOpencodeConfig(baseEnv, {
+      configPath: options.configPathOverride,
+      injectedSkillsDir: join(currentOpencodeConfigDir, 'skills'),
+      secretCapabilitiesInstructionPath,
+    })
+  }
+
   async function spawnChild(
     bin: string,
     opts: { port?: number; supervise?: boolean } = {},
@@ -1934,19 +1964,7 @@ export function createOpencodeSupervisor(
       env.OPENCODE_DISABLE_MODELS_FETCH = '1'
     }
 
-    let secretCapabilitiesInstructionPath: string | null = null
-    try {
-      secretCapabilitiesInstructionPath = writeSecretCapabilitiesInstruction(baseEnv)
-    } catch (err) {
-      logger.warn('[opencode] secret capability instruction file unavailable; env catalog remains available', {
-        err: err instanceof Error ? err.message : String(err),
-      })
-    }
-    const configPath = await writeKortixOpencodeConfig(baseEnv, {
-      configPath: options.configPathOverride,
-      injectedSkillsDir: join(currentOpencodeConfigDir, 'skills'),
-      secretCapabilitiesInstructionPath,
-    })
+    const configPath = await writeComposedConfig(baseEnv)
     if (configPath) {
       env.OPENCODE_CONFIG = configPath
       delete env.OPENCODE_CONFIG_CONTENT
@@ -2281,9 +2299,7 @@ export function createOpencodeSupervisor(
     const baseEnv = currentProjectEnv
       ? mergeProjectEnv(process.env, currentProjectEnv)
       : process.env
-    const written = await writeKortixOpencodeConfig(baseEnv, {
-      configPath: options.configPathOverride,
-    }).catch((err) => {
+    const written = await writeComposedConfig(baseEnv).catch((err) => {
       logger.warn('[opencode] could not rewrite config for reload', {
         err: (err as Error).message,
       })
@@ -2540,6 +2556,10 @@ export function createOpencodeSupervisor(
      * a future opencode that drops the endpoint degrades to today's behaviour
      * rather than silently not applying the config.
      */
+    async reloadForWorkspace(): Promise<boolean> {
+      if (stopping || !child) return false
+      return tryDisposeReload()
+    },
     async reloadConfig(opts: { mustRespawn?: boolean } = {}): Promise<ReloadConfigResult> {
       // A dispose re-reads the config in place — same process, no turn lost.
       if (!opts.mustRespawn && (await tryDisposeReload())) {

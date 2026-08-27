@@ -23,7 +23,8 @@ import {
   resolveProjectUpstream,
   type GitProxyAuth,
 } from '../projects';
-import type { GitScope } from '../projects/git-backends';
+import type { GitScope, UpstreamGit } from '../projects/git-backends';
+import type { ProjectRow } from '../projects/lib/serializers';
 import { deriveRequestContext } from '../iam/cache';
 import {
   FORWARD_REQUEST_HEADERS,
@@ -36,6 +37,11 @@ import {
 import { fetchUpstreamBuffered } from './upstream';
 import { makeOpenApiApp } from '../openapi';
 import { loadGitProject } from '../projects/lib/git';
+import { refreshMirror, runGit } from '../projects/git/mirror';
+import { writeScaffoldDeltaBundle } from '../projects/git/commits';
+import { createHash } from 'node:crypto';
+import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { kickProjectWarmPrebake } from '../snapshots/builder';
 import { resolveFeatureFlag } from '../feature-flags/registry';
 import { featureDisabledBody } from '../feature-flags/gate';
@@ -124,6 +130,37 @@ async function authorize(c: any, projectId: string, scope: GitScope): Promise<Gi
  * `suffix` is the fixed git path appended to the upstream repo URL
  * (`/info/refs`, `/git-upload-pack`, `/git-receive-pack`).
  */
+
+/**
+ * One clone is 2–3 git requests inside a few seconds (`info/refs`, then
+ * `upload-pack`, sometimes a second fetch). Each used to re-resolve the
+ * project's git connection + host credential from the DB — measured 2026-08-27
+ * on dev as the bulk of a ~1 s per-request tax (API in us-west-2, DB in
+ * us-east-2). The upstream is stable for far longer than a clone, so memoize it
+ * briefly per (project, scope). Positive results only; the credential inside is
+ * either the static managed PAT or a ≥1 h installation token.
+ */
+const UPSTREAM_MEMO_TTL_MS = 30_000;
+const upstreamMemo = new Map<string, { value: UpstreamGit; expiresAt: number }>();
+async function resolveProjectUpstreamMemo(
+  project: ProjectRow,
+  scope: GitScope,
+): Promise<UpstreamGit | null> {
+  const key = `${project.projectId}|${scope}`;
+  const now = Date.now();
+  const hit = upstreamMemo.get(key);
+  if (hit && hit.expiresAt > now) return hit.value;
+  const value = await resolveProjectUpstream(project, scope);
+  if (value?.url) upstreamMemo.set(key, { value, expiresAt: now + UPSTREAM_MEMO_TTL_MS });
+  if (upstreamMemo.size > 5_000) {
+    for (const [k, v] of upstreamMemo) if (v.expiresAt <= now) upstreamMemo.delete(k);
+  }
+  return value;
+}
+export function __resetGitProxyMemosForTests(): void {
+  upstreamMemo.clear();
+}
+
 async function forward(c: any, projectId: string, scope: GitScope, suffix: string): Promise<Response> {
   const auth = await authorize(c, projectId, scope);
   if (!auth.ok) {
@@ -131,7 +168,7 @@ async function forward(c: any, projectId: string, scope: GitScope, suffix: strin
     return c.text(auth.message, auth.status);
   }
 
-  const upstream = await resolveProjectUpstream(auth.project, scope);
+  const upstream = await resolveProjectUpstreamMemo(auth.project, scope);
   if (!upstream || !upstream.url) {
     return c.text('No git upstream is configured for this project', 502);
   }
@@ -293,6 +330,110 @@ gitProxyApp.openapi(
     const projectId = validProjectIdOrResponse(c, c.req.param('project'));
     if (projectId instanceof Response) return projectId;
     return forward(c, projectId, 'read', '/git-upload-pack');
+  },
+);
+
+
+// ── fast-boot delta bundle ────────────────────────────────────────────────
+// The session env carries the delta `tip ^root` inline when it fits 24 KiB.
+// Above that the daemon fetches it here: ONE authenticated GET served from the
+// API's mirror — no GitHub hop, no pack negotiation, no proxied `git fetch`.
+function fastBootBundleCacheRoot(): string {
+  return process.env.KORTIX_FAST_BOOT_BUNDLE_CACHE_DIR || '/tmp/kortix/fast-boot-bundles';
+}
+const FAST_BOOT_BUNDLE_CONTENT_TYPE = 'application/x-git-bundle';
+const fastBootBundleBuilds = new Map<string, Promise<{ path: string; size: number }>>();
+async function buildFastBootBundle(
+  project: Awaited<ReturnType<typeof loadGitProject>>,
+  ref: string,
+  tip: string,
+  parent: string,
+): Promise<{ path: string; size: number; cacheHit: boolean }> {
+  const root = fastBootBundleCacheRoot();
+  await mkdir(root, { recursive: true });
+  const key = createHash('sha256').update(`${project.projectId}\0${tip}\0${parent}`).digest('hex');
+  const path = join(root, `${key}.bundle`);
+  try {
+    const existing = await stat(path);
+    if (existing.size > 0) return { path, size: existing.size, cacheHit: true };
+  } catch {}
+  let build = fastBootBundleBuilds.get(key);
+  if (!build) {
+    build = (async () => {
+      let mirror = await refreshMirror(project);
+      const has = await runGit(['cat-file', '-e', `${tip}^{commit}`], mirror, false).then(
+        () => true,
+        () => false,
+      );
+      if (!has) mirror = await refreshMirror(project, true);
+      const staged = `${path}.${process.pid}.tmp`;
+      await rm(staged, { force: true });
+      const size = await writeScaffoldDeltaBundle(mirror, ref, tip, parent, staged);
+      await rename(staged, path);
+      return { path, size };
+    })().finally(() => fastBootBundleBuilds.delete(key));
+    fastBootBundleBuilds.set(key, build);
+  }
+  const built = await build;
+  return { ...built, cacheHit: false };
+}
+
+gitProxyApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{project}/fast-boot-bundle',
+    tags: ['git'],
+    summary: 'Download the scaffold→tip git bundle a fresh sandbox applies at boot',
+    request: {
+      params: projectParam,
+      query: z.object({
+        ref: z.string().min(1),
+        tip: z.string().regex(/^[0-9a-f]{40}$/),
+        parent: z.string().regex(/^[0-9a-f]{40}$/),
+      }),
+    },
+    responses: {
+      200: {
+        description: 'git bundle containing every commit in parent..tip',
+        content: { [FAST_BOOT_BUNDLE_CONTENT_TYPE]: { schema: z.any() } },
+      },
+      400: { description: 'Invalid project id, ref, or SHA' },
+      401: gitResponses[401],
+      403: gitResponses[403],
+      404: gitResponses[404],
+      409: { description: 'The ref no longer points at `tip`, or `parent` is not its ancestor' },
+      413: { description: 'The bundle exceeds the fast-boot size limit' },
+    },
+  }),
+  async (c) => {
+    const projectId = validProjectIdOrResponse(c, c.req.param('project'));
+    if (projectId instanceof Response) return projectId;
+    const auth = await authorize(c, projectId, 'read');
+    if (!auth.ok) {
+      if (auth.status === 401) return unauthorized(c, auth.message);
+      return c.text(auth.message, auth.status === 404 ? 404 : 403);
+    }
+    const { ref, tip, parent } = c.req.valid('query');
+    try {
+      const project = await loadGitProject({ row: auth.project });
+      const bundle = await buildFastBootBundle(project, ref, tip, parent);
+      return new Response(Bun.file(bundle.path), {
+        status: 200,
+        headers: {
+          'cache-control': 'private, max-age=31536000, immutable',
+          'content-length': String(bundle.size),
+          'content-type': FAST_BOOT_BUNDLE_CONTENT_TYPE,
+          'x-kortix-artifact-cache': bundle.cacheHit ? 'hit' : 'miss',
+          'x-kortix-artifact-source-sha': tip,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/exceeds/.test(message)) return c.text(message, 413);
+      if (/is at |not an ancestor/.test(message)) return c.text(message, 409);
+      console.warn('[git-proxy] fast-boot bundle unavailable', { projectId, ref, tip, parent, error: message });
+      return c.text('fast-boot bundle unavailable', 503);
+    }
   },
 );
 

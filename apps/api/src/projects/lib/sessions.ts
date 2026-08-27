@@ -1689,13 +1689,14 @@ export async function createProjectSession(input: {
       // the hint is omitted → daemon delta-fetches as before. Runs CONCURRENTLY
       // with gitAuth (folded into the env-build chain, not awaited inline).
       let fastBootHintTimeout: ReturnType<typeof setTimeout> | undefined;
-      // Always on: the hint is what lets the daemon boot with ZERO proxied git
-      // requests (scaffold + delta) and spawn OpenCode before the checkout.
-      // Bounded by the 2 s race below; a miss just means the daemon's fetch
-      // fallback. (Kept as a ternary so the experiment kill switch can pin it
-      // off again without touching the create path.)
+      // Default on (KORTIX_FAST_GIT_BOOT_ENABLED): the hint is what lets the
+      // daemon boot with ZERO proxied git requests (scaffold + delta) and spawn
+      // OpenCode before the checkout. Bounded by the 2 s race below; a miss
+      // just means the daemon's fetch fallback. Deliberately NOT tied to
+      // KORTIX_FAST_COLD_BOOT_ENABLED (the image/rootfs experiment), which
+      // deploy-dev pins to an explicit `false`.
       const fastBootGitHintPromise =
-        !(config.KORTIX_FAST_COLD_BOOT_CONFIGURED && !config.KORTIX_FAST_COLD_BOOT_ENABLED)
+        config.KORTIX_FAST_GIT_BOOT_ENABLED
         ? Promise.race([
             projectWithGitAuthPromise
               .then((projectWithGitAuth) =>

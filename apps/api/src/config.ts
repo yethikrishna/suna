@@ -534,12 +534,18 @@ const envSchema = z.object({
   // Default OFF keeps the session path on one shared image per provider.
   KORTIX_WARM_SNAPSHOT_ENABLED: optBoolFalse,
   // One kill switch for additive cold-boot accelerators. It keeps the standard
-  // runtime image and every tool. It enables local Git hints, native OpenCode
-  // binary prefetch, Platinum rootfs materialization, and stopped per-project
-  // images with the exact repository tip baked into /workspace. It never keeps
-  // a sandbox or OpenCode process running. An explicit false also disables the
-  // legacy session per-project image path. An unset value preserves the legacy
+  // runtime image and every tool. It enables native OpenCode binary prefetch,
+  // Platinum rootfs materialization, and stopped per-project images with the
+  // exact repository tip baked into /workspace. It never keeps a sandbox or
+  // OpenCode process running. An explicit false also disables the legacy
+  // session per-project image path. An unset value preserves the legacy
   // KORTIX_WARM_SNAPSHOT_ENABLED rollout while leaving new accelerators off.
+  //
+  // NOT gated here any more (default boot since 2026-08-27, see
+  // docs/specs/2026-08-27-fast-clone-path.md): the fresh-session Git fast path
+  // — KORTIX_SESSION_FRESH, the base-tip + scaffold-delta hint, and the OpenCode
+  // config-dir hint that lets the daemon spawn OpenCode before the checkout.
+  // Only an EXPLICIT `false` pins that path off again.
   KORTIX_FAST_COLD_BOOT_ENABLED: optBoolUnset,
   // Experimental compiled boot path. The API builds a verified checkout and
   // OpenCode launcher for one exact Git SHA. `off` preserves the clone and

@@ -52,6 +52,15 @@ describe('resolveWorkingTurn', () => {
     expect(r.pendingTurnIds).toEqual([]);
   });
 
+  test('a fresh send receipt outranks stale open metadata on the previous answer', () => {
+    const r = resolveWorkingTurn({
+      turns: [turn('old', 'open'), turn('new')],
+      hintMessageId: 'new',
+    });
+    expect(r.workingTurnId).toBe('new');
+    expect(r.pendingTurnIds).toEqual([]);
+  });
+
   test('no hint: the NEWEST pending turn is where the next step lands', () => {
     // OpenCode parents the next step to the latest user message and answers
     // p1 and p2 together in it — p1 is taken, not pending.

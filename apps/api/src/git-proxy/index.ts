@@ -40,7 +40,7 @@ import { loadGitProject } from '../projects/lib/git';
 import { refreshMirror, runGit } from '../projects/git/mirror';
 import { writeScaffoldDeltaBundle } from '../projects/git/commits';
 import { createHash } from 'node:crypto';
-import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, stat, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 import { kickProjectWarmPrebake } from '../snapshots/builder';
 import { resolveFeatureFlag } from '../feature-flags/registry';
@@ -341,8 +341,53 @@ gitProxyApp.openapi(
 function fastBootBundleCacheRoot(): string {
   return process.env.KORTIX_FAST_BOOT_BUNDLE_CACHE_DIR || '/tmp/kortix/fast-boot-bundles';
 }
+/**
+ * Total on-disk budget for cached bundles (default 512 MiB). Every distinct
+ * (project, tip, parent) is one file of up to 64 MiB, and any read-authorized
+ * caller can name ancestor pairs freely — so the cache is bounded and evicts
+ * least-recently-used entries past the budget instead of growing with the
+ * request stream.
+ */
+function fastBootBundleCacheMaxBytes(): number {
+  const configured = Number(process.env.KORTIX_FAST_BOOT_BUNDLE_CACHE_MAX_BYTES);
+  return Number.isFinite(configured) && configured > 0 ? configured : 512 * 1024 * 1024;
+}
 const FAST_BOOT_BUNDLE_CONTENT_TYPE = 'application/x-git-bundle';
 const fastBootBundleBuilds = new Map<string, Promise<{ path: string; size: number }>>();
+let fastBootBundleEviction: Promise<void> | null = null;
+/** LRU eviction by mtime until the cache fits the budget; serialized, best-effort. */
+function enforceFastBootBundleBudget(root: string, keep: string): Promise<void> {
+  if (fastBootBundleEviction) return fastBootBundleEviction;
+  fastBootBundleEviction = (async () => {
+    try {
+      const entries = await readdir(root);
+      const files: { path: string; size: number; mtimeMs: number }[] = [];
+      for (const name of entries) {
+        if (!name.endsWith('.bundle')) continue;
+        const path = join(root, name);
+        try {
+          const st = await stat(path);
+          files.push({ path, size: st.size, mtimeMs: st.mtimeMs });
+        } catch {}
+      }
+      let total = files.reduce((sum, f) => sum + f.size, 0);
+      const budget = fastBootBundleCacheMaxBytes();
+      if (total <= budget) return;
+      files.sort((a, b) => a.mtimeMs - b.mtimeMs);
+      for (const f of files) {
+        if (total <= budget) break;
+        if (f.path === keep) continue;
+        await rm(f.path, { force: true }).catch(() => {});
+        total -= f.size;
+      }
+    } catch (err) {
+      console.warn('[git-proxy] fast-boot bundle cache eviction failed', err instanceof Error ? err.message : err);
+    }
+  })().finally(() => {
+    fastBootBundleEviction = null;
+  });
+  return fastBootBundleEviction;
+}
 async function buildFastBootBundle(
   project: Awaited<ReturnType<typeof loadGitProject>>,
   ref: string,
@@ -355,7 +400,12 @@ async function buildFastBootBundle(
   const path = join(root, `${key}.bundle`);
   try {
     const existing = await stat(path);
-    if (existing.size > 0) return { path, size: existing.size, cacheHit: true };
+    if (existing.size > 0) {
+      // Touch on hit so eviction is least-RECENTLY-used, not oldest-built.
+      const now = new Date();
+      await utimes(path, now, now).catch(() => {});
+      return { path, size: existing.size, cacheHit: true };
+    }
   } catch {}
   let build = fastBootBundleBuilds.get(key);
   if (!build) {
@@ -370,6 +420,7 @@ async function buildFastBootBundle(
       await rm(staged, { force: true });
       const size = await writeScaffoldDeltaBundle(mirror, ref, tip, parent, staged);
       await rename(staged, path);
+      void enforceFastBootBundleBudget(root, path);
       return { path, size };
     })().finally(() => fastBootBundleBuilds.delete(key));
     fastBootBundleBuilds.set(key, build);

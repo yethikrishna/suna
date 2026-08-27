@@ -44,13 +44,16 @@ describe('the composer reads ONE working answer', () => {
     expect(chat).not.toContain('30_000');
   });
 
-  test('the send receipt names the same wire message as the optimistic turn', () => {
+  test('the send receipt names the optimistic turn only when the session was idle', () => {
     const send = between(
       chat,
       'const clientMessageId = overrides?.clientMessageId',
       'return messageID;',
     );
-    expect(send).toContain('noteSendReceipt(messageID)');
+    expect(send).toContain(
+      'const receiptTurnId = sendingIntoRunningTurn ? workingTurnIdRef.current : messageID;',
+    );
+    expect(send).toContain('noteSendReceipt(messageID, receiptTurnId)');
     // Acceptance is what lets a `/turn` read answer for the send AT ALL: until
     // `POST .../prompts` returns there is no row for it to see.
     expect(send).toContain('acceptSendReceipt(messageID)');

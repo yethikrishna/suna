@@ -124,11 +124,29 @@ export async function readAppViewer(
   }
   if (payload.v !== 1 || typeof payload.userId !== 'string' || !payload.userId) return null;
   if (typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now()) return null;
+  /*
+   * A malformed field is refused, never coerced.
+   *
+   * Reading a non-array `groupIds` as `[]` would hand the App a viewer with
+   * their group memberships silently missing — which reads to the App as "this
+   * person is in no groups" and quietly removes whatever group grants gave
+   * them. No viewer at all is the honest answer, and the one an App is already
+   * written to handle. (Found from the consumer side: essentia-dashboards
+   * asserts that a signed payload which is not a statement about a person is
+   * refused.)
+   */
+  if (payload.groupIds !== undefined) {
+    if (!Array.isArray(payload.groupIds)) return null;
+    if (payload.groupIds.some((id) => typeof id !== 'string')) return null;
+  }
+  if (payload.email !== undefined && payload.email !== null && typeof payload.email !== 'string') {
+    return null;
+  }
 
   return {
     userId: payload.userId,
     email: payload.email ?? null,
-    groupIds: Array.isArray(payload.groupIds) ? payload.groupIds : [],
+    groupIds: payload.groupIds ?? [],
     accountId: payload.accountId,
     appId: payload.appId,
     accessMode: payload.accessMode,

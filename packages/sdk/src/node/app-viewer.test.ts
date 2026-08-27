@@ -81,6 +81,18 @@ describe('readAppViewer', () => {
     expect(await readAppViewer(req({ [APP_VIEWER_HEADER]: `${forgedBody}.${sig}` }), { secret: SECRET })).toBeNull();
     // expired
     expect(await readAppViewer(req({ [APP_VIEWER_HEADER]: sign(payload({ exp: now() - 1 })) }), { secret: SECRET })).toBeNull();
+    // signed by the right key, but not a statement about a person: refused, and
+    // never coerced into a viewer with fields quietly missing
+    expect(await readAppViewer(req({ [APP_VIEWER_HEADER]: sign({ v: 1, hello: 'world' }) }), { secret: SECRET })).toBeNull();
+    expect(await readAppViewer(req({ [APP_VIEWER_HEADER]: sign(payload({ userId: '' })) }), { secret: SECRET })).toBeNull();
+    expect(await readAppViewer(req({ [APP_VIEWER_HEADER]: sign(payload({ groupIds: 'finance' })) }), { secret: SECRET })).toBeNull();
+    expect(await readAppViewer(req({ [APP_VIEWER_HEADER]: sign(payload({ groupIds: [1, 2] })) }), { secret: SECRET })).toBeNull();
+    expect(await readAppViewer(req({ [APP_VIEWER_HEADER]: sign(payload({ email: 42 })) }), { secret: SECRET })).toBeNull();
+    // an absent groupIds is tolerated — the gate always sends one, and an empty
+    // list is the truthful reading of "no groups stated"
+    const noGroups = payload();
+    delete (noGroups as Record<string, unknown>).groupIds;
+    expect((await readAppViewer(req({ [APP_VIEWER_HEADER]: sign(noGroups) }), { secret: SECRET }))!.groupIds).toEqual([]);
     // shapes
     for (const bad of ['', 'nodot', 'a.b.c']) {
       expect(await readAppViewer(req({ [APP_VIEWER_HEADER]: bad }), { secret: SECRET })).toBeNull();

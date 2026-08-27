@@ -440,6 +440,10 @@ export async function buildSessionSandboxEnvVars(input: {
   gitDeltaParentSha?: string;
   /** Raw parent commit object used when the provider changed only commit metadata. */
   gitDeltaParentCommitBase64?: string;
+  /** The delta exceeds the env cap; the daemon downloads it with one GET. */
+  gitDeltaBundleRemote?: boolean;
+  /** OpenCode config dir at `baseSha`; lets the daemon spawn OpenCode pre-checkout. */
+  opencodeConfigDir?: string | null;
   /** Project git context, so the running agent's `secrets` grant in `agents:`
    *  can be resolved and applied by IDENTIFIER — secrets the agent isn't
    *  granted are dropped from the injected env (a prompt-injected agent then
@@ -661,6 +665,8 @@ export async function buildSessionSandboxEnvVars(input: {
       gitDeltaBundleBase64: input.gitDeltaBundleBase64,
       gitDeltaParentSha: input.gitDeltaParentSha,
       gitDeltaParentCommitBase64: input.gitDeltaParentCommitBase64,
+      gitDeltaBundleRemote: input.gitDeltaBundleRemote,
+      opencodeConfigDir: input.opencodeConfigDir,
     }),
     // The platform coordinator uses API-level delegation and never receives a
     // project checkout. Keep this override after buildSessionRuntimeEnv so the
@@ -1652,8 +1658,13 @@ export async function createProjectSession(input: {
       // the hint is omitted → daemon delta-fetches as before. Runs CONCURRENTLY
       // with gitAuth (folded into the env-build chain, not awaited inline).
       let fastBootHintTimeout: ReturnType<typeof setTimeout> | undefined;
+      // Always on: the hint is what lets the daemon boot with ZERO proxied git
+      // requests (scaffold + delta) and spawn OpenCode before the checkout.
+      // Bounded by the 2 s race below; a miss just means the daemon's fetch
+      // fallback. (Kept as a ternary so the experiment kill switch can pin it
+      // off again without touching the create path.)
       const fastBootGitHintPromise =
-        config.KORTIX_FAST_COLD_BOOT_ENABLED || config.KORTIX_COMPILED_BOOT_MODE !== 'off'
+        !(config.KORTIX_FAST_COLD_BOOT_CONFIGURED && !config.KORTIX_FAST_COLD_BOOT_ENABLED)
         ? Promise.race([
             projectWithGitAuthPromise
               .then((projectWithGitAuth) =>
@@ -1719,8 +1730,10 @@ export async function createProjectSession(input: {
             freshSession: true,
             baseSha: fastBootGitHint?.baseSha,
             gitDeltaBundleBase64: fastBootGitHint?.gitDeltaBundleBase64,
+            gitDeltaBundleRemote: fastBootGitHint?.gitDeltaBundleRemote,
             gitDeltaParentSha: fastBootGitHint?.gitDeltaParentSha,
             gitDeltaParentCommitBase64: fastBootGitHint?.gitDeltaParentCommitBase64,
+            opencodeConfigDir: fastBootGitHint?.opencodeConfigDir,
             defaultBranch: project.defaultBranch,
             manifestPath: project.manifestPath,
             workspaceMode,

@@ -664,6 +664,17 @@ interface SessionTurnProps {
    */
   isWorkingTurn: boolean;
   /**
+   * Suppress this turn's live busy indicator even though it is the working
+   * turn. Set only when `resolveWorkingTurn` fell back to a turn whose answer is
+   * already COMPLETE while queued prompts wait below it (every pending prompt
+   * still held in the inbox). Without it, that finished turn's "Thinking" row
+   * rendered ABOVE the just-sent (queued) message and then jumped down when the
+   * prompt started running — the reposition the transcript must never do. A
+   * finished turn shows nothing; the queued turns render as their own dimmed
+   * bubbles until one starts and legitimately becomes the working turn.
+   */
+  suppressBusyIndicator: boolean;
+  /**
    * A user message the agent has not reached yet — after the working turn,
    * with no assistant content. Drawn dimmed, like a queued prompt (it IS one:
    * the server forwarded it and OpenCode holds it until the next step), and
@@ -795,6 +806,7 @@ function SessionTurnImpl({
   isFirstTurn,
   sessionWorking,
   isWorkingTurn,
+  suppressBusyIndicator,
   pending,
   queueRow,
   queueHeld,
@@ -1817,7 +1829,11 @@ function SessionTurnImpl({
       )}
 
       {/* ── Working status indicator (always at the end while working) ── */}
-      {showTurnBusyIndicator({ working, hasError: !!turnError, isRetrying: !!retryInfo }) && (
+      {showTurnBusyIndicator({
+        working: working && !suppressBusyIndicator,
+        hasError: !!turnError,
+        isRetrying: !!retryInfo,
+      }) && (
         <div className="space-y-2">
           {retryInfo && retryMessage && (
             <SessionRetryDisplay
@@ -3257,6 +3273,24 @@ export function SessionChat({
     workingTurnIdRef.current = workingTurn.workingTurnId;
   }, [workingTurn.workingTurnId]);
   const pendingTurnIds = useMemo(() => new Set(workingTurn.pendingTurnIds), [workingTurn]);
+  /**
+   * Does the resolved working turn have a COMPLETED answer while queued prompts
+   * wait below it? `resolveWorkingTurn` falls back to the newest turn WITH
+   * content when every pending prompt is still held in the inbox (rule 4). If
+   * that turn's answer is already complete, its live busy row would render above
+   * the just-sent (queued) message and then jump down when the prompt starts
+   * running. In that one case the working turn shows no indicator — the queued
+   * turns are their own dimmed bubbles until one runs. Only a FINISHED answer
+   * suppresses; a turn streaming between steps has an OPEN assistant message, so
+   * `resolveWorkingTurn` rule 1 picks it and this stays false (no flicker).
+   */
+  const suppressWorkingTurnBusy = useMemo(() => {
+    if (workingTurn.pendingTurnIds.length === 0) return false;
+    const wt = turns.find((t) => t.userMessage.info.id === workingTurn.workingTurnId);
+    if (!wt || wt.assistantMessages.length === 0) return false;
+    const newest = wt.assistantMessages[wt.assistantMessages.length - 1];
+    return !!(newest.info as { time?: { completed?: number } }).time?.completed;
+  }, [turns, workingTurn]);
   /**
    * ONE render key per turn. A turn keeps the id its bubble was FIRST painted
    * under (the optimistic origin), so a re-minted echo re-renders the same
@@ -5142,59 +5176,110 @@ export function SessionChat({
                               CompactionMarker rendered by SessionTurn IS the
                               divider (rule–pill–rule), through every phase. */}
                           {suppressedFailedCompaction ? null : (
-                            <SessionTurn
-                              turn={turn}
-                              isLast={turn.userMessage.info.id === lastUserMessageId}
-                              ownsPlan={turn.userMessage.info.id === planAnchorId}
-                              sessionId={sessionId}
-                              sessionStatus={sessionStatus}
-                              permissions={pendingPermissions}
-                              questions={pendingQuestions}
-                              agentNames={agentNames}
-                              isFirstTurn={turnIndex === 0}
-                              sessionWorking={lastTurnWorking}
-                              isWorkingTurn={turn.userMessage.info.id === workingTurn.workingTurnId}
-                              pending={
-                                lastTurnWorking && pendingTurnIds.has(turn.userMessage.info.id)
-                              }
-                              queueRow={inboxRowsByMessageId.get(turn.userMessage.info.id) ?? null}
-                              queueHeld={queueRows.held}
-                              onQueueRemove={handleRemoveQueuedMessage}
-                              onQueueSendNow={handleQueueSendNow}
-                              onQueueRetry={handleRetryQueuedMessage}
-                              interruptedBeforeRun={interruptedTurnIds.has(
-                                turn.userMessage.info.id,
-                              )}
-                              isCompaction={hasCompaction}
-                              onOpenCompactionSummary={
-                                panel ? handleOpenCompactionSummary : undefined
-                              }
-                              providers={providers}
-                              commandMessages={commandMessagesRef.current}
-                              commands={commands}
-                              disableToolNavigation={disableToolNavigation}
-                              onPermissionReply={handlePermissionReply}
-                              onRewind={handleRewind}
-                              editingText={
-                                rewindTarget?.messageId === turn.userMessage.info.id
-                                  ? rewindTarget.text
-                                  : null
-                              }
-                              editPending={editSendPending || !!sessionState?.rewindPending}
-                              onEditCancel={handleEditCancel}
-                              onEditSend={handleEditSend}
-                              rewindDisabled={
-                                !!readOnly ||
-                                !sessionState ||
-                                isBusy ||
-                                sessionState.rewindPending ||
-                                // The runtime is not idle while queued prompts
-                                // are still on their way to it — a rewind mid-
-                                // delivery fails downstream with "Session is
-                                // busy" (measured); refuse it up front instead.
-                                promptInbox.prompts.length > 0
-                              }
-                            />
+                          <SessionTurn
+                            turn={turn}
+                            isLast={turn.userMessage.info.id === lastUserMessageId}
+                            ownsPlan={turn.userMessage.info.id === planAnchorId}
+                            sessionId={sessionId}
+                            sessionStatus={sessionStatus}
+                            permissions={pendingPermissions}
+                            questions={pendingQuestions}
+                            agentNames={agentNames}
+                            isFirstTurn={turnIndex === 0}
+                            sessionWorking={lastTurnWorking}
+                            isWorkingTurn={turn.userMessage.info.id === workingTurn.workingTurnId}
+                            suppressBusyIndicator={suppressWorkingTurnBusy}
+                            pending={
+                              lastTurnWorking && pendingTurnIds.has(turn.userMessage.info.id)
+                            }
+                            queueRow={inboxRowsByMessageId.get(turn.userMessage.info.id) ?? null}
+                            queueHeld={queueRows.held}
+                            onQueueRemove={handleRemoveQueuedMessage}
+                            onQueueSendNow={handleQueueSendNow}
+                            onQueueRetry={handleRetryQueuedMessage}
+                            interruptedBeforeRun={interruptedTurnIds.has(turn.userMessage.info.id)}
+                            isCompaction={hasCompaction}
+                            onOpenCompactionSummary={
+                              panel ? handleOpenCompactionSummary : undefined
+                            }
+                            providers={providers}
+                            commandMessages={commandMessagesRef.current}
+                            commands={commands}
+                            disableToolNavigation={disableToolNavigation}
+                            onPermissionReply={handlePermissionReply}
+                            onRewind={handleRewind}
+                            editingText={
+                              rewindTarget?.messageId === turn.userMessage.info.id
+                                ? rewindTarget.text
+                                : null
+                            }
+                            editPending={editSendPending || !!sessionState?.rewindPending}
+                            onEditCancel={handleEditCancel}
+                            onEditSend={handleEditSend}
+                            rewindDisabled={
+                              !!readOnly ||
+                              !sessionState ||
+                              isBusy ||
+                              sessionState.rewindPending ||
+                              // The runtime is not idle while queued prompts
+                              // are still on their way to it — a rewind mid-
+                              // delivery fails downstream with "Session is
+                              // busy" (measured); refuse it up front instead.
+                              promptInbox.prompts.length > 0
+                            }
+                          />
+||||||| 63db80ad98
+                          <SessionTurn
+                            turn={turn}
+                            isLast={turn.userMessage.info.id === lastUserMessageId}
+                            ownsPlan={turn.userMessage.info.id === planAnchorId}
+                            sessionId={sessionId}
+                            sessionStatus={sessionStatus}
+                            permissions={pendingPermissions}
+                            questions={pendingQuestions}
+                            agentNames={agentNames}
+                            isFirstTurn={turnIndex === 0}
+                            sessionWorking={lastTurnWorking}
+                            isWorkingTurn={turn.userMessage.info.id === workingTurn.workingTurnId}
+                            pending={
+                              lastTurnWorking && pendingTurnIds.has(turn.userMessage.info.id)
+                            }
+                            queueRow={inboxRowsByMessageId.get(turn.userMessage.info.id) ?? null}
+                            queueHeld={queueRows.held}
+                            onQueueRemove={handleRemoveQueuedMessage}
+                            onQueueSendNow={handleQueueSendNow}
+                            onQueueRetry={handleRetryQueuedMessage}
+                            interruptedBeforeRun={interruptedTurnIds.has(turn.userMessage.info.id)}
+                            isCompaction={hasCompaction}
+                            onOpenCompactionSummary={
+                              panel ? handleOpenCompactionSummary : undefined
+                            }
+                            providers={providers}
+                            commandMessages={commandMessagesRef.current}
+                            commands={commands}
+                            disableToolNavigation={disableToolNavigation}
+                            onPermissionReply={handlePermissionReply}
+                            onRewind={handleRewind}
+                            editingText={
+                              rewindTarget?.messageId === turn.userMessage.info.id
+                                ? rewindTarget.text
+                                : null
+                            }
+                            editPending={editSendPending || !!sessionState?.rewindPending}
+                            onEditCancel={handleEditCancel}
+                            onEditSend={handleEditSend}
+                            rewindDisabled={
+                              !!readOnly ||
+                              !sessionState ||
+                              isBusy ||
+                              sessionState.rewindPending ||
+                              // The runtime is not idle while queued prompts
+                              // are still on their way to it — a rewind mid-
+                              // delivery fails downstream with "Session is
+                              // busy" (measured); refuse it up front instead.
+                              promptInbox.prompts.length > 0
+                            }
+                          />
                           )}
                         </TurnViewport>
                       );

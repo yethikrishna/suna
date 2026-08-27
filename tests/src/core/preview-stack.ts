@@ -68,7 +68,7 @@ export function validatePreviewRuntimeSecrets(
   }
 }
 
-export function buildPreviewCaddyfile(): string {
+export function buildPreviewCaddyfile(publicHost: string): string {
   return `:8080 {
   encode zstd gzip
 
@@ -96,7 +96,17 @@ export function buildPreviewCaddyfile(): string {
   }
 
   handle {
-    reverse_proxy frontend:3000
+    reverse_proxy frontend:3000 {
+      # Next.js Server Actions reject a request whose \`x-forwarded-host\` does
+      # not match its \`origin\` (CSRF guard). The sandbox ingress sets
+      # \`x-forwarded-host\` to the INTERNAL host (\`*.aec.local\`) while the
+      # browser's origin is the PUBLIC one, so every Server Action — the whole
+      # auth flow included — died with \`Invalid Server Actions request\` (500,
+      # surfaced in the browser as minified React error #441). Pin the public
+      # host so the guard compares like with like.
+      header_up X-Forwarded-Host ${publicHost}
+      header_up X-Forwarded-Proto https
+    }
   }
 }
 `;
@@ -196,6 +206,12 @@ export function applyPreviewEnvironment(
     KORTIX_PUBLIC_DISABLE_LANDING_PAGE: 'true',
     KORTIX_RESTRICT_ACCOUNT_CREATION: 'false',
     KORTIX_PUBLIC_RESTRICT_ACCOUNT_CREATION: 'false',
+    // Billing ON, with the Stripe SANDBOX (test-mode) keys below — the same
+    // posture as dev, so the subscribe -> entitlement -> managed-models path is
+    // exercised here rather than bypassed. An account that has not subscribed
+    // is free-tier and therefore NOT entitled to managed models, which is what
+    // makes an agent fall back to the faux provider: subscribe with a Stripe
+    // test card (or connect a BYOK key) to get real model answers.
     KORTIX_BILLING_INTERNAL_ENABLED: 'true',
     KORTIX_PUBLIC_BILLING_ENABLED: 'true',
     KORTIX_WORKERS_ENABLED: 'false',

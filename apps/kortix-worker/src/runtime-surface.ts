@@ -359,6 +359,43 @@ export class RuntimeSurface {
     };
   }
 
+  private opencodeSessionObject() {
+    const s = this.sessionProjection();
+    return {
+      id: s.id,
+      title: s.title,
+      directory: s.directory,
+      time: { created: s.time.created, updated: s.time.updated },
+      version: 'pi',
+    };
+  }
+
+  /**
+   * The RAW OpenCode list the control plane still probes:
+   * `ensureOpencodeSessionPin` resolves the canonical pin from
+   * `GET /session?directory=…` (apps/api/src/projects/opencode-mapping.ts),
+   * and /start reports `starting` forever — then PARKS the healthy box at
+   * the 90s no-progress budget — until that list answers. One root, same
+   * auth posture as the namespace routes.
+   */
+  handleRawSessionList(req: IncomingMessage, res: ServerResponse, url: URL): boolean {
+    if (req.method !== 'GET') return false;
+    if (!this.authorized(req, url)) {
+      res.writeHead(401, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'unauthorized' }));
+      return true;
+    }
+    if (url.pathname === '/session') {
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify([this.opencodeSessionObject()]));
+      return true;
+    }
+    const m = url.pathname.match(/^\/session\/([^/]+)$/);
+    if (m && decodeURIComponent(m[1]!) === this.rootId) {
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(this.opencodeSessionObject()));
+      return true;
+    }
+    return false;
+  }
+
   /**
    * Serve one `/kortix/opencode/*` request. Returns false when the subpath is
    * not part of this surface (the caller then 404s it).
@@ -424,15 +461,8 @@ export class RuntimeSurface {
     if (sub.startsWith('session/') && req.method === 'GET') {
       const sessionId = decodeURIComponent(sub.slice('session/'.length));
       if (sessionId !== this.rootId) return json(404, { error: 'unknown session' });
-      const s = this.sessionProjection();
       // OpenCode's own Session shape, minimally: id, title, time.
-      return json(200, {
-        id: s.id,
-        title: s.title,
-        directory: s.directory,
-        time: { created: s.time.created, updated: s.time.updated },
-        version: 'pi',
-      });
+      return json(200, this.opencodeSessionObject());
     }
 
     if (sub === 'events' && req.method === 'GET') {

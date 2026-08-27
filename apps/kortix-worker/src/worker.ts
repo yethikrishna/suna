@@ -413,6 +413,9 @@ export async function startWorker(cfg = configFromEnv()) {
     if (url.pathname.startsWith('/kortix/opencode/')) {
       if (surface.handle(req, res, url)) return;
     }
+    if (url.pathname === '/session' || url.pathname.startsWith('/session/')) {
+      if (surface.handleRawSessionList(req, res, url)) return;
+    }
 
     // ── Platform compatibility surface ─────────────────────────────────────
     // The session lifecycle (start envelope, wake fences, env fan-out) speaks

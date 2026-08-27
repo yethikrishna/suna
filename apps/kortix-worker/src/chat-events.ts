@@ -84,11 +84,12 @@ export class ChatEventAdapter {
         return [{ type: 'session.status', properties: { sessionID, status: { type: 'running' } } }];
 
       case 'message_start': {
-        // The worker publishes the USER message itself at prompt time (with its
-        // real text); translating pi's user message_start too would render an
-        // empty duplicate user bubble — observed live on dev (session ae3a07fc,
-        // roles ['user','user','assistant']).
-        if ((event.message?.role ?? 'assistant') === 'user') return [];
+        // Only ASSISTANT messages translate. The worker publishes the USER
+        // message itself at prompt time (pi's user message_start rendered an
+        // empty duplicate bubble — dev session ae3a07fc), and pi's 'toolResult'
+        // messages are already carried as tool PARTS on the assistant message
+        // (dev session 7f218b0a rendered a stray toolResult row).
+        if ((event.message?.role ?? 'assistant') !== 'assistant') return [];
         this.currentMessageId = this.mint ? this.mint() : `msg-${++this.messageSeq}`;
         this.partCount = 0;
         this.textIndex.clear();
@@ -185,7 +186,7 @@ export class ChatEventAdapter {
       }
 
       case 'message_end': {
-        if ((event.message?.role ?? 'assistant') === 'user') return [];
+        if ((event.message?.role ?? 'assistant') !== 'assistant') return [];
         const stop = event.message?.stopReason;
         const out: Wire[] = [
           {

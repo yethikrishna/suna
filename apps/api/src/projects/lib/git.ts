@@ -14,7 +14,7 @@ import {
 import { recordAuditEvent } from '../../shared/audit';
 import { accountGithubInstallationStates, accountGithubInstallations, accountMembers, projectGitConnections, projectGitCredentials, projectSessions, projects, sessionSandboxes } from '@kortix/db';
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
-import { randomUUID, createHash } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { ttlMemo } from '../../shared/ttl-memo';
 import {
   isImpersonatingAccount,
@@ -708,9 +708,12 @@ const gitProxyAuthzMemo = new Map<string, { value: GitProxyAuth; expiresAt: numb
 export function __resetGitProxyAuthzMemoForTests(): void {
   gitProxyAuthzMemo.clear();
 }
+// Per-process random key: the memo key is an HMAC of the credential, so a heap
+// dump exposes neither the credential nor a reusable digest of it.
+const gitProxyAuthzMemoKey = randomBytes(32);
 function authzMemoKey(token: string, projectId: string, scope: GitScope): string {
-  // Never keep the raw credential in memory as a map key.
-  return `${createHash('sha256').update(token).digest('hex')}|${projectId}|${scope}`;
+  const digest = createHmac('sha256', gitProxyAuthzMemoKey).update(token).digest('hex');
+  return `${digest}|${projectId}|${scope}`;
 }
 
 export async function authorizeGitProxy(

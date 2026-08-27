@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { createWriteStream, existsSync } from 'node:fs'
 import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
+import { Readable, Transform } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 
 import type { Config } from './config'
 import { materializeCompiledCheckoutToStage } from './compiled-checkout'
@@ -1162,15 +1164,32 @@ async function applyRemoteFastBootDeltaBundle(
     if (Number.isFinite(declared) && declared > MAX_REMOTE_FAST_BOOT_BUNDLE_BYTES) {
       throw new Error(`fast-boot bundle exceeds ${MAX_REMOTE_FAST_BOOT_BUNDLE_BYTES} bytes (${declared})`)
     }
-    const body = Buffer.from(await res.arrayBuffer())
-    if (body.byteLength === 0 || body.byteLength > MAX_REMOTE_FAST_BOOT_BUNDLE_BYTES) {
-      throw new Error(`fast-boot bundle size out of bounds (${body.byteLength})`)
-    }
-    await writeFile(bundlePath, body, { mode: 0o600 })
+    if (!res.body) throw new Error('fast-boot bundle response body is empty')
+    // Stream to the stage file under a hard byte cap — never buffer an
+    // upstream body in memory, never trust its length header alone. The
+    // bytes are then verified by `git bundle verify` + the baseSha check
+    // before anything is checked out.
+    let bytes = 0
+    const capped = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        bytes += chunk.length
+        if (bytes > MAX_REMOTE_FAST_BOOT_BUNDLE_BYTES) {
+          callback(new Error(`fast-boot bundle exceeds ${MAX_REMOTE_FAST_BOOT_BUNDLE_BYTES} bytes`))
+          return
+        }
+        callback(null, chunk)
+      },
+    })
+    await pipeline(
+      Readable.fromWeb(res.body as never),
+      capped,
+      createWriteStream(bundlePath, { mode: 0o600 }),
+    )
+    if (bytes === 0) throw new Error('fast-boot bundle response body is empty')
     const ok = await applyFastBootDeltaBundleFile(repoPath, base, baseSha, bundlePath, parentSha, parentCommitBase64)
     if (ok) {
       logger.info('[git] remote fast-boot bundle applied', {
-        bytes: body.byteLength,
+        bytes,
         ms: Date.now() - started,
         cache: res.headers.get('x-kortix-artifact-cache'),
       })

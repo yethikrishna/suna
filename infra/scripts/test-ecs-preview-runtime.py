@@ -425,6 +425,16 @@ class PreviewTeardown(unittest.TestCase):
         self.assertIn(
             "github.event.pull_request.head.repo.full_name == github.repository", authorize
         )
+        # A branch MAY be fronted by a stable hostname; every branch keeps the
+        # provider origin unless PREVIEW_PUBLIC_ORIGINS lists it, and the entry
+        # must be https or the deploy refuses rather than configuring the stack
+        # with an origin the browser will never use.
+        self.assertIn("PUBLIC_ORIGINS: ${{ vars.PREVIEW_PUBLIC_ORIGINS }}", authorize)
+        self.assertIn("''|https://*) ;;", authorize)
+        self.assertIn(
+            "PREVIEW_PUBLIC_ORIGIN: ${{ needs.authorize.outputs.public_origin }}", job("deploy")
+        )
+
         teardown = job("teardown")
         # A push must no longer tear anything down, and must not strip the label.
         self.assertNotIn("synchronize", teardown)

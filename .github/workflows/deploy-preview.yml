@@ -54,6 +54,7 @@ jobs:
       ref: ${{ steps.preview.outputs.ref }}
       lockfile_sha256: ${{ steps.preview.outputs.lockfile_sha256 }}
       head_branch: ${{ steps.preview.outputs.head_branch }}
+      public_origin: ${{ steps.preview.outputs.public_origin }}
       provider: ${{ steps.preview.outputs.provider }}
     env:
       GH_TOKEN: ${{ github.token }}
@@ -64,6 +65,7 @@ jobs:
       INPUT_PR_NUMBER: ${{ inputs.pr_number }}
       INPUT_PROVIDER: ${{ inputs.provider }}
       APPROVER: ${{ github.actor }}
+      PUBLIC_ORIGINS: ${{ vars.PREVIEW_PUBLIC_ORIGINS }}
     steps:
       - name: Require writer approval for the current head SHA
         id: preview
@@ -121,7 +123,21 @@ jobs:
             echo "sha=$sha"
             echo "ref=refs/pull/${num}/head"
             echo "lockfile_sha256=$lockfile_sha256"
-            echo "head_branch=$(gh api "repos/${REPO}/pulls/${num}" --jq .head.ref)"
+            branch="$(gh api "repos/${REPO}/pulls/${num}" --jq .head.ref)"
+            echo "head_branch=$branch"
+            # A branch MAY be fronted by a stable hostname instead of being
+            # reached at the provider's own url. PREVIEW_PUBLIC_ORIGINS maps
+            # `branch=https://host`, one per line; anything unlisted — which is
+            # every branch by default — keeps the provider origin. The stack is
+            # CONFIGURED with whatever this resolves to, so it must be the origin
+            # the browser actually uses or every auth redirect leaves it.
+            public_origin="$(printf '%s\n' "${PUBLIC_ORIGINS:-}" \
+              | awk -F= -v b="$branch" '$1 == b { print $2; exit }')"
+            case "$public_origin" in
+              ''|https://*) ;;
+              *) echo "::error::PREVIEW_PUBLIC_ORIGINS entry for ${branch} must be an https origin."; exit 1 ;;
+            esac
+            echo "public_origin=$public_origin"
             echo "provider=$provider"
           } >> "$GITHUB_OUTPUT"
           echo "${APPROVER} approved preview PR ${num} at ${sha} with provider=${provider}."
@@ -289,6 +305,7 @@ jobs:
       # push and stays bookmarkable until the label comes off or the pull
       # request closes. See previewSandboxIdentity in tests/src/core.
       PREVIEW_BRANCH_ENV: ${{ needs.authorize.outputs.head_branch }}
+      PREVIEW_PUBLIC_ORIGIN: ${{ needs.authorize.outputs.public_origin }}
       PREVIEW_PR_NUMBER: ${{ needs.authorize.outputs.pr_number }}
       PREVIEW_SHA: ${{ needs.authorize.outputs.sha }}
       PREVIEW_REF: ${{ needs.authorize.outputs.ref }}

@@ -304,6 +304,12 @@ jobs:
       # the sandbox is reused instead of replaced, so its URL survives every
       # push and stays bookmarkable until the label comes off or the pull
       # request closes. See previewSandboxIdentity in tests/src/core.
+      # The suite is the GATE, so it runs when the label goes on and on an
+      # explicit dispatch. A redeploy from a push skips it: the environment is
+      # persistent now, so pushes are iteration, and paying ~10 min of
+      # --target-full on each one would make the label unusable for working in.
+      # Re-run it any time from the Actions tab with 'Run workflow'.
+      PREVIEW_RUN_TESTS: ${{ (github.event.action == 'labeled' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
       PREVIEW_BRANCH_ENV: ${{ needs.authorize.outputs.head_branch }}
       PREVIEW_PUBLIC_ORIGIN: ${{ needs.authorize.outputs.public_origin }}
       PREVIEW_PR_NUMBER: ${{ needs.authorize.outputs.pr_number }}

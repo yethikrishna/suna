@@ -379,11 +379,6 @@ const envSchema = z.object({
   // gateway (/v1/llm). The gateway used to read a separate KORTIX_OPENROUTER_API_KEY
   // — consolidated onto this one var.
   OPENROUTER_API_KEY: optStr,
-  // AsterLab OpenAI-compatible endpoint for the managed GLM 5.2 route.
-  // Cloud deployments load ASTER_API_KEY from the environment's AWS Secrets
-  // Manager bundle. Self-host deployments leave it unset.
-  ASTER_API_URL: optUrl('https://api.asterlab.ai/v1'),
-  ASTER_API_KEY: optStr,
   // Whether a session's sandbox gets the `kortix-connectors` OpenCode MCP
   // server (KORTIX_CONNECTORS_MCP_ENABLED in the guest). It exposes the
   // connector meta-tools plus `secret_call`, the only way to use an
@@ -406,8 +401,8 @@ const envSchema = z.object({
   // sandbox model call here. Off by default.
   LLM_GATEWAY_ENABLED: optBoolFalse,
   // CLOUD-ONLY. Whether KORTIX's own managed model lineup exists on this
-  // deployment. The lineup routes through Kortix's shared Bedrock, AsterLab,
-  // and OpenRouter credentials. Kortix bills each route as platform credits.
+  // deployment. The lineup routes through Kortix's shared Bedrock and
+  // OpenRouter credentials. Kortix bills each route as platform credits.
   // This flag is independent of
   // LLM_GATEWAY_ENABLED above: a self-host still runs the gateway for its own
   // BYOK routing (every sandbox model call goes through `/v1/llm`), it just
@@ -1107,8 +1102,6 @@ export const config = {
   // ─── LLM Providers ────────────────────────────────────────────────────────
   OPENROUTER_API_URL: env.OPENROUTER_API_URL,
   OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
-  ASTER_API_URL: env.ASTER_API_URL,
-  ASTER_API_KEY: env.ASTER_API_KEY,
   CONNECTORS_MCP_ENABLED: env.CONNECTORS_MCP_ENABLED,
   LLM_GATEWAY_ENABLED: env.LLM_GATEWAY_ENABLED,
   // Unset → follow billing (cloud keeps its revenue lineup even if the env

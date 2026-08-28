@@ -518,7 +518,7 @@ describe('replayStartStash', () => {
     const handle = replayStartStash({
       sessionId: 'sess-1',
       timers,
-      checkReadiness: () => ({ model: 'kortix/glm-5.2' }),
+      checkReadiness: () => ({ model: 'kortix/glm-5.3-flash' }),
       prepare: (stash, ready) => ({
         messageId: 'msg-1',
         optimisticText: stash.prompt,

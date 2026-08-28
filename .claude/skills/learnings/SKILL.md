@@ -21,6 +21,16 @@ linked, not inlined.
 
 ## Register
 
+### Keep lazy optional dependencies type-lazy across shared-source imports (2026-08-28)
+
+**When:** a package imports source files from another package without installing
+that package's runtime dependencies. Do not use a static type import for an
+optional dependency. Define the required structural type locally, and keep the
+runtime import behind the existing lazy boundary.
+*Near-miss:* staging promotion PR #7027 failed because the sandbox agent typecheck
+resolved the worker's `import('ws')` type without installing worker dependencies.
+*Enforcer:* the Sandbox Agent CI job runs `bun run typecheck` before its build.
+
 ### `deploy-preview.yml` runs from the DEFAULT BRANCH, so everything it references must be on main (2026-08-28)
 
 **When:** adding anything the preview deploy touches — a file under `tests/`, a

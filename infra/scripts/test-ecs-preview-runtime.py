@@ -431,6 +431,17 @@ class PreviewTeardown(unittest.TestCase):
         # with an origin the browser will never use.
         self.assertIn("PUBLIC_ORIGINS: ${{ vars.PREVIEW_PUBLIC_ORIGINS }}", authorize)
         self.assertIn("''|https://*) ;;", authorize)
+        # A stable hostname is proxied to the sandbox's OWN origin, which is
+        # derived from the sandbox id — so it dies on a rebuild unless the deploy
+        # re-points it. The optional third field names the worker that serves it;
+        # it is constrained so it cannot escape the workers directory.
+        self.assertIn("public_worker=", authorize)
+        self.assertIn("''|*[!a-z0-9-]*)", authorize)
+        deploy = job("deploy")
+        self.assertIn("Point the stable hostname at this sandbox", deploy)
+        self.assertIn("needs.authorize.outputs.public_worker != ''", deploy)
+        self.assertIn('dir="infra/cloudflare/workers/${WORKER}"', deploy)
+        self.assertIn('wrangler@4 deploy --var "TARGET_ORIGIN:${target}"', deploy)
         self.assertIn(
             "PREVIEW_PUBLIC_ORIGIN: ${{ needs.authorize.outputs.public_origin }}", job("deploy")
         )

@@ -317,7 +317,13 @@ export function selectStalePreviewSandboxIds(
     .filter((sandbox) => {
       const owner = sandbox.metadata?.owner;
       if (owner === 'kortix-branch-env') {
-        return sandbox.name === undefined || !liveBranchSandboxNames.has(sandbox.name);
+        // The name is the ONLY record of which branch this is — nothing puts
+        // the branch in metadata. Without one the sandbox cannot be judged, so
+        // it is kept: an unidentifiable box costs money, while deleting one on
+        // a listing that stopped returning names would destroy every branch
+        // environment and its Postgres volume at once, irreversibly.
+        if (sandbox.name === undefined) return false;
+        return !liveBranchSandboxNames.has(sandbox.name);
       }
       if (owner !== 'kortix-preview') return false;
       const activeSha = activePullRequests.get(Number(sandbox.metadata?.pr_number));
@@ -325,7 +331,6 @@ export function selectStalePreviewSandboxIds(
     })
     .map((sandbox) => sandbox.id);
 }
-
 
 export async function runSandboxPreview(
   input: SandboxPreviewInput,

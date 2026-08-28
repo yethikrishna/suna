@@ -34,11 +34,11 @@ import {
   PreviewInfrastructureError,
   type SandboxPreviewResult,
   buildPreviewBootstrapScript,
-  branchEnvSandboxName,
   previewLockfileHash,
   previewSandboxIdentity,
   previewSandboxName,
   selectStalePreviewSandboxIds,
+  selectTeardownSandboxIds,
 } from './sandbox-preview';
 import type { PreviewRuntimeSecrets } from './preview-stack';
 
@@ -496,18 +496,8 @@ export async function teardownPlatinumPreview(input: {
 }): Promise<number> {
   if (!input.apiKey) return 0;
   const api = new PlatinumApi(input.apiUrl, input.apiKey);
-  const ephemeral = previewSandboxName(input.prNumber);
-  const persistent = input.branchEnv ? branchEnvSandboxName(input.branchEnv) : null;
-  const owned = (await allPlatinumPreviewSandboxes(api)).filter((sandbox) => {
-    if (Number(sandbox.metadata?.pr_number) !== input.prNumber) return false;
-    if (sandbox.name === ephemeral && sandbox.metadata?.owner === 'kortix-preview') return true;
-    return (
-      persistent !== null &&
-      sandbox.name === persistent &&
-      sandbox.metadata?.owner === 'kortix-branch-env'
-    );
-  });
-  for (const sandbox of owned) await deletePlatinum(api, sandbox.id);
+  const owned = selectTeardownSandboxIds(await allPlatinumPreviewSandboxes(api), input);
+  for (const sandboxId of owned) await deletePlatinum(api, sandboxId);
   return owned.length;
 }
 

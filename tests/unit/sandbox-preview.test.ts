@@ -7,6 +7,7 @@ import {
   previewSandboxName,
   runSandboxPreview,
   selectStalePreviewSandboxIds,
+  selectTeardownSandboxIds,
 } from '../src/core/sandbox-preview';
 import {
   daytonaPreviewLabelsFilter,
@@ -123,6 +124,33 @@ describe('provider-neutral preview lifecycle', () => {
       'branch-gone',
       'pr-moved',
     ]);
+  });
+
+  it('tears down both sandbox shapes, and only this pull request\'s', () => {
+    // A branch environment has autoDeleteDays: 0 — no provider expiry. If
+    // teardown does not find it, NOTHING ever will, so it runs until someone
+    // notices the bill.
+    const sandboxes = [
+      { id: 'pr-box', name: 'kortix-preview-pr-42', metadata: { owner: 'kortix-preview', pr_number: '42' } },
+      { id: 'branch-box', name: 'kortix-env-feat-x', metadata: { owner: 'kortix-branch-env', pr_number: '42' } },
+      // Another pull request's boxes, identical in every other way.
+      { id: 'other-pr', name: 'kortix-preview-pr-43', metadata: { owner: 'kortix-preview', pr_number: '43' } },
+      { id: 'other-branch', name: 'kortix-env-feat-y', metadata: { owner: 'kortix-branch-env', pr_number: '43' } },
+      // Right name, wrong owner: something this system did not create.
+      { id: 'impostor', name: 'kortix-env-feat-x', metadata: { owner: 'someone-else', pr_number: '42' } },
+    ];
+
+    expect(selectTeardownSandboxIds(sandboxes, { prNumber: 42, branchEnv: 'feat/x' })).toEqual([
+      'pr-box',
+      'branch-box',
+    ]);
+
+    // WITHOUT branchEnv the branch-named box is invisible — which is exactly how
+    // a persistent environment leaks. The teardown job must always pass it.
+    expect(selectTeardownSandboxIds(sandboxes, { prNumber: 42 })).toEqual(['pr-box']);
+
+    // Never another pull request's, and never an unowned sandbox.
+    expect(selectTeardownSandboxIds(sandboxes, { prNumber: 99, branchEnv: 'feat/x' })).toEqual([]);
   });
 
   it('does not sweep a branch environment for the one thing that retires a preview', () => {

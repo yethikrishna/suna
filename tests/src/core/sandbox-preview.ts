@@ -30,6 +30,8 @@ export function previewLockfileHash(value: string): string {
 
 export interface PreviewSandboxRecord {
   id: string;
+  /** Present on Platinum records; teardown matches on it as well as ownership. */
+  name?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -268,6 +270,32 @@ export function previewSandboxIdentity(input: {
  * `activePullRequests` holds only OPEN pull requests carrying the `preview`
  * label, so "not in the map" already means "no longer approved".
  */
+/**
+ * Sandboxes belonging to ONE pull request, in whichever shape it deployed.
+ *
+ * Ownership is checked as well as the name, so this can only ever return a
+ * sandbox this system created for THIS pull request. `branchEnv` must be passed
+ * whenever the pull request runs a persistent environment: that sandbox is named
+ * after the branch and has NO provider expiry
+ * (`autoDeleteDays: 0`), so if teardown does not find it, nothing ever will.
+ */
+export function selectTeardownSandboxIds(
+  sandboxes: PreviewSandboxRecord[],
+  input: { prNumber: number; branchEnv?: string },
+): string[] {
+  const ephemeral = previewSandboxName(input.prNumber);
+  const persistent = input.branchEnv ? branchEnvSandboxName(input.branchEnv) : null;
+  return sandboxes
+    .filter((sandbox) => {
+      if (Number(sandbox.metadata?.pr_number) !== input.prNumber) return false;
+      const name = sandbox.name;
+      const owner = sandbox.metadata?.owner;
+      if (name === ephemeral && owner === 'kortix-preview') return true;
+      return persistent !== null && name === persistent && owner === 'kortix-branch-env';
+    })
+    .map((sandbox) => sandbox.id);
+}
+
 export function selectStalePreviewSandboxIds(
   sandboxes: PreviewSandboxRecord[],
   activePullRequests: ReadonlyMap<number, string>,

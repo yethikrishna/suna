@@ -256,7 +256,13 @@ class PreviewRuntimeIsolation(unittest.TestCase):
         # and the nightly sweep can only ever touch a sandbox this system made.
         self.assertIn("owner: 'kortix-preview',", PREVIEW_CORE)
         self.assertIn("owner: identity.owner,", PREVIEW_PROVIDERS)
-        self.assertEqual(PREVIEW_PROVIDERS.count("sandbox.metadata?.owner === 'kortix-preview'"), 2)
+        # Every destructive read filters on the owner this system stamps, so a
+        # redeploy, a teardown and the nightly sweep can only ever touch a
+        # sandbox it created. The replace path checks it in the provider; the
+        # teardown and sweep selectors check it in core.
+        self.assertEqual(PREVIEW_PROVIDERS.count("sandbox.metadata?.owner === 'kortix-preview'"), 1)
+        self.assertIn("if (name === ephemeral && owner === 'kortix-preview') return true;", PREVIEW_CORE)
+        self.assertIn("name === persistent && owner === 'kortix-branch-env'", PREVIEW_CORE)
         self.assertIn("'kortix-preview': 'true',", PREVIEW_PROVIDERS)
         # A provider switch must not leave the other provider's sandbox running.
         self.assertIn(
@@ -511,7 +517,8 @@ class PreviewTeardown(unittest.TestCase):
         self.assertIn("owner: 'kortix-branch-env',", PREVIEW_CORE)
         self.assertIn("autoArchiveDays: 0,", PREVIEW_CORE)
         self.assertIn("autoDeleteDays: 0,", PREVIEW_CORE)
-        self.assertIn("branchEnvSandboxName(input.branchEnv)", PREVIEW_PROVIDERS)
+        self.assertIn("branchEnvSandboxName(input.branchEnv)", PREVIEW_CORE)
+        self.assertIn("selectTeardownSandboxIds(await allPlatinumPreviewSandboxes(api), input)", PREVIEW_PROVIDERS)
         self.assertIn("PREVIEW_BRANCH_ENV", job("teardown"))
 
     def test_a_failed_pull_request_query_never_reads_as_no_active_previews(self):

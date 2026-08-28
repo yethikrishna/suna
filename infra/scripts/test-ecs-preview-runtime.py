@@ -440,6 +440,10 @@ class PreviewTeardown(unittest.TestCase):
         deploy = job("deploy")
         self.assertIn("Point the stable hostname at this sandbox", deploy)
         self.assertIn("needs.authorize.outputs.public_worker != ''", deploy)
+        # NOT gated on the suite: a failing flow still leaves a working
+        # environment, and a hostname left pointing at the previous sandbox —
+        # or at nothing — is worse than a red flow.
+        self.assertIn("if: always() && needs.authorize.outputs.public_worker != ''", deploy)
         self.assertIn('dir="infra/cloudflare/workers/${WORKER}"', deploy)
         self.assertIn('wrangler@4 deploy --var "TARGET_ORIGIN:${target}"', deploy)
         self.assertIn(
